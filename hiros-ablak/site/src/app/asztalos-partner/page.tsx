@@ -591,8 +591,8 @@ export default function AsztalosPartnerPage() {
                 >
                   <div className="relative aspect-[4/3] w-full bg-stone-50">
                     <Image
-                      src="/img/IMG_8160+2.jpeg.webp"
-                      alt="Élzáró gép munka közben"
+                      src="/img/IMG_8159.jpeg.webp"
+                      alt="Élzárás gépi megmunkálás a Hírös-Ablak üzemében"
                       fill
                       className="object-cover"
                       sizes="(max-width: 768px) 100vw, 25vw"
@@ -642,24 +642,17 @@ export default function AsztalosPartnerPage() {
 
                 {/* Barkácsáruház */}
                 <Link
-                  href="/kapcsolat"
+                  href="/barkacsaruhaz-kecskemet"
                   className="group flex flex-col overflow-hidden rounded-2xl border border-black/10 bg-white hover:border-[var(--color-brand)]/40 transition"
                 >
-                  <div className="relative aspect-[4/3] w-full bg-gradient-to-br from-stone-50 to-stone-100 flex items-center justify-center">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[var(--color-brand)]/8 text-[var(--color-brand)]">
-                      <svg
-                        className="w-10 h-10"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M3 7h18M3 11h18M3 15h18M3 19h18" />
-                        <path d="M3 7l3-4h12l3 4" />
-                      </svg>
-                    </div>
+                  <div className="relative aspect-[4/3] w-full bg-stone-50">
+                    <Image
+                      src="/img/bemutatot_terem.jpg"
+                      alt="500 m²-es bemutatóterem a Hírös-Ablak barkácsáruházban, Kecskeméten"
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, 25vw"
+                    />
                   </div>
                   <div className="flex flex-1 flex-col p-5">
                     <div className="text-base font-semibold tracking-tight text-slate-900">

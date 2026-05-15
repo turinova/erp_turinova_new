@@ -16,8 +16,16 @@ Same pattern as `customer-portal/` (separate Vercel project, subfolder in `erp_t
 |----------|----------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes (anon key only) |
+| `SMTP_HOST` | Yes (forms) — `mail.hirosablak.hu` |
+| `SMTP_PORT` | Yes — `465` (SSL) |
+| `SMTP_USER` | Yes — authenticated mailbox |
+| `SMTP_PASS` | Yes — mailbox password |
+| `MAIL_FROM` | Yes — same as `SMTP_USER` (e.g. `teszt@hirosablak.hu`) |
+| `MAIL_TO` | Yes — `hirosablak@hirosablak.hu` |
 
 See `.env.example`. Do not commit `.env.local`.
+
+Contact, asztalos partner and szállítóláda quote forms POST to `/api/forms` and send e-mail via Rackhost SMTP.
 
 ## Supabase
 

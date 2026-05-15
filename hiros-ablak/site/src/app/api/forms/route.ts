@@ -10,7 +10,6 @@ import { checkRateLimit, clientIp } from "@/lib/rate-limit"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-/** @deprecated Prefer POST /api/forms — kept for backwards compatibility. */
 export async function POST(req: Request) {
   let body: RawFormBody
   try {
@@ -19,8 +18,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Érvénytelen kérés." }, { status: 400 })
   }
 
-  const unified: RawFormBody = { ...body, form: "contact" }
-  const parsed = parseAndValidateForm(unified)
+  const parsed = parseAndValidateForm(body)
   if (parsed.kind === "honeypot") {
     return NextResponse.json({ ok: true })
   }
@@ -29,16 +27,17 @@ export async function POST(req: Request) {
   }
 
   const ip = clientIp(req)
-  if (!checkRateLimit(`${ip}:contact`)) {
+  if (!checkRateLimit(`${ip}:${parsed.data.form}`)) {
     return NextResponse.json(
-      { error: "Túl sok kérés. Kérjük, próbálja újra később." },
+      { error: "Túl sok kérés. Kérjük, próbálja újra később, vagy hívjon minket." },
       { status: 429 },
     )
   }
 
   if (!isMailConfigured()) {
+    console.error("[forms] SMTP not configured")
     return NextResponse.json(
-      { error: "Az e-mail küldés jelenleg nem elérhető." },
+      { error: "Az e-mail küldés jelenleg nem elérhető. Kérjük, hívjon minket telefonon." },
       { status: 503 },
     )
   }
@@ -49,9 +48,9 @@ export async function POST(req: Request) {
       userAgent: req.headers.get("user-agent"),
     })
   } catch (err) {
-    console.error("[contact] send failed", err)
+    console.error("[forms] send failed", err)
     return NextResponse.json(
-      { error: "Hiba történt a küldés közben." },
+      { error: "Hiba történt a küldés közben. Kérjük, próbálja újra, vagy írjon e-mailt." },
       { status: 502 },
     )
   }

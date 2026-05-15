@@ -43,6 +43,7 @@ export function ContactForm() {
     const data = new FormData(form)
 
     const payload = {
+      form: "contact" as const,
       name: String(data.get("name") || "").trim(),
       email: String(data.get("email") || "").trim(),
       phone: String(data.get("phone") || "").trim(),
@@ -69,7 +70,7 @@ export function ContactForm() {
 
     try {
       setStatus({ kind: "submitting" })
-      const res = await fetch("/api/contact", {
+      const res = await fetch("/api/forms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

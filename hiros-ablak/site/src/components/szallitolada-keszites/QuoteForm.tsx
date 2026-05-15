@@ -5,13 +5,14 @@ import { useState } from "react"
 type Status =
   | { kind: "idle" }
   | { kind: "submitting" }
-  | { kind: "pending_integration" }
+  | { kind: "success" }
   | { kind: "error"; message: string }
 
 type FieldErrors = Partial<{
   name: string
   email: string
   message: string
+  consent: string
 }>
 
 type QuoteFormProps = {
@@ -34,10 +35,13 @@ export default function QuoteForm({
     const data = new FormData(form)
 
     const payload = {
+      form: "quote" as const,
       name: String(data.get("name") || "").trim(),
       email: String(data.get("email") || "").trim(),
       phone: String(data.get("phone") || "").trim(),
       message: String(data.get("message") || "").trim(),
+      consent: data.get("consent") === "on",
+      website: String(data.get("website") || "").trim(),
     }
 
     const nextErrors: FieldErrors = {}
@@ -47,28 +51,48 @@ export default function QuoteForm({
       nextErrors.email = "Kérjük, ellenőrizze az e-mail cím formátumát."
     if (!payload.message || payload.message.length < 10)
       nextErrors.message = "Az üzenet legalább 10 karakter legyen."
+    if (!payload.consent)
+      nextErrors.consent = "Kérjük, fogadja el az adatkezelési tájékoztatót."
 
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
 
-    setStatus({ kind: "submitting" })
-    setTimeout(() => {
-      setStatus({ kind: "pending_integration" })
-    }, 400)
+    try {
+      setStatus({ kind: "submitting" })
+      const res = await fetch("/api/forms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j?.error || "Hiba történt a küldés közben.")
+      }
+      setStatus({ kind: "success" })
+      form.reset()
+    } catch (err) {
+      setStatus({
+        kind: "error",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Hiba történt a küldés közben.",
+      })
+    }
   }
 
-  if (status.kind === "pending_integration") {
+  if (status.kind === "success") {
     return (
       <div
         role="status"
         className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6"
       >
         <div className="text-lg font-semibold text-emerald-900">
-          Köszönjük az érdeklődését.
+          Köszönjük az érdeklődését!
         </div>
         <p className="mt-2 text-sm text-emerald-900/85 leading-relaxed">
-          Az online űrlap funkció hamarosan elérhető lesz. Addig is, kérjük,
-          keressen minket közvetlenül telefonon vagy e-mailben.
+          Megkaptuk árajánlat-kérését. Munkanapokon általában néhány órán belül
+          visszajelzünk.
         </p>
         <div className="mt-4 flex flex-col gap-2 text-sm">
           <a
@@ -102,6 +126,13 @@ export default function QuoteForm({
 
   return (
     <form onSubmit={onSubmit} noValidate className="grid gap-4">
+      <div aria-hidden="true" className="hidden">
+        <label>
+          Ne töltse ki:
+          <input type="text" name="website" tabIndex={-1} autoComplete="off" />
+        </label>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="quote-name" className={labelBase}>
@@ -173,6 +204,40 @@ export default function QuoteForm({
           </p>
         )}
       </div>
+
+      <div className="flex items-start gap-3">
+        <input
+          id="quote-consent"
+          name="consent"
+          type="checkbox"
+          required
+          className="mt-1 h-5 w-5 rounded border-black/30 text-[var(--color-brand)] focus:ring-[var(--color-brand)]/30"
+          aria-invalid={!!errors.consent}
+        />
+        <label htmlFor="quote-consent" className="text-sm text-black/80">
+          Elfogadom az{" "}
+          <a
+            className="underline underline-offset-4 hover:text-[var(--color-brand)]"
+            href="/adatkezelesi-tajekoztato"
+            target="_blank"
+            rel="noreferrer"
+          >
+            adatkezelési tájékoztatót
+          </a>
+          , és hozzájárulok, hogy a megadott adataimat az árajánlat
+          elkészítéséhez felhasználják.
+        </label>
+      </div>
+      {errors.consent && <p className={errBase}>{errors.consent}</p>}
+
+      {status.kind === "error" && (
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900"
+        >
+          {status.message}
+        </div>
+      )}
 
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <button

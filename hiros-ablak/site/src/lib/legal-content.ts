@@ -141,8 +141,8 @@ export function getPrivacyPolicySections(): LegalSection[] {
       id: "kapcsolat-api",
       title: "Kapcsolatfelvételi űrlap technikai feldolgozása",
       paragraphs: [
-        "A kapcsolatfelvételi űrlap adatai a weboldal szerveroldali programjához (Vercel hosting) érkeznek ellenőrzésre.",
-        "Jelenleg az űrlap beküldése után az adatokat szerveroldali naplózással rögzítjük; az e-mail küldés integrációja külön beállítás alatt áll. Az űrlap csak az adatkezelési tájékoztató elfogadása után küldhető el.",
+        "A kapcsolatfelvételi, asztalos partner és szállítóláda árajánlat űrlapok adatai a weboldal szerveroldali programjához (Vercel hosting) érkeznek ellenőrzésre.",
+        `Az űrlap beküldése után a megadott adatokat e-mailben továbbítjuk a ${COMPANY.emails.central} címre a Rackhost (mail.hirosablak.hu) SMTP szolgáltatásán keresztül. Az űrlap csak az adatkezelési tájékoztató elfogadása után küldhető el.`,
       ],
     },
     {
@@ -152,6 +152,7 @@ export function getPrivacyPolicySections(): LegalSection[] {
         `${infra.hostingProvider} – a ${COMPANY.website} weboldal (Next.js alkalmazás) üzemeltetése.`,
         `${infra.databaseProvider} – a nyilvános bútorlap és munkalap katalógus adatainak tárolása és kiszolgálása.`,
         `${infra.domainProvider} – a ${COMPANY.website} domain regisztrációja és DNS szolgáltatása.`,
+        `${infra.domainProvider} – az űrlapok e-mail továbbításához használt postafiók (SMTP: mail.hirosablak.hu).`,
         `Trustindex (trustindex.io) – Google értékelések widget; csak marketing süti hozzájárulás után.`,
       ],
     },
