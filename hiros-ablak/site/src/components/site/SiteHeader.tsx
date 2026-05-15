@@ -3,6 +3,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { useCallback, useEffect, useId, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { usePathname } from "next/navigation"
 import { LINKS } from "@/lib/links"
 import { NAV_ITEMS } from "./nav"
@@ -53,6 +54,11 @@ function MobileNavDrawer({
   panelId: string
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -76,10 +82,10 @@ function MobileNavDrawer({
     if (open) panelRef.current?.focus()
   }, [open])
 
-  if (!open) return null
+  if (!open || !mounted) return null
 
-  return (
-    <div className="fixed inset-0 z-[60] md:hidden" role="presentation">
+  const drawer = (
+    <div className="fixed inset-0 z-[110] md:hidden" role="presentation">
       <button
         type="button"
         className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
@@ -177,12 +183,14 @@ function MobileNavDrawer({
       </div>
     </div>
   )
+
+  return createPortal(drawer, document.body)
 }
 
 export function SiteHeader() {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = useState(false)
-  const panelId = useId()
+  const panelId = useId().replace(/:/g, "")
 
   const closeMenu = useCallback(() => setMenuOpen(false), [])
 
