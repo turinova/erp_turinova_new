@@ -1,7 +1,9 @@
- "use client"
+"use client"
 
 import Link from "next/link"
 import Image from "next/image"
+import { useCallback, useEffect, useId, useRef, useState } from "react"
+import { usePathname } from "next/navigation"
 import { LINKS } from "@/lib/links"
 import { NAV_ITEMS } from "./nav"
 import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
@@ -13,106 +15,316 @@ function hasChildren(item: NavItem): item is NavItem & { children: readonly NavC
   return Array.isArray(item.children) && item.children.length > 0
 }
 
-export function SiteHeader() {
+function MenuIcon({ open }: { open: boolean }) {
   return (
-    <header className="sticky top-0 z-50 border-b border-black/10 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-4">
-        <Link
-          href="/"
-          className="group inline-flex items-center gap-3 text-sm font-semibold tracking-tight"
-          aria-label="Hírös-Ablak"
-        >
-          <Image
-            src="/img/hiros_logo.png"
-            alt="Hírös-Ablak"
-            width={180}
-            height={44}
-            priority
-            className="h-9 w-auto md:h-10"
-            sizes="(max-width: 768px) 140px, 180px"
-          />
-          <span className="sr-only">Hírös-Ablak</span>
-        </Link>
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      {open ? (
+        <>
+          <path d="M6 6l12 12" />
+          <path d="M18 6L6 18" />
+        </>
+      ) : (
+        <>
+          <path d="M4 7h16" />
+          <path d="M4 12h16" />
+          <path d="M4 17h16" />
+        </>
+      )}
+    </svg>
+  )
+}
 
-        <div className="flex items-center justify-between gap-3 md:hidden">
-          <OpeningHoursPill />
-          <a
-            href={LINKS.onlineOrdering}
-            className="inline-flex rounded-full bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-[var(--color-brand-contrast)] hover:brightness-95"
-            target="_blank"
-            rel="noreferrer"
+function MobileNavDrawer({
+  open,
+  onClose,
+  panelId,
+}: {
+  open: boolean
+  onClose: () => void
+  panelId: string
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open, onClose])
+
+  useEffect(() => {
+    if (open) panelRef.current?.focus()
+  }, [open])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[60] md:hidden" role="presentation">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        aria-label="Menü bezárása"
+        onClick={onClose}
+      />
+      <div
+        ref={panelRef}
+        id={panelId}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Főmenü"
+        tabIndex={-1}
+        className="absolute inset-y-0 right-0 flex w-[min(100%,20rem)] flex-col bg-white shadow-[-8px_0_32px_rgba(0,0,0,0.12)] outline-none"
+      >
+        <div className="flex items-center justify-between border-b border-black/10 px-4 py-3">
+          <span className="text-sm font-semibold text-black/90">Menü</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-black/70 hover:bg-black/[0.05] hover:text-black"
+            aria-label="Menü bezárása"
           >
-            Online árajánlat
-          </a>
+            <MenuIcon open />
+          </button>
         </div>
 
-        <nav className="hidden items-center gap-5 text-[15px] text-black/80 md:flex">
-          {(NAV_ITEMS as readonly NavItem[]).map((item) => {
-            if (!hasChildren(item)) {
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-md px-1 py-1 hover:text-black"
-                >
-                  {item.label}
-                </Link>
-              )
-            }
+        <div className="border-b border-black/10 px-4 py-3">
+          <OpeningHoursPill />
+        </div>
 
-            const key = item.href
-            const menuId = `menu-${key.replaceAll("/", "-")}`
-
-            return (
-              <div key={item.href} className="relative group">
-                <Link
-                  aria-haspopup="menu"
-                  aria-controls={menuId}
-                  className="inline-flex items-center gap-1 rounded-md px-1 py-1 hover:text-black"
-                  href={item.href}
-                >
-                  {item.label}
-                  <span className="text-xs text-black/50">
-                    ▾
-                  </span>
-                </Link>
-
-                <div
-                  id={menuId}
-                  role="menu"
-                  className="invisible absolute left-0 top-full z-50 mt-2 w-72 translate-y-1 rounded-xl border border-black/10 bg-white p-2 opacity-0 shadow-sm transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
-                >
-                  {item.children.map((child) => (
+        <nav
+          className="flex-1 overflow-y-auto px-2 py-2"
+          aria-label="Mobil navigáció"
+        >
+          <ul className="grid gap-0.5">
+            {(NAV_ITEMS as readonly NavItem[]).map((item) => {
+              if (!hasChildren(item)) {
+                return (
+                  <li key={item.href}>
                     <Link
-                      key={child.href}
-                      href={child.href}
-                      className="block rounded-lg px-3 py-2 text-sm text-black/80 hover:bg-black/[0.04] hover:text-black"
-                      role="menuitem"
+                      href={item.href}
+                      onClick={onClose}
+                      className="block rounded-xl px-3 py-3 text-[15px] font-medium text-black/85 hover:bg-black/[0.04] hover:text-black"
                     >
-                      {child.label}
+                      {item.label}
                     </Link>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
+                  </li>
+                )
+              }
+
+              return (
+                <li key={item.href}>
+                  <details className="group rounded-xl">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl px-3 py-3 text-[15px] font-medium text-black/85 hover:bg-black/[0.04] [&::-webkit-details-marker]:hidden">
+                      <span>{item.label}</span>
+                      <span
+                        aria-hidden
+                        className="text-xs text-black/45 transition-transform group-open:rotate-180"
+                      >
+                        ▾
+                      </span>
+                    </summary>
+                    <ul className="mb-2 ml-1 grid gap-0.5 border-l border-black/10 pl-3">
+                      {item.children.map((child) => (
+                        <li key={child.href}>
+                          <Link
+                            href={child.href}
+                            onClick={onClose}
+                            className="block rounded-lg px-3 py-2.5 text-sm text-black/75 hover:bg-black/[0.04] hover:text-black"
+                          >
+                            {child.label}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </li>
+              )
+            })}
+          </ul>
         </nav>
 
-        <div className="hidden items-center gap-4 md:flex">
-          <div className="hidden items-center gap-3 lg:flex">
-            <OpeningHoursPill />
-          </div>
+        <div className="border-t border-black/10 p-4">
           <a
             href={LINKS.onlineOrdering}
-            className="hidden rounded-full border border-black/15 bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-[var(--color-brand-contrast)] hover:brightness-95 md:inline-flex"
+            className="flex w-full items-center justify-center rounded-full bg-[var(--color-brand)] px-4 py-3 text-sm font-semibold text-[var(--color-brand-contrast)] hover:brightness-95"
             target="_blank"
             rel="noreferrer"
+            onClick={onClose}
           >
             Online árajánlat
           </a>
         </div>
       </div>
-    </header>
+    </div>
   )
 }
 
+export function SiteHeader() {
+  const pathname = usePathname()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const panelId = useId()
+
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+
+  useEffect(() => {
+    closeMenu()
+  }, [pathname, closeMenu])
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-black/10 bg-white/95 backdrop-blur">
+      <div className="mx-auto max-w-6xl px-4 py-3">
+        {/* Mobile: menu + logo + CTA */}
+        <div className="flex items-center gap-3 md:hidden">
+          <button
+            type="button"
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-black/10 px-3 text-sm font-medium text-black/80 hover:bg-black/[0.04]"
+            aria-expanded={menuOpen}
+            aria-controls={panelId}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            <MenuIcon open={menuOpen} />
+            <span>Menü</span>
+          </button>
+
+          <Link
+            href="/"
+            className="min-w-0 flex-1"
+            aria-label="Hírös-Ablak főoldal"
+            onClick={closeMenu}
+          >
+            <Image
+              src="/img/hiros_logo.png"
+              alt="Hírös-Ablak"
+              width={180}
+              height={44}
+              priority
+              className="h-9 w-auto max-w-[140px]"
+              sizes="140px"
+            />
+          </Link>
+
+          <a
+            href={LINKS.onlineOrdering}
+            className="inline-flex shrink-0 rounded-full bg-[var(--color-brand)] px-3 py-2 text-xs font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 sm:px-4 sm:text-sm"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Árajánlat
+          </a>
+        </div>
+
+        <MobileNavDrawer
+          open={menuOpen}
+          onClose={closeMenu}
+          panelId={panelId}
+        />
+
+        {/* Desktop */}
+        <div className="hidden md:flex md:items-center md:justify-between md:gap-4">
+          <Link
+            href="/"
+            className="group inline-flex items-center gap-3 text-sm font-semibold tracking-tight"
+            aria-label="Hírös-Ablak"
+          >
+            <Image
+              src="/img/hiros_logo.png"
+              alt="Hírös-Ablak"
+              width={180}
+              height={44}
+              priority
+              className="h-10 w-auto"
+              sizes="180px"
+            />
+            <span className="sr-only">Hírös-Ablak</span>
+          </Link>
+
+          <nav
+            className="flex items-center gap-5 text-[15px] text-black/80"
+            aria-label="Fő navigáció"
+          >
+            {(NAV_ITEMS as readonly NavItem[]).map((item) => {
+              if (!hasChildren(item)) {
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="rounded-md px-1 py-1 hover:text-black"
+                  >
+                    {item.label}
+                  </Link>
+                )
+              }
+
+              const menuId = `menu-${item.href.replaceAll("/", "-")}`
+
+              return (
+                <div key={item.href} className="relative group">
+                  <Link
+                    aria-haspopup="menu"
+                    aria-controls={menuId}
+                    className="inline-flex items-center gap-1 rounded-md px-1 py-1 hover:text-black"
+                    href={item.href}
+                  >
+                    {item.label}
+                    <span className="text-xs text-black/50">▾</span>
+                  </Link>
+
+                  <div
+                    id={menuId}
+                    role="menu"
+                    className="invisible absolute left-0 top-full z-50 mt-2 w-72 translate-y-1 rounded-xl border border-black/10 bg-white p-2 opacity-0 shadow-sm transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100"
+                  >
+                    {item.children.map((child) => (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className="block rounded-lg px-3 py-2 text-sm text-black/80 hover:bg-black/[0.04] hover:text-black"
+                        role="menuitem"
+                      >
+                        {child.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </nav>
+
+          <div className="flex items-center gap-4">
+            <div className="hidden items-center gap-3 lg:flex">
+              <OpeningHoursPill />
+            </div>
+            <a
+              href={LINKS.onlineOrdering}
+              className="inline-flex rounded-full border border-black/15 bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-[var(--color-brand-contrast)] hover:brightness-95"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Online árajánlat
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+  )
+}
