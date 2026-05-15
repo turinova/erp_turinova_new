@@ -33,3 +33,5 @@ After preview works on `*.vercel.app`, add `www.hirosablak.hu` in Vercel → Dom
 ## Static assets
 
 Only `public/img/` is committed. The sibling `img/` folder is local source/archive (gitignored).
+
+Photos from iPhone (Display P3) must be converted to **sRGB JPEG** before deploy, or Vercel’s `/_next/image` optimizer can return blank thumbnails. Re-encode with Sharp (`toColorspace("srgb")`) or export sRGB from an editor.
