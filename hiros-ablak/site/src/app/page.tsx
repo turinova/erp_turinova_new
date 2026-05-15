@@ -57,8 +57,8 @@ export const metadata: Metadata = {
 
 const PAGE_SIZE = 6
 
-/** New random catalog tiles on each request (not a fixed alphabetical slice). */
-export const revalidate = 0
+/** ISR: stable HTML for crawlers; catalog preview refreshes hourly. */
+export const revalidate = 3600
 
 const ctaPrimaryDark =
   "inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 transition shadow-[0_8px_28px_rgba(151,29,37,0.35)]"
@@ -161,15 +161,6 @@ type PreviewRow = {
   on_stock: boolean
 }
 
-function shufflePreviewRows<T>(rows: T[]): T[] {
-  const out = [...rows]
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[out[i], out[j]] = [out[j], out[i]]
-  }
-  return out
-}
-
 async function fetchCatalogPreview(): Promise<PreviewRow[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -181,8 +172,10 @@ async function fetchCatalogPreview(): Promise<PreviewRow[]> {
       .select("id, slug, name, brand_name, thickness_mm, image_url, on_stock")
       .eq("on_stock", true)
       .not("image_url", "is", null)
+      .order("name", { ascending: true })
+      .limit(PAGE_SIZE)
     if (error || !data?.length) return []
-    return shufflePreviewRows(data as PreviewRow[]).slice(0, PAGE_SIZE)
+    return data as PreviewRow[]
   } catch {
     return []
   }
@@ -215,12 +208,18 @@ function buildWebSiteJsonLd() {
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
+    "@id": `${COMPANY.website}/#website`,
     name: COMPANY.brand,
     url: COMPANY.website,
     inLanguage: "hu-HU",
-    publisher: {
-      "@type": "Organization",
-      name: COMPANY.brand,
+    publisher: { "@id": `${COMPANY.website}/#organization` },
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${COMPANY.website}/butorlap?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
     },
   }
 }
@@ -754,6 +753,64 @@ export default async function HomePage() {
                 ))}
               </ul>
             </RevealOnScroll>
+          </div>
+        </section>
+
+        {/* ─────────────────── 05C — GYORS TÉNYEK (AI / SEO) ─────────────── */}
+        <section
+          aria-label="Gyors tények a Hírös-Ablakról"
+          className="border-y border-black/10 bg-white py-10 md:py-12"
+        >
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+              Gyors tények
+            </h2>
+            <dl className="mt-4 grid gap-3 text-sm text-black/80 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <dt className="font-medium text-black/55">Cég</dt>
+                <dd>{COMPANY.legalName}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-black/55">Cím</dt>
+                <dd>
+                  {COMPANY.address.postalCode} {COMPANY.address.city},{" "}
+                  {COMPANY.address.street}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-black/55">Telefon</dt>
+                <dd>
+                  <a
+                    href={`tel:${COMPANY.phones.primary}`}
+                    className="underline underline-offset-4 hover:text-[var(--color-brand)]"
+                  >
+                    {formatPhoneDisplay(COMPANY.phones.primary)}
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-black/55">Alapítva</dt>
+                <dd>1996 · Kecskemét</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-black/55">Szolgáltatások</dt>
+                <dd>
+                  Bútorlap, lapszabászat, élzárás, barkácsáruház, online
+                  árajánlat
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-black/55">Web</dt>
+                <dd>
+                  <a
+                    href={COMPANY.website}
+                    className="underline underline-offset-4 hover:text-[var(--color-brand)]"
+                  >
+                    {COMPANY.website.replace(/^https:\/\//, "")}
+                  </a>
+                </dd>
+              </div>
+            </dl>
           </div>
         </section>
 

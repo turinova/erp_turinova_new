@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: "Általános szerződési feltételek",
   description: `${COMPANY.brand} általános szerződési feltételei.`,
   alternates: { canonical: "/aszf" },
+  robots: { index: false, follow: true },
 }
 
 export default function AszfPage() {

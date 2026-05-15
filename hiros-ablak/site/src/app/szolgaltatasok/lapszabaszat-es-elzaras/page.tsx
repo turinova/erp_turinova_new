@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
 import Script from "next/script"
@@ -12,6 +13,7 @@ import {
 } from "@/lib/company"
 import { LINKS } from "@/lib/links"
 import { getSupabaseServerClient } from "@/lib/supabase"
+import { pageMetadata } from "@/lib/seo"
 
 export const revalidate = 3600
 
@@ -40,11 +42,13 @@ async function fetchDistinctBrands(): Promise<string[]> {
   }
 }
 
-export const metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Lapszabászat és élzárás Kecskeméten",
   description:
-    "Lapszabászat és élzárás Kecskeméten: bútorlap méretre vágás optimalizált táblafelosztással, ABS / élfólia / élléc / élfurnér élzárás, munkalap megmunkálás, pánthelyfúrás. Átfutás: 3–5 munkanap, az ajánlatban pontosítva. Megmunkálás a nálunk vásárolt anyagokra.",
-}
+    "Lapszabászat és élzárás Kecskeméten: bútorlap méretre vágás optimalizált táblafelosztással, ABS / élfólia / élléc / élfurnér élzárás, munkalap megmunkálás, pánthelyfúrás. Átfutás: 3–5 munkanap, az ajánlatban pontosítva.",
+  canonical: "/szolgaltatasok/lapszabaszat-es-elzaras",
+  ogImage: "/img/BIESSE_SELCO_10660_oriz.jpg",
+})
 
 const ctaPrimary =
   "inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95"

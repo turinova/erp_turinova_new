@@ -10,6 +10,7 @@ import {
 import { LINKS } from "@/lib/links"
 import { getSupabaseServerClient } from "@/lib/supabase"
 import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
+import { buildBreadcrumbJsonLd } from "@/lib/seo"
 
 export const revalidate = 3600 // 1 hour
 
@@ -126,7 +127,9 @@ export async function generateMetadata({
   const dims = `${r.length_mm}×${r.width_mm}×${r.thickness_mm}`
   const canonicalPath = `/munkalap/${r.slug ?? slug}`
   const canonicalUrl = `${COMPANY.website}${canonicalPath}`
-  const robots = { index: true, follow: true }
+  const robots = r.indexable_on_site
+    ? { index: true, follow: true }
+    : { index: false, follow: true }
   const ogImage = r.image_url || `${COMPANY.website}/img/hiros_logo.png`
 
   const product = productNoun(r.type_name)
@@ -299,7 +302,11 @@ export default async function MunkalapDetailPage({
   }
 
   const relatedQuery = (() => {
-    let q = supabase.from("public_munkalap").select("*").limit(8)
+    let q = supabase
+      .from("public_munkalap")
+      .select("*")
+      .eq("indexable_on_site", true)
+      .limit(8)
     if (r.brand_name) q = q.eq("brand_name", r.brand_name)
     else q = q.eq("thickness_mm", r.thickness_mm)
     q = q.neq("id", r.id)
@@ -314,8 +321,19 @@ export default async function MunkalapDetailPage({
     ? `Raktáron: most átvehető a ${COMPANY.address.city.toLowerCase()}i áruházunkban.`
     : "Beszerezhető: most nincs raktáron, de Önnek beszerezzük. A beszerzési idő márkától és szállítótól függ, a pontos időt megrendeléskor egyeztetjük."
 
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+    { name: "Kezdőlap", path: "/" },
+    { name: "Munkalap katalógus", path: "/munkalap" },
+    { name: r.name, path: canonical },
+  ])
+
   return (
     <div className="bg-stone-wash">
+      <Script
+        id="jsonld-breadcrumb-munkalap"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <Script
         id="jsonld-product-munkalap"
         type="application/ld+json"

@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
 import Script from "next/script"
@@ -6,12 +7,15 @@ import { LINKS } from "@/lib/links"
 import { getSupabaseServerClient } from "@/lib/supabase"
 import { parseButorlapQuery } from "@/lib/butorlap-search"
 import { SortSelect } from "../butorlap/_components/SortSelect"
+import { pageMetadata } from "@/lib/seo"
 
-export const metadata = {
-  title: "Munkalap katalógus",
+export const metadata: Metadata = pageMetadata({
+  title: "Munkalap és konyhapult katalógus Kecskeméten",
   description:
-    "Munkalap katalógus Kecskeméten: raktáron vagy beszerezhető tételek. Szűrés vastagság, márka és készlet szerint.",
-}
+    "Munkalap és konyhapult katalógus Kecskeméten: raktáron vagy beszerezhető tételek. Szűrés vastagság, márka és készlet szerint. Méretre vágás és élzárás kérésre.",
+  canonical: "/munkalap",
+  ogImage: "/img/munkalap_hero.webp",
+})
 
 type Row = {
   id: string

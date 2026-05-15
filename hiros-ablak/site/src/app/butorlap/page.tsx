@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
 import Script from "next/script"
@@ -6,12 +7,15 @@ import { LINKS } from "@/lib/links"
 import { getSupabaseServerClient } from "@/lib/supabase"
 import { parseButorlapQuery } from "@/lib/butorlap-search"
 import { SortSelect } from "./_components/SortSelect"
+import { pageMetadata } from "@/lib/seo"
 
-export const metadata = {
-  title: "Bútorlap katalógus",
+export const metadata: Metadata = pageMetadata({
+  title: "Bútorlap katalógus Kecskeméten",
   description:
-    "Bútorlap katalógus Kecskeméten: raktáron vagy beszerezhető tételek. Szűrés vastagság, márka, csoport és készlet szerint.",
-}
+    "Bútorlap katalógus Kecskeméten: Egger, Kronospan, Kaindl és további márkák. Raktáron vagy beszerezhető tételek, szűrés vastagság, márka és készlet szerint. Méretre vágás és élzárás kérésre.",
+  canonical: "/butorlap",
+  ogImage: "/img/egger_edc2020_heroshot.webp",
+})
 
 type Row = {
   id: string

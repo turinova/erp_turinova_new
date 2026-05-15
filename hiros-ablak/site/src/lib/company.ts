@@ -56,6 +56,16 @@ export const COMPANY = {
    * A www.hirosablak.hu weboldal technikai háttere (hivatalos tájékoztatókhoz).
    * Csak itt rögzített, ellenőrizhető tételek.
    */
+  social: {
+    facebook: "https://www.facebook.com/profile.php?id=100057176661141",
+    instagram: "https://www.instagram.com/hirosablak/",
+  },
+  /** Kapcsolódó webáruház (külön márka, nem a Hírös-Ablak sameAs). */
+  vasalatmester: {
+    website: "https://www.vasalatmester.hu",
+    facebook: "https://www.facebook.com/vasalatmester",
+    instagram: "https://www.instagram.com/vasalatmester/",
+  },
   webInfrastructure: {
     /** Next.js alkalmazás üzemeltetése */
     hostingProvider: "Vercel Inc.",
@@ -127,13 +137,22 @@ export function appleMapsUrl(): string {
 }
 
 export function buildOrganizationJsonLd() {
+  const orgId = `${COMPANY.website}/#organization`
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": orgId,
     name: COMPANY.brand,
     legalName: COMPANY.legalName,
     alternateName: COMPANY.shortName,
     url: COMPANY.website,
+    image: `${COMPANY.website}/img/kapcsolat_hero.jpg`,
+    logo: `${COMPANY.website}/img/hiros_logo.png`,
+    sameAs: [
+      COMPANY.social.facebook,
+      COMPANY.social.instagram,
+      googleMapsSearchUrl(),
+    ],
     foundingDate: COMPANY.foundingDate,
     taxID: COMPANY.taxId,
     vatID: COMPANY.taxId,
@@ -170,13 +189,23 @@ export function buildOrganizationJsonLd() {
 }
 
 export function buildLocalBusinessJsonLd() {
+  const orgId = `${COMPANY.website}/#organization`
   return {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
+    "@id": `${COMPANY.website}/#localbusiness`,
     name: COMPANY.brand,
     legalName: COMPANY.legalName,
     alternateName: COMPANY.shortName,
     url: COMPANY.website,
+    image: `${COMPANY.website}/img/bemutato_hero.jpg`,
+    logo: `${COMPANY.website}/img/hiros_logo.png`,
+    parentOrganization: { "@id": orgId },
+    sameAs: [
+      COMPANY.social.facebook,
+      COMPANY.social.instagram,
+      googleMapsSearchUrl(),
+    ],
     foundingDate: COMPANY.foundingDate,
     taxID: COMPANY.taxId,
     vatID: COMPANY.taxId,

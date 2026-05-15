@@ -171,6 +171,7 @@ export const LEGAL_LINKS: readonly LegalLink[] = [
   { href: "/adatkezelesi-tajekoztato", label: "Adatkezelési tájékoztató" },
   { href: "/aszf", label: "ÁSZF" },
   { href: "/cookie-tajekoztato", label: "Cookie kezelés" },
+  { href: "/llms.txt", label: "LLM / AI összefoglaló" },
 ]
 
 /* ──────────────────────────────────────────────────────────────────────────

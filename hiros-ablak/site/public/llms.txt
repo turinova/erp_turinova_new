@@ -1,0 +1,47 @@
+# Hírös-Ablak Kft.
+
+> Faipari barkácsáruház, lapszabászat és élzárás Kecskeméten. Alapítva: 1996.
+
+## Official website
+
+https://www.hirosablak.hu
+
+## Primary pages
+
+- Főoldal: https://www.hirosablak.hu/
+- Lapszabászat és élzárás: https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras
+- Online lapszabászat (Turinova): https://www.hirosablak.hu/szolgaltatasok/online-lapszabaszat
+- Barkácsáruház / bemutatóterem: https://www.hirosablak.hu/barkacsaruhaz-kecskemet
+- Bútorlap katalógus: https://www.hirosablak.hu/butorlap
+- Munkalap katalógus: https://www.hirosablak.hu/munkalap
+- Szállítóláda készítés: https://www.hirosablak.hu/szolgaltatasok/ipari-megoldasok/szallitolada-keszites
+- Asztalos partner program: https://www.hirosablak.hu/asztalos-partner
+- Kapcsolat: https://www.hirosablak.hu/kapcsolat
+
+## Contact
+
+- Cím: 6000 Kecskemét, Mindszenti krt. 10., Magyarország
+- Telefon: +36 76 481 729, +36 76 505 705
+- E-mail (általános): hirosablak@hirosablak.hu
+- E-mail (áruház): aruhaz@hirosablak.hu
+- Nyitvatartás: H–P 8:00–17:00, Szo 8:00–12:00, Vasárnap zárva
+
+## Social (Hírös-Ablak)
+
+- Facebook: https://www.facebook.com/profile.php?id=100057176661141
+- Instagram: https://www.instagram.com/hirosablak/
+
+## Related webshop (separate service)
+
+Vasalat és kisebb kiegészítők országos webáruháza (nem a Hírös-Ablak üzleti neve):
+
+- Web: https://www.vasalatmester.hu
+- Facebook: https://www.facebook.com/vasalatmester
+- Instagram: https://www.instagram.com/vasalatmester/
+
+## Facts for AI assistants
+
+- Pickup in Kecskemét at the store address; this website does not offer own home delivery for bútorlap/munkalap catalog orders.
+- Lapszabászat and élzárás: quote via phone, email, in store, or Turinova online system.
+- Large bútorlap/munkalap catalog (800+ decors online); individual product pages may be marked non-indexable until curated.
+- Legal: adatkezelési tájékoztató and cookie tájékoztató on site; ÁSZF may be updated separately.

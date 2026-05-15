@@ -10,6 +10,7 @@ import {
 import { LINKS } from "@/lib/links"
 import { getSupabaseServerClient } from "@/lib/supabase"
 import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
+import { buildBreadcrumbJsonLd } from "@/lib/seo"
 
 export const revalidate = 3600 // 1 hour
 
@@ -313,8 +314,19 @@ export default async function ButorlapDetailPage({
     ? `Raktáron: most átvehető a ${COMPANY.address.city.toLowerCase()}i áruházunkban.`
     : "Beszerezhető: most nincs raktáron, de Önnek beszerezzük. A beszerzési idő márkától és szállítótól függ, a pontos időt megrendeléskor egyeztetjük."
 
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+    { name: "Kezdőlap", path: "/" },
+    { name: "Bútorlap katalógus", path: "/butorlap" },
+    { name: r.name, path: canonical },
+  ])
+
   return (
     <div className="bg-stone-wash">
+      <Script
+        id="jsonld-breadcrumb-butorlap"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <Script
         id="jsonld-product-butorlap"
         type="application/ld+json"

@@ -1,4 +1,6 @@
+import type { Metadata } from "next"
 import Image from "next/image"
+import Link from "next/link"
 import Script from "next/script"
 import { getTodayDayIndexBudapest } from "@/lib/opening-hours"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
@@ -18,12 +20,15 @@ import {
   googleMapsSearchUrl,
   wazeUrl,
 } from "@/lib/company"
+import { buildBreadcrumbJsonLd, pageMetadata } from "@/lib/seo"
 
-export const metadata = {
-  title: "Kapcsolat",
+export const metadata: Metadata = pageMetadata({
+  title: "Kapcsolat és elérhetőség Kecskeméten",
   description:
     "Hírös-Ablak elérhetőségei: cím, telefon, e-mail, nyitvatartás, GPS koordináták, térkép és kapcsolatfelvételi űrlap. Kecskemét, Mindszenti krt. 10.",
-}
+  canonical: "/kapcsolat",
+  ogImage: "/img/kapcsolat_hero.jpg",
+})
 
 const ctaPrimary =
   "inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95"
@@ -46,9 +51,18 @@ export default function KapcsolatPage() {
   )
 
   const jsonLd = buildLocalBusinessJsonLd()
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+    { name: "Kezdőlap", path: "/" },
+    { name: "Kapcsolat", path: "/kapcsolat" },
+  ])
 
   return (
     <div className="relative bg-stone-wash">
+      <Script
+        id="jsonld-breadcrumb-kapcsolat"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <Script
         id="jsonld-localbusiness"
         type="application/ld+json"
@@ -298,6 +312,46 @@ export default function KapcsolatPage() {
                       </a>
                     </div>
                   </div>
+                </div>
+
+                <hr className="my-6 border-t border-black/5" />
+
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-black/55">
+                    Közösségi média
+                  </div>
+                  <ul className="mt-3 grid gap-2 text-sm">
+                    <li>
+                      <a
+                        href={COMPANY.social.facebook}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[var(--color-brand)] underline underline-offset-4"
+                      >
+                        Facebook – Hírös-Ablak barkácsáruház
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                        href={COMPANY.social.instagram}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[var(--color-brand)] underline underline-offset-4"
+                      >
+                        Instagram – @hirosablak
+                      </a>
+                    </li>
+                  </ul>
+                  <p className="mt-3 text-sm text-black/60">
+                    <a
+                      href={googleMapsSearchUrl()}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline underline-offset-4 hover:text-[var(--color-brand)]"
+                    >
+                      Google Térkép – értékelések és útvonal
+                    </a>
+                  </p>
                 </div>
 
               </div>
