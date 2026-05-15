@@ -227,7 +227,7 @@ export type HeroPromise = {
 export const HOME_HERO_PROMISES: readonly HeroPromise[] = [
   { icon: "home", text: "1996 óta ugyanitt, családi vállalkozás" },
   { icon: "cog", text: "Saját üzem, saját raktár, saját szakemberek" },
-  { icon: "users", text: "Lakosnak és asztalosnak egyaránt" },
+  { icon: "users", text: "Magánszemélyeknek és asztalosoknak egyaránt" },
 ]
 
 // ────────────────────────────────────────────────────────────────────────────

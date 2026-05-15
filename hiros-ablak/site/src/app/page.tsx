@@ -56,9 +56,11 @@ export const metadata: Metadata = {
 }
 
 const PAGE_SIZE = 6
+/** In-stock decors to shuffle before picking PAGE_SIZE for the homepage preview. */
+const PREVIEW_POOL_SIZE = 60
 
-/** ISR: stable HTML for crawlers; catalog preview refreshes hourly. */
-export const revalidate = 3600
+/** New random preview on each request (no static ISR cache). */
+export const dynamic = "force-dynamic"
 
 const ctaPrimaryDark =
   "inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 transition shadow-[0_8px_28px_rgba(151,29,37,0.35)]"
@@ -161,6 +163,15 @@ type PreviewRow = {
   on_stock: boolean
 }
 
+function shuffle<T>(items: T[]): T[] {
+  const arr = [...items]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
 async function fetchCatalogPreview(): Promise<PreviewRow[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -172,10 +183,9 @@ async function fetchCatalogPreview(): Promise<PreviewRow[]> {
       .select("id, slug, name, brand_name, thickness_mm, image_url, on_stock")
       .eq("on_stock", true)
       .not("image_url", "is", null)
-      .order("name", { ascending: true })
-      .limit(PAGE_SIZE)
+      .limit(PREVIEW_POOL_SIZE)
     if (error || !data?.length) return []
-    return data as PreviewRow[]
+    return shuffle(data as PreviewRow[]).slice(0, PAGE_SIZE)
   } catch {
     return []
   }

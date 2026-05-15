@@ -307,8 +307,8 @@ export function SiteFooter() {
                 </div>
                 <p className="mt-3 text-sm text-black/70">
                   1996 óta lapszabászat, élzárás és bútorlap{" "}
-                  {COMPANY.address.city}en. Lakosnak, asztalosnak, gyárnak
-                  egyaránt.
+                  {COMPANY.address.city}en. Magánszemélyeknek, asztalosoknak,
+                  gyárnak egyaránt.
                 </p>
 
                 <ul className="mt-4 grid gap-2.5">
