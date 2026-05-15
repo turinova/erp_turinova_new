@@ -1,6 +1,8 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
 import Script from "next/script"
+import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
 import { COMPANY } from "@/lib/company"
@@ -11,25 +13,13 @@ import OrdersMockup from "@/components/online-lapszabaszat/OrdersMockup"
 import PhoneSmsMockup from "@/components/online-lapszabaszat/PhoneSmsMockup"
 import BeforeAfter from "@/components/online-lapszabaszat/BeforeAfter"
 
-export const metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Online lapszabászati rendelés Kecskeméten",
   description:
     "Saját fejlesztésű online lapszabászati rendelő rendszer. Adja meg a panelek méreteit és élzárását, a rendszer kiszámolja a pontos árat. Mentett projektek, online rendelés, valós idejű követés és automatikus SMS értesítés. A HÍRÖS-Ablak Kft. Turinova rendszere.",
-  alternates: { canonical: "/szolgaltatasok/online-lapszabaszat" },
-  openGraph: {
-    title: "Online lapszabászati rendelés Kecskeméten",
-    description:
-      "Adja meg a panelek méreteit és élzárását, a rendszer kiszámolja az árat. Mentett projektek, online rendelés és valós idejű követés a Turinova rendszerben.",
-    url: "/szolgaltatasok/online-lapszabaszat",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Online lapszabászati rendelés Kecskeméten",
-    description:
-      "Azonnali árajánlat, mentett projektek, online rendelés és követés a Turinova rendszerben.",
-  },
-}
+  canonical: "/szolgaltatasok/online-lapszabaszat",
+  ogImage: DEFAULT_OG_IMAGE_PATH,
+})
 
 const ctaPrimary =
   "inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 transition"

@@ -27,6 +27,12 @@ See `.env.example`. Do not commit `.env.local`.
 
 Contact, asztalos partner and szállítóláda quote forms POST to `/api/forms` and send e-mail via Rackhost SMTP.
 
+## Favicon & social preview
+
+- Favicon: `src/app/icon.png` (512) and `src/app/apple-icon.png` (180)
+- Default share image (Open Graph / WhatsApp): `public/og/og-default.png` (1200×630)
+- After domain go-live, re-scrape in [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/)
+
 ## Supabase
 
 Run once on the production database (if not already):

@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import Script from "next/script"
 import { CookieConsentShell } from "@/components/site/CookieConsentShell"
@@ -26,18 +26,30 @@ export const metadata: Metadata = {
   },
   description:
     "Lapszabászat és élzárás Kecskeméten, barkácsáruház bemutatás, ipari megoldások és anyagkatalógus (bútorlap, munkalap).",
+  applicationName: COMPANY.brand,
   robots: getDefaultRobots(),
   openGraph: {
     type: "website",
     siteName: COMPANY.brand,
     locale: "hu_HU",
     url: "/",
-    images: [{ url: DEFAULT_OG_IMAGE, width: 1200, height: 630, alt: COMPANY.brand }],
+    images: [
+      {
+        url: DEFAULT_OG_IMAGE,
+        width: 1200,
+        height: 630,
+        alt: `${COMPANY.brand} – lapszabászat és bútorlap Kecskeméten`,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     images: [DEFAULT_OG_IMAGE],
   },
+}
+
+export const viewport: Viewport = {
+  themeColor: "#971d25",
 }
 
 export default function RootLayout({

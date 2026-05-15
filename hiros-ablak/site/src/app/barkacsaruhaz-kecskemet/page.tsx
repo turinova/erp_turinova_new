@@ -1,6 +1,8 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
 import Script from "next/script"
+import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
 import {
@@ -18,27 +20,14 @@ import {
 
 const VASALATMESTER_URL = "https://www.vasalatmester.hu"
 
-export const metadata = {
+export const metadata: Metadata = pageMetadata({
   title:
     "Barkácsáruház Kecskemét. Bútorlap, vasalat, mosogató, csaptelep | Hírös-Ablak Kft.",
   description:
     "Faipari barkácsáruház és 500 m²-es bemutatóterem Kecskeméten. Bútorlap, vasalat (Blum, Kesseboehmer, Hettich), mosogatótálca, csaptelep, fogantyú, szerszám, ragasztó. Helyszíni lapszabászat és élzárás. 1996 óta, Mindszenti krt. 10. címen.",
-  alternates: { canonical: "/barkacsaruhaz-kecskemet" },
-  openGraph: {
-    title:
-      "Barkácsáruház Kecskemét. Bútorlap, vasalat, mosogató | Hírös-Ablak Kft.",
-    description:
-      "Faipari barkácsáruház és 500 m²-es bemutatóterem Kecskeméten. Bútorlap, vasalat, mosogatótálca, csaptelep, fogantyú, szerszám. 1996 óta.",
-    url: "/barkacsaruhaz-kecskemet",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Barkácsáruház Kecskemét | Hírös-Ablak Kft.",
-    description:
-      "Faipari barkácsáruház és 500 m²-es bemutatóterem Kecskeméten. 1996 óta.",
-  },
-}
+  canonical: "/barkacsaruhaz-kecskemet",
+  ogImage: DEFAULT_OG_IMAGE_PATH,
+})
 
 const ctaPrimaryDark =
   "inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 transition shadow-[0_8px_28px_rgba(151,29,37,0.35)]"

@@ -1,6 +1,8 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
 import Script from "next/script"
+import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
 import {
@@ -11,27 +13,13 @@ import {
 import FaqAccordion from "@/components/szallitolada-keszites/FaqAccordion"
 import PartnerForm from "@/components/asztalos-partner/PartnerForm"
 
-export const metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Asztalos partner program | Hírös-Ablak Kft.",
   description:
     "Asztalos partnerprogram Kecskeméten: belépő partneri kedvezmény az első rendeléstől, havi kvóta alapján növekvő. Hitelkeret, elsőbbségi gyártás, online rendelés. 1996 óta.",
-  alternates: {
-    canonical: "/asztalos-partner",
-  },
-  openGraph: {
-    title: "Asztalos partner program | Hírös-Ablak Kft.",
-    description:
-      "Belépő partneri kedvezmény az első rendeléstől, havi kvóta alapján növekvő. Hitelkeret, elsőbbségi gyártás, online rendelés. 1996 óta.",
-    url: "/asztalos-partner",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Asztalos partner program | Hírös-Ablak Kft.",
-    description:
-      "Belépő partneri kedvezmény az első rendeléstől, havi kvóta alapján növekvő. 1996 óta.",
-  },
-}
+  canonical: "/asztalos-partner",
+  ogImage: DEFAULT_OG_IMAGE_PATH,
+})
 
 const ctaPrimaryDark =
   "inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 transition shadow-[0_8px_28px_rgba(151,29,37,0.35)]"

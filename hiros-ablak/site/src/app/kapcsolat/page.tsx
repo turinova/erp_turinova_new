@@ -27,7 +27,7 @@ export const metadata: Metadata = pageMetadata({
   description:
     "Hírös-Ablak elérhetőségei: cím, telefon, e-mail, nyitvatartás, GPS koordináták, térkép és kapcsolatfelvételi űrlap. Kecskemét, Mindszenti krt. 10.",
   canonical: "/kapcsolat",
-  ogImage: "/img/kapcsolat_hero.jpg",
+  ogImage: "/og/og-default.png",
 })
 
 const ctaPrimary =

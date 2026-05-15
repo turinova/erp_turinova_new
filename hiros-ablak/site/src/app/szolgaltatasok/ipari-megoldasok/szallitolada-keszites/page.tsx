@@ -1,6 +1,8 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
 import Script from "next/script"
+import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
 import {
@@ -13,27 +15,13 @@ import MaterialCard from "@/components/szallitolada-keszites/MaterialCard"
 import FaqAccordion from "@/components/szallitolada-keszites/FaqAccordion"
 import QuoteForm from "@/components/szallitolada-keszites/QuoteForm"
 
-export const metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Szállítóláda, kaloda és rekesz gyártás | Hírös-Ablak Kft.",
   description:
     "Egyedi méretű faládák ipari szállításhoz: szállítóláda, gépláda, kaloda, rekesz. Saját lapszabászat, nincs minimum darabszám, minden alapanyag raktáron, átvétel Kecskeméten.",
-  alternates: {
-    canonical: "/szolgaltatasok/ipari-megoldasok/szallitolada-keszites",
-  },
-  openGraph: {
-    title: "Szállítóláda, kaloda és rekesz gyártás | Hírös-Ablak Kft.",
-    description:
-      "Egyedi méretű faládák ipari szállításhoz. Saját lapszabászat, nincs minimum darabszám, átvétel Kecskeméten.",
-    url: "/szolgaltatasok/ipari-megoldasok/szallitolada-keszites",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Szállítóláda, kaloda és rekesz gyártás | Hírös-Ablak Kft.",
-    description:
-      "Egyedi méretű faládák ipari szállításhoz. Saját lapszabászat, átvétel Kecskeméten.",
-  },
-}
+  canonical: "/szolgaltatasok/ipari-megoldasok/szallitolada-keszites",
+  ogImage: DEFAULT_OG_IMAGE_PATH,
+})
 
 const ctaPrimaryDark =
   "inline-flex items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 transition shadow-[0_8px_28px_rgba(151,29,37,0.35)]"

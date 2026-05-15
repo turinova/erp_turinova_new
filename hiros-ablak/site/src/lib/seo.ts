@@ -1,8 +1,9 @@
 import type { Metadata } from "next"
 import { COMPANY } from "@/lib/company"
 
-/** Default social / OG image on this domain (absolute URL). */
-export const DEFAULT_OG_IMAGE = `${COMPANY.website}/img/kapcsolat_hero.jpg`
+/** Default social share image (1200×630), absolute URL for meta tags. */
+export const DEFAULT_OG_IMAGE_PATH = "/og/og-default.png"
+export const DEFAULT_OG_IMAGE = `${COMPANY.website}${DEFAULT_OG_IMAGE_PATH}`
 
 export const ORGANIZATION_ID = `${COMPANY.website}/#organization`
 export const LOCAL_BUSINESS_ID = `${COMPANY.website}/#localbusiness`

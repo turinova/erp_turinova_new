@@ -30,30 +30,17 @@ import {
   HOME_SHOWROOM_PHOTO,
 } from "@/lib/home-data"
 import { TRUST_STATS, VASALATMESTER_URL } from "@/lib/footer-data"
+import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 
 const TRUSTINDEX_WIDGET_ID = "7cdec6847a44162c96468ea0aea"
 
-export const metadata: Metadata = {
-  title:
-    "Bútorlap, munkalap és lapszabászat Kecskeméten · Hírös-Ablak Kft.",
+export const metadata: Metadata = pageMetadata({
+  title: "Bútorlap, munkalap és lapszabászat Kecskeméten · Hírös-Ablak Kft.",
   description:
     "Lapszabászat, élzárás és bútorlap Kecskeméten 1996 óta. 30+ márka raktáron (Egger, Kronospan, Blum, Hettich). 500 m² bemutatóterem, saját üzem, asztalos partnerprogram, online árajánlat 2 perc alatt.",
-  alternates: { canonical: "/" },
-  openGraph: {
-    title:
-      "Bútorlap, munkalap és lapszabászat Kecskeméten · Hírös-Ablak Kft.",
-    description:
-      "Lapszabászat, élzárás és bútorlap Kecskeméten 1996 óta. 30+ márka, 500 m² bemutatóterem, asztalos partnerprogram, online rendelés.",
-    url: "/",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Bútorlap, lapszabászat Kecskemét · Hírös-Ablak Kft.",
-    description:
-      "1996 óta Kecskeméten. 30+ márka, 500 m² bemutatóterem, saját üzem, online rendelés.",
-  },
-}
+  canonical: "/",
+  ogImage: DEFAULT_OG_IMAGE_PATH,
+})
 
 const PAGE_SIZE = 6
 /** In-stock decors to shuffle before picking PAGE_SIZE for the homepage preview. */
