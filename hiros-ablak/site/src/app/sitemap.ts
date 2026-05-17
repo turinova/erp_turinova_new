@@ -27,6 +27,9 @@ const STATIC_PATHS = [
   "/cookie-tajekoztato",
 ] as const
 
+/** Refresh catalog URLs from Supabase hourly (no redeploy needed for new indexable PDPs). */
+export const revalidate = 3600
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date()
   const entries: MetadataRoute.Sitemap = STATIC_PATHS.map((path) => ({

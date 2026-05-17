@@ -233,35 +233,6 @@ export default async function MunkalapDetailPage({
     return `${r.name} ${noun} mérete ${dims}, vastagsága ${thickness}. ${COMPANY.address.city}i áruházunkban Önnek méretre vágjuk, és igény szerint élzárást is vállalunk.`
   })()
 
-  const productJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: r.name,
-    image: r.image_url ? [r.image_url] : [],
-    url: `${COMPANY.website}${canonical}`,
-    sku: r.id,
-    brand: r.brand_name
-      ? { "@type": "Brand", name: r.brand_name }
-      : undefined,
-    description: definition,
-    offers: {
-      "@type": "Offer",
-      availability: `https://schema.org/${r.on_stock ? "InStock" : "PreOrder"}`,
-      url: `${COMPANY.website}${canonical}`,
-      seller: {
-        "@type": "Organization",
-        name: COMPANY.brand,
-        url: COMPANY.website,
-      },
-    },
-    additionalProperty: [
-      { "@type": "PropertyValue", name: "Hossz (mm)", value: r.length_mm },
-      { "@type": "PropertyValue", name: "Szélesség (mm)", value: r.width_mm },
-      { "@type": "PropertyValue", name: "Vastagság (mm)", value: r.thickness_mm },
-      { "@type": "PropertyValue", name: "Készlet", value: stockLabel(r.on_stock) },
-    ],
-  }
-
   const faqJsonLd = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -333,11 +304,6 @@ export default async function MunkalapDetailPage({
         id="jsonld-breadcrumb-munkalap"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
-      />
-      <Script
-        id="jsonld-product-munkalap"
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
       />
       <Script
         id="jsonld-faq-munkalap"
