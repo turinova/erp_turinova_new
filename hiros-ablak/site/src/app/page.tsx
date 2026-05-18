@@ -17,7 +17,6 @@ import {
 import { LINKS } from "@/lib/links"
 import { getSupabaseServerClient } from "@/lib/supabase"
 import {
-  HOME_BRAND_CHIPS,
   HOME_FAQ,
   HOME_HERITAGE_PHOTO,
   HOME_HERITAGE_STATS,
@@ -29,6 +28,7 @@ import {
   HOME_SHOWROOM_BULLETS,
   HOME_SHOWROOM_PHOTO,
 } from "@/lib/home-data"
+import { HomeBrandStrip } from "@/components/site/HomeBrandStrip"
 import { TRUST_STATS, VASALATMESTER_URL } from "@/lib/footer-data"
 import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 
@@ -561,29 +561,8 @@ export default async function HomePage() {
               </RevealOnScroll>
             ) : null}
 
-            {/* Brand carpet */}
-            <RevealOnScroll delay={0.15} className="mt-10">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-black/55 md:w-44 md:shrink-0">
-                  <span
-                    aria-hidden
-                    className="mr-2 inline-block h-2 w-6 rounded-full bg-[var(--color-brand)]/80 align-middle"
-                  />
-                  Márkáink
-                </div>
-                <ul className="flex flex-wrap gap-1.5">
-                  {HOME_BRAND_CHIPS.map((b) => (
-                    <li key={b.name}>
-                      <Link
-                        href={b.href}
-                        className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-black/80 shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--color-brand)] hover:bg-[var(--color-brand)] hover:text-white hover:shadow-[0_6px_14px_rgba(151,29,37,0.25)]"
-                      >
-                        {b.name}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <RevealOnScroll delay={0.15}>
+              <HomeBrandStrip />
             </RevealOnScroll>
           </div>
         </section>

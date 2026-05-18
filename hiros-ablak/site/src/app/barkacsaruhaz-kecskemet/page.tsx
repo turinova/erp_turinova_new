@@ -13,6 +13,8 @@ import {
   googleMapsEmbedUrl,
 } from "@/lib/company"
 import FaqAccordion from "@/components/szallitolada-keszites/FaqAccordion"
+import { CatalogBrandPanel } from "@/components/site/CatalogBrandPanel"
+import { ShowroomBrandPanel } from "@/components/site/ShowroomBrandPanel"
 import {
   ProductMarquee,
   type MarqueeItem,
@@ -236,32 +238,6 @@ function GalleryPlaceholder({
         {hint && (
           <div className="mt-1 text-xs text-black/55">{hint}</div>
         )}
-      </div>
-    </div>
-  )
-}
-
-function BrandChipGroup({
-  label,
-  brands,
-}: {
-  label: string
-  brands: string[]
-}) {
-  return (
-    <div>
-      <div className="text-xs font-semibold uppercase tracking-wide text-black/55">
-        {label}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {brands.map((b) => (
-          <span
-            key={b}
-            className="inline-flex items-center rounded-full border border-black/10 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-900"
-          >
-            {b}
-          </span>
-        ))}
       </div>
     </div>
   )
@@ -1250,47 +1226,9 @@ export default function BarkacsaruhazKecskemetPage() {
               </div>
             </RevealOnScroll>
 
-            <RevealOnScroll delay={0.1} className="mt-10">
-              <div className="grid gap-8 lg:grid-cols-2">
-                <BrandChipGroup
-                  label="Bútorlap és munkalap"
-                  brands={[
-                    "Egger",
-                    "Kronospan",
-                    "Kaindl",
-                    "Kastamonu",
-                    "Nettfront",
-                    "Arkopa",
-                    "Cleaf",
-                    "Falco",
-                  ]}
-                />
-                <BrandChipGroup
-                  label="Vasalat"
-                  brands={[
-                    "Blum",
-                    "Kesseboehmer",
-                    "Hettich",
-                    "Hranipex",
-                    "Forest",
-                    "Slim",
-                  ]}
-                />
-                <BrandChipGroup
-                  label="Mosogatótálca és csaptelep"
-                  brands={[
-                    "Blanco",
-                    "Quadron",
-                    "Strongsinks",
-                    "Multikomplex",
-                    "Ferro",
-                  ]}
-                />
-                <BrandChipGroup
-                  label="Ragasztó, szilikon, szerszám"
-                  brands={["Soudal", "Hranipex", "Neo Tools"]}
-                />
-              </div>
+            <RevealOnScroll delay={0.1} className="mt-10 space-y-10">
+              <CatalogBrandPanel />
+              <ShowroomBrandPanel />
             </RevealOnScroll>
           </div>
         </section>

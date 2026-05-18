@@ -6,6 +6,7 @@ import {
   googleMapsDirectionsUrl,
 } from "@/lib/company"
 import { CookieSettingsLink } from "./CookieBanner"
+import { FooterBrandStrip } from "./FooterBrandStrip"
 import { OpeningHoursPill } from "./OpeningHoursPill"
 import {
   FOOTER_PARTNERS,
@@ -13,7 +14,6 @@ import {
   FOOTER_SERVICES,
   FOOTER_SHOWCASE,
   LEGAL_LINKS,
-  MAJOR_BRANDS,
   PAYMENT_METHODS,
   SERVICE_AREAS,
   STOREFRONT_PHOTO,
@@ -148,7 +148,7 @@ function MailIcon() {
   )
 }
 
-export function SiteFooter() {
+export async function SiteFooter() {
   const year = new Date().getFullYear()
 
   return (
@@ -471,33 +471,7 @@ export function SiteFooter() {
           className="absolute inset-0 -z-10 bg-gradient-to-b from-stone-100/70 to-stone-50/40"
         />
         <div className="mx-auto max-w-6xl px-4 py-7">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:gap-6">
-            <div className="md:w-44 md:shrink-0 md:pt-1.5">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-black/55">
-                <span
-                  aria-hidden
-                  className="inline-block h-2 w-6 rounded-full bg-[var(--color-brand)]/80"
-                />
-                Forgalmazott márkák
-              </div>
-              <p className="mt-1 hidden text-xs text-black/55 md:block">
-                Vezető hazai és nemzetközi gyártók kínálatából
-                válogathat.
-              </p>
-            </div>
-            <ul className="flex flex-wrap gap-1.5">
-              {MAJOR_BRANDS.map((brand) => (
-                <li key={brand.name}>
-                  <Link
-                    href={brand.href}
-                    className="inline-flex items-center rounded-full border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-black/80 shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--color-brand)] hover:bg-[var(--color-brand)] hover:text-[var(--color-brand-contrast)] hover:shadow-[0_6px_14px_rgba(151,29,37,0.25)]"
-                  >
-                    {brand.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <FooterBrandStrip />
         </div>
       </section>
 

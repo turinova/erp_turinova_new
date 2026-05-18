@@ -12,35 +12,16 @@ import {
   googleMapsDirectionsUrl,
 } from "@/lib/company"
 import { LINKS } from "@/lib/links"
-import { getSupabaseServerClient } from "@/lib/supabase"
+import { CatalogBrandPanel } from "@/components/site/CatalogBrandPanel"
+import { ShowroomBrandPanel } from "@/components/site/ShowroomBrandPanel"
+import {
+  fetchCatalogBrands,
+  mergeCatalogBrandNames,
+} from "@/lib/catalog-brands"
+import { flattenShowroomBrandNames } from "@/lib/showroom-brands"
 import { pageMetadata } from "@/lib/seo"
 
 export const revalidate = 3600
-
-async function fetchDistinctBrands(): Promise<string[]> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anonKey) return []
-
-  try {
-    const supabase = getSupabaseServerClient()
-    const [butorlapRes, munkalapRes] = await Promise.all([
-      supabase.from("public_butorlap").select("brand_name"),
-      supabase.from("public_munkalap").select("brand_name"),
-    ])
-
-    const set = new Set<string>()
-    for (const row of (butorlapRes.data as { brand_name: string | null }[]) || []) {
-      if (row.brand_name) set.add(row.brand_name.trim())
-    }
-    for (const row of (munkalapRes.data as { brand_name: string | null }[]) || []) {
-      if (row.brand_name) set.add(row.brand_name.trim())
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "hu"))
-  } catch {
-    return []
-  }
-}
 
 export const metadata: Metadata = pageMetadata({
   title: "Lapszabászat és élzárás Kecskeméten",
@@ -155,7 +136,9 @@ export default async function LapszabaszatEsElzarasPage() {
   const directionsUrl = googleMapsDirectionsUrl()
 
   const localBusinessJsonLd = buildLocalBusinessJsonLd()
-  const brands = await fetchDistinctBrands()
+  const catalog = await fetchCatalogBrands()
+  const catalogNames = mergeCatalogBrandNames(catalog)
+  const showroomNames = flattenShowroomBrandNames()
 
   const serviceJsonLd = {
     "@context": "https://schema.org",
@@ -669,37 +652,34 @@ export default async function LapszabaszatEsElzarasPage() {
               </section>
             </RevealOnScroll>
 
-            {/* Brands list (dynamic) */}
-            {brands.length > 0 && (
-              <RevealOnScroll className="mt-14">
+            {(catalogNames.length > 0 || showroomNames.length > 0) && (
+              <RevealOnScroll className="mt-14 space-y-8">
+                {catalogNames.length > 0 ? (
+                  <section className="rounded-2xl border border-black/10 bg-white p-6 md:p-8">
+                    <CatalogBrandPanel showCatalogLinks />
+                    <p className="mt-4 text-sm text-black/65">
+                      A legismertebb bútorlap- és munkalap-márkák raktáron.
+                      Minden márkához színazonos ABS és élfólia élanyagot biztosítunk.
+                    </p>
+                  </section>
+                ) : null}
                 <section className="rounded-2xl border border-black/10 bg-white p-6 md:p-8">
-                  <div className="flex flex-wrap items-baseline justify-between gap-3">
-                    <h2 className="text-2xl font-semibold tracking-tight">
-                      Forgalmazott márkák
-                    </h2>
-                    <div className="flex flex-wrap gap-3 text-sm">
-                      <Link className="font-semibold underline underline-offset-4 hover:text-[var(--color-brand)]" href="/butorlap">
-                        Bútorlap katalógus →
-                      </Link>
-                      <Link className="font-semibold underline underline-offset-4 hover:text-[var(--color-brand)]" href="/munkalap">
-                        Munkalap katalógus →
-                      </Link>
-                    </div>
-                  </div>
+                  <h2 className="text-2xl font-semibold tracking-tight">
+                    További márkák az áruházban
+                  </h2>
                   <p className="mt-2 text-sm text-black/65">
-                    A legismertebb bútorlap- és munkalap-márkák raktáron.
-                    Minden márkához színazonos ABS és élfólia élanyagot biztosítunk.
-                    A nem készleten lévő dekorokat rövid határidővel rendeljük.
+                    Vasalat, mosogató, páraelszívó, ragasztó és szerszám — személyesen
+                    a bemutatóteremben,{" "}
+                    <Link
+                      href="/barkacsaruhaz-kecskemet"
+                      className="font-semibold underline underline-offset-4 hover:text-[var(--color-brand)]"
+                    >
+                      barkácsáruházunkban
+                    </Link>
+                    .
                   </p>
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {brands.map((b) => (
-                      <span
-                        key={b}
-                        className="inline-flex items-center rounded-full border border-black/10 bg-stone-50/60 px-3 py-1 text-sm font-medium text-black/80"
-                      >
-                        {b}
-                      </span>
-                    ))}
+                  <div className="mt-6">
+                    <ShowroomBrandPanel />
                   </div>
                 </section>
               </RevealOnScroll>
@@ -771,8 +751,8 @@ export default async function LapszabaszatEsElzarasPage() {
                     },
                     {
                       q: "Milyen márkákat szabnak?",
-                      a: brands.length > 0
-                        ? `Forgalmazott márkáink: ${brands.join(", ")}. A legtöbb dekor raktáron, a nem készleten lévőket rövid határidővel rendeljük.`
+                      a: catalogNames.length > 0
+                        ? `Bútorlap és munkalap márkáink (katalógusban): ${catalogNames.join(", ")}. A legtöbb dekor raktáron, a nem készleten lévőket rövid határidővel rendeljük. Az áruházban további vasalat-, mosogató- és szerszámmárkák is elérhetők.`
                         : "A legismertebb bútorlap- és munkalap-márkákat tartjuk raktáron. A legtöbb dekor raktáron, a nem készleten lévőket rövid határidővel rendeljük.",
                     },
                     {

@@ -6,42 +6,9 @@
  *
  * Conventions:
  *  - Hungarian copy, formal "Önözés".
- *  - Catalog brands (Egger, Kronospan, etc.) deep-link to the filtered
- *    /butorlap or /munkalap pages so each brand chip distributes link equity
- *    to a brand-specific listing URL.
- *  - Non-catalog brands (Blum, Blanco, etc.) link to the showroom page,
- *    which is where those product groups live.
+ *  Catalog panel brands: see `catalog-brands.ts` (Supabase).
+ *  Showroom / hardware brands: see `showroom-brands.ts` (static).
  */
-
-export type Brand = {
-  name: string
-  href: string
-  category: "panel" | "elzaro" | "vasalat" | "mosogato" | "vegyi" | "szerszam"
-}
-
-export const MAJOR_BRANDS: readonly Brand[] = [
-  // Bútorlap / munkalap (deep-linked to filtered catalog)
-  { name: "Egger", href: "/butorlap?brand=Egger", category: "panel" },
-  { name: "Kronospan", href: "/butorlap?brand=Kronospan", category: "panel" },
-  { name: "Kaindl", href: "/butorlap?brand=Kaindl", category: "panel" },
-  { name: "Falco", href: "/butorlap?brand=Falco", category: "panel" },
-  { name: "Kastamonu", href: "/butorlap?brand=Kastamonu", category: "panel" },
-  // Élzáró
-  { name: "Hranipex", href: "/barkacsaruhaz-kecskemet", category: "elzaro" },
-  // Vasalat
-  { name: "Blum", href: "/barkacsaruhaz-kecskemet", category: "vasalat" },
-  { name: "Hettich", href: "/barkacsaruhaz-kecskemet", category: "vasalat" },
-  { name: "Kesseboehmer", href: "/barkacsaruhaz-kecskemet", category: "vasalat" },
-  // Mosogató, csaptelep
-  { name: "Blanco", href: "/barkacsaruhaz-kecskemet", category: "mosogato" },
-  { name: "Quadron", href: "/barkacsaruhaz-kecskemet", category: "mosogato" },
-  { name: "Strongsinks", href: "/barkacsaruhaz-kecskemet", category: "mosogato" },
-  { name: "Ferro", href: "/barkacsaruhaz-kecskemet", category: "mosogato" },
-  // Vegyi
-  { name: "Soudal", href: "/barkacsaruhaz-kecskemet", category: "vegyi" },
-  // Szerszám
-  { name: "Neo Tools", href: "/barkacsaruhaz-kecskemet", category: "szerszam" },
-]
 
 export type ServiceAreaGroup = {
   label: string

@@ -88,25 +88,6 @@ export const HOME_SERVICE_PILLARS: readonly ServicePillar[] = [
 ]
 
 // ────────────────────────────────────────────────────────────────────────────
-// CATALOG PREVIEW — brand chip strip (under the 4-6 dynamic product cards)
-// ────────────────────────────────────────────────────────────────────────────
-
-export type HomeBrandChip = { name: string; href: string }
-
-export const HOME_BRAND_CHIPS: readonly HomeBrandChip[] = [
-  { name: "Egger", href: "/butorlap?brand=Egger" },
-  { name: "Kronospan", href: "/butorlap?brand=Kronospan" },
-  { name: "Kaindl", href: "/butorlap?brand=Kaindl" },
-  { name: "Falco", href: "/butorlap?brand=Falco" },
-  { name: "Kastamonu", href: "/butorlap?brand=Kastamonu" },
-  { name: "Blum", href: "/barkacsaruhaz-kecskemet" },
-  { name: "Hettich", href: "/barkacsaruhaz-kecskemet" },
-  { name: "Kesseboehmer", href: "/barkacsaruhaz-kecskemet" },
-  { name: "Blanco", href: "/barkacsaruhaz-kecskemet" },
-  { name: "Soudal", href: "/barkacsaruhaz-kecskemet" },
-]
-
-// ────────────────────────────────────────────────────────────────────────────
 // PROCESS — 4-step horizontal timeline
 // ────────────────────────────────────────────────────────────────────────────
 
