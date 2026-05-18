@@ -376,6 +376,12 @@ export async function createShopInvoiceInternal(
 
     const tenantCompany = null as { email?: string | null } | null
 
+    const markAsPaidOnSzamlazz =
+      !isAdvanceInvoiceRequest &&
+      !isProformaInvoiceRequest &&
+      (invoiceTypeRaw === 'normal' || invoiceTypeRaw === 'simplified') &&
+      body.markAsPaid !== false
+
     const settings: ShopInvoiceXmlSettings = {
       invoiceType: invoiceTypeRaw as ShopInvoiceXmlSettings['invoiceType'],
       paymentMethod: mapBodyPaymentMethod(body.paymentMethod as string | undefined, order.payment_method_code),
@@ -385,7 +391,8 @@ export async function createShopInvoiceInternal(
       language,
       sendEmail,
       advanceAmount: body.advanceAmount,
-      proformaAmount: body.proformaAmount
+      proformaAmount: body.proformaAmount,
+      markAsPaid: markAsPaidOnSzamlazz
     }
 
     const agentKey = String(connection.password).trim()
@@ -420,6 +427,7 @@ export async function createShopInvoiceInternal(
       orderId,
       invoiceType: settings.invoiceType,
       sendEmail: settings.sendEmail,
+      markAsPaid: settings.markAsPaid,
       customerEmailResolvedMasked: maskEmailForLog(customerEmailResolved),
       apiUrl
     })

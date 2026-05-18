@@ -42,6 +42,8 @@ export type ShopInvoiceXmlSettings = {
   sendEmail: boolean
   advanceAmount?: number | string
   proformaAmount?: number | string
+  /** Számlázz.hu fejlec.fizetve — normál/e-számla kifizetettként (nem díjbekérő/előleg). */
+  markAsPaid?: boolean
 }
 
 export type ExistingAdvanceRef = { provider_invoice_number: string; gross_total: number } | null
@@ -359,6 +361,7 @@ export function buildShopFinalInvoiceXml(
         ? `<elolegSzamlaszam>${escapeXml(existingAdvanceInvoice.provider_invoice_number)}</elolegSzamlaszam>`
         : ''
     }
+    ${settings.markAsPaid ? '<fizetve>true</fizetve>' : ''}
   </fejlec>
   <elado>
     ${tenantCompany?.email ? `<emailReplyto>${escapeXml(tenantCompany.email)}</emailReplyto>` : ''}
