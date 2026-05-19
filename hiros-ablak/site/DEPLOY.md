@@ -16,6 +16,8 @@ Same pattern as `customer-portal/` (separate Vercel project, subfolder in `erp_t
 |----------|----------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes (anon key only) |
+| `NEXT_PUBLIC_GA_ID` | Optional (GA4, consent-gated) |
+| `NEXT_PUBLIC_CLARITY_ID` | Optional (Microsoft Clarity, consent-gated) |
 | `SMTP_HOST` | Yes (forms) — `mail.hirosablak.hu` |
 | `SMTP_PORT` | Yes — `465` (SSL) |
 | `SMTP_USER` | Yes — authenticated mailbox |

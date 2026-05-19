@@ -52,7 +52,7 @@ export function getCookiePolicySections(): LegalSection[] {
         "Szükséges: a süti-beállítások mentése (localStorage kulcs: „" +
           COOKIE_CONSENT_STORAGE_KEY +
           "”). Ez a weboldal működéséhez szükséges; nem kapcsolható ki a bannerben.",
-        "Statisztika: a Vercel Analytics anonim, cookie nélküli forgalmi mérést végez. Hozzájárulás-alapú statisztikai vagy marketing mérőeszközt csak külön engedély után töltünk be.",
+        "Statisztika: a Vercel Analytics anonim, cookie nélküli forgalmi mérést végez. A Google Analytics 4 és a Microsoft Clarity kizárólag statisztikai hozzájárulás után töltődik be.",
         "Marketing / külső tartalom: a Google értékelések megjelenítéséhez a Trustindex szolgáltatás töltődik be (cdn.trustindex.io). Csak marketing süti engedélyezése után.",
       ],
     },
@@ -60,6 +60,8 @@ export function getCookiePolicySections(): LegalSection[] {
       id: "harmadik-fel",
       title: "Harmadik felek",
       list: [
+        `Google Analytics 4 – webanalitika és eseménymérés; csak statisztikai hozzájárulás után töltődik be.`,
+        `Microsoft Clarity – hőtérkép és munkamenet-visszajátszás; csak statisztikai hozzájárulás után töltődik be.`,
         `Trustindex – külső vélemény-widget; adatkezelő: a szolgáltató (trustindex.io). Csak marketing hozzájárulás után töltődik be.`,
         `A weboldal tárhelye: ${infra.hostingProvider} (${infra.hostingProviderUrl}).`,
         `A katalógus adatbázisa: ${infra.databaseProvider} (${infra.databaseProviderUrl}).`,
