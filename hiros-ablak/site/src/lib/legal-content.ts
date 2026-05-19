@@ -52,7 +52,7 @@ export function getCookiePolicySections(): LegalSection[] {
         "Szükséges: a süti-beállítások mentése (localStorage kulcs: „" +
           COOKIE_CONSENT_STORAGE_KEY +
           "”). Ez a weboldal működéséhez szükséges; nem kapcsolható ki a bannerben.",
-        "Statisztika: jelenleg nem használunk külön analytics (mérési) szolgáltatást ezen a weboldalon. Ha később bevezetésre kerül, csak hozzájárulás után.",
+        "Statisztika: a Vercel Analytics anonim, cookie nélküli forgalmi mérést végez. Hozzájárulás-alapú statisztikai vagy marketing mérőeszközt csak külön engedély után töltünk be.",
         "Marketing / külső tartalom: a Google értékelések megjelenítéséhez a Trustindex szolgáltatás töltődik be (cdn.trustindex.io). Csak marketing süti engedélyezése után.",
       ],
     },
