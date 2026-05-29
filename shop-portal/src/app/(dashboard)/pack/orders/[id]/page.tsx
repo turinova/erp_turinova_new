@@ -38,6 +38,7 @@ interface PackOrder {
   order_number: string
   status: string
   customer_email: string | null
+  customer_phone: string | null
   shipping_firstname: string | null
   shipping_lastname: string | null
   shipping_company: string | null
@@ -336,7 +337,13 @@ export default function PackOrderPage() {
           </Box>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, ml: 1 }}>
             {addressLine || '—'}
+            {order.customer_phone ? ` · Tel: ${order.customer_phone}` : ''}
           </Typography>
+          {!order.is_pickup && !order.customer_phone?.trim() && (
+            <Typography variant="body2" color="warning.main" sx={{ mt: 0.5, ml: 1, fontWeight: 600 }}>
+              Nincs telefonszám a rendelésen — az Express One címkén nem fog megjelenni.
+            </Typography>
+          )}
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 2 }}>
             <LinearProgress

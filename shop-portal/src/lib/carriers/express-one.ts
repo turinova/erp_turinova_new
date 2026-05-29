@@ -6,6 +6,30 @@
 
 const EXPRESS_ONE_BASE = 'https://webservice.expressone.hu'
 
+/** Max length for consig.phone / notification.sms in Express One API. */
+const EXPRESS_ONE_PHONE_MAX_LEN = 20
+
+/**
+ * Normalize phone for Express One label (consig.phone) and optional SMS notification.
+ * Hungarian 06… → +36…; strips spaces/dashes; empty → undefined.
+ */
+export function normalizePhoneForExpressOne(value: string | null | undefined): string | undefined {
+  if (value == null) return undefined
+  let s = String(value).trim().replace(/[\s\-().]/g, '')
+  if (!s) return undefined
+
+  if (s.startsWith('00')) {
+    s = `+${s.slice(2)}`
+  } else if (s.startsWith('06') && s.length >= 10) {
+    s = `+36${s.slice(2)}`
+  } else if (s.startsWith('36') && !s.startsWith('+')) {
+    s = `+${s}`
+  }
+
+  s = s.slice(0, EXPRESS_ONE_PHONE_MAX_LEN)
+  return s.length > 0 ? s : undefined
+}
+
 export interface ExpressOneAuth {
   company_id: string
   user_name: string

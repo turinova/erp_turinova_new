@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getAllowedNextStatus } from '@/lib/order-status'
-import { expressOneCreateLabels } from '@/lib/carriers/express-one'
+import { expressOneCreateLabels, normalizePhoneForExpressOne } from '@/lib/carriers/express-one'
 import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 
 /** Express One expects ISO 2-letter country code. Orders may store country name (e.g. Magyarország) in shipping_country_code. */
@@ -61,6 +61,7 @@ export async function GET(
         order_number,
         status,
         customer_email,
+        customer_phone,
         shipping_firstname,
         shipping_lastname,
         shipping_company,
@@ -171,6 +172,7 @@ export async function GET(
         order_number: order.order_number,
         status: 'packing',
         customer_email: order.customer_email,
+        customer_phone: order.customer_phone,
         shipping_firstname: order.shipping_firstname,
         shipping_lastname: order.shipping_lastname,
         shipping_company: order.shipping_company,
@@ -216,7 +218,7 @@ export async function POST(
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select(`
-        id, order_number, status, shipping_method_id, customer_email,
+        id, order_number, status, shipping_method_id, customer_email, customer_phone,
         shipping_firstname, shipping_lastname, shipping_company,
         shipping_address1, shipping_address2, shipping_city, shipping_postcode, shipping_country_code,
         total_gross, payment_method_after
@@ -305,6 +307,7 @@ export async function POST(
         // Express One requires ISO 2-letter country code (e.g. HU). Order may store country name (e.g. Magyarország) in shipping_country_code.
         const rawCountry = (order.shipping_country_code || '').trim()
         const country = normalizeCountryCodeForExpressOne(rawCountry)
+        const recipientPhone = normalizePhoneForExpressOne(order.customer_phone)
 
         const result = await expressOneCreateLabels({
           auth: { company_id: companyId, user_name: userName, password },
@@ -315,13 +318,19 @@ export async function POST(
             city: (order.shipping_city || '').slice(0, 25),
             street: street.slice(0, 100),
             country,
-            post_code: postCode
+            post_code: postCode,
+            ...(recipientPhone && { phone: recipientPhone })
           },
           parcels: { type: 0, qty: 1, weight: weightKg },
           services: {
             delivery_type: '24H',
             ...(order.payment_method_after === true && order.total_gross > 0 && { cod: { amount: String(Math.round(Number(order.total_gross))) } }),
-            ...(order.customer_email && { notification: { email: String(order.customer_email).slice(0, 100) } })
+            ...((order.customer_email || recipientPhone) && {
+              notification: {
+                ...(order.customer_email && { email: String(order.customer_email).slice(0, 100) }),
+                ...(recipientPhone && { sms: recipientPhone })
+              }
+            })
           },
           ref_number: (order.order_number || id).slice(0, 50)
         })
