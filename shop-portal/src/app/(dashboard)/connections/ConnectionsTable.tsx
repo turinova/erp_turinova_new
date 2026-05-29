@@ -443,7 +443,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           }
           if (unchangedSyncedStreakRef.current >= STUCK_UNCHANGED_TICKS) {
             stallWarning =
-              'Az előrehaladás hosszabb ideje nem változik. A szinkron a szerveren folyhat (pl. következő chunk), vagy a böngésző megszakította a lekérdezéseket. Frissítse az oldalt; nagy katalógusnál a Vercelen állítsa be a SHOPRENTER_SYNC_CHUNK_SECRET környezeti változót.'
+              'Az előrehaladás hosszabb ideje nem változik. A szerver chunkot dolgozhat (néhány perc), vagy a háttérszinkron megállt — frissítse az oldalt. Ha percekig sem mozdul, ellenőrizze a Vercel naplót (chunk continuation) és a SHOPRENTER_SYNC_CHUNK_SECRET beállítást.'
           }
         } else {
           unchangedSyncedStreakRef.current = 0

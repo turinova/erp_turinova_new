@@ -32,6 +32,7 @@ export function isSyncJobStale(
 export interface SyncJobRow {
   id: string
   connection_id: string
+  user_id?: string | null
   audit_log_id: string | null
   sync_mode: string
   status: string

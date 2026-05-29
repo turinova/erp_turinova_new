@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getProgress, clearProgress } from '@/lib/sync-progress-store'
 import { reconcileStaleRunningSyncJob } from '@/lib/sync-job-db'
+import { tryAutoResumeStalledProductSyncJob } from '@/lib/sync-chunk-continuation'
 
 function mapJobStatusToUi(dbStatus: string): string {
   if (dbStatus === 'running') return 'syncing'
@@ -66,6 +67,18 @@ export async function GET(
         error: 'Nincs aktív szinkronizálás'
       }, { status: 404 })
     }
+
+    const jobMeta =
+      job.metadata && typeof job.metadata === 'object'
+        ? (job.metadata as Record<string, unknown>)
+        : null
+    void tryAutoResumeStalledProductSyncJob(request.nextUrl.origin, id, {
+      id: job.id,
+      synced_units: job.synced_units ?? 0,
+      total_units: job.total_units ?? 0,
+      updated_at: job.updated_at,
+      metadata: jobMeta,
+    }, supabase)
 
     const uiStatus = mapJobStatusToUi(job.status)
     const elapsed = Math.floor((Date.now() - new Date(job.started_at).getTime()) / 1000)

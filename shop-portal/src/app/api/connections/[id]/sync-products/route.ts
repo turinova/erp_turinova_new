@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { getTenantSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
+import {
+  createProductSyncContinuationFetcher,
+  getConnectionByIdWithClient,
+  getTenantSupabaseServiceRole,
+  readTenantIdFromJobMetadata,
+  resolveTenantIdForConnection,
+} from '@/lib/sync-chunk-continuation'
 import { Buffer } from 'buffer'
 import { updateProgress, clearProgress, shouldStopSync, getProgress, incrementProgress } from '@/lib/sync-progress-store'
 import {
@@ -139,36 +146,75 @@ function upperBoundProductExtendListTotal(
 }
 
 /**
- * Trusted internal continuation: new HTTP invocation (fresh maxDuration) with forwarded cookies.
- * Set SHOPRENTER_SYNC_CHUNK_SECRET in Vercel env for automatic chaining; otherwise only manual re-POST works.
+ * Trusted internal continuation: new HTTP invocation (fresh maxDuration).
+ * Auth: SHOPRENTER_SYNC_CHUNK_SECRET only — uses service role + job metadata (no browser session).
  */
 async function handleTrustedProductSyncChunkResume(
   request: NextRequest,
-  supabase: any,
   connectionId: string,
   jobId: string
 ): Promise<NextResponse> {
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  if (userError || !user) {
-    return NextResponse.json({ success: false, error: 'Nincs bejelentkezve' }, { status: 401 })
-  }
+  let supabase: any
+  let job: any
+  let tenantId: string
 
-  const { data: job, error: jobErr } = await supabase
-    .from('sync_jobs')
-    .select('*')
-    .eq('id', jobId)
-    .eq('connection_id', connectionId)
-    .maybeSingle()
+  try {
+    tenantId = await resolveTenantIdForConnection(connectionId).then((id) => {
+      if (!id) throw new Error('Tenant nem azonosítható ehhez a kapcsolathoz.')
+      return id
+    })
+    supabase = await getTenantSupabaseServiceRole(tenantId)
 
-  if (jobErr || !job || job.status !== 'running') {
+    const { data: jobRow, error: jobErr } = await supabase
+      .from('sync_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .eq('connection_id', connectionId)
+      .maybeSingle()
+
+    job = jobRow
+    if (jobErr || !job || job.status !== 'running') {
+      return NextResponse.json(
+        { success: false, error: 'Nincs folytatható futó szinkron ehhez a feladathoz.' },
+        { status: 404 }
+      )
+    }
+
+    const metaForTenant =
+      job.metadata && typeof job.metadata === 'object' ? (job.metadata as Record<string, unknown>) : {}
+    const metaTenantId = readTenantIdFromJobMetadata(metaForTenant)
+    if (metaTenantId && metaTenantId !== tenantId) {
+      tenantId = metaTenantId
+      supabase = await getTenantSupabaseServiceRole(tenantId)
+      const { data: jobRetry, error: jobErr2 } = await supabase
+        .from('sync_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .eq('connection_id', connectionId)
+        .maybeSingle()
+      job = jobRetry
+      if (jobErr2 || !job || job.status !== 'running') {
+        return NextResponse.json(
+          { success: false, error: 'Nincs folytatható futó szinkron ehhez a feladathoz.' },
+          { status: 404 }
+        )
+      }
+    }
+  } catch (e) {
+    console.error('[SYNC] trusted resume setup failed:', e)
     return NextResponse.json(
-      { success: false, error: 'Nincs folytatható futó szinkron ehhez a feladathoz.' },
-      { status: 404 }
+      {
+        success: false,
+        error: e instanceof Error ? e.message : 'Chunk folytatás inicializálási hiba',
+      },
+      { status: 500 }
     )
   }
 
   const meta =
     job.metadata && typeof job.metadata === 'object' ? (job.metadata as Record<string, unknown>) : {}
+  const resumeUserId = typeof job.user_id === 'string' ? job.user_id : null
+  const resumeUserEmail = typeof meta.userEmail === 'string' ? meta.userEmail : null
   if (meta.syncType !== 'product') {
     return NextResponse.json({ success: false, error: 'Érvénytelen feladat típus' }, { status: 400 })
   }
@@ -217,10 +263,7 @@ async function handleTrustedProductSyncChunkResume(
     return NextResponse.json({ success: true, message: 'Szinkron már befejezve.', noop: true })
   }
 
-  const tenant = await getTenantFromSession()
-  const tenantId = tenant?.id
-
-  const connection = await getConnectionById(connectionId)
+  const connection = await getConnectionByIdWithClient(supabase, connectionId)
   if (!connection || connection.connection_type !== 'shoprenter') {
     return NextResponse.json({ success: false, error: 'Kapcsolat nem található' }, { status: 404 })
   }
@@ -267,7 +310,6 @@ async function handleTrustedProductSyncChunkResume(
   const firstListData = JSON.parse(listText)
 
   const origin = request.nextUrl.origin
-  const cookieHeader = request.headers.get('cookie') ?? ''
   const chunkBudgetMs = getProductSyncChunkBudgetMs()
 
   const resumeBatchProgress = (() => {
@@ -322,28 +364,12 @@ async function handleTrustedProductSyncChunkResume(
     console.warn('[SYNC] resume initial sync_jobs flush:', e)
   }
 
-  const scheduleContinuation = async () => {
-    const sec = process.env.SHOPRENTER_SYNC_CHUNK_SECRET
-    if (!sec) {
-      console.warn('[SYNC] SHOPRENTER_SYNC_CHUNK_SECRET nincs beállítva — automatikus chunk-lánc nem indul.')
-      return
-    }
-    const res = await fetch(`${origin}/api/connections/${connectionId}/sync-products`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: cookieHeader,
-        'x-sync-chunk-resume': sec,
-      },
-      body: JSON.stringify({ resumeChunkForJobId: jobId }),
-    }).catch((e) => {
-      console.error('[SYNC] chunk continuation fetch failed:', e)
-      return null
-    })
-    if (res && !res.ok) {
-      console.error('[SYNC] chunk continuation HTTP', res.status, await res.text().catch(() => ''))
-    }
-  }
+  const scheduleContinuation = createProductSyncContinuationFetcher(
+    origin,
+    connectionId,
+    jobId,
+    supabase
+  )
 
   after(async () => {
     try {
@@ -368,8 +394,8 @@ async function handleTrustedProductSyncChunkResume(
           scheduleContinuation,
         },
         tenantId,
-        user.id,
-        user.email || null
+        resumeUserId ?? undefined,
+        resumeUserEmail
       )
     } catch (error) {
       console.error('[SYNC] after() chunk resume error:', error)
@@ -424,30 +450,27 @@ export async function POST(
       product_id = undefined
     }
 
-    // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
-    const supabase = await getTenantSupabase()
-
-    // Get tenant context for tenant-specific rate limiting
-    const tenant = await getTenantFromSession()
-    const tenantId = tenant?.id
-
-    // Get auth user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
-      console.error('[SYNC] Authentication failed:', userError?.message || 'No user found')
-      return NextResponse.json({ 
-        success: false,
-        error: 'Authentication failed. Please log out and log back in, then try again.',
-        details: userError?.message || 'Session expired or invalid'
-      }, { status: 401 })
-    }
-
     const chunkSecret = process.env.SHOPRENTER_SYNC_CHUNK_SECRET
     const isTrustedChunkResume =
       Boolean(resumeChunkForJobId && chunkSecret && request.headers.get('x-sync-chunk-resume') === chunkSecret)
 
     if (isTrustedChunkResume) {
-      return await handleTrustedProductSyncChunkResume(request, supabase, connectionId, resumeChunkForJobId!)
+      return await handleTrustedProductSyncChunkResume(request, connectionId, resumeChunkForJobId!)
+    }
+
+    // User-initiated sync: requires session
+    const supabase = await getTenantSupabase()
+    const tenant = await getTenantFromSession()
+    const tenantId = tenant?.id
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      console.error('[SYNC] Authentication failed:', userError?.message || 'No user found')
+      return NextResponse.json({
+        success: false,
+        error: 'Authentication failed. Please log out and log back in, then try again.',
+        details: userError?.message || 'Session expired or invalid',
+      }, { status: 401 })
     }
 
     // Reconcile stale DB jobs (server restart / timeout), then block concurrent syncs
@@ -714,7 +737,8 @@ export async function POST(
               pageCount: effectivePageCount,
               updatedAfter,
               mode: forceSync ? 'full' : 'incremental',
-              // Checkpoint (page-based)
+              tenantId: tenantId ?? undefined,
+              userEmail: user.email ?? undefined,
               checkpoint: {
                 page: 0,
                 updatedAfter,
@@ -754,35 +778,13 @@ export async function POST(
     }
 
     const origin = request.nextUrl.origin
-    const cookieHeader = request.headers.get('cookie') ?? ''
     const chunkBudgetMs = getProductSyncChunkBudgetMs()
 
-    const scheduleContinuation = async () => {
-      const sec = process.env.SHOPRENTER_SYNC_CHUNK_SECRET
-      if (!sec || !preSyncedJobId) {
-        if (!sec) {
-          console.warn(
-            '[SYNC] SHOPRENTER_SYNC_CHUNK_SECRET nincs beállítva — a következő chunk nem indul automatikusan. Állítsa be a Vercel env-ben, vagy indítsa újra a szinkront.'
-          )
+    const scheduleContinuation = preSyncedJobId
+      ? createProductSyncContinuationFetcher(origin, connectionId, preSyncedJobId, supabase)
+      : async () => {
+          console.warn('[SYNC] Nincs sync_jobs id — chunk folytatás kihagyva.')
         }
-        return
-      }
-      const res = await fetch(`${origin}/api/connections/${connectionId}/sync-products`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Cookie: cookieHeader,
-          'x-sync-chunk-resume': sec,
-        },
-        body: JSON.stringify({ resumeChunkForJobId: preSyncedJobId }),
-      }).catch((e) => {
-        console.error('[SYNC] chunk continuation fetch failed:', e)
-        return null
-      })
-      if (res && !res.ok) {
-        console.error('[SYNC] chunk continuation HTTP', res.status, await res.text().catch(() => ''))
-      }
-    }
 
     // Run heavy work after response; Next/Vercel waitUntil keeps invocation alive until done (maxDuration)
     after(async () => {
