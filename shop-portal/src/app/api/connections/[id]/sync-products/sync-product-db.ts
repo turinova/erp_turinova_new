@@ -213,6 +213,9 @@ export async function syncProductToDatabase(
       throw new Error('Termék hiányzik az SKU mező')
     }
 
+    const rateLimiter = getShopRenterRateLimiter(tenantId)
+    const shopFetch = (url: string, init: RequestInit) => rateLimiter.execute(() => fetch(url, init))
+
     // Extract URL information
     const urlAliasData = extractUrlAlias(product)
     const shopName = extractShopNameFromUrl(connection.api_url)
@@ -925,10 +928,6 @@ export async function syncProductToDatabase(
     if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
       apiUrl = `http://${apiUrl}`
     }
-
-    // Ensure all ShopRenter API calls go through the same tenant limiter.
-    const rateLimiter = getShopRenterRateLimiter(tenantId)
-    const shopFetch = (url: string, init: RequestInit) => rateLimiter.execute(() => fetch(url, init))
 
     // Fetch product descriptions if available
     // Note: No delay - descriptions are fetched per product but batches are already rate-limited

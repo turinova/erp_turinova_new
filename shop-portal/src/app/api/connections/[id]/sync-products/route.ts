@@ -61,6 +61,179 @@ async function fetchShoprenterProductsByIdsChunked(
   return { data: rows, error: null }
 }
 
+/**
+ * After bulk product sync: resolve parent_product_id from ShopRenter parentProduct for synced rows.
+ * Handles race where child synced before parent landed in DB.
+ */
+async function runPostSyncParentChildUpdate(
+  supabase: any,
+  connection: { id: string },
+  syncedProductIds: string[],
+  forceSync: boolean,
+  apiUrl: string,
+  authHeader: string
+): Promise<{ updatedCount: number }> {
+  console.log(`[SYNC] Running post-sync parent-child relationship update...`)
+  console.log(`[SYNC] Processing ${syncedProductIds.length} synced products (instead of all products)`)
+
+  let updatedCount = 0
+
+  try {
+    let productsToUpdate: any[] = []
+
+    if (syncedProductIds.length > 0) {
+      const uniqueIds = [...new Set(syncedProductIds)]
+      const { data: syncedProducts, error: productsError } = await fetchShoprenterProductsByIdsChunked(
+        supabase,
+        connection.id,
+        uniqueIds
+      )
+
+      if (productsError) {
+        console.error(`[SYNC] Error fetching synced products for parent update:`, productsError)
+      } else if (syncedProducts) {
+        productsToUpdate = syncedProducts
+      }
+    } else {
+      console.warn(`[SYNC] No synced product IDs tracked, falling back to all products`)
+      const { data: allProducts, error: productsError } = await supabase
+        .from('shoprenter_products')
+        .select('id, shoprenter_id, sku, parent_product_id')
+        .eq('connection_id', connection.id)
+        .is('deleted_at', null)
+
+      if (productsError) {
+        console.error(`[SYNC] Error fetching products for parent update:`, productsError)
+      } else if (allProducts) {
+        productsToUpdate = allProducts
+      }
+    }
+
+    if (productsToUpdate.length > 0) {
+      const batchSize = 50
+
+      for (let i = 0; i < productsToUpdate.length; i += batchSize) {
+        const batch = productsToUpdate.slice(i, i + batchSize)
+
+        const batchRequests = batch.map((p) => ({
+          method: 'GET',
+          uri: `${apiUrl}/productExtend/${p.shoprenter_id}?full=1`,
+        }))
+
+        const batchPayload = {
+          data: {
+            requests: batchRequests,
+          },
+        }
+
+        try {
+          const batchResponse = await fetch(`${apiUrl}/batch`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              Authorization: authHeader,
+            },
+            body: JSON.stringify(batchPayload),
+            signal: AbortSignal.timeout(300000),
+          })
+
+          if (batchResponse.ok) {
+            const batchData = await batchResponse.json()
+            const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+
+            for (let j = 0; j < batch.length && j < batchResponses.length; j++) {
+              const product = batch[j]
+              const batchItem = batchResponses[j]
+
+              if (batchItem.response?.body) {
+                const productData = batchItem.response.body
+                const parentShopRenterId = extractParentProductId(productData)
+
+                const shouldUpdateParent =
+                  forceSync ||
+                  (parentShopRenterId && !product.parent_product_id) ||
+                  (parentShopRenterId && product.parent_product_id)
+
+                if (parentShopRenterId && shouldUpdateParent) {
+                  const { data: parentProduct } = await supabase
+                    .from('shoprenter_products')
+                    .select('id, sku')
+                    .eq('connection_id', connection.id)
+                    .eq('shoprenter_id', parentShopRenterId)
+                    .single()
+
+                  if (parentProduct) {
+                    if (parentProduct.id === product.id) {
+                      console.warn(
+                        `[SYNC] Product ${product.sku} has parent_product_id pointing to itself. Clearing invalid parent_product_id.`
+                      )
+                      await supabase.from('shoprenter_products').update({ parent_product_id: null }).eq('id', product.id)
+                      continue
+                    }
+
+                    const needsUpdate = forceSync || product.parent_product_id !== parentProduct.id
+
+                    if (needsUpdate) {
+                      const { error: updateError } = await supabase
+                        .from('shoprenter_products')
+                        .update({ parent_product_id: parentProduct.id })
+                        .eq('id', product.id)
+
+                      if (!updateError) {
+                        updatedCount++
+                        console.log(`[SYNC] Updated parent for ${product.sku}: ${parentProduct.sku} (${parentProduct.id})`)
+                      } else {
+                        console.error(`[SYNC] Error updating parent for ${product.sku}:`, updateError)
+                      }
+                    }
+                  } else if (forceSync) {
+                    if (product.parent_product_id) {
+                      const { error: clearError } = await supabase
+                        .from('shoprenter_products')
+                        .update({ parent_product_id: null })
+                        .eq('id', product.id)
+
+                      if (!clearError) {
+                        console.log(
+                          `[SYNC] Cleared parent_product_id for ${product.sku} (parent ${parentShopRenterId} not found in database)`
+                        )
+                      }
+                    }
+                  }
+                } else if (forceSync && !parentShopRenterId && product.parent_product_id) {
+                  const { error: clearError } = await supabase
+                    .from('shoprenter_products')
+                    .update({ parent_product_id: null })
+                    .eq('id', product.id)
+
+                  if (!clearError) {
+                    console.log(`[SYNC] Cleared parent_product_id for ${product.sku} (no parent in ShopRenter)`)
+                  }
+                }
+              }
+            }
+          }
+        } catch (batchError) {
+          console.error(`[SYNC] Error in parent update batch ${Math.floor(i / batchSize) + 1}:`, batchError)
+        }
+
+        if (i + batchSize < productsToUpdate.length) {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+      }
+
+      console.log(`[SYNC] Updated ${updatedCount} parent-child relationships`)
+    } else {
+      console.log(`[SYNC] No products found for parent update`)
+    }
+  } catch (parentUpdateError) {
+    console.error(`[SYNC] Error updating parent relationships (non-fatal):`, parentUpdateError)
+  }
+
+  return { updatedCount }
+}
+
 function inferAttributeTypeFromHref(
   href: string | undefined,
   attr: any
@@ -918,6 +1091,22 @@ async function processProductExtendPagesInBackground(
 
   let syncedCount = 0
   let errorCount = 0
+  const syncedProductIds: string[] = []
+
+  if (preSyncedJobId) {
+    try {
+      const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
+      const meta = row?.metadata && typeof row.metadata === 'object' ? (row.metadata as Record<string, unknown>) : {}
+      const stored = meta.syncedProductIds
+      if (Array.isArray(stored)) {
+        for (const id of stored) {
+          if (typeof id === 'string' && id) syncedProductIds.push(id)
+        }
+      }
+    } catch (e) {
+      console.warn('[SYNC] Failed to load syncedProductIds from job metadata (non-fatal):', e)
+    }
+  }
 
   let auditLogId: string | null = existingAuditLogId || null
   if (!auditLogId) {
@@ -1009,6 +1198,7 @@ async function processProductExtendPagesInBackground(
       const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
       const metadata = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {}
       metadata.checkpoint = { page: nextPageIndex, updatedAfter, listedItemsSoFar }
+      metadata.syncedProductIds = [...new Set(syncedProductIds)]
       await supabase.from('sync_jobs').update({ metadata }).eq('id', preSyncedJobId)
     } catch (e) {
       console.warn('[SYNC] Failed to update sync_jobs checkpoint metadata (non-fatal):', e)
@@ -1124,7 +1314,7 @@ async function processProductExtendPagesInBackground(
           if (idx >= items.length) return
           const product = items[idx]
           try {
-            await syncProductToDatabase(
+            const result = await syncProductToDatabase(
               supabase,
               connection,
               product,
@@ -1137,6 +1327,19 @@ async function processProductExtendPagesInBackground(
             )
             syncedCount += 1
             incrementProgress(connectionId, { synced: 1 })
+            if (result?.productId) {
+              syncedProductIds.push(result.productId)
+            } else if (product?.id) {
+              const { data: syncedProduct } = await supabase
+                .from('shoprenter_products')
+                .select('id')
+                .eq('connection_id', connection.id)
+                .eq('shoprenter_id', product.id)
+                .maybeSingle()
+              if (syncedProduct?.id) {
+                syncedProductIds.push(syncedProduct.id)
+              }
+            }
           } catch (e: any) {
             errorCount += 1
             incrementProgress(connectionId, { errors: 1 })
@@ -1170,8 +1373,41 @@ async function processProductExtendPagesInBackground(
       }
     }
 
+    const stopped = getProgress(connectionId)?.shouldStop
+
+    if (!stopped) {
+      try {
+        const { updatedCount: parentLinksUpdated } = await runPostSyncParentChildUpdate(
+          supabase,
+          connection,
+          syncedProductIds,
+          forceSync,
+          apiUrl,
+          authHeader
+        )
+        if (preSyncedJobId && parentLinksUpdated > 0) {
+          try {
+            const { data: row } = await supabase
+              .from('sync_jobs')
+              .select('metadata')
+              .eq('id', preSyncedJobId)
+              .maybeSingle()
+            const metadata = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {}
+            metadata.parentRelationshipsUpdated = parentLinksUpdated
+            await supabase.from('sync_jobs').update({ metadata }).eq('id', preSyncedJobId)
+          } catch (metaErr) {
+            console.warn('[SYNC] Failed to store parentRelationshipsUpdated in job metadata (non-fatal):', metaErr)
+          }
+        }
+      } catch (parentErr) {
+        console.error('[SYNC] Post-sync parent-child update failed (non-fatal):', parentErr)
+      }
+    } else {
+      console.log(`[SYNC] Sync stopped — post-sync parent-child update skipped`)
+    }
+
     updateProgress(connectionId, {
-      status: getProgress(connectionId)?.shouldStop ? 'stopped' : 'completed',
+      status: stopped ? 'stopped' : 'completed',
     })
     await flushThrottled(true)
 
@@ -1199,7 +1435,10 @@ async function processProductExtendPagesInBackground(
       }
     }
 
-    clearProgress(connectionId)
+    // Keep completed state in memory briefly so the browser poll can read it (fast 1-page syncs).
+    setTimeout(() => {
+      clearProgress(connectionId)
+    }, 30 * 1000)
   } catch (e) {
     console.error('[SYNC] page-based sync fatal error:', e)
     updateProgress(connectionId, { status: 'error' })
@@ -2093,179 +2332,14 @@ async function processSyncInBackground(
       return
     }
 
-    // Post-sync: Update parent_product_id for products that were synced before their parent
-    // OPTIMIZATION: Only process products that were actually synced, not all products
-    // This reduces post-sync API calls by 90%+ for incremental syncs
-    console.log(`[SYNC] Running post-sync parent-child relationship update...`)
-    console.log(`[SYNC] Processing ${syncedProductIds.length} synced products (instead of all products)`)
-    try {
-      // Get only the products that were synced in this sync operation
-      // This is much more efficient than fetching all products
-      let productsToUpdate: any[] = []
-      
-      if (syncedProductIds.length > 0) {
-        const uniqueIds = [...new Set(syncedProductIds)]
-        const { data: syncedProducts, error: productsError } = await fetchShoprenterProductsByIdsChunked(
-          supabase,
-          connection.id,
-          uniqueIds
-        )
-
-        if (productsError) {
-          console.error(`[SYNC] Error fetching synced products for parent update:`, productsError)
-        } else if (syncedProducts) {
-          productsToUpdate = syncedProducts
-        }
-      } else {
-        // Fallback: If no synced product IDs tracked, get all products (for backward compatibility)
-        console.warn(`[SYNC] No synced product IDs tracked, falling back to all products`)
-        const { data: allProducts, error: productsError } = await supabase
-          .from('shoprenter_products')
-          .select('id, shoprenter_id, sku, parent_product_id')
-          .eq('connection_id', connection.id)
-          .is('deleted_at', null)
-        
-        if (productsError) {
-          console.error(`[SYNC] Error fetching products for parent update:`, productsError)
-        } else if (allProducts) {
-          productsToUpdate = allProducts
-        }
-      }
-      
-      if (productsToUpdate.length > 0) {
-        let updatedCount = 0
-        const batchSize = 50 // Process in smaller batches to avoid timeout
-        
-        for (let i = 0; i < productsToUpdate.length; i += batchSize) {
-          const batch = productsToUpdate.slice(i, i + batchSize)
-          
-          // Build batch request to fetch parentProduct for each product
-          const batchRequests = batch.map(p => ({
-            method: 'GET',
-            uri: `${apiUrl}/productExtend/${p.shoprenter_id}?full=1`
-          }))
-          
-          const batchPayload = {
-            data: {
-              requests: batchRequests
-            }
-          }
-          
-          try {
-            const batchResponse = await fetch(`${apiUrl}/batch`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Authorization': authHeader
-              },
-              body: JSON.stringify(batchPayload),
-              signal: AbortSignal.timeout(300000) // 5 minutes
-            })
-            
-            if (batchResponse.ok) {
-              const batchData = await batchResponse.json()
-              const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
-              
-              for (let j = 0; j < batch.length && j < batchResponses.length; j++) {
-                const product = batch[j]
-                const batchItem = batchResponses[j]
-                
-                if (batchItem.response?.body) {
-                  const productData = batchItem.response.body
-                  const parentShopRenterId = extractParentProductId(productData)
-                  
-                  // For force sync, always update parent relationships to match ShopRenter exactly
-                  // For non-force sync, only update if parent changed or is missing
-                  const shouldUpdateParent = forceSync || 
-                    (parentShopRenterId && !product.parent_product_id) ||
-                    (parentShopRenterId && product.parent_product_id) // Check if current parent matches ShopRenter parent
-                  
-                  if (parentShopRenterId && shouldUpdateParent) {
-                    // Find parent in database by ShopRenter ID
-                    const { data: parentProduct } = await supabase
-                      .from('shoprenter_products')
-                      .select('id, sku')
-                      .eq('connection_id', connection.id)
-                      .eq('shoprenter_id', parentShopRenterId)
-                      .single()
-                    
-                    if (parentProduct) {
-                      // CRITICAL: Prevent self-referencing parent_product_id
-                      // A product cannot be its own parent
-                      if (parentProduct.id === product.id) {
-                        console.warn(`[SYNC] Product ${product.sku} has parent_product_id pointing to itself. Clearing invalid parent_product_id.`)
-                        // Clear the invalid parent_product_id
-                        await supabase
-                          .from('shoprenter_products')
-                          .update({ parent_product_id: null })
-                          .eq('id', product.id)
-                        continue
-                      }
-                      
-                      // Check if parent needs updating (different from current or force sync)
-                      const needsUpdate = forceSync || product.parent_product_id !== parentProduct.id
-                      
-                      if (needsUpdate) {
-                        // Update the child product with parent UUID
-                        const { error: updateError } = await supabase
-                          .from('shoprenter_products')
-                          .update({ parent_product_id: parentProduct.id })
-                          .eq('id', product.id)
-                        
-                        if (!updateError) {
-                          updatedCount++
-                          console.log(`[SYNC] Updated parent for ${product.sku}: ${parentProduct.sku} (${parentProduct.id})`)
-                        } else {
-                          console.error(`[SYNC] Error updating parent for ${product.sku}:`, updateError)
-                        }
-                      }
-                    } else if (forceSync) {
-                      // For force sync, if parent doesn't exist in DB, clear the parent_product_id
-                      // This ensures exact match with ShopRenter (if parent doesn't exist, clear it)
-                      if (product.parent_product_id) {
-                        const { error: clearError } = await supabase
-                          .from('shoprenter_products')
-                          .update({ parent_product_id: null })
-                          .eq('id', product.id)
-                        
-                        if (!clearError) {
-                          console.log(`[SYNC] Cleared parent_product_id for ${product.sku} (parent ${parentShopRenterId} not found in database)`)
-                        }
-                      }
-                    }
-                  } else if (forceSync && !parentShopRenterId && product.parent_product_id) {
-                    // For force sync, if ShopRenter says no parent but we have one, clear it
-                    const { error: clearError } = await supabase
-                      .from('shoprenter_products')
-                      .update({ parent_product_id: null })
-                      .eq('id', product.id)
-                    
-                    if (!clearError) {
-                      console.log(`[SYNC] Cleared parent_product_id for ${product.sku} (no parent in ShopRenter)`)
-                    }
-                  }
-                }
-              }
-            }
-          } catch (batchError) {
-            console.error(`[SYNC] Error in parent update batch ${Math.floor(i / batchSize) + 1}:`, batchError)
-          }
-          
-          // Small delay between batches
-          if (i + batchSize < productsToUpdate.length) {
-            await new Promise(resolve => setTimeout(resolve, 100))
-          }
-        }
-        
-        console.log(`[SYNC] Updated ${updatedCount} parent-child relationships`)
-      } else {
-        console.log(`[SYNC] No products found for parent update`)
-      }
-    } catch (parentUpdateError) {
-      console.error(`[SYNC] Error updating parent relationships (non-fatal):`, parentUpdateError)
-    }
-
+    await runPostSyncParentChildUpdate(
+      supabase,
+      connection,
+      syncedProductIds,
+      forceSync,
+      apiUrl,
+      authHeader
+    )
 
     // Mark as complete
     const syncEndTime = new Date()

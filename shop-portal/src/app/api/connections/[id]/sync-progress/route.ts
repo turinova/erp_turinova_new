@@ -9,6 +9,41 @@ function mapJobStatusToUi(dbStatus: string): string {
   return dbStatus
 }
 
+/** Return recently finished jobs so a fast completion is not lost before the next browser poll. */
+const RECENT_FINISHED_JOB_MS = 5 * 60 * 1000
+
+function buildProgressPayloadFromJob(job: {
+  total_units: number | null
+  synced_units: number | null
+  error_units: number | null
+  status: string
+  started_at: string
+  completed_at?: string | null
+  current_batch?: number | null
+  total_batches?: number | null
+  batch_progress?: number | null
+}) {
+  const uiStatus = mapJobStatusToUi(job.status)
+  const endMs = job.completed_at ? new Date(job.completed_at).getTime() : Date.now()
+  const elapsed = Math.max(0, Math.floor((endMs - new Date(job.started_at).getTime()) / 1000))
+  const total = job.total_units ?? 0
+  const synced = job.synced_units ?? 0
+  const errors = job.error_units ?? 0
+
+  return {
+    total,
+    synced,
+    current: synced + errors,
+    status: uiStatus,
+    errors,
+    percentage: total > 0 ? Math.round((synced / total) * 100) : 0,
+    elapsed,
+    currentBatch: job.current_batch ?? undefined,
+    totalBatches: job.total_batches ?? undefined,
+    batchProgress: job.batch_progress ?? undefined,
+  }
+}
+
 /**
  * GET /api/connections/[id]/sync-progress
  * Get current sync progress for a connection (in-memory first, then durable sync_jobs row).
@@ -19,25 +54,25 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const progress = getProgress(id)
+    const memoryProgress = getProgress(id)
 
-    if (progress) {
-      console.log(`[PROGRESS] Returning in-memory progress for ${id}: synced=${progress.synced}/${progress.total}, status=${progress.status}`)
+    if (memoryProgress) {
+      console.log(`[PROGRESS] Returning in-memory progress for ${id}: synced=${memoryProgress.synced}/${memoryProgress.total}, status=${memoryProgress.status}`)
 
       return NextResponse.json({
         success: true,
         source: 'memory',
         progress: {
-          total: progress.total,
-          synced: progress.synced,
-          current: progress.current,
-          status: progress.status,
-          errors: progress.errors,
-          percentage: progress.total > 0 ? Math.round((progress.synced / progress.total) * 100) : 0,
-          elapsed: Math.floor((Date.now() - progress.startTime) / 1000),
-          currentBatch: progress.currentBatch,
-          totalBatches: progress.totalBatches,
-          batchProgress: progress.batchProgress
+          total: memoryProgress.total,
+          synced: memoryProgress.synced,
+          current: memoryProgress.current,
+          status: memoryProgress.status,
+          errors: memoryProgress.errors,
+          percentage: memoryProgress.total > 0 ? Math.round((memoryProgress.synced / memoryProgress.total) * 100) : 0,
+          elapsed: Math.floor((Date.now() - memoryProgress.startTime) / 1000),
+          currentBatch: memoryProgress.currentBatch,
+          totalBatches: memoryProgress.totalBatches,
+          batchProgress: memoryProgress.batchProgress
         }
       })
     }
@@ -61,6 +96,30 @@ export async function GET(
       .maybeSingle()
 
     if (jobError || !job) {
+      const { data: recentJob } = await supabase
+        .from('sync_jobs')
+        .select('*')
+        .eq('connection_id', id)
+        .in('status', ['completed', 'stopped', 'failed'])
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (recentJob?.completed_at) {
+        const ageMs = Date.now() - new Date(recentJob.completed_at).getTime()
+        if (ageMs >= 0 && ageMs <= RECENT_FINISHED_JOB_MS) {
+          const recentProgress = buildProgressPayloadFromJob(recentJob)
+          console.log(
+            `[PROGRESS] Returning recently finished DB job for ${id}: synced=${recentProgress.synced}/${recentProgress.total}, status=${recentProgress.status}`
+          )
+          return NextResponse.json({
+            success: true,
+            source: 'database-recent',
+            progress: recentProgress,
+          })
+        }
+      }
+
       console.log(`[PROGRESS] No progress found for connection ${id} (memory or DB)`)
       return NextResponse.json({
         success: false,
@@ -80,26 +139,14 @@ export async function GET(
       metadata: jobMeta,
     }, supabase)
 
-    const uiStatus = mapJobStatusToUi(job.status)
-    const elapsed = Math.floor((Date.now() - new Date(job.started_at).getTime()) / 1000)
+    const jobProgress = buildProgressPayloadFromJob(job)
 
-    console.log(`[PROGRESS] Returning DB progress for ${id}: synced=${job.synced_units}/${job.total_units}, status=${uiStatus}`)
+    console.log(`[PROGRESS] Returning DB progress for ${id}: synced=${jobProgress.synced}/${jobProgress.total}, status=${jobProgress.status}`)
 
     return NextResponse.json({
       success: true,
       source: 'database',
-      progress: {
-        total: job.total_units,
-        synced: job.synced_units,
-        current: job.synced_units + job.error_units,
-        status: uiStatus,
-        errors: job.error_units,
-        percentage: job.total_units > 0 ? Math.round((job.synced_units / job.total_units) * 100) : 0,
-        elapsed,
-        currentBatch: job.current_batch ?? undefined,
-        totalBatches: job.total_batches ?? undefined,
-        batchProgress: job.batch_progress ?? undefined
-      }
+      progress: jobProgress,
     })
   } catch (error) {
     console.error('Error getting sync progress:', error)
