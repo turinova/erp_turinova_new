@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { parseRecentDays, sinceIsoForRecentDays } from '@/lib/dispatch-recent-window'
 
-const RECENT_HOURS = 48
 const RECENT_LIMIT = 100
 
 /**
  * GET /api/dispatch/pickup
  * scope=queue (default): ready_for_pickup — személyes átvételre váró sor.
- * scope=recent_delivered: delivered, updated in last 48h — legutóbb átvett (ellenőrzés).
- * Optional q=: ilike search (order_number, name, company, email).
+ * scope=recent_delivered: delivered in last N calendar days (default 5) — legutóbb átvett.
+ * Optional days= (1|3|5|7|14), q=: ilike search.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const scope = searchParams.get('scope') || 'queue'
     const q = searchParams.get('q')?.trim() || ''
-    const sinceIso = new Date(Date.now() - RECENT_HOURS * 60 * 60 * 1000).toISOString()
+    const recentDays = parseRecentDays(searchParams.get('days'))
+    const sinceIso = sinceIsoForRecentDays(recentDays)
 
     let query = supabase
       .from('orders')
@@ -60,7 +61,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Hiba a lista betöltésekor' }, { status: 500 })
     }
 
-    return NextResponse.json({ orders: orders || [] })
+    return NextResponse.json({
+      orders: orders || [],
+      ...(scope === 'recent_delivered' ? { recentDays } : {})
+    })
   } catch (err) {
     console.error('Error in dispatch/pickup GET:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

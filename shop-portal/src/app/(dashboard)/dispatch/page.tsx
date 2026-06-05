@@ -24,7 +24,7 @@ export default function DispatchPage() {
         Átadás
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Csomagok kiadása a futárnak vagy a vevőnek. A fül és a „Teendők” nézet mutatja, mit kell ma megcsinálni; a „Legutóbb…” nézet csak visszakereséshez.
+        Csomagok kiadása a futárnak vagy a vevőnek. A fül és a „Teendők” nézet mutatja, mit kell ma megcsinálni; a „Legutóbb…” nézet visszakereséshez (alapértelmezés: elmúlt 5 nap, állítható).
       </Typography>
 
       <DispatchTabs />

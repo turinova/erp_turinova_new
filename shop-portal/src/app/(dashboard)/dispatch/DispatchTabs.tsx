@@ -26,7 +26,11 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  Chip
+  Chip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material'
 import {
   Search as SearchIcon,
@@ -35,8 +39,13 @@ import {
   Visibility as VisibilityIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
-
-const RECENT_HOURS = 48
+import {
+  ALLOWED_RECENT_DAYS,
+  DEFAULT_RECENT_DAYS,
+  parseRecentDays,
+  recentDaysLabelHu,
+  type RecentDaysOption
+} from '@/lib/dispatch-recent-window'
 
 type MainTab = 'carrier' | 'pickup'
 type SubView = 'queue' | 'recent'
@@ -95,9 +104,11 @@ export default function DispatchTabs() {
 
   const initialMain: MainTab = searchParams.get('tab') === 'pickup' ? 'pickup' : 'carrier'
   const initialSub: SubView = searchParams.get('view') === 'recent' ? 'recent' : 'queue'
+  const initialRecentDays = parseRecentDays(searchParams.get('days'))
 
   const [mainTab, setMainTab] = useState<MainTab>(initialMain)
   const [subView, setSubView] = useState<SubView>(initialSub)
+  const [recentDays, setRecentDays] = useState<RecentDaysOption>(initialRecentDays)
 
   const [carrierOrders, setCarrierOrders] = useState<CarrierOrder[]>([])
   const [pickupOrders, setPickupOrders] = useState<PickupOrder[]>([])
@@ -119,6 +130,7 @@ export default function DispatchTabs() {
     try {
       const params = new URLSearchParams()
       params.set('scope', subView === 'recent' ? 'recent_shipped' : 'queue')
+      if (subView === 'recent') params.set('days', String(recentDays))
       const q = debouncedCarrierSearch.trim()
       if (q) params.set('q', q)
       const res = await fetch(`/api/dispatch/carrier?${params.toString()}`)
@@ -131,13 +143,14 @@ export default function DispatchTabs() {
     } finally {
       setCarrierLoading(false)
     }
-  }, [subView, debouncedCarrierSearch])
+  }, [subView, debouncedCarrierSearch, recentDays])
 
   const fetchPickup = useCallback(async () => {
     setPickupLoading(true)
     try {
       const params = new URLSearchParams()
       params.set('scope', subView === 'recent' ? 'recent_delivered' : 'queue')
+      if (subView === 'recent') params.set('days', String(recentDays))
       const q = debouncedPickupSearch.trim()
       if (q) params.set('q', q)
       const res = await fetch(`/api/dispatch/pickup?${params.toString()}`)
@@ -150,7 +163,7 @@ export default function DispatchTabs() {
     } finally {
       setPickupLoading(false)
     }
-  }, [subView, debouncedPickupSearch])
+  }, [subView, debouncedPickupSearch, recentDays])
 
   useEffect(() => {
     if (mainTab !== 'carrier') return
@@ -170,12 +183,17 @@ export default function DispatchTabs() {
   useEffect(() => {
     const params = new URLSearchParams()
     if (mainTab === 'pickup') params.set('tab', 'pickup')
-    if (subView === 'recent') params.set('view', 'recent')
+    if (subView === 'recent') {
+      params.set('view', 'recent')
+      if (recentDays !== DEFAULT_RECENT_DAYS) {
+        params.set('days', String(recentDays))
+      }
+    }
     if (debouncedCarrierSearch.trim()) params.set('cq', debouncedCarrierSearch.trim())
     if (debouncedPickupSearch.trim()) params.set('pq', debouncedPickupSearch.trim())
     const q = params.toString()
     router.replace(q ? `/dispatch?${q}` : '/dispatch', { scroll: false })
-  }, [mainTab, subView, debouncedCarrierSearch, debouncedPickupSearch, router])
+  }, [mainTab, subView, recentDays, debouncedCarrierSearch, debouncedPickupSearch, router])
 
   const handleSubViewChange = (_: React.SyntheticEvent, v: SubView) => {
     setSubView(v)
@@ -281,28 +299,30 @@ export default function DispatchTabs() {
         })
       : '–'
 
+  const recentPeriodLabel = recentDaysLabelHu(recentDays)
+
   const subtitle = useMemo(() => {
     if (mainTab === 'carrier') {
       return subView === 'queue'
         ? 'A csomagolás után „futárra vár” állapotú rendelések listája. Ellenőrizd a címkét / csomagot, jelöld ki, majd rögzítsd: átadtad a futárszolgálatnak. Az állapot **Elküldve** lesz, és rögzítjük az időpontot.'
-        : `Csak ellenőrzéshez: az elmúlt **${RECENT_HOURS} órában** futárnak átadott (Elküldve) rendelések. Itt nem lehet státuszt módosítani — részletek a rendelés oldalon.`
+        : `Csak ellenőrzéshez: az elmúlt **${recentPeriodLabel}** futárnak átadott (Elküldve) rendelések. Itt nem lehet státuszt módosítani — részletek a rendelés oldalon.`
     }
     return subView === 'queue'
       ? 'A vevő személyesen jön érte: „átvételre kész” rendelések. Keresés név / rendelésszám alapján, majd jelöld **Átvéve**, ha átvette a csomagot. Az állapot **Átvéve (teljesítve)** lesz.'
-      : `Csak ellenőrzéshez: az elmúlt **${RECENT_HOURS} órában** személyesen átvett rendelések. Itt nem lehet státuszt módosítani — részletek a rendelés oldalon.`
-  }, [mainTab, subView])
+      : `Csak ellenőrzéshez: az elmúlt **${recentPeriodLabel}** személyesen átvett rendelések. Itt nem lehet státuszt módosítani — részletek a rendelés oldalon.`
+  }, [mainTab, subView, recentPeriodLabel])
 
   const carrierEmptyMessage = () => {
     if (debouncedCarrierSearch.trim()) return 'Nincs találat a keresésre.'
     if (subView === 'recent')
-      return `Nincs megjeleníthető rendelés az elmúlt ${RECENT_HOURS} órában (Elküldve).`
+      return `Nincs megjeleníthető rendelés az elmúlt ${recentPeriodLabel} (Elküldve).`
     return 'Nincs futárnak átadandó rendelés. A csomagolás lezárása után, „futárra vár” állapotban jelennek meg itt.'
   }
 
   const pickupEmptyMessage = () => {
     if (debouncedPickupSearch.trim()) return 'Nincs találat a keresésre.'
     if (subView === 'recent')
-      return `Nincs megjeleníthető rendelés az elmúlt ${RECENT_HOURS} órában (átvéve).`
+      return `Nincs megjeleníthető rendelés az elmúlt ${recentPeriodLabel} (átvéve).`
     return 'Nincs személyes átvételre váró rendelés. A csomagolás után „átvételre kész” állapotban jelennek meg itt.'
   }
 
@@ -341,6 +361,26 @@ export default function DispatchTabs() {
         />
       </Tabs>
 
+      {subView === 'recent' && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel id="dispatch-recent-days-label">Időszak</InputLabel>
+            <Select
+              labelId="dispatch-recent-days-label"
+              label="Időszak"
+              value={recentDays}
+              onChange={(e) => setRecentDays(parseRecentDays(String(e.target.value)))}
+            >
+              {ALLOWED_RECENT_DAYS.map((d) => (
+                <MenuItem key={d} value={d}>
+                  {recentDaysLabelHu(d)}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+      )}
+
       {/* Carrier */}
       <Box role="tabpanel" hidden={mainTab !== 'carrier'} id="dispatch-panel-0" aria-labelledby="dispatch-tab-0">
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 2 }}>
@@ -378,7 +418,7 @@ export default function DispatchTabs() {
               </>
             ) : (
               <>
-                <strong>{carrierOrders.length}</strong> rendelés az elmúlt <strong>{RECENT_HOURS}</strong> órában
+                <strong>{carrierOrders.length}</strong> rendelés az elmúlt <strong>{recentPeriodLabel}</strong>
                 (Elküldve)
               </>
             )}
@@ -520,7 +560,7 @@ export default function DispatchTabs() {
               </>
             ) : (
               <>
-                <strong>{pickupOrders.length}</strong> rendelés az elmúlt <strong>{RECENT_HOURS}</strong> órában
+                <strong>{pickupOrders.length}</strong> rendelés az elmúlt <strong>{recentPeriodLabel}</strong>
                 (átvéve)
               </>
             )}

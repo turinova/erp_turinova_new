@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { parseRecentDays, sinceIsoForRecentDays } from '@/lib/dispatch-recent-window'
 
-const RECENT_HOURS = 48
 const RECENT_LIMIT = 100
 
 /**
  * GET /api/dispatch/carrier
  * scope=queue (default): awaiting_carrier — futárnak átadandó sor.
- * scope=recent_shipped: shipped, updated in last 48h — legutóbb futárnak átadott (ellenőrzés).
- * Optional q=: ilike search on order_number, names, company, email, tracking_number, shipping_method_name.
+ * scope=recent_shipped: shipped in last N calendar days (default 5) — legutóbb futárnak átadott.
+ * Optional days= (1|3|5|7|14), q=: ilike search.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const scope = searchParams.get('scope') || 'queue'
     const q = searchParams.get('q')?.trim() || ''
-    const sinceIso = new Date(Date.now() - RECENT_HOURS * 60 * 60 * 1000).toISOString()
+    const recentDays = parseRecentDays(searchParams.get('days'))
+    const sinceIso = sinceIsoForRecentDays(recentDays)
 
     let query = supabase
       .from('orders')
@@ -43,12 +44,15 @@ export async function GET(request: NextRequest) {
         updated_at
       `)
       .is('deleted_at', null)
-      .order('updated_at', { ascending: false })
 
     if (scope === 'recent_shipped') {
-      query = query.eq('status', 'shipped').gte('updated_at', sinceIso).limit(RECENT_LIMIT)
+      query = query
+        .eq('status', 'shipped')
+        .gte('shipped_at', sinceIso)
+        .order('shipped_at', { ascending: false, nullsFirst: false })
+        .limit(RECENT_LIMIT)
     } else {
-      query = query.eq('status', 'awaiting_carrier')
+      query = query.eq('status', 'awaiting_carrier').order('updated_at', { ascending: false })
     }
 
     if (q) {
@@ -64,7 +68,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Hiba a lista betöltésekor' }, { status: 500 })
     }
 
-    return NextResponse.json({ orders: orders || [] })
+    return NextResponse.json({
+      orders: orders || [],
+      ...(scope === 'recent_shipped' ? { recentDays } : {})
+    })
   } catch (err) {
     console.error('Error in dispatch/carrier GET:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
