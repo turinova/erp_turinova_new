@@ -1,136 +1,223 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { getConnectionByIdWithClient } from '@/lib/sync-chunk-continuation'
+import { extractShopNameFromUrl, getShopRenterAuthHeader } from '@/lib/shoprenter-api'
+import { ensureManufacturerExists } from '@/app/api/connections/[id]/sync-products/sync-product-db'
+
+const PAGE_SIZE = 1000
+const MANUFACTURER_BATCH_SIZE = 200
+
+type ProductRow = {
+  id: string
+  sku: string | null
+  manufacturer_id: string
+}
 
 /**
- * Ensure a manufacturer exists in the manufacturers table, create it if it doesn't
- * @param supabase Supabase client
- * @param manufacturerName The manufacturer/brand name (e.g., "Samsung", "Apple")
- * @returns The manufacturer ID if found or created, null if manufacturerName is empty
+ * Batch-fetch manufacturer names from ShopRenter API.
  */
-async function ensureManufacturerExists(supabase: any, manufacturerName: string | null | undefined): Promise<string | null> {
-  if (!manufacturerName || !manufacturerName.trim()) {
-    return null
+async function fetchManufacturerNames(
+  apiUrl: string,
+  authHeader: string,
+  manufacturerIds: string[]
+): Promise<Map<string, string | null>> {
+  const manufacturerNamesMap = new Map<string, string | null>()
+
+  for (let i = 0; i < manufacturerIds.length; i += MANUFACTURER_BATCH_SIZE) {
+    const batch = manufacturerIds.slice(i, i + MANUFACTURER_BATCH_SIZE)
+    const batchRequests = batch.map(manufacturerId => ({
+      method: 'GET',
+      uri: `${apiUrl}/manufacturers/${manufacturerId}?full=1`
+    }))
+
+    const batchPayload = {
+      data: {
+        requests: batchRequests
+      }
+    }
+
+    try {
+      const batchResponse = await fetch(`${apiUrl}/batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: authHeader
+        },
+        body: JSON.stringify(batchPayload),
+        signal: AbortSignal.timeout(60000)
+      })
+
+      if (!batchResponse.ok) {
+        console.warn(`[BACKFILL] Failed to fetch Manufacturers batch: ${batchResponse.status}`)
+        batch.forEach(manufacturerId => manufacturerNamesMap.set(manufacturerId, null))
+        continue
+      }
+
+      const batchData = await batchResponse.json()
+      const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+
+      for (let j = 0; j < batchResponses.length && j < batch.length; j++) {
+        const batchItem = batchResponses[j]
+        const manufacturerId = batch[j]
+        const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
+
+        if (statusCode >= 200 && statusCode < 300) {
+          const manufacturer = batchItem.response?.body
+          manufacturerNamesMap.set(manufacturerId, manufacturer?.name || null)
+        } else {
+          manufacturerNamesMap.set(manufacturerId, null)
+          console.warn(`[BACKFILL] Failed to fetch Manufacturer ${manufacturerId}: status ${statusCode}`)
+        }
+      }
+    } catch (error) {
+      console.warn('[BACKFILL] Error fetching Manufacturers batch:', error)
+      batch.forEach(manufacturerId => manufacturerNamesMap.set(manufacturerId, null))
+    }
   }
 
-  const trimmedName = manufacturerName.trim()
-
-  // Check if manufacturer already exists by name
-  const { data: existingManufacturer } = await supabase
-    .from('manufacturers')
-    .select('id')
-    .eq('name', trimmedName)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (existingManufacturer) {
-    return existingManufacturer.id
-  }
-
-  // Manufacturer doesn't exist, create it
-  const { data: newManufacturer, error } = await supabase
-    .from('manufacturers')
-    .insert({
-      name: trimmedName
-    })
-    .select('id')
-    .single()
-
-  if (error) {
-    console.error(`[BACKFILL] Failed to create manufacturer "${trimmedName}":`, error)
-    // Don't throw - just log and return null
-    return null
-  }
-
-  console.log(`[BACKFILL] Auto-created manufacturer: "${trimmedName}"`)
-  return newManufacturer.id
+  return manufacturerNamesMap
 }
 
 /**
  * POST /api/products/backfill-manufacturers
- * Backfill erp_manufacturer_id for existing products that have brand but no erp_manufacturer_id
- * NOTE: This endpoint is deprecated after brand column removal. It will only work on databases that still have the brand column.
+ * Link erp_manufacturer_id for products that have ShopRenter manufacturer_id but no ERP link.
  */
 export async function POST(request: NextRequest) {
   try {
     const supabase = await getTenantSupabase()
 
-    // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Find all products with brand but no erp_manufacturer_id
-    const { data: products, error: productsError } = await supabase
-      .from('shoprenter_products')
-      .select('id, sku, brand, erp_manufacturer_id')
-      .not('brand', 'is', null)
-      .is('erp_manufacturer_id', null)
-      .is('deleted_at', null)
+    const body = await request.json().catch(() => ({}))
+    const connectionId = typeof body.connection_id === 'string' ? body.connection_id.trim() : ''
 
-    if (productsError) {
-      console.error('Error fetching products:', productsError)
-      return NextResponse.json(
-        { error: 'Hiba a termékek lekérdezésekor' },
-        { status: 500 }
-      )
+    if (!connectionId) {
+      return NextResponse.json({ error: 'connection_id kötelező' }, { status: 400 })
     }
 
-    if (!products || products.length === 0) {
+    const connection = await getConnectionByIdWithClient(supabase, connectionId)
+    if (!connection || connection.connection_type !== 'shoprenter') {
+      return NextResponse.json({ error: 'Kapcsolat nem található' }, { status: 404 })
+    }
+
+    const shopName = extractShopNameFromUrl(connection.api_url)
+    if (!shopName) {
+      return NextResponse.json({ error: 'Érvénytelen API URL formátum' }, { status: 400 })
+    }
+
+    const { authHeader, apiBaseUrl } = await getShopRenterAuthHeader(
+      shopName,
+      connection.username,
+      connection.password,
+      connection.api_url
+    )
+
+    const products: ProductRow[] = []
+    let offset = 0
+
+    while (true) {
+      const { data: page, error: productsError } = await supabase
+        .from('shoprenter_products')
+        .select('id, sku, manufacturer_id')
+        .eq('connection_id', connectionId)
+        .not('manufacturer_id', 'is', null)
+        .is('erp_manufacturer_id', null)
+        .is('deleted_at', null)
+        .range(offset, offset + PAGE_SIZE - 1)
+
+      if (productsError) {
+        console.error('[BACKFILL] Error fetching products:', productsError)
+        return NextResponse.json(
+          { error: 'Hiba a termékek lekérdezésekor' },
+          { status: 500 }
+        )
+      }
+
+      if (!page || page.length === 0) {
+        break
+      }
+
+      products.push(...(page as ProductRow[]))
+
+      if (page.length < PAGE_SIZE) {
+        break
+      }
+
+      offset += PAGE_SIZE
+    }
+
+    if (products.length === 0) {
       return NextResponse.json({
         success: true,
         message: 'Nincs szinkronizálandó termék',
         updated: 0,
+        errors: 0,
         total: 0
       })
     }
 
-    console.log(`[BACKFILL] Found ${products.length} products to backfill manufacturers for`)
+    console.log(`[BACKFILL] Found ${products.length} products to backfill for connection ${connectionId}`)
+
+    const productsByManufacturerId = new Map<string, ProductRow[]>()
+    for (const product of products) {
+      if (!product.manufacturer_id) {
+        continue
+      }
+      const existing = productsByManufacturerId.get(product.manufacturer_id) || []
+      existing.push(product)
+      productsByManufacturerId.set(product.manufacturer_id, existing)
+    }
+
+    const manufacturerIds = Array.from(productsByManufacturerId.keys())
+    const manufacturerNamesMap = await fetchManufacturerNames(apiBaseUrl, authHeader, manufacturerIds)
 
     let updated = 0
     let errors = 0
     const errorMessages: string[] = []
 
-    // Process products in batches to avoid overwhelming the database
-    const batchSize = 100
-    for (let i = 0; i < products.length; i += batchSize) {
-      const batch = products.slice(i, i + batchSize)
-      
-      for (const product of batch) {
-        try {
-          if (!product.brand || product.brand.trim() === '') {
-            continue
+    for (const manufacturerId of manufacturerIds) {
+      const manufacturerName = manufacturerNamesMap.get(manufacturerId)
+      if (!manufacturerName?.trim()) {
+        const affected = productsByManufacturerId.get(manufacturerId) || []
+        errors += affected.length
+        if (errorMessages.length < 20) {
+          errorMessages.push(`Gyártó ${manufacturerId}: név nem elérhető (${affected.length} termék)`)
+        }
+        continue
+      }
+
+      const erpManufacturerId = await ensureManufacturerExists(supabase, manufacturerName)
+      if (!erpManufacturerId) {
+        const affected = productsByManufacturerId.get(manufacturerId) || []
+        errors += affected.length
+        if (errorMessages.length < 20) {
+          errorMessages.push(`Gyártó "${manufacturerName}": ERP rekord nem hozható létre`)
+        }
+        continue
+      }
+
+      const affectedProducts = productsByManufacturerId.get(manufacturerId) || []
+      for (let i = 0; i < affectedProducts.length; i += 100) {
+        const batch = affectedProducts.slice(i, i + 100)
+        const productIds = batch.map(p => p.id)
+
+        const { error: updateError } = await supabase
+          .from('shoprenter_products')
+          .update({ erp_manufacturer_id: erpManufacturerId })
+          .in('id', productIds)
+
+        if (updateError) {
+          console.error(`[BACKFILL] Error updating products for manufacturer "${manufacturerName}":`, updateError)
+          errors += batch.length
+          if (errorMessages.length < 20) {
+            errorMessages.push(`"${manufacturerName}": ${updateError.message}`)
           }
-
-          // Get or create manufacturer
-          const erp_manufacturer_id = await ensureManufacturerExists(supabase, product.brand)
-
-          if (erp_manufacturer_id) {
-            // Update product with erp_manufacturer_id
-            const { error: updateError } = await supabase
-              .from('shoprenter_products')
-              .update({ erp_manufacturer_id })
-              .eq('id', product.id)
-
-            if (updateError) {
-              console.error(`[BACKFILL] Error updating product ${product.sku}:`, updateError)
-              errors++
-              errorMessages.push(`${product.sku}: ${updateError.message}`)
-            } else {
-              updated++
-              if (updated % 50 === 0) {
-                console.log(`[BACKFILL] Progress: ${updated}/${products.length} products updated`)
-              }
-            }
-          } else {
-            console.warn(`[BACKFILL] Could not create/get manufacturer for product ${product.sku} with brand "${product.brand}"`)
-            errors++
-            errorMessages.push(`${product.sku}: Nem sikerült létrehozni/lekérni a gyártót`)
-          }
-        } catch (error) {
-          console.error(`[BACKFILL] Error processing product ${product.sku}:`, error)
-          errors++
-          errorMessages.push(`${product.sku}: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`)
+        } else {
+          updated += batch.length
         }
       }
     }
@@ -141,10 +228,11 @@ export async function POST(request: NextRequest) {
       updated,
       errors,
       total: products.length,
-      errorMessages: errorMessages.slice(0, 20) // Limit error messages to first 20
+      manufacturersProcessed: manufacturerIds.length,
+      errorMessages: errorMessages.slice(0, 20)
     })
   } catch (error) {
-    console.error('Error in backfill manufacturers:', error)
+    console.error('[BACKFILL] Error in backfill manufacturers:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

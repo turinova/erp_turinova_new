@@ -1450,12 +1450,13 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     throw new Error('Termék szinkronizálás időtúllépés (30 perc).')
   }
 
-  const runManufacturersBackfill = async () => {
+  const runManufacturersBackfill = async (connectionId: string) => {
     const response = await fetch('/api/products/backfill-manufacturers', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify({ connection_id: connectionId })
     })
 
     if (!response.ok) {
@@ -1522,7 +1523,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
       setFullSyncStep('manufacturers')
       toast.info('4/4 Gyártók szinkronizálása indul...')
-      const manufacturerBackfillResult = await runManufacturersBackfill()
+      const manufacturerBackfillResult = await runManufacturersBackfill(connection.id)
       toast.success(
         manufacturerBackfillResult.message || `4/4 Gyártók szinkronizálása befejezve: ${manufacturerBackfillResult.updated} termék frissítve`
       )
@@ -1879,11 +1880,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
   }
 
-  const handleBackfillManufacturers = async () => {
+  const handleBackfillManufacturers = async (connection: WebshopConnection) => {
     try {
       setBackfillingManufacturers(true)
       toast.info('Gyártók szinkronizálása elindítva...')
-      const result = await runManufacturersBackfill()
+      const result = await runManufacturersBackfill(connection.id)
       toast.success(result.message || `Gyártók szinkronizálása befejezve: ${result.updated} termék frissítve`)
       if (result.errors > 0) {
         toast.warning(`${result.errors} hiba történt a szinkronizálás során`)
@@ -2679,7 +2680,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                       {connection.connection_type === 'shoprenter' && (
                         <MenuItem
                           onClick={() => {
-                            handleBackfillManufacturers()
+                            handleBackfillManufacturers(connection)
                             setMenuAnchorEl(null)
                             setMenuConnectionId(null)
                           }}
