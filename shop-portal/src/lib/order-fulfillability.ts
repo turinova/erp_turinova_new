@@ -3,11 +3,97 @@
  * Used when order is created from buffer and when stock is received (PO/shipment complete).
  */
 
+import { relinkOrderItemsBySku } from '@/lib/order-items-relink'
+import { reserveStockForOrder } from '@/lib/order-reservation'
+
 export type FulfillabilityStatus =
   | 'fully_fulfillable'
   | 'partially_fulfillable'
   | 'not_fulfillable'
   | null
+
+export type RecalculateOrderFulfillabilityResult = {
+  fulfillability_status: string
+  linked_items: number
+  stock_reserved: boolean
+}
+
+/**
+ * Relink SKUs → product_id, refresh stock, compute fulfillability, persist, optionally reserve.
+ */
+export async function recalculateOrderFulfillability(
+  supabase: { from: (table: string) => any; rpc: (name: string, args?: object) => Promise<{ error: any }> },
+  orderId: string,
+  options?: {
+    skipRefresh?: boolean
+    reserveIfFullyFulfillable?: boolean
+    createdBy?: string | null
+    relinkFirst?: boolean
+  }
+): Promise<RecalculateOrderFulfillabilityResult | null> {
+  const relinkFirst = options?.relinkFirst !== false
+  const { linked } = relinkFirst ? await relinkOrderItemsBySku(supabase, orderId) : { linked: 0 }
+
+  if (!options?.skipRefresh) {
+    try {
+      await supabase.rpc('refresh_stock_summary')
+    } catch {
+      // ignore
+    }
+  }
+
+  const status = await computeOrderFulfillabilityFromStock(supabase, orderId, {
+    skipRefresh: true,
+    relinkFirst: false,
+  })
+
+  if (status == null) {
+    return null
+  }
+
+  await supabase
+    .from('orders')
+    .update({ fulfillability_status: status, updated_at: new Date().toISOString() })
+    .eq('id', orderId)
+
+  let stockReserved = false
+  if (options?.reserveIfFullyFulfillable && status === 'fully_fulfillable') {
+    const { data: orderRow } = await supabase
+      .from('orders')
+      .select('stock_reserved')
+      .eq('id', orderId)
+      .maybeSingle()
+
+    if (!orderRow?.stock_reserved) {
+      const reserveResult = await reserveStockForOrder(supabase, orderId, {
+        createdBy: options.createdBy ?? null,
+      })
+      stockReserved = reserveResult.ok
+      if (stockReserved) {
+        try {
+          await supabase.rpc('refresh_stock_summary')
+        } catch {
+          // non-fatal
+        }
+      }
+    } else {
+      stockReserved = true
+    }
+  } else {
+    const { data: orderRow } = await supabase
+      .from('orders')
+      .select('stock_reserved')
+      .eq('id', orderId)
+      .maybeSingle()
+    stockReserved = orderRow?.stock_reserved === true
+  }
+
+  return {
+    fulfillability_status: status,
+    linked_items: linked,
+    stock_reserved: stockReserved,
+  }
+}
 
 /**
  * Compute order fulfillability from stock_summary.
@@ -17,8 +103,12 @@ export type FulfillabilityStatus =
 export async function computeOrderFulfillabilityFromStock(
   supabase: { from: (table: string) => any; rpc: (name: string, args?: object) => Promise<{ error: any }> },
   orderId: string,
-  options?: { skipRefresh?: boolean }
+  options?: { skipRefresh?: boolean; relinkFirst?: boolean }
 ): Promise<FulfillabilityStatus> {
+  if (options?.relinkFirst !== false) {
+    await relinkOrderItemsBySku(supabase, orderId)
+  }
+
   const { data: items, error: itemsErr } = await supabase
     .from('order_items')
     .select('product_id, quantity')
@@ -123,11 +213,10 @@ export async function recomputeFulfillabilityForOrdersLinkedToPOs(
 ): Promise<void> {
   const orderIds = await getOrderIdsLinkedToPOs(supabase, poIds)
   for (const orderId of orderIds) {
-    const status = await computeOrderFulfillabilityFromStock(supabase, orderId, { skipRefresh: true })
-    if (status == null) continue
-    await supabase
-      .from('orders')
-      .update({ fulfillability_status: status, updated_at: new Date().toISOString() })
-      .eq('id', orderId)
+    await recalculateOrderFulfillability(supabase, orderId, {
+      skipRefresh: true,
+      relinkFirst: true,
+      reserveIfFullyFulfillable: true,
+    })
   }
 }

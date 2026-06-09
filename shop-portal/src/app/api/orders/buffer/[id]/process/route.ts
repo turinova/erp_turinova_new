@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { extractShopNameFromUrl } from '@/lib/shoprenter-api'
-import { computeOrderFulfillabilityFromStock } from '@/lib/order-fulfillability'
-import { reserveStockForOrder } from '@/lib/order-reservation'
+import { recalculateOrderFulfillability } from '@/lib/order-fulfillability'
 import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 import { maybeInsertImportAutoPaidPayment } from '@/lib/order-payment-import'
 import { maybeCreateBufferAutoProformaInvoice } from '@/lib/buffer-auto-proforma'
@@ -141,27 +140,11 @@ export async function POST(
       // Step 6b: Recompute order totals from items (so order.total_gross etc. match items, not raw webhook)
       await recomputeOrderTotalsFromItems(supabase, newOrder.id)
 
-      // Step 6c: Set initial fulfillability_status from stock (Phase 3)
-      const fulfillabilityStatus = await computeOrderFulfillabilityFromStock(supabase, newOrder.id)
-      if (fulfillabilityStatus) {
-        await supabase
-          .from('orders')
-          .update({ fulfillability_status: fulfillabilityStatus, updated_at: new Date().toISOString() })
-          .eq('id', newOrder.id)
-      }
-
-      // Step 6d: Reserve stock when fully fulfillable (see docs/ORDER_RESERVATION_AND_DELETE.md)
-      if (fulfillabilityStatus === 'fully_fulfillable') {
-        const reserveResult = await reserveStockForOrder(supabase, newOrder.id, { createdBy: user.id })
-        if (reserveResult.ok) {
-          try {
-            await supabase.rpc('refresh_stock_summary')
-          } catch {
-            // non-fatal; stock_summary will refresh on next run
-          }
-        }
-        // if !reserveResult.ok we still proceed; order is created, reservation can be retried or done manually
-      }
+      // Step 6c–6d: Relink SKUs, fulfillability from stock, reserve when fully fulfillable
+      await recalculateOrderFulfillability(supabase, newOrder.id, {
+        reserveIfFullyFulfillable: true,
+        createdBy: user.id,
+      })
 
       // Step 7: Create order totals
       await createOrderTotals(supabase, newOrder.id, webhookData, orderData)
@@ -673,15 +656,16 @@ async function createOrderItems(
     // Try to find product by SKU
     let productId: string | null = null
     if (product.sku) {
-      const { data: productData } = await supabase
+      const { data: productRows } = await supabase
         .from('shoprenter_products')
         .select('id')
-        .eq('sku', product.sku)
+        .eq('connection_id', connectionId)
+        .eq('sku', String(product.sku).trim())
         .is('deleted_at', null)
-        .single()
+        .limit(1)
 
-      if (productData) {
-        productId = productData.id
+      if (productRows?.[0]?.id) {
+        productId = productRows[0].id
       }
     }
 

@@ -8,6 +8,7 @@ import {
   extractParentProductId,
   fetchAttributeDescription,
 } from '@/lib/shoprenter-product-sync-helpers'
+import type { SyncProductToDatabaseOptions } from '@/lib/product-sync-bulk-lite'
 
 
 /**
@@ -198,12 +199,16 @@ export async function syncProductToDatabase(
   tenantId?: string,
   attributeGroupNamesMap?: Map<string, string | null>,
   productClassName?: string | null,
-  manufacturerName?: string | null
+  manufacturerName?: string | null,
+  options?: SyncProductToDatabaseOptions
 ) {
+  const bulkLiteMode = options?.bulkLiteMode === true
   try {
-    console.log(`[SYNC] syncProductToDatabase called for product ${product.sku}`)
-    console.log(`[SYNC] apiBaseUrl provided: ${!!apiBaseUrl}, value: ${apiBaseUrl || 'none'}`)
-    console.log(`[SYNC] authHeaderParam provided: ${!!authHeaderParam}, length: ${authHeaderParam?.length || 0}`)
+    if (!bulkLiteMode) {
+      console.log(`[SYNC] syncProductToDatabase called for product ${product.sku}`)
+      console.log(`[SYNC] apiBaseUrl provided: ${!!apiBaseUrl}, value: ${apiBaseUrl || 'none'}`)
+      console.log(`[SYNC] authHeaderParam provided: ${!!authHeaderParam}, length: ${authHeaderParam?.length || 0}`)
+    }
     
     // Validate product has required fields
     if (!product.id) {
@@ -327,7 +332,13 @@ export async function syncProductToDatabase(
           }
         } else if (attributeId && attributeDescriptionsMap) {
           console.warn(`[SYNC] AttributeDescription NOT found in map for "${attr.name}" (ID: ${attributeId}). Map has ${attributeDescriptionsMap.size} entries. Available IDs: ${Array.from(attributeDescriptionsMap.keys()).slice(0, 5).join(', ')}...`)
-        } else if (attributeId && apiBaseUrl && authHeaderParam && !attributeDescriptionsMap) {
+        } else if (
+          !bulkLiteMode &&
+          attributeId &&
+          apiBaseUrl &&
+          authHeaderParam &&
+          !attributeDescriptionsMap
+        ) {
           // Fallback: fetch individually only if batch map not provided (backward compatibility)
           try {
             const rateLimiter = getShopRenterRateLimiter(tenantId)
@@ -366,67 +377,70 @@ export async function syncProductToDatabase(
         // This is critical for syncing values back to ShopRenter
         let processedValue = attr.value
         if (attr.type === 'LIST' && Array.isArray(attr.value) && attr.value.length > 0) {
-          processedValue = await Promise.all(
-            attr.value.map(async (listValue: any) => {
-              const processedListValue = { ...listValue }
-              
-              // Try to extract listAttributeValue ID from the description
-              // The description should have a listAttributeValue href or id
-              if (listValue.listAttributeValue?.id) {
-                // Already have the ID in full response
-                processedListValue.listAttributeValueId = listValue.listAttributeValue.id
-                console.log(`[SYNC] Extracted listAttributeValue ID from full response for "${attr.name}": ${processedListValue.listAttributeValueId}`)
-              } else if (listValue.listAttributeValue?.href) {
-                // Extract ID from href: "http://shop.api.myshoprenter.hu/listAttributeValues/{id}"
-                const hrefMatch = listValue.listAttributeValue.href.match(/\/listAttributeValues\/([^\/\?]+)/)
-                if (hrefMatch && hrefMatch[1]) {
-                  processedListValue.listAttributeValueId = hrefMatch[1]
-                  console.log(`[SYNC] Extracted listAttributeValue ID from href for "${attr.name}": ${processedListValue.listAttributeValueId}`)
-                }
+          const mapListValueEmbedded = (listValue: any) => {
+            const processedListValue = { ...listValue }
+            if (listValue.listAttributeValue?.id) {
+              processedListValue.listAttributeValueId = listValue.listAttributeValue.id
+            } else if (listValue.listAttributeValue?.href) {
+              const hrefMatch = listValue.listAttributeValue.href.match(/\/listAttributeValues\/([^\/\?]+)/)
+              if (hrefMatch?.[1]) {
+                processedListValue.listAttributeValueId = hrefMatch[1]
               }
-              
-              // If we still don't have the ID, try to fetch it from the description
-              // This is a fallback for when full=1 doesn't include the nested data
-              if (!processedListValue.listAttributeValueId && (listValue.id || listValue.href) && apiBaseUrl && authHeaderParam) {
-                try {
-                  const descId = listValue.id || (listValue.href ? listValue.href.split('/').pop()?.split('?')[0] : null)
-                  if (descId) {
-                    const descUrl = `${apiBaseUrl}/listAttributeValueDescriptions/${encodeURIComponent(descId)}?full=1`
-                    const descResponse = await shopFetch(descUrl, {
-                      method: 'GET',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'Authorization': authHeaderParam
-                      },
-                      signal: AbortSignal.timeout(5000)
-                    })
-                    
-                    if (descResponse.ok) {
-                      const descData = await descResponse.json()
-                      if (descData.listAttributeValue?.id) {
-                        processedListValue.listAttributeValueId = descData.listAttributeValue.id
-                        console.log(`[SYNC] Fetched listAttributeValue ID from description for "${attr.name}": ${processedListValue.listAttributeValueId}`)
-                      } else if (descData.listAttributeValue?.href) {
-                        const hrefMatch = descData.listAttributeValue.href.match(/\/listAttributeValues\/([^\/\?]+)/)
-                        if (hrefMatch && hrefMatch[1]) {
-                          processedListValue.listAttributeValueId = hrefMatch[1]
-                          console.log(`[SYNC] Extracted listAttributeValue ID from description href for "${attr.name}": ${processedListValue.listAttributeValueId}`)
+            }
+            return processedListValue
+          }
+
+          if (bulkLiteMode) {
+            processedValue = attr.value.map(mapListValueEmbedded)
+          } else {
+            processedValue = await Promise.all(
+              attr.value.map(async (listValue: any) => {
+                const processedListValue = mapListValueEmbedded(listValue)
+
+                if (
+                  !processedListValue.listAttributeValueId &&
+                  (listValue.id || listValue.href) &&
+                  apiBaseUrl &&
+                  authHeaderParam
+                ) {
+                  try {
+                    const descId =
+                      listValue.id || (listValue.href ? listValue.href.split('/').pop()?.split('?')[0] : null)
+                    if (descId) {
+                      const descUrl = `${apiBaseUrl}/listAttributeValueDescriptions/${encodeURIComponent(descId)}?full=1`
+                      const descResponse = await shopFetch(descUrl, {
+                        method: 'GET',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Accept: 'application/json',
+                          Authorization: authHeaderParam,
+                        },
+                        signal: AbortSignal.timeout(5000),
+                      })
+
+                      if (descResponse.ok) {
+                        const descData = await descResponse.json()
+                        if (descData.listAttributeValue?.id) {
+                          processedListValue.listAttributeValueId = descData.listAttributeValue.id
+                        } else if (descData.listAttributeValue?.href) {
+                          const hrefMatch = descData.listAttributeValue.href.match(
+                            /\/listAttributeValues\/([^\/\?]+)/
+                          )
+                          if (hrefMatch?.[1]) {
+                            processedListValue.listAttributeValueId = hrefMatch[1]
+                          }
                         }
                       }
-                    } else {
-                      console.warn(`[SYNC] Failed to fetch description for "${attr.name}" to extract listAttributeValue ID: ${descResponse.status}`)
                     }
+                  } catch (error) {
+                    console.warn(`[SYNC] Error fetching listAttributeValue ID for "${attr.name}":`, error)
                   }
-                } catch (error) {
-                  console.warn(`[SYNC] Error fetching listAttributeValue ID for "${attr.name}":`, error)
-                  // Don't fail the entire sync if this fails - fallback strategies will handle it
                 }
-              }
-              
-              return processedListValue
-            })
-          )
+
+                return processedListValue
+              })
+            )
+          }
         }
 
         productAttributes.push({
@@ -444,7 +458,7 @@ export async function syncProductToDatabase(
       
       // For LIST attributes, fetch and store productListAttributeValueRelation IDs
       // This enables direct updates during sync without searching
-      if (productAttributes && productAttributes.length > 0) {
+      if (!bulkLiteMode && productAttributes && productAttributes.length > 0) {
         const listAttributes = productAttributes.filter((attr: any) => attr.type === 'LIST')
         
         if (listAttributes.length > 0 && apiBaseUrl && authHeaderParam && product.id) {
@@ -559,15 +573,20 @@ export async function syncProductToDatabase(
         }
       }
       
-      // Log what we're storing
-      console.log(`[SYNC] Processed ${productAttributes.length} attributes for product ${product.sku}:`)
-      productAttributes.forEach((attr: any) => {
-        if (attr.type === 'LIST' && Array.isArray(attr.value) && attr.value[0]) {
-          console.log(`  - ${attr.name}: display_name="${attr.display_name || 'NOT SET'}", group_name="${attr.group_name || 'NOT SET'}", type=${attr.type}, hasListAttributeValueId=${!!attr.value[0].listAttributeValueId}, hasRelationId=${!!attr.value[0].relationId}`)
-        } else {
-        console.log(`  - ${attr.name}: display_name="${attr.display_name || 'NOT SET'}", group_name="${attr.group_name || 'NOT SET'}", type=${attr.type}`)
-        }
-      })
+      if (!bulkLiteMode) {
+        console.log(`[SYNC] Processed ${productAttributes.length} attributes for product ${product.sku}:`)
+        productAttributes.forEach((attr: any) => {
+          if (attr.type === 'LIST' && Array.isArray(attr.value) && attr.value[0]) {
+            console.log(
+              `  - ${attr.name}: display_name="${attr.display_name || 'NOT SET'}", group_name="${attr.group_name || 'NOT SET'}", type=${attr.type}, hasListAttributeValueId=${!!attr.value[0].listAttributeValueId}, hasRelationId=${!!attr.value[0].relationId}`
+            )
+          } else {
+            console.log(
+              `  - ${attr.name}: display_name="${attr.display_name || 'NOT SET'}", group_name="${attr.group_name || 'NOT SET'}", type=${attr.type}`
+            )
+          }
+        })
+      }
     }
 
     // Extract manufacturer from productExtend (non-blocking - won't fail sync if extraction fails)
@@ -1339,33 +1358,31 @@ export async function syncProductToDatabase(
       const extractedImages = extractImagesFromProductExtend(product, product.id)
       
       if (extractedImages.length > 0) {
-        // Try to fetch images from ShopRenter API to get alt text and ShopRenter IDs
         let shoprenterImages: any[] = []
-        try {
-          const shopName = extractShopNameFromUrl(connection.api_url)
-          if (shopName) {
-            // Use product.shoprenter_id (ShopRenter's ID), not our internal ID
-            shoprenterImages = await fetchProductImages(
-              {
-                apiUrl: connection.api_url,
-                username: connection.username,
-                password: connection.password,
-                shopName: shopName
-              },
-              product.id, // This is the ShopRenter product ID from productExtend
-              tenantId
+        if (!bulkLiteMode) {
+          try {
+            const shopName = extractShopNameFromUrl(connection.api_url)
+            if (shopName) {
+              shoprenterImages = await fetchProductImages(
+                {
+                  apiUrl: connection.api_url,
+                  username: connection.username,
+                  password: connection.password,
+                  shopName: shopName,
+                },
+                product.id,
+                tenantId
+              )
+              console.log(
+                `[SYNC] Fetched ${shoprenterImages.length} images from ShopRenter API for product ${product.sku}`
+              )
+            }
+          } catch (fetchError: any) {
+            console.warn(
+              `[SYNC] Failed to fetch images from ShopRenter API for product ${product.sku}:`,
+              fetchError?.message || fetchError
             )
-            console.log(`[SYNC] Fetched ${shoprenterImages.length} images from ShopRenter API for product ${product.sku}`)
-            if (shoprenterImages.length > 0) {
-              console.log(`[SYNC] ShopRenter images:`, shoprenterImages.map(img => ({ path: img.imagePath, alt: img.imageAlt, id: img.id })))
-            }
-            if (product.imageAlt) {
-              console.log(`[SYNC] Main image alt from productExtend: "${product.imageAlt}"`)
-            }
           }
-        } catch (fetchError: any) {
-          // Non-fatal: continue with extracted images from allImages
-          console.warn(`[SYNC] Failed to fetch images from ShopRenter API for product ${product.sku}:`, fetchError?.message || fetchError)
         }
 
         // Delete existing images for this product (to handle removed images)

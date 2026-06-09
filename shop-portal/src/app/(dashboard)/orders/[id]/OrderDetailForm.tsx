@@ -80,6 +80,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Schedule as ScheduleIcon,
+  Refresh as RefreshIcon,
   ReceiptLong as ReceiptLongIcon,
   Undo as UndoIcon,
   PictureAsPdf as PictureAsPdfIcon
@@ -526,6 +527,34 @@ export default function OrderDetailForm({
   const [displayFulfillability, setDisplayFulfillability] = useState(() =>
     String(order.fulfillability_status ?? 'unknown')
   )
+  const [recheckingFulfillability, setRecheckingFulfillability] = useState(false)
+
+  const handleRecheckFulfillability = useCallback(async () => {
+    if (isCreateMode || order.status !== 'new') return
+    setRecheckingFulfillability(true)
+    try {
+      const res = await fetch(`/api/orders/${order.id}/recheck-fulfillability`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Készlet ellenőrzés sikertelen')
+        return
+      }
+      if (typeof data.fulfillability_status === 'string') {
+        setDisplayFulfillability(data.fulfillability_status)
+      }
+      const linked = Number(data.linked_items ?? 0)
+      const msg =
+        linked > 0
+          ? `${linked} tétel termékhez kapcsolva · ${data.fulfillability_status}`
+          : `Teljesíthetőség: ${data.fulfillability_status}`
+      toast.success(msg)
+      router.refresh()
+    } catch {
+      toast.error('Készlet ellenőrzés sikertelen')
+    } finally {
+      setRecheckingFulfillability(false)
+    }
+  }, [isCreateMode, order.id, order.status, router])
 
   useEffect(() => {
     setItems(orderItems.map((it: any) => ({
@@ -1718,6 +1747,19 @@ export default function OrderDetailForm({
                   </Link>
                 )}
               </>
+            )}
+            {!isCreateMode && order.status === 'new' &&
+              (displayFulfillability === 'unknown' || displayFulfillability === 'checking') && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={recheckingFulfillability ? <CircularProgress size={16} /> : <RefreshIcon />}
+                onClick={() => void handleRecheckFulfillability()}
+                disabled={recheckingFulfillability}
+                sx={{ height: 32 }}
+              >
+                Készlet újraellenőrzése
+              </Button>
             )}
             {!isCreateMode && order.status === 'new' &&
               (displayFulfillability === 'not_fulfillable' || displayFulfillability === 'partially_fulfillable') && (

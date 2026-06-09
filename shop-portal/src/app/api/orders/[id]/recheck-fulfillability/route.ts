@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
-import { computeOrderFulfillabilityFromStock } from '@/lib/order-fulfillability'
-import { reserveStockForOrder } from '@/lib/order-reservation'
+import { recalculateOrderFulfillability } from '@/lib/order-fulfillability'
 
 /**
  * POST /api/orders/[id]/recheck-fulfillability
- * Recompute fulfillability from current stock and update the order.
- * Use when stock was received but the badge didn't update (e.g. "Beszerzés alatt" → "Csomagolható").
+ * Relink order lines by SKU, recompute fulfillability from stock, optionally reserve.
  */
 export async function POST(
   request: NextRequest,
@@ -23,7 +21,7 @@ export async function POST(
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, status, stock_reserved')
+      .select('id, status')
       .eq('id', orderId)
       .is('deleted_at', null)
       .single()
@@ -39,38 +37,23 @@ export async function POST(
       )
     }
 
-    try {
-      await supabase.rpc('refresh_stock_summary')
-    } catch {
-      // ignore if RPC missing or fails
-    }
-    const status = await computeOrderFulfillabilityFromStock(supabase, orderId, { skipRefresh: true })
+    const result = await recalculateOrderFulfillability(supabase, orderId, {
+      reserveIfFullyFulfillable: true,
+      createdBy: user.id,
+    })
 
-    if (status == null) {
+    if (result == null) {
       return NextResponse.json(
-        { error: 'Nem sikerült kiszámolni a készletet (nincs termék a rendelésben?)' },
+        { error: 'Nem sikerült kiszámolni a készletet (nincs kapcsolt termék a rendelésben?)' },
         { status: 400 }
       )
     }
 
-    await supabase
-      .from('orders')
-      .update({ fulfillability_status: status, updated_at: new Date().toISOString() })
-      .eq('id', orderId)
-
-    // If order became fully_fulfillable and was not yet reserved, reserve stock now
-    if (status === 'fully_fulfillable' && !order.stock_reserved) {
-      const reserveResult = await reserveStockForOrder(supabase, orderId, { createdBy: user.id })
-      if (reserveResult.ok) {
-        try {
-          await supabase.rpc('refresh_stock_summary')
-        } catch {
-          // non-fatal
-        }
-      }
-    }
-
-    return NextResponse.json({ fulfillability_status: status })
+    return NextResponse.json({
+      fulfillability_status: result.fulfillability_status,
+      linked_items: result.linked_items,
+      stock_reserved: result.stock_reserved,
+    })
   } catch (error) {
     console.error('Recheck fulfillability error:', error)
     return NextResponse.json(

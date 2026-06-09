@@ -23,6 +23,12 @@ import {
 import { retryWithBackoff } from '@/lib/retry-with-backoff'
 import { batchFetchAttributeDescriptions, batchFetchAttributeWidgetDescriptions } from '@/lib/shoprenter-attribute-sync'
 import { extractShopNameFromUrl, extractParentProductId } from '@/lib/shoprenter-product-sync-helpers'
+import {
+  getBulkLiteProductConcurrency,
+  isProductSyncBulkLiteMode,
+} from '@/lib/product-sync-bulk-lite'
+import { relinkUnlinkedOrderItemsForConnection } from '@/lib/order-items-relink'
+import { recalculateOrderFulfillability } from '@/lib/order-fulfillability'
 import { syncProductToDatabase, ensureManufacturerExists } from './sync-product-db'
 import { syncSingleProductFromShopRenter } from '@/lib/sync-single-shoprenter-product'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
@@ -295,7 +301,7 @@ function getProductSyncChunkBudgetMs(): number {
 }
 
 /** Hard cap before Vercel kills the invocation (`maxDuration` minus safety buffer). */
-function getProductSyncInvocationBudgetMs(chunkBudgetMs: number): number {
+function getProductSyncInvocationBudgetMs(_chunkBudgetMs: number): number {
   const maxDurationMs = maxDuration * 1000
   const bufferMs = 60_000
   const wallClockCap = maxDurationMs - bufferMs
@@ -303,7 +309,8 @@ function getProductSyncInvocationBudgetMs(chunkBudgetMs: number): number {
   if (Number.isFinite(raw) && raw >= 45_000 && raw <= maxDurationMs) {
     return Math.min(raw, wallClockCap)
   }
-  return Math.min(chunkBudgetMs, wallClockCap)
+  // Always respect Vercel wall clock — independent of SYNC_PRODUCTS_CHUNK_BUDGET_MS
+  return wallClockCap
 }
 
 export type ProductExtendChunkContext = {
@@ -319,6 +326,7 @@ export type ProductExtendChunkContext = {
   existingAuditLogId: string | null
   chunkBudgetMs: number
   invocationBudgetMs: number
+  bulkLiteMode?: boolean
   scheduleContinuation?: () => Promise<void>
 }
 
@@ -431,6 +439,7 @@ async function handleTrustedProductSyncChunkResume(
         ? meta.updatedAfter
         : null
   const forceSync = meta.mode === 'full'
+  const bulkLiteMode = isProductSyncBulkLiteMode(meta)
 
   if (startPage >= pageCount) {
     try {
@@ -594,6 +603,7 @@ async function handleTrustedProductSyncChunkResume(
           existingAuditLogId: job.audit_log_id ?? null,
           chunkBudgetMs,
           invocationBudgetMs,
+          bulkLiteMode,
           scheduleContinuation,
         },
         tenantId,
@@ -941,6 +951,7 @@ export async function POST(
               pageCount: effectivePageCount,
               updatedAfter,
               mode: forceSync ? 'full' : 'incremental',
+              bulkLiteMode: forceSync || effectivePageCount > 10,
               tenantId: tenantId ?? undefined,
               userEmail: user.email ?? undefined,
               checkpoint: {
@@ -1019,6 +1030,7 @@ export async function POST(
             existingAuditLogId: null,
             chunkBudgetMs,
             invocationBudgetMs,
+            bulkLiteMode: forceSync || effectivePageCount > 10,
             scheduleContinuation,
           },
           tenantId,
@@ -1101,18 +1113,25 @@ async function processProductExtendPagesInBackground(
     existingAuditLogId,
     chunkBudgetMs,
     invocationBudgetMs,
+    bulkLiteMode: chunkBulkLiteMode = false,
     scheduleContinuation,
   } = chunk
   let listedItemsBeforeCurrentPage = chunk.listedItemsBeforeStartPage ?? 0
 
+  if (chunkBulkLiteMode) {
+    console.log('[SYNC] Bulk-lite mode: skipping per-product enrichment API calls')
+  }
+
   const rateLimiter = getShopRenterRateLimiter(tenantId)
-  const PRODUCT_CONCURRENCY = Math.max(
-    1,
-    Math.min(
-      12,
-      Number.parseInt(process.env.SHOPRENTER_SYNC_PRODUCT_CONCURRENCY || '6', 10) || 6
-    )
-  )
+  const PRODUCT_CONCURRENCY = chunkBulkLiteMode
+    ? getBulkLiteProductConcurrency()
+    : Math.max(
+        1,
+        Math.min(
+          12,
+          Number.parseInt(process.env.SHOPRENTER_SYNC_PRODUCT_CONCURRENCY || '6', 10) || 6
+        )
+      )
 
   const extractItems = (data: any): any[] => {
     if (!data) return []
@@ -1134,7 +1153,7 @@ async function processProductExtendPagesInBackground(
   let errorCount = 0
   const syncedProductIds: string[] = []
 
-  if (preSyncedJobId) {
+  if (preSyncedJobId && !chunkBulkLiteMode) {
     try {
       const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
       const meta = row?.metadata && typeof row.metadata === 'object' ? (row.metadata as Record<string, unknown>) : {}
@@ -1252,7 +1271,7 @@ async function processProductExtendPagesInBackground(
 
   let lastSyncedProductIdsPersisted = syncedProductIds.length
   const persistSyncedProductIds = async (force = false) => {
-    if (!preSyncedJobId) return
+    if (!preSyncedJobId || chunkBulkLiteMode) return
     const count = syncedProductIds.length
     if (!force && count - lastSyncedProductIdsPersisted < 200) return
     lastSyncedProductIdsPersisted = count
@@ -1337,6 +1356,20 @@ async function processProductExtendPagesInBackground(
       // Force flush so GET /sync-progress (DB) shows refined totals within seconds, not only on heartbeat.
       await flushThrottled(true)
 
+      const pageStartIndexForBudget = page === startPage ? chunkStartItemIndex : 0
+      if (Date.now() - chunkStartedAt >= invocationBudgetMs) {
+        await flushExclusive(() =>
+          updateCheckpoint(page, pageStartIndexForBudget, listedItemsBeforeCurrentPage)
+        )
+        console.log(
+          `[SYNC] Invocation budget elérve oldal ${page} listázás után — folytatás itemIndex=${pageStartIndexForBudget}`
+        )
+        await flushThrottled(true)
+        if (preSyncedJobId) await clearChunkWorkerStarted(supabase, preSyncedJobId)
+        await scheduleContinuation?.()
+        return
+      }
+
       if (auditLogId && page === pageCount - 1) {
         const exactListRows = listedItemsBeforeCurrentPage + items.length
         try {
@@ -1349,32 +1382,42 @@ async function processProductExtendPagesInBackground(
       let attributeDescriptionsMap:
         | Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>
         | undefined
-      try {
-        const attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }> =
-          []
-        for (const product of items) {
-          if (product?.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
-            for (const attr of product.productAttributeExtend) {
-              let attributeId = attr?.id || null
-              if (!attributeId && attr?.href) {
-                const hrefParts = String(attr.href).split('/')
-                attributeId = hrefParts[hrefParts.length - 1] || null
-              }
-              if (attributeId) {
-                attributeRequests.push({
-                  attributeId,
-                  attributeType: inferAttributeTypeFromHref(attr?.href, attr),
-                })
+      if (!chunkBulkLiteMode) {
+        try {
+          const attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }> =
+            []
+          for (const product of items) {
+            if (product?.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
+              for (const attr of product.productAttributeExtend) {
+                let attributeId = attr?.id || null
+                if (!attributeId && attr?.href) {
+                  const hrefParts = String(attr.href).split('/')
+                  attributeId = hrefParts[hrefParts.length - 1] || null
+                }
+                if (attributeId) {
+                  attributeRequests.push({
+                    attributeId,
+                    attributeType: inferAttributeTypeFromHref(attr?.href, attr),
+                  })
+                }
               }
             }
           }
+          const deduped = dedupeAttributeRequests(attributeRequests)
+          if (deduped.length > 0) {
+            const prefetchMs = Number.parseInt(process.env.SYNC_PRODUCTS_PREFETCH_TIMEOUT_MS || '60000', 10)
+            const prefetchCap = Number.isFinite(prefetchMs) && prefetchMs > 0 ? prefetchMs : 60_000
+            attributeDescriptionsMap = await Promise.race([
+              batchFetchAttributeDescriptions(apiUrl, authHeader, deduped, { tenantId }),
+              new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), prefetchCap)),
+            ])
+            if (!attributeDescriptionsMap) {
+              console.warn(`[SYNC] Attribute prefetch timeout (${prefetchCap}ms) — workers continue with internal names`)
+            }
+          }
+        } catch (e) {
+          console.warn('[SYNC] attribute prefetch error (non-fatal):', e)
         }
-        const deduped = dedupeAttributeRequests(attributeRequests)
-        if (deduped.length > 0) {
-          attributeDescriptionsMap = await batchFetchAttributeDescriptions(apiUrl, authHeader, deduped, { tenantId })
-        }
-      } catch (e) {
-        console.warn('[SYNC] attribute prefetch error (non-fatal):', e)
       }
 
       const pageStartIndex = page === startPage ? chunkStartItemIndex : 0
@@ -1404,10 +1447,13 @@ async function processProductExtendPagesInBackground(
               authHeader,
               attributeDescriptionsMap,
               tenantId,
-              undefined
+              undefined,
+              undefined,
+              undefined,
+              { bulkLiteMode: chunkBulkLiteMode }
             )
             syncedCount += 1
-            if (result?.productId) {
+            if (!chunkBulkLiteMode && result?.productId) {
               syncedProductIds.push(result.productId)
             } else if (product?.id) {
               const { data: syncedProduct } = await supabase
@@ -1485,6 +1531,31 @@ async function processProductExtendPagesInBackground(
 
     if (!stopped) {
       try {
+        const { linked, orderIds } = await relinkUnlinkedOrderItemsForConnection(supabase, connectionId)
+        if (linked > 0) {
+          console.log(
+            `[SYNC] Relinked ${linked} order line(s) by SKU for connection ${connectionId} (${orderIds.length} order(s))`
+          )
+          try {
+            await supabase.rpc('refresh_stock_summary')
+          } catch {
+            // non-fatal
+          }
+          for (const orderId of orderIds) {
+            await recalculateOrderFulfillability(supabase, orderId, {
+              skipRefresh: true,
+              relinkFirst: false,
+              reserveIfFullyFulfillable: true,
+            })
+          }
+        }
+      } catch (relinkErr) {
+        console.warn('[SYNC] Post-sync order SKU relink (non-fatal):', relinkErr)
+      }
+    }
+
+    if (!stopped && !chunkBulkLiteMode) {
+      try {
         const { updatedCount: parentLinksUpdated } = await runPostSyncParentChildUpdate(
           supabase,
           connection,
@@ -1509,6 +1580,18 @@ async function processProductExtendPagesInBackground(
         }
       } catch (parentErr) {
         console.error('[SYNC] Post-sync parent-child update failed (non-fatal):', parentErr)
+      }
+    } else if (chunkBulkLiteMode && !stopped) {
+      console.log('[SYNC] Bulk-lite: post-sync parent-child deferred (run enrichment job after catalog pull)')
+      if (preSyncedJobId) {
+        try {
+          const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
+          const metadata = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {}
+          metadata.deferredPostSyncParent = true
+          await supabase.from('sync_jobs').update({ metadata }).eq('id', preSyncedJobId)
+        } catch (e) {
+          console.warn('[SYNC] Failed to mark deferredPostSyncParent (non-fatal):', e)
+        }
       }
     } else {
       console.log(`[SYNC] Sync stopped — post-sync parent-child update skipped`)
