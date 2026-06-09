@@ -1235,6 +1235,8 @@ async function processProductExtendPagesInBackground(
   /**
    * `pageIndex` = current productExtend page; `itemIndex` = next product row on that page (0-based).
    * `listedItemsSoFar` = sum of list row counts for pages strictly before `pageIndex`.
+   * Checkpoint writes intentionally exclude `syncedProductIds` — that array grows to thousands of
+   * UUIDs and can make metadata updates fail silently while `synced_units` flush still succeeds.
    */
   const updateCheckpoint = async (pageIndex: number, itemIndex: number, listedItemsSoFar: number) => {
     if (!preSyncedJobId) return
@@ -1242,10 +1244,25 @@ async function processProductExtendPagesInBackground(
       const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
       const metadata = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {}
       metadata.checkpoint = { page: pageIndex, itemIndex, updatedAfter, listedItemsSoFar }
-      metadata.syncedProductIds = [...new Set(syncedProductIds)]
       await supabase.from('sync_jobs').update({ metadata, updated_at: new Date().toISOString() }).eq('id', preSyncedJobId)
     } catch (e) {
       console.warn('[SYNC] Failed to update sync_jobs checkpoint metadata (non-fatal):', e)
+    }
+  }
+
+  let lastSyncedProductIdsPersisted = syncedProductIds.length
+  const persistSyncedProductIds = async (force = false) => {
+    if (!preSyncedJobId) return
+    const count = syncedProductIds.length
+    if (!force && count - lastSyncedProductIdsPersisted < 200) return
+    lastSyncedProductIdsPersisted = count
+    try {
+      const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
+      const metadata = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {}
+      metadata.syncedProductIds = [...new Set(syncedProductIds)]
+      await supabase.from('sync_jobs').update({ metadata }).eq('id', preSyncedJobId)
+    } catch (e) {
+      console.warn('[SYNC] Failed to persist syncedProductIds (non-fatal):', e)
     }
   }
 
@@ -1365,6 +1382,8 @@ async function processProductExtendPagesInBackground(
       let nextIdx = pageStartIndex
       let pageProcessedCount = 0
 
+      await flushExclusive(() => updateCheckpoint(page, pageStartIndex, listedItemsBeforeCurrentPage))
+
       const worker = async () => {
         while (true) {
           if (shouldBreakChunk || (await checkStop())) return
@@ -1408,10 +1427,11 @@ async function processProductExtendPagesInBackground(
           } finally {
             pageProcessedCount += 1
             reportListedProgress(pageStartIndex, pageProcessedCount)
-            if (!shouldBreakChunk && pageProcessedCount % 10 === 0) {
-              await flushExclusive(() =>
-                updateCheckpoint(page, pageStartIndex + pageProcessedCount, listedItemsBeforeCurrentPage)
-              )
+            if (!shouldBreakChunk && pageProcessedCount % 5 === 0) {
+              await flushExclusive(async () => {
+                await updateCheckpoint(page, pageStartIndex + pageProcessedCount, listedItemsBeforeCurrentPage)
+                await persistSyncedProductIds(false)
+              })
             }
             await flushThrottled(false)
           }
@@ -1424,9 +1444,10 @@ async function processProductExtendPagesInBackground(
 
       if (shouldBreakChunk) {
         const resumeItemIndex = nextIdx
-        await flushExclusive(() =>
-          updateCheckpoint(page, resumeItemIndex, listedItemsBeforeCurrentPage)
-        )
+        await flushExclusive(async () => {
+          await updateCheckpoint(page, resumeItemIndex, listedItemsBeforeCurrentPage)
+          await persistSyncedProductIds(true)
+        })
         console.log(
           `[SYNC] Invocation budget (${invocationBudgetMs}ms) elérve oldal ${page} közepén — folytatás itemIndex=${resumeItemIndex}, listed=${listedItemsBeforeCurrentPage}`
         )
@@ -1438,7 +1459,10 @@ async function processProductExtendPagesInBackground(
 
       const nextPage = page + 1
       listedItemsBeforeCurrentPage += items.length
-      await updateCheckpoint(nextPage, 0, listedItemsBeforeCurrentPage)
+      await flushExclusive(async () => {
+        await updateCheckpoint(nextPage, 0, listedItemsBeforeCurrentPage)
+        await persistSyncedProductIds(true)
+      })
       await flushThrottled(false)
 
       if (await checkStop()) {
