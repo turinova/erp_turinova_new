@@ -65,14 +65,6 @@
       "permanent": true
     },
     {
-      "source": "/belteriajtok",
-      "statusCode": 410
-    },
-    {
-      "source": "/belteriajtok/:path*",
-      "statusCode": 410
-    },
-    {
       "source": "/rolunk",
       "destination": "https://www.hirosablak.hu/",
       "permanent": true
