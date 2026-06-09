@@ -6,7 +6,7 @@ import { CookieConsentShell } from "@/components/site/CookieConsentShell"
 import { SiteFooter } from "@/components/site/SiteFooter"
 import { SiteHeader } from "@/components/site/SiteHeader"
 import { buildOrganizationJsonLd, COMPANY } from "@/lib/company"
-import { DEFAULT_OG_IMAGE, getDefaultRobots } from "@/lib/seo"
+import { buildWebSiteJsonLd, DEFAULT_OG_IMAGE, getDefaultRobots } from "@/lib/seo"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -69,6 +69,13 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(buildOrganizationJsonLd()),
+          }}
+        />
+        <Script
+          id="jsonld-website"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(buildWebSiteJsonLd()),
           }}
         />
         <CookieConsentShell>

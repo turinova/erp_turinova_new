@@ -9,6 +9,59 @@ export const ORGANIZATION_ID = `${COMPANY.website}/#organization`
 export const LOCAL_BUSINESS_ID = `${COMPANY.website}/#localbusiness`
 export const WEBSITE_ID = `${COMPANY.website}/#website`
 
+export function buildWebSiteJsonLd() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": WEBSITE_ID,
+    url: COMPANY.website,
+    name: COMPANY.brand,
+    alternateName: COMPANY.shortName,
+    inLanguage: "hu-HU",
+    publisher: { "@id": ORGANIZATION_ID },
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${COMPANY.website}/butorlap?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    },
+  }
+}
+
+export function buildProductJsonLd(input: {
+  name: string
+  description: string
+  url: string
+  brand?: string
+  image?: string
+  sku?: string
+  inStock?: boolean
+}) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    image: input.image,
+    sku: input.sku,
+    brand: input.brand
+      ? { "@type": "Brand", name: input.brand }
+      : undefined,
+    offers: {
+      "@type": "Offer",
+      url: input.url,
+      priceCurrency: "HUF",
+      availability: input.inStock
+        ? "https://schema.org/InStock"
+        : "https://schema.org/PreOrder",
+      seller: { "@id": LOCAL_BUSINESS_ID },
+    },
+  }
+}
+
 /** Preview / local builds should not compete with production in search. */
 export function getDefaultRobots(): NonNullable<Metadata["robots"]> {
   if (process.env.VERCEL_ENV === "preview") {

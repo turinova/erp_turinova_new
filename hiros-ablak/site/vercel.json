@@ -2,6 +2,122 @@
   "framework": "nextjs",
   "installCommand": "npm install",
   "buildCommand": "npm run build",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "hirosablak.hu" }],
+      "destination": "https://www.hirosablak.hu/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/barkacsaruhaz",
+      "destination": "https://www.hirosablak.hu/barkacsaruhaz-kecskemet",
+      "permanent": true
+    },
+    {
+      "source": "/lapszabaszat",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "permanent": true
+    },
+    {
+      "source": "/lapszabaszat-1",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "permanent": true
+    },
+    {
+      "source": "/lapszabaszat-kecskemet",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "permanent": true
+    },
+    {
+      "source": "/ipari-megoldasok",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/ipari-megoldasok/szallitolada-keszites",
+      "permanent": true
+    },
+    {
+      "source": "/egyedi-butorgyartas",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "permanent": true
+    },
+    {
+      "source": "/egyedi-butorgyartas-kecskemet",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "permanent": true
+    },
+    {
+      "source": "/karrier",
+      "destination": "https://www.hirosablak.hu/kapcsolat",
+      "permanent": true
+    },
+    {
+      "source": "/adatkezelesi-tajekoztatot",
+      "destination": "https://www.hirosablak.hu/adatkezelesi-tajekoztato",
+      "permanent": true
+    },
+    {
+      "source": "/anyagok",
+      "destination": "https://www.hirosablak.hu/butorlap",
+      "permanent": true
+    },
+    {
+      "source": "/barkacsaruhaz-kecskemet/",
+      "destination": "https://www.hirosablak.hu/barkacsaruhaz-kecskemet",
+      "permanent": true
+    },
+    {
+      "source": "/belteriajtok",
+      "statusCode": 410
+    },
+    {
+      "source": "/belteriajtok/:path*",
+      "statusCode": 410
+    },
+    {
+      "source": "/rolunk",
+      "destination": "https://www.hirosablak.hu/",
+      "permanent": true
+    },
+    {
+      "source": "/utmutatok/:path*",
+      "destination": "https://www.hirosablak.hu/",
+      "permanent": true
+    },
+    {
+      "source": "/blog/mosogato-valsztas-utmutato",
+      "destination": "https://www.hirosablak.hu/",
+      "permanent": true
+    },
+    {
+      "source": "/blog/milyen-anyagbol-keszuljon-a-butor",
+      "destination": "https://www.hirosablak.hu/",
+      "permanent": true
+    },
+    {
+      "source": "/blog/munkalap-valaszto-utmutato",
+      "destination": "https://www.hirosablak.hu/",
+      "permanent": true
+    },
+    {
+      "source": "/blog/granit-mosogatotalca-kisokos",
+      "destination": "https://www.hirosablak.hu/",
+      "permanent": true
+    },
+    {
+      "source": "/blog/strongmax-fikrendszer-prmium-megolds-btorokhoz",
+      "destination": "https://www.hirosablak.hu/barkacsaruhaz-kecskemet",
+      "permanent": true
+    },
+    {
+      "source": "/blog/kesz-butor-vagy-egyedibutor",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "permanent": true
+    },
+    {
+      "source": "/blog",
+      "destination": "https://www.hirosablak.hu/",
+      "permanent": true
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

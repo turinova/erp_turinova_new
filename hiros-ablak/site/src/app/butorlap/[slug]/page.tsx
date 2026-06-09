@@ -10,7 +10,11 @@ import {
 import { LINKS } from "@/lib/links"
 import { getSupabaseServerClient } from "@/lib/supabase"
 import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
-import { buildBreadcrumbJsonLd } from "@/lib/seo"
+import {
+  absoluteUrl,
+  buildBreadcrumbJsonLd,
+  buildProductJsonLd,
+} from "@/lib/seo"
 
 export const revalidate = 3600 // 1 hour
 
@@ -279,12 +283,27 @@ export default async function ButorlapDetailPage({
     { name: r.name, path: canonical },
   ])
 
+  const productJsonLd = buildProductJsonLd({
+    name: `${r.name} bútorlap`,
+    description: definition,
+    url: absoluteUrl(canonical),
+    brand: r.brand_name ?? undefined,
+    image: r.image_url ?? undefined,
+    sku: r.slug ?? slug,
+    inStock: Boolean(r.on_stock),
+  })
+
   return (
     <div className="bg-stone-wash">
       <Script
         id="jsonld-breadcrumb-butorlap"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+      <Script
+        id="jsonld-product-butorlap"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
       />
       <Script
         id="jsonld-faq-butorlap"

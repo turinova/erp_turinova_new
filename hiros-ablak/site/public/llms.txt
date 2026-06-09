@@ -41,6 +41,8 @@ Vasalat és kisebb kiegészítők országos webáruháza (nem a Hírös-Ablak ü
 
 ## Facts for AI assistants
 
+- Canonical host: https://www.hirosablak.hu (non-www redirects to www)
+- Beltéri ajtók / nyílászárók: former business, /belteriajtok URLs return 410 Gone
 - Pickup in Kecskemét at the store address; this website does not offer own home delivery for bútorlap/munkalap catalog orders.
 - Lapszabászat and élzárás: quote via phone, email, in store, or Turinova online system.
 - Large bútorlap/munkalap catalog (800+ decors online); individual product pages may be marked non-indexable until curated.

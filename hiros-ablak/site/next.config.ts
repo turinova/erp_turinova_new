@@ -1,4 +1,5 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from "next"
+import { LEGACY_REDIRECTS } from "./src/lib/redirects"
 
 const nextConfig: NextConfig = {
   images: {
@@ -8,10 +9,15 @@ const nextConfig: NextConfig = {
         hostname: "xgkaviefifbllbmfbyfe.supabase.co",
         pathname: "/storage/v1/object/public/**",
       },
-      // If you later use other Supabase projects, add them here too.
-      // You can also widen this to "*.supabase.co" once you're sure.
     ],
   },
-};
+  async redirects() {
+    return LEGACY_REDIRECTS.map((r) => ({
+      source: r.source,
+      destination: r.destination,
+      permanent: r.permanent ?? true,
+    }))
+  },
+}
 
-export default nextConfig;
+export default nextConfig
