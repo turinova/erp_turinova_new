@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getProgress, clearProgress } from '@/lib/sync-progress-store'
 import { reconcileStaleRunningSyncJob } from '@/lib/sync-job-db'
-import { tryAutoResumeStalledProductSyncJob } from '@/lib/sync-chunk-continuation'
+import {
+  computeRealSyncedFromCheckpoint,
+  tryAutoResumeStalledProductSyncJob,
+} from '@/lib/sync-chunk-continuation'
 
 function mapJobStatusToUi(dbStatus: string): string {
   if (dbStatus === 'running') return 'syncing'
@@ -12,22 +15,34 @@ function mapJobStatusToUi(dbStatus: string): string {
 /** Return recently finished jobs so a fast completion is not lost before the next browser poll. */
 const RECENT_FINISHED_JOB_MS = 5 * 60 * 1000
 
-function buildProgressPayloadFromJob(job: {
-  total_units: number | null
-  synced_units: number | null
-  error_units: number | null
-  status: string
-  started_at: string
-  completed_at?: string | null
-  current_batch?: number | null
-  total_batches?: number | null
-  batch_progress?: number | null
-}) {
+function buildProgressPayloadFromJob(
+  job: {
+    total_units: number | null
+    synced_units: number | null
+    error_units: number | null
+    status: string
+    started_at: string
+    completed_at?: string | null
+    current_batch?: number | null
+    total_batches?: number | null
+    batch_progress?: number | null
+    metadata?: unknown
+  },
+  metadata?: Record<string, unknown> | null
+) {
   const uiStatus = mapJobStatusToUi(job.status)
   const endMs = job.completed_at ? new Date(job.completed_at).getTime() : Date.now()
   const elapsed = Math.max(0, Math.floor((endMs - new Date(job.started_at).getTime()) / 1000))
   const total = job.total_units ?? 0
-  const synced = job.synced_units ?? 0
+  const meta =
+    metadata ??
+    (job.metadata && typeof job.metadata === 'object' ? (job.metadata as Record<string, unknown>) : null)
+  const checkpointSynced =
+    meta?.syncType === 'product' ? computeRealSyncedFromCheckpoint(meta) : null
+  const synced =
+    checkpointSynced != null && job.status === 'running'
+      ? checkpointSynced
+      : (job.synced_units ?? 0)
   const errors = job.error_units ?? 0
 
   return {
@@ -139,7 +154,7 @@ export async function GET(
       metadata: jobMeta,
     }, supabase)
 
-    const jobProgress = buildProgressPayloadFromJob(job)
+    const jobProgress = buildProgressPayloadFromJob(job, jobMeta)
 
     console.log(`[PROGRESS] Returning DB progress for ${id}: synced=${jobProgress.synced}/${jobProgress.total}, status=${jobProgress.status}`)
 

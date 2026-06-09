@@ -2,9 +2,13 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { getTenantSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
 import {
+  clearChunkWorkerStarted,
   createProductSyncContinuationFetcher,
   getConnectionByIdWithClient,
   getTenantSupabaseServiceRole,
+  isChunkWorkerLikelyActive,
+  markChunkWorkerStarted,
+  parseProductSyncCheckpoint,
   readTenantIdFromJobMetadata,
   resolveTenantIdForConnection,
 } from '@/lib/sync-chunk-continuation'
@@ -290,8 +294,22 @@ function getProductSyncChunkBudgetMs(): number {
   return 180_000
 }
 
+/** Hard cap before Vercel kills the invocation (`maxDuration` minus safety buffer). */
+function getProductSyncInvocationBudgetMs(chunkBudgetMs: number): number {
+  const maxDurationMs = maxDuration * 1000
+  const bufferMs = 60_000
+  const wallClockCap = maxDurationMs - bufferMs
+  const raw = Number.parseInt(process.env.SYNC_PRODUCTS_INVOCATION_BUDGET_MS || '', 10)
+  if (Number.isFinite(raw) && raw >= 45_000 && raw <= maxDurationMs) {
+    return Math.min(raw, wallClockCap)
+  }
+  return Math.min(chunkBudgetMs, wallClockCap)
+}
+
 export type ProductExtendChunkContext = {
   startPage: number
+  /** Resume within `startPage` at this product index (0-based). */
+  startItemIndex?: number
   pageCount: number
   totalEstimated: number
   /** Sum of `items.length` for productExtend pages strictly before `startPage` (chunk resume). */
@@ -300,6 +318,7 @@ export type ProductExtendChunkContext = {
   preSyncedJobId: string | null
   existingAuditLogId: string | null
   chunkBudgetMs: number
+  invocationBudgetMs: number
   scheduleContinuation?: () => Promise<void>
 }
 
@@ -392,16 +411,19 @@ async function handleTrustedProductSyncChunkResume(
     return NextResponse.json({ success: false, error: 'Érvénytelen feladat típus' }, { status: 400 })
   }
 
+  if (isChunkWorkerLikelyActive(meta, job.updated_at)) {
+    console.log(`[SYNC] Chunk resume skipped — worker likely active job=${jobId}`)
+    return NextResponse.json({
+      success: true,
+      message: 'Chunk már fut',
+      skipped: true,
+    })
+  }
+
   const pageCount = Math.max(1, Number(meta.pageCount ?? 1))
   const pageSize = Math.max(1, Number(meta.pageSize ?? 200))
-  const checkpointMeta = meta.checkpoint as { page?: number; listedItemsSoFar?: number } | undefined
-  const startPage = Math.max(0, Number(checkpointMeta?.page ?? 0))
-  const storedListed = checkpointMeta?.listedItemsSoFar
-  /** Older jobs had no `listedItemsSoFar`; assume prior pages were full so totals stay a safe upper bound. */
-  const listedItemsBeforeStartPage =
-    typeof storedListed === 'number' && Number.isFinite(storedListed)
-      ? Math.max(0, storedListed)
-      : Math.max(0, startPage * pageSize)
+  const { page: startPage, itemIndex: startItemIndex, listedItemsSoFar: listedItemsBeforeStartPage } =
+    parseProductSyncCheckpoint(meta)
   const updatedAfter =
     meta.updatedAfter === null || meta.updatedAfter === undefined
       ? null
@@ -502,11 +524,13 @@ async function handleTrustedProductSyncChunkResume(
     resumeBatchProgress
   )
 
+  const realSynced = listedItemsBeforeStartPage + startItemIndex
+
   updateProgress(connectionId, {
     total: resumeTotalUpper,
-    synced: job.synced_units ?? 0,
+    synced: realSynced,
     errors: job.error_units ?? 0,
-    current: (job.synced_units ?? 0) + (job.error_units ?? 0),
+    current: realSynced + (job.error_units ?? 0),
     status: 'syncing',
     shouldStop: false,
     currentBatch: startPage + 1,
@@ -544,6 +568,10 @@ async function handleTrustedProductSyncChunkResume(
     supabase
   )
 
+  const invocationBudgetMs = getProductSyncInvocationBudgetMs(chunkBudgetMs)
+
+  await markChunkWorkerStarted(supabase, jobId)
+
   after(async () => {
     try {
       await processProductExtendPagesInBackground(
@@ -557,6 +585,7 @@ async function handleTrustedProductSyncChunkResume(
         pageSize,
         {
           startPage,
+          startItemIndex,
           pageCount,
           totalEstimated: resumeTotalUpper,
           listedItemsBeforeStartPage,
@@ -564,6 +593,7 @@ async function handleTrustedProductSyncChunkResume(
           preSyncedJobId: jobId,
           existingAuditLogId: job.audit_log_id ?? null,
           chunkBudgetMs,
+          invocationBudgetMs,
           scheduleContinuation,
         },
         tenantId,
@@ -595,6 +625,7 @@ async function handleTrustedProductSyncChunkResume(
     message: 'Szinkronizálás chunk folytatva',
     resumed: true,
     startPage,
+    startItemIndex,
     pageCount,
   })
 }
@@ -914,6 +945,7 @@ export async function POST(
               userEmail: user.email ?? undefined,
               checkpoint: {
                 page: 0,
+                itemIndex: 0,
                 updatedAfter,
                 listedItemsSoFar: 0,
               },
@@ -952,12 +984,17 @@ export async function POST(
 
     const origin = request.nextUrl.origin
     const chunkBudgetMs = getProductSyncChunkBudgetMs()
+    const invocationBudgetMs = getProductSyncInvocationBudgetMs(chunkBudgetMs)
 
     const scheduleContinuation = preSyncedJobId
       ? createProductSyncContinuationFetcher(origin, connectionId, preSyncedJobId, supabase)
       : async () => {
           console.warn('[SYNC] Nincs sync_jobs id — chunk folytatás kihagyva.')
         }
+
+    if (preSyncedJobId) {
+      await markChunkWorkerStarted(supabase, preSyncedJobId)
+    }
 
     // Run heavy work after response; Next/Vercel waitUntil keeps invocation alive until done (maxDuration)
     after(async () => {
@@ -973,6 +1010,7 @@ export async function POST(
           PAGE_SIZE,
           {
             startPage: 0,
+            startItemIndex: 0,
             pageCount: effectivePageCount,
             totalEstimated,
             listedItemsBeforeStartPage: 0,
@@ -980,6 +1018,7 @@ export async function POST(
             preSyncedJobId,
             existingAuditLogId: null,
             chunkBudgetMs,
+            invocationBudgetMs,
             scheduleContinuation,
           },
           tenantId,
@@ -1054,12 +1093,14 @@ async function processProductExtendPagesInBackground(
 ) {
   const {
     startPage,
+    startItemIndex: chunkStartItemIndex = 0,
     pageCount,
     totalEstimated,
     firstListData,
     preSyncedJobId,
     existingAuditLogId,
     chunkBudgetMs,
+    invocationBudgetMs,
     scheduleContinuation,
   } = chunk
   let listedItemsBeforeCurrentPage = chunk.listedItemsBeforeStartPage ?? 0
@@ -1191,18 +1232,30 @@ async function processProductExtendPagesInBackground(
     return false
   }
 
-  /** `nextPageIndex` = next productExtend page to fetch; `listedItemsSoFar` = sum of list row counts for pages 0..previous inclusive. */
-  const updateCheckpoint = async (nextPageIndex: number, listedItemsSoFar: number) => {
+  /**
+   * `pageIndex` = current productExtend page; `itemIndex` = next product row on that page (0-based).
+   * `listedItemsSoFar` = sum of list row counts for pages strictly before `pageIndex`.
+   */
+  const updateCheckpoint = async (pageIndex: number, itemIndex: number, listedItemsSoFar: number) => {
     if (!preSyncedJobId) return
     try {
       const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
       const metadata = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {}
-      metadata.checkpoint = { page: nextPageIndex, updatedAfter, listedItemsSoFar }
+      metadata.checkpoint = { page: pageIndex, itemIndex, updatedAfter, listedItemsSoFar }
       metadata.syncedProductIds = [...new Set(syncedProductIds)]
-      await supabase.from('sync_jobs').update({ metadata }).eq('id', preSyncedJobId)
+      await supabase.from('sync_jobs').update({ metadata, updated_at: new Date().toISOString() }).eq('id', preSyncedJobId)
     } catch (e) {
       console.warn('[SYNC] Failed to update sync_jobs checkpoint metadata (non-fatal):', e)
     }
+  }
+
+  const reportListedProgress = (pageStartIndex: number, pageProcessedCount: number) => {
+    const synced = listedItemsBeforeCurrentPage + pageStartIndex + pageProcessedCount
+    const p = getProgress(connectionId)
+    updateProgress(connectionId, {
+      synced,
+      current: synced + (p?.errors ?? errorCount),
+    })
   }
 
   const SYNC_HEARTBEAT_MS = 60_000
@@ -1214,6 +1267,7 @@ async function processProductExtendPagesInBackground(
   }
 
   const chunkStartedAt = Date.now()
+  let shouldBreakChunk = false
 
   try {
     for (let page = startPage; page < pageCount; page++) {
@@ -1306,10 +1360,18 @@ async function processProductExtendPagesInBackground(
         console.warn('[SYNC] attribute prefetch error (non-fatal):', e)
       }
 
-      let nextIdx = 0
+      const pageStartIndex = page === startPage ? chunkStartItemIndex : 0
+      const itemsToProcess = pageStartIndex > 0 ? items.slice(pageStartIndex) : items
+      let nextIdx = pageStartIndex
+      let pageProcessedCount = 0
+
       const worker = async () => {
         while (true) {
-          if (await checkStop()) return
+          if (shouldBreakChunk || (await checkStop())) return
+          if (Date.now() - chunkStartedAt >= invocationBudgetMs) {
+            shouldBreakChunk = true
+            return
+          }
           const idx = nextIdx++
           if (idx >= items.length) return
           const product = items[idx]
@@ -1326,7 +1388,6 @@ async function processProductExtendPagesInBackground(
               undefined
             )
             syncedCount += 1
-            incrementProgress(connectionId, { synced: 1 })
             if (result?.productId) {
               syncedProductIds.push(result.productId)
             } else if (product?.id) {
@@ -1345,17 +1406,39 @@ async function processProductExtendPagesInBackground(
             incrementProgress(connectionId, { errors: 1 })
             console.warn('[SYNC] product sync error (non-fatal):', e?.message || e)
           } finally {
+            pageProcessedCount += 1
+            reportListedProgress(pageStartIndex, pageProcessedCount)
+            if (!shouldBreakChunk && pageProcessedCount % 10 === 0) {
+              await flushExclusive(() =>
+                updateCheckpoint(page, pageStartIndex + pageProcessedCount, listedItemsBeforeCurrentPage)
+              )
+            }
             await flushThrottled(false)
           }
         }
       }
 
-      const workers = Array.from({ length: Math.min(PRODUCT_CONCURRENCY, items.length) }, () => worker())
+      const workerCount = Math.min(PRODUCT_CONCURRENCY, Math.max(1, itemsToProcess.length))
+      const workers = Array.from({ length: workerCount }, () => worker())
       await Promise.all(workers)
+
+      if (shouldBreakChunk) {
+        const resumeItemIndex = nextIdx
+        await flushExclusive(() =>
+          updateCheckpoint(page, resumeItemIndex, listedItemsBeforeCurrentPage)
+        )
+        console.log(
+          `[SYNC] Invocation budget (${invocationBudgetMs}ms) elérve oldal ${page} közepén — folytatás itemIndex=${resumeItemIndex}, listed=${listedItemsBeforeCurrentPage}`
+        )
+        await flushThrottled(true)
+        if (preSyncedJobId) await clearChunkWorkerStarted(supabase, preSyncedJobId)
+        await scheduleContinuation?.()
+        return
+      }
 
       const nextPage = page + 1
       listedItemsBeforeCurrentPage += items.length
-      await updateCheckpoint(nextPage, listedItemsBeforeCurrentPage)
+      await updateCheckpoint(nextPage, 0, listedItemsBeforeCurrentPage)
       await flushThrottled(false)
 
       if (await checkStop()) {
@@ -1368,6 +1451,7 @@ async function processProductExtendPagesInBackground(
           `[SYNC] Chunk budget (${chunkBudgetMs}ms) elérve oldal ${page} után — következő chunk (oldal ${nextPage}/${pageCount})`
         )
         await flushThrottled(true)
+        if (preSyncedJobId) await clearChunkWorkerStarted(supabase, preSyncedJobId)
         await scheduleContinuation?.()
         return
       }
@@ -1460,6 +1544,9 @@ async function processProductExtendPagesInBackground(
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer)
       heartbeatTimer = null
+    }
+    if (preSyncedJobId) {
+      await clearChunkWorkerStarted(supabase, preSyncedJobId)
     }
   }
 }
