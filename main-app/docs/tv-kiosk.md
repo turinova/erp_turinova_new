@@ -13,6 +13,10 @@ Full-screen dashboard for a wall-mounted TV (40–43″, 2–3 m viewing distanc
 | `/tv?preview=laptop` | Dev mode — scrollable, full attendance detail |
 | `/tv?theme=dark` | Dark theme |
 
+## Orientation toggle
+
+The header includes an **Álló / Fekvő** button (right side, before the clock) to switch layout without editing the URL manually. It updates `?orientation=landscape` and preserves `preview` and `theme` query params.
+
 ## Layout
 
 Charts show **Mon–Fri only** (no Saturday column).
@@ -23,26 +27,32 @@ Charts show **Mon–Fri only** (no Saturday column).
 ┌──────────────────────────────────────────┐
 │  HEADER (full width)                     │
 ├────────────────────┬─────────────────────┤
-│  Heti szabás       │  Elmaradás (stacked) │
+│  Heti szabás       │  Ma (today bars)    │
 │  (chart)           ├─────────────────────┤
-│                    │  Jelenlét (table)    │
+│                    │  Lejárt napok       │
 ├────────────────────┤                     │
-│  Heti élzárás      │                     │
-│  (chart)           │  (több hely)        │
+│  Heti élzárás      │  Jelenlét (table)   │
+│  (chart)           │                     │
 ├────────────────────┤                     │
 │  Forgalom chart    │                     │
 └────────────────────┴─────────────────────┘
 ```
 
-Left: production charts + foot traffic (hourly chart). Right: backlog + attendance (taller person rows).
+Left: production charts + foot traffic (hourly chart). Right: today KPI, backlog, attendance table.
 
 ### Landscape (`?orientation=landscape`)
 
-```
-Fejléc → Elmaradás sáv → Heti szabás → Heti élzárás → Jelenlét → Forgalom
-```
+Same **two-column** structure as portrait (1920×1080 canvas): charts + forgalom on the left (flex height), Ma / backlog / jelenlét on the right. Jelenlét uses **two columns** of taller rows in landscape.
 
-Full-width stacked rows (1920×1080).
+```
+┌────────────────────────────────────────────────────────────┐
+│  HEADER                                                    │
+├───────────────────────────────┬────────────────────────────┤
+│  Heti szabás (flex)           │  Ma                        │
+│  Heti élzárás (flex)          │  Lejárt napok              │
+│  Forgalom                     │  Jelenlét (2 oszlop)       │
+└───────────────────────────────┴────────────────────────────┘
+```
 
 ## Setup
 

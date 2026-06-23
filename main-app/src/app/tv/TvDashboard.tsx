@@ -50,72 +50,45 @@ export default function TvDashboard() {
     'tv-shell',
     shell.shell,
     isKiosk ? shell.shellKiosk : '',
-    isPortrait ? shell.shellPortrait : ''
+    isPortrait ? shell.shellPortrait : shell.shellLandscape
   ]
     .filter(Boolean)
     .join(' ')
-
-  if (isPortrait) {
-    return (
-      <div className={shellClass}>
-        <TvHeader live={live} now={now} dayStatus={dayStatus} />
-
-        <div className={shell.portraitMain}>
-          <div className={shell.portraitLeft}>
-            <section className={shell.chartRow}>
-              <WeeklyProductionChart title="Heti szabás mennyiség" variant="cutting" chart={data.weeklyCutting} />
-            </section>
-            <section className={shell.chartRow}>
-              <WeeklyProductionChart title="Heti élzárás mennyiség" variant="edge" chart={data.weeklyEdge} />
-            </section>
-            <section className={shell.portraitTraffic}>
-              <TrafficCard footcounter={data.footcounter} portraitLeft />
-            </section>
-          </div>
-
-          <aside className={shell.portraitSidebar}>
-            <section className={shell.sidebarToday}>
-              <TodayProductionBars today={data.todayProduction} tomorrow={tomorrow} sidebar />
-            </section>
-            <section className={shell.sidebarBacklog}>
-              <BacklogHeroCard backlog={data.backlog} variant="stacked" sidebar />
-            </section>
-            <section className={shell.sidebarAttendance}>
-              <AttendanceSection attendance={data.attendance} tv sidebar />
-            </section>
-          </aside>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className={shellClass}>
       <TvHeader live={live} now={now} dayStatus={dayStatus} />
 
-      <section className={shell.todayRow}>
-        <TodayProductionBars today={data.todayProduction} tomorrow={tomorrow} />
-      </section>
+      <div className={shell.portraitMain}>
+        <div className={shell.portraitLeft}>
+          <section className={shell.chartRow}>
+            <WeeklyProductionChart title="Heti szabás mennyiség" variant="cutting" chart={data.weeklyCutting} />
+          </section>
+          <section className={shell.chartRow}>
+            <WeeklyProductionChart title="Heti élzárás mennyiség" variant="edge" chart={data.weeklyEdge} />
+          </section>
+          <section className={shell.portraitTraffic}>
+            <TrafficCard footcounter={data.footcounter} portraitLeft />
+          </section>
+        </div>
 
-      <section className={shell.backlogRow}>
-        <BacklogHeroCard backlog={data.backlog} variant="strip" />
-      </section>
-
-      <section className={shell.chartRow}>
-        <WeeklyProductionChart title="Heti szabás mennyiség" variant="cutting" chart={data.weeklyCutting} />
-      </section>
-
-      <section className={shell.chartRow}>
-        <WeeklyProductionChart title="Heti élzárás mennyiség" variant="edge" chart={data.weeklyEdge} />
-      </section>
-
-      <section className={shell.attendanceRow}>
-        <AttendanceSection attendance={data.attendance} tv={isKiosk} />
-      </section>
-
-      <section className={shell.commerceRow}>
-        <TrafficCard footcounter={data.footcounter} />
-      </section>
+        <aside className={shell.portraitSidebar}>
+          <section className={shell.sidebarToday}>
+            <TodayProductionBars today={data.todayProduction} tomorrow={tomorrow} sidebar />
+          </section>
+          <section className={shell.sidebarBacklog}>
+            <BacklogHeroCard backlog={data.backlog} variant="stacked" sidebar />
+          </section>
+          <section className={shell.sidebarAttendance}>
+            <AttendanceSection
+              attendance={data.attendance}
+              tv
+              sidebar
+              twoColumn={!isPortrait}
+            />
+          </section>
+        </aside>
+      </div>
     </div>
   )
 }

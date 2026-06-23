@@ -20,6 +20,8 @@ type AttendanceSectionProps = {
   tv?: boolean
   /** Portrait sidebar — compact table rows */
   sidebar?: boolean
+  /** Landscape sidebar — two columns of taller rows */
+  twoColumn?: boolean
 }
 
 function chipStatusClass(status: TvAttendanceStatus): string {
@@ -75,12 +77,12 @@ function CompactChip({ row, tv }: { row: TvAttendanceRow; tv?: boolean }) {
   )
 }
 
-function SidebarRow({ row }: { row: TvAttendanceRow }) {
+function SidebarRow({ row, tall = false }: { row: TvAttendanceRow; tall?: boolean }) {
   const hasTimes = row.arrival != null || row.departure != null
   const statusClass = hasTimes ? chipStatusClass(row.status) : compactChipClass(row.status)
 
   return (
-    <div className={`${styles.sidebarRow} ${statusClass}`}>
+    <div className={`${styles.sidebarRow} ${tall ? styles.sidebarRowTall : ''} ${statusClass}`}>
       <AttendanceName name={row.name} className={styles.sidebarName} />
       {hasTimes ? (
         <>
@@ -94,7 +96,12 @@ function SidebarRow({ row }: { row: TvAttendanceRow }) {
   )
 }
 
-export default function AttendanceSection({ attendance, tv = false, sidebar = false }: AttendanceSectionProps) {
+export default function AttendanceSection({
+  attendance,
+  tv = false,
+  sidebar = false,
+  twoColumn = false
+}: AttendanceSectionProps) {
   const { detailed, compact: compactRows } = useMemo(
     () => splitAttendance(attendance.employees),
     [attendance.employees]
@@ -106,6 +113,12 @@ export default function AttendanceSection({ attendance, tv = false, sidebar = fa
     () => [...sortDetailed(detailed), ...sortCompact(compactRows)],
     [detailed, compactRows]
   )
+
+  const attendanceColumns = useMemo(() => {
+    if (!twoColumn) return [allSorted]
+    const mid = Math.ceil(allSorted.length / 2)
+    return [allSorted.slice(0, mid), allSorted.slice(mid)]
+  }, [allSorted, twoColumn])
 
   const pills = (
     <div className={`${styles.pills} ${tv || sidebar ? styles.pillsKiosk : ''}`}>
@@ -134,21 +147,40 @@ export default function AttendanceSection({ attendance, tv = false, sidebar = fa
 
   if (sidebar) {
     return (
-      <section className={`tv-panel tv-panel-accent ${styles.wrap} ${styles.wrapSidebar}`}>
+      <section
+        className={`tv-panel tv-panel-accent ${styles.wrap} ${styles.wrapSidebar} ${twoColumn ? styles.wrapSidebarTwoCol : ''}`}
+      >
         <div className={`${styles.head} ${styles.headTv} ${styles.headSidebar}`}>
           <h2 className={styles.title}>Jelenlét</h2>
           {pills}
         </div>
         <div className={styles.sidebarBody}>
-          <div className={styles.sidebarHead}>
+          <div
+            className={`${styles.sidebarHead} ${twoColumn ? styles.sidebarHeadTwoCol : ''}`}
+          >
             <span>Név</span>
             <span>Be</span>
             <span>Ki</span>
+            {twoColumn && (
+              <>
+                <span>Név</span>
+                <span>Be</span>
+                <span>Ki</span>
+              </>
+            )}
           </div>
-          <div className={styles.sidebarRows}>
-            {allSorted.map(row => (
-              <SidebarRow key={row.id} row={row} />
-            ))}
+          <div className={`${styles.sidebarRows} ${twoColumn ? styles.sidebarRowsTwoCol : ''}`}>
+            {twoColumn ? (
+              attendanceColumns.map((column, colIdx) => (
+                <div key={colIdx} className={styles.sidebarColumn}>
+                  {column.map(row => (
+                    <SidebarRow key={row.id} row={row} tall={twoColumn} />
+                  ))}
+                </div>
+              ))
+            ) : (
+              allSorted.map(row => <SidebarRow key={row.id} row={row} />)
+            )}
           </div>
         </div>
       </section>

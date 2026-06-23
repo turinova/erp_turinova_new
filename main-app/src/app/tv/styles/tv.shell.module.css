@@ -26,6 +26,12 @@
   grid-template-columns: 1fr;
 }
 
+/* Landscape — same 2-column grid, wider canvas (1920×1080) */
+.shellLandscape {
+  grid-template-rows: var(--tv-header-h) minmax(0, 1fr);
+  grid-template-columns: 1fr;
+}
+
 .portraitMain {
   grid-row: 2;
   min-height: 0;
@@ -33,6 +39,10 @@
   display: grid;
   grid-template-columns: minmax(0, 1.58fr) minmax(0, 1fr);
   gap: var(--tv-gap);
+}
+
+:global(.tv-root[data-orientation='landscape']) .portraitMain {
+  grid-template-columns: minmax(0, 1.72fr) minmax(0, 1fr);
 }
 
 .portraitLeft {
@@ -142,6 +152,36 @@
 }
 
 :global(.tv-root[data-preview='laptop'][data-orientation='portrait']) .portraitSidebar {
+  grid-template-rows: auto auto auto;
+  overflow: visible;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='landscape']) .shellLandscape {
+  grid-template-rows: auto auto;
+  height: auto;
+  overflow: visible;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='landscape']) .portraitMain {
+  grid-template-columns: 1fr;
+  height: auto;
+  overflow: visible;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='landscape']) .portraitLeft {
+  grid-template-rows: auto auto auto;
+  min-height: 0;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='landscape']) .portraitLeft .chartRow {
+  min-height: 360px;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='landscape']) .portraitTraffic {
+  min-height: 160px;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='landscape']) .portraitSidebar {
   grid-template-rows: auto auto auto;
   overflow: visible;
 }

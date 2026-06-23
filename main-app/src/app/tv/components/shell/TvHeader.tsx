@@ -3,6 +3,7 @@
 import { formatTvClock, formatTvDate } from '@/lib/tv-format'
 import { dayStatusLabel, type TvDayStatus } from '@/lib/tv/day-status'
 
+import TvOrientationToggle from './TvOrientationToggle'
 import styles from './TvHeader.module.css'
 
 type TvHeaderProps = {
@@ -33,6 +34,7 @@ export default function TvHeader({ live, now, dayStatus = null }: TvHeaderProps)
         )}
       </div>
       <div className={styles.right}>
+        <TvOrientationToggle />
         <span className={styles.clock}>{formatTvClock(now)}</span>
         <span className={styles.live}>
           <span className={`${styles.dot} ${live ? styles.dotOk : styles.dotErr}`} />

@@ -500,3 +500,59 @@
   color: var(--tv-text-muted);
 }
 
+/* Landscape sidebar — two columns, taller rows */
+.wrapSidebarTwoCol .title {
+  font-size: 17px;
+}
+
+.sidebarHeadTwoCol {
+  grid-template-columns: minmax(0, 1.5fr) 48px 48px minmax(0, 1.5fr) 48px 48px;
+  gap: 8px;
+}
+
+.sidebarRowsTwoCol {
+  flex-direction: row;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.sidebarColumn {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tv-attendance-row-gap, 4px);
+  overflow: hidden;
+}
+
+:global(.tv-root[data-orientation='landscape']) .sidebarColumn .sidebarRow {
+  flex: 0 0
+    calc(
+      (100% - (var(--tv-attendance-row-gap, 4px) * (var(--tv-attendance-slots, 10) - 1))) /
+        var(--tv-attendance-slots, 10)
+    );
+  min-height: 0;
+  max-height: calc(
+    (100% - (var(--tv-attendance-row-gap, 4px) * (var(--tv-attendance-slots, 10) - 1))) /
+      var(--tv-attendance-slots, 10)
+  );
+}
+
+.sidebarRowTall {
+  font-size: 16px;
+  padding: 2px 8px;
+}
+
+.sidebarRowTall .sidebarName,
+.sidebarRowTall .sidebarName .nameLine {
+  font-size: 16px;
+}
+
+.sidebarRowTall .sidebarTime {
+  font-size: 15px;
+}
+
+.sidebarRowTall .sidebarStatusOnly {
+  font-size: 14px;
+}
