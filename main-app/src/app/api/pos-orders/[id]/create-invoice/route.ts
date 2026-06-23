@@ -29,6 +29,8 @@ interface InvoiceRequest {
   preview?: boolean // If true, use temporary order number for preview
   advanceAmount?: number // Advance invoice amount (gross)
   proformaAmount?: number // Proforma invoice amount (gross), if partial
+  /** Számlázz.hu fejlec.fizetve; default true for normal/simplified final invoices */
+  markAsPaid?: boolean
 }
 
 // Helper function to escape XML
@@ -353,6 +355,7 @@ function buildInvoiceXml(
     ${isAdvanceInvoice ? '<elolegszamla>true</elolegszamla>' : ''}
     ${existingAdvanceInvoice && !isAdvanceInvoice && !isProformaWithAmount && settings.invoiceType !== 'proforma' && settings.invoiceType !== 'advance' ? '<vegszamla>true</vegszamla>' : ''}
     ${existingAdvanceInvoice && !isAdvanceInvoice && !isProformaWithAmount && settings.invoiceType !== 'proforma' && settings.invoiceType !== 'advance' ? `<elolegSzamlaszam>${escapeXml(existingAdvanceInvoice.provider_invoice_number)}</elolegSzamlaszam>` : ''}
+    ${settings.markAsPaid ? '<fizetve>true</fizetve>' : ''}
   </fejlec>
   <elado>
     ${tenantCompany?.email ? `<emailReplyto>${escapeXml(tenantCompany.email)}</emailReplyto>` : ''}
@@ -730,9 +733,20 @@ export async function POST(
       }
     }
 
+    body.markAsPaid =
+      !isAdvanceInvoiceRequest &&
+      !isProformaInvoiceRequest &&
+      (body.invoiceType === 'normal' || body.invoiceType === 'simplified') &&
+      body.markAsPaid !== false
+
     // Build XML request
     console.log('Building invoice XML with existingAdvanceInvoice:', existingAdvanceInvoice, 'existingProformaInvoice:', existingProformaInvoice)
-    console.log('Invoice request body:', { invoiceType: body.invoiceType, isAdvanceInvoiceRequest, isProformaInvoiceRequest })
+    console.log('Invoice request body:', {
+      invoiceType: body.invoiceType,
+      isAdvanceInvoiceRequest,
+      isProformaInvoiceRequest,
+      markAsPaid: body.markAsPaid
+    })
     const xmlRequest = buildInvoiceXml(
       orderData,
       itemsData || [],

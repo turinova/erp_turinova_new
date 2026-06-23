@@ -84,7 +84,10 @@ async function fetchLogoAsBase64(logoUrl: string | null | undefined): Promise<st
  * Print order receipt on 58mm thermal paper
  * Tries WebUSB first, falls back to browser print dialog
  */
-export async function printOrderReceipt(data: ReceiptData): Promise<void> {
+export async function printOrderReceipt(
+  data: ReceiptData,
+  preferredUsbDevice?: USBDevice | null
+): Promise<void> {
   console.log('[Print Receipt] Starting printOrderReceipt with data:', {
     orderNumber: data.orderNumber,
     customerName: data.customerName,
@@ -99,7 +102,7 @@ export async function printOrderReceipt(data: ReceiptData): Promise<void> {
     // Print first receipt (original copy)
     console.log('[Print Receipt] Printing original copy...')
     const originalCommands = await generateEscPosCommands(data, 'original')
-    await printReceiptViaWebUSB(originalCommands)
+    await printReceiptViaWebUSB(originalCommands, preferredUsbDevice)
     console.log('[Print Receipt] Original copy printed successfully')
     
     // Small delay to ensure first receipt is fully processed and cut
@@ -108,7 +111,7 @@ export async function printOrderReceipt(data: ReceiptData): Promise<void> {
     // Print second receipt (customer copy)
     console.log('[Print Receipt] Printing customer copy...')
     const customerCommands = await generateEscPosCommands(data, 'customer')
-    await printReceiptViaWebUSB(customerCommands)
+    await printReceiptViaWebUSB(customerCommands, preferredUsbDevice)
     console.log('[Print Receipt] Customer copy printed successfully')
     
     console.log('[Print Receipt] WebUSB printing successful (both copies printed separately)')

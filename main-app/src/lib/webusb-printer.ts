@@ -289,15 +289,35 @@ export async function printToUsbPrinter(
   }
 }
 
+async function ensureUsbDeviceOpen(device: USBDevice): Promise<void> {
+  if (device.opened) return
+  await device.open()
+}
+
 /**
  * Print receipt using WebUSB (with automatic device selection)
+ * @param preferredDevice — pre-authorized device from user gesture (scanner finish button)
  */
-export async function printReceiptViaWebUSB(escPosCommands: Uint8Array): Promise<void> {
+export async function printReceiptViaWebUSB(
+  escPosCommands: Uint8Array,
+  preferredDevice?: USBDevice | null
+): Promise<void> {
   try {
+    let device: USBDevice | null = preferredDevice ?? null
+
+    if (device) {
+      console.log('[WebUSB] Using pre-requested device:', device.productName)
+      try {
+        await ensureUsbDeviceOpen(device)
+      } catch (openError: any) {
+        console.warn('[WebUSB] Could not open pre-requested device, falling back:', openError.message)
+        device = null
+      }
+    }
+
+    if (!device) {
     // First, try to get already paired printer
     const pairedDevices = await getPairedPrinter()
-    
-    let device: USBDevice | null = null
 
     if (pairedDevices.length > 0) {
       // Use the first paired device
@@ -342,6 +362,7 @@ export async function printReceiptViaWebUSB(escPosCommands: Uint8Array): Promise
           throw new Error(`Nem sikerült megnyitni a nyomtatót: ${openError.message}`)
         }
       }
+    }
     }
 
     if (!device) {

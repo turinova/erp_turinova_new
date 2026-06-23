@@ -1,0 +1,502 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--tv-space-2) var(--tv-space-3);
+  gap: var(--tv-space-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tv-space-2);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.title {
+  font-family: var(--font-display), 'DM Sans', system-ui, sans-serif;
+  font-size: var(--tv-font-title);
+  font-weight: 800;
+  margin: 0;
+}
+
+.dateLabel {
+  font-size: var(--tv-font-secondary);
+  color: var(--tv-text-muted);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pill {
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: var(--tv-font-caption);
+  font-weight: 800;
+  border: 1px solid transparent;
+}
+
+.pillsKiosk .pill {
+  padding: 6px 14px;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.pillIn {
+  background: var(--tv-success-bg);
+  color: var(--tv-success);
+}
+
+.pillLate {
+  background: var(--tv-late-bg);
+  color: var(--tv-late);
+}
+
+.pillLeft {
+  background: var(--tv-danger-bg);
+  color: var(--tv-danger);
+}
+
+.pillHoliday {
+  background: var(--tv-info-bg);
+  color: var(--tv-info);
+}
+
+.pillSick {
+  background: var(--tv-warning-bg);
+  color: var(--tv-warning);
+}
+
+.pillNone {
+  background: var(--tv-danger-bg);
+  color: var(--tv-danger);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tv-space-2);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+}
+
+.sectionLabel {
+  font-size: var(--tv-font-caption);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tv-text-muted);
+}
+
+.chipGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  align-content: start;
+}
+
+:global(.tv-root[data-preview='laptop']) .chipGrid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.chip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  min-width: 0;
+  min-height: var(--tv-chip-min-h);
+}
+
+.nameBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.nameLine {
+  display: block;
+  word-break: break-word;
+}
+
+.chipName {
+  font-weight: 800;
+  font-size: var(--tv-font-primary);
+}
+
+.chipBadge {
+  flex-shrink: 0;
+  font-size: var(--tv-font-badge);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.chipTimes {
+  display: flex;
+  gap: 20px;
+}
+
+.timeBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.timeLabel {
+  font-size: var(--tv-font-badge);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.timeValue {
+  font-size: var(--tv-font-secondary);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.chipIn {
+  background: var(--tv-success-bg);
+  border-color: #9fd4cb;
+  color: #0a5c50;
+}
+
+.chipIn .chipBadge {
+  color: var(--tv-success);
+}
+
+.chipLate {
+  background: var(--tv-late-bg);
+  border-color: #c4b5fd;
+  color: #5b21b6;
+}
+
+.chipLate .chipBadge {
+  color: var(--tv-late);
+}
+
+.chipLeft {
+  background: var(--tv-danger-bg);
+  border-color: #f0a8a0;
+  color: #9b1c1c;
+}
+
+.chipLeft .chipBadge {
+  color: var(--tv-danger);
+}
+
+.compactGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+:global(.tv-root[data-preview='laptop']) .compactGrid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.compactChip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  min-width: 0;
+  min-height: calc(var(--tv-chip-min-h) - 16px);
+}
+
+.compactName {
+  font-weight: 800;
+  font-size: var(--tv-font-primary);
+}
+
+.compactName .nameLine {
+  font-weight: 800;
+  font-size: inherit;
+}
+
+.compactStatus {
+  font-weight: 700;
+  font-size: var(--tv-font-meta);
+}
+
+.compactHoliday {
+  background: var(--tv-info-bg);
+  border-color: #9ec8e0;
+  color: #0a4f6e;
+}
+
+.compactSick {
+  background: var(--tv-warning-bg);
+  border-color: #e8cf88;
+  color: #8a5a00;
+}
+
+.compactNone {
+  background: var(--tv-danger-bg);
+  border-color: #f0a8a0;
+  color: #9b1c1c;
+}
+
+.compactOdd {
+  background: var(--tv-left-bg);
+  border-color: var(--tv-border);
+  color: var(--tv-text-muted);
+}
+
+/* TV kiosk — Be/Ki időkkel, kompakt de olvasható */
+.wrapTv {
+  padding: 8px 14px;
+  gap: 6px;
+}
+
+.headTv {
+  flex-wrap: nowrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.headTv .title {
+  font-size: 20px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.headTv .pills {
+  margin-left: auto;
+  gap: 6px;
+}
+
+.headTv .pill {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.bodyTv {
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.bodyTv .chipGrid {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.bodyTv .compactGrid {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px;
+}
+
+.chipTv {
+  min-height: 0;
+  padding: 8px 10px;
+  gap: 4px;
+}
+
+.chipTv .chipName {
+  font-size: 17px;
+}
+
+.chipTv .chipBadge {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.chipTv .timeValue {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.chipTv .timeLabel {
+  font-size: 10px;
+}
+
+.compactChipTv {
+  min-height: 0;
+  padding: 6px 10px;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compactChipTv .compactName {
+  font-size: 16px;
+}
+
+.compactChipTv .compactStatus {
+  font-size: 13px;
+}
+
+/* Portrait sidebar — compact table */
+.wrapSidebar {
+  padding: 8px 10px;
+  gap: 4px;
+}
+
+.headSidebar .title {
+  font-size: 18px;
+}
+
+.headSidebar .pill {
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.sidebarBody {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebarRows {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tv-attendance-row-gap, 3px);
+  overflow: hidden;
+}
+
+:global(.tv-root[data-orientation='portrait']) .wrapSidebar .nameBlock {
+  gap: 0;
+  line-height: 1.1;
+}
+
+:global(.tv-root[data-orientation='portrait']) .sidebarRow {
+  flex: 0 0
+    calc(
+      (100% - (var(--tv-attendance-row-gap, 3px) * (var(--tv-attendance-slots, 20) - 1))) /
+        var(--tv-attendance-slots, 20)
+    );
+  min-height: 0;
+  max-height: calc(
+    (100% - (var(--tv-attendance-row-gap, 3px) * (var(--tv-attendance-slots, 20) - 1))) /
+      var(--tv-attendance-slots, 20)
+  );
+}
+
+.sidebarHead,
+.sidebarRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 52px 52px;
+  gap: 6px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 6px;
+}
+
+.sidebarHead {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tv-text-muted);
+  flex-shrink: 0;
+  padding: 4px 10px;
+  height: 22px;
+}
+
+.sidebarRow {
+  font-size: 15px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.sidebarName {
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.sidebarName .nameLine {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.sidebarTime {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 14px;
+  text-align: center;
+}
+
+.sidebarStatusOnly {
+  grid-column: 2 / -1;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.sidebarRow.chipIn {
+  background: var(--tv-success-bg);
+  border-color: #9fd4cb;
+  color: #0a5c50;
+}
+
+.sidebarRow.chipLeft {
+  background: var(--tv-danger-bg);
+  border-color: #f0a8a0;
+  color: #9b1c1c;
+}
+
+.sidebarRow.compactHoliday {
+  background: var(--tv-info-bg);
+  border-color: #9ec8e0;
+  color: #0a4f6e;
+}
+
+.sidebarRow.compactSick {
+  background: var(--tv-warning-bg);
+  border-color: #e8cf88;
+  color: #8a5a00;
+}
+
+.sidebarRow.compactNone {
+  background: var(--tv-danger-bg);
+  border-color: #f0a8a0;
+  color: #9b1c1c;
+}
+
+.sidebarRow.compactOdd {
+  background: var(--tv-left-bg);
+  border-color: var(--tv-border);
+  color: var(--tv-text-muted);
+}
+

@@ -1,0 +1,36 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 12px 16px 8px;
+  gap: 4px;
+}
+
+.title {
+  font-family: var(--font-display), 'DM Sans', system-ui, sans-serif;
+  font-size: var(--tv-font-title);
+  font-weight: 800;
+  margin: 0;
+  color: var(--tv-text);
+  flex-shrink: 0;
+  line-height: 1.1;
+}
+
+.chart {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+:global(.tv-root[data-preview='kiosk']) .wrap {
+  padding: 10px 14px 6px;
+}
+
+:global(.tv-root[data-preview='kiosk']) .title {
+  font-size: 22px;
+}
+
+:global(.tv-root[data-preview='kiosk']) .chart {
+  min-height: 0;
+}

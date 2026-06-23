@@ -1,0 +1,16 @@
+/* 1080p kiosk — shared typography & colors (row heights in landscape/portrait tokens) */
+.tv-root[data-preview='kiosk'] {
+  --tv-space-1: 10px;
+  --tv-space-2: 16px;
+  --tv-space-3: 24px;
+  --tv-font-hero: 56px;
+  --tv-font-hero-sm: 40px;
+  --tv-font-title: 24px;
+  --tv-font-primary: 20px;
+  --tv-font-secondary: 18px;
+  --tv-font-caption: 16px;
+  --tv-font-meta: 15px;
+  --tv-font-badge: 14px;
+  --tv-chip-min-h: 56px;
+  font-size: 18px;
+}

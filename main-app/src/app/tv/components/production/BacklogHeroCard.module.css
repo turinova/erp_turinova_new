@@ -1,0 +1,184 @@
+.card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--tv-space-2) var(--tv-space-3);
+  border-width: 3px;
+  border-radius: 12px;
+  min-height: 0;
+}
+
+.label {
+  font-size: var(--tv-font-caption);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.hero {
+  font-family: var(--font-display), 'DM Sans', system-ui, sans-serif;
+  font-size: var(--tv-font-hero);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.orders {
+  margin-top: 12px;
+  font-size: var(--tv-font-primary);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tv-space-2);
+  height: 100%;
+  min-height: 0;
+  padding: var(--tv-space-2) var(--tv-space-3);
+}
+
+.before {
+  font-size: var(--tv-font-caption);
+  color: var(--tv-text-muted);
+  margin: 0;
+  font-weight: 600;
+}
+
+.cutting {
+  background: var(--tv-danger-bg);
+  border-color: var(--tv-danger);
+}
+
+.cutting .label,
+.cutting .hero,
+.cutting .stripLabel,
+.cutting .stripHero {
+  color: var(--tv-danger);
+}
+
+.edge {
+  background: var(--tv-warning-bg);
+  border-color: var(--tv-warning);
+}
+
+.edge .label,
+.edge .hero,
+.edge .stripLabel,
+.edge .stripHero {
+  color: var(--tv-warning);
+}
+
+.tiles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tv-space-2);
+  flex: 1;
+  min-height: 0;
+}
+
+/* Horizontal strip — kiosk v2 */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 100%;
+  padding: 0 20px;
+  overflow: hidden;
+}
+
+.stripBefore {
+  font-size: var(--tv-font-caption);
+  color: var(--tv-text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.stripTile {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  flex: 1;
+  min-width: 0;
+}
+
+.stripDivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--tv-border);
+  flex-shrink: 0;
+}
+
+.stripLabel {
+  font-size: var(--tv-font-caption);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.stripHero {
+  font-family: var(--font-display), 'DM Sans', system-ui, sans-serif;
+  font-size: var(--tv-font-hero-sm);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.stripOrders {
+  font-size: var(--tv-font-secondary);
+  font-weight: 700;
+  color: var(--tv-text-muted);
+  white-space: nowrap;
+}
+
+:global(.tv-root[data-preview='laptop']) .tiles {
+  flex-direction: column;
+}
+
+@media (min-width: 1280px) {
+  :global(.tv-root[data-preview='laptop']) .tiles {
+    flex-direction: row;
+  }
+}
+
+.rowSidebar {
+  padding: 10px 14px;
+  gap: 8px;
+}
+
+.rowSidebar .before {
+  font-size: 13px;
+  margin: 0;
+}
+
+.tilesSidebar {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tilesSidebar .card {
+  padding: 10px 14px;
+}
+
+.tilesSidebar .label {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.tilesSidebar .hero {
+  font-size: var(--tv-font-hero-sm);
+}
+
+.tilesSidebar .orders {
+  margin-top: 4px;
+  font-size: var(--tv-font-caption);
+}
+

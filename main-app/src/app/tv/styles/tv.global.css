@@ -1,0 +1,53 @@
+@import '../tokens/tv.tokens.css';
+@import '../tokens/tv.tokens.kiosk.css';
+@import '../tokens/tv.tokens.landscape.css';
+@import '../tokens/tv.tokens.portrait.css';
+@import './tv.kiosk.css';
+
+.tv-root {
+  background: var(--tv-bg);
+  color: var(--tv-text);
+  font-family: var(--font-data), Inter, system-ui, sans-serif;
+  font-size: 16px;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.tv-root[data-preview='kiosk'] {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.tv-root[data-preview='laptop'] {
+  overflow-x: hidden;
+}
+
+.tv-panel {
+  background: var(--tv-surface);
+  border: 1px solid var(--tv-border);
+  border-radius: 12px;
+  box-shadow: var(--tv-shadow);
+  height: 100%;
+  min-height: 0;
+}
+
+.tv-panel-accent {
+  border-left: 4px solid var(--tv-border-strong);
+}
+
+.tv-shimmer {
+  background: linear-gradient(90deg, var(--tv-surface-2) 25%, #eceae4 50%, var(--tv-surface-2) 75%);
+  background-size: 200% 100%;
+  animation: tv-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes tv-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

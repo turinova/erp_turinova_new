@@ -1,0 +1,55 @@
+/* 1920×1080 / 1080×1920 canvas */
+.tv-canvas-host {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--tv-bg);
+}
+
+.tv-root[data-preview='kiosk'] .tv-canvas-host {
+  background: #1a1a1a;
+}
+
+.tv-canvas {
+  flex-shrink: 0;
+  transform-origin: center center;
+  overflow: hidden;
+  background: var(--tv-bg);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.35);
+}
+
+.tv-canvasLandscape {
+  width: 1920px;
+  height: 1080px;
+}
+
+.tv-canvasPortrait {
+  width: 1080px;
+  height: 1920px;
+}
+
+.tv-shell {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.tv-root[data-preview='laptop'] .tv-shell {
+  width: 100%;
+  height: auto;
+  min-height: 100vh;
+}
+
+.tv-root[data-preview='laptop'] {
+  --tv-header-h: 56px;
+  --tv-row-backlog-h: auto;
+  --tv-row-chart-h: auto;
+  --tv-row-attendance-h: auto;
+  --tv-row-commerce-h: auto;
+  min-height: 100vh;
+  overflow-y: auto;
+}

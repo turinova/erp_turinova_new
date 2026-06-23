@@ -1,0 +1,120 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tv-space-2);
+  padding: 0 var(--tv-space-3);
+  min-height: var(--tv-header-h);
+  border-left: 4px solid var(--tv-text);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.logo {
+  display: block;
+  width: auto;
+  max-width: 200px;
+  height: 36px;
+  object-fit: contain;
+}
+
+:global(.tv-root[data-orientation='portrait']) .logo {
+  height: 40px;
+}
+
+:global(.tv-root[data-orientation='landscape']) .logo {
+  height: 32px;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.date {
+  font-size: var(--tv-font-secondary);
+  font-weight: 600;
+  color: var(--tv-text-muted);
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 18px;
+  border-radius: 999px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  border: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.statusOk {
+  background: var(--tv-success-bg);
+  color: #0a5c50;
+  border-color: var(--tv-success);
+}
+
+.statusCaution {
+  background: var(--tv-warning-bg);
+  color: #7a4d00;
+  border-color: var(--tv-warning);
+}
+
+.statusCritical {
+  background: var(--tv-danger-bg);
+  color: #9b1c1c;
+  border-color: var(--tv-danger);
+}
+
+:global(.tv-root[data-orientation='portrait']) .status {
+  font-size: 22px;
+  padding: 5px 20px;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: var(--tv-space-2);
+}
+
+.clock {
+  font-size: var(--tv-font-title);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--tv-font-caption);
+  font-weight: 800;
+}
+
+.dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+
+.dotOk {
+  background: var(--tv-success);
+}
+
+.dotErr {
+  background: var(--tv-danger);
+}

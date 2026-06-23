@@ -1,0 +1,14 @@
+/* Portrait — 2-column chart wall + sidebar (1080×1920) */
+.tv-root[data-preview='kiosk'][data-orientation='portrait'] {
+  --tv-header-h: 72px;
+  --tv-gap: 12px;
+  --tv-portrait-traffic-h: 168px;
+  --tv-attendance-slots: 20;
+  --tv-attendance-row-gap: 3px;
+  --tv-font-hero: 44px;
+  --tv-font-hero-sm: 32px;
+  --tv-font-title: 22px;
+  --tv-font-primary: 18px;
+  --tv-font-secondary: 16px;
+  --tv-font-caption: 14px;
+}

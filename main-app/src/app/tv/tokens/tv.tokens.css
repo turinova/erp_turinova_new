@@ -1,0 +1,56 @@
+:root,
+.tv-root,
+.tv-root[data-tv-theme='light'] {
+  --tv-bg: #f7f6f3;
+  --tv-surface: #ffffff;
+  --tv-surface-2: #f3f1ec;
+  --tv-text: #37352f;
+  --tv-text-muted: #787774;
+  --tv-border: #e8e7e4;
+  --tv-border-strong: #d4cfc4;
+  --tv-danger: #e03e3e;
+  --tv-danger-bg: #ffe2dd;
+  --tv-success: #0f7b6c;
+  --tv-success-bg: #ddedea;
+  --tv-warning: #cb912f;
+  --tv-warning-bg: #fbf3db;
+  --tv-info: #0b6e99;
+  --tv-info-bg: #ddebf1;
+  --tv-late: #7c3aed;
+  --tv-late-bg: #ede9fe;
+  --tv-left: #9b9a97;
+  --tv-left-bg: #f1f0ed;
+  --tv-production: #d9730d;
+  --tv-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --tv-header-h: 60px;
+  --tv-row-production-h: 430px;
+  --tv-row-attendance-h: 400px;
+  --tv-row-commerce-h: 300px;
+  --tv-space-1: 8px;
+  --tv-space-2: 16px;
+  --tv-space-3: 24px;
+  --tv-gap: 16px;
+  --tv-font-hero: clamp(2.25rem, 4.5vw, 3.25rem);
+  --tv-font-hero-sm: clamp(1.75rem, 3vw, 2.25rem);
+  --tv-font-title: 1.15rem;
+  --tv-font-primary: 1rem;
+  --tv-font-secondary: 0.9rem;
+  --tv-font-caption: 0.85rem;
+  --tv-font-meta: 0.8rem;
+  --tv-font-badge: 0.72rem;
+  --tv-chip-min-h: 72px;
+}
+
+.tv-root[data-tv-theme='dark'] {
+  --tv-bg: #191919;
+  --tv-surface: #252525;
+  --tv-surface-2: #2f2f2f;
+  --tv-text: #f0f0eb;
+  --tv-text-muted: #9b9a97;
+  --tv-border: #3d3d3d;
+  --tv-danger-bg: rgba(224, 62, 62, 0.15);
+  --tv-success-bg: rgba(15, 123, 108, 0.15);
+  --tv-warning-bg: rgba(203, 145, 47, 0.15);
+  --tv-info-bg: rgba(11, 110, 153, 0.15);
+  --tv-shadow: none;
+}

@@ -1,0 +1,15 @@
+/* Landscape v2 — chart-first, full-width stacked charts (1920×1080) */
+.tv-root[data-preview='kiosk'][data-orientation='landscape'] {
+  --tv-header-h: 60px;
+  --tv-row-today-h: 76px;
+  --tv-row-backlog-h: 68px;
+  --tv-row-chart-h: 280px;
+  --tv-row-attendance-h: 124px;
+  --tv-row-commerce-h: 100px;
+  --tv-gap: 10px;
+}
+
+/* Default kiosk tokens when orientation attr omitted but landscape canvas */
+.tv-root[data-preview='kiosk']:not([data-orientation='portrait']) {
+  --tv-row-today-h: 64px;
+}

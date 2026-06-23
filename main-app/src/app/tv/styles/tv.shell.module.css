@@ -1,0 +1,147 @@
+.shell {
+  display: grid;
+  grid-template-rows:
+    var(--tv-header-h)
+    var(--tv-row-today-h)
+    var(--tv-row-backlog-h)
+    var(--tv-row-chart-h)
+    var(--tv-row-chart-h)
+    var(--tv-row-attendance-h)
+    var(--tv-row-commerce-h);
+  gap: var(--tv-gap);
+  padding: var(--tv-gap);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.shellKiosk {
+  overflow: hidden;
+}
+
+/* Portrait — chart wall (left) + status sidebar (right) */
+.shellPortrait {
+  grid-template-rows: var(--tv-header-h) minmax(0, 1fr);
+  grid-template-columns: 1fr;
+}
+
+.portraitMain {
+  grid-row: 2;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1.58fr) minmax(0, 1fr);
+  gap: var(--tv-gap);
+}
+
+.portraitLeft {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) var(--tv-portrait-traffic-h);
+  gap: var(--tv-gap);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.portraitTraffic {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.portraitSidebar {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--tv-gap);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebarToday,
+.sidebarBacklog,
+.sidebarAttendance {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebarToday > *,
+.sidebarBacklog > *,
+.sidebarAttendance > *,
+.portraitLeft > *,
+.portraitTraffic > *,
+.todayRow > * {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.backlogRow,
+.chartRow,
+.attendanceRow,
+.commerceRow,
+.todayRow {
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.chartRow > *,
+.attendanceRow > *,
+.commerceRow > *,
+.backlogRow > *,
+.todayRow > * {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.loadingCenter,
+.errorCenter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--tv-space-3);
+  gap: var(--tv-space-2);
+  font-size: var(--tv-font-secondary);
+}
+
+:global(.tv-root[data-preview='laptop']) .shell {
+  grid-template-rows: auto;
+  height: auto;
+  overflow: visible;
+}
+
+:global(.tv-root[data-preview='laptop']) .chartRow {
+  min-height: 360px;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='portrait']) .shellPortrait {
+  grid-template-rows: auto auto;
+  height: auto;
+  overflow: visible;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='portrait']) .portraitMain {
+  grid-template-columns: 1fr;
+  height: auto;
+  overflow: visible;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='portrait']) .portraitLeft {
+  grid-template-rows: auto auto auto;
+  min-height: 0;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='portrait']) .portraitLeft .chartRow {
+  min-height: 420px;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='portrait']) .portraitTraffic {
+  min-height: 160px;
+}
+
+:global(.tv-root[data-preview='laptop'][data-orientation='portrait']) .portraitSidebar {
+  grid-template-rows: auto auto auto;
+  overflow: visible;
+}
