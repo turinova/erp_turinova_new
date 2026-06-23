@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import twilio from 'twilio'
 import { processBevételezés } from '@/lib/inventory'
+import { formatSmsPrice, renderSmsTemplate } from '@/lib/sms-text'
 
 /**
  * Send Beszerzés SMS notifications and update items to 'arrived' status
@@ -129,18 +130,17 @@ export async function POST(request: NextRequest) {
         // Round to integer
         totalPrice = Math.round(totalPrice)
 
-        // Format price
-        const totalPriceFormatted = new Intl.NumberFormat('hu-HU').format(totalPrice) + ' Ft'
+        const totalPriceFormatted = formatSmsPrice(totalPrice)
 
         // Format date as YYYY-MM-DD
         const createdDate = new Date(orderData.created_at).toISOString().split('T')[0]
 
-        // Replace variables in template
-        const message = smsTemplate.message_template
-          .replace(/{customer_name}/g, orderData.customer_name)
-          .replace(/{order_date}/g, createdDate)
-          .replace(/{total_price}/g, totalPriceFormatted)
-          .replace(/{company_name}/g, companyName)
+        const message = renderSmsTemplate(smsTemplate.message_template, {
+          customer_name: orderData.customer_name,
+          order_date: createdDate,
+          total_price: totalPriceFormatted,
+          company_name: companyName,
+        })
 
         // Send SMS via Twilio
         await twilioClient.messages.create({

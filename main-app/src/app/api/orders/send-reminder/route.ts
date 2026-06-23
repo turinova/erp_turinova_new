@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
+import { renderSmsTemplate } from '@/lib/sms-text'
 
 /**
  * POST /api/orders/send-reminder
@@ -221,7 +222,7 @@ async function sendStorageReminderSMS(
     const client = twilio(accountSid, authToken)
 
     // Fetch "Tárolás figyelmeztetés" template from database
-    let messageTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese mar {days} napja kesz es athvehetο. Kerem, vegye fel velunk a kapcsolatot! Udvozlettel, {company_name}'
+    let messageTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese mar {days} napja kesz es atveheto. Udvozlettel, {company_name}'
     
     try {
       const supabase = createClient(
@@ -245,12 +246,12 @@ async function sendStorageReminderSMS(
       console.error('[Storage Reminder SMS] Error fetching template, using default:', error)
     }
 
-    // Replace placeholders in template
-    const message = messageTemplate
-      .replace(/{customer_name}/g, customerName)
-      .replace(/{order_number}/g, orderNumber)
-      .replace(/{company_name}/g, companyName)
-      .replace(/{days}/g, storageDays.toString())
+    const message = renderSmsTemplate(messageTemplate, {
+      customer_name: customerName,
+      order_number: orderNumber,
+      company_name: companyName,
+      days: storageDays,
+    })
 
     console.log(`[Storage Reminder SMS] Sending to ${normalizedMobile}: ${message}`)
 

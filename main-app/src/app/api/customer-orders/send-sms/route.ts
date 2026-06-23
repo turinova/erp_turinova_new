@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import twilio from 'twilio'
+import { formatSmsPrice, renderSmsTemplate } from '@/lib/sms-text'
 
 /**
  * Send SMS notifications for customer orders and update sms_sent_at timestamp
@@ -90,18 +91,17 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          // Format price
-          const totalPriceFormatted = new Intl.NumberFormat('hu-HU').format(Math.round(orderData.total_gross)) + ' Ft'
+          const totalPriceFormatted = formatSmsPrice(Math.round(orderData.total_gross))
 
           // Format date as YYYY-MM-DD
           const createdDate = new Date(orderData.created_at).toISOString().split('T')[0]
 
-          // Replace variables in template
-          const message = smsTemplate.message_template
-            .replace(/{customer_name}/g, orderData.customer_name)
-            .replace(/{order_date}/g, createdDate)
-            .replace(/{total_price}/g, totalPriceFormatted)
-            .replace(/{company_name}/g, companyName)
+          const message = renderSmsTemplate(smsTemplate.message_template, {
+            customer_name: orderData.customer_name,
+            order_date: createdDate,
+            total_price: totalPriceFormatted,
+            company_name: companyName,
+          })
 
           // Send SMS via Twilio
           await twilioClient.messages.create({

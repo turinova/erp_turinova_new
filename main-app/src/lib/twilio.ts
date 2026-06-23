@@ -1,5 +1,6 @@
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
+import { renderSmsTemplate, toAsciiSmsText } from '@/lib/sms-text'
 
 interface SMSResult {
   success: boolean
@@ -58,7 +59,7 @@ export async function sendOrderReadySMS(
     const client = twilio(accountSid, authToken)
 
     // Fetch SMS template from database - use "Készre jelentés" template
-    let messageTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}'
+    let messageTemplate = 'Kedves {customer_name}! A rendelese elkeszult es atveheto. Anyagok: {material_name} Udvozlettel, {company_name}'
     
     try {
       const supabase = createClient(
@@ -113,9 +114,8 @@ export async function sendOrderReadySMS(
         }
         
         if (materials && materials.length > 0) {
-          // Get unique material names
           const uniqueMaterials = [...new Set(materials.map(m => m.material_name))]
-          materialNames = uniqueMaterials.join(', ')
+          materialNames = uniqueMaterials.map(name => toAsciiSmsText(name)).join(', ')
           console.log(`[SMS] Found materials: ${materialNames}`)
         }
       } catch (error) {
@@ -123,12 +123,12 @@ export async function sendOrderReadySMS(
       }
     }
 
-    // Replace placeholders in template
-    const message = messageTemplate
-      .replace(/{customer_name}/g, customerName)
-      .replace(/{order_number}/g, orderNumber)
-      .replace(/{company_name}/g, companyName)
-      .replace(/{material_name}/g, materialNames)
+    const message = renderSmsTemplate(messageTemplate, {
+      customer_name: customerName,
+      order_number: orderNumber,
+      company_name: companyName,
+      material_name: materialNames,
+    })
 
     console.log(`[SMS] Sending to ${normalizedMobile} (original: ${customerMobile}): ${message}`)
 

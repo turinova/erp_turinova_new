@@ -113,11 +113,11 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
     let defaultTemplate = ''
     
     if (selectedTemplate.template_name === 'Készre jelentés') {
-      defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}'
+      defaultTemplate = 'Kedves {customer_name}! A rendelese elkeszult es atveheto. Anyagok: {material_name} Udvozlettel, {company_name}'
     } else if (selectedTemplate.template_name === 'Tárolás figyelmeztetés') {
-      defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese mar {days} napja kesz es athvehetο. Kerem, vegye fel velunk a kapcsolatot! Udvozlettel, {company_name}'
+      defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese mar {days} napja kesz es atveheto. Udvozlettel, {company_name}'
     } else if (selectedTemplate.template_name === 'Beszerzés') {
-      defaultTemplate = 'Kedves {customer_name}! A beserzese ({order_date}) elkeszult, vegosszeg: {total_price}. Udvozlettel, {company_name}'
+      defaultTemplate = 'Kedves Megrendelonk! A {order_date}-i termekrendeles megerkezett. Osszeg: {total_price}. Udvozlettel, {company_name}'
     }
     
     setMessageTemplate(defaultTemplate)
@@ -186,7 +186,7 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
             label="Üzenet szövege"
             value={messageTemplate}
             onChange={(e) => setMessageTemplate(e.target.value)}
-            placeholder="Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}"
+            placeholder="Kedves {customer_name}! A rendelese elkeszult es atveheto. Anyagok: {material_name} Udvozlettel, {company_name}"
             sx={{ mb: 2 }}
           />
           
