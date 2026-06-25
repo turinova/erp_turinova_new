@@ -1,4 +1,5 @@
 import type { FootcounterDashboardStats, FootcounterHomeSlim } from '@/types/footcounter'
+import { enrichFootcounterInsights } from '@/lib/footcounter-insights'
 import { supabaseServer } from '@/lib/supabase-server'
 
 const TZ = 'Europe/Budapest'
@@ -148,7 +149,7 @@ async function tryRpcDashboardStatsV2(
   // Supabase returns json/jsonb RPC as object in JS.
   const parsed = data as unknown as FootcounterDashboardStatsRpcV2
   if (!looksLikeDashboardStats(parsed)) return null
-  return parsed
+  return await enrichFootcounterInsights(parsed, { deviceSlug, hoursMode })
 }
 
 async function fetchCrossingsPaged(deviceId: string, sinceIso: string, untilIso?: string) {
@@ -218,20 +219,23 @@ export async function getFootcounterDashboardStats(
   })
 
   if (!device?.id) {
-    return {
-      device_slug: deviceSlug,
-      today_in: 0,
-      today_out: 0,
-      total_in: 0,
-      total_out: 0,
-      last_event_at: null,
-      device_last_seen: null,
-      series_7d: last7DayKeys().map(day => ({ day, in_count: 0, out_count: 0 })),
-      series_month: [],
-      series_today_hourly: emptyHourly(),
-      same_weekday_avg: null,
-      heatmap_in: emptyHeatmap()
-    }
+    return enrichFootcounterInsights(
+      {
+        device_slug: deviceSlug,
+        today_in: 0,
+        today_out: 0,
+        total_in: 0,
+        total_out: 0,
+        last_event_at: null,
+        device_last_seen: null,
+        series_7d: last7DayKeys().map(day => ({ day, in_count: 0, out_count: 0 })),
+        series_month: [],
+        series_today_hourly: emptyHourly(),
+        same_weekday_avg: null,
+        heatmap_in: emptyHeatmap()
+      },
+      { deviceSlug, hoursMode }
+    )
   }
 
   const deviceId = device.id as string
@@ -354,20 +358,40 @@ export async function getFootcounterDashboardStats(
         }
       : null
 
-  return {
-    device_slug: deviceSlug,
-    today_in: todayIn,
-    today_out: todayOut,
-    total_in: totalIn,
-    total_out: totalOut,
-    last_event_at: lastEventAt,
-    device_last_seen: (device.last_seen_at as string | null) ?? null,
-    series_7d,
-    series_month,
-    series_today_hourly: hourlyToday,
-    same_weekday_avg,
-    heatmap_in: { days: HEATMAP_LOOKBACK_DAYS, matrix: heatmapMatrix }
+  const prevMonthKey =
+    monthKey && /^[0-9]{4}-[0-9]{2}$/.test(monthKey)
+      ? (() => {
+          const y = parseInt(monthKey.slice(0, 4), 10)
+          const m = parseInt(monthKey.slice(5, 7), 10)
+          const d = new Date(Date.UTC(y, m - 2, 1))
+          return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+        })()
+      : null
+
+  let prevMonthIn = 0
+  if (prevMonthKey) {
+    for (const [day, v] of byDay) {
+      if (day.startsWith(prevMonthKey)) prevMonthIn += v.in_count
+    }
   }
+
+  return await enrichFootcounterInsights(
+    {
+      device_slug: deviceSlug,
+      today_in: todayIn,
+      today_out: todayOut,
+      total_in: totalIn,
+      total_out: totalOut,
+      last_event_at: lastEventAt,
+      device_last_seen: (device.last_seen_at as string | null) ?? null,
+      series_7d,
+      series_month,
+      series_today_hourly: hourlyToday,
+      same_weekday_avg,
+      heatmap_in: { days: HEATMAP_LOOKBACK_DAYS, matrix: heatmapMatrix }
+    },
+    { byDay, prevMonthIn, deviceSlug, hoursMode }
+  )
 }
 
 /** Strip heavy fields for home SSR card. */

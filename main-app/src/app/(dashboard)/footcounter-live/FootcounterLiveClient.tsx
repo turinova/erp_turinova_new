@@ -2,51 +2,52 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
+import TabContext from '@mui/lab/TabContext'
+import TabPanel from '@mui/lab/TabPanel'
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   Alert,
   Box,
-  Button,
   Chip,
   CircularProgress,
-  FormControl,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
+  Stack,
+  Tab,
   ToggleButton,
   ToggleButtonGroup,
-  Stack,
+  Tooltip,
   Typography
 } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import TrendingDownIcon from '@mui/icons-material/TrendingDown'
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined'
 
+import CustomTabList from '@core/components/mui/TabList'
+import FootcounterChartCard from '@/components/footcounter/FootcounterChartCard'
+import FootcounterHeroCard from '@/components/footcounter/FootcounterHeroCard'
+import FootcounterInsightBullets from '@/components/footcounter/FootcounterInsightBullets'
+import FootcounterKpiCard from '@/components/footcounter/FootcounterKpiCard'
+import FootcounterMonthHero from '@/components/footcounter/FootcounterMonthHero'
+import FootcounterMonthToolbar from '@/components/footcounter/FootcounterMonthToolbar'
+import FootcounterWeatherImpact from '@/components/footcounter/FootcounterWeatherImpact'
+import { useFootcounterCharts } from '@/components/footcounter/useFootcounterCharts'
+import { formatAvg, formatMonthKeyLabel } from '@/lib/footcounter-format'
+import { computeMonthInsightBullets } from '@/lib/footcounter-insights-copy'
+import { computeTrafficByWeatherBucket } from '@/lib/footcounter-weather-impact'
+import {
+  FOOTCOUNTER_LOCAL_TZ,
+  FOOTCOUNTER_WEATHER_PLACE,
+  summarizeMonthWeatherImpacts
+} from '@/lib/footcounter-weather'
 import type { FootcounterDashboardStats } from '@/types/footcounter'
 
-const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
+const ReactApexChart = dynamic(() => import('react-apexcharts'), {
+  ssr: false,
+  loading: () => <CircularProgress size={28} />
+})
 
-const HEATMAP_WEEKDAY_LABELS = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V']
+type TabValue = 'today' | 'month' | 'patterns'
 
-function formatAvg(n: number): string {
-  if (!Number.isFinite(n)) return '—'
-  return n >= 10 ? Math.round(n).toLocaleString('hu-HU') : n.toFixed(1)
-}
-
-function pctVsAvg(today: number, avg: number): string | null {
-  if (avg <= 0 || !Number.isFinite(avg)) return null
-  const p = Math.round((today / avg - 1) * 100)
-  if (p === 0) return '≈ átlag'
-  return p > 0 ? `+${p}% az átlaghoz` : `${p}% az átlaghoz`
-}
-
-/**
- * Bejárat élő: Supabase stats + optional LAN MJPEG.
- */
 export default function FootcounterLiveClient() {
   const streamUrl = useMemo(() => {
     const direct = process.env.NEXT_PUBLIC_FOOTCOUNTER_STREAM_URL?.trim()
@@ -54,28 +55,33 @@ export default function FootcounterLiveClient() {
     return '/api/footcounter/stream'
   }, [])
 
+  const [activeTab, setActiveTab] = useState<TabValue>('month')
   const [stats, setStats] = useState<FootcounterDashboardStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState<string | null>(null)
-  const [livePreviewOpen, setLivePreviewOpen] = useState(false)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
+  const [weatherSyncing, setWeatherSyncing] = useState(false)
+  const [weatherMessage, setWeatherMessage] = useState<string | null>(null)
   const [hoursMode, setHoursMode] = useState<'open' | 'all'>('open')
-  const [monthKey, setMonthKey] = useState(() => {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Budapest',
+  const [yearChartExpanded, setYearChartExpanded] = useState(false)
+  const [liveCameraExpanded, setLiveCameraExpanded] = useState(false)
+  const [monthKey, setMonthKey] = useState(() =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: FOOTCOUNTER_LOCAL_TZ,
       year: 'numeric',
       month: '2-digit'
     }).format(new Date())
-  })
+  )
 
   const monthOptions = useMemo(() => {
     const base = new Date()
     const fmtKey = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Budapest',
+      timeZone: FOOTCOUNTER_LOCAL_TZ,
       year: 'numeric',
       month: '2-digit'
     })
     const fmtLabel = new Intl.DateTimeFormat('hu-HU', {
-      timeZone: 'Europe/Budapest',
+      timeZone: FOOTCOUNTER_LOCAL_TZ,
       year: 'numeric',
       month: 'long'
     })
@@ -101,8 +107,8 @@ export default function FootcounterLiveClient() {
         const j = await res.json().catch(() => ({}))
         throw new Error((j as { error?: string }).error || res.statusText)
       }
-      const data = (await res.json()) as FootcounterDashboardStats
-      setStats(data)
+      setStats((await res.json()) as FootcounterDashboardStats)
+      setLastUpdatedAt(new Date())
     } catch (e) {
       setStatsError(e instanceof Error ? e.message : 'Ismeretlen hiba')
       setStats(null)
@@ -112,21 +118,34 @@ export default function FootcounterLiveClient() {
   }, [hoursMode, monthKey])
 
   useEffect(() => {
-    loadStats()
+    void loadStats()
+  }, [loadStats])
+
+  const syncWeather = useCallback(async () => {
+    setWeatherSyncing(true)
+    setWeatherMessage(null)
+    try {
+      const res = await fetch('/api/footcounter/weather?days=90', { method: 'POST', credentials: 'include' })
+      const j = (await res.json().catch(() => ({}))) as { error?: string; upserted?: number }
+      if (!res.ok) throw new Error(j.error || res.statusText)
+      setWeatherMessage(`${j.upserted ?? 0} nap időjárás frissítve (${FOOTCOUNTER_WEATHER_PLACE})`)
+      await loadStats()
+    } catch (e) {
+      setWeatherMessage(e instanceof Error ? e.message : 'Időjárás szinkron hiba')
+    } finally {
+      setWeatherSyncing(false)
+    }
   }, [loadStats])
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        void loadStats()
-      }
+      if (document.visibilityState === 'visible') void loadStats()
     }, 30_000)
     return () => window.clearInterval(id)
   }, [loadStats])
 
   const openHourRangeToday = useMemo(() => {
-    const wd = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Budapest', weekday: 'short' }).format(new Date())
-    // Mon–Fri: 08–17 inclusive; Sat: 08–12 inclusive; Sun: empty
+    const wd = new Intl.DateTimeFormat('en-US', { timeZone: FOOTCOUNTER_LOCAL_TZ, weekday: 'short' }).format(new Date())
     if (['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(wd)) return { start: 8, end: 17 }
     if (wd === 'Sat') return { start: 8, end: 12 }
     return { start: 0, end: -1 }
@@ -139,145 +158,64 @@ export default function FootcounterLiveClient() {
     return hourly.filter(h => h.hour >= openHourRangeToday.start && h.hour <= openHourRangeToday.end)
   }, [stats?.series_today_hourly, hoursMode, openHourRangeToday])
 
-  const monthChartOptions = useMemo(() => {
-    const series = stats?.series_month ?? []
-    const categories = series.map(s => s.day.slice(8)) // DD
-    const totals = series.map(s => s.in_count + s.out_count)
-    return {
-      chart: {
-        type: 'bar' as const,
-        toolbar: { show: false },
-        fontFamily: 'inherit'
-      },
-      dataLabels: { enabled: false },
-      plotOptions: { bar: { horizontal: false, columnWidth: '65%', borderRadius: 3 } },
-      stroke: { curve: 'straight' as const, width: [0, 0, 2] },
-      xaxis: { categories, title: { text: 'Nap (Budapest)' } },
-      yaxis: { title: { text: 'Események' } },
-      colors: ['#16A085', '#E67E22', '#2C3E50'],
-      legend: { position: 'top' as const },
-      tooltip: { y: { formatter: (val: number) => `${val}` } },
-      markers: { size: 0 },
-      fill: { opacity: 1 },
-      annotations: {
-        points: []
-      },
-      // keep `totals` referenced so TS doesn't tree-shake as unused in some builds
-      _totals: totals
-    }
-  }, [stats?.series_month])
+  const hasMonthWeather = useMemo(
+    () => (stats?.month_weather ?? []).some(w => w.condition !== 'unknown'),
+    [stats?.month_weather]
+  )
 
-  const monthChartSeries = useMemo(() => {
-    const series = stats?.series_month ?? []
-    return [
-      { name: 'Be', type: 'column' as const, data: series.map(s => s.in_count) },
-      { name: 'Ki', type: 'column' as const, data: series.map(s => s.out_count) },
-      { name: 'Összesen', type: 'line' as const, data: series.map(s => s.in_count + s.out_count) }
-    ]
-  }, [stats?.series_month])
+  const weatherTrafficImpact = useMemo(
+    () => computeTrafficByWeatherBucket(stats?.series_month ?? [], stats?.month_weather ?? []),
+    [stats?.series_month, stats?.month_weather]
+  )
 
-  const monthTotals = useMemo(() => {
-    const series = stats?.series_month ?? []
-    let inSum = 0
-    let outSum = 0
-    for (const d of series) {
-      inSum += d.in_count
-      outSum += d.out_count
-    }
-    return { inSum, outSum, total: inSum + outSum }
-  }, [stats?.series_month])
+  const monthInsightBullets = useMemo(() => {
+    if (!stats) return []
+    return computeMonthInsightBullets(stats, weatherTrafficImpact)
+  }, [stats, weatherTrafficImpact])
 
-  const hourlyOptions = useMemo(() => {
-    const hourly = hourlyFiltered
-    return {
-      chart: { type: 'bar' as const, toolbar: { show: false }, fontFamily: 'inherit' },
-      plotOptions: { bar: { horizontal: false, columnWidth: '70%', borderRadius: 2 } },
-      dataLabels: { enabled: false },
-      stroke: { show: true, width: 2, colors: ['transparent'] },
-      xaxis: { categories: hourly.map(h => `${h.hour}`), title: { text: 'Óra (Budapest)' } },
-      yaxis: { title: { text: 'Események' } },
-      fill: { opacity: 1 },
-      colors: ['#16A085', '#E67E22'],
-      legend: { position: 'top' as const },
-      tooltip: { y: { formatter: (val: number) => `${val}` } }
-    }
-  }, [hourlyFiltered])
+  const monthWeatherImpact = useMemo(
+    () => summarizeMonthWeatherImpacts(stats?.month_weather ?? []),
+    [stats?.month_weather]
+  )
 
-  const hourlySeries = useMemo(() => {
-    const hourly = hourlyFiltered
-    return [
-      { name: 'Be', data: hourly.map(h => h.in_count) },
-      { name: 'Ki', data: hourly.map(h => h.out_count) }
-    ]
-  }, [hourlyFiltered])
+  const handleYearMonthSelect = useCallback((key: string) => {
+    if (/^[0-9]{4}-[0-9]{2}$/.test(key)) setMonthKey(key)
+  }, [])
 
-  const heatmapOptions = useMemo(() => {
-    const heatmapHoursStart = 8
-    const heatmapHoursEnd = hoursMode === 'all' ? 23 : 17
-    const flat =
-      stats?.heatmap_in.matrix
-        .flatMap(row => row.slice(heatmapHoursStart, heatmapHoursEnd + 1)) ?? []
-    const maxVal = Math.max(1, ...flat)
-    return {
-      chart: { type: 'heatmap' as const, toolbar: { show: false }, fontFamily: 'inherit' },
-      dataLabels: { enabled: false },
-      colors: ['#00897B'],
-      plotOptions: {
-        heatmap: {
-          shadeIntensity: 0.55,
-          radius: 2,
-          colorScale: {
-            ranges: [
-              { from: 0, to: 0, color: '#ECEFF1', name: '0' },
-              { from: 1, to: maxVal, color: '#00897B', name: 'be' }
-            ]
-          }
-        }
-      },
-      xaxis: {
-        type: 'category' as const,
-        categories: Array.from(
-          { length: heatmapHoursEnd - heatmapHoursStart + 1 },
-          (_, i) => `${heatmapHoursStart + i}`
-        ),
-        title: { text: 'Óra' }
-      },
-      yaxis: { show: true },
-      tooltip: { y: { formatter: (val: number) => `${val} be` } }
-    }
-  }, [stats?.heatmap_in.matrix, hoursMode])
+  const charts = useFootcounterCharts(stats, hoursMode, hourlyFiltered, {
+    onYearMonthSelect: handleYearMonthSelect,
+    selectedMonthKey: monthKey
+  })
 
-  const heatmapSeries = useMemo(() => {
-    const m = stats?.heatmap_in.matrix ?? []
-    const heatmapHoursStart = 8
-    const heatmapHoursEnd = hoursMode === 'all' ? 23 : 17
-    return HEATMAP_WEEKDAY_LABELS.map((name, wd) => ({
-      name,
-      data:
-        (m[wd] ?? Array.from({ length: 24 }, () => 0)).slice(heatmapHoursStart, heatmapHoursEnd + 1) ??
-        Array.from({ length: heatmapHoursEnd - heatmapHoursStart + 1 }, () => 0)
-    }))
-  }, [stats?.heatmap_in.matrix, hoursMode])
+  const monthLabel = monthOptions.find(m => m.key === monthKey)?.label ?? monthKey
 
-  const sameWeekdayBeVsAvg = useMemo(() => {
-    const sw = stats?.same_weekday_avg
-    if (!sw) return null
-    return pctVsAvg(stats.today_in, sw.avg_in)
-  }, [stats?.same_weekday_avg, stats?.today_in])
+  const yearRangeLabel = useMemo(() => {
+    const months = stats?.series_months_12 ?? []
+    if (months.length === 0) return null
+    const first = months[0]?.month_key
+    const last = months[months.length - 1]?.month_key
+    if (!first || !last) return null
+    return `${formatMonthKeyLabel(first)} – ${formatMonthKeyLabel(last)}`
+  }, [stats?.series_months_12])
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 } }}>
-      <Stack direction='row' justifyContent='space-between' alignItems='flex-start' sx={{ mb: 2 }} flexWrap='wrap' gap={2}>
+    <Box sx={{ p: { xs: 2, md: 3 }, bgcolor: 'background.default', minHeight: '100%' }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent='space-between'
+        alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+        spacing={2}
+        sx={{ mb: 2 }}
+      >
         <Box>
-          <Typography variant='h4' sx={{ mb: 1 }}>
-            Bejárat élő
+          <Typography variant='h4' sx={{ fontWeight: 700, mb: 0.5 }}>
+            Bejárat
           </Typography>
           <Typography variant='body2' color='text.secondary'>
-            A számok a Supabase-ben tárolt szinkron eseményekből jönnek — nem nullázódnak, ha a Pi újraindul. Az élő
-            képen látható számláló a Pi aktuális munkamenetét mutatja. Alap nézet: nyitvatartási idők. Frissítés 30 másodpercenként.
+            {FOOTCOUNTER_WEATHER_PLACE} · számláló adatok · frissül 30 másodpercenként
           </Typography>
         </Box>
-        <Stack direction='row' spacing={1} alignItems='center' flexWrap='wrap' useFlexGap>
+        <Tooltip title='Nyitvatartási órák (8–17 hétköznap, szombat 8–12) vagy teljes nap'>
           <ToggleButtonGroup
             size='small'
             exclusive
@@ -285,36 +223,16 @@ export default function FootcounterLiveClient() {
             onChange={(_, v) => {
               if (v === 'open' || v === 'all') setHoursMode(v)
             }}
+            sx={{ alignSelf: { sm: 'flex-start' } }}
           >
             <ToggleButton value='open'>Nyitvatartás</ToggleButton>
-            <ToggleButton value='all'>Teljes nap (debug)</ToggleButton>
+            <ToggleButton value='all'>Összes óra</ToggleButton>
           </ToggleButtonGroup>
-          <FormControl size='small' sx={{ minWidth: 220 }}>
-            <InputLabel id='footcounter-month-label'>Hónap</InputLabel>
-            <Select
-              labelId='footcounter-month-label'
-              value={monthKey}
-              label='Hónap'
-              onChange={e => {
-                const v = String(e.target.value || '')
-                if (/^[0-9]{4}-[0-9]{2}$/.test(v)) setMonthKey(v)
-              }}
-            >
-              {monthOptions.map(m => (
-                <MenuItem key={m.key} value={m.key}>
-                  {m.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Button variant='outlined' size='small' onClick={() => loadStats()} disabled={statsLoading}>
-            Adatok frissítése
-          </Button>
-        </Stack>
+        </Tooltip>
       </Stack>
 
       {statsLoading && !stats && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
         </Box>
       )}
@@ -325,176 +243,270 @@ export default function FootcounterLiveClient() {
         </Alert>
       )}
 
-      {stats && (
-        <>
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, border: t => `1px solid ${t.palette.divider}` }}>
-                <Typography variant='caption' color='text.secondary'>
-                  Összesen (szinkron) — Be
-                </Typography>
-                <Stack direction='row' alignItems='center' spacing={1} sx={{ mt: 0.5 }}>
-                  <TrendingUpIcon color='success' />
-                  <Typography variant='h4'>{stats.total_in}</Typography>
-                </Stack>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, border: t => `1px solid ${t.palette.divider}` }}>
-                <Typography variant='caption' color='text.secondary'>
-                  Összesen (szinkron) — Ki
-                </Typography>
-                <Stack direction='row' alignItems='center' spacing={1} sx={{ mt: 0.5 }}>
-                  <TrendingDownIcon color='warning' />
-                  <Typography variant='h4'>{stats.total_out}</Typography>
-                </Stack>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, border: t => `1px solid ${t.palette.divider}` }}>
-                <Typography variant='caption' color='text.secondary'>
-                  Ma (Budapest) — Be / Ki
-                </Typography>
-                <Typography variant='h4' sx={{ mt: 0.5 }}>
-                  {stats.today_in} / {stats.today_out}
-                </Typography>
-                {stats.same_weekday_avg && (
-                  <Stack direction='row' spacing={0.5} flexWrap='wrap' useFlexGap sx={{ mt: 1 }}>
-                    <Typography variant='caption' color='text.secondary' display='block' sx={{ width: '100%' }}>
-                      Átlag ugyanezen a hétköznapon ({stats.same_weekday_avg.sample_days} nap,{' '}
-                      {stats.same_weekday_avg.lookback_days} napos ablak):
-                    </Typography>
-                    <Typography variant='body2'>
-                      Be {formatAvg(stats.same_weekday_avg.avg_in)} · Ki{' '}
-                      {formatAvg(stats.same_weekday_avg.avg_out)}
-                    </Typography>
-                    {sameWeekdayBeVsAvg && (
-                      <Chip
-                        size='small'
-                        label={`Be: ${sameWeekdayBeVsAvg}`}
-                        variant='outlined'
-                        sx={{ height: 22 }}
-                      />
-                    )}
-                  </Stack>
-                )}
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, border: t => `1px solid ${t.palette.divider}` }}>
-                <Typography variant='caption' color='text.secondary'>
-                  Utolsó esemény
-                </Typography>
-                <Typography variant='body1' sx={{ mt: 0.5 }}>
-                  {stats.last_event_at
-                    ? new Date(stats.last_event_at).toLocaleString('hu-HU')
-                    : '—'}
-                </Typography>
-                <Typography variant='caption' color='text.secondary' display='block' sx={{ mt: 1 }}>
-                  Eszköz utolsó jelzés:{' '}
-                  {stats.device_last_seen
-                    ? new Date(stats.device_last_seen).toLocaleString('hu-HU')
-                    : '—'}
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-
-          <Paper sx={{ p: 2, mb: 3, border: t => `1px solid ${t.palette.divider}` }}>
-            <Typography variant='subtitle1' sx={{ mb: 0.5 }}>
-              Ma óránként (Europe/Budapest)
-            </Typography>
-            <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 2 }}>
-              Be és Ki események óránként a mai naptól.
-            </Typography>
-            <Box sx={{ minHeight: 300 }}>
-              <ReactApexChart options={hourlyOptions} series={hourlySeries} type='bar' height={300} />
-            </Box>
-          </Paper>
-
-          <Paper sx={{ p: 2, mb: 3, border: t => `1px solid ${t.palette.divider}` }}>
-            <Typography variant='subtitle1' sx={{ mb: 0.5 }}>
-              Be forgalom: hét napja × óra
-            </Typography>
-            <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 2 }}>
-              Csak bejárat (Be), utolsó {stats.heatmap_in.days} nap összesen — hol zsúfolt a bolt tipikusan.
-            </Typography>
-            <Box sx={{ minHeight: 380, overflowX: 'auto' }}>
-              <ReactApexChart options={heatmapOptions} series={heatmapSeries} type='heatmap' height={380} />
-            </Box>
-          </Paper>
-
-          <Paper sx={{ p: 2, mb: 3, border: t => `1px solid ${t.palette.divider}` }}>
-            <Typography variant='subtitle1' sx={{ mb: 0.5 }}>
-              Havi forgalom ({monthKey}, Europe/Budapest)
-            </Typography>
-            <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 2 }}>
-              Be és Ki események naponta a kiválasztott hónapban.
-            </Typography>
-            <Stack direction='row' spacing={1.5} flexWrap='wrap' useFlexGap sx={{ mb: 2 }}>
-              <Chip label={`Havi összesen: ${monthTotals.total.toLocaleString('hu-HU')}`} variant='outlined' />
-              <Chip label={`Be: ${monthTotals.inSum.toLocaleString('hu-HU')}`} variant='outlined' />
-              <Chip label={`Ki: ${monthTotals.outSum.toLocaleString('hu-HU')}`} variant='outlined' />
-            </Stack>
-            {stats.series_month.length === 0 ? (
-              <Typography color='text.secondary'>Még nincs szinkronizált esemény ebben a hónapban.</Typography>
-            ) : (
-              <Box sx={{ minHeight: 320 }}>
-                <ReactApexChart options={monthChartOptions} series={monthChartSeries} type='line' height={320} />
-              </Box>
-            )}
-          </Paper>
-        </>
+      {weatherMessage && (
+        <Alert severity='info' sx={{ mb: 2 }} onClose={() => setWeatherMessage(null)}>
+          {weatherMessage}
+        </Alert>
       )}
 
-      <Accordion
-        expanded={livePreviewOpen}
-        onChange={(_, expanded) => setLivePreviewOpen(expanded)}
-        disableGutters
-        elevation={0}
-        sx={{
-          mt: 2,
-          border: t => `1px solid ${t.palette.divider}`,
-          borderRadius: 1,
-          '&:before': { display: 'none' },
-          overflow: 'hidden'
-        }}
-      >
-        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, '& .MuiAccordionSummary-content': { my: 1 } }}>
-          <Typography variant='subtitle2'>Élő kép (opcionális)</Typography>
-        </AccordionSummary>
-        <AccordionDetails sx={{ pt: 0, px: 1, pb: 1 }}>
-          {livePreviewOpen ? (
-            <Paper
-              elevation={0}
+      {stats && (
+        <TabContext value={activeTab}>
+          <CustomTabList
+            pill='true'
+            color='success'
+            onChange={(_, v) => setActiveTab(v as TabValue)}
+            aria-label='Bejárat nézetek'
+            sx={{ mb: 2 }}
+          >
+            <Tab value='today' label='Ma' />
+            <Tab value='month' label='Hónap' />
+            <Tab value='patterns' label='Beosztás' />
+          </CustomTabList>
+
+          {/* —— MA —— */}
+          <TabPanel value='today' sx={{ p: 0 }}>
+            <FootcounterHeroCard stats={stats} />
+
+            <Box
               sx={{
-                border: theme => `1px solid ${theme.palette.divider}`,
-                borderRadius: 1,
-                overflow: 'hidden',
-                bgcolor: 'action.hover',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                maxHeight: { xs: 'min(32vh, 280px)', sm: 'min(36vh, 320px)' }
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
+                gap: 2,
+                mb: 2
               }}
             >
-              <Box
-                component='img'
-                src={streamUrl}
-                alt='Bejárat élő közvetítés'
-                sx={{
-                  display: 'block',
-                  width: '100%',
-                  maxHeight: { xs: 'min(32vh, 280px)', sm: 'min(36vh, 320px)' },
-                  height: 'auto',
-                  objectFit: 'contain',
-                  verticalAlign: 'bottom'
-                }}
+              <FootcounterKpiCard
+                label='Ma be / ki'
+                value={`${stats.today_in} / ${stats.today_out}`}
+                sub={
+                  stats.same_weekday_avg
+                    ? `Átlag ezen a napon: ${formatAvg(stats.same_weekday_avg.avg_in)} be`
+                    : undefined
+                }
               />
-            </Paper>
-          ) : null}
-        </AccordionDetails>
-      </Accordion>
+              <FootcounterKpiCard
+                label='Bent lévők (becslés)'
+                value={`~${stats.live_occupancy ?? 0}`}
+                sub={`${stats.today_in} be − ${stats.today_out} ki`}
+                highlight
+              />
+              <FootcounterKpiCard
+                label='Mai csúcsóra'
+                value={stats.today_peak_hour != null ? `${stats.today_peak_hour}:00` : '—'}
+                sub={`${stats.today_peak_in ?? 0} belépő ebben az órában`}
+              />
+              <FootcounterKpiCard
+                label='Számláló összesen'
+                value={stats.total_in.toLocaleString('hu-HU')}
+                sub={`Összes kilépő: ${stats.total_out.toLocaleString('hu-HU')} · életciklus`}
+              />
+            </Box>
+
+            <FootcounterChartCard
+              title={`Ma óránként · ${FOOTCOUNTER_WEATHER_PLACE}`}
+              subtitle='Belépő és kilépő események óránként.'
+              borderColor='success'
+              loading={statsLoading}
+              minHeight={300}
+            >
+              {hourlyFiltered.length === 0 ? (
+                <Typography color='text.secondary'>Ma nincs nyitvatartási adat ebben a nézetben.</Typography>
+              ) : (
+                <Box sx={{ width: '100%' }}>
+                  <ReactApexChart options={charts.hourlyOptions} series={charts.hourlySeries} type='bar' height={300} />
+                </Box>
+              )}
+            </FootcounterChartCard>
+          </TabPanel>
+
+          {/* —— HÓNAP —— */}
+          <TabPanel value='month' sx={{ p: 0 }}>
+            <FootcounterMonthToolbar
+              monthKey={monthKey}
+              monthOptions={monthOptions}
+              onMonthKeyChange={setMonthKey}
+              onRefresh={() => void loadStats()}
+              onWeatherSync={() => void syncWeather()}
+              statsLoading={statsLoading}
+              weatherSyncing={weatherSyncing}
+              lastUpdatedAt={lastUpdatedAt}
+            />
+
+            <FootcounterMonthHero stats={stats} monthLabel={monthLabel} inSum={charts.monthTotals.inSum} />
+
+            <FootcounterInsightBullets bullets={monthInsightBullets} />
+
+            {hasMonthWeather ? (
+              <FootcounterWeatherImpact
+                impact={weatherTrafficImpact}
+                monthLabel={monthLabel}
+                avgTempMaxC={monthWeatherImpact.avg_temp_max_c}
+              />
+            ) : (
+              <Alert severity='info' sx={{ mb: 2 }}>
+                Az időjárás összevetéshez futtasd az <strong>Időjárás szinkron</strong> gombot (Open-Meteo,{' '}
+                {FOOTCOUNTER_WEATHER_PLACE}).
+              </Alert>
+            )}
+
+            <FootcounterChartCard
+              title={`Napi forgalom · ${monthLabel}`}
+              subtitle='Belépő és kilépő naponta — az időjárás a tooltipben látható.'
+              borderColor='success'
+              loading={statsLoading}
+              minHeight={360}
+            >
+              {stats.series_month.length === 0 ? (
+                <Typography color='text.secondary'>Nincs adat ebben a hónapban.</Typography>
+              ) : (
+                <Box sx={{ width: '100%' }}>
+                  <ReactApexChart
+                    options={charts.monthTrafficOptions}
+                    series={charts.monthTrafficSeries}
+                    type='line'
+                    height={360}
+                  />
+                </Box>
+              )}
+            </FootcounterChartCard>
+
+            <Accordion
+              expanded={yearChartExpanded}
+              onChange={(_, exp) => setYearChartExpanded(exp)}
+              disableGutters
+              elevation={0}
+              sx={{
+                mt: 2,
+                border: t => `1px solid ${t.palette.divider}`,
+                borderRadius: 1,
+                '&:before': { display: 'none' }
+              }}
+            >
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Box>
+                  <Typography variant='subtitle1' sx={{ fontWeight: 600 }}>
+                    Éves szezonalitás
+                  </Typography>
+                  <Typography variant='caption' color='text.secondary'>
+                    {yearRangeLabel
+                      ? `Utolsó 12 hónap · ${yearRangeLabel} · kattints egy oszlopra a hónap kiválasztásához`
+                      : 'Utolsó 12 hónap összesített havi forgalom'}
+                  </Typography>
+                </Box>
+              </AccordionSummary>
+              <AccordionDetails sx={{ pt: 0 }}>
+                {(stats.series_months_12?.length ?? 0) === 0 ? (
+                  <Typography color='text.secondary'>Nincs elég havi adat a szezonalitáshoz.</Typography>
+                ) : (
+                  <Box sx={{ width: '100%' }}>
+                    <Stack direction='row' spacing={1} flexWrap='wrap' useFlexGap sx={{ mb: 2 }}>
+                      <Chip
+                        label={`12 hó be: ${charts.yearTotals.inSum.toLocaleString('hu-HU')}`}
+                        variant='outlined'
+                        color='success'
+                        size='small'
+                      />
+                      <Chip
+                        label={`12 hó ki: ${charts.yearTotals.outSum.toLocaleString('hu-HU')}`}
+                        variant='outlined'
+                        color='warning'
+                        size='small'
+                      />
+                      <Chip
+                        label={`Átlag / hó: ${formatAvg(charts.yearTotals.inSum / 12)} be`}
+                        variant='outlined'
+                        size='small'
+                      />
+                      <Chip label={`Kiválasztva: ${monthLabel}`} color='success' variant='filled' size='small' />
+                    </Stack>
+                    <ReactApexChart
+                      options={charts.yearSeasonOptions}
+                      series={charts.yearSeasonSeries}
+                      type='bar'
+                      height={300}
+                    />
+                  </Box>
+                )}
+              </AccordionDetails>
+            </Accordion>
+          </TabPanel>
+
+          {/* —— BEOSZTÁS —— */}
+          <TabPanel value='patterns' sx={{ p: 0 }}>
+            <FootcounterChartCard
+              title='Mikor zsúfolt a bolt?'
+              subtitle={`Belépők hét × óra mátrix, utolsó ${stats.heatmap_in.days} nap — nyitvatartási órák.`}
+              borderColor='primary'
+              loading={statsLoading}
+              minHeight={360}
+            >
+              <Box sx={{ overflowX: 'auto', width: '100%' }}>
+                <ReactApexChart options={charts.heatmapOptions} series={charts.heatmapSeries} type='heatmap' height={360} />
+              </Box>
+            </FootcounterChartCard>
+
+            {(stats.weekday_profile?.length ?? 0) > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <FootcounterChartCard
+                  title='Hét napja szerinti átlag'
+                  subtitle='Átlagos belépő / nap, utolsó 90 nap.'
+                  borderColor='info'
+                  loading={statsLoading}
+                  minHeight={280}
+                >
+                  <Box sx={{ width: '100%' }}>
+                    <ReactApexChart
+                      options={charts.weekdayChartOptions}
+                      series={charts.weekdayChartSeries}
+                      type='bar'
+                      height={280}
+                    />
+                  </Box>
+                </FootcounterChartCard>
+              </Box>
+            )}
+
+            <Accordion
+              expanded={liveCameraExpanded}
+              onChange={(_, exp) => setLiveCameraExpanded(exp)}
+              disableGutters
+              elevation={0}
+              sx={{
+                mt: 2,
+                border: t => `1px solid ${t.palette.divider}`,
+                borderRadius: 1,
+                '&:before': { display: 'none' }
+              }}
+            >
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Stack direction='row' alignItems='center' spacing={1}>
+                  <VideocamOutlinedIcon fontSize='small' color='action' />
+                  <Typography variant='subtitle2' sx={{ fontWeight: 600 }}>
+                    Élő kamera
+                  </Typography>
+                </Stack>
+              </AccordionSummary>
+              <AccordionDetails sx={{ pt: 0 }}>
+                <Box
+                  sx={{
+                    borderRadius: 1,
+                    overflow: 'hidden',
+                    bgcolor: 'action.hover',
+                    maxHeight: { xs: 280, sm: 360 }
+                  }}
+                >
+                  <Box
+                    component='img'
+                    src={streamUrl}
+                    alt='Bejárat élő kép'
+                    sx={{ display: 'block', width: '100%', height: 'auto', objectFit: 'contain' }}
+                  />
+                </Box>
+              </AccordionDetails>
+            </Accordion>
+          </TabPanel>
+        </TabContext>
+      )}
     </Box>
   )
 }
