@@ -16,6 +16,78 @@ function hasChildren(item: NavItem): item is NavItem & { children: readonly NavC
   return Array.isArray(item.children) && item.children.length > 0
 }
 
+const externalLinkProps = { target: "_blank" as const, rel: "noreferrer" as const }
+
+function OnlineQuoteLinks({
+  onNavigate,
+  layout,
+}: {
+  onNavigate?: () => void
+  layout: "drawer" | "dropdown"
+}) {
+  if (layout === "drawer") {
+    return (
+      <div className="grid gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-black/45">Online árajánlat</p>
+        <a
+          href={LINKS.login}
+          {...externalLinkProps}
+          onClick={onNavigate}
+          className="flex w-full items-center justify-center rounded-full border border-black/15 bg-white px-4 py-3 text-sm font-semibold text-black/85 hover:bg-black/[0.04]"
+        >
+          Bejelentkezés
+        </a>
+        <a
+          href={LINKS.register}
+          {...externalLinkProps}
+          onClick={onNavigate}
+          className="flex w-full items-center justify-center rounded-full bg-[var(--color-brand)] px-4 py-3 text-sm font-semibold text-[var(--color-brand-contrast)] hover:brightness-95"
+        >
+          Regisztráció
+        </a>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative group">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-controls="online-quote-menu"
+        className="inline-flex items-center gap-1 rounded-full border border-black/15 bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-[var(--color-brand-contrast)] hover:brightness-95"
+      >
+        Online árajánlat
+        <span className="text-xs opacity-80" aria-hidden>
+          ▾
+        </span>
+      </button>
+      <div
+        id="online-quote-menu"
+        role="menu"
+        className="invisible absolute right-0 top-full z-50 mt-2 w-52 translate-y-1 rounded-xl border border-black/10 bg-white p-2 opacity-0 shadow-sm transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100"
+      >
+        <a
+          href={LINKS.login}
+          {...externalLinkProps}
+          role="menuitem"
+          className="block rounded-lg px-3 py-2.5 text-sm font-medium text-black/80 hover:bg-black/[0.04] hover:text-black"
+        >
+          Bejelentkezés
+        </a>
+        <a
+          href={LINKS.register}
+          {...externalLinkProps}
+          role="menuitem"
+          className="block rounded-lg px-3 py-2.5 text-sm font-medium text-black/80 hover:bg-black/[0.04] hover:text-black"
+        >
+          Regisztráció
+        </a>
+      </div>
+    </div>
+  )
+}
+
 function MenuIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -170,15 +242,7 @@ function MobileNavDrawer({
         </nav>
 
         <div className="border-t border-black/10 p-4">
-          <a
-            href={LINKS.onlineOrdering}
-            className="flex w-full items-center justify-center rounded-full bg-[var(--color-brand)] px-4 py-3 text-sm font-semibold text-[var(--color-brand-contrast)] hover:brightness-95"
-            target="_blank"
-            rel="noreferrer"
-            onClick={onClose}
-          >
-            Online árajánlat
-          </a>
+          <OnlineQuoteLinks layout="drawer" onNavigate={onClose} />
         </div>
       </div>
     </div>
@@ -231,14 +295,13 @@ export function SiteHeader() {
             />
           </Link>
 
-          <a
-            href={LINKS.onlineOrdering}
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
             className="inline-flex shrink-0 rounded-full bg-[var(--color-brand)] px-3 py-2 text-xs font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 sm:px-4 sm:text-sm"
-            target="_blank"
-            rel="noreferrer"
           >
             Árajánlat
-          </a>
+          </button>
         </div>
 
         <MobileNavDrawer
@@ -322,14 +385,7 @@ export function SiteHeader() {
             <div className="hidden items-center gap-3 lg:flex">
               <OpeningHoursPill />
             </div>
-            <a
-              href={LINKS.onlineOrdering}
-              className="inline-flex rounded-full border border-black/15 bg-[var(--color-brand)] px-4 py-2 text-sm font-medium text-[var(--color-brand-contrast)] hover:brightness-95"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Online árajánlat
-            </a>
+            <OnlineQuoteLinks layout="dropdown" />
           </div>
         </div>
       </div>
