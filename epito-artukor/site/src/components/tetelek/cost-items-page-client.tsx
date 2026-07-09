@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import type { Category, CostItem, CostItemInput, CostItemStatus, Trade, Unit } from "@/types"
+import type { AiSearchResult } from "@/lib/cost-items/ai-search-types"
 import { getTradeLabel } from "@/lib/trades"
 import { useTradeOptions } from "@/components/trades/trades-provider"
 import { buildCategoryMap } from "@/lib/categories/category-tree"
@@ -40,15 +41,17 @@ import {
 } from "@/components/ui/select"
 import { CostItemDrawer } from "@/components/tetelek/cost-item-drawer"
 import { CostItemRow } from "@/components/tetelek/cost-item-row"
+import { CostItemsAiSearchPanel } from "@/components/tetelek/cost-items-ai-search-panel"
+import { CostItemsTradeSidebar } from "@/components/tetelek/cost-items-trade-sidebar"
 import { ColumnToggle, useColumnVisibility } from "@/components/tetelek/column-toggle"
 import { CommandPalette } from "@/components/tetelek/command-palette"
 import { QuickKtetelDialog } from "@/components/tetelek/quick-ktetel-dialog"
 import { BulkPriceDialog } from "@/components/tetelek/bulk-price-dialog"
-import { cn } from "@/lib/utils"
 
 const COLUMN_HEADERS: Record<ColumnId, string> = {
   identifier: "Tételszám",
   text: "Tétel szövege",
+  category: "Kategória",
   trade: "Szakág",
   unit: "ME",
   material: "Anyag egységár",
@@ -67,10 +70,17 @@ export function CostItemsPageClient() {
   const [mounted, setMounted] = useState(false)
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
-  const [activeTrade, setActiveTrade] = useState<Trade>("epitomester")
+  const [activeTrade, setActiveTrade] = useState<Trade | "all">("all")
   const [categoryId, setCategoryId] = useState<string>("all")
   const [status, setStatus] = useState<CostItemStatus | "all">("all")
   const [customOnly, setCustomOnly] = useState(false)
+  const [aiSearchLoading, setAiSearchLoading] = useState(false)
+  const [aiSearchResult, setAiSearchResult] = useState<AiSearchResult | null>(null)
+  const [quickInitial, setQuickInitial] = useState<{
+    text?: string
+    trade?: Trade
+    categoryId?: string
+  }>({})
   const [activeViewId, setActiveViewId] = useState<string | null>(null)
   const [savedViews] = useState<SavedView[]>(() => loadSavedViews())
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -115,14 +125,55 @@ export function CostItemsPageClient() {
   }, [refreshFromApi])
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 150)
+    const timer = setTimeout(() => setDebouncedSearch(search), 200)
     return () => clearTimeout(timer)
   }, [search])
 
-  const filteredCategories = useMemo(
-    () => Object.values(categoryMap).filter((c) => c.trade === activeTrade),
-    [categoryMap, activeTrade]
-  )
+  useEffect(() => {
+    const q = debouncedSearch.trim()
+    if (q.length < 3) {
+      setAiSearchResult(null)
+      setAiSearchLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setAiSearchLoading(true)
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/cost-items/ai-search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: q }),
+        })
+        const data = (await res.json()) as AiSearchResult & { error?: string }
+        if (!cancelled) {
+          if (res.ok) setAiSearchResult(data)
+          else setAiSearchResult(null)
+        }
+      } catch {
+        if (!cancelled) setAiSearchResult(null)
+      } finally {
+        if (!cancelled) setAiSearchLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [debouncedSearch])
+
+  const categoryItemCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of items) {
+      if (!item.categoryId) continue
+      counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + 1)
+    }
+    return counts
+  }, [items])
+
+  const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
 
   const tradeCounts = useMemo(() => {
     const counts = new Map<Trade, number>()
@@ -136,19 +187,23 @@ export function CostItemsPageClient() {
   const filteredItems = useMemo(() => {
     let list = filterAllCostItems(items, {
       q: debouncedSearch,
-      trade: activeTrade,
+      trade: activeTrade === "all" ? undefined : activeTrade,
       categoryId: categoryId === "all" ? undefined : categoryId,
       status,
     })
     if (customOnly) list = list.filter((i) => i.isCustomItem)
-    return list
-  }, [items, debouncedSearch, activeTrade, categoryId, status, customOnly])
 
-  useEffect(() => {
-    if (categoryId === "all") return
-    const cat = categoryMap[categoryId]
-    if (cat && cat.trade !== activeTrade) setCategoryId("all")
-  }, [activeTrade, categoryId])
+    if (aiSearchResult?.matches.length && debouncedSearch.trim().length >= 3) {
+      const rank = new Map(aiSearchResult.matches.map((m, i) => [m.itemId, i]))
+      list = [...list].sort((a, b) => {
+        const ra = rank.get(a.id) ?? 999
+        const rb = rank.get(b.id) ?? 999
+        return ra - rb
+      })
+    }
+
+    return list
+  }, [items, debouncedSearch, activeTrade, categoryId, status, customOnly, aiSearchResult])
 
   const recentItems = useMemo(
     () =>
@@ -336,6 +391,8 @@ export function CostItemsPageClient() {
     const filters = viewToFilters(view)
     if (filters.trade && filters.trade !== "all") {
       setActiveTrade(filters.trade)
+    } else {
+      setActiveTrade("all")
     }
     setCategoryId(filters.categoryId ?? "all")
     setStatus(filters.status ?? "all")
@@ -380,7 +437,7 @@ export function CostItemsPageClient() {
       }
       if (e.key === "k" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault()
-        setQuickKtOpen(true)
+        openQuickKt()
       }
       if (e.key === "/" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault()
@@ -390,6 +447,23 @@ export function CostItemsPageClient() {
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [canUndo, undo])
+
+  const openSuggestedNewItem = () => {
+    const suggestedCategoryId = aiSearchResult?.suggestedCategoryCode
+      ? categories.find((c) => c.code === aiSearchResult.suggestedCategoryCode)?.id
+      : undefined
+    setQuickInitial({
+      text: aiSearchResult?.suggestedText ?? debouncedSearch,
+      trade: (aiSearchResult?.suggestedTradeCode as Trade | undefined) ?? undefined,
+      categoryId: suggestedCategoryId,
+    })
+    setQuickKtOpen(true)
+  }
+
+  const openQuickKt = () => {
+    setQuickInitial({})
+    setQuickKtOpen(true)
+  }
 
   const visibleColumns = COLUMNS.filter((c) => visibility[c.id])
 
@@ -420,7 +494,7 @@ export function CostItemsPageClient() {
                 Visszavonás
               </Button>
             ) : null}
-            <Button variant="outline" size="sm" onClick={() => setQuickKtOpen(true)}>
+            <Button variant="outline" size="sm" onClick={openQuickKt}>
               <Zap className="h-4 w-4" />
               Gyors K-tétel
             </Button>
@@ -470,11 +544,11 @@ export function CostItemsPageClient() {
                 key={item.id}
                 type="button"
                 onClick={() => openEdit(item)}
-                className="rounded-md border bg-white px-2.5 py-1 text-left text-sm hover:border-blue-300 hover:bg-blue-50"
+                className="max-w-md rounded-md border bg-white px-2.5 py-1.5 text-left text-sm hover:border-blue-300 hover:bg-blue-50"
               >
                 <span className="font-code text-xs text-blue-700">{item.identifier}</span>
-                <span className="ml-2 truncate text-slate-700">
-                  {item.shortLabel ?? item.text.slice(0, 40)}
+                <span className="mt-0.5 block whitespace-normal break-words text-slate-700">
+                  {item.text}
                 </span>
               </button>
             ))}
@@ -482,168 +556,156 @@ export function CostItemsPageClient() {
         </div>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap gap-1 border-b">
-        {tradeOptions.map((t) => {
-          const count = tradeCounts.get(t.id) ?? 0
-          const active = activeTrade === t.id
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => {
-                setActiveTrade(t.id)
+      <div className="flex flex-col gap-4 md:flex-row md:items-start">
+        <CostItemsTradeSidebar
+          tradeOptions={tradeOptions}
+          activeTrade={activeTrade}
+          categoryId={categoryId}
+          categories={categories}
+          tradeItemCounts={tradeCounts}
+          categoryItemCounts={categoryItemCounts}
+          onTradeChange={(trade) => {
+            setActiveTrade(trade)
+            clearView()
+          }}
+          onCategoryChange={(id) => {
+            setCategoryId(id)
+            clearView()
+          }}
+        />
+
+        <div className="min-w-0 flex-1">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                data-search="cost-items"
+                placeholder="AI keresés: pl. fal glettelése Q2 minőségben… (/) · ⌘K"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  if (e.target.value) clearView()
+                }}
+                className="pl-9"
+              />
+            </div>
+            <Select
+              value={status}
+              onValueChange={(v) => {
+                setStatus(v as CostItemStatus | "all")
                 clearView()
               }}
-              className={cn(
-                "flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "border-blue-600 text-blue-700"
-                  : "border-transparent text-slate-500 hover:text-slate-800"
-              )}
             >
-              {t.label}
-              {count > 0 ? (
-                <span
-                  className={cn(
-                    "rounded-full px-2 py-0.5 text-xs",
-                    active ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-600"
-                  )}
-                >
-                  {count}
-                </span>
-              ) : null}
-            </button>
-          )
-        })}
-      </div>
+              <SelectTrigger className="w-full lg:w-40">
+                <SelectValue placeholder="Státusz" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Minden státusz</SelectItem>
+                <SelectItem value="active">Aktív</SelectItem>
+                <SelectItem value="draft">Piszkozat</SelectItem>
+                <SelectItem value="archived">Archivált</SelectItem>
+              </SelectContent>
+            </Select>
+            <ColumnToggle visibility={visibility} onChange={setVisibility} />
+          </div>
 
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            data-search="cost-items"
-            placeholder="Keresés tételszám, szöveg, címke... (/) · ⌘K parancsok"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              if (e.target.value) clearView()
-            }}
-            className="pl-9"
+          <CostItemsAiSearchPanel
+            query={debouncedSearch}
+            loading={aiSearchLoading}
+            result={aiSearchResult}
+            itemsById={itemsById}
+            onOpenItem={openEdit}
+            onCreateSuggested={openSuggestedNewItem}
           />
-        </div>
-        <Select
-          value={categoryId}
-          onValueChange={(v) => {
-            setCategoryId(v)
-            clearView()
-          }}
-        >
-          <SelectTrigger className="w-full lg:w-52">
-            <SelectValue placeholder="Kategória" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Minden kategória</SelectItem>
-            {filteredCategories.map((cat) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={status}
-          onValueChange={(v) => {
-            setStatus(v as CostItemStatus | "all")
-            clearView()
-          }}
-        >
-          <SelectTrigger className="w-full lg:w-40">
-            <SelectValue placeholder="Státusz" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Minden státusz</SelectItem>
-            <SelectItem value="active">Aktív</SelectItem>
-            <SelectItem value="draft">Piszkozat</SelectItem>
-            <SelectItem value="archived">Archivált</SelectItem>
-          </SelectContent>
-        </Select>
-        <ColumnToggle visibility={visibility} onChange={setVisibility} />
-      </div>
 
-      {selectedIds.length > 0 ? (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border bg-blue-50 px-4 py-2 text-sm">
-          <span className="font-medium">{selectedIds.length} kijelölve</span>
-          <Button variant="outline" size="sm" onClick={() => setBulkPriceOpen(true)}>
-            <Percent className="h-4 w-4" />
-            Áremelés %
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleArchiveSelected}>
-            <Archive className="h-4 w-4" />
-            Archiválás
-          </Button>
-          <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
-            <Trash2 className="h-4 w-4" />
-            Törlés
-          </Button>
-        </div>
-      ) : null}
+          {selectedIds.length > 0 ? (
+            <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border bg-blue-50 px-4 py-2 text-sm">
+              <span className="font-medium">{selectedIds.length} kijelölve</span>
+              <Button variant="outline" size="sm" onClick={() => setBulkPriceOpen(true)}>
+                <Percent className="h-4 w-4" />
+                Áremelés %
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleArchiveSelected}>
+                <Archive className="h-4 w-4" />
+                Archiválás
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
+                <Trash2 className="h-4 w-4" />
+                Törlés
+              </Button>
+            </div>
+          ) : null}
 
-      <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="ea-table-head">
-              <tr>
-                <th className="w-10 px-3 py-3">
-                  <Checkbox checked={allVisibleSelected} onCheckedChange={toggleAll} />
-                </th>
-                {visibleColumns.map((col) => (
-                  <th
-                    key={col.id}
-                    className={`px-3 py-3 ${
-                      col.id === "material" || col.id === "labor" || col.id === "total"
-                        ? "text-right"
-                        : ""
-                    } ${col.id === "trade" || col.id === "updated" ? "hidden md:table-cell" : ""} ${
-                      col.id === "material" || col.id === "labor" ? "hidden lg:table-cell" : ""
-                    } ${col.id === "updated" ? "lg:table-cell" : ""}`}
-                  >
-                    {COLUMN_HEADERS[col.id]}
-                  </th>
-                ))}
-                <th className="w-10 px-3 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map((item) => (
-                <CostItemRow
-                  key={item.id}
-                  item={item}
-                  searchQuery={debouncedSearch}
-                  selected={selectedIds.includes(item.id)}
-                  visibility={visibility}
-                  unitsById={unitsById}
-                  onToggleSelect={() => toggleOne(item.id)}
-                  onOpenEdit={() => openEdit(item)}
-                  onDuplicate={() => handleDuplicate(item.id)}
-                  onPriceChange={(field, value) => handlePriceChange(item.id, field, value)}
-                />
-              ))}
-              {filteredItems.length === 0 ? (
-                <tr>
-                  <td colSpan={visibleColumns.length + 2} className="px-3 py-12 text-center text-slate-500">
-                    Nincs találat a(z) {getTradeLabel(activeTrade)} szakágon
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="ea-table-head">
+                  <tr>
+                    <th className="w-10 px-3 py-3">
+                      <Checkbox checked={allVisibleSelected} onCheckedChange={toggleAll} />
+                    </th>
+                    {visibleColumns.map((col) => (
+                      <th
+                        key={col.id}
+                        className={`px-3 py-3 ${
+                          col.id === "material" || col.id === "labor" || col.id === "total"
+                            ? "text-right"
+                            : ""
+                        } ${col.id === "trade" || col.id === "category" || col.id === "updated" ? "hidden md:table-cell" : ""} ${
+                          col.id === "material" || col.id === "labor" ? "hidden lg:table-cell" : ""
+                        } ${col.id === "updated" ? "lg:table-cell" : ""}`}
+                      >
+                        {COLUMN_HEADERS[col.id]}
+                      </th>
+                    ))}
+                    <th className="w-10 px-3 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredItems.map((item) => (
+                    <CostItemRow
+                      key={item.id}
+                      item={item}
+                      searchQuery={debouncedSearch}
+                      selected={selectedIds.includes(item.id)}
+                      visibility={visibility}
+                      unitsById={unitsById}
+                      categoryMap={categoryMap}
+                      onToggleSelect={() => toggleOne(item.id)}
+                      onOpenEdit={() => openEdit(item)}
+                      onDuplicate={() => handleDuplicate(item.id)}
+                      onPriceChange={(field, value) => handlePriceChange(item.id, field, value)}
+                    />
+                  ))}
+                  {filteredItems.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={visibleColumns.length + 2}
+                        className="px-3 py-12 text-center text-slate-500"
+                      >
+                        {debouncedSearch.trim()
+                          ? "Nincs találat — az AI javaslatot fentebb mutatja, ha van."
+                          : activeTrade === "all"
+                            ? "Nincs tétel a szűrők alapján."
+                            : `Nincs tétel: ${getTradeLabel(activeTrade)}`}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-      <div className="mt-4 text-sm text-slate-500">
-        {filteredItems.length} tétel · {getTradeLabel(activeTrade)}
-        {" · "}
-        <span className="text-xs">K = gyors K-tétel · ⌘K = parancsok · ⌘Z = visszavonás</span>
+          <div className="mt-4 text-sm text-slate-500">
+            {filteredItems.length} tétel
+            {activeTrade !== "all" ? ` · ${getTradeLabel(activeTrade)}` : ""}
+            {categoryId !== "all" && categoryMap[categoryId]
+              ? ` · ${categoryMap[categoryId].code}`
+              : ""}
+            {" · "}
+            <span className="text-xs">K = gyors K-tétel · ⌘K = parancsok · ⌘Z = visszavonás</span>
+          </div>
+        </div>
       </div>
 
       <CostItemDrawer
@@ -663,7 +725,7 @@ export function CostItemsPageClient() {
         onOpenChange={setPaletteOpen}
         items={items}
         onSelectItem={openEdit}
-        onQuickAdd={() => setQuickKtOpen(true)}
+        onQuickAdd={openQuickKt}
         onFocusSearch={() =>
           document.querySelector<HTMLInputElement>('[data-search="cost-items"]')?.focus()
         }
@@ -672,7 +734,10 @@ export function CostItemsPageClient() {
       <QuickKtetelDialog
         open={quickKtOpen}
         onOpenChange={setQuickKtOpen}
-        defaultTrade={activeTrade}
+        defaultTrade={activeTrade === "all" ? (tradeOptions[0]?.id ?? "epitomester") : activeTrade}
+        initialText={quickInitial.text}
+        initialTrade={quickInitial.trade}
+        initialCategoryId={quickInitial.categoryId}
         existingItems={items}
         categories={categories}
         units={units}

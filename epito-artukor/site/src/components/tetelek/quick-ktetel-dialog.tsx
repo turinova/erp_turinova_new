@@ -47,6 +47,9 @@ type QuickKtetelDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   defaultTrade: Trade
+  initialText?: string
+  initialTrade?: Trade
+  initialCategoryId?: string
   existingItems: CostItem[]
   categories: Category[]
   units: Unit[]
@@ -57,6 +60,9 @@ export function QuickKtetelDialog({
   open,
   onOpenChange,
   defaultTrade,
+  initialText,
+  initialTrade,
+  initialCategoryId,
   existingItems,
   categories,
   units,
@@ -115,13 +121,21 @@ export function QuickKtetelDialog({
 
   useEffect(() => {
     if (open) {
-      setTrade(defaultTrade)
-      setCategoryId(getDefaultCategoryForTrade(defaultTrade, categories))
+      const trade = initialTrade ?? defaultTrade
+      setTrade(trade)
+      setCategoryId(
+        initialCategoryId && categories.some((c) => c.id === initialCategoryId)
+          ? initialCategoryId
+          : getDefaultCategoryForTrade(trade, categories)
+      )
+      setText(initialText ?? "")
+      setMaterial(0)
+      setLabor(0)
       setUnitId(defaultUnitId)
       clearPolish()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- clearPolish stabil
-  }, [open, defaultTrade, categories, defaultUnitId])
+  }, [open, defaultTrade, initialText, initialTrade, initialCategoryId, categories, defaultUnitId])
 
   const applyParsed = () => {
     const parsed = parseQuickItemText(text)

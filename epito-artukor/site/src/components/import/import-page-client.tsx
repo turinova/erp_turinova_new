@@ -3,16 +3,26 @@
 import { useCallback, useRef, useState } from "react"
 import {
   CheckCircle2,
+  ClipboardPaste,
   Download,
   FileUp,
   Loader2,
+  Sparkles,
   Upload,
 } from "lucide-react"
 import { toast } from "sonner"
+import type { Category, Unit } from "@/types"
 import type { CostItemImportRow } from "@/lib/cost-items/cost-items-xlsx"
+import {
+  pastePreviewToImportRows,
+  type IdentifierPoolItem,
+  type PastePreviewRow,
+} from "@/lib/cost-items/paste-import"
+import { PasteImportPreviewTable } from "@/components/import/paste-import-preview-table"
 import { PageHeader } from "@/components/shell/page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -22,6 +32,7 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
+type ImportTab = "paste" | "excel"
 type ImportMode = "upsert" | "create_only"
 
 type PreviewResponse = {
@@ -34,6 +45,20 @@ type PreviewResponse = {
   update_count?: number
   skip_count?: number
   rows?: CostItemImportRow[]
+  error?: string
+}
+
+type PastePreviewResponse = {
+  rows?: PastePreviewRow[]
+  trades?: Array<{ id: string; code: string; name: string }>
+  categories?: Category[]
+  units?: Unit[]
+  existingIdentifiers?: IdentifierPoolItem[]
+  aiAvailable?: boolean
+  aiUsedCount?: number
+  row_count?: number
+  error_count?: number
+  warning_count?: number
   error?: string
 }
 
@@ -75,10 +100,22 @@ function actionVariant(action: CostItemImportRow["action"]): "success" | "warnin
 
 export function ImportPageClient() {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importTab, setImportTab] = useState<ImportTab>("paste")
   const [stepIndex, setStepIndex] = useState(0)
-  const [importMode, setImportMode] = useState<ImportMode>("upsert")
+  const [importMode, setImportMode] = useState<ImportMode>("create_only")
   const [filename, setFilename] = useState<string | null>(null)
   const [previewRows, setPreviewRows] = useState<CostItemImportRow[]>([])
+  const [pasteText, setPasteText] = useState("")
+  const [pasteRows, setPasteRows] = useState<PastePreviewRow[]>([])
+  const [pasteTrades, setPasteTrades] = useState<Array<{ id: string; code: string; name: string }>>(
+    []
+  )
+  const [pasteCategories, setPasteCategories] = useState<Category[]>([])
+  const [pasteUnits, setPasteUnits] = useState<Unit[]>([])
+  const [pasteExistingIdentifiers, setPasteExistingIdentifiers] = useState<IdentifierPoolItem[]>(
+    []
+  )
+  const [pasteMeta, setPasteMeta] = useState({ aiAvailable: false, aiUsedCount: 0 })
   const [previewStats, setPreviewStats] = useState({
     create: 0,
     update: 0,
@@ -96,6 +133,12 @@ export function ImportPageClient() {
     setStepIndex(0)
     setFilename(null)
     setPreviewRows([])
+    setPasteRows([])
+    setPasteTrades([])
+    setPasteCategories([])
+    setPasteUnits([])
+    setPasteExistingIdentifiers([])
+    setPasteMeta({ aiAvailable: false, aiUsedCount: 0 })
     setPreviewStats({ create: 0, update: 0, skip: 0, errors: 0, warnings: 0 })
     setSummary(null)
     setFailedRows([])
@@ -139,6 +182,52 @@ export function ImportPageClient() {
     }
   }
 
+  const handlePastePreview = async () => {
+    if (!pasteText.trim()) {
+      toast.error("Illeszd be legalább egy tétel nevét.")
+      return
+    }
+
+    setUploading(true)
+    try {
+      const res = await fetch("/api/cost-items/import/paste-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: pasteText }),
+      })
+      const data = (await res.json()) as PastePreviewResponse
+      if (!res.ok) throw new Error(data.error ?? "Előnézet sikertelen")
+
+      setPasteRows(data.rows ?? [])
+      setPasteTrades(data.trades ?? [])
+      setPasteCategories(data.categories ?? [])
+      setPasteUnits(data.units ?? [])
+      setPasteExistingIdentifiers(data.existingIdentifiers ?? [])
+      setPasteMeta({
+        aiAvailable: data.aiAvailable ?? false,
+        aiUsedCount: data.aiUsedCount ?? 0,
+      })
+      setFilename("Gyors beillesztés")
+      setPreviewStats({
+        create: (data.rows ?? []).filter((r) => r.included && r.errors.length === 0).length,
+        update: 0,
+        skip: (data.rows ?? []).filter((r) => !r.included).length,
+        errors: data.error_count ?? 0,
+        warnings: data.warning_count ?? 0,
+      })
+      setStepIndex(1)
+      toast.success(
+        data.aiAvailable
+          ? `AI előnézet kész (${data.aiUsedCount ?? 0} sor AI-val)`
+          : "Előnézet kész (kulcsszó-alapú besorolás)"
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Előnézet hiba")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const handleFileSelected = async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
       toast.error("Csak .xlsx fájl tölthető fel.")
@@ -178,7 +267,15 @@ export function ImportPageClient() {
   }
 
   const handleExecuteImport = async () => {
-    const importable = previewRows.filter((r) => r.action !== "SKIP" && r.errors.length === 0)
+    let rowsToImport: CostItemImportRow[] = []
+
+    if (importTab === "paste") {
+      rowsToImport = pastePreviewToImportRows(pasteRows, pasteTrades, pasteCategories, pasteUnits)
+    } else {
+      rowsToImport = previewRows
+    }
+
+    const importable = rowsToImport.filter((r) => r.action !== "SKIP" && r.errors.length === 0)
     if (!importable.length) {
       toast.error("Nincs importálható sor.")
       return
@@ -189,7 +286,10 @@ export function ImportPageClient() {
       const res = await fetch("/api/cost-items/import/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: importMode, rows: previewRows }),
+        body: JSON.stringify({
+          mode: importTab === "paste" ? "create_only" : importMode,
+          rows: rowsToImport,
+        }),
       })
       const data = (await res.json()) as {
         summary?: ExecuteSummary
@@ -209,15 +309,21 @@ export function ImportPageClient() {
     }
   }
 
-  const importableCount = previewRows.filter(
+  const excelImportableCount = previewRows.filter(
     (r) => r.action !== "SKIP" && r.errors.length === 0
   ).length
+
+  const pasteImportableCount = pasteRows.filter(
+    (r) => r.included && r.errors.length === 0
+  ).length
+
+  const importableCount = importTab === "paste" ? pasteImportableCount : excelImportableCount
 
   return (
     <>
       <PageHeader
         title="Import / Export"
-        description="Tételek Excel (.xlsx) importálása és exportálása — shop-portal minta (előnézet + jóváhagyás)"
+        description="Gyors beillesztés AI besorolással, vagy haladó Excel import"
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -250,6 +356,39 @@ export function ImportPageClient() {
         }
       />
 
+      <div className="mb-6 flex gap-2 border-b">
+        <button
+          type="button"
+          onClick={() => {
+            if (stepIndex === 0) setImportTab("paste")
+          }}
+          className={cn(
+            "border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+            importTab === "paste"
+              ? "border-[var(--page-accent)] text-[var(--page-accent)]"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          )}
+        >
+          <ClipboardPaste className="mr-1.5 inline h-4 w-4" />
+          Gyors beillesztés
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (stepIndex === 0) setImportTab("excel")
+          }}
+          className={cn(
+            "border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+            importTab === "excel"
+              ? "border-[var(--page-accent)] text-[var(--page-accent)]"
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          )}
+        >
+          <FileUp className="mr-1.5 inline h-4 w-4" />
+          Excel import
+        </button>
+      </div>
+
       <div className="mb-8 flex items-center gap-2">
         {STEPS.map((label, idx) => (
           <div key={label} className="flex items-center gap-2">
@@ -280,7 +419,37 @@ export function ImportPageClient() {
         ))}
       </div>
 
-      {stepIndex === 0 ? (
+      {stepIndex === 0 && importTab === "paste" ? (
+        <div className="space-y-4">
+          <div className="rounded-lg border bg-white p-4">
+            <p className="mb-2 text-sm font-medium">Tételek beillesztése</p>
+            <p className="mb-3 text-sm text-slate-500">
+              Egy sor = egy tétel neve. Az AI javasolja a szakágat, kategóriát és mértékegységet —
+              az előnézetben mind módosítható. Az anyagár és díj alapból 0 (később a Tételek
+              oldalon állítható).
+            </p>
+            <Textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder={`Hidegburkolás falazat előkészítése\nEV töltő alapszerelés\nDurvatakarítás átadás előtt`}
+              rows={12}
+              className="font-mono text-sm"
+            />
+            <div className="mt-3 flex justify-end">
+              <Button onClick={handlePastePreview} disabled={uploading}>
+                {uploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                AI előnézet generálása
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {stepIndex === 0 && importTab === "excel" ? (
         <div className="space-y-6">
           <div className="flex flex-wrap items-end gap-4 rounded-lg border bg-white p-4">
             <div className="space-y-1">
@@ -351,9 +520,23 @@ export function ImportPageClient() {
             <div>
               <p className="font-medium">{filename}</p>
               <p className="text-sm text-slate-600">
-                {previewRows.length} sor · {previewStats.create} új · {previewStats.update}{" "}
-                frissítés · {previewStats.skip} kihagyva · {previewStats.errors} hiba ·{" "}
-                {previewStats.warnings} figyelmeztetés
+                {importTab === "paste" ? (
+                  <>
+                    {pasteRows.length} sor · {pasteImportableCount} importálható ·{" "}
+                    {previewStats.errors} hiba · {previewStats.warnings} figyelmeztetés
+                    {pasteMeta.aiAvailable ? (
+                      <> · {pasteMeta.aiUsedCount} AI besorolás</>
+                    ) : (
+                      <> · AI nincs beállítva (kulcsszó-alapú)</>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {previewRows.length} sor · {previewStats.create} új · {previewStats.update}{" "}
+                    frissítés · {previewStats.skip} kihagyva · {previewStats.errors} hiba ·{" "}
+                    {previewStats.warnings} figyelmeztetés
+                  </>
+                )}
               </p>
             </div>
             <div className="flex gap-2">
@@ -371,59 +554,70 @@ export function ImportPageClient() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
-            <div className="max-h-[32rem] overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="ea-table-head sticky top-0">
-                  <tr>
-                    <th className="px-3 py-2">Sor</th>
-                    <th className="px-3 py-2">Művelet</th>
-                    <th className="px-3 py-2">Tételszám</th>
-                    <th className="px-3 py-2">Szöveg</th>
-                    <th className="px-3 py-2">Szakág</th>
-                    <th className="px-3 py-2">Kategória</th>
-                    <th className="px-3 py-2">ME</th>
-                    <th className="px-3 py-2">Státusz</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewRows.map((row) => (
-                    <tr
-                      key={row.rowNumber}
-                      className={cn(
-                        "border-b",
-                        row.errors.length > 0 ? "bg-red-50" : "",
-                        row.errors.length === 0 && row.warnings.length > 0 ? "bg-amber-50" : ""
-                      )}
-                    >
-                      <td className="px-3 py-2 text-slate-500">{row.rowNumber}</td>
-                      <td className="px-3 py-2">
-                        <Badge variant={actionVariant(row.action)}>{actionLabel(row.action)}</Badge>
-                      </td>
-                      <td className="px-3 py-2 font-code text-xs">
-                        {row.values.tetelszam || "—"}
-                      </td>
-                      <td className="max-w-xs truncate px-3 py-2" title={row.values.tetel_szovege}>
-                        {row.values.tetel_szovege}
-                      </td>
-                      <td className="px-3 py-2">{row.values.szakag}</td>
-                      <td className="px-3 py-2">{row.values.kategoria}</td>
-                      <td className="px-3 py-2">{row.values.mertekegyseg}</td>
-                      <td className="px-3 py-2">
-                        {row.errors.length > 0 ? (
-                          <span className="text-xs text-red-600">{row.errors.join(" ")}</span>
-                        ) : row.warnings.length > 0 ? (
-                          <span className="text-xs text-amber-700">{row.warnings.join(" ")}</span>
-                        ) : (
-                          <span className="text-xs text-emerald-600">OK</span>
-                        )}
-                      </td>
+          {importTab === "paste" ? (
+            <PasteImportPreviewTable
+              rows={pasteRows}
+              trades={pasteTrades}
+              categories={pasteCategories}
+              units={pasteUnits}
+              existingIdentifiers={pasteExistingIdentifiers}
+              onChange={setPasteRows}
+            />
+          ) : (
+            <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+              <div className="max-h-[32rem] overflow-auto">
+                <table className="w-full text-sm">
+                  <thead className="ea-table-head sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2">Sor</th>
+                      <th className="px-3 py-2">Művelet</th>
+                      <th className="px-3 py-2">Tételszám</th>
+                      <th className="px-3 py-2">Szöveg</th>
+                      <th className="px-3 py-2">Szakág</th>
+                      <th className="px-3 py-2">Kategória</th>
+                      <th className="px-3 py-2">ME</th>
+                      <th className="px-3 py-2">Státusz</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row) => (
+                      <tr
+                        key={row.rowNumber}
+                        className={cn(
+                          "border-b",
+                          row.errors.length > 0 ? "bg-red-50" : "",
+                          row.errors.length === 0 && row.warnings.length > 0 ? "bg-amber-50" : ""
+                        )}
+                      >
+                        <td className="px-3 py-2 text-slate-500">{row.rowNumber}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant={actionVariant(row.action)}>{actionLabel(row.action)}</Badge>
+                        </td>
+                        <td className="px-3 py-2 font-code text-xs">
+                          {row.values.tetelszam || "—"}
+                        </td>
+                        <td className="max-w-xs truncate px-3 py-2" title={row.values.tetel_szovege}>
+                          {row.values.tetel_szovege}
+                        </td>
+                        <td className="px-3 py-2">{row.values.szakag}</td>
+                        <td className="px-3 py-2">{row.values.kategoria}</td>
+                        <td className="px-3 py-2">{row.values.mertekegyseg}</td>
+                        <td className="px-3 py-2">
+                          {row.errors.length > 0 ? (
+                            <span className="text-xs text-red-600">{row.errors.join(" ")}</span>
+                          ) : row.warnings.length > 0 ? (
+                            <span className="text-xs text-amber-700">{row.warnings.join(" ")}</span>
+                          ) : (
+                            <span className="text-xs text-emerald-600">OK</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       ) : null}
 

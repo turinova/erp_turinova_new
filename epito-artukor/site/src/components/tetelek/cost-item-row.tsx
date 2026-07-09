@@ -1,7 +1,7 @@
 "use client"
 
 import { Copy, MoreHorizontal, Pencil } from "lucide-react"
-import type { CostItem, CostItemStatus, Unit } from "@/types"
+import type { Category, CostItem, CostItemStatus, Unit } from "@/types"
 import type { ColumnId } from "@/lib/column-config"
 import { getTradeLabel, getTradeOrder } from "@/lib/trades"
 import { formatHuf } from "@/lib/pricing"
@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { getQuoteDisplayIdentifier } from "@/lib/item-identifier"
 import { HighlightText } from "@/components/tetelek/highlight-text"
-import { TextPreview } from "@/components/tetelek/text-preview"
 import { InlinePriceCell } from "@/components/tetelek/inline-price-cell"
 
 const statusLabels: Record<CostItemStatus, string> = {
@@ -37,6 +36,7 @@ type CostItemRowProps = {
   selected: boolean
   visibility: Record<ColumnId, boolean>
   unitsById: Record<string, Unit>
+  categoryMap: Record<string, Category>
   onToggleSelect: () => void
   onOpenEdit: () => void
   onDuplicate: () => void
@@ -49,6 +49,7 @@ export function CostItemRow({
   selected,
   visibility,
   unitsById,
+  categoryMap,
   onToggleSelect,
   onOpenEdit,
   onDuplicate,
@@ -57,7 +58,7 @@ export function CostItemRow({
   const freshness = getPriceFreshness(item.updatedAt)
 
   return (
-    <tr className="border-b transition-colors hover:bg-slate-50">
+    <tr className="border-b align-top transition-colors hover:bg-slate-50">
       <td className="w-10 px-3 py-2">
         <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
       </td>
@@ -81,18 +82,23 @@ export function CostItemRow({
         </td>
       ) : null}
       {visibility.text ? (
-        <td className="max-w-md px-3 py-2">
-          <TextPreview text={item.text}>
-            <button
-              type="button"
-              className="block w-full truncate text-left"
-              onClick={onOpenEdit}
-            >
-              <span className="font-medium">
-                <HighlightText text={item.shortLabel ?? item.text} query={searchQuery} />
-              </span>
-            </button>
-          </TextPreview>
+        <td className="min-w-[16rem] max-w-2xl px-3 py-2 align-top">
+          <button
+            type="button"
+            className="block w-full whitespace-normal break-words text-left text-sm leading-snug"
+            onClick={onOpenEdit}
+          >
+            <span className="font-medium text-slate-900">
+              <HighlightText text={item.text} query={searchQuery} />
+            </span>
+          </button>
+        </td>
+      ) : null}
+      {visibility.category ? (
+        <td className="hidden max-w-[10rem] px-3 py-2 text-slate-600 md:table-cell" title={categoryMap[item.categoryId]?.name}>
+          <span className="font-code text-xs text-[var(--page-accent)]">
+            {categoryMap[item.categoryId]?.code ?? "—"}
+          </span>
         </td>
       ) : null}
       {visibility.trade ? (

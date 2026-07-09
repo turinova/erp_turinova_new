@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { APP_NAME, navConfig } from "@/lib/nav-config"
+import { navConfig } from "@/lib/nav-config"
 import { TurinovaLogo } from "@/components/brand/turinova-logo"
 import { Button } from "@/components/ui/button"
 import { CurrentUserSwitcher } from "@/components/shell/current-user-switcher"
@@ -55,17 +55,7 @@ export function AppSidebar() {
         {collapsed ? (
           <TurinovaLogo variant="icon" height={24} className="mx-auto" />
         ) : (
-          <div className="space-y-3">
-            <TurinovaLogo variant="full" height={22} />
-            <div>
-              <div className="text-sm font-semibold tracking-tight text-[var(--sidebar-foreground-strong)]">
-                {APP_NAME}
-              </div>
-              <div className="mt-0.5 text-[11px] text-[var(--sidebar-muted)]">
-                Turinova
-              </div>
-            </div>
-          </div>
+          <TurinovaLogo variant="full" height={22} />
         )}
       </div>
 

@@ -1,6 +1,7 @@
 export type ColumnId =
   | "identifier"
   | "text"
+  | "category"
   | "trade"
   | "unit"
   | "material"
@@ -18,6 +19,7 @@ export type ColumnConfig = {
 export const COLUMNS: ColumnConfig[] = [
   { id: "identifier", label: "Tételszám", defaultVisible: true },
   { id: "text", label: "Tétel szövege", defaultVisible: true },
+  { id: "category", label: "Kategória", defaultVisible: true },
   { id: "trade", label: "Szakág", defaultVisible: false },
   { id: "unit", label: "ME", defaultVisible: true },
   { id: "material", label: "Anyag egységár", defaultVisible: true },
