@@ -433,7 +433,11 @@ export function listQuoteLines(quoteId: string): QuoteLine[] {
 }
 
 /** Árazatlan tétel az ártükörből — csak szöveg + mennyiség, ár később */
-export function addQuoteLineFromCostItem(quoteId: string, item: CostItem): QuoteLine {
+export function addQuoteLineFromCostItem(
+  quoteId: string,
+  item: CostItem,
+  options?: { quantity?: number }
+): QuoteLine {
   if (!assertQuoteEditable(quoteId)) throw new Error("Az archivált költségvetés nem szerkeszthető")
   const bundle = loadBundle()
   const quote = bundle.quotes.find((q) => q.id === quoteId)
@@ -453,7 +457,7 @@ export function addQuoteLineFromCostItem(quoteId: string, item: CostItem): Quote
     textSnapshot: item.text,
     trade: item.trade,
     unitId: item.unitId,
-    quantity: 1,
+    quantity: options?.quantity ?? 1,
     costMaterialUnitPrice: 0,
     costLaborUnitPrice: 0,
     markupPercent: null,
@@ -467,6 +471,163 @@ export function addQuoteLineFromCostItem(quoteId: string, item: CostItem): Quote
   if (qIdx >= 0) bundle.quotes[qIdx] = touch(bundle.quotes[qIdx])
   saveBundle(bundle)
   return line
+}
+
+export function findOrCreateTradeQuote(
+  projectId: string,
+  trade: Trade,
+  options?: { createIfMissing?: boolean; title?: string }
+): { quote: Quote | null; created: boolean } {
+  const bundle = loadBundle()
+  const pool = bundle.quotes.filter(
+    (q) =>
+      q.projectId === projectId &&
+      q.status !== "archived" &&
+      q.status !== "rejected" &&
+      q.quoteScope !== "version" &&
+      q.primaryTrade === trade
+  )
+
+  if (pool.length > 0) {
+    const draft = pool.filter((q) => q.status === "draft")
+    const candidates = draft.length > 0 ? draft : pool
+    const quote = candidates.reduce((best, q) =>
+      new Date(q.updatedAt) > new Date(best.updatedAt) ? q : best
+    )
+    return { quote, created: false }
+  }
+
+  if (options?.createIfMissing === false) return { quote: null, created: false }
+  const quote = createQuote(projectId, options?.title ?? getTradeLabel(trade), {
+    primaryTrade: trade,
+  })
+  return { quote, created: true }
+}
+
+export function importQuoteLinesBatch(
+  projectId: string,
+  rows: Array<{
+    lineNumber: number
+    matchedCostItemId: string | null
+    trade: Trade | null
+    quantity: number
+    targetQuoteId: string | null
+    targetQuoteAction: "EXISTING" | "CREATE"
+    included: boolean
+  }>,
+  options: {
+    createMissingQuotes?: boolean
+    duplicatePolicy?: "skip" | "add"
+  } = {}
+): {
+  createdQuotes: number
+  addedLines: number
+  skippedDuplicates: number
+  skippedUnmatched: number
+  failed: number
+  quoteIds: string[]
+  errors: Array<{ lineNumber: number; reason: string }>
+} {
+  const createMissingQuotes = options.createMissingQuotes ?? true
+  const duplicatePolicy = options.duplicatePolicy ?? "skip"
+  const items = loadCostItems()
+  const itemById = new Map(items.map((item) => [item.id, item]))
+  const quoteCache = new Map<string, Quote>()
+  const createdTrades = new Set<string>()
+
+  let createdQuotes = 0
+  let addedLines = 0
+  let skippedDuplicates = 0
+  let skippedUnmatched = 0
+  let failed = 0
+  const errors: Array<{ lineNumber: number; reason: string }> = []
+
+  const resolveQuote = (row: (typeof rows)[0]): Quote | null => {
+    if (row.targetQuoteId) {
+      const existing = getQuote(row.targetQuoteId)
+      if (existing && existing.projectId === projectId) {
+        if (row.trade) quoteCache.set(row.trade, existing)
+        return existing
+      }
+    }
+
+    if (!row.trade) return null
+
+    const cacheKey = row.trade
+    if (quoteCache.has(cacheKey)) return quoteCache.get(cacheKey)!
+
+    const { quote, created } = findOrCreateTradeQuote(projectId, row.trade, {
+      createIfMissing: createMissingQuotes,
+    })
+
+    if (quote) {
+      quoteCache.set(cacheKey, quote)
+      if (created && !createdTrades.has(row.trade)) {
+        createdTrades.add(row.trade)
+        createdQuotes += 1
+      }
+    }
+
+    return quote
+  }
+
+  for (const row of rows) {
+    if (!row.included) continue
+    if (!row.matchedCostItemId || !row.trade) {
+      skippedUnmatched += 1
+      continue
+    }
+
+    const item = itemById.get(row.matchedCostItemId)
+    if (!item) {
+      failed += 1
+      errors.push({ lineNumber: row.lineNumber, reason: "A K-tétel nem található a katalógusban." })
+      continue
+    }
+
+    const quote = resolveQuote(row)
+    if (!quote) {
+      failed += 1
+      errors.push({ lineNumber: row.lineNumber, reason: "Nem sikerült cél költségvetést meghatározni." })
+      continue
+    }
+
+    const existingLines = listQuoteLines(quote.id)
+    const duplicate = existingLines.some((line) => line.costItemId === item.id)
+    if (duplicate && duplicatePolicy === "skip") {
+      skippedDuplicates += 1
+      continue
+    }
+
+    try {
+      addQuoteLineFromCostItem(quote.id, item, { quantity: row.quantity })
+      addedLines += 1
+    } catch (err) {
+      failed += 1
+      errors.push({
+        lineNumber: row.lineNumber,
+        reason: err instanceof Error ? err.message : "Ismeretlen hiba",
+      })
+    }
+  }
+
+  const bundle = loadBundle()
+  recordAudit(bundle, projectId, {
+    kind: "quote",
+    action: "Költségvetés import",
+    context: `${addedLines} sor · ${createdQuotes} új szakág`,
+  })
+  saveBundle(bundle)
+
+  return {
+    createdQuotes,
+    addedLines,
+    skippedDuplicates,
+    skippedUnmatched,
+    failed,
+    quoteIds: [...quoteCache.values()].map((q) => q.id),
+    errors,
+  }
 }
 
 /** Szabad tétel — nincs ártükör-hivatkozás, a szakág a költségvetés szakága */

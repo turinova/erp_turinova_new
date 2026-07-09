@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { Plus } from "lucide-react"
+import { ClipboardPaste, Plus } from "lucide-react"
 import type { Project, Quote } from "@/types/projects"
 import type { QuoteSummary } from "@/lib/quote-summary"
 import { formatHuf } from "@/lib/pricing"
@@ -16,6 +16,7 @@ type ProjectQuotesTabProps = {
   quotes: Quote[]
   quoteSummaries: Map<string, QuoteSummary>
   onNewQuote: () => void
+  onImportQuote: () => void
   onDuplicate: (quoteId: string) => void
   onDelete: (quoteId: string) => void
   onArchive: (quoteId: string) => void
@@ -28,6 +29,7 @@ export function ProjectQuotesTab({
   quotes,
   quoteSummaries,
   onNewQuote,
+  onImportQuote,
   onDuplicate,
   onDelete,
   onArchive,
@@ -97,26 +99,34 @@ export function ProjectQuotesTab({
           </span>
         </div>
 
-        <Button
-          size="sm"
-          className="mt-2 h-9 text-sm sm:mt-0"
-          onClick={onNewQuote}
-        >
-          <Plus className="mr-1.5 h-4 w-4" />
-          Új szakág hozzáadása
-        </Button>
+        <div className="mt-2 flex flex-wrap gap-2 sm:mt-0">
+          <Button size="sm" variant="outline" className="h-9 text-sm" onClick={onImportQuote}>
+            <ClipboardPaste className="mr-1.5 h-4 w-4" />
+            Gyors beillesztés
+          </Button>
+          <Button size="sm" className="h-9 text-sm" onClick={onNewQuote}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Új szakág hozzáadása
+          </Button>
+        </div>
       </div>
 
       {quotes.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
           <p className="max-w-sm text-sm text-slate-600">
-            Még nincs költségvetés ehhez a projekthez. Adj hozzá egy szakágát (pl. gépészet,
-            nyílászáró), és kezdd el a tételek felvételét.
+            Még nincs költségvetés ehhez a projekthez. Illeszd be az Excel tételneveit, vagy adj hozzá
+            egy szakágot kézzel.
           </p>
-          <Button size="sm" onClick={onNewQuote}>
-            <Plus className="mr-2 h-4 w-4" />
-            Első szakág hozzáadása
-          </Button>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button size="sm" variant="outline" onClick={onImportQuote}>
+              <ClipboardPaste className="mr-2 h-4 w-4" />
+              Gyors beillesztés
+            </Button>
+            <Button size="sm" onClick={onNewQuote}>
+              <Plus className="mr-2 h-4 w-4" />
+              Első szakág hozzáadása
+            </Button>
+          </div>
         </div>
       ) : (
         <>

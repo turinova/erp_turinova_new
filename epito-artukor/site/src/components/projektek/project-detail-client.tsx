@@ -39,6 +39,7 @@ import { RfqProjectTab } from "@/components/projektek/rfq-project-tab"
 import { ProjectFilesTab } from "@/components/projektek/project-files-tab"
 import { ProjectOverviewTab } from "@/components/projektek/project-overview-tab"
 import { ProjectCloseDialog } from "@/components/projektek/project-close-dialog"
+import { QuoteImportWizard } from "@/components/projektek/quote-import-wizard"
 import {
   ProjectEditDialog,
   type ProjectEditForm,
@@ -80,6 +81,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   const [rfqAutoOpen, setRfqAutoOpen] = useState(false)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
   const [closeProjectOpen, setCloseProjectOpen] = useState(false)
+  const [quoteImportOpen, setQuoteImportOpen] = useState(false)
 
   const refresh = () => setTick((t) => t + 1)
 
@@ -328,6 +330,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
           quotes={quotes}
           quoteSummaries={quoteSummaries}
           onNewQuote={() => setNewQuoteOpen(true)}
+          onImportQuote={() => setQuoteImportOpen(true)}
           onDuplicate={handleDuplicateQuote}
           onDelete={handleDeleteQuote}
           onArchive={handleArchiveQuote}
@@ -451,6 +454,13 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         onOpenChange={setCloseProjectOpen}
         tick={tick}
         onClosed={refresh}
+      />
+
+      <QuoteImportWizard
+        open={quoteImportOpen}
+        onOpenChange={setQuoteImportOpen}
+        projectId={projectId}
+        onCompleted={refresh}
       />
     </div>
   )
