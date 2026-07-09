@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+:root {
+  /* Canvas — Notion / Figma */
+  --background: #fafafa;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+
+  /* Turinova brand — accent, sparingly */
+  --brand: #971d25;
+  --brand-hover: #7a1720;
+  --brand-muted: #fdf2f3;
+  --brand-foreground: #ffffff;
+
+  /* Primary actions — near-black (Notion-style) */
+  --primary: #1a1a1a;
+  --primary-hover: #333333;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f5f5f5;
+  --secondary-foreground: #1a1a1a;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --accent: #f5f5f5;
+  --accent-foreground: #1a1a1a;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --destructive-muted: #fef2f2;
+
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #1a1a1a;
+
+  /* Semantic */
+  --success: #059669;
+  --success-muted: #ecfdf5;
+  --success-foreground: #047857;
+  --warning: #d97706;
+  --warning-muted: #fffbeb;
+  --warning-foreground: #b45309;
+  --info: #2563eb;
+  --info-muted: #eff6ff;
+  --info-foreground: #1d4ed8;
+
+  /* Light sidebar */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #525252;
+  --sidebar-foreground-strong: #1a1a1a;
+  --sidebar-muted: #a3a3a3;
+  --sidebar-active: #f5f5f5;
+  --sidebar-active-foreground: #1a1a1a;
+  --sidebar-border: #ebebeb;
+
+  /* Oldal-accent — a PageAccentProvider felülírja az aktív menüpont színével */
+  --page-accent: var(--brand);
+  --page-accent-muted: var(--brand-muted);
+
+  --radius: 0.5rem;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  border-color: var(--border);
+}
+
+::selection {
+  background: rgba(151, 29, 37, 0.12);
+}
+
+.font-code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* Typography tokens */
+.ea-label {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.ea-caption {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+
+.ea-table-head {
+  border-bottom-width: 1px;
+  background-color: var(--muted);
+  text-align: left;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.ea-section-title {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.ea-meta {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+
+.ea-table-head th {
+  padding: 0.625rem 0.75rem;
+}
+
+.ea-kpi-value {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+
+@media (min-width: 640px) {
+  .ea-kpi-value {
+    font-size: 1.75rem;
+    line-height: 2.25rem;
+  }
+}
+
+.ea-card {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
