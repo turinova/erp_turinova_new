@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, ClipboardCheck, Lock, TrendingUp, User } from "lucide-react"
+import { ArrowLeft, ClipboardCheck, Lock, Sheet, TrendingUp, User } from "lucide-react"
 import type { Quote, QuotePriceSide } from "@/types/projects"
 import { QUOTE_STATUS_LABELS } from "@/lib/project-labels"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,7 @@ import {
   QuoteEditorStatusChip,
   type QuoteEditorStatusChipModel,
 } from "@/components/projektek/quote-editor-status-chip"
+import type { SheetDensity } from "@/lib/quote-sheet-layout"
 import { cn } from "@/lib/utils"
 
 export type QuoteEditorTab = QuotePriceSide | "execution"
@@ -29,6 +30,12 @@ type QuoteEditorCommandBarProps = {
   totals: React.ReactNode
   subNav: React.ReactNode
   subNavExtra?: React.ReactNode
+  excelMode?: boolean
+  onExcelModeChange?: (next: boolean) => void
+  showExcelModeToggle?: boolean
+  sheetDensity?: SheetDensity
+  onSheetDensityChange?: (next: SheetDensity) => void
+  showSheetDensityToggle?: boolean
 }
 
 export function QuoteEditorCommandBar({
@@ -46,6 +53,12 @@ export function QuoteEditorCommandBar({
   totals,
   subNav,
   subNavExtra,
+  excelMode = false,
+  onExcelModeChange,
+  showExcelModeToggle = false,
+  sheetDensity = "compact",
+  onSheetDensityChange,
+  showSheetDensityToggle = false,
 }: QuoteEditorCommandBarProps) {
   const lockedTabClass =
     "cursor-not-allowed opacity-45 hover:bg-transparent data-[disabled]:opacity-45"
@@ -141,6 +154,35 @@ export function QuoteEditorCommandBar({
             {contractPriceLocked ? <Lock className="h-2.5 w-2.5 opacity-60" /> : null}
           </Button>
         </div>
+
+        {showExcelModeToggle && onExcelModeChange ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={excelMode ? "default" : "outline"}
+            className="h-7 shrink-0 gap-1 px-2 text-xs"
+            onClick={() => onExcelModeChange(!excelMode)}
+            title="Teljes képernyős táblázat — RFQ panel elrejtése"
+          >
+            <Sheet className="h-3 w-3" />
+            Excel mód
+          </Button>
+        ) : null}
+
+        {showSheetDensityToggle && onSheetDensityChange ? (
+          <Button
+            type="button"
+            size="sm"
+            variant={sheetDensity === "normal" ? "default" : "outline"}
+            className="h-7 shrink-0 px-2 text-xs"
+            onClick={() =>
+              onSheetDensityChange(sheetDensity === "normal" ? "compact" : "normal")
+            }
+            title="Normál sor magasság és betűméret"
+          >
+            {sheetDensity === "normal" ? "Normál" : "Kompakt"}
+          </Button>
+        ) : null}
 
         {tools ? (
           <div className="flex h-7 min-w-0 shrink-0 items-center gap-1">{tools}</div>

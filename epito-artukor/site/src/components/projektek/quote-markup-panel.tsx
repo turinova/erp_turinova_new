@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { Quote, QuoteLine } from "@/types/projects"
 import type { Trade } from "@/types"
@@ -21,7 +21,9 @@ import {
 } from "@/lib/quote-pricing"
 import { getTradeLabel } from "@/lib/trades"
 import { formatHuf } from "@/lib/pricing"
+import { calcQuoteVatTotals, resolveQuoteVatMode } from "@/lib/quote-client-summary"
 import { getMinAcceptableMarginPercent } from "@/lib/quote-summary"
+import { groupLinesByTrade } from "@/lib/quote-utils"
 import { loadCostItems } from "@/lib/data/cost-items-store"
 import {
   buildCostItemMap,
@@ -29,7 +31,20 @@ import {
   getLineInternalIdentifier,
   getLineSectionNumber,
 } from "@/lib/quote-line-display"
-import { QuoteTableFooterSummary } from "@/components/projektek/quote-table-footer-summary"
+import { SpreadsheetNumberCell } from "@/components/projektek/spreadsheet/spreadsheet-number-cell"
+import { MarkupSheetColgroup } from "@/components/projektek/spreadsheet/markup-sheet-colgroup"
+import {
+  SheetFooterLabelCell,
+  SheetHeaderCell,
+  SpreadsheetReadonlyCell,
+} from "@/components/projektek/spreadsheet/spreadsheet-readonly-cell"
+import { MARKUP_SHEET_COLS } from "@/lib/quote-spreadsheet"
+import {
+  MARKUP_SHEET_FOOTER,
+  MARKUP_SHEET_HEADERS,
+  MARKUP_SHEET_MIN_WIDTH,
+} from "@/lib/quote-sheet-layout"
+import type { SheetDensity } from "@/lib/quote-sheet-layout"
 import { unitMap } from "@/lib/data/units-store"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,6 +57,8 @@ type QuoteMarkupPanelProps = {
   displayLines: QuoteLine[]
   quoteTrade: Trade
   readOnly?: boolean
+  excelMode?: boolean
+  sheetDensity?: SheetDensity
   onRefresh: () => void
 }
 
@@ -71,80 +88,6 @@ function PctInput({
   )
 }
 
-function MarkupPercentInput({
-  lineId,
-  effective,
-  tradeBase,
-  custom,
-  marginLow,
-  onCommit,
-}: {
-  lineId: string
-  effective: number
-  tradeBase: number
-  custom: boolean
-  marginLow: boolean
-  onCommit: (pct: number) => void
-}) {
-  const [draft, setDraft] = useState(String(effective))
-  const [focused, setFocused] = useState(false)
-
-  useEffect(() => {
-    if (!focused) setDraft(String(effective))
-  }, [effective, focused, lineId])
-
-  const commit = () => {
-    const num = Number(draft.replace(",", "."))
-    if (Number.isFinite(num) && num >= 0) {
-      onCommit(num)
-    } else {
-      setDraft(String(effective))
-    }
-    setFocused(false)
-  }
-
-  return (
-    <div className="flex items-center justify-end gap-0.5">
-      <Input
-        type="text"
-        inputMode="numeric"
-        className={cn(
-          "h-7 w-11 text-right text-xs tabular-nums",
-          numericInputNoSpinner,
-          custom ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-slate-50",
-          marginLow && "border-amber-300 bg-amber-50"
-        )}
-        value={draft}
-        title={custom ? `Egyedi (alap: ${tradeBase}%)` : `Szakági alap: ${tradeBase}%`}
-        onFocus={() => setFocused(true)}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault()
-            e.currentTarget.blur()
-          }
-          if (e.key === "Escape") {
-            setDraft(String(effective))
-            e.currentTarget.blur()
-          }
-        }}
-      />
-      <span className="text-xs text-slate-500">%</span>
-      {custom ? (
-        <button
-          type="button"
-          className="rounded px-1 text-xs text-slate-500 hover:bg-slate-100"
-          title={`Vissza alapra (${tradeBase}%)`}
-          onClick={() => onCommit(tradeBase)}
-        >
-          ↺
-        </button>
-      ) : null}
-    </div>
-  )
-}
-
 function lineMargin(line: QuoteLine, quote: Quote): { margin: number; percent: number | null } {
   if (!isLineCosted(line)) return { margin: 0, percent: null }
   const cost = lineCostTotal(line)
@@ -161,8 +104,12 @@ export function QuoteMarkupPanel({
   displayLines,
   quoteTrade,
   readOnly = false,
+  excelMode = false,
+  sheetDensity = "compact",
   onRefresh,
 }: QuoteMarkupPanelProps) {
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [activeRow, setActiveRow] = useState<number | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkPct, setBulkPct] = useState("15")
   const [tradeBulkPct, setTradeBulkPct] = useState("")
@@ -188,6 +135,12 @@ export function QuoteMarkupPanel({
     }
   }, [displayLines, quote])
 
+  const vatMode = resolveQuoteVatMode(quote)
+  const vatTotals = useMemo(
+    () => calcQuoteVatTotals(displayTotals.sell.total, vatMode),
+    [displayTotals.sell.total, vatMode]
+  )
+
   const customCount = useMemo(
     () => lines.filter((l) => hasCustomMarkup(l) && isLineCosted(l)).length,
     [lines]
@@ -195,6 +148,28 @@ export function QuoteMarkupPanel({
 
   const costItemById = useMemo(() => buildCostItemMap(loadCostItems()), [])
   const sectionNumbers = useMemo(() => buildLineSectionNumbers(lines), [lines])
+
+  const sheetRows = useMemo(() => {
+    const grouped = groupLinesByTrade(filteredLines)
+    const rows: Array<
+      | { kind: "section"; trade: Trade; lineCount: number }
+      | { kind: "line"; line: QuoteLine; sheetRow: number }
+    > = []
+    let sheetRow = 0
+    for (const [trade, group] of grouped) {
+      rows.push({ kind: "section", trade, lineCount: group.length })
+      for (const line of group) {
+        rows.push({ kind: "line", line, sheetRow })
+        sheetRow += 1
+      }
+    }
+    return rows
+  }, [filteredLines])
+
+  const maxMarkupRow = Math.max(
+    0,
+    sheetRows.filter((r) => r.kind === "line").length - 1
+  )
 
   const allVisibleSelected =
     filteredLines.length > 0 && filteredLines.every((l) => selected.has(l.id))
@@ -267,11 +242,7 @@ export function QuoteMarkupPanel({
     )
   }
 
-  const footerLabel = "Összesen"
-
-  const marginLow =
-    displayTotals.marginPercent != null &&
-    displayTotals.marginPercent < getMinAcceptableMarginPercent()
+  const footerLabel = MARKUP_SHEET_FOOTER.label
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -324,32 +295,87 @@ export function QuoteMarkupPanel({
         </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white shadow-sm">
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full min-w-[780px] text-xs">
-            <thead className="ea-table-head sticky top-0 z-10 shadow-sm">
+      <div
+        className={cn(
+          "ea-worksheet ea-worksheet-markup flex min-h-0 flex-1 flex-col overflow-hidden border border-[#b4b4b4] bg-white",
+          sheetDensity === "normal" && "ea-worksheet-density-normal",
+          excelMode && "ea-worksheet-max"
+        )}
+      >
+        <div ref={gridRef} className="min-h-0 flex-1 overflow-auto">
+          <table
+            className="ea-worksheet-table text-xs"
+            style={{ minWidth: MARKUP_SHEET_MIN_WIDTH }}
+          >
+            <MarkupSheetColgroup />
+            <thead className="ea-worksheet-head">
               <tr>
-                <th className="w-8 px-1.5 py-1.5">
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 rounded border-slate-300"
-                    checked={allVisibleSelected}
-                    onChange={toggleAllVisible}
-                    aria-label="Összes kijelölése"
-                  />
-                </th>
-                <th className="px-2 py-1.5">Ssz.</th>
-                <th className="px-2 py-1.5">Tételszám</th>
-                <th className="min-w-[10rem] px-2 py-1.5">Leírás</th>
-                <th className="px-2 py-1.5 text-right">Menny.</th>
-                <th className="px-2 py-1.5 text-right">Bekerülés</th>
-                <th className="px-2 py-1.5 text-right">Fedezet %</th>
-                <th className="px-2 py-1.5 text-right">Ügyfél ár</th>
-                <th className="px-2 py-1.5 text-right">Fedezet összeg</th>
+                <SheetHeaderCell
+                  label=""
+                  className="px-1"
+                  children={
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 rounded border-slate-300"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      aria-label="Összes kijelölése"
+                    />
+                  }
+                />
+                <SheetHeaderCell label="Ssz." className="ea-freeze-col ea-freeze-0" />
+                <SheetHeaderCell label="Tételszám" className="ea-freeze-col ea-freeze-1" nowrap />
+                <SheetHeaderCell label="Leírás" className="ea-freeze-col ea-freeze-2" />
+                <SheetHeaderCell
+                  label={MARKUP_SHEET_HEADERS.quantity.short}
+                  title={MARKUP_SHEET_HEADERS.quantity.full}
+                  align="right"
+                />
+                <SheetHeaderCell
+                  label={MARKUP_SHEET_HEADERS.cost.short}
+                  sub={MARKUP_SHEET_HEADERS.cost.sub}
+                  title={MARKUP_SHEET_HEADERS.cost.full}
+                  align="right"
+                  nowrap
+                />
+                <SheetHeaderCell
+                  label={MARKUP_SHEET_HEADERS.markup.short}
+                  title={MARKUP_SHEET_HEADERS.markup.full}
+                  editable
+                  align="right"
+                  nowrap
+                  className="ea-sheet-zone-end"
+                  colActive={activeRow !== null}
+                />
+                <SheetHeaderCell
+                  label={MARKUP_SHEET_HEADERS.sell.short}
+                  sub={MARKUP_SHEET_HEADERS.sell.sub}
+                  title={MARKUP_SHEET_HEADERS.sell.full}
+                  align="right"
+                  nowrap
+                />
+                <SheetHeaderCell
+                  label={MARKUP_SHEET_HEADERS.margin.short}
+                  sub={MARKUP_SHEET_HEADERS.margin.sub}
+                  title={MARKUP_SHEET_HEADERS.margin.full}
+                  align="right"
+                  nowrap
+                />
               </tr>
             </thead>
             <tbody>
-              {filteredLines.map((line) => {
+              {sheetRows.map((row) => {
+                if (row.kind === "section") {
+                  return (
+                    <tr key={`section-${row.trade}`} className="ea-worksheet-section">
+                      <td colSpan={9} className="font-semibold">
+                        {getTradeLabel(row.trade)} ({row.lineCount} tétel)
+                      </td>
+                    </tr>
+                  )
+                }
+
+                const line = row.line
                 const costed = isLineCosted(line)
                 const custom = hasCustomMarkup(line)
                 const internalId = getLineInternalIdentifier(line, costItemById)
@@ -366,12 +392,14 @@ export function QuoteMarkupPanel({
                   <tr
                     key={line.id}
                     className={cn(
-                      "border-b hover:bg-slate-50/80 [&_td]:align-top",
+                      "group/row",
                       !costed && "bg-amber-50/40",
-                      rowMarginLow && costed && "bg-amber-50/15"
+                      rowMarginLow && costed && "bg-amber-50/15",
+                      activeRow === row.sheetRow && "ea-worksheet-row-active",
+                      row.sheetRow % 2 === 1 && "ea-worksheet-zebra"
                     )}
                   >
-                    <td className="px-1.5 py-1.5">
+                    <td className="px-1 text-center">
                       <input
                         type="checkbox"
                         className="h-3.5 w-3.5 rounded border-slate-300"
@@ -381,73 +409,227 @@ export function QuoteMarkupPanel({
                         aria-label={`Kijelölés: ${internalId}`}
                       />
                     </td>
-                    <td className="px-2 py-1.5 font-code text-slate-600">
-                      {getLineSectionNumber(line.id, sectionNumbers)}
+                    <td className="ea-freeze-col ea-freeze-0">
+                      <SpreadsheetReadonlyCell
+                        value={getLineSectionNumber(line.id, sectionNumbers)}
+                        variant="meta"
+                        align="left"
+                        className="font-code text-slate-600"
+                      />
                     </td>
-                    <td className="px-2 py-1.5 font-code font-medium text-blue-700">
-                      {internalId}
+                    <td className="ea-freeze-col ea-freeze-1">
+                      <SpreadsheetReadonlyCell
+                        value={internalId}
+                        variant="meta"
+                        align="left"
+                        className="whitespace-nowrap font-code font-medium text-blue-700"
+                        title={internalId}
+                      />
                     </td>
-                    <td className="max-w-md px-2 py-1.5">
-                      <span className="block whitespace-normal break-words leading-snug text-slate-900">
-                        {line.textSnapshot}
-                      </span>
-                      {!costed ? (
-                        <span className="text-amber-800">árazatlan</span>
-                      ) : custom ? (
-                        <span className="text-blue-700">egyedi</span>
-                      ) : null}
+                    <td className="ea-freeze-col ea-freeze-2">
+                      <SpreadsheetReadonlyCell
+                        value={
+                          <>
+                            <span className="whitespace-normal break-words leading-snug text-slate-900">
+                              {line.textSnapshot}
+                            </span>
+                            {!costed ? (
+                              <span className="text-amber-800"> árazatlan</span>
+                            ) : custom ? (
+                              <span className="text-blue-700"> egyedi</span>
+                            ) : null}
+                          </>
+                        }
+                        variant="meta"
+                        align="left"
+                      />
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-slate-700">
-                      {line.quantity} {unitMap[line.unitId]?.code}
+                    <td>
+                      <SpreadsheetReadonlyCell
+                        value={`${line.quantity} ${unitMap[line.unitId]?.code ?? ""}`}
+                        variant="computed"
+                        title="Mennyiség és mértékegység"
+                        truncate
+                      />
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-slate-800">
-                      {costed ? formatHuf(cost) : "—"}
+                    <td>
+                      <SpreadsheetReadonlyCell
+                        value={costed ? formatHuf(cost) : "—"}
+                        variant="computed"
+                        title="Számított bekerülési összeg"
+                      />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td
+                      className={cn(
+                        "ea-sheet-editable",
+                        activeRow === row.sheetRow && "ea-sheet-cell-active ea-sheet-zone-end"
+                      )}
+                    >
                       {costed ? (
                         readOnly ? (
-                          <span className="block text-right text-xs tabular-nums text-slate-700">
-                            {effective}%
-                          </span>
-                        ) : (
-                          <MarkupPercentInput
-                            lineId={line.id}
-                            effective={effective}
-                            tradeBase={tradeBase}
-                            custom={custom}
-                            marginLow={rowMarginLow}
-                            onCommit={(pct) => applyMarkupToLine(line, pct)}
+                          <SpreadsheetReadonlyCell
+                            value={`${effective}%`}
+                            variant="locked_quote"
+                            title="Szerződött fedezet — nem módosítható"
                           />
+                        ) : (
+                          <div className="flex items-center justify-end gap-0.5 pr-1">
+                            <SpreadsheetNumberCell
+                              value={effective}
+                              sheetRow={row.sheetRow}
+                              sheetCol="markup"
+                              maxRow={maxMarkupRow}
+                              cols={MARKUP_SHEET_COLS}
+                              gridRootRef={gridRef}
+                              active={activeRow === row.sheetRow}
+                              onActivate={(r) => setActiveRow(r)}
+                              onChange={(pct) => applyMarkupToLine(line, pct)}
+                              className={cn(
+                                custom && "bg-blue-50",
+                                rowMarginLow && "bg-amber-50"
+                              )}
+                            />
+                            <span className="text-xs text-slate-500">%</span>
+                            {custom ? (
+                              <button
+                                type="button"
+                                className="rounded px-1 text-xs text-slate-500 hover:bg-slate-100"
+                                title={`Vissza alapra (${tradeBase}%)`}
+                                onClick={() => applyMarkupToLine(line, tradeBase)}
+                              >
+                                ↺
+                              </button>
+                            ) : null}
+                          </div>
                         )
                       ) : (
-                        <span className="block text-right text-slate-400">—</span>
+                        <SpreadsheetReadonlyCell value="—" variant="computed" />
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-right font-medium tabular-nums text-blue-900">
-                      {costed ? formatHuf(sell) : "—"}
+                    <td>
+                      <SpreadsheetReadonlyCell
+                        value={costed ? formatHuf(sell) : "—"}
+                        variant="computed"
+                        className="font-medium text-blue-900"
+                        title="Számított ügyfél ár"
+                      />
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">
+                    <td>
                       {costed ? (
-                        <span
+                        <SpreadsheetReadonlyCell
+                          value={
+                            <>
+                              +{formatHuf(margin)}
+                              {percent != null ? (
+                                <span className="ml-1 font-normal text-slate-500">({percent}%)</span>
+                              ) : null}
+                            </>
+                          }
+                          variant="computed"
                           className={cn(
                             "font-medium",
                             rowMarginLow ? "text-amber-800" : "text-emerald-800"
                           )}
-                        >
-                          +{formatHuf(margin)}
-                          {percent != null ? (
-                            <span className="ml-1 font-normal text-slate-500">({percent}%)</span>
-                          ) : null}
-                        </span>
+                          title="Számított fedezet összeg"
+                        />
                       ) : (
-                        "—"
+                        <SpreadsheetReadonlyCell value="—" variant="computed" />
                       )}
                     </td>
                   </tr>
                 )
               })}
             </tbody>
+            {filteredLines.length > 0 ? (
+              <tfoot className="ea-worksheet-foot">
+                <tr>
+                  <SheetFooterLabelCell
+                    label={footerLabel}
+                    sub={MARKUP_SHEET_FOOTER.sub}
+                    colSpan={5}
+                  />
+                  <td>
+                    <SpreadsheetReadonlyCell
+                      value={formatHuf(displayTotals.cost.total)}
+                      variant="computed"
+                      className="font-bold"
+                      title="Nettó bekerülés összesen"
+                    />
+                  </td>
+                  <td>
+                    <SpreadsheetReadonlyCell
+                      value={
+                        displayTotals.marginPercent != null
+                          ? `${displayTotals.marginPercent}%`
+                          : "—"
+                      }
+                      variant="computed"
+                      title="Átlagos fedezet %"
+                    />
+                  </td>
+                  <td>
+                    <SpreadsheetReadonlyCell
+                      value={formatHuf(displayTotals.sell.total)}
+                      variant="computed"
+                      className="font-bold text-blue-900"
+                      title="Nettó ügyfél ár összesen"
+                    />
+                  </td>
+                  <td>
+                    <SpreadsheetReadonlyCell
+                      value={`+${formatHuf(displayTotals.margin)}`}
+                      variant="computed"
+                      className="font-bold text-emerald-900"
+                      title="Nettó fedezet összesen"
+                    />
+                  </td>
+                </tr>
+                {vatTotals.vatAmount > 0 ? (
+                  <tr className="ea-worksheet-foot">
+                    <SheetFooterLabelCell
+                      label={vatTotals.vatLabel}
+                      sub="ÁFA"
+                      colSpan={7}
+                    />
+                    <td>
+                      <SpreadsheetReadonlyCell
+                        value={formatHuf(vatTotals.vatAmount)}
+                        variant="computed"
+                        className="font-medium text-amber-900"
+                        title="ÁFA összeg"
+                      />
+                    </td>
+                    <td colSpan={1} />
+                  </tr>
+                ) : null}
+                <tr className="ea-worksheet-foot">
+                  <SheetFooterLabelCell
+                    label="Bruttó"
+                    sub={
+                      vatMode === "aam"
+                        ? "ÁFA mentes (AAM)"
+                        : vatMode === "reverse_charge"
+                          ? "fordított adózás"
+                          : vatTotals.vatAmount > 0
+                            ? "ügyfélnek · ÁFA-val"
+                            : "ügyfél ár"
+                    }
+                    colSpan={7}
+                  />
+                  <td>
+                    <SpreadsheetReadonlyCell
+                      value={formatHuf(vatTotals.grossTotal)}
+                      variant="computed"
+                      className="font-bold text-blue-900"
+                      title="Bruttó ügyfél ár összesen"
+                    />
+                  </td>
+                  <td colSpan={1} />
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
+
           {filteredLines.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
               {showCustomOnly ? (
@@ -460,33 +642,9 @@ export function QuoteMarkupPanel({
         </div>
 
         {filteredLines.length > 0 ? (
-          <QuoteTableFooterSummary
-            label={footerLabel}
-            cells={[
-              {
-                label: "Bekerülés",
-                value: formatHuf(displayTotals.cost.total),
-                tone: "cost",
-                emphasis: true,
-              },
-              {
-                label: "Ügyfél ár",
-                value: formatHuf(displayTotals.sell.total),
-                tone: "blue",
-                emphasis: true,
-              },
-              {
-                label: "Fedezet",
-                value: formatHuf(displayTotals.margin),
-                tone: marginLow ? "amber" : "emerald",
-                emphasis: true,
-                suffix:
-                  displayTotals.marginPercent != null
-                    ? `(${displayTotals.marginPercent}%)`
-                    : undefined,
-              },
-            ]}
-          />
+          <p className="shrink-0 border-t border-[#d4d4d4] bg-[#f3f3f3] px-2 py-1 text-[10px] text-slate-600">
+            Fehér = szerkeszthető fedezet % · Szürke = számított · Enter / Tab: következő cella
+          </p>
         ) : null}
       </div>
     </div>

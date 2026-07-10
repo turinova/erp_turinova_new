@@ -1,38 +1,26 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useEffect, useMemo, useState, Fragment, type CSSProperties } from "react"
+import { useEffect, useMemo, useState, type CSSProperties } from "react"
 import Link from "next/link"
 import {
   BookOpen,
-  Hand,
   MoreHorizontal,
   Plus,
   Send,
-  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import type { QuotePriceSide, QuoteVatMode } from "@/types/projects"
 import type { CostItem, Trade } from "@/types"
 import { isQuoteInExecutionMode, computeQuoteExecutionStats, computeExecutionFinancialTotals, buildContractedSellMap } from "@/lib/quote-execution"
-import { QUOTE_EXCEL_COLUMNS } from "@/lib/quote-columns"
 import { loadCostItems } from "@/lib/data/cost-items-store"
-import {
-  buildCostItemMap,
-  buildLineSectionNumbers,
-  getLineInternalIdentifier,
-  getLineSectionNumber,
-} from "@/lib/quote-line-display"
 import {
   addManualQuoteLine,
   addQuoteLineFromCostItem,
   applyCatalogPricesToLine,
   applyCatalogToUnpricedLines,
-  convertQuoteLineToManualCost,
-  deleteQuoteLine,
   getProject,
   getQuote,
-  getSubmission,
   listQuoteLines,
   updateQuote,
   updateQuoteLine,
@@ -40,15 +28,11 @@ import {
 import { matchesFuzzySearch } from "@/lib/cost-item-search"
 import {
   countUnpricedLines,
-  lineCostLaborTotal,
-  lineCostMaterialTotal,
-  lineCostTotal,
   quoteCostTotals,
   quoteSellTotals,
 } from "@/lib/quote-utils"
 import { inferPrimaryTrade } from "@/lib/project-quote-aggregation"
 import { getQuoteContractContext } from "@/lib/quote-contract-context"
-import { getQuoteLineRfqContexts } from "@/lib/quote-rfq-context"
 import { getTradeLabel } from "@/lib/trades"
 import { formatHuf } from "@/lib/pricing"
 import { findNavItemByHref } from "@/lib/nav-config"
@@ -78,18 +62,10 @@ import {
 import {
   costSourceFilterDotKind,
   costSourceKindDotClass,
-  QuoteLineSourceIcon,
   countLinesByVisualKind,
-  getQuoteLineRowClass,
-  getQuoteLineVisualKind,
   matchesCostSourceFilter,
-  subcontractorPriceInputClass,
   type CostSourceFilter,
 } from "@/lib/quote-line-visual"
-import {
-  QuoteLineBidExpandRow,
-  lineHasRfqBids,
-} from "@/components/projektek/quote-line-bid-expand"
 import {
   Select,
   SelectContent,
@@ -99,10 +75,11 @@ import {
 } from "@/components/ui/select"
 import { QuoteEditorCommandBar, type QuoteEditorTab } from "@/components/projektek/quote-editor-command-bar"
 import type { QuoteClientSubView } from "@/components/projektek/quote-client-panel"
+import { QuoteCostSpreadsheet } from "@/components/projektek/quote-cost-spreadsheet"
+import type { SheetDensity } from "@/lib/quote-sheet-layout"
 import {
   buildQuoteEditorStatusChip,
 } from "@/components/projektek/quote-editor-status-chip"
-import { QuoteTableFooterSummary } from "@/components/projektek/quote-table-footer-summary"
 import { useProjectBundleLoaded } from "@/hooks/use-project-bundle-loaded"
 import { ensureCostItemsLoaded } from "@/lib/data/master-data-primer"
 import { cn } from "@/lib/utils"
@@ -129,140 +106,6 @@ type QuoteEditorClientProps = {
   quoteId: string
 }
 
-const COL = QUOTE_EXCEL_COLUMNS
-
-const numericInputNoSpinner =
-  "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
-
-const priceInputClass = cn("min-w-[5.5rem] w-28 text-right text-xs", numericInputNoSpinner)
-
-function PriceInput({
-  value,
-  onChange,
-  className,
-}: {
-  value: number
-  onChange: (v: number) => void
-  className?: string
-}) {
-  const [draft, setDraft] = useState(() => (value > 0 ? String(value) : ""))
-  const [focused, setFocused] = useState(false)
-
-  useEffect(() => {
-    if (!focused) {
-      setDraft(value > 0 ? String(value) : "")
-    }
-  }, [value, focused])
-
-  const commit = () => {
-    const raw = draft.replace(/\s/g, "").replace(",", ".")
-    const num = raw === "" ? 0 : Number(raw)
-    if (!Number.isNaN(num) && num >= 0) {
-      if (num !== value) onChange(num)
-    } else {
-      setDraft(value > 0 ? String(value) : "")
-    }
-    setFocused(false)
-  }
-
-  return (
-    <Input
-      type="text"
-      inputMode="numeric"
-      className={cn("h-7", priceInputClass, className)}
-      value={draft}
-      placeholder="0"
-      onFocus={() => setFocused(true)}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault()
-          e.currentTarget.blur()
-        }
-        if (e.key === "Escape") {
-          setDraft(value > 0 ? String(value) : "")
-          e.currentTarget.blur()
-        }
-      }}
-    />
-  )
-}
-
-function QuantityInput({
-  value,
-  onChange,
-}: {
-  value: number
-  onChange: (v: number) => void
-}) {
-  const [draft, setDraft] = useState(() => String(value))
-  const [focused, setFocused] = useState(false)
-
-  useEffect(() => {
-    if (!focused) setDraft(String(value))
-  }, [value, focused])
-
-  const commit = () => {
-    const raw = draft.replace(/\s/g, "").replace(",", ".")
-    const num = raw === "" ? 0 : Number(raw)
-    if (!Number.isNaN(num) && num >= 0) {
-      if (num !== value) onChange(num)
-    } else {
-      setDraft(String(value))
-    }
-    setFocused(false)
-  }
-
-  return (
-    <Input
-      type="text"
-      inputMode="decimal"
-      className={cn("h-7 w-16 text-xs", numericInputNoSpinner)}
-      value={draft}
-      onFocus={() => setFocused(true)}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault()
-          e.currentTarget.blur()
-        }
-        if (e.key === "Escape") {
-          setDraft(String(value))
-          e.currentTarget.blur()
-        }
-      }}
-    />
-  )
-}
-
-function UnitSelect({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (unitId: string) => void
-}) {
-  const units = loadUnits()
-  const resolved = unitMap[value] ? value : units[0]?.id ?? value
-
-  return (
-    <Select value={resolved} onValueChange={onChange}>
-      <SelectTrigger className="h-7 w-[4.25rem] px-1.5 text-xs" title="Mértékegység">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {units.map((unit) => (
-          <SelectItem key={unit.id} value={unit.id} className="text-xs">
-            {unit.code}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
 export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps) {
   const editorReady = useProjectBundleLoaded(projectId)
   const [costItemsReady, setCostItemsReady] = useState(false)
@@ -276,6 +119,37 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
   const [costSourceFilter, setCostSourceFilter] = useState<CostSourceFilter>("all")
   const [sellSubView, setSellSubView] = useState<QuoteClientSubView>("summary")
   const [expandedBidLineId, setExpandedBidLineId] = useState<string | null>(null)
+  const [excelMode, setExcelMode] = useState(false)
+  const [sheetDensity, setSheetDensity] = useState<SheetDensity>("compact")
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("ea-quote-excel-mode")
+      if (stored === "1") setExcelMode(true)
+      const density = sessionStorage.getItem("ea-quote-sheet-density")
+      if (density === "normal") setSheetDensity("normal")
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const toggleExcelMode = (next: boolean) => {
+    setExcelMode(next)
+    try {
+      sessionStorage.setItem("ea-quote-excel-mode", next ? "1" : "0")
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const toggleSheetDensity = (next: SheetDensity) => {
+    setSheetDensity(next)
+    try {
+      sessionStorage.setItem("ea-quote-sheet-density", next)
+    } catch {
+      /* ignore */
+    }
+  }
 
   const refresh = () => setTick((t) => t + 1)
 
@@ -339,9 +213,6 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     () => [...lines].sort((a, b) => a.sortOrder - b.sortOrder),
     [lines]
   )
-
-  const costItemById = useMemo(() => buildCostItemMap(loadCostItems()), [tick])
-  const sectionNumbers = useMemo(() => buildLineSectionNumbers(allLines), [allLines])
 
   const activeLineKindCounts = useMemo(
     () => countLinesByVisualKind(activeLines),
@@ -417,8 +288,6 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     const contracted = buildContractedSellMap(projectId, quoteId)
     return computeExecutionFinancialTotals(activeLines, quote!, contracted)
   }, [activeLines, quote, projectId, quoteId])
-
-  const displayCostTotals = useMemo(() => quoteCostTotals(displayLines), [displayLines])
 
   const marginTotal = sellTotals.total - costTotals.total
   const marginPercent =
@@ -505,13 +374,6 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     applyCatalogPricesToLine(lineId, item.materialUnitPrice, item.laborUnitPrice)
     refresh()
     toast.success("Becsült ár az ártükörből")
-  }
-
-  const handleDeleteLine = (lineId: string, label: string) => {
-    if (!confirm(`„${label}” törlése az árajánlatból?`)) return
-    deleteQuoteLine(lineId)
-    refresh()
-    toast.success("Tétel törölve")
   }
 
   const handleCostPriceChange = (
@@ -670,242 +532,10 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     </div>
   )
 
-  const footerSummaryLabel =
+const footerSummaryLabel =
     editorTab === "cost" && costSourceFilter !== "all"
       ? `Szűrt összeg (${displayLines.length} tétel)`
       : "Összesen"
-
-  const handleConvertToManual = (line: (typeof lines)[0]) => {
-    const lineLabel = getLineInternalIdentifier(line, costItemById)
-    const msg =
-      line.costSource === "subcontractor"
-        ? `„${lineLabel}” — saját kivitelezésre váltasz? Az alvállalkozói forrás törlődik, az ár megmarad kézi bevitelként.`
-        : `„${lineLabel}” — kivéve a bekérésből, kézi árazásra váltasz?`
-    if (!confirm(msg)) return
-    convertQuoteLineToManualCost(line.id)
-    refresh()
-    toast.success("Kézi árazásra váltva")
-  }
-
-  const COST_TABLE_COLS = 12
-
-  const renderCostRow = (line: (typeof lines)[0], rowIndex: number) => {
-    const visualKind = getQuoteLineVisualKind(line)
-    const submission = line.costSourceRfqSubmissionId
-      ? getSubmission(line.costSourceRfqSubmissionId)
-      : undefined
-    const priceClass = subcontractorPriceInputClass(line)
-
-    const showBidExpand = lineHasRfqBids(line, quoteId, lines)
-    const bidExpanded = expandedBidLineId === line.id
-
-    const rfqBidCount = getQuoteLineRfqContexts(line.id, quoteId, lines).reduce(
-      (max, c) => Math.max(max, c.submissionCount),
-      0
-    )
-
-    return (
-    <Fragment key={line.id}>
-    <tr
-      className={cn("border-b [&_td]:align-top", getQuoteLineRowClass(visualKind))}
-    >
-      <td className="px-2 py-1.5 font-code text-xs text-slate-600">
-        {getLineSectionNumber(line.id, sectionNumbers, rowIndex + 1)}
-      </td>
-      <td className="px-2 py-1.5 font-code text-xs font-medium text-blue-700">
-        {getLineInternalIdentifier(line, costItemById)}
-      </td>
-      <td className="min-w-[12rem] max-w-md px-2 py-1.5 text-xs">
-        <span className="block whitespace-normal break-words leading-snug">{line.textSnapshot}</span>
-      </td>
-      <td className="px-2 py-1.5">
-        <QuantityInput
-          value={line.quantity}
-          onChange={(v) => {
-            updateQuoteLine(line.id, { quantity: v })
-            refresh()
-          }}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <UnitSelect
-          value={line.unitId}
-          onChange={(unitId) => {
-            updateQuoteLine(line.id, { unitId })
-            refresh()
-          }}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <PriceInput
-          value={line.costMaterialUnitPrice}
-          className={priceClass}
-          onChange={(v) => handleCostPriceChange(line, "costMaterialUnitPrice", v)}
-        />
-      </td>
-      <td className="px-2 py-1.5">
-        <PriceInput
-          value={line.costLaborUnitPrice}
-          className={priceClass}
-          onChange={(v) => handleCostPriceChange(line, "costLaborUnitPrice", v)}
-        />
-      </td>
-      <td className="px-2 py-1.5 text-right text-xs tabular-nums">
-        {formatHuf(lineCostMaterialTotal(line))}
-      </td>
-      <td className="px-2 py-1.5 text-right text-xs tabular-nums">
-        {formatHuf(lineCostLaborTotal(line))}
-      </td>
-      <td className="px-2 py-1.5 text-right text-xs font-medium tabular-nums">
-        {formatHuf(lineCostTotal(line))}
-      </td>
-      <td className="w-14 px-2 py-1.5">
-        {visualKind === "rfq_pending" && rfqBidCount > 0 ? (
-          <span
-            title="Beküldött alvállalkozói ajánlatok"
-            className="text-xs font-medium text-blue-800"
-          >
-            {rfqBidCount} aj.
-          </span>
-        ) : (
-          <QuoteLineSourceIcon line={line} submittedAt={submission?.submittedAt} />
-        )}
-      </td>
-      <td className="px-1 py-1.5">
-        <div className="flex items-center gap-0">
-          {line.costItemId && line.pricingStatus === "unpriced" ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-slate-500"
-              title="Becsült ár az ártükörből"
-              onClick={() => handleFillFromCatalog(line.id, line.costItemId!)}
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-            </Button>
-          ) : null}
-          {line.costSource === "subcontractor" || line.pricingStatus === "rfq_pending" ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-slate-500 hover:text-amber-800"
-              title="Saját kivitelezés — kézi ár"
-              onClick={() => handleConvertToManual(line)}
-            >
-              <Hand className="h-3.5 w-3.5" />
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 text-slate-400 hover:text-red-600"
-            onClick={() =>
-              handleDeleteLine(line.id, getLineInternalIdentifier(line, costItemById))
-            }
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </td>
-    </tr>
-    {showBidExpand ? (
-      <QuoteLineBidExpandRow
-        line={line}
-        quoteId={quoteId}
-        allLines={lines}
-        expanded={bidExpanded}
-        onToggle={() => setExpandedBidLineId(bidExpanded ? null : line.id)}
-        colSpan={COST_TABLE_COLS}
-      />
-    ) : null}
-    </Fragment>
-    )
-  }
-
-  const costTableHead = (
-    <thead className="ea-table-head sticky top-0 z-10 text-xs shadow-sm">
-      <tr>
-        <th className="px-2 py-1.5">{COL.ssz}</th>
-        <th className="px-2 py-1.5">{COL.identifier}</th>
-        <th className="px-2 py-1.5">{COL.text}</th>
-        <th className="px-2 py-1.5">{COL.quantity}</th>
-        <th className="px-2 py-1.5">{COL.unit}</th>
-        <th className="px-2 py-1.5 text-right">{COL.materialUnit}</th>
-        <th className="px-2 py-1.5 text-right">{COL.laborUnit}</th>
-        <th className="px-2 py-1.5 text-right">{COL.materialTotal}</th>
-        <th className="px-2 py-1.5 text-right">{COL.laborTotal}</th>
-        <th className="px-2 py-1.5 text-right">Össz.</th>
-        <th className="w-14 px-2 py-1.5" title="Forrás">
-          Forr.
-        </th>
-        <th className="w-14 px-1 py-1.5" />
-      </tr>
-    </thead>
-  )
-
-  const renderTableFooter = () => {
-    if (editorTab !== "cost" || displayLines.length === 0) return null
-    return (
-      <QuoteTableFooterSummary
-        label={footerSummaryLabel}
-        cells={[
-          {
-            label: COL.materialTotal,
-            value: formatHuf(displayCostTotals.material),
-            tone: "material",
-          },
-          {
-            label: COL.laborTotal,
-            value: formatHuf(displayCostTotals.labor),
-            tone: "labor",
-          },
-          {
-            label: "Összesen",
-            value: formatHuf(displayCostTotals.total),
-            tone: "cost",
-            emphasis: true,
-          },
-        ]}
-      />
-    )
-  }
-
-  const renderScrollableTable = () => (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white shadow-sm">
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full min-w-[960px] text-sm">
-          {costTableHead}
-          <tbody>
-            {displayLines.map((line, i) => renderCostRow(line, i))}
-          </tbody>
-        </table>
-        {displayLines.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            {costSourceFilter !== "all" ? (
-              <>
-                <p>Nincs tétel ezen a szűrőn.</p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setCostSourceFilter("all")}
-                >
-                  Szűrő törlése
-                </Button>
-              </>
-            ) : (
-              <p>Adj hozzá tételeket az ártükörből.</p>
-            )}
-          </div>
-        ) : null}
-      </div>
-      {renderTableFooter()}
-    </div>
-  )
 
   const renderCostFilterChips = () => (
     <div className="flex flex-wrap gap-1">
@@ -970,6 +600,12 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
         totals={commandBarTotals}
         subNav={commandBarSubNav}
         subNavExtra={commandBarSubNavExtra}
+        excelMode={excelMode}
+        onExcelModeChange={toggleExcelMode}
+        showExcelModeToggle={editorTab === "cost" || editorTab === "markup"}
+        sheetDensity={sheetDensity}
+        onSheetDensityChange={toggleSheetDensity}
+        showSheetDensityToggle={editorTab === "cost" || editorTab === "markup"}
       />
 
       {editorTab === "execution" ? (
@@ -983,7 +619,7 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
         />
       ) : (
         <>
-          {editorTab === "cost" ? (
+          {editorTab === "cost" && !excelMode ? (
             <div className="shrink-0 pt-0.5">
               <QuoteRfqPanel quote={quote} quoteId={quoteId} lines={lines} onRefresh={refresh} />
             </div>
@@ -998,6 +634,8 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
                 displayLines={activeLines}
                 quoteTrade={quoteTrade}
                 readOnly={contractPriceLocked}
+                excelMode={excelMode}
+                sheetDensity={sheetDensity}
                 onRefresh={refresh}
               />
             </div>
@@ -1022,7 +660,24 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
 
           {editorTab === "cost" ? (
             <div className={cn("min-h-0", isSpreadsheetLayout && "flex min-h-0 flex-1 flex-col")}>
-              {renderScrollableTable()}
+              <QuoteCostSpreadsheet
+                quoteId={quoteId}
+                quote={quote}
+                lines={lines}
+                displayLines={displayLines}
+                costItems={loadCostItems()}
+                isReadOnly={isReadOnly}
+                excelMode={excelMode}
+                sheetDensity={sheetDensity}
+                footerLabel={footerSummaryLabel}
+                costSourceFilterActive={costSourceFilter !== "all"}
+                onClearFilter={() => setCostSourceFilter("all")}
+                onRefresh={refresh}
+                onFillFromCatalog={handleFillFromCatalog}
+                onCostPriceChange={handleCostPriceChange}
+                expandedBidLineId={expandedBidLineId}
+                onExpandedBidLineIdChange={setExpandedBidLineId}
+              />
             </div>
           ) : null}
         </>

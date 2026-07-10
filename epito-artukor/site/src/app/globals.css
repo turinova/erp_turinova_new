@@ -162,3 +162,271 @@ body {
   background: var(--card);
   box-shadow: var(--shadow-card);
 }
+
+/* Excel-szerű költségvetés rács (Bekerülés / Árrés) */
+.ea-worksheet {
+  --ea-freeze-0: 0px;
+  --ea-freeze-1: 2.75rem;
+  --ea-identifier-width: 13ch;
+  --ea-freeze-2: calc(2.75rem + var(--ea-identifier-width));
+}
+
+/* Árrés tab: checkbox oszlop előtte */
+.ea-worksheet-markup {
+  --ea-freeze-0: 2rem;
+  --ea-freeze-1: calc(2rem + 2.75rem);
+  --ea-freeze-2: calc(2rem + 2.75rem + var(--ea-identifier-width));
+}
+
+.ea-worksheet-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.ea-worksheet-head th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  border: 1px solid #b4b4b4;
+  background: #ececec;
+  padding: 3px 4px;
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #404040;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.ea-sheet-head-stacked,
+.ea-sheet-head-nowrap {
+  white-space: nowrap;
+  line-height: 1.1;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.ea-worksheet-head .ea-sheet-head-stacked,
+.ea-worksheet-head .ea-sheet-head-nowrap {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.ea-sheet-head-editable {
+  background: #fffef5 !important;
+}
+
+.ea-sheet-head-readonly {
+  background: #e4e4e4 !important;
+  color: #505050;
+}
+
+.ea-worksheet-table td {
+  border: 1px solid #d4d4d4;
+  padding: 0;
+  vertical-align: middle;
+  background: #fff;
+  overflow: hidden;
+}
+
+.ea-worksheet-table tbody tr {
+  height: 26px;
+}
+
+.ea-worksheet-density-normal .ea-worksheet-table tbody tr {
+  height: 32px;
+}
+
+.ea-worksheet-density-normal .ea-worksheet-head th {
+  font-size: 0.75rem;
+  padding: 4px 5px;
+}
+
+.ea-worksheet-density-normal .ea-sheet-readonly,
+.ea-worksheet-density-normal .ea-sheet-input {
+  font-size: 0.8125rem;
+}
+
+.ea-worksheet-table tbody tr.ea-worksheet-zebra td:not(.ea-worksheet-section td) {
+  background-color: #f8fafc;
+}
+
+.ea-worksheet-table tbody tr.ea-worksheet-zebra:hover td:not(.ea-sheet-readonly-computed):not(.ea-sheet-readonly-meta):not(.ea-sheet-readonly-locked) {
+  background-color: #eff6ff;
+}
+
+.ea-worksheet-table tbody tr:hover td:not(.ea-sheet-readonly):not(.ea-sheet-readonly-computed):not(.ea-sheet-readonly-meta):not(.ea-sheet-readonly-locked) {
+  background: #f5f9ff;
+}
+
+.ea-worksheet-row-active td {
+  background-color: #dbeafe !important;
+}
+
+.ea-worksheet-row-active td.ea-sheet-readonly-computed {
+  background-color: #d4e4f7 !important;
+}
+
+.ea-worksheet-row-active td.ea-sheet-readonly-meta {
+  background-color: #e0edfc !important;
+}
+
+.ea-worksheet-col-active {
+  background: #bfdbfe !important;
+  color: #1e3a5f;
+}
+
+.ea-worksheet-head .ea-worksheet-col-active.ea-sheet-head-editable {
+  background: #fef3c7 !important;
+}
+
+.ea-sheet-cell-active {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+  z-index: 2;
+  position: relative;
+}
+
+.ea-freeze-col {
+  position: sticky;
+  z-index: 3;
+  background: inherit;
+}
+
+.ea-freeze-0 {
+  left: var(--ea-freeze-0);
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+  padding: 0 4px !important;
+}
+
+.ea-freeze-1 {
+  left: var(--ea-freeze-1);
+  width: var(--ea-identifier-width);
+  min-width: var(--ea-identifier-width);
+  max-width: var(--ea-identifier-width);
+  padding: 0 4px !important;
+}
+
+.ea-freeze-2 {
+  left: var(--ea-freeze-2);
+  min-width: 8rem;
+  padding: 2px 4px !important;
+  box-shadow: 4px 0 10px -3px rgba(0, 0, 0, 0.14);
+}
+
+/* Beviteli zóna | számított zóna elválasztó */
+.ea-sheet-zone-end {
+  border-right: 2px solid #808080 !important;
+}
+
+.ea-worksheet-head .ea-sheet-zone-end {
+  border-right: 2px solid #606060 !important;
+}
+
+.ea-worksheet-head .ea-freeze-col {
+  z-index: 6;
+}
+
+.ea-worksheet-head .ea-freeze-col.ea-sheet-head-editable,
+.ea-worksheet-head .ea-freeze-col:not(.ea-sheet-head-readonly) {
+  background: #ececec;
+}
+
+.ea-worksheet-head .ea-freeze-col.ea-sheet-head-readonly {
+  background: #e4e4e4;
+}
+
+.ea-worksheet-section td {
+  background: #fff8e1 !important;
+  border-color: #e6c200;
+  padding: 3px 6px !important;
+  font-size: 0.75rem;
+  color: #5c4a00;
+}
+
+.ea-worksheet-foot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  border-top: 3px solid #606060;
+  background: #d4e8cc !important;
+  padding: 4px 4px !important;
+  font-size: 0.75rem;
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.ea-worksheet-foot-filtered td {
+  background: #fef3c7 !important;
+  border-top-color: #d97706;
+}
+
+.ea-worksheet-legend {
+  border-top: 1px solid #d4d4d4;
+  background: #f3f3f3;
+}
+
+.ea-sheet-editable {
+  padding: 0 !important;
+  background: #fff !important;
+}
+
+.ea-sheet-readonly {
+  cursor: default;
+  user-select: text;
+}
+
+.ea-sheet-readonly-computed {
+  background: #e8e8e8 !important;
+  color: #404040;
+}
+
+.ea-worksheet-table tbody tr:hover td.ea-sheet-readonly-computed {
+  background: #dedede !important;
+}
+
+.ea-sheet-readonly-meta {
+  background: #fafafa !important;
+  color: #404040;
+}
+
+.ea-worksheet-table tbody tr:hover td.ea-sheet-readonly-meta {
+  background: #f3f3f3 !important;
+}
+
+.ea-sheet-readonly-locked {
+  background: #eceff1 !important;
+  color: #607d8b;
+}
+
+.ea-worksheet-table tbody tr:hover td.ea-sheet-readonly-locked {
+  background: #e3e8eb !important;
+}
+
+.ea-sheet-input {
+  width: 100%;
+  max-width: 100%;
+}
+
+.ea-sheet-input:disabled {
+  background: #eceff1 !important;
+  color: #607d8b;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.ea-sheet-input:focus-visible {
+  z-index: 2;
+}
+
+.ea-worksheet-max {
+  border-radius: 0;
+}
+
+.ea-worksheet-actions {
+  transition: opacity 0.12s ease;
+}
