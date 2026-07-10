@@ -14,18 +14,16 @@ import { setCategoriesCache } from "@/lib/data/categories-store"
 import { cacheAppSettings } from "@/lib/data/app-settings-store"
 import { cacheOrganizationProfile } from "@/lib/data/org-store"
 import { saveTrades } from "@/lib/data/trades-store"
-import { setCachedTrades } from "@/lib/trades/trades-cache"
+import { getCachedTrades, setCachedTrades } from "@/lib/trades/trades-cache"
 
 /**
  * Törzsadat-primer: a DB-s API-król tölti fel a szinkron olvasásra használt
- * in-memory cache-eket (ártükör, alvállalkozók, ügyfelek, mértékegységek,
- * beállítások, cégprofil, szakágak). A projekt-domain oldalai a
- * useProjectsBundleReady hookon keresztül várják be.
+ * in-memory cache-eket. A layout `AppDataProvider` egyszer hívja sessionenként.
  */
 
 async function fetchJson<T>(url: string): Promise<T | null> {
   try {
-    const res = await fetch(url)
+    const res = await fetch(url, { cache: "no-store" })
     if (!res.ok) return null
     return (await res.json()) as T
   } catch {
@@ -34,6 +32,21 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 }
 
 let primePromise: Promise<void> | null = null
+let masterDataPrimed = false
+
+function tradesPrimeTask(): Promise<void> {
+  const cached = getCachedTrades()
+  if (cached && cached.length > 0) {
+    saveTrades(cached)
+    return Promise.resolve()
+  }
+  return fetchJson<{ trades?: TradeRecord[] }>("/api/trades").then((d) => {
+    if (d?.trades) {
+      saveTrades(d.trades)
+      setCachedTrades(d.trades)
+    }
+  })
+}
 
 async function primeAll(): Promise<void> {
   await Promise.all([
@@ -58,17 +71,22 @@ async function primeAll(): Promise<void> {
     fetchJson<{ profile?: OrganizationProfile }>("/api/organization").then((d) => {
       if (d?.profile) cacheOrganizationProfile(d.profile)
     }),
-    fetchJson<{ trades?: TradeRecord[] }>("/api/trades").then((d) => {
-      if (d?.trades) {
-        saveTrades(d.trades)
-        setCachedTrades(d.trades)
-      }
-    }),
+    tradesPrimeTask(),
   ])
+  masterDataPrimed = true
+}
+
+/** Törzsadat-primer lefutott-e már ebben a sessionben. */
+export function isMasterDataPrimed(): boolean {
+  return masterDataPrimed
 }
 
 /** Egyszer fut sessiononként; a `force` újratöltést kényszerít. */
 export function primeMasterData(force = false): Promise<void> {
+  if (force) {
+    masterDataPrimed = false
+    primePromise = null
+  }
   if (force || !primePromise) {
     primePromise = primeAll()
   }

@@ -14,7 +14,11 @@ export async function GET() {
 
   try {
     const bundle = await loadBundleFromDb(session.supabase, session.organization.id)
-    return NextResponse.json(bundle)
+    return NextResponse.json(bundle, {
+      headers: {
+        "Cache-Control": "private, no-cache, no-store, must-revalidate",
+      },
+    })
   } catch (error) {
     console.error("projects-bundle GET:", error)
     return NextResponse.json({ error: "Hiba a projektadatok betöltésekor." }, { status: 500 })

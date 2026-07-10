@@ -12,7 +12,7 @@ import {
   SUBCONTRACTOR_STATUS_LABELS,
   SUBCONTRACTOR_TIER_LABELS,
 } from "@/lib/subcontractor-labels"
-import { getSubcontractorStats } from "@/lib/subcontractor-queries"
+import type { SubcontractorRfqStatsMap, SubcontractorRfqStatsRow } from "@/types/list-stats"
 import {
   fetchSubcontractorsFromApi,
   saveSubcontractorToApi,
@@ -33,7 +33,14 @@ import {
   SubcontractorTierBadge,
 } from "@/components/alvalalkozok/subcontractor-badges"
 import { SubcontractorFormDialog } from "@/components/alvalalkozok/subcontractor-form-dialog"
-import { useProjectsBundleReady } from "@/hooks/use-projects-bundle-ready"
+
+const EMPTY_RFQ_STATS: SubcontractorRfqStatsRow = {
+  invitationCount: 0,
+  submittedCount: 0,
+  acceptedCount: 0,
+  rejectedCount: 0,
+  lastSubmissionAt: null,
+}
 
 function filterRows(
   items: Subcontractor[],
@@ -74,9 +81,9 @@ function filterRows(
 
 export function SubcontractorsPageClient() {
   const tradeOptions = useTradeOptions()
-  const bundleReady = useProjectsBundleReady()
   const [loading, setLoading] = useState(true)
   const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([])
+  const [rfqStats, setRfqStats] = useState<SubcontractorRfqStatsMap>({})
   const [search, setSearch] = useState("")
   const [trade, setTrade] = useState<Trade | "all">("all")
   const [status, setStatus] = useState<Subcontractor["status"] | "all">("all")
@@ -84,9 +91,15 @@ export function SubcontractorsPageClient() {
   const [createOpen, setCreateOpen] = useState(false)
 
   const fetchFromApi = useCallback(async () => {
-    const { subcontractors: rows, error } = await fetchSubcontractorsFromApi()
-    if (error) toast.error(error)
-    setSubcontractors(rows)
+    const [subRes, statsRes] = await Promise.all([
+      fetchSubcontractorsFromApi(),
+      fetch("/api/subcontractors/rfq-stats").then(
+        (r) => r.json() as Promise<{ stats?: SubcontractorRfqStatsMap }>
+      ),
+    ])
+    if (subRes.error) toast.error(subRes.error)
+    setSubcontractors(subRes.subcontractors)
+    if (statsRes?.stats) setRfqStats(statsRes.stats)
     setLoading(false)
   }, [])
 
@@ -113,7 +126,7 @@ export function SubcontractorsPageClient() {
     }
   }
 
-  if (loading || !bundleReady) {
+  if (loading) {
     return <div className="h-64 animate-pulse rounded-lg bg-[var(--muted)]" />
   }
 
@@ -210,7 +223,13 @@ export function SubcontractorsPageClient() {
                   </td>
                 </tr>
               ) : (
-                rows.map((sub) => <SubcontractorListRow key={sub.id} sub={sub} />)
+                rows.map((sub) => (
+                  <SubcontractorListRow
+                    key={sub.id}
+                    sub={sub}
+                    stats={rfqStats[sub.id] ?? EMPTY_RFQ_STATS}
+                  />
+                ))
               )}
             </tbody>
           </table>
@@ -227,9 +246,13 @@ export function SubcontractorsPageClient() {
   )
 }
 
-function SubcontractorListRow({ sub }: { sub: Subcontractor }) {
-  const stats = useMemo(() => getSubcontractorStats(sub), [sub])
-
+function SubcontractorListRow({
+  sub,
+  stats,
+}: {
+  sub: Subcontractor
+  stats: SubcontractorRfqStatsRow
+}) {
   return (
     <tr className="border-b last:border-b-0 hover:bg-slate-50">
       <td className="px-4 py-3">

@@ -34,6 +34,7 @@ import {
   setProjectFileCover,
   uploadProjectFile,
 } from "@/lib/data/project-files-store"
+import { ensureProjectFilesLoaded } from "@/lib/data/app-data-bootstrap"
 import {
   formatPhotoDateLabel,
   groupFilesByDate,
@@ -75,6 +76,7 @@ type ProjectFilesTabProps = {
 }
 
 export function ProjectFilesTab({ project, projectId, tick, onRefresh }: ProjectFilesTabProps) {
+  const [filesReady, setFilesReady] = useState(false)
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [viewMode, setViewMode] = useState<FolderViewMode>("grid")
@@ -96,6 +98,19 @@ export function ProjectFilesTab({ project, projectId, tick, onRefresh }: Project
   const [uploadTakenAt, setUploadTakenAt] = useState(new Date().toISOString().slice(0, 10))
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void ensureProjectFilesLoaded().then(() => {
+      if (!cancelled) {
+        setFilesReady(true)
+        onRefresh()
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [onRefresh])
 
   const folders = useMemo(() => {
     void tick
@@ -275,6 +290,10 @@ export function ProjectFilesTab({ project, projectId, tick, onRefresh }: Project
 
   const userFolders = folders.filter((f) => !f.isSystem)
   const systemFolders = folders.filter((f) => f.isSystem)
+
+  if (!filesReady) {
+    return <div className="h-64 animate-pulse rounded-lg bg-[var(--muted)]" />
+  }
 
   return (
     <div className="flex min-h-[calc(100dvh-14rem)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">

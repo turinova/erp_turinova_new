@@ -1,6 +1,14 @@
 import type { Metadata } from "next"
 import { Suspense } from "react"
-import { ProjectDetailClient } from "@/components/projektek/project-detail-client"
+import dynamic from "next/dynamic"
+
+const ProjectDetailClient = dynamic(
+  () =>
+    import("@/components/projektek/project-detail-client").then((m) => m.ProjectDetailClient),
+  {
+    loading: () => <div className="h-64 animate-pulse rounded-lg bg-[var(--muted)]" />,
+  }
+)
 
 export const metadata: Metadata = {
   title: "Projekt",

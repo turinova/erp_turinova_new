@@ -17,17 +17,29 @@ import { recordProjectAudit } from "@/lib/data/projects-store"
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 
-let foldersCache: ProjectFileFolderRecord[] = []
-let filesCache: ProjectFile[] = []
+let foldersCache: ProjectFileFolderRecord[] | null = null
+let filesCache: ProjectFile[] | null = null
 
 function newId(): string {
   return crypto.randomUUID()
 }
 
-export async function syncProjectFilesFromServer(): Promise<boolean> {
+export function isProjectFilesCached(): boolean {
+  return foldersCache !== null && filesCache !== null
+}
+
+export function clearProjectFilesCache(): void {
+  foldersCache = null
+  filesCache = null
+}
+
+export async function syncProjectFilesFromServer(options?: {
+  force?: boolean
+}): Promise<boolean> {
   if (typeof window === "undefined") return false
+  if (!options?.force && isProjectFilesCached()) return true
   try {
-    const res = await fetch("/api/project-files")
+    const res = await fetch("/api/project-files", { cache: "no-store" })
     if (!res.ok) return false
     const data = (await res.json()) as {
       folders: ProjectFileFolderRecord[]
@@ -52,7 +64,7 @@ function pushStateToServer(): void {
 }
 
 export function loadProjectFileFoldersMeta(): ProjectFileFolderRecord[] {
-  return foldersCache
+  return foldersCache ?? []
 }
 
 function saveProjectFileFoldersMeta(folders: ProjectFileFolderRecord[]): void {
@@ -61,7 +73,7 @@ function saveProjectFileFoldersMeta(folders: ProjectFileFolderRecord[]): void {
 }
 
 export function loadProjectFilesMeta(): ProjectFile[] {
-  return filesCache
+  return filesCache ?? []
 }
 
 function saveProjectFilesMeta(files: ProjectFile[]): void {
@@ -95,13 +107,15 @@ function createDefaultFoldersForProject(
 
 /** Alapértelmezett mappák biztosítása egy projekthez */
 export function ensureProjectFileStructure(projectId: string): void {
-  if (!foldersCache.some((f) => f.projectId === projectId)) {
+  const folders = loadProjectFileFoldersMeta()
+  if (!folders.some((f) => f.projectId === projectId)) {
+    const files = loadProjectFilesMeta()
     const orgId =
-      filesCache.find((f) => f.projectId === projectId)?.orgId ??
-      foldersCache[0]?.orgId ??
+      files.find((f) => f.projectId === projectId)?.orgId ??
+      folders[0]?.orgId ??
       ""
     saveProjectFileFoldersMeta([
-      ...foldersCache,
+      ...folders,
       ...createDefaultFoldersForProject(projectId, orgId),
     ])
   }
@@ -183,11 +197,12 @@ export function deleteProjectFileFolder(folderId: string): boolean {
     findFolderByName(folders, folder.projectId, defaultFolderSpecs()[3].name) ??
     folders.find((f) => f.projectId === folder.projectId && !f.isSystem && f.id !== folderId)
 
-  filesCache = files.map((f) =>
-    f.folderId === folderId && otherFolder ? { ...f, folderId: otherFolder.id } : f
+  saveProjectFilesMeta(
+    files.map((f) =>
+      f.folderId === folderId && otherFolder ? { ...f, folderId: otherFolder.id } : f
+    )
   )
-  foldersCache = folders.filter((f) => f.id !== folderId)
-  pushStateToServer()
+  saveProjectFileFoldersMeta(folders.filter((f) => f.id !== folderId))
   return true
 }
 
@@ -305,7 +320,7 @@ export async function uploadProjectFile(
   if (input.quoteId) form.set("quoteId", input.quoteId)
   form.set(
     "sortOrder",
-    String(filesCache.filter((f) => f.projectId === projectId).length + 1)
+    String(loadProjectFilesMeta().filter((f) => f.projectId === projectId).length + 1)
   )
 
   const res = await fetch("/api/project-files/upload", { method: "POST", body: form })
@@ -314,7 +329,7 @@ export async function uploadProjectFile(
     throw new Error(data.error ?? "A feltöltés sikertelen")
   }
 
-  filesCache = [...filesCache, data.file]
+  saveProjectFilesMeta([...loadProjectFilesMeta(), data.file])
   recordProjectAudit(projectId, {
     kind: "file",
     action: "Dokumentum feltöltve",
@@ -324,7 +339,7 @@ export async function uploadProjectFile(
 }
 
 export async function deleteProjectFile(id: string): Promise<boolean> {
-  const file = filesCache.find((f) => f.id === id)
+  const file = loadProjectFilesMeta().find((f) => f.id === id)
   if (!file) return false
 
   try {
@@ -334,13 +349,13 @@ export async function deleteProjectFile(id: string): Promise<boolean> {
     return false
   }
 
-  filesCache = filesCache.filter((f) => f.id !== id)
+  saveProjectFilesMeta(loadProjectFilesMeta().filter((f) => f.id !== id))
   return true
 }
 
 export function setProjectFileCover(projectId: string, fileId: string): void {
   saveProjectFilesMeta(
-    filesCache.map((f) => {
+    loadProjectFilesMeta().map((f) => {
       if (f.projectId !== projectId) return f
       return { ...f, isCover: f.id === fileId }
     })

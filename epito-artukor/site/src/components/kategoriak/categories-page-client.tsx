@@ -7,7 +7,10 @@ import type { Category, CostItem, Trade } from "@/types"
 import { getCategoryPath } from "@/lib/categories/category-tree"
 import { getTradeLabel } from "@/lib/trades"
 import { useTradeOptions } from "@/components/trades/trades-provider"
-import { setCategoriesCache } from "@/lib/data/categories-store"
+import { setCategoriesCache, loadCategories } from "@/lib/data/categories-store"
+import { loadCostItems } from "@/lib/data/cost-items-store"
+import { isMasterDataPrimed } from "@/lib/data/master-data-primer"
+import { useAppData } from "@/components/shell/app-data-provider"
 import type { CategoryWriteInput } from "@/lib/categories/category-map"
 import { validateCategoryInput } from "@/lib/categories/validate-category"
 import { cn } from "@/lib/utils"
@@ -34,6 +37,7 @@ import {
 
 export function CategoriesPageClient() {
   const tradeOptions = useTradeOptions()
+  const { ready: appReady } = useAppData()
   const [categories, setCategories] = useState<Category[]>([])
   const [itemCounts, setItemCounts] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
@@ -52,6 +56,18 @@ export function CategoriesPageClient() {
 
   const fetchCategoriesFromApi = useCallback(async () => {
     try {
+      if (isMasterDataPrimed()) {
+        const cachedCategories = loadCategories()
+        const counts = new Map<string, number>()
+        for (const item of loadCostItems()) {
+          if (!item.categoryId) continue
+          counts.set(item.categoryId, (counts.get(item.categoryId) ?? 0) + 1)
+        }
+        setCategories(cachedCategories)
+        setItemCounts(counts)
+        return
+      }
+
       const [catRes, itemsRes] = await Promise.all([
         fetch("/api/categories"),
         fetch("/api/cost-items"),
@@ -83,8 +99,9 @@ export function CategoriesPageClient() {
   }, [])
 
   useEffect(() => {
+    if (!appReady) return
     void fetchCategoriesFromApi()
-  }, [fetchCategoriesFromApi])
+  }, [appReady, fetchCategoriesFromApi])
 
   /** Szakág-kód → pozíció az építési sorrendben (a trades sort_order szerint) */
   const tradeRank = useMemo(() => {
@@ -210,7 +227,7 @@ export function CategoriesPageClient() {
   const selectedTradeLabel =
     selectedTrade === "all" ? null : tradeOptions.find((t) => t.id === selectedTrade)?.label
 
-  if (loading) {
+  if (loading || !appReady) {
     return <div className="h-64 animate-pulse rounded-lg bg-[var(--muted)]" />
   }
 

@@ -23,7 +23,11 @@ import {
   patchCostItemPricesToApi,
   saveCostItemToApi,
 } from "@/lib/cost-items/cost-items-api-client"
-import { filterAllCostItems, upsertCostItem } from "@/lib/data/cost-items-store"
+import { filterAllCostItems, loadCostItems, upsertCostItem } from "@/lib/data/cost-items-store"
+import { loadCategories } from "@/lib/data/categories-store"
+import { loadUnits } from "@/lib/data/units-store"
+import { isMasterDataPrimed } from "@/lib/data/master-data-primer"
+import { useAppData } from "@/components/shell/app-data-provider"
 import { loadSavedViews, viewToFilters, type SavedView } from "@/lib/cost-item-views"
 import { loadRecentItemIds, trackRecentItem } from "@/lib/cost-item-recent"
 import { COLUMNS, type ColumnId } from "@/lib/column-config"
@@ -63,6 +67,7 @@ const COLUMN_HEADERS: Record<ColumnId, string> = {
 
 export function CostItemsPageClient() {
   const tradeOptions = useTradeOptions()
+  const { ready: appReady } = useAppData()
   const { items, setItems, undo, canUndo, resetStack } = useUndoStack([])
   const [categories, setCategories] = useState<Category[]>([])
   const [units, setUnits] = useState<Unit[]>([])
@@ -99,6 +104,13 @@ export function CostItemsPageClient() {
   )
 
   const refreshFromApi = useCallback(async () => {
+    if (isMasterDataPrimed()) {
+      resetStack(loadCostItems())
+      setCategories(loadCategories())
+      setUnits(loadUnits())
+      return
+    }
+
     const [itemsRes, categoriesRes, unitsRes] = await Promise.all([
       fetchCostItemsFromApi(),
       fetch("/api/categories").then((r) => r.json() as Promise<{ categories?: Category[] }>),
@@ -117,12 +129,13 @@ export function CostItemsPageClient() {
   }, [resetStack])
 
   useEffect(() => {
+    if (!appReady) return
     void refreshFromApi().finally(() => {
       setRecentIds(loadRecentItemIds())
       setDataLoading(false)
       setMounted(true)
     })
-  }, [refreshFromApi])
+  }, [appReady, refreshFromApi])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 200)
@@ -467,7 +480,7 @@ export function CostItemsPageClient() {
 
   const visibleColumns = COLUMNS.filter((c) => visibility[c.id])
 
-  if (!mounted || dataLoading) {
+  if (!mounted || dataLoading || !appReady) {
     return (
       <div className="animate-pulse space-y-4">
         <div className="h-8 w-48 rounded bg-slate-200" />

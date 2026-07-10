@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { Trade } from "@/types"
 import type { TradeRecord } from "@/types/trade"
 import { DEFAULT_TRADE_RECORDS } from "@/lib/trades/constants"
-import { setCachedTrades } from "@/lib/trades/trades-cache"
+import { getCachedTrades, setCachedTrades } from "@/lib/trades/trades-cache"
 
 type TradesContextValue = {
   trades: TradeRecord[]
@@ -48,6 +48,12 @@ export function TradesProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void (async () => {
+      const cached = getCachedTrades()
+      if (cached && cached.length > 0) {
+        setTrades(cached)
+        setLoading(false)
+        return
+      }
       setLoading(true)
       await refreshTrades()
       setLoading(false)

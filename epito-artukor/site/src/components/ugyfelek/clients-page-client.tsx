@@ -6,9 +6,8 @@ import { Plus, Search } from "lucide-react"
 import { toast } from "sonner"
 import type { Client, ClientInput } from "@/types/clients"
 import { CLIENT_STATUS_LABELS, CLIENT_TYPE_LABELS } from "@/lib/client-labels"
-import { countProjectsForClient } from "@/lib/client-queries"
+import type { ClientProjectCounts } from "@/types/list-stats"
 import { fetchClientsFromApi, saveClientToApi } from "@/lib/clients/clients-api-client"
-import { useProjectsBundleReady } from "@/hooks/use-projects-bundle-ready"
 import { PageHeader } from "@/components/shell/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,18 +22,27 @@ import { ClientFormDialog } from "@/components/ugyfelek/client-form-dialog"
 import { ClientStatusBadge, ClientTypeBadge } from "@/components/ugyfelek/client-badges"
 
 export function ClientsPageClient() {
-  const bundleReady = useProjectsBundleReady()
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState<Client[]>([])
+  const [projectCounts, setProjectCounts] = useState<ClientProjectCounts>({
+    byClientId: {},
+    byClientName: {},
+  })
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState<Client["status"] | "all">("all")
   const [clientType, setClientType] = useState<Client["clientType"] | "all">("all")
   const [createOpen, setCreateOpen] = useState(false)
 
   const fetchFromApi = useCallback(async () => {
-    const { clients: rows, error } = await fetchClientsFromApi()
-    if (error) toast.error(error)
-    setClients(rows)
+    const [clientsRes, countsRes] = await Promise.all([
+      fetchClientsFromApi(),
+      fetch("/api/clients/project-counts").then(
+        (r) => r.json() as Promise<ClientProjectCounts>
+      ),
+    ])
+    if (clientsRes.error) toast.error(clientsRes.error)
+    setClients(clientsRes.clients)
+    if (countsRes?.byClientId) setProjectCounts(countsRes)
     setLoading(false)
   }, [])
 
@@ -75,7 +83,7 @@ export function ClientsPageClient() {
     }
   }
 
-  if (loading || !bundleReady) {
+  if (loading) {
     return <div className="h-64 animate-pulse rounded-lg bg-[var(--muted)]" />
   }
 
@@ -159,7 +167,7 @@ export function ClientsPageClient() {
                 </tr>
               ) : (
                 rows.map((client) => (
-                  <ClientListRow key={client.id} client={client} />
+                  <ClientListRow key={client.id} client={client} projectCounts={projectCounts} />
                 ))
               )}
             </tbody>
@@ -172,8 +180,18 @@ export function ClientsPageClient() {
   )
 }
 
-function ClientListRow({ client }: { client: Client }) {
-  const projectCount = countProjectsForClient(client.id, client.displayName)
+function ClientListRow({
+  client,
+  projectCounts,
+}: {
+  client: Client
+  projectCounts: ClientProjectCounts
+}) {
+  const projectCount =
+    projectCounts.byClientId[client.id] ??
+    projectCounts.byClientName[client.displayName.trim().toLowerCase()] ??
+    projectCounts.byClientName[client.legalName.trim().toLowerCase()] ??
+    0
 
   return (
     <tr className="border-b last:border-b-0 hover:bg-slate-50">

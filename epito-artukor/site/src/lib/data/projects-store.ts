@@ -59,6 +59,16 @@ import {
  */
 let bundleCache: ProjectDataBundle | null = null
 
+/** Van-e már betöltött projekt-bundle a memóriában (session cache). */
+export function isProjectBundleCached(): boolean {
+  return bundleCache !== null
+}
+
+/** Bundle cache ürítése (kijelentkezés / kényszerített újratöltés előtt). */
+export function clearProjectBundleCache(): void {
+  bundleCache = null
+}
+
 function emptyBundle(): ProjectDataBundle {
   return {
     projects: [],
@@ -86,16 +96,50 @@ function loadBundle(): ProjectDataBundle {
   return bundleCache ?? emptyBundle()
 }
 
-function saveBundle(bundle: ProjectDataBundle): void {
+function saveBundle(bundle: ProjectDataBundle, options?: { debounce?: boolean }): void {
   const normalized = normalizeProjectBundle(bundle)
   bundleCache = normalized
-  void fetch("/api/projects-bundle", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(normalized),
-  }).catch(() => {
+  scheduleBundlePersist(normalized, options?.debounce !== true)
+}
+
+let bundlePersistTimer: ReturnType<typeof setTimeout> | null = null
+let pendingBundlePersist: ProjectDataBundle | null = null
+
+function scheduleBundlePersist(bundle: ProjectDataBundle, immediate: boolean): void {
+  pendingBundlePersist = bundle
+  if (bundlePersistTimer) clearTimeout(bundlePersistTimer)
+  if (immediate) {
+    void pushBundleToServer(bundle)
+    pendingBundlePersist = null
+    return
+  }
+  bundlePersistTimer = setTimeout(() => {
+    bundlePersistTimer = null
+    const payload = pendingBundlePersist
+    pendingBundlePersist = null
+    if (payload) void pushBundleToServer(payload)
+  }, 450)
+}
+
+async function pushBundleToServer(bundle: ProjectDataBundle): Promise<void> {
+  try {
+    await fetch("/api/projects-bundle", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bundle),
+    })
+  } catch {
     /* offline */
-  })
+  }
+}
+
+/** Azonnali szinkron (pl. oldal elhagyása előtt). */
+export function flushBundlePersist(): void {
+  if (bundlePersistTimer) clearTimeout(bundlePersistTimer)
+  bundlePersistTimer = null
+  const payload = pendingBundlePersist
+  pendingBundlePersist = null
+  if (payload) void pushBundleToServer(payload)
 }
 
 function touch<T extends { updatedAt: string }>(row: T): T {
@@ -363,7 +407,7 @@ export function updateQuote(id: string, patch: Partial<Quote>): Quote | undefine
       .filter(Boolean)
       .join(" · "),
   })
-  saveBundle(bundle)
+  saveBundle(bundle, { debounce: true })
   return quote
 }
 
@@ -698,7 +742,7 @@ export function updateQuoteLine(id: string, patch: Partial<QuoteLine>): QuoteLin
   const quoteId = next.quoteId
   const qIdx = bundle.quotes.findIndex((q) => q.id === quoteId)
   if (qIdx >= 0) bundle.quotes[qIdx] = touch(bundle.quotes[qIdx])
-  saveBundle(bundle)
+  saveBundle(bundle, { debounce: true })
   return bundle.quoteLines[idx]
 }
 
@@ -1802,10 +1846,13 @@ export function closeProject(projectId: string): Project | undefined {
 }
 
 /** DB → in-memory cache frissítés (oldalbetöltéskor / publikus válasz után) */
-export async function syncBundleFromServer(): Promise<boolean> {
+export async function syncBundleFromServer(options?: {
+  force?: boolean
+}): Promise<boolean> {
   if (typeof window === "undefined") return false
+  if (!options?.force && isProjectBundleCached()) return true
   try {
-    const res = await fetch("/api/projects-bundle")
+    const res = await fetch("/api/projects-bundle", { cache: "no-store" })
     if (!res.ok) return false
     bundleCache = normalizeProjectBundle((await res.json()) as ProjectDataBundle)
     return true
