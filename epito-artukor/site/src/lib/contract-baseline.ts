@@ -1,7 +1,8 @@
-import type { CustomerPackage, CustomerPackageSnapshot } from "@/types/projects"
+import type { CustomerPackage, CustomerPackageSnapshot, ProjectDataBundle } from "@/types/projects"
 import type { Trade } from "@/types"
 import { getTradeLabel } from "@/lib/trades"
 import { listCustomerPackagesForProject } from "@/lib/data/projects-store"
+import { bundleCustomerPackagesForProject } from "@/lib/project-bundle-queries"
 
 export type ContractTradeRow = {
   trade: Trade
@@ -30,11 +31,9 @@ function acceptedSnapshotsFromPackage(pkg: CustomerPackage): CustomerPackageSnap
   return pkg.acceptedSnapshots ?? pkg.snapshots
 }
 
-export function buildContractBaseline(projectId: string): ContractBaseline {
-  const packages = listCustomerPackagesForProject(projectId).filter(
-    (p) => p.status === "accepted"
-  )
-
+function buildContractBaselineFromPackages(
+  packages: CustomerPackage[]
+): ContractBaseline {
   const tradeRows: ContractTradeRow[] = []
   let baseGrossTotal = 0
   let supplementGrossTotal = 0
@@ -71,4 +70,21 @@ export function buildContractBaseline(projectId: string): ContractBaseline {
     tradeRows,
     packageCount: packages.length,
   }
+}
+
+export function buildContractBaseline(projectId: string): ContractBaseline {
+  const packages = listCustomerPackagesForProject(projectId).filter(
+    (p) => p.status === "accepted"
+  )
+  return buildContractBaselineFromPackages(packages)
+}
+
+export function buildContractBaselineFromBundle(
+  projectId: string,
+  bundle: ProjectDataBundle
+): ContractBaseline {
+  const packages = bundleCustomerPackagesForProject(bundle, projectId).filter(
+    (p) => p.status === "accepted"
+  )
+  return buildContractBaselineFromPackages(packages)
 }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Plus, Search } from "lucide-react"
 import type { Project } from "@/types/projects"
 import { PROJECT_STATUS_LABELS } from "@/lib/project-labels"
-import { createProject, listProjects } from "@/lib/data/projects-store"
+import { createProject, listProjects, getProjectListSummary } from "@/lib/data/projects-store"
 import {
   buildProjectListSummary,
   countProjectsByStatus,
@@ -84,7 +84,12 @@ export function ProjectsPageClient({ phase }: ProjectsPageClientProps) {
 
   const summaries = useMemo(() => {
     void tick
-    return new Map(allProjects.map((p) => [p.id, buildProjectListSummary(p)]))
+    return new Map(
+      allProjects.map((p) => [
+        p.id,
+        getProjectListSummary(p.id) ?? buildProjectListSummary(p),
+      ])
+    )
   }, [allProjects, tick])
 
   const filtered = useMemo(

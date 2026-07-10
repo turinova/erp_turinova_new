@@ -12,6 +12,36 @@ export async function fetchCostItemsFromApi(): Promise<{
   return { items: data.items ?? [] }
 }
 
+export async function fetchCostItemsPageFromApi(params: {
+  page: number
+  pageSize?: number
+  trade?: string
+  categoryId?: string
+  status?: string
+  q?: string
+}): Promise<{
+  result: import("@/types").PaginatedResult<CostItem> | null
+  error?: string
+}> {
+  const sp = new URLSearchParams({
+    page: String(params.page),
+    pageSize: String(params.pageSize ?? 50),
+  })
+  if (params.trade && params.trade !== "all") sp.set("trade", params.trade)
+  if (params.categoryId && params.categoryId !== "all") sp.set("categoryId", params.categoryId)
+  if (params.status && params.status !== "all") sp.set("status", params.status)
+  if (params.q?.trim()) sp.set("q", params.q.trim())
+
+  const res = await fetch(`/api/cost-items?${sp.toString()}`)
+  const data = (await res.json()) as import("@/types").PaginatedResult<CostItem> & {
+    error?: string
+  }
+  if (!res.ok) {
+    return { result: null, error: data.error ?? "Nem sikerült betölteni a tételeket." }
+  }
+  return { result: data }
+}
+
 export async function saveCostItemToApi(
   input: CostItemInput,
   id?: string

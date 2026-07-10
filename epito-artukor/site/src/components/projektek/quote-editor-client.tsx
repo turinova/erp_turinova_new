@@ -1,5 +1,6 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useEffect, useMemo, useState, Fragment, type CSSProperties } from "react"
 import Link from "next/link"
 import {
@@ -85,12 +86,10 @@ import {
   subcontractorPriceInputClass,
   type CostSourceFilter,
 } from "@/lib/quote-line-visual"
-import { QuoteRfqPanel } from "@/components/projektek/quote-rfq-panel"
 import {
   QuoteLineBidExpandRow,
   lineHasRfqBids,
 } from "@/components/projektek/quote-line-bid-expand"
-import { QuoteMarkupPanel } from "@/components/projektek/quote-markup-panel"
 import {
   Select,
   SelectContent,
@@ -98,15 +97,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { QuoteClientPanel, type QuoteClientSubView } from "@/components/projektek/quote-client-panel"
 import { QuoteEditorCommandBar, type QuoteEditorTab } from "@/components/projektek/quote-editor-command-bar"
-import { QuoteExecutionPanel } from "@/components/projektek/quote-execution-panel"
+import type { QuoteClientSubView } from "@/components/projektek/quote-client-panel"
 import {
   buildQuoteEditorStatusChip,
 } from "@/components/projektek/quote-editor-status-chip"
 import { QuoteTableFooterSummary } from "@/components/projektek/quote-table-footer-summary"
-import { useProjectsBundleReady } from "@/hooks/use-projects-bundle-ready"
+import { useProjectBundleLoaded } from "@/hooks/use-project-bundle-loaded"
+import { ensureCostItemsLoaded } from "@/lib/data/master-data-primer"
 import { cn } from "@/lib/utils"
+
+const QuoteRfqPanel = dynamic(
+  () => import("@/components/projektek/quote-rfq-panel").then((m) => m.QuoteRfqPanel),
+  { loading: () => <p className="p-4 text-sm text-slate-500">RFQ panel betöltése…</p> }
+)
+const QuoteMarkupPanel = dynamic(
+  () => import("@/components/projektek/quote-markup-panel").then((m) => m.QuoteMarkupPanel),
+  { loading: () => <p className="p-4 text-sm text-slate-500">Árrés panel betöltése…</p> }
+)
+const QuoteClientPanel = dynamic(
+  () => import("@/components/projektek/quote-client-panel").then((m) => m.QuoteClientPanel),
+  { loading: () => <p className="p-4 text-sm text-slate-500">Ügyfél panel betöltése…</p> }
+)
+const QuoteExecutionPanel = dynamic(
+  () => import("@/components/projektek/quote-execution-panel").then((m) => m.QuoteExecutionPanel),
+  { loading: () => <p className="p-4 text-sm text-slate-500">Kivitelezés panel betöltése…</p> }
+)
 
 type QuoteEditorClientProps = {
   projectId: string
@@ -248,7 +264,8 @@ function UnitSelect({
 }
 
 export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps) {
-  const bundleReady = useProjectsBundleReady()
+  const editorReady = useProjectBundleLoaded(projectId)
+  const [costItemsReady, setCostItemsReady] = useState(false)
   const [tick, setTick] = useState(0)
   const [editorTab, setEditorTab] = useState<QuoteEditorTab>("cost")
   const [tabBootstrapped, setTabBootstrapped] = useState(false)
@@ -263,11 +280,17 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
   const refresh = () => setTick((t) => t + 1)
 
   useEffect(() => {
-    if (bundleReady) refresh()
-  }, [bundleReady])
+    if (!editorReady) return
+    void ensureCostItemsLoaded().then(() => {
+      setCostItemsReady(true)
+      refresh()
+    })
+  }, [editorReady])
 
-  const project = useMemo(() => (bundleReady ? getProject(projectId) : undefined), [projectId, tick, bundleReady])
-  const quote = useMemo(() => (bundleReady ? getQuote(quoteId) : undefined), [quoteId, tick, bundleReady])
+  const ready = editorReady && costItemsReady
+
+  const project = useMemo(() => (ready ? getProject(projectId) : undefined), [projectId, tick, ready])
+  const quote = useMemo(() => (ready ? getQuote(quoteId) : undefined), [quoteId, tick, ready])
   const contract = useMemo(
     () => (quote ? getQuoteContractContext(quote.projectId, quote.id) : null),
     [quote, tick]
@@ -282,13 +305,13 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     editorTab === "execution" ? "cost" : editorTab
 
   useEffect(() => {
-    if (!bundleReady || !project || !quote || tabBootstrapped) return
+    if (!ready || !project || !quote || tabBootstrapped) return
     if (isQuoteInExecutionMode(quote, project)) {
       setEditorTab("execution")
     }
     setTabBootstrapped(true)
-  }, [bundleReady, project, quote, tabBootstrapped])
-  const allLines = useMemo(() => (bundleReady ? listQuoteLines(quoteId) : []), [quoteId, tick, bundleReady])
+  }, [ready, project, quote, tabBootstrapped])
+  const allLines = useMemo(() => (ready ? listQuoteLines(quoteId) : []), [quoteId, tick, ready])
 
   const quoteTrade = useMemo((): Trade => {
     if (!quote) return "epitomester"
@@ -436,7 +459,7 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     ]
   )
 
-  if (!bundleReady) {
+  if (!ready) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <p className="text-sm text-slate-500">Árajánlat betöltése…</p>

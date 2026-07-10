@@ -19,14 +19,13 @@ import { useTradeOptions } from "@/components/trades/trades-provider"
 import { buildCategoryMap } from "@/lib/categories/category-tree"
 import {
   bulkCostItemsAction,
-  fetchCostItemsFromApi,
+  fetchCostItemsPageFromApi,
   patchCostItemPricesToApi,
   saveCostItemToApi,
 } from "@/lib/cost-items/cost-items-api-client"
-import { filterAllCostItems, loadCostItems, upsertCostItem } from "@/lib/data/cost-items-store"
+import { loadCostItems, upsertCostItem } from "@/lib/data/cost-items-store"
 import { loadCategories } from "@/lib/data/categories-store"
 import { loadUnits } from "@/lib/data/units-store"
-import { isMasterDataPrimed } from "@/lib/data/master-data-primer"
 import { useAppData } from "@/components/shell/app-data-provider"
 import { loadSavedViews, viewToFilters, type SavedView } from "@/lib/cost-item-views"
 import { loadRecentItemIds, trackRecentItem } from "@/lib/cost-item-recent"
@@ -95,6 +94,9 @@ export function CostItemsPageClient() {
   const [quickKtOpen, setQuickKtOpen] = useState(false)
   const [bulkPriceOpen, setBulkPriceOpen] = useState(false)
   const [recentIds, setRecentIds] = useState<string[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
   const { visibility, setVisibility } = useColumnVisibility()
 
   const categoryMap = useMemo(() => buildCategoryMap(categories), [categories])
@@ -104,38 +106,63 @@ export function CostItemsPageClient() {
   )
 
   const refreshFromApi = useCallback(async () => {
-    if (isMasterDataPrimed()) {
-      resetStack(loadCostItems())
-      setCategories(loadCategories())
-      setUnits(loadUnits())
-      return
-    }
+    setDataLoading(true)
+    const { result, error } = await fetchCostItemsPageFromApi({
+      page,
+      pageSize: 50,
+      trade: activeTrade,
+      categoryId,
+      status,
+      q: debouncedSearch,
+    })
 
-    const [itemsRes, categoriesRes, unitsRes] = await Promise.all([
-      fetchCostItemsFromApi(),
-      fetch("/api/categories").then((r) => r.json() as Promise<{ categories?: Category[] }>),
-      fetch("/api/units").then((r) => r.json() as Promise<{ units?: Unit[] }>),
-    ])
-
-    if (itemsRes.error) {
-      toast.error(itemsRes.error)
+    if (error) {
+      toast.error(error)
       resetStack([])
-    } else {
-      resetStack(itemsRes.items)
+      setTotalItems(0)
+      setTotalPages(1)
+    } else if (result) {
+      resetStack(result.items)
+      setTotalItems(result.total)
+      setTotalPages(result.totalPages)
     }
 
-    setCategories(categoriesRes.categories ?? [])
-    setUnits(unitsRes.units ?? [])
-  }, [resetStack])
+    if (categories.length === 0) {
+      const categoriesRes = await fetch("/api/categories").then(
+        (r) => r.json() as Promise<{ categories?: Category[] }>
+      )
+      setCategories(categoriesRes.categories ?? loadCategories())
+    }
+    if (units.length === 0) {
+      const unitsRes = await fetch("/api/units").then(
+        (r) => r.json() as Promise<{ units?: Unit[] }>
+      )
+      setUnits(unitsRes.units ?? loadUnits())
+    }
+
+    setDataLoading(false)
+  }, [
+    resetStack,
+    page,
+    activeTrade,
+    categoryId,
+    status,
+    debouncedSearch,
+    categories.length,
+    units.length,
+  ])
 
   useEffect(() => {
     if (!appReady) return
-    void refreshFromApi().finally(() => {
+    void refreshFromApi().then(() => {
       setRecentIds(loadRecentItemIds())
-      setDataLoading(false)
       setMounted(true)
     })
   }, [appReady, refreshFromApi])
+
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, activeTrade, categoryId, status, customOnly])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 200)
@@ -198,13 +225,7 @@ export function CostItemsPageClient() {
   }, [items, tradeOptions])
 
   const filteredItems = useMemo(() => {
-    let list = filterAllCostItems(items, {
-      q: debouncedSearch,
-      trade: activeTrade === "all" ? undefined : activeTrade,
-      categoryId: categoryId === "all" ? undefined : categoryId,
-      status,
-    })
-    if (customOnly) list = list.filter((i) => i.isCustomItem)
+    let list = customOnly ? items.filter((i) => i.isCustomItem) : items
 
     if (aiSearchResult?.matches.length && debouncedSearch.trim().length >= 3) {
       const rank = new Map(aiSearchResult.matches.map((m, i) => [m.itemId, i]))
@@ -216,7 +237,7 @@ export function CostItemsPageClient() {
     }
 
     return list
-  }, [items, debouncedSearch, activeTrade, categoryId, status, customOnly, aiSearchResult])
+  }, [items, debouncedSearch, customOnly, aiSearchResult])
 
   const recentItems = useMemo(
     () =>
@@ -709,14 +730,42 @@ export function CostItemsPageClient() {
             </div>
           </div>
 
-          <div className="mt-4 text-sm text-slate-500">
-            {filteredItems.length} tétel
-            {activeTrade !== "all" ? ` · ${getTradeLabel(activeTrade)}` : ""}
-            {categoryId !== "all" && categoryMap[categoryId]
-              ? ` · ${categoryMap[categoryId].code}`
-              : ""}
-            {" · "}
-            <span className="text-xs">K = gyors K-tétel · ⌘K = parancsok · ⌘Z = visszavonás</span>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+            <div>
+              {totalItems} tétel összesen
+              {filteredItems.length !== totalItems ? ` · ${filteredItems.length} ezen az oldalon` : ""}
+              {activeTrade !== "all" ? ` · ${getTradeLabel(activeTrade)}` : ""}
+              {categoryId !== "all" && categoryMap[categoryId]
+                ? ` · ${categoryMap[categoryId].code}`
+                : ""}
+              {" · "}
+              <span className="text-xs">K = gyors K-tétel · ⌘K = parancsok · ⌘Z = visszavonás</span>
+            </div>
+            {totalPages > 1 ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1 || dataLoading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Előző
+                </Button>
+                <span>
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages || dataLoading}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Következő
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

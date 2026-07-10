@@ -32,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { useProjectsBundleReady } from "@/hooks/use-projects-bundle-ready"
+import { useProjectBundleLoaded } from "@/hooks/use-project-bundle-loaded"
 import { ProjectQuotesTab } from "@/components/projektek/project-quotes-tab"
 import { ProjectOfferTab } from "@/components/projektek/project-offer-tab"
 import { RfqProjectTab } from "@/components/projektek/rfq-project-tab"
@@ -67,7 +67,7 @@ type ProjectDetailClientProps = {
 
 export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   const tradeOptions = useTradeOptions()
-  const bundleReady = useProjectsBundleReady()
+  const projectLoaded = useProjectBundleLoaded(projectId)
   const router = useRouter()
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>("overview")
@@ -109,20 +109,20 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   }
 
   useEffect(() => {
-    if (bundleReady) refresh()
-  }, [bundleReady])
+    if (projectLoaded) refresh()
+  }, [projectLoaded])
 
   const project = useMemo(
-    () => (bundleReady ? getProject(projectId) : undefined),
-    [projectId, tick, bundleReady]
+    () => (projectLoaded ? getProject(projectId) : undefined),
+    [projectId, tick, projectLoaded]
   )
   const quotes = useMemo(
-    () => (bundleReady ? listQuotesForProject(projectId) : []),
-    [projectId, tick, bundleReady]
+    () => (projectLoaded ? listQuotesForProject(projectId) : []),
+    [projectId, tick, projectLoaded]
   )
 
   useEffect(() => {
-    if (!bundleReady || quotes.length === 0) return
+    if (!projectLoaded || quotes.length === 0) return
     if (searchParams.get("openRfq") !== "1") return
 
     const quoteParam = searchParams.get("quote")
@@ -143,10 +143,10 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     params.set("tab", "rfq")
     params.set("quote", targetQuote.id)
     router.replace(`/projektek/${projectId}?${params.toString()}`, { scroll: false })
-  }, [bundleReady, quotes, searchParams, projectId, router])
+  }, [projectLoaded, quotes, searchParams, projectId, router])
 
   const quoteSummaries = useMemo(() => {
-    if (!bundleReady) return new Map()
+    if (!projectLoaded) return new Map()
     return new Map(
       quotes.map((q) => {
         const lines = listQuoteLines(q.id)
@@ -156,19 +156,19 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         return [q.id, buildQuoteSummary(q, lines, quoteRfqs, subs, invitations)] as const
       })
     )
-  }, [quotes, tick, bundleReady])
+  }, [quotes, tick, projectLoaded])
 
   const fileCount = useMemo(() => {
     void tick
-    return bundleReady ? listProjectFiles(projectId).length : 0
-  }, [projectId, tick, bundleReady])
+    return projectLoaded ? listProjectFiles(projectId).length : 0
+  }, [projectId, tick, projectLoaded])
 
   const overviewHealth = useMemo(() => {
     void tick
-    if (!bundleReady) return null
+    if (!projectLoaded) return null
     const o = buildProjectOverviewSummary(projectId)
     return o ? { health: o.health, label: o.healthLabel } : null
-  }, [projectId, tick, bundleReady])
+  }, [projectId, tick, projectLoaded])
 
   const openRfqDialog = (quoteId?: string) => {
     const targetQuote = quoteId ? quotes.find((q) => q.id === quoteId) : quotes[0]
@@ -187,7 +187,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     setRfqAutoOpen(true)
   }
 
-  if (!bundleReady) {
+  if (!projectLoaded) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
         <p className="text-sm text-slate-500">Projekt betöltése…</p>

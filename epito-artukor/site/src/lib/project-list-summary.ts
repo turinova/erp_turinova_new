@@ -1,9 +1,19 @@
-import type { Project } from "@/types/projects"
+import type { Project, ProjectDataBundle } from "@/types/projects"
 import type { QuoteSummary } from "@/lib/quote-summary"
 import { buildQuoteSummary, resolveActiveQuoteId } from "@/lib/quote-summary"
-import { buildProjectAggregatedTotals } from "@/lib/project-quote-aggregation"
-import { buildExecutionSummary } from "@/lib/execution-summary"
+import {
+  buildProjectAggregatedTotals,
+  buildProjectAggregatedTotalsFromBundle,
+} from "@/lib/project-quote-aggregation"
+import { buildExecutionSummary, buildExecutionSummaryFromBundle } from "@/lib/execution-summary"
 import { phaseForProject } from "@/lib/project-phase"
+import {
+  bundleInvitationsForQuote,
+  bundleQuoteLines,
+  bundleQuotesForProject,
+  bundleRfqsForQuote,
+  bundleSubmissionsForQuote,
+} from "@/lib/project-bundle-queries"
 import {
   listInvitationsForQuote,
   listQuoteLines,
@@ -32,16 +42,53 @@ export type ProjectListSummary = {
 
 export function buildProjectListSummary(project: Project): ProjectListSummary {
   const quotes = listQuotesForProject(project.id).filter((q) => q.status !== "archived")
+  return buildProjectListSummaryFromQuotes(project, quotes, {
+    getLines: listQuoteLines,
+    getRfqs: listRfqsForQuote,
+    getSubs: listSubmissionsForQuote,
+    getInvitations: listInvitationsForQuote,
+    getExecution: () => buildExecutionSummary(project.id),
+    getTotals: () => buildProjectAggregatedTotals(project.id),
+  })
+}
+
+export function buildProjectListSummaryFromBundle(
+  project: Project,
+  bundle: ProjectDataBundle
+): ProjectListSummary {
+  const quotes = bundleQuotesForProject(bundle, project.id).filter((q) => q.status !== "archived")
+  return buildProjectListSummaryFromQuotes(project, quotes, {
+    getLines: (quoteId) => bundleQuoteLines(bundle, quoteId),
+    getRfqs: (quoteId) => bundleRfqsForQuote(bundle, quoteId),
+    getSubs: (quoteId) => bundleSubmissionsForQuote(bundle, quoteId),
+    getInvitations: (quoteId) => bundleInvitationsForQuote(bundle, quoteId),
+    getExecution: () => buildExecutionSummaryFromBundle(project, bundle),
+    getTotals: () => buildProjectAggregatedTotalsFromBundle(project.id, bundle),
+  })
+}
+
+function buildProjectListSummaryFromQuotes(
+  project: Project,
+  quotes: ReturnType<typeof listQuotesForProject>,
+  data: {
+    getLines: typeof listQuoteLines
+    getRfqs: typeof listRfqsForQuote
+    getSubs: typeof listSubmissionsForQuote
+    getInvitations: typeof listInvitationsForQuote
+    getExecution: () => ReturnType<typeof buildExecutionSummary>
+    getTotals: () => ReturnType<typeof buildProjectAggregatedTotals>
+  }
+): ProjectListSummary {
   const summaries = new Map<string, QuoteSummary>()
 
   let lastActivityLabel: string | null = null
   let lastActivityTime = 0
 
   for (const q of quotes) {
-    const lines = listQuoteLines(q.id)
-    const rfqs = listRfqsForQuote(q.id)
-    const subs = listSubmissionsForQuote(q.id)
-    const invitations = listInvitationsForQuote(q.id)
+    const lines = data.getLines(q.id)
+    const rfqs = data.getRfqs(q.id)
+    const subs = data.getSubs(q.id)
+    const invitations = data.getInvitations(q.id)
     const summary = buildQuoteSummary(q, lines, rfqs, subs, invitations)
     summaries.set(q.id, summary)
 
@@ -60,7 +107,7 @@ export function buildProjectListSummary(project: Project): ProjectListSummary {
 
   const phase = phaseForProject(project)
   if (phase === "execution") {
-    const exec = buildExecutionSummary(project.id)
+    const exec = data.getExecution()
     return {
       projectId: project.id,
       quoteCount: quotes.length,
@@ -79,7 +126,7 @@ export function buildProjectListSummary(project: Project): ProjectListSummary {
     }
   }
 
-  const projectTotals = buildProjectAggregatedTotals(project.id)
+  const projectTotals = data.getTotals()
 
   return {
     projectId: project.id,

@@ -1,5 +1,11 @@
-import type { Quote } from "@/types/projects"
-import { buildContractBaseline } from "@/lib/contract-baseline"
+import type { Project, Quote, ProjectDataBundle } from "@/types/projects"
+import { buildContractBaseline, buildContractBaselineFromBundle } from "@/lib/contract-baseline"
+import {
+  bundleCustomerPackagesForProject,
+  bundlePerformanceCertificatesForProject,
+  bundleQuoteLines,
+  bundleQuotesForProject,
+} from "@/lib/project-bundle-queries"
 import {
   getProject,
   listCustomerPackagesForProject,
@@ -54,13 +60,45 @@ export type ProjectCloseReadiness = {
 export function buildExecutionSummary(projectId: string): ExecutionSummary {
   const project = getProject(projectId)
   const contract = buildContractBaseline(projectId)
+  return buildExecutionSummaryCore(project, projectId, contract, {
+    listQuotes: () => listQuotesForProject(projectId),
+    listLines: (quoteId) => listQuoteLines(quoteId),
+    listPackages: () => listCustomerPackagesForProject(projectId),
+    listCertificates: () => listPerformanceCertificatesForProject(projectId),
+  })
+}
+
+export function buildExecutionSummaryFromBundle(
+  project: Project,
+  bundle: ProjectDataBundle
+): ExecutionSummary {
+  const contract = buildContractBaselineFromBundle(project.id, bundle)
+  return buildExecutionSummaryCore(project, project.id, contract, {
+    listQuotes: () => bundleQuotesForProject(bundle, project.id),
+    listLines: (quoteId) => bundleQuoteLines(bundle, quoteId),
+    listPackages: () => bundleCustomerPackagesForProject(bundle, project.id),
+    listCertificates: () => bundlePerformanceCertificatesForProject(bundle, project.id),
+  })
+}
+
+function buildExecutionSummaryCore(
+  project: Project | undefined,
+  projectId: string,
+  contract: ReturnType<typeof buildContractBaseline>,
+  data: {
+    listQuotes: () => Quote[]
+    listLines: (quoteId: string) => ReturnType<typeof listQuoteLines>
+    listPackages: () => ReturnType<typeof listCustomerPackagesForProject>
+    listCertificates: () => ReturnType<typeof listPerformanceCertificatesForProject>
+  }
+): ExecutionSummary {
   const isExecutionPhase =
     project != null &&
     (project.status === "won" ||
       project.status === "in_progress" ||
       project.status === "done")
 
-  const acceptedQuotes = listQuotesForProject(projectId).filter((q) => q.status === "accepted")
+  const acceptedQuotes = data.listQuotes().filter((q) => q.status === "accepted")
 
   let liveCostNet = 0
   let executionDone = 0
@@ -69,7 +107,7 @@ export function buildExecutionSummary(projectId: string): ExecutionSummary {
   let eligibleTigLineCount = 0
 
   for (const quote of acceptedQuotes) {
-    const lines = listQuoteLines(quote.id)
+    const lines = data.listLines(quote.id)
     const stats = computeQuoteExecutionStats(lines)
     executionDone += stats.done
     executionTotal += stats.total
@@ -91,7 +129,7 @@ export function buildExecutionSummary(projectId: string): ExecutionSummary {
       ? Math.round((liveMarginNet / contract.sellNetTotal) * 100)
       : null
 
-  const certificates = listPerformanceCertificatesForProject(projectId)
+  const certificates = data.listCertificates()
   const tigGrossTotal = certificates.reduce((s, c) => s + c.grossTotal, 0)
   const tigNetTotal = certificates.reduce((s, c) => s + c.sellNetTotal, 0)
   const remainingGross = Math.max(0, contract.grossTotal - tigGrossTotal)
@@ -105,12 +143,12 @@ export function buildExecutionSummary(projectId: string): ExecutionSummary {
   const pendingSupplements: SupplementPendingItem[] = []
   let draftSupplementQuoteCount = 0
 
-  for (const quote of listQuotesForProject(projectId)) {
+  for (const quote of data.listQuotes()) {
     if (quote.status === "archived") continue
     if (contractedIds.has(quote.id)) continue
     if (quote.status !== "draft" && quote.status !== "sent") continue
 
-    const inPackage = listCustomerPackagesForProject(projectId).find((pkg) =>
+    const inPackage = data.listPackages().find((pkg) =>
       pkg.snapshots.some((s) => s.quoteId === quote.id)
     )
 

@@ -1,4 +1,4 @@
-import type { Quote, QuoteLine, QuoteScope, QuoteStatus } from "@/types/projects"
+import type { Quote, QuoteLine, QuoteScope, QuoteStatus, ProjectDataBundle } from "@/types/projects"
 import type { Trade } from "@/types"
 import { getTradeLabel } from "@/lib/trades"
 import type { QuoteSummary } from "@/lib/quote-summary"
@@ -8,6 +8,13 @@ import {
   resolveQuoteVatMode,
   type QuoteVatTotals,
 } from "@/lib/quote-client-summary"
+import {
+  bundleInvitationsForQuote,
+  bundleQuoteLines,
+  bundleQuotesForProject,
+  bundleRfqsForQuote,
+  bundleSubmissionsForQuote,
+} from "@/lib/project-bundle-queries"
 import {
   listInvitationsForQuote,
   listQuoteLines,
@@ -111,6 +118,69 @@ export function buildQuoteWithSummary(quote: Quote): QuoteWithSummary {
   const scope = inferQuoteScope(quote, lines)
   const primaryTrade = inferPrimaryTrade(quote, lines)
   return { quote, summary, lines, scope, primaryTrade }
+}
+
+export function buildQuoteWithSummaryFromBundle(
+  quote: Quote,
+  bundle: ProjectDataBundle
+): QuoteWithSummary {
+  const lines = bundleQuoteLines(bundle, quote.id)
+  const rfqs = bundleRfqsForQuote(bundle, quote.id)
+  const subs = bundleSubmissionsForQuote(bundle, quote.id)
+  const invitations = bundleInvitationsForQuote(bundle, quote.id)
+  const summary = buildQuoteSummary(quote, lines, rfqs, subs, invitations)
+  const scope = inferQuoteScope(quote, lines)
+  const primaryTrade = inferPrimaryTrade(quote, lines)
+  return { quote, summary, lines, scope, primaryTrade }
+}
+
+export function listActiveQuoteHeadsFromBundle(
+  projectId: string,
+  bundle: ProjectDataBundle
+): QuoteWithSummary[] {
+  const quotes = bundleQuotesForProject(bundle, projectId).filter(
+    (q) => q.status !== "archived" && q.status !== "rejected"
+  )
+  return resolveVersionHeads(quotes.map((q) => buildQuoteWithSummaryFromBundle(q, bundle)))
+}
+
+function selectReadyQuotesFromBundle(
+  projectId: string,
+  bundle: ProjectDataBundle
+): {
+  selected: QuoteWithSummary[]
+  warnings: string[]
+  draftQuoteCount: number
+} {
+  const heads = listActiveQuoteHeadsFromBundle(projectId, bundle)
+  const selected = heads.filter((r) => READY_STATUSES.includes(r.quote.status))
+  const draftQuoteCount = heads.filter((r) => r.quote.status === "draft").length
+  const warnings: string[] = []
+
+  const readyByTrade = new Map<Trade, QuoteWithSummary[]>()
+  for (const row of selected) {
+    const trade = resolveQuoteTrade(row)
+    if (!trade) continue
+    const list = readyByTrade.get(trade) ?? []
+    list.push(row)
+    readyByTrade.set(trade, list)
+  }
+
+  for (const [trade, rows] of readyByTrade) {
+    if (rows.length > 1) {
+      warnings.push(
+        `${getTradeLabel(trade)}: ${rows.length} kész ajánlat — ellenőrizd, mind számítson-e`
+      )
+    }
+  }
+
+  if (selected.length === 0 && draftQuoteCount > 0) {
+    warnings.push(
+      `${draftQuoteCount} piszkozat ajánlat még nem számít bele — állítsd „Elküldve” vagy „Elfogadva” státuszra`
+    )
+  }
+
+  return { selected, warnings, draftQuoteCount }
 }
 
 export function resolveVersionHeads(rows: QuoteWithSummary[]): QuoteWithSummary[] {
@@ -305,6 +375,30 @@ const EMPTY_TOTALS: ProjectAggregatedTotals = {
 
 export function buildProjectAggregatedTotals(projectId: string): ProjectAggregatedTotals {
   const { selected, warnings, draftQuoteCount } = selectReadyQuotes(projectId)
+  if (selected.length === 0) {
+    return { ...EMPTY_TOTALS, warnings, draftQuoteCount, modeLabel: buildModeLabel("empty", [], draftQuoteCount) }
+  }
+
+  const agg = aggregateSummaries(selected)
+  const { mixedVat, vatChipLabel } = resolveVatChip(selected)
+
+  return {
+    mode: "ready",
+    modeLabel: buildModeLabel("ready", selected, draftQuoteCount),
+    selected,
+    draftQuoteCount,
+    warnings,
+    ...agg,
+    mixedVat,
+    vatChipLabel,
+  }
+}
+
+export function buildProjectAggregatedTotalsFromBundle(
+  projectId: string,
+  bundle: ProjectDataBundle
+): ProjectAggregatedTotals {
+  const { selected, warnings, draftQuoteCount } = selectReadyQuotesFromBundle(projectId, bundle)
   if (selected.length === 0) {
     return { ...EMPTY_TOTALS, warnings, draftQuoteCount, modeLabel: buildModeLabel("empty", [], draftQuoteCount) }
   }

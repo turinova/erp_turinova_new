@@ -20,6 +20,8 @@ import type {
 import type { Trade } from "@/types"
 import { getQuoteDisplayIdentifier } from "@/lib/item-identifier"
 import { normalizeProjectBundle } from "@/lib/quote-migration"
+import { emptyBundleSkeleton } from "@/lib/project-bundle-queries"
+import type { ProjectListSummary } from "@/lib/project-list-summary"
 import { isLineCosted, quoteCostTotals, quoteSellTotals } from "@/lib/quote-pricing"
 import { loadCostItems } from "@/lib/data/cost-items-store"
 import {
@@ -58,15 +60,29 @@ import {
  * bundle-t visszaszinkronizálja a szerverre (diff-alapú DB-írás).
  */
 let bundleCache: ProjectDataBundle | null = null
+let projectListSummaries: Record<string, ProjectListSummary> = {}
+const loadedProjectDetailIds = new Set<string>()
+let bundleLoadMode: "none" | "summary" | "full" = "none"
 
 /** Van-e már betöltött projekt-bundle a memóriában (session cache). */
 export function isProjectBundleCached(): boolean {
   return bundleCache !== null
 }
 
+export function isProjectDetailLoaded(projectId: string): boolean {
+  return loadedProjectDetailIds.has(projectId)
+}
+
+export function getProjectListSummary(projectId: string): ProjectListSummary | undefined {
+  return projectListSummaries[projectId]
+}
+
 /** Bundle cache ürítése (kijelentkezés / kényszerített újratöltés előtt). */
 export function clearProjectBundleCache(): void {
   bundleCache = null
+  projectListSummaries = {}
+  loadedProjectDetailIds.clear()
+  bundleLoadMode = "none"
 }
 
 function emptyBundle(): ProjectDataBundle {
@@ -96,14 +112,88 @@ function loadBundle(): ProjectDataBundle {
   return bundleCache ?? emptyBundle()
 }
 
-function saveBundle(bundle: ProjectDataBundle, options?: { debounce?: boolean }): void {
+function saveBundle(
+  bundle: ProjectDataBundle,
+  options?: { debounce?: boolean; skipPersist?: boolean }
+): void {
   const normalized = normalizeProjectBundle(bundle)
   bundleCache = normalized
+  if (options?.skipPersist) return
   scheduleBundlePersist(normalized, options?.debounce !== true)
+}
+
+function mergeById<T extends { id: string }>(existing: T[], incoming: T[]): T[] {
+  const map = new Map(existing.map((row) => [row.id, row]))
+  for (const row of incoming) map.set(row.id, row)
+  return [...map.values()]
+}
+
+function mergeCompositions(
+  existing: ProjectComposition[],
+  incoming: ProjectComposition[]
+): ProjectComposition[] {
+  const map = new Map(existing.map((row) => [row.projectId, row]))
+  for (const row of incoming) map.set(row.projectId, row)
+  return [...map.values()]
+}
+
+/** Egy projekt bundle szeletének beolvasztása a session cache-be. */
+export function mergeBundleSlice(slice: ProjectDataBundle): void {
+  const bundle = loadBundle()
+  const projectId = slice.projects[0]?.id
+  const merged: ProjectDataBundle = {
+    projects: mergeById(bundle.projects, slice.projects),
+    quotes: mergeById(bundle.quotes, slice.quotes),
+    quoteLines: mergeById(bundle.quoteLines, slice.quoteLines),
+    rfqs: mergeById(bundle.rfqs, slice.rfqs),
+    rfqCampaigns: mergeById(bundle.rfqCampaigns ?? [], slice.rfqCampaigns ?? []),
+    rfqInvitations: mergeById(bundle.rfqInvitations, slice.rfqInvitations),
+    submissions: mergeById(bundle.submissions, slice.submissions),
+    rfqDecisionLogs: mergeById(bundle.rfqDecisionLogs, slice.rfqDecisionLogs),
+    auditLog: mergeById(bundle.auditLog ?? [], slice.auditLog ?? []),
+    compositions: mergeCompositions(bundle.compositions, slice.compositions),
+    customerPackages: mergeById(bundle.customerPackages, slice.customerPackages),
+    performanceCertificates: mergeById(
+      bundle.performanceCertificates ?? [],
+      slice.performanceCertificates ?? []
+    ),
+  }
+  saveBundle(merged, { skipPersist: true })
+  if (projectId) loadedProjectDetailIds.add(projectId)
 }
 
 let bundlePersistTimer: ReturnType<typeof setTimeout> | null = null
 let pendingBundlePersist: ProjectDataBundle | null = null
+let linePatchTimer: ReturnType<typeof setTimeout> | null = null
+const pendingLinePatches = new Map<string, Partial<QuoteLine>>()
+
+function scheduleLinePatch(lineId: string, patch: Partial<QuoteLine>): void {
+  const prev = pendingLinePatches.get(lineId) ?? {}
+  pendingLinePatches.set(lineId, { ...prev, ...patch })
+  if (linePatchTimer) clearTimeout(linePatchTimer)
+  linePatchTimer = setTimeout(() => {
+    linePatchTimer = null
+    void flushLinePatches()
+  }, 450)
+}
+
+async function flushLinePatches(): Promise<void> {
+  const batch = new Map(pendingLinePatches)
+  pendingLinePatches.clear()
+  await Promise.all(
+    [...batch.entries()].map(async ([lineId, patch]) => {
+      try {
+        await fetch(`/api/quote-lines/${lineId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        })
+      } catch {
+        /* offline */
+      }
+    })
+  )
+}
 
 function scheduleBundlePersist(bundle: ProjectDataBundle, immediate: boolean): void {
   pendingBundlePersist = bundle
@@ -140,6 +230,9 @@ export function flushBundlePersist(): void {
   const payload = pendingBundlePersist
   pendingBundlePersist = null
   if (payload) void pushBundleToServer(payload)
+  if (linePatchTimer) clearTimeout(linePatchTimer)
+  linePatchTimer = null
+  void flushLinePatches()
 }
 
 function touch<T extends { updatedAt: string }>(row: T): T {
@@ -742,7 +835,8 @@ export function updateQuoteLine(id: string, patch: Partial<QuoteLine>): QuoteLin
   const quoteId = next.quoteId
   const qIdx = bundle.quotes.findIndex((q) => q.id === quoteId)
   if (qIdx >= 0) bundle.quotes[qIdx] = touch(bundle.quotes[qIdx])
-  saveBundle(bundle, { debounce: true })
+  bundleCache = normalizeProjectBundle(bundle)
+  scheduleLinePatch(id, patch)
   return bundle.quoteLines[idx]
 }
 
@@ -1845,16 +1939,58 @@ export function closeProject(projectId: string): Project | undefined {
   return bundle.projects[idx]
 }
 
-/** DB → in-memory cache frissítés (oldalbetöltéskor / publikus válasz után) */
+/** DB → in-memory cache frissítés (teljes bundle — legacy / force) */
 export async function syncBundleFromServer(options?: {
   force?: boolean
 }): Promise<boolean> {
   if (typeof window === "undefined") return false
-  if (!options?.force && isProjectBundleCached()) return true
+  if (!options?.force && bundleLoadMode === "full") return true
   try {
     const res = await fetch("/api/projects-bundle", { cache: "no-store" })
     if (!res.ok) return false
-    bundleCache = normalizeProjectBundle((await res.json()) as ProjectDataBundle)
+    const bundle = normalizeProjectBundle((await res.json()) as ProjectDataBundle)
+    bundleCache = bundle
+    bundleLoadMode = "full"
+    for (const p of bundle.projects) loadedProjectDetailIds.add(p.id)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** DB → summary cache (kis payload, lista oldalakhoz). */
+export async function syncBundleSummaryFromServer(options?: {
+  force?: boolean
+}): Promise<boolean> {
+  if (typeof window === "undefined") return false
+  if (!options?.force && bundleLoadMode !== "none") return true
+  try {
+    const res = await fetch("/api/projects/summary", { cache: "no-store" })
+    if (!res.ok) return false
+    const data = (await res.json()) as {
+      projects?: Project[]
+      summaries?: Record<string, ProjectListSummary>
+    }
+    bundleCache = emptyBundleSkeleton(data.projects ?? [])
+    projectListSummaries = data.summaries ?? {}
+    bundleLoadMode = "summary"
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Egy projekt részletes adatainak lazy betöltése. */
+export async function ensureProjectBundleLoaded(
+  projectId: string,
+  options?: { force?: boolean }
+): Promise<boolean> {
+  if (typeof window === "undefined") return false
+  if (!options?.force && isProjectDetailLoaded(projectId)) return true
+  try {
+    const res = await fetch(`/api/projects/${projectId}/bundle`, { cache: "no-store" })
+    if (!res.ok) return false
+    mergeBundleSlice(normalizeProjectBundle((await res.json()) as ProjectDataBundle))
     return true
   } catch {
     return false

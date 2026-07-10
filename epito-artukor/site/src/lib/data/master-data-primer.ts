@@ -6,7 +6,7 @@ import type { Subcontractor } from "@/types/subcontractors"
 import type { AppSettings } from "@/types/app-settings"
 import type { OrganizationProfile } from "@/types/organization"
 import type { TradeRecord } from "@/types/trade"
-import { setCostItemsCache } from "@/lib/data/cost-items-store"
+import { setCostItemsCache, loadCostItems } from "@/lib/data/cost-items-store"
 import { setSubcontractorsCache } from "@/lib/data/subcontractors-store"
 import { setClientsCache } from "@/lib/data/clients-store"
 import { setUnitsCache } from "@/lib/data/units-store"
@@ -48,11 +48,8 @@ function tradesPrimeTask(): Promise<void> {
   })
 }
 
-async function primeAll(): Promise<void> {
-  await Promise.all([
-    fetchJson<{ items?: CostItem[] }>("/api/cost-items").then((d) => {
-      if (d?.items) setCostItemsCache(d.items)
-    }),
+async function primeAll(includeCostItems: boolean): Promise<void> {
+  const tasks: Promise<unknown>[] = [
     fetchJson<{ subcontractors?: Subcontractor[] }>("/api/subcontractors").then((d) => {
       if (d?.subcontractors) setSubcontractorsCache(d.subcontractors)
     }),
@@ -72,7 +69,17 @@ async function primeAll(): Promise<void> {
       if (d?.profile) cacheOrganizationProfile(d.profile)
     }),
     tradesPrimeTask(),
-  ])
+  ]
+
+  if (includeCostItems) {
+    tasks.push(
+      fetchJson<{ items?: CostItem[] }>("/api/cost-items").then((d) => {
+        if (d?.items) setCostItemsCache(d.items)
+      })
+    )
+  }
+
+  await Promise.all(tasks)
   masterDataPrimed = true
 }
 
@@ -82,13 +89,20 @@ export function isMasterDataPrimed(): boolean {
 }
 
 /** Egyszer fut sessiononként; a `force` újratöltést kényszerít. */
-export function primeMasterData(force = false): Promise<void> {
+export function primeMasterData(force = false, includeCostItems = false): Promise<void> {
   if (force) {
     masterDataPrimed = false
     primePromise = null
   }
   if (force || !primePromise) {
-    primePromise = primeAll()
+    primePromise = primeAll(includeCostItems)
   }
   return primePromise
+}
+
+/** K-tételek lazy betöltése (árajánlat szerkesztő, /tetelek). */
+export async function ensureCostItemsLoaded(force = false): Promise<void> {
+  if (!force && loadCostItems().length > 0) return
+  const d = await fetchJson<{ items?: CostItem[] }>("/api/cost-items")
+  if (d?.items) setCostItemsCache(d.items)
 }

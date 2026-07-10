@@ -358,17 +358,28 @@ export function remapBundleIds(bundle: ProjectDataBundle): ProjectDataBundle {
 
 export async function loadBundleFromDb(
   supabase: SupabaseClient,
-  orgId: string
+  orgId: string,
+  options?: { projectId?: string }
 ): Promise<ProjectDataBundle> {
   const maps = await loadRefMaps(supabase, orgId)
 
-  const { data: projectRows, error: projErr } = await supabase
+  let projectQuery = supabase
     .from("projects")
     .select("*")
     .eq("organization_id", orgId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true })
+
+  if (options?.projectId) {
+    projectQuery = projectQuery.eq("id", options.projectId)
+  }
+
+  const { data: projectRows, error: projErr } = await projectQuery
   if (projErr) throw new Error(`projects select: ${projErr.message}`)
+
+  if (options?.projectId && (!projectRows || projectRows.length === 0)) {
+    throw new Error("A projekt nem található.")
+  }
 
   const projectIds = (projectRows ?? []).map((p: any) => p.id)
 

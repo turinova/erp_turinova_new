@@ -126,3 +126,62 @@ export async function fetchCostItemById(
 
   return mapCostItemRow(data, tradeRow.code as Trade)
 }
+
+export type CostItemsPageQuery = {
+  page?: number
+  pageSize?: number
+  trade?: Trade
+  categoryId?: string
+  status?: string
+  q?: string
+}
+
+export async function fetchOrgCostItemsPage(
+  supabase: SupabaseClient,
+  organizationId: string,
+  query: CostItemsPageQuery
+): Promise<import("@/types").PaginatedResult<CostItem>> {
+  const page = Math.max(1, query.page ?? 1)
+  const pageSize = Math.min(200, Math.max(1, query.pageSize ?? 50))
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  const trades = await fetchOrgTrades(supabase, organizationId)
+  const tradeById = new Map(trades.map((t) => [t.id, t.code]))
+  const tradeId =
+    query.trade && query.trade !== "all"
+      ? trades.find((t) => t.code === query.trade)?.id
+      : undefined
+
+  let dbQuery = supabase
+    .from("cost_items")
+    .select(COST_ITEM_SELECT, { count: "exact" })
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null)
+    .order("identifier", { ascending: true })
+    .range(from, to)
+
+  if (tradeId) dbQuery = dbQuery.eq("trade_id", tradeId)
+  if (query.categoryId) dbQuery = dbQuery.eq("category_id", query.categoryId)
+  if (query.status && query.status !== "all") dbQuery = dbQuery.eq("status", query.status)
+  if (query.q?.trim()) {
+    const term = `%${query.q.trim()}%`
+    dbQuery = dbQuery.or(`identifier.ilike.${term},text.ilike.${term}`)
+  }
+
+  const { data, error, count } = await dbQuery
+  if (error) throw error
+
+  const items = ((data ?? []) as CostItemRow[]).map((row) => {
+    const tradeCode = tradeById.get(row.trade_id)
+    if (!tradeCode) {
+      throw new Error(`Hiányzó szakág a tételhez: ${row.id}`)
+    }
+    return mapCostItemRow(row, tradeCode)
+  })
+
+  const total = count ?? items.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  return { items, total, page, pageSize, totalPages }
+}

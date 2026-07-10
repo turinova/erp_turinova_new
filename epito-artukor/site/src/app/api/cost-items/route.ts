@@ -10,6 +10,7 @@ import {
 import {
   fetchOrgCategories,
   fetchOrgCostItems,
+  fetchOrgCostItemsPage,
   fetchOrgTrades,
   fetchOrgUnits,
   fetchTradeIdByCode,
@@ -20,7 +21,7 @@ import {
 } from "@/lib/cost-items/resolve-identifier.server"
 import { validateCostItemInput } from "@/lib/cost-items/validate-cost-item"
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await requireApiSession()
   if (!session.ok) return session.response
 
@@ -31,7 +32,23 @@ export async function GET() {
     )
   }
 
+  const url = new URL(request.url)
+  const page = Number(url.searchParams.get("page") ?? "0")
+  const pageSize = Number(url.searchParams.get("pageSize") ?? "0")
+
   try {
+    if (page > 0 && pageSize > 0) {
+      const result = await fetchOrgCostItemsPage(session.supabase, session.organization.id, {
+        page,
+        pageSize,
+        trade: url.searchParams.get("trade") ?? undefined,
+        categoryId: url.searchParams.get("categoryId") ?? undefined,
+        status: url.searchParams.get("status") ?? undefined,
+        q: url.searchParams.get("q") ?? undefined,
+      })
+      return NextResponse.json(result)
+    }
+
     const items = await fetchOrgCostItems(session.supabase, session.organization.id)
     return NextResponse.json({ items })
   } catch (error) {

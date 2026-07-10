@@ -4,6 +4,7 @@ import { primeMasterData } from "@/lib/data/master-data-primer"
 import {
   isProjectBundleCached,
   syncBundleFromServer,
+  syncBundleSummaryFromServer,
 } from "@/lib/data/projects-store"
 import {
   isProjectFilesCached,
@@ -13,10 +14,14 @@ import {
 export type AppDataBootstrapOptions = {
   /** Teljes projects-bundle — alapértelmezés: igen */
   includeBundle?: boolean
+  /** Summary-only bundle (kis payload) — alapértelmezés: igen */
+  bundleSummaryOnly?: boolean
   /** Projekt-fájl metaadat — alapértelmezés: nem (lazy, Fájlok tabnál) */
   includeProjectFiles?: boolean
   /** Törzsadat-primer — alapértelmezés: igen */
   includeMasterData?: boolean
+  /** K-tételek teljes lista a primerben — alapértelmezés: nem (lazy) */
+  includeCostItemsInPrimer?: boolean
   force?: boolean
 }
 
@@ -25,9 +30,9 @@ let bootstrapKey = ""
 
 function buildKey(opts: Required<AppDataBootstrapOptions>): string {
   return [
-    opts.includeBundle ? "b" : "",
+    opts.includeBundle ? (opts.bundleSummaryOnly ? "bs" : "b") : "",
     opts.includeProjectFiles ? "f" : "",
-    opts.includeMasterData ? "m" : "",
+    opts.includeMasterData ? (opts.includeCostItemsInPrimer ? "m" : "m-") : "",
     opts.force ? "!" : "",
   ].join("")
 }
@@ -41,8 +46,10 @@ export async function bootstrapAppData(
 ): Promise<void> {
   const opts: Required<AppDataBootstrapOptions> = {
     includeBundle: options.includeBundle ?? true,
+    bundleSummaryOnly: options.bundleSummaryOnly ?? true,
     includeProjectFiles: options.includeProjectFiles ?? false,
     includeMasterData: options.includeMasterData ?? true,
+    includeCostItemsInPrimer: options.includeCostItemsInPrimer ?? false,
     force: options.force ?? false,
   }
 
@@ -57,7 +64,11 @@ export async function bootstrapAppData(
 
     if (opts.includeBundle) {
       if (opts.force || !isProjectBundleCached()) {
-        tasks.push(syncBundleFromServer({ force: opts.force }))
+        tasks.push(
+          opts.bundleSummaryOnly
+            ? syncBundleSummaryFromServer({ force: opts.force })
+            : syncBundleFromServer({ force: opts.force })
+        )
       }
     }
 
@@ -68,7 +79,7 @@ export async function bootstrapAppData(
     }
 
     if (opts.includeMasterData) {
-      tasks.push(primeMasterData(opts.force))
+      tasks.push(primeMasterData(opts.force, opts.includeCostItemsInPrimer))
     }
 
     await Promise.all(tasks)
