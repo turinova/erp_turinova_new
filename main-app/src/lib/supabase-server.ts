@@ -2805,12 +2805,12 @@ export async function getWorkerById(id: string) {
 export async function getAllEmployees() {
   const startTime = performance.now()
   
-  // Fetch all employees with explicit limit to ensure we get all records
+  // All non-deleted employees (active and inactive) for HR list
   const { data, error } = await supabaseServer
     .from('employees')
     .select('id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, created_at, updated_at')
-    .eq('active', true)
     .is('deleted_at', null)
+    .order('active', { ascending: false })
     .order('name', { ascending: true })
     .limit(1000) // High limit to ensure we get all employees (adjust if you have more)
 

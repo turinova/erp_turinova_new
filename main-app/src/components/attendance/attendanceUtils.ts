@@ -425,3 +425,76 @@ export function earlyOvertimePolicyFromEmployeeRow(row: Record<string, unknown>)
     requiresCompleteDay: row.early_overtime_requires_complete_day !== false
   }
 }
+
+/** Budapest calendar date YYYY-MM-DD. */
+export function getBudapestTodayYmd(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Budapest',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date())
+}
+
+export function getBudapestYearMonth(): { year: number; month: number } {
+  const ymd = getBudapestTodayYmd()
+  const [year, month] = ymd.split('-').map(Number)
+
+  return { year, month }
+}
+
+/** Workday for attendance review: not weekend-off, not public holiday. */
+export function isEmployeeWorkday(
+  date: Date,
+  worksOnSaturday: boolean,
+  publicHolidays: PublicHolidayRow[]
+): boolean {
+  if (isSunday(date)) return false
+  if (isSaturday(date) && !worksOnSaturday) return false
+  if (findPublicHolidayForDate(date, publicHolidays)) return false
+
+  return true
+}
+
+export type MonthlyAttentionCounts = {
+  empty: number
+  incomplete: number
+}
+
+/**
+ * Count workdays needing HR review in a month (days strictly before todayYmd).
+ * - empty: no scan and no employee holiday
+ * - incomplete: exactly one of arrival / departure
+ */
+export function countEmployeeMonthlyAttention(params: {
+  year: number
+  month: number
+  todayYmd: string
+  worksOnSaturday: boolean
+  publicHolidays: PublicHolidayRow[]
+  employeeHolidayDates: Set<string>
+  attendanceByDate: Map<string, { hasArrival: boolean; hasDeparture: boolean }>
+}): MonthlyAttentionCounts {
+  let empty = 0
+  let incomplete = 0
+
+  for (const date of getDaysInMonth(params.year, params.month)) {
+    const dateStr = formatDateLocal(date)
+
+    if (dateStr >= params.todayYmd) continue
+    if (!isEmployeeWorkday(date, params.worksOnSaturday, params.publicHolidays)) continue
+
+    const att = params.attendanceByDate.get(dateStr)
+    const hasArrival = att?.hasArrival ?? false
+    const hasDeparture = att?.hasDeparture ?? false
+    const hasHoliday = params.employeeHolidayDates.has(dateStr)
+
+    if (!hasArrival && !hasDeparture && !hasHoliday) {
+      empty++
+    } else if (hasArrival !== hasDeparture) {
+      incomplete++
+    }
+  }
+
+  return { empty, incomplete }
+}

@@ -1,4 +1,10 @@
 import { supabaseServer } from './supabase-server'
+import {
+  countEmployeeMonthlyAttention,
+  formatDateLocal,
+  getBudapestTodayYmd,
+  type PublicHolidayRow
+} from '@/components/attendance/attendanceUtils'
 
 const monthNames = [
   'január', 'február', 'március', 'április', 'május', 'június',
@@ -929,4 +935,106 @@ export async function getPosOrdersGoalStats(): Promise<PosOrdersGoalStats> {
     console.error('[Dashboard] getPosOrdersGoalStats:', e)
     return parsePosOrdersGoalStatsRpc(null)
   }
+}
+
+export type EmployeesMonthlyAttentionMap = Record<string, { empty: number; incomplete: number }>
+
+/** Per-employee empty / incomplete workday counts for a calendar month (Budapest). */
+export async function getEmployeesMonthlyAttention(
+  year: number,
+  month: number
+): Promise<EmployeesMonthlyAttentionMap> {
+  const todayYmd = getBudapestTodayYmd()
+  const startDate = formatDateLocal(new Date(year, month - 1, 1))
+  const endDate = formatDateLocal(new Date(year, month, 0))
+
+  const { data: employees, error: empErr } = await supabaseServer
+    .from('employees')
+    .select('id, works_on_saturday, active')
+    .is('deleted_at', null)
+
+  if (empErr) {
+    console.error('getEmployeesMonthlyAttention employees:', empErr)
+    return {}
+  }
+
+  if (!employees?.length) {
+    return {}
+  }
+
+  const [summaryRes, holidaysRes, publicHolidaysRes] = await Promise.all([
+    supabaseServer
+      .from('attendance_daily_summary')
+      .select('employee_id, scan_date, latest_arrival_time, latest_departure_time')
+      .gte('scan_date', startDate)
+      .lte('scan_date', endDate),
+    supabaseServer
+      .from('employee_holidays')
+      .select('employee_id, date')
+      .gte('date', startDate)
+      .lte('date', endDate),
+    supabaseServer
+      .from('holidays')
+      .select('name, start_date, end_date, type, active')
+      .eq('active', true)
+      .is('deleted_at', null)
+      .lte('start_date', endDate)
+      .gte('end_date', startDate)
+  ])
+
+  if (summaryRes.error) {
+    console.error('getEmployeesMonthlyAttention summary:', summaryRes.error)
+  }
+  if (holidaysRes.error) {
+    console.error('getEmployeesMonthlyAttention employee_holidays:', holidaysRes.error)
+  }
+  if (publicHolidaysRes.error) {
+    console.error('getEmployeesMonthlyAttention holidays:', publicHolidaysRes.error)
+  }
+
+  const publicHolidays: PublicHolidayRow[] = (publicHolidaysRes.data || []).map(h => ({
+    name: String(h.name ?? ''),
+    start_date: String(h.start_date),
+    end_date: String(h.end_date),
+    type: h.type === 'company' ? 'company' : 'national'
+  }))
+
+  const attendanceByEmployee = new Map<string, Map<string, { hasArrival: boolean; hasDeparture: boolean }>>()
+
+  for (const row of summaryRes.data || []) {
+    if (!attendanceByEmployee.has(row.employee_id)) {
+      attendanceByEmployee.set(row.employee_id, new Map())
+    }
+
+    attendanceByEmployee.get(row.employee_id)!.set(row.scan_date, {
+      hasArrival: !!row.latest_arrival_time,
+      hasDeparture: !!row.latest_departure_time
+    })
+  }
+
+  const holidayByEmployee = new Map<string, Set<string>>()
+
+  for (const row of holidaysRes.data || []) {
+    if (!holidayByEmployee.has(row.employee_id)) {
+      holidayByEmployee.set(row.employee_id, new Set())
+    }
+
+    holidayByEmployee.get(row.employee_id)!.add(row.date)
+  }
+
+  const result: EmployeesMonthlyAttentionMap = {}
+
+  for (const emp of employees) {
+    result[emp.id] = countEmployeeMonthlyAttention({
+      year,
+      month,
+      todayYmd,
+      worksOnSaturday: emp.works_on_saturday === true,
+      publicHolidays,
+      employeeHolidayDates: holidayByEmployee.get(emp.id) ?? new Set(),
+      attendanceByDate: attendanceByEmployee.get(emp.id) ?? new Map()
+    })
+  }
+
+  return result
 }

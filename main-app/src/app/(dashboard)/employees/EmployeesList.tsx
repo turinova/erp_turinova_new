@@ -25,9 +25,20 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  CircularProgress
+  CircularProgress,
+  FormControlLabel,
+  Stack,
+  Chip
 } from '@mui/material'
-import { Home as HomeIcon, Search as SearchIcon, Add as AddIcon, Delete as DeleteIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material'
+import {
+  Home as HomeIcon,
+  Search as SearchIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon
+} from '@mui/icons-material'
 import Link from 'next/link'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
@@ -47,11 +58,39 @@ interface Employee {
   updated_at: string
 }
 
-interface EmployeesListProps {
-  initialEmployees: Employee[]
+type MonthlyAttention = {
+  empty: number
+  incomplete: number
 }
 
-export default function EmployeesList({ initialEmployees }: EmployeesListProps) {
+interface EmployeesListProps {
+  initialEmployees: Employee[]
+  initialMonthlyAttention: Record<string, MonthlyAttention>
+  viewYear: number
+  viewMonth: number
+}
+
+const MONTH_NAMES = [
+  'Január',
+  'Február',
+  'Március',
+  'Április',
+  'Május',
+  'Június',
+  'Július',
+  'Augusztus',
+  'Szeptember',
+  'Október',
+  'November',
+  'December'
+]
+
+export default function EmployeesList({
+  initialEmployees,
+  initialMonthlyAttention,
+  viewYear,
+  viewMonth
+}: EmployeesListProps) {
   const router = useRouter()
   
   const [employees, setEmployees] = useState<Employee[]>(initialEmployees)
@@ -66,19 +105,18 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
   const [exportMonth, setExportMonth] = useState<number>(now.getMonth() + 1)
   const [isExporting, setIsExporting] = useState(false)
   const [isExportingOfficial, setIsExportingOfficial] = useState(false)
+  const [onlyAttention, setOnlyAttention] = useState(false)
 
-  // Filter employees based on search term
-  const filteredEmployees = useMemo(() => {
-    if (!employees || !Array.isArray(employees)) return []
-    if (!searchTerm) return employees
-    
-    const term = searchTerm.toLowerCase()
-    return employees.filter(employee => 
-      employee.name.toLowerCase().includes(term) ||
-      employee.employee_code.toLowerCase().includes(term) ||
-      (employee.employee_type ? getEmployeeTypeLabel(employee.employee_type).toLowerCase().includes(term) : false)
-    )
-  }, [employees, searchTerm])
+  const monthlyAttention = initialMonthlyAttention
+
+  const getAttention = (employeeId: string): MonthlyAttention => {
+    return monthlyAttention[employeeId] ?? { empty: 0, incomplete: 0 }
+  }
+
+  const hasAttention = (employeeId: string): boolean => {
+    const att = getAttention(employeeId)
+    return att.empty > 0 || att.incomplete > 0
+  }
 
   const getEmployeeTypeLabel = (type: string) => {
     switch (type) {
@@ -97,6 +135,81 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
         return 'Műhely'
     }
   }
+
+  const navigateMonth = (delta: number) => {
+    let year = viewYear
+    let month = viewMonth + delta
+
+    if (month < 1) {
+      month = 12
+      year -= 1
+    } else if (month > 12) {
+      month = 1
+      year += 1
+    }
+
+    router.push(`/employees?year=${year}&month=${month}`)
+  }
+
+  const monthSummary = useMemo(() => {
+    let employeesWithIssues = 0
+    let totalEmpty = 0
+    let totalIncomplete = 0
+
+    for (const employee of employees) {
+      const att = getAttention(employee.id)
+      if (att.empty > 0 || att.incomplete > 0) {
+        employeesWithIssues += 1
+        totalEmpty += att.empty
+        totalIncomplete += att.incomplete
+      }
+    }
+
+    return { employeesWithIssues, totalEmpty, totalIncomplete }
+  }, [employees, monthlyAttention])
+
+  const employeeCounts = useMemo(() => {
+    const active = employees.filter(e => e.active).length
+    return {
+      active,
+      inactive: employees.length - active,
+      total: employees.length
+    }
+  }, [employees])
+
+  // Filter employees based on search term
+  const filteredEmployees = useMemo(() => {
+    if (!employees || !Array.isArray(employees)) return []
+
+    let list = employees
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      list = list.filter(employee =>
+        employee.name.toLowerCase().includes(term) ||
+        employee.employee_code.toLowerCase().includes(term) ||
+        (employee.employee_type ? getEmployeeTypeLabel(employee.employee_type).toLowerCase().includes(term) : false)
+      )
+    }
+
+    if (onlyAttention) {
+      list = list.filter(employee => hasAttention(employee.id))
+    }
+
+    return [...list].sort((a, b) => {
+      if (a.active !== b.active) {
+        return a.active ? -1 : 1
+      }
+
+      const score = (id: string) => {
+        const att = getAttention(id)
+        return att.empty + att.incomplete
+      }
+      const diff = score(b.id) - score(a.id)
+      if (diff !== 0) return diff
+      return a.name.localeCompare(b.name, 'hu')
+    })
+  }, [employees, searchTerm, onlyAttention, monthlyAttention])
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -333,10 +446,15 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
       </Breadcrumbs>
 
       {/* Page Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
-          Kollégák
-        </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 2 }}>
+        <Box>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+            Kollégák
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {employeeCounts.active} aktív · {employeeCounts.inactive} inaktív · {employeeCounts.total} összesen
+          </Typography>
+        </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
           {selectedEmployees.length > 0 && (
             <Tooltip title={`PDF export (papír) (${selectedEmployees.length})`}>
@@ -385,7 +503,58 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
           </Button>
         </Box>
       </Box>
-      
+
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        spacing={2}
+        alignItems={{ xs: 'stretch', md: 'center' }}
+        justifyContent="space-between"
+        sx={{ mb: 1 }}
+      >
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <IconButton
+            onClick={() => navigateMonth(-1)}
+            size="small"
+            aria-label="Előző hónap"
+            sx={{ border: '1px solid', borderColor: 'divider' }}
+          >
+            <ChevronLeftIcon />
+          </IconButton>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, minWidth: 140, textAlign: 'center' }}>
+            {viewYear}. {MONTH_NAMES[viewMonth - 1]}
+          </Typography>
+          <IconButton
+            onClick={() => navigateMonth(1)}
+            size="small"
+            aria-label="Következő hónap"
+            sx={{ border: '1px solid', borderColor: 'divider' }}
+          >
+            <ChevronRightIcon />
+          </IconButton>
+        </Stack>
+
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={onlyAttention}
+              onChange={e => setOnlyAttention(e.target.checked)}
+            />
+          }
+          label="Csak figyelendő"
+        />
+      </Stack>
+
+      {monthSummary.employeesWithIssues > 0 ? (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {MONTH_NAMES[viewMonth - 1]} {viewYear}: {monthSummary.employeesWithIssues} kollégánál van figyelendő nap
+          {' '}(összesen {monthSummary.totalEmpty} üres, {monthSummary.totalIncomplete} hiányos).
+        </Typography>
+      ) : (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {MONTH_NAMES[viewMonth - 1]} {viewYear}: nincs figyelendő nap a kiválasztott hónapban.
+        </Typography>
+      )}
+
       {/* Search Bar */}
       <TextField
         fullWidth
@@ -403,6 +572,7 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
       />
       
       {/* Employees Table */}
+      {filteredEmployees.length > 0 && (
       <TableContainer component={Paper} sx={{ mt: 2 }}>
         <Table size="small" stickyHeader>
           <TableHead>
@@ -416,17 +586,47 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
               </TableCell>
               <TableCell>Név</TableCell>
               <TableCell>Munkakör</TableCell>
+              <TableCell align="right">
+                <Tooltip title="Munkanap: nincs belépés, nincs kilépés, nincs szabadság rögzítve">
+                  <span>Üres</span>
+                </Tooltip>
+              </TableCell>
+              <TableCell align="right">
+                <Tooltip title="Munkanap: csak belépés vagy csak kilépés rögzítve">
+                  <span>Hiányos</span>
+                </Tooltip>
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredEmployees.map((employee) => (
+            {filteredEmployees.map((employee) => {
+              const att = getAttention(employee.id)
+              const needsAttention = hasAttention(employee.id)
+              const isInactive = !employee.active
+
+              return (
               <TableRow 
                 key={employee.id} 
                 hover 
                 sx={{ 
                   cursor: 'pointer',
+                  ...(isInactive
+                    ? {
+                        bgcolor: '#F5F3EF',
+                        borderLeft: '3px solid #D4CFC4'
+                      }
+                    : needsAttention
+                      ? {
+                          bgcolor: '#FFF8E8',
+                          borderLeft: '3px solid #E8B86D'
+                        }
+                      : {}),
                   '&:hover': {
-                    backgroundColor: 'action.hover'
+                    backgroundColor: isInactive
+                      ? '#EEEBE4'
+                      : needsAttention
+                        ? '#FFF0D4'
+                        : 'action.hover'
                   }
                 }}
                 onClick={() => handleRowClick(employee.id)}
@@ -437,23 +637,85 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
                     onChange={() => handleSelectEmployee(employee.id)}
                   />
                 </TableCell>
-                <TableCell>{employee.name}</TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography
+                      component="span"
+                      sx={{ color: isInactive ? '#787774' : 'text.primary', fontWeight: isInactive ? 500 : 400 }}
+                    >
+                      {employee.name}
+                    </Typography>
+                    {isInactive ? (
+                      <Chip
+                        label="Inaktív"
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          height: 22,
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          color: '#787774',
+                          borderColor: '#D4CFC4',
+                          bgcolor: '#FAFAF8'
+                        }}
+                      />
+                    ) : null}
+                  </Box>
+                </TableCell>
                 <TableCell>{getEmployeeTypeLabel(employee.employee_type || 'MUHELY')}</TableCell>
+                <TableCell align="right">
+                  {att.empty > 0 ? (
+                    <Tooltip title={`${att.empty} munkanap: nincs scan és nincs szabadság rögzítve`}>
+                      <Typography
+                        component="span"
+                        sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#8B5A00' }}
+                      >
+                        {att.empty}
+                      </Typography>
+                    </Tooltip>
+                  ) : (
+                    <Typography component="span" color="text.secondary">
+                      —
+                    </Typography>
+                  )}
+                </TableCell>
+                <TableCell align="right">
+                  {att.incomplete > 0 ? (
+                    <Tooltip title={`${att.incomplete} munkanap: csak belépés vagy csak kilépés`}>
+                      <Typography
+                        component="span"
+                        sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#8B5A00' }}
+                      >
+                        {att.incomplete}
+                      </Typography>
+                    </Tooltip>
+                  ) : (
+                    <Typography component="span" color="text.secondary">
+                      —
+                    </Typography>
+                  )}
+                </TableCell>
               </TableRow>
-            ))}
+            )})}
           </TableBody>
         </Table>
       </TableContainer>
+      )}
 
       {/* Empty State */}
       {filteredEmployees.length === 0 && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
-            {searchTerm ? 'Nincs találat' : 'Nincs dolgozó'}
+            {searchTerm || onlyAttention ? 'Nincs találat' : 'Nincs dolgozó'}
           </Typography>
-          {!searchTerm && (
+          {!searchTerm && !onlyAttention && (
             <Typography variant="body2" color="text.secondary">
               Még nincsenek hozzáadva dolgozók
+            </Typography>
+          )}
+          {onlyAttention && (
+            <Typography variant="body2" color="text.secondary">
+              Ebben a hónapban senkinél nincs figyelendő nap.
             </Typography>
           )}
         </Box>

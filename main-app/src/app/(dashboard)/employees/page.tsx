@@ -1,23 +1,31 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { getAllEmployees } from '@/lib/supabase-server'
+import { getEmployeesMonthlyAttention } from '@/lib/dashboard-server'
+import { getBudapestYearMonth } from '@/components/attendance/attendanceUtils'
 import EmployeesList from './EmployeesList'
 
 export const metadata: Metadata = {
   title: 'Kollégák'
 }
 
-interface Employee {
-  id: string
-  name: string
-  employee_code: string
-  rfid_card_id: string | null
-  pin_code: string | null
-  active: boolean
-  lunch_break_start: string | null
-  lunch_break_end: string | null
-  created_at: string
-  updated_at: string
+interface EmployeesPageProps {
+  searchParams: Promise<{ year?: string; month?: string }>
+}
+
+function parseViewMonth(searchParams: { year?: string; month?: string }): { year: number; month: number } {
+  const fallback = getBudapestYearMonth()
+  const year = searchParams.year ? parseInt(searchParams.year, 10) : fallback.year
+  const month = searchParams.month ? parseInt(searchParams.month, 10) : fallback.month
+
+  if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+    return fallback
+  }
+  if (!Number.isFinite(month) || month < 1 || month > 12) {
+    return { year, month: fallback.month }
+  }
+
+  return { year, month }
 }
 
 // Loading skeleton component
@@ -38,21 +46,29 @@ function EmployeesSkeleton() {
 }
 
 // Server-side rendered employees list page
-export default async function EmployeesPage() {
+export default async function EmployeesPage({ searchParams }: EmployeesPageProps) {
   const startTime = performance.now()
+  const resolvedSearchParams = await searchParams
+  const { year, month } = parseViewMonth(resolvedSearchParams)
 
-  // Fetch employees data on the server
-  const employees = await getAllEmployees()
+  const [employees, monthlyAttention] = await Promise.all([
+    getAllEmployees(),
+    getEmployeesMonthlyAttention(year, month)
+  ])
 
   const totalTime = performance.now()
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[PERF] Employees Page SSR: ${(totalTime - startTime).toFixed(2)}ms`)
   }
 
-  // Pass pre-loaded data to SSR component with Suspense boundary
   return (
     <Suspense fallback={<EmployeesSkeleton />}>
-      <EmployeesList initialEmployees={employees} />
+      <EmployeesList
+        initialEmployees={employees}
+        initialMonthlyAttention={monthlyAttention}
+        viewYear={year}
+        viewMonth={month}
+      />
     </Suspense>
   )
 }
