@@ -7,10 +7,8 @@ import { getCustomerPortalDraftQuotes } from '@/lib/supabase-server'
 import {
   getMonthlyQuotesData,
   getMonthlySupplierOrdersData,
-  getMonthlyWorktopQuotesData,
   getWeeklyCuttingData,
   getWeeklyEdgeBandingData,
-  getWeeklyWorktopProductionData,
   getTodayAttendanceForHome,
   getPosOrdersGoalStats
 } from '@/lib/dashboard-server'
@@ -59,10 +57,8 @@ export default async function Page() {
     customerPortalQuotes,
     monthlyQuotes,
     monthlySupplierOrders,
-    monthlyWorktopQuotes,
     weeklyCutting,
     weeklyEdgeBanding,
-    weeklyWorktopProduction,
     todayAttendance,
     posOrdersGoalStats,
     footcounterHome
@@ -70,10 +66,8 @@ export default async function Page() {
     getCustomerPortalDraftQuotes(),
     getMonthlyQuotesData('month', 0),
     getMonthlySupplierOrdersData('month', 0),
-    getMonthlyWorktopQuotesData('month', 0),
     getWeeklyCuttingData(0),
     getWeeklyEdgeBandingData(0),
-    getWeeklyWorktopProductionData(0),
     getTodayAttendanceForHome(),
     getPosOrdersGoalStats(),
     loadFootcounterHome()
@@ -84,10 +78,8 @@ export default async function Page() {
       customerPortalQuotes={customerPortalQuotes}
       initialMonthlyQuotes={monthlyQuotes}
       initialMonthlySupplierOrders={monthlySupplierOrders}
-      initialMonthlyWorktopQuotes={monthlyWorktopQuotes}
       initialWeeklyCutting={weeklyCutting}
       initialWeeklyEdgeBanding={weeklyEdgeBanding}
-      initialWeeklyWorktopProduction={weeklyWorktopProduction}
       initialTodayAttendance={todayAttendance}
       posOrdersGoalStats={posOrdersGoalStats}
       footcounterHome={footcounterHome}

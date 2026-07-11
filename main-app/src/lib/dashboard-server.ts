@@ -777,6 +777,7 @@ export type HomeAttendanceEmployeeRow = {
   id: string
   name: string
   employee_code: string
+  employee_type: string
   shift_start_time: string | null
   holiday_type: 'Szabadság' | 'Betegszabadság' | null
   holiday_name: string | null
@@ -803,7 +804,7 @@ export async function getTodayAttendanceForHome(): Promise<{
 
   const { data: employees, error: empErr } = await supabaseServer
     .from('employees')
-    .select('id, name, employee_code, shift_start_time')
+    .select('id, name, employee_code, employee_type, shift_start_time')
     .eq('active', true)
     .is('deleted_at', null)
     .order('name', { ascending: true })
@@ -858,6 +859,7 @@ export async function getTodayAttendanceForHome(): Promise<{
       id: emp.id,
       name: emp.name,
       employee_code: emp.employee_code,
+      employee_type: String(emp.employee_type || 'MUHELY'),
       shift_start_time: rawShift && String(rawShift).trim() ? String(rawShift).trim() : null,
       holiday_type: holidayByEmp.get(emp.id)?.type ?? null,
       holiday_name: holidayByEmp.get(emp.id)?.name ?? null,

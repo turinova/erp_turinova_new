@@ -3,13 +3,11 @@
 import React from 'react'
 import { Container, Grid } from '@mui/material'
 import CustomerPortalQuotesTable from '@/components/CustomerPortalQuotesTable'
-import TodayAttendanceDashboard from '@/components/TodayAttendanceDashboard'
+import TodayAttendanceDashboard, { type TodayAttendanceEmployee } from '@/components/TodayAttendanceDashboard'
 import WeeklyCuttingChart from '@/components/WeeklyCuttingChart'
-import WeeklyWorktopProductionChart from '@/components/WeeklyWorktopProductionChart'
 import WeeklyEdgeBandingChart from '@/components/WeeklyEdgeBandingChart'
 import BacklogTotalsCard from '@/components/BacklogTotalsCard'
 import MonthlyQuotesCard from '@/components/MonthlyQuotesCard'
-import MonthlyWorktopQuotesCard from '@/components/MonthlyWorktopQuotesCard'
 import MonthlySupplierOrdersCard from '@/components/MonthlySupplierOrdersCard'
 import PosOrdersGoalsCard from '@/components/PosOrdersGoalsCard'
 import FootcounterHomeCard from '@/components/FootcounterHomeCard'
@@ -28,35 +26,22 @@ interface HomeClientProps {
   customerPortalQuotes: CustomerQuote[]
   initialMonthlyQuotes: any
   initialMonthlySupplierOrders: any
-  initialMonthlyWorktopQuotes: any
   initialWeeklyCutting: any
   initialWeeklyEdgeBanding: any
-  initialWeeklyWorktopProduction: any
   initialTodayAttendance: {
     dateLabel: string
-    employees: Array<{
-      id: string
-      name: string
-      employee_code: string
-      shift_start_time: string | null
-      holiday_type: 'Szabadság' | 'Betegszabadság' | null
-      holiday_name: string | null
-      arrival: string | null
-      departure: string | null
-    }>
+    employees: TodayAttendanceEmployee[]
   }
   posOrdersGoalStats: PosOrdersGoalStats
   footcounterHome: FootcounterHomeSlim | null
 }
 
-export default function HomeClient({ 
+export default function HomeClient({
   customerPortalQuotes,
   initialMonthlyQuotes,
   initialMonthlySupplierOrders,
-  initialMonthlyWorktopQuotes,
   initialWeeklyCutting,
   initialWeeklyEdgeBanding,
-  initialWeeklyWorktopProduction,
   initialTodayAttendance,
   posOrdersGoalStats,
   footcounterHome
@@ -64,13 +49,19 @@ export default function HomeClient({
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Grid container spacing={3}>
-        {/* First Row: Customer Portal Quotes Table - full width */}
         <Grid item xs={12}>
           <CustomerPortalQuotesTable quotes={customerPortalQuotes} />
         </Grid>
 
         <Grid item xs={12}>
-          <PosOrdersGoalsCard posOrdersGoalStats={posOrdersGoalStats} />
+          <BacklogTotalsCard />
+        </Grid>
+
+        <Grid item xs={12}>
+          <TodayAttendanceDashboard
+            dateLabel={initialTodayAttendance.dateLabel}
+            employees={initialTodayAttendance.employees}
+          />
         </Grid>
 
         {footcounterHome && (
@@ -80,32 +71,13 @@ export default function HomeClient({
         )}
 
         <Grid item xs={12}>
-          <TodayAttendanceDashboard
-            dateLabel={initialTodayAttendance.dateLabel}
-            employees={initialTodayAttendance.employees}
-          />
-        </Grid>
-
-        <Grid item xs={12}>
-          <BacklogTotalsCard />
-        </Grid>
-
-        {/* Weekly Cutting Chart - full width */}
-        <Grid item xs={12}>
           <WeeklyCuttingChart initialData={initialWeeklyCutting} />
         </Grid>
 
-        {/* Weekly Edge Banding Chart - full width */}
         <Grid item xs={12}>
           <WeeklyEdgeBandingChart initialData={initialWeeklyEdgeBanding} />
         </Grid>
 
-        {/* Third Row: Weekly Worktop Production Chart - full width */}
-        <Grid item xs={12}>
-          <WeeklyWorktopProductionChart initialData={initialWeeklyWorktopProduction} />
-        </Grid>
-
-        {/* Fourth Row: Monthly Cards - side by side, 1/2 width each */}
         <Grid item xs={12} lg={6}>
           <MonthlyQuotesCard initialData={initialMonthlyQuotes} />
         </Grid>
@@ -113,14 +85,10 @@ export default function HomeClient({
           <MonthlySupplierOrdersCard initialData={initialMonthlySupplierOrders} />
         </Grid>
 
-        {/* Fifth Row: Worktop Quotes Card - full width */}
         <Grid item xs={12}>
-          <MonthlyWorktopQuotesCard initialData={initialMonthlyWorktopQuotes} />
+          <PosOrdersGoalsCard posOrdersGoalStats={posOrdersGoalStats} />
         </Grid>
-
-        {/* Add more dashboard widgets here in the future */}
       </Grid>
     </Container>
   )
 }
-
