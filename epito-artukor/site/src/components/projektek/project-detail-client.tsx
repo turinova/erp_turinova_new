@@ -38,6 +38,7 @@ import { ProjectOfferTab } from "@/components/projektek/project-offer-tab"
 import { RfqProjectTab } from "@/components/projektek/rfq-project-tab"
 import { ProjectFilesTab } from "@/components/projektek/project-files-tab"
 import { ProjectOverviewTab } from "@/components/projektek/project-overview-tab"
+import { ProjectExportTab } from "@/components/projektek/project-export-tab"
 import { ProjectCloseDialog } from "@/components/projektek/project-close-dialog"
 import { QuoteImportWizard } from "@/components/projektek/quote-import-wizard"
 import {
@@ -59,7 +60,7 @@ import { QUOTE_STATUS_LABELS } from "@/lib/project-labels"
 import { findNavItemByHref } from "@/lib/nav-config"
 import { listHrefForProject } from "@/lib/project-phase"
 
-type Tab = "overview" | "quotes" | "offer" | "rfq" | "files"
+type Tab = "overview" | "quotes" | "offer" | "rfq" | "files" | "export"
 
 type ProjectDetailClientProps = {
   projectId: string
@@ -93,7 +94,8 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
       t === "offer" ||
       t === "rfq" ||
       t === "overview" ||
-      t === "files"
+      t === "files" ||
+      t === "export"
     )
       setTab(t)
     setRfqQuoteFilter(q)
@@ -264,6 +266,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     { id: "quotes", label: "Költségvetés" },
     { id: "offer", label: "Árajánlat" },
     { id: "rfq", label: "Alvállalkozók" },
+    { id: "export", label: "Export" },
     { id: "files", label: fileCount > 0 ? `Dokumentumok (${fileCount})` : "Dokumentumok" },
   ]
 
@@ -341,6 +344,14 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
 
       {tab === "offer" ? (
         <ProjectOfferTab projectId={projectId} tick={tick} onRefresh={refresh} />
+      ) : null}
+
+      {tab === "export" ? (
+        <ProjectExportTab
+          project={project}
+          quotes={quotes}
+          quoteSummaries={quoteSummaries}
+        />
       ) : null}
 
       {tab === "files" ? (

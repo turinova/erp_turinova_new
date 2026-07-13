@@ -23,3 +23,21 @@ export const QUOTE_GEPESZET_COLUMNS = {
   materialTotal: "xAnyagár",
   laborTotal: "xÓradij",
 } as const
+
+/** Ügyfélnek szóló export — semleges megnevezések, nincs bekerülés/fedezet utalás. */
+export const SELL_EXPORT_HEADERS = {
+  standard: {
+    materialUnit: "Anyag egységár",
+    laborUnit: "Díj egységre",
+    materialTotal: "Anyag összesen",
+    laborTotal: "Díj összesen",
+    lineNet: "Nettó összesen",
+  },
+  gepeszet: {
+    materialUnit: "Anyagár",
+    laborUnit: "Óradíj",
+    materialTotal: "Anyag összesen",
+    laborTotal: "Díj összesen",
+    lineNet: "Nettó összesen",
+  },
+} as const
