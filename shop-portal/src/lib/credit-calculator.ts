@@ -12,6 +12,7 @@ export type AIFeatureType =
   | 'product_description'
   | 'product_short_description'
   | 'category_description'
+  | 'category_geo_description'
   | 'category_meta'
   | 'image_alt_text'
   | 'competitor_price_scrape'
@@ -33,6 +34,7 @@ export function calculateCreditsForAI(
     'product_description': 5, // More expensive - large token usage
     'product_short_description': 2, // Merchant-oriented short plain text
     'category_description': 3,
+    'category_geo_description': 5,
     'category_meta': 1,
     'image_alt_text': 1, // Image alt text generation
     'competitor_price_scrape': 2, // Playwright + AI extraction

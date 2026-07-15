@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const connectionId = searchParams.get('connection_id')
+    const full = searchParams.get('full') === '1' || searchParams.get('full') === 'true'
 
     if (!connectionId) {
       return NextResponse.json(
@@ -28,6 +29,13 @@ export async function GET(request: NextRequest) {
 
     // Get categories for connection
     const categories = await getCategoriesForConnection(connectionId)
+
+    if (full) {
+      return NextResponse.json({
+        success: true,
+        categories
+      })
+    }
 
     // Build hierarchy paths
     const categoryMap = new Map(categories.map(cat => [cat.id, cat]))

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getCategoryById } from '@/lib/categories-server'
+import {
+  sanitizeCategoryIntroHtml,
+  sanitizeCategoryFooterHtml
+} from '@/lib/category-geo-validator'
 
 /**
  * GET /api/categories/[id]/descriptions
@@ -64,7 +68,7 @@ export async function PUT(
   try {
     const { id: categoryId } = await params
     const body = await request.json()
-    const { language_id, name, custom_title, meta_description, description } = body
+    const { language_id, name, custom_title, meta_description, description, footer_seo_text } = body
 
     // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
     const supabase = await getTenantSupabase()
@@ -78,6 +82,11 @@ export async function PUT(
     // Default to Hungarian language_id if not provided
     const defaultLanguageId = 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ=='
     const targetLanguageId = language_id || defaultLanguageId
+
+    const sanitizedDescription =
+      description !== undefined ? sanitizeCategoryIntroHtml(description || '') : undefined
+    const sanitizedFooter =
+      footer_seo_text !== undefined ? sanitizeCategoryFooterHtml(footer_seo_text || '') : undefined
 
     // Check if description exists
     const { data: existingDesc } = await supabase
@@ -96,7 +105,8 @@ export async function PUT(
       if (name !== undefined) updateData.name = name || null
       if (custom_title !== undefined) updateData.custom_title = custom_title || null
       if (meta_description !== undefined) updateData.meta_description = meta_description || null
-      if (description !== undefined) updateData.description = description || null
+      if (description !== undefined) updateData.description = sanitizedDescription ?? null
+      if (footer_seo_text !== undefined) updateData.footer_seo_text = sanitizedFooter ?? null
 
       result = await supabase
         .from('shoprenter_category_descriptions')
@@ -116,7 +126,8 @@ export async function PUT(
         name: name || null,
         custom_title: custom_title || null,
         meta_description: meta_description || null,
-        description: description || null,
+        description: sanitizedDescription ?? null,
+        footer_seo_text: sanitizedFooter ?? null,
         updated_at: new Date().toISOString()
       }
 

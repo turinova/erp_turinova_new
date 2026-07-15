@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, Category as CategoryIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
@@ -17,12 +18,30 @@ export default async function CategoriesPage({ searchParams }: PageProps = {}) {
   const connectionId = resolvedParams.connectionId || ''
   const search = resolvedParams.search || ''
 
-  // Get all connections
   const connections = await getAllConnections()
-  
-  // Get categories for selected connection (or all if no connection selected)
+  const shoprenterConnections = connections.filter((c) => c.connection_type === 'shoprenter')
+  const defaultConnectionId = shoprenterConnections[0]?.id || ''
+
+  if (!connectionId && defaultConnectionId) {
+    const params = new URLSearchParams()
+    params.set('connectionId', defaultConnectionId)
+    if (search) params.set('search', search)
+    redirect(`/categories?${params.toString()}`)
+  }
+
+  const isValidConnection =
+    connectionId && shoprenterConnections.some((c) => c.id === connectionId)
+
+  if (connectionId && !isValidConnection && defaultConnectionId) {
+    const params = new URLSearchParams()
+    params.set('connectionId', defaultConnectionId)
+    if (search) params.set('search', search)
+    redirect(`/categories?${params.toString()}`)
+  }
+
+  const selectedConnId = isValidConnection ? connectionId : defaultConnectionId
+
   let categories: any[] = []
-  const selectedConnId = connectionId || (connections.length > 0 ? connections[0].id : '')
   if (selectedConnId) {
     try {
       categories = await getCategoriesForConnection(selectedConnId)

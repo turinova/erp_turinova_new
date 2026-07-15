@@ -46,6 +46,7 @@ import {
 import { toast } from 'react-toastify'
 import HtmlEditor from '@/components/HtmlEditor'
 import NextLink from 'next/link'
+import { validateCategoryGeoContent } from '@/lib/category-geo-validator'
 
 interface CategoryEditFormProps {
   category: any
@@ -83,6 +84,12 @@ export default function CategoryEditForm({ category: initialCategory }: Category
   const [generating, setGenerating] = useState(false)
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
   const [generatedDescription, setGeneratedDescription] = useState<string | null>(null)
+  const [generatedFooterSeoText, setGeneratedFooterSeoText] = useState<string | null>(null)
+  const [geoValidation, setGeoValidation] = useState<{
+    warnings: string[]
+    errors: string[]
+    stats?: Record<string, number>
+  } | null>(null)
   const [products, setProducts] = useState<any[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
   
@@ -109,7 +116,8 @@ export default function CategoryEditForm({ category: initialCategory }: Category
     name: '',
     meta_title: '',
     meta_description: '',
-    description: ''
+    description: '',
+    footer_seo_text: ''
   })
   const [saving, setSaving] = useState(false)
 
@@ -123,6 +131,24 @@ export default function CategoryEditForm({ category: initialCategory }: Category
       loadCategoryDescriptions()
     }
   }, [category.id])
+
+  // Sync form fields when descriptions load
+  useEffect(() => {
+    const huDesc =
+      descriptions.find(
+        (desc: any) => desc.language_id === 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ=='
+      ) || descriptions[0]
+
+    if (!huDesc) return
+
+    setFormData({
+      name: huDesc.name || '',
+      meta_title: huDesc.custom_title || '',
+      meta_description: huDesc.meta_description || '',
+      description: huDesc.description || '',
+      footer_seo_text: huDesc.footer_seo_text || ''
+    })
+  }, [descriptions])
 
   // Load products when Termékek tab is selected
   useEffect(() => {
@@ -298,7 +324,8 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         },
         body: JSON.stringify({
           language: 'hu',
-          useProductData: true
+          useProductData: true,
+          profile: 'geo-full'
         })
       })
 
@@ -312,8 +339,10 @@ export default function CategoryEditForm({ category: initialCategory }: Category
 
       const data = await response.json()
       setGeneratedDescription(data.description)
+      setGeneratedFooterSeoText(data.footerSeoText || null)
+      setGeoValidation(data.validation || null)
       setGenerationDialogOpen(true)
-      toast.success('Leírás generálása sikeres')
+      toast.success('GEO leírás generálása sikeres')
     } catch (error: any) {
       toast.error(`Generálás hiba: ${error.message}`)
     } finally {
@@ -321,18 +350,28 @@ export default function CategoryEditForm({ category: initialCategory }: Category
     }
   }
 
-  const handleSaveDescription = async () => {
-    if (!generatedDescription) {
-      toast.error('Nincs generált leírás a mentéshez')
+  const handleSaveGeneratedGeo = async () => {
+    if (!generatedDescription && !generatedFooterSeoText) {
+      toast.error('Nincs generált tartalom a mentéshez')
+      return
+    }
+
+    const validation = validateCategoryGeoContent(
+      generatedDescription || '',
+      generatedFooterSeoText || ''
+    )
+    setGeoValidation(validation)
+
+    if (validation.errors.length > 0) {
+      toast.error('A generált tartalom hibás — javítsd vagy generáld újra, mielőtt mentenéd.')
       return
     }
 
     try {
       setGenerating(true)
 
-      // Get current description to find language_id
       const currentDesc = descriptions.find(
-        (desc: any) => desc.language_id === 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==' // Hungarian
+        (desc: any) => desc.language_id === 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ=='
       ) || descriptions[0]
 
       const response = await fetch(`/api/categories/${category.id}/descriptions`, {
@@ -342,29 +381,33 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         },
         body: JSON.stringify({
           language_id: currentDesc?.language_id || 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==',
-          description: generatedDescription,
-          // Preserve existing name, meta_title, meta_description if they exist
-          name: currentDesc?.name || null,
-          custom_title: currentDesc?.custom_title || null,
-          meta_description: currentDesc?.meta_description || null
+          description: generatedDescription ?? currentDesc?.description ?? null,
+          footer_seo_text: generatedFooterSeoText ?? currentDesc?.footer_seo_text ?? null,
+          name: currentDesc?.name || formData.name || null,
+          custom_title: currentDesc?.custom_title || formData.meta_title || null,
+          meta_description: currentDesc?.meta_description || formData.meta_description || null
         })
       })
 
       const result = await response.json()
 
       if (result.success) {
-        toast.success('Leírás sikeresen mentve!')
+        toast.success('GEO leírások sikeresen mentve!')
         setGenerationDialogOpen(false)
         setGeneratedDescription(null)
-        // Update form data with saved description
-        setFormData(prev => ({ ...prev, description: generatedDescription }))
-        // Reload descriptions
+        setGeneratedFooterSeoText(null)
+        setGeoValidation(null)
+        setFormData(prev => ({
+          ...prev,
+          description: generatedDescription || prev.description,
+          footer_seo_text: generatedFooterSeoText || prev.footer_seo_text
+        }))
         router.refresh()
       } else {
         toast.error(`Mentés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
       }
     } catch (error: any) {
-      console.error('Error saving description:', error)
+      console.error('Error saving GEO description:', error)
       toast.error(`Hiba a leírás mentésekor: ${error.message}`)
     } finally {
       setGenerating(false)
@@ -390,7 +433,8 @@ export default function CategoryEditForm({ category: initialCategory }: Category
           name: formData.name || currentDesc?.name || null,
           custom_title: formData.meta_title || currentDesc?.custom_title || null,
           meta_description: formData.meta_description || currentDesc?.meta_description || null,
-          description: formData.description || currentDesc?.description || null
+          description: formData.description || currentDesc?.description || null,
+          footer_seo_text: formData.footer_seo_text || currentDesc?.footer_seo_text || null
         })
       })
 
@@ -808,6 +852,15 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
+          {categoryUrl && (
+            <Alert severity="info" sx={{ mx: 3, mt: 2, mb: 0 }}>
+              Publikus kategória:{' '}
+              <MuiLink href={categoryUrl} target="_blank" rel="noopener noreferrer">
+                {categoryUrl}
+              </MuiLink>
+              {' '}— Mentés után használd a „Szinkronizálás” gombot a ShopRenterbe küldéshez.
+            </Alert>
+          )}
           {currentDescription ? (
             <Grid container spacing={3}>
               {/* Name Section - Blue Theme */}
@@ -1039,9 +1092,9 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                       <DescriptionIcon sx={{ color: 'white', fontSize: '24px' }} />
                     </Box>
                     <Typography variant="h6" sx={{ fontWeight: 700, color: '#7b1fa2' }}>
-                      Részletes leírás
+                      Rövid intro (rács fölött)
                     </Typography>
-                    <Tooltip title="AI generálás (3 Turitoken)">
+                    <Tooltip title="GEO generálás: intro + footer SEO + GYIK (5 Turitoken)">
                   <Button
                     variant="outlined"
                         size="small"
@@ -1050,7 +1103,7 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                     disabled={generating}
                         sx={{ ml: 'auto' }}
                   >
-                        {generating ? 'Generálás...' : 'AI'}
+                        {generating ? 'Generálás...' : 'GEO AI'}
                   </Button>
                     </Tooltip>
                 </Box>
@@ -1058,8 +1111,51 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                 <HtmlEditor
                   value={formData.description || currentDescription.description || ''}
                   onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
-                  placeholder="Kategória leírása..."
+                  placeholder="Rövid kategória intro a termékrács fölött (50–100 szó)..."
                 />
+                  </Box>
+                </Paper>
+              </Grid>
+
+              {/* Footer SEO Section - Teal Theme */}
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#009688',
+                    borderRadius: 2,
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1, position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#009688',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(0, 150, 136, 0.3)'
+                    }}>
+                      <DescriptionIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#00695c' }}>
+                      Footer SEO (rács alatt)
+                    </Typography>
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Hosszabb GEO tartalom a termékrács alatt: buying guide, GYIK, belső linkek. ShopRenter mező: footerSeoText.
+                  </Typography>
+                  <Box sx={{ position: 'relative', zIndex: 1 }}>
+                    <HtmlEditor
+                      value={formData.footer_seo_text || currentDescription.footer_seo_text || ''}
+                      onChange={(value) => setFormData(prev => ({ ...prev, footer_seo_text: value }))}
+                      placeholder="Footer SEO szöveg GYIK-kel, H2 szekciókkal..."
+                    />
                   </Box>
                 </Paper>
               </Grid>
@@ -1167,31 +1263,70 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         </TabPanel>
       </Paper>
 
-      {/* AI Generation Dialog */}
+      {/* AI GEO Generation Dialog */}
       <Dialog
         open={generationDialogOpen}
         onClose={() => setGenerationDialogOpen(false)}
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Generált kategória leírás</DialogTitle>
+        <DialogTitle>Generált GEO kategória tartalom</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Az AI által generált leírás. Ellenőrizze és mentse, ha megfelelő.
+            Intro (rács fölött) + Footer SEO (rács alatt). Ellenőrizze és mentse, ha megfelelő.
           </DialogContentText>
+
+          {geoValidation && (geoValidation.errors.length > 0 || geoValidation.warnings.length > 0) && (
+            <Box sx={{ mb: 2 }}>
+              {geoValidation.errors.map((msg, i) => (
+                <Alert key={`err-${i}`} severity="error" sx={{ mb: 1 }}>{msg}</Alert>
+              ))}
+              {geoValidation.warnings.map((msg, i) => (
+                <Alert key={`warn-${i}`} severity="warning" sx={{ mb: 1 }}>{msg}</Alert>
+              ))}
+            </Box>
+          )}
+
+          {geoValidation?.stats && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+              Intro: {geoValidation.stats.introWordCount} szó · Footer: {geoValidation.stats.footerWordCount} szó · GYIK: {geoValidation.stats.footerFaqCount} · Linkek: {geoValidation.stats.footerLinkCount}
+            </Typography>
+          )}
+
           {generatedDescription && (
-            <Box
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                p: 2,
-                minHeight: 300,
-                maxHeight: 500,
-                overflow: 'auto'
-              }}
-              dangerouslySetInnerHTML={{ __html: generatedDescription }}
-            />
+            <>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Intro (rács fölött)</Typography>
+              <Box
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 2,
+                  mb: 2,
+                  maxHeight: 200,
+                  overflow: 'auto'
+                }}
+                dangerouslySetInnerHTML={{ __html: generatedDescription }}
+              />
+            </>
+          )}
+
+          {generatedFooterSeoText && (
+            <>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>Footer SEO (rács alatt)</Typography>
+              <Box
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 2,
+                  minHeight: 200,
+                  maxHeight: 400,
+                  overflow: 'auto'
+                }}
+                dangerouslySetInnerHTML={{ __html: generatedFooterSeoText }}
+              />
+            </>
           )}
         </DialogContent>
         <DialogActions>
@@ -1202,10 +1337,14 @@ export default function CategoryEditForm({ category: initialCategory }: Category
             Mégse
           </Button>
           <Button
-            onClick={handleSaveDescription}
+            onClick={handleSaveGeneratedGeo}
             variant="contained"
             color="primary"
-            disabled={!generatedDescription || generating}
+            disabled={
+              (!generatedDescription && !generatedFooterSeoText) ||
+              generating ||
+              (geoValidation?.errors?.length ?? 0) > 0
+            }
             startIcon={generating ? <CircularProgress size={16} /> : <SaveIcon />}
           >
             {generating ? 'Mentés...' : 'Mentés'}

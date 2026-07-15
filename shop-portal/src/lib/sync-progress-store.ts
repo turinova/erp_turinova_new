@@ -16,6 +16,15 @@ export interface SyncProgress {
   batchProgress?: number // products processed in current batch
   /** PostgreSQL sync_jobs.id — durable progress across instances / refresh */
   syncJobId?: string
+  /** Per-item log for category bulk operations */
+  itemLog?: Array<{
+    id: string
+    name: string
+    status: string
+    error?: string
+    creditsUsed?: number
+  }>
+  jobType?: 'category_generate' | 'category_sync' | string
 }
 
 // Global in-memory progress store
@@ -151,4 +160,18 @@ export function shouldStopSync(connectionId: string): boolean {
   const store = getProgressStore()
   const progress = store.get(connectionId)
   return progress?.shouldStop === true
+}
+
+/**
+ * Append an item to the progress log (category bulk ops)
+ */
+export function appendProgressItem(
+  progressKey: string,
+  item: { id: string; name: string; status: string; error?: string; creditsUsed?: number }
+) {
+  const store = getProgressStore()
+  const existing = store.get(progressKey)
+  if (!existing) return
+  const itemLog = [...(existing.itemLog || []), item]
+  store.set(progressKey, { ...existing, itemLog })
 }
