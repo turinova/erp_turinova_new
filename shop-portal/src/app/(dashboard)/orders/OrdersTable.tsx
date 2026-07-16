@@ -23,17 +23,24 @@ import {
 } from '@mui/material'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import type { OrderBillingSummary } from '@/lib/order-billing-summary'
 import OrdersTableBody, { type OrderRow } from './OrdersTableBody'
 import { getAllowedNextStatus } from '@/lib/order-status'
 
 interface OrdersTableProps {
   orders: OrderRow[]
   batchByOrderId?: Record<string, { id: string; code: string }>
+  billingSummaryByOrderId?: Record<string, OrderBillingSummary>
   /** True when URL filters/search/limit differ from defaults — improves empty-state copy */
   hasActiveFilters?: boolean
 }
 
-export default function OrdersTable({ orders, batchByOrderId = {}, hasActiveFilters = false }: OrdersTableProps) {
+export default function OrdersTable({
+  orders,
+  batchByOrderId = {},
+  billingSummaryByOrderId = {},
+  hasActiveFilters = false
+}: OrdersTableProps) {
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -242,7 +249,7 @@ export default function OrdersTable({ orders, batchByOrderId = {}, hasActiveFilt
               </TableCell>
               <TableCell>Rendelésszám</TableCell>
               <TableCell>Vásárló</TableCell>
-              <TableCell>Forrás</TableCell>
+              <TableCell>Számlázás</TableCell>
               <TableCell>Bruttó összesen</TableCell>
               <TableCell>Státusz</TableCell>
               <TableCell>Fizetés</TableCell>
@@ -255,6 +262,7 @@ export default function OrdersTable({ orders, batchByOrderId = {}, hasActiveFilt
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}
             batchByOrderId={batchByOrderId}
+            billingSummaryByOrderId={billingSummaryByOrderId}
             hasActiveFilters={hasActiveFilters}
           />
         </Table>

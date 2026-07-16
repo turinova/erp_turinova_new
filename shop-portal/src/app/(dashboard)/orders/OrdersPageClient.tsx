@@ -18,6 +18,7 @@ import {
 import { Search as SearchIcon, Add as AddIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { useDebounce } from '@/hooks/useDebounce'
+import type { OrderBillingSummary } from '@/lib/order-billing-summary'
 import OrdersTable from './OrdersTable'
 import type { OrderRow } from './OrdersTableBody'
 import { ORDER_STATUS_LABELS } from '@/lib/order-status'
@@ -37,6 +38,7 @@ const LIMIT_OPTIONS = [20, 50, 100] as const
 export type OrdersPageClientProps = {
   orders: OrderRow[]
   batchByOrderId: Record<string, { id: string; code: string }>
+  billingSummaryByOrderId: Record<string, OrderBillingSummary>
   totalCount: number
   totalPages: number
   currentPage: number
@@ -48,6 +50,7 @@ export type OrdersPageClientProps = {
 export default function OrdersPageClient({
   orders,
   batchByOrderId,
+  billingSummaryByOrderId,
   totalCount,
   totalPages,
   currentPage,
@@ -221,6 +224,7 @@ export default function OrdersPageClient({
       <OrdersTable
         orders={orders}
         batchByOrderId={batchByOrderId}
+        billingSummaryByOrderId={billingSummaryByOrderId}
         hasActiveFilters={hasActiveFilters}
       />
 

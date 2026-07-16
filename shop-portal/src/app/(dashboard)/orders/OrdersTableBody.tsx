@@ -14,7 +14,8 @@ import {
 } from '@mui/material'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
-import OrderSourceCell from './OrderSourceCell'
+import type { OrderBillingSummary } from '@/lib/order-billing-summary'
+import OrderBillingStatusCell from './OrderBillingStatusCell'
 import {
   ORDER_STATUS_COLORS,
   getFulfillabilityDisplayStyle,
@@ -119,6 +120,7 @@ interface OrdersTableBodyProps {
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
   batchByOrderId?: Record<string, { id: string; code: string }>
+  billingSummaryByOrderId?: Record<string, OrderBillingSummary>
   hasActiveFilters?: boolean
 }
 
@@ -156,6 +158,7 @@ export default function OrdersTableBody({
   selectedIds,
   onToggleSelect,
   batchByOrderId = {},
+  billingSummaryByOrderId = {},
   hasActiveFilters = false
 }: OrdersTableBodyProps) {
   const router = useRouter()
@@ -279,10 +282,7 @@ export default function OrdersTableBody({
             })()}
           </TableCell>
           <TableCell>
-            <OrderSourceCell
-              connectionId={order.connection_id ?? null}
-              platformOrderId={order.platform_order_id ?? null}
-            />
+            <OrderBillingStatusCell summary={billingSummaryByOrderId[order.id] ?? null} />
           </TableCell>
           <TableCell>{formatCurrency(order.total_gross ?? null, order.currency_code)}</TableCell>
           <TableCell>

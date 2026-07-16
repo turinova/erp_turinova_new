@@ -2,6 +2,11 @@ import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, ShoppingCart as ShoppingCartIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import {
+  buildBillingSummaryByOrderId,
+  type OrderBillingSummary,
+  type OrderListInvoiceRow
+} from '@/lib/order-billing-summary'
 import OrdersPageClient from './OrdersPageClient'
 
 interface PageProps {
@@ -23,6 +28,7 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
   let orders: any[] = []
   let totalCount = 0
   let totalPages = 0
+  let billingSummaryByOrderId: Record<string, OrderBillingSummary> = {}
 
   try {
     const supabase = await getTenantSupabase()
@@ -78,6 +84,32 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
     console.error('Error fetching orders:', error)
   }
 
+  try {
+    const orderIds = (orders as any[]).map((o: any) => o.id).filter(Boolean)
+    if (orderIds.length > 0) {
+      const supabase = await getTenantSupabase()
+      const { data: invoiceRows, error: invoiceError } = await supabase
+        .from('invoices')
+        .select(
+          'id, related_order_id, internal_number, provider_invoice_number, invoice_type, payment_status, payment_due_date, created_at, is_storno_of_invoice_id'
+        )
+        .eq('related_order_type', 'order')
+        .in('related_order_id', orderIds)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+
+      if (invoiceError) {
+        console.error('Error fetching order invoices:', invoiceError)
+      } else {
+        billingSummaryByOrderId = buildBillingSummaryByOrderId(
+          (invoiceRows || []) as OrderListInvoiceRow[]
+        )
+      }
+    }
+  } catch (error) {
+    console.error('Error building order billing summaries:', error)
+  }
+
   let batchByOrderId: Record<string, { id: string; code: string }> = {}
   try {
     const pickingIds = (orders as any[])
@@ -116,6 +148,7 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
       <OrdersPageClient
         orders={orders}
         batchByOrderId={batchByOrderId}
+        billingSummaryByOrderId={billingSummaryByOrderId}
         totalCount={totalCount}
         totalPages={totalPages}
         currentPage={page}
