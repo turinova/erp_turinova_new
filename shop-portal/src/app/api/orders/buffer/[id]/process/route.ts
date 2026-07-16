@@ -149,8 +149,9 @@ export async function POST(
       // Step 7: Create order totals
       await createOrderTotals(supabase, newOrder.id, webhookData, orderData)
 
-      // Step 7a: Auto-import shipping fee row for better UX in order screen.
+      // Step 7a: Auto-import shipping + payment fee rows for better UX in order screen / invoice.
       await upsertImportedShippingFeeForOrder(supabase, newOrder.id, orderData)
+      await upsertImportedPaymentFeeForOrder(supabase, newOrder.id, orderData)
 
       // Step 7b: Recompute header totals from fee lines (shipping/payment) + items.
       await recomputeOrderAfterFeesChange(supabase, newOrder.id)
@@ -342,12 +343,113 @@ async function upsertImportedShippingFeeForOrder(
 }
 
 /**
+ * Import ShopRenter payment fee (e.g. COD / utánvétes díj) into order_fees.
+ * Mirrors upsertImportedShippingFeeForOrder; uses fee_definitions.code = PAYMENT_FEE.
+ */
+async function upsertImportedPaymentFeeForOrder(
+  supabase: any,
+  orderId: string,
+  extractedOrderData: Record<string, unknown>
+): Promise<void> {
+  const paymentNet = parseFloat(String(extractedOrderData.payment_total_net ?? '0')) || 0
+  const paymentGross = parseFloat(String(extractedOrderData.payment_total_gross ?? '0')) || 0
+
+  if (paymentNet === 0 && paymentGross === 0) return
+
+  const { data: paymentDef } = await supabase
+    .from('fee_definitions')
+    .select('id, name, type, default_vat_rate, sort_order')
+    .eq('code', 'PAYMENT_FEE')
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (!paymentDef?.id) {
+    console.warn('[BUFFER PROCESS] No active fee_definitions row with code PAYMENT_FEE; payment fee not imported')
+    return
+  }
+
+  const { data: orderRow } = await supabase
+    .from('orders')
+    .select('currency_code, payment_method_name')
+    .eq('id', orderId)
+    .single()
+
+  const currencyCode = String(orderRow?.currency_code || extractedOrderData.currency_code || 'HUF').toUpperCase()
+  const isHuf = currencyCode === 'HUF'
+  const roundCurrency = (x: number) => (isHuf ? Math.round(x) : Math.round(x * 100) / 100)
+
+  const vatRateFromMath = paymentNet > 0 ? Math.max(0, ((paymentGross / paymentNet) - 1) * 100) : null
+  const vatRate =
+    Number.isFinite(vatRateFromMath) && vatRateFromMath != null
+      ? Math.round(vatRateFromMath * 100) / 100
+      : Number(paymentDef.default_vat_rate ?? 27) || 27
+
+  const methodName =
+    orderRow?.payment_method_name ||
+    (extractedOrderData.payment_method_name != null
+      ? String(extractedOrderData.payment_method_name)
+      : '')
+  const labelSuffix = methodName ? ` (${methodName})` : ''
+  const feeName = `${String(paymentDef.name || 'Fizetési díj')}${labelSuffix}`
+
+  const { data: existingPaymentFee } = await supabase
+    .from('order_fees')
+    .select('id, source')
+    .eq('order_id', orderId)
+    .eq('type', 'PAYMENT')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .maybeSingle()
+
+  const rowPayload = {
+    fee_definition_id: paymentDef.id,
+    source: 'import_webshop',
+    type: 'PAYMENT',
+    name: feeName,
+    quantity: 1,
+    unit_net: roundCurrency(paymentNet),
+    unit_gross: roundCurrency(paymentGross),
+    vat_rate: vatRate,
+    line_net: roundCurrency(paymentNet),
+    line_gross: roundCurrency(paymentGross),
+    currency_code: currencyCode,
+    sort_order: Number(paymentDef.sort_order ?? 20) || 20,
+    is_locked: false,
+    updated_at: new Date().toISOString()
+  }
+
+  if (existingPaymentFee?.id) {
+    const { error: updateErr } = await supabase
+      .from('order_fees')
+      .update(rowPayload)
+      .eq('id', existingPaymentFee.id)
+      .eq('order_id', orderId)
+    if (updateErr) {
+      console.warn('[BUFFER PROCESS] Could not update existing imported payment fee:', updateErr)
+    }
+    return
+  }
+
+  const { error: insertErr } = await supabase
+    .from('order_fees')
+    .insert({
+      order_id: orderId,
+      ...rowPayload
+    })
+  if (insertErr) {
+    console.warn('[BUFFER PROCESS] Could not insert imported payment fee:', insertErr)
+  }
+}
+
+/**
  * Extract order data from webhook payload
  */
 function extractOrderDataFromWebhook(webhookData: any, connectionId: string) {
   // Handle different webhook formats
   const orderData = webhookData.orders?.order?.[0] || webhookData.order || webhookData
   const shippingAmounts = parseShippingAmountsFromOrderData(orderData)
+  const paymentAmounts = parsePaymentAmountsFromOrderData(orderData)
 
   return {
     platform_order_id: orderData.innerId || orderData.id,
@@ -403,8 +505,10 @@ function extractOrderDataFromWebhook(webhookData: any, connectionId: string) {
     discount_amount: parseFloat(orderData.couponGrossPrice || '0') || 0,
     shipping_total_net: shippingAmounts.net,
     shipping_total_gross: shippingAmounts.gross,
-    payment_total_net: 0,
-    payment_total_gross: 0,
+    payment_total_net: paymentAmounts.net,
+    payment_total_gross: paymentAmounts.gross,
+    payment_net_price: paymentAmounts.net,
+    payment_gross_price: paymentAmounts.gross,
     total_net: parseFloat(orderData.total || '0') || 0,
     total_gross: parseFloat(orderData.totalGross || orderData.total || '0') || 0,
     currency_code: orderData.currency?.code || orderData.currency || 'HUF',
@@ -772,6 +876,28 @@ async function createOrderTotals(
       console.warn('[BUFFER PROCESS] Could not create fallback SHIPPING total row:', shippingRowError)
     }
   }
+
+  const paymentNet = parseFloat(String(extractedOrderData.payment_total_net ?? '0')) || 0
+  const paymentGross = parseFloat(String(extractedOrderData.payment_total_gross ?? '0')) || 0
+  const hasPaymentRow = orderTotals.some((row: any) => mapTotalType(row?.type || row?.code || '') === 'PAYMENT')
+  if (!hasPaymentRow && (paymentNet !== 0 || paymentGross !== 0)) {
+    const paymentName = orderData.paymentMethodName
+      ? `Fizetési díj (${String(orderData.paymentMethodName)})`
+      : 'Fizetési díj'
+    const { error: paymentRowError } = await supabase
+      .from('order_totals')
+      .insert({
+        order_id: orderId,
+        name: paymentName,
+        value_net: paymentNet,
+        value_gross: paymentGross,
+        type: 'PAYMENT',
+        sort_order: 95
+      })
+    if (paymentRowError) {
+      console.warn('[BUFFER PROCESS] Could not create fallback PAYMENT total row:', paymentRowError)
+    }
+  }
 }
 
 /**
@@ -822,6 +948,45 @@ function parseShippingAmountsFromOrderData(orderData: any): { net: number; gross
 
   const taxRateRaw = parseFloat(String(shippingTotal?.taxRate ?? orderData?.shippingMethodTaxRate ?? ''))
   const taxRate = Number.isFinite(taxRateRaw) && taxRateRaw >= 0 ? taxRateRaw : 27
+  if (taxRate <= 0) return { net: gross, gross }
+  const net = gross / (1 + taxRate / 100)
+  return { net: Math.round(net * 100) / 100, gross }
+}
+
+/**
+ * ShopRenter webhook / order: paymentNetPrice + paymentGrossPrice (payment method fee, e.g. COD).
+ * Fallback: orderTotals row with type/code "payment".
+ */
+function parsePaymentAmountsFromOrderData(orderData: any): { net: number; gross: number } {
+  const directNet = parseFloat(orderData?.paymentNetPrice || '0') || 0
+  const directGross = parseFloat(orderData?.paymentGrossPrice || '0') || 0
+  if (directNet !== 0 || directGross !== 0) {
+    if (directNet !== 0) return { net: directNet, gross: directGross || directNet }
+    // Gross only: derive net from paymentMethodTaxRate when available
+    const taxRateRaw = parseFloat(String(orderData?.paymentMethodTaxRate ?? ''))
+    // ShopRenter often sends tax rate as fraction (0.27) or percent (27)
+    let taxRate = Number.isFinite(taxRateRaw) && taxRateRaw >= 0 ? taxRateRaw : 27
+    if (taxRate > 0 && taxRate < 1) taxRate = taxRate * 100
+    if (taxRate <= 0) return { net: directGross, gross: directGross }
+    const net = directGross / (1 + taxRate / 100)
+    return { net: Math.round(net * 100) / 100, gross: directGross }
+  }
+
+  const totals = normalizeOrderTotals(orderData)
+  const paymentTotal = totals.find((total: any) => mapTotalType(total?.type || total?.code || '') === 'PAYMENT')
+  if (!paymentTotal) return { net: 0, gross: 0 }
+
+  const valueNetRaw = parseFloat(String(paymentTotal?.valueNet ?? ''))
+  const valueGrossRaw = parseFloat(String(paymentTotal?.valueGross ?? ''))
+  const fallbackValue = parseFloat(String(paymentTotal?.value ?? '0')) || 0
+
+  const gross = Number.isFinite(valueGrossRaw) ? valueGrossRaw : fallbackValue
+  const hasNet = Number.isFinite(valueNetRaw)
+  if (hasNet) return { net: valueNetRaw, gross }
+
+  const taxRateRaw = parseFloat(String(paymentTotal?.taxRate ?? orderData?.paymentMethodTaxRate ?? ''))
+  let taxRate = Number.isFinite(taxRateRaw) && taxRateRaw >= 0 ? taxRateRaw : 27
+  if (taxRate > 0 && taxRate < 1) taxRate = taxRate * 100
   if (taxRate <= 0) return { net: gross, gross }
   const net = gross / (1 + taxRate / 100)
   return { net: Math.round(net * 100) / 100, gross }
