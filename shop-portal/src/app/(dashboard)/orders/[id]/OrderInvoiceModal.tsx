@@ -87,10 +87,31 @@ interface CustomerOrder {
   shipping_total_gross?: number | null
   payment_total_net?: number | null
   payment_total_gross?: number | null
+  payment_method_code?: string | null
+  payment_method_name?: string | null
+  payment_method_after?: boolean | null
   subtotal_net: number
   total_vat: number
   total_gross: number
   created_at: string
+}
+
+type InvoicePaymentMethod = 'cash' | 'bank_transfer' | 'card' | 'cod'
+
+function detectDefaultInvoicePaymentMethod(order: CustomerOrder): InvoicePaymentMethod {
+  const code = String(order.payment_method_code || '').toUpperCase()
+  if (code.includes('COD')) return 'cod'
+  if (code === 'CASH' || code === 'KP') return 'cash'
+  if (code.includes('CARD')) return 'card'
+  if (code.includes('BANK') || code.includes('TRANSFER') || code.includes('WIRE')) return 'bank_transfer'
+
+  const name = String(order.payment_method_name || '').toLowerCase()
+  if (name.includes('utánvét') || name.includes('utanvet') || name.includes('utánvétes') || name.includes('utanvetes')) return 'cod'
+  if (name.includes('készpénz') || name.includes('keszpenz')) return 'cash'
+  if (name.includes('kártya') || name.includes('kartya')) return 'card'
+  if (name.includes('átutal') || name.includes('atutal')) return 'bank_transfer'
+
+  return 'cash'
 }
 
 interface OrderInvoiceModalProps {
@@ -115,7 +136,7 @@ export default function OrderInvoiceModal({
   
   // Invoice settings
   const [invoiceType, setInvoiceType] = useState('normal') // normal | advance | proforma
-  const [paymentMethod, setPaymentMethod] = useState('cash') // cash, bank_transfer, card
+  const [paymentMethod, setPaymentMethod] = useState<InvoicePaymentMethod>('cash')
   const [advanceAmount, setAdvanceAmount] = useState<number>(0)
   const [proformaAmount, setProformaAmount] = useState<number>(0) // For partial proforma invoices
   const [advanceAmountError, setAdvanceAmountError] = useState<string | null>(null)
@@ -145,6 +166,12 @@ export default function OrderInvoiceModal({
     setDueDate(prev => prev || today)
     setFulfillmentDate(prev => prev || today)
   }, []) // Only run once on mount
+
+  // Default Számlázz fizmod from order payment (COD → utánvét)
+  useEffect(() => {
+    if (!open) return
+    setPaymentMethod(detectDefaultInvoicePaymentMethod(order))
+  }, [open, order.id, order.payment_method_code, order.payment_method_name])
 
   useEffect(() => {
     if (!open) return
@@ -886,12 +913,13 @@ export default function OrderInvoiceModal({
                 <InputLabel>Fizetési mód</InputLabel>
                 <Select
                   value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  onChange={(e) => setPaymentMethod(e.target.value as InvoicePaymentMethod)}
                   label="Fizetési mód"
                 >
                   <MenuItem value="cash">Készpénz</MenuItem>
                   <MenuItem value="bank_transfer">Átutalás</MenuItem>
                   <MenuItem value="card">Bankkártya</MenuItem>
+                  <MenuItem value="cod">Utánvétes fizetés</MenuItem>
                 </Select>
               </FormControl>
 

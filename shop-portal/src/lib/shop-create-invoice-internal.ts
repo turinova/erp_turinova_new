@@ -20,15 +20,23 @@ export type CreateShopInvoiceResult =
 
 function mapBodyPaymentMethod(
   raw: string | undefined,
-  orderCode: string | null | undefined
+  orderCode: string | null | undefined,
+  orderName?: string | null
 ): ShopInvoiceXmlSettings['paymentMethod'] {
-  const v = (raw || '').toLowerCase()
-  if (v === 'cash' || v === 'bank_transfer' || v === 'card') {
+  const v = (raw || '').toLowerCase().trim()
+  if (v === 'cash' || v === 'bank_transfer' || v === 'card' || v === 'cod') {
     return v
   }
+  if (v === 'utánvét' || v === 'utanvet' || v.includes('utánvétes') || v.includes('utanvetes')) return 'cod'
+
   const c = String(orderCode || '').toUpperCase()
-  if (c.includes('COD') || c === 'CASH' || c === 'KP') return 'cash'
+  if (c.includes('COD')) return 'cod'
+  if (c === 'CASH' || c === 'KP') return 'cash'
   if (c.includes('CARD')) return 'card'
+
+  const n = String(orderName || '').toLowerCase()
+  if (n.includes('utánvét') || n.includes('utanvet') || n.includes('utánvétes') || n.includes('utanvetes')) return 'cod'
+
   return 'bank_transfer'
 }
 
@@ -376,7 +384,15 @@ export async function createShopInvoiceInternal(
 
     const tenantCompany = null as { email?: string | null } | null
 
+    const paymentMethod = mapBodyPaymentMethod(
+      body.paymentMethod as string | undefined,
+      (order as { payment_method_code?: string | null }).payment_method_code,
+      (order as { payment_method_name?: string | null }).payment_method_name
+    )
+
+    // Utánvét: payment happens on delivery — do not mark Számlázz invoice as paid.
     const markAsPaidOnSzamlazz =
+      paymentMethod !== 'cod' &&
       !isAdvanceInvoiceRequest &&
       !isProformaInvoiceRequest &&
       (invoiceTypeRaw === 'normal' || invoiceTypeRaw === 'simplified') &&
@@ -384,7 +400,7 @@ export async function createShopInvoiceInternal(
 
     const settings: ShopInvoiceXmlSettings = {
       invoiceType: invoiceTypeRaw as ShopInvoiceXmlSettings['invoiceType'],
-      paymentMethod: mapBodyPaymentMethod(body.paymentMethod as string | undefined, order.payment_method_code),
+      paymentMethod,
       dueDate,
       fulfillmentDate,
       comment,

@@ -34,7 +34,7 @@ export function getShopItemVatRate(
 
 export type ShopInvoiceXmlSettings = {
   invoiceType: 'normal' | 'advance' | 'proforma' | 'simplified'
-  paymentMethod: 'cash' | 'bank_transfer' | 'card'
+  paymentMethod: 'cash' | 'bank_transfer' | 'card' | 'cod'
   dueDate: string
   fulfillmentDate?: string
   comment: string
@@ -54,7 +54,9 @@ type TenantCompanyLite = { email?: string | null } | null
 const paymentMethodMap: Record<string, string> = {
   cash: 'készpénz',
   bank_transfer: 'átutalás',
-  card: 'bankkártya'
+  card: 'bankkártya',
+  /** Free-text fizmod on invoice (common webshop wording) */
+  cod: 'Utánvétes fizetés'
 }
 
 function mapPaymentMethod(code: string): string {

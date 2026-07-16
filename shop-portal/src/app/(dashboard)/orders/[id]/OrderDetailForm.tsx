@@ -891,12 +891,19 @@ export default function OrderDetailForm({
       shipping_total_gross: Number((order as any).shipping_total_gross) || 0,
       payment_total_net: Number((order as any).payment_total_net) || 0,
       payment_total_gross: Number((order as any).payment_total_gross) || 0,
+      payment_method_code: (order as any).payment_method_code ?? null,
+      payment_method_name:
+        form.payment_method_name ||
+        (order as any).payment_method_name ||
+        null,
+      payment_method_after:
+        form.payment_method_after ?? (order as any).payment_method_after ?? null,
       subtotal_net: Number(order.subtotal_net) || 0,
       total_vat: Number(order.total_vat) || 0,
       total_gross: Number(order.total_gross) || 0,
       created_at: order.created_at
     }
-  }, [order, items, orderDiscountMode, orderDiscountValue])
+  }, [order, items, orderDiscountMode, orderDiscountValue, form.payment_method_name, form.payment_method_after])
 
   const handleOpenInvoiceDialog = useCallback(async () => {
     if (isCreateMode) {

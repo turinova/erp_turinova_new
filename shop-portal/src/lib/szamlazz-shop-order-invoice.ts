@@ -16,7 +16,7 @@ function escapeXml(unsafe: string | null | undefined): string {
 export type ShopOrderInvoiceSettings = {
   dueDate: string
   fulfillmentDate?: string
-  paymentMethod: 'cash' | 'bank_transfer' | 'card'
+  paymentMethod: 'cash' | 'bank_transfer' | 'card' | 'cod'
   comment: string
   language: string
   sendEmail: boolean
@@ -26,7 +26,8 @@ function mapPaymentMethod(code: string): string {
   const paymentMethodMap: Record<string, string> = {
     cash: 'készpénz',
     bank_transfer: 'átutalás',
-    card: 'bankkártya'
+    card: 'bankkártya',
+    cod: 'Utánvétes fizetés'
   }
   return paymentMethodMap[code] || 'átutalás'
 }
