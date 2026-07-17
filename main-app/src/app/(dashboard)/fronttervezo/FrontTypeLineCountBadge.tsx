@@ -24,11 +24,12 @@ export default function FrontTypeLineCountBadge({ count, ariaLabelPrefix }: Fron
       color="error"
       variant="filled"
       sx={{
-        height: 22,
-        minWidth: 28,
+        height: 18,
+        minWidth: 20,
+        fontSize: '0.6875rem',
         fontWeight: 700,
         '& .MuiChip-label': {
-          px: 0.75,
+          px: 0.5,
           color: 'common.white'
         }
       }}

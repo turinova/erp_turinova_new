@@ -124,6 +124,21 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     ]
   },
   {
+    label: 'Frontok',
+    icon: 'ri-layout-grid-line',
+    iconColor: '#6C5CE7',
+    children: [
+      {
+        label: 'Megrendelések',
+        href: '/fronttervezo-orders'
+      },
+      {
+        label: 'Ajánlatok',
+        href: '/fronttervezo-quotes'
+      }
+    ]
+  },
+  {
     label: 'Munkalap',
     icon: 'ri-table-line',
     iconColor: '#8E44AD', // Purple for worktop tools
@@ -211,6 +226,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
           {
             label: 'Táblás anyagok',
             href: '/materials'
+          },
+          {
+            label: 'Nettfront anyagok',
+            href: '/nettfront-skus'
           },
           {
             label: 'Szálas anyagok',

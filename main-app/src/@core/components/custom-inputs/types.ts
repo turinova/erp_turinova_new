@@ -31,6 +31,9 @@ export type CustomInputHorizontalProps = {
   color?: ThemeColor
   gridProps?: Grid2Props
   data: CustomInputHorizontalData
+  disabled?: boolean
+  /** Smaller padding — useful in dense grids / narrow content with sidebar open */
+  dense?: boolean
 } & (
   | {
       type: 'checkbox'

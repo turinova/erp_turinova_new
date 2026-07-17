@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
+import { useRouter } from 'next/navigation'
 
 import {
   Autocomplete,
@@ -18,29 +18,26 @@ import {
 } from '@mui/material'
 import { Star as StarIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material'
 import { alpha, useTheme } from '@mui/material/styles'
-import Grid2 from '@mui/material/Grid2'
 
 import { toast } from 'react-toastify'
 
-import CustomInputHorizontal from '@core/components/custom-inputs/Horizontal'
-import type { CustomInputHorizontalData } from '@core/components/custom-inputs/types'
-
-import ButorlapRadioTileTitle from './ButorlapRadioTileTitle'
 import FronttervezoAluSection from './FronttervezoAluSection'
 import type { ButorlapLineItem } from './FronttervezoButorlapSection'
-import FronttervezoButorlapSection from './FronttervezoButorlapSection'
 import FronttervezoFestettSection from './FronttervezoFestettSection'
 import FronttervezoFoliasSection from './FronttervezoFoliasSection'
 import FronttervezoGlobalQuotes from './FronttervezoGlobalQuotes'
-import FronttervezoInomatSection from './FronttervezoInomatSection'
-import NettfrontRadioTileTitle from './NettfrontRadioTileTitle'
+import FronttervezoInomatSection, { type InomatLineItem } from './FronttervezoInomatSection'
+import FrontTypeSegmentRow, { type FrontTypeSegmentOption } from './FrontTypeSegmentRow'
+import NettfrontBrandPanel from './NettfrontBrandPanel'
 import {
+  clearFronttervezoSessionLines,
   FRONTTERVEZO_LINES_UPDATED,
   FRONTTERVEZO_SESSION_KEY_ALU,
   FRONTTERVEZO_SESSION_KEY_BUTORLAP,
   FRONTTERVEZO_SESSION_KEY_FESTETT,
   FRONTTERVEZO_SESSION_KEY_FOLIAS,
   FRONTTERVEZO_SESSION_KEY_INOMAT,
+  type FronttervezoFrontTypeKey,
   type FronttervezoLineCounts,
   parseFronttervezoLineCounts
 } from './fronttervezoSession'
@@ -62,15 +59,28 @@ import {
   type FronttervezoFoliasQuoteResult
 } from '@/lib/pricing/fronttervezoFoliasQuote'
 import {
+  buildInomatCatalogFromSkus,
   computeFronttervezoInomatQuote,
+  normalizeInomatSzin,
   type FronttervezoInomatQuoteResult,
-  type InomatQuoteLineInput
+  type InomatQuoteLineInput,
+  type NettfrontSkuRow
 } from '@/lib/pricing/fronttervezoInomatQuote'
 import type { QuoteResult } from '@/lib/pricing/quoteCalculations'
 import type { getCuttingFee, getEdgeMaterialById } from '@/lib/supabase-server'
+import type { PanthelyConfig } from './fronttervezoTypes'
 
 type FronttervezoCuttingFeeSSR = Awaited<ReturnType<typeof getCuttingFee>>
 type FronttervezoEdgeMaterialSSR = Awaited<ReturnType<typeof getEdgeMaterialById>>
+
+const EMPTY_INOMAT_LINES: InomatLineItem[] = []
+const EMPTY_LINE_COUNTS: FronttervezoLineCounts = {
+  butorlap: 0,
+  inomat: 0,
+  festett: 0,
+  folias: 0,
+  alu: 0
+}
 
 /** Rows from `getAllCustomers()` — same fields as Opti `Customer` */
 export type FronttervezoCustomer = {
@@ -192,31 +202,211 @@ type FronttervezoClientProps = {
 
   /** Fix élzáró anyag (hardcode) — Opti edge_materials rekord */
   initialDefaultEdgeMaterial: FronttervezoEdgeMaterialSSR
+
+  /** Nettfront SKU-k (Inomat színek + nettó árak) */
+  initialNettfrontSkus: NettfrontSkuRow[]
+
+  /** Szerkesztés: meglévő draft ajánlat */
+  initialQuoteData?: {
+    id: string
+    quote_number: string
+    status: string
+    discount_percent: number
+    customer: {
+      id: string
+      name: string
+      email: string
+      mobile: string
+      discount_percent: number
+      billing_name: string
+      billing_country: string
+      billing_city: string
+      billing_postal_code: string
+      billing_street: string
+      billing_house_number: string
+      billing_tax_number: string
+      billing_company_reg_number: string
+    } | null
+    lines: Array<{
+      id: string
+      front_type: string
+      display_name: string
+      height_mm: number
+      width_mm: number
+      quantity: number
+      panthely: PanthelyConfig | null
+      megjegyzes: string | null
+    }>
+  } | null
+}
+
+function mapQuoteLinesToInomat(
+  lines: NonNullable<FronttervezoClientProps['initialQuoteData']>['lines'],
+  catalog: ReturnType<typeof buildInomatCatalogFromSkus>
+): InomatLineItem[] {
+  return lines
+    .filter(l => l.front_type === 'inomat')
+    .map(l => ({
+      id: l.id,
+      szin: normalizeInomatSzin(l.display_name, catalog) as InomatLineItem['szin'],
+      magassagMm: l.height_mm,
+      szelessegMm: l.width_mm,
+      mennyiseg: l.quantity,
+      panthely: l.panthely,
+      megjegyzes: l.megjegyzes || undefined
+    }))
+}
+
+function customerFormFromQuote(
+  quote: NonNullable<FronttervezoClientProps['initialQuoteData']>
+): CustomerFormState {
+  const c = quote.customer
+
+  if (!c) return emptyForm()
+
+  return {
+    name: c.name || '',
+    email: c.email || '',
+    phone: c.mobile || '',
+    discount: String(quote.discount_percent ?? c.discount_percent ?? 0),
+    billing_name: c.billing_name || '',
+    billing_country: c.billing_country || 'Magyarország',
+    billing_city: c.billing_city || '',
+    billing_postal_code: c.billing_postal_code || '',
+    billing_street: c.billing_street || '',
+    billing_house_number: c.billing_house_number || '',
+    billing_tax_number: c.billing_tax_number || '',
+    billing_company_reg_number: c.billing_company_reg_number || ''
+  }
+}
+
+function customerOptionFromQuote(
+  quote: NonNullable<FronttervezoClientProps['initialQuoteData']>,
+  list: FronttervezoCustomer[]
+): FronttervezoCustomer | null {
+  const c = quote.customer
+
+  if (!c) return null
+
+  const fromList = list.find(x => x.id === c.id)
+
+  if (fromList) return fromList
+
+  return {
+    id: c.id,
+    name: c.name,
+    email: c.email || '',
+    mobile: c.mobile || '',
+    discount_percent: c.discount_percent ?? 0,
+    is_favorite: false,
+    billing_name: c.billing_name || '',
+    billing_country: c.billing_country || 'Magyarország',
+    billing_city: c.billing_city || '',
+    billing_postal_code: c.billing_postal_code || '',
+    billing_street: c.billing_street || '',
+    billing_house_number: c.billing_house_number || '',
+    billing_tax_number: c.billing_tax_number || '',
+    billing_company_reg_number: c.billing_company_reg_number || '',
+    created_at: '',
+    updated_at: ''
+  }
 }
 
 export default function FronttervezoClient({
   initialCustomers,
-  initialMaterials,
+  initialMaterials: _initialMaterials,
   initialCuttingFee,
-  initialDefaultEdgeMaterial
+  initialDefaultEdgeMaterial,
+  initialNettfrontSkus,
+  initialQuoteData = null
 }: FronttervezoClientProps) {
+  const router = useRouter()
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const customers = initialCustomers ?? []
-  const [selectedCustomer, setSelectedCustomer] = useState<FronttervezoCustomer | null>(null)
-  const [customerData, setCustomerData] = useState<CustomerFormState>(emptyForm)
-  const [selectedFrontType, setSelectedFrontType] = useState<string>('butorlap')
+  const inomatCatalog = useMemo(
+    () => buildInomatCatalogFromSkus(initialNettfrontSkus ?? []),
+    [initialNettfrontSkus]
+  )
 
-  const [lineCounts, setLineCounts] = useState<FronttervezoLineCounts>(() => ({
-    butorlap: 0,
-    inomat: 0,
-    festett: 0,
-    folias: 0,
-    alu: 0
-  }))
+  const isEditMode = Boolean(initialQuoteData?.id && initialQuoteData.status === 'draft')
+
+  const hydratedInomatLines = useMemo(() => {
+    if (!initialQuoteData?.lines?.length) return null
+
+    return mapQuoteLinesToInomat(initialQuoteData.lines, inomatCatalog)
+  }, [initialQuoteData, inomatCatalog])
+
+  // Új ajánlat: session tételek törlése az első client renderen (mielőtt a szekciók betöltenék)
+  const newSessionClearedRef = useRef(false)
+  if (typeof window !== 'undefined' && !isEditMode && !newSessionClearedRef.current) {
+    newSessionClearedRef.current = true
+    clearFronttervezoSessionLines({ silent: true })
+  }
+
+  const [selectedCustomer, setSelectedCustomer] = useState<FronttervezoCustomer | null>(() =>
+    initialQuoteData && initialQuoteData.status === 'draft'
+      ? customerOptionFromQuote(initialQuoteData, initialCustomers ?? [])
+      : null
+  )
+  const [customerData, setCustomerData] = useState<CustomerFormState>(() =>
+    initialQuoteData && initialQuoteData.status === 'draft'
+      ? customerFormFromQuote(initialQuoteData)
+      : emptyForm()
+  )
+  const [selectedFrontType, setSelectedFrontType] = useState<FronttervezoFrontTypeKey>('inomat')
+
+  const [lineCounts, setLineCounts] = useState<FronttervezoLineCounts>(() =>
+    isEditMode ? parseFronttervezoLineCounts() : EMPTY_LINE_COUNTS
+  )
+
+  const [savedQuoteId, setSavedQuoteId] = useState<string | null>(
+    initialQuoteData?.status === 'draft' ? initialQuoteData.id : null
+  )
+  const quoteHydratedRef = useRef(false)
 
   useEffect(() => {
-    const sync = () => setLineCounts(parseFronttervezoLineCounts())
+    if (!initialQuoteData || quoteHydratedRef.current) return
+    quoteHydratedRef.current = true
+
+    if (initialQuoteData.status !== 'draft') {
+      toast.error('Csak piszkozat ajánlat szerkeszthető.')
+      router.replace('/fronttervezo-quotes/' + initialQuoteData.id)
+
+      return
+    }
+
+    setSavedQuoteId(initialQuoteData.id)
+    setSelectedCustomer(customerOptionFromQuote(initialQuoteData, customers))
+    setCustomerData(customerFormFromQuote(initialQuoteData))
+
+    // Clear other front types so counts reflect this quote
+    sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_BUTORLAP)
+    sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_ALU)
+    sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_FESTETT)
+    sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_FOLIAS)
+
+    toast.info(`Szerkesztés: ${initialQuoteData.quote_number}`)
+  }, [initialQuoteData, customers, router])
+
+  useEffect(() => {
+    const sync = () => {
+      setLineCounts(prev => {
+        const next = parseFronttervezoLineCounts()
+
+        if (
+          prev.butorlap === next.butorlap &&
+          prev.inomat === next.inomat &&
+          prev.festett === next.festett &&
+          prev.folias === next.folias &&
+          prev.alu === next.alu
+        ) {
+          return prev
+        }
+
+        return next
+      })
+    }
 
     sync()
     window.addEventListener(FRONTTERVEZO_LINES_UPDATED, sync)
@@ -228,12 +418,8 @@ export default function FronttervezoClient({
     }
   }, [])
 
-  const handleFrontTypeChange = useCallback((prop: string | ChangeEvent<HTMLInputElement>) => {
-    if (typeof prop === 'string') {
-      setSelectedFrontType(prop)
-    } else {
-      setSelectedFrontType((prop.target as HTMLInputElement).value)
-    }
+  const handleFrontTypeChange = useCallback((value: FronttervezoFrontTypeKey) => {
+    setSelectedFrontType(value)
   }, [])
 
   const handleCustomerDataChange = useCallback((field: keyof CustomerFormState, value: string) => {
@@ -253,6 +439,7 @@ export default function FronttervezoClient({
 
   const quoteAnchorRef = useRef<HTMLDivElement | null>(null)
   const [globalQuoteLoading, setGlobalQuoteLoading] = useState(false)
+  const [saveQuoteLoading, setSaveQuoteLoading] = useState(false)
   const [butorlapQuote, setButorlapQuote] = useState<QuoteResult | null>(null)
   const [butorlapLinesSnapshot, setButorlapLinesSnapshot] = useState<ButorlapLineItem[]>([])
   const [inomatQuote, setInomatQuote] = useState<FronttervezoInomatQuoteResult | null>(null)
@@ -375,77 +562,160 @@ return
         } else {
           setButorlapQuote(outcome.quote)
           setButorlapLinesSnapshot(butorlapLines)
+          setButorlapQuoteExpanded(true)
         }
       }
 
       if (inomatLines.length > 0) {
-        const q = computeFronttervezoInomatQuote(inomatLines, initialCuttingFee, customerDiscountPercent)
+        const q = computeFronttervezoInomatQuote(
+          inomatLines,
+          initialCuttingFee,
+          customerDiscountPercent,
+          inomatCatalog
+        )
 
-        if (q) setInomatQuote(q)
+        if (q) {
+          setInomatQuote(q)
+          setInomatQuoteExpanded(true)
+        }
       }
 
       if (aluLines.length > 0) {
         const q = computeFronttervezoAluQuote(aluLines, customerDiscountPercent)
 
-        if (q) setAluQuote(q)
+        if (q) {
+          setAluQuote(q)
+          setAluQuoteExpanded(true)
+        }
       }
 
       if (festettLines.length > 0) {
         const q = computeFronttervezoFestettQuote(festettLines, initialCuttingFee, customerDiscountPercent)
 
-        if (q) setFestettQuote(q)
+        if (q) {
+          setFestettQuote(q)
+          setFestettQuoteExpanded(true)
+        }
       }
 
       if (foliasLines.length > 0) {
         const q = computeFronttervezoFoliasQuote(foliasLines, initialCuttingFee, customerDiscountPercent)
 
-        if (q) setFoliasQuote(q)
+        if (q) {
+          setFoliasQuote(q)
+          setFoliasQuoteExpanded(true)
+        }
       }
     } finally {
       setGlobalQuoteLoading(false)
       setTimeout(() => quoteAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
     }
-  }, [customerDiscountPercent, initialCuttingFee, initialDefaultEdgeMaterial])
+  }, [customerDiscountPercent, initialCuttingFee, initialDefaultEdgeMaterial, inomatCatalog])
 
-  const nettfrontTiles = useMemo(
-    () =>
-      [
-        {
-          value: 'inomat' as const,
-          meta: 'Inomat',
-          heading: 'INOMAT FRONT',
-          badgeAriaLabelPrefix: 'Inomat'
-        },
-        {
-          value: 'festett' as const,
-          meta: 'Festett',
-          heading: 'FESTETT FRONT',
-          badgeAriaLabelPrefix: 'Festett'
-        },
-        {
-          value: 'folias' as const,
-          meta: 'Fóliás',
-          heading: 'FÓLIÁS FRONT',
-          badgeAriaLabelPrefix: 'Fóliás'
-        },
-        {
-          value: 'alu' as const,
-          meta: 'Alu',
-          heading: 'ALU FRONT',
-          badgeAriaLabelPrefix: 'Alu'
-        }
-      ] as const,
+  const handleSaveQuote = useCallback(async () => {
+    if (typeof window === 'undefined') return
+
+    if (!customerData.name.trim()) {
+      toast.error('Kérjük, töltse ki a megrendelő nevét!')
+
+      return
+    }
+
+    if (!inomatQuote) {
+      toast.error('Előbb generáljon Inomat ajánlatot, majd mentse.')
+
+      return
+    }
+
+    let inomatLines: InomatQuoteLineInput[] = []
+
+    try {
+      const rawI = sessionStorage.getItem(FRONTTERVEZO_SESSION_KEY_INOMAT)
+
+      if (rawI) {
+        const parsed = JSON.parse(rawI) as unknown
+
+        if (Array.isArray(parsed)) inomatLines = parsed as InomatQuoteLineInput[]
+      }
+    } catch {
+      toast.error('A mentett tételek olvasása sikertelen.')
+
+      return
+    }
+
+    if (inomatLines.length === 0) {
+      toast.error('Legalább egy Inomat tétel szükséges a mentéshez.')
+
+      return
+    }
+
+    setSaveQuoteLoading(true)
+
+    try {
+      const customerPayload = {
+        id: selectedCustomer?.id || null,
+        name: customerData.name,
+        email: customerData.email,
+        mobile: customerData.phone,
+        discount_percent: customerData.discount,
+        billing_name: customerData.billing_name,
+        billing_country: customerData.billing_country,
+        billing_city: customerData.billing_city,
+        billing_postal_code: customerData.billing_postal_code,
+        billing_street: customerData.billing_street,
+        billing_house_number: customerData.billing_house_number,
+        billing_tax_number: customerData.billing_tax_number,
+        billing_company_reg_number: customerData.billing_company_reg_number
+      }
+
+      const response = await fetch('/api/fronttervezo-quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quoteId: savedQuoteId,
+          customerData: customerPayload,
+          inomatLines
+        })
+      })
+
+      const data = (await response.json()) as {
+        success?: boolean
+        id?: string
+        quote_number?: string
+        error?: string
+        details?: string
+      }
+
+      if (!response.ok || !data.success || !data.id) {
+        toast.error(data.error || data.details || 'Az ajánlat mentése sikertelen.')
+
+        return
+      }
+
+      setSavedQuoteId(data.id)
+      toast.success(
+        data.quote_number
+          ? `Árajánlat mentve: ${data.quote_number}`
+          : 'Árajánlat sikeresen mentve.'
+      )
+      clearFronttervezoSessionLines()
+      router.push('/fronttervezo-quotes')
+    } catch (err) {
+      console.error('[fronttervezo] save quote:', err)
+      toast.error('Váratlan hiba az ajánlat mentésekor.')
+    } finally {
+      setSaveQuoteLoading(false)
+    }
+  }, [customerData, inomatQuote, router, savedQuoteId, selectedCustomer?.id])
+
+  const frontTypeOptions = useMemo<FrontTypeSegmentOption[]>(
+    () => [
+      { value: 'inomat', label: 'Inomat', description: 'Dekoratív front, több színben' },
+      { value: 'festett', label: 'Festett', comingSoon: true },
+      { value: 'folias', label: 'Fóliás', comingSoon: true },
+      { value: 'alu', label: 'Alu', comingSoon: true }
+    ],
     []
-  )
-
-  const butorlapFrontData: CustomInputHorizontalData = useMemo(
-    () => ({
-      meta: 'Lap',
-      title: <ButorlapRadioTileTitle lineCount={lineCounts.butorlap} />,
-      value: 'butorlap',
-      content: 'Hagyományos bútorlapból készülő front.'
-    }),
-    [lineCounts.butorlap]
   )
 
   const applyCustomer = useCallback((c: FronttervezoCustomer | null) => {
@@ -492,9 +762,11 @@ return
                 size="small"
                 options={customers}
                 getOptionLabel={option => (typeof option === 'string' ? option : option.name)}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
                 value={selectedCustomer}
                 inputValue={customerData.name}
                 onChange={(event, newValue) => {
+                  if (isEditMode) return
                   if (typeof newValue === 'string') {
                     setSelectedCustomer(null)
                     setCustomerData(prev => ({ ...prev, name: newValue }))
@@ -504,20 +776,30 @@ return
                     applyCustomer(null)
                   }
                 }}
-                onInputChange={(event, newInputValue) => {
+                onInputChange={(event, newInputValue, reason) => {
+                  if (isEditMode) return
+                  // MUI programozott inputValue állításnál reset-tel törölné a nevet
+                  if (reason === 'reset' || !event) return
+
                   setCustomerData(prev => ({ ...prev, name: newInputValue }))
 
                   if (newInputValue && !customers.find(c => c.name === newInputValue)) {
                     setSelectedCustomer(null)
                   }
                 }}
-                freeSolo
+                freeSolo={!isEditMode}
+                disabled={isEditMode}
+                disableClearable={isEditMode}
                 loadingText="Ügyfelek betöltése..."
                 noOptionsText="Nincs találat"
                 renderInput={params => (
                   <TextField
                     {...params}
-                    label="Név (válasszon ügyfelet vagy írjon be új nevet)"
+                    label={
+                      isEditMode
+                        ? 'Megrendelő neve'
+                        : 'Név (válasszon ügyfelet vagy írjon be új nevet)'
+                    }
                     size="small"
                     sx={inputSx}
                     InputProps={{
@@ -529,8 +811,7 @@ return
                 renderOption={(props, option) => {
                   const { key, ...other } = props
 
-                  
-return (
+                  return (
                     <Box component="li" key={key} {...other}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {option.is_favorite && (
@@ -599,11 +880,20 @@ return (
                 {selectedCustomer ? (
                   <>
                     <Typography variant="body2" color="text.secondary">
-                      Adatok automatikusan kitöltve - szerkeszthető
+                      {isEditMode
+                        ? 'Megrendelő rögzítve (szerkesztés mód)'
+                        : 'Adatok automatikusan kitöltve - szerkeszthető'}
                     </Typography>
-                    <Button size="small" variant="outlined" color="secondary" onClick={() => applyCustomer(null)}>
-                      Törlés
-                    </Button>
+                    {!isEditMode ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="secondary"
+                        onClick={() => applyCustomer(null)}
+                      >
+                        Törlés
+                      </Button>
+                    ) : null}
                   </>
                 ) : customerData.name && !selectedCustomer ? (
                   <Typography variant="body2" color="primary">
@@ -734,121 +1024,26 @@ return (
           </Card>
         </Grid>
 
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Front típus
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Válasszon egy lehetőséget. A Nettfront márkához tartozó négy típus egy csoportban jelenik meg.
-              </Typography>
-
-              <Grid2 container spacing={2} alignItems="stretch">
-                <Grid2 size={{ xs: 12, lg: 10 }}>
-                  <Box
-                    sx={{
-                      border: '1px solid',
-                      borderColor: 'primary.main',
-                      borderRadius: 2,
-                      p: 2,
-                      height: '100%',
-                      bgcolor: alpha(theme.palette.primary.main, isDark ? 0.12 : 0.06),
-                      boxShadow: `inset 0 0 0 1px ${alpha(theme.palette.primary.main, 0.15)}`
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1.5,
-                        flexWrap: 'wrap',
-                        mb: 2
-                      }}
-                    >
-                      <Box
-                        component="img"
-                        src="/brands/nettfront-logo.svg"
-                        alt="Nettfront"
-                        sx={{
-                          height: 28,
-                          width: 'auto',
-                          maxWidth: { xs: 200, sm: 220 },
-                          display: 'block',
-                          ...(isDark && { filter: 'invert(1)', opacity: 0.92 })
-                        }}
-                      />
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          fontWeight: 600,
-                          letterSpacing: 0.4,
-                          textTransform: 'uppercase',
-                          color: 'primary.main'
-                        }}
-                      >
-                        Nettfront frontok
-                      </Typography>
-                    </Box>
-
-                    <Grid2 container spacing={2}>
-                      {nettfrontTiles.map(item => {
-                        const count = lineCounts[item.value]
-
-                        const tileData: CustomInputHorizontalData = {
-                          value: item.value,
-                          meta: item.meta,
-                          title: (
-                            <NettfrontRadioTileTitle
-                              heading={item.heading}
-                              frontValue={item.value}
-                              lineCount={count}
-                              badgeAriaLabelPrefix={item.badgeAriaLabelPrefix}
-                            />
-                          )
-                        }
-
-                        
-return (
-                          <CustomInputHorizontal
-                            key={item.value}
-                            type="radio"
-                            name="fronttervezo-front-type"
-                            selected={selectedFrontType}
-                            handleChange={handleFrontTypeChange}
-                            color="primary"
-                            data={tileData}
-                            gridProps={{ size: { xs: 6, sm: 6, md: 3 } }}
-                          />
-                        )
-                      })}
-                    </Grid2>
-                  </Box>
-                </Grid2>
-
-                <CustomInputHorizontal
-                  type="radio"
-                  name="fronttervezo-front-type"
-                  selected={selectedFrontType}
-                  handleChange={handleFrontTypeChange}
-                  color="primary"
-                  data={butorlapFrontData}
-                  gridProps={{ size: { xs: 12, lg: 2 } }}
-                />
-              </Grid2>
-            </CardContent>
-          </Card>
+        <Grid item xs={12} md={4}>
+          <NettfrontBrandPanel />
         </Grid>
 
-        {selectedFrontType === 'butorlap' && (
-          <Grid item xs={12}>
-            <FronttervezoButorlapSection initialMaterials={initialMaterials} />
-          </Grid>
-        )}
+        <Grid item xs={12}>
+          <FrontTypeSegmentRow
+            options={frontTypeOptions}
+            selected={selectedFrontType}
+            lineCounts={lineCounts}
+            onChange={handleFrontTypeChange}
+          />
+        </Grid>
 
         {selectedFrontType === 'inomat' && (
           <Grid item xs={12}>
-            <FronttervezoInomatSection />
+            <FronttervezoInomatSection
+              key={isEditMode ? initialQuoteData!.id : 'fronttervezo-new'}
+              initialSkus={initialNettfrontSkus}
+              initialLines={isEditMode ? hydratedInomatLines ?? EMPTY_INOMAT_LINES : EMPTY_INOMAT_LINES}
+            />
           </Grid>
         )}
 
@@ -877,6 +1072,8 @@ return (
               hasAnyLines={hasAnyQuoteLines}
               loading={globalQuoteLoading}
               onGenerate={handleGenerateAllQuotes}
+              onSave={handleSaveQuote}
+              saveLoading={saveQuoteLoading}
               customerDiscountPercent={customerDiscountPercent}
               butorlapQuote={butorlapQuote}
               butorlapLines={butorlapLinesSnapshot}

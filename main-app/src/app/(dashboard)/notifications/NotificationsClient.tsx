@@ -118,6 +118,9 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
       defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese mar {days} napja kesz es atveheto. Udvozlettel, {company_name}'
     } else if (selectedTemplate.template_name === 'Beszerzés') {
       defaultTemplate = 'Kedves Megrendelonk! A {order_date}-i termekrendeles megerkezett. Osszeg: {total_price}. Udvozlettel, {company_name}'
+    } else if (selectedTemplate.template_name === 'Front beérkezés') {
+      defaultTemplate =
+        'Kedves {customer_name}! A(z) {order_number} szamu front rendelese beerkezett es atveheto. Osszeg: {total_price}. Udvozlettel, {company_name}'
     }
     
     setMessageTemplate(defaultTemplate)
@@ -227,6 +230,12 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
                   <Chip label="{total_price}" size="small" color="primary" variant="outlined" />
                 </>
               )}
+              {selectedTemplate?.template_name === 'Front beérkezés' && (
+                <>
+                  <Chip label="{total_price}" size="small" color="primary" variant="outlined" />
+                  <Chip label="{arrival_date}" size="small" color="primary" variant="outlined" />
+                </>
+              )}
             </Stack>
             <Typography variant="caption" display="block" sx={{ mt: 1 }}>
               • <strong>{'{customer_name}'}</strong> - Ügyfél neve (pl.: Mező Dávid)
@@ -256,6 +265,14 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
                   • <strong>{'{order_date}'}</strong> - Beszerzés dátuma (pl.: 2025-10-30)
                   <br />
                   • <strong>{'{total_price}'}</strong> - Végösszeg kedvezménnyel (pl.: 125,000 Ft)
+                  <br />
+                </>
+              )}
+              {selectedTemplate?.template_name === 'Front beérkezés' && (
+                <>
+                  • <strong>{'{total_price}'}</strong> - Végösszeg kedvezménnyel (pl.: 125000 Ft)
+                  <br />
+                  • <strong>{'{arrival_date}'}</strong> - Tényleges beérkezés dátuma (pl.: 2026-07-17)
                   <br />
                 </>
               )}

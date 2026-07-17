@@ -33,6 +33,7 @@ interface SmsConfirmationModalProps {
   onConfirm: (selectedOrderIds: string[]) => void
   orders: SmsEligibleOrder[]
   isProcessing?: boolean
+  description?: string
 }
 
 export default function SmsConfirmationModal({
@@ -40,7 +41,8 @@ export default function SmsConfirmationModal({
   onClose,
   onConfirm,
   orders,
-  isProcessing = false
+  isProcessing = false,
+  description
 }: SmsConfirmationModalProps) {
   // All checkboxes checked by default
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>(() => orders.map(o => o.id))
@@ -85,8 +87,8 @@ export default function SmsConfirmationModal({
 
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          A következő ügyfelek SMS értesítést kapnak a rendelésük elkészültéről.
-          Töröld a pipát, ha nem szeretnéd elküldeni az SMS-t egy adott ügyfélnek.
+          {description ||
+            'A következő ügyfelek SMS értesítést kapnak a rendelésük elkészültéről. Töröld a pipát, ha nem szeretnéd elküldeni az SMS-t egy adott ügyfélnek.'}
         </Typography>
 
         <TableContainer component={Paper} variant="outlined">

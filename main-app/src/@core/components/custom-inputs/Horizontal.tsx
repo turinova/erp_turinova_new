@@ -3,7 +3,7 @@ import Grid from '@mui/material/Grid2'
 import Radio from '@mui/material/Radio'
 import Checkbox from '@mui/material/Checkbox'
 import Typography from '@mui/material/Typography'
-import { styled } from '@mui/material/styles'
+import { alpha, styled } from '@mui/material/styles'
 
 // Third-party Imports
 import classnames from 'classnames'
@@ -22,6 +22,8 @@ const Root = styled('div', {
   cursor: 'pointer',
   position: 'relative',
   alignItems: 'flex-start',
+  minWidth: 0,
+  overflow: 'hidden',
   border: '1px solid var(--mui-palette-customColors-inputBorder)',
   padding: theme.spacing(4),
   color: 'var(--mui-palette-text-primary)',
@@ -37,6 +39,22 @@ const Root = styled('div', {
     '& i, & svg': {
       color: 'var(--mui-palette-primary-main) !important'
     }
+  },
+  '&.disabled': {
+    cursor: 'not-allowed',
+    opacity: 0.78,
+    pointerEvents: 'none',
+    '&:hover': {
+      borderColor: 'var(--mui-palette-customColors-inputBorder)'
+    }
+  },
+  '&.dense': {
+    padding: theme.spacing(1.5, 2),
+    alignItems: 'center',
+    minHeight: 48
+  },
+  '&.dense.active': {
+    backgroundColor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.16 : 0.08)
   }
 }))
 
@@ -81,7 +99,8 @@ const CheckboxInput = styled(Checkbox, {
 
 const CustomInputHorizontal = (props: CustomInputHorizontalProps) => {
   // Props
-  const { type, data, name, selected, gridProps, handleChange, color = 'primary' } = props
+  const { type, data, name, selected, gridProps, handleChange, color = 'primary', disabled = false, dense = false } =
+    props
 
   // Vars
   const { meta, title, value, content } = data
@@ -89,8 +108,8 @@ const CustomInputHorizontal = (props: CustomInputHorizontalProps) => {
   const renderData = () => {
     if (meta && title && content) {
       return (
-        <div className='flex flex-col bs-full is-full gap-1.5'>
-          <div className='flex items-start justify-between is-full mbs-1.5 gap-1.5'>
+        <div className='flex flex-col bs-full is-full gap-1.5' style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+          <div className='flex items-start justify-between is-full mbs-1.5 gap-1.5' style={{ minWidth: 0 }}>
             {typeof title === 'string' ? <Title>{title}</Title> : title}
             {typeof meta === 'string' ? <Meta>{meta}</Meta> : meta}
           </div>
@@ -99,43 +118,68 @@ const CustomInputHorizontal = (props: CustomInputHorizontalProps) => {
       )
     } else if (meta && title && !content) {
       return (
-        <div className='flex items-start justify-between is-full mbs-1.5 gap-1.5'>
+        <div className='flex items-start justify-between is-full mbs-1.5 gap-1.5' style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
           {typeof title === 'string' ? <Title>{title}</Title> : title}
           {typeof meta === 'string' ? <Meta>{meta}</Meta> : meta}
         </div>
       )
     } else if (!meta && title && content) {
       return (
-        <div className='flex flex-col bs-full gap-1.5 mbs-1.5'>
+        <div className='flex flex-col bs-full gap-1.5 mbs-1.5' style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
           {typeof title === 'string' ? <Title>{title}</Title> : title}
           {typeof content === 'string' ? <Content>{content}</Content> : content}
         </div>
       )
     } else if (!meta && !title && content) {
-      return typeof content === 'string' ? <Content className='mbs-1.5'>{content}</Content> : content
+      return typeof content === 'string' ? (
+        <Content className='mbs-1.5' style={{ minWidth: 0, flex: 1 }}>
+          {content}
+        </Content>
+      ) : (
+        content
+      )
     } else if (!meta && title && !content) {
-      return typeof title === 'string' ? <Title className='mbs-1.5'>{title}</Title> : title
+      return typeof title === 'string' ? (
+        <Title className='mbs-1.5' style={{ minWidth: 0, flex: 1 }}>
+          {title}
+        </Title>
+      ) : (
+        title
+      )
     } else {
       return null
     }
   }
 
   return data ? (
-    <Grid {...gridProps}>
+    <Grid {...gridProps} sx={{ minWidth: 0, ...(gridProps?.sx as object) }}>
       <Root
-        onClick={() => handleChange(value)}
+        onClick={() => {
+          if (!disabled) handleChange(value)
+        }}
         className={classnames({
-          active: type === 'radio' ? selected === value : selected.includes(value)
+          active: type === 'radio' ? selected === value : selected.includes(value),
+          disabled,
+          dense
         })}
+        aria-disabled={disabled || undefined}
       >
         {type === 'radio' ? (
-          <RadioInput name={name} color={color} value={value} onChange={handleChange} checked={selected === value} />
+          <RadioInput
+            name={name}
+            color={color}
+            value={value}
+            onChange={handleChange}
+            checked={selected === value}
+            disabled={disabled}
+          />
         ) : (
           <CheckboxInput
             color={color}
             name={`${name}-${value}`}
             checked={selected.includes(value)}
             onChange={() => handleChange(value)}
+            disabled={disabled}
           />
         )}
         {renderData()}

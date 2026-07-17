@@ -19,6 +19,9 @@ type NettfrontRadioTileTitleProps = {
 
   /** aria-label prefix a jelvényhez */
   badgeAriaLabelPrefix?: string
+
+  /** Coming soon — show Hamarosan under title, hide catalog link */
+  comingSoon?: boolean
 }
 
 /**
@@ -29,27 +32,44 @@ export default function NettfrontRadioTileTitle({
   heading,
   frontValue,
   lineCount = 0,
-  badgeAriaLabelPrefix
+  badgeAriaLabelPrefix,
+  comingSoon = false
 }: NettfrontRadioTileTitleProps) {
-  const catalog = getNettfrontCatalog(frontValue)
+  const catalog = comingSoon ? undefined : getNettfrontCatalog(frontValue)
   const ariaPrefix = badgeAriaLabelPrefix ?? heading.replace(/\s+FRONT$/i, '').trim()
 
   return (
-    <Box sx={{ minWidth: 0 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 0 }}>
+    <Box sx={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', minWidth: 0 }}>
         <Typography
           component="div"
-          variant="body1"
+          variant="body2"
           sx={{
-            fontWeight: 600,
-            lineHeight: 1.3,
-            color: 'var(--mui-palette-text-primary)'
+            fontWeight: 700,
+            lineHeight: 1.25,
+            color: 'var(--mui-palette-text-primary)',
+            wordBreak: 'break-word'
           }}
         >
           {heading}
         </Typography>
-        <FrontTypeLineCountBadge ariaLabelPrefix={ariaPrefix} count={lineCount} />
+        {!comingSoon ? <FrontTypeLineCountBadge ariaLabelPrefix={ariaPrefix} count={lineCount} /> : null}
       </Box>
+      {comingSoon ? (
+        <Typography
+          variant="caption"
+          sx={{
+            mt: 0.5,
+            display: 'block',
+            fontWeight: 700,
+            letterSpacing: 0.3,
+            textTransform: 'uppercase',
+            color: 'warning.main'
+          }}
+        >
+          Hamarosan
+        </Typography>
+      ) : null}
       {catalog ? (
         <Link
           href={catalog.href}

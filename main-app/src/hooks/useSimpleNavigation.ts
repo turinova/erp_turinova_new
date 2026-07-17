@@ -41,6 +41,7 @@ export function useSimpleNavigation() {
             case '/units':
               return isAdmin
             case '/materials':
+            case '/nettfront-skus':
             case '/linear-materials':
             case '/edge':
             case '/media':

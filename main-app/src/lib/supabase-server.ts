@@ -1183,6 +1183,102 @@ export async function getAllEdgeMaterials() {
   return data || []
 }
 
+/** Nettfront front SKU katalógus (Inomat színek + árak). Tábla hiányában []. */
+function mapNettfrontSkuRow(row: Record<string, unknown>) {
+  return {
+    id: row.id as string,
+    front_type: row.front_type as string,
+    sku_code: row.sku_code as string,
+    display_name: row.display_name as string,
+    finish: (row.finish as string | null) ?? null,
+    swatch_hex: (row.swatch_hex as string | null) ?? null,
+    cost_net_per_sqm: Number(row.cost_net_per_sqm) || 0,
+    sell_net_per_sqm: Number(row.sell_net_per_sqm) || 0,
+    is_active: row.is_active !== false,
+    sort_order: Number(row.sort_order) || 0,
+    created_at: (row.created_at as string | undefined) || undefined,
+    updated_at: (row.updated_at as string | undefined) || undefined
+  }
+}
+
+const NETTFRONT_SKU_SELECT = `
+  id,
+  front_type,
+  sku_code,
+  display_name,
+  finish,
+  swatch_hex,
+  cost_net_per_sqm,
+  sell_net_per_sqm,
+  is_active,
+  sort_order,
+  created_at,
+  updated_at
+`
+
+/** Active SKUs for Fronttervező catalog */
+export async function getNettfrontSkus(frontType?: string) {
+  if (!checkSupabaseConfig()) return []
+
+  let query = supabaseServer
+    .from('nettfront_skus')
+    .select(NETTFRONT_SKU_SELECT)
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .order('sort_order', { ascending: true })
+
+  if (frontType) {
+    query = query.eq('front_type', frontType)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Error fetching nettfront_skus:', error)
+
+    return []
+  }
+
+  return (data || []).map(row => mapNettfrontSkuRow(row as Record<string, unknown>))
+}
+
+/** All SKUs (active + inactive, not soft-deleted) for törzsadat lista */
+export async function getAllNettfrontSkus() {
+  if (!checkSupabaseConfig()) return []
+
+  const { data, error } = await supabaseServer
+    .from('nettfront_skus')
+    .select(NETTFRONT_SKU_SELECT)
+    .is('deleted_at', null)
+    .order('front_type', { ascending: true })
+    .order('sort_order', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching all nettfront_skus:', error)
+    return []
+  }
+
+  return (data || []).map(row => mapNettfrontSkuRow(row as Record<string, unknown>))
+}
+
+export async function getNettfrontSkuById(id: string) {
+  if (!checkSupabaseConfig()) return null
+
+  const { data, error } = await supabaseServer
+    .from('nettfront_skus')
+    .select(NETTFRONT_SKU_SELECT)
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error || !data) {
+    console.error('Error fetching nettfront_sku by id:', error)
+    return null
+  }
+
+  return mapNettfrontSkuRow(data as Record<string, unknown>)
+}
+
 export async function getAllBrandsForEdgeMaterials() {
   const { data, error } = await supabaseServer
     .from('brands')
@@ -2105,6 +2201,503 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
     console.error('[SSR] Error fetching quotes:', error)
     logTiming('Quotes Fetch Error', startTime)
     return { quotes: [], totalCount: 0, totalPages: 0 }
+  }
+}
+
+/** Fronttervező draft ajánlatok listája (paginált + keresés) */
+export async function getFronttervezoQuotesWithPagination(
+  page: number = 1,
+  limit: number = 20,
+  searchTerm?: string
+) {
+  const startTime = performance.now()
+
+  console.log(
+    `[SSR] Fetching fronttervezo quotes page ${page}, limit ${limit}, search: "${searchTerm || 'none'}"`
+  )
+
+  try {
+    const offset = (page - 1) * limit
+
+    let allMatchingQuoteIds: string[] = []
+    if (searchTerm && searchTerm.trim()) {
+      const trimmedSearch = searchTerm.trim()
+
+      const { data: customerMatches, error: customerError } = await supabaseServer
+        .from('fronttervezo_quotes')
+        .select('id, customers!inner(name)')
+        .eq('status', 'draft')
+        .is('deleted_at', null)
+        .ilike('customers.name', `%${trimmedSearch}%`)
+
+      if (customerError) {
+        console.error('[SSR] Error searching fronttervezo quotes by customer name:', customerError)
+      }
+
+      const { data: quoteNumberMatches, error: quoteNumberError } = await supabaseServer
+        .from('fronttervezo_quotes')
+        .select('id')
+        .eq('status', 'draft')
+        .is('deleted_at', null)
+        .ilike('quote_number', `%${trimmedSearch}%`)
+
+      if (quoteNumberError) {
+        console.error('[SSR] Error searching fronttervezo quotes by quote number:', quoteNumberError)
+      }
+
+      const customerIds = customerMatches?.map(q => q.id) || []
+      const quoteNumberIds = quoteNumberMatches?.map(q => q.id) || []
+      allMatchingQuoteIds = [...new Set([...customerIds, ...quoteNumberIds])]
+
+      if (allMatchingQuoteIds.length === 0) {
+        return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+      }
+    }
+
+    let query = supabaseServer
+      .from('fronttervezo_quotes')
+      .select(
+        `
+        id,
+        quote_number,
+        status,
+        source,
+        payment_method_id,
+        final_total_after_discount,
+        updated_at,
+        customers!inner(
+          id,
+          name
+        ),
+        payment_methods(
+          id,
+          name
+        )
+      `,
+        { count: 'exact' }
+      )
+      .eq('status', 'draft')
+      .is('deleted_at', null)
+
+    if (searchTerm && searchTerm.trim() && allMatchingQuoteIds.length > 0) {
+      query = query.in('id', allMatchingQuoteIds)
+    }
+
+    query = query.order('updated_at', { ascending: false }).range(offset, offset + limit - 1)
+
+    const { data: quotes, error: quotesError, count } = await query
+
+    if (quotesError) {
+      console.error('[SSR] Error fetching fronttervezo quotes:', quotesError)
+      logTiming('Fronttervezo Quotes Fetch Failed', startTime)
+      return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const transformedQuotes =
+      quotes?.map(quote => {
+        const customers = quote.customers as { id?: string; name?: string } | null
+        const paymentMethods = quote.payment_methods as { id?: string; name?: string } | null
+
+        return {
+          id: quote.id,
+          quote_number: quote.quote_number,
+          status: quote.status,
+          source: quote.source || 'internal',
+          customer_name: customers?.name || 'Ismeretlen ügyfél',
+          payment_method_id: quote.payment_method_id,
+          payment_method_name: paymentMethods?.name || null,
+          final_total_after_discount: Number(quote.final_total_after_discount) || 0,
+          updated_at: quote.updated_at
+        }
+      }) || []
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming(
+      'Fronttervezo Quotes Fetch Total',
+      startTime,
+      `returned ${transformedQuotes.length} quotes (page ${page}/${totalPages})`
+    )
+
+    return {
+      quotes: transformedQuotes,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Error fetching fronttervezo quotes:', error)
+    logTiming('Fronttervezo Quotes Fetch Error', startTime)
+    return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
+}
+
+/** Egy fronttervezo ajánlat teljes betöltése (detail + szerkesztés) */
+export async function getFronttervezoQuoteById(quoteId: string) {
+  const startTime = performance.now()
+
+  try {
+    const [quoteResult, linesResult, skuSummaryResult, servicesResult, feesResult, paymentsResult, tenantCompany] =
+      await Promise.all([
+        supabaseServer
+          .from('fronttervezo_quotes')
+          .select(
+            `
+            id,
+            quote_number,
+            order_number,
+            barcode,
+            status,
+            source,
+            customer_id,
+            discount_percent,
+            comment,
+            payment_status,
+            payment_method_id,
+            expected_arrival_date,
+            actual_arrival_date,
+            ready_notification_sent_at,
+            lines_total_net,
+            lines_total_vat,
+            lines_total_gross,
+            services_total_net,
+            services_total_vat,
+            services_total_gross,
+            fees_total_net,
+            fees_total_vat,
+            fees_total_gross,
+            total_net,
+            total_vat,
+            total_gross,
+            final_total_after_discount,
+            created_at,
+            updated_at,
+            ordered_at,
+            customers(
+              id,
+              name,
+              email,
+              mobile,
+              discount_percent,
+              billing_name,
+              billing_country,
+              billing_city,
+              billing_postal_code,
+              billing_street,
+              billing_house_number,
+              billing_tax_number,
+              billing_company_reg_number
+            ),
+            payment_methods(
+              id,
+              name
+            )
+          `
+          )
+          .eq('id', quoteId)
+          .is('deleted_at', null)
+          .single(),
+        supabaseServer
+          .from('fronttervezo_quote_lines')
+          .select('*')
+          .eq('quote_id', quoteId)
+          .order('sort_order', { ascending: true }),
+        supabaseServer
+          .from('fronttervezo_quote_sku_summary')
+          .select('*')
+          .eq('quote_id', quoteId)
+          .order('display_name', { ascending: true }),
+        supabaseServer
+          .from('fronttervezo_quote_services')
+          .select('*')
+          .eq('quote_id', quoteId)
+          .order('created_at', { ascending: true }),
+        supabaseServer
+          .from('fronttervezo_quote_fees')
+          .select(
+            `
+            id, fee_name, quantity, unit_price_net, vat_rate, vat_amount, gross_price, currency_id, comment, feetype_id, created_at,
+            feetypes(id, name),
+            currencies(id, name)
+          `
+          )
+          .eq('quote_id', quoteId)
+          .is('deleted_at', null)
+          .order('created_at', { ascending: true }),
+        supabaseServer
+          .from('fronttervezo_quote_payments')
+          .select('id, amount, payment_method, comment, payment_date, created_at')
+          .eq('quote_id', quoteId)
+          .is('deleted_at', null)
+          .order('payment_date', { ascending: false }),
+        getTenantCompany()
+      ])
+
+    if (quoteResult.error || !quoteResult.data) {
+      console.error('[SSR] fronttervezo quote not found:', quoteResult.error)
+      return null
+    }
+
+    const q = quoteResult.data
+    const customers = q.customers as Record<string, unknown> | null
+    const paymentMethods = q.payment_methods as { id?: string; name?: string } | null
+
+    logTiming('Fronttervezo Quote By Id', startTime, q.quote_number)
+
+    return {
+      id: q.id,
+      quote_number: q.quote_number,
+      order_number: q.order_number,
+      barcode: q.barcode,
+      status: q.status,
+      source: q.source || 'internal',
+      customer_id: q.customer_id,
+      discount_percent: Number(q.discount_percent) || 0,
+      comment: q.comment,
+      payment_status: q.payment_status,
+      payment_method_id: q.payment_method_id,
+      payment_method_name: paymentMethods?.name || null,
+      expected_arrival_date: q.expected_arrival_date,
+      actual_arrival_date: q.actual_arrival_date,
+      ready_notification_sent_at: q.ready_notification_sent_at,
+      lines_total_net: Number(q.lines_total_net) || 0,
+      lines_total_vat: Number(q.lines_total_vat) || 0,
+      lines_total_gross: Number(q.lines_total_gross) || 0,
+      services_total_net: Number(q.services_total_net) || 0,
+      services_total_vat: Number(q.services_total_vat) || 0,
+      services_total_gross: Number(q.services_total_gross) || 0,
+      fees_total_net: Number(q.fees_total_net) || 0,
+      fees_total_vat: Number(q.fees_total_vat) || 0,
+      fees_total_gross: Number(q.fees_total_gross) || 0,
+      total_net: Number(q.total_net) || 0,
+      total_vat: Number(q.total_vat) || 0,
+      total_gross: Number(q.total_gross) || 0,
+      final_total_after_discount: Number(q.final_total_after_discount) || 0,
+      created_at: q.created_at,
+      updated_at: q.updated_at,
+      ordered_at: q.ordered_at,
+      customer: customers
+        ? {
+            id: customers.id as string,
+            name: (customers.name as string) || '',
+            email: (customers.email as string) || '',
+            mobile: (customers.mobile as string) || '',
+            discount_percent: Number(customers.discount_percent) || 0,
+            billing_name: (customers.billing_name as string) || '',
+            billing_country: (customers.billing_country as string) || '',
+            billing_city: (customers.billing_city as string) || '',
+            billing_postal_code: (customers.billing_postal_code as string) || '',
+            billing_street: (customers.billing_street as string) || '',
+            billing_house_number: (customers.billing_house_number as string) || '',
+            billing_tax_number: (customers.billing_tax_number as string) || '',
+            billing_company_reg_number: (customers.billing_company_reg_number as string) || ''
+          }
+        : null,
+      lines: linesResult.data || [],
+      sku_summary: skuSummaryResult.data || [],
+      services: servicesResult.data || [],
+      fees: (feesResult.data || []).map((f: Record<string, unknown>) => ({
+        id: f.id,
+        fee_name: f.fee_name,
+        quantity: f.quantity,
+        unit_price_net: f.unit_price_net,
+        vat_rate: f.vat_rate,
+        vat_amount: f.vat_amount,
+        gross_price: f.gross_price,
+        currency_id: f.currency_id,
+        comment: f.comment || '',
+        feetype_id: f.feetype_id,
+        created_at: f.created_at
+      })),
+      payments: (paymentsResult.data || []).map((p: Record<string, unknown>) => ({
+        id: p.id as string,
+        amount: Number(p.amount) || 0,
+        payment_method: (p.payment_method as string) || '',
+        comment: (p.comment as string) || null,
+        payment_date: p.payment_date as string
+      })),
+      tenant_company: tenantCompany
+    }
+  } catch (error) {
+    console.error('[SSR] getFronttervezoQuoteById:', error)
+    logTiming('Fronttervezo Quote By Id Error', startTime)
+    return null
+  }
+}
+
+/** Fronttervező megrendelések listája (ordered+) */
+export async function getFronttervezoOrdersWithPagination(
+  page: number = 1,
+  limit: number = 50,
+  searchTerm?: string,
+  statusFilter?: string
+) {
+  const startTime = performance.now()
+  const orderStatuses = ['ordered', 'ready', 'finished', 'cancelled'] as const
+
+  console.log(
+    `[SSR] Fetching fronttervezo orders page ${page}, limit ${limit}, search: "${searchTerm || 'none'}", status: "${statusFilter || 'ordered'}"`
+  )
+
+  try {
+    const offset = (page - 1) * limit
+
+    let allMatchingOrderIds: string[] = []
+    if (searchTerm && searchTerm.trim()) {
+      const trimmedSearch = searchTerm.trim()
+
+      const { data: customerMatches } = await supabaseServer
+        .from('fronttervezo_quotes')
+        .select('id, customers!inner(name)')
+        .in('status', [...orderStatuses])
+        .is('deleted_at', null)
+        .ilike('customers.name', `%${trimmedSearch}%`)
+
+      const { data: orderNumberMatches } = await supabaseServer
+        .from('fronttervezo_quotes')
+        .select('id')
+        .in('status', [...orderStatuses])
+        .is('deleted_at', null)
+        .ilike('order_number', `%${trimmedSearch}%`)
+
+      const { data: barcodeMatches } = await supabaseServer
+        .from('fronttervezo_quotes')
+        .select('id')
+        .in('status', [...orderStatuses])
+        .is('deleted_at', null)
+        .ilike('barcode', `%${trimmedSearch}%`)
+
+      const { data: quoteNumberMatches } = await supabaseServer
+        .from('fronttervezo_quotes')
+        .select('id')
+        .in('status', [...orderStatuses])
+        .is('deleted_at', null)
+        .ilike('quote_number', `%${trimmedSearch}%`)
+
+      allMatchingOrderIds = [
+        ...new Set([
+          ...(customerMatches?.map(o => o.id) || []),
+          ...(orderNumberMatches?.map(o => o.id) || []),
+          ...(barcodeMatches?.map(o => o.id) || []),
+          ...(quoteNumberMatches?.map(o => o.id) || [])
+        ])
+      ]
+
+      if (allMatchingOrderIds.length === 0) {
+        return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+      }
+    }
+
+    let query = supabaseServer
+      .from('fronttervezo_quotes')
+      .select(
+        `
+        id,
+        quote_number,
+        order_number,
+        status,
+        payment_status,
+        barcode,
+        expected_arrival_date,
+        actual_arrival_date,
+        final_total_after_discount,
+        updated_at,
+        customers!inner(
+          id,
+          name,
+          mobile,
+          email
+        )
+      `,
+        { count: 'exact' }
+      )
+      .in('status', [...orderStatuses])
+      .is('deleted_at', null)
+
+    if (statusFilter && statusFilter !== 'all') {
+      query = query.eq('status', statusFilter)
+    }
+
+    if (searchTerm && searchTerm.trim() && allMatchingOrderIds.length > 0) {
+      query = query.in('id', allMatchingOrderIds)
+    }
+
+    query = query.order('updated_at', { ascending: false }).range(offset, offset + limit - 1)
+
+    const { data: orders, error: ordersError, count } = await query
+
+    if (ordersError) {
+      console.error('[SSR] Error fetching fronttervezo orders:', ordersError)
+      logTiming('Fronttervezo Orders Fetch Failed', startTime)
+      return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const orderIds = orders?.map(o => o.id) || []
+    const { data: paymentTotals } =
+      orderIds.length > 0
+        ? await supabaseServer
+            .from('fronttervezo_quote_payments')
+            .select('quote_id, amount')
+            .in('quote_id', orderIds)
+        : { data: [] as { quote_id: string; amount: number }[] }
+
+    const totalPaidByOrder = (paymentTotals || []).reduce(
+      (acc: Record<string, number>, p: { quote_id: string; amount: number }) => {
+        acc[p.quote_id] = (acc[p.quote_id] || 0) + Number(p.amount)
+        return acc
+      },
+      {}
+    )
+
+    const transformedOrders =
+      orders?.map(order => {
+        const customers = order.customers as {
+          name?: string
+          mobile?: string
+          email?: string
+        } | null
+        const finalTotal = Number(order.final_total_after_discount) || 0
+        const totalPaid = totalPaidByOrder[order.id] || 0
+
+        return {
+          id: order.id,
+          quote_number: order.quote_number,
+          order_number: order.order_number || 'N/A',
+          status: order.status,
+          payment_status: order.payment_status || 'not_paid',
+          customer_name: customers?.name || 'Ismeretlen ügyfél',
+          customer_mobile: customers?.mobile || '',
+          customer_email: customers?.email || '',
+          final_total: finalTotal,
+          total_paid: totalPaid,
+          remaining_balance: finalTotal - totalPaid,
+          barcode: order.barcode || '',
+          expected_arrival_date: order.expected_arrival_date || null,
+          actual_arrival_date: order.actual_arrival_date || null,
+          updated_at: order.updated_at
+        }
+      }) || []
+
+    const totalCount = count || 0
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / limit) : 0
+
+    logTiming(
+      'Fronttervezo Orders Fetch Total',
+      startTime,
+      `returned ${transformedOrders.length} orders (page ${page}/${totalPages})`
+    )
+
+    return {
+      orders: transformedOrders,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Error fetching fronttervezo orders:', error)
+    logTiming('Fronttervezo Orders Fetch Error', startTime)
+    return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
   }
 }
 

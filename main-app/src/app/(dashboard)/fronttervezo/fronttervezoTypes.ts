@@ -33,8 +33,14 @@ export type FronttervezoBoardMaterial = {
   updated_at: string
 }
 
+/** Which of the two parallel edges (A = left/bottom, B = right/top depending on orientation) */
+export type PanthelyEl = 'A' | 'B'
+
 export type PanthelyConfig = {
   oldal: 'hosszu' | 'rovid'
+  /** Which parallel edge; default A when missing (legacy session data) */
+  el?: PanthelyEl
   mennyiseg: number
+  /** Distance along the edge from the start end (vertical: from bottom; horizontal: from left) */
   tavolsagokAlulMm: number[]
 }

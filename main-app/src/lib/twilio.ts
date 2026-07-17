@@ -1,6 +1,6 @@
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
-import { renderSmsTemplate, toAsciiSmsText } from '@/lib/sms-text'
+import { renderSmsTemplate, toAsciiSmsText, formatSmsPrice } from '@/lib/sms-text'
 
 interface SMSResult {
   success: boolean
@@ -148,6 +148,92 @@ export async function sendOrderReadySMS(
 
   } catch (error) {
     console.error('[SMS] Error sending SMS:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+}
+
+/**
+ * Fronttervező: SMS when order becomes Beérkezett (ready).
+ * Template: "Front beérkezés"
+ */
+export async function sendFronttervezoReadySMS(
+  customerName: string,
+  customerMobile: string,
+  orderNumber: string,
+  totalPrice: number,
+  companyName: string = 'Turinova',
+  arrivalDate?: string | null
+): Promise<SMSResult> {
+  try {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID
+    const authToken = process.env.TWILIO_AUTH_TOKEN
+    const twilioNumber = process.env.TWILIO_PHONE_NUMBER
+
+    if (!accountSid || !authToken || !twilioNumber) {
+      console.error('[FT SMS] Missing Twilio credentials')
+      return { success: false, error: 'Twilio credentials not configured' }
+    }
+
+    const normalizedMobile = customerMobile.replace(/\s+/g, '').trim()
+
+    if (!normalizedMobile || !normalizedMobile.startsWith('+')) {
+      return { success: false, error: 'Invalid phone number format (must start with +)' }
+    }
+
+    const e164Regex = /^\+[1-9]\d{1,14}$/
+    if (!e164Regex.test(normalizedMobile)) {
+      return { success: false, error: `Invalid phone number format: ${normalizedMobile}` }
+    }
+
+    const client = twilio(accountSid, authToken)
+
+    let messageTemplate =
+      'Kedves {customer_name}! A(z) {order_number} szamu front rendelese beerkezett es atveheto. Osszeg: {total_price}. Udvozlettel, {company_name}'
+
+    try {
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+
+      const { data: settings } = await supabase
+        .from('sms_settings')
+        .select('message_template')
+        .eq('template_name', 'Front beérkezés')
+        .single()
+
+      if (settings?.message_template) {
+        messageTemplate = settings.message_template
+        console.log('[FT SMS] Using "Front beérkezés" template from database')
+      }
+    } catch (error) {
+      console.error('[FT SMS] Error fetching template, using default:', error)
+    }
+
+    const message = renderSmsTemplate(messageTemplate, {
+      customer_name: customerName,
+      order_number: orderNumber,
+      company_name: companyName,
+      total_price: formatSmsPrice(totalPrice),
+      arrival_date: arrivalDate || ''
+    })
+
+    console.log(`[FT SMS] Sending to ${normalizedMobile}: ${message}`)
+
+    const twilioMessage = await client.messages.create({
+      body: message,
+      from: twilioNumber,
+      to: normalizedMobile
+    })
+
+    console.log(`[FT SMS] Sent successfully. SID: ${twilioMessage.sid}`)
+
+    return { success: true, messageSid: twilioMessage.sid }
+  } catch (error) {
+    console.error('[FT SMS] Error sending SMS:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'

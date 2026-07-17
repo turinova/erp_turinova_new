@@ -52,3 +52,18 @@ export function dispatchFronttervezoLinesUpdated(): void {
 
   window.dispatchEvent(new CustomEvent(FRONTTERVEZO_LINES_UPDATED))
 }
+
+/** Összes fronttervező session tétel törlése (új ajánlat / mentés után) */
+export function clearFronttervezoSessionLines(options?: { silent?: boolean }): void {
+  if (typeof window === 'undefined') return
+
+  sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_BUTORLAP)
+  sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_INOMAT)
+  sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_ALU)
+  sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_FESTETT)
+  sessionStorage.removeItem(FRONTTERVEZO_SESSION_KEY_FOLIAS)
+
+  if (!options?.silent) {
+    dispatchFronttervezoLinesUpdated()
+  }
+}
