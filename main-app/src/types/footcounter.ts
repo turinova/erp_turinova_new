@@ -38,6 +38,11 @@ export type FootcounterDayWeather = {
   precip_open_hours_mm?: number | null
   rain_hours_open?: number | null
   is_significant_rain_open?: boolean | null
+  wind_speed_10m_max_kmh?: number | null
+  wind_gusts_10m_max_kmh?: number | null
+  wind_speed_open_max_kmh?: number | null
+  wind_speed_open_avg_kmh?: number | null
+  is_significant_wind_open?: boolean | null
 }
 
 export type FootcounterDashboardStats = {

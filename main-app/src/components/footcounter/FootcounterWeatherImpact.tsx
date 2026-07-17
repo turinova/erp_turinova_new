@@ -5,7 +5,7 @@ import { alpha, useTheme } from '@mui/material/styles'
 
 import { formatBucketSubline, type WeatherTrafficBucket, type WeatherTrafficImpact } from '@/lib/footcounter-weather-impact'
 import { formatAvg } from '@/lib/footcounter-format'
-import { WEATHER_RAIN_DAY_CRITERIA_HU } from '@/lib/footcounter-weather'
+import { WEATHER_RAIN_DAY_CRITERIA_HU, WEATHER_WIND_DAY_CRITERIA_HU } from '@/lib/footcounter-weather'
 
 const BUCKET_STYLE: Record<
   WeatherTrafficBucket['key'],
@@ -14,6 +14,7 @@ const BUCKET_STYLE: Record<
   rain: { color: 'info', icon: '☔' },
   snow: { color: 'info', icon: '❄️' },
   dry: { color: 'success', icon: '☀️' },
+  wind: { color: 'warning', icon: '💨' },
   heat: { color: 'warning', icon: '🌡️' },
   frost: { color: 'info', icon: '🧊' }
 }
@@ -22,14 +23,22 @@ type FootcounterWeatherImpactProps = {
   impact: WeatherTrafficImpact
   monthLabel: string
   avgTempMaxC?: number | null
+  avgWindMaxKmh?: number | null
 }
 
-export default function FootcounterWeatherImpact({ impact, monthLabel, avgTempMaxC }: FootcounterWeatherImpactProps) {
+export default function FootcounterWeatherImpact({
+  impact,
+  monthLabel,
+  avgTempMaxC,
+  avgWindMaxKmh
+}: FootcounterWeatherImpactProps) {
   const theme = useTheme()
 
   if (!impact.has_weather) return null
 
-  const visible = impact.buckets.filter(b => b.days > 0 || b.key === 'rain' || b.key === 'dry')
+  const visible = impact.buckets.filter(
+    b => b.days > 0 || b.key === 'rain' || b.key === 'dry' || b.key === 'wind'
+  )
   if (visible.length === 0) return null
 
   return (
@@ -39,7 +48,7 @@ export default function FootcounterWeatherImpact({ impact, monthLabel, avgTempMa
       </Typography>
       <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 1.5 }}>
         Átlagos napi belépő időjárás szerint (bázis: {formatAvg(impact.baseline_avg_in)} be/nap, {impact.baseline_days}{' '}
-        nap). {WEATHER_RAIN_DAY_CRITERIA_HU}
+        nap). {WEATHER_RAIN_DAY_CRITERIA_HU} {WEATHER_WIND_DAY_CRITERIA_HU}
       </Typography>
       <Grid container spacing={1.5}>
         {visible.map(bucket => {
@@ -82,12 +91,25 @@ export default function FootcounterWeatherImpact({ impact, monthLabel, avgTempMa
           )
         })}
       </Grid>
-      {avgTempMaxC != null && (
+      {(avgTempMaxC != null || avgWindMaxKmh != null) && (
         <Typography variant='caption' color='text.secondary' display='block' sx={{ mt: 1.5 }}>
-          Havi átlag max hőmérséklet:{' '}
-          <Box component='span' sx={{ fontWeight: 700, color: 'info.main' }}>
-            {avgTempMaxC} °C
-          </Box>
+          {avgTempMaxC != null && (
+            <>
+              Havi átlag max hőmérséklet:{' '}
+              <Box component='span' sx={{ fontWeight: 700, color: 'info.main' }}>
+                {avgTempMaxC} °C
+              </Box>
+            </>
+          )}
+          {avgTempMaxC != null && avgWindMaxKmh != null && ' · '}
+          {avgWindMaxKmh != null && (
+            <>
+              Havi átlag max szél (8–17):{' '}
+              <Box component='span' sx={{ fontWeight: 700, color: 'warning.main' }}>
+                {avgWindMaxKmh} km/h
+              </Box>
+            </>
+          )}
         </Typography>
       )}
       <Box

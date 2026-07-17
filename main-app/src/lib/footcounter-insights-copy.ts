@@ -43,7 +43,14 @@ export function computeMonthInsightBullets(
         `Meleg napokon (${heat.days} db) átlag ${formatAvg(heat.avg_in)} belépő (${formatVsBaselinePct(heat.vs_baseline_pct)} az átlaghoz).`
       )
     }
+
+    const wind = weatherImpact.buckets.find(b => b.key === 'wind')
+    if (wind && wind.days >= 2) {
+      bullets.push(
+        `Szeles napokon (${wind.days} db) átlag ${formatAvg(wind.avg_in)} belépő (${formatVsBaselinePct(wind.vs_baseline_pct)} az átlaghoz).`
+      )
+    }
   }
 
-  return bullets.slice(0, 3)
+  return bullets.slice(0, 4)
 }

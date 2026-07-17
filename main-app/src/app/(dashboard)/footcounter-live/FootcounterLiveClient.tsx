@@ -341,6 +341,7 @@ export default function FootcounterLiveClient() {
                 impact={weatherTrafficImpact}
                 monthLabel={monthLabel}
                 avgTempMaxC={monthWeatherImpact.avg_temp_max_c}
+                avgWindMaxKmh={monthWeatherImpact.avg_wind_max_kmh}
               />
             ) : (
               <Alert severity='info' sx={{ mb: 2 }}>

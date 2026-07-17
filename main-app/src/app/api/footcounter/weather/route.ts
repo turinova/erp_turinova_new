@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 /**
- * Sync daily + open-hours (8–17) hourly precipitation from Open-Meteo (Kecskemét).
+ * Sync daily + open-hours (8–17) hourly precipitation & wind from Open-Meteo (Kecskemét).
  * Query: ?days=90 (default) — how many past days to refresh (max 365).
  */
 export async function POST(request: NextRequest) {

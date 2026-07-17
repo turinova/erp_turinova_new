@@ -94,6 +94,8 @@ export async function attachMonthWeather(stats: FootcounterDashboardStats): Prom
   if (!days.length) return { ...stats, month_weather: [] }
 
   const fullSelect =
+    'day, condition, temp_max_c, temp_min_c, precipitation_mm, precip_open_hours_mm, rain_hours_open, is_significant_rain_open, wind_speed_10m_max_kmh, wind_gusts_10m_max_kmh, wind_speed_open_max_kmh, wind_speed_open_avg_kmh, is_significant_wind_open'
+  const rainSelect =
     'day, condition, temp_max_c, temp_min_c, precipitation_mm, precip_open_hours_mm, rain_hours_open, is_significant_rain_open'
   const basicSelect = 'day, condition, temp_max_c, temp_min_c, precipitation_mm'
 
@@ -103,6 +105,24 @@ export async function attachMonthWeather(stats: FootcounterDashboardStats): Prom
   const full = await supabaseServer.from('footcounter_daily_weather').select(fullSelect).in('day', days).order('day')
   data = full.data
   error = full.error
+
+  if (
+    error &&
+    error.code !== 'PGRST205' &&
+    (error.message?.includes('wind_speed_10m_max_kmh') ||
+      error.message?.includes('wind_gusts_10m_max_kmh') ||
+      error.message?.includes('wind_speed_open_max_kmh') ||
+      error.message?.includes('wind_speed_open_avg_kmh') ||
+      error.message?.includes('is_significant_wind_open'))
+  ) {
+    const rainOnly = await supabaseServer
+      .from('footcounter_daily_weather')
+      .select(rainSelect)
+      .in('day', days)
+      .order('day')
+    data = rainOnly.data
+    error = rainOnly.error
+  }
 
   if (
     error &&
@@ -137,7 +157,17 @@ export async function attachMonthWeather(stats: FootcounterDashboardStats): Prom
         (w?.precip_open_hours_mm as number | null) ?? rpc?.precip_open_hours_mm ?? null,
       rain_hours_open: (w?.rain_hours_open as number | null) ?? rpc?.rain_hours_open ?? null,
       is_significant_rain_open:
-        (w?.is_significant_rain_open as boolean | null) ?? rpc?.is_significant_rain_open ?? null
+        (w?.is_significant_rain_open as boolean | null) ?? rpc?.is_significant_rain_open ?? null,
+      wind_speed_10m_max_kmh:
+        (w?.wind_speed_10m_max_kmh as number | null) ?? rpc?.wind_speed_10m_max_kmh ?? null,
+      wind_gusts_10m_max_kmh:
+        (w?.wind_gusts_10m_max_kmh as number | null) ?? rpc?.wind_gusts_10m_max_kmh ?? null,
+      wind_speed_open_max_kmh:
+        (w?.wind_speed_open_max_kmh as number | null) ?? rpc?.wind_speed_open_max_kmh ?? null,
+      wind_speed_open_avg_kmh:
+        (w?.wind_speed_open_avg_kmh as number | null) ?? rpc?.wind_speed_open_avg_kmh ?? null,
+      is_significant_wind_open:
+        (w?.is_significant_wind_open as boolean | null) ?? rpc?.is_significant_wind_open ?? null
     }
   })
 

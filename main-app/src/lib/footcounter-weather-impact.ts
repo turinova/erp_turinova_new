@@ -2,7 +2,7 @@ import type { FootcounterDaySeries, FootcounterDayWeather } from '@/types/footco
 import { formatAvg } from '@/lib/footcounter-format'
 import { weatherImpactForDay } from '@/lib/footcounter-weather'
 
-export type WeatherTrafficBucketKey = 'rain' | 'dry' | 'heat' | 'frost' | 'snow'
+export type WeatherTrafficBucketKey = 'rain' | 'dry' | 'heat' | 'frost' | 'snow' | 'wind'
 
 export type WeatherTrafficBucket = {
   key: WeatherTrafficBucketKey
@@ -36,6 +36,7 @@ export function weatherDayIcon(w: FootcounterDayWeather | undefined): string {
   const impact = weatherImpactForDay(w)
   if (impact.snow) return '❄️'
   if (impact.rain) return '☔'
+  if (impact.wind) return '💨'
   if (impact.heat) return '🌡️'
   if (impact.frost) return '🧊'
   return ''
@@ -79,11 +80,13 @@ export function computeTrafficByWeatherBucket(
   const snow = pick(d => d.flags.snow)
   const heat = pick(d => d.flags.heat)
   const frost = pick(d => d.flags.frost)
+  const wind = pick(d => d.flags.wind)
   const dry = pick(d => !d.flags.rain && !d.flags.snow)
 
   const buckets: WeatherTrafficBucket[] = [
     { key: 'rain', label: 'Esős napok (8–17)', ...rain },
     { key: 'dry', label: 'Száraz napok', ...dry },
+    { key: 'wind', label: 'Szeles napok (8–17)', ...wind },
     { key: 'heat', label: 'Meleg napok (≥30°C)', ...heat },
     { key: 'frost', label: 'Fagyos napok', ...frost }
   ]
@@ -95,7 +98,9 @@ export function computeTrafficByWeatherBucket(
   return {
     baseline_avg_in,
     baseline_days,
-    buckets: buckets.filter(b => b.days > 0 || b.key === 'rain' || b.key === 'dry'),
+    buckets: buckets.filter(
+      b => b.days > 0 || b.key === 'rain' || b.key === 'dry' || b.key === 'wind'
+    ),
     has_weather: known.length > 0
   }
 }
