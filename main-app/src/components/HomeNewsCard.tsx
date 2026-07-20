@@ -35,8 +35,6 @@ import { sortHomeNewsPosts, type HomeNewsKind, type HomeNewsPost } from '@/lib/h
 
 const UNLOCK_STORAGE_KEY = 'home_news_unlocked_until'
 const PIN_STORAGE_KEY = 'home_news_pin'
-const EXPANDED_STORAGE_KEY = 'home_news_expanded'
-const LAST_SEEN_STORAGE_KEY = 'home_news_last_seen_at'
 const UNLOCK_MS = 30 * 60 * 1000
 const COMPACT_PREVIEW_LIMIT = 3
 const NEW_WITHIN_MS = 48 * 60 * 60 * 1000
@@ -59,13 +57,6 @@ function isFreshPost(iso: string) {
   const t = new Date(iso).getTime()
   if (Number.isNaN(t)) return false
   return Date.now() - t <= NEW_WITHIN_MS
-}
-
-function latestCreatedAt(posts: HomeNewsPost[]): string | null {
-  if (posts.length === 0) return null
-  return posts.reduce((latest, post) => {
-    return !latest || post.created_at > latest ? post.created_at : latest
-  }, posts[0].created_at)
 }
 
 function readUnlockExpiry(): number {
@@ -149,24 +140,7 @@ export default function HomeNewsCard({ initialPosts }: Props) {
 
   useEffect(() => {
     setUnlocked(isUnlockedNow())
-
-    const savedExpanded = localStorage.getItem(EXPANDED_STORAGE_KEY) === '1'
-    const lastSeen = localStorage.getItem(LAST_SEEN_STORAGE_KEY)
-    const newest = latestCreatedAt(initialPosts)
-    const hasUnseen = Boolean(newest && (!lastSeen || newest > lastSeen))
-
-    // Default compact; open if user left it open or there is a newer post than last visit
-    setExpanded(savedExpanded || hasUnseen)
-
-    if (newest) {
-      localStorage.setItem(LAST_SEEN_STORAGE_KEY, newest)
-    }
-  }, [initialPosts])
-
-  const setExpandedPersist = (next: boolean) => {
-    setExpanded(next)
-    localStorage.setItem(EXPANDED_STORAGE_KEY, next ? '1' : '0')
-  }
+  }, [])
 
   const visiblePosts = useMemo(() => {
     if (expanded) return posts
@@ -208,7 +182,7 @@ export default function HomeNewsCard({ initialPosts }: Props) {
       setUnlocked(true)
       setPin(entered)
       setPinDialogOpen(false)
-      setExpandedPersist(true)
+      setExpanded(true)
     } catch {
       setError('Nem sikerült ellenőrizni a kódot')
     } finally {
@@ -285,7 +259,7 @@ export default function HomeNewsCard({ initialPosts }: Props) {
         setPosts(prev => sortHomeNewsPosts(prev.map(p => (p.id === data.id ? data : p))))
       } else {
         setPosts(prev => sortHomeNewsPosts([data, ...prev]).slice(0, 8))
-        setExpandedPersist(true)
+        setExpanded(true)
       }
       persistUnlock(pinForRequest)
       setPin(pinForRequest)
@@ -396,7 +370,7 @@ export default function HomeNewsCard({ initialPosts }: Props) {
             direction="row"
             alignItems="center"
             spacing={0.5}
-            onClick={() => setExpandedPersist(!expanded)}
+            onClick={() => setExpanded(!expanded)}
             sx={{ cursor: 'pointer', minWidth: 0, flex: 1, py: 0.25 }}
           >
             {expanded ? (
@@ -544,7 +518,7 @@ export default function HomeNewsCard({ initialPosts }: Props) {
                   borderColor: 'divider'
                 }}
               >
-                <Button size="small" onClick={() => setExpandedPersist(true)}>
+                <Button size="small" onClick={() => setExpanded(true)}>
                   +{hiddenCount} további megnyitása
                 </Button>
               </Box>
@@ -552,7 +526,7 @@ export default function HomeNewsCard({ initialPosts }: Props) {
 
             {expanded && posts.length > COMPACT_PREVIEW_LIMIT ? (
               <Box sx={{ px: 2, py: 1, textAlign: 'center', borderTop: '1px solid', borderColor: 'divider' }}>
-                <Button size="small" onClick={() => setExpandedPersist(false)}>
+                <Button size="small" onClick={() => setExpanded(false)}>
                   Összecsukás
                 </Button>
               </Box>
