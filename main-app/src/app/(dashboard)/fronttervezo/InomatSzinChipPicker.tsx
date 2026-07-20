@@ -6,11 +6,7 @@ import { Box, Typography } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 
 import InomatFinishBadge from './InomatFinishBadge'
-import {
-  INOMAT_ALL_COLORS,
-  splitInomatCatalog,
-  type InomatColorDef
-} from '@/lib/pricing/inomatCatalog'
+import { splitInomatCatalog, type InomatColorDef } from '@/lib/pricing/inomatCatalog'
 import { formatPrice } from '@/lib/pricing/quoteCalculations'
 
 type InomatSzinChipPickerProps = {
@@ -148,7 +144,7 @@ function ColorGroup({
 export default function InomatSzinChipPicker({
   value,
   onChange,
-  catalog = INOMAT_ALL_COLORS
+  catalog = []
 }: InomatSzinChipPickerProps) {
   const { matt, hg } = splitInomatCatalog(catalog)
 

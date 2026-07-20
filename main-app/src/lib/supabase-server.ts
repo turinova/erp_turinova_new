@@ -743,6 +743,79 @@ export async function getCustomerPortalDraftQuotes() {
   return transformedQuotes
 }
 
+/** Customer Portal Nettfront/Fronttervező draft quotes for home dashboard */
+export async function getCustomerPortalNettfrontDraftQuotes() {
+  const startTime = performance.now()
+
+  const { data, error } = await supabaseServer
+    .from('fronttervezo_quotes')
+    .select(
+      `
+      id,
+      quote_number,
+      final_total_after_discount,
+      created_at,
+      payment_method_id,
+      customers(
+        id,
+        name
+      ),
+      payment_methods(
+        id,
+        name
+      )
+    `
+    )
+    .eq('source', 'customer_portal')
+    .eq('status', 'draft')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  const queryTime = performance.now()
+  logTiming(
+    'Customer Portal Nettfront Quotes DB Query',
+    startTime,
+    `fetched ${data?.length || 0} records`
+  )
+
+  if (error) {
+    console.error('Error fetching customer portal Nettfront draft quotes:', error)
+    return []
+  }
+
+  const transformedQuotes =
+    data?.map(quote => {
+      const customers = quote.customers as { name?: string } | { name?: string }[] | null
+      const customerName = Array.isArray(customers)
+        ? customers[0]?.name
+        : customers?.name
+      const paymentMethods = quote.payment_methods as
+        | { name?: string }
+        | { name?: string }[]
+        | null
+      const paymentName = Array.isArray(paymentMethods)
+        ? paymentMethods[0]?.name
+        : paymentMethods?.name
+
+      return {
+        id: quote.id as string,
+        quote_number: (quote.quote_number as string) || '',
+        customer_name: customerName || 'Unknown',
+        final_total_after_discount: Number(quote.final_total_after_discount) || 0,
+        payment_method_name: paymentName || null,
+        created_at: quote.created_at as string
+      }
+    }) || []
+
+  logTiming(
+    'Customer Portal Nettfront Quotes Total',
+    startTime,
+    `returned ${transformedQuotes.length} records`
+  )
+  return transformedQuotes
+}
+
 export async function getPaymentMethodById(id: string) {
   const startTime = performance.now()
   

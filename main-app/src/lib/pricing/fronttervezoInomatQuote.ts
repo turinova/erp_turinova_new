@@ -2,7 +2,6 @@ import type { PanthelyConfig } from '@/app/(dashboard)/fronttervezo/fronttervezo
 
 import {
   grossPerSqmForInomatSzin,
-  INOMAT_ALL_COLORS,
   INOMAT_SZIN_OPTIONS,
   NETTFRONT_VAT_RATE,
   normalizeInomatSzin,
@@ -75,7 +74,7 @@ export function estimateInomatLinePanelGross(
     szelessegMm: number
     mennyiseg: number
   },
-  catalog: InomatColorDef[] = INOMAT_ALL_COLORS
+  catalog: InomatColorDef[] = []
 ): { sqm: number; grossPerSqm: number; gross: number } {
   const sqm = (line.magassagMm * line.szelessegMm * line.mennyiseg) / 1_000_000
   const sellNet = sellNetPerSqmForInomatSzin(line.szin, catalog)
@@ -90,7 +89,7 @@ export function computeFronttervezoInomatQuote(
   lines: InomatQuoteLineInput[],
   cuttingFee: CuttingFeeLike,
   customerDiscountPercent: number,
-  catalog: InomatColorDef[] = INOMAT_ALL_COLORS
+  catalog: InomatColorDef[] = []
 ): FronttervezoInomatQuoteResult | null {
   if (!lines.length) return null
 

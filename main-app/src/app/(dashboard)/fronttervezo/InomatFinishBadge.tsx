@@ -7,7 +7,6 @@ import { alpha, useTheme } from '@mui/material/styles'
 
 import {
   getInomatFinishLabel,
-  INOMAT_ALL_COLORS,
   type InomatColorDef,
   type InomatColorGroup
 } from '@/lib/pricing/inomatCatalog'
@@ -23,7 +22,7 @@ type InomatFinishBadgeProps = {
 export default function InomatFinishBadge({
   szin,
   group,
-  catalog = INOMAT_ALL_COLORS,
+  catalog = [],
   size = 'small'
 }: InomatFinishBadgeProps) {
   const theme = useTheme()

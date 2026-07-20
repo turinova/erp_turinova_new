@@ -3,7 +3,10 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 
 import HomeClient from './HomeClient'
-import { getCustomerPortalDraftQuotes } from '@/lib/supabase-server'
+import {
+  getCustomerPortalDraftQuotes,
+  getCustomerPortalNettfrontDraftQuotes
+} from '@/lib/supabase-server'
 import {
   getMonthlyQuotesData,
   getMonthlySupplierOrdersData,
@@ -55,6 +58,7 @@ export default async function Page() {
 
   const [
     customerPortalQuotes,
+    customerPortalNettfrontQuotes,
     monthlyQuotes,
     monthlySupplierOrders,
     weeklyCutting,
@@ -64,6 +68,7 @@ export default async function Page() {
     footcounterHome
   ] = await Promise.all([
     getCustomerPortalDraftQuotes(),
+    getCustomerPortalNettfrontDraftQuotes(),
     getMonthlyQuotesData('month', 0),
     getMonthlySupplierOrdersData('month', 0),
     getWeeklyCuttingData(0),
@@ -76,6 +81,7 @@ export default async function Page() {
   return (
     <HomeClient
       customerPortalQuotes={customerPortalQuotes}
+      customerPortalNettfrontQuotes={customerPortalNettfrontQuotes}
       initialMonthlyQuotes={monthlyQuotes}
       initialMonthlySupplierOrders={monthlySupplierOrders}
       initialWeeklyCutting={weeklyCutting}

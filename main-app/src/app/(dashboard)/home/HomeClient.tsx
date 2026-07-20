@@ -3,6 +3,7 @@
 import React from 'react'
 import { Container, Grid } from '@mui/material'
 import CustomerPortalQuotesTable from '@/components/CustomerPortalQuotesTable'
+import CustomerPortalNettfrontQuotesTable from '@/components/CustomerPortalNettfrontQuotesTable'
 import TodayAttendanceDashboard, { type TodayAttendanceEmployee } from '@/components/TodayAttendanceDashboard'
 import WeeklyCuttingChart from '@/components/WeeklyCuttingChart'
 import WeeklyEdgeBandingChart from '@/components/WeeklyEdgeBandingChart'
@@ -22,8 +23,18 @@ interface CustomerQuote {
   created_at: string
 }
 
+interface NettfrontPortalQuote {
+  id: string
+  quote_number?: string
+  customer_name: string
+  final_total_after_discount: number
+  payment_method_name: string | null
+  created_at: string
+}
+
 interface HomeClientProps {
   customerPortalQuotes: CustomerQuote[]
+  customerPortalNettfrontQuotes: NettfrontPortalQuote[]
   initialMonthlyQuotes: any
   initialMonthlySupplierOrders: any
   initialWeeklyCutting: any
@@ -38,6 +49,7 @@ interface HomeClientProps {
 
 export default function HomeClient({
   customerPortalQuotes,
+  customerPortalNettfrontQuotes,
   initialMonthlyQuotes,
   initialMonthlySupplierOrders,
   initialWeeklyCutting,
@@ -51,6 +63,10 @@ export default function HomeClient({
       <Grid container spacing={3}>
         <Grid item xs={12}>
           <CustomerPortalQuotesTable quotes={customerPortalQuotes} />
+        </Grid>
+
+        <Grid item xs={12}>
+          <CustomerPortalNettfrontQuotesTable quotes={customerPortalNettfrontQuotes} />
         </Grid>
 
         <Grid item xs={12}>

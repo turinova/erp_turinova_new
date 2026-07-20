@@ -1,6 +1,6 @@
 /**
  * INOMAT front color catalog — UI + pricing helpers.
- * Prefer DB rows (`nettfront_skus`); static list is fallback before migration.
+ * Prices come only from `nettfront_skus` (no hardcoded fallback).
  */
 
 export const NETTFRONT_VAT_RATE = 0.27
@@ -37,9 +37,6 @@ export type NettfrontSkuRow = {
   sort_order: number
 }
 
-const FALLBACK_COST = 25_000
-const FALLBACK_SELL = 35_000
-
 function grossFromNet(sellNet: number): number {
   return Math.round(sellNet * (1 + NETTFRONT_VAT_RATE))
 }
@@ -49,8 +46,8 @@ function colorDef(
   label: string,
   group: InomatColorGroup,
   swatchHex: string,
-  costNet = FALLBACK_COST,
-  sellNet = FALLBACK_SELL,
+  costNet: number,
+  sellNet: number,
   skuId?: string
 ): InomatColorDef {
   return {
@@ -65,32 +62,14 @@ function colorDef(
   }
 }
 
-/** Fallback seed (migration előtt / üres lekérdezés) */
-export const INOMAT_MATT_COLORS: InomatColorDef[] = [
-  colorDef('bronze', 'Bronze', 'matt', '#8B6914'),
-  colorDef('cedar-green', 'Cedar Green', 'matt', '#5C6B4F'),
-  colorDef('dune-beige', 'Dune Beige', 'matt', '#C4B59A'),
-  colorDef('ivory-white', 'Ivory White', 'matt', '#F5F0E6'),
-  colorDef('lava-black', 'Lava Black', 'matt', '#2A2A2A'),
-  colorDef('midnight-blue', 'Midnight Blue', 'matt', '#1E3A5F'),
-  colorDef('mist-grey', 'Mist Grey', 'matt', '#B8B8B8'),
-  colorDef('palo-santo-beige', 'Palo Santo Beige', 'matt', '#D4C4A8')
-]
+/** @deprecated Empty — catalog must come from DB via buildInomatCatalogFromSkus */
+export const INOMAT_MATT_COLORS: InomatColorDef[] = []
+/** @deprecated Empty — catalog must come from DB via buildInomatCatalogFromSkus */
+export const INOMAT_HG_COLORS: InomatColorDef[] = []
+/** @deprecated Empty — catalog must come from DB via buildInomatCatalogFromSkus */
+export const INOMAT_ALL_COLORS: InomatColorDef[] = []
 
-export const INOMAT_HG_COLORS: InomatColorDef[] = [
-  colorDef('pearl', 'Pearl', 'hg', '#E8E4DC'),
-  colorDef('pure-white', 'Pure White', 'hg', '#FAFAFA'),
-  colorDef('storm-grey', 'Storm Grey', 'hg', '#7A7A7A'),
-  colorDef('gold', 'Gold', 'hg', '#C9A227'),
-  colorDef('hg-dune-beige', 'Hg Dune Beige', 'hg', '#D8C9AE'),
-  colorDef('hg-ivory-white', 'Hg Ivory White', 'hg', '#F8F4EA'),
-  colorDef('hg-palo-santo-beige', 'Hg Palo Santo Beige', 'hg', '#E0D0B4'),
-  colorDef('hg-pure-white', 'Hg Pure White', 'hg', '#FFFFFF')
-]
-
-export const INOMAT_ALL_COLORS: InomatColorDef[] = [...INOMAT_MATT_COLORS, ...INOMAT_HG_COLORS]
-
-export const INOMAT_SZIN_OPTIONS = INOMAT_ALL_COLORS.map(c => c.label)
+export const INOMAT_SZIN_OPTIONS: string[] = []
 
 export type InomatSzin = string
 
@@ -111,9 +90,8 @@ export function buildInomatCatalogFromSkus(rows: NettfrontSkuRow[]): InomatColor
   const inomat = rows
     .filter(r => r.front_type === 'inomat' && r.is_active !== false)
     .filter(r => r.finish === 'matt' || r.finish === 'hg')
+    .filter(r => Number(r.sell_net_per_sqm) > 0)
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-
-  if (!inomat.length) return INOMAT_ALL_COLORS
 
   return inomat.map(r =>
     colorDef(
@@ -121,8 +99,8 @@ export function buildInomatCatalogFromSkus(rows: NettfrontSkuRow[]): InomatColor
       r.display_name,
       r.finish as InomatColorGroup,
       r.swatch_hex || '#CCCCCC',
-      Number(r.cost_net_per_sqm) || FALLBACK_COST,
-      Number(r.sell_net_per_sqm) || FALLBACK_SELL,
+      Number(r.cost_net_per_sqm) || 0,
+      Number(r.sell_net_per_sqm),
       r.id
     )
   )
@@ -144,17 +122,17 @@ function byLabelMap(catalog: InomatColorDef[]) {
 
 export function getInomatColorDef(
   label: string,
-  catalog: InomatColorDef[] = INOMAT_ALL_COLORS
+  catalog: InomatColorDef[] = []
 ): InomatColorDef | undefined {
   return byLabelMap(catalog).get(label.trim().toLowerCase())
 }
 
 export function normalizeInomatSzin(
   raw: string | null | undefined,
-  catalog: InomatColorDef[] = INOMAT_ALL_COLORS
+  catalog: InomatColorDef[] = []
 ): string {
   const s = (raw ?? '').trim()
-  const fallback = catalog[0]?.label ?? 'Bronze'
+  const fallback = catalog[0]?.label ?? ''
 
   if (!s) return fallback
 
@@ -189,31 +167,25 @@ export function normalizeInomatSzin(
   return fallback
 }
 
-export function sellNetPerSqmForInomatSzin(
-  szin: string,
-  catalog: InomatColorDef[] = INOMAT_ALL_COLORS
-): number {
+export function sellNetPerSqmForInomatSzin(szin: string, catalog: InomatColorDef[] = []): number {
   const def = getInomatColorDef(normalizeInomatSzin(szin, catalog), catalog)
 
-  return def?.sellNetPerSqm ?? FALLBACK_SELL
+  return def?.sellNetPerSqm ?? 0
 }
 
-export function grossPerSqmForInomatSzin(
-  szin: string,
-  catalog: InomatColorDef[] = INOMAT_ALL_COLORS
-): number {
+export function grossPerSqmForInomatSzin(szin: string, catalog: InomatColorDef[] = []): number {
   const def = getInomatColorDef(normalizeInomatSzin(szin, catalog), catalog)
 
-  return def?.grossPerSqm ?? grossFromNet(FALLBACK_SELL)
+  return def?.grossPerSqm ?? 0
 }
 
-export function isInomatSzin(value: string, catalog: InomatColorDef[] = INOMAT_ALL_COLORS): boolean {
+export function isInomatSzin(value: string, catalog: InomatColorDef[] = []): boolean {
   return byLabelMap(catalog).has(value.trim().toLowerCase())
 }
 
 export function getInomatFinishLabel(
   szin: string,
-  catalog: InomatColorDef[] = INOMAT_ALL_COLORS
+  catalog: InomatColorDef[] = []
 ): 'Matt' | 'Fényes' {
   const def = getInomatColorDef(normalizeInomatSzin(szin, catalog), catalog)
 
@@ -222,7 +194,7 @@ export function getInomatFinishLabel(
 
 export function getInomatFinishGroup(
   szin: string,
-  catalog: InomatColorDef[] = INOMAT_ALL_COLORS
+  catalog: InomatColorDef[] = []
 ): InomatColorGroup {
   const def = getInomatColorDef(normalizeInomatSzin(szin, catalog), catalog)
 

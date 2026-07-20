@@ -209,6 +209,16 @@ export async function POST(request: NextRequest) {
 
     const catalog = buildInomatCatalogFromSkus((skuRows || []) as NettfrontSkuRow[])
 
+    if (catalog.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            'Nettfront katalógus üres — nincs betölthető Inomat SKU ár. Fallback árakat nem használunk.'
+        },
+        { status: 500 }
+      )
+    }
+
     const { data: cuttingFee } = await supabaseServer
       .from('cutting_fees')
       .select('panthelyfuras_fee_per_hole')
