@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { Container, Grid } from '@mui/material'
+import HomeNewsCard from '@/components/HomeNewsCard'
 import CustomerPortalQuotesTable from '@/components/CustomerPortalQuotesTable'
 import CustomerPortalNettfrontQuotesTable from '@/components/CustomerPortalNettfrontQuotesTable'
 import TodayAttendanceDashboard, { type TodayAttendanceEmployee } from '@/components/TodayAttendanceDashboard'
@@ -14,6 +15,7 @@ import PosOrdersGoalsCard from '@/components/PosOrdersGoalsCard'
 import FootcounterHomeCard from '@/components/FootcounterHomeCard'
 import type { PosOrdersGoalStats } from '@/lib/dashboard-server'
 import type { FootcounterHomeSlim } from '@/types/footcounter'
+import type { HomeNewsPost } from '@/lib/home-news-server'
 
 interface CustomerQuote {
   id: string
@@ -33,6 +35,7 @@ interface NettfrontPortalQuote {
 }
 
 interface HomeClientProps {
+  homeNewsPosts: HomeNewsPost[]
   customerPortalQuotes: CustomerQuote[]
   customerPortalNettfrontQuotes: NettfrontPortalQuote[]
   initialMonthlyQuotes: any
@@ -48,6 +51,7 @@ interface HomeClientProps {
 }
 
 export default function HomeClient({
+  homeNewsPosts,
   customerPortalQuotes,
   customerPortalNettfrontQuotes,
   initialMonthlyQuotes,
@@ -61,6 +65,10 @@ export default function HomeClient({
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Grid container spacing={3}>
+        <Grid item xs={12}>
+          <HomeNewsCard initialPosts={homeNewsPosts} />
+        </Grid>
+
         <Grid item xs={12}>
           <CustomerPortalQuotesTable quotes={customerPortalQuotes} />
         </Grid>

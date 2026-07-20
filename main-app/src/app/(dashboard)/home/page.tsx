@@ -7,6 +7,7 @@ import {
   getCustomerPortalDraftQuotes,
   getCustomerPortalNettfrontDraftQuotes
 } from '@/lib/supabase-server'
+import { getHomeNewsPosts } from '@/lib/home-news-server'
 import {
   getMonthlyQuotesData,
   getMonthlySupplierOrdersData,
@@ -57,6 +58,7 @@ export default async function Page() {
   }
 
   const [
+    homeNewsPosts,
     customerPortalQuotes,
     customerPortalNettfrontQuotes,
     monthlyQuotes,
@@ -67,6 +69,7 @@ export default async function Page() {
     posOrdersGoalStats,
     footcounterHome
   ] = await Promise.all([
+    getHomeNewsPosts(),
     getCustomerPortalDraftQuotes(),
     getCustomerPortalNettfrontDraftQuotes(),
     getMonthlyQuotesData('month', 0),
@@ -80,6 +83,7 @@ export default async function Page() {
 
   return (
     <HomeClient
+      homeNewsPosts={homeNewsPosts}
       customerPortalQuotes={customerPortalQuotes}
       customerPortalNettfrontQuotes={customerPortalNettfrontQuotes}
       initialMonthlyQuotes={monthlyQuotes}
