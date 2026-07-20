@@ -31,10 +31,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#8E44AD' // Purple for optimization tools
   },
   {
-    label: 'Fronttervező',
+    label: <span style={{ fontWeight: 700 }}>NETTFRONT</span>,
     href: '/fronttervezo',
-    icon: 'ri-pencil-ruler-2-line',
-    iconColor: '#6C5CE7'
+    icon: 'ri-checkbox-blank-line',
+    iconColor: '#000000' // Black outlined square for Nettfront
   },
   {
     label: 'Munki',
