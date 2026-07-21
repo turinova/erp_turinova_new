@@ -1,57 +1,49 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import Script from 'next/script'
 import {
   COOKIE_CONSENT_EVENT,
   GA_MEASUREMENT_ID,
+  gtagConsentUpdate,
   hasAnalyticsConsent
 } from '@/lib/analytics'
 
 /**
- * Loads GA4 (gtag) only after cookie consent is accepted.
- * Measurement ID: G-TFY51HJF8J (override with NEXT_PUBLIC_GA_ID).
+ * Always loads GA4 with Consent Mode default denied.
+ * Cookie accept → consent update granted (same pattern as hiros-ablak).
  */
 export default function GoogleAnalytics() {
-  const [enabled, setEnabled] = useState(false)
-
   useEffect(() => {
-    setEnabled(hasAnalyticsConsent())
+    if (hasAnalyticsConsent()) {
+      gtagConsentUpdate(true)
+    }
 
     const onConsent = (event: Event) => {
       const detail = (event as CustomEvent<{ accepted?: boolean }>).detail
-      setEnabled(Boolean(detail?.accepted) || hasAnalyticsConsent())
+      gtagConsentUpdate(Boolean(detail?.accepted))
     }
 
     window.addEventListener(COOKIE_CONSENT_EVENT, onConsent)
     return () => window.removeEventListener(COOKIE_CONSENT_EVENT, onConsent)
   }, [])
 
-  // Stub gtag early so events can queue before the remote script loads
-  useEffect(() => {
-    if (!enabled) return
-    window.dataLayer = window.dataLayer || []
-    if (typeof window.gtag !== 'function') {
-      window.gtag = function gtag(...args: unknown[]) {
-        window.dataLayer!.push(args)
-      }
-    }
-  }, [enabled])
-
-  if (!enabled || !GA_MEASUREMENT_ID) return null
+  if (!GA_MEASUREMENT_ID) return null
 
   return (
     <>
-      <Script
-        id="ga-gtag-js"
-        src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-        strategy="afterInteractive"
-      />
-      <Script id="ga-gtag-config" strategy="afterInteractive">
+      <Script id="ga-consent-default" strategy="beforeInteractive">
         {`
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           window.gtag = gtag;
+          gtag('consent', 'default', {
+            analytics_storage: 'denied',
+            ad_storage: 'denied',
+            ad_user_data: 'denied',
+            ad_personalization: 'denied',
+            wait_for_update: 500
+          });
           gtag('js', new Date());
           gtag('config', '${GA_MEASUREMENT_ID}', {
             anonymize_ip: true,
@@ -59,6 +51,11 @@ export default function GoogleAnalytics() {
           });
         `}
       </Script>
+      <Script
+        id="ga-gtag-js"
+        src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+        strategy="afterInteractive"
+      />
     </>
   )
 }

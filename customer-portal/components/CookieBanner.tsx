@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Box, Paper, Typography, Button } from '@mui/material'
 import Link from 'next/link'
-import { COOKIE_CONSENT_KEY, notifyCookieConsent } from '@/lib/analytics'
+import { COOKIE_CONSENT_KEY, gtagConsentUpdate, notifyCookieConsent } from '@/lib/analytics'
 
 export default function CookieBanner() {
   const [isVisible, setIsVisible] = useState(false)
@@ -18,12 +18,14 @@ export default function CookieBanner() {
 
   const handleAccept = () => {
     localStorage.setItem(COOKIE_CONSENT_KEY, 'true')
+    gtagConsentUpdate(true)
     notifyCookieConsent(true)
     setIsVisible(false)
   }
 
   const handleDecline = () => {
     localStorage.setItem(COOKIE_CONSENT_KEY, 'false')
+    gtagConsentUpdate(false)
     notifyCookieConsent(false)
     setIsVisible(false)
   }
