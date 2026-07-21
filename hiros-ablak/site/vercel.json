@@ -105,6 +105,11 @@
       "permanent": true
     },
     {
+      "source": "/szolgaltatasok/nettfront-inomat",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/nettfront",
+      "permanent": true
+    },
+    {
       "source": "/blog",
       "destination": "https://www.hirosablak.hu/",
       "permanent": true

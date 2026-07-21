@@ -5,6 +5,7 @@ export const NAV_ITEMS = [
     children: [
       { href: "/szolgaltatasok/lapszabaszat-es-elzaras", label: "Lapszabászat és élzárás" },
       { href: "/szolgaltatasok/online-lapszabaszat", label: "Online lapszabászat" },
+      { href: "/szolgaltatasok/nettfront", label: "NettFront" },
       { href: "/szolgaltatasok/ipari-megoldasok/szallitolada-keszites", label: "Szállítóláda készítés" },
     ],
   },

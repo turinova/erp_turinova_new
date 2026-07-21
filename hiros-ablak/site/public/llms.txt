@@ -11,6 +11,7 @@ https://www.hirosablak.hu
 - Főoldal: https://www.hirosablak.hu/
 - Lapszabászat és élzárás: https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras
 - Online lapszabászat (Turinova): https://www.hirosablak.hu/szolgaltatasok/online-lapszabaszat
+- NettFront bútorfront online rendelés: https://www.hirosablak.hu/szolgaltatasok/nettfront
 - Barkácsáruház / bemutatóterem: https://www.hirosablak.hu/barkacsaruhaz-kecskemet
 - Bútorlap katalógus: https://www.hirosablak.hu/butorlap
 - Munkalap katalógus: https://www.hirosablak.hu/munkalap
@@ -45,5 +46,12 @@ Vasalat és kisebb kiegészítők országos webáruháza (nem a Hírös-Ablak ü
 - Beltéri ajtók / nyílászárók: former business, /belteriajtok URLs return 410 Gone
 - Pickup in Kecskemét at the store address; this website does not offer own home delivery for bútorlap/munkalap catalog orders.
 - Lapszabászat and élzárás: quote via phone, email, in store, or Turinova online system.
+- NettFront: HÍRÖS-Ablak is a NettFront partner/reseller in Kecskemét — not the manufacturer. NettFront (https://nettfront.hu) makes custom front materials (festett, fóliás, Inomat, Linea).
+- NettFront online (Turinova): Inomat only today — instant pricing after registration (~5 min). Pánthelyfúrás done by HÍRÖS-Ablak. No minimum order.
+- Inomat lines: Basic (2 supermatt PP colors, board), Pro High Gloss (4), Pro Matt (12, 1D–3D). Pro available as sized fronts with null-gap edging.
+- Festett, fóliás, Linea: in-person order at store today; coming soon online in same portal UI ("Hamarosan").
+- Pickup: Kecskemét store only (Mindszenti krt. 10.). NettFront samples on display; Linea sample not currently in store.
+- Do not mention IKEA compatibility or alu-keret fronts on NettFront pages.
+- Color swatches on /szolgaltatasok/nettfront are indicative only.
 - Large bútorlap/munkalap catalog (800+ decors online); individual product pages may be marked non-indexable until curated.
 - Legal: adatkezelési tájékoztató and cookie tájékoztató on site; ÁSZF may be updated separately.

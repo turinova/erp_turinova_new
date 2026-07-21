@@ -20,6 +20,7 @@ const STATIC_PATHS = [
   "/asztalos-partner",
   "/szolgaltatasok/lapszabaszat-es-elzaras",
   "/szolgaltatasok/online-lapszabaszat",
+  "/szolgaltatasok/nettfront",
   "/szolgaltatasok/ipari-megoldasok/szallitolada-keszites",
   "/butorlap",
   "/munkalap",

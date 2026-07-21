@@ -653,6 +653,36 @@ export default function OnlineLapszabaszatPage() {
         </section>
 
         {/* ============================================================== */}
+        {/* NETTFRONT TEASER                                                */}
+        {/* ============================================================== */}
+        <section className="bg-stone-wash py-10 md:py-12 border-y border-black/10">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <RevealOnScroll>
+              <div className="rounded-2xl border border-black/10 bg-white p-6 md:p-8 flex flex-col md:flex-row md:items-center gap-6">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-brand)]">
+                    Új a Turinovában
+                  </p>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                    NettFront bútorfront online is
+                  </h2>
+                  <p className="mt-2 text-sm text-black/70 leading-relaxed max-w-xl">
+                    NettFront frontok a Turinovában is: Inomat online, azonnali árral. Festett,
+                    fóliás, Linea személyesen.
+                  </p>
+                </div>
+                <Link
+                  href="/szolgaltatasok/nettfront"
+                  className="inline-flex shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95 transition"
+                >
+                  NettFront
+                </Link>
+              </div>
+            </RevealOnScroll>
+          </div>
+        </section>
+
+        {/* ============================================================== */}
         {/* 3 STEPS                                                          */}
         {/* ============================================================== */}
         <section className="bg-white py-12 md:py-14">

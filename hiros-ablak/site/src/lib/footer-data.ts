@@ -59,6 +59,10 @@ export const FOOTER_SERVICES: readonly FooterLink[] = [
     href: "/szolgaltatasok/online-lapszabaszat",
     label: "Online lapszabászat",
   },
+  {
+    href: "/szolgaltatasok/nettfront",
+    label: "NettFront bútorfront",
+  },
   { href: "/butorlap", label: "Bútorlap katalógus" },
   { href: "/munkalap", label: "Munkalap katalógus" },
   {

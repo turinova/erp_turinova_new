@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "find src -name '._*' -delete 2>/dev/null; rm -rf .next && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
