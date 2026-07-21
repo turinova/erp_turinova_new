@@ -9,6 +9,7 @@ import type { ChildrenType } from '@core/types'
 
 // Component Imports
 import CookieBanner from '@/components/CookieBanner'
+import GoogleAnalytics from '@/components/GoogleAnalytics'
 
 // Util Imports
 import { getSystemMode } from '@core/utils/serverHelpers'
@@ -52,6 +53,7 @@ const RootLayout = async (props: ChildrenType) => {
       </head>
       <body className='flex is-full min-bs-full flex-auto flex-col'>
         <InitColorSchemeScript attribute='data' defaultMode={systemMode} />
+        <GoogleAnalytics />
         {children}
         <CookieBanner />
       </body>

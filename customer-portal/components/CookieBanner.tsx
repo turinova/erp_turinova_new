@@ -1,27 +1,30 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Box, Paper, Typography, Button, IconButton } from '@mui/material'
+import { Box, Paper, Typography, Button } from '@mui/material'
 import Link from 'next/link'
+import { COOKIE_CONSENT_KEY, notifyCookieConsent } from '@/lib/analytics'
 
 export default function CookieBanner() {
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
     // Check if user has already accepted/declined
-    const consent = localStorage.getItem('turinova_cookie_consent')
+    const consent = localStorage.getItem(COOKIE_CONSENT_KEY)
     if (!consent) {
       setIsVisible(true)
     }
   }, [])
 
   const handleAccept = () => {
-    localStorage.setItem('turinova_cookie_consent', 'true')
+    localStorage.setItem(COOKIE_CONSENT_KEY, 'true')
+    notifyCookieConsent(true)
     setIsVisible(false)
   }
 
   const handleDecline = () => {
-    localStorage.setItem('turinova_cookie_consent', 'false')
+    localStorage.setItem(COOKIE_CONSENT_KEY, 'false')
+    notifyCookieConsent(false)
     setIsVisible(false)
   }
 

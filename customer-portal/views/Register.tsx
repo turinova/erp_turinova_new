@@ -259,7 +259,15 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
 
       if (response.ok) {
         toast.success('Sikeres regisztráció!')
-        
+
+        // GA4 conversion: sign_up (Ads Primary target)
+        try {
+          const { analyticsEvent } = await import('@/lib/analytics')
+          analyticsEvent('sign_up', { method: 'email' })
+        } catch {
+          /* ignore analytics errors */
+        }
+
         // Auto-login after registration
         const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
           email: email.trim().toLowerCase(),
