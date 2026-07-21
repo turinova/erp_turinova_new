@@ -383,3 +383,418 @@ export async function getPortalQuotesWithPagination(page: number = 1, limit: num
     return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
   }
 }
+
+export type UnifiedPortalQuoteType = 'opti' | 'nettfront'
+
+/**
+ * Get single Nettfront portal quote by ID (detail + PDF)
+ */
+export async function getPortalNettfrontQuoteById(quoteId: string) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) return null
+
+    const { data: quote, error: quoteError } = await supabase
+      .from('portal_nettfront_quotes')
+      .select(
+        `
+        id,
+        portal_customer_id,
+        target_company_id,
+        quote_number,
+        status,
+        comment,
+        discount_percent,
+        lines_total_net,
+        lines_total_vat,
+        lines_total_gross,
+        services_total_net,
+        services_total_vat,
+        services_total_gross,
+        total_net,
+        total_vat,
+        total_gross,
+        final_total_after_discount,
+        customer_snapshot,
+        submitted_at,
+        submitted_to_company_quote_id,
+        created_at,
+        updated_at,
+        portal_customers!inner (
+          id, name, email, mobile,
+          billing_name, billing_country, billing_city, billing_postal_code,
+          billing_street, billing_house_number, billing_tax_number, billing_company_reg_number,
+          discount_percent
+        ),
+        companies!inner (
+          id, name, supabase_url, supabase_anon_key
+        )
+      `
+      )
+      .eq('id', quoteId)
+      .eq('portal_customer_id', user.id)
+      .single()
+
+    if (quoteError || !quote) {
+      console.error('[Customer Portal SSR] Nettfront quote not found:', quoteError)
+      return null
+    }
+
+    const { data: lines, error: linesError } = await supabase
+      .from('portal_nettfront_quote_lines')
+      .select('*')
+      .eq('portal_nettfront_quote_id', quoteId)
+      .order('sort_order', { ascending: true })
+
+    if (linesError) {
+      console.error('[Customer Portal SSR] Nettfront lines error:', linesError)
+    }
+
+    return {
+      ...quote,
+      lines: lines || [],
+      portal_customers: Array.isArray(quote.portal_customers)
+        ? quote.portal_customers[0]
+        : quote.portal_customers,
+      companies: Array.isArray(quote.companies) ? quote.companies[0] : quote.companies
+    }
+  } catch (error) {
+    console.error('[Customer Portal SSR] getPortalNettfrontQuoteById:', error)
+    return null
+  }
+}
+
+/**
+ * Unified draft list for /saved — Opti + Nettfront
+ */
+export async function getUnifiedSavedQuotes(page: number = 1, limit: number = 20, searchTerm?: string) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const search = searchTerm?.trim() || ''
+
+    let optiQuery = supabase
+      .from('portal_quotes')
+      .select('id, quote_number, comment, final_total_after_discount, updated_at')
+      .eq('portal_customer_id', user.id)
+      .eq('status', 'draft')
+      .order('updated_at', { ascending: false })
+      .limit(200)
+
+    let nfQuery = supabase
+      .from('portal_nettfront_quotes')
+      .select('id, quote_number, comment, final_total_after_discount, updated_at')
+      .eq('portal_customer_id', user.id)
+      .eq('status', 'draft')
+      .order('updated_at', { ascending: false })
+      .limit(200)
+
+    if (search) {
+      optiQuery = optiQuery.ilike('quote_number', `%${search}%`)
+      nfQuery = nfQuery.ilike('quote_number', `%${search}%`)
+    }
+
+    const [optiRes, nfRes] = await Promise.all([optiQuery, nfQuery])
+
+    // If nettfront table missing (migration not run), ignore error and use Opti only
+    const optiRows = (optiRes.data || []).map(q => ({
+      id: q.id as string,
+      quote_number: q.quote_number as string,
+      comment: (q.comment as string | null) ?? null,
+      final_total_after_discount: Number(q.final_total_after_discount) || 0,
+      updated_at: q.updated_at as string,
+      type: 'opti' as UnifiedPortalQuoteType
+    }))
+
+    const nfRows =
+      nfRes.error
+        ? []
+        : (nfRes.data || []).map(q => ({
+            id: q.id as string,
+            quote_number: q.quote_number as string,
+            comment: (q.comment as string | null) ?? null,
+            final_total_after_discount: Number(q.final_total_after_discount) || 0,
+            updated_at: q.updated_at as string,
+            type: 'nettfront' as UnifiedPortalQuoteType
+          }))
+
+    if (nfRes.error) {
+      console.warn('[Customer Portal SSR] Nettfront drafts unavailable:', nfRes.error.message)
+    }
+
+    const merged = [...optiRows, ...nfRows].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    )
+
+    const totalCount = merged.length
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit))
+    const offset = (page - 1) * limit
+    const quotes = merged.slice(offset, offset + limit)
+
+    return { quotes, totalCount, totalPages, currentPage: page }
+  } catch (error) {
+    console.error('[Customer Portal SSR] getUnifiedSavedQuotes:', error)
+    return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
+}
+
+/**
+ * Unified submitted list for /orders — Opti + Nettfront
+ */
+export async function getUnifiedOrders(page: number = 1, limit: number = 20, searchTerm?: string) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const [optiRes, nfRes] = await Promise.all([
+      supabase
+        .from('portal_quotes')
+        .select(
+          `
+          id, quote_number, comment, submitted_to_company_quote_id,
+          final_total_after_discount, updated_at, submitted_at,
+          companies!inner (id, name, supabase_url, supabase_anon_key)
+        `
+        )
+        .eq('portal_customer_id', user.id)
+        .eq('status', 'submitted')
+        .not('submitted_to_company_quote_id', 'is', null)
+        .order('submitted_at', { ascending: false })
+        .limit(200),
+      supabase
+        .from('portal_nettfront_quotes')
+        .select(
+          `
+          id, quote_number, comment, submitted_to_company_quote_id,
+          final_total_after_discount, updated_at, submitted_at,
+          companies!inner (id, name, supabase_url, supabase_anon_key)
+        `
+        )
+        .eq('portal_customer_id', user.id)
+        .eq('status', 'submitted')
+        .not('submitted_to_company_quote_id', 'is', null)
+        .order('submitted_at', { ascending: false })
+        .limit(200)
+    ])
+
+    type CompanyEmbed = {
+      id: string
+      name: string
+      supabase_url: string
+      supabase_anon_key: string
+    }
+
+    const emptyTimestamps = () => ({
+      ordered_at: null as string | null,
+      in_production_at: null as string | null,
+      ready_at: null as string | null,
+      finished_at: null as string | null,
+      cancelled_at: null as string | null
+    })
+
+    const lastStatusChangeAt = (
+      submittedAt: string | null | undefined,
+      ts: ReturnType<typeof emptyTimestamps>
+    ) => {
+      const candidates = [
+        ts.cancelled_at,
+        ts.finished_at,
+        ts.ready_at,
+        ts.in_production_at,
+        ts.ordered_at,
+        submittedAt
+      ].filter(Boolean) as string[]
+      if (!candidates.length) return submittedAt || null
+      return candidates.reduce((latest, cur) =>
+        new Date(cur).getTime() > new Date(latest).getTime() ? cur : latest
+      )
+    }
+
+    const enrichOpti = async (order: Record<string, unknown>) => {
+      const companies = (
+        Array.isArray(order.companies) ? order.companies[0] : order.companies
+      ) as CompanyEmbed
+      const submittedAt = order.submitted_at as string
+      const base = {
+        id: order.id as string,
+        quote_number: order.quote_number as string,
+        comment: (order.comment as string | null) ?? null,
+        submitted_to_company_quote_id: order.submitted_to_company_quote_id as string,
+        final_total_after_discount: Number(order.final_total_after_discount) || 0,
+        updated_at: order.updated_at as string,
+        submitted_at: submittedAt,
+        type: 'opti' as UnifiedPortalQuoteType,
+        companies: { id: companies.id, name: companies.name }
+      }
+      try {
+        const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
+        const companySupabase = createSupabaseClient(companies.supabase_url, companies.supabase_anon_key)
+        const { data: companyQuote } = await companySupabase
+          .from('quotes')
+          .select(
+            `
+            quote_number, status, payment_status, deleted_at,
+            ordered_at, in_production_at, ready_at, finished_at, cancelled_at,
+            payment_methods (id, name)
+          `
+          )
+          .eq('id', order.submitted_to_company_quote_id as string)
+          .single()
+
+        const isDeleted = Boolean(companyQuote?.deleted_at)
+        const pm = companyQuote?.payment_methods as { name?: string } | { name?: string }[] | null
+        const pmName = Array.isArray(pm) ? pm[0]?.name : pm?.name
+        const timestamps = {
+          ordered_at: (companyQuote?.ordered_at as string | null) ?? null,
+          in_production_at: (companyQuote?.in_production_at as string | null) ?? null,
+          ready_at: (companyQuote?.ready_at as string | null) ?? null,
+          finished_at: (companyQuote?.finished_at as string | null) ?? null,
+          cancelled_at: (companyQuote?.cancelled_at as string | null) ?? null
+        }
+
+        return {
+          ...base,
+          company_quote_number: companyQuote?.quote_number || 'N/A',
+          company_quote_status: isDeleted ? 'deleted' : companyQuote?.status || 'unknown',
+          company_payment_status: companyQuote?.payment_status || null,
+          company_payment_method: pmName || null,
+          status_timestamps: timestamps,
+          last_status_change_at: lastStatusChangeAt(submittedAt, timestamps)
+        }
+      } catch {
+        const timestamps = emptyTimestamps()
+        return {
+          ...base,
+          company_quote_number: 'Error',
+          company_quote_status: 'unknown',
+          company_payment_status: null,
+          company_payment_method: null,
+          status_timestamps: timestamps,
+          last_status_change_at: lastStatusChangeAt(submittedAt, timestamps)
+        }
+      }
+    }
+
+    const enrichNf = async (order: Record<string, unknown>) => {
+      const companies = (
+        Array.isArray(order.companies) ? order.companies[0] : order.companies
+      ) as CompanyEmbed
+      const submittedAt = order.submitted_at as string
+      const base = {
+        id: order.id as string,
+        quote_number: order.quote_number as string,
+        comment: (order.comment as string | null) ?? null,
+        submitted_to_company_quote_id: order.submitted_to_company_quote_id as string,
+        final_total_after_discount: Number(order.final_total_after_discount) || 0,
+        updated_at: order.updated_at as string,
+        submitted_at: submittedAt,
+        type: 'nettfront' as UnifiedPortalQuoteType,
+        companies: { id: companies.id, name: companies.name }
+      }
+      try {
+        const { createClient: createSupabaseClient } = await import('@supabase/supabase-js')
+        const companySupabase = createSupabaseClient(companies.supabase_url, companies.supabase_anon_key)
+        const { data: companyQuote } = await companySupabase
+          .from('fronttervezo_quotes')
+          .select(
+            `
+            quote_number, order_number, status, payment_status, deleted_at,
+            ordered_at, ready_at, finished_at, cancelled_at,
+            payment_methods (id, name)
+          `
+          )
+          .eq('id', order.submitted_to_company_quote_id as string)
+          .single()
+
+        const isDeleted = Boolean(companyQuote?.deleted_at)
+        const pm = companyQuote?.payment_methods as { name?: string } | { name?: string }[] | null
+        const pmName = Array.isArray(pm) ? pm[0]?.name : pm?.name
+        const timestamps = {
+          ordered_at: (companyQuote?.ordered_at as string | null) ?? null,
+          in_production_at: null as string | null,
+          ready_at: (companyQuote?.ready_at as string | null) ?? null,
+          finished_at: (companyQuote?.finished_at as string | null) ?? null,
+          cancelled_at: (companyQuote?.cancelled_at as string | null) ?? null
+        }
+
+        return {
+          ...base,
+          company_quote_number:
+            companyQuote?.order_number || companyQuote?.quote_number || 'N/A',
+          company_quote_status: isDeleted ? 'deleted' : companyQuote?.status || 'unknown',
+          company_payment_status: companyQuote?.payment_status || null,
+          company_payment_method: pmName || null,
+          status_timestamps: timestamps,
+          last_status_change_at: lastStatusChangeAt(submittedAt, timestamps)
+        }
+      } catch {
+        const timestamps = emptyTimestamps()
+        return {
+          ...base,
+          company_quote_number: 'Error',
+          company_quote_status: 'unknown',
+          company_payment_status: null,
+          company_payment_method: null,
+          status_timestamps: timestamps,
+          last_status_change_at: lastStatusChangeAt(submittedAt, timestamps)
+        }
+      }
+    }
+
+    const optiOrders = await Promise.all((optiRes.data || []).map(o => enrichOpti(o as Record<string, unknown>)))
+    const nfOrders = nfRes.error
+      ? []
+      : await Promise.all((nfRes.data || []).map(o => enrichNf(o as Record<string, unknown>)))
+
+    if (nfRes.error) {
+      console.warn('[Customer Portal SSR] Nettfront orders unavailable:', nfRes.error.message)
+    }
+
+    let merged = [...optiOrders, ...nfOrders].sort(
+      (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime()
+    )
+
+    const search = searchTerm?.trim().toLowerCase()
+    if (search) {
+      merged = merged.filter(
+        o =>
+          o.quote_number.toLowerCase().includes(search) ||
+          o.company_quote_number.toLowerCase().includes(search)
+      )
+    }
+
+    const totalCount = merged.length
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit))
+    const offset = (page - 1) * limit
+
+    return {
+      orders: merged.slice(offset, offset + limit),
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[Customer Portal SSR] getUnifiedOrders:', error)
+    return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
+}

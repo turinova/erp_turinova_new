@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
-import '@/components/landing-v2/landing-v2.css'
-import Navbar from '@/components/landing-v2/Navbar'
-import Footer from '@/components/landing-v2/Footer'
+import MarketingShell from '@/components/landing-v2/MarketingShell'
 
 export const metadata: Metadata = {
   title: 'Turinova — Webshop ERP ami automatizálja a munkádat',
@@ -22,13 +20,6 @@ export const metadata: Metadata = {
 
 export default function V2Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="lv2-root min-h-screen bg-white flex flex-col"
-      style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}
-    >
-      <Navbar />
-      <div className="flex-1">{children}</div>
-      <Footer />
-    </div>
+    <MarketingShell>{children}</MarketingShell>
   )
 }

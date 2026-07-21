@@ -1,0 +1,936 @@
+// Customer-facing quote PDF (asztalos as ajánlat adó, no tenant branding)
+// Adapted from portal quote PDF template
+
+interface PortalQuoteMaterialPricing {
+  id: string
+  material_name: string
+  board_length_mm: number
+  board_width_mm: number
+  thickness_mm: number
+  charged_sqm: number | null
+  waste_multi: number
+  boards_used: number
+  material_gross: number
+  cutting_length_m: number
+  cutting_gross: number
+  edge_materials_gross?: number
+  portal_quote_edge_materials_breakdown?: Array<{
+    edge_material_name: string
+    total_length_m: number
+    gross_price: number
+  }>
+  portal_quote_services_breakdown?: Array<{
+    service_type: string
+    quantity: number
+    gross_price: number
+  }>
+}
+
+interface PortalQuote {
+  id: string
+  quote_number: string
+  customer: {
+    name: string
+    email: string
+    mobile: string
+    billing_name: string
+    billing_country: string
+    billing_city: string
+    billing_postal_code: string
+    billing_street: string
+    billing_house_number: string
+    billing_tax_number: string
+  }
+  discount_percent: number
+  comment: string | null
+  created_at: string
+  pricing: PortalQuoteMaterialPricing[]
+  panels?: Array<{
+    id: string
+    material_machine_code: string
+    material_name: string
+    width_mm: number
+    height_mm: number
+    quantity: number
+    label: string | null
+    edge_a_code: string | null
+    edge_c_code: string | null
+    edge_b_code: string | null
+    edge_d_code: string | null
+    duplungolas: boolean
+    panthelyfuras_quantity: number
+    szogvagas: boolean
+  }>
+  totals: {
+    total_net: number
+    total_vat: number
+    total_gross: number
+    final_total_after_discount: number
+  }
+}
+
+interface WorkshopProfile {
+  name: string
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  city?: string | null
+  postalCode?: string | null
+  taxNumber?: string | null
+}
+
+interface ManualLine {
+  type?: string
+  title: string
+  quantity: number
+  unit?: string
+  unitPriceGross: number
+}
+
+interface PortalQuotePdfTemplateProps {
+  quote: PortalQuote
+  workshop: WorkshopProfile
+  preparedBy: string
+  manualLines?: ManualLine[]
+  summary: {
+    totalNetBeforeDiscount: number
+    totalVatBeforeDiscount: number
+    totalGrossBeforeDiscount: number
+    totalNetAfterDiscount: number
+    totalVatAfterDiscount: number
+    totalGrossAfterDiscount: number
+  }
+  discountAmount: number
+  discountPercentage: number
+  /** Scale factor applied to detailed lap rows (customer price / portal price). */
+  markupFactor?: number
+  lineDisplay?: 'collapsed' | 'detailed'
+  boardGrossCustomer?: number
+  markupPercent?: number
+  /** Pre-formatted Hungarian date e.g. 2026.08.03. */
+  validUntilDisplay?: string
+  turinovaLogoBase64?: string
+  vatRates?: any[]
+}
+
+const MANUAL_TYPE_LABEL: Record<string, string> = {
+  shipping: 'Szállítás',
+  assembly: 'Szerelés',
+  hardware: 'Vasalat',
+  fee: 'Díj',
+  other: 'Egyéb'
+}
+
+// Format date as YYYY.MM.DD. (Hungarian format)
+const formatDatePdf = (dateString: string) => {
+  const date = new Date(dateString)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}.${month}.${day}.`
+}
+
+// Calculate expiry date (creation date + 2 weeks)
+const calculateExpiryDate = (dateString: string) => {
+  const date = new Date(dateString)
+  date.setDate(date.getDate() + 14) // Add 14 days (2 weeks)
+  return formatDatePdf(date.toISOString())
+}
+
+// Format currency for PDF (Hungarian format)
+const formatCurrencyPdf = (amount: number) => {
+  return new Intl.NumberFormat('hu-HU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount)
+}
+
+// Format currency for PDF with 2 decimals (for unit prices)
+const formatCurrencyPdfWithDecimals = (amount: number) => {
+  return new Intl.NumberFormat('hu-HU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(amount)
+}
+
+// Format waste multiplier for PDF (e.g., 1.2 -> "1.20x")
+const formatWasteMultiplier = (value: number) => {
+  return `${value.toFixed(2)}x`
+}
+
+// Escape HTML to prevent XSS
+const escapeHtml = (text: string | null | undefined) => {
+  if (!text) return ''
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+// Get service name in Hungarian
+const getServiceName = (serviceType: string) => {
+  switch (serviceType) {
+    case 'panthelyfuras':
+      return 'Pánthely fúrás'
+    case 'duplungolas':
+      return 'Duplungolás'
+    case 'szogvagas':
+      return 'Szögvágás'
+    default:
+      return serviceType
+  }
+}
+
+// Get service unit
+const getServiceUnit = (serviceType: string) => {
+  switch (serviceType) {
+    case 'panthelyfuras':
+    case 'szogvagas':
+      return 'db'
+    case 'duplungolas':
+      return 'm²'
+    default:
+      return 'db'
+  }
+}
+
+export default function generateCustomerFacingQuotePdfHtml({
+  quote,
+  workshop,
+  preparedBy,
+  manualLines = [],
+  summary,
+  discountAmount,
+  discountPercentage,
+  markupFactor = 1,
+  lineDisplay = 'collapsed',
+  boardGrossCustomer,
+  markupPercent = 0,
+  validUntilDisplay,
+  turinovaLogoBase64,
+  vatRates = []
+}: PortalQuotePdfTemplateProps): string {
+  const factor = Number(markupFactor) > 0 ? Number(markupFactor) : 1
+  const expiryLabel = validUntilDisplay || calculateExpiryDate(quote.created_at)
+  const boardGross =
+    typeof boardGrossCustomer === 'number'
+      ? Math.round(boardGrossCustomer)
+      : Math.round(summary.totalGrossAfterDiscount)
+
+  // Aggregate edge materials breakdown from all pricing items (cutting list page)
+  const edgeMaterialsMap = new Map<string, { material_name: string; edge_material_name: string; total_length_m: number }>()
+
+  quote.pricing.forEach(pricing => {
+    if (pricing.portal_quote_edge_materials_breakdown) {
+      pricing.portal_quote_edge_materials_breakdown.forEach(edge => {
+        const key = `${pricing.material_name || ''}_${edge.edge_material_name}`
+        const existing = edgeMaterialsMap.get(key)
+        if (existing) {
+          existing.total_length_m += edge.total_length_m
+        } else {
+          edgeMaterialsMap.set(key, {
+            material_name: pricing.material_name || '',
+            edge_material_name: edge.edge_material_name,
+            total_length_m: edge.total_length_m
+          })
+        }
+      })
+    }
+  })
+
+  const edgeMaterialsArray = Array.from(edgeMaterialsMap.values())
+
+  let boardRows = ''
+
+  if (lineDisplay === 'collapsed') {
+    const markupNote =
+      markupPercent > 0
+        ? `<div style="font-size: 9px; color: #757575; margin-top: 0.25em;">Lapszabászat és kapcsolódó díjak</div>`
+        : `<div style="font-size: 9px; color: #757575; margin-top: 0.25em;">Lapszabászat és kapcsolódó díjak</div>`
+    boardRows = `
+      <tr>
+        <td>
+          <div style="font-weight: 500;">Lapszabászat</div>
+          ${markupNote}
+        </td>
+        <td></td>
+        <td>
+          <span class="chip">Lapszabászat</span>
+        </td>
+        <td class="text-right nowrap">1 db</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(boardGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(boardGross)} Ft</td>
+      </tr>
+    `
+  } else {
+    // Detailed: materials + services scaled by markup factor
+    const materialRows = quote.pricing
+      .map(pricing => {
+        const materialName = pricing.material_name
+        const chargedSqm = pricing.charged_sqm || 0
+        const wasteMulti = pricing.waste_multi || 1
+        const boardsUsed = pricing.boards_used || 0
+        const boardLengthMm = pricing.board_length_mm || 0
+        const boardWidthMm = pricing.board_width_mm || 0
+
+        const displaySqm = chargedSqm / wasteMulti
+        const quantityDisplay = `${displaySqm.toFixed(2)} m² / ${boardsUsed} db`
+
+        const boardAreaM2 = (boardLengthMm * boardWidthMm) / 1000000
+        const totalBoardsArea = boardAreaM2 * boardsUsed
+        const totalArea = totalBoardsArea + chargedSqm
+
+        const materialGrossScaled = (pricing.material_gross || 0) * factor
+        const unitPriceGross = totalArea > 0 ? materialGrossScaled / totalArea : 0
+        const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100
+        const recalculatedTotalGross = roundedUnitPriceGross * totalArea
+
+        const dimensions = `${pricing.board_length_mm}×${pricing.board_width_mm}×${pricing.thickness_mm} mm`
+
+        return `
+      <tr>
+        <td>
+          <div style="font-weight: 500;">${escapeHtml(materialName)}</div>
+          <div style="font-size: 9px; color: #757575; margin-top: 0.25em;">${dimensions}</div>
+        </td>
+        <td>
+          <span class="chip">${formatWasteMultiplier(wasteMulti)}</span>
+        </td>
+        <td>
+          <span class="chip">Laptermék</span>
+        </td>
+        <td class="text-right nowrap">${quantityDisplay}</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+      </tr>
+    `
+      })
+      .join('')
+
+    const serviceRows: string[] = []
+
+    let totalCuttingLength = 0
+    let totalCuttingGross = 0
+    quote.pricing.forEach(p => {
+      if (p.cutting_gross > 0) {
+        totalCuttingLength += p.cutting_length_m || 0
+        totalCuttingGross += p.cutting_gross
+      }
+    })
+
+    if (totalCuttingGross > 0) {
+      const cuttingScaled = totalCuttingGross * factor
+      const unitPriceGross = totalCuttingLength > 0 ? cuttingScaled / totalCuttingLength : 0
+      const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100
+      const recalculatedTotalGross = roundedUnitPriceGross * totalCuttingLength
+      serviceRows.push(`
+      <tr>
+        <td>
+          <div style="font-weight: 500;">Szabás díj</div>
+        </td>
+        <td></td>
+        <td>
+          <span class="chip">Díj</span>
+        </td>
+        <td class="text-right nowrap">${totalCuttingLength.toFixed(2)} m</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+      </tr>
+    `)
+    }
+
+    let totalEdgeLengthForService = 0
+    let totalEdgeGross = 0
+    quote.pricing.forEach(p => {
+      if ((p.edge_materials_gross || 0) > 0) {
+        totalEdgeGross += p.edge_materials_gross || 0
+        if (p.portal_quote_edge_materials_breakdown) {
+          p.portal_quote_edge_materials_breakdown.forEach(edge => {
+            totalEdgeLengthForService += edge.total_length_m
+          })
+        }
+      }
+    })
+
+    if (totalEdgeGross > 0) {
+      const edgeScaled = totalEdgeGross * factor
+      const unitPriceGross =
+        totalEdgeLengthForService > 0 ? edgeScaled / totalEdgeLengthForService : 0
+      const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100
+      const recalculatedTotalGross = roundedUnitPriceGross * totalEdgeLengthForService
+      serviceRows.push(`
+      <tr>
+        <td>
+          <div style="font-weight: 500;">Élzárás</div>
+        </td>
+        <td></td>
+        <td>
+          <span class="chip">Díj</span>
+        </td>
+        <td class="text-right nowrap">${totalEdgeLengthForService.toFixed(2)} m</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+      </tr>
+    `)
+    }
+
+    const servicesMap = new Map<string, { quantity: number; gross: number }>()
+    quote.pricing.forEach(p => {
+      if (p.portal_quote_services_breakdown) {
+        p.portal_quote_services_breakdown.forEach(service => {
+          const existing = servicesMap.get(service.service_type)
+          if (existing) {
+            existing.quantity += service.quantity
+            existing.gross += service.gross_price
+          } else {
+            servicesMap.set(service.service_type, {
+              quantity: service.quantity,
+              gross: service.gross_price
+            })
+          }
+        })
+      }
+    })
+
+    servicesMap.forEach((data, serviceType) => {
+      const serviceName = getServiceName(serviceType)
+      const unit = getServiceUnit(serviceType)
+      const grossScaled = data.gross * factor
+      const unitPriceGross = data.quantity > 0 ? grossScaled / data.quantity : 0
+      const roundedUnitPriceGross = Math.round(unitPriceGross)
+      const recalculatedTotalGross = roundedUnitPriceGross * data.quantity
+
+      serviceRows.push(`
+      <tr>
+        <td>
+          <div style="font-weight: 500;">${escapeHtml(serviceName)}</div>
+        </td>
+        <td></td>
+        <td>
+          <span class="chip">Díj</span>
+        </td>
+        <td class="text-right nowrap">${data.quantity} ${unit}</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+      </tr>
+    `)
+    })
+
+    boardRows = materialRows + serviceRows.join('')
+  }
+
+  const manualRows = (manualLines || [])
+    .filter(line => line.title?.trim() && Number(line.quantity) > 0)
+    .map(line => {
+      const qty = Number(line.quantity) || 0
+      const unitPrice = Number(line.unitPriceGross) || 0
+      const total = Math.round(qty * unitPrice)
+      const unitLabel = (line.unit || 'db').trim() || 'db'
+      const typeLabel = MANUAL_TYPE_LABEL[line.type || 'other'] || 'Egyéb'
+      return `
+      <tr>
+        <td>
+          <div style="font-weight: 500;">${escapeHtml(line.title.trim())}</div>
+        </td>
+        <td></td>
+        <td>
+          <span class="chip">${escapeHtml(typeLabel)}</span>
+        </td>
+        <td class="text-right nowrap">${qty} ${escapeHtml(unitLabel)}</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(Math.round(unitPrice))} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(total)} Ft</td>
+      </tr>
+    `
+    })
+    .join('')
+
+  const manualGrossTotal = (manualLines || [])
+    .filter(line => line.title?.trim() && Number(line.quantity) > 0)
+    .reduce(
+      (sum, line) =>
+        sum + Math.round((Number(line.quantity) || 0) * (Number(line.unitPriceGross) || 0)),
+      0
+    )
+
+  const itemsRows = boardRows + manualRows
+  const payableGross = boardGross + manualGrossTotal
+
+  // Customer PDF: no portal discount rows (already baked into board gross + markup)
+  void discountAmount
+  void discountPercentage
+  void vatRates
+
+  const workshopAddressLine = [workshop.postalCode || '', workshop.city || '', workshop.address || '']
+    .filter(Boolean)
+    .join(' ')
+
+  const manualSummaryRow =
+    manualGrossTotal > 0
+      ? `
+        <tr class="summary-row">
+          <td colspan="5" class="summary-row-bold" style="border-top: none;">Egyéb tételek (bruttó):</td>
+          <td class="text-right nowrap summary-row-bold" style="border-top: none;">${formatCurrencyPdf(manualGrossTotal)} Ft</td>
+        </tr>
+      `
+      : ''
+
+  return `<!DOCTYPE html>
+<html lang="hu">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      @page {
+        margin: 0;
+        size: A4;
+      }
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 11px;
+        color: #212121;
+        background: white;
+        padding: 8mm 4mm 8mm 4mm;
+        line-height: 1.2;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        box-sizing: border-box;
+      }
+      .content-wrapper {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100vh - 16mm);
+      }
+      .header {
+        margin-bottom: 1.5em;
+        padding-bottom: 1em;
+        border-bottom: 1px solid #000000;
+      }
+      .header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .header-left {
+        flex-shrink: 0;
+      }
+      .header-logo {
+        max-height: 50px;
+        max-width: 220px;
+        width: auto;
+        height: auto;
+      }
+      .header-right {
+        text-align: right;
+        flex: 1;
+      }
+      .title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #212121;
+        margin-bottom: 0.25em;
+      }
+      .quote-number {
+        font-size: 12px;
+        font-weight: 600;
+        color: #424242;
+        margin-bottom: 0.25em;
+      }
+      .quote-date {
+        font-size: 10px;
+        color: #000000;
+      }
+      .two-column {
+        display: flex;
+        gap: 2em;
+        margin-bottom: 1.5em;
+      }
+      .column {
+        flex: 1;
+      }
+      .column-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #000000;
+        margin-bottom: 0.5em;
+      }
+      .column-content {
+        padding-left: 0.5em;
+      }
+      .column-item {
+        font-size: 10px;
+        margin-bottom: 0.25em;
+      }
+      .column-item-bold {
+        font-weight: 500;
+        color: #000000;
+      }
+      .column-item-gray {
+        color: #000000;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1.5em;
+        font-size: 10px;
+      }
+      th, td {
+        padding: 4px 6px;
+        text-align: left;
+        border-bottom: 1px solid #000000;
+      }
+      th {
+        font-weight: 700;
+        color: #000000;
+        background-color: #f5f5f5;
+        border-top: 1px solid #000000;
+        padding: 6px;
+      }
+      td {
+        color: #000000;
+      }
+      .text-right {
+        text-align: right;
+      }
+      .text-center {
+        text-align: center;
+      }
+      .nowrap {
+        white-space: nowrap;
+      }
+      tbody tr:nth-child(even) {
+        background-color: #fafafa;
+      }
+      .chip {
+        display: inline-block;
+        padding: 2px 8px;
+        border: 1px solid #212121;
+        border-radius: 12px;
+        font-size: 9px;
+        font-weight: 500;
+        color: #212121;
+        background-color: transparent;
+      }
+      .summary-table {
+        margin-top: 1.5em;
+      }
+      .summary-row {
+        background-color: #f5f5f5;
+      }
+      .summary-row-bold {
+        font-weight: 700;
+        font-size: 11px;
+        color: #212121;
+        border-top: 2px solid #212121;
+        padding: 6px 8px;
+      }
+      .summary-row-total {
+        background-color: #212121;
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 12px;
+        padding: 8px;
+        border-bottom: none;
+      }
+      .discount-row {
+        color: #616161;
+      }
+      .notes-section {
+        margin-top: 1.5em;
+        padding-top: 1em;
+        border-top: 1px solid #000000;
+      }
+      .notes-title {
+        font-size: 10px;
+        font-weight: 600;
+        color: #424242;
+        margin-bottom: 0.5em;
+      }
+      .notes-content {
+        font-size: 10px;
+        color: #212121;
+        white-space: pre-wrap;
+      }
+      .footer {
+        margin-top: auto;
+        padding-top: 1em;
+        border-top: 1px solid #000000;
+        font-size: 8px;
+        color: #000000;
+        flex-shrink: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .page-break {
+        page-break-before: always;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 8mm 4mm 8mm 4mm;
+        box-sizing: border-box;
+      }
+      .page-break .content-wrapper {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100vh - 16mm);
+      }
+      .page-break .footer {
+        margin-top: auto;
+        flex-shrink: 0;
+      }
+      .footer-text {
+        flex: 1;
+      }
+      .footer-logo {
+        height: 20px;
+        width: auto;
+        margin-left: 1em;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      .cutting-list-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #000000;
+        margin-bottom: 1em;
+        text-align: center;
+      }
+      .cutting-list-table {
+        font-size: 9px;
+      }
+      .cutting-list-table th,
+      .cutting-list-table td {
+        padding: 3px 4px;
+        font-size: 9px;
+        border: 1px solid #000000;
+      }
+      .cutting-list-table th {
+        background-color: #f5f5f5;
+        font-weight: 700;
+      }
+      .cutting-list-table td {
+        text-align: center;
+      }
+      .cutting-list-table td.text-left {
+        text-align: left;
+      }
+      .cutting-list-table td.text-right {
+        text-align: right;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="content-wrapper">
+    <div class="header">
+      <div class="header-row">
+        <div class="header-left">
+        </div>
+        <div class="header-right">
+          <div class="title">AJÁNLAT</div>
+          <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
+          <div class="quote-date">
+            <div>Kelt.: ${formatDatePdf(quote.created_at)}</div>
+            <div>Érvényesség: ${expiryLabel}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="two-column">
+      <div class="column">
+        <div class="column-title">Ajánlat adó:</div>
+        <div class="column-content">
+          <div class="column-item column-item-bold" style="font-size: 12px; font-weight: 700;">${escapeHtml(workshop.name || '')}</div>
+          ${workshopAddressLine ? `<div class="column-item column-item-gray">${escapeHtml(workshopAddressLine)}</div>` : ''}
+          ${workshop.phone ? `<div class="column-item column-item-gray">Telefon: ${escapeHtml(workshop.phone)}</div>` : ''}
+          ${workshop.email ? `<div class="column-item column-item-gray">E-mail: ${escapeHtml(workshop.email)}</div>` : ''}
+          ${workshop.taxNumber ? `<div class="column-item column-item-gray">Adószám: ${escapeHtml(workshop.taxNumber)}</div>` : ''}
+          ${preparedBy ? `<div class="column-item column-item-bold" style="margin-top: 0.5em;">Készítette: ${escapeHtml(preparedBy)}</div>` : ''}
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="column-title">Vevő adatok</div>
+        <div class="column-content">
+          <div class="column-item column-item-bold">${escapeHtml(quote.customer.billing_name || quote.customer.name || '')}</div>
+          <div class="column-item column-item-gray">${escapeHtml([
+            quote.customer.billing_postal_code || '',
+            quote.customer.billing_city || '',
+            quote.customer.billing_street || '',
+            quote.customer.billing_house_number || ''
+          ].filter(Boolean).join(' '))}</div>
+          ${quote.customer.email ? `<div class="column-item column-item-gray">E-mail: ${escapeHtml(quote.customer.email)}</div>` : ''}
+          ${quote.customer.mobile ? `<div class="column-item column-item-gray">Telefon: ${escapeHtml(quote.customer.mobile)}</div>` : ''}
+          ${quote.customer.billing_tax_number ? `<div class="column-item column-item-gray">Adószám: ${escapeHtml(quote.customer.billing_tax_number)}</div>` : ''}
+        </div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Megnevezés</th>
+          <th>Hull. szorzó</th>
+          <th>Típus</th>
+          <th class="text-right nowrap">Mennyiség</th>
+          <th class="text-right nowrap">Bruttó egységár</th>
+          <th class="text-right nowrap">Bruttó részösszeg</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsRows}
+      </tbody>
+    </table>
+
+    <table class="summary-table">
+      <tbody>
+        <tr class="summary-row">
+          <td colspan="5" class="summary-row-bold">Bruttó (lapszabászat):</td>
+          <td class="text-right nowrap summary-row-bold">${formatCurrencyPdf(boardGross)} Ft</td>
+        </tr>
+        ${manualSummaryRow}
+        <tr>
+          <td colspan="5" class="summary-row-total">Bruttó összesen:</td>
+          <td class="text-right nowrap summary-row-total">${formatCurrencyPdf(payableGross)} Ft</td>
+        </tr>
+      </tbody>
+    </table>
+    
+    ${quote.comment ? `
+    <div class="notes-section">
+      <div class="notes-title">Megjegyzés:</div>
+      <div class="notes-content">${escapeHtml(quote.comment)}</div>
+    </div>
+    ` : ''}
+    
+    <div style="flex: 1;"></div>
+    
+    <div class="footer">
+      <div class="footer-text">
+        Ez az ajánlat a Turinova Vállalatirányítási Rendszerrel készült.
+      </div>
+      ${turinovaLogoBase64 ? `<img src="data:image/png;base64,${turinovaLogoBase64}" alt="Turinova Logo" class="footer-logo" />` : ''}
+    </div>
+    </div>
+
+    ${quote.panels && quote.panels.length > 0 ? `
+    <!-- Second Page: Cutting List -->
+    <div class="page-break">
+      <div class="content-wrapper">
+        <div class="header">
+          <div class="header-row">
+            <div class="header-left">
+            </div>
+            <div class="header-right">
+              <div class="title">AJÁNLAT</div>
+              <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
+              <div class="quote-date">
+                <div>Kelt.: ${formatDatePdf(quote.created_at)}</div>
+                <div>Érvényesség: ${expiryLabel}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cutting-list-title">Szabásjegyzék</div>
+
+        <table class="cutting-list-table">
+          <thead>
+            <tr>
+              <th>Anyag</th>
+              <th class="text-right">Hosszúság</th>
+              <th class="text-right">Szélesség</th>
+              <th class="text-right">Darab</th>
+              <th>Jelölés</th>
+              <th>Hosszú alsó</th>
+              <th>Hosszú felső</th>
+              <th>Széles bal</th>
+              <th>Széles jobb</th>
+              <th class="text-center">Egyéb</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${quote.panels.map((panel) => {
+              const services = []
+              if (panel.panthelyfuras_quantity > 0) {
+                services.push(`Pánthelyfúrás (${panel.panthelyfuras_quantity} db)`)
+              }
+              if (panel.duplungolas) {
+                services.push('Duplungolás')
+              }
+              if (panel.szogvagas) {
+                services.push('Szögvágás')
+              }
+              const servicesText = services.length > 0 ? services.join(', ') : '-'
+              
+              return `
+                <tr>
+                  <td class="text-left">${escapeHtml(panel.material_machine_code || panel.material_name || '')}</td>
+                  <td class="text-right">${panel.width_mm}</td>
+                  <td class="text-right">${panel.height_mm}</td>
+                  <td class="text-right">${panel.quantity}</td>
+                  <td class="text-left">${escapeHtml(panel.label || '-')}</td>
+                  <td>${escapeHtml(panel.edge_a_code || '')}</td>
+                  <td>${escapeHtml(panel.edge_c_code || '')}</td>
+                  <td>${escapeHtml(panel.edge_b_code || '')}</td>
+                  <td>${escapeHtml(panel.edge_d_code || '')}</td>
+                  <td class="text-center">${servicesText}</td>
+                </tr>
+              `
+            }).join('')}
+          </tbody>
+        </table>
+        
+        ${edgeMaterialsArray.length > 0 ? `
+        <div class="cutting-list-title" style="margin-top: 1.5em;">Élzáró összesítő</div>
+        
+        <table class="cutting-list-table">
+          <thead>
+            <tr>
+              <th>Anyag</th>
+              <th>Élzáró</th>
+              <th class="text-right">Hossz (m)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${edgeMaterialsArray.map((item) => `
+              <tr>
+                <td class="text-left">${escapeHtml(item.material_name)}</td>
+                <td class="text-left">${escapeHtml(item.edge_material_name)}</td>
+                <td class="text-right">${item.total_length_m.toFixed(2)} m</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ` : ''}
+        
+        <div style="flex: 1;"></div>
+        
+        <div class="footer">
+          <div class="footer-text">
+            Ez az ajánlat a Turinova Vállalatirányítási Rendszerrel készült.
+          </div>
+          ${turinovaLogoBase64 ? `<img src="data:image/png;base64,${turinovaLogoBase64}" alt="Turinova Logo" class="footer-logo" />` : ''}
+        </div>
+      </div>
+    </div>
+    ` : ''}
+  </body>
+</html>`
+}
+

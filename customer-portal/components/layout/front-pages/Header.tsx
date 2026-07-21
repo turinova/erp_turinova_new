@@ -21,8 +21,8 @@ import type { Mode } from '@core/types'
 
 // Component Imports
 import Logo from '@components/layout/shared/Logo'
-import FrontMenu from './FrontMenu'
 import CustomIconButton from '@core/components/mui/IconButton'
+import MarketingNav from './MarketingNav'
 
 // Util Imports
 import { frontLayoutClasses } from '@layouts/utils/layoutClasses'
@@ -55,31 +55,40 @@ const Header = ({ mode }: { mode: Mode }) => {
               <Link href='/'>
                 <Logo />
               </Link>
-              <FrontMenu mode={mode} isDrawerOpen={isDrawerOpen} setIsDrawerOpen={setIsDrawerOpen} />
             </div>
           ) : (
             <div className='flex items-center gap-10'>
               <Link href='/'>
                 <Logo />
               </Link>
-              <FrontMenu mode={mode} isDrawerOpen={isDrawerOpen} setIsDrawerOpen={setIsDrawerOpen} />
+              <MarketingNav
+                mode={mode}
+                variant='desktop'
+                isDrawerOpen={isDrawerOpen}
+                setIsDrawerOpen={setIsDrawerOpen}
+              />
             </div>
           )}
           <div className='flex items-center gap-2 sm:gap-4'>
             {!isBelowLgScreen && (
-              <Button
-                component={Link}
-                href='/register'
-                variant='contained'
-                color='primary'
-                className='font-medium'
-              >
-                Regisztráció
-              </Button>
+              <>
+                <Button component={Link} href='/login' variant='text' color='inherit' className='font-medium'>
+                  Bejelentkezés
+                </Button>
+                <Button component={Link} href='/kapcsolat#demo' variant='contained' color='primary' className='font-medium'>
+                  Találkozó egyeztetés
+                </Button>
+              </>
             )}
           </div>
         </div>
       </div>
+      <MarketingNav
+        mode={mode}
+        variant='mobile'
+        isDrawerOpen={isDrawerOpen}
+        setIsDrawerOpen={setIsDrawerOpen}
+      />
     </header>
   )
 }

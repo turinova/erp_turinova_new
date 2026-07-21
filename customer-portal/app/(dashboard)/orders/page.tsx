@@ -1,9 +1,9 @@
 import React from 'react'
-import { getPortalOrdersWithPagination } from '@/lib/supabase-server'
+import { getUnifiedOrders } from '@/lib/supabase-server'
 import OrdersClient from './OrdersClient'
 
 interface PageProps {
-  searchParams: Promise<{ 
+  searchParams: Promise<{
     page?: string
     search?: string
   }>
@@ -18,12 +18,11 @@ export default async function OrdersPage({ searchParams }: PageProps) {
   const resolvedParams = await searchParams
   const page = parseInt(resolvedParams.page || '1')
   const searchTerm = resolvedParams.search || ''
-  
-  // Fetch submitted portal quotes (orders) with company quote info
-  const ordersData = await getPortalOrdersWithPagination(page, 20, searchTerm)
-  
+
+  const ordersData = await getUnifiedOrders(page, 20, searchTerm)
+
   return (
-    <OrdersClient 
+    <OrdersClient
       initialOrders={ordersData.orders}
       totalCount={ordersData.totalCount}
       totalPages={ordersData.totalPages}

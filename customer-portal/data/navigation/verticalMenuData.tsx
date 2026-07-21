@@ -22,6 +22,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#27AE60' // Green for opti/optimization
     },
     {
+      label: <span style={{ fontWeight: 700 }}>NETTFRONT</span>,
+      href: '/nettfront',
+      icon: 'ri-checkbox-blank-line',
+      iconColor: '#000000' // Black outlined square for Nettfront
+    },
+    {
       label: 'Megrendelések',
       href: '/orders',
       icon: 'ri-shopping-cart-line',

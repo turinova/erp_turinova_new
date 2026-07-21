@@ -30,6 +30,7 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import BusinessIcon from '@mui/icons-material/Business'
 import Paper from '@mui/material/Paper'
 import { toast } from 'react-toastify'
+import WhatsNewSection from '@/components/portal-whats-new/WhatsNewSection'
 
 interface TenantCompanyInfo {
   name?: string | null
@@ -129,6 +130,8 @@ export default function HomeClient({
 
   return (
     <div className='flex flex-col gap-6'>
+      <WhatsNewSection />
+
       <Grid container spacing={6} alignItems='stretch'>
         <Grid item xs={12} md={companyInfo ? 6 : 12}>
           <Card sx={{ height: '100%' }}>

@@ -471,3 +471,185 @@ export async function getAllCompanyData(companyCredentials: CompanyCredentials) 
     throw error
   }
 }
+
+function createCompanyClient(companyCredentials: CompanyCredentials) {
+  const { supabase_url, supabase_anon_key } = companyCredentials
+  return createSupabaseClient(supabase_url, supabase_anon_key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'customer-portal-ssr'
+      }
+    }
+  })
+}
+
+/** Tenant customers — same fields as main-app getAllCustomers */
+export async function getCompanyCustomers(companyCredentials: CompanyCredentials) {
+  const companySupabase = createCompanyClient(companyCredentials)
+  const { data, error } = await companySupabase
+    .from('customers')
+    .select(
+      `
+      id,
+      name,
+      email,
+      mobile,
+      discount_percent,
+      sms_notification,
+      is_favorite,
+      billing_name,
+      billing_country,
+      billing_city,
+      billing_postal_code,
+      billing_street,
+      billing_house_number,
+      billing_tax_number,
+      billing_company_reg_number,
+      created_at,
+      updated_at
+    `
+    )
+    .is('deleted_at', null)
+    .order('is_favorite', { ascending: false })
+    .order('name', { ascending: true })
+    .limit(10000)
+
+  if (error) {
+    console.error('[Company Data] Customers fetch error:', error)
+    return []
+  }
+
+  return data || []
+}
+
+/** Active Nettfront SKUs from tenant DB */
+export async function getCompanyNettfrontSkus(
+  companyCredentials: CompanyCredentials,
+  frontType?: string
+) {
+  const companySupabase = createCompanyClient(companyCredentials)
+
+  const selectCols = `
+      id,
+      front_type,
+      sku_code,
+      display_name,
+      finish,
+      swatch_hex,
+      cost_net_per_sqm,
+      sell_net_per_sqm,
+      is_active,
+      sort_order
+    `
+
+  const runQuery = async (withDeletedAt: boolean) => {
+    let query = companySupabase
+      .from('nettfront_skus')
+      .select(selectCols)
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true })
+
+    if (withDeletedAt) {
+      query = query.is('deleted_at', null)
+    }
+    if (frontType) {
+      query = query.eq('front_type', frontType)
+    }
+
+    return query
+  }
+
+  let { data, error } = await runQuery(true)
+
+  if (error && (error.message?.includes('deleted_at') || error.code === '42703')) {
+    const second = await runQuery(false)
+    data = second.data
+    error = second.error
+  }
+
+  if (error) {
+    console.error('[Company Data] nettfront_skus fetch error:', error)
+    return []
+  }
+
+  const rows = (data || []).map(row => ({
+    id: row.id as string,
+    front_type: row.front_type as string,
+    sku_code: row.sku_code as string,
+    display_name: row.display_name as string,
+    finish: (row.finish as string | null) ?? null,
+    swatch_hex: (row.swatch_hex as string | null) ?? null,
+    cost_net_per_sqm: Number(row.cost_net_per_sqm) || 0,
+    sell_net_per_sqm: Number(row.sell_net_per_sqm) || 0,
+    is_active: row.is_active !== false,
+    sort_order: Number(row.sort_order) || 0
+  }))
+
+  if (rows.length === 0) {
+    console.warn(
+      '[Company Data] nettfront_skus returned 0 rows (anon RLS/grant?). Portal will use fallback catalog prices.'
+    )
+  } else {
+    const bronze = rows.find(r => r.sku_code === 'bronze')
+    console.log(
+      `[Company Data] nettfront_skus loaded: ${rows.length} rows` +
+        (bronze ? `, bronze sell_net=${bronze.sell_net_per_sqm}` : '')
+    )
+  }
+
+  return rows
+}
+
+/** Single edge material by id (with machine_code if map exists) */
+export async function getCompanyEdgeMaterialById(
+  companyCredentials: CompanyCredentials,
+  id: string
+) {
+  const companySupabase = createCompanyClient(companyCredentials)
+  const { data, error } = await companySupabase
+    .from('edge_materials')
+    .select(
+      `
+      id,
+      brand_id,
+      type,
+      thickness,
+      width,
+      decor,
+      price,
+      vat_id,
+      active,
+      ráhagyás,
+      favourite_priority,
+      created_at,
+      updated_at,
+      brands (name),
+      vat (name, kulcs)
+    `
+    )
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error || !data) {
+    console.error('[Company Data] Edge material by id error:', error)
+    return null
+  }
+
+  const { data: machineData } = await companySupabase
+    .from('machine_edge_material_map')
+    .select('machine_code')
+    .eq('edge_material_id', id)
+    .eq('machine_type', 'Korpus')
+    .maybeSingle()
+
+  return {
+    ...(data as Record<string, unknown>),
+    machine_code: machineData?.machine_code || ''
+  }
+}

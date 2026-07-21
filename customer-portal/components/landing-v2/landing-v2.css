@@ -63,3 +63,155 @@
   display: block;
   max-width: 100%;
 }
+
+/* Megoldások: LIVE pulse for footcounter card */
+@keyframes lv2-live-pulse-kf {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.lv2-live-pulse {
+  animation: lv2-live-pulse-kf 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  transform-origin: center;
+}
+
+/* ============================================
+ * Jelenlétkezelő landing — animated hero loop
+ * One master timeline cycles through 4 "moments":
+ *   0–25%  : idle clock
+ *   25–40% : card approaching + scan flash
+ *   40–65% : GREEN "ÉRKEZÉS" result screen
+ *   65–80% : dashboard employee card pulses + new timestamp
+ *   80–100%: back to idle clock
+ * Second loop runs departure (red + PIN typing) with phase offset.
+ * Total cycle: 10s, seamless, respects prefers-reduced-motion.
+ * ============================================ */
+
+/* Kiosk "clock" screen — visible during idle phase */
+@keyframes lvj-kiosk-clock-kf {
+  0%, 24% { opacity: 1; }
+  25%, 99% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Kiosk card approaching (arrival only) */
+@keyframes lvj-kiosk-card-kf {
+  0%, 25% { opacity: 0; transform: translateX(32px) scale(0.9); }
+  30% { opacity: 1; transform: translateX(6px) scale(0.98); }
+  36% { opacity: 1; transform: translateX(0) scale(1); }
+  40%, 100% { opacity: 0; transform: translateX(0) scale(1); }
+}
+
+/* Kiosk processing flash (brief blue between card and result) */
+@keyframes lvj-kiosk-processing-kf {
+  0%, 36% { opacity: 0; }
+  37%, 40% { opacity: 1; }
+  41%, 100% { opacity: 0; }
+}
+
+/* Kiosk GREEN result screen — "ÉRKEZÉS — Kovács Péter" */
+@keyframes lvj-kiosk-arrival-kf {
+  0%, 40% { opacity: 0; transform: scale(0.98); }
+  42% { opacity: 1; transform: scale(1.02); }
+  48%, 62% { opacity: 1; transform: scale(1); }
+  63% { opacity: 0; transform: scale(0.98); }
+  100% { opacity: 0; }
+}
+
+/* Dashboard card pulse — fires just AFTER the green flash (syncs with "data arrives") */
+@keyframes lvj-dash-pulse-kf {
+  0%, 62% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+    background-color: #E8F5EE;
+    border-color: #7CB89A;
+  }
+  64% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7);
+    background-color: #DCF2E6;
+    border-color: #2563EB;
+  }
+  72% {
+    box-shadow: 0 0 0 10px rgba(37, 99, 235, 0);
+    background-color: #E8F5EE;
+    border-color: #7CB89A;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+    background-color: #E8F5EE;
+    border-color: #7CB89A;
+  }
+}
+
+/* Dashboard new timestamp fade-in — simulates "arrival just recorded" */
+@keyframes lvj-dash-timestamp-kf {
+  0%, 62% { opacity: 0; transform: translateY(2px); }
+  66%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Arrow connector line glow — from kiosk to dashboard (data flow visual) */
+@keyframes lvj-flow-glow-kf {
+  0%, 40% { opacity: 0; }
+  45%, 68% { opacity: 1; }
+  75%, 100% { opacity: 0; }
+}
+
+/* Soft, slow blink for the "LIVE" dot on the dashboard card */
+@keyframes lvj-live-dot-kf {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* Generic utility classes */
+.lvj-kiosk-clock {
+  animation: lvj-kiosk-clock-kf 10s ease-in-out infinite;
+}
+.lvj-kiosk-card {
+  animation: lvj-kiosk-card-kf 10s ease-in-out infinite;
+}
+.lvj-kiosk-processing {
+  animation: lvj-kiosk-processing-kf 10s ease-in-out infinite;
+}
+.lvj-kiosk-arrival {
+  animation: lvj-kiosk-arrival-kf 10s ease-in-out infinite;
+}
+.lvj-dash-pulse {
+  animation: lvj-dash-pulse-kf 10s ease-in-out infinite;
+}
+.lvj-dash-timestamp {
+  animation: lvj-dash-timestamp-kf 10s ease-in-out infinite;
+}
+.lvj-flow-glow {
+  animation: lvj-flow-glow-kf 10s ease-in-out infinite;
+}
+.lvj-live-dot {
+  animation: lvj-live-dot-kf 2s ease-in-out infinite;
+}
+
+/* Respect user's reduced-motion preference — but only for the BIG state changes.
+   Subtle opacity pulses (like .lvj-live-dot) keep running: they only fade in/out,
+   never translate or scale, so they do not trigger vestibular issues. */
+@media (prefers-reduced-motion: reduce) {
+  .lvj-kiosk-clock,
+  .lvj-kiosk-card,
+  .lvj-kiosk-processing,
+  .lvj-kiosk-arrival,
+  .lvj-dash-pulse,
+  .lvj-dash-timestamp,
+  .lvj-flow-glow {
+    animation: none;
+  }
+  /* Fall back to the "after scan" resting state so the image still tells the story */
+  .lvj-kiosk-clock { opacity: 0; }
+  .lvj-kiosk-arrival { opacity: 1; }
+  .lvj-dash-timestamp { opacity: 1; }
+}

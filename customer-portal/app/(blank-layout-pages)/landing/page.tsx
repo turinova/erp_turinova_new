@@ -1,20 +1,13 @@
-// Component Imports
-import LandingPageWrapper from '@views/front-pages/landing-page'
-import FrontLayout from '@components/layout/front-pages'
+import MarketingShell from '@/components/landing-v2/MarketingShell'
+import Hero from '@/components/landing-v2/Hero'
 
-// Server Action Imports
-import { getServerMode } from '@core/utils/serverHelpers'
-
-const LandingPage = async () => {
-  // Vars
-  const mode = await getServerMode()
-
+export default async function LandingPage() {
   return (
-    <FrontLayout>
-      <LandingPageWrapper mode={mode} />
-    </FrontLayout>
+    <MarketingShell>
+      <main>
+        <Hero />
+      </main>
+    </MarketingShell>
   )
 }
-
-export default LandingPage
 

@@ -13,7 +13,7 @@ export default function Footer() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-12 border-b border-slate-100">
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-10 lg:items-start">
           <div className="lg:col-span-5 flex flex-col gap-4 max-w-xl">
-            <Link href="/v2" className="inline-flex items-center">
+            <Link href="/" className="inline-flex items-center">
               <img
                 src="/images/turinova-logo.png"
                 alt="Turinova"

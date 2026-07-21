@@ -27,6 +27,7 @@ async function fetchAllowedPaths(userId: string): Promise<string[]> {
   return [
     '/home',
     '/opti',
+    '/nettfront',
     '/saved',
     '/orders',
     '/search',

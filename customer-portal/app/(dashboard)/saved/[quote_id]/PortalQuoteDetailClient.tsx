@@ -41,8 +41,10 @@ import {
 import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
 import Filter2Icon from '@mui/icons-material/Filter2'
 import ContentCutIcon from '@mui/icons-material/ContentCut'
+import RequestQuoteIcon from '@mui/icons-material/RequestQuote'
 import { toast } from 'react-toastify'
 import CommentModal from './CommentModal'
+import CustomerFacingPdfDialog from '@/components/muhely-ajanlat/CustomerFacingPdfDialog'
 
 interface PortalQuoteData {
   id: string
@@ -193,6 +195,8 @@ export default function PortalQuoteDetailClient({
   const [commentModalOpen, setCommentModalOpen] = useState(false)
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>('')
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+  const [customerPdfDialogOpen, setCustomerPdfDialogOpen] = useState(false)
+  const [isGeneratingCustomerPdf, setIsGeneratingCustomerPdf] = useState(false)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -321,6 +325,79 @@ export default function PortalQuoteDetailClient({
       toast.error(`Hiba a PDF generálása során: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsGeneratingPdf(false)
+    }
+  }
+
+  const handleCustomerFacingPdf = async (payload: {
+    preparedBy: string
+    buyer: {
+      name: string
+      phone: string
+      email: string
+      postalCode: string
+      city: string
+      street: string
+      taxNumber: string
+    }
+    pricing: {
+      markupPercent: number
+      lineDisplay: 'collapsed' | 'detailed'
+      roundTo: 0 | 100 | 1000
+    }
+    manualLines: Array<{
+      type: string
+      title: string
+      quantity: number
+      unit: string
+      unitPriceGross: number
+    }>
+  }) => {
+    setIsGeneratingCustomerPdf(true)
+    try {
+      const response = await fetch(`/api/portal-quotes/${quoteData.id}/customer-facing-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to generate PDF'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+        } catch {
+          const text = await response.text()
+          errorMessage = text || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/pdf')) {
+        throw new Error('A válasz nem PDF formátumú')
+      }
+
+      const blob = await response.blob()
+      if (blob.size === 0) throw new Error('A generált PDF üres')
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Ugyfelajanlat-${quoteData.quote_number}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast.success('Ügyfélajánlat PDF kész')
+      setCustomerPdfDialogOpen(false)
+    } catch (error) {
+      console.error('[Customer Portal] Customer-facing PDF error:', error)
+      toast.error(
+        `Hiba az ügyfélajánlat PDF során: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    } finally {
+      setIsGeneratingCustomerPdf(false)
     }
   }
 
@@ -1046,7 +1123,19 @@ export default function PortalQuoteDetailClient({
                 fullWidth
                 sx={{ mb: 1 }}
               >
-                {isGeneratingPdf ? 'PDF generálása...' : 'PDF generálás'}
+                {isGeneratingPdf ? 'Letöltés…' : 'Kapott árajánlat'}
+              </Button>
+
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<RequestQuoteIcon />}
+                onClick={() => setCustomerPdfDialogOpen(true)}
+                disabled={isGeneratingCustomerPdf}
+                fullWidth
+                sx={{ mb: 1 }}
+              >
+                {isGeneratingCustomerPdf ? 'Ajánlat készül…' : 'Ajánlat az ügyfelemnek'}
               </Button>
 
               {/* Submit Quote Button - Enabled for draft quotes */}
@@ -1174,6 +1263,17 @@ export default function PortalQuoteDetailClient({
         onSave={handleSaveComment}
         initialComment={quoteData.comment || null}
         quoteNumber={quoteData.quote_number}
+      />
+
+      <CustomerFacingPdfDialog
+        open={customerPdfDialogOpen}
+        quoteNumber={quoteData.quote_number}
+        boardGross={quoteData.final_total_after_discount}
+        seller={quoteData.portal_customers}
+        previewUrl={`/api/portal-quotes/${quoteData.id}/customer-facing-pdf/preview`}
+        onClose={() => setCustomerPdfDialogOpen(false)}
+        onGenerate={handleCustomerFacingPdf}
+        busy={isGeneratingCustomerPdf}
       />
     </>
   )

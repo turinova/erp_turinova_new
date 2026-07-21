@@ -1,30 +1,19 @@
-// Component Imports
-import LandingPageWrapper from '@views/front-pages/landing-page'
-import FrontLayout from '@components/layout/front-pages'
-import { IntersectionProvider } from '@/contexts/intersectionContext'
-
-// Server Action Imports
-import { getServerMode } from '@core/utils/serverHelpers'
-
-// Type Imports
 import type { Metadata } from 'next'
+import MarketingShell from '@/components/landing-v2/MarketingShell'
+import Hero from '@/components/landing-v2/Hero'
 
 export const metadata: Metadata = {
-  title: 'Turinova - ERP rendszer kisvállalkozásoknak',
-  description: 'Vállalatirányítási szoftver kisvállalkozásokra optimalizálva'
+  title: 'Turinova — Szoftver megoldások magyar cégeknek',
+  description:
+    'Webshop ERP, vásárlószámláló (footcounter), munkaidő nyilvántartás és iparági ERP megoldások — találkozó egyeztetéssel.',
 }
 
-const LandingPage = async () => {
-  // Vars
-  const mode = await getServerMode()
-
+export default async function MainLandingPage() {
   return (
-    <IntersectionProvider>
-      <FrontLayout>
-        <LandingPageWrapper mode={mode} />
-      </FrontLayout>
-    </IntersectionProvider>
+    <MarketingShell>
+      <main>
+        <Hero />
+      </main>
+    </MarketingShell>
   )
 }
-
-export default LandingPage
