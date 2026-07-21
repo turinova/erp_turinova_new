@@ -260,10 +260,10 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
       if (response.ok) {
         toast.success('Sikeres regisztráció!')
 
-        // GA4 conversion: sign_up (Ads Primary target)
+        // GA4 conversion: wait for hit before redirect so Network shows en=sign_up
         try {
-          const { analyticsEvent } = await import('@/lib/analytics')
-          analyticsEvent('sign_up', { method: 'email' })
+          const { trackSignUpAndWait } = await import('@/lib/analytics')
+          await trackSignUpAndWait(2000)
         } catch {
           /* ignore analytics errors */
         }

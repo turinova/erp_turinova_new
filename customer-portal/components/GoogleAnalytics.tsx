@@ -27,6 +27,17 @@ export default function GoogleAnalytics() {
     return () => window.removeEventListener(COOKIE_CONSENT_EVENT, onConsent)
   }, [])
 
+  // Stub gtag early so events can queue before the remote script loads
+  useEffect(() => {
+    if (!enabled) return
+    window.dataLayer = window.dataLayer || []
+    if (typeof window.gtag !== 'function') {
+      window.gtag = function gtag(...args: unknown[]) {
+        window.dataLayer!.push(args)
+      }
+    }
+  }, [enabled])
+
   if (!enabled || !GA_MEASUREMENT_ID) return null
 
   return (
