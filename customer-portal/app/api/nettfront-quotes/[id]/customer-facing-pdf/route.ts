@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { buildNettfrontCustomerFacingHtml } from './build-html'
+import { logCustomerFacingPdfGenerated } from '@/lib/customer-facing-pdf-events'
 
 const isProduction = process.env.VERCEL || process.env.NODE_ENV === 'production'
 
@@ -81,6 +82,23 @@ export async function POST(
     console.log(
       `[Nettfront customer-facing PDF] Done in ${Date.now() - startTime}ms, ${pdfBuffer.length} bytes`
     )
+
+    try {
+      await logCustomerFacingPdfGenerated({
+        portalCustomerId: built.portalCustomerId,
+        source: 'nettfront',
+        quoteId: id,
+        quoteNumber: built.quoteNumber,
+        quoteStatus: built.quoteStatus,
+        generatedFrom: body?.generatedFrom === 'saved' || body?.generatedFrom === 'orders'
+          ? body.generatedFrom
+          : 'unknown',
+        markupPercent: Number(body?.pricing?.markupPercent) || 0,
+        manualLinesCount: Array.isArray(body?.manualLines) ? body.manualLines.length : 0
+      })
+    } catch (logError) {
+      console.error('[Nettfront customer-facing PDF] Analytics log error:', logError)
+    }
 
     return new NextResponse(Buffer.from(pdfBuffer), {
       status: 200,

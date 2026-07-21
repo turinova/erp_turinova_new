@@ -330,6 +330,7 @@ export default function PortalQuoteDetailClient({
 
   const handleCustomerFacingPdf = async (payload: {
     preparedBy: string
+    generatedFrom?: 'saved' | 'orders'
     buyer: {
       name: string
       phone: string
@@ -357,7 +358,7 @@ export default function PortalQuoteDetailClient({
       const response = await fetch(`/api/portal-quotes/${quoteData.id}/customer-facing-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, generatedFrom: 'saved' })
       })
 
       if (!response.ok) {

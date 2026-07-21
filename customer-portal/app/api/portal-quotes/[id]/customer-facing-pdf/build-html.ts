@@ -53,7 +53,13 @@ function resolveValidUntilDisplay(validUntil: string | undefined, createdAt: str
 }
 
 export type BuildHtmlResult =
-  | { ok: true; html: string; quoteNumber: string }
+  | {
+      ok: true
+      html: string
+      quoteNumber: string
+      portalCustomerId: string
+      quoteStatus: string | null
+    }
   | { ok: false; status: number; error: string }
 
 /**
@@ -244,5 +250,11 @@ export async function buildOptiCustomerFacingHtml(
     return { ok: false, status: 500, error: 'HTML generálási hiba' }
   }
 
-  return { ok: true, html, quoteNumber: quoteData.quote_number }
+  return {
+    ok: true,
+    html,
+    quoteNumber: quoteData.quote_number,
+    portalCustomerId: quoteData.portal_customer_id,
+    quoteStatus: quoteData.status ?? null
+  }
 }

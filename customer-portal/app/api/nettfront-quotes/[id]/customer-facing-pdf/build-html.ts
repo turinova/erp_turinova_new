@@ -31,7 +31,13 @@ export type CustomerFacingBody = {
 }
 
 export type BuildHtmlResult =
-  | { ok: true; html: string; quoteNumber: string }
+  | {
+      ok: true
+      html: string
+      quoteNumber: string
+      portalCustomerId: string
+      quoteStatus: string | null
+    }
   | { ok: false; status: number; error: string }
 
 function round2(n: number) {
@@ -249,5 +255,11 @@ export async function buildNettfrontCustomerFacingHtml(
     return { ok: false, status: 500, error: 'HTML generálási hiba' }
   }
 
-  return { ok: true, html, quoteNumber: quote.quote_number }
+  return {
+    ok: true,
+    html,
+    quoteNumber: quote.quote_number,
+    portalCustomerId: quote.portal_customer_id,
+    quoteStatus: quote.status ?? null
+  }
 }

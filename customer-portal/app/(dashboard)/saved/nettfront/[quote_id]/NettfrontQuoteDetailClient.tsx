@@ -284,7 +284,7 @@ export default function NettfrontQuoteDetailClient({
       const response = await fetch(`/api/nettfront-quotes/${quoteData.id}/customer-facing-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, generatedFrom: 'saved' })
       })
 
       if (!response.ok) {

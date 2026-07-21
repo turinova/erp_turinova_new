@@ -89,6 +89,8 @@ export type CustomerFacingPdfPayload = {
   preparedBy: string
   /** Ajánlat érvényesség (YYYY-MM-DD). */
   validUntil: string
+  /** Analytics only; preview ignores it. */
+  generatedFrom?: 'saved' | 'orders'
   buyer: BuyerDraft
   pricing: {
     markupPercent: number
