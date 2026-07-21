@@ -16,7 +16,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#E74C3C' // Red for search
     },
     {
-      label: 'Opti',
+      label: 'Lapszabászat',
       href: '/opti',
       icon: 'ri-dashboard-line',
       iconColor: '#27AE60' // Green for opti/optimization

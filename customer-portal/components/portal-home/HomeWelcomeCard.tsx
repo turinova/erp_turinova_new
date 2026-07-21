@@ -109,7 +109,7 @@ export default function HomeWelcomeCard({ companyName, customerName }: HomeWelco
               '&:hover': { borderColor: '#0a0a0a', bgcolor: 'rgba(0,0,0,0.04)' }
             }}
           >
-            Opti
+            Lapszabászat
           </Button>
         </Stack>
       </CardContent>

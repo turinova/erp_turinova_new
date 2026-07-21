@@ -474,7 +474,7 @@ export default function HomeClient({
                   sx={{ display: 'flex', flexDirection: 'column', gap: 1.2 }}
                 >
                   <span>
-                    Az <Link href='/opti'>Opti</Link> oldalon adja meg a kiválasztott anyag(ok) panelméreteit, majd futtassa az optimalizálást.
+                    A <Link href='/opti'>Lapszabászat</Link> oldalon adja meg a kiválasztott anyag(ok) panelméreteit, majd futtassa az optimalizálást.
                   </span>
                   <span>
                     Ha az eredmény megfelelő, kattintson az <strong>„Árajánlat mentése”</strong> gombra.
