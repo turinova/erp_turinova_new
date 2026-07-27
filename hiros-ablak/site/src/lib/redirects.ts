@@ -39,7 +39,6 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
     destination: "/szolgaltatasok/lapszabaszat-es-elzaras",
     permanent: true,
   },
-  { source: "/karrier", destination: "/kapcsolat", permanent: true },
   {
     source: "/adatkezelesi-tajekoztatot",
     destination: "/adatkezelesi-tajekoztato",

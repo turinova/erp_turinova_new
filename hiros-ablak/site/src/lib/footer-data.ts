@@ -99,6 +99,7 @@ export const VASALATMESTER_URL = "https://www.vasalatmester.hu"
 export const TURINOVA_HOME_URL = "https://www.turinova.hu"
 
 export const FOOTER_PARTNERS: readonly FooterLink[] = [
+  { href: "/karrier", label: "Karrier / állások" },
   { href: "/asztalos-partner", label: "Asztalos partner program" },
   {
     href: TURINOVA_REGISTER_URL,

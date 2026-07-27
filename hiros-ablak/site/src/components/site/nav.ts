@@ -18,5 +18,6 @@ export const NAV_ITEMS = [
     ],
   },
   { href: "/barkacsaruhaz-kecskemet", label: "Üzletünk" },
+  { href: "/karrier", label: "Karrier" },
   { href: "/kapcsolat", label: "Kapcsolat" },
 ] as const

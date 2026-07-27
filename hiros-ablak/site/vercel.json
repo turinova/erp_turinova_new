@@ -45,11 +45,6 @@
       "permanent": true
     },
     {
-      "source": "/karrier",
-      "destination": "https://www.hirosablak.hu/kapcsolat",
-      "permanent": true
-    },
-    {
       "source": "/adatkezelesi-tajekoztatot",
       "destination": "https://www.hirosablak.hu/adatkezelesi-tajekoztato",
       "permanent": true

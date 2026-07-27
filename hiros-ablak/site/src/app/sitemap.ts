@@ -16,6 +16,7 @@ function toIsoDate(input: string) {
 const STATIC_PATHS = [
   "/",
   "/kapcsolat",
+  "/karrier",
   "/barkacsaruhaz-kecskemet",
   "/asztalos-partner",
   "/szolgaltatasok/lapszabaszat-es-elzaras",

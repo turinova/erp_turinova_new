@@ -1,6 +1,8 @@
 import { sendFormEmail } from "@/lib/mail"
+import { COMPANY } from "@/lib/company"
+import { getJobBySlug } from "@/lib/jobs"
 
-export const FORM_TYPES = ["contact", "partner", "quote"] as const
+export const FORM_TYPES = ["contact", "partner", "quote", "career"] as const
 export type FormType = (typeof FORM_TYPES)[number]
 
 const CONTACT_TOPICS = new Set([
@@ -19,12 +21,14 @@ const TOPIC_LABELS: Record<string, string> = {
   penzugy: "Számlázás",
   asztalos: "Asztalos / bútorgyártó kapcsolat",
   egyeb: "Egyedi bútor és egyéb megkeresés",
+  general: "Általános érdeklődés / nincs nyitott állás",
 }
 
 const FORM_LABELS: Record<FormType, string> = {
   contact: "Kapcsolatfelvétel",
   partner: "Asztalos partner – visszahívás",
   quote: "Szállítóláda – árajánlat kérés",
+  career: "Karrier – állásjelentkezés",
 }
 
 const MAX = {
@@ -32,7 +36,7 @@ const MAX = {
   email: 200,
   phone: 40,
   company: 160,
-  topic: 32,
+  topic: 64,
   message: 4000,
 } as const
 
@@ -97,9 +101,11 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
   if (!name || name.length > MAX.name) {
     return { kind: "error", error: "Érvénytelen név.", status: 400 }
   }
+
   if (!email || email.length > MAX.email || !isValidEmail(email)) {
     return { kind: "error", error: "Érvénytelen e-mail cím.", status: 400 }
   }
+
   if (phone.length > MAX.phone) {
     return { kind: "error", error: "Érvénytelen telefonszám.", status: 400 }
   }
@@ -109,7 +115,10 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
   if (!consent) {
     return {
       kind: "error",
-      error: "Kérjük, fogadja el az adatkezelési tájékoztatót.",
+      error:
+        form === "career"
+          ? "Fogadd el az adatkezelési tájékoztatót."
+          : "Kérjük, fogadja el az adatkezelési tájékoztatót.",
       status: 400,
     }
   }
@@ -146,6 +155,29 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
     }
   }
 
+  if (form === "career") {
+    if (!phone) {
+      return { kind: "error", error: "A telefonszám megadása kötelező.", status: 400 }
+    }
+    if (!topic) {
+      return { kind: "error", error: "Válassz pozíciót.", status: 400 }
+    }
+    const job = getJobBySlug(topic)
+    if (!job && topic !== "general") {
+      return { kind: "error", error: "Érvénytelen pozíció.", status: 400 }
+    }
+    if (message.length > MAX.message) {
+      return { kind: "error", error: "Az üzenet túl hosszú.", status: 400 }
+    }
+  }
+
+  const topicLabel =
+    form === "career"
+      ? getJobBySlug(topic)?.title || TOPIC_LABELS[topic] || topic
+      : topic
+        ? TOPIC_LABELS[topic] || topic
+        : ""
+
   return {
     kind: "ok",
     data: {
@@ -155,7 +187,7 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
       phone,
       company,
       topic,
-      topicLabel: topic ? TOPIC_LABELS[topic] || topic : "",
+      topicLabel,
       message,
     },
   }
@@ -163,18 +195,27 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
 
 export async function deliverFormEmail(
   data: ParsedSubmission,
-  meta: { referer: string | null; userAgent: string | null },
+  meta: {
+    referer: string | null
+    userAgent: string | null
+    attachment?: {
+      filename: string
+      content: Buffer
+      contentType?: string
+    }
+  },
 ): Promise<void> {
   const lines: string[] = [
     `Űrlap: ${FORM_LABELS[data.form]}`,
     `Időpont: ${new Date().toLocaleString("hu-HU", { timeZone: "Europe/Budapest" })}`,
     "",
     `Név: ${data.name}`,
-    `E-mail: ${data.email}`,
   ]
+  if (data.email) lines.push(`E-mail: ${data.email}`)
   if (data.phone) lines.push(`Telefon: ${data.phone}`)
   if (data.company) lines.push(`Vállalkozás: ${data.company}`)
-  if (data.topicLabel) lines.push(`Téma: ${data.topicLabel}`)
+  if (data.topicLabel) lines.push(`Pozíció / téma: ${data.topicLabel}`)
+  if (meta.attachment) lines.push(`Önéletrajz: ${meta.attachment.filename}`)
   if (data.message) {
     lines.push("", "Üzenet:", data.message)
   }
@@ -184,10 +225,13 @@ export async function deliverFormEmail(
   const htmlRows = [
     ["Űrlap", FORM_LABELS[data.form]],
     ["Név", data.name],
-    ["E-mail", data.email],
+    data.email ? ["E-mail", data.email] : null,
     data.phone ? ["Telefon", data.phone] : null,
     data.company ? ["Vállalkozás", data.company] : null,
-    data.topicLabel ? ["Téma", data.topicLabel] : null,
+    data.topicLabel
+      ? [data.form === "career" ? "Pozíció" : "Téma", data.topicLabel]
+      : null,
+    meta.attachment ? ["Önéletrajz", meta.attachment.filename] : null,
   ]
     .filter(Boolean)
     .map(
@@ -210,6 +254,16 @@ ${meta.referer ? `<p style="margin-top:16px;font-size:12px;color:#666">Forrás: 
     subject: `[Hírös-Ablak] ${subjectParts.join(" – ")}`,
     text,
     html,
-    replyTo: data.email,
+    replyTo: data.email || undefined,
+    to: data.form === "career" ? COMPANY.emails.central : undefined,
+    attachments: meta.attachment
+      ? [
+          {
+            filename: meta.attachment.filename,
+            content: meta.attachment.content,
+            contentType: meta.attachment.contentType,
+          },
+        ]
+      : undefined,
   })
 }

@@ -1,10 +1,19 @@
 import nodemailer from "nodemailer"
 
+export type FormEmailAttachment = {
+  filename: string
+  content: Buffer
+  contentType?: string
+}
+
 export type FormEmailPayload = {
   subject: string
   text: string
   html: string
   replyTo?: string
+  /** Override MAIL_TO (pl. karrier → hirosablak@…) */
+  to?: string
+  attachments?: FormEmailAttachment[]
 }
 
 function getSmtpConfig() {
@@ -29,7 +38,7 @@ export function isMailConfigured(): boolean {
 
 export async function sendFormEmail(payload: FormEmailPayload): Promise<void> {
   const smtp = getSmtpConfig()
-  const to = process.env.MAIL_TO
+  const to = payload.to || process.env.MAIL_TO
   const from = process.env.MAIL_FROM || process.env.SMTP_USER
 
   if (!smtp || !to || !from) {
@@ -45,5 +54,10 @@ export async function sendFormEmail(payload: FormEmailPayload): Promise<void> {
     subject: payload.subject,
     text: payload.text,
     html: payload.html,
+    attachments: payload.attachments?.map((a) => ({
+      filename: a.filename,
+      content: a.content,
+      contentType: a.contentType,
+    })),
   })
 }
