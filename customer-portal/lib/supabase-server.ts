@@ -552,6 +552,90 @@ export async function getUnifiedSavedQuotes(page: number = 1, limit: number = 20
 }
 
 /**
+ * Light submitted (megrendelt) list for ügyfélajánlat hub/picker — no company enrichment.
+ */
+export async function getUnifiedSubmittedQuotesLight(
+  page: number = 1,
+  limit: number = 20,
+  searchTerm?: string
+) {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const search = searchTerm?.trim() || ''
+
+    let optiQuery = supabase
+      .from('portal_quotes')
+      .select('id, quote_number, comment, final_total_after_discount, updated_at, submitted_at')
+      .eq('portal_customer_id', user.id)
+      .eq('status', 'submitted')
+      .order('submitted_at', { ascending: false })
+      .limit(200)
+
+    let nfQuery = supabase
+      .from('portal_nettfront_quotes')
+      .select('id, quote_number, comment, final_total_after_discount, updated_at, submitted_at')
+      .eq('portal_customer_id', user.id)
+      .eq('status', 'submitted')
+      .order('submitted_at', { ascending: false })
+      .limit(200)
+
+    if (search) {
+      optiQuery = optiQuery.ilike('quote_number', `%${search}%`)
+      nfQuery = nfQuery.ilike('quote_number', `%${search}%`)
+    }
+
+    const [optiRes, nfRes] = await Promise.all([optiQuery, nfQuery])
+
+    const optiRows = (optiRes.data || []).map(q => ({
+      id: q.id as string,
+      quote_number: q.quote_number as string,
+      comment: (q.comment as string | null) ?? null,
+      final_total_after_discount: Number(q.final_total_after_discount) || 0,
+      updated_at: (q.submitted_at as string) || (q.updated_at as string),
+      type: 'opti' as UnifiedPortalQuoteType
+    }))
+
+    const nfRows = nfRes.error
+      ? []
+      : (nfRes.data || []).map(q => ({
+          id: q.id as string,
+          quote_number: q.quote_number as string,
+          comment: (q.comment as string | null) ?? null,
+          final_total_after_discount: Number(q.final_total_after_discount) || 0,
+          updated_at: (q.submitted_at as string) || (q.updated_at as string),
+          type: 'nettfront' as UnifiedPortalQuoteType
+        }))
+
+    if (nfRes.error) {
+      console.warn('[Customer Portal SSR] Nettfront submitted quotes unavailable:', nfRes.error.message)
+    }
+
+    const merged = [...optiRows, ...nfRows].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    )
+
+    const totalCount = merged.length
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit))
+    const offset = (page - 1) * limit
+    const quotes = merged.slice(offset, offset + limit)
+
+    return { quotes, totalCount, totalPages, currentPage: page }
+  } catch (error) {
+    console.error('[Customer Portal SSR] getUnifiedSubmittedQuotesLight:', error)
+    return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
+}
+
+/**
  * Unified submitted list for /orders — Opti + Nettfront
  */
 export async function getUnifiedOrders(page: number = 1, limit: number = 20, searchTerm?: string) {
@@ -796,5 +880,322 @@ export async function getUnifiedOrders(page: number = 1, limit: number = 20, sea
   } catch (error) {
     console.error('[Customer Portal SSR] getUnifiedOrders:', error)
     return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
+}
+
+/**
+ * Mentett ügyfélajánlatok listája (saját).
+ */
+export async function getPortalCustomerQuotes(limit: number = 50): Promise<{
+  quotes: import('@/lib/portal-customer-quotes').PortalCustomerQuoteListItem[]
+  error?: string
+}> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return { quotes: [] }
+    }
+
+    const { data, error } = await supabase
+      .from('portal_customer_quotes')
+      .select(
+        `
+        id, quote_number, buyer_name, project_title, payable_gross,
+        sources_summary, created_at, updated_at, last_pdf_at
+      `
+      )
+      .eq('portal_customer_id', user.id)
+      .order('updated_at', { ascending: false })
+      .limit(Math.max(1, Math.min(100, limit)))
+
+    if (error) {
+      console.error('[Customer Portal SSR] getPortalCustomerQuotes:', error)
+      return {
+        quotes: [],
+        error:
+          error.code === '42P01' || error.message?.includes('does not exist')
+            ? 'A portal_customer_quotes tábla még nincs létrehozva. Futtasd a migrationt.'
+            : error.message
+      }
+    }
+
+    return {
+      quotes: (data || []).map(row => ({
+        id: row.id,
+        quote_number: row.quote_number,
+        buyer_name: row.buyer_name || '',
+        project_title: row.project_title,
+        payable_gross: Number(row.payable_gross) || 0,
+        sources_summary: row.sources_summary || 'Manuális',
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        last_pdf_at: row.last_pdf_at
+      }))
+    }
+  } catch (error) {
+    console.error('[Customer Portal SSR] getPortalCustomerQuotes:', error)
+    return { quotes: [] }
+  }
+}
+
+/**
+ * Egy mentett ügyfélajánlat (saját) — szerkesztő / snapshot PDF.
+ */
+export async function getPortalCustomerQuoteById(
+  id: string
+): Promise<import('@/lib/portal-customer-quotes').PortalCustomerQuoteRecord | null> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) return null
+
+    const quoteId = String(id || '').trim()
+    if (!quoteId) return null
+
+    const { data, error } = await supabase
+      .from('portal_customer_quotes')
+      .select('*')
+      .eq('id', quoteId)
+      .eq('portal_customer_id', user.id)
+      .single()
+
+    if (error || !data) {
+      if (error && error.code !== 'PGRST116') {
+        console.error('[Customer Portal SSR] getPortalCustomerQuoteById:', error)
+      }
+      return null
+    }
+
+    const {
+      isValidSnapshot,
+      isValidStoredPayload
+    } = await import('@/lib/portal-customer-quotes')
+
+    const payload = isValidStoredPayload(data.payload) ? data.payload : ({ buyer: {} } as never)
+    const snapshot = isValidSnapshot(data.snapshot)
+      ? data.snapshot
+      : ({
+          quoteNumber: data.quote_number,
+          createdAt: data.created_at,
+          preparedBy: '',
+          buyer: {
+            name: data.buyer_name || '',
+            email: '',
+            mobile: '',
+            billing_name: data.buyer_name || '',
+            billing_city: '',
+            billing_postal_code: '',
+            billing_street: '',
+            billing_house_number: '',
+            billing_tax_number: ''
+          },
+          portalSourceRows: [],
+          manualLines: [],
+          payableGross: Number(data.payable_gross) || 0,
+          validUntilDisplay: ''
+        } as never)
+
+    return {
+      id: data.id,
+      portal_customer_id: data.portal_customer_id,
+      quote_number: data.quote_number,
+      buyer_name: data.buyer_name || '',
+      project_title: data.project_title,
+      payable_gross: Number(data.payable_gross) || 0,
+      sources_summary: data.sources_summary || 'Manuális',
+      created_at: data.created_at,
+      updated_at: data.updated_at,
+      last_pdf_at: data.last_pdf_at,
+      payload,
+      snapshot
+    }
+  } catch (error) {
+    console.error('[Customer Portal SSR] getPortalCustomerQuoteById:', error)
+    return null
+  }
+}
+
+export async function generatePortalCustomerQuoteNumber(): Promise<string | null> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('generate_portal_customer_quote_number')
+    if (error) {
+      console.error('[Customer Portal] generate_portal_customer_quote_number:', error)
+      return null
+    }
+    const n = String(data || '').trim()
+    return n || null
+  } catch (error) {
+    console.error('[Customer Portal] generate_portal_customer_quote_number:', error)
+    return null
+  }
+}
+
+export async function upsertPortalCustomerQuote(input: {
+  id?: string | null
+  portalCustomerId: string
+  quoteNumber: string
+  buyerName: string
+  projectTitle?: string | null
+  payableGross: number
+  sourcesSummary: string
+  payload: import('@/lib/portal-customer-quotes').CustomerQuoteStoredPayload
+  snapshot: import('@/lib/portal-customer-quotes').CustomerQuoteSnapshot
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user || user.id !== input.portalCustomerId) {
+      return { ok: false, error: 'Nincs bejelentkezés' }
+    }
+
+    const now = new Date().toISOString()
+    const row = {
+      portal_customer_id: input.portalCustomerId,
+      quote_number: input.quoteNumber,
+      buyer_name: input.buyerName.slice(0, 200),
+      project_title: input.projectTitle?.trim() ? input.projectTitle.trim().slice(0, 200) : null,
+      payable_gross: Math.max(0, Math.round(input.payableGross)),
+      sources_summary: input.sourcesSummary.slice(0, 120),
+      payload: input.payload,
+      snapshot: input.snapshot,
+      last_pdf_at: now
+    }
+
+    const existingId = String(input.id || '').trim()
+    if (existingId) {
+      const { data, error } = await supabase
+        .from('portal_customer_quotes')
+        .update(row)
+        .eq('id', existingId)
+        .eq('portal_customer_id', user.id)
+        .select('id')
+        .single()
+
+      if (error || !data) {
+        console.error('[Customer Portal] upsertPortalCustomerQuote update:', error)
+        return {
+          ok: false,
+          error:
+            error?.code === '42P01'
+              ? 'A portal_customer_quotes tábla még nincs létrehozva. Futtasd a migrationt.'
+              : error?.message || 'Mentés sikertelen'
+        }
+      }
+      return { ok: true, id: data.id }
+    }
+
+    const { data, error } = await supabase
+      .from('portal_customer_quotes')
+      .insert(row)
+      .select('id')
+      .single()
+
+    if (error || !data) {
+      console.error('[Customer Portal] upsertPortalCustomerQuote insert:', error)
+      return {
+        ok: false,
+        error:
+          error?.code === '42P01'
+            ? 'A portal_customer_quotes tábla még nincs létrehozva. Futtasd a migrationt.'
+            : error?.message || 'Mentés sikertelen'
+      }
+    }
+    return { ok: true, id: data.id }
+  } catch (error) {
+    console.error('[Customer Portal] upsertPortalCustomerQuote:', error)
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Mentés sikertelen'
+    }
+  }
+}
+
+/** Snapshot újra-PDF: csak last_pdf_at. */
+export async function touchPortalCustomerQuotePdf(
+  id: string,
+  portalCustomerId: string
+): Promise<void> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user }
+    } = await supabase.auth.getUser()
+    if (!user || user.id !== portalCustomerId) return
+    await supabase
+      .from('portal_customer_quotes')
+      .update({ last_pdf_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('portal_customer_id', user.id)
+  } catch (error) {
+    console.error('[Customer Portal] touchPortalCustomerQuotePdf:', error)
+  }
+}
+
+/** Mentett ügyfélajánlat törlése (saját). */
+export async function deletePortalCustomerQuote(
+  id: string
+): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return { ok: false, error: 'Nincs bejelentkezés', status: 401 }
+    }
+
+    const quoteId = String(id || '').trim()
+    if (!quoteId) {
+      return { ok: false, error: 'Hiányzó azonosító', status: 400 }
+    }
+
+    const { data, error } = await supabase
+      .from('portal_customer_quotes')
+      .delete()
+      .eq('id', quoteId)
+      .eq('portal_customer_id', user.id)
+      .select('id')
+      .maybeSingle()
+
+    if (error) {
+      console.error('[Customer Portal] deletePortalCustomerQuote:', error)
+      return {
+        ok: false,
+        error:
+          error.code === '42P01'
+            ? 'A portal_customer_quotes tábla még nincs létrehozva.'
+            : error.message || 'Törlés sikertelen',
+        status: 500
+      }
+    }
+
+    if (!data) {
+      return { ok: false, error: 'Az ajánlat nem található', status: 404 }
+    }
+
+    return { ok: true }
+  } catch (error) {
+    console.error('[Customer Portal] deletePortalCustomerQuote:', error)
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Törlés sikertelen',
+      status: 500
+    }
   }
 }

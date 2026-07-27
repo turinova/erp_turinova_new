@@ -1,3 +1,10 @@
+import {
+  renderCustomerFacingClosingHtml,
+  renderPaletteCss,
+  renderWorkshopLogoHtml,
+  type PdfPaletteId
+} from '@/lib/customer-facing-pdf-extras'
+
 /** Ügyfélajánlat PDF — Nettfront / Fronttervező (asztalos = ajánlat adó, tenant nélkül) */
 
 type SkuSummary = {
@@ -85,6 +92,14 @@ export type NettfrontCustomerFacingPdfProps = {
   turinovaLogoBase64?: string
   /** Pre-formatted Hungarian date e.g. 2026.08.03. */
   validUntilDisplay?: string
+  workshopLogoDataUrl?: string
+  projectTitle?: string
+  paymentText?: string
+  leadTimeNote?: string
+  customerNotes?: string
+  paletteId?: PdfPaletteId
+  accentHex?: string
+  showVatNote?: boolean
 }
 
 const MANUAL_TYPE_LABEL: Record<string, string> = {
@@ -152,7 +167,15 @@ export default function generateNettfrontCustomerFacingPdfHtml({
   markupPercent,
   lineDisplay,
   turinovaLogoBase64,
-  validUntilDisplay
+  validUntilDisplay,
+  workshopLogoDataUrl,
+  projectTitle,
+  paymentText,
+  leadTimeNote,
+  customerNotes,
+  paletteId,
+  accentHex,
+  showVatNote
 }: NettfrontCustomerFacingPdfProps): string {
   const buyer = quote.buyer
   const factor = Number(markupFactor) > 0 ? Number(markupFactor) : 1
@@ -293,6 +316,7 @@ export default function generateNettfrontCustomerFacingPdfHtml({
   <head>
     <meta charset="UTF-8" />
     <style>
+      ${renderPaletteCss({ paletteId, accentHex })}
       * { margin: 0; padding: 0; box-sizing: border-box; }
       @page { margin: 0; size: A4; }
       html, body { height: 100%; margin: 0; padding: 0; }
@@ -306,8 +330,10 @@ export default function generateNettfrontCustomerFacingPdfHtml({
       .header { margin-bottom: 1.5em; padding-bottom: 1em; border-bottom: 1px solid #000000; }
       .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
       .header-left { flex-shrink: 0; }
+      .header-logo { max-height: 48px; max-width: 200px; width: auto; height: auto; display: block; }
       .header-right { text-align: right; flex: 1; }
       .title { font-size: 16px; font-weight: 700; color: #212121; margin-bottom: 0.25em; }
+      .project-title { font-size: 11px; font-weight: 600; color: #424242; margin-bottom: 0.25em; }
       .quote-number { font-size: 12px; font-weight: 600; color: #424242; margin-bottom: 0.25em; }
       .quote-date { font-size: 10px; color: #000000; }
       .two-column { display: flex; gap: 2em; margin-bottom: 1.5em; }
@@ -362,9 +388,10 @@ export default function generateNettfrontCustomerFacingPdfHtml({
     <div class="content-wrapper">
     <div class="header">
       <div class="header-row">
-        <div class="header-left"></div>
+        <div class="header-left">${renderWorkshopLogoHtml(workshopLogoDataUrl)}</div>
         <div class="header-right">
           <div class="title">AJÁNLAT</div>
+          ${projectTitle ? `<div class="project-title">${escapeHtml(projectTitle)}</div>` : ''}
           <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
           <div class="quote-date">
             <div>Kelt.: ${formatDatePdf(quote.created_at)}</div>
@@ -438,16 +465,14 @@ export default function generateNettfrontCustomerFacingPdfHtml({
       </tbody>
     </table>
 
-    ${
-      quote.comment
-        ? `
-    <div class="notes-section">
-      <div class="notes-title">Megjegyzés:</div>
-      <div class="notes-content">${escapeHtml(quote.comment)}</div>
-    </div>
-    `
-        : ''
-    }
+    ${renderCustomerFacingClosingHtml({
+      workshopPhone: workshop.phone,
+      workshopEmail: workshop.email,
+      paymentText,
+      leadTimeNote,
+      customerNotes,
+      showVatNote
+    })}
 
     <div style="flex: 1;"></div>
 
@@ -466,9 +491,10 @@ export default function generateNettfrontCustomerFacingPdfHtml({
       <div class="content-wrapper">
         <div class="header">
           <div class="header-row">
-            <div class="header-left"></div>
+            <div class="header-left">${renderWorkshopLogoHtml(workshopLogoDataUrl)}</div>
             <div class="header-right">
               <div class="title">AJÁNLAT</div>
+              ${projectTitle ? `<div class="project-title">${escapeHtml(projectTitle)}</div>` : ''}
               <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
               <div class="quote-date">
                 <div>Kelt.: ${formatDatePdf(quote.created_at)}</div>

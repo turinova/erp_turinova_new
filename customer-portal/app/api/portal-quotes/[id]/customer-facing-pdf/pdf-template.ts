@@ -1,6 +1,13 @@
 // Customer-facing quote PDF (asztalos as ajánlat adó, no tenant branding)
 // Adapted from portal quote PDF template
 
+import {
+  renderCustomerFacingClosingHtml,
+  renderPaletteCss,
+  renderWorkshopLogoHtml,
+  type PdfPaletteId
+} from '@/lib/customer-facing-pdf-extras'
+
 interface PortalQuoteMaterialPricing {
   id: string
   material_name: string
@@ -110,6 +117,14 @@ interface PortalQuotePdfTemplateProps {
   /** Pre-formatted Hungarian date e.g. 2026.08.03. */
   validUntilDisplay?: string
   turinovaLogoBase64?: string
+  workshopLogoDataUrl?: string
+  projectTitle?: string
+  paymentText?: string
+  leadTimeNote?: string
+  customerNotes?: string
+  paletteId?: PdfPaletteId
+  accentHex?: string
+  showVatNote?: boolean
   vatRates?: any[]
 }
 
@@ -210,6 +225,14 @@ export default function generateCustomerFacingQuotePdfHtml({
   markupPercent = 0,
   validUntilDisplay,
   turinovaLogoBase64,
+  workshopLogoDataUrl,
+  projectTitle,
+  paymentText,
+  leadTimeNote,
+  customerNotes,
+  paletteId,
+  accentHex,
+  showVatNote,
   vatRates = []
 }: PortalQuotePdfTemplateProps): string {
   const factor = Number(markupFactor) > 0 ? Number(markupFactor) : 1
@@ -481,6 +504,7 @@ export default function generateCustomerFacingQuotePdfHtml({
   <head>
     <meta charset="UTF-8" />
     <style>
+      ${renderPaletteCss({ paletteId, accentHex })}
       * {
         margin: 0;
         padding: 0;
@@ -531,6 +555,7 @@ export default function generateCustomerFacingQuotePdfHtml({
         max-width: 220px;
         width: auto;
         height: auto;
+        display: block;
       }
       .header-right {
         text-align: right;
@@ -540,6 +565,12 @@ export default function generateCustomerFacingQuotePdfHtml({
         font-size: 16px;
         font-weight: 700;
         color: #212121;
+        margin-bottom: 0.25em;
+      }
+      .project-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: #424242;
         margin-bottom: 0.25em;
       }
       .quote-number {
@@ -739,9 +770,11 @@ export default function generateCustomerFacingQuotePdfHtml({
     <div class="header">
       <div class="header-row">
         <div class="header-left">
+          ${renderWorkshopLogoHtml(workshopLogoDataUrl)}
         </div>
         <div class="header-right">
           <div class="title">AJÁNLAT</div>
+          ${projectTitle ? `<div class="project-title">${escapeHtml(projectTitle)}</div>` : ''}
           <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
           <div class="quote-date">
             <div>Kelt.: ${formatDatePdf(quote.created_at)}</div>
@@ -811,12 +844,14 @@ export default function generateCustomerFacingQuotePdfHtml({
       </tbody>
     </table>
     
-    ${quote.comment ? `
-    <div class="notes-section">
-      <div class="notes-title">Megjegyzés:</div>
-      <div class="notes-content">${escapeHtml(quote.comment)}</div>
-    </div>
-    ` : ''}
+    ${renderCustomerFacingClosingHtml({
+      workshopPhone: workshop.phone,
+      workshopEmail: workshop.email,
+      paymentText,
+      leadTimeNote,
+      customerNotes,
+      showVatNote
+    })}
     
     <div style="flex: 1;"></div>
     
@@ -835,9 +870,11 @@ export default function generateCustomerFacingQuotePdfHtml({
         <div class="header">
           <div class="header-row">
             <div class="header-left">
+              ${renderWorkshopLogoHtml(workshopLogoDataUrl)}
             </div>
             <div class="header-right">
               <div class="title">AJÁNLAT</div>
+              ${projectTitle ? `<div class="project-title">${escapeHtml(projectTitle)}</div>` : ''}
               <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
               <div class="quote-date">
                 <div>Kelt.: ${formatDatePdf(quote.created_at)}</div>

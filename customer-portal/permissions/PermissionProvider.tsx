@@ -32,6 +32,7 @@ async function fetchAllowedPaths(userId: string): Promise<string[]> {
     '/orders',
     '/search',
     '/settings',
+    '/ugyfel-ajanlat',
     '/quotes'
     // Add more customer-facing routes as needed
   ]

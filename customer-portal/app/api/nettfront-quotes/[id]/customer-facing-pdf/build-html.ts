@@ -1,12 +1,31 @@
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { getPortalNettfrontQuoteById } from '@/lib/supabase-server'
+import {
+  resolveCustomerNotes,
+  resolveLeadTimeNote,
+  resolvePaymentText,
+  resolvePdfPaletteId,
+  resolveAccentHex,
+  resolveProjectTitle,
+  resolveShowVatNote,
+  sanitizeWorkshopLogoDataUrl
+} from '@/lib/customer-facing-pdf-extras'
 import generateNettfrontCustomerFacingPdfHtml from './pdf-template'
 
 export type CustomerFacingBody = {
   preparedBy?: string
   /** YYYY-MM-DD */
   validUntil?: string
+  projectTitle?: string
+  paymentSchedule?: string
+  paymentCustomText?: string
+  leadTimeNote?: string
+  customerNotes?: string
+  paletteId?: string
+  accentHex?: string
+  showVatNote?: boolean | string | number
+  workshopLogoDataUrl?: string
   buyer?: {
     name?: string
     phone?: string
@@ -248,7 +267,15 @@ export async function buildNettfrontCustomerFacingHtml(
     markupPercent,
     lineDisplay,
     validUntilDisplay: resolveValidUntilDisplay(body.validUntil, quote.created_at),
-    turinovaLogoBase64
+    turinovaLogoBase64,
+    workshopLogoDataUrl: sanitizeWorkshopLogoDataUrl(body.workshopLogoDataUrl),
+    projectTitle: resolveProjectTitle(body.projectTitle),
+    paymentText: resolvePaymentText(body.paymentSchedule, body.paymentCustomText),
+    leadTimeNote: resolveLeadTimeNote(body.leadTimeNote),
+    customerNotes: resolveCustomerNotes(body.customerNotes),
+    paletteId: resolvePdfPaletteId(body.paletteId),
+    accentHex: resolveAccentHex(body.accentHex),
+    showVatNote: resolveShowVatNote(body.showVatNote)
   })
 
   if (!html) {

@@ -34,8 +34,7 @@ import {
   ArrowBack as ArrowBackIcon,
   Edit as EditIcon,
   PictureAsPdf as PdfIcon,
-  ShoppingCart as OrderIcon,
-  RequestQuote as RequestQuoteIcon
+  ShoppingCart as OrderIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
@@ -45,10 +44,6 @@ import {
 } from '@/components/portal-list/NettfrontStatusHistoryCard'
 
 import CommentModal from '../../[quote_id]/CommentModal'
-import CustomerFacingPdfDialog, {
-  type CustomerFacingPdfPayload,
-  type SellerProfile
-} from '@/components/muhely-ajanlat/CustomerFacingPdfDialog'
 
 type PaymentMethod = {
   id: string
@@ -170,8 +165,6 @@ export default function NettfrontQuoteDetailClient({
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
-  const [customerPdfDialogOpen, setCustomerPdfDialogOpen] = useState(false)
-  const [isGeneratingCustomerPdf, setIsGeneratingCustomerPdf] = useState(false)
 
   const snap = quoteData.customer_snapshot || {}
   const portalCust = quoteData.portal_customers
@@ -263,68 +256,6 @@ export default function NettfrontQuoteDetailClient({
       toast.error(e instanceof Error ? e.message : 'PDF generálás sikertelen')
     } finally {
       setIsGeneratingPdf(false)
-    }
-  }
-
-  const sellerProfile: SellerProfile = {
-    name: str(portalCust?.name),
-    email: str(portalCust?.email),
-    mobile: str(portalCust?.mobile),
-    billing_name: str(portalCust?.billing_name || portalCust?.name),
-    billing_postal_code: str(portalCust?.billing_postal_code),
-    billing_city: str(portalCust?.billing_city),
-    billing_street: str(portalCust?.billing_street),
-    billing_house_number: str(portalCust?.billing_house_number),
-    billing_tax_number: str(portalCust?.billing_tax_number)
-  }
-
-  const handleCustomerFacingPdf = async (payload: CustomerFacingPdfPayload) => {
-    setIsGeneratingCustomerPdf(true)
-    try {
-      const response = await fetch(`/api/nettfront-quotes/${quoteData.id}/customer-facing-pdf`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, generatedFrom: 'saved' })
-      })
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to generate PDF'
-        try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorMessage
-        } catch {
-          const text = await response.text()
-          errorMessage = text || errorMessage
-        }
-        throw new Error(errorMessage)
-      }
-
-      const contentType = response.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/pdf')) {
-        throw new Error('A válasz nem PDF formátumú')
-      }
-
-      const blob = await response.blob()
-      if (blob.size === 0) throw new Error('A generált PDF üres')
-
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `Ugyfelajanlat-${quoteData.quote_number}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-      toast.success('Ügyfélajánlat PDF kész')
-      setCustomerPdfDialogOpen(false)
-    } catch (error) {
-      console.error('[Customer Portal] Nettfront customer-facing PDF error:', error)
-      toast.error(
-        `Hiba az ügyfélajánlat PDF során: ${error instanceof Error ? error.message : 'Unknown error'}`
-      )
-    } finally {
-      setIsGeneratingCustomerPdf(false)
     }
   }
 
@@ -866,18 +797,6 @@ export default function NettfrontQuoteDetailClient({
 
               <Button
                 variant="contained"
-                color="success"
-                startIcon={<RequestQuoteIcon />}
-                onClick={() => setCustomerPdfDialogOpen(true)}
-                disabled={isGeneratingCustomerPdf}
-                fullWidth
-                sx={{ mb: 1 }}
-              >
-                {isGeneratingCustomerPdf ? 'Ajánlat készül…' : 'Ajánlat az ügyfelemnek'}
-              </Button>
-
-              <Button
-                variant="contained"
                 color="primary"
                 startIcon={<OrderIcon />}
                 onClick={() => setSubmitOpen(true)}
@@ -990,18 +909,6 @@ export default function NettfrontQuoteDetailClient({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <CustomerFacingPdfDialog
-        open={customerPdfDialogOpen}
-        quoteNumber={quoteData.quote_number}
-        boardGross={Number(quoteData.final_total_after_discount) || 0}
-        seller={sellerProfile}
-        productLabel="Front"
-        previewUrl={`/api/nettfront-quotes/${quoteData.id}/customer-facing-pdf/preview`}
-        onClose={() => setCustomerPdfDialogOpen(false)}
-        onGenerate={handleCustomerFacingPdf}
-        busy={isGeneratingCustomerPdf}
-      />
     </Box>
   )
 }

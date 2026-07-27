@@ -2,12 +2,31 @@ import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { getPortalQuoteById } from '@/lib/supabase-server'
 import { getEdgeMaterialCodes } from '@/lib/company-data-server'
+import {
+  resolveCustomerNotes,
+  resolveLeadTimeNote,
+  resolvePaymentText,
+  resolvePdfPaletteId,
+  resolveAccentHex,
+  resolveProjectTitle,
+  resolveShowVatNote,
+  sanitizeWorkshopLogoDataUrl
+} from '@/lib/customer-facing-pdf-extras'
 import generateCustomerFacingQuotePdfHtml from './pdf-template'
 
 export type CustomerFacingBody = {
   preparedBy?: string
   /** YYYY-MM-DD */
   validUntil?: string
+  projectTitle?: string
+  paymentSchedule?: string
+  paymentCustomText?: string
+  leadTimeNote?: string
+  customerNotes?: string
+  paletteId?: string
+  accentHex?: string
+  showVatNote?: boolean | string | number
+  workshopLogoDataUrl?: string
   buyer?: {
     name?: string
     phone?: string
@@ -243,7 +262,15 @@ export async function buildOptiCustomerFacingHtml(
     boardGrossCustomer,
     markupPercent,
     validUntilDisplay: resolveValidUntilDisplay(body.validUntil, quoteData.created_at),
-    turinovaLogoBase64
+    turinovaLogoBase64,
+    workshopLogoDataUrl: sanitizeWorkshopLogoDataUrl(body.workshopLogoDataUrl),
+    projectTitle: resolveProjectTitle(body.projectTitle),
+    paymentText: resolvePaymentText(body.paymentSchedule, body.paymentCustomText),
+    leadTimeNote: resolveLeadTimeNote(body.leadTimeNote),
+    customerNotes: resolveCustomerNotes(body.customerNotes),
+    paletteId: resolvePdfPaletteId(body.paletteId),
+    accentHex: resolveAccentHex(body.accentHex),
+    showVatNote: resolveShowVatNote(body.showVatNote)
   })
 
   if (!html) {

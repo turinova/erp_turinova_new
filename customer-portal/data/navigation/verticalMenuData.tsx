@@ -40,6 +40,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#F39C12' // Orange for saved quotes
     },
     {
+      label: 'Ügyfélajánlat',
+      href: '/ugyfel-ajanlat',
+      icon: 'ri-file-list-3-line',
+      iconColor: '#2E7D32' // Green for customer-facing quotes
+    },
+    {
       label: 'Beállítások',
       href: '/settings',
       icon: 'ri-settings-3-line',

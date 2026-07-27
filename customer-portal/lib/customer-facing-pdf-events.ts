@@ -2,11 +2,11 @@ import { createAdminClient } from '@/lib/supabase-server'
 
 type CustomerFacingPdfEvent = {
   portalCustomerId: string
-  source: 'opti' | 'nettfront'
-  quoteId: string
+  source: 'opti' | 'nettfront' | 'empty'
+  quoteId: string | null
   quoteNumber: string
   quoteStatus?: string | null
-  generatedFrom?: 'saved' | 'orders' | 'unknown'
+  generatedFrom?: 'saved' | 'orders' | 'studio' | 'unknown'
   markupPercent?: number | null
   manualLinesCount?: number
 }

@@ -205,9 +205,10 @@ export default function WhatsNewSection() {
                     Saját ajánlat PDF az ügyfelednek
                   </Typography>
                   <Typography variant="body1" color="text.secondary" sx={{ mt: 1, lineHeight: 1.55 }}>
-                    A gyártótól <strong>kapott</strong> árajánlatból készíthetsz{' '}
-                    <strong>saját</strong> ajánlatot: te szerepelsz ajánlat adóként, az ügyfeled a
-                    vevő. Árrést és plusz tételeket (szállítás, szerelés) is hozzáadhatsz.
+                    A menü <strong>Ügyfélajánlat</strong> pontjából indulsz: listázod a mentett
+                    ajánlataidat, vagy készítesz újat. Forrásként Mentett / Megrendelt Lapszabászat
+                    vagy Nettfront ajánlatot adhatsz hozzá, árréssel és plusz tételekkel. Mentés vagy
+                    PDF — te vagy az ajánlat adó, az ügyfeled a vevő.
                   </Typography>
                 </Box>
 
@@ -227,12 +228,12 @@ export default function WhatsNewSection() {
                   </Button>
                   <Button
                     component={Link}
-                    href="/saved"
+                    href="/ugyfel-ajanlat"
                     variant="outlined"
                     color="success"
                     sx={{ flex: { sm: '0 0 auto' } }}
                   >
-                    Mentett ajánlatok
+                    Ügyfélajánlat
                   </Button>
                 </Stack>
               </CardContent>

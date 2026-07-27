@@ -50,11 +50,16 @@ export default function UgyfelajanlatTutorialModal({
       fullWidth
       PaperProps={{ sx: { borderRadius: 2 } }}
     >
-      <DialogTitle sx={{ pr: 6, pb: 1 }}>
-        <Typography variant="overline" color="success.main" sx={{ fontWeight: 700 }}>
+      <DialogTitle sx={{ pr: 6, pb: 1 }} component="div">
+        <Typography
+          component="div"
+          variant="overline"
+          color="success.main"
+          sx={{ fontWeight: 700 }}
+        >
           Egyszerű útmutató · {step + 1} / {total}
         </Typography>
-        <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+        <Typography component="div" variant="h6" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
           {current.title}
         </Typography>
         <IconButton
@@ -110,12 +115,12 @@ export default function UgyfelajanlatTutorialModal({
         ) : (
           <Button
             component={Link}
-            href="/saved"
+            href="/ugyfel-ajanlat"
             variant="contained"
             color="success"
             onClick={onClose}
           >
-            Mentett ajánlatok megnyitása
+            Ügyfélajánlat megnyitása
           </Button>
         )}
       </DialogActions>

@@ -26,117 +26,120 @@ function FakeField({ label, value, wide }: { label: string; value: string; wide?
   )
 }
 
-function DialogChrome({
+function StudioChrome({
   children,
-  payable = '250 000 Ft'
+  payable = '250 000 Ft',
+  quoteLabel = 'Új ajánlat'
 }: {
   children: ReactNode
   payable?: string
+  quoteLabel?: string
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-lg">
-      {/* Dialog title — matches CustomerFacingPdfDialog */}
       <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-3 py-2.5">
         <div>
+          <div className="text-[11px] font-medium text-slate-500">← Lista</div>
           <div className="text-[13px] font-bold text-slate-900">
-            Ügyfélajánlat <span className="font-normal text-slate-500">OPTI-1042</span>
+            Ügyfélajánlat{' '}
+            <span className="font-normal text-slate-500">{quoteLabel}</span>
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <div className="text-[8px] text-slate-500">Fizetendő bruttó</div>
-          <div className="text-[14px] font-extrabold leading-tight" style={{ color: SUCCESS }}>
-            {payable}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="text-right">
+            <div className="text-[8px] text-slate-500">Fizetendő bruttó</div>
+            <div className="text-[14px] font-extrabold leading-tight" style={{ color: SUCCESS }}>
+              {payable}
+            </div>
           </div>
+          <span className="rounded border border-slate-300 px-2.5 py-1.5 text-[10px] font-semibold text-slate-700">
+            Mentés
+          </span>
+          <span
+            className="rounded px-3 py-1.5 text-[10px] font-bold text-white"
+            style={{ backgroundColor: SUCCESS }}
+          >
+            PDF letöltés
+          </span>
         </div>
       </div>
       {children}
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2">
-        <span className="rounded px-2.5 py-1.5 text-[10px] font-medium text-slate-600">Mégse</span>
-        <span
-          className="rounded px-3 py-1.5 text-[10px] font-bold text-white"
-          style={{ backgroundColor: SUCCESS }}
-        >
-          PDF letöltés
-        </span>
-      </div>
     </div>
   )
 }
 
-/** Step 1 — valódi mentett ajánlat detail: bal tartalom + jobb műveletek */
+/** @deprecated alias — régi dialóg mockok */
+function DialogChrome(props: {
+  children: ReactNode
+  payable?: string
+}) {
+  return <StudioChrome {...props} />
+}
+
+/** Step 1 — Ügyfélajánlat lista (hub) */
 export function UgyfelajanlatStepDetailMock() {
   return (
-    <BrowserFrame url="portal.turinova.hu/saved/a1b2c3…">
+    <BrowserFrame url="portal.turinova.hu/ugyfel-ajanlat">
       <div className="pointer-events-none select-none bg-[#f5f5f5] p-2.5">
-        <div className="grid grid-cols-[1.4fr_0.9fr] gap-2">
-          {/* Left — quote summary like detail page */}
-          <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-bold text-slate-900">OPTI-1042</div>
-              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-semibold text-slate-600">
-                Mentett
-              </span>
-            </div>
-            <div className="rounded border border-slate-100 bg-slate-50 px-2 py-1.5 text-[9px] text-slate-600">
-              <div className="font-semibold text-slate-800">Anyagok</div>
-              <div>EGGER W980 · 18 mm · 4,2 m²</div>
-              <div className="mt-1 font-semibold text-slate-800">Szolgáltatások</div>
-              <div>Szabás · Élzárás</div>
-            </div>
-            <div className="border-t border-slate-100 pt-1.5 text-[10px]">
-              <div className="flex justify-between text-slate-500">
-                <span>Bruttó</span>
-                <span className="font-bold text-slate-900">148 000 Ft</span>
-              </div>
-            </div>
+        <div className="mb-2 flex items-center justify-between">
+          <div>
+            <div className="text-[13px] font-extrabold text-slate-900">Ügyfélajánlat</div>
+            <div className="text-[9px] text-slate-500">Saját ajánlataid az ügyfeleidnek</div>
           </div>
-
-          {/* Right — action card exactly like PortalQuoteDetailClient */}
-          <div className="relative rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm">
-            <div className="mb-2 text-[9px] font-bold uppercase tracking-wide text-slate-500">
-              Műveletek
-            </div>
-            <div className="space-y-1.5">
-              <div className="rounded border border-slate-300 bg-white py-2 text-center text-[10px] font-semibold text-slate-700">
-                Kapott árajánlat
-              </div>
-              <div
-                className="relative rounded py-2 text-center text-[10px] font-bold text-white"
-                style={{
-                  backgroundColor: SUCCESS,
-                  boxShadow: `0 0 0 3px ${SUCCESS}40`
-                }}
-              >
-                Ajánlat az ügyfelemnek
-              </div>
-              <div className="rounded bg-[#1976d2] py-2 text-center text-[10px] font-bold text-white opacity-80">
-                Megrendelés
-              </div>
-            </div>
-            {/* Callout */}
-            <div
-              className="absolute -left-1 top-[52px] z-10 max-w-[120px] -translate-x-full rounded-md px-2 py-1 text-[9px] font-bold text-white"
-              style={{ backgroundColor: SUCCESS_HOVER }}
-            >
-              Ide kattints →
-            </div>
-          </div>
+          <span
+            className="relative rounded px-2.5 py-1.5 text-[10px] font-bold text-white"
+            style={{
+              backgroundColor: SUCCESS,
+              boxShadow: `0 0 0 3px ${SUCCESS}40`
+            }}
+          >
+            Új ügyfélajánlat
+          </span>
         </div>
-        <p className="mt-2 text-center text-[9px] text-slate-500">
-          Mentett / megrendelt ajánlat oldal · jobb oldali gombok
-        </p>
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="grid grid-cols-[1fr_1.2fr_0.8fr_0.9fr] gap-1 border-b border-slate-100 bg-slate-50 px-2 py-1.5 text-[8px] font-bold text-slate-500">
+            <span>Szám</span>
+            <span>Vevő</span>
+            <span>Bruttó</span>
+            <span>Műveletek</span>
+          </div>
+          {[
+            { n: 'UA-2026-001', v: 'Nagy Éva', a: '250 000 Ft' },
+            { n: 'UA-2026-002', v: 'Kovács Bt.', a: '412 000 Ft' }
+          ].map(row => (
+            <div
+              key={row.n}
+              className="grid grid-cols-[1fr_1.2fr_0.8fr_0.9fr] gap-1 border-b border-slate-50 px-2 py-1.5 text-[9px]"
+            >
+              <span
+                className="inline-flex w-fit items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold text-white"
+                style={{ backgroundColor: SUCCESS }}
+              >
+                {row.n}
+              </span>
+              <span className="font-semibold text-slate-800">{row.v}</span>
+              <span className="font-bold text-slate-900">{row.a}</span>
+              <span className="text-[8px] text-slate-500">Megnyit · PDF · Törlés</span>
+            </div>
+          ))}
+        </div>
+        <div
+          className="mt-2 inline-block rounded-md px-2 py-1 text-[9px] font-bold text-white"
+          style={{ backgroundColor: SUCCESS_HOVER }}
+        >
+          Menü: Ügyfélajánlat → Új
+        </div>
       </div>
     </BrowserFrame>
   )
 }
 
-/** Step 2 — dialóg: ajánlat adó chip + ① Vevő + ② Árazás (valódi szekciók) */
+/** Step 2 — szerkesztő: forrás + vevő + árrés */
 export function UgyfelajanlatStepBuyerMock() {
   return (
-    <BrowserFrame url="portal…/saved/… · Ügyfélajánlat">
+    <BrowserFrame url="portal.turinova.hu/ugyfel-ajanlat/uj">
       <div className="pointer-events-none select-none bg-slate-100/80 p-2">
-        <DialogChrome payable="185 000 Ft">
+        <StudioChrome payable="185 000 Ft" quoteLabel="OPTI-1042">
           <div className="max-h-[320px] space-y-3 overflow-hidden p-3">
             <div>
               <div className="mb-1 text-[8px] text-slate-500">Ajánlat adó (profilodból)</div>
@@ -150,6 +153,38 @@ export function UgyfelajanlatStepBuyerMock() {
 
             <div>
               <div className="mb-1.5 flex items-center text-[11px] font-bold text-slate-900">
+                <SectionDot n={3} /> Forrás
+              </div>
+              <div
+                className="rounded-lg border px-2.5 py-2"
+                style={{
+                  borderColor: 'rgba(46,125,50,0.35)',
+                  backgroundColor: 'rgba(46,125,50,0.06)'
+                }}
+              >
+                <span
+                  className="mb-1 inline-block rounded-full px-2 py-0.5 text-[8px] font-bold text-white"
+                  style={{ backgroundColor: SUCCESS }}
+                >
+                  Lapszabászat
+                </span>
+                <div className="text-[10px] font-bold text-slate-900">OPTI-1042</div>
+                <div className="mt-1 flex gap-1">
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[8px] font-semibold text-white"
+                    style={{ backgroundColor: SUCCESS }}
+                  >
+                    Összesen
+                  </span>
+                  <span className="rounded-full border border-slate-300 px-2 py-0.5 text-[8px] text-slate-600">
+                    Részletes
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-1.5 flex items-center text-[11px] font-bold text-slate-900">
                 <SectionDot n={1} /> Vevő
               </div>
               <div className="space-y-1.5">
@@ -158,22 +193,20 @@ export function UgyfelajanlatStepBuyerMock() {
                   <FakeField label="Telefon" value="06 30 123 4567" />
                   <FakeField label="E-mail" value="eva@pelda.hu" />
                 </div>
-                <div className="text-[9px] font-medium" style={{ color: SUCCESS }}>
-                  Cím és adószám ▾
-                </div>
               </div>
             </div>
 
             <div>
-              <div className="mb-1.5 flex items-center text-[11px] font-bold text-slate-900">
-                <SectionDot n={2} /> Lapszabászat árazás
+              <div className="mb-1 text-[8px] text-slate-500">Árrés: 25%</div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full w-1/4 rounded-full" style={{ backgroundColor: SUCCESS }} />
               </div>
               <div
-                className="mb-2 flex items-baseline gap-3 rounded-lg px-2.5 py-2"
+                className="mt-2 flex items-baseline gap-3 rounded-lg px-2.5 py-2"
                 style={{ backgroundColor: 'rgba(46,125,50,0.06)' }}
               >
                 <div>
-                  <div className="text-[8px] text-slate-500">Portal</div>
+                  <div className="text-[8px] text-slate-500">Beszerzés</div>
                   <div className="text-[10px] text-slate-400 line-through">148 000 Ft</div>
                 </div>
                 <span className="text-slate-400">→</span>
@@ -184,39 +217,9 @@ export function UgyfelajanlatStepBuyerMock() {
                   </div>
                 </div>
               </div>
-              <div className="text-[8px] text-slate-500">Árrés: 25%</div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                <div className="h-full w-1/4 rounded-full" style={{ backgroundColor: SUCCESS }} />
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {['Nincs kerekítés', '100 Ft-ra', '1000 Ft-ra'].map((t, i) => (
-                  <span
-                    key={t}
-                    className={`rounded-full px-2 py-0.5 text-[8px] font-semibold ${
-                      i === 0 ? 'text-white' : 'border border-slate-300 text-slate-600'
-                    }`}
-                    style={i === 0 ? { backgroundColor: SUCCESS } : undefined}
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-2 flex gap-3 text-[9px] text-slate-700">
-                <label className="flex items-center gap-1">
-                  <span
-                    className="inline-block h-2.5 w-2.5 rounded-full border-2"
-                    style={{ borderColor: SUCCESS, backgroundColor: SUCCESS }}
-                  />
-                  Egy sor: Lapszabászat
-                </label>
-                <label className="flex items-center gap-1 opacity-50">
-                  <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-slate-400" />
-                  Részletes
-                </label>
-              </div>
             </div>
           </div>
-        </DialogChrome>
+        </StudioChrome>
       </div>
     </BrowserFrame>
   )
@@ -395,19 +398,21 @@ export function UgyfelajanlatStepPreviewMock() {
   )
 }
 
-/** Step 5 — PDF letöltés + eredmény (valódi PDF fejléc / felek) */
+/** Step 5 — Mentés / PDF */
 export function UgyfelajanlatStepPdfMock() {
   return (
-    <BrowserFrame url="Ugyfelajanlat-OPTI-1042.pdf">
+    <BrowserFrame url="portal.turinova.hu/ugyfel-ajanlat/uj · Mentés / PDF">
       <div className="pointer-events-none select-none bg-slate-100 p-2">
-        {/* Mini dialog footer moment */}
         <div className="mb-2 flex items-center justify-end gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
-          <span className="text-[9px] text-slate-500">Mégse</span>
+          <div className="mr-auto text-[9px] text-slate-500">Fizetendő: 250 000 Ft</div>
+          <span className="rounded border border-slate-300 px-2.5 py-1.5 text-[10px] font-semibold text-slate-700">
+            Mentés
+          </span>
           <span
             className="rounded px-3 py-1.5 text-[10px] font-bold text-white ring-2 ring-offset-1"
             style={{ backgroundColor: SUCCESS, boxShadow: `0 0 0 2px ${SUCCESS}55` }}
           >
-            ↓ PDF letöltés ← utolsó lépés
+            PDF letöltés
           </span>
         </div>
 
@@ -416,7 +421,7 @@ export function UgyfelajanlatStepPdfMock() {
           <div className="mb-3 flex justify-end border-b border-black pb-2">
             <div className="text-right">
               <div className="text-[14px] font-bold tracking-wide">AJÁNLAT</div>
-              <div className="text-[11px] font-semibold text-slate-700">OPTI-1042</div>
+              <div className="text-[11px] font-semibold text-slate-700">UA-2026-001</div>
               <div className="text-[8px] text-slate-600">Kelt.: 2026.07.21.</div>
               <div className="text-[8px] text-slate-600">Érvényesség: 2026.08.04.</div>
             </div>
@@ -479,33 +484,33 @@ export function UgyfelajanlatStepPdfMock() {
 
 export const UGYFELAJANLAT_TUTORIAL_STEPS = [
   {
-    title: '1. lépés — Nyisd meg az ajánlatot',
+    title: '1. lépés — Ügyfélajánlat menü',
     caption:
-      'Menj a Mentésekhez, nyiss meg egy árajánlatot. Jobb oldalon látod a gombokat. A zöld gomb: „Ajánlat az ügyfelemnek”.',
+      'A bal menüben nyisd meg az „Ügyfélajánlat” pontot. Itt látod a mentett ajánlataid listáját. Új ajánlathoz: „Új ügyfélajánlat”.',
     Mock: UgyfelajanlatStepDetailMock
   },
   {
-    title: '2. lépés — Vevő és ár',
+    title: '2. lépés — Forrás, vevő, árrés',
     caption:
-      'Megnyílik az Ügyfélajánlat ablak. Add meg az ügyfél nevét (és ha van, telefont). Állítsd az árrést — a Portal ár mellett látod, mit fizet az ügyfél.',
+      'Add hozzá a forrást (Mentett / Megrendelt Lapszabászat vagy Nettfront). Írd be a vevő nevét, állítsd az árrést, és válaszd: Összesen vagy Részletes.',
     Mock: UgyfelajanlatStepBuyerMock
   },
   {
     title: '3. lépés — Plusz tételek',
     caption:
-      'Ha kell szállítás vagy szerelés, kattints a sablonokra (+ Szállítás, + Szerelés…). Beírhatod az árat. Nem kötelező.',
+      'Ha kell szállítás vagy szerelés, használd a sablonokat (+ Szállítás, + Szerelés…). Beírhatod az árat. Nem kötelező.',
     Mock: UgyfelajanlatStepLinesMock
   },
   {
     title: '4. lépés — Élő előnézet',
     caption:
-      'Az ablak jobb oldalán azonnal látod a PDF kinézetét. Nagyíthatod (− / +), és húzással mozgathatod, ha közelebbről akarod nézni.',
+      'A szerkesztő jobb oldalán azonnal látod a PDF kinézetét. Nagyíthatod (− / +), és húzással mozgathatod.',
     Mock: UgyfelajanlatStepPreviewMock
   },
   {
-    title: '5. lépés — PDF letöltés',
+    title: '5. lépés — Mentés vagy PDF',
     caption:
-      'Alul a zöld „PDF letöltés” gombbal mented a fájlt. Az ajánlatodon te vagy az ajánlat adó, az ügyfeled a vevő.',
+      '„Mentés”: elmented a listára PDF nélkül. „PDF letöltés”: fájlt kapsz, és szintén mentődik. Később a listáról újra megnyithatod vagy letöltheted.',
     Mock: UgyfelajanlatStepPdfMock
   }
 ] as const
