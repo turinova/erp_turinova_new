@@ -29,6 +29,8 @@ export type SellerProfile = {
   billing_street: string
   billing_house_number: string
   billing_tax_number: string
+  /** Profilból (Beállítások) — ügyfélajánlat PDF logo. */
+  workshop_logo_data_url?: string
 }
 
 export type PaymentScheduleId = '40-40-20' | '50-50' | 'none'
@@ -549,6 +551,8 @@ export function sellerAddressLine(seller: SellerProfile): string {
 
 export function sellerFromPortalCustomer(c: Record<string, unknown> | null | undefined): SellerProfile {
   const str = (v: unknown) => (v == null ? '' : String(v))
+  const logoRaw = str(c?.workshop_logo_data_url)
+  const logo = logoRaw.startsWith('data:image/') ? logoRaw : ''
   return {
     name: str(c?.name),
     email: str(c?.email),
@@ -558,6 +562,7 @@ export function sellerFromPortalCustomer(c: Record<string, unknown> | null | und
     billing_city: str(c?.billing_city),
     billing_street: str(c?.billing_street),
     billing_house_number: str(c?.billing_house_number),
-    billing_tax_number: str(c?.billing_tax_number)
+    billing_tax_number: str(c?.billing_tax_number),
+    workshop_logo_data_url: logo || undefined
   }
 }

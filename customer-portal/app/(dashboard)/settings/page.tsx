@@ -18,6 +18,7 @@ interface PortalCustomer {
   billing_company_reg_number: string | null
   sms_notification: boolean
   selected_company_id: string | null
+  workshop_logo_data_url?: string | null
   created_at: string
   updated_at: string
 }

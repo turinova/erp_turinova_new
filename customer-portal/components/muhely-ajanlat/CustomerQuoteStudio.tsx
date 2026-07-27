@@ -214,7 +214,11 @@ export default function CustomerQuoteStudio({
 
   // First mount: prefs + mentett ajánlat payload
   useEffect(() => {
-    setLogoDataUrl(loadLogoDataUrl())
+    const profileLogo = String(seller.workshop_logo_data_url || '').trim()
+    const logo =
+      (profileLogo.startsWith('data:image/') ? profileLogo : '') || loadLogoDataUrl()
+    setLogoDataUrl(logo)
+    if (profileLogo.startsWith('data:image/')) saveLogoDataUrl(profileLogo)
 
     if (savedPayload) {
       const loadedBuyer = buyerFromPayload(savedPayload) || emptyBuyer()
@@ -287,7 +291,7 @@ export default function CustomerQuoteStudio({
     }
     setHydrated(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seller.name, seller.billing_name, savedQuoteId])
+  }, [seller.name, seller.billing_name, seller.workshop_logo_data_url, savedQuoteId])
 
   // Source list change: only init missing pricing keys; soft-update lead time if empty
   useEffect(() => {
@@ -654,13 +658,26 @@ export default function CustomerQuoteStudio({
     setPickerOpen(true)
   }
 
+  const persistProfileLogo = async (dataUrl: string | null) => {
+    try {
+      await fetch('/api/customer-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workshop_logo_data_url: dataUrl })
+      })
+    } catch {
+      /* localStorage still holds the logo for this device */
+    }
+  }
+
   const handleLogoPick = async (file: File | null) => {
     if (!file) return
     try {
       const dataUrl = await readLogoFileAsDataUrl(file)
       setLogoDataUrl(dataUrl)
       saveLogoDataUrl(dataUrl)
-      toast.success('Logo mentve')
+      await persistProfileLogo(dataUrl)
+      toast.success('Logo mentve a profilba')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Logo feltöltés sikertelen')
     }
@@ -669,6 +686,7 @@ export default function CustomerQuoteStudio({
   const clearLogo = () => {
     setLogoDataUrl('')
     saveLogoDataUrl('')
+    void persistProfileLogo(null)
   }
 
   const bumpZoom = (delta: number) => {
@@ -924,7 +942,7 @@ export default function CustomerQuoteStudio({
           ) : null}
         </Stack>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.75 }}>
-          A logo megjelenik az ajánlat tetején. Egyszer feltöltöd, megjegyzi a böngésző.
+          A logo az ajánlat tetején jelenik meg, és a profilodban mentődik (Beállítások → Céglogo).
         </Typography>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5, mb: 0.75 }}>

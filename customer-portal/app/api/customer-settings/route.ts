@@ -50,23 +50,55 @@ export async function PATCH(request: NextRequest) {
     console.log(`Updating customer settings for user ${user.id}:`, body)
     
     // Update customer data (email is read-only, don't include it in update)
+    const { sanitizeWorkshopLogoDataUrl } = await import('@/lib/customer-facing-pdf-extras')
+
+    let workshopLogo: string | null | undefined = undefined
+    if ('workshop_logo_data_url' in body) {
+      if (body.workshop_logo_data_url === null || body.workshop_logo_data_url === '') {
+        workshopLogo = null
+      } else {
+        const cleaned = sanitizeWorkshopLogoDataUrl(body.workshop_logo_data_url)
+        if (!cleaned) {
+          return NextResponse.json(
+            { error: 'Érvénytelen vagy túl nagy logo (max. ~500 KB, PNG/JPG/WEBP)' },
+            { status: 400 }
+          )
+        }
+        workshopLogo = cleaned
+      }
+    }
+
+    // Only update fields present in the body (supports logo-only PATCH from studio).
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString()
+    }
+    const optionalFields = [
+      'name',
+      'mobile',
+      'billing_name',
+      'billing_country',
+      'billing_city',
+      'billing_postal_code',
+      'billing_street',
+      'billing_house_number',
+      'billing_tax_number',
+      'billing_company_reg_number',
+      'selected_company_id',
+      'sms_notification'
+    ] as const
+    for (const key of optionalFields) {
+      if (key in body) updatePayload[key] = body[key]
+    }
+    if (workshopLogo !== undefined) {
+      updatePayload.workshop_logo_data_url = workshopLogo
+    }
+    if (Object.keys(updatePayload).length <= 1) {
+      return NextResponse.json({ error: 'Nincs frissítendő mező' }, { status: 400 })
+    }
+
     const { data: customer, error } = await supabase
       .from('portal_customers')
-      .update({
-        name: body.name,
-        mobile: body.mobile,
-        billing_name: body.billing_name,
-        billing_country: body.billing_country,
-        billing_city: body.billing_city,
-        billing_postal_code: body.billing_postal_code,
-        billing_street: body.billing_street,
-        billing_house_number: body.billing_house_number,
-        billing_tax_number: body.billing_tax_number,
-        billing_company_reg_number: body.billing_company_reg_number,
-        selected_company_id: body.selected_company_id,
-        sms_notification: body.sms_notification,
-        updated_at: new Date().toISOString()
-      })
+      .update(updatePayload)
       .eq('id', user.id)
       .select('*')
       .single()

@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react'
 
-import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress, FormControl, InputLabel, Select, MenuItem, FormControlLabel, Switch, IconButton, InputAdornment } from '@mui/material'
+import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress, FormControl, InputLabel, Select, MenuItem, FormControlLabel, Switch, IconButton, InputAdornment, Stack } from '@mui/material'
 import { Home as HomeIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { useRouter } from 'next/navigation'
+import { readLogoFileAsDataUrl, saveLogoDataUrl } from '@/components/muhely-ajanlat/customerFacingPdfShared'
 
 interface PortalCustomer {
   id: string
@@ -22,6 +23,7 @@ interface PortalCustomer {
   billing_company_reg_number: string | null
   sms_notification: boolean
   selected_company_id: string | null
+  workshop_logo_data_url?: string | null
   created_at: string
   updated_at: string
 }
@@ -53,13 +55,37 @@ export default function SettingsClient({ initialCustomer, companies }: SettingsC
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [logoBusy, setLogoBusy] = useState(false)
 
   // Update form data when initial customer data changes
   useEffect(() => {
     if (initialCustomer) {
       setFormData(initialCustomer)
+      if (initialCustomer.workshop_logo_data_url) {
+        saveLogoDataUrl(initialCustomer.workshop_logo_data_url)
+      }
     }
   }, [initialCustomer])
+
+  const handleLogoPick = async (file: File | null) => {
+    if (!file) return
+    setLogoBusy(true)
+    try {
+      const dataUrl = await readLogoFileAsDataUrl(file)
+      setFormData(prev => ({ ...prev, workshop_logo_data_url: dataUrl }))
+      saveLogoDataUrl(dataUrl)
+      toast.success('Logo feltöltve — mentsd a Beállításokat')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Logo hiba')
+    } finally {
+      setLogoBusy(false)
+    }
+  }
+
+  const clearLogo = () => {
+    setFormData(prev => ({ ...prev, workshop_logo_data_url: null }))
+    saveLogoDataUrl('')
+  }
 
   // Phone number formatting helper
   const formatPhoneNumber = (value: string) => {
@@ -224,6 +250,11 @@ export default function SettingsClient({ initialCustomer, companies }: SettingsC
         
         // Update local state with saved data
         setFormData(result.customer)
+        if (result.customer?.workshop_logo_data_url) {
+          saveLogoDataUrl(result.customer.workshop_logo_data_url)
+        } else {
+          saveLogoDataUrl('')
+        }
       } else {
         const errorData = await response.json()
         throw new Error(errorData.message || 'Mentés sikertelen')
@@ -381,6 +412,72 @@ export default function SettingsClient({ initialCustomer, companies }: SettingsC
               error={!!errors.mobile}
               helperText={errors.mobile}
             />
+          </Grid>
+
+          {/* Workshop logo — ügyfélajánlat PDF */}
+          <Grid item xs={12}>
+            <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 2 }}>
+              Céglogo (ügyfélajánlat)
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Ez a logo jelenik meg az ügyfélajánlat PDF tetején. PNG, JPG vagy WEBP, max. 500 KB.
+              Mentés után minden eszközön elérhető.
+            </Typography>
+            <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+              {formData.workshop_logo_data_url ? (
+                <Box
+                  component="img"
+                  src={formData.workshop_logo_data_url}
+                  alt="Céglogo"
+                  sx={{
+                    height: 56,
+                    maxWidth: 180,
+                    objectFit: 'contain',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    bgcolor: '#fff',
+                    p: 0.75
+                  }}
+                />
+              ) : (
+                <Box
+                  sx={{
+                    height: 56,
+                    width: 140,
+                    border: '1px dashed',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <Typography variant="caption" color="text.secondary">
+                    Nincs logo
+                  </Typography>
+                </Box>
+              )}
+              <Button component="label" variant="outlined" disabled={logoBusy || isSaving}>
+                {logoBusy
+                  ? 'Betöltés…'
+                  : formData.workshop_logo_data_url
+                    ? 'Logo csere'
+                    : 'Logo feltöltés'}
+                <input
+                  type="file"
+                  hidden
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={e => handleLogoPick(e.target.files?.[0] || null)}
+                />
+              </Button>
+              {formData.workshop_logo_data_url ? (
+                <Button color="inherit" onClick={clearLogo} disabled={isSaving}>
+                  Logo törlése
+                </Button>
+              ) : null}
+            </Stack>
           </Grid>
 
           {/* Billing Information */}

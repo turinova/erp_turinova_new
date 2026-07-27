@@ -107,7 +107,8 @@ export default async function UgyfelAjanlatStudioPage({ searchParams }: PageProp
       `
       id, name, email, mobile,
       billing_name, billing_postal_code, billing_city,
-      billing_street, billing_house_number, billing_tax_number
+      billing_street, billing_house_number, billing_tax_number,
+      workshop_logo_data_url
     `
     )
     .eq('id', user.id)
@@ -137,10 +138,6 @@ export default async function UgyfelAjanlatStudioPage({ searchParams }: PageProp
         previewUrl: `/api/portal-quotes/${quote.id}/customer-facing-pdf/preview`,
         pdfUrl: `/api/portal-quotes/${quote.id}/customer-facing-pdf`
       })
-      if (quote.portal_customers) {
-        const pc = quote.portal_customers as unknown
-        sellerRecord = (Array.isArray(pc) ? pc[0] : pc) as Record<string, unknown>
-      }
     } else {
       const quote = await getPortalNettfrontQuoteById(ref.id)
       if (!quote) {
@@ -156,10 +153,6 @@ export default async function UgyfelAjanlatStudioPage({ searchParams }: PageProp
         previewUrl: `/api/nettfront-quotes/${quote.id}/customer-facing-pdf/preview`,
         pdfUrl: `/api/nettfront-quotes/${quote.id}/customer-facing-pdf`
       })
-      if (quote.portal_customers) {
-        const pc = quote.portal_customers as unknown
-        sellerRecord = (Array.isArray(pc) ? pc[0] : pc) as Record<string, unknown>
-      }
     }
   }
 
