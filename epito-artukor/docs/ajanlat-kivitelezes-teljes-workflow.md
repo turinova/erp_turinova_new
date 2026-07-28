@@ -3,6 +3,7 @@
 > **Alkalmazás:** `epito-artukor/site` (Next.js, magyar építőipari ajánlatkészítő ERP)
 > **Készült:** 2026. július 7. · **Frissítve:** 2026. július 8. (0. fázis takarítás + bugfixek — lásd 17. fejezet)
 > **Hatókör:** projekt → költségvetés → RFQ (alvállalkozói bekérés) → ügyfélajánlat → kivitelezés → TIG → lezárás — minden státusszal, funkcióval és edge case-szel.
+> **UI / terméktervezés (kötelező funkció előtt):** [`TERMEKTERVEZESI-ALAPOKMANY.md`](./TERMEKTERVEZESI-ALAPOKMANY.md) · Cursor: `.cursor/rules/epito-artukor-termektervezes.mdc`
 
 ---
 

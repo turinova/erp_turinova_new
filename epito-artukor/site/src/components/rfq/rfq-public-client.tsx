@@ -1,33 +1,63 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CheckCircle2, ChevronRight, Clock, XCircle } from "lucide-react"
+import {
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  FileDown,
+  FileSpreadsheet,
+  FolderOpen,
+  Pencil,
+  XCircle,
+} from "lucide-react"
+import { toast } from "sonner"
 import type {
-  Project,
   RfqCampaign,
   RfqInvitation,
   SubcontractorRfq,
   SubcontractorRfqSubmission,
 } from "@/types/projects"
-import { RFQ_INVITATION_STATUS_LABELS } from "@/lib/project-labels"
+import { QUOTE_EXCEL_COLUMNS as COL } from "@/lib/quote-columns"
 import { formatHuf } from "@/lib/pricing"
 import { getBidLineTotal } from "@/lib/rfq-migration"
+import { getTradeLabel } from "@/lib/trades"
+import {
+  buildRfqPublicExportModel,
+} from "@/lib/rfq-public-export/build-export-model"
+import { downloadRfqPublicExcel } from "@/lib/rfq-public-export/build-workbook"
+import { printRfqPublicPdfDocument } from "@/lib/rfq-public-export/pdf-print"
+import { RfqPublicExportDocument } from "@/components/rfq/rfq-public-export-document"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { FolderOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type RfqPublicClientProps = {
   token: string
 }
 
+type PublicProject = {
+  id: string
+  name: string
+  siteAddress: string
+  code: string
+}
+
 type LineBidForm = {
   materialUnitPrice: number
   laborUnitPrice: number
   declined: boolean
+}
+
+type TimelineEvent = {
+  id: string
+  at: string
+  title: string
+  detail?: string
+  tone: "neutral" | "success" | "warning" | "danger"
 }
 
 function codeStorageKey(token: string) {
@@ -57,31 +87,238 @@ function bidsFromSubmission(
   return out
 }
 
+function formatWhen(iso: string): string {
+  return new Date(iso).toLocaleString("hu-HU", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function statusSentence(input: {
+  expired: boolean
+  packageDecided: boolean
+  youWon: boolean
+  youLost: boolean
+  hasSubmission: boolean
+  /** Több szakág progress — felülírja az egy-csomagos „beküldve” mondatot */
+  multi?: {
+    total: number
+    done: number
+    missingLabels: string[]
+  } | null
+}): { text: string; tone: "amber" | "blue" | "emerald" | "slate" | "red" } {
+  if (input.youWon) {
+    return { text: "Te nyertél — a vállalásod elfogadva.", tone: "emerald" }
+  }
+  if (input.youLost) {
+    return {
+      text: "Most nem téged választottak erre a csomagra.",
+      tone: "slate",
+    }
+  }
+  if (input.expired) {
+    return {
+      text: input.hasSubmission
+        ? "Lejárt a határidő — az ajánlatod beérkezett, döntésre vársz vagy lezárták."
+        : "Lejárt a határidő — új ajánlatot már nem lehet beküldeni.",
+      tone: "red",
+    }
+  }
+  if (input.packageDecided) {
+    return { text: "A döntés megszületett.", tone: "slate" }
+  }
+
+  const multi = input.multi
+  if (multi && multi.total > 1) {
+    if (multi.done === 0) {
+      return {
+        text: `${multi.total} szakág vár ajánlatra — mindegyiket külön kell beküldeni.`,
+        tone: "amber",
+      }
+    }
+    if (multi.done < multi.total) {
+      const missing = multi.missingLabels.slice(0, 3).join(", ")
+      const more =
+        multi.missingLabels.length > 3
+          ? ` +${multi.missingLabels.length - 3}`
+          : ""
+      return {
+        text: `${multi.total}-ból ${multi.done} szakág beküldve — még hiányzik: ${missing}${more}.`,
+        tone: "amber",
+      }
+    }
+    return {
+      text: `Mind a ${multi.total} szakág beküldve — döntésre vársz.`,
+      tone: "blue",
+    }
+  }
+
+  if (input.hasSubmission) {
+    return { text: "Ajánlatod beérkezett — döntésre vár.", tone: "blue" }
+  }
+  return { text: "Várjuk az ajánlatodat.", tone: "amber" }
+}
+
+function packageTradeLabel(pkg: { rfq: SubcontractorRfq }): string {
+  const title = pkg.rfq.title?.trim()
+  if (title) return title
+  return getTradeLabel(pkg.rfq.trade)
+}
+
+function buildTimeline(input: {
+  invitation: RfqInvitation
+  submission: SubcontractorRfqSubmission | null
+  decidedAt: string | null
+  youWon: boolean
+  youLost: boolean
+}): TimelineEvent[] {
+  const events: TimelineEvent[] = []
+
+  events.push({
+    id: "invited",
+    at: input.invitation.createdAt,
+    title: "Meghívó megérkezett",
+    detail: "Árajánlatkérés link + belépő kód",
+    tone: "neutral",
+  })
+
+  if (input.submission) {
+    const history = [...(input.submission.revisionHistory ?? [])].sort(
+      (a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()
+    )
+    const firstTotal = history[0]?.totalAmount ?? input.submission.totalAmount
+    events.push({
+      id: "submitted",
+      at: input.submission.submittedAt,
+      title: "Ajánlat beküldve",
+      detail: formatHuf(firstTotal),
+      tone: "success",
+    })
+
+    const revised =
+      new Date(input.submission.updatedAt).getTime() >
+      new Date(input.submission.submittedAt).getTime()
+    if (revised) {
+      const revCount = Math.max(1, history.length)
+      events.push({
+        id: "updated",
+        at: input.submission.updatedAt,
+        title:
+          revCount > 1
+            ? `Módosított ajánlat (${revCount}. változat)`
+            : "Módosított ajánlat",
+        detail: formatHuf(input.submission.totalAmount),
+        tone: "success",
+      })
+    }
+  }
+
+  if (input.decidedAt && (input.youWon || input.youLost)) {
+    events.push({
+      id: "decision",
+      at: input.decidedAt,
+      title: input.youWon ? "Döntés: te nyertél" : "Döntés: most nem téged választottak",
+      tone: input.youWon ? "success" : "warning",
+    })
+  }
+
+  return events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+}
+
 export function RfqPublicClient({ token }: RfqPublicClientProps) {
   const [loading, setLoading] = useState(true)
   const [invitation, setInvitation] = useState<RfqInvitation | null>(null)
   const [rfq, setRfq] = useState<SubcontractorRfq | null>(null)
-  const [project, setProject] = useState<Project | null>(null)
+  const [project, setProject] = useState<PublicProject | null>(null)
   const [campaign, setCampaign] = useState<RfqCampaign | null>(null)
-  const [existingSubmission, setExistingSubmission] = useState<SubcontractorRfqSubmission | null>(null)
+  const [existingSubmission, setExistingSubmission] =
+    useState<SubcontractorRfqSubmission | null>(null)
+  const [packageDecided, setPackageDecided] = useState(false)
+  const [youWon, setYouWon] = useState(false)
+  const [youLost, setYouLost] = useState(false)
+  const [decidedAt, setDecidedAt] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [inviteeName, setInviteeName] = useState<string | null>(null)
   const [units, setUnits] = useState<Record<string, string>>({})
+  const [exportPackages, setExportPackages] = useState<
+    Array<{
+      rfq: SubcontractorRfq
+      submission: SubcontractorRfqSubmission | null
+      invitationId: string
+      invitationStatus: string
+      isCurrent: boolean
+    }>
+  >([])
+  const [activeInvitationId, setActiveInvitationId] = useState<string | null>(null)
   const [codeInput, setCodeInput] = useState("")
   const [codeError, setCodeError] = useState<string | null>(null)
   const [unlocking, setUnlocking] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
+  const [saveFlash, setSaveFlash] = useState<string | null>(null)
+  const [exportingExcel, setExportingExcel] = useState(false)
   const [form, setForm] = useState({
     subcontractorName: "",
     contactPhone: "",
+    contactEmail: "",
     notes: "",
     lineBids: {} as Record<string, LineBidForm>,
   })
 
-  /** Szerveroldali PIN — kód nélkül csak minimális infó jön, kóddal a teljes csomag */
-  const loadData = async (code: string): Promise<boolean> => {
+  type ExportPkg = {
+    rfq: SubcontractorRfq
+    submission: SubcontractorRfqSubmission | null
+    invitationId: string
+    invitationStatus: string
+    isCurrent: boolean
+  }
+
+  const applyPackageView = (
+    pkg: ExportPkg,
+    invite: RfqInvitation,
+    opts?: { keepContact?: boolean }
+  ) => {
+    setActiveInvitationId(pkg.invitationId)
+    setRfq(pkg.rfq)
+    setExistingSubmission(pkg.submission)
+    setEditing(false)
+    setSubmitError(null)
+    applyLockState(pkg)
+    if (pkg.submission) {
+      setForm({
+        subcontractorName: pkg.submission.subcontractorName,
+        contactPhone: pkg.submission.contactPhone,
+        contactEmail: pkg.submission.contactEmail ?? "",
+        notes: pkg.submission.notes,
+        lineBids: bidsFromSubmission(pkg.rfq, pkg.submission),
+      })
+    } else {
+      setForm((f) => ({
+        ...f,
+        subcontractorName: opts?.keepContact
+          ? f.subcontractorName || invite.subcontractorName
+          : invite.subcontractorName,
+        contactPhone: opts?.keepContact
+          ? f.contactPhone || invite.contactPhone
+          : invite.contactPhone,
+        contactEmail: opts?.keepContact ? f.contactEmail : f.contactEmail || "",
+        notes: "",
+        lineBids: emptyBids(pkg.rfq),
+      }))
+    }
+  }
+
+  const loadData = async (
+    code: string,
+    opts?: {
+      advanceToNextIncomplete?: boolean
+      afterInvitationId?: string
+    }
+  ): Promise<boolean> => {
     const url = code
       ? `/api/rfq/${token}?code=${encodeURIComponent(code)}`
       : `/api/rfq/${token}`
@@ -105,10 +342,21 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
       | {
           invitation: RfqInvitation
           rfq: SubcontractorRfq
-          project: Project
+          project: PublicProject | null
           submission: SubcontractorRfqSubmission | null
           campaign: RfqCampaign | null
           units: Record<string, string>
+          exportPackages?: Array<{
+            rfq: SubcontractorRfq
+            submission: SubcontractorRfqSubmission | null
+            invitationId: string
+            invitationStatus?: string
+            isCurrent: boolean
+          }>
+          packageDecided: boolean
+          youWon: boolean
+          youLost: boolean
+          decidedAt: string | null
         }
 
     if ("needsCode" in data) {
@@ -117,27 +365,74 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
     }
 
     setInvitation(data.invitation)
-    setRfq(data.rfq)
     setProject(data.project)
     setCampaign(data.campaign)
-    setExistingSubmission(data.submission)
     setUnits(data.units ?? {})
-    if (data.submission) {
-      setForm({
-        subcontractorName: data.submission.subcontractorName,
-        contactPhone: data.submission.contactPhone,
-        notes: data.submission.notes,
-        lineBids: bidsFromSubmission(data.rfq, data.submission),
-      })
+    const packages =
+      data.exportPackages?.length
+        ? data.exportPackages.map((p) => ({
+            ...p,
+            invitationId: p.invitationId ?? data.invitation.id,
+            invitationStatus:
+              p.invitationStatus ??
+              (p.isCurrent ? data.invitation.status : "pending"),
+          }))
+        : [
+            {
+              rfq: data.rfq,
+              submission: data.submission,
+              invitationId: data.invitation.id,
+              invitationStatus: data.invitation.status,
+              isCurrent: true,
+            },
+          ]
+    setExportPackages(packages)
+
+    const afterId = opts?.afterInvitationId
+    let preferredId: string
+    if (opts?.advanceToNextIncomplete) {
+      const nextIncomplete = packages.find((p) => !p.submission)
+      preferredId =
+        nextIncomplete?.invitationId ??
+        afterId ??
+        packages.find((p) => p.isCurrent)?.invitationId ??
+        data.invitation.id
     } else {
-      setForm((f) => ({
-        ...f,
-        subcontractorName: data.invitation.subcontractorName,
-        contactPhone: data.invitation.contactPhone,
-        lineBids: emptyBids(data.rfq),
-      }))
+      preferredId =
+        (activeInvitationId &&
+          packages.some((p) => p.invitationId === activeInvitationId) &&
+          activeInvitationId) ||
+        packages.find((p) => p.isCurrent)?.invitationId ||
+        data.invitation.id
     }
+    const active =
+      packages.find((p) => p.invitationId === preferredId) ?? packages[0]
+
+    applyPackageView(active, data.invitation, { keepContact: true })
+    setDecidedAt(data.decidedAt ?? null)
     return true
+  }
+
+  function applyLockState(pkg: {
+    rfq: SubcontractorRfq
+    invitationStatus: string
+  }) {
+    const decided = pkg.rfq.status === "decided"
+    setPackageDecided(decided)
+    setYouWon(pkg.invitationStatus === "accepted")
+    setYouLost(
+      pkg.invitationStatus === "rejected" ||
+        (decided && pkg.invitationStatus !== "accepted")
+    )
+  }
+
+  function selectTrade(invitationId: string) {
+    const pkg = exportPackages.find((p) => p.invitationId === invitationId)
+    if (!pkg || !invitation) return
+    applyPackageView(pkg, invitation, { keepContact: true })
+    requestAnimationFrame(() => {
+      document.getElementById("ajanlat")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    })
   }
 
   useEffect(() => {
@@ -155,21 +450,24 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, submitted])
+  }, [token])
 
   const totalAmount = useMemo(() => {
     if (!rfq) return 0
     return rfq.lines.reduce((sum, line) => {
       const bid = form.lineBids[line.id]
       if (!bid || bid.declined) return sum
-      return sum + getBidLineTotal(
-        {
-          rfqLineId: line.id,
-          materialUnitPrice: bid.materialUnitPrice,
-          laborUnitPrice: bid.laborUnitPrice,
-          declined: false,
-        },
-        line.quantity
+      return (
+        sum +
+        getBidLineTotal(
+          {
+            rfqLineId: line.id,
+            materialUnitPrice: bid.materialUnitPrice,
+            laborUnitPrice: bid.laborUnitPrice,
+            declined: false,
+          },
+          line.quantity
+        )
       )
     }, 0)
   }, [rfq, form.lineBids])
@@ -182,8 +480,119 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
     }).length
   }, [rfq, form.lineBids])
 
-  const canEdit = invitation && !["accepted", "rejected"].includes(invitation.status)
+  const expired = rfq ? new Date(rfq.expiresAt) < new Date() : false
+  const lockedByDecision = youWon || youLost || packageDecided
+  const canEdit = Boolean(invitation && !lockedByDecision && !expired)
   const showForm = canEdit && (editing || !existingSubmission)
+
+  const multiTrade = useMemo(() => {
+    if (exportPackages.length <= 1) return null
+    const done = exportPackages.filter((p) => p.submission).length
+    const missing = exportPackages.filter((p) => !p.submission)
+    return {
+      total: exportPackages.length,
+      done,
+      missingLabels: missing.map((p) => packageTradeLabel(p)),
+      missing,
+      nextIncomplete: missing[0] ?? null,
+    }
+  }, [exportPackages])
+
+  const status = statusSentence({
+    expired,
+    packageDecided,
+    youWon,
+    youLost,
+    hasSubmission: Boolean(existingSubmission),
+    multi:
+      multiTrade && !youWon && !youLost && !packageDecided && !expired
+        ? {
+            total: multiTrade.total,
+            done: multiTrade.done,
+            missingLabels: multiTrade.missingLabels,
+          }
+        : null,
+  })
+
+  const timeline = useMemo(() => {
+    if (!invitation) return []
+    return buildTimeline({
+      invitation,
+      submission: existingSubmission,
+      decidedAt,
+      youWon,
+      youLost,
+    })
+  }, [invitation, existingSubmission, decidedAt, youWon, youLost])
+
+  const exportModel = useMemo(() => {
+    if (!rfq || !invitation) return null
+    const packages =
+      exportPackages.length > 0
+        ? exportPackages
+        : [
+            {
+              rfq,
+              submission: existingSubmission,
+              invitationId: invitation.id,
+              invitationStatus: invitation.status,
+              isCurrent: true,
+            },
+          ]
+    return buildRfqPublicExportModel({
+      invitation,
+      project,
+      submission: existingSubmission,
+      units,
+      packages,
+    })
+  }, [rfq, invitation, project, existingSubmission, units, exportPackages])
+
+  const handleExportExcel = async () => {
+    if (!exportModel) return
+    if (editing && existingSubmission) {
+      toast.message("A letöltés az utoljára mentett ajánlatot tartalmazza.")
+    }
+    setExportingExcel(true)
+    try {
+      const filename = await downloadRfqPublicExcel(exportModel)
+      const tradeCount = exportModel.packages.length
+      toast.success(
+        exportModel.mode === "offer"
+          ? `Ajánlat Excel letöltve (${tradeCount} szakág): ${filename}`
+          : `Üres sablon letöltve (${tradeCount} szakág): ${filename}`
+      )
+    } catch (e) {
+      console.error(e)
+      toast.error(e instanceof Error ? e.message : "Excel export hiba")
+    } finally {
+      setExportingExcel(false)
+    }
+  }
+
+  const handleExportPdf = () => {
+    if (!exportModel) return
+    if (editing && existingSubmission) {
+      toast.message("A PDF az utoljára mentett ajánlatot tartalmazza.")
+    }
+    try {
+      const tradeCount = exportModel.packages.length
+      printRfqPublicPdfDocument(
+        ".rfq-pdf-doc",
+        tradeCount > 1
+          ? `${exportModel.title} · ${tradeCount} szakág`
+          : exportModel.title
+      )
+      toast.success(
+        tradeCount > 1
+          ? `PDF megnyitva (${tradeCount} szakág)`
+          : "Nyomtatás / PDF mentés megnyitva"
+      )
+    } catch (e) {
+      console.error(e)
+      toast.error(e instanceof Error ? e.message : "PDF export hiba")
+    }
+  }
 
   if (loading) {
     return (
@@ -220,15 +629,15 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
   if (!rfq || !invitation) {
     return (
       <div className="mx-auto max-w-sm px-4 py-12 sm:py-16">
-        <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-semibold">Ajánlat beküldése</h1>
+        <div className="border border-slate-200 bg-white p-6 shadow-sm">
+          <h1 className="text-xl font-semibold text-slate-950">Belépés</h1>
           <p className="mt-2 text-sm text-slate-600">
             Üdvözöljük{inviteeName ? <>, <strong>{inviteeName}</strong></> : null}! Írja be a{" "}
-            <strong>6 számjegyű kódot</strong>.
+            <strong>6 számjegyű belépő kódot</strong>.
           </p>
           <div className="mt-6 space-y-4">
             <div className="space-y-2">
-              <Label className="text-base">Hozzáférési kód</Label>
+              <Label className="text-base">Belépő kód</Label>
               <Input
                 value={codeInput}
                 onChange={(e) => {
@@ -248,7 +657,7 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
               onClick={() => void tryUnlock()}
               disabled={unlocking}
             >
-              {unlocking ? "Ellenőrzés…" : "Tovább"}
+              {unlocking ? "Ellenőrzés…" : "Belépés"}
               <ChevronRight className="ml-1 h-5 w-5" />
             </Button>
           </div>
@@ -257,13 +666,11 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
     )
   }
 
-  const expired = new Date(rfq.expiresAt) < new Date()
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.subcontractorName.trim()) return
     if (pricedCount === 0) return
-
+    setSubmitError(null)
     setSubmitting(true)
     try {
       const res = await fetch(`/api/rfq/${token}`, {
@@ -271,8 +678,9 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accessCode: codeInput.trim(),
+          targetInvitationId: activeInvitationId ?? invitation.id,
           subcontractorName: form.subcontractorName.trim(),
-          contactEmail: "",
+          contactEmail: form.contactEmail.trim(),
           contactPhone: form.contactPhone.trim(),
           notes: form.notes.trim(),
           lineBids: rfq.lines.map((line) => {
@@ -292,96 +700,546 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
         }),
       })
       if (res.ok) {
-        setSubmitted(true)
         setEditing(false)
-        await loadData(codeInput.trim())
+        const savedId = activeInvitationId ?? invitation.id
+        // A loadData a friss listából a következő hiányzó szakágra ugrik
+        await loadData(codeInput.trim(), {
+          advanceToNextIncomplete: true,
+          afterInvitationId: savedId,
+        })
+        // A toast / flash a következő render exportPackages alapján — számoljuk a mentés előtti állapotból
+        const remainingBefore = exportPackages.filter(
+          (p) => !p.submission && p.invitationId !== savedId
+        )
+        if (remainingBefore.length > 0) {
+          const nextLabel = packageTradeLabel(remainingBefore[0])
+          setSaveFlash(`Mentve. Következő szakág: ${nextLabel}`)
+          toast.success(`Mentve — folytasd: ${nextLabel}`)
+          requestAnimationFrame(() => {
+            document
+              .getElementById("ajanlat")
+              ?.scrollIntoView({ behavior: "smooth", block: "start" })
+          })
+        } else {
+          setSaveFlash(
+            multiTrade && multiTrade.total > 1
+              ? "Minden szakág beküldve."
+              : "Ajánlat sikeresen mentve."
+          )
+          toast.success(
+            multiTrade && multiTrade.total > 1
+              ? "Minden szakág beküldve"
+              : "Ajánlat sikeresen mentve"
+          )
+        }
+        setTimeout(() => setSaveFlash(null), 5000)
+      } else {
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        if (res.status === 410) setSubmitError("A határidő lejárt — már nem küldhető ajánlat.")
+        else if (res.status === 409)
+          setSubmitError("Már született döntés — az ajánlat nem módosítható.")
+        else setSubmitError(json.error ?? "Nem sikerült menteni.")
       }
     } finally {
       setSubmitting(false)
     }
   }
 
-  if (expired) {
-    return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <h1 className="text-xl font-semibold">Lejárt ajánlatkérés</h1>
-        <p className="mt-3 text-sm text-slate-600">
-          Határidő: {new Date(rfq.expiresAt).toLocaleDateString("hu-HU")}
-        </p>
-      </div>
-    )
-  }
+  const primaryCta = (() => {
+    if (!canEdit) return null
+    if (showForm) return null
+    // Több szakág: ha ez kész, de van hiányzó → elsődleges a következő
+    if (
+      multiTrade &&
+      existingSubmission &&
+      multiTrade.nextIncomplete &&
+      multiTrade.nextIncomplete.invitationId !== activeInvitationId
+    ) {
+      const label = packageTradeLabel(multiTrade.nextIncomplete)
+      return (
+        <Button
+          type="button"
+          className="h-11 gap-1.5 px-4 text-sm font-semibold"
+          onClick={() => selectTrade(multiTrade.nextIncomplete!.invitationId)}
+        >
+          Következő: {label}
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      )
+    }
+    if (existingSubmission) {
+      return (
+        <Button
+          type="button"
+          className="h-11 gap-1.5 px-4 text-sm font-semibold"
+          variant={multiTrade && multiTrade.done < multiTrade.total ? "outline" : "default"}
+          onClick={() => setEditing(true)}
+        >
+          <Pencil className="h-4 w-4" />
+          Módosítás
+        </Button>
+      )
+    }
+    return null
+  })()
 
-  const statusLabel = RFQ_INVITATION_STATUS_LABELS[invitation.status]
+  const exportButtons = (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        className="h-11 gap-1.5 text-sm"
+        disabled={!exportModel || exportingExcel}
+        title={
+          exportModel?.mode === "offer"
+            ? "Saját ajánlat Excelben"
+            : "Üres ajánlatkérés-sablon Excelben"
+        }
+        onClick={() => void handleExportExcel()}
+      >
+        <FileSpreadsheet className="h-4 w-4" />
+        {exportingExcel ? "Excel…" : "Excel"}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-11 gap-1.5 text-sm"
+        disabled={!exportModel}
+        title={
+          exportModel?.mode === "offer"
+            ? "Saját ajánlat PDF / nyomtatás"
+            : "Üres ajánlatkérés PDF / nyomtatás"
+        }
+        onClick={handleExportPdf}
+      >
+        <FileDown className="h-4 w-4" />
+        PDF
+      </Button>
+    </div>
+  )
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6 sm:py-8">
-      <div className="mb-6 rounded-xl border bg-white p-5 shadow-sm">
-        <p className="text-sm font-semibold text-blue-700">Árajánlat kérés</p>
-        <h1 className="mt-1 text-xl font-semibold leading-snug">{rfq.title}</h1>
-        <p className="mt-2 text-sm font-medium text-slate-800">{invitation.subcontractorName}</p>
-        {project ? (
-          <p className="mt-2 text-sm text-slate-600">
-            <span className="font-medium">Munkahely:</span> {project.name}
-            {project.siteAddress ? ` — ${project.siteAddress}` : ""}
-          </p>
-        ) : null}
-        <p className="mt-2 text-sm text-slate-600">
-          Határidő: <strong>{new Date(rfq.expiresAt).toLocaleDateString("hu-HU")}</strong>
-        </p>
+    <div className="mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
+      {/* Fejléc — státusz + egy CTA */}
+      <header className="mb-4 border border-slate-300 bg-white px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Alvállalkozói felület
+            </p>
+            <h1 className="mt-1 text-xl font-semibold leading-snug text-slate-950 sm:text-2xl">
+              {invitation.subcontractorName}
+            </h1>
+            <p className="mt-1 text-sm text-slate-700">{rfq.title}</p>
+            {project ? (
+              <p className="mt-2 text-sm text-slate-600">
+                <span className="font-medium text-slate-800">{project.name}</span>
+                {project.siteAddress ? ` — ${project.siteAddress}` : ""}
+                {project.code ? (
+                  <span className="ml-2 font-mono text-xs text-slate-500">{project.code}</span>
+                ) : null}
+              </p>
+            ) : null}
+            <p className="mt-1 text-sm text-slate-600">
+              Határidő:{" "}
+              <strong className={expired ? "text-red-700" : ""}>
+                {new Date(rfq.expiresAt).toLocaleDateString("hu-HU")}
+              </strong>
+              {existingSubmission ? (
+                <>
+                  {" · "}
+                  Utolsó ajánlat:{" "}
+                  <strong className="tabular-nums">
+                    {formatHuf(existingSubmission.totalAmount)}
+                  </strong>
+                </>
+              ) : null}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {primaryCta}
+            {multiTrade &&
+            existingSubmission &&
+            multiTrade.nextIncomplete &&
+            multiTrade.nextIncomplete.invitationId !== activeInvitationId &&
+            canEdit &&
+            !showForm ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 gap-1.5 text-sm"
+                onClick={() => setEditing(true)}
+              >
+                <Pencil className="h-4 w-4" />
+                Módosítás
+              </Button>
+            ) : null}
+            {exportButtons}
+          </div>
+        </div>
 
         <div
           className={cn(
-            "mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium",
-            invitation.status === "accepted" && "bg-emerald-50 text-emerald-900",
-            invitation.status === "rejected" && "bg-slate-100 text-slate-700",
-            invitation.status === "submitted" && "bg-blue-50 text-blue-900",
-            invitation.status === "invited" && "bg-amber-50 text-amber-900"
+            "mt-4 flex items-start gap-2 border px-3 py-2.5 text-sm font-medium",
+            status.tone === "emerald" && "border-emerald-300 bg-emerald-50 text-emerald-950",
+            status.tone === "blue" && "border-blue-300 bg-blue-50 text-blue-950",
+            status.tone === "amber" && "border-amber-300 bg-amber-50 text-amber-950",
+            status.tone === "slate" && "border-slate-300 bg-slate-50 text-slate-800",
+            status.tone === "red" && "border-red-300 bg-red-50 text-red-950"
           )}
         >
-          {invitation.status === "accepted" ? (
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
-          ) : invitation.status === "rejected" ? (
-            <XCircle className="h-5 w-5 shrink-0" />
+          {youWon ? (
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+          ) : youLost ? (
+            <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          ) : multiTrade && multiTrade.done < multiTrade.total && !expired ? (
+            <Clock className="mt-0.5 h-5 w-5 shrink-0" />
+          ) : multiTrade && multiTrade.done === multiTrade.total ? (
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
           ) : (
-            <Clock className="h-5 w-5 shrink-0" />
+            <Clock className="mt-0.5 h-5 w-5 shrink-0" />
           )}
-          <span>Státusz: {statusLabel}</span>
+          <span>{status.text}</span>
         </div>
 
-        {existingSubmission && !showForm ? (
-          <div className="mt-4 space-y-2">
-            <p className="text-sm text-slate-600">
-              Beküldve:{" "}
-              {new Date(existingSubmission.updatedAt).toLocaleString("hu-HU")}
-            </p>
-            <p className="text-lg font-bold text-slate-900">
-              Összesen: {formatHuf(existingSubmission.totalAmount)}
-            </p>
-            {canEdit ? (
-              <Button type="button" variant="outline" onClick={() => setEditing(true)}>
-                Ajánlat módosítása
-              </Button>
-            ) : null}
-          </div>
+        {saveFlash ? (
+          <p className="mt-2 text-sm font-medium text-emerald-800">{saveFlash}</p>
         ) : null}
-      </div>
+      </header>
 
       {campaign?.message ? (
-        <div className="mb-4 rounded-xl border bg-slate-50 px-4 py-3 text-sm text-slate-800">
-          <p className="font-medium text-slate-900">Üzenet az építésvezetőtől</p>
+        <section className="mb-3 border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+          <p className="font-semibold text-slate-900">Üzenet az építésvezetőtől</p>
           <p className="mt-1 whitespace-pre-wrap">{campaign.message}</p>
-        </div>
+        </section>
       ) : null}
 
+      {multiTrade ? (
+        <nav className="mb-4 border border-slate-300 bg-white" aria-label="Szakágak">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Szakágak · {multiTrade.done}/{multiTrade.total} kész
+            </p>
+            {multiTrade.done < multiTrade.total ? (
+              <p className="text-xs font-medium text-amber-800">
+                Még {multiTrade.total - multiTrade.done} hiányzik
+              </p>
+            ) : (
+              <p className="text-xs font-medium text-emerald-800">Mind kész</p>
+            )}
+          </div>
+          <ul className="divide-y divide-slate-200">
+            {exportPackages.map((pkg, index) => {
+              const active = pkg.invitationId === activeInvitationId
+              const done = Boolean(pkg.submission)
+              const label = packageTradeLabel(pkg)
+              return (
+                <li key={pkg.invitationId}>
+                  <button
+                    type="button"
+                    onClick={() => selectTrade(pkg.invitationId)}
+                    className={cn(
+                      "flex w-full items-center gap-3 px-3 py-3 text-left transition-colors",
+                      active
+                        ? "bg-slate-900 text-white"
+                        : done
+                          ? "bg-emerald-50/80 text-slate-900 hover:bg-emerald-50"
+                          : "bg-amber-50/50 text-slate-900 hover:bg-amber-50"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex h-7 w-7 shrink-0 items-center justify-center text-sm font-bold",
+                        active
+                          ? "bg-white text-slate-900"
+                          : done
+                            ? "bg-emerald-600 text-white"
+                            : "border border-amber-400 bg-white text-amber-900"
+                      )}
+                    >
+                      {done && !active ? "✓" : index + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{label}</span>
+                      <span
+                        className={cn(
+                          "block text-xs",
+                          active ? "text-slate-300" : "text-slate-600"
+                        )}
+                      >
+                        {active
+                          ? done
+                            ? "Most ezt nézed · beküldve"
+                            : "Most ezt töltöd"
+                          : done
+                            ? `Beküldve · ${formatHuf(pkg.submission!.totalAmount)}`
+                            : "Hiányzik — kattints ide"}
+                      </span>
+                    </span>
+                    {active ? (
+                      <ChevronRight className="h-5 w-5 shrink-0 text-white" />
+                    ) : null}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </nav>
+      ) : null}
+
+      {/* Ártábla / űrlap */}
+      <section className="mb-4" id="ajanlat">
+        <h2 className="mb-2 text-sm font-semibold text-slate-900">
+          {multiTrade ? (
+            <>
+              {packageTradeLabel({ rfq })}
+              <span className="ml-2 font-normal text-slate-500">
+                ({exportPackages.findIndex((p) => p.invitationId === activeInvitationId) + 1}/
+                {multiTrade.total})
+              </span>
+            </>
+          ) : showForm ? (
+            existingSubmission ? (
+              "Módosított ajánlat"
+            ) : (
+              "Ajánlat kitöltése"
+            )
+          ) : (
+            "Ajánlatod"
+          )}
+        </h2>
+
+        {showForm ? (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <p className="text-sm text-slate-700">
+              Írd be az <strong>{COL.materialUnit}</strong> és <strong>{COL.laborUnit}</strong>{" "}
+              mezőket (Ft), vagy jelöld a „Nem vállalom” oszlopot.
+            </p>
+
+            <PriceTable
+              rfq={rfq}
+              units={units}
+              editable
+              formBids={form.lineBids}
+              onChangeBid={(lineId, next) =>
+                setForm((f) => ({
+                  ...f,
+                  lineBids: { ...f.lineBids, [lineId]: next },
+                }))
+              }
+            />
+
+            <div className="sticky bottom-0 z-10 border border-slate-300 bg-white p-4 shadow-md">
+              {multiTrade && multiTrade.done < multiTrade.total ? (
+                <p className="mb-2 text-sm font-medium text-amber-900">
+                  {existingSubmission
+                    ? `Mentés után még ${multiTrade.total - multiTrade.done} hiányzó szakág`
+                    : `${
+                        exportPackages.findIndex(
+                          (p) => p.invitationId === activeInvitationId
+                        ) + 1
+                      }. / ${multiTrade.total} szakág · mentés után jön a következő`}
+                </p>
+              ) : null}
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="text-sm text-slate-600">
+                  Árazott: {pricedCount} / {rfq.lines.length}
+                </span>
+                <span className="text-lg font-bold tabular-nums">
+                  {formatHuf(Math.round(totalAmount))}
+                </span>
+              </div>
+              {submitError ? (
+                <p className="mb-3 text-sm text-red-700">{submitError}</p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="h-12 min-w-[14rem] text-base"
+                  disabled={submitting || pricedCount === 0}
+                >
+                  {submitting
+                    ? "Küldés…"
+                    : multiTrade &&
+                        multiTrade.missing.length > (existingSubmission ? 0 : 1)
+                      ? existingSubmission
+                        ? "Mentés · következő szakág"
+                        : "Beküldés · következő szakág"
+                      : existingSubmission
+                        ? "Módosított ajánlat küldése"
+                        : "Ajánlat beküldése"}
+                </Button>
+                {existingSubmission ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12"
+                    onClick={() => {
+                      setEditing(false)
+                      setForm({
+                        subcontractorName: existingSubmission.subcontractorName,
+                        contactPhone: existingSubmission.contactPhone,
+                        contactEmail: existingSubmission.contactEmail ?? "",
+                        notes: existingSubmission.notes,
+                        lineBids: bidsFromSubmission(rfq, existingSubmission),
+                      })
+                    }}
+                  >
+                    Mégse
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </form>
+        ) : existingSubmission ? (
+          <PriceTable
+            rfq={rfq}
+            units={units}
+            editable={false}
+            submission={existingSubmission}
+          />
+        ) : expired || lockedByDecision ? (
+          <p className="border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-600">
+            Nincs beküldött ajánlat.
+          </p>
+        ) : (
+          <div className="border border-amber-200 bg-amber-50 px-4 py-6 text-center">
+            <p className="text-sm text-amber-950">Még nem küldtél ajánlatot.</p>
+            <Button className="mt-3 h-11" onClick={() => setEditing(true)}>
+              Ajánlat kitöltése
+            </Button>
+          </div>
+        )}
+      </section>
+
+      {/* Eseménynapló */}
+      <section className="mb-4 border border-slate-200 bg-white">
+        <h2 className="border-b border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-900">
+          Mi történt?
+        </h2>
+        <ol className="divide-y divide-slate-100">
+          {timeline.map((ev) => (
+            <li key={ev.id} className="flex gap-3 px-4 py-3 text-sm">
+              <span
+                className={cn(
+                  "mt-1.5 h-2 w-2 shrink-0 rounded-full",
+                  ev.tone === "success" && "bg-emerald-500",
+                  ev.tone === "warning" && "bg-amber-500",
+                  ev.tone === "danger" && "bg-red-500",
+                  ev.tone === "neutral" && "bg-slate-400"
+                )}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-slate-900">{ev.title}</p>
+                {ev.detail ? (
+                  <p className="text-slate-600">{ev.detail}</p>
+                ) : null}
+              </div>
+              <time className="shrink-0 text-xs tabular-nums text-slate-500">
+                {formatWhen(ev.at)}
+              </time>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* Adataim */}
+      <section className="mb-4 border border-slate-200 bg-white">
+        <h2 className="border-b border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-900">
+          Adataim
+        </h2>
+        {showForm ? (
+          <div className="grid gap-3 p-4 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Cég / név *</Label>
+              <Input
+                className="h-11"
+                value={form.subcontractorName}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, subcontractorName: e.target.value }))
+                }
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Telefon</Label>
+              <Input
+                className="h-11"
+                type="tel"
+                value={form.contactPhone}
+                onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>E-mail</Label>
+              <Input
+                className="h-11"
+                type="email"
+                value={form.contactEmail}
+                onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Megjegyzés az ajánlathoz</Label>
+              <Textarea
+                rows={2}
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+          </div>
+        ) : (
+          <dl className="grid gap-3 p-4 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Cég / név
+              </dt>
+              <dd className="mt-0.5 font-medium text-slate-900">
+                {existingSubmission?.subcontractorName ?? invitation.subcontractorName}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Telefon
+              </dt>
+              <dd className="mt-0.5 text-slate-800">
+                {existingSubmission?.contactPhone || invitation.contactPhone || "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                E-mail
+              </dt>
+              <dd className="mt-0.5 text-slate-800">
+                {existingSubmission?.contactEmail || "—"}
+              </dd>
+            </div>
+            {existingSubmission?.notes ? (
+              <div className="sm:col-span-2">
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Megjegyzés
+                </dt>
+                <dd className="mt-0.5 whitespace-pre-wrap text-slate-800">
+                  {existingSubmission.notes}
+                </dd>
+              </div>
+            ) : null}
+          </dl>
+        )}
+      </section>
+
+      {/* Dokumentumok */}
       {campaign && campaign.attachedFolderSnapshots.length > 0 ? (
-        <div className="mb-4 rounded-xl border bg-white px-4 py-3 shadow-sm">
-          <p className="text-sm font-semibold text-slate-900">Mellékelt dokumentumok</p>
-          <ul className="mt-2 space-y-1.5">
+        <section className="mb-4 border border-slate-200 bg-white">
+          <h2 className="border-b border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-900">
+            Dokumentumok
+          </h2>
+          <ul className="divide-y divide-slate-100">
             {campaign.attachedFolderSnapshots.map((folder) => (
               <li
                 key={folder.folderId}
-                className="flex items-center gap-2 text-sm text-slate-700"
+                className="flex items-center gap-2 px-4 py-3 text-sm text-slate-700"
               >
                 <FolderOpen className="h-4 w-4 shrink-0 text-slate-500" />
                 <span>
@@ -391,207 +1249,201 @@ export function RfqPublicClient({ token }: RfqPublicClientProps) {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-slate-500">
-            A fájlok letöltése hamarosan elérhető — egyelőre az építésvezető külön is megküldheti.
+          <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
+            A fájlok letöltése hamarosan — egyelőre az építésvezető külön is megküldheti.
           </p>
-        </div>
+        </section>
       ) : null}
 
-      {showForm ? (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            Töltse ki az <strong>anyag</strong> és <strong>díj</strong> egységárát (Ft), vagy jelölje
-            „Nem vállalom”. Részleges ajánlat is küldhető.
-          </div>
+      {/* Nyomtatási előnézet — képernyőn rejtve */}
+      {exportModel ? (
+        <div className="pointer-events-none fixed -left-[9999px] top-0 opacity-0" aria-hidden>
+          <RfqPublicExportDocument model={exportModel} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
-          <div className="space-y-3">
-            {rfq.lines.map((line, index) => {
-              const bid = form.lineBids[line.id] ?? {
+function PriceTable({
+  rfq,
+  units,
+  editable,
+  formBids,
+  onChangeBid,
+  submission,
+}: {
+  rfq: SubcontractorRfq
+  units: Record<string, string>
+  editable: boolean
+  formBids?: Record<string, LineBidForm>
+  onChangeBid?: (lineId: string, next: LineBidForm) => void
+  submission?: SubcontractorRfqSubmission
+}) {
+  return (
+    <div className="overflow-x-auto border border-slate-300 bg-white">
+      <table className="w-full min-w-[56rem] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-slate-300 bg-slate-100 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+            <th className="w-12 border-r border-slate-200 px-2 py-2">{COL.ssz}</th>
+            <th className="min-w-[14rem] border-r border-slate-200 px-2 py-2">{COL.text}</th>
+            <th className="w-20 border-r border-slate-200 px-2 py-2 text-right">{COL.quantity}</th>
+            <th className="w-16 border-r border-slate-200 px-2 py-2">{COL.unit}</th>
+            <th className="w-32 border-r border-slate-200 px-2 py-2 text-right">
+              {COL.materialUnit}
+            </th>
+            <th className="w-32 border-r border-slate-200 px-2 py-2 text-right">
+              {COL.laborUnit}
+            </th>
+            <th className="w-28 border-r border-slate-200 px-2 py-2 text-right">
+              {COL.materialTotal}
+            </th>
+            <th className="w-28 border-r border-slate-200 px-2 py-2 text-right">
+              {COL.laborTotal}
+            </th>
+            {editable ? (
+              <th className="w-24 px-2 py-2 text-center">Nem vállalom</th>
+            ) : (
+              <th className="w-28 px-2 py-2 text-right">Sor összesen</th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rfq.lines.map((line, index) => {
+            if (editable && formBids && onChangeBid) {
+              const bid = formBids[line.id] ?? {
                 materialUnitPrice: 0,
                 laborUnitPrice: 0,
                 declined: false,
               }
-              const lineTotal = bid.declined
-                ? 0
-                : getBidLineTotal(
-                    {
-                      rfqLineId: line.id,
-                      materialUnitPrice: bid.materialUnitPrice,
-                      laborUnitPrice: bid.laborUnitPrice,
-                      declined: false,
-                    },
-                    line.quantity
-                  )
-
+              const matTotal = bid.declined ? 0 : bid.materialUnitPrice * line.quantity
+              const labTotal = bid.declined ? 0 : bid.laborUnitPrice * line.quantity
               return (
-                <div
+                <tr
                   key={line.id}
                   className={cn(
-                    "rounded-xl border bg-white p-4 shadow-sm",
-                    bid.declined ? "border-slate-200 bg-slate-50" : "border-slate-200"
+                    "border-b border-slate-200",
+                    bid.declined ? "bg-slate-50 text-slate-400" : "bg-white"
                   )}
                 >
-                  <div className="mb-3">
-                    <span className="text-sm font-medium text-slate-500">#{index + 1}</span>
-                    <p className="mt-0.5 text-sm font-medium leading-snug text-slate-900">
-                      {line.text}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {line.quantity} {units[line.unitId] ?? ""}
-                    </p>
-                  </div>
-
-                  <label className="mb-3 flex items-center gap-2 text-sm">
+                  <td className="border-r border-slate-100 px-2 py-1.5 tabular-nums text-slate-500">
+                    {index + 1}
+                  </td>
+                  <td className="border-r border-slate-100 px-2 py-1.5 font-medium text-slate-900">
+                    {line.text}
+                  </td>
+                  <td className="border-r border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                    {line.quantity}
+                  </td>
+                  <td className="border-r border-slate-100 px-2 py-1.5">
+                    {units[line.unitId] ?? ""}
+                  </td>
+                  <td className="border-r border-slate-100 px-1 py-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      disabled={bid.declined}
+                      className="h-9 border-slate-200 px-2 text-right tabular-nums"
+                      value={bid.declined ? "" : bid.materialUnitPrice || ""}
+                      onChange={(e) =>
+                        onChangeBid(line.id, {
+                          ...bid,
+                          materialUnitPrice: Number(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="border-r border-slate-100 px-1 py-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      disabled={bid.declined}
+                      className="h-9 border-slate-200 px-2 text-right tabular-nums"
+                      value={bid.declined ? "" : bid.laborUnitPrice || ""}
+                      onChange={(e) =>
+                        onChangeBid(line.id, {
+                          ...bid,
+                          laborUnitPrice: Number(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="border-r border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                    {matTotal > 0 ? formatHuf(Math.round(matTotal)) : "—"}
+                  </td>
+                  <td className="border-r border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                    {labTotal > 0 ? formatHuf(Math.round(labTotal)) : "—"}
+                  </td>
+                  <td className="px-2 py-1.5 text-center">
                     <Checkbox
                       checked={bid.declined}
                       onCheckedChange={(v) =>
-                        setForm((f) => ({
-                          ...f,
-                          lineBids: {
-                            ...f.lineBids,
-                            [line.id]: { ...bid, declined: v === true },
-                          },
-                        }))
+                        onChangeBid(line.id, { ...bid, declined: v === true })
                       }
+                      aria-label="Nem vállalom"
                     />
-                    Nem vállalom ezt a tételt
-                  </label>
-
-                  {!bid.declined ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Anyag egységár (Ft)</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          className="h-11 text-base"
-                          value={bid.materialUnitPrice || ""}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              lineBids: {
-                                ...f.lineBids,
-                                [line.id]: {
-                                  ...bid,
-                                  materialUnitPrice: Number(e.target.value) || 0,
-                                },
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-sm">Díj egységár (Ft)</Label>
-                        <Input
-                          type="number"
-                          min={0}
-                          className="h-11 text-base"
-                          value={bid.laborUnitPrice || ""}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              lineBids: {
-                                ...f.lineBids,
-                                [line.id]: {
-                                  ...bid,
-                                  laborUnitPrice: Number(e.target.value) || 0,
-                                },
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {!bid.declined && lineTotal > 0 ? (
-                    <p className="mt-2 text-right text-sm font-semibold">
-                      Sor összesen: {formatHuf(lineTotal)}
-                    </p>
-                  ) : null}
-                </div>
+                  </td>
+                </tr>
               )
-            })}
-          </div>
+            }
 
-          <div className="sticky bottom-0 rounded-xl border bg-white p-4 shadow-lg">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm text-slate-600">
-                Árazott: {pricedCount} / {rfq.lines.length}
-              </span>
-              <span className="text-lg font-bold">{formatHuf(Math.round(totalAmount))}</span>
-            </div>
-
-            <div className="mb-4 space-y-3 border-t pt-4">
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Cége / neve *</Label>
-                <Input
-                  className="h-11"
-                  value={form.subcontractorName}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, subcontractorName: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm">Telefon</Label>
-                <Input
-                  className="h-11"
-                  type="tel"
-                  value={form.contactPhone}
-                  onChange={(e) => setForm((f) => ({ ...f, contactPhone: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm">Megjegyzés</Label>
-                <Textarea
-                  rows={2}
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              size="lg"
-              className="h-12 w-full text-base"
-              disabled={submitting || pricedCount === 0}
-            >
-              {submitting ? "Küldés…" : existingSubmission ? "Ajánlat frissítése" : "Ajánlat beküldése"}
-            </Button>
-          </div>
-        </form>
-      ) : existingSubmission ? (
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <h2 className="ea-label mb-3">Beküldött tételek</h2>
-          <ul className="space-y-2 text-sm">
-            {rfq.lines.map((line) => {
-              const bid = existingSubmission.lineBids.find((b) => b.rfqLineId === line.id)
-              if (!bid || bid.declined) {
-                return (
-                  <li key={line.id} className="text-slate-500">
-                    {line.text} — <em>nem vállalva</em>
-                  </li>
-                )
-              }
+            const bid = submission?.lineBids.find((b) => b.rfqLineId === line.id)
+            if (!bid || bid.declined) {
               return (
-                <li key={line.id} className="flex justify-between gap-2">
-                  <span className="text-slate-800">{line.text}</span>
-                  <span className="shrink-0 font-medium tabular-nums">
-                    {formatHuf(getBidLineTotal(bid, line.quantity))}
-                  </span>
-                </li>
+                <tr
+                  key={line.id}
+                  className="border-b border-slate-200 bg-slate-50 text-slate-400"
+                >
+                  <td className="border-r border-slate-100 px-2 py-1.5">{index + 1}</td>
+                  <td className="border-r border-slate-100 px-2 py-1.5">{line.text}</td>
+                  <td className="border-r border-slate-100 px-2 py-1.5 text-right">
+                    {line.quantity}
+                  </td>
+                  <td className="border-r border-slate-100 px-2 py-1.5">
+                    {units[line.unitId] ?? ""}
+                  </td>
+                  <td colSpan={5} className="px-2 py-1.5 italic">
+                    nem vállalva
+                  </td>
+                </tr>
               )
-            })}
-          </ul>
-        </div>
-      ) : null}
-
-      {submitted ? (
-        <p className="mt-4 text-center text-sm text-emerald-700">Ajánlat sikeresen mentve.</p>
-      ) : null}
+            }
+            const matU = bid.materialUnitPrice ?? 0
+            const labU = bid.laborUnitPrice ?? bid.unitPrice ?? 0
+            return (
+              <tr key={line.id} className="border-b border-slate-200">
+                <td className="border-r border-slate-100 px-2 py-1.5 tabular-nums text-slate-500">
+                  {index + 1}
+                </td>
+                <td className="border-r border-slate-100 px-2 py-1.5 font-medium text-slate-900">
+                  {line.text}
+                </td>
+                <td className="border-r border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                  {line.quantity}
+                </td>
+                <td className="border-r border-slate-100 px-2 py-1.5">
+                  {units[line.unitId] ?? ""}
+                </td>
+                <td className="border-r border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                  {formatHuf(matU)}
+                </td>
+                <td className="border-r border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                  {formatHuf(labU)}
+                </td>
+                <td className="border-r border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                  {formatHuf(Math.round(matU * line.quantity))}
+                </td>
+                <td className="border-r border-slate-100 px-2 py-1.5 text-right tabular-nums">
+                  {formatHuf(Math.round(labU * line.quantity))}
+                </td>
+                <td className="px-2 py-1.5 text-right font-medium tabular-nums">
+                  {formatHuf(getBidLineTotal(bid, line.quantity))}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }

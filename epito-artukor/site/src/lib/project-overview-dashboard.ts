@@ -71,6 +71,10 @@ export type TradeDashboardRow = {
   pricedPercent: number
   isPartialTotal: boolean
   rfqCount: number
+  rfqPendingCount: number
+  rfqSubmissionCount: number
+  rfqAwaitingCount: number
+  unappliedSubmissionCount: number
   canExportPdf: boolean
   todoLabel: string
   todoDetail?: string
@@ -295,6 +299,10 @@ export function buildTradeDashboardRows(projectId: string): TradeDashboardRow[] 
       pricedPercent: row.pricedPercent,
       isPartialTotal: row.summary.isPartialTotal,
       rfqCount: row.summary.rfqCount,
+      rfqPendingCount: row.summary.rfqPendingCount,
+      rfqSubmissionCount: row.summary.rfqSubmissionCount,
+      rfqAwaitingCount: row.summary.rfqAwaitingCount,
+      unappliedSubmissionCount: row.summary.unappliedSubmissionCount,
       canExportPdf: row.summary.readiness.canExportPdf,
       todoLabel: next.label,
       todoDetail: next.detail,
@@ -462,14 +470,18 @@ export function buildOverviewKpis(projectId: string) {
     ).length
 
     let executionDone = 0
+    let executionSkipped = 0
+    let executionResolved = 0
     let executionTotal = 0
     for (const row of acceptedRows) {
       const stats = computeQuoteExecutionStats(listQuoteLines(row.quote.id))
       executionDone += stats.done
+      executionSkipped += stats.skipped
+      executionResolved += stats.resolved
       executionTotal += stats.total
     }
     const executionPercent =
-      executionTotal > 0 ? Math.round((executionDone / executionTotal) * 100) : 0
+      executionTotal > 0 ? Math.round((executionResolved / executionTotal) * 100) : 0
 
     return {
       mode: "execution" as const,
@@ -487,6 +499,8 @@ export function buildOverviewKpis(projectId: string) {
       hasContract: contract.hasContract,
       hasData: contract.hasContract || acceptedRows.length > 0,
       executionDone,
+      executionSkipped,
+      executionResolved,
       executionTotal,
       executionPercent,
     }

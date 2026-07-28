@@ -102,21 +102,33 @@ export function buildQuoteListStatusChip(summary: QuoteSummary): QuoteEditorStat
 export function QuoteEditorStatusChip({
   model,
   className,
+  onClick,
 }: {
   model: QuoteEditorStatusChipModel
   className?: string
+  onClick?: () => void
 }) {
+  const toneClass = cn(
+    "h-5 min-w-[5.5rem] shrink-0 justify-center px-1.5 text-[10px] font-medium",
+    model.tone === "neutral" && "border-slate-300 text-slate-600",
+    model.tone === "success" && "border-emerald-300 bg-emerald-50 text-emerald-900",
+    model.tone === "warning" && "border-amber-300 bg-amber-50 text-amber-950",
+    onClick && "cursor-pointer hover:opacity-90",
+    className
+  )
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} title="Következő lépés" className="shrink-0">
+        <Badge variant="outline" className={toneClass}>
+          {model.label}
+        </Badge>
+      </button>
+    )
+  }
+
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "h-5 min-w-[5.5rem] shrink-0 justify-center px-1.5 text-[10px] font-medium",
-        model.tone === "neutral" && "border-slate-300 text-slate-600",
-        model.tone === "success" && "border-emerald-300 bg-emerald-50 text-emerald-900",
-        model.tone === "warning" && "border-amber-300 bg-amber-50 text-amber-950",
-        className
-      )}
-    >
+    <Badge variant="outline" className={toneClass}>
       {model.label}
     </Badge>
   )

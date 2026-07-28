@@ -1,6 +1,7 @@
 "use client"
 
 import type { QuoteLine } from "@/types/projects"
+import { getSubmission } from "@/lib/data/projects-store"
 import { COST_SOURCE_LABELS, isLineCosted } from "@/lib/quote-pricing"
 import { cn } from "@/lib/utils"
 
@@ -115,21 +116,27 @@ type QuoteLineSourceIconProps = {
 export function QuoteLineSourceIcon({ line, submittedAt, compact = true }: QuoteLineSourceIconProps) {
   const kind = getQuoteLineVisualKind(line)
 
-  if (kind === "subcontractor" && line.costSourceSubcontractor) {
-    const name = line.costSourceSubcontractor
-    const short =
-      name.length > 10 && compact ? `${name.slice(0, 9)}…` : name
-    const title = submittedAt
-      ? `${name} · ${new Date(submittedAt).toLocaleDateString("hu-HU")}`
-      : name
-    return (
-      <span
-        title={title}
-        className="inline-block max-w-[5.5rem] truncate text-xs font-medium text-emerald-800"
-      >
-        {short}
-      </span>
-    )
+  if (kind === "subcontractor") {
+    const name =
+      line.costSourceSubcontractor?.trim() ||
+      (line.costSourceRfqSubmissionId
+        ? getSubmission(line.costSourceRfqSubmissionId)?.subcontractorName?.trim()
+        : null) ||
+      null
+    if (name) {
+      const short = name.length > 14 && compact ? `${name.slice(0, 13)}…` : name
+      const title = submittedAt
+        ? `${name} · ${new Date(submittedAt).toLocaleDateString("hu-HU")}`
+        : name
+      return (
+        <span
+          title={title}
+          className="inline-block max-w-[11rem] truncate text-xs font-medium text-emerald-800"
+        >
+          {short}
+        </span>
+      )
+    }
   }
 
   const labels: Record<QuoteLineVisualKind, string> = {
@@ -145,7 +152,7 @@ export function QuoteLineSourceIcon({ line, submittedAt, compact = true }: Quote
     unpriced: "Árazatlan",
     catalog: "Ártükör / becsült",
     manual: "Kézi bevitel",
-    subcontractor: "Alvállalkozói",
+    subcontractor: "Alvállalkozói (név hiányzik)",
   }
 
   return (
@@ -155,6 +162,7 @@ export function QuoteLineSourceIcon({ line, submittedAt, compact = true }: Quote
         "text-xs font-medium",
         kind === "rfq_pending" && "text-blue-800",
         kind === "unpriced" && "text-amber-800",
+        kind === "subcontractor" && "text-emerald-800",
         (kind === "catalog" || kind === "manual") && "text-slate-600"
       )}
     >
@@ -171,21 +179,27 @@ type QuoteLineSourceBadgeProps = {
 export function QuoteLineSourceBadge({ line, submittedAt }: QuoteLineSourceBadgeProps) {
   const kind = getQuoteLineVisualKind(line)
 
-  if (kind === "subcontractor" && line.costSourceSubcontractor) {
-    return (
-      <div className="space-y-0.5">
-        <span className="inline-flex max-w-[10rem] items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-900">
-          <span className="whitespace-normal break-words leading-snug">
-            {line.costSourceSubcontractor}
+  if (kind === "subcontractor") {
+    const name =
+      line.costSourceSubcontractor?.trim() ||
+      (line.costSourceRfqSubmissionId
+        ? getSubmission(line.costSourceRfqSubmissionId)?.subcontractorName?.trim()
+        : null) ||
+      null
+    if (name) {
+      return (
+        <div className="space-y-0.5">
+          <span className="inline-flex max-w-[12rem] items-center rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-900">
+            <span className="whitespace-normal break-words leading-snug">{name}</span>
           </span>
-        </span>
-        {submittedAt ? (
-          <p className="text-sm text-emerald-800">
-            {new Date(submittedAt).toLocaleDateString("hu-HU")}
-          </p>
-        ) : null}
-      </div>
-    )
+          {submittedAt ? (
+            <p className="text-sm text-emerald-800">
+              {new Date(submittedAt).toLocaleDateString("hu-HU")}
+            </p>
+          ) : null}
+        </div>
+      )
+    }
   }
 
   if (kind === "rfq_pending") {
@@ -208,6 +222,14 @@ export function QuoteLineSourceBadge({ line, submittedAt }: QuoteLineSourceBadge
     return (
       <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
         {COST_SOURCE_LABELS.catalog}
+      </span>
+    )
+  }
+
+  if (kind === "subcontractor") {
+    return (
+      <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-900">
+        Alvállalkozói
       </span>
     )
   }

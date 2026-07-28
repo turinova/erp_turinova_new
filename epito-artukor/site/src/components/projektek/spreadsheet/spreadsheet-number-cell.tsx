@@ -73,7 +73,7 @@ export function SpreadsheetNumberCell({
       data-sheet-row={sheetRow}
       data-sheet-col={sheetCol}
       className={cn(
-        "ea-sheet-input h-6 min-h-6 w-full max-w-full rounded-none border-0 bg-transparent px-1 py-0 text-xs shadow-none focus-visible:ring-2 focus-visible:ring-blue-500",
+        "ea-sheet-input h-8 min-h-8 w-full max-w-full rounded-none border-0 bg-transparent px-1.5 py-0 text-sm shadow-none focus-visible:ring-2 focus-visible:ring-blue-500",
         numericInputNoSpinner,
         align === "right" && "text-right tabular-nums",
         active && !focused && "ring-2 ring-inset ring-blue-400",

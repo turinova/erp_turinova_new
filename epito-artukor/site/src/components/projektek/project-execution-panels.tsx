@@ -53,20 +53,26 @@ export function ProjectExecutionKpis({ projectId, summary }: ProjectExecutionKpi
           label="Hátralék (bruttó)"
           value={summary.contractGross > 0 ? formatHuf(summary.remainingGross) : "—"}
           sub={
-            summary.contractGross > 0
-              ? `${summary.tigPercentOfContract}% már igazolt`
-              : undefined
+            summary.supplementGross > 0
+              ? `Szerződés: alap ${formatHuf(summary.contractGross - summary.supplementGross)} + pót ${formatHuf(summary.supplementGross)}`
+              : summary.contractGross > 0
+                ? `${summary.tigPercentOfContract}% már igazolt`
+                : undefined
           }
         />
         <Metric
           label="Készültség"
           value={
             summary.executionTotal > 0
-              ? `${summary.executionDone} / ${summary.executionTotal}`
+              ? `${summary.executionResolved} / ${summary.executionTotal}`
               : "—"
           }
           sub={
-            summary.executionTotal > 0 ? `${summary.executionPercent}% kész` : undefined
+            summary.executionTotal > 0
+              ? summary.executionSkipped > 0
+                ? `${summary.executionPercent}% · ${summary.executionSkipped} nem kell`
+                : `${summary.executionPercent}% kész`
+              : undefined
           }
         />
         <Metric

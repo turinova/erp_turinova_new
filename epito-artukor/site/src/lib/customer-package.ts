@@ -16,7 +16,7 @@ import {
   quoteVatChipLabel,
   resolveQuoteVatMode,
 } from "@/lib/quote-client-summary"
-import { lineSellTotal } from "@/lib/quote-pricing"
+import { lineSellLaborTotal, lineSellMaterialTotal, lineSellTotal, sellLaborUnit, sellMaterialUnit } from "@/lib/quote-pricing"
 
 export const CUSTOMER_PACKAGE_STATUS_LABELS: Record<CustomerPackageStatus, string> = {
   draft: "Piszkozat",
@@ -64,6 +64,10 @@ export function buildSnapshotLines(
     : row.lines
 
   return included.map((line) => {
+    const sellMaterialUnitPrice = sellMaterialUnit(line, row.quote)
+    const sellLaborUnitPrice = sellLaborUnit(line, row.quote)
+    const sellMaterialTotal = lineSellMaterialTotal(line, row.quote)
+    const sellLaborTotal = lineSellLaborTotal(line, row.quote)
     const sellNetTotal = lineSellTotal(line, row.quote)
     const sellNetUnitPrice =
       line.quantity > 0 ? Math.round(sellNetTotal / line.quantity) : sellNetTotal
@@ -75,6 +79,10 @@ export function buildSnapshotLines(
       quantity: line.quantity,
       sellNetUnitPrice,
       sellNetTotal,
+      sellMaterialUnitPrice,
+      sellLaborUnitPrice,
+      sellMaterialTotal,
+      sellLaborTotal,
     }
   })
 }
@@ -136,6 +144,27 @@ export function customerPackagePublicUrl(token: string): string {
 export function isCustomerPackageExpired(pkg: CustomerPackage): boolean {
   if (!pkg.expiresAt) return false
   return new Date(pkg.expiresAt).getTime() < Date.now()
+}
+
+/** Lista / badge: „Lejárt” ha sent + lejárt; részleges elfogadás jelölése. */
+export function customerPackageDisplayStatus(pkg: CustomerPackage): {
+  label: string
+  kind: CustomerPackageStatus | "expired" | "partial"
+} {
+  if (pkg.status === "sent" && isCustomerPackageExpired(pkg)) {
+    return { label: "Lejárt", kind: "expired" }
+  }
+  if (pkg.status === "accepted" && pkg.acceptedSnapshots) {
+    const acceptedIds = new Set(pkg.acceptedSnapshots.map((s) => s.quoteId))
+    const rejectedCount = pkg.snapshots.filter((s) => !acceptedIds.has(s.quoteId)).length
+    if (rejectedCount > 0) {
+      return {
+        label: `Részleges (${pkg.acceptedSnapshots.length}/${pkg.snapshots.length})`,
+        kind: "partial",
+      }
+    }
+  }
+  return { label: CUSTOMER_PACKAGE_STATUS_LABELS[pkg.status], kind: pkg.status }
 }
 
 /** Alapértelmezett összeállítás: szakágonként a legjobb aktív ajánlatfej */

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowLeft, ClipboardCheck, Lock, Sheet, TrendingUp, User } from "lucide-react"
+import { ArrowLeft, Lock } from "lucide-react"
 import type { Quote, QuotePriceSide } from "@/types/projects"
 import { QUOTE_STATUS_LABELS } from "@/lib/project-labels"
 import { Badge } from "@/components/ui/badge"
@@ -10,7 +10,6 @@ import {
   QuoteEditorStatusChip,
   type QuoteEditorStatusChipModel,
 } from "@/components/projektek/quote-editor-status-chip"
-import type { SheetDensity } from "@/lib/quote-sheet-layout"
 import { cn } from "@/lib/utils"
 
 export type QuoteEditorTab = QuotePriceSide | "execution"
@@ -26,16 +25,11 @@ type QuoteEditorCommandBarProps = {
   executionMode?: boolean
   contractPriceLocked?: boolean
   statusChip: QuoteEditorStatusChipModel
+  onStatusChipClick?: () => void
   tools: React.ReactNode
   totals: React.ReactNode
   subNav: React.ReactNode
   subNavExtra?: React.ReactNode
-  excelMode?: boolean
-  onExcelModeChange?: (next: boolean) => void
-  showExcelModeToggle?: boolean
-  sheetDensity?: SheetDensity
-  onSheetDensityChange?: (next: SheetDensity) => void
-  showSheetDensityToggle?: boolean
 }
 
 export function QuoteEditorCommandBar({
@@ -49,55 +43,67 @@ export function QuoteEditorCommandBar({
   executionMode = false,
   contractPriceLocked = false,
   statusChip,
+  onStatusChipClick,
   tools,
   totals,
   subNav,
   subNavExtra,
-  excelMode = false,
-  onExcelModeChange,
-  showExcelModeToggle = false,
-  sheetDensity = "compact",
-  onSheetDensityChange,
-  showSheetDensityToggle = false,
 }: QuoteEditorCommandBarProps) {
   const lockedTabClass =
     "cursor-not-allowed opacity-45 hover:bg-transparent data-[disabled]:opacity-45"
 
+  const titleEqualsTrade =
+    !!tradeLabel &&
+    quoteTitle.trim().toLocaleLowerCase("hu") === tradeLabel.trim().toLocaleLowerCase("hu")
+
+  const heading = titleEqualsTrade ? tradeLabel : quoteTitle
+  const showTradeChip = !!tradeLabel && !titleEqualsTrade
+
   return (
     <div className="sticky top-0 z-20 shrink-0 border-b border-slate-200 bg-[var(--background)]">
-      <div className="flex min-h-10 items-center gap-2 overflow-x-auto py-1">
-        <div className="flex min-w-0 max-w-[38%] shrink-0 items-center gap-1.5">
+      {/* 1. sor: hol vagyok + összeg */}
+      <div className="flex min-h-9 items-center gap-2 px-0.5 py-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <Link
             href={`/projektek/${projectId}?tab=quotes`}
             className="inline-flex shrink-0 items-center text-xs text-slate-500 hover:text-slate-800"
           >
             <ArrowLeft className="mr-0.5 h-3.5 w-3.5" />
-            <span className="max-w-[6rem] truncate sm:max-w-[9rem]">{projectName}</span>
+            <span className="max-w-[6rem] truncate sm:max-w-[10rem]">{projectName}</span>
           </Link>
           <span className="shrink-0 text-slate-300">·</span>
-          <h1 className="truncate text-sm font-semibold text-slate-900">{quoteTitle}</h1>
-          {tradeLabel ? (
+          <h1 className="min-w-0 truncate text-sm font-semibold text-slate-900">{heading}</h1>
+          {showTradeChip ? (
             <Badge variant="outline" className="shrink-0 text-[10px] font-normal text-slate-700">
               {tradeLabel}
             </Badge>
           ) : null}
-          <span className="shrink-0 text-[10px] text-slate-500">
+          <span className="hidden shrink-0 text-[10px] text-slate-500 sm:inline">
             {QUOTE_STATUS_LABELS[quoteStatus]}
           </span>
+          <QuoteEditorStatusChip
+            model={statusChip}
+            onClick={onStatusChipClick}
+            className="ml-0.5"
+          />
         </div>
 
-        <QuoteEditorStatusChip model={statusChip} />
+        <div className="ml-auto hidden min-w-0 shrink-0 text-right sm:block sm:min-w-[10rem]">
+          {totals}
+        </div>
+      </div>
 
+      {/* 2. sor: mit csinálok */}
+      <div className="flex min-h-8 items-center gap-2 overflow-x-auto pb-1.5">
         <div className="flex shrink-0 rounded-md border bg-white p-0.5 shadow-sm">
           {executionMode ? (
             <Button
               type="button"
               size="sm"
               variant={editorTab === "execution" ? "default" : "ghost"}
-              className="h-7 gap-1 px-2 text-xs leading-none"
+              className="h-7 px-2.5 text-xs leading-none"
               onClick={() => onEditorTabChange("execution")}
             >
-              <ClipboardCheck className="h-3 w-3 shrink-0" />
               Kivitelezés
             </Button>
           ) : null}
@@ -105,10 +111,9 @@ export function QuoteEditorCommandBar({
             type="button"
             size="sm"
             variant={editorTab === "cost" ? "default" : "ghost"}
-            className="h-7 gap-1 px-2 text-xs leading-none"
+            className="h-7 px-2.5 text-xs leading-none"
             onClick={() => onEditorTabChange("cost")}
           >
-            <Lock className="h-3 w-3 shrink-0" />
             Bekerülés
           </Button>
           <Button
@@ -116,7 +121,7 @@ export function QuoteEditorCommandBar({
             size="sm"
             variant={editorTab === "markup" ? "default" : "ghost"}
             className={cn(
-              "h-7 gap-1 px-2 text-xs leading-none",
+              "h-7 gap-1 px-2.5 text-xs leading-none",
               contractPriceLocked && editorTab !== "markup" && lockedTabClass
             )}
             onClick={() => {
@@ -130,7 +135,6 @@ export function QuoteEditorCommandBar({
                 : undefined
             }
           >
-            <TrendingUp className="h-3 w-3 shrink-0" />
             Fedezet
             {contractPriceLocked ? <Lock className="h-2.5 w-2.5 opacity-60" /> : null}
           </Button>
@@ -139,7 +143,7 @@ export function QuoteEditorCommandBar({
             size="sm"
             variant={editorTab === "sell" ? "default" : "ghost"}
             className={cn(
-              "h-7 gap-1 px-2 text-xs leading-none",
+              "h-7 gap-1 px-2.5 text-xs leading-none",
               contractPriceLocked && editorTab !== "sell" && "opacity-90"
             )}
             onClick={() => onEditorTabChange("sell")}
@@ -149,61 +153,25 @@ export function QuoteEditorCommandBar({
                 : undefined
             }
           >
-            <User className="h-3 w-3 shrink-0" />
-            Ügyfél
+            Ügyfél ár
             {contractPriceLocked ? <Lock className="h-2.5 w-2.5 opacity-60" /> : null}
           </Button>
         </div>
-
-        {showExcelModeToggle && onExcelModeChange ? (
-          <Button
-            type="button"
-            size="sm"
-            variant={excelMode ? "default" : "outline"}
-            className="h-7 shrink-0 gap-1 px-2 text-xs"
-            onClick={() => onExcelModeChange(!excelMode)}
-            title="Teljes képernyős táblázat — RFQ panel elrejtése"
-          >
-            <Sheet className="h-3 w-3" />
-            Excel mód
-          </Button>
-        ) : null}
-
-        {showSheetDensityToggle && onSheetDensityChange ? (
-          <Button
-            type="button"
-            size="sm"
-            variant={sheetDensity === "normal" ? "default" : "outline"}
-            className="h-7 shrink-0 px-2 text-xs"
-            onClick={() =>
-              onSheetDensityChange(sheetDensity === "normal" ? "compact" : "normal")
-            }
-            title="Normál sor magasság és betűméret"
-          >
-            {sheetDensity === "normal" ? "Normál" : "Kompakt"}
-          </Button>
-        ) : null}
 
         {tools ? (
           <div className="flex h-7 min-w-0 shrink-0 items-center gap-1">{tools}</div>
         ) : null}
 
-        <div className="ml-auto hidden min-w-0 shrink-0 text-right text-xs tabular-nums sm:block sm:min-w-[11rem] lg:min-w-[16rem]">
-          {totals}
-        </div>
+        {subNav ? (
+          <div className="flex min-w-0 flex-1 items-center gap-2">{subNav}</div>
+        ) : null}
       </div>
 
-      {executionMode && editorTab === "execution" ? (
-        <div className="border-t border-slate-100 px-2 py-1.5 text-xs tabular-nums text-slate-700 sm:hidden">
-          {totals}
-        </div>
-      ) : null}
+      <div className="border-t border-slate-100 px-0.5 py-1.5 text-xs tabular-nums text-slate-700 sm:hidden">
+        {totals}
+      </div>
 
-      {subNav ? (
-        <div className="flex items-center gap-2 pt-0.5">{subNav}</div>
-      ) : null}
-
-      {subNavExtra ? <div className="pb-0.5">{subNavExtra}</div> : null}
+      {subNavExtra ? <div className="pb-1.5">{subNavExtra}</div> : null}
     </div>
   )
 }

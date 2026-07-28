@@ -164,6 +164,7 @@ export function mergeBundleSlice(slice: ProjectDataBundle): void {
 
 let bundlePersistTimer: ReturnType<typeof setTimeout> | null = null
 let pendingBundlePersist: ProjectDataBundle | null = null
+let persistChain: Promise<void> = Promise.resolve()
 let linePatchTimer: ReturnType<typeof setTimeout> | null = null
 const pendingLinePatches = new Map<string, Partial<QuoteLine>>()
 
@@ -199,40 +200,70 @@ function scheduleBundlePersist(bundle: ProjectDataBundle, immediate: boolean): v
   pendingBundlePersist = bundle
   if (bundlePersistTimer) clearTimeout(bundlePersistTimer)
   if (immediate) {
-    void pushBundleToServer(bundle)
-    pendingBundlePersist = null
+    bundlePersistTimer = null
+    void enqueueLatestBundlePersist()
     return
   }
   bundlePersistTimer = setTimeout(() => {
     bundlePersistTimer = null
-    const payload = pendingBundlePersist
-    pendingBundlePersist = null
-    if (payload) void pushBundleToServer(payload)
+    void enqueueLatestBundlePersist()
   }, 450)
 }
 
+/** Egyszerre egy PUT — a legfrissebb bundle megy ki (párhuzamos race elkerülése). */
+function enqueueLatestBundlePersist(): Promise<void> {
+  const run = async () => {
+    const payload = pendingBundlePersist ?? bundleCache
+    pendingBundlePersist = null
+    if (!payload) return
+    await pushBundleToServer(payload)
+  }
+  const next = persistChain.then(run, run)
+  persistChain = next.catch(() => {
+    /* lánc ne szakadjon — a hívó a `next` rejectjét kapja */
+  })
+  return next
+}
+
 async function pushBundleToServer(bundle: ProjectDataBundle): Promise<void> {
-  try {
-    await fetch("/api/projects-bundle", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(bundle),
-    })
-  } catch {
-    /* offline */
+  const res = await fetch("/api/projects-bundle", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(bundle),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    let message = `Mentés sikertelen (${res.status})`
+    try {
+      const json = JSON.parse(text) as { error?: string }
+      if (json.error) message = json.error
+    } catch {
+      if (text.trim()) message = text.slice(0, 200)
+    }
+    throw new Error(message)
   }
 }
 
-/** Azonnali szinkron (pl. oldal elhagyása előtt). */
+/** Azonnali szinkron (pl. oldal elhagyása előtt) — fire-and-forget. */
 export function flushBundlePersist(): void {
   if (bundlePersistTimer) clearTimeout(bundlePersistTimer)
   bundlePersistTimer = null
-  const payload = pendingBundlePersist
-  pendingBundlePersist = null
-  if (payload) void pushBundleToServer(payload)
+  if (bundleCache) pendingBundlePersist = bundleCache
+  void enqueueLatestBundlePersist()
   if (linePatchTimer) clearTimeout(linePatchTimer)
   linePatchTimer = null
   void flushLinePatches()
+}
+
+/** Vár a bundle PUT-ra — RFQ létrehozás után kötelező, mielőtt sikert jelezünk. */
+export async function flushBundlePersistAsync(): Promise<void> {
+  if (bundlePersistTimer) clearTimeout(bundlePersistTimer)
+  bundlePersistTimer = null
+  if (bundleCache) pendingBundlePersist = bundleCache
+  await enqueueLatestBundlePersist()
+  if (linePatchTimer) clearTimeout(linePatchTimer)
+  linePatchTimer = null
+  await flushLinePatches()
 }
 
 function touch<T extends { updatedAt: string }>(row: T): T {
@@ -383,6 +414,20 @@ export function createQuote(
     updatedAt: now,
   }
   bundle.quotes.push(quote)
+
+  const projectIdx = bundle.projects.findIndex((p) => p.id === projectId)
+  if (projectIdx >= 0 && bundle.projects[projectIdx].status === "prospect") {
+    bundle.projects[projectIdx] = touch({
+      ...bundle.projects[projectIdx],
+      status: "quoting",
+    })
+    recordAudit(bundle, projectId, {
+      kind: "project",
+      action: "Projekt adatok módosítva",
+      context: "Ajánlatkészítés indult",
+    })
+  }
+
   recordAudit(bundle, projectId, {
     kind: "quote",
     action: "Költségvetés létrehozva",
@@ -422,6 +467,7 @@ export function duplicateQuote(sourceQuoteId: string): Quote | undefined {
       quoteId: newQuoteId,
       costSourceSubcontractor: null,
       costSourceRfqSubmissionId: null,
+      tigDocumentId: undefined,
       executionStatus: undefined,
     }
     if (copied.pricingStatus === "rfq_pending") {
@@ -473,6 +519,22 @@ export function isQuoteLocked(quoteId: string): boolean {
 function assertQuoteEditable(quoteId: string): boolean {
   if (isQuoteLocked(quoteId)) return false
   return true
+}
+
+/** Szerződött (elfogadott csomagban lévő) költségvetéshez nem adható új tétel — pótmunka kell. */
+function assertQuoteAllowsNewLines(quoteId: string): void {
+  if (!assertQuoteEditable(quoteId)) {
+    throw new Error("Az archivált költségvetés nem szerkeszthető")
+  }
+  const quote = getQuote(quoteId)
+  if (!quote) throw new Error("Az árajánlat nem található")
+  if (quote.status !== "accepted") return
+  const contracted = listContractedQuoteIds(quote.projectId)
+  if (contracted.includes(quoteId)) {
+    throw new Error(
+      "Szerződésben lévő szakághoz nem vehető fel új tétel. Új munka = pótmunka szakág."
+    )
+  }
 }
 
 export function updateQuote(id: string, patch: Partial<Quote>): Quote | undefined {
@@ -575,7 +637,7 @@ export function addQuoteLineFromCostItem(
   item: CostItem,
   options?: { quantity?: number }
 ): QuoteLine {
-  if (!assertQuoteEditable(quoteId)) throw new Error("Az archivált költségvetés nem szerkeszthető")
+  assertQuoteAllowsNewLines(quoteId)
   const bundle = loadBundle()
   const quote = bundle.quotes.find((q) => q.id === quoteId)
   if (!quote) throw new Error("Az árajánlat nem található")
@@ -772,7 +834,7 @@ export function addManualQuoteLine(
   quoteId: string,
   input: { text: string; unitId: string; quantity?: number }
 ): QuoteLine {
-  if (!assertQuoteEditable(quoteId)) throw new Error("Az archivált költségvetés nem szerkeszthető")
+  assertQuoteAllowsNewLines(quoteId)
   const bundle = loadBundle()
   const quote = bundle.quotes.find((q) => q.id === quoteId)
   if (!quote) throw new Error("Az árajánlat nem található")
@@ -842,8 +904,13 @@ export function updateQuoteLine(id: string, patch: Partial<QuoteLine>): QuoteLin
 
 export function setQuoteLineExecutionStatus(
   lineId: string,
-  status: "pending" | "done"
+  status: "pending" | "done" | "skipped"
 ): QuoteLine | undefined {
+  const bundle = loadBundle()
+  const line = bundle.quoteLines.find((l) => l.id === lineId)
+  if (!line) return undefined
+  // TIG-ben rögzített tétel: készültség nem módosítható (edge: nem lehet „nem kell”)
+  if (line.tigDocumentId) return line
   return updateQuoteLine(lineId, { executionStatus: status })
 }
 
@@ -852,8 +919,17 @@ export function toggleQuoteLineExecution(lineId: string): QuoteLine | undefined 
   const line = bundle.quoteLines.find((l) => l.id === lineId)
   if (!line) return undefined
   if (line.tigDocumentId) return line
+  // „Nem kell” → vissza váróra; kész ↔ vár
+  if (line.executionStatus === "skipped") {
+    return setQuoteLineExecutionStatus(lineId, "pending")
+  }
   const next = line.executionStatus === "done" ? "pending" : "done"
   return setQuoteLineExecutionStatus(lineId, next)
+}
+
+/** Pipa helyett: tétel nem kerül kivitelezésre (szerződés változatlan, TIG-be nem mehet) */
+export function markQuoteLineSkipped(lineId: string): QuoteLine | undefined {
+  return setQuoteLineExecutionStatus(lineId, "skipped")
 }
 
 export function setAllQuoteLinesExecution(
@@ -869,6 +945,8 @@ export function setAllQuoteLinesExecution(
     if (trade != null && line.trade !== trade) continue
     // TIG-ben rögzített tétel készültsége nem módosítható bulkban sem
     if (line.tigDocumentId) continue
+    // „Nem kell” tételeket a bulk kész / visszaállítás nem érinti
+    if (line.executionStatus === "skipped") continue
     const prev = line.executionStatus === "done" ? "done" : "pending"
     if (prev === status) continue
     line.executionStatus = status
@@ -1012,6 +1090,76 @@ export function getInvitationByToken(token: string): RfqInvitation | undefined {
   return loadBundle().rfqInvitations.find((i) => i.accessToken === token)
 }
 
+/**
+ * Meghívás törlése a Bekérés fülről.
+ * Nyertes / döntött csomag meghívója nem törölhető.
+ * Ha a csomagon nem marad meghívó és még nyitott → a csomag is törlődik.
+ */
+export function deleteRfqInvitation(
+  invitationId: string
+): { ok: true } | { ok: false; error: string } {
+  const bundle = loadBundle()
+  const invIdx = bundle.rfqInvitations.findIndex((i) => i.id === invitationId)
+  if (invIdx < 0) return { ok: false, error: "A meghívás nem található." }
+
+  const invitation = bundle.rfqInvitations[invIdx]
+  if (invitation.status === "accepted") {
+    return { ok: false, error: "A nyertes meghívás nem törölhető." }
+  }
+
+  const pkg = bundle.rfqs.find((r) => r.id === invitation.packageId)
+  if (!pkg) {
+    bundle.rfqInvitations.splice(invIdx, 1)
+    bundle.submissions = bundle.submissions.filter((s) => s.invitationId !== invitationId)
+    saveBundle(bundle)
+    return { ok: true }
+  }
+  if (pkg.status === "decided") {
+    return {
+      ok: false,
+      error: "Döntött bekérés meghívása nem törölhető. Nyertes cserével módosíthatsz.",
+    }
+  }
+
+  bundle.submissions = bundle.submissions.filter((s) => s.invitationId !== invitationId)
+
+  bundle.rfqInvitations.splice(invIdx, 1)
+
+  const remaining = bundle.rfqInvitations.filter((i) => i.packageId === invitation.packageId)
+  let deletedPackage = false
+  if (remaining.length === 0 && pkg.status === "open") {
+    // rfq_pending visszaállítás, ha más open csomagban nincs a sor
+    const otherOpenLineIds = new Set(
+      bundle.rfqs
+        .filter((r) => r.id !== pkg.id && r.status === "open")
+        .flatMap((r) => r.lines.map((l) => l.quoteLineId).filter(Boolean) as string[])
+    )
+    for (const rfl of pkg.lines) {
+      if (!rfl.quoteLineId || otherOpenLineIds.has(rfl.quoteLineId)) continue
+      const li = bundle.quoteLines.findIndex((l) => l.id === rfl.quoteLineId)
+      if (li >= 0 && bundle.quoteLines[li].pricingStatus === "rfq_pending") {
+        bundle.quoteLines[li] = {
+          ...bundle.quoteLines[li],
+          pricingStatus: isLineCosted(bundle.quoteLines[li]) ? "estimated" : "unpriced",
+        }
+      }
+    }
+    bundle.rfqs = bundle.rfqs.filter((r) => r.id !== pkg.id)
+    deletedPackage = true
+  }
+
+  recordAudit(bundle, pkg.projectId, {
+    kind: "rfq",
+    action: deletedPackage
+      ? "Bekérés meghívás törölve (üres csomag is)"
+      : "Bekérés meghívás törölve",
+    context: [invitation.subcontractorName, pkg.title].filter(Boolean).join(" · "),
+  })
+
+  saveBundle(bundle)
+  return { ok: true }
+}
+
 /** @deprecated token a meghíváson van */
 export function getRfqByToken(token: string): SubcontractorRfq | undefined {
   const inv = getInvitationByToken(token)
@@ -1091,6 +1239,8 @@ export function createRfqPackageWithInvitations(input: {
   expiresInDays?: number
   expiresAt?: string
   campaignId?: string
+  /** Kampány létrehozáskor: ne PUT-oljon külön (FK race elkerülése) */
+  skipPersist?: boolean
 }): { pkg: SubcontractorRfq; invitations: RfqInvitation[] } {
   const bundle = loadBundle()
   const lines = bundle.quoteLines.filter(
@@ -1164,7 +1314,7 @@ export function createRfqPackageWithInvitations(input: {
       .join(" · "),
   })
 
-  saveBundle(bundle)
+  saveBundle(bundle, input.skipPersist ? { skipPersist: true } : undefined)
   return { pkg, invitations }
 }
 
@@ -1212,6 +1362,14 @@ export function createRfqCampaign(input: {
     createdAt: new Date().toISOString(),
   }
 
+  // 1) Kampány előbb a cache-be — a csomagok campaignId FK-je csak így érvényes a PUT-nál
+  const bundleWithCampaign = loadBundle()
+  bundleWithCampaign.rfqCampaigns = [
+    ...(bundleWithCampaign.rfqCampaigns ?? []),
+    campaign,
+  ]
+  saveBundle(bundleWithCampaign, { skipPersist: true })
+
   const packages: RfqCampaignResult["packages"] = []
 
   for (const pkgInput of input.packages) {
@@ -1221,19 +1379,65 @@ export function createRfqCampaign(input: {
       projectId: input.projectId,
       expiresAt: expiresIso,
       campaignId: campaign.id,
+      skipPersist: true,
     })
     packages.push({ pkg, invitations })
   }
 
   if (packages.length === 0) {
+    const rollback = loadBundle()
+    rollback.rfqCampaigns = (rollback.rfqCampaigns ?? []).filter((c) => c.id !== campaign.id)
+    saveBundle(rollback, { skipPersist: true })
     throw new Error("Nincs létrehozható bekérés — ellenőrizd a szakágokat és partnereket")
   }
 
-  const bundle = loadBundle()
-  bundle.rfqCampaigns = [...(bundle.rfqCampaigns ?? []), campaign]
-  saveBundle(bundle)
+  // Ugyanaz a partner → ugyanaz a PIN (külön token marad; egy link elég a sibling csomagokhoz)
+  unifyCampaignPartnerPins(campaign.id)
+
+  // 2) Egyetlen PUT: kampány + összes csomag + meghívók
+  saveBundle(loadBundle())
 
   return { campaign, packages }
+}
+
+function partnerInviteKey(inv: {
+  subcontractorId?: string
+  subcontractorName: string
+  contactPhone: string
+}): string {
+  if (inv.subcontractorId) return `id:${inv.subcontractorId}`
+  const name = inv.subcontractorName.trim().toLowerCase().replace(/\s+/g, " ")
+  const phone = inv.contactPhone.replace(/\D/g, "")
+  return `n:${name}|p:${phone}`
+}
+
+/** Kampányon belül azonos partner meghívóinak PIN-jét egyezteti. */
+function unifyCampaignPartnerPins(campaignId: string): void {
+  const bundle = loadBundle()
+  const pkgIds = new Set(
+    bundle.rfqs.filter((r) => r.campaignId === campaignId).map((r) => r.id)
+  )
+  const groups = new Map<string, number[]>()
+  bundle.rfqInvitations.forEach((inv, idx) => {
+    if (!pkgIds.has(inv.packageId)) return
+    const key = partnerInviteKey(inv)
+    const list = groups.get(key) ?? []
+    list.push(idx)
+    groups.set(key, list)
+  })
+  let changed = false
+  for (const idxs of groups.values()) {
+    if (idxs.length < 2) continue
+    const code = bundle.rfqInvitations[idxs[0]].accessCode
+    for (const idx of idxs) {
+      if (bundle.rfqInvitations[idx].accessCode !== code) {
+        // In-place: a createRfqCampaign visszatérő invitation referenciák is frissüljenek
+        bundle.rfqInvitations[idx].accessCode = code
+        changed = true
+      }
+    }
+  }
+  if (changed) saveBundle(bundle, { skipPersist: true })
 }
 
 export function listInvitationsForQuote(quoteId: string): RfqInvitation[] {

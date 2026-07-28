@@ -44,7 +44,12 @@ export function normalizeQuoteLine(line: QuoteLine & {
         : hasCost
           ? "estimated"
           : "unpriced"),
-    executionStatus: line.executionStatus,
+    executionStatus:
+      line.executionStatus === "done" || line.executionStatus === "skipped"
+        ? line.executionStatus
+        : line.executionStatus
+          ? "pending"
+          : undefined,
     tigDocumentId: line.tigDocumentId,
   }
 }

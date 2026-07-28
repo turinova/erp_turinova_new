@@ -4,7 +4,7 @@ import { QUOTE_EXCEL_COLUMNS } from "@/lib/quote-columns"
 export const SHEET_MONEY_COL_WIDTH = "14ch"
 
 /** Tételszám oszlop — fejléc + tipikus azonosítók (pl. BURK-1000). */
-export const SHEET_IDENTIFIER_COL_WIDTH = "13ch"
+export const SHEET_IDENTIFIER_COL_WIDTH = "16ch"
 
 export type SheetDensity = "compact" | "normal"
 
@@ -12,27 +12,26 @@ export type SheetDensity = "compact" | "normal"
 export const COST_SHEET_LAYOUT = {
   ssz: "2.75rem",
   identifier: SHEET_IDENTIFIER_COL_WIDTH,
-  quantity: "5.5ch",
+  quantity: "6.5ch",
   unit: "8ch",
-  materialUnit: "11ch",
-  laborUnit: "9ch",
+  materialUnit: "12ch",
+  laborUnit: "10ch",
   materialTotal: SHEET_MONEY_COL_WIDTH,
   laborTotal: SHEET_MONEY_COL_WIDTH,
   lineTotal: SHEET_MONEY_COL_WIDTH,
-  source: "4.5ch",
-  actions: "3rem",
+  source: "12ch",
+  actions: "3.25rem",
 } as const
 
 /** Árrés rács oszlopszélességek. */
 export const MARKUP_SHEET_LAYOUT = {
-  checkbox: "2rem",
+  checkbox: "2.5rem",
   ssz: "2.75rem",
   identifier: SHEET_IDENTIFIER_COL_WIDTH,
-  quantity: "8ch",
   cost: SHEET_MONEY_COL_WIDTH,
-  markup: "5.5ch",
+  markup: "6.5rem",
   sell: SHEET_MONEY_COL_WIDTH,
-  margin: SHEET_MONEY_COL_WIDTH,
+  margin: "9.5rem",
 } as const
 
 export const COST_SHEET_HEADERS = {
@@ -66,15 +65,15 @@ export const COST_SHEET_HEADERS = {
     full: "Összesen (bekerülés)",
     sub: "nettó",
   },
-  source: { short: "Forr.", full: "Forrás" },
+  source: { short: "Forrás", full: "Bekerülési forrás / alvállalkozó" },
 } as const
 
 export const MARKUP_SHEET_HEADERS = {
-  quantity: { short: "Menny.", full: "Mennyiség" },
-  cost: { short: "Beker.", full: "Bekerülési összeg", sub: "nettó" },
-  markup: { short: "Fedez.%", full: "Fedezet százalék" },
-  sell: { short: "Ügyf.ár", full: "Ügyfél eladási ár", sub: "nettó" },
-  margin: { short: "Σ fedez.", full: "Fedezet összeg", sub: "nettó" },
+  quantity: { short: "Mennyiség", full: "Mennyiség" },
+  cost: { short: "Bekerülés", full: "Bekerülési összeg", sub: "nettó" },
+  markup: { short: "Ráterhelés %", full: "Ráterhelés százalék — ezt írod be" },
+  sell: { short: "Ügyfél ár", full: "Ügyfél eladási ár", sub: "nettó" },
+  margin: { short: "Marad nekem", full: "Maradó fedezet összeg", sub: "nettó" },
 } as const
 
 export const COST_SHEET_FOOTER = {
@@ -84,9 +83,9 @@ export const COST_SHEET_FOOTER = {
 
 export const MARKUP_SHEET_FOOTER = {
   label: "Összesen",
-  sub: "nettó · eladási árak",
+  sub: "nettó · ügyfél árak",
 } as const
 
 /** Minimális táblázat szélesség. */
-export const COST_SHEET_MIN_WIDTH = "50rem"
-export const MARKUP_SHEET_MIN_WIDTH = "46rem"
+export const COST_SHEET_MIN_WIDTH = "56rem"
+export const MARKUP_SHEET_MIN_WIDTH = "48rem"

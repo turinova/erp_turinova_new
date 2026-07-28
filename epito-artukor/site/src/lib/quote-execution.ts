@@ -20,10 +20,14 @@ export type QuoteExecutionStats = {
   total: number
   done: number
   pending: number
+  skipped: number
+  /** Kész + nem kell — lezárt tételek */
+  resolved: number
+  /** resolved / total */
   percent: number
 }
 
-export type ExecutionFilter = "all" | "pending" | "done"
+export type ExecutionFilter = "all" | "pending" | "done" | "skipped"
 
 const EXECUTION_PHASES: ProjectStatus[] = ["won", "in_progress"]
 
@@ -41,27 +45,48 @@ export function isQuoteInExecutionMode(
 export function resolveLineExecutionStatus(
   line: QuoteLine
 ): QuoteLineExecutionStatus {
-  return line.executionStatus === "done" ? "done" : "pending"
+  if (line.executionStatus === "done") return "done"
+  if (line.executionStatus === "skipped") return "skipped"
+  return "pending"
 }
 
 export function isLineExecutionDone(line: QuoteLine): boolean {
   return resolveLineExecutionStatus(line) === "done"
 }
 
+export function isLineExecutionSkipped(line: QuoteLine): boolean {
+  return resolveLineExecutionStatus(line) === "skipped"
+}
+
+/** Kész VAGY nem kell — a készültség %-hoz lezárt */
+export function isLineExecutionResolved(line: QuoteLine): boolean {
+  const s = resolveLineExecutionStatus(line)
+  return s === "done" || s === "skipped"
+}
+
 export function isLineTigCertified(line: QuoteLine): boolean {
   return Boolean(line.tigDocumentId)
 }
 
+/** TIG-be csak „kész” tétel mehet — „nem kell” soha */
 export function isLineEligibleForTig(line: QuoteLine): boolean {
   return isLineExecutionDone(line) && !isLineTigCertified(line)
 }
 
 export function computeQuoteExecutionStats(lines: QuoteLine[]): QuoteExecutionStats {
   const total = lines.length
-  const done = lines.filter(isLineExecutionDone).length
-  const pending = total - done
-  const percent = total > 0 ? Math.round((done / total) * 100) : 0
-  return { total, done, pending, percent }
+  let done = 0
+  let skipped = 0
+  let pending = 0
+  for (const line of lines) {
+    const s = resolveLineExecutionStatus(line)
+    if (s === "done") done += 1
+    else if (s === "skipped") skipped += 1
+    else pending += 1
+  }
+  const resolved = done + skipped
+  const percent = total > 0 ? Math.round((resolved / total) * 100) : 0
+  return { total, done, pending, skipped, resolved, percent }
 }
 
 export function filterLinesByExecution(
@@ -70,7 +95,8 @@ export function filterLinesByExecution(
 ): QuoteLine[] {
   if (filter === "all") return lines
   if (filter === "done") return lines.filter(isLineExecutionDone)
-  return lines.filter((line) => !isLineExecutionDone(line))
+  if (filter === "skipped") return lines.filter(isLineExecutionSkipped)
+  return lines.filter((line) => resolveLineExecutionStatus(line) === "pending")
 }
 
 /** Elfogadott csomag pillanatképe — szerződött eladási ár tételenként */

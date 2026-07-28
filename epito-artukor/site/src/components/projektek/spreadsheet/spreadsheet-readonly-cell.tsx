@@ -30,7 +30,7 @@ export function SpreadsheetReadonlyCell({
     <span
       title={title}
       className={cn(
-        "ea-sheet-readonly block px-1 text-xs tabular-nums",
+        "ea-sheet-readonly block px-1.5 py-0.5 text-sm tabular-nums",
         variantClass[variant],
         align === "right" && "text-right",
         align === "center" && "text-center",
@@ -94,7 +94,7 @@ export function SheetHeaderCell({
             {label}
           </span>
           {sub ? (
-            <span className="mt-0.5 block whitespace-nowrap text-[9px] font-normal normal-case leading-tight text-slate-500">
+            <span className="mt-0.5 block whitespace-nowrap text-[11px] font-medium normal-case leading-tight text-slate-600">
               {sub}
             </span>
           ) : null}
@@ -121,7 +121,7 @@ export function SheetFooterLabelCell({
     <td colSpan={colSpan} className={cn("font-semibold", className)}>
       <span className="block leading-tight">{label}</span>
       {sub ? (
-        <span className="mt-0.5 block text-[9px] font-normal normal-case text-slate-600">
+        <span className="mt-0.5 block text-[11px] font-normal normal-case text-slate-600">
           {sub}
         </span>
       ) : null}

@@ -6,6 +6,7 @@ import {
   buildProjectAggregatedTotalsFromBundle,
 } from "@/lib/project-quote-aggregation"
 import { buildExecutionSummary, buildExecutionSummaryFromBundle } from "@/lib/execution-summary"
+import { isLineEligibleForTig } from "@/lib/quote-execution"
 import { phaseForProject } from "@/lib/project-phase"
 import {
   bundleInvitationsForQuote,
@@ -38,6 +39,14 @@ export type ProjectListSummary = {
   executionPercent?: number
   tigPercent?: number
   isExecutionList?: boolean
+  eligibleTigLineCount?: number
+  executionPending?: number
+  executionDone?: number
+  executionTotal?: number
+  /** Első elfogadott quote, amin van TIG-elhető tétel */
+  tigReadyQuoteId?: string | null
+  /** Elsődleges kivitelezési quote (szerződött / aktív) */
+  primaryExecutionQuoteId?: string | null
 }
 
 export function buildProjectListSummary(project: Project): ProjectListSummary {
@@ -108,6 +117,20 @@ function buildProjectListSummaryFromQuotes(
   const phase = phaseForProject(project)
   if (phase === "execution") {
     const exec = data.getExecution()
+    let tigReadyQuoteId: string | null = null
+    let primaryExecutionQuoteId: string | null = null
+    for (const q of quotes) {
+      if (q.status !== "accepted") continue
+      if (!primaryExecutionQuoteId) primaryExecutionQuoteId = q.id
+      const lines = data.getLines(q.id)
+      if (!tigReadyQuoteId && lines.some((l) => isLineEligibleForTig(l))) {
+        tigReadyQuoteId = q.id
+      }
+    }
+    if (!primaryExecutionQuoteId) {
+      primaryExecutionQuoteId = activeQuote?.id ?? null
+    }
+
     return {
       projectId: project.id,
       quoteCount: quotes.length,
@@ -123,6 +146,12 @@ function buildProjectListSummaryFromQuotes(
       executionPercent: exec.executionPercent,
       tigPercent: exec.tigPercentOfContract,
       isExecutionList: true,
+      eligibleTigLineCount: exec.eligibleTigLineCount,
+      executionPending: exec.executionPending,
+      executionDone: exec.executionDone,
+      executionTotal: exec.executionTotal,
+      tigReadyQuoteId,
+      primaryExecutionQuoteId,
     }
   }
 

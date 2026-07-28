@@ -3,7 +3,7 @@ import { OfferPublicClient } from "@/components/offer/offer-public-client"
 import { PublicPageHeader } from "@/components/brand/public-page-header"
 
 export const metadata: Metadata = {
-  title: "Projektajánlat",
+  title: "Árajánlat",
 }
 
 type Props = {
@@ -14,7 +14,7 @@ export default async function OfferPublicPage({ params }: Props) {
   const { token } = await params
   return (
     <div className="min-h-screen bg-[var(--background)]">
-      <PublicPageHeader title="Projektajánlat megtekintése" />
+      <PublicPageHeader title="Árajánlat" />
       <OfferPublicClient token={token} />
     </div>
   )

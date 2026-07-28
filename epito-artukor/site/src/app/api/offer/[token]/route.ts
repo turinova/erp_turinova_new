@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server"
-import type { CustomerPackage, Project } from "@/types/projects"
+import type { CustomerPackage } from "@/types/projects"
 import type { CustomerPackageResponseType } from "@/lib/customer-package"
 import { applyCustomerPackageResponse } from "@/lib/customer-package-response"
+import {
+  mapOrganizationRow,
+  type OrganizationRow,
+} from "@/lib/organizations/org-map"
+import {
+  organizationBankLine,
+  organizationContactLine,
+} from "@/lib/organization-profile"
+import { formatHungarianAddress } from "@/lib/organizations/address"
 import { loadBundleFromDb, syncBundleToDb } from "@/lib/server/projects-bundle-db"
 import { createSupabaseServiceClient } from "@/lib/supabase/service"
 import { clearPinFailures, isPinLocked, recordPinFailure } from "@/lib/server/pin-lockout"
@@ -83,12 +92,41 @@ export async function GET(request: Request, { params }: RouteParams) {
     const pkg = bundle.customerPackages.find((p) => p.id === found.row.id)
     if (!pkg) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const project: Project | null =
-      bundle.projects.find((p) => p.id === pkg.projectId) ?? null
+    const project = bundle.projects.find((p) => p.id === pkg.projectId) ?? null
+
+    const { data: orgRow } = await supabase
+      .from("organizations")
+      .select(
+        "id, name, slug, hq_postal_code, hq_city, hq_street, use_separate_mailing_address, mail_postal_code, mail_city, mail_street, tax_number, registration_number, representative, email, phone, bank_name, bank_account, logo_data_url, default_vat_mode, updated_at"
+      )
+      .eq("id", found.orgId)
+      .maybeSingle<OrganizationRow>()
+
+    const orgProfile = orgRow ? mapOrganizationRow(orgRow) : null
 
     return NextResponse.json({
       package: sanitizePackage(pkg),
-      project,
+      project: project
+        ? {
+            name: project.name,
+            siteAddress: project.siteAddress,
+            code: project.code,
+            clientName: project.clientName,
+          }
+        : null,
+      organization: orgProfile
+        ? {
+            legalName: orgProfile.legalName,
+            address: formatHungarianAddress(orgProfile.headquarters),
+            taxNumber: orgProfile.taxNumber,
+            registrationNumber: orgProfile.registrationNumber,
+            email: orgProfile.email,
+            phone: orgProfile.phone,
+            logoDataUrl: orgProfile.logoDataUrl,
+            bankLine: organizationBankLine(orgProfile),
+            contactLine: organizationContactLine(orgProfile),
+          }
+        : null,
     })
   } catch (error) {
     console.error("offer GET:", error)

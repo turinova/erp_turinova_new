@@ -37,8 +37,15 @@ export type ExecutionSummary = {
   liveCostNet: number
   liveMarginNet: number
   marginPercentOnContract: number | null
+  /** Fizikailag kész (TIG-elhető / TIG-elt) */
   executionDone: number
+  /** „Nem kell” — lezárt, de nem megy TIG-be */
+  executionSkipped: number
+  /** done + skipped */
+  executionResolved: number
+  executionPending: number
   executionTotal: number
+  /** resolved / total */
   executionPercent: number
   tigCount: number
   tigGrossTotal: number
@@ -102,6 +109,9 @@ function buildExecutionSummaryCore(
 
   let liveCostNet = 0
   let executionDone = 0
+  let executionSkipped = 0
+  let executionResolved = 0
+  let executionPending = 0
   let executionTotal = 0
   let tigCertifiedLineCount = 0
   let eligibleTigLineCount = 0
@@ -110,6 +120,9 @@ function buildExecutionSummaryCore(
     const lines = data.listLines(quote.id)
     const stats = computeQuoteExecutionStats(lines)
     executionDone += stats.done
+    executionSkipped += stats.skipped
+    executionResolved += stats.resolved
+    executionPending += stats.pending
     executionTotal += stats.total
 
     for (const line of lines) {
@@ -120,7 +133,7 @@ function buildExecutionSummaryCore(
   }
 
   const executionPercent =
-    executionTotal > 0 ? Math.round((executionDone / executionTotal) * 100) : 0
+    executionTotal > 0 ? Math.round((executionResolved / executionTotal) * 100) : 0
 
   const liveMarginNet =
     contract.sellNetTotal > 0 ? contract.sellNetTotal - liveCostNet : 0
@@ -178,6 +191,9 @@ function buildExecutionSummaryCore(
     liveMarginNet,
     marginPercentOnContract,
     executionDone,
+    executionSkipped,
+    executionResolved,
+    executionPending,
     executionTotal,
     executionPercent,
     tigCount: certificates.length,
@@ -216,7 +232,14 @@ export function buildProjectCloseReadiness(projectId: string): ProjectCloseReadi
   }
 
   if (summary.executionPercent < 100 && summary.executionTotal > 0) {
-    warnings.push(`Készültség ${summary.executionPercent}% — nem minden tétel kész`)
+    warnings.push(
+      `Készültség ${summary.executionPercent}% — ${summary.executionPending} tétel még vár (kész vagy „nem kell”)`
+    )
+  }
+  if (summary.executionSkipped > 0) {
+    warnings.push(
+      `${summary.executionSkipped} tétel: nem kell (szerződés változatlan, TIG-be nem kerül)`
+    )
   }
 
   if (summary.pendingSupplements.some((p) => p.packageStatus === "sent")) {

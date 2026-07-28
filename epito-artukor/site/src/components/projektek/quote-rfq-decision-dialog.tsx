@@ -60,7 +60,6 @@ export function QuoteRfqDecisionDialog({
 }: QuoteRfqDecisionDialogProps) {
   const [packageWinner, setPackageWinner] = useState("")
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [compact, setCompact] = useState(true)
   const isChange = intent === "change"
 
   const submittedInvitations = useMemo(
@@ -133,24 +132,11 @@ export function QuoteRfqDecisionDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(96vh,900px)] max-h-[96vh] w-[min(96vw,1200px)] max-w-[96vw] flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex h-[min(96vh,900px)] max-h-[96vh] w-[min(98vw,1400px)] max-w-[98vw] flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <DialogTitle className="text-base">
-              {isChange ? "Döntés módosítása" : "Döntés"} — {pkg.title}
-            </DialogTitle>
-            {canShowForm ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs"
-                onClick={() => setCompact((v) => !v)}
-              >
-                {compact ? "Részletes oszlopok" : "Kompakt nézet"}
-              </Button>
-            ) : null}
-          </div>
+          <DialogTitle className="text-base">
+            {isChange ? "Döntés módosítása" : "Döntés"} — {pkg.title}
+          </DialogTitle>
         </DialogHeader>
 
         {!isChange && pkg.status === "decided" ? (
@@ -171,10 +157,8 @@ export function QuoteRfqDecisionDialog({
                 quoteLines={quoteLines}
                 invitations={invitations}
                 submissions={submissions}
-                compact={compact}
                 maxHeight="100%"
                 className="h-full"
-                footerLabel="Döntés előtti összesítő"
               />
             </div>
 

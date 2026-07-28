@@ -37,7 +37,7 @@ export type OverviewAttentionItem = {
   id: string
   severity: "warning" | "error" | "info" | "success"
   message: string
-  actionTab?: "overview" | "quotes" | "rfq" | "files"
+  actionTab?: "quotes" | "rfq" | "files"
 }
 
 import {
@@ -173,7 +173,7 @@ function buildAttention(
       id: `warn-${warning.slice(0, 24)}`,
       severity: "warning",
       message: warning,
-      actionTab: "overview",
+      actionTab: "quotes",
     })
   }
 

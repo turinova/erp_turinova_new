@@ -14,7 +14,9 @@ import {
   getLineSectionNumber,
 } from "@/lib/quote-line-display"
 import {
+  markQuoteLineSkipped,
   setAllQuoteLinesExecution,
+  setQuoteLineExecutionStatus,
   toggleQuoteLineExecution,
 } from "@/lib/data/projects-store"
 import {
@@ -25,6 +27,7 @@ import {
   filterLinesByExecution,
   isLineEligibleForTig,
   isLineExecutionDone,
+  isLineExecutionSkipped,
   isLineTigCertified,
   type ExecutionFilter,
 } from "@/lib/quote-execution"
@@ -55,8 +58,9 @@ type QuoteExecutionPanelProps = {
 }
 
 const FILTER_OPTIONS: { id: ExecutionFilter; label: string }[] = [
-  { id: "pending", label: "Még nem kész" },
+  { id: "pending", label: "Még vár" },
   { id: "done", label: "Kész" },
+  { id: "skipped", label: "Nem kell" },
   { id: "all", label: "Mind" },
 ]
 
@@ -148,11 +152,38 @@ export function QuoteExecutionPanel({
     const result = toggleQuoteLineExecution(lineId)
     onRefresh()
     if (result) {
-      const nowDone = result.executionStatus === "done"
-      toast.success(nowDone ? "Késznek jelölve" : "Visszaállítva: nem kész", {
-        duration: 1500,
+      if (result.executionStatus === "done") {
+        toast.success("Késznek jelölve", { duration: 1500 })
+      } else {
+        toast.success("Visszaállítva: vár", { duration: 1500 })
+      }
+    }
+  }
+
+  const handleSkip = (lineId: string) => {
+    const line = sortedLines.find((l) => l.id === lineId)
+    if (line && isLineTigCertified(line)) {
+      toast.message("TIG-ben lévő tétel nem jelölhető „nem kell”-nek")
+      return
+    }
+    const result = markQuoteLineSkipped(lineId)
+    onRefresh()
+    if (result?.executionStatus === "skipped") {
+      toast.success("Nem kell — a szerződés változatlan, TIG-be nem kerül", {
+        duration: 2500,
       })
     }
+  }
+
+  const handleUnskip = (lineId: string) => {
+    const line = sortedLines.find((l) => l.id === lineId)
+    if (line && isLineTigCertified(line)) {
+      toast.message("Ez a tétel már szerepel egy rögzített TIG-ben")
+      return
+    }
+    setQuoteLineExecutionStatus(lineId, "pending")
+    onRefresh()
+    toast.success("Visszaállítva: vár", { duration: 1500 })
   }
 
   const handleMarkAll = (done: boolean) => {
@@ -160,7 +191,16 @@ export function QuoteExecutionPanel({
     onRefresh()
     if (n > 0) {
       toast.success(done ? `${n} tétel késznek jelölve` : `${n} tétel visszaállítva`)
+    } else if (done) {
+      toast.message("Nincs váró tétel (a „nem kell” sorokat nem érinti)")
     }
+  }
+
+  const emptyFilterMessage = () => {
+    if (filter === "pending") return "Nincs váró tétel — minden le van zárva."
+    if (filter === "done") return "Még nincs kész tétel"
+    if (filter === "skipped") return "Nincs „nem kell” tétel"
+    return "Nincs megjeleníthető tétel"
   }
 
   if (sortedLines.length === 0) {
@@ -189,9 +229,54 @@ export function QuoteExecutionPanel({
     )
   }
 
+  const renderStatusControls = (line: QuoteLine, size: "md" | "lg" = "md") => {
+    const done = isLineExecutionDone(line)
+    const skipped = isLineExecutionSkipped(line)
+    const tigLocked = isLineTigCertified(line)
+
+    if (skipped) {
+      return (
+        <div className="flex flex-col items-center gap-1">
+          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-800">
+            Nem kell
+          </span>
+          {!tigLocked ? (
+            <button
+              type="button"
+              className="min-h-9 px-1 text-xs font-semibold text-slate-700 underline-offset-2 hover:underline"
+              onClick={() => handleUnskip(line.id)}
+            >
+              Vissza
+            </button>
+          ) : null}
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex flex-col items-center gap-0.5">
+        <DoneCheckbox
+          done={done}
+          onToggle={() => handleToggle(line.id)}
+          size={size}
+          disabled={tigLocked}
+        />
+        {!tigLocked && !done ? (
+          <button
+            type="button"
+            className="min-h-9 px-1 text-[11px] font-semibold text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline"
+            onClick={() => handleSkip(line.id)}
+          >
+            Nem kell
+          </button>
+        ) : null}
+      </div>
+    )
+  }
+
   const renderMobileCard = (line: QuoteLine, rowIndex: number) => {
     const done = isLineExecutionDone(line)
-    const tigLocked = isLineTigCertified(line)
+    const skipped = isLineExecutionSkipped(line)
     const fin = computeExecutionLineFinancials(line, quote, contractedSell)
     const unitLabel = unitMap[line.unitId]?.code ?? "db"
     const visualKind = getQuoteLineVisualKind(line)
@@ -203,22 +288,18 @@ export function QuoteExecutionPanel({
         key={line.id}
         className={cn(
           "rounded-xl border bg-white p-3 shadow-sm",
-          done ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200"
+          done && "border-emerald-200 bg-emerald-50/40",
+          skipped && "border-slate-300 bg-slate-50"
         )}
       >
         <div className="flex items-start gap-2">
-          <DoneCheckbox
-            done={done}
-            onToggle={() => handleToggle(line.id)}
-            size="lg"
-            disabled={tigLocked}
-          />
+          {renderStatusControls(line, "lg")}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-code text-xs text-slate-500">
+              <span className="font-code text-sm text-slate-600">
                 {getLineSectionNumber(line.id, sectionNumbers, rowIndex + 1)}
               </span>
-              <span className="font-code text-xs font-semibold text-blue-700">
+              <span className="font-code text-sm font-semibold text-blue-800">
                 {getLineInternalIdentifier(line, costItemById)}
               </span>
               <QuoteLineSourceIcon line={line} compact />
@@ -227,7 +308,7 @@ export function QuoteExecutionPanel({
             <p
               className={cn(
                 "mt-1 text-sm leading-snug text-slate-900",
-                done && "text-slate-600 line-through decoration-slate-400/70"
+                (done || skipped) && "text-slate-600 line-through decoration-slate-400/70"
               )}
             >
               {line.textSnapshot}
@@ -298,7 +379,7 @@ export function QuoteExecutionPanel({
 
   const renderDesktopRow = (line: QuoteLine, rowIndex: number) => {
     const done = isLineExecutionDone(line)
-    const tigLocked = isLineTigCertified(line)
+    const skipped = isLineExecutionSkipped(line)
     const fin = computeExecutionLineFinancials(line, quote, contractedSell)
     const visualKind = getQuoteLineVisualKind(line)
     const unitLabel = unitMap[line.unitId]?.code ?? "db"
@@ -311,47 +392,44 @@ export function QuoteExecutionPanel({
         className={cn(
           "border-b [&_td]:align-top",
           getQuoteLineRowClass(visualKind),
-          done && "bg-emerald-50/50"
+          done && "bg-emerald-50/50",
+          skipped && "bg-slate-50"
         )}
       >
-        <td className="px-1.5 py-1.5 text-center">
-          <DoneCheckbox
-            done={done}
-            onToggle={() => handleToggle(line.id)}
-            disabled={tigLocked}
-          />
-        </td>
-        <td className="px-2 py-1.5 font-code text-xs text-slate-600">
+        <td className="px-1.5 py-1.5 text-center">{renderStatusControls(line)}</td>
+        <td className="px-2 py-1.5 font-code text-sm font-semibold text-slate-700">
           {getLineSectionNumber(line.id, sectionNumbers, rowIndex + 1)}
         </td>
-        <td className="px-2 py-1.5 font-code text-xs font-medium text-blue-700">
+        <td className="px-2 py-1.5 font-code text-sm font-semibold text-blue-800">
           {getLineInternalIdentifier(line, costItemById)}
         </td>
-        <td className="min-w-[10rem] max-w-md px-2 py-1.5 text-xs">
+        <td className="min-w-[10rem] max-w-md px-2 py-1.5 text-sm">
           <span
             className={cn(
               "block whitespace-normal break-words leading-snug",
-              done ? "text-slate-600 line-through decoration-slate-400/70" : "text-slate-900"
+              done || skipped
+                ? "text-slate-600 line-through decoration-slate-400/70"
+                : "text-slate-900"
             )}
           >
             {line.textSnapshot}
             {renderTigBadge(line)}
           </span>
         </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-slate-800">
+        <td className="px-2 py-1.5 text-right text-sm tabular-nums text-slate-800">
           {line.quantity}
         </td>
-        <td className="px-2 py-1.5 text-xs text-slate-600">{unitLabel}</td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-slate-800">
+        <td className="px-2 py-1.5 text-sm text-slate-600">{unitLabel}</td>
+        <td className="px-2 py-1.5 text-right text-sm tabular-nums text-slate-800">
           {fin.isCosted ? formatHuf(fin.cost) : "—"}
         </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums text-violet-800">
+        <td className="px-2 py-1.5 text-right text-sm tabular-nums text-violet-800">
           {fin.markupPercent != null ? `${fin.markupPercent}%` : "—"}
         </td>
-        <td className="px-2 py-1.5 text-right text-xs font-medium tabular-nums text-blue-900">
+        <td className="px-2 py-1.5 text-right text-sm font-medium tabular-nums text-blue-900">
           {fin.contractedSell > 0 ? formatHuf(fin.contractedSell) : "—"}
         </td>
-        <td className="px-2 py-1.5 text-right text-xs tabular-nums">
+        <td className="px-2 py-1.5 text-right text-sm tabular-nums">
           {fin.isCosted && fin.contractedSell > 0 ? (
             <span
               className={cn(
@@ -381,9 +459,19 @@ export function QuoteExecutionPanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900">
-              {stats.done} / {stats.total} tétel kész
+              {stats.resolved} / {stats.total} lezárva
+              {stats.skipped > 0 ? (
+                <span className="font-normal text-slate-600">
+                  {" "}
+                  · {stats.done} kész · {stats.skipped} nem kell
+                </span>
+              ) : (
+                <span className="font-normal text-slate-600"> · {stats.done} kész</span>
+              )}
             </p>
-            <p className="text-xs text-slate-600">Pipáld ki, amit már elvégeztetek</p>
+            <p className="text-xs text-slate-600">
+              Pipáld a kész tételeket. Ha nem csináljátok meg: „Nem kell” (szerződés változatlan).
+            </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {eligibleTigCount > 0 ? (
@@ -436,7 +524,9 @@ export function QuoteExecutionPanel({
                 ? stats.total
                 : opt.id === "done"
                   ? stats.done
-                  : stats.pending
+                  : opt.id === "skipped"
+                    ? stats.skipped
+                    : stats.pending
             return (
               <Button
                 key={opt.id}
@@ -456,13 +546,7 @@ export function QuoteExecutionPanel({
       {/* Mobil: kártyák */}
       <div className="min-h-0 flex-1 overflow-auto p-3 md:hidden">
         {displayLines.length === 0 ? (
-          <p className="py-12 text-center text-sm text-slate-500">
-            {filter === "pending"
-              ? "Minden tétel kész — szép munka!"
-              : filter === "done"
-                ? "Még nincs kész tétel"
-                : "Nincs megjeleníthető tétel"}
-          </p>
+          <p className="py-12 text-center text-sm text-slate-500">{emptyFilterMessage()}</p>
         ) : (
           <div className="space-y-3">
             {displayLines.map((line, i) => renderMobileCard(line, i))}
@@ -475,7 +559,7 @@ export function QuoteExecutionPanel({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white shadow-sm">
           <div className="min-h-0 flex-1 overflow-auto">
             <table className="w-full min-w-[900px] text-sm">
-              <thead className="ea-table-head sticky top-0 z-10 text-xs shadow-sm">
+              <thead className="ea-table-head sticky top-0 z-10 text-sm shadow-sm">
                 <tr>
                   <th className="w-10 px-1.5 py-1.5 text-center">Kész</th>
                   <th className="px-2 py-1.5">{COL.ssz}</th>
@@ -496,11 +580,7 @@ export function QuoteExecutionPanel({
                 {displayLines.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="px-4 py-12 text-center text-sm text-slate-500">
-                      {filter === "pending"
-                        ? "Minden tétel kész — szép munka!"
-                        : filter === "done"
-                          ? "Még nincs kész tétel"
-                          : "Nincs megjeleníthető tétel"}
+                      {emptyFilterMessage()}
                     </td>
                   </tr>
                 ) : (
@@ -572,7 +652,8 @@ export function QuoteExecutionPanel({
             ) : (
               <Circle className="h-4 w-4 text-slate-400" />
             )}
-            {stats.percent}% kész
+            {stats.percent}% lezárva
+            {stats.skipped > 0 ? ` · ${stats.skipped} nem kell` : ""}
           </span>
         </div>
       </div>

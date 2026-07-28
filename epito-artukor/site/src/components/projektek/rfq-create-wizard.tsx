@@ -8,6 +8,7 @@ import type { Trade } from "@/types"
 import type { Subcontractor } from "@/types/subcontractors"
 import {
   createRfqCampaign,
+  flushBundlePersistAsync,
   listQuoteLines,
   listRfqsForProject,
 } from "@/lib/data/projects-store"
@@ -339,6 +340,8 @@ export function RfqCreateWizard({
         packages,
       })
 
+      await flushBundlePersistAsync()
+
       const links: RfqCreatedLink[] = []
       for (const { pkg, invitations } of created) {
         const scope = quoteScopes.find((s) => s.quote.id === pkg.quoteId)
@@ -357,9 +360,16 @@ export function RfqCreateWizard({
 
       setCreatedLinks(links)
       onCreated([...new Set(created.map((c) => c.pkg.quoteId))])
-      toast.success(`${links.length} bekérés indítva`)
+      const partnerCount = new Set(
+        links.map((l) => `${l.subcontractorName}|${l.accessCode}`)
+      ).size
+      toast.success(
+        partnerCount === links.length
+          ? `${links.length} meghívó mentve — másold ki a linkeket`
+          : `${partnerCount} partner · ${links.length} szakág — partnerenként 1 link`
+      )
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Nem sikerült létrehozni a bekéréseket")
+      toast.error(e instanceof Error ? e.message : "Nem sikerült létrehozni / menteni a bekéréseket")
     } finally {
       setSubmitting(false)
     }

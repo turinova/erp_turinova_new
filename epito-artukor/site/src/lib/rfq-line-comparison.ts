@@ -24,6 +24,9 @@ import {
   lineCostTotal,
 } from "@/lib/quote-pricing"
 
+/** Ennyivel drágább a legolcsóbbnál → amber figyelmeztetés */
+export const RFQ_EXPENSIVE_RATIO = 0.15
+
 export type RfqLineFilter = "all" | "differs" | "missing" | "catalog_diff"
 
 export type RfqLineBidCell = {
@@ -31,8 +34,16 @@ export type RfqLineBidCell = {
   lineTotal: number | null
   materialTotal: number
   laborTotal: number
+  materialUnit: number
+  laborUnit: number
   declined: boolean
+  /** Legolcsóbb sorösszeg */
   isCheapest: boolean
+  isCheapestMaterial: boolean
+  isCheapestLabor: boolean
+  /** >15% a legolcsóbb anyag egységárnál */
+  isExpensiveMaterial: boolean
+  isExpensiveLabor: boolean
 }
 
 export type RfqComparisonRow = {
@@ -44,6 +55,9 @@ export type RfqComparisonRow = {
   text: string
   quantity: number
   unitCode: string
+  /** Ártükör / költségvetés egységár */
+  costMaterialUnit: number
+  costLaborUnit: number
   costMaterialTotal: number
   costLaborTotal: number
   costTotal: number
@@ -68,6 +82,25 @@ function normalizeSearch(s: string): string {
   return s.trim().toLowerCase()
 }
 
+function markUnitCheapest(
+  units: { invitationId: string; unit: number }[]
+): {
+  cheapestId: string | null
+  cheapest: number
+} {
+  const priced = units.filter((u) => u.unit > 0)
+  if (priced.length === 0) return { cheapestId: null, cheapest: 0 }
+  let cheapest = Infinity
+  let cheapestId: string | null = null
+  for (const u of priced) {
+    if (u.unit < cheapest) {
+      cheapest = u.unit
+      cheapestId = u.invitationId
+    }
+  }
+  return { cheapestId, cheapest }
+}
+
 export function buildRfqComparisonRows(
   pkg: SubcontractorRfq,
   quoteLines: QuoteLine[],
@@ -88,22 +121,55 @@ export function buildRfqComparisonRows(
       submissions
     )
 
-    const bids: RfqLineBidCell[] = submittedInvitations.map((inv) => {
+    const rawBids = submittedInvitations.map((inv) => {
       const sub = getInvitationSubmission(inv.id, submissions)
       const bid = sub ? getSubmissionBidForLine(sub, rfl.id) : undefined
       const declined = bid?.declined ?? true
-      const matUnit = bid?.materialUnitPrice ?? 0
-      const labUnit = bid?.laborUnitPrice ?? bid?.unitPrice ?? 0
-      const materialTotal = declined ? 0 : Math.round(matUnit * rfl.quantity)
-      const laborTotal = declined ? 0 : Math.round(labUnit * rfl.quantity)
-      const lineTotal = declined ? null : getBidLineTotal(bid!, rfl.quantity)
+      const materialUnit = declined ? 0 : (bid?.materialUnitPrice ?? 0)
+      const laborUnit = declined ? 0 : (bid?.laborUnitPrice ?? bid?.unitPrice ?? 0)
+      const materialTotal = declined ? 0 : Math.round(materialUnit * rfl.quantity)
+      const laborTotal = declined ? 0 : Math.round(laborUnit * rfl.quantity)
+      const lineTotal = declined || !bid ? null : getBidLineTotal(bid, rfl.quantity)
       return {
         invitationId: inv.id,
         lineTotal: lineTotal && lineTotal > 0 ? lineTotal : null,
         materialTotal,
         laborTotal,
+        materialUnit,
+        laborUnit,
         declined,
-        isCheapest: inv.id === cheapestInv && lineTotal != null && lineTotal > 0,
+      }
+    })
+
+    const matMark = markUnitCheapest(
+      rawBids.map((b) => ({ invitationId: b.invitationId, unit: b.materialUnit }))
+    )
+    const labMark = markUnitCheapest(
+      rawBids.map((b) => ({ invitationId: b.invitationId, unit: b.laborUnit }))
+    )
+
+    const bids: RfqLineBidCell[] = rawBids.map((b) => {
+      const isCheapestMaterial =
+        matMark.cheapestId === b.invitationId && b.materialUnit > 0
+      const isCheapestLabor = labMark.cheapestId === b.invitationId && b.laborUnit > 0
+      const isExpensiveMaterial =
+        !isCheapestMaterial &&
+        b.materialUnit > 0 &&
+        matMark.cheapest > 0 &&
+        b.materialUnit > matMark.cheapest * (1 + RFQ_EXPENSIVE_RATIO)
+      const isExpensiveLabor =
+        !isCheapestLabor &&
+        b.laborUnit > 0 &&
+        labMark.cheapest > 0 &&
+        b.laborUnit > labMark.cheapest * (1 + RFQ_EXPENSIVE_RATIO)
+
+      return {
+        ...b,
+        isCheapest: b.invitationId === cheapestInv && b.lineTotal != null && b.lineTotal > 0,
+        isCheapestMaterial,
+        isCheapestLabor,
+        isExpensiveMaterial,
+        isExpensiveLabor,
       }
     })
 
@@ -122,6 +188,10 @@ export function buildRfqComparisonRows(
     const order =
       rfl.quoteLineId != null ? (quoteLineOrder.get(rfl.quoteLineId) ?? idx) : idx
 
+    const qty = rfl.quantity > 0 ? rfl.quantity : 1
+    const costMaterialTotal = ql ? lineCostMaterialTotal(ql) : 0
+    const costLaborTotal = ql ? lineCostLaborTotal(ql) : 0
+
     return {
       rfqLineId: rfl.id,
       quoteLineId: rfl.quoteLineId ?? null,
@@ -133,8 +203,10 @@ export function buildRfqComparisonRows(
       text: ql?.textSnapshot ?? rfl.text,
       quantity: rfl.quantity,
       unitCode: rfl.unitId,
-      costMaterialTotal: ql ? lineCostMaterialTotal(ql) : 0,
-      costLaborTotal: ql ? lineCostLaborTotal(ql) : 0,
+      costMaterialUnit: Math.round(costMaterialTotal / qty),
+      costLaborUnit: Math.round(costLaborTotal / qty),
+      costMaterialTotal,
+      costLaborTotal,
       costTotal: ql ? lineCostTotal(ql) : 0,
       catalogTotal,
       bids,

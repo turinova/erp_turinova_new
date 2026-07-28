@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Trash2 } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import type { CustomerPackage } from "@/types/projects"
 import {
-  CUSTOMER_PACKAGE_STATUS_LABELS,
   CUSTOMER_PACKAGE_TYPE_LABELS,
+  customerPackageDisplayStatus,
   isCustomerPackageExpired,
 } from "@/lib/customer-package"
 import { getTradeLabel } from "@/lib/trades"
@@ -14,6 +14,7 @@ import { formatHuf } from "@/lib/pricing"
 import {
   deleteCustomerPackageDraft,
   getCustomerPackage,
+  getProject,
   publishCustomerPackageDraft,
   updateProject,
 } from "@/lib/data/projects-store"
@@ -37,6 +38,8 @@ type ProjectOfferDetailDialogProps = {
   projectId: string
   tick: number
   onRefresh: () => void
+  /** Lejárt / elutasított / felülírt → új ajánlat a régi szakágakkal */
+  onCreateNewOffer?: (quoteIds: string[]) => void
 }
 
 function formatDateTime(iso: string): string {
@@ -56,6 +59,7 @@ export function ProjectOfferDetailDialog({
   projectId,
   tick,
   onRefresh,
+  onCreateNewOffer,
 }: ProjectOfferDetailDialogProps) {
   const [publishing, setPublishing] = useState(false)
   const [responseOpen, setResponseOpen] = useState(false)
@@ -65,7 +69,20 @@ export function ProjectOfferDetailDialog({
     return packageId ? getCustomerPackage(packageId) : undefined
   }, [packageId, tick])
 
+  const project = useMemo(() => {
+    void tick
+    return getProject(projectId)
+  }, [projectId, tick])
+
   const expired = pkg ? isCustomerPackageExpired(pkg) : false
+  const display = pkg ? customerPackageDisplayStatus(pkg) : null
+
+  const rejectedSnapshots =
+    pkg?.status === "accepted" && pkg.acceptedSnapshots
+      ? pkg.snapshots.filter(
+          (s) => !pkg.acceptedSnapshots!.some((a) => a.quoteId === s.quoteId)
+        )
+      : []
 
   const handlePublish = () => {
     if (!pkg) return
@@ -100,6 +117,11 @@ export function ProjectOfferDetailDialog({
     onRefresh()
   }
 
+  const handleNewOffer = () => {
+    if (!pkg || !onCreateNewOffer) return
+    onCreateNewOffer(pkg.snapshots.map((s) => s.quoteId))
+  }
+
   if (!pkg) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,6 +131,9 @@ export function ProjectOfferDetailDialog({
       </Dialog>
     )
   }
+
+  const canStartExecution =
+    pkg.status === "accepted" && (project?.status === "won" || project?.status === "prospect")
 
   return (
     <>
@@ -120,14 +145,16 @@ export function ProjectOfferDetailDialog({
               <span
                 className={cn(
                   "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                  pkg.status === "draft" && "bg-slate-200 text-slate-800",
-                  pkg.status === "sent" && "bg-blue-100 text-blue-950",
-                  pkg.status === "accepted" && "bg-emerald-100 text-emerald-950",
-                  pkg.status === "rejected" && "bg-red-100 text-red-900",
-                  pkg.status === "superseded" && "bg-slate-100 text-slate-600"
+                  display?.kind === "draft" && "bg-slate-200 text-slate-800",
+                  display?.kind === "sent" && "bg-blue-100 text-blue-950",
+                  (display?.kind === "accepted" || display?.kind === "partial") &&
+                    "bg-emerald-100 text-emerald-950",
+                  display?.kind === "rejected" && "bg-red-100 text-red-900",
+                  display?.kind === "superseded" && "bg-slate-100 text-slate-600",
+                  display?.kind === "expired" && "bg-amber-100 text-amber-950"
                 )}
               >
-                {CUSTOMER_PACKAGE_STATUS_LABELS[pkg.status]}
+                {display?.label}
               </span>
               <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
                 {CUSTOMER_PACKAGE_TYPE_LABELS[pkg.type]}
@@ -144,20 +171,29 @@ export function ProjectOfferDetailDialog({
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3">
             {pkg.status === "superseded" ? (
-              <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                Ezt az ajánlatot egy újabb váltotta fel. Az ügyfél linkje már nem aktív.
+              <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                Ezt az ajánlatot egy újabb váltotta fel. Az ügyfél linkje már nem él — küldj újat.
               </p>
             ) : null}
 
             {pkg.status === "sent" && expired ? (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                Az ajánlat érvényessége lejárt. Küldj frissített ajánlatot.
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                Az ajánlat érvényessége lejárt. Küldj frissített ajánlatot ugyanazokkal a
+                szakágakkal.
+              </p>
+            ) : null}
+
+            {pkg.status === "rejected" ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-950">
+                Az ügyfél elutasította. Módosítsd az árakat, majd küldj új ajánlatot.
               </p>
             ) : null}
 
             {pkg.status === "accepted" && pkg.respondedAt ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-950">
-                <strong>Elfogadva</strong>
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-sm text-emerald-950">
+                <strong>
+                  {display?.kind === "partial" ? "Részlegesen elfogadva" : "Elfogadva"}
+                </strong>
                 {pkg.respondedByName ? ` — ${pkg.respondedByName}` : null}
                 {pkg.respondedAt ? ` · ${formatDateTime(pkg.respondedAt)}` : null}
               </div>
@@ -165,7 +201,7 @@ export function ProjectOfferDetailDialog({
 
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Költségvetések
+                {pkg.status === "accepted" ? "Elfogadott költségvetések" : "Költségvetések"}
               </p>
               <ul className="divide-y divide-slate-100 overflow-hidden rounded-md border border-slate-200/90">
                 {(pkg.status === "accepted" && pkg.acceptedSnapshots
@@ -190,6 +226,32 @@ export function ProjectOfferDetailDialog({
               </ul>
             </div>
 
+            {rejectedSnapshots.length > 0 ? (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Nem választott szakágak
+                </p>
+                <ul className="divide-y divide-slate-100 overflow-hidden rounded-md border border-slate-200/90">
+                  {rejectedSnapshots.map((snap) => (
+                    <li
+                      key={snap.quoteId}
+                      className="flex items-center justify-between gap-2 bg-slate-50 px-2.5 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-slate-700">
+                          {getTradeLabel(snap.trade)}
+                        </p>
+                        <p className="truncate text-[11px] text-slate-500">{snap.quoteTitle}</p>
+                      </div>
+                      <span className="shrink-0 text-[10px] font-semibold text-slate-500">
+                        Elutasítva
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             {pkg.status === "sent" || pkg.status === "accepted" ? (
               <ProjectOfferLinkBlock pkg={pkg} />
             ) : null}
@@ -209,17 +271,22 @@ export function ProjectOfferDetailDialog({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="text-red-700 hover:text-red-800"
+                  className="h-11 text-red-700 hover:text-red-800"
                   onClick={handleDelete}
                 >
                   <Trash2 className="mr-1 h-3.5 w-3.5" />
                   Törlés
                 </Button>
                 <div className="ml-auto flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-11"
+                    onClick={() => onOpenChange(false)}
+                  >
                     Bezárás
                   </Button>
-                  <Button size="sm" disabled={publishing} onClick={handlePublish}>
+                  <Button size="sm" className="h-11" disabled={publishing} onClick={handlePublish}>
                     {publishing ? "Küldés…" : "Küldés ügyfélnek"}
                   </Button>
                 </div>
@@ -228,10 +295,15 @@ export function ProjectOfferDetailDialog({
 
             {pkg.status === "sent" && !expired ? (
               <>
-                <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-11"
+                  onClick={() => onOpenChange(false)}
+                >
                   Bezárás
                 </Button>
-                <Button size="sm" onClick={() => setResponseOpen(true)}>
+                <Button size="sm" className="h-11" onClick={() => setResponseOpen(true)}>
                   Válasz rögzítése
                 </Button>
               </>
@@ -239,21 +311,41 @@ export function ProjectOfferDetailDialog({
 
             {pkg.status === "accepted" ? (
               <>
-                <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-11"
+                  onClick={() => onOpenChange(false)}
+                >
                   Bezárás
                 </Button>
-                <Button size="sm" variant="secondary" onClick={handleStartExecution}>
-                  Kivitelezés indítása
-                </Button>
+                {canStartExecution ? (
+                  <Button size="sm" className="h-11" onClick={handleStartExecution}>
+                    Kivitelezés indítása
+                  </Button>
+                ) : null}
               </>
             ) : null}
 
             {(pkg.status === "rejected" ||
               pkg.status === "superseded" ||
               (pkg.status === "sent" && expired)) && (
-              <Button variant="outline" size="sm" className="ml-auto" onClick={() => onOpenChange(false)}>
-                Bezárás
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-11"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Bezárás
+                </Button>
+                {onCreateNewOffer ? (
+                  <Button size="sm" className="h-11 gap-1.5" onClick={handleNewOffer}>
+                    <Plus className="h-3.5 w-3.5" />
+                    Új ajánlat ezekkel a szakágakkal
+                  </Button>
+                ) : null}
+              </>
             )}
           </DialogFooter>
         </DialogContent>

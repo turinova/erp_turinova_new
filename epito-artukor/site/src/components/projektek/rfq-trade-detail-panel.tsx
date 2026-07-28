@@ -13,6 +13,7 @@ type RfqTradeDetailPanelProps = {
   quote: Quote
   onDecide: (packageId: string, intent: "decide" | "change") => void
   onStartRfq: (quoteId: string) => void
+  onRefresh: () => void
 }
 
 export function RfqTradeDetailPanel({
@@ -21,33 +22,31 @@ export function RfqTradeDetailPanel({
   quote,
   onDecide,
   onStartRfq,
+  onRefresh,
 }: RfqTradeDetailPanelProps) {
   const quoteLines = listQuoteLines(quote.id)
 
   return (
-    <div className="space-y-2 border-t border-slate-100 bg-slate-50/50 px-3 py-3">
+    <div className="space-y-1.5">
       {summary.hasOverlapWarning ? (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <p className="font-medium">Átfedő bekérések</p>
-            <p className="mt-0.5 text-xs">
-              Ugyanaz a tétel több nyitott bekérésben is szerepel:{" "}
-              {summary.overlappingLineLabels.join(", ")}
-            </p>
-          </div>
+        <div className="mx-2 mt-1.5 flex items-start gap-1.5 border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-950">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            <span className="font-medium">Átfedő bekérések: </span>
+            {summary.overlappingLineLabels.join(", ")}
+          </p>
         </div>
       ) : null}
 
       {summary.packages.length === 0 ? (
-        <div className="rounded-lg border border-dashed bg-white px-4 py-6 text-center text-sm text-slate-600">
+        <div className="px-3 py-3 text-center text-xs text-slate-600">
           <p>Még nincs bekérés ehhez a szakághoz.</p>
-          <Button size="sm" className="mt-3" onClick={() => onStartRfq(quote.id)}>
-            Új bekérés indítása
+          <Button size="sm" className="mt-2 h-7 text-xs" onClick={() => onStartRfq(quote.id)}>
+            Új bekérés
           </Button>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {summary.activePackages.map((p) => (
             <RfqPackageWorkspace
               key={p.pkg.id}
@@ -56,11 +55,13 @@ export function RfqTradeDetailPanel({
               projectId={projectId}
               quote={quote}
               onDecide={onDecide}
+              onRefresh={onRefresh}
+              defaultCollapsed={!p.needsDecision && summary.activePackages.length > 1}
             />
           ))}
           {summary.decidedPackages.length > 0 ? (
-            <div className="space-y-1 pt-1">
-              <p className="px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            <div className="space-y-1">
+              <p className="px-2.5 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-500">
                 Előzmények
               </p>
               {summary.decidedPackages.map((p) => (
@@ -71,6 +72,7 @@ export function RfqTradeDetailPanel({
                   projectId={projectId}
                   quote={quote}
                   onDecide={onDecide}
+                  onRefresh={onRefresh}
                   defaultCollapsed
                   isHistory
                 />

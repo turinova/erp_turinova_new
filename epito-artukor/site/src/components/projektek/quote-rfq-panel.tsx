@@ -6,6 +6,7 @@ import type { Quote, QuoteLine } from "@/types/projects"
 import { formatHuf } from "@/lib/pricing"
 import {
   findCheapestPackageInvitation,
+  listAllRfqPackagesForQuote,
   listRfqPackagesForQuoteEditor,
 } from "@/lib/quote-rfq-context"
 import { computePackageSubmissionTotal, getInvitationSubmission } from "@/lib/rfq-package-utils"
@@ -14,6 +15,7 @@ import {
   QuoteRfqDecisionDialog,
   type QuoteRfqDecisionIntent,
 } from "@/components/projektek/quote-rfq-decision-dialog"
+import { RfqPartnerAccessList } from "@/components/projektek/rfq-partner-access-list"
 
 type QuoteRfqPanelProps = {
   quote: Quote
@@ -28,23 +30,30 @@ type DialogState = {
 } | null
 
 export function QuoteRfqPanel({ quote, quoteId, lines, onRefresh }: QuoteRfqPanelProps) {
-  const packages = useMemo(
+  const actionPackages = useMemo(
     () => listRfqPackagesForQuoteEditor(quoteId, lines),
     [quoteId, lines]
   )
+  const allPackages = useMemo(
+    () => listAllRfqPackagesForQuote(quoteId, lines),
+    [quoteId, lines]
+  )
   const [dialog, setDialog] = useState<DialogState>(null)
+  const [accessOpen, setAccessOpen] = useState(true)
 
   const active = useMemo(
-    () => packages.find((p) => p.pkg.id === dialog?.pkgId) ?? null,
-    [packages, dialog]
+    () => allPackages.find((p) => p.pkg.id === dialog?.pkgId) ?? null,
+    [allPackages, dialog]
   )
 
-  if (packages.length === 0) return null
+  if (allPackages.length === 0) return null
+
+  const allInvitations = allPackages.flatMap((p) => p.invitations)
 
   return (
     <>
       <div className="mb-0.5 space-y-1">
-        {packages.map((row) => {
+        {actionPackages.map((row) => {
           const { pkg, invitations, submissions, submissionCount, needsDecision, canChangeWinner } =
             row
           const cheapestId = findCheapestPackageInvitation(pkg, invitations, submissions)
@@ -60,7 +69,7 @@ export function QuoteRfqPanel({ quote, quoteId, lines, onRefresh }: QuoteRfqPane
             return (
               <div
                 key={pkg.id}
-                className="flex flex-wrap items-center gap-2 rounded-md border border-blue-200 bg-blue-50/90 px-2.5 py-1.5"
+                className="flex flex-wrap items-center gap-2 border border-blue-200 bg-blue-50/90 px-2.5 py-1.5"
               >
                 <p className="min-w-0 flex-1 text-xs text-blue-950">
                   <span className="font-semibold">{pkg.title}</span>
@@ -88,7 +97,7 @@ export function QuoteRfqPanel({ quote, quoteId, lines, onRefresh }: QuoteRfqPane
             return (
               <div
                 key={pkg.id}
-                className="flex flex-wrap items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/80 px-2.5 py-1.5"
+                className="flex flex-wrap items-center gap-2 border border-emerald-200 bg-emerald-50/80 px-2.5 py-1.5"
               >
                 <p className="min-w-0 flex-1 text-xs text-emerald-950">
                   <span className="font-semibold">{pkg.title}</span>
@@ -113,6 +122,35 @@ export function QuoteRfqPanel({ quote, quoteId, lines, onRefresh }: QuoteRfqPane
 
           return null
         })}
+
+        {allInvitations.length > 0 ? (
+          <div className="border border-slate-200 bg-white">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
+              onClick={() => setAccessOpen((v) => !v)}
+            >
+              <span>
+                Alvállalkozói belépők ({allInvitations.length}) — link + PIN
+              </span>
+              <span className="text-slate-500">{accessOpen ? "Elrejt" : "Mutat"}</span>
+            </button>
+            {accessOpen ? (
+              <div className="space-y-2 border-t border-slate-100 p-2">
+                {allPackages.map((row) => (
+                  <RfqPartnerAccessList
+                    key={row.pkg.id}
+                    invitations={row.invitations}
+                    winningInvitationId={row.winningInvitationId}
+                    title={row.pkg.title}
+                    compact
+                    onChanged={onRefresh}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {active && dialog ? (

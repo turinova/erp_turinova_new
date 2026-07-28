@@ -10,7 +10,6 @@ import {
   COST_SHEET_FOOTER,
   COST_SHEET_HEADERS,
   COST_SHEET_MIN_WIDTH,
-  type SheetDensity,
 } from "@/lib/quote-sheet-layout"
 import {
   costFieldLockTitle,
@@ -83,8 +82,6 @@ type QuoteCostSpreadsheetProps = {
   displayLines: QuoteLine[]
   costItems: CostItem[]
   isReadOnly: boolean
-  excelMode: boolean
-  sheetDensity?: SheetDensity
   footerLabel: string
   costSourceFilterActive: boolean
   onClearFilter: () => void
@@ -127,12 +124,12 @@ function WorksheetUnitSelect({
 
   return (
     <Select value={resolved} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger className="ea-sheet-input h-6 w-full max-w-full rounded-none border-0 bg-transparent px-1 text-xs shadow-none [&>span]:truncate">
+      <SelectTrigger className="ea-sheet-input h-8 w-full max-w-full rounded-none border-0 bg-transparent px-1.5 text-sm shadow-none [&>span]:truncate">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {units.map((unit) => (
-          <SelectItem key={unit.id} value={unit.id} className="text-xs">
+          <SelectItem key={unit.id} value={unit.id} className="text-sm">
             {unit.code}
           </SelectItem>
         ))}
@@ -148,8 +145,6 @@ export function QuoteCostSpreadsheet({
   displayLines,
   costItems,
   isReadOnly,
-  excelMode,
-  sheetDensity = "compact",
   footerLabel,
   costSourceFilterActive,
   onClearFilter,
@@ -268,7 +263,7 @@ export function QuoteCostSpreadsheet({
               value={getLineSectionNumber(line.id, sectionNumbers, rowIndex + 1)}
               variant="meta"
               align="left"
-              className="font-code text-slate-600"
+              className="font-code font-semibold text-slate-700"
             />
           </td>
           <td className="ea-freeze-col ea-freeze-1">
@@ -276,7 +271,7 @@ export function QuoteCostSpreadsheet({
               value={internalId}
               variant="meta"
               align="left"
-              className="whitespace-nowrap font-code font-medium text-blue-700"
+              className="whitespace-nowrap font-code font-semibold text-blue-800"
               title={internalId}
             />
           </td>
@@ -396,12 +391,7 @@ export function QuoteCostSpreadsheet({
               }
             />
           </td>
-          <td
-            className={cn(
-              "px-0.5",
-              excelMode && "ea-worksheet-actions opacity-0 group-hover/row:opacity-100 focus-within:opacity-100"
-            )}
-          >
+          <td className="px-0.5">
             {!isReadOnly ? (
               <div className="flex items-center justify-end gap-0">
                 {line.costItemId && line.pricingStatus === "unpriced" ? (
@@ -409,7 +399,7 @@ export function QuoteCostSpreadsheet({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 p-0 text-slate-500"
+                    className="h-7 w-7 p-0 text-slate-500"
                     title="Becsült ár az ártükörből"
                     onClick={() => onFillFromCatalog(line.id, line.costItemId!)}
                   >
@@ -421,7 +411,7 @@ export function QuoteCostSpreadsheet({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 p-0 text-slate-500 hover:text-amber-800"
+                    className="h-7 w-7 p-0 text-slate-500 hover:text-amber-800"
                     title="Saját kivitelezés — kézi ár"
                     onClick={() => handleConvertToManual(line)}
                   >
@@ -432,7 +422,7 @@ export function QuoteCostSpreadsheet({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 w-6 p-0 text-slate-400 hover:text-red-600"
+                  className="h-7 w-7 p-0 text-slate-400 hover:text-red-600"
                   onClick={() => handleDeleteLine(line.id, internalId)}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -458,13 +448,7 @@ export function QuoteCostSpreadsheet({
   let lineCounter = 0
 
   return (
-    <div
-      className={cn(
-        "ea-worksheet flex min-h-0 flex-1 flex-col overflow-hidden border border-[#b4b4b4] bg-white",
-        sheetDensity === "normal" && "ea-worksheet-density-normal",
-        excelMode && "ea-worksheet-max"
-      )}
-    >
+    <div className="ea-worksheet flex min-h-0 flex-1 flex-col overflow-hidden border border-[#b4b4b4] bg-white">
       <div
         ref={gridRef}
         className="min-h-0 flex-1 overflow-auto"

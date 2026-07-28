@@ -32,7 +32,7 @@ export type QuoteLineCostSource =
   | "subcontractor"
 
 /** Kivitelezés — tétel fizikai készültsége (nem árazási státusz) */
-export type QuoteLineExecutionStatus = "pending" | "done"
+export type QuoteLineExecutionStatus = "pending" | "done" | "skipped"
 
 /** Bekérés (csomag) állapota — legacy értékek (draft/sent/received/closed) migrációnál normalizálódnak */
 export type SubcontractorRfqStatus = "open" | "decided"
@@ -249,6 +249,12 @@ export interface CustomerPackageSnapshotLine {
   quantity: number
   sellNetUnitPrice: number
   sellNetTotal: number
+  /** Ügyfélár — anyag egységár (küldéskori; régi snapshotoknál hiányozhat) */
+  sellMaterialUnitPrice?: number
+  /** Ügyfélár — díj egységár (küldéskori; régi snapshotoknál hiányozhat) */
+  sellLaborUnitPrice?: number
+  sellMaterialTotal?: number
+  sellLaborTotal?: number
 }
 
 export interface CustomerPackageSnapshot {

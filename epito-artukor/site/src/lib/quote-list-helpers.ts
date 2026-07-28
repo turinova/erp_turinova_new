@@ -24,10 +24,9 @@ export type QuoteTodo = {
   action: QuoteTodoAction
 }
 
-/** Fedezet % az ügyfél árhoz viszonyítva — egységes a lábléccel */
+/** Fedezet % a bekerüléshez viszonyítva — ugyanaz, mint a küldhetőség-ellenőrzés */
 export function quoteDisplayMarginPercent(summary: QuoteSummary): number | null {
-  if (summary.lineCount === 0 || summary.sellTotal <= 0) return null
-  return Math.round((summary.marginTotal / summary.sellTotal) * 100)
+  return summary.marginPercent
 }
 
 export function quoteTradeLabel(quote: Quote): string {

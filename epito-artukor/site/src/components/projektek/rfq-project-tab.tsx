@@ -1,12 +1,8 @@
 "use client"
 
-import { useMemo, useState, useEffect, Fragment } from "react"
+import { useMemo, useState, useEffect } from "react"
 import Link from "next/link"
-import {
-  ChevronDown,
-  ChevronRight,
-  Plus,
-} from "lucide-react"
+import { Plus } from "lucide-react"
 import { toast } from "sonner"
 import type { Project, Quote } from "@/types/projects"
 import {
@@ -60,9 +56,9 @@ export function RfqProjectTab({
   onAutoOpenHandled,
   initialQuoteId,
 }: RfqProjectTabProps) {
+  void project
   const [createOpen, setCreateOpen] = useState(false)
   const [wizardQuoteId, setWizardQuoteId] = useState<string | null>(null)
-  const [expandedQuoteId, setExpandedQuoteId] = useState<string | null>(null)
   const [decisionPkgId, setDecisionPkgId] = useState<string | null>(null)
   const [decisionIntent, setDecisionIntent] = useState<"decide" | "change">("decide")
 
@@ -93,7 +89,17 @@ export function RfqProjectTab({
           .flatMap((p) => listSubmissionsForPackage(p.id))
         return buildTradeRfqSummary(quote, quoteLines, allPackages, invitations, submissions)
       })
-      .sort((a, b) => a.tradeLabel.localeCompare(b.tradeLabel, "hu"))
+      .sort((a, b) => {
+        const order = (s: TradeRfqSummary) => {
+          if (s.todo.tone === "warning") return 0
+          if (s.packages.length > 0 && s.todo.action !== "start") return 1
+          if (s.todo.action === "start") return 3
+          return 2
+        }
+        const d = order(a) - order(b)
+        if (d !== 0) return d
+        return a.tradeLabel.localeCompare(b.tradeLabel, "hu")
+      })
   }, [activeQuotes, allPackages, rfqQuoteFilter, tick])
 
   const stats = useMemo(() => buildProjectRfqStats(tradeSummaries), [tradeSummaries])
@@ -140,28 +146,20 @@ export function RfqProjectTab({
       case "start":
         openCreateDialog(summary.quote.id)
         return
-      case "wait":
-      case "view":
-        setExpandedQuoteId(summary.quote.id)
-        return
       default:
-        setExpandedQuoteId(summary.quote.id)
+        return
     }
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-14rem)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="sticky top-0 z-20 shrink-0 border-b border-slate-200 bg-[var(--background)]">
-        <div className="flex h-auto min-h-9 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center">
-          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Alvállalkozók ({activeQuotes.length} szakág)
-            </h2>
-          </div>
+        <div className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1.5 px-2.5 py-1.5">
+          <h2 className="shrink-0 text-sm font-semibold text-slate-900">Bekérés</h2>
 
-          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+          <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1.5">
             {rfqQuoteFilter ? (
-              <div className="flex items-center gap-2 rounded-full border bg-slate-50 px-2.5 py-1 text-xs">
+              <div className="flex items-center gap-1.5 rounded border bg-slate-50 px-2 py-0.5 text-[11px]">
                 <span className="max-w-[10rem] truncate">
                   {quotes.find((q) => q.id === rfqQuoteFilter)?.title}
                 </span>
@@ -175,189 +173,123 @@ export function RfqProjectTab({
               </div>
             ) : null}
             {stats.pendingDecision > 0 ? (
-              <Badge variant="warning" className="text-[11px]">
-                {stats.pendingDecision} döntésre vár
+              <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
+                {stats.pendingDecision} döntés
               </Badge>
             ) : null}
             {stats.awaiting > 0 ? (
-              <Badge variant="outline" className="text-[11px]">
-                {stats.awaiting} vár válaszra
+              <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                {stats.awaiting} vár
               </Badge>
             ) : null}
             <Button
               size="sm"
-              className="h-8 text-xs"
+              className="h-7 text-xs"
               onClick={() => openCreateDialog(rfqQuoteFilter ?? undefined)}
               disabled={!activeQuotes.length}
             >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              <Plus className="mr-1 h-3.5 w-3.5" />
               Új bekérés
             </Button>
           </div>
         </div>
-
-        <p className="border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
-          Szakágonként követheted a bekéréseket. Küldd ki a linkeket, hasonlítsd össze az ajánlatokat,
-          majd egy nyertest választasz — a bekerülés automatikusan beíródik.
-        </p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2">
         {tradeSummaries.length === 0 ? (
-          <p className="p-8 text-center text-sm text-slate-600">
+          <p className="p-4 text-center text-sm text-slate-600">
             {rfqQuoteFilter
               ? "Ehhez a szakághoz még nincs költségvetés."
               : "Előbb hozz létre költségvetést a Költségvetés fülön."}
           </p>
         ) : (
-          <table className="w-full min-w-[52rem] border-collapse text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-[11px] font-medium uppercase tracking-wide text-slate-500">
-              <tr className="border-b border-slate-200">
-                <th className="w-8 px-2 py-2" />
-                <th className="px-4 py-2">Szakág</th>
-                <th className="px-4 py-2">Következő lépés</th>
-                <th className="px-4 py-2">Bekérések</th>
-                <th className="px-4 py-2">Ajánlatok</th>
-                <th className="px-4 py-2 text-right">Művelet</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tradeSummaries.map((summary) => {
-                const expanded = expandedQuoteId === summary.quote.id
-                const { todo } = summary
-                const activeCount = summary.activePackages.length
-                const totalRounds = summary.packages.length
+          tradeSummaries.map((summary) => {
+            const { todo } = summary
+            const hasPackages = summary.packages.length > 0
 
-                return (
-                  <Fragment key={summary.quote.id}>
-                    <tr
-                      className={cn(
-                        "border-b border-slate-100 hover:bg-slate-50/60",
-                        todo.tone === "warning" && "bg-amber-50/30",
-                        todo.tone === "success" && "bg-emerald-50/20"
-                      )}
-                    >
-                      <td className="px-2 py-3 align-middle">
-                        <button
-                          type="button"
-                          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          onClick={() =>
-                            setExpandedQuoteId(expanded ? null : summary.quote.id)
-                          }
-                          aria-label={expanded ? "Összecsukás" : "Részletek"}
-                        >
-                          {expanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 align-middle">
-                        <div className="min-w-[8rem]">
-                          <Link
-                            href={`/projektek/${projectId}/ajanlat/${summary.quote.id}`}
-                            className="font-semibold text-slate-900 hover:text-blue-800 hover:underline"
-                          >
-                            {summary.tradeLabel}
-                          </Link>
-                          {summary.quote.title !== summary.tradeLabel ? (
-                            <p className="mt-0.5 truncate text-xs text-slate-500">
-                              {summary.quote.title}
-                            </p>
-                          ) : null}
-                          {summary.hasOverlapWarning ? (
-                            <Badge
-                              variant="outline"
-                              className="mt-1 border-amber-300 bg-amber-50 text-[10px] text-amber-900"
-                            >
-                              Átfedés
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 align-middle">
-                        <button
-                          type="button"
-                          className={cn(
-                            "text-left",
-                            todo.actionable && "hover:underline"
-                          )}
-                          disabled={!todo.actionable}
-                          onClick={() => todo.actionable && handleTodoAction(summary, todo.action)}
-                        >
-                          <p className={cn("font-medium", todoToneClass(todo.tone))}>
-                            {todo.label}
-                          </p>
-                          {todo.detail ? (
-                            <p className="mt-0.5 text-xs text-slate-500">{todo.detail}</p>
-                          ) : null}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 align-middle tabular-nums text-slate-700">
-                        {totalRounds === 0 ? (
-                          "—"
-                        ) : (
-                          <>
-                            {activeCount > 0 ? `${activeCount} aktív` : "0 aktív"}
-                            {totalRounds > 0 ? ` · ${totalRounds} kör` : ""}
-                          </>
+            return (
+              <section
+                key={summary.quote.id}
+                className={cn(
+                  "overflow-hidden border border-slate-200 bg-white",
+                  todo.tone === "warning" && "border-amber-400",
+                  todo.tone === "success" && "border-emerald-300"
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-2.5 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
+                      <Link
+                        href={`/projektek/${projectId}/ajanlat/${summary.quote.id}`}
+                        className="text-sm font-semibold text-slate-900 hover:text-blue-800 hover:underline"
+                      >
+                        {summary.tradeLabel}
+                      </Link>
+                      {summary.quote.title !== summary.tradeLabel ? (
+                        <span className="truncate text-[11px] text-slate-500">
+                          {summary.quote.title}
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={cn(
+                          "text-left text-[11px]",
+                          todo.actionable && "hover:underline",
+                          todoToneClass(todo.tone)
                         )}
-                      </td>
-                      <td className="px-4 py-3 align-middle text-slate-700">
-                        {summary.offerLabel ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 align-middle text-right">
-                        <div className="flex justify-end gap-1">
-                          {todo.action === "decide" && todo.packageId ? (
-                            <Button
-                              size="sm"
-                              variant="default"
-                              className="h-8 text-xs"
-                              onClick={() => openDecision(todo.packageId!, "decide")}
-                            >
-                              Döntés
-                            </Button>
-                          ) : todo.action === "start" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 text-xs"
-                              onClick={() => openCreateDialog(summary.quote.id)}
-                            >
-                              Bekérés
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 text-xs"
-                              onClick={() => setExpandedQuoteId(summary.quote.id)}
-                            >
-                              Részletek
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    {expanded ? (
-                      <tr>
-                        <td colSpan={6} className="p-0">
-                          <RfqTradeDetailPanel
-                            summary={summary}
-                            projectId={projectId}
-                            quote={summary.quote}
-                            onDecide={openDecision}
-                            onStartRfq={openCreateDialog}
-                          />
-                        </td>
-                      </tr>
+                        disabled={!todo.actionable}
+                        onClick={() => todo.actionable && handleTodoAction(summary, todo.action)}
+                      >
+                        <span className="font-medium">{todo.label}</span>
+                        {todo.detail ? (
+                          <span className="text-slate-500"> · {todo.detail}</span>
+                        ) : null}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                    {summary.offerLabel ? (
+                      <span className="text-[11px] text-slate-600">{summary.offerLabel}</span>
                     ) : null}
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
+                    {todo.action === "decide" && todo.packageId ? (
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => openDecision(todo.packageId!, "decide")}
+                      >
+                        Döntés
+                      </Button>
+                    ) : todo.action === "start" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => openCreateDialog(summary.quote.id)}
+                      >
+                        Indítás
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {hasPackages ? (
+                  <RfqTradeDetailPanel
+                    summary={summary}
+                    projectId={projectId}
+                    quote={summary.quote}
+                    onDecide={openDecision}
+                    onStartRfq={openCreateDialog}
+                    onRefresh={onRefresh}
+                  />
+                ) : (
+                  <div className="px-2.5 py-2 text-center text-xs text-slate-500">
+                    Még nincs bekérés.
+                  </div>
+                )}
+              </section>
+            )
+          })
         )}
       </div>
 
@@ -367,9 +299,8 @@ export function RfqProjectTab({
         projectId={projectId}
         quotes={quotes}
         initialQuoteId={wizardQuoteId}
-        onCreated={(quoteIds) => {
+        onCreated={() => {
           onRefresh()
-          if (quoteIds.length === 1) setExpandedQuoteId(quoteIds[0])
         }}
       />
 

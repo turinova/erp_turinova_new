@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { ProjectListPhase } from "@/lib/project-phase"
-import { PROJECT_PHASE_LABELS } from "@/lib/project-phase"
+import { PROJECT_PHASE_HREFS, PROJECT_PHASE_LABELS } from "@/lib/project-phase"
 
 const statusVariant: Record<
   Project["status"],
@@ -209,6 +209,11 @@ export function ProjectsEmptyState({
         <Button className="mt-6" onClick={onCreate}>
           <Plus className="mr-2 h-4 w-4" />
           Új projekt
+        </Button>
+      ) : null}
+      {phase === "execution" ? (
+        <Button className="mt-6" variant="outline" asChild>
+          <Link href={PROJECT_PHASE_HREFS.quotes}>Árajánlatok megnyitása</Link>
         </Button>
       ) : null}
     </div>

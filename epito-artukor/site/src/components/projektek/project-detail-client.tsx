@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect, type CSSProperties } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Plus } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import type { Trade } from "@/types"
 import {
@@ -22,6 +22,9 @@ import {
   buildQuoteSummary,
 } from "@/lib/quote-summary"
 import { ProjectDetailHeader } from "@/components/projektek/project-detail-header"
+import {
+  ProjectStatusStrip,
+} from "@/components/projektek/project-status-strip"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,12 +35,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useProjectBundleLoaded } from "@/hooks/use-project-bundle-loaded"
 import { ProjectQuotesTab } from "@/components/projektek/project-quotes-tab"
 import { ProjectOfferTab } from "@/components/projektek/project-offer-tab"
 import { RfqProjectTab } from "@/components/projektek/rfq-project-tab"
 import { ProjectFilesTab } from "@/components/projektek/project-files-tab"
-import { ProjectOverviewTab } from "@/components/projektek/project-overview-tab"
 import { ProjectExportTab } from "@/components/projektek/project-export-tab"
 import { ProjectCloseDialog } from "@/components/projektek/project-close-dialog"
 import { QuoteImportWizard } from "@/components/projektek/quote-import-wizard"
@@ -47,6 +54,8 @@ import {
 } from "@/components/projektek/project-edit-dialog"
 import { listProjectFiles } from "@/lib/data/project-files-store"
 import { buildProjectOverviewSummary } from "@/lib/project-overview-summary"
+import { buildProjectHeroAction } from "@/lib/project-overview-dashboard"
+import { buildProjectStatusFacts } from "@/lib/project-status-facts"
 import { useTradeOptions } from "@/components/trades/trades-provider"
 import {
   Select,
@@ -60,7 +69,18 @@ import { QUOTE_STATUS_LABELS } from "@/lib/project-labels"
 import { findNavItemByHref } from "@/lib/nav-config"
 import { listHrefForProject } from "@/lib/project-phase"
 
-type Tab = "overview" | "quotes" | "offer" | "rfq" | "files" | "export"
+type Tab = "quotes" | "offer" | "rfq" | "files" | "export"
+
+const PRIMARY_TABS: { id: Tab; label: string }[] = [
+  { id: "quotes", label: "Költségvetés" },
+  { id: "offer", label: "Ügyfélnek" },
+  { id: "rfq", label: "Bekérés" },
+]
+
+const MORE_TABS: { id: Tab; label: string }[] = [
+  { id: "files", label: "Dokumentumok" },
+  { id: "export", label: "Export" },
+]
 
 type ProjectDetailClientProps = {
   projectId: string
@@ -71,13 +91,14 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   const projectLoaded = useProjectBundleLoaded(projectId)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [tab, setTab] = useState<Tab>("overview")
+  const [tab, setTab] = useState<Tab>("quotes")
   const [tick, setTick] = useState(0)
   const [newQuoteOpen, setNewQuoteOpen] = useState(false)
   const [quoteTitle, setQuoteTitle] = useState("Új árajánlat")
   const [quoteTrade, setQuoteTrade] = useState<Trade>("gepeszet")
   const [isVersion, setIsVersion] = useState(false)
   const [supersedesQuoteId, setSupersedesQuoteId] = useState<string>("")
+  const [newQuoteAsPotmunka, setNewQuoteAsPotmunka] = useState(false)
   const [rfqQuoteFilter, setRfqQuoteFilter] = useState<string | null>(null)
   const [rfqAutoOpen, setRfqAutoOpen] = useState(false)
   const [editProjectOpen, setEditProjectOpen] = useState(false)
@@ -89,21 +110,31 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   useEffect(() => {
     const t = searchParams.get("tab")
     const q = searchParams.get("quote")
+    if (t === "overview") {
+      // Legacy: Munka tab megszűnt → Költségvetés (default URL)
+      setTab("quotes")
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete("tab")
+      const qs = params.toString()
+      router.replace(`/projektek/${projectId}${qs ? `?${qs}` : ""}`, { scroll: false })
+      setRfqQuoteFilter(q)
+      return
+    }
     if (
       t === "quotes" ||
       t === "offer" ||
       t === "rfq" ||
-      t === "overview" ||
       t === "files" ||
       t === "export"
-    )
+    ) {
       setTab(t)
+    }
     setRfqQuoteFilter(q)
-  }, [searchParams])
+  }, [searchParams, projectId, router])
 
   const syncUrl = (newTab: Tab, quoteId?: string | null) => {
     const params = new URLSearchParams()
-    if (newTab !== "overview") params.set("tab", newTab)
+    if (newTab !== "quotes") params.set("tab", newTab)
     const q = quoteId !== undefined ? quoteId : rfqQuoteFilter
     if (q) params.set("quote", q)
     const qs = params.toString()
@@ -122,6 +153,26 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     () => (projectLoaded ? listQuotesForProject(projectId) : []),
     [projectId, tick, projectLoaded]
   )
+
+  useEffect(() => {
+    if (!projectLoaded) return
+    if (searchParams.get("newQuote") !== "1") return
+
+    const potmunka = searchParams.get("potmunka") === "1"
+    setNewQuoteAsPotmunka(potmunka)
+    setQuoteTitle(potmunka ? "Pótmunka" : "Új árajánlat")
+    setIsVersion(false)
+    setSupersedesQuoteId("")
+    setTab("quotes")
+    setNewQuoteOpen(true)
+
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("newQuote")
+    params.delete("potmunka")
+    if (params.get("tab") === "quotes") params.delete("tab")
+    const qs = params.toString()
+    router.replace(`/projektek/${projectId}${qs ? `?${qs}` : ""}`, { scroll: false })
+  }, [projectLoaded, searchParams, projectId, router])
 
   useEffect(() => {
     if (!projectLoaded || quotes.length === 0) return
@@ -165,12 +216,40 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     return projectLoaded ? listProjectFiles(projectId).length : 0
   }, [projectId, tick, projectLoaded])
 
-  const overviewHealth = useMemo(() => {
+  const overviewSummary = useMemo(() => {
     void tick
     if (!projectLoaded) return null
-    const o = buildProjectOverviewSummary(projectId)
-    return o ? { health: o.health, label: o.healthLabel } : null
+    return buildProjectOverviewSummary(projectId)
   }, [projectId, tick, projectLoaded])
+
+  const statusStrip = useMemo(() => {
+    void tick
+    if (!projectLoaded) return null
+    const facts = buildProjectStatusFacts(projectId)
+    const hero = buildProjectHeroAction(projectId)
+    const alert =
+      hero.tone === "error"
+        ? {
+            message: hero.title,
+            actionLabel: hero.actionLabel,
+            action: hero.action,
+            quoteId: hero.quoteId ?? null,
+          }
+        : null
+
+    return {
+      facts: facts.facts,
+      grossLabel: facts.grossLabel,
+      alert,
+    }
+  }, [projectId, tick, projectLoaded])
+
+  const statusLine = useMemo(() => {
+    if (!overviewSummary) return null
+    const first = overviewSummary.attention[0]
+    if (first) return first.message
+    return overviewSummary.healthLabel
+  }, [overviewSummary])
 
   const openRfqDialog = (quoteId?: string) => {
     const targetQuote = quoteId ? quotes.find((q) => q.id === quoteId) : quotes[0]
@@ -189,6 +268,26 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     setRfqAutoOpen(true)
   }
 
+  const goToTab = (newTab: Tab, quoteId?: string | null) => {
+    setTab(newTab)
+    syncUrl(newTab, newTab === "rfq" ? quoteId ?? rfqQuoteFilter : null)
+  }
+
+  const handleCriticalAlert = () => {
+    const alert = statusStrip?.alert
+    if (!alert) return
+    if (alert.action === "navigate_rfq") {
+      if (alert.quoteId) setRfqQuoteFilter(alert.quoteId)
+      goToTab("rfq", alert.quoteId)
+      return
+    }
+    if (alert.action === "create_quote") {
+      setNewQuoteOpen(true)
+      return
+    }
+    goToTab("quotes")
+  }
+
   if (!projectLoaded) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
@@ -202,7 +301,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
   }
 
   const handleCreateQuote = () => {
-    const title = quoteTitle.trim() || "Új árajánlat"
+    const title = quoteTitle.trim() || (newQuoteAsPotmunka ? "Pótmunka" : "Új árajánlat")
     const q = createQuote(projectId, title, {
       primaryTrade: quoteTrade,
       supersedesQuoteId: isVersion && supersedesQuoteId ? supersedesQuoteId : undefined,
@@ -210,6 +309,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     setNewQuoteOpen(false)
     setIsVersion(false)
     setSupersedesQuoteId("")
+    setNewQuoteAsPotmunka(false)
     refresh()
     router.push(`/projektek/${projectId}/ajanlat/${q.id}`)
   }
@@ -245,15 +345,6 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     toast.success("Árajánlat archiválva")
   }
 
-  const handleExportPdf = (quoteId: string) => {
-    const summary = quoteSummaries.get(quoteId)
-    if (!summary?.readiness.canExportPdf) {
-      toast.error("PDF export csak teljesen árazott ajánlathoz érhető el")
-      return
-    }
-    toast.info("PDF export hamarosan — az ajánlat küldésre kész")
-  }
-
   const handleSaveProject = (form: ProjectEditForm) => {
     updateProject(projectId, form)
     setEditProjectOpen(false)
@@ -261,14 +352,12 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     toast.success("Projekt adatai mentve")
   }
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "overview", label: "Áttekintés" },
-    { id: "quotes", label: "Költségvetés" },
-    { id: "offer", label: "Árajánlat" },
-    { id: "rfq", label: "Alvállalkozók" },
-    { id: "export", label: "Export" },
-    { id: "files", label: fileCount > 0 ? `Dokumentumok (${fileCount})` : "Dokumentumok" },
-  ]
+  const moreTabs = MORE_TABS.map((t) =>
+    t.id === "files" && fileCount > 0
+      ? { ...t, label: `Dokumentumok (${fileCount})` }
+      : t
+  )
+  const moreActive = moreTabs.some((t) => t.id === tab)
 
   const phaseNavItem = findNavItemByHref(listHrefForProject(project))
   const accentStyle = {
@@ -280,7 +369,7 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
     <div style={accentStyle} className="contents">
       <ProjectDetailHeader
         project={project}
-        health={overviewHealth}
+        statusLine={statusLine}
         onEdit={() => setEditProjectOpen(true)}
         onClose={
           project.status === "won" || project.status === "in_progress"
@@ -289,17 +378,30 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         }
       />
 
-      <div className="mb-6 flex gap-1 border-b">
-        {tabs.map((t) => (
+      {statusStrip ? (
+        <ProjectStatusStrip
+          facts={statusStrip.facts}
+          grossLabel={statusStrip.grossLabel}
+          alert={
+            statusStrip.alert
+              ? {
+                  message: statusStrip.alert.message,
+                  actionLabel: statusStrip.alert.actionLabel,
+                  onAction: handleCriticalAlert,
+                }
+              : null
+          }
+        />
+      ) : null}
+
+      <div className="mb-6 flex flex-wrap items-end gap-1 border-b">
+        {PRIMARY_TABS.map((t) => (
           <button
             key={t.id}
             type="button"
-            onClick={() => {
-              setTab(t.id)
-              syncUrl(t.id, t.id === "rfq" ? rfqQuoteFilter : null)
-            }}
+            onClick={() => goToTab(t.id, t.id === "rfq" ? rfqQuoteFilter : null)}
             className={cn(
-              "border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+              "border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
               tab === t.id
                 ? "border-[var(--page-accent)] text-[var(--page-accent)]"
                 : "border-transparent text-slate-500 hover:text-slate-800"
@@ -308,23 +410,39 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
             {t.label}
           </button>
         ))}
-      </div>
 
-      {tab === "overview" ? (
-        <ProjectOverviewTab
-          projectId={projectId}
-          tick={tick}
-          onDuplicate={handleDuplicateQuote}
-          onDelete={handleDeleteQuote}
-          onArchive={handleArchiveQuote}
-          onStartRfq={openRfqDialog}
-          onExportPdf={handleExportPdf}
-          onOpenOfferTab={() => {
-            setTab("offer")
-            syncUrl("offer", null)
-          }}
-        />
-      ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex items-center gap-1 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
+                moreActive
+                  ? "border-[var(--page-accent)] text-[var(--page-accent)]"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              )}
+            >
+              Több
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[11rem] p-1">
+            {moreTabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={cn(
+                  "flex w-full items-center rounded-sm px-3 py-2.5 text-left text-sm font-medium hover:bg-slate-100",
+                  tab === t.id && "bg-slate-50 text-[var(--page-accent)]"
+                )}
+                onClick={() => goToTab(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       {tab === "quotes" ? (
         <ProjectQuotesTab
@@ -332,13 +450,21 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
           projectId={projectId}
           quotes={quotes}
           quoteSummaries={quoteSummaries}
-          onNewQuote={() => setNewQuoteOpen(true)}
+          tick={tick}
+          onNewQuote={(opts) => {
+            setNewQuoteAsPotmunka(opts?.potmunka === true)
+            setQuoteTitle(opts?.potmunka ? "Pótmunka" : "Új árajánlat")
+            setIsVersion(false)
+            setSupersedesQuoteId("")
+            setNewQuoteOpen(true)
+          }}
           onImportQuote={() => setQuoteImportOpen(true)}
           onDuplicate={handleDuplicateQuote}
           onDelete={handleDeleteQuote}
           onArchive={handleArchiveQuote}
           onStartRfq={openRfqDialog}
-          onExportPdf={handleExportPdf}
+          onOpenOfferTab={() => goToTab("offer")}
+          onRefresh={refresh}
         />
       ) : null}
 
@@ -381,12 +507,26 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
         />
       ) : null}
 
-      <Dialog open={newQuoteOpen} onOpenChange={setNewQuoteOpen}>
+      <Dialog
+        open={newQuoteOpen}
+        onOpenChange={(open) => {
+          setNewQuoteOpen(open)
+          if (!open) setNewQuoteAsPotmunka(false)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Új szakági ajánlat</DialogTitle>
+            <DialogTitle>
+              {newQuoteAsPotmunka ? "Pótmunka szakág" : "Új szakági ajánlat"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {newQuoteAsPotmunka ? (
+              <p className="text-sm text-slate-600">
+                Új munka a szerződéshez. Árazás után az Ügyfélnek fülön kiegészítő ajánlatként
+                küldheted.
+              </p>
+            ) : null}
             <div className="space-y-2">
               <Label>Szakág</Label>
               <Select value={quoteTrade} onValueChange={(v) => setQuoteTrade(v as Trade)}>
@@ -406,39 +546,43 @@ export function ProjectDetailClient({ projectId }: ProjectDetailClientProps) {
               <Label>Megnevezés</Label>
               <Input value={quoteTitle} onChange={(e) => setQuoteTitle(e.target.value)} />
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={isVersion}
-                onChange={(e) => setIsVersion(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300"
-              />
-              Verzió — egy meglévő ajánlat új változata
-            </label>
-            {isVersion ? (
-              <div className="space-y-2">
-                <Label>Melyik ajánlatot váltja fel?</Label>
-                <Select value={supersedesQuoteId} onValueChange={setSupersedesQuoteId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Válassz ajánlatot…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {quotes
-                      .filter((q) => q.status !== "archived" && q.primaryTrade === quoteTrade)
-                      .map((q) => (
-                        <SelectItem key={q.id} value={q.id}>
-                          {q.title} ({QUOTE_STATUS_LABELS[q.status]})
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500">
-                Több ajánlat is lehet ugyanarra a szakágra — később az Árajánlat fülön választod ki,
-                melyik megy az ügyfélnek.
-              </p>
-            )}
+            {!newQuoteAsPotmunka ? (
+              <>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={isVersion}
+                    onChange={(e) => setIsVersion(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  Verzió — egy meglévő ajánlat új változata
+                </label>
+                {isVersion ? (
+                  <div className="space-y-2">
+                    <Label>Melyik ajánlatot váltja fel?</Label>
+                    <Select value={supersedesQuoteId} onValueChange={setSupersedesQuoteId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Válassz ajánlatot…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {quotes
+                          .filter((q) => q.status !== "archived" && q.primaryTrade === quoteTrade)
+                          .map((q) => (
+                            <SelectItem key={q.id} value={q.id}>
+                              {q.title} ({QUOTE_STATUS_LABELS[q.status]})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Több ajánlat is lehet ugyanarra a szakágra — később az Árajánlat fülön választod
+                    ki, melyik megy az ügyfélnek.
+                  </p>
+                )}
+              </>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewQuoteOpen(false)}>

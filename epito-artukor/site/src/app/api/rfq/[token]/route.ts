@@ -2,9 +2,11 @@ import { NextResponse } from "next/server"
 import type {
   RfqCampaign,
   RfqInvitation,
+  SubcontractorRfq,
   SubcontractorRfqSubmission,
 } from "@/types/projects"
 import { computeSubmissionTotal } from "@/lib/rfq-migration"
+import { isSameRfqPartner } from "@/lib/rfq-public-export/build-export-model"
 import { loadBundleFromDb, syncBundleToDb } from "@/lib/server/projects-bundle-db"
 import { createSupabaseServiceClient } from "@/lib/supabase/service"
 import { clearPinFailures, isPinLocked, recordPinFailure } from "@/lib/server/pin-lockout"
@@ -99,22 +101,87 @@ export async function GET(request: Request, { params }: RouteParams) {
       ? (bundle.rfqCampaigns?.find((c) => c.id === pkg.campaignId) ?? null)
       : null
 
+    const packageDecision = (bundle.rfqDecisionLogs ?? [])
+      .filter((l) => l.packageId === pkg.id)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+
+    const packageDecided = pkg.status === "decided"
+    const youWon = invitation.status === "accepted"
+    const youLost =
+      invitation.status === "rejected" ||
+      (packageDecided && invitation.status !== "accepted")
+
+    // Ugyanarra a projektre vonatkozó, ugyanazon partner meghívói (Excel több szakág)
+    const siblingInvitations = bundle.rfqInvitations.filter((inv) => {
+      if (inv.id === invitation.id) return true
+      const siblingPkg = bundle.rfqs.find((r) => r.id === inv.packageId)
+      if (!siblingPkg || siblingPkg.projectId !== pkg.projectId) return false
+      return isSameRfqPartner(invitation, inv)
+    })
+
+    const exportPackages: Array<{
+      rfq: SubcontractorRfq
+      submission: SubcontractorRfqSubmission | null
+      invitationId: string
+      invitationStatus: string
+      isCurrent: boolean
+    }> = []
+    const seenPackageIds = new Set<string>()
+    for (const inv of siblingInvitations) {
+      const siblingPkg = bundle.rfqs.find((r) => r.id === inv.packageId)
+      if (!siblingPkg || seenPackageIds.has(siblingPkg.id)) continue
+      seenPackageIds.add(siblingPkg.id)
+      exportPackages.push({
+        rfq: siblingPkg,
+        submission:
+          bundle.submissions.find((s) => s.invitationId === inv.id) ?? null,
+        invitationId: inv.id,
+        invitationStatus: inv.status,
+        isCurrent: inv.id === invitation.id,
+      })
+    }
+    if (!exportPackages.some((p) => p.isCurrent)) {
+      exportPackages.unshift({
+        rfq: pkg,
+        submission: submission ?? null,
+        invitationId: invitation.id,
+        invitationStatus: invitation.status,
+        isCurrent: true,
+      })
+    }
+
     // Mértékegység-címkék a sorokhoz (a kliens nem lát törzsadatot)
-    const unitIds = [...new Set(pkg.lines.map((l) => l.unitId))]
-    const { data: unitRows } = await supabase
-      .from("units")
-      .select("id, code")
-      .in("id", unitIds)
+    const unitIds = [
+      ...new Set(exportPackages.flatMap((p) => p.rfq.lines.map((l) => l.unitId))),
+    ]
     const units: Record<string, string> = {}
-    for (const u of unitRows ?? []) units[u.id] = u.code
+    if (unitIds.length > 0) {
+      const { data: unitRows } = await supabase
+        .from("units")
+        .select("id, code")
+        .in("id", unitIds)
+      for (const u of unitRows ?? []) units[u.id] = u.code
+    }
 
     return NextResponse.json({
       invitation: sanitizeInvitation(invitation),
       rfq: pkg,
-      project,
+      project: project
+        ? {
+            id: project.id,
+            name: project.name,
+            siteAddress: project.siteAddress,
+            code: project.code,
+          }
+        : null,
       submission: submission ?? null,
       campaign,
       units,
+      exportPackages,
+      packageDecided,
+      youWon,
+      youLost,
+      decidedAt: packageDecision?.createdAt ?? null,
     })
   } catch (error) {
     console.error("rfq GET:", error)
@@ -132,7 +199,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     const body = (await request.json()) as Omit<
       SubcontractorRfqSubmission,
       "id" | "rfqId" | "invitationId" | "submittedAt" | "updatedAt"
-    > & { accessCode?: string }
+    > & { accessCode?: string; targetInvitationId?: string }
 
     if (isPinLocked(token)) {
       return NextResponse.json({ error: "Túl sok hibás kód — próbáld 15 perc múlva." }, { status: 429 })
@@ -146,8 +213,32 @@ export async function POST(request: Request, { params }: RouteParams) {
     const supabase = createSupabaseServiceClient()
     const bundle = await loadBundleFromDb(supabase, found.orgId)
 
-    const invIdx = bundle.rfqInvitations.findIndex((i) => i.id === found.row.id)
-    if (invIdx < 0) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const entryInvIdx = bundle.rfqInvitations.findIndex((i) => i.id === found.row.id)
+    if (entryInvIdx < 0) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+    const entryInvitation = bundle.rfqInvitations[entryInvIdx]
+
+    let invIdx = entryInvIdx
+    if (body.targetInvitationId && body.targetInvitationId !== entryInvitation.id) {
+      const targetIdx = bundle.rfqInvitations.findIndex(
+        (i) => i.id === body.targetInvitationId
+      )
+      if (targetIdx < 0) {
+        return NextResponse.json({ error: "A cél meghívás nem található" }, { status: 404 })
+      }
+      const target = bundle.rfqInvitations[targetIdx]
+      if (!isSameRfqPartner(entryInvitation, target)) {
+        return NextResponse.json({ error: "Nem a te meghívásod" }, { status: 403 })
+      }
+      // PIN egyezés (kampányon belül egységesített, vagy azonos kód)
+      if (
+        target.accessCode !== entryInvitation.accessCode &&
+        body.accessCode.trim() !== target.accessCode
+      ) {
+        return NextResponse.json({ error: "Hibás belépőkód" }, { status: 403 })
+      }
+      invIdx = targetIdx
+    }
 
     const invitation = bundle.rfqInvitations[invIdx]
     const pkgIdx = bundle.rfqs.findIndex((r) => r.id === invitation.packageId)

@@ -128,6 +128,16 @@ export function listRfqPackagesForQuoteEditor(
     .filter((p) => p.needsDecision || p.canChangeWinner)
 }
 
+/** Minden bekérés-csomag a szakágon — belépők (link+PIN) megjelenítéséhez, döntés után is. */
+export function listAllRfqPackagesForQuote(
+  quoteId: string,
+  quoteLines: QuoteLine[]
+): PendingRfqPackage[] {
+  return listRfqsForQuote(quoteId)
+    .map((pkg) => buildPackageSummary(pkg, quoteLines))
+    .sort((a, b) => new Date(b.pkg.createdAt).getTime() - new Date(a.pkg.createdAt).getTime())
+}
+
 export function listPendingRfqPackagesForQuote(
   quoteId: string,
   quoteLines: QuoteLine[]

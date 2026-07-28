@@ -3,12 +3,8 @@
 import dynamic from "next/dynamic"
 import { useEffect, useMemo, useState, type CSSProperties } from "react"
 import Link from "next/link"
-import {
-  BookOpen,
-  MoreHorizontal,
-  Plus,
-  Send,
-} from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Plus, Send } from "lucide-react"
 import { toast } from "sonner"
 import type { QuotePriceSide, QuoteVatMode } from "@/types/projects"
 import type { CostItem, Trade } from "@/types"
@@ -18,7 +14,7 @@ import {
   addManualQuoteLine,
   addQuoteLineFromCostItem,
   applyCatalogPricesToLine,
-  applyCatalogToUnpricedLines,
+  duplicateQuote,
   getProject,
   getQuote,
   listQuoteLines,
@@ -38,12 +34,12 @@ import { formatHuf } from "@/lib/pricing"
 import { findNavItemByHref } from "@/lib/nav-config"
 import { listHrefForProject } from "@/lib/project-phase"
 import {
-  QUOTE_VAT_OPTIONS,
   buildClientQuoteReadiness,
   buildQuoteTradeBreakdown,
   calcQuoteVatTotals,
   resolveQuoteVatMode,
 } from "@/lib/quote-client-summary"
+import { getMinAcceptableMarginPercent } from "@/lib/quote-summary"
 import { loadUnits, unitMap } from "@/lib/data/units-store"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -54,11 +50,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   costSourceFilterDotKind,
   costSourceKindDotClass,
@@ -74,9 +65,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { QuoteEditorCommandBar, type QuoteEditorTab } from "@/components/projektek/quote-editor-command-bar"
+import { QuoteContractActionsBanner } from "@/components/projektek/quote-contract-actions-banner"
 import type { QuoteClientSubView } from "@/components/projektek/quote-client-panel"
 import { QuoteCostSpreadsheet } from "@/components/projektek/quote-cost-spreadsheet"
-import type { SheetDensity } from "@/lib/quote-sheet-layout"
 import {
   buildQuoteEditorStatusChip,
 } from "@/components/projektek/quote-editor-status-chip"
@@ -107,6 +98,7 @@ type QuoteEditorClientProps = {
 }
 
 export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps) {
+  const router = useRouter()
   const editorReady = useProjectBundleLoaded(projectId)
   const [costItemsReady, setCostItemsReady] = useState(false)
   const [tick, setTick] = useState(0)
@@ -117,39 +109,9 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
   const [manualText, setManualText] = useState("")
   const [manualUnitId, setManualUnitId] = useState("")
   const [costSourceFilter, setCostSourceFilter] = useState<CostSourceFilter>("all")
-  const [sellSubView, setSellSubView] = useState<QuoteClientSubView>("summary")
+  const [sellSubView, setSellSubView] = useState<QuoteClientSubView>("lines")
   const [expandedBidLineId, setExpandedBidLineId] = useState<string | null>(null)
-  const [excelMode, setExcelMode] = useState(false)
-  const [sheetDensity, setSheetDensity] = useState<SheetDensity>("compact")
-
-  useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem("ea-quote-excel-mode")
-      if (stored === "1") setExcelMode(true)
-      const density = sessionStorage.getItem("ea-quote-sheet-density")
-      if (density === "normal") setSheetDensity("normal")
-    } catch {
-      /* ignore */
-    }
-  }, [])
-
-  const toggleExcelMode = (next: boolean) => {
-    setExcelMode(next)
-    try {
-      sessionStorage.setItem("ea-quote-excel-mode", next ? "1" : "0")
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const toggleSheetDensity = (next: SheetDensity) => {
-    setSheetDensity(next)
-    try {
-      sessionStorage.setItem("ea-quote-sheet-density", next)
-    } catch {
-      /* ignore */
-    }
-  }
+  const [revising, setRevising] = useState(false)
 
   const refresh = () => setTick((t) => t + 1)
 
@@ -175,6 +137,16 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     [quote, project]
   )
   const contractPriceLocked = quote?.status === "accepted" && contract?.isContracted === true
+  const supersededContract = useMemo(() => {
+    if (!quote?.supersedesQuoteId || quote.status === "accepted" || quote.status === "archived") {
+      return null
+    }
+    return getQuoteContractContext(projectId, quote.supersedesQuoteId)
+  }, [quote, projectId, tick])
+  const isClientRevisionDraft =
+    quote?.status === "draft" &&
+    !!quote.supersedesQuoteId &&
+    supersededContract?.isContracted === true
   const priceSide: QuotePriceSide =
     editorTab === "execution" ? "cost" : editorTab
 
@@ -217,21 +189,6 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
   const activeLineKindCounts = useMemo(
     () => countLinesByVisualKind(activeLines),
     [activeLines]
-  )
-
-  const costFilterOptions = useMemo(
-    () =>
-      [
-        ["all", `Mind (${activeLines.length})`],
-        ["subcontractor", `Alváll. (${activeLineKindCounts.subcontractor})`],
-        [
-          "estimated",
-          `Becsült (${activeLineKindCounts.catalog + activeLineKindCounts.manual})`,
-        ],
-        ["rfq_pending", `Vár (${activeLineKindCounts.rfq_pending})`],
-        ["unpriced", `Árazatlan (${activeLineKindCounts.unpriced})`],
-      ] as const,
-    [activeLines.length, activeLineKindCounts]
   )
 
   const isSpreadsheetLayout =
@@ -298,13 +255,6 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     () => new Set(lines.map((l) => l.costItemId).filter(Boolean) as string[]),
     [lines]
   )
-
-  const catalogFillableCount = useMemo(() => {
-    return lines.filter((l) => {
-      if (!l.costItemId) return false
-      return l.costMaterialUnitPrice === 0 && l.costLaborUnitPrice === 0
-    }).length
-  }, [lines])
 
   const statusChip = useMemo(
     () =>
@@ -394,67 +344,80 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
     refresh()
   }
 
-  const handleBulkCatalogFill = () => {
-    const n = applyCatalogToUnpricedLines(quoteId, quoteTrade)
-    refresh()
-    if (n > 0) {
-      toast.success(`${n} tétel kitöltve az ártükörből`)
-    } else {
-      toast.info("Nincs kitölthető árazatlan tétel az ártükörben")
-    }
-  }
-
   const handleVatChange = (value: QuoteVatMode) => {
     if (!quote) return
     updateQuote(quote.id, { vatMode: value })
     refresh()
   }
 
-  const vatSelect = (
-    <Select
-      value={clientVatMode}
-      onValueChange={(v) => handleVatChange(v as QuoteVatMode)}
-      disabled={isReadOnly || contractPriceLocked}
-    >
-      <SelectTrigger className="h-7 w-[9.5rem] shrink-0 text-xs">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {QUOTE_VAT_OPTIONS.map((opt) => (
-          <SelectItem key={opt.id} value={opt.id} className="text-xs">
-            {opt.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
+  const handleStatusChipClick = () => {
+    if (lines.length === 0) {
+      setAddOpen(true)
+      return
+    }
+    if (editorTab === "execution") return
+    if (unpricedCount > 0) {
+      setEditorTab("cost")
+      setCostSourceFilter("unpriced")
+      return
+    }
+    const marginPct = clientBreakdown?.totals.marginPercent ?? marginPercent
+    if (marginPct != null && marginPct < getMinAcceptableMarginPercent()) {
+      if (!contractPriceLocked) setEditorTab("markup")
+      return
+    }
+    if (clientReadiness?.canSend) {
+      setEditorTab("sell")
+      return
+    }
+    setEditorTab("cost")
+  }
+
+  const handleNewClientOfferRevision = () => {
+    setRevising(true)
+    try {
+      const copy = duplicateQuote(quoteId)
+      if (!copy) {
+        toast.error("Nem sikerült az új verzió létrehozása")
+        return
+      }
+      toast.success(
+        "Új verzió kész — módosítsd az árakat, majd az Ügyfél fülön küldd el az ügyfélnek"
+      )
+      router.push(`/projektek/${projectId}/ajanlat/${copy.id}`)
+    } finally {
+      setRevising(false)
+    }
+  }
+
+  const handlePotmunka = () => {
+    router.push(`/projektek/${projectId}?tab=quotes&newQuote=1&potmunka=1`)
+  }
+
+  const handleTrackCostOnly = () => {
+    setEditorTab("cost")
+    toast.message("Bekerülés követése", {
+      description: "Az ügyfélár zárva marad — csak a költséget módosíthatod.",
+    })
+  }
 
   const commandBarTools =
     priceSide === "cost" ? (
       <>
-        <Button size="sm" className="h-7 shrink-0 px-2 text-xs" onClick={() => setAddOpen(true)} disabled={isReadOnly}>
+        <Button
+          size="sm"
+          className="h-7 shrink-0 px-2 text-xs"
+          onClick={() => setAddOpen(true)}
+          disabled={isReadOnly || contractPriceLocked}
+          title={
+            contractPriceLocked
+              ? "Szerződésben — új tételhez pótmunka szakág kell"
+              : undefined
+          }
+        >
           <Plus className="mr-1 h-3.5 w-3.5" />
           Tétel
         </Button>
-        {catalogFillableCount > 0 ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-7 w-7 shrink-0 p-0">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[10rem] p-1">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-slate-100"
-                onClick={handleBulkCatalogFill}
-              >
-                <BookOpen className="h-4 w-4" />
-                Kitöltés ({catalogFillableCount})
-              </button>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
         <Button asChild variant="outline" size="sm" className="h-7 shrink-0 px-2 text-xs">
           <Link href={`/projektek/${projectId}?tab=rfq&quote=${quoteId}&openRfq=1`}>
             <Send className="mr-1 h-3 w-3" />
@@ -462,115 +425,119 @@ export function QuoteEditorClient({ projectId, quoteId }: QuoteEditorClientProps
           </Link>
         </Button>
       </>
-    ) : priceSide === "sell" ? (
-      vatSelect
     ) : null
 
   const commandBarTotals =
     editorTab === "execution" ? (
-      <span className="inline-flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5">
-        <span>
-          <span className="text-slate-600">Kész </span>
-          <span className="font-bold text-emerald-900">
-            {executionStats.done}/{executionStats.total}
-          </span>
-        </span>
-        <span className="text-slate-300">·</span>
-        <span>
-          <span className="text-slate-600">Fedezet </span>
-          <span className="font-bold text-emerald-900">
-            {formatHuf(executionFinancials.margin)}
-          </span>
+      <div className="leading-tight">
+        <p className="text-[10px] text-slate-500">Készültség</p>
+        <p className="text-sm font-bold tabular-nums text-emerald-900">
+          {executionStats.resolved}/{executionStats.total}
           {executionFinancials.marginPercent != null ? (
-            <span className="text-slate-500"> ({executionFinancials.marginPercent}%)</span>
+            <span className="ml-1.5 text-xs font-semibold text-slate-600">
+              · {executionFinancials.marginPercent}%
+            </span>
           ) : null}
-        </span>
-      </span>
+        </p>
+      </div>
     ) : priceSide === "cost" ? (
-      <>
-        <span className="text-slate-600">Bekerülés </span>
-        <span className="text-sm font-bold text-slate-900">{formatHuf(costTotals.total)}</span>
-      </>
+      <div className="leading-tight">
+        <p className="text-[10px] text-slate-500">Nettó bekerülés</p>
+        <p className="text-sm font-bold tabular-nums text-slate-900">{formatHuf(costTotals.total)}</p>
+      </div>
     ) : priceSide === "markup" ? (
-      <>
-        <span className="text-slate-600">Ügyfél </span>
-        <span className="text-sm font-bold text-blue-900">
-          {formatHuf(activeMarkupTotals.sellTotal)}
-        </span>
-      </>
+      <div className="leading-tight">
+        <p className="text-[10px] text-slate-500">
+          Marad nekem
+          {activeMarkupTotals.marginPercent != null
+            ? ` · ${activeMarkupTotals.marginPercent}%`
+            : ""}
+        </p>
+        <p className="text-sm font-bold tabular-nums text-emerald-900">
+          {formatHuf(activeMarkupTotals.marginTotal)}
+        </p>
+      </div>
     ) : clientVatTotals ? (
-      <>
-        <span className="text-slate-600">Bruttó </span>
-        <span className="text-sm font-bold text-blue-900">
+      <div className="leading-tight">
+        <p className="text-[10px] text-slate-500">Bruttó ügyfélnek</p>
+        <p className="text-sm font-bold tabular-nums text-blue-900">
           {formatHuf(clientVatTotals.grossTotal)}
-        </span>
-      </>
+        </p>
+      </div>
     ) : (
       <span className="text-slate-400">—</span>
     )
 
-  const sellSubNavToggle = (
-    <div className="flex shrink-0 rounded-md border p-0.5">
-      <Button
-        type="button"
-        size="sm"
-        variant={sellSubView === "summary" ? "secondary" : "ghost"}
-        className="h-7 px-2 text-xs"
-        onClick={() => setSellSubView("summary")}
-      >
-        Összesítő
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant={sellSubView === "lines" ? "secondary" : "ghost"}
-        className="h-7 px-2 text-xs"
-        onClick={() => setSellSubView("lines")}
-      >
-        Tételek
-      </Button>
-    </div>
-  )
-
-const footerSummaryLabel =
+  const footerSummaryLabel =
     editorTab === "cost" && costSourceFilter !== "all"
       ? `Szűrt összeg (${displayLines.length} tétel)`
       : "Összesen"
 
-  const renderCostFilterChips = () => (
-    <div className="flex flex-wrap gap-1">
-      {costFilterOptions.map(([id, label]) => {
-        const dotKind = costSourceFilterDotKind(id)
-        return (
+  const showCostFilters =
+    editorTab === "cost" &&
+    (costSourceFilter !== "all" ||
+      activeLineKindCounts.unpriced > 0 ||
+      activeLineKindCounts.rfq_pending > 0)
+
+  const renderCostFilterChips = () => {
+    if (!showCostFilters) return null
+
+    const chips: { id: CostSourceFilter; label: string; count: number }[] = (
+      [
+        {
+          id: "unpriced" as const,
+          label: "Árazatlan",
+          count: activeLineKindCounts.unpriced,
+        },
+        {
+          id: "rfq_pending" as const,
+          label: "Vár",
+          count: activeLineKindCounts.rfq_pending,
+        },
+      ] satisfies { id: CostSourceFilter; label: string; count: number }[]
+    ).filter((c) => c.count > 0 || costSourceFilter === c.id)
+
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {costSourceFilter !== "all" ? (
           <Button
-            key={id}
             type="button"
             size="sm"
-            variant={costSourceFilter === id ? "default" : "outline"}
-            className="h-6 gap-1 px-2 text-[11px] font-normal"
-            onClick={() => setCostSourceFilter(id)}
+            variant="ghost"
+            className="h-6 px-2 text-[11px] font-normal text-slate-600"
+            onClick={() => setCostSourceFilter("all")}
           >
-            {id !== "all" ? (
+            Mind
+          </Button>
+        ) : null}
+        {chips.map(({ id, label, count }) => {
+          const dotKind = costSourceFilterDotKind(id)
+          return (
+            <Button
+              key={id}
+              type="button"
+              size="sm"
+              variant={costSourceFilter === id ? "default" : "outline"}
+              className="h-6 gap-1 px-2 text-[11px] font-normal"
+              onClick={() =>
+                setCostSourceFilter(costSourceFilter === id ? "all" : id)
+              }
+            >
               <span
                 className={cn(
                   "h-2 w-2 shrink-0 rounded-full",
                   costSourceKindDotClass(dotKind === "all" ? "catalog" : dotKind)
                 )}
               />
-            ) : null}
-            {label}
-          </Button>
-        )
-      })}
-    </div>
-  )
-
-  const commandBarSubNav =
-    editorTab === "sell" ? (
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-        {sellSubNavToggle}
+              {label} ({count})
+            </Button>
+          )
+        })}
       </div>
-    ) : null
+    )
+  }
+
+  const commandBarSubNav = null
 
   const commandBarSubNavExtra = editorTab === "cost" ? renderCostFilterChips() : undefined
 
@@ -596,17 +563,51 @@ const footerSummaryLabel =
         executionMode={executionMode}
         contractPriceLocked={contractPriceLocked}
         statusChip={statusChip}
+        onStatusChipClick={handleStatusChipClick}
         tools={commandBarTools}
         totals={commandBarTotals}
         subNav={commandBarSubNav}
         subNavExtra={commandBarSubNavExtra}
-        excelMode={excelMode}
-        onExcelModeChange={toggleExcelMode}
-        showExcelModeToggle={editorTab === "cost" || editorTab === "markup"}
-        sheetDensity={sheetDensity}
-        onSheetDensityChange={toggleSheetDensity}
-        showSheetDensityToggle={editorTab === "cost" || editorTab === "markup"}
       />
+
+      {contractPriceLocked ? (
+        <QuoteContractActionsBanner
+          packageTitle={contract?.packageTitle}
+          hasDrift={contract?.hasDrift}
+          busy={revising}
+          onNewClientOffer={handleNewClientOfferRevision}
+          onPotmunka={handlePotmunka}
+          onTrackCost={handleTrackCostOnly}
+        />
+      ) : isClientRevisionDraft ? (
+        <div className="shrink-0 border-b border-blue-200 bg-blue-50 px-4 py-3">
+          <p className="text-base font-semibold text-blue-950">
+            Szerződés új változata — még nincs elküldve
+          </p>
+          <p className="mt-1 text-sm text-blue-900">
+            Módosítsd a fedezetet / tételeket, majd az{" "}
+            <strong>Ügyfél</strong> fülön állítsd össze és küldd el. Elfogadásig a régi szerződés
+            él.
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              className="h-11 text-sm font-semibold"
+              onClick={() => setEditorTab("markup")}
+            >
+              Fedezet módosítása
+            </Button>
+            <Button type="button" variant="outline" className="h-11 text-sm font-semibold" asChild>
+              <Link href={`/projektek/${projectId}?tab=offer`}>Ügyfélnek fül</Link>
+            </Button>
+          </div>
+        </div>
+      ) : contract?.hasDrift ? (
+        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <strong>Az élő ár eltér a kiküldött szerződéstől.</strong> A TIG és az ügyfélár a
+          szerződés szerint számít — a bekerülés változása csak a fedezetet érinti.
+        </div>
+      ) : null}
 
       {editorTab === "execution" ? (
         <QuoteExecutionPanel
@@ -619,7 +620,7 @@ const footerSummaryLabel =
         />
       ) : (
         <>
-          {editorTab === "cost" && !excelMode ? (
+          {editorTab === "cost" ? (
             <div className="shrink-0 pt-0.5">
               <QuoteRfqPanel quote={quote} quoteId={quoteId} lines={lines} onRefresh={refresh} />
             </div>
@@ -634,28 +635,28 @@ const footerSummaryLabel =
                 displayLines={activeLines}
                 quoteTrade={quoteTrade}
                 readOnly={contractPriceLocked}
-                excelMode={excelMode}
-                sheetDensity={sheetDensity}
                 onRefresh={refresh}
               />
             </div>
           ) : null}
 
           {editorTab === "sell" && quote && project ? (
-            <>
-              {contractPriceLocked ? (
-                <div className="shrink-0 border-b border-blue-200 bg-blue-50/80 px-3 py-2 text-xs text-blue-950 sm:px-4">
-                  Szerződött ügyfélár — csak megtekintés. A készültség és élő fedezet a{" "}
-                  <strong>Kivitelezés</strong> fülön van.
-                </div>
-              ) : null}
-              <QuoteClientPanel
-                quote={quote}
-                lines={lines}
-                displayLines={activeLines}
-                subView={sellSubView}
-              />
-            </>
+            <QuoteClientPanel
+              quote={quote}
+              lines={lines}
+              displayLines={activeLines}
+              subView={sellSubView}
+              onSubViewChange={setSellSubView}
+              projectId={projectId}
+              readiness={clientReadiness}
+              contractPriceLocked={contractPriceLocked}
+              readOnly={isReadOnly}
+              onVatChange={handleVatChange}
+              onGoToCost={() => setEditorTab("cost")}
+              onGoToMarkup={() => {
+                if (!contractPriceLocked) setEditorTab("markup")
+              }}
+            />
           ) : null}
 
           {editorTab === "cost" ? (
@@ -667,8 +668,6 @@ const footerSummaryLabel =
                 displayLines={displayLines}
                 costItems={loadCostItems()}
                 isReadOnly={isReadOnly}
-                excelMode={excelMode}
-                sheetDensity={sheetDensity}
                 footerLabel={footerSummaryLabel}
                 costSourceFilterActive={costSourceFilter !== "all"}
                 onClearFilter={() => setCostSourceFilter("all")}

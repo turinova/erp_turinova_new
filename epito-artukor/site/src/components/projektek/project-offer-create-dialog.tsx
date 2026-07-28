@@ -34,6 +34,10 @@ type ProjectOfferCreateDialogProps = {
   projectId: string
   selectable: QuoteWithSummary[]
   draftLockedIds: Set<string>
+  /** Költségvetés kijelölésből előre bepipálva */
+  initialQuoteIds?: string[]
+  /** Ha van szerződés, alapból kiegészítő */
+  defaultType?: CustomerPackageType
   onCreated: () => void
 }
 
@@ -43,6 +47,8 @@ export function ProjectOfferCreateDialog({
   projectId,
   selectable,
   draftLockedIds,
+  initialQuoteIds,
+  defaultType = "full",
   onCreated,
 }: ProjectOfferCreateDialogProps) {
   const [title, setTitle] = useState("")
@@ -56,8 +62,13 @@ export function ProjectOfferCreateDialog({
       setPackageType("full")
       setSelectedIds([])
       setSubmitting(false)
+      return
     }
-  }, [open])
+    setPackageType(defaultType)
+    const allowed = new Set(selectable.map((r) => r.quote.id))
+    const preset = (initialQuoteIds ?? []).filter((id) => allowed.has(id))
+    setSelectedIds(preset)
+  }, [open, initialQuoteIds, selectable, defaultType])
 
   const sentLockedIds = useMemo(() => new Set(listQuoteIdsInSentPackages(projectId)), [projectId])
   const contractedIds = useMemo(() => new Set(listContractedQuoteIds(projectId)), [projectId])
@@ -112,9 +123,13 @@ export function ProjectOfferCreateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90dvh] max-w-xl flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="shrink-0 border-b border-slate-100 px-4 py-3 pr-10">
-          <DialogTitle className="text-base">Új árajánlat</DialogTitle>
+          <DialogTitle className="text-base">
+            {defaultType === "supplement" ? "Kiegészítő / pótmunka ajánlat" : "Új árajánlat"}
+          </DialogTitle>
           <DialogDescription className="text-xs">
-            Válaszd ki a költségvetéseket — ugyanarra a szakágra is több lehet.
+            {defaultType === "supplement"
+              ? "Új munka a szerződéshez — válaszd ki a pótmunka költségvetéseket."
+              : "Válaszd ki a költségvetéseket — ugyanarra a szakágra is több lehet."}
           </DialogDescription>
         </DialogHeader>
 

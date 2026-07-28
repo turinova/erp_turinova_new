@@ -13,6 +13,13 @@ import {
   type ProjectSortKey,
 } from "@/lib/project-list-summary"
 import {
+  countExecutionListFilters,
+  matchesExecutionListFilter,
+  sortExecutionProjects,
+  type ExecutionListFilter,
+  type ExecutionListSortKey,
+} from "@/lib/execution-list-next-step"
+import {
   filterProjectsByPhase,
   PROJECT_PHASE_LABELS,
   type ProjectListPhase,
@@ -43,6 +50,7 @@ import {
   ProjectsEmptyState,
 } from "@/components/projektek/project-list-card"
 import { ProjectListTable } from "@/components/projektek/project-list-table"
+import { ExecutionProjectListTable } from "@/components/projektek/execution-project-list-table"
 import { ClientSelect } from "@/components/ugyfelek/client-select"
 import { cn } from "@/lib/utils"
 
@@ -52,7 +60,7 @@ type ProjectsPageClientProps = {
 
 const PHASE_DESCRIPTIONS: Record<ProjectListPhase, string> = {
   quotes: "Ajánlatkészítés — árazás, alvállalkozói bekérés, ügyfélnek küldés",
-  execution: "Elfogadott munkák — teljesítés, megbízások, teljesítésigazolás",
+  execution: "Elfogadott munkák — készültség és teljesítésigazolás",
   archive: "Lezárt és archivált projektek",
 }
 
@@ -61,7 +69,10 @@ export function ProjectsPageClient({ phase }: ProjectsPageClientProps) {
   const [tick, setTick] = useState(0)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<Project["status"] | "all">("all")
+  const [executionFilter, setExecutionFilter] = useState<ExecutionListFilter>("all")
   const [sortKey, setSortKey] = useState<ProjectSortKey>("updated")
+  const [executionSortKey, setExecutionSortKey] =
+    useState<ExecutionListSortKey>("attention")
   const [hideArchived, setHideArchived] = useState(true)
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({
@@ -92,24 +103,50 @@ export function ProjectsPageClient({ phase }: ProjectsPageClientProps) {
     )
   }, [allProjects, tick])
 
-  const filtered = useMemo(
-    () =>
-      sortProjects(
-        filterProjects(allProjects, {
-          q: search,
-          status: statusFilter,
-          hideArchived: phase !== "archive" && hideArchived,
-        }),
-        summaries,
-        sortKey
-      ),
-    [allProjects, search, statusFilter, hideArchived, phase, sortKey, summaries]
-  )
+  const filtered = useMemo(() => {
+    if (phase === "execution") {
+      const base = filterProjects(allProjects, {
+        q: search,
+        status: "all",
+        hideArchived: false,
+      }).filter((p) => {
+        const summary = summaries.get(p.id)
+        if (!summary) return false
+        return matchesExecutionListFilter(p, summary, executionFilter)
+      })
+      return sortExecutionProjects(base, summaries, executionSortKey)
+    }
+
+    return sortProjects(
+      filterProjects(allProjects, {
+        q: search,
+        status: statusFilter,
+        hideArchived: phase !== "archive" && hideArchived,
+      }),
+      summaries,
+      sortKey
+    )
+  }, [
+    allProjects,
+    search,
+    statusFilter,
+    hideArchived,
+    phase,
+    sortKey,
+    summaries,
+    executionFilter,
+    executionSortKey,
+  ])
 
   const statusCounts = useMemo(() => countProjectsByStatus(allProjects), [allProjects])
+  const executionFilterCounts = useMemo(
+    () => countExecutionListFilters(allProjects, summaries),
+    [allProjects, summaries]
+  )
 
   const activeCount = allProjects.length
   const quotingCount = statusCounts.quoting
+  const tigReadyCount = executionFilterCounts.tig_ready
   const phaseTitle = PROJECT_PHASE_LABELS[phase]
   const canCreateProject = phase === "quotes"
   const phaseStatuses = useMemo(
@@ -121,6 +158,11 @@ export function ProjectsPageClient({ phase }: ProjectsPageClientProps) {
   )
 
   const refresh = () => setTick((t) => t + 1)
+
+  const headerDescription =
+    phase === "execution"
+      ? `${activeCount} munka${tigReadyCount > 0 ? ` · ${tigReadyCount} vár TIG-re` : ""}`
+      : `${activeCount} projekt${phase === "quotes" && quotingCount > 0 ? ` · ${quotingCount} ajánlatkészítés alatt` : ""} — ${PHASE_DESCRIPTIONS[phase]}`
 
   const handleCreate = () => {
     if (!form.name.trim() || !form.code.trim()) return
@@ -146,7 +188,7 @@ export function ProjectsPageClient({ phase }: ProjectsPageClientProps) {
     <>
       <PageHeader
         title={phaseTitle}
-        description={`${activeCount} projekt${phase === "quotes" && quotingCount > 0 ? ` · ${quotingCount} ajánlatkészítés alatt` : ""} — ${PHASE_DESCRIPTIONS[phase]}`}
+        description={headerDescription}
         actions={
           <div className="flex flex-wrap gap-2">
             {canCreateProject ? (
@@ -172,43 +214,82 @@ export function ProjectsPageClient({ phase }: ProjectsPageClientProps) {
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Select value={sortKey} onValueChange={(v) => setSortKey(v as ProjectSortKey)}>
-                <SelectTrigger className="w-[10.5rem]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="updated">Legutóbbi</SelectItem>
-                  <SelectItem value="sell">Ügyfél ár</SelectItem>
-                </SelectContent>
-              </Select>
-              {phase !== "archive" ? (
-                <label className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm text-slate-700">
-                  <Checkbox
-                    checked={hideArchived}
-                    onCheckedChange={(v) => setHideArchived(v === true)}
-                  />
-                  Archivált rejtése
-                </label>
-              ) : null}
+              {phase === "execution" ? (
+                <Select
+                  value={executionSortKey}
+                  onValueChange={(v) => setExecutionSortKey(v as ExecutionListSortKey)}
+                >
+                  <SelectTrigger className="w-[11.5rem]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="attention">Figyelmet igényel</SelectItem>
+                    <SelectItem value="updated">Legutóbbi</SelectItem>
+                    <SelectItem value="progress">Készültség</SelectItem>
+                    <SelectItem value="sell">Szerződés összege</SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <>
+                  <Select value={sortKey} onValueChange={(v) => setSortKey(v as ProjectSortKey)}>
+                    <SelectTrigger className="w-[10.5rem]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="updated">Legutóbbi</SelectItem>
+                      <SelectItem value="sell">Ügyfél ár</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {phase !== "archive" ? (
+                    <label className="flex items-center gap-2 rounded-md border bg-white px-3 py-2 text-sm text-slate-700">
+                      <Checkbox
+                        checked={hideArchived}
+                        onCheckedChange={(v) => setHideArchived(v === true)}
+                      />
+                      Archivált rejtése
+                    </label>
+                  ) : null}
+                </>
+              )}
             </div>
           </div>
 
-          {phaseStatuses.length > 1 ? (
-          <div className="mb-4 flex flex-wrap gap-1.5">
-            <StatusChip
-              active={statusFilter === "all"}
-              onClick={() => setStatusFilter("all")}
-              label={`Mind (${allProjects.length})`}
-            />
-            {phaseStatuses.map((s) => (
+          {phase === "execution" ? (
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              {(
+                [
+                  ["all", `Mind (${executionFilterCounts.all})`],
+                  ["not_started", `Még nem indult (${executionFilterCounts.not_started})`],
+                  ["in_progress", `Folyamatban (${executionFilterCounts.in_progress})`],
+                  ["tig_ready", `TIG készíthető (${executionFilterCounts.tig_ready})`],
+                ] as const
+              )
+                .filter(([key]) => key === "all" || executionFilterCounts[key] > 0)
+                .map(([key, label]) => (
+                  <StatusChip
+                    key={key}
+                    active={executionFilter === key}
+                    onClick={() => setExecutionFilter(key)}
+                    label={label}
+                  />
+                ))}
+            </div>
+          ) : phaseStatuses.length > 1 ? (
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              <StatusChip
+                active={statusFilter === "all"}
+                onClick={() => setStatusFilter("all")}
+                label={`Mind (${allProjects.length})`}
+              />
+              {phaseStatuses.map((s) => (
                 <StatusChip
                   key={s}
                   active={statusFilter === s}
                   onClick={() => setStatusFilter(s)}
                   label={`${PROJECT_STATUS_LABELS[s]} (${statusCounts[s]})`}
                 />
-            ))}
-          </div>
+              ))}
+            </div>
           ) : null}
 
           {filtered.length === 0 ? (
@@ -220,11 +301,20 @@ export function ProjectsPageClient({ phase }: ProjectsPageClientProps) {
                 onClick={() => {
                   setSearch("")
                   setStatusFilter("all")
+                  setExecutionFilter("all")
                 }}
               >
                 Szűrők törlése
               </button>
             </div>
+          ) : phase === "execution" ? (
+            <ExecutionProjectListTable
+              rows={filtered.map((project) => ({
+                project,
+                summary: summaries.get(project.id)!,
+              }))}
+              onChanged={refresh}
+            />
           ) : phase === "quotes" ? (
             <ProjectListTable
               rows={filtered.map((project) => ({
@@ -252,67 +342,67 @@ export function ProjectsPageClient({ phase }: ProjectsPageClientProps) {
       )}
 
       {canCreateProject ? (
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Új projekt</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label>Projekt kód</Label>
-              <Input
-                value={form.code}
-                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                placeholder="HYUN-2026-01"
-              />
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Új projekt</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Projekt kód</Label>
+                <Input
+                  value={form.code}
+                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                  placeholder="HYUN-2026-01"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Projekt neve</Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ügyfél</Label>
+                <ClientSelect
+                  value={form.clientId}
+                  onChange={(clientId, client) =>
+                    setForm((f) => ({
+                      ...f,
+                      clientId,
+                      clientName: client?.displayName ?? "",
+                    }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Helyszín</Label>
+                <Input
+                  value={form.siteAddress}
+                  onChange={(e) => setForm((f) => ({ ...f, siteAddress: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Leírás</Label>
+                <Textarea
+                  rows={2}
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                />
+              </div>
+              <p className="text-xs text-slate-500">Új projekt státusza: Lehetőség</p>
             </div>
-            <div className="space-y-2">
-              <Label>Projekt neve</Label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Ügyfél</Label>
-              <ClientSelect
-                value={form.clientId}
-                onChange={(clientId, client) =>
-                  setForm((f) => ({
-                    ...f,
-                    clientId,
-                    clientName: client?.displayName ?? "",
-                  }))
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Helyszín</Label>
-              <Input
-                value={form.siteAddress}
-                onChange={(e) => setForm((f) => ({ ...f, siteAddress: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Leírás</Label>
-              <Textarea
-                rows={2}
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              />
-            </div>
-            <p className="text-xs text-slate-500">Új projekt státusza: Lehetőség</p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Mégse
-            </Button>
-            <Button onClick={handleCreate} disabled={!form.name.trim() || !form.code.trim()}>
-              Létrehozás
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                Mégse
+              </Button>
+              <Button onClick={handleCreate} disabled={!form.name.trim() || !form.code.trim()}>
+                Létrehozás
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </>
   )

@@ -705,19 +705,51 @@ export async function syncBundleToDb(
 
   const bundleProjectIds = new Set(bundle.projects.map((p) => p.id))
 
-  // 1) Törölt projektek (cascade viszi a gyerekeket)
-  const projectsToDelete = [...dbProjectIds].filter((id) => !bundleProjectIds.has(id))
+  /**
+   * Részletes adatot tartalmazó projektek — lazy load mellett a cache-ben csak ezeknek
+   * vannak quote/rfq sorai. A diff-törlést CSAK ezekre futtatjuk, különben a többi
+   * projekt gyerekei eltűnnének egy részleges PUT-nál.
+   */
+  const detailProjectIds = new Set<string>([
+    ...bundle.quotes.map((q) => q.projectId),
+    ...bundle.rfqs.map((r) => r.projectId),
+    ...(bundle.rfqCampaigns ?? []).map((c) => c.projectId),
+    ...bundle.compositions.map((c) => c.projectId),
+    ...bundle.customerPackages.map((p) => p.projectId),
+    ...(bundle.performanceCertificates ?? []).map((c) => c.projectId),
+  ])
+
+  // 1) Törölt projektek (cascade viszi a gyerekeket) — csak ha a bundle tartalmazza az org
+  // összes projektjét (teljes sync). Részleges / summary PUT esetén ne töröljünk projektet.
+  const looksLikeFullProjectList =
+    bundle.projects.length > 0 && bundle.projects.length >= dbProjectIds.size * 0.9
+  const projectsToDelete = looksLikeFullProjectList
+    ? [...dbProjectIds].filter((id) => !bundleProjectIds.has(id))
+    : []
   await deleteByIds(supabase, "projects", projectsToDelete)
 
   const survivingProjectIds = [...dbProjectIds].filter((id) => bundleProjectIds.has(id))
+  const detailSurvivingIds = survivingProjectIds.filter((id) => detailProjectIds.has(id))
 
   const [dbQuotes, dbCampaigns, dbRfqs, dbPackages, dbCerts, dbAudit] = await Promise.all([
-    selectAll<{ id: string }>(supabase, "quotes", "project_id", survivingProjectIds, "id"),
-    selectAll<{ id: string }>(supabase, "rfq_campaigns", "project_id", survivingProjectIds, "id"),
-    selectAll<{ id: string }>(supabase, "rfqs", "project_id", survivingProjectIds, "id"),
-    selectAll<{ id: string }>(supabase, "customer_packages", "project_id", survivingProjectIds, "id"),
-    selectAll<{ id: string }>(supabase, "performance_certificates", "project_id", survivingProjectIds, "id"),
-    selectAll<{ id: string }>(supabase, "project_audit_log", "project_id", survivingProjectIds, "id"),
+    selectAll<{ id: string }>(supabase, "quotes", "project_id", detailSurvivingIds, "id"),
+    selectAll<{ id: string }>(supabase, "rfq_campaigns", "project_id", detailSurvivingIds, "id"),
+    selectAll<{ id: string }>(supabase, "rfqs", "project_id", detailSurvivingIds, "id"),
+    selectAll<{ id: string }>(supabase, "customer_packages", "project_id", detailSurvivingIds, "id"),
+    selectAll<{ id: string }>(
+      supabase,
+      "performance_certificates",
+      "project_id",
+      detailSurvivingIds,
+      "id"
+    ),
+    selectAll<{ id: string }>(
+      supabase,
+      "project_audit_log",
+      "project_id",
+      detailSurvivingIds,
+      "id"
+    ),
   ])
   const dbQuoteIds = new Set(dbQuotes.map((r) => r.id))
   const dbRfqIds = new Set(dbRfqs.map((r) => r.id))

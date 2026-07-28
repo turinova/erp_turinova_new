@@ -163,12 +163,15 @@ body {
   box-shadow: var(--shadow-card);
 }
 
-/* Excel-szerű költségvetés rács (Bekerülés / Árrés) */
+/* Excel-szerű költségvetés rács (Bekerülés / Árrés) — építőipari olvashatóság */
 .ea-worksheet {
   --ea-freeze-0: 0px;
   --ea-freeze-1: 2.75rem;
-  --ea-identifier-width: 13ch;
+  --ea-identifier-width: 16ch;
   --ea-freeze-2: calc(2.75rem + var(--ea-identifier-width));
+  --ea-sheet-font: 0.875rem; /* 14px */
+  --ea-sheet-head-font: 0.8125rem; /* 13px */
+  --ea-sheet-row-height: 36px;
 }
 
 /* Árrés tab: checkbox oszlop előtte */
@@ -182,6 +185,7 @@ body {
   border-collapse: collapse;
   table-layout: fixed;
   width: 100%;
+  font-size: var(--ea-sheet-font);
 }
 
 .ea-worksheet-head th {
@@ -190,11 +194,11 @@ body {
   z-index: 5;
   border: 1px solid #b4b4b4;
   background: #ececec;
-  padding: 3px 4px;
+  padding: 5px 6px;
   text-align: left;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  color: #404040;
+  font-size: var(--ea-sheet-head-font);
+  font-weight: 700;
+  color: #1e293b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -204,7 +208,7 @@ body {
 .ea-sheet-head-stacked,
 .ea-sheet-head-nowrap {
   white-space: nowrap;
-  line-height: 1.1;
+  line-height: 1.2;
   overflow: visible;
   text-overflow: clip;
 }
@@ -221,7 +225,7 @@ body {
 
 .ea-sheet-head-readonly {
   background: #e4e4e4 !important;
-  color: #505050;
+  color: #334155;
 }
 
 .ea-worksheet-table td {
@@ -233,21 +237,7 @@ body {
 }
 
 .ea-worksheet-table tbody tr {
-  height: 26px;
-}
-
-.ea-worksheet-density-normal .ea-worksheet-table tbody tr {
-  height: 32px;
-}
-
-.ea-worksheet-density-normal .ea-worksheet-head th {
-  font-size: 0.75rem;
-  padding: 4px 5px;
-}
-
-.ea-worksheet-density-normal .ea-sheet-readonly,
-.ea-worksheet-density-normal .ea-sheet-input {
-  font-size: 0.8125rem;
+  height: var(--ea-sheet-row-height);
 }
 
 .ea-worksheet-table tbody tr.ea-worksheet-zebra td:not(.ea-worksheet-section td) {
@@ -301,7 +291,7 @@ body {
   width: 2.75rem;
   min-width: 2.75rem;
   max-width: 2.75rem;
-  padding: 0 4px !important;
+  padding: 0 6px !important;
 }
 
 .ea-freeze-1 {
@@ -309,14 +299,15 @@ body {
   width: var(--ea-identifier-width);
   min-width: var(--ea-identifier-width);
   max-width: var(--ea-identifier-width);
-  padding: 0 4px !important;
+  padding: 0 6px !important;
 }
 
 .ea-freeze-2 {
   left: var(--ea-freeze-2);
-  min-width: 8rem;
-  padding: 2px 4px !important;
+  min-width: 10rem;
+  padding: 4px 6px !important;
   box-shadow: 4px 0 10px -3px rgba(0, 0, 0, 0.14);
+  line-height: 1.35;
 }
 
 /* Beviteli zóna | számított zóna elválasztó */
@@ -344,8 +335,9 @@ body {
 .ea-worksheet-section td {
   background: #fff8e1 !important;
   border-color: #e6c200;
-  padding: 3px 6px !important;
-  font-size: 0.75rem;
+  padding: 6px 8px !important;
+  font-size: var(--ea-sheet-font);
+  font-weight: 600;
   color: #5c4a00;
 }
 
@@ -355,8 +347,8 @@ body {
   z-index: 4;
   border-top: 3px solid #606060;
   background: #d4e8cc !important;
-  padding: 4px 4px !important;
-  font-size: 0.75rem;
+  padding: 6px 6px !important;
+  font-size: var(--ea-sheet-font);
   box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.06);
 }
 
@@ -378,6 +370,8 @@ body {
 .ea-sheet-readonly {
   cursor: default;
   user-select: text;
+  font-size: var(--ea-sheet-font);
+  line-height: 1.35;
 }
 
 .ea-sheet-readonly-computed {
@@ -410,6 +404,7 @@ body {
 .ea-sheet-input {
   width: 100%;
   max-width: 100%;
+  font-size: var(--ea-sheet-font);
 }
 
 .ea-sheet-input:disabled {
