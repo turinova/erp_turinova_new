@@ -40,29 +40,29 @@ export function LiveChart({ bars, vwapSeries, orbHigh, orbLow }: Props) {
       height: 380,
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "rgba(226, 232, 240, 0.55)",
+        textColor: "rgba(15, 23, 42, 0.55)",
         fontFamily: "var(--font-geist-mono)",
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: "rgba(148, 163, 184, 0.07)" },
-        horzLines: { color: "rgba(148, 163, 184, 0.07)" },
+        vertLines: { color: "rgba(15, 23, 42, 0.06)" },
+        horzLines: { color: "rgba(15, 23, 42, 0.06)" },
       },
-      timeScale: { timeVisible: true, secondsVisible: false, borderColor: "rgba(148,163,184,0.14)" },
-      rightPriceScale: { borderColor: "rgba(148,163,184,0.14)" },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: "rgba(15,23,42,0.12)" },
+      rightPriceScale: { borderColor: "rgba(15,23,42,0.12)" },
       crosshair: { mode: 0 },
     })
 
     const candle = chart.addSeries(CandlestickSeries, {
-      upColor: "#22c55e",
-      downColor: "#ef4444",
-      borderUpColor: "#22c55e",
-      borderDownColor: "#ef4444",
-      wickUpColor: "#22c55e",
-      wickDownColor: "#ef4444",
+      upColor: "#15803d",
+      downColor: "#b91c1c",
+      borderUpColor: "#15803d",
+      borderDownColor: "#b91c1c",
+      wickUpColor: "#15803d",
+      wickDownColor: "#b91c1c",
     })
     const vwapLine = chart.addSeries(LineSeries, {
-      color: "#38bdf8",
+      color: "#0284c7",
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: true,
@@ -119,7 +119,7 @@ export function LiveChart({ bars, vwapSeries, orbHigh, orbLow }: Props) {
       priceLinesRef.current.push(
         candle.createPriceLine({
           price: orbHigh,
-          color: "#f59e0b",
+          color: "#b45309",
           lineWidth: 1,
           lineStyle: LineStyle.Dashed,
           title: "ORB H",
@@ -130,7 +130,7 @@ export function LiveChart({ bars, vwapSeries, orbHigh, orbLow }: Props) {
       priceLinesRef.current.push(
         candle.createPriceLine({
           price: orbLow,
-          color: "#f59e0b",
+          color: "#b45309",
           lineWidth: 1,
           lineStyle: LineStyle.Dashed,
           title: "ORB L",

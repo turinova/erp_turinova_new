@@ -36,12 +36,12 @@ export function EquityCurve({ rValues }: { rValues: number[] }) {
       {/* görbe alatti kitöltés */}
       <path
         d={`${path} L${x(points.length - 1)},${zeroY} L${x(0)},${zeroY} Z`}
-        fill={last >= 0 ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)"}
+        fill={last >= 0 ? "rgba(21,128,61,0.10)" : "rgba(185,28,28,0.10)"}
       />
       <path
         d={path}
         fill="none"
-        stroke={last >= 0 ? "#22c55e" : "#ef4444"}
+        stroke={last >= 0 ? "#15803d" : "#b91c1c"}
         strokeWidth="2"
         strokeLinejoin="round"
       />
@@ -50,7 +50,7 @@ export function EquityCurve({ rValues }: { rValues: number[] }) {
         cx={x(points.length - 1)}
         cy={y(last)}
         r="4"
-        fill={last >= 0 ? "#22c55e" : "#ef4444"}
+        fill={last >= 0 ? "#15803d" : "#b91c1c"}
       />
       <text
         x={x(points.length - 1) - 8}
@@ -58,7 +58,7 @@ export function EquityCurve({ rValues }: { rValues: number[] }) {
         textAnchor="end"
         fontSize="13"
         fontFamily="var(--font-geist-mono)"
-        fill={last >= 0 ? "#22c55e" : "#ef4444"}
+        fill={last >= 0 ? "#15803d" : "#b91c1c"}
       >
         {last > 0 ? "+" : ""}
         {last.toFixed(1)}R

@@ -49,10 +49,10 @@ const STATUS_LABEL: Record<SignalRow["status"], string> = {
 }
 
 const STATUS_STYLE: Record<SignalRow["status"], string> = {
-  open: "bg-sky-500/15 text-sky-400",
-  win: "bg-emerald-500/15 text-emerald-400",
-  loss: "bg-red-500/15 text-red-400",
-  expired: "bg-zinc-500/15 text-zinc-400",
+  open: "bg-sky-500/15 text-accent",
+  win: "bg-emerald-500/15 text-win",
+  loss: "bg-red-500/15 text-loss",
+  expired: "bg-zinc-500/15 text-muted",
 }
 
 export default async function SignalsPage() {
@@ -104,7 +104,7 @@ export default async function SignalsPage() {
       </header>
 
       {error && (
-        <section className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-400">
+        <section className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-warn">
           Nem sikerült betölteni a signalokat — futtattad már a{" "}
           <code className="rounded bg-surface-2 px-1">sql/002_live_signals.sql</code>{" "}
           scriptet a Supabase-ben?
@@ -164,9 +164,9 @@ export default async function SignalsPage() {
                     <td
                       className={`num px-4 py-2.5 ${
                         agg.netR > 0
-                          ? "text-emerald-400"
+                          ? "text-win"
                           : agg.netR < 0
-                            ? "text-red-400"
+                            ? "text-loss"
                             : ""
                       }`}
                     >
@@ -219,9 +219,9 @@ export default async function SignalsPage() {
                       s.r_multiple == null
                         ? ""
                         : Number(s.r_multiple) > 0
-                          ? "text-emerald-400"
+                          ? "text-win"
                           : Number(s.r_multiple) < 0
-                            ? "text-red-400"
+                            ? "text-loss"
                             : ""
                     }`}
                   >
@@ -265,7 +265,7 @@ function StatCard({
       <div className="text-xs text-muted">{label}</div>
       <div
         className={`num mt-0.5 text-lg font-semibold ${
-          tone === "pos" ? "text-emerald-400" : tone === "neg" ? "text-red-400" : ""
+          tone === "pos" ? "text-win" : tone === "neg" ? "text-loss" : ""
         }`}
       >
         {value}

@@ -53,6 +53,16 @@ export async function recordAndEvaluateCryptoSignals(
         funding_rate: s.fundingRate,
         rvol: s.rvol,
         source: snapshot.source,
+        oi_delta_1h: s.oiDelta1hPct,
+        catalyst_mode: s.catalystMode,
+        settlement_freeze: snapshot.context?.settlement.inFreeze ?? false,
+        context_note: [
+          s.oiRegime !== "unknown" ? `OI:${s.oiRegime}` : null,
+          s.catalystMode ? "catalyst" : null,
+          snapshot.context?.settlement.inFreeze ? "settlement-freeze" : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || null,
       },
       { onConflict: "date,symbol,kind", ignoreDuplicates: true }
     )

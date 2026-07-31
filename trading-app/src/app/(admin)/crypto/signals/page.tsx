@@ -20,6 +20,10 @@ interface CryptoSignalRow {
   status: "open" | "win" | "loss" | "expired"
   exit_price: number | null
   r_multiple: number | null
+  oi_delta_1h: number | null
+  catalyst_mode: boolean | null
+  settlement_freeze: boolean | null
+  context_note: string | null
 }
 
 const SETUP_FAMILY: Record<string, string> = {
@@ -41,10 +45,10 @@ const STATUS_LABEL: Record<CryptoSignalRow["status"], string> = {
 }
 
 const STATUS_STYLE: Record<CryptoSignalRow["status"], string> = {
-  open: "bg-sky-500/15 text-sky-400",
-  win: "bg-emerald-500/15 text-emerald-400",
-  loss: "bg-red-500/15 text-red-400",
-  expired: "bg-zinc-500/15 text-zinc-400",
+  open: "bg-sky-500/15 text-accent",
+  win: "bg-emerald-500/15 text-win",
+  loss: "bg-red-500/15 text-loss",
+  expired: "bg-zinc-500/15 text-muted",
 }
 
 export default async function CryptoSignalsPage() {
@@ -59,6 +63,11 @@ export default async function CryptoSignalsPage() {
   const closed = signals.filter((s) => s.status !== "open" && s.r_multiple != null)
   const wins = closed.filter((s) => (s.r_multiple ?? 0) > 0)
   const netR = closed.reduce((sum, s) => sum + Number(s.r_multiple ?? 0), 0)
+
+  const catalystClosed = closed.filter((s) => s.catalyst_mode)
+  const catalystNetR = catalystClosed.reduce((sum, s) => sum + Number(s.r_multiple ?? 0), 0)
+  const plainClosed = closed.filter((s) => !s.catalyst_mode)
+  const plainNetR = plainClosed.reduce((sum, s) => sum + Number(s.r_multiple ?? 0), 0)
 
   const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10)
   const weekClosed = closed.filter((s) => s.date >= weekAgo)
@@ -90,14 +99,14 @@ export default async function CryptoSignalsPage() {
       </header>
 
       {error && (
-        <section className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-400">
+        <section className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-warn">
           Nem sikerült betölteni a signalokat — futtattad már a{" "}
           <code className="rounded bg-surface-2 px-1">sql/004_crypto_signals.sql</code>{" "}
           scriptet a Supabase-ben?
         </section>
       )}
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Összes signal" value={String(signals.length)} />
         <StatCard label="Lezárt" value={String(closed.length)} />
         <StatCard
@@ -110,15 +119,34 @@ export default async function CryptoSignalsPage() {
           tone={netR > 0 ? "pos" : netR < 0 ? "neg" : undefined}
         />
         <StatCard
-          label="Utolsó 7 nap"
+          label="Katalizátoros"
           value={
-            weekClosed.length
-              ? `${weekNetR >= 0 ? "+" : ""}${weekNetR.toFixed(2)}R (${weekClosed.length} db)`
+            catalystClosed.length
+              ? `${catalystNetR >= 0 ? "+" : ""}${catalystNetR.toFixed(2)}R (${catalystClosed.length})`
               : "—"
           }
-          tone={weekNetR > 0 ? "pos" : weekNetR < 0 ? "neg" : undefined}
+          tone={catalystNetR > 0 ? "pos" : catalystNetR < 0 ? "neg" : undefined}
+        />
+        <StatCard
+          label="Katalizátor nélkül"
+          value={
+            plainClosed.length
+              ? `${plainNetR >= 0 ? "+" : ""}${plainNetR.toFixed(2)}R (${plainClosed.length})`
+              : "—"
+          }
+          tone={plainNetR > 0 ? "pos" : plainNetR < 0 ? "neg" : undefined}
         />
       </section>
+
+      <p className="text-xs text-muted">
+        Utolsó 7 nap:{" "}
+        {weekClosed.length
+          ? `${weekNetR >= 0 ? "+" : ""}${weekNetR.toFixed(2)}R (${weekClosed.length} db)`
+          : "—"}
+        . Futtasd a{" "}
+        <code className="rounded bg-surface-2 px-1">sql/005_crypto_context.sql</code>{" "}
+        scriptet is, ha még nem.
+      </p>
 
       {groups.size > 0 && (
         <section className="overflow-x-auto rounded-lg border border-line bg-surface">
@@ -149,7 +177,7 @@ export default async function CryptoSignalsPage() {
                     </td>
                     <td
                       className={`num px-4 py-2.5 ${
-                        agg.netR > 0 ? "text-emerald-400" : agg.netR < 0 ? "text-red-400" : ""
+                        agg.netR > 0 ? "text-win" : agg.netR < 0 ? "text-loss" : ""
                       }`}
                     >
                       {agg.closed ? `${agg.netR >= 0 ? "+" : ""}${agg.netR.toFixed(2)}` : "—"}
@@ -182,6 +210,8 @@ export default async function CryptoSignalsPage() {
                 <th className="px-4 py-3 font-medium">Target</th>
                 <th className="px-4 py-3 font-medium">Exit</th>
                 <th className="px-4 py-3 font-medium">R</th>
+                <th className="px-4 py-3 font-medium">OI 1h</th>
+                <th className="px-4 py-3 font-medium">Kat.</th>
                 <th className="px-4 py-3 font-medium">BTC</th>
                 <th className="px-4 py-3 font-medium">Státusz</th>
               </tr>
@@ -201,15 +231,27 @@ export default async function CryptoSignalsPage() {
                       s.r_multiple == null
                         ? ""
                         : Number(s.r_multiple) > 0
-                          ? "text-emerald-400"
+                          ? "text-win"
                           : Number(s.r_multiple) < 0
-                            ? "text-red-400"
+                            ? "text-loss"
                             : ""
                     }`}
                   >
                     {s.r_multiple != null
                       ? `${Number(s.r_multiple) >= 0 ? "+" : ""}${Number(s.r_multiple).toFixed(2)}`
                       : "—"}
+                  </td>
+                  <td className="num px-4 py-3 text-xs">
+                    {s.oi_delta_1h != null
+                      ? `${Number(s.oi_delta_1h) >= 0 ? "+" : ""}${Number(s.oi_delta_1h).toFixed(1)}%`
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-xs">
+                    {s.catalyst_mode ? (
+                      <span className="text-warn">igen</span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted">{s.btc_regime ?? "—"}</td>
                   <td className="px-4 py-3">
@@ -252,7 +294,7 @@ function StatCard({
       <div className="text-xs text-muted">{label}</div>
       <div
         className={`num mt-0.5 text-lg font-semibold ${
-          tone === "pos" ? "text-emerald-400" : tone === "neg" ? "text-red-400" : ""
+          tone === "pos" ? "text-win" : tone === "neg" ? "text-loss" : ""
         }`}
       >
         {value}

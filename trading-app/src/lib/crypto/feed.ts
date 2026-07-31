@@ -124,22 +124,24 @@ async function fetchBinance(): Promise<CryptoFeed> {
   await Promise.all(
     ALL_SYMBOLS.map(async (sym) => {
       const pair = PAIR[sym]
-      const [kline1m, klineDaily, premium, ticker24h] = await Promise.all([
+      const [kline1m, klineDaily, premium, ticker24h, oi] = await Promise.all([
         binanceJson(`/fapi/v1/klines?symbol=${pair}&interval=1m&limit=1000`),
         binanceJson(`/fapi/v1/klines?symbol=${pair}&interval=1d&limit=15`),
         binanceJson(`/fapi/v1/premiumIndex?symbol=${pair}`),
         binanceJson(`/fapi/v1/ticker/24hr?symbol=${pair}`),
+        binanceJson(`/fapi/v1/openInterest?symbol=${pair}`),
       ])
 
       const prem = premium as { lastFundingRate?: string }
       const t24 = ticker24h as { priceChangePercent?: string }
+      const oiRow = oi as { openInterest?: string }
 
       symbols[sym] = {
         symbol: sym,
         bars: binanceKlinesToBars(kline1m),
         dailyBars: binanceKlinesToBars(klineDaily),
         fundingRate: prem.lastFundingRate != null ? Number(prem.lastFundingRate) : null,
-        openInterest: null,
+        openInterest: oiRow.openInterest != null ? Number(oiRow.openInterest) : null,
         change24hPct: t24.priceChangePercent != null ? Number(t24.priceChangePercent) : null,
       }
     })

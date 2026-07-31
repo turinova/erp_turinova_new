@@ -58,6 +58,46 @@ export const CRYPTO_KIND_LABEL: Record<string, string> = {
 
 export type BtcRegime = "risk_on" | "risk_off" | "neutral"
 
+/** A 4 setup-család — ezeket lehet ki/be kapcsolni a UI-n. */
+export type CryptoSetupId = "sweep" | "breakout" | "pullback" | "mean_rev"
+
+export const CRYPTO_SETUP_IDS: CryptoSetupId[] = ["sweep", "breakout", "pullback", "mean_rev"]
+
+export const CRYPTO_SETUP_LABEL: Record<CryptoSetupId, string> = {
+  sweep: "Sweep-reclaim",
+  breakout: "US-open breakout",
+  pullback: "Momentum pullback",
+  mean_rev: "VWAP mean rev",
+}
+
+export type EnabledSetups = Record<CryptoSetupId, boolean>
+
+export const ALL_SETUPS_ENABLED: EnabledSetups = {
+  sweep: true,
+  breakout: true,
+  pullback: true,
+  mean_rev: true,
+}
+
+export interface BuildupStep {
+  label: string
+  ok: boolean
+  detail?: string
+}
+
+export interface SetupBuildup {
+  id: CryptoSetupId
+  label: string
+  /** hány lépés kész / összes */
+  done: number
+  total: number
+  /** a setup irány-hintje, ha már sejthető */
+  bias: "long" | "short" | "none"
+  steps: BuildupStep[]
+  /** true, ha az összes lépés megvan (de a kapuk még blokkolhatnak) */
+  ready: boolean
+}
+
 export interface CryptoSignal {
   kind: CryptoSignalKind
   entry: number | null
@@ -82,6 +122,12 @@ export interface SymbolSnapshot {
   adx: number | null
   fundingRate: number | null
   openInterest: number | null
+  /** OI változás % az elmúlt ~1 órában (ha van történet) */
+  oiDelta1hPct: number | null
+  /** OI regime a Δ és ár alapján */
+  oiRegime: OiRegime
+  /** DOGE katalizátor mód */
+  catalystMode: boolean
   prevDayHigh: number | null
   prevDayLow: number | null
   prevWeekHigh: number | null
@@ -89,6 +135,8 @@ export interface SymbolSnapshot {
   usOpenHigh: number | null
   usOpenLow: number | null
   signal: CryptoSignal
+  /** mind a 4 setup aktuális felépülése — vizuális döntéshez */
+  buildups: SetupBuildup[]
   /** chart: utolsó ~6 óra 1m gyertya */
   chartBars: Bar[]
   vwapSeries: { t: number; v: number }[]
@@ -115,4 +163,45 @@ export interface CryptoSnapshot {
   symbols: SymbolSnapshot[]
   /** aktív guardrail üzenet (napi limit) vagy null */
   guardrail: string | null
+  /** piaci + hír kontextus (settlement, OI, katalizátorok) */
+  context: MarketContext
+}
+
+export type OiRegime = "trend" | "squeeze" | "unwind" | "capitulation" | "flat" | "unknown"
+
+export type CatalystSeverity = "low" | "med" | "high"
+
+export interface Catalyst {
+  id?: string
+  source: "cryptopanic" | "manual"
+  title: string
+  url: string | null
+  severity: CatalystSeverity
+  tags: string[]
+  symbols: string[]
+  /** hány perce jelent meg */
+  ageMin: number
+  publishedAt: string
+}
+
+export interface SymbolMarketContext {
+  oiDelta1hPct: number | null
+  oiDelta4hPct: number | null
+  oiRegime: OiRegime
+  /** DOGE: katalizátor mód aktív-e */
+  catalystMode: boolean
+  /** aktuális RVOL küszöb (DOGE-nál 1.0 vagy 1.3) */
+  rvolGate: number
+  catalysts: Catalyst[]
+}
+
+export interface MarketContext {
+  settlement: {
+    nextUtc: string
+    minutesLeft: number
+    inFreeze: boolean
+  }
+  btcCatalysts: Catalyst[]
+  sol: SymbolMarketContext
+  doge: SymbolMarketContext
 }

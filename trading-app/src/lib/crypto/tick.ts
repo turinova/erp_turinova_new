@@ -1,22 +1,48 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { buildMarketContext } from "./context"
 import { fetchCryptoFeed } from "./feed"
 import { computeCryptoSnapshot } from "./compute"
+import { fetchAndStoreCryptoPanic } from "./news"
+import { saveOiSnapshots } from "./oi-history"
 import { recordAndEvaluateCryptoSignals } from "./paper"
-import type { CryptoSnapshot } from "./types"
+import {
+  ALL_SETUPS_ENABLED,
+  type CryptoSnapshot,
+  type EnabledSetups,
+} from "./types"
 
 /**
- * Egy crypto "tick": feed → guardrail → snapshot → paper napló.
- * Ezt futtatja a /api/crypto (böngésző-poll) és a /api/cron (24/7) is.
+ * Egy crypto "tick": feed → OI mentés → hírek → context → snapshot → paper.
  */
 
-// Napi limitek (UTC nap, a két coin együtt)
 const MAX_SIGNALS_PER_DAY = 5
 const MAX_DAILY_LOSS_R = 3
 
-export async function runCryptoTick(supabase: SupabaseClient): Promise<CryptoSnapshot> {
+export async function runCryptoTick(
+  supabase: SupabaseClient,
+  opts?: { enabledSetups?: EnabledSetups; recordPaper?: boolean; fetchNews?: boolean }
+): Promise<CryptoSnapshot> {
   const feed = await fetchCryptoFeed()
+  const enabled = opts?.enabledSetups ?? ALL_SETUPS_ENABLED
+  const recordPaper = opts?.recordPaper ?? true
+  const fetchNews = opts?.fetchNews ?? true
 
-  // Guardrail az aznapi crypto_signals alapján
+  try {
+    await saveOiSnapshots(supabase, feed)
+  } catch (e) {
+    console.error("OI snapshot hiba:", e)
+  }
+
+  if (fetchNews) {
+    try {
+      await fetchAndStoreCryptoPanic(supabase)
+    } catch (e) {
+      console.error("CryptoPanic hiba:", e)
+    }
+  }
+
+  const { context } = await buildMarketContext(supabase, feed)
+
   let guardrail: string | null = null
   try {
     const utcDate = new Date().toISOString().slice(0, 10)
@@ -38,16 +64,23 @@ export async function runCryptoTick(supabase: SupabaseClient): Promise<CryptoSna
     console.error("Crypto guardrail hiba:", e)
   }
 
-  const snapshot = computeCryptoSnapshot({ feed, guardrail })
+  const snapshot = computeCryptoSnapshot({
+    feed,
+    guardrail,
+    enabledSetups: enabled,
+    marketContext: context,
+  })
 
-  try {
-    const barsBySymbol: Record<string, { t: number; o: number; h: number; l: number; c: number; v: number }[]> = {
-      SOL: feed.symbols.SOL.bars,
-      DOGE: feed.symbols.DOGE.bars,
+  if (recordPaper) {
+    try {
+      const barsBySymbol = {
+        SOL: feed.symbols.SOL.bars,
+        DOGE: feed.symbols.DOGE.bars,
+      }
+      await recordAndEvaluateCryptoSignals(supabase, snapshot, barsBySymbol)
+    } catch (e) {
+      console.error("Crypto paper trading hiba:", e)
     }
-    await recordAndEvaluateCryptoSignals(supabase, snapshot, barsBySymbol)
-  } catch (e) {
-    console.error("Crypto paper trading hiba:", e)
   }
 
   return snapshot

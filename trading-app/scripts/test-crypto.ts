@@ -81,10 +81,11 @@ function solSnap(feed: CryptoFeed, nowMin: number) {
 }
 
 // --- 1) Sweep-reclaim SHORT a prev day high fölött ---
+// 10:02 UTC (600+ perc) — settlement freeze ablakon kívül
 {
-  const bars = [...flat(0, 480, 100), bar(481, 100, 110.6, 99.5, 109.4)]
-  const feed = mkFeed({ sol: sym("SOL", bars, dailies(110, 90)), span: [0, 481] })
-  const { snap, sol } = solSnap(feed, 482)
+  const bars = [...flat(0, 600, 100), bar(601, 100, 110.6, 99.5, 109.4)]
+  const feed = mkFeed({ sol: sym("SOL", bars, dailies(110, 90)), span: [0, 601] })
+  const { snap, sol } = solSnap(feed, 602)
   check("sweep short kind", sol.signal.kind === "SWEEP_SHORT", sol.signal)
   check("sweep short entry = reclaim close", sol.signal.entry === 109.4, sol.signal)
   check("BTC semleges", snap.btc.regime === "neutral", snap.btc)
@@ -93,20 +94,19 @@ function solSnap(feed: CryptoFeed, nowMin: number) {
 
 // --- 2) BTC risk-off blokkolja a sweep longot ---
 {
-  const solBars = [...flat(0, 480, 100), bar(481, 100, 100.5, 97.4, 98.5)]
-  // BTC: 8 órán át flat, majd az utolsó 16 percben -400 pont (ATR ~120 → shock << -1.5)
-  const btcBars = flat(0, 465, 50000, 60)
+  const solBars = [...flat(0, 600, 100), bar(601, 100, 100.5, 97.4, 98.5)]
+  const btcBars = flat(0, 585, 50000, 60)
   let px = 50000
-  for (let m = 466; m <= 481; m++) {
+  for (let m = 586; m <= 601; m++) {
     btcBars.push(bar(m, px, px + 10, px - 30, px - 25))
     px -= 25
   }
   const feed = mkFeed({
     sol: sym("SOL", solBars, dailies(110, 98)),
     btc: sym("BTC", btcBars, dailies(52000, 48000)),
-    span: [0, 481],
+    span: [0, 601],
   })
-  const { snap, sol } = solSnap(feed, 482)
+  const { snap, sol } = solSnap(feed, 602)
   check("BTC risk-off", snap.btc.regime === "risk_off", snap.btc)
   check("sweep long blokkolva", sol.signal.kind === "NONE", sol.signal)
   check("blokk indoka a reasonben", sol.signal.reason.includes("long tiltva"), sol.signal.reason)
@@ -114,13 +114,13 @@ function solSnap(feed: CryptoFeed, nowMin: number) {
 
 // --- 3) DOGE volumen-kapu: RVOL < 1.3 → nincs signal ---
 {
-  const dogeBars = [...flat(0, 480, 0.1, 0.0006), bar(481, 0.1, 0.1005, 0.0896, 0.0905)]
+  const dogeBars = [...flat(0, 600, 0.1, 0.0006), bar(601, 0.1, 0.1005, 0.0896, 0.0905)]
   const feed = mkFeed({
-    sol: sym("SOL", flat(0, 481, 100), dailies(110, 90)),
+    sol: sym("SOL", flat(0, 601, 100), dailies(110, 90)),
     doge: sym("DOGE", dogeBars, dailies(0.11, 0.09)),
-    span: [0, 481],
+    span: [0, 601],
   })
-  const { doge } = solSnap(feed, 482)
+  const { doge } = solSnap(feed, 602)
   check("DOGE kapu: nincs signal", doge.signal.kind === "NONE", doge.signal)
   check("DOGE kapu indok", doge.signal.reason.includes("volumen-kapu"), doge.signal.reason)
 }
@@ -128,17 +128,15 @@ function solSnap(feed: CryptoFeed, nowMin: number) {
 // --- 4) VWAP mean reversion LONG range piacon (ADX-kapu) ---
 {
   const bars = flat(0, 120, 100, 0.6, 5000)
-  // gyors lecsúszás 96-ra kis volumennel (a VWAP fent marad)
   let px = 100
   for (let m = 121; m <= 150; m++) {
     const c = px - 0.134
     bars.push(bar(m, px, px + 0.1, c - 0.1, c, 100))
     px = c
   }
-  // majd 5.5 óra oszcillálás 96 körül → az ADX visszahűl a range-zónába
-  bars.push(...flat(151, 480, 96, 0.6, 500))
-  const feed = mkFeed({ sol: sym("SOL", bars, dailies(110, 85)), span: [0, 480] })
-  const { sol } = solSnap(feed, 481)
+  bars.push(...flat(151, 600, 96, 0.6, 500))
+  const feed = mkFeed({ sol: sym("SOL", bars, dailies(110, 85)), span: [0, 600] })
+  const { sol } = solSnap(feed, 601)
   check("MR long kind", sol.signal.kind === "MR_LONG", { signal: sol.signal, adx: sol.adx, dist: sol.vwapDistAtr })
   check("MR target = VWAP", sol.signal.target != null && sol.vwap != null && Math.abs(sol.signal.target - sol.vwap) < 1e-4, {
     target: sol.signal.target,

@@ -1,12 +1,19 @@
 import type { Bar } from "../backtest/types"
+import { computeBuildups, type BuildupCtx } from "./buildup"
+import { DOGE_RVOL_BASE, DOGE_RVOL_CATALYST } from "./context"
 import { adx, aggregate, atr, rollingRvol, sessionVwapSeries } from "./indicators"
+import { getSettlementInfo } from "./settlement"
 import {
+  ALL_SETUPS_ENABLED,
   TRADED_SYMBOLS,
   type BtcContext,
   type BtcRegime,
   type CryptoFeed,
   type CryptoSignal,
   type CryptoSnapshot,
+  type EnabledSetups,
+  type MarketContext,
+  type OiRegime,
   type SymbolFeed,
   type SymbolSnapshot,
   type TradedSymbol,
@@ -22,8 +29,10 @@ import {
  *   4. MR       — VWAP mean reversion (csak ha ADX < 25, azaz range piac)
  *
  * Kapuk:
+ *   - Funding settlement ±10p → minden setup tiltva
  *   - BTC-rezsim: long csak ha nem risk_off, short csak ha nem risk_on
- *   - DOGE: RVOL >= 1.3 nélkül semmilyen signal (katalizátor nélkül halott)
+ *   - DOGE: RVOL kapu (1.3 / 1.0 katalizátor módban)
+ *   - OI squeeze → long sweep/breakout tiltva
  *   - Extrém funding: +0.05%/8h felett friss long tiltva (és fordítva)
  */
 
@@ -35,7 +44,6 @@ const MR_DIST_ATR = 2.0
 const SWEEP_MIN_DEPTH_ATR = 0.2
 const SWEEP_MAX_DEPTH_ATR = 1.5
 const BREAKOUT_RVOL_MIN = 1.5
-const DOGE_RVOL_MIN = 1.3
 const FUNDING_EXTREME = 0.0005 // 0.05% / 8h
 const SIGNAL_MAX_AGE_BARS = 5
 const BREAKOUT_WINDOW_BARS = 30
@@ -46,11 +54,36 @@ const US_RANGE_START_MIN = 13 * 60
 const US_RANGE_END_MIN = 13 * 60 + 30
 const US_WINDOW_END_MIN = 17 * 60
 
+const EMPTY_CONTEXT: MarketContext = {
+  settlement: { nextUtc: "00:00", minutesLeft: 0, inFreeze: false },
+  btcCatalysts: [],
+  sol: {
+    oiDelta1hPct: null,
+    oiDelta4hPct: null,
+    oiRegime: "unknown",
+    catalystMode: false,
+    rvolGate: 0,
+    catalysts: [],
+  },
+  doge: {
+    oiDelta1hPct: null,
+    oiDelta4hPct: null,
+    oiRegime: "unknown",
+    catalystMode: false,
+    rvolGate: DOGE_RVOL_BASE,
+    catalysts: [],
+  },
+}
+
 export interface CryptoComputeInput {
   feed: CryptoFeed
   /** teszteléshez: szimulált "most" unix sec */
   nowSec?: number
   guardrail?: string | null
+  /** melyik setupokat futtassa az engine — default: mind */
+  enabledSetups?: EnabledSetups
+  /** OI + hír + settlement kontextus */
+  marketContext?: MarketContext
 }
 
 export function computeCryptoSnapshot(input: CryptoComputeInput): CryptoSnapshot {
@@ -58,11 +91,30 @@ export function computeCryptoSnapshot(input: CryptoComputeInput): CryptoSnapshot
   const d = new Date(now * 1000)
   const utcDate = d.toISOString().slice(0, 10)
   const utcTime = d.toISOString().slice(11, 16)
+  const enabled = input.enabledSetups ?? ALL_SETUPS_ENABLED
+  const marketContext: MarketContext = {
+    ...(input.marketContext ?? EMPTY_CONTEXT),
+    settlement: getSettlementInfo(now),
+  }
+  // OI/hír mezőket a hívótól tartjuk meg (ha adott)
+  if (input.marketContext) {
+    marketContext.btcCatalysts = input.marketContext.btcCatalysts
+    marketContext.sol = input.marketContext.sol
+    marketContext.doge = input.marketContext.doge
+  }
 
   const btc = computeBtcContext(input.feed.symbols.BTC, input.feed.symbols.ETH, now)
 
   const symbols = TRADED_SYMBOLS.map((sym) =>
-    computeSymbol(input.feed.symbols[sym], sym, btc, now, input.guardrail ?? null)
+    computeSymbol(
+      input.feed.symbols[sym],
+      sym,
+      btc,
+      now,
+      input.guardrail ?? null,
+      enabled,
+      marketContext
+    )
   )
 
   return {
@@ -73,6 +125,7 @@ export function computeCryptoSnapshot(input: CryptoComputeInput): CryptoSnapshot
     btc,
     symbols,
     guardrail: input.guardrail ?? null,
+    context: marketContext,
   }
 }
 
@@ -140,7 +193,9 @@ function computeSymbol(
   symbol: TradedSymbol,
   btc: BtcContext,
   now: number,
-  guardrail: string | null
+  guardrail: string | null,
+  enabled: EnabledSetups,
+  market: MarketContext
 ): SymbolSnapshot {
   const bars = feed.bars.filter((b) => b.t <= now)
   const last = bars[bars.length - 1] ?? null
@@ -175,15 +230,26 @@ function computeSymbol(
   const usOpenLow = rangeComplete ? Math.min(...rangeBars.map((b) => b.l)) : null
 
   let signal = NO_SIGNAL
+  const symCtx = symbol === "SOL" ? market.sol : market.doge
+  const dogeRvolMin = symCtx.catalystMode ? DOGE_RVOL_CATALYST : DOGE_RVOL_BASE
+  const oiRegime: OiRegime = symCtx.oiRegime
+  const catalystMode = symbol === "DOGE" ? symCtx.catalystMode : false
 
-  if (guardrail) {
+  if (market.settlement.inFreeze) {
+    signal = {
+      ...NO_SIGNAL,
+      reason: `Funding settlement ablak (±10p a ${market.settlement.nextUtc} UTC körül) — nincs új entry`,
+    }
+  } else if (guardrail) {
     signal = { ...NO_SIGNAL, reason: guardrail }
   } else if (last && atr5 != null && atr5 > 0 && vwap != null) {
-    // DOGE-kapu: katalizátor (volumen) nélkül nincs signal
-    if (symbol === "DOGE" && (rvol == null || rvol < DOGE_RVOL_MIN)) {
+    // DOGE-kapu: katalizátor nélkül magasabb RVOL kell
+    if (symbol === "DOGE" && (rvol == null || rvol < dogeRvolMin)) {
       signal = {
         ...NO_SIGNAL,
-        reason: `DOGE volumen-kapu: RVOL ${rvol?.toFixed(2) ?? "?"} < ${DOGE_RVOL_MIN} — katalizátor nélkül nem tradelünk`,
+        reason: catalystMode
+          ? `DOGE volumen-kapu (katalizátor mód): RVOL ${rvol?.toFixed(2) ?? "?"} < ${dogeRvolMin}`
+          : `DOGE volumen-kapu: RVOL ${rvol?.toFixed(2) ?? "?"} < ${dogeRvolMin} — katalizátor nélkül nem tradelünk`,
       }
     } else {
       const ctx: SignalCtx = {
@@ -204,17 +270,46 @@ function computeSymbol(
         usOpenLow,
         nowMin,
         todayStart,
+        oiRegime,
       }
 
       signal =
-        trySweep(ctx) ??
-        tryBreakout(ctx) ??
-        tryPullback(ctx) ??
-        tryMeanReversion(ctx) ??
+        (enabled.sweep ? trySweep(ctx) : null) ??
+        (enabled.breakout ? tryBreakout(ctx) : null) ??
+        (enabled.pullback ? tryPullback(ctx) : null) ??
+        (enabled.mean_rev ? tryMeanReversion(ctx) : null) ??
         { ...NO_SIGNAL, reason: waitReason(ctx) }
     }
   } else {
     signal = { ...NO_SIGNAL, reason: "Kevés adat (ATR/VWAP még nem számolható)" }
+  }
+
+  // buildup checklist — mindig mind a 4 setup (a toggle csak a signalra hat)
+  let buildups: SymbolSnapshot["buildups"] = []
+  if (last && atr5 != null && atr5 > 0 && vwap != null) {
+    const bctx: BuildupCtx = {
+      bars,
+      last,
+      atr: atr5,
+      adx: adx5,
+      rvol,
+      vwap,
+      vwapSeries,
+      funding: feed.fundingRate,
+      btcRegime: btc.regime,
+      prevDayHigh: prevDay?.h ?? null,
+      prevDayLow: prevDay?.l ?? null,
+      prevWeekHigh,
+      prevWeekLow,
+      usOpenHigh,
+      usOpenLow,
+      nowMin,
+      todayStart,
+      oiRegime,
+      settlementFreeze: market.settlement.inFreeze,
+      dogeRvolMin: symbol === "DOGE" ? dogeRvolMin : null,
+    }
+    buildups = computeBuildups(bctx)
   }
 
   // chart: utolsó ~6 óra
@@ -233,6 +328,9 @@ function computeSymbol(
     adx: adx5,
     fundingRate: feed.fundingRate,
     openInterest: feed.openInterest,
+    oiDelta1hPct: symCtx.oiDelta1hPct,
+    oiRegime,
+    catalystMode,
     prevDayHigh: prevDay?.h ?? null,
     prevDayLow: prevDay?.l ?? null,
     prevWeekHigh,
@@ -240,6 +338,7 @@ function computeSymbol(
     usOpenHigh,
     usOpenLow,
     signal,
+    buildups,
     chartBars,
     vwapSeries: vwapSeries.filter((p) => p.t >= chartFromT),
   }
@@ -263,16 +362,25 @@ interface SignalCtx {
   usOpenLow: number | null
   nowMin: number
   todayStart: number
+  oiRegime: OiRegime
 }
 
-/** BTC-rezsim + funding kapu. Null = mehet, string = blokk indoka. */
-function directionBlock(ctx: SignalCtx, dir: "long" | "short"): string | null {
+/** BTC-rezsim + funding + OI soft gate. Null = mehet, string = blokk indoka. */
+function directionBlock(ctx: SignalCtx, dir: "long" | "short", kind?: "sweep" | "breakout" | "other"): string | null {
   if (dir === "long" && ctx.btcRegime === "risk_off") return "BTC risk-off — long tiltva"
   if (dir === "short" && ctx.btcRegime === "risk_on") return "BTC risk-on — short tiltva"
   if (dir === "long" && ctx.funding != null && ctx.funding > FUNDING_EXTREME)
     return "Extrém pozitív funding — a long oldal túlzsúfolt"
   if (dir === "short" && ctx.funding != null && ctx.funding < -FUNDING_EXTREME)
     return "Extrém negatív funding — a short oldal túlzsúfolt"
+  // OI squeeze: ár↑ OI↓ — long breakout/sweep chase veszély
+  if (
+    dir === "long" &&
+    (kind === "sweep" || kind === "breakout") &&
+    ctx.oiRegime === "squeeze"
+  ) {
+    return "OI squeeze (ár↑ OI↓) — long kitörés chase veszély"
+  }
   return null
 }
 
@@ -309,7 +417,7 @@ function trySweep(ctx: SignalCtx): CryptoSignal | null {
       const b = recent[i]
       const depth = (b.h - level) / ctx.atr
       if (b.h > level && b.c < level && depth >= SWEEP_MIN_DEPTH_ATR && depth <= SWEEP_MAX_DEPTH_ATR) {
-        const block = directionBlock(ctx, "short")
+        const block = directionBlock(ctx, "short", "sweep")
         if (block) return { ...NO_SIGNAL, reason: `Sweep short setup a(z) ${name} szinten, de: ${block}` }
         const entry = b.c
         const stop = b.h + 0.1 * ctx.atr
@@ -336,7 +444,7 @@ function trySweep(ctx: SignalCtx): CryptoSignal | null {
       const b = recent[i]
       const depth = (level - b.l) / ctx.atr
       if (b.l < level && b.c > level && depth >= SWEEP_MIN_DEPTH_ATR && depth <= SWEEP_MAX_DEPTH_ATR) {
-        const block = directionBlock(ctx, "long")
+        const block = directionBlock(ctx, "long", "sweep")
         if (block) return { ...NO_SIGNAL, reason: `Sweep long setup a(z) ${name} szinten, de: ${block}` }
         const entry = b.c
         const stop = b.l - 0.1 * ctx.atr
@@ -395,7 +503,7 @@ function tryBreakout(ctx: SignalCtx): CryptoSignal | null {
       reason: `US-open breakout ${breakout.dir}, de RVOL ${ctx.rvol?.toFixed(2) ?? "?"} < ${BREAKOUT_RVOL_MIN} — volumen nélkül nem érvényes`,
     }
 
-  const block = directionBlock(ctx, breakout.dir)
+  const block = directionBlock(ctx, breakout.dir, "breakout")
   if (block) return { ...NO_SIGNAL, reason: `US-open breakout ${breakout.dir}, de: ${block}` }
 
   const entry = breakout.bar.c

@@ -14,10 +14,10 @@ const STATUS_LABEL: Record<LiveSnapshot["status"], string> = {
 }
 
 const STATUS_STYLE: Record<LiveSnapshot["status"], string> = {
-  closed: "bg-zinc-500/15 text-zinc-400",
-  preopen: "bg-sky-500/15 text-sky-400",
-  orb_forming: "bg-amber-500/15 text-amber-400",
-  active: "bg-emerald-500/15 text-emerald-400",
+  closed: "bg-zinc-500/15 text-muted",
+  preopen: "bg-sky-500/15 text-accent",
+  orb_forming: "bg-amber-500/15 text-warn",
+  active: "bg-emerald-500/15 text-win",
 }
 
 const SIGNAL_LABEL: Record<string, string> = {
@@ -90,7 +90,7 @@ export function LiveSession() {
 
   if (error && !snap) {
     return (
-      <section className="rounded-lg border border-red-500/30 bg-red-500/5 p-5 text-sm text-red-400">
+      <section className="rounded-lg border border-red-500/30 bg-red-500/5 p-5 text-sm text-loss">
         Élő adat hiba: {error}
       </section>
     )
@@ -110,7 +110,7 @@ export function LiveSession() {
   return (
     <div className="space-y-4">
       {snap.guardrail && (
-        <section className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-5 py-3 text-sm text-amber-400">
+        <section className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-5 py-3 text-sm text-warn">
           <span className="font-semibold">Guardrail aktív:</span> {snap.guardrail}{" "}
           Zárd le a napot — a statisztika szerint innen már csak rontani szoktál.
         </section>
@@ -124,7 +124,7 @@ export function LiveSession() {
         </span>
         <span className="num text-sm text-muted">{snap.etTime} ET</span>
         {countdown != null && countdown > 0 && (
-          <span className="num text-sm text-amber-400">
+          <span className="num text-sm text-warn">
             {snap.status === "preopen" ? "Nyitásig" : "ORB lockig"}:{" "}
             {formatCountdown(countdown)}
           </span>
@@ -160,7 +160,7 @@ export function LiveSession() {
                 Méret: <span className="text-foreground">{sig.contracts} MNQ</span>
               </span>
             ) : (
-              <span className="text-xs text-amber-400">
+              <span className="text-xs text-warn">
                 0 MNQ — a stop túl messze van a kockázati kerethez
               </span>
             ))}
@@ -247,7 +247,7 @@ function Metric({
   return (
     <div className="rounded-lg border border-line bg-surface px-4 py-3">
       <div className="text-xs text-muted">{label}</div>
-      <div className={`num mt-0.5 text-sm ${highlight ? "text-emerald-400" : "text-foreground"}`}>
+      <div className={`num mt-0.5 text-sm ${highlight ? "text-win" : "text-foreground"}`}>
         {display}
       </div>
     </div>

@@ -133,7 +133,18 @@ target), 12 óra után zárás piaci áron. Eredmények a `/crypto/signals` olda
 6 hét adat után döntés, melyik coin+setup páros marad.
 
 Tesztek: `npx tsx scripts/test-crypto.ts` (szintetikus), `--live` fleggel valódi
-Bybit lekéréssel.
+Bybit lekéréssel. Kontextus: `npx tsx scripts/test-crypto-context.ts`.
+
+## Kontextus-réteg (OI + hírek + settlement)
+
+A `sql/005_crypto_context.sql` futtatása után:
+
+- **OI Δ 1h/4h** — a cron elmenti az open interestet, a panelen látszik a változás és a regime (trend / squeeze / unwind / capitulation)
+- **Funding settlement freeze** — ±10 perc a 00/08/16 UTC körül nincs új entry
+- **Hírek** — CryptoPanic (opcionális `CRYPTOPANIC_TOKEN`) + manuális katalizátor a `/crypto` oldalon
+- **DOGE katalizátor mód** — high-severity Elon/SpaceX hír esetén RVOL kapu 1.3 → 1.0
+- **Soft gate** — OI squeeze esetén long sweep/breakout tiltva
+- Paper naplóban: `oi_delta_1h`, `catalyst_mode`, katalizátoros vs sima bontás a `/crypto/signals` oldalon
 
 ## Az 5 stratégia (setup_type)
 
