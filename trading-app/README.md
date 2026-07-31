@@ -1,8 +1,14 @@
-# trading-app — MNQ day trading journal + session dashboard
+# trading-app — MNQ + crypto day trading terminal
 
-Személyes (1 felhasználós) trading elemző app: MNQ session támogatás (ORB + VWAP),
-trade journal, statisztika, napi guardrailek. **Az app mér és segít dönteni — nem
-tradel helyetted.**
+Személyes (1 felhasználós) trading elemző app két, egymástól teljesen független
+modullal:
+
+- **MNQ Futures** — session támogatás (ORB + VWAP), trade journal, statisztika,
+  backtest, napi guardrailek
+- **Crypto** — SOL + DOGE élő scalp-signalok BTC/ETH kontextussal, 24/7 paper
+  trading validáció
+
+**Az app mér és segít dönteni — nem tradel helyetted.**
 
 ## Stack
 
@@ -38,6 +44,8 @@ npm run dev        # http://localhost:3010
 | `/journal/new` | Új trade form: 5 setup-típus, auto R-számítás, ICT tagek, fegyelem-mezők |
 | `/analytics` | Equity curve (R), setup statisztika, rezsim mátrix, go-live progress |
 | `/backtest` | A 4 stratégia historikus tesztje NQ 5m gyertyákon, konfigurálható filterekkel |
+| `/crypto` | Élő crypto panel: SOL + DOGE signalok, BTC/ETH rezsim, funding, chartok |
+| `/crypto/signals` | Crypto paper trading napló: coin + setup bontás, win rate, nettó R |
 | `/settings` | Account size, risk %, napi limitek, ORB periódus, demo mód |
 
 ## Backtest adat
@@ -91,13 +99,41 @@ méri, nem a fegyelmet.
      service_role (a cron RLS nélkül ír)
    - `CRON_SECRET` — hosszú random string (pl. `openssl rand -hex 32`);
      a Vercel Cron ezzel hitelesíti magát a `/api/cron` felé
-4. Deploy. A `vercel.json` cron bejegyzése (`*/5 13-21 * * 1-5`) hétköznap
-   5 percenként hívja a `/api/cron`-t (13:00–21:59 UTC — lefedi a US RTH-t
-   nyáron és télen is). Ellenőrzés: Vercel → Project → Cron Jobs fül,
-   illetve a `live_signals` / `trading_sessions` táblák a session után.
+4. Deploy. A `vercel.json` cron bejegyzése (`*/5 * * * *`) 5 percenként,
+   24/7 hívja a `/api/cron`-t: a crypto tick mindig fut (a crypto piac sosem
+   zár), az NQ tick csak hétköznap 13:00–21:00 UTC között. Ellenőrzés:
+   Vercel → Project → Cron Jobs fül, illetve a `live_signals` /
+   `crypto_signals` táblák.
 
 A cron a paper trading adatgyűjtést végzi — a böngészős élő nézet ettől
 függetlenül működik, amikor nyitva van.
+
+## Crypto modul (SOL + DOGE)
+
+Az NQ-tól teljesen külön modul (`src/lib/crypto/`, `/crypto` oldalak,
+`crypto_signals` tábla — `sql/004_crypto_signals.sql` futtatandó). Adatforrás:
+Bybit publikus perp API (kulcs nem kell), Binance USDT-M fallback. A trade-eket
+kézzel viszed be a saját platformodon — itt csak a signal születik.
+
+Setupok prioritási sorrendben:
+
+1. **Sweep-reclaim** — prev day/week high/low likviditás-sweep + visszazárás
+2. **US-open breakout** — 13:00–13:30 UTC range kitörése volumennel (RVOL ≥ 1.5)
+3. **Momentum pullback** — trendmozgás utáni VWAP-visszateszt
+4. **VWAP mean reversion** — csak range piacon (ADX < 25), ha az ár ≥ 2×ATR-re
+   nyúlt a napi VWAP-tól
+
+Kapuk: BTC-rezsim (risk-off → long tiltva, risk-on → short tiltva; hirtelen
+15 perces BTC-mozgás felülír), DOGE volumen-kapu (RVOL < 1.3 → semmi), extrém
+funding (±0.05%/8h → a zsúfolt oldal irányába nincs friss entry). Napi limit:
+max 5 signal vagy -3R (a kettő coin együtt), utána a panel elnémul.
+
+Paper kiértékelés: stop = -1R, 2R target = win (mean reversionnél a VWAP a
+target), 12 óra után zárás piaci áron. Eredmények a `/crypto/signals` oldalon —
+6 hét adat után döntés, melyik coin+setup páros marad.
+
+Tesztek: `npx tsx scripts/test-crypto.ts` (szintetikus), `--live` fleggel valódi
+Bybit lekéréssel.
 
 ## Az 5 stratégia (setup_type)
 

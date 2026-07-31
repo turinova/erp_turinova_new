@@ -4,50 +4,76 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { createSupabaseBrowser } from "@/lib/supabase/client"
 
-const NAV = [
-  { href: "/", label: "Dashboard", icon: DashboardIcon },
-  { href: "/session", label: "Session", icon: SessionIcon },
-  { href: "/signals", label: "Élő signalok", icon: SignalIcon },
-  { href: "/journal", label: "Journal", icon: JournalIcon },
-  { href: "/analytics", label: "Analytics", icon: AnalyticsIcon },
-  { href: "/backtest", label: "Backtest", icon: BacktestIcon },
-  { href: "/settings", label: "Beállítások", icon: SettingsIcon },
+const NAV_SECTIONS = [
+  {
+    title: "MNQ Futures",
+    items: [
+      { href: "/", label: "Dashboard", icon: DashboardIcon },
+      { href: "/session", label: "Session", icon: SessionIcon },
+      { href: "/signals", label: "Élő signalok", icon: SignalIcon },
+      { href: "/journal", label: "Journal", icon: JournalIcon },
+      { href: "/analytics", label: "Analytics", icon: AnalyticsIcon },
+      { href: "/backtest", label: "Backtest", icon: BacktestIcon },
+    ],
+  },
+  {
+    title: "Crypto",
+    items: [
+      { href: "/crypto", label: "Crypto live", icon: CryptoIcon },
+      { href: "/crypto/signals", label: "Crypto signalok", icon: SignalIcon },
+    ],
+  },
+  {
+    title: "Rendszer",
+    items: [{ href: "/settings", label: "Beállítások", icon: SettingsIcon }],
+  },
 ]
 
 export function Sidebar() {
   const pathname = usePathname()
 
+  const isActive = (href: string) => {
+    if (href === "/") return pathname === "/"
+    if (href === "/crypto") return pathname === "/crypto"
+    return pathname.startsWith(href)
+  }
+
   return (
     <aside className="fixed inset-y-0 left-0 z-40 flex w-56 flex-col border-r border-line bg-surface">
       <div className="flex h-16 items-center gap-2.5 border-b border-line px-5">
         <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent/15 font-mono text-sm font-bold text-accent">
-          NQ
+          TR
         </span>
         <div className="leading-tight">
-          <p className="text-sm font-semibold">MNQ Trading</p>
-          <p className="text-[11px] text-muted">demo · journal</p>
+          <p className="text-sm font-semibold">Trading Terminal</p>
+          <p className="text-[11px] text-muted">MNQ · crypto</p>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active =
-            href === "/" ? pathname === "/" : pathname.startsWith(href)
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
-                active
-                  ? "bg-accent/15 font-medium text-accent"
-                  : "text-muted hover:bg-surface-2 hover:text-foreground"
-              }`}
-            >
-              <Icon />
-              {label}
-            </Link>
-          )
-        })}
+      <nav className="flex-1 space-y-4 overflow-y-auto p-3">
+        {NAV_SECTIONS.map((section) => (
+          <div key={section.title}>
+            <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted/70">
+              {section.title}
+            </p>
+            <div className="space-y-1">
+              {section.items.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+                    isActive(href)
+                      ? "bg-accent/15 font-medium text-accent"
+                      : "text-muted hover:bg-surface-2 hover:text-foreground"
+                  }`}
+                >
+                  <Icon />
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-line p-3">
@@ -127,6 +153,16 @@ function BacktestIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M10 2v6L4 20a1.5 1.5 0 0 0 1.4 2h13.2a1.5 1.5 0 0 0 1.4-2L14 8V2" />
       <path d="M8 2h8M7.5 15h9" />
+    </svg>
+  )
+}
+
+function CryptoIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 7.5h4a2 2 0 0 1 0 4h-4v-4ZM9.5 11.5h4.5a2 2 0 0 1 0 4h-4.5v-4Z" />
+      <path d="M11 5.5v2M13 5.5v2M11 16.5v2M13 16.5v2" />
     </svg>
   )
 }
