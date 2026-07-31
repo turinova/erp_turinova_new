@@ -442,6 +442,80 @@ export async function getWeeklyCuttingData(weekOffset: number = 0) {
   }
 }
 
+export interface YearlyCuttingData {
+  year: number
+  categories: string[]
+  data: number[]
+  totalMeters: number
+}
+
+// Current-year monthly cutting length totals — same filters as the weekly cutting chart
+// (scheduled to a production machine, not deleted/cancelled), so the two cards stay consistent
+export async function getYearlyCuttingData(): Promise<YearlyCuttingData> {
+  const startTime = performance.now()
+  const year = new Date().getFullYear()
+
+  const categories = [
+    'Jan', 'Feb', 'Már', 'Ápr', 'Máj', 'Jún',
+    'Júl', 'Aug', 'Szep', 'Okt', 'Nov', 'Dec'
+  ]
+  const data = new Array<number>(12).fill(0)
+
+  try {
+    const pageSize = 1000
+
+    // Paginate: a full year of quotes can exceed the 1000-row default limit
+    for (let from = 0; ; from += pageSize) {
+      const { data: rows, error } = await supabaseServer
+        .from('quotes')
+        .select(`
+          production_date,
+          quote_materials_pricing (
+            cutting_length_m
+          )
+        `)
+        .gte('production_date', `${year}-01-01`)
+        .lte('production_date', `${year}-12-31`)
+        .not('production_machine_id', 'is', null)
+        .is('deleted_at', null)
+        .is('cancelled_at', null)
+        .order('production_date', { ascending: true })
+        .range(from, from + pageSize - 1)
+
+      if (error) {
+        console.error('Error fetching yearly cutting data:', error)
+        throw error
+      }
+
+      for (const quote of rows || []) {
+        if (!quote.production_date) continue
+        const monthIndex = Number(quote.production_date.slice(5, 7)) - 1
+        if (monthIndex < 0 || monthIndex > 11) continue
+
+        const totalCuttingLength = quote.quote_materials_pricing?.reduce(
+          (sum: number, pricing: any) => sum + (pricing.cutting_length_m || 0),
+          0
+        ) || 0
+
+        data[monthIndex] += totalCuttingLength
+      }
+
+      if (!rows || rows.length < pageSize) break
+    }
+
+    const rounded = data.map(x => Math.round(x * 100) / 100)
+    const totalMeters = Math.round(rounded.reduce((sum, x) => sum + x, 0) * 100) / 100
+
+    console.log(`[PERF] Yearly Cutting Query: ${(performance.now() - startTime).toFixed(2)}ms`)
+
+    return { year, categories, data: rounded, totalMeters }
+  } catch (error) {
+    console.error('Error in getYearlyCuttingData:', error)
+    // Home page should still render even if this card's data fails
+    return { year, categories, data: new Array<number>(12).fill(0), totalMeters: 0 }
+  }
+}
+
 
 export async function getWeeklyWorktopProductionData(weekOffset: number = 0) {
   const startTime = performance.now()
