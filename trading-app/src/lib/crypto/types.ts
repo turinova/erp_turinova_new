@@ -12,7 +12,7 @@ export const ALL_SYMBOLS = ["SOL", "DOGE", "BTC", "ETH"] as const
 export type TradedSymbol = (typeof TRADED_SYMBOLS)[number]
 export type CryptoSymbol = (typeof ALL_SYMBOLS)[number]
 
-export type CryptoFeedSource = "bybit" | "binance"
+export type CryptoFeedSource = "bybit" | "binance" | "okx"
 
 export interface SymbolFeed {
   symbol: CryptoSymbol

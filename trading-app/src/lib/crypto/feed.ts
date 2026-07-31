@@ -9,9 +9,9 @@ import {
 
 /**
  * Publikus, kulcs nélküli perp piaci adat.
- * Elsődleges: Bybit v5 (kline + tickers, ebben funding és OI is van).
- * Fallback: Binance USDT-M futures (kline + premiumIndex).
- * Mindkettő ingyenes és valós idejű.
+ * Sorrend: Bybit → OKX → Binance.
+ * A Binance (és néha a Bybit) US-régiókból 451-et adhat; ezért a Vercel
+ * functionök Frankfurtban (fra1) futnak, és van OKX fallback.
  */
 
 const PAIR: Record<CryptoSymbol, string> = {
@@ -21,22 +21,41 @@ const PAIR: Record<CryptoSymbol, string> = {
   ETH: "ETHUSDT",
 }
 
+const OKX_INST: Record<CryptoSymbol, string> = {
+  SOL: "SOL-USDT-SWAP",
+  DOGE: "DOGE-USDT-SWAP",
+  BTC: "BTC-USDT-SWAP",
+  ETH: "ETH-USDT-SWAP",
+}
+
 const CACHE_MS = 30_000
 let cache: { at: number; data: CryptoFeed } | null = null
+
+type Provider = { name: CryptoFeedSource; run: () => Promise<CryptoFeed> }
 
 export async function fetchCryptoFeed(): Promise<CryptoFeed> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.data
 
-  let data: CryptoFeed
-  try {
-    data = await fetchBybit()
-  } catch (e) {
-    console.error("Bybit feed hiba, Binance fallback:", e)
-    data = await fetchBinance()
+  const providers: Provider[] = [
+    { name: "bybit", run: fetchBybit },
+    { name: "okx", run: fetchOkx },
+    { name: "binance", run: fetchBinance },
+  ]
+
+  const errors: string[] = []
+  for (const p of providers) {
+    try {
+      const data = await p.run()
+      cache = { at: Date.now(), data }
+      return data
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`${p.name} feed hiba:`, msg)
+      errors.push(`${p.name}: ${msg}`)
+    }
   }
 
-  cache = { at: Date.now(), data }
-  return data
+  throw new Error(`Crypto feed elérhetetlen (${errors.join(" | ")})`)
 }
 
 // ---------------------------------------------------------------
@@ -53,7 +72,6 @@ async function bybitJson(path: string): Promise<unknown> {
 
 function bybitKlinesToBars(result: unknown): Bar[] {
   const list = (result as { list?: string[][] })?.list ?? []
-  // A Bybit csökkenő sorrendben adja (legújabb elöl) → megfordítjuk
   const bars: Bar[] = []
   for (let i = list.length - 1; i >= 0; i--) {
     const row = list[i]
@@ -98,7 +116,98 @@ async function fetchBybit(): Promise<CryptoFeed> {
 }
 
 // ---------------------------------------------------------------
-// Binance USDT-M futures (fallback)
+// OKX swap (jobb geo-lefedés, mint a Binance US-tiltás)
+// ---------------------------------------------------------------
+
+async function okxJson(path: string): Promise<unknown> {
+  const res = await fetch(`https://www.okx.com${path}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  })
+  if (!res.ok) throw new Error(`OKX HTTP ${res.status}`)
+  const json = await res.json()
+  if (json.code !== "0") throw new Error(`OKX code ${json.code}: ${json.msg}`)
+  return json.data
+}
+
+function okxCandlesToBars(rows: unknown): Bar[] {
+  // OKX: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm] — legújabb elöl
+  const list = (rows as string[][]) ?? []
+  const bars: Bar[] = []
+  for (let i = list.length - 1; i >= 0; i--) {
+    const row = list[i]
+    bars.push({
+      t: Math.floor(Number(row[0]) / 1000),
+      o: Number(row[1]),
+      h: Number(row[2]),
+      l: Number(row[3]),
+      c: Number(row[4]),
+      v: Number(row[5]),
+    })
+  }
+  return bars
+}
+
+async function fetchOkxCandles1m(inst: string): Promise<Bar[]> {
+  // OKX recent max 300/request — 3 oldal ≈ 15 óra
+  const all: Bar[] = []
+  let before: string | undefined
+  for (let page = 0; page < 3; page++) {
+    const q = before
+      ? `/api/v5/market/history-candles?instId=${inst}&bar=1m&limit=300&after=${before}`
+      : `/api/v5/market/candles?instId=${inst}&bar=1m&limit=300`
+    const rows = (await okxJson(q)) as string[][]
+    if (!rows.length) break
+    const chunk = okxCandlesToBars(rows)
+    all.unshift(...chunk)
+    before = rows[rows.length - 1]?.[0]
+    if (rows.length < 300) break
+  }
+  // dedup time
+  const byT = new Map<number, Bar>()
+  for (const b of all) byT.set(b.t, b)
+  return [...byT.values()].sort((a, b) => a.t - b.t)
+}
+
+async function fetchOkx(): Promise<CryptoFeed> {
+  const symbols = {} as Record<CryptoSymbol, SymbolFeed>
+
+  await Promise.all(
+    ALL_SYMBOLS.map(async (sym) => {
+      const inst = OKX_INST[sym]
+      const [bars1m, candlesDaily, ticker, funding, oi] = await Promise.all([
+        fetchOkxCandles1m(inst),
+        okxJson(`/api/v5/market/candles?instId=${inst}&bar=1Dutc&limit=15`),
+        okxJson(`/api/v5/market/ticker?instId=${inst}`),
+        okxJson(`/api/v5/public/funding-rate?instId=${inst}`),
+        okxJson(`/api/v5/public/open-interest?instId=${inst}`),
+      ])
+
+      const tick = ((ticker as Record<string, string>[]) ?? [])[0] ?? {}
+      const fund = ((funding as Record<string, string>[]) ?? [])[0] ?? {}
+      const oiRow = ((oi as Record<string, string>[]) ?? [])[0] ?? {}
+
+      const last = Number(tick.last)
+      const open24 = Number(tick.open24h)
+      const change24hPct =
+        open24 > 0 && Number.isFinite(last) ? ((last - open24) / open24) * 100 : null
+
+      symbols[sym] = {
+        symbol: sym,
+        bars: bars1m,
+        dailyBars: okxCandlesToBars(candlesDaily),
+        fundingRate: fund.fundingRate != null ? Number(fund.fundingRate) : null,
+        openInterest: oiRow.oi != null ? Number(oiRow.oi) : null,
+        change24hPct,
+      }
+    })
+  )
+
+  return { source: "okx", fetchedAt: Date.now(), symbols }
+}
+
+// ---------------------------------------------------------------
+// Binance USDT-M futures (utolsó fallback — US-ból gyakran 451)
 // ---------------------------------------------------------------
 
 async function binanceJson(path: string): Promise<unknown> {
