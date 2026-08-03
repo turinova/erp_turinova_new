@@ -11,11 +11,12 @@ async function main() {
   const raw = await readFile(join(process.cwd(), "data", "bars-NQ-5m.json"), "utf-8")
   const barFile = JSON.parse(raw) as BarFile
 
-  for (const label of ["filterek BE", "filterek KI"]) {
+  for (const label of ["filterek BE (+gap)", "filterek BE gap nélkül", "filterek KI"]) {
     const config = {
       ...DEFAULT_CONFIG,
-      volumeFilter: label === "filterek BE",
-      vwapFilter: label === "filterek BE",
+      volumeFilter: label !== "filterek KI",
+      vwapFilter: label !== "filterek KI",
+      gapFilter: label === "filterek BE (+gap)",
     }
     const r = runBacktest(barFile, config)
     console.log(`\n=== ${label} · ${r.sessionCount} session (${r.firstDate} → ${r.lastDate}) ===`)

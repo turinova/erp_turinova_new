@@ -2,6 +2,11 @@ import { RTH_OPEN_MIN, toEt } from "../et-time"
 import { positionSize } from "../r-calculator"
 import type { Bar, BarFile } from "../backtest/types"
 import type { LiveFeed } from "./fetch-live"
+import {
+  gapBlocksOrb,
+  gapDirection,
+  type GapDir,
+} from "../orb-gap"
 
 export type LiveStatus = "closed" | "preopen" | "orb_forming" | "active"
 
@@ -40,6 +45,9 @@ export interface LiveSnapshot {
   orbLocked: boolean
   overnightHigh: number | null
   overnightLow: number | null
+  /** RTH open − előző nap záró (pont); null ha nincs adat */
+  gapPts: number | null
+  gapDir: GapDir | null
   lastPrice: number | null
   lastBarEt: string | null
   /** az utolsó gyertya epoch ideje (a signal-horgonyzáshoz) */
@@ -140,6 +148,8 @@ export function computeLiveSnapshot(input: ComputeInput): LiveSnapshot {
 
   const rvol = computeRvol(rthBars, input.history, nowEt.date)
 
+  const { gapPts, gapDir } = computeSessionGap(allBars, nowEt.date, rthBars)
+
   const signal = computeSignal({
     status,
     rthBars,
@@ -149,6 +159,8 @@ export function computeLiveSnapshot(input: ComputeInput): LiveSnapshot {
     orbMinutes: input.orbMinutes,
     vwapSeries,
     rvol,
+    gapDir,
+    gapPts,
     accountSize: input.accountSize,
     riskPerTradePct: input.riskPerTradePct,
   })
@@ -177,6 +189,8 @@ export function computeLiveSnapshot(input: ComputeInput): LiveSnapshot {
     orbLocked: orbComplete,
     overnightHigh,
     overnightLow,
+    gapPts,
+    gapDir,
     lastPrice,
     lastBarEt: last ? toEt(last.t).time : null,
     lastBarT: last?.t ?? null,
@@ -193,6 +207,30 @@ export function computeLiveSnapshot(input: ComputeInput): LiveSnapshot {
           ? `Utolsó gyertya ${ageMin} perce (Yahoo delay) — entry-időzítésre a TradingView a mérvadó.`
           : "Yahoo feed — kb. valós idejű, de nem garantált.",
   }
+}
+
+/** Előző ET nap utolsó zárója → mai RTH open. */
+function computeSessionGap(
+  allBars: Bar[],
+  todayDate: string,
+  rthBars: Bar[]
+): { gapPts: number | null; gapDir: GapDir | null } {
+  if (rthBars.length === 0) return { gapPts: null, gapDir: null }
+  let prevClose: number | null = null
+  let prevDate: string | null = null
+  for (const b of allBars) {
+    const d = toEt(b.t).date
+    if (d >= todayDate) continue
+    if (prevDate == null || d > prevDate) {
+      prevDate = d
+      prevClose = b.c
+    } else if (d === prevDate) {
+      prevClose = b.c
+    }
+  }
+  if (prevClose == null) return { gapPts: null, gapDir: null }
+  const gapPts = Math.round((rthBars[0].o - prevClose) * 100) / 100
+  return { gapPts, gapDir: gapDirection(gapPts) }
 }
 
 /** Az utolsó lezárt 5 perces slot volumene vs. az előző 20 session azonos slotja. */
@@ -246,6 +284,8 @@ function computeSignal(input: {
   orbMinutes: number
   vwapSeries: { t: number; v: number }[]
   rvol: number | null
+  gapDir: GapDir | null
+  gapPts: number | null
   accountSize: number
   riskPerTradePct: number
 }): LiveSignal {
@@ -375,16 +415,22 @@ function computeSignal(input: {
   } else if (breakoutDir === "up" && lastBar.c > orbHigh) {
     const entry = breakoutClose
     const risk = entry - orbLow
-    if (lastVwap != null && lastBar.c <= lastVwap) {
+    if (gapBlocksOrb(input.gapDir, "up")) {
+      blockReason = `Kitörés felfelé, de a gap lefelé van (${input.gapPts?.toFixed(1) ?? "?"} pont) — gap-ellen ORB historikusan gyenge, skip.`
+    } else if (lastVwap != null && lastBar.c <= lastVwap) {
       blockReason = "Kitörés felfelé, de az ár nincs a VWAP felett — nincs egyezés."
     } else if (input.rvol != null && input.rvol < 1.2) {
       blockReason = `Kitörés felfelé, de RVOL ${input.rvol} < 1.2 — gyenge volumen.`
     } else if (lastBar.c > entry + 0.75 * risk) {
       blockReason = `A kitörés (${entry.toFixed(2)}) már elfutott — chase tilos, várj pullbackre vagy fade setuppra.`
     } else {
+      const gapNote =
+        input.gapDir === "up" && input.gapPts != null
+          ? `, gap-mellette (+${input.gapPts.toFixed(1)})`
+          : ""
       return {
         kind: "ORB_LONG",
-        reason: `Záróár az ORB high (${orbHigh.toFixed(2)}) felett, VWAP OK${input.rvol != null ? `, RVOL ${input.rvol}` : ""}.`,
+        reason: `Záróár az ORB high (${orbHigh.toFixed(2)}) felett, VWAP OK${input.rvol != null ? `, RVOL ${input.rvol}` : ""}${gapNote}.`,
         entry,
         stop: orbLow,
         target15: round2(entry + 1.5 * risk),
@@ -395,16 +441,22 @@ function computeSignal(input: {
   } else if (breakoutDir === "down" && lastBar.c < orbLow) {
     const entry = breakoutClose
     const risk = orbHigh - entry
-    if (lastVwap != null && lastBar.c >= lastVwap) {
+    if (gapBlocksOrb(input.gapDir, "down")) {
+      blockReason = `Kitörés lefelé, de a gap felfelé van (${input.gapPts?.toFixed(1) ?? "?"} pont) — gap-ellen ORB historikusan gyenge, skip.`
+    } else if (lastVwap != null && lastBar.c >= lastVwap) {
       blockReason = "Kitörés lefelé, de az ár nincs a VWAP alatt — nincs egyezés."
     } else if (input.rvol != null && input.rvol < 1.2) {
       blockReason = `Kitörés lefelé, de RVOL ${input.rvol} < 1.2 — gyenge volumen.`
     } else if (lastBar.c < entry - 0.75 * risk) {
       blockReason = `A kitörés (${entry.toFixed(2)}) már elfutott — chase tilos, várj pullbackre vagy fade setuppra.`
     } else {
+      const gapNote =
+        input.gapDir === "down" && input.gapPts != null
+          ? `, gap-mellette (${input.gapPts.toFixed(1)})`
+          : ""
       return {
         kind: "ORB_SHORT",
-        reason: `Záróár az ORB low (${orbLow.toFixed(2)}) alatt, VWAP OK${input.rvol != null ? `, RVOL ${input.rvol}` : ""}.`,
+        reason: `Záróár az ORB low (${orbLow.toFixed(2)}) alatt, VWAP OK${input.rvol != null ? `, RVOL ${input.rvol}` : ""}${gapNote}.`,
         entry,
         stop: orbHigh,
         target15: round2(entry - 1.5 * risk),

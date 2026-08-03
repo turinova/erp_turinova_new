@@ -81,11 +81,14 @@ pénz menne rájuk.
 
 Az élő engine mind az 5 stratégiát figyeli, prioritási sorrendben:
 failed breakout fade → ORB breakout (csak a kitörés utáni 30 percben, VWAP +
-RVOL filterrel, chase-védelemmel) → momentum pullback (VWAP-visszateszt a
-trend irányába) → VWAP reversion (range napokon 10:30 ET után). A napi
-guardrail (max trade-szám / max napi -R a journalból) limit felett elnémítja
-a signal panelt — de a paper napló ilyenkor is rögzít, mert az a stratégiát
-méri, nem a fegyelmet.
+RVOL + **gap-alignment** filterrel, chase-védelemmel) → momentum pullback
+(VWAP-visszateszt a trend irányába) → VWAP reversion (range napokon 10:30 ET
+után). A gap-alignment az egyetlen új ORB-filter, amit a historikus NQ A/B
+alátámasztott (gap-mellette +0.8R / 71% vs gap-ellen −1.8R / 40%); ATR-sáv,
+retest és first-bar irány ugyanezen mintán nem javított — nincs bekapcsolva.
+A napi guardrail (max trade-szám / max napi -R a journalból) limit felett
+elnémítja a signal panelt — de a paper napló ilyenkor is rögzít, mert az a
+stratégiát méri, nem a fegyelmet.
 
 ## Vercel deploy + cron (önjáró adatgyűjtés)
 

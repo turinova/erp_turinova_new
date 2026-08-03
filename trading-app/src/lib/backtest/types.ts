@@ -38,6 +38,11 @@ export interface BacktestConfig {
   rvolThreshold: number
   /** VWAP-egyezés filter az ORB entry-hez */
   vwapFilter: boolean
+  /**
+   * ORB csak a gap irányába (gap ellen → skip).
+   * A/B: gap-mellette +0.8R / 71% vs gap-ellen −1.8R / 40% (12 ORB trade).
+   */
+  gapFilter: boolean
   /** Target R-multiple (stop-táv szorzó) */
   targetR: number
   /** Minimum ORB range pontban — ez alatt skip (zajszűrő) */
@@ -52,6 +57,7 @@ export const DEFAULT_CONFIG: BacktestConfig = {
   volumeFilter: true,
   rvolThreshold: 1.2,
   vwapFilter: true,
+  gapFilter: true,
   targetR: 1.5,
   minRangePoints: 20,
   cutoffHourEt: 11,

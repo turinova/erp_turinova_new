@@ -188,6 +188,33 @@ export function CryptoLive() {
         </section>
       )}
 
+      {snap.paper && snap.paper.errors.length > 0 && (
+        <section className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-loss">
+          <p className="font-medium">Paper mentés sikertelen — a signal él, de nem került a naplóba</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+            {snap.paper.errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-muted">
+            Tipikusan: futtasd a{" "}
+            <code className="rounded bg-surface-2 px-1">sql/006_crypto_setups_v2.sql</code>{" "}
+            (és ha kell a{" "}
+            <code className="rounded bg-surface-2 px-1">sql/005_crypto_context.sql</code>) scriptet
+            a Supabase SQL editorban.
+          </p>
+        </section>
+      )}
+
+      {snap.paper && snap.paper.saved > 0 && snap.paper.errors.length === 0 && (
+        <section className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-4 py-2 text-xs text-win">
+          Paper napló: {snap.paper.saved} signal mentve →{" "}
+          <a href="/crypto/signals" className="underline">
+            /crypto/signals
+          </a>
+        </section>
+      )}
+
       {snap.symbols.map((s) => (
         <SymbolPanel key={s.symbol} s={s} enabled={enabled} />
       ))}
@@ -203,6 +230,12 @@ function SymbolPanel({ s, enabled }: { s: SymbolSnapshot; enabled: EnabledSetups
   const levels = [
     s.prevDayHigh != null ? { price: s.prevDayHigh, title: "PD H", color: "#b45309" } : null,
     s.prevDayLow != null ? { price: s.prevDayLow, title: "PD L", color: "#b45309" } : null,
+    s.equalHigh != null ? { price: s.equalHigh, title: "EQH", color: "#c2410c" } : null,
+    s.equalLow != null ? { price: s.equalLow, title: "EQL", color: "#c2410c" } : null,
+    s.asiaHigh != null ? { price: s.asiaHigh, title: "Asia H", color: "#0d9488" } : null,
+    s.asiaLow != null ? { price: s.asiaLow, title: "Asia L", color: "#0d9488" } : null,
+    s.londonHigh != null ? { price: s.londonHigh, title: "Lon H", color: "#2563eb" } : null,
+    s.londonLow != null ? { price: s.londonLow, title: "Lon L", color: "#2563eb" } : null,
     s.usOpenHigh != null ? { price: s.usOpenHigh, title: "US H", color: "#7c3aed" } : null,
     s.usOpenLow != null ? { price: s.usOpenLow, title: "US L", color: "#7c3aed" } : null,
     hasSignal && sig.entry != null
@@ -248,6 +281,7 @@ function SymbolPanel({ s, enabled }: { s: SymbolSnapshot; enabled: EnabledSetups
         <Metric
           label="Funding"
           value={s.fundingRate != null ? `${(s.fundingRate * 100).toFixed(4)}%` : "—"}
+          sub={s.fundingZ != null ? `z=${s.fundingZ.toFixed(1)}` : undefined}
         />
         <Metric
           label="Prev day H/L"

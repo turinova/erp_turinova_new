@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Bar } from "../backtest/types"
-import type { CryptoSnapshot } from "./types"
+import type { CryptoSnapshot, SymbolSnapshot } from "./types"
 
 /**
  * Crypto paper trading motor — az NQ-stól függetlenül, a crypto_signals
@@ -22,12 +22,19 @@ export interface CryptoSignalRow {
   target: number
 }
 
+export type PaperWriteResult = {
+  attempted: number
+  saved: number
+  errors: string[]
+}
+
 export async function recordAndEvaluateCryptoSignals(
   supabase: SupabaseClient,
   snapshot: CryptoSnapshot,
   barsBySymbol: Record<string, Bar[]>
-): Promise<void> {
-  // 1) új signalok rögzítése (UTC naponta symbol+setup-onként egyszer)
+): Promise<PaperWriteResult> {
+  const result: PaperWriteResult = { attempted: 0, saved: 0, errors: [] }
+
   for (const s of snapshot.symbols) {
     const sig = s.signal
     if (
@@ -39,42 +46,27 @@ export async function recordAndEvaluateCryptoSignals(
     )
       continue
 
-    await supabase.from("crypto_signals").upsert(
-      {
-        date: snapshot.utcDate,
-        symbol: s.symbol,
-        kind: sig.kind,
-        bar_time: new Date(s.lastBarT * 1000).toISOString(),
-        entry: sig.entry,
-        stop: sig.stop,
-        target: sig.target,
-        reason: sig.reason,
-        btc_regime: snapshot.btc.regime,
-        funding_rate: s.fundingRate,
-        rvol: s.rvol,
-        source: snapshot.source,
-        oi_delta_1h: s.oiDelta1hPct,
-        catalyst_mode: s.catalystMode,
-        settlement_freeze: snapshot.context?.settlement.inFreeze ?? false,
-        context_note: [
-          s.oiRegime !== "unknown" ? `OI:${s.oiRegime}` : null,
-          s.catalystMode ? "catalyst" : null,
-          snapshot.context?.settlement.inFreeze ? "settlement-freeze" : null,
-        ]
-          .filter(Boolean)
-          .join(" · ") || null,
-      },
-      { onConflict: "date,symbol,kind", ignoreDuplicates: true }
-    )
+    result.attempted++
+    const write = await upsertSignal(supabase, snapshot, s)
+    if (write.ok) result.saved++
+    else {
+      result.errors.push(`${s.symbol} ${sig.kind}: ${write.error}`)
+      console.error("Crypto paper upsert hiba:", write.error)
+    }
   }
 
-  // 2) nyitott signalok kiértékelése
-  const { data: open } = await supabase
+  const { data: open, error: openErr } = await supabase
     .from("crypto_signals")
     .select("id, symbol, kind, bar_time, entry, stop, target")
     .eq("status", "open")
 
-  if (!open || open.length === 0) return
+  if (openErr) {
+    result.errors.push(`open select: ${openErr.message}`)
+    console.error("Crypto paper open select hiba:", openErr.message)
+    return result
+  }
+
+  if (!open || open.length === 0) return result
 
   const nowSec = Math.floor(Date.now() / 1000)
   for (const row of open as CryptoSignalRow[]) {
@@ -82,9 +74,73 @@ export async function recordAndEvaluateCryptoSignals(
     if (!bars) continue
     const outcome = evaluateCryptoSignal(row, bars, nowSec)
     if (outcome) {
-      await supabase.from("crypto_signals").update(outcome).eq("id", row.id)
+      const { error } = await supabase.from("crypto_signals").update(outcome).eq("id", row.id)
+      if (error) {
+        result.errors.push(`evaluate ${row.kind}: ${error.message}`)
+        console.error("Crypto paper evaluate hiba:", error.message)
+      }
     }
   }
+
+  return result
+}
+
+async function upsertSignal(
+  supabase: SupabaseClient,
+  snapshot: CryptoSnapshot,
+  s: SymbolSnapshot
+): Promise<{ ok: boolean; error?: string }> {
+  const sig = s.signal
+  const base = {
+    date: snapshot.utcDate,
+    symbol: s.symbol,
+    kind: sig.kind,
+    bar_time: new Date((s.lastBarT as number) * 1000).toISOString(),
+    entry: sig.entry as number,
+    stop: sig.stop as number,
+    target: sig.target as number,
+    reason: sig.reason,
+    btc_regime: snapshot.btc.regime,
+    funding_rate: s.fundingRate,
+    rvol: s.rvol,
+    source: snapshot.source,
+  }
+
+  const withContext = {
+    ...base,
+    oi_delta_1h: s.oiDelta1hPct,
+    catalyst_mode: s.catalystMode,
+    settlement_freeze: snapshot.context?.settlement.inFreeze ?? false,
+    context_note: [
+      s.oiRegime !== "unknown" ? `OI:${s.oiRegime}` : null,
+      s.catalystMode ? "catalyst" : null,
+      snapshot.context?.settlement.inFreeze ? "settlement-freeze" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null,
+  }
+
+  const opts = { onConflict: "date,symbol,kind", ignoreDuplicates: true } as const
+
+  let { error } = await supabase.from("crypto_signals").upsert(withContext, opts)
+
+  // 005 oszlopok hiányozhatnak — próbáljuk kontextus nélkül
+  if (error && /oi_delta_1h|catalyst_mode|settlement_freeze|context_note|column/i.test(error.message)) {
+    console.warn("Crypto paper: kontextus-oszlopok hiányoznak, mentés alapmezőkkel. Futtasd: sql/005_crypto_context.sql")
+    ;({ error } = await supabase.from("crypto_signals").upsert(base, opts))
+  }
+
+  if (error) {
+    let hint = error.message
+    if (/check|kind|violates/i.test(error.message)) {
+      hint += " — futtasd a sql/006_crypto_setups_v2.sql scriptet (FVG kind-ok)."
+    } else if (/relation|does not exist|schema cache/i.test(error.message)) {
+      hint += " — futtasd a sql/004_crypto_signals.sql scriptet."
+    }
+    return { ok: false, error: hint }
+  }
+
+  return { ok: true }
 }
 
 export function evaluateCryptoSignal(
@@ -117,7 +173,6 @@ export function evaluateCryptoSignal(
     }
   }
 
-  // lejárt a max. tartási idő, de nincs friss gyertya → utolsó ismert áron zárjuk
   if (nowSec >= deadline) {
     if (lastClose) return outcome("expired", lastClose.price, entry, risk, isLong, lastClose.t)
     return { status: "expired", exited_at: new Date().toISOString() }

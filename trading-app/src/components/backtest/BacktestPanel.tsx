@@ -133,6 +133,17 @@ export function BacktestPanel() {
             />
             Volume filter (RVOL ≥ {config.rvolThreshold})
           </label>
+          <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+            <input
+              type="checkbox"
+              checked={config.gapFilter}
+              onChange={(e) =>
+                setConfig((c) => ({ ...c, gapFilter: e.target.checked }))
+              }
+              className="h-4 w-4 accent-[var(--accent)]"
+            />
+            Gap-alignment (ORB) — A/B: +0.8R vs −1.8R
+          </label>
 
           <button
             onClick={() => run(config)}

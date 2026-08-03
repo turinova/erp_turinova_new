@@ -193,7 +193,7 @@ export function LiveSession() {
       </section>
 
       {/* Élő mérőszámok */}
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
         <Metric label="Utolsó ár" value={snap.lastPrice} suffix={snap.lastBarEt ? ` (${snap.lastBarEt})` : ""} />
         <Metric label="ORB High" value={snap.orbHigh} pending={!snap.orbLocked} />
         <Metric label="ORB Low" value={snap.orbLow} pending={!snap.orbLocked} />
@@ -206,6 +206,21 @@ export function LiveSession() {
         />
         <Metric label="RVOL (5m)" value={snap.rvol} highlight={snap.rvol != null && snap.rvol >= 1.2} />
         <Metric
+          label="Gap (open−prev)"
+          text={
+            snap.gapPts != null && snap.gapDir
+              ? `${snap.gapPts > 0 ? "+" : ""}${snap.gapPts.toFixed(1)} · ${
+                  snap.gapDir === "up"
+                    ? "fel (ORB long)"
+                    : snap.gapDir === "down"
+                      ? "le (ORB short)"
+                      : "flat"
+                }`
+              : "—"
+          }
+          highlight={snap.gapDir === "up" || snap.gapDir === "down"}
+        />
+        <Metric
           label="Overnight H/L"
           text={
             snap.overnightHigh != null
@@ -213,6 +228,14 @@ export function LiveSession() {
               : "—"
           }
         />
+      </section>
+
+      <section className="rounded-lg border border-line bg-surface px-5 py-3 text-xs text-muted">
+        <span className="font-medium text-foreground">ORB filterek (backtestelt):</span>{" "}
+        VWAP egyezés · RVOL ≥ 1.2 · min. range · chase-tiltás ·{" "}
+        <span className="text-foreground">gap-alignment</span> (gap ellen historikusan
+        −1.8R / 40% win — tiltva). ATR-sáv / retest / first-bar a mintán nem javított,
+        nincs bekapcsolva.
       </section>
     </div>
   )

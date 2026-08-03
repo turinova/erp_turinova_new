@@ -31,10 +31,12 @@ const SETUP_FAMILY: Record<string, string> = {
   SWEEP_SHORT: "Sweep-reclaim",
   MR_LONG: "VWAP mean reversion",
   MR_SHORT: "VWAP mean reversion",
-  BREAKOUT_LONG: "US-open breakout",
-  BREAKOUT_SHORT: "US-open breakout",
+  BREAKOUT_LONG: "Session breakout",
+  BREAKOUT_SHORT: "Session breakout",
   PB_LONG: "Momentum pullback",
   PB_SHORT: "Momentum pullback",
+  FVG_LONG: "FVG tap",
+  FVG_SHORT: "FVG tap",
 }
 
 const STATUS_LABEL: Record<CryptoSignalRow["status"], string> = {

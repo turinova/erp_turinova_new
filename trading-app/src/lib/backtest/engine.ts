@@ -8,6 +8,7 @@ import type {
   StrategyId,
   StrategyStats,
 } from "./types"
+import { gapBlocksOrb, gapDirection } from "../orb-gap"
 
 /**
  * Egyszerűsített, konzervatív szimulációs modell 5 perces gyertyákon:
@@ -35,19 +36,25 @@ interface Session {
   orbRange: number
   /** az ORB utáni első gyertya indexe */
   orbEndIdx: number
+  /** RTH open − előző nap záró (pont) */
+  gapPts: number | null
   /** slot → átlagvolumen az előző max. 20 session azonos slotjából */
   rvol: (idx: number) => number
 }
 
 import { RTH_OPEN_MIN as RTH_OPEN, toEt } from "../et-time"
 
-/** RTH session-ökre bontás + VWAP + RVOL előkészítés. */
+/** RTH session-ökre bontás + VWAP + RVOL + gap előkészítés. */
 export function buildSessions(barFile: BarFile, config: BacktestConfig): Session[] {
   const cutoffMin = config.cutoffHourEt * 60
   const byDate = new Map<string, SessionBar[]>()
+  /** nap → utolsó ismert záróár (gap számításhoz) */
+  const lastCloseByDate = new Map<string, number>()
 
-  for (const bar of barFile.bars) {
+  const sortedBars = [...barFile.bars].sort((a, b) => a.t - b.t)
+  for (const bar of sortedBars) {
     const et = toEt(bar.t)
+    lastCloseByDate.set(et.date, bar.c)
     if (et.minutes < RTH_OPEN || et.minutes >= cutoffMin) continue
     const list = byDate.get(et.date) ?? []
     list.push({
@@ -62,6 +69,7 @@ export function buildSessions(barFile: BarFile, config: BacktestConfig): Session
 
   const sessions: Session[] = []
   const volHistory: number[][] = [] // sessionenként: slot → volumen
+  const datesSorted = [...lastCloseByDate.keys()].sort()
 
   const orbBarCount = Math.max(1, Math.round(config.orbMinutes / 5))
 
@@ -84,6 +92,11 @@ export function buildSessions(barFile: BarFile, config: BacktestConfig): Session
     const orbHigh = Math.max(...orbBars.map((b) => b.h))
     const orbLow = Math.min(...orbBars.map((b) => b.l))
 
+    const dateIdx = datesSorted.indexOf(date)
+    const prevDate = dateIdx > 0 ? datesSorted[dateIdx - 1] : null
+    const prevClose = prevDate != null ? lastCloseByDate.get(prevDate) ?? null : null
+    const gapPts = prevClose != null ? bars[0].o - prevClose : null
+
     // RVOL: az előző max. 20 session azonos slotjának átlagvolumene
     const history = volHistory.slice(-20)
     const rvol = (idx: number) => {
@@ -103,6 +116,7 @@ export function buildSessions(barFile: BarFile, config: BacktestConfig): Session
       orbLow,
       orbRange: orbHigh - orbLow,
       orbEndIdx: orbBarCount,
+      gapPts,
       rvol,
     })
 
@@ -191,6 +205,10 @@ function runOrb(session: Session, config: BacktestConfig): SimTrade[] {
       if (direction === "short" && b.c >= b.vwap) return []
     }
     if (config.volumeFilter && session.rvol(i) < config.rvolThreshold) return []
+    if (config.gapFilter) {
+      const gDir = gapDirection(session.gapPts)
+      if (gapBlocksOrb(gDir, direction)) return []
+    }
 
     const stop = direction === "long" ? session.orbLow : session.orbHigh
     const trade = makeTrade(session, "orb", direction, i, b.c, stop, config.targetR)

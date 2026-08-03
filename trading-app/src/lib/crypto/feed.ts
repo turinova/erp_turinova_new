@@ -93,19 +93,29 @@ async function fetchBybit(): Promise<CryptoFeed> {
   await Promise.all(
     ALL_SYMBOLS.map(async (sym) => {
       const pair = PAIR[sym]
-      const [kline1m, klineDaily, tickers] = await Promise.all([
+      const [kline1m, klineDaily, tickers, fundingHist] = await Promise.all([
         bybitJson(`/v5/market/kline?category=linear&symbol=${pair}&interval=1&limit=1000`),
         bybitJson(`/v5/market/kline?category=linear&symbol=${pair}&interval=D&limit=15`),
         bybitJson(`/v5/market/tickers?category=linear&symbol=${pair}`),
+        bybitJson(
+          `/v5/market/funding/history?category=linear&symbol=${pair}&limit=30`
+        ).catch(() => null),
       ])
 
       const tick = (tickers as { list?: Record<string, string>[] })?.list?.[0] ?? {}
+      const histList = (fundingHist as { list?: { fundingRate?: string }[] } | null)?.list ?? []
+      // Bybit: legújabb elöl → fordítsuk régi→új-ra
+      const fundingHistory = histList
+        .map((r) => Number(r.fundingRate))
+        .filter((n) => Number.isFinite(n))
+        .reverse()
 
       symbols[sym] = {
         symbol: sym,
         bars: bybitKlinesToBars(kline1m),
         dailyBars: bybitKlinesToBars(klineDaily),
         fundingRate: tick.fundingRate != null ? Number(tick.fundingRate) : null,
+        fundingHistory: fundingHistory.length ? fundingHistory : undefined,
         openInterest: tick.openInterest != null ? Number(tick.openInterest) : null,
         change24hPct: tick.price24hPcnt != null ? Number(tick.price24hPcnt) * 100 : null,
       }
@@ -175,17 +185,23 @@ async function fetchOkx(): Promise<CryptoFeed> {
   await Promise.all(
     ALL_SYMBOLS.map(async (sym) => {
       const inst = OKX_INST[sym]
-      const [bars1m, candlesDaily, ticker, funding, oi] = await Promise.all([
+      const [bars1m, candlesDaily, ticker, funding, oi, fundHist] = await Promise.all([
         fetchOkxCandles1m(inst),
         okxJson(`/api/v5/market/candles?instId=${inst}&bar=1Dutc&limit=15`),
         okxJson(`/api/v5/market/ticker?instId=${inst}`),
         okxJson(`/api/v5/public/funding-rate?instId=${inst}`),
         okxJson(`/api/v5/public/open-interest?instId=${inst}`),
+        okxJson(`/api/v5/public/funding-rate-history?instId=${inst}&limit=30`).catch(() => null),
       ])
 
       const tick = ((ticker as Record<string, string>[]) ?? [])[0] ?? {}
       const fund = ((funding as Record<string, string>[]) ?? [])[0] ?? {}
       const oiRow = ((oi as Record<string, string>[]) ?? [])[0] ?? {}
+      const histRows = (fundHist as { fundingRate?: string }[] | null) ?? []
+      const fundingHistory = histRows
+        .map((r) => Number(r.fundingRate))
+        .filter((n) => Number.isFinite(n))
+        .reverse()
 
       const last = Number(tick.last)
       const open24 = Number(tick.open24h)
@@ -197,6 +213,7 @@ async function fetchOkx(): Promise<CryptoFeed> {
         bars: bars1m,
         dailyBars: okxCandlesToBars(candlesDaily),
         fundingRate: fund.fundingRate != null ? Number(fund.fundingRate) : null,
+        fundingHistory: fundingHistory.length ? fundingHistory : undefined,
         openInterest: oiRow.oi != null ? Number(oiRow.oi) : null,
         change24hPct,
       }
@@ -233,23 +250,29 @@ async function fetchBinance(): Promise<CryptoFeed> {
   await Promise.all(
     ALL_SYMBOLS.map(async (sym) => {
       const pair = PAIR[sym]
-      const [kline1m, klineDaily, premium, ticker24h, oi] = await Promise.all([
+      const [kline1m, klineDaily, premium, ticker24h, oi, fundHist] = await Promise.all([
         binanceJson(`/fapi/v1/klines?symbol=${pair}&interval=1m&limit=1000`),
         binanceJson(`/fapi/v1/klines?symbol=${pair}&interval=1d&limit=15`),
         binanceJson(`/fapi/v1/premiumIndex?symbol=${pair}`),
         binanceJson(`/fapi/v1/ticker/24hr?symbol=${pair}`),
         binanceJson(`/fapi/v1/openInterest?symbol=${pair}`),
+        binanceJson(`/fapi/v1/fundingRate?symbol=${pair}&limit=30`).catch(() => null),
       ])
 
       const prem = premium as { lastFundingRate?: string }
       const t24 = ticker24h as { priceChangePercent?: string }
       const oiRow = oi as { openInterest?: string }
+      const histRows = (fundHist as { fundingRate?: string }[] | null) ?? []
+      const fundingHistory = histRows
+        .map((r) => Number(r.fundingRate))
+        .filter((n) => Number.isFinite(n))
 
       symbols[sym] = {
         symbol: sym,
         bars: binanceKlinesToBars(kline1m),
         dailyBars: binanceKlinesToBars(klineDaily),
         fundingRate: prem.lastFundingRate != null ? Number(prem.lastFundingRate) : null,
+        fundingHistory: fundingHistory.length ? fundingHistory : undefined,
         openInterest: oiRow.openInterest != null ? Number(oiRow.openInterest) : null,
         change24hPct: t24.priceChangePercent != null ? Number(t24.priceChangePercent) : null,
       }

@@ -19,6 +19,7 @@ create index if not exists idx_crypto_oi_symbol_time
 
 alter table crypto_oi_snapshots enable row level security;
 
+drop policy if exists "authenticated all - crypto_oi_snapshots" on crypto_oi_snapshots;
 create policy "authenticated all - crypto_oi_snapshots"
   on crypto_oi_snapshots for all
   to authenticated
@@ -47,6 +48,7 @@ create index if not exists idx_crypto_news_expires
 
 alter table crypto_news enable row level security;
 
+drop policy if exists "authenticated all - crypto_news" on crypto_news;
 create policy "authenticated all - crypto_news"
   on crypto_news for all
   to authenticated

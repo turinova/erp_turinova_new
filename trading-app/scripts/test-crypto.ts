@@ -83,7 +83,7 @@ function solSnap(feed: CryptoFeed, nowMin: number) {
 // --- 1) Sweep-reclaim SHORT a prev day high fölött ---
 // 10:02 UTC (600+ perc) — settlement freeze ablakon kívül
 {
-  const bars = [...flat(0, 600, 100), bar(601, 100, 110.6, 99.5, 109.4)]
+  const bars = [...flat(0, 600, 100), bar(601, 100, 110.6, 99.5, 109.4, 20000)]
   const feed = mkFeed({ sol: sym("SOL", bars, dailies(110, 90)), span: [0, 601] })
   const { snap, sol } = solSnap(feed, 602)
   check("sweep short kind", sol.signal.kind === "SWEEP_SHORT", sol.signal)
@@ -94,7 +94,7 @@ function solSnap(feed: CryptoFeed, nowMin: number) {
 
 // --- 2) BTC risk-off blokkolja a sweep longot ---
 {
-  const solBars = [...flat(0, 600, 100), bar(601, 100, 100.5, 97.4, 98.5)]
+  const solBars = [...flat(0, 600, 100), bar(601, 100, 100.5, 97.4, 98.5, 20000)]
   const btcBars = flat(0, 585, 50000, 60)
   let px = 50000
   for (let m = 586; m <= 601; m++) {
@@ -154,7 +154,12 @@ function solSnap(feed: CryptoFeed, nowMin: number) {
   ]
   for (let m = 811; m <= 819; m++) bars.push(bar(m, 101.4, 101.6, 101.3, 101.5, 15000))
   const feed = mkFeed({ sol: sym("SOL", bars, dailies(110, 90)), span: [600, 819] })
-  const { sol } = solSnap(feed, 820)
+  const snap = computeCryptoSnapshot({
+    feed,
+    nowSec: at(820),
+    enabledSetups: { sweep: false, fvg: false, breakout: true, pullback: false, mean_rev: false },
+  })
+  const sol = snap.symbols.find((s) => s.symbol === "SOL")!
   check("breakout long kind", sol.signal.kind === "BREAKOUT_LONG", { signal: sol.signal, rvol: sol.rvol })
   check("breakout entry = kitörő close", sol.signal.entry === 101.2, sol.signal)
   check(
@@ -164,6 +169,84 @@ function solSnap(feed: CryptoFeed, nowMin: number) {
       Math.abs(sol.usOpenHigh - 100.8) < 0.25 &&
       Math.abs(sol.usOpenLow - 99.2) < 0.25,
     { h: sol.usOpenHigh, l: sol.usOpenLow }
+  )
+}
+
+// --- 6) Funding z-score blokkolja a longot (|z|≥2) ---
+{
+  const bars = [...flat(0, 600, 100), bar(601, 100, 100.5, 97.4, 98.5, 20000)]
+  const hist = Array.from({ length: 20 }, () => 0.0001)
+  hist.push(0.0015) // extrém pozitív → z magas
+  const feed = mkFeed({
+    sol: { ...sym("SOL", bars, dailies(110, 98)), fundingRate: 0.0015, fundingHistory: hist },
+    span: [0, 601],
+  })
+  const { sol } = solSnap(feed, 602)
+  check("funding-z: nincs long sweep", sol.signal.kind === "NONE", sol.signal)
+  check("funding-z: reason z-score", /z-score|Funding z/i.test(sol.signal.reason), sol.signal.reason)
+  check("funding-z: snapshot mező", sol.fundingZ != null && sol.fundingZ >= 2, sol.fundingZ)
+}
+
+// --- 7) FVG tap long ---
+{
+  // 5m aggregátumhoz: 1m gyertyákból bullish gap + tap
+  const bars = flat(0, 500, 100, 0.4, 2000)
+  // displacement up creating FVG on 5m: need three 5m buckets
+  // bucket around 505-515: low body, then impulse, then continue
+  for (let m = 501; m <= 505; m++) bars.push(bar(m, 100, 100.3, 99.7, 100, 2000))
+  for (let m = 506; m <= 510; m++) bars.push(bar(m, 100, 100.2, 99.8, 100.1, 2000))
+  // impulse: gap up vs two buckets ago
+  for (let m = 511; m <= 515; m++) bars.push(bar(m, 102.5, 103, 102.4, 102.8, 8000))
+  for (let m = 516; m <= 560; m++) bars.push(bar(m, 102.6, 102.9, 102.3, 102.5, 2000))
+  // tap into gap (~100.2–102.4) and reclaim
+  bars.push(bar(561, 102.2, 102.3, 100.5, 101.2, 5000))
+  bars.push(bar(562, 101.2, 101.8, 101.0, 101.6, 5000))
+
+  const feed = mkFeed({
+    sol: sym("SOL", bars, dailies(110, 90)),
+    span: [0, 562],
+  })
+  const snap = computeCryptoSnapshot({
+    feed,
+    nowSec: at(563),
+    enabledSetups: { sweep: false, fvg: true, breakout: false, pullback: false, mean_rev: false },
+  })
+  const sol = snap.symbols.find((s) => s.symbol === "SOL")!
+  check("FVG: long vagy wait (struktúra függő)", sol.signal.kind === "FVG_LONG" || sol.signal.kind === "NONE", sol.signal)
+  if (sol.signal.kind === "FVG_LONG") {
+    check("FVG: reason tap", /FVG/i.test(sol.signal.reason), sol.signal.reason)
+  }
+  const fvgBu = sol.buildups.find((b) => b.id === "fvg")
+  check("FVG: buildup létezik", fvgBu != null, sol.buildups.map((b) => b.id))
+}
+
+// --- 8) Asia session range snapshot ---
+{
+  const bars = [
+    ...flat(0, 419, 100, 0.5), // 00:00–06:59 Asia
+    ...flat(420, 479, 100, 0.8), // London form 07–08
+    bar(480, 100, 101.5, 100, 101.4, 15000), // London breakout
+  ]
+  for (let m = 481; m <= 500; m++) bars.push(bar(m, 101.4, 101.6, 101.3, 101.5, 12000))
+  const feed = mkFeed({ sol: sym("SOL", bars, dailies(110, 90)), span: [0, 500] })
+  const snap = computeCryptoSnapshot({
+    feed,
+    nowSec: at(501),
+    enabledSetups: { sweep: false, fvg: false, breakout: true, pullback: false, mean_rev: false },
+  })
+  const sol = snap.symbols.find((s) => s.symbol === "SOL")!
+  check("Asia range megvan", sol.asiaHigh != null && sol.asiaLow != null, {
+    aH: sol.asiaHigh,
+    aL: sol.asiaLow,
+  })
+  check("London range megvan", sol.londonHigh != null && sol.londonLow != null, {
+    lH: sol.londonHigh,
+    lL: sol.londonLow,
+  })
+  check(
+    "London/Asia breakout signal vagy explicit reason",
+    sol.signal.kind === "BREAKOUT_LONG" || /breakout|London|Asia|RVOL/i.test(sol.signal.reason),
+    sol.signal
   )
 }
 

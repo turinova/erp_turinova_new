@@ -77,9 +77,12 @@ export async function runCryptoTick(
         SOL: feed.symbols.SOL.bars,
         DOGE: feed.symbols.DOGE.bars,
       }
-      await recordAndEvaluateCryptoSignals(supabase, snapshot, barsBySymbol)
+      const paper = await recordAndEvaluateCryptoSignals(supabase, snapshot, barsBySymbol)
+      snapshot.paper = paper
     } catch (e) {
+      const msg = e instanceof Error ? e.message : "crypto paper error"
       console.error("Crypto paper trading hiba:", e)
+      snapshot.paper = { attempted: 0, saved: 0, errors: [msg] }
     }
   }
 

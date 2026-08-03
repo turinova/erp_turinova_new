@@ -22,6 +22,8 @@ export interface SymbolFeed {
   dailyBars: Bar[]
   /** utolsó funding rate (8h periódusra, pl. 0.0001 = 0.01%) — csak perp */
   fundingRate: number | null
+  /** funding történet (régi → új), z-score-hoz — ha a provider adja */
+  fundingHistory?: number[]
   /** open interest coin-ban */
   openInterest: number | null
   /** 24h árváltozás százalékban */
@@ -43,6 +45,8 @@ export type CryptoSignalKind =
   | "BREAKOUT_SHORT"
   | "PB_LONG"
   | "PB_SHORT"
+  | "FVG_LONG"
+  | "FVG_SHORT"
   | "NONE"
 
 export const CRYPTO_KIND_LABEL: Record<string, string> = {
@@ -50,22 +54,31 @@ export const CRYPTO_KIND_LABEL: Record<string, string> = {
   SWEEP_SHORT: "Sweep-reclaim SHORT",
   MR_LONG: "VWAP mean-rev LONG",
   MR_SHORT: "VWAP mean-rev SHORT",
-  BREAKOUT_LONG: "US-open breakout LONG",
-  BREAKOUT_SHORT: "US-open breakout SHORT",
+  BREAKOUT_LONG: "Session breakout LONG",
+  BREAKOUT_SHORT: "Session breakout SHORT",
   PB_LONG: "Pullback LONG",
   PB_SHORT: "Pullback SHORT",
+  FVG_LONG: "FVG tap LONG",
+  FVG_SHORT: "FVG tap SHORT",
 }
 
 export type BtcRegime = "risk_on" | "risk_off" | "neutral"
 
-/** A 4 setup-család — ezeket lehet ki/be kapcsolni a UI-n. */
-export type CryptoSetupId = "sweep" | "breakout" | "pullback" | "mean_rev"
+/** Setup-családok — ki/be kapcsolhatók a UI-n. */
+export type CryptoSetupId = "sweep" | "fvg" | "breakout" | "pullback" | "mean_rev"
 
-export const CRYPTO_SETUP_IDS: CryptoSetupId[] = ["sweep", "breakout", "pullback", "mean_rev"]
+export const CRYPTO_SETUP_IDS: CryptoSetupId[] = [
+  "sweep",
+  "fvg",
+  "breakout",
+  "pullback",
+  "mean_rev",
+]
 
 export const CRYPTO_SETUP_LABEL: Record<CryptoSetupId, string> = {
   sweep: "Sweep-reclaim",
-  breakout: "US-open breakout",
+  fvg: "FVG tap",
+  breakout: "Session breakout",
   pullback: "Momentum pullback",
   mean_rev: "VWAP mean rev",
 }
@@ -74,6 +87,7 @@ export type EnabledSetups = Record<CryptoSetupId, boolean>
 
 export const ALL_SETUPS_ENABLED: EnabledSetups = {
   sweep: true,
+  fvg: true,
   breakout: true,
   pullback: true,
   mean_rev: true,
@@ -94,7 +108,7 @@ export interface SetupBuildup {
   /** a setup irány-hintje, ha már sejthető */
   bias: "long" | "short" | "none"
   steps: BuildupStep[]
-  /** true, ha az összes lépés megvan (de a kapuk még blokkolhatnak) */
+  /** true, ha az összes checklist-lépés megvan (chase/age/stop kapukkal együtt) */
   ready: boolean
 }
 
@@ -121,6 +135,8 @@ export interface SymbolSnapshot {
   rvol: number | null
   adx: number | null
   fundingRate: number | null
+  /** funding z-score (történetből); null ha nincs elég adat */
+  fundingZ: number | null
   openInterest: number | null
   /** OI változás % az elmúlt ~1 órában (ha van történet) */
   oiDelta1hPct: number | null
@@ -134,8 +150,14 @@ export interface SymbolSnapshot {
   prevWeekLow: number | null
   usOpenHigh: number | null
   usOpenLow: number | null
+  asiaHigh: number | null
+  asiaLow: number | null
+  londonHigh: number | null
+  londonLow: number | null
+  equalHigh: number | null
+  equalLow: number | null
   signal: CryptoSignal
-  /** mind a 4 setup aktuális felépülése — vizuális döntéshez */
+  /** setup felépülések — vizuális döntéshez */
   buildups: SetupBuildup[]
   /** chart: utolsó ~6 óra 1m gyertya */
   chartBars: Bar[]
@@ -165,6 +187,12 @@ export interface CryptoSnapshot {
   guardrail: string | null
   /** piaci + hír kontextus (settlement, OI, katalizátorok) */
   context: MarketContext
+  /** paper mentés státusz (ha volt firings) */
+  paper?: {
+    attempted: number
+    saved: number
+    errors: string[]
+  }
 }
 
 export type OiRegime = "trend" | "squeeze" | "unwind" | "capitulation" | "flat" | "unknown"
