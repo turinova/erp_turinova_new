@@ -64,37 +64,68 @@ const DEFAULTS: BinanceDeskSettings = {
   liveTrades: [],
 }
 
+/** serverless (Vercel): /tmp írható; lokálisan .data/ */
 function filePath() {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join("/tmp", "binance-desk.json")
+  }
   return path.join(process.cwd(), ".data", "binance-desk.json")
+}
+
+/** instance-szintű cache — cold start után default (auto OFF = biztonságos) */
+let memoryCache: BinanceDeskSettings | null = null
+
+function cloneSettings(s: BinanceDeskSettings): BinanceDeskSettings {
+  return {
+    ...s,
+    symbols: [...s.symbols],
+    liveTrades: s.liveTrades.map((t) => ({ ...t })),
+  }
 }
 
 export function utcDayKey(d = new Date()): string {
   return d.toISOString().slice(0, 10)
 }
 
+function normalize(parsed: Partial<BinanceDeskSettings>): BinanceDeskSettings {
+  return {
+    ...DEFAULTS,
+    ...parsed,
+    symbols: parsed.symbols?.length ? parsed.symbols : DEFAULTS.symbols,
+    liveTrades: parsed.liveTrades ?? [],
+    maxDailyFires: parsed.maxDailyFires ?? DEFAULTS.maxDailyFires,
+    maxDailyLossUsd: parsed.maxDailyLossUsd ?? DEFAULTS.maxDailyLossUsd,
+    firesToday: parsed.firesToday ?? 0,
+    killedToday: parsed.killedToday ?? false,
+  }
+}
+
 export async function loadBinanceSettings(): Promise<BinanceDeskSettings> {
+  if (memoryCache) return cloneSettings(memoryCache)
   try {
     const raw = await fs.readFile(filePath(), "utf8")
     const parsed = JSON.parse(raw) as Partial<BinanceDeskSettings>
-    return {
-      ...DEFAULTS,
-      ...parsed,
-      symbols: parsed.symbols?.length ? parsed.symbols : DEFAULTS.symbols,
-      liveTrades: parsed.liveTrades ?? [],
-      maxDailyFires: parsed.maxDailyFires ?? DEFAULTS.maxDailyFires,
-      maxDailyLossUsd: parsed.maxDailyLossUsd ?? DEFAULTS.maxDailyLossUsd,
-      firesToday: parsed.firesToday ?? 0,
-      killedToday: parsed.killedToday ?? false,
-    }
+    memoryCache = normalize(parsed)
+    return cloneSettings(memoryCache)
   } catch {
-    return { ...DEFAULTS, liveTrades: [] }
+    memoryCache = cloneSettings(DEFAULTS)
+    return cloneSettings(memoryCache)
   }
 }
 
 export async function saveBinanceSettings(next: BinanceDeskSettings): Promise<void> {
-  const dir = path.dirname(filePath())
-  await fs.mkdir(dir, { recursive: true })
-  await fs.writeFile(filePath(), JSON.stringify(next, null, 2), "utf8")
+  memoryCache = cloneSettings(next)
+  try {
+    const dir = path.dirname(filePath())
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(filePath(), JSON.stringify(next, null, 2), "utf8")
+  } catch (e) {
+    // Vercel read-only / ephemeral — memory cache elég a request élettartamára
+    console.warn(
+      "[binance-settings] write skipped:",
+      e instanceof Error ? e.message : e
+    )
+  }
 }
 
 export async function updateBinanceSettings(
@@ -112,10 +143,17 @@ export async function updateBinanceSettings(
 }
 
 export async function recordLastError(message: string): Promise<void> {
-  await updateBinanceSettings({
-    lastError: message,
-    lastErrorAt: new Date().toISOString(),
-  })
+  try {
+    await updateBinanceSettings({
+      lastError: message,
+      lastErrorAt: new Date().toISOString(),
+    })
+  } catch (e) {
+    console.warn(
+      "[binance-settings] recordLastError failed:",
+      e instanceof Error ? e.message : e
+    )
+  }
 }
 
 /** Új UTC nap → számlálók nullázása */

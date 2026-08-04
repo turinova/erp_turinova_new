@@ -171,7 +171,31 @@ export function BinanceDesk() {
       </div>
     )
   }
-  if (!state) return null
+  if (!state) {
+    return (
+      <div className="space-y-3 rounded-lg border border-red-500/40 bg-red-500/5 p-6">
+        <p className="text-sm font-medium text-loss">Desk nem töltődött be</p>
+        <p className="text-sm text-muted">
+          {flash ?? "API hiba — nézd a Network tabot (/api/crypto/binance)."}
+        </p>
+        <p className="text-xs text-muted">
+          Productionön kell: Vercel → Environment Variables →{" "}
+          <code className="text-[11px]">BINANCE_API_KEY</code> +{" "}
+          <code className="text-[11px]">BINANCE_API_SECRET</code> (Redeploy után).
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true)
+            void load(true)
+          }}
+          className="rounded-md border border-line px-3 py-1.5 text-sm"
+        >
+          Újra
+        </button>
+      </div>
+    )
+  }
 
   const s = state.settings
   const daily = state.daily

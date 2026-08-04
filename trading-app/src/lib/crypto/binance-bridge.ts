@@ -111,7 +111,7 @@ export async function getBinanceDeskState(
     return {
       configured: false,
       connected: false,
-      error: "Hiányzik BINANCE_API_KEY / BINANCE_API_SECRET az .env.local-ból",
+      error: "Hiányzik BINANCE_API_KEY / BINANCE_API_SECRET (Vercel env vagy .env.local)",
       equity: null,
       positions: [],
       openOrders: [],

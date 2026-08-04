@@ -45,22 +45,30 @@ async function withPreview(includePreview: boolean) {
 
 /** GET /api/crypto/binance — desk állapot + opcionális exit sync + signal preview */
 export async function GET(request: NextRequest) {
-  const { user } = await requireUser()
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+  try {
+    const { user } = await requireUser()
+    if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 })
 
-  const sync = request.nextUrl.searchParams.get("sync") === "1"
-  const preview = request.nextUrl.searchParams.get("preview") !== "0"
-  let syncLogs: string[] = []
-  if (sync) {
-    try {
-      syncLogs = await syncBinanceExits()
-    } catch (e) {
-      syncLogs = [e instanceof Error ? e.message : "sync hiba"]
+    const sync = request.nextUrl.searchParams.get("sync") === "1"
+    const preview = request.nextUrl.searchParams.get("preview") !== "0"
+    let syncLogs: string[] = []
+    if (sync) {
+      try {
+        syncLogs = await syncBinanceExits()
+      } catch (e) {
+        syncLogs = [e instanceof Error ? e.message : "sync hiba"]
+      }
     }
-  }
 
-  const state = await withPreview(preview && sync)
-  return NextResponse.json({ ...state, syncLogs })
+    const state = await withPreview(preview && sync)
+    return NextResponse.json({ ...state, syncLogs })
+  } catch (e) {
+    console.error("[api/crypto/binance GET]", e)
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "binance desk hiba" },
+      { status: 500 }
+    )
+  }
 }
 
 /** POST /api/crypto/binance — actions */
