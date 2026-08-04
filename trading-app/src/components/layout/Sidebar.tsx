@@ -21,6 +21,7 @@ const NAV_SECTIONS = [
     items: [
       { href: "/crypto", label: "Crypto live", icon: CryptoIcon },
       { href: "/crypto/signals", label: "Crypto signalok", icon: SignalIcon },
+      { href: "/crypto/binance", label: "Binance desk", icon: BinanceIcon },
     ],
   },
   {
@@ -163,6 +164,15 @@ function CryptoIcon() {
       <circle cx="12" cy="12" r="9" />
       <path d="M9.5 7.5h4a2 2 0 0 1 0 4h-4v-4ZM9.5 11.5h4.5a2 2 0 0 1 0 4h-4.5v-4Z" />
       <path d="M11 5.5v2M13 5.5v2M11 16.5v2M13 16.5v2" />
+    </svg>
+  )
+}
+
+function BinanceIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 3 4 8v8l8 5 8-5V8l-8-5Z" />
+      <path d="M12 8v8M8.5 10.5 12 12l3.5-1.5" />
     </svg>
   )
 }

@@ -1,5 +1,7 @@
 import { createSupabaseServer } from "@/lib/supabase/server"
 import { CRYPTO_KIND_LABEL } from "@/lib/crypto/types"
+import { SignalsBankrollViz } from "@/components/crypto/SignalsBankrollViz"
+import type { SimTradeInput } from "@/lib/crypto/bankroll-sim"
 
 export const metadata = { title: "Crypto signalok" }
 
@@ -75,7 +77,6 @@ export default async function CryptoSignalsPage() {
   const weekClosed = closed.filter((s) => s.date >= weekAgo)
   const weekNetR = weekClosed.reduce((sum, s) => sum + Number(s.r_multiple ?? 0), 0)
 
-  // bontás setup-családra ÉS coinra
   const groups = new Map<string, { total: number; closed: number; wins: number; netR: number }>()
   for (const s of signals) {
     const key = `${s.symbol} · ${SETUP_FAMILY[s.kind] ?? s.kind}`
@@ -89,14 +90,25 @@ export default async function CryptoSignalsPage() {
     groups.set(key, agg)
   }
 
+  const simTrades: SimTradeInput[] = closed.map((s) => ({
+    id: s.id,
+    symbol: s.symbol,
+    kind: s.kind,
+    bar_time: s.bar_time,
+    entry: Number(s.entry),
+    stop: Number(s.stop),
+    r_multiple: Number(s.r_multiple),
+    status: s.status,
+  }))
+
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-semibold">Crypto signalok — paper trading</h1>
-        <p className="mt-1 text-sm text-muted">
-          Minden SOL/DOGE signal automatikusan ide mentődik, és a rendszer
-          papíron követi: stop (-1R), 2R target, vagy zárás 12 óra után. 6 hét
-          adat után döntünk: melyik setup melyik coinon életképes.
+        <h1 className="text-xl font-semibold">Crypto napló — paper</h1>
+        <p className="mt-1 max-w-3xl text-sm text-muted">
+          Itt látod a fire-öket dollárban is: állítsd a startot / risket / leverage-t, és a
+          gép végigjátssza a naplót. Az R csak arány — 1R = amennyit egy vesztes trade
+          elvesz. Exit papíron: 50% @ 1R → BE → runner @ 2R.
         </p>
       </header>
 
@@ -107,6 +119,13 @@ export default async function CryptoSignalsPage() {
           scriptet a Supabase-ben?
         </section>
       )}
+
+      <SignalsBankrollViz
+        trades={simTrades}
+        paperNetR={netR}
+        winCount={wins.length}
+        closedCount={closed.length}
+      />
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard label="Összes signal" value={String(signals.length)} />
@@ -145,15 +164,13 @@ export default async function CryptoSignalsPage() {
         {weekClosed.length
           ? `${weekNetR >= 0 ? "+" : ""}${weekNetR.toFixed(2)}R (${weekClosed.length} db)`
           : "—"}
-        . Futtasd a{" "}
-        <code className="rounded bg-surface-2 px-1">sql/005_crypto_context.sql</code>{" "}
-        scriptet is, ha még nem.
+        .
       </p>
 
       {groups.size > 0 && (
         <section className="overflow-x-auto rounded-lg border border-line bg-surface">
           <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">
-            Coin + setup bontás — mi működik és mi nem?
+            Coin + setup bontás — papír R
           </h2>
           <table className="w-full text-sm">
             <thead>
@@ -195,6 +212,7 @@ export default async function CryptoSignalsPage() {
       )}
 
       <section className="overflow-x-auto rounded-lg border border-line bg-surface">
+        <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">Összes signal</h2>
         {signals.length === 0 ? (
           <p className="p-8 text-center text-sm text-muted">
             Még nincs rögzített crypto signal. Az első élő signal a Crypto live

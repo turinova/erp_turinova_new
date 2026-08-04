@@ -6,11 +6,16 @@ import type { CryptoSnapshot, SymbolSnapshot } from "./types"
  * Crypto paper trading motor — az NQ-stól függetlenül, a crypto_signals
  * táblába dolgozik. A crypto 24/7 megy, ezért nincs session-zárás:
  * a pozíció max. 12 órán át él, utána a záróáron expired.
- * Konzervatív feltevés: ha egy gyertyán belül a stop ÉS a target is
- * elérhető lett volna, stopnak számoljuk.
+ *
+ * Exit terv (ha a target ≥ 1R):
+ *   50% @ +1R → stop a maradékon BE-re → 50% @ 2R (vagy BE / expire)
+ * Ha a target < 1R (pl. szűk MR), nincs partial — full exit a targeten.
+ * Konzervatív: egy gyertyán belül stop/BE előtt a targetnél.
  */
 
 const MAX_HOLD_SEC = 12 * 3600
+const PARTIAL_FRAC = 0.5
+const TP1_R = 1.0
 
 export interface CryptoSignalRow {
   id: string
@@ -26,6 +31,22 @@ export type PaperWriteResult = {
   attempted: number
   saved: number
   errors: string[]
+}
+
+/** Élő UI / chart: TP1 ár, ha a partial terv aktív. */
+export function partialTp1Price(entry: number, stop: number, target: number): number | null {
+  const risk = Math.abs(entry - stop)
+  if (risk <= 0) return null
+  const toTarget = Math.abs(target - entry)
+  if (toTarget < TP1_R * risk - 1e-9) return null
+  const isLong = target > entry
+  return isLong ? entry + TP1_R * risk : entry - TP1_R * risk
+}
+
+export function describeExitPlan(entry: number, stop: number, target: number): string {
+  const tp1 = partialTp1Price(entry, stop, target)
+  if (tp1 == null) return "Full size a targetig (cél < 1R — nincs scale)"
+  return "50% @ 1R → stop BE · 50% runner @ 2R"
 }
 
 export async function recordAndEvaluateCryptoSignals(
@@ -74,7 +95,14 @@ export async function recordAndEvaluateCryptoSignals(
     if (!bars) continue
     const outcome = evaluateCryptoSignal(row, bars, nowSec)
     if (outcome) {
-      const { error } = await supabase.from("crypto_signals").update(outcome).eq("id", row.id)
+      // DB csak az ismert oszlopokat kapja (partial/scale_plan csak engine meta)
+      const patch = {
+        status: outcome.status,
+        exit_price: outcome.exit_price ?? null,
+        exited_at: outcome.exited_at ?? null,
+        r_multiple: outcome.r_multiple ?? null,
+      }
+      const { error } = await supabase.from("crypto_signals").update(patch).eq("id", row.id)
       if (error) {
         result.errors.push(`evaluate ${row.kind}: ${error.message}`)
         console.error("Crypto paper evaluate hiba:", error.message)
@@ -159,26 +187,95 @@ export function evaluateCryptoSignal(
   const deadline = barTimeSec + MAX_HOLD_SEC
   const after = bars.filter((b) => b.t > barTimeSec)
 
+  const tp1 = partialTp1Price(entry, stop, target)
+  const usePartial = tp1 != null
+
+  let tp1Done = false
   let lastClose: { price: number; t: number } | null = null
+
   for (const b of after) {
     lastClose = { price: b.c, t: b.t }
 
-    const hitStop = isLong ? b.l <= stop : b.h >= stop
-    const hitTarget = isLong ? b.h >= target : b.l <= target
-    if (hitStop) return outcome("loss", stop, entry, risk, isLong, b.t)
-    if (hitTarget) return outcome("win", target, entry, risk, isLong, b.t)
+    if (!usePartial || !tp1Done) {
+      const hitStop = isLong ? b.l <= stop : b.h >= stop
+      const hitTp1 = usePartial
+        ? isLong
+          ? b.h >= (tp1 as number)
+          : b.l <= (tp1 as number)
+        : false
+      const hitTarget = isLong ? b.h >= target : b.l <= target
+
+      // konzervatív: stop előbb; ha a target is elért partial előtt → full size (gap-through)
+      if (hitStop) return outcome("loss", stop, entry, risk, isLong, b.t, false)
+      if (hitTarget) return outcome("win", target, entry, risk, isLong, b.t, false)
+
+      if (usePartial && hitTp1) {
+        // TP1 fill ezen a gyertyán — a wick-et nem számoljuk BE-nek;
+        // a runner stopja a következő báron lép érvénybe.
+        tp1Done = true
+        continue
+      }
+    } else {
+      // runner: stop = BE (entry)
+      const hitBe = isLong ? b.l <= entry : b.h >= entry
+      const hitTarget = isLong ? b.h >= target : b.l <= target
+      if (hitBe && hitTarget) return blended("win", entry, entry, risk, isLong, b.t, TP1_R, 0)
+      if (hitBe) return blended("win", entry, entry, risk, isLong, b.t, TP1_R, 0)
+      if (hitTarget)
+        return blended("win", target, entry, risk, isLong, b.t, TP1_R, targetR(entry, target, risk, isLong))
+    }
 
     if (b.t >= deadline) {
-      return outcome("expired", b.c, entry, risk, isLong, b.t)
+      return expireAt(b.c, entry, risk, isLong, b.t, tp1Done)
     }
   }
 
   if (nowSec >= deadline) {
-    if (lastClose) return outcome("expired", lastClose.price, entry, risk, isLong, lastClose.t)
-    return { status: "expired", exited_at: new Date().toISOString() }
+    if (lastClose) return expireAt(lastClose.price, entry, risk, isLong, lastClose.t, tp1Done)
+    return { status: "expired", exited_at: new Date().toISOString(), partial: tp1Done }
   }
 
   return null
+}
+
+function targetR(entry: number, target: number, risk: number, isLong: boolean): number {
+  return ((target - entry) / risk) * (isLong ? 1 : -1)
+}
+
+function expireAt(
+  price: number,
+  entry: number,
+  risk: number,
+  isLong: boolean,
+  tSec: number,
+  tp1Done: boolean
+): Record<string, unknown> {
+  const openR = ((price - entry) / risk) * (isLong ? 1 : -1)
+  if (tp1Done) {
+    return blended("expired", price, entry, risk, isLong, tSec, TP1_R, openR)
+  }
+  return outcome("expired", price, entry, risk, isLong, tSec, false)
+}
+
+function blended(
+  status: "win" | "loss" | "expired",
+  exitPrice: number,
+  entry: number,
+  risk: number,
+  isLong: boolean,
+  tSec: number,
+  firstLegR: number,
+  secondLegR: number
+): Record<string, unknown> {
+  const r = PARTIAL_FRAC * firstLegR + (1 - PARTIAL_FRAC) * secondLegR
+  return {
+    status,
+    exit_price: exitPrice,
+    exited_at: new Date(tSec * 1000).toISOString(),
+    r_multiple: Math.round(r * 100) / 100,
+    partial: true,
+    scale_plan: "partial_1r_be_2r",
+  }
 }
 
 function outcome(
@@ -187,7 +284,8 @@ function outcome(
   entry: number,
   risk: number,
   isLong: boolean,
-  tSec: number
+  tSec: number,
+  partial: boolean
 ): Record<string, unknown> {
   const r = ((exitPrice - entry) / risk) * (isLong ? 1 : -1)
   return {
@@ -195,5 +293,6 @@ function outcome(
     exit_price: exitPrice,
     exited_at: new Date(tSec * 1000).toISOString(),
     r_multiple: Math.round(r * 100) / 100,
+    ...(partial ? { partial: true, scale_plan: "partial_1r_be_2r" } : {}),
   }
 }

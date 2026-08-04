@@ -5,6 +5,7 @@ import { computeCryptoSnapshot } from "./compute"
 import { fetchAndStoreCryptoPanic } from "./news"
 import { saveOiSnapshots } from "./oi-history"
 import { recordAndEvaluateCryptoSignals } from "./paper"
+import { maybeAutoOpenFromSnapshot, syncBinanceExits } from "./binance-bridge"
 import {
   ALL_SETUPS_ENABLED,
   type CryptoSnapshot,
@@ -15,7 +16,8 @@ import {
  * Egy crypto "tick": feed → OI mentés → hírek → context → snapshot → paper.
  */
 
-const MAX_SIGNALS_PER_DAY = 5
+/** 2 coin × több setup (sweep/FVG/session/PB/MR) — 5 túl szűk volt 24/7-re */
+const MAX_SIGNALS_PER_DAY = 15
 const MAX_DAILY_LOSS_R = 3
 
 export async function runCryptoTick(
@@ -84,6 +86,15 @@ export async function runCryptoTick(
       console.error("Crypto paper trading hiba:", e)
       snapshot.paper = { attempted: 0, saved: 0, errors: [msg] }
     }
+  }
+
+  // Binance live (csak ha autoTrade be van kapcsolva a desk settingsben)
+  try {
+    await syncBinanceExits()
+    const logs = await maybeAutoOpenFromSnapshot(snapshot)
+    if (logs.length) console.log("Binance auto:", logs.join(" | "))
+  } catch (e) {
+    console.error("Binance bridge hiba:", e)
   }
 
   return snapshot

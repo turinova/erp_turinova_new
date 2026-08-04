@@ -15,6 +15,7 @@ import {
   type SetupBuildup,
   type SymbolSnapshot,
 } from "@/lib/crypto/types"
+import { describeExitPlan, partialTp1Price } from "@/lib/crypto/paper"
 
 const POLL_MS = 45_000
 const STORAGE_KEY = "crypto-enabled-setups"
@@ -125,9 +126,9 @@ export function CryptoLive() {
       {/* Setup toggle-ök */}
       <section className="rounded-lg border border-line bg-surface p-4">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold">Aktív trükkök</p>
+          <p className="text-sm font-semibold">Setupok — mi megy ma</p>
           <p className="text-xs text-muted">
-            Kikapcsolt setupból nincs signal és paper bejegyzés sem (böngésző tick)
+            Ha kikapcsolod, nincs fire és nincs paper. Ne vadássz mindent egyszerre.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -227,6 +228,11 @@ function SymbolPanel({ s, enabled }: { s: SymbolSnapshot; enabled: EnabledSetups
   const hasSignal = sig.kind !== "NONE"
   const isLong = sig.kind.endsWith("_LONG") || sig.kind.endsWith("LONG")
 
+  const tp1 =
+    hasSignal && sig.entry != null && sig.stop != null && sig.target != null
+      ? partialTp1Price(sig.entry, sig.stop, sig.target)
+      : null
+
   const levels = [
     s.prevDayHigh != null ? { price: s.prevDayHigh, title: "PD H", color: "#b45309" } : null,
     s.prevDayLow != null ? { price: s.prevDayLow, title: "PD L", color: "#b45309" } : null,
@@ -244,8 +250,11 @@ function SymbolPanel({ s, enabled }: { s: SymbolSnapshot; enabled: EnabledSetups
     hasSignal && sig.stop != null
       ? { price: sig.stop, title: "Stop", color: "#b91c1c", style: LineStyle.Solid, width: 2 }
       : null,
+    tp1 != null
+      ? { price: tp1, title: "TP1 1R", color: "#ca8a04", style: LineStyle.Dashed, width: 2 }
+      : null,
     hasSignal && sig.target != null
-      ? { price: sig.target, title: "Target", color: "#15803d", style: LineStyle.Solid, width: 2 }
+      ? { price: sig.target, title: "TP2", color: "#15803d", style: LineStyle.Solid, width: 2 }
       : null,
   ].filter((l): l is NonNullable<typeof l> => l != null)
 
@@ -312,12 +321,23 @@ function SymbolPanel({ s, enabled }: { s: SymbolSnapshot; enabled: EnabledSetups
             </p>
             <p className="text-xs text-muted">{sig.reason}</p>
             <p className="num text-xs">
-              Entry <b>{fmtPrice(sig.entry)}</b> · Stop <b>{fmtPrice(sig.stop)}</b> · Target{" "}
-              <b>{fmtPrice(sig.target)}</b>
+              Entry <b>{fmtPrice(sig.entry)}</b> · Stop <b>{fmtPrice(sig.stop)}</b>
+              {tp1 != null && (
+                <>
+                  {" "}
+                  · TP1 <b>{fmtPrice(tp1)}</b>
+                </>
+              )}{" "}
+              · TP2 <b>{fmtPrice(sig.target)}</b>
             </p>
+            {sig.entry != null && sig.stop != null && sig.target != null && (
+              <p className="text-xs font-medium text-foreground/80">
+                Exit: {describeExitPlan(sig.entry, sig.stop, sig.target)}
+              </p>
+            )}
           </div>
         ) : (
-          <p className="text-xs text-muted">{sig.reason || "Nincs signal"}</p>
+          <p className="text-xs text-muted">{sig.reason || "Nincs setup — várj, ne erőltess"}</p>
         )}
       </div>
 
@@ -327,7 +347,7 @@ function SymbolPanel({ s, enabled }: { s: SymbolSnapshot; enabled: EnabledSetups
         </div>
         <aside className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-            Így épül fel
+            Checklist — hol tart
           </p>
           {(s.buildups ?? []).map((b) => (
             <BuildupCard key={b.id} b={b} active={enabled[b.id]} />
