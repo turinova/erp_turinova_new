@@ -1,5 +1,4 @@
 import { getProjectTimelineState } from "@/lib/project-timeline"
-import { REFERENCE_STOCK as S, stock } from "@/lib/reference-stock-images"
 
 export type ProjectOwnership = "own-investment" | "commission"
 
@@ -77,9 +76,8 @@ export const PROJECT_PHASE_ORDER: ProjectPhase[] = [
 ]
 
 /**
- * MVP futó projektek — stock fotók (public/img).
+ * Valós futó projektek — helyszíni fotók (public/img/projects).
  * Fázis és frissítés dátum automatikus: kezdő + végdátum alapján, mai naphoz.
- * TODO: cserélje friss helyszíni fotókra; ügyfél engedély ellenőrzése.
  */
 export const ACTIVE_PROJECTS: ActiveProject[] = [
   {
@@ -146,69 +144,6 @@ export const ACTIVE_PROJECTS: ActiveProject[] = [
     published: true,
   },
   {
-    slug: "ipari-sajat-kecskemet",
-    title: "Kereskedelmi létesítmény, Kecskemét",
-    ownership: "own-investment",
-    category: "industrial",
-    city: "Kecskemét",
-    startedAt: "2025-03",
-    expectedCompletion: "2026-09",
-    areaSqm: 1850,
-    scope: "Teljes körű generálkivitelezés",
-    tldr:
-      "Saját beruházású kereskedelmi épület: szerkezetépítés fázisban, egy koordinált generálkivitelezői csapattal.",
-    currentStatus:
-      "A födémek és a fő szerkezeti elemek készülnek; a szakági csatlakozások ütemezése heti egyeztetésen zajlik.",
-    heroImage: {
-      src: S.ipariHero,
-      alt: "Stock fotó: ipari épület kivitelezés, futó projekt helyőrző",
-    },
-    cardImage: {
-      src: S.ipariNav,
-      alt: "Stock fotó: kereskedelmi épület, futó projekt helyőrző",
-    },
-    gallery: [
-      stock("munka", "Stock fotó: szerkezetépítés, futó projekt helyőrző"),
-      stock("telephely", "Stock fotó: helyszín, futó projekt helyőrző"),
-      stock("kozepulet", "Stock fotó: építési állapot, futó projekt helyőrző"),
-      stock("kapcsolatHero", "Stock fotó: kivitelezés, futó projekt helyőrző"),
-      stock("telephelyPng", "Stock fotó: projekt terület, futó projekt helyőrző"),
-      stock("felujitas", "Stock fotó: belső előkészítés, futó projekt helyőrző"),
-    ],
-    published: true,
-  },
-  {
-    slug: "tarshaz-megrendeles-bkk",
-    title: "Lakópark, Bács-Kiskun megye",
-    ownership: "commission",
-    category: "condo",
-    city: "Bács-Kiskun megye",
-    startedAt: "2025-11",
-    expectedCompletion: "2027-06",
-    areaSqm: 4200,
-    scope: "Lakópark, szerkezettől átadásig",
-    tldr:
-      "Megrendelésre épülő többlakásos lakópark: alapozási fázis, dokumentált heti státuszjelentéssel a megrendelő felé.",
-    currentStatus:
-      "Az alapozási munkák és a közmű-előkészítések párhuzamosan zajlanak; a szakági átadások írásban rögzítve.",
-    heroImage: {
-      src: S.munka,
-      alt: "Stock fotó: társasház építés, futó projekt helyőrző",
-    },
-    cardImage: {
-      src: S.telephely,
-      alt: "Stock fotó: lakóépület, futó projekt helyőrző",
-    },
-    gallery: [
-      stock("kozepulet", "Stock fotó: lakópark, futó projekt helyőrző"),
-      stock("ipariHero", "Stock fotó: alapozás, futó projekt helyőrző"),
-      stock("kapcsolatHero", "Stock fotó: helyszín, futó projekt helyőrző"),
-      stock("csaladi", "Stock fotó: építési állapot, futó projekt helyőrző"),
-      stock("telephelyPng", "Stock fotó: terület, futó projekt helyőrző"),
-    ],
-    published: true,
-  },
-  {
     slug: "ikerhaz-sajat-kecskemet",
     title: "Ikerház Kecskeméten",
     ownership: "own-investment",
@@ -243,66 +178,6 @@ export const ACTIVE_PROJECTS: ActiveProject[] = [
         src: "/img/projects/ikerhaz-sajat-kecskemet/yard.jpg",
         alt: "Kert a kialakítás előtt",
       },
-    ],
-    published: true,
-  },
-  {
-    slug: "ovoda-megrendeles-kecskemet",
-    title: "Óvoda, Kecskemét",
-    ownership: "commission",
-    category: "public",
-    city: "Kecskemét",
-    startedAt: "2024-09",
-    expectedCompletion: "2026-01",
-    areaSqm: 980,
-    scope: "Óvoda, közbeszerzési kivitelezés",
-    tldr:
-      "Megrendelésre készülő óvoda — befejezési és átadási fázis, közbeszerzési dokumentáció szerint.",
-    currentStatus:
-      "A belső burkolatok és a közös terek készülnek; az átadási ellenőrzések ütemezése folyamatban.",
-    heroImage: {
-      src: S.kozepulet,
-      alt: "Stock fotó: középület — futó projekt helyőrző",
-    },
-    cardImage: {
-      src: S.munka,
-      alt: "Stock fotó: óvoda kivitelezés — futó projekt helyőrző",
-    },
-    gallery: [
-      stock("telephelyPng", "Stock fotó: helyszín — futó projekt helyőrző"),
-      stock("ipariNav", "Stock fotó: homlokzat — futó projekt helyőrző"),
-      stock("kapcsolatHero", "Stock fotó: belső terek — futó projekt helyőrző"),
-      stock("felujitas", "Stock fotó: burkolatok — futó projekt helyőrző"),
-    ],
-    published: true,
-  },
-  {
-    slug: "felujitas-megrendeles-kecskemet",
-    title: "Lakásfelújítás, Kecskemét",
-    ownership: "commission",
-    category: "renovation",
-    city: "Kecskemét",
-    startedAt: "2026-04",
-    expectedCompletion: "2026-07",
-    areaSqm: 95,
-    scope: "Teljes lakásfelújítás",
-    tldr:
-      "Megrendelésre zajló teljes lakásfelújítás — bontási és szerkezeti átalakítások fázisában, lakott környezetben.",
-    currentStatus:
-      "A bontási munkák és a faláttörések zajlanak; a szakágak sorrendje napi művezetői koordinációval fut.",
-    heroImage: {
-      src: S.felujitas,
-      alt: "Stock fotó: felújítás — futó projekt helyőrző",
-    },
-    cardImage: {
-      src: S.csaladi,
-      alt: "Stock fotó: felújított tér, futó projekt helyőrző",
-    },
-    gallery: [
-      stock("kapcsolatHero", "Stock fotó: lakás belső — futó projekt helyőrző"),
-      stock("telephely", "Stock fotó: részlet — futó projekt helyőrző"),
-      stock("munka", "Stock fotó: bontás — futó projekt helyőrző"),
-      stock("kozepulet", "Stock fotó: állapot — futó projekt helyőrző"),
     ],
     published: true,
   },

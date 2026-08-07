@@ -108,7 +108,7 @@ const INDUSTRIAL_SERVICE: ServiceDefinition = {
   referenceType: "industrial",
   projectCategory: "industrial",
   proofReferenceSlug: "autoszalon-kecskemet",
-  proofProjectSlug: "ipari-sajat-kecskemet",
+  proofProjectSlug: "hyundai-szalon-kecskemet",
   hook:
     "Ipari épületnél a nyugalom onnan jön, hogy a határidő és a szakágak egy kézben maradnak. Egy építésvezetés, heti státusz, átlátható átadás.",
   tldr:
@@ -268,7 +268,6 @@ const TARSHAZAK_SERVICE: ServiceDefinition = {
   referenceType: "condo",
   projectCategory: "condo",
   proofReferenceSlug: "tarshaz-lakopark",
-  proofProjectSlug: "tarshaz-megrendeles-bkk",
   hook:
     "Társasháznál és lakóparknál a nyugalom onnan jön, hogy az ütem egy kézben marad. Több épületrész, több szakma, egy felelős csapat.",
   tldr:
@@ -573,7 +572,6 @@ const KOZEPULETEK_SERVICE: ServiceDefinition = {
   referenceType: "public",
   projectCategory: "public",
   proofReferenceSlug: "kozepulet-ovoda",
-  proofProjectSlug: "ovoda-megrendeles-kecskemet",
   hook:
     "Középületnél nem elég, hogy kész legyen. Az átadásnak dokumentáltnak és ellenőrizhetőnek is kell lennie.",
   tldr:
@@ -724,7 +722,7 @@ const FELUJITAS_SERVICE: ServiceDefinition = {
   referenceType: "renovation",
   projectCategory: "renovation",
   proofReferenceSlug: "felujitas-lakas",
-  proofProjectSlug: "felujitas-megrendeles-kecskemet",
+  proofProjectSlug: "zwack-rendezvenyhaz-kecskemet",
   hook:
     "Felújításnál a legtöbb gond nem a burkolatnál kezdődik. Hanem ott, amikor nincs sorrend a szakmák között.",
   tldr:
