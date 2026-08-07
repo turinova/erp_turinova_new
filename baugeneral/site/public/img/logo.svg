@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 64" role="img" aria-label="BauGenerál">
+  <rect width="200" height="32" fill="#A60C19"/>
+  <rect y="32" width="200" height="32" fill="#FFFFFF"/>
+  <text
+    x="16"
+    y="24"
+    fill="#FFFFFF"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="22"
+    font-weight="700"
+  >Bau</text>
+  <text
+    x="16"
+    y="54"
+    fill="#A60C19"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-size="22"
+    font-weight="700"
+  >Generál</text>
+</svg>

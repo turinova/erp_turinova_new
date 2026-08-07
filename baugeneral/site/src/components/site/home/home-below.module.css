@@ -1,0 +1,603 @@
+/*
+ * Quiet below-fold: offer → promises → works → FAQ → CTA.
+ * No scroll-entrance motion. Hover only (150–200ms).
+ */
+
+.shell {
+  --fr: 2.6666666667vw;
+  --section-y: calc(4.5 * var(--fr));
+  --ink: #151717;
+  --ink-60: rgba(21, 23, 23, 0.62);
+  --ink-45: rgba(21, 23, 23, 0.45);
+  --hairline: rgba(21, 23, 23, 0.12);
+  --paper: #f7f5f1;
+  --accent: #a60c19;
+  position: relative;
+  z-index: 10;
+  background: #fff;
+  color: var(--ink);
+}
+
+@media (min-width: 768px) {
+  .shell {
+    --fr: 0.5208333333vw;
+    --section-y: calc(9 * var(--fr));
+  }
+}
+
+@media (min-width: 1920px) {
+  .shell {
+    --fr: 10px;
+  }
+}
+
+.container {
+  width: min(100% - 2rem, 76rem);
+  margin-inline: auto;
+}
+
+.containerNarrow {
+  width: min(100% - 2rem, 42rem);
+  margin-inline: auto;
+}
+
+.label,
+.labelLight {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+
+.label::before,
+.labelLight::before {
+  content: "";
+  width: 2rem;
+  height: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.labelLight {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.labelLight::before {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.ctaLight {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1rem 1.7rem;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.ctaLight:hover {
+  background: #f0eeea;
+  transform: translateY(-1px);
+}
+
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.textLink:hover {
+  color: var(--accent);
+}
+
+.textLinkNote {
+  font-weight: 500;
+  color: var(--ink-45);
+  font-size: 0.85rem;
+}
+
+/* ——— 01 Offer ——— */
+.offer {
+  padding: var(--section-y) 0;
+  background: #fff;
+}
+
+.offerTitle {
+  margin: 0 0 1rem;
+  max-width: 18ch;
+  font-size: clamp(1.85rem, 4.2vw, 3.1rem);
+  font-weight: 650;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.offerLead {
+  margin: 0 0 calc(3.2 * var(--fr));
+  max-width: 40rem;
+  font-size: clamp(1.05rem, 1.5vw, 1.2rem);
+  line-height: 1.55;
+  color: var(--ink-60);
+}
+
+.offerGrid {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: 1fr;
+  grid-auto-flow: dense;
+}
+
+.offerCell {
+  min-height: 0;
+  display: flex;
+}
+
+.offerCell .offerCard {
+  flex: 1;
+  width: 100%;
+}
+
+.offerFeature,
+.offerMd,
+.offerLg {
+  grid-column: 1 / -1;
+}
+
+.offerCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 22rem;
+  overflow: hidden;
+  color: #fff;
+  cursor: pointer;
+  background: #1a1c1c;
+}
+
+@media (min-width: 640px) {
+  .offerGrid {
+    grid-template-columns: repeat(12, 1fr);
+    grid-auto-rows: minmax(18rem, auto);
+    gap: 1.1rem;
+  }
+
+  .offerFeature {
+    grid-column: span 12;
+    grid-row: span 1;
+  }
+
+  .offerFeature .offerCard {
+    min-height: 24rem;
+  }
+
+  .offerMd,
+  .offerLg {
+    grid-column: span 6;
+  }
+
+  .offerMd .offerCard,
+  .offerLg .offerCard {
+    min-height: 22rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .offerGrid {
+    grid-auto-rows: minmax(22rem, 26vw);
+    gap: 1.15rem;
+  }
+
+  /* feature 8×2 + two md 4×1 beside it; then four lg as 6+6 pairs */
+  .offerFeature {
+    grid-column: span 8;
+    grid-row: span 2;
+  }
+
+  .offerFeature .offerCard {
+    min-height: 100%;
+  }
+
+  .offerMd {
+    grid-column: span 4;
+    grid-row: span 1;
+  }
+
+  .offerMd .offerCard {
+    min-height: 100%;
+  }
+
+  .offerLg {
+    grid-column: span 6;
+    grid-row: span 1;
+  }
+
+  .offerLg .offerCard {
+    min-height: 100%;
+  }
+
+  /* Narrow 4-col tiles: title + arrow only */
+  .offerMd .offerCardText {
+    display: none;
+  }
+}
+
+.offerMedia {
+  position: absolute;
+  inset: 0;
+}
+
+.offerImg {
+  object-fit: cover;
+  transition: transform 0.35s ease;
+}
+
+.offerCard:hover .offerImg {
+  transform: scale(1.04);
+}
+
+.offerMedia::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(8, 9, 9, 0.94) 0%,
+    rgba(8, 9, 9, 0.72) 28%,
+    rgba(8, 9, 9, 0.28) 55%,
+    rgba(8, 9, 9, 0.06) 78%,
+    transparent 100%
+  );
+}
+
+.offerBody {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: auto;
+  padding: 1.5rem 1.5rem 1.75rem;
+}
+
+.offerCardLabel {
+  font-size: clamp(1.2rem, 1.8vw, 1.55rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #fff;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.offerCardText {
+  max-width: 32ch;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.offerFeature .offerCardLabel {
+  font-size: clamp(1.35rem, 2.2vw, 1.85rem);
+}
+
+.offerArrow {
+  margin-top: 0.55rem;
+  opacity: 0.9;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+  transition: transform 0.2s ease;
+}
+
+.offerCard:hover .offerArrow {
+  transform: translateX(4px);
+}
+
+/* ——— 02 Promises ——— */
+.promises {
+  padding: var(--section-y) 0;
+  background: #151717;
+  color: #fff;
+}
+
+.promisesTitle {
+  margin: 0 0 calc(3 * var(--fr));
+  max-width: 16ch;
+  font-size: clamp(1.55rem, 3vw, 2.35rem);
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.promisesGrid {
+  display: grid;
+  gap: 2rem 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .promisesGrid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+}
+
+.promiseItem {
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.promiseIndex {
+  display: block;
+  margin-bottom: 1rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.promiseHeading {
+  margin: 0 0 0.55rem;
+  font-size: 1.15rem;
+  font-weight: 650;
+}
+
+.promiseBody {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* ——— 03 Works ——— */
+.works {
+  padding: var(--section-y) 0;
+  background: var(--paper);
+}
+
+.worksHead {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-bottom: calc(2.8 * var(--fr));
+}
+
+@media (min-width: 768px) {
+  .worksHead {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+.worksTitle {
+  margin: 0;
+  font-size: clamp(1.55rem, 3vw, 2.35rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.worksLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+}
+
+.worksGrid {
+  display: grid;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .worksGrid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.1rem;
+  }
+}
+
+.workCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.workMedia {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #ddd;
+  margin-bottom: 0.35rem;
+}
+
+.workImg {
+  object-fit: cover;
+  transition: transform 0.35s ease;
+}
+
+.workCard:hover .workImg {
+  transform: scale(1.04);
+}
+
+.workMeta {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-45);
+}
+
+.workTitle {
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+.workCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink-60);
+  transition: color 0.2s ease;
+}
+
+.workCard:hover .workCta {
+  color: var(--accent);
+}
+
+/* ——— 04 FAQ ——— */
+.faq {
+  padding: var(--section-y) 0;
+  background: #fff;
+}
+
+.faqTitle {
+  margin: 0 0 1.75rem;
+  font-size: clamp(1.45rem, 2.5vw, 1.9rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.faqList {
+  display: flex;
+  flex-direction: column;
+}
+
+.faqItem {
+  border-top: 1px solid var(--hairline);
+}
+
+.faqItem:last-child {
+  border-bottom: 1px solid var(--hairline);
+}
+
+.faqItem summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 1.15rem 0;
+  font-size: 1.02rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.faqItem summary::-webkit-details-marker {
+  display: none;
+}
+
+.faqItem summary::after {
+  content: "+";
+  float: right;
+  font-weight: 400;
+  color: var(--ink-45);
+}
+
+.faqItem[open] summary::after {
+  content: "–";
+}
+
+.faqAnswer {
+  margin: 0 0 1.25rem;
+  padding-right: 1.5rem;
+  font-size: 0.98rem;
+  line-height: 1.55;
+  color: var(--ink-60);
+}
+
+/* ——— 05 Outro ——— */
+.outro {
+  position: relative;
+  min-height: clamp(22rem, 48vw, 28rem);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: #fff;
+}
+
+.outroBg {
+  position: absolute;
+  inset: 0;
+}
+
+.outroImg {
+  object-fit: cover;
+}
+
+.outroBg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 13, 13, 0.62);
+}
+
+.outroInner {
+  position: relative;
+  z-index: 1;
+  padding: 4rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.25rem;
+}
+
+.outroTitle {
+  margin: 0;
+  max-width: 14ch;
+  font-size: clamp(1.85rem, 4vw, 3rem);
+  font-weight: 650;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.outroNote {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .offerImg,
+  .workImg,
+  .offerArrow,
+  .ctaLight {
+    transition: none;
+  }
+
+  .offerCard:hover .offerImg,
+  .workCard:hover .workImg {
+    transform: none;
+  }
+}

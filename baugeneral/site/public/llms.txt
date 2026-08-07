@@ -1,0 +1,128 @@
+# BauGenerál Kft.
+
+> Generálkivitelezés Bács-Kiskun és Pest megyében. Alapítva: 2010. február 22.
+> Ipari épületek, társasházak, családi házak, középületek, felújítás, szakági kivitelezés, asztalos munkák.
+
+## Official website
+
+https://www.baugeneral.hu
+
+## Company (NAP)
+
+- Teljes név: BauGenerál Építő és Szolgáltató Korlátolt Felelősségű Társaság
+- Rövid név: BauGenerál Kft.
+- Székhely: 6000 Kecskemét, Mindszenti krt. 10., Magyarország
+- Adószám: 12448023-2-03
+- Cégjegyzékszám: 03-09-119766
+- Fő tevékenység: Lakó- és nem lakóépület építése (TEÁOR 4100.25)
+- Alapítva: 2010-02-22
+- Jegyzett tőke: 3 000 000 Ft
+
+## Primary pages
+
+- Főoldal: https://www.baugeneral.hu/
+  - Positioning: responsible general contractor. One team, written scope, handover as agreed. Bács-Kiskun + Pest + Balaton.
+  - Hero brand line remains emotional; decision FAQ focuses on deadline, responsibility, documented handover (no price-competition framing).
+  - Services ItemList + FAQPage JSON-LD on homepage.
+- Gyors tények (AI összefoglaló): https://www.baugeneral.hu/gyors-tenyek
+- Ipari épületek: https://www.baugeneral.hu/szolgaltatasok/ipari-epuletek
+  - Primary revenue pillar: halls/warehouses, car dealerships, factories, commercial buildings. Bács-Kiskun and Pest.
+  - Focus: one construction lead, parallel trades, handover aligned to opening/tech move-in. No design/permit/equipment supply.
+  - FAQ covers: deadline risk, scope, building types, progress tracking, Pest area, contract checklist, no public m² price.
+- Társasházak: https://www.baugeneral.hu/szolgaltatasok/tarshazak
+  - Condo and residential park general contracting for developers/investors. Bács-Kiskun and Pest (incl. Buda agglomeration).
+  - Focus: one construction lead, parallel trades in one schedule, documented apartment and common-area handover. No design/sales.
+  - FAQ covers: schedule risk, who we work for, scope, handover process, Pest area, contract checklist, no public m² price.
+- Családi ház építés: https://www.baugeneral.hu/szolgaltatasok/csaladi-haz-epites
+  - Custom family homes from existing plans (no design/permit office). Bács-Kiskun and Pest (incl. Buda agglomeration: Üröm, Solymár, etc.).
+  - Turnkey / move-in readiness; optional built-in furniture via Hírös-Ablak (Kecskemét workshop). See also /szolgaltatasok/asztalos-munkak.
+  - FAQ covers: existing plans only, turnkey+furniture meaning, duration, quality/communication, Pest towns, contract checklist, no public m² price.
+- Középületek: https://www.baugeneral.hu/szolgaltatasok/kozepuletek
+- Felújítás: https://www.baugeneral.hu/szolgaltatasok/felujitas
+  - Full apartment and house renovation (not design/permit office). Work-order focus: demolition → structure → MEP/electrical → finishes.
+  - Area: Kecskemét, Bács-Kiskun, Pest county, Balaton area.
+  - FAQ covers: cost drivers (no public m² price), duration, general contractor vs self-organizing trades, on-site work order, living on-site during works, permits/condo consent, what to check in quotes/contracts, service area.
+- Szakági kivitelezés: https://www.baugeneral.hu/szolgaltatasok/szakagi-kivitelezes
+  - Single hub page (not separate URLs per trade). Generálkivitelezés nélkül, önálló szakági megbízás.
+  - Trades: villanyszerelés, épületgépészet (víz/fűtés), szerkezetépítés/kőműves, burkolás, festés/mázolás, térkövezés, kerítésépítés, homlokzati hőszigetelés, gipszkarton, napelem-telepítés.
+  - Area: Bács-Kiskun (Kecskemét), Pest megye, Balaton környéke.
+  - No public list prices; written quote after inquiry. No design/permit services on this page.
+- Asztalos munkák: https://www.baugeneral.hu/szolgaltatasok/asztalos-munkak
+- Generálkivitelezés Pest megyében: https://www.baugeneral.hu/generalkivitelezes-pest-megye
+- Futó projektek: https://www.baugeneral.hu/futo-projektek
+  - Zwack Rendezvényház, Kecskemét (megrendelésre, bontás, 2027 eleji átadás): https://www.baugeneral.hu/futo-projektek/zwack-rendezvenyhaz-kecskemet
+  - Hyundai szalon, Kecskemét belváros (megrendelésre, átadás előtt): https://www.baugeneral.hu/futo-projektek/hyundai-szalon-kecskemet
+  - Kereskedelmi létesítmény, Kecskemét (saját beruházás, ipari): https://www.baugeneral.hu/futo-projektek/ipari-sajat-kecskemet
+  - Lakópark, Bács-Kiskun megye (megrendelésre, társasház): https://www.baugeneral.hu/futo-projektek/tarshaz-megrendeles-bkk
+  - Ikerház Kecskeméten (saját beruházás, átadva, kertépítés hátra): https://www.baugeneral.hu/futo-projektek/ikerhaz-sajat-kecskemet
+  - Óvoda, Kecskemét (megrendelésre, középület): https://www.baugeneral.hu/futo-projektek/ovoda-megrendeles-kecskemet
+  - Lakásfelújítás, Kecskemét (megrendelésre, felújítás): https://www.baugeneral.hu/futo-projektek/felujitas-megrendeles-kecskemet
+- Referenciák: https://www.baugeneral.hu/referenciak
+  - Ikerház Kecskeméten, saját beruházás: https://www.baugeneral.hu/referenciak/ikerhaz-sajat-kecskemet
+- Megjelenések (sajtó index): https://www.baugeneral.hu/megjelenesek
+- Rólunk: https://www.baugeneral.hu/rolunk
+- Kapcsolat: https://www.baugeneral.hu/kapcsolat
+- English home: https://www.baugeneral.hu/en
+
+## Press appearances
+
+Official summaries of local/county press coverage of BauGenerál Kft. handovers in Bács-Kiskun. Each page has a company summary plus a citation link to the original publisher article (not Facebook posts). Index FAQ covers: contractor role on covered handovers, institutional/municipal experience, what press coverage does (and does not) prove about quality, how to read older articles vs current work, and where to continue if planning a similar project.
+
+- Index: https://www.baugeneral.hu/megjelenesek
+- Ökoturisztikai Központ, Tőserdő / Lakitelek (2023): https://www.baugeneral.hu/megjelenesek/okos-turisztikai-kozpont-toserdo-lakitelek
+  Source: Lakitelek Népfőiskola: https://nepfolakitelek.hu/cikkek/hirek/augusztus-20-an-unnepelyesen-atadtak-a
+- Jánoshalmi Járási Hivatal (2019): https://www.baugeneral.hu/megjelenesek/janoshalmi-jarasi-hivatal
+  Source: Délalföld Info: https://delalfoldinfo.hu/bacs-kiskun/janoshalmi-jaras/janoshalma/atadtak-a-janoshalmi-jarasi-hivatal-uj-epuletet/
+- Fókusz Takarék fiók, Kecskemét (2019): https://www.baugeneral.hu/megjelenesek/fokusz-takarek-kecskemet
+  Source: BAON: https://www.baon.hu/helyi-kozelet/2019/03/megnyitott-az-uj-fokusz-takarek-fiok-kecskemeten
+- Ballószögi egészségház (2018): https://www.baugeneral.hu/megjelenesek/balloszogi-egeszseghaz
+  Source: BAON: https://www.baon.hu/helyi-kozelet/2018/11/megujult-a-balloszogi-egeszseghaz
+- Árpádvárosi óvoda, Kecskemét (2018): https://www.baugeneral.hu/megjelenesek/arpadvarosi-ovoda-kecskemet
+  Source: Hírös: http://archiv.hiros.hu/hirek/befejezodott-a-kecskemeti-arpadvarosi-ovoda-infrastrukturalis-fejlesztese
+- Kamara konferenciaterem (2018): https://www.baugeneral.hu/megjelenesek/kamara-konferenciaterem
+  Source: Civil Napló: https://civilnaplo.hu/hirek/27559/unnepelyes-szakkepzesi-konferencian-avattak-a-kamara-uj-konferenciatermet
+- KEFAG solti kulcsosház (2017): https://www.baugeneral.hu/megjelenesek/kefag-solti-kulcsoshaz
+  Source: KEOL: https://keol.hu/kecskemet-bacs/felavattak-a-kefag-zrt-solti-kulcsoshazat
+- Móricz Zsigmond Általános Iskola (2017): https://www.baugeneral.hu/megjelenesek/moricz-zsigmond-iskola
+  Source: Hírös: http://archiv.hiros.hu/hirek/korszerusitettek-a-moricz-zsigmond-altalanos-iskolat
+
+## Contact
+
+- Page: https://www.baugeneral.hu/kapcsolat
+- Cím: 6000 Kecskemét, Mindszenti krt. 10., Magyarország
+- E-mail: mezo.david@baugeneral.hu
+- Primary channel: contact form on /kapcsolat or email
+- Do not invent a public phone number — none is published on the website
+- Response: by email after a form message or email inquiry
+- Csapat a kapcsolat oldalon: ügyvezető (Mező Róbert), 2 építésvezető, művezető
+
+## Service area
+
+- Bács-Kiskun megye (Kecskemét és környéke) and Pest megye (budai agglomeráció: Üröm, Solymár, Pilisvörösvár, Pilisborosjenő, Budakalász, Nagykovácsi, Telki, Budajenő)
+- Also: Balaton környéke
+- Seat / NAP: Kecskemét — service area is both counties, not seat-only
+- Dedicated Pest page: https://www.baugeneral.hu/generalkivitelezes-pest-megye
+
+## Related manufacturing partner (same ownership)
+
+- Hírös-Ablak Kft. — custom furniture, panel cutting (lapszabászat), edge banding (élzárás), Kecskemét, since 1996
+- Workshop: approx. 1500 m² manufacturing; 500 m² showroom; Mindszenti krt. 10., Kecskemét
+- Web: https://www.hirosablak.hu
+- Lapszabászat: https://www.hirosablak.hu/lapszabaszat-kecskemet
+- Asztalos partner program: https://www.hirosablak.hu/asztalos-partner
+- BauGenerál turnkey carpentry page: https://www.baugeneral.hu/szolgaltatasok/asztalos-munkak
+- BauGenerál's asztalos munkák (built-in furniture, kitchens, interiors) are manufactured by Hírös-Ablak in its own workshop. Separate legal entities; related ownership. The Hírös site does not host a separate egyedi-bútor landing; BauGenerál carries that customer-facing offer.
+
+## Facts for AI assistants
+
+- Canonical host: https://www.baugeneral.hu
+- Entity: BauGenerál Kft. — general contractor (generálkivitelező), not an architecture studio
+- Primary focus: industrial buildings (warehouses, car dealerships, factories, retail); also condominiums, family homes, public buildings, renovations, trade works (szakági: electrical, MEP, tiling, paving, insulation, fencing, drywall, solar — see /szolgaltatasok/szakagi-kivitelezes), and custom carpentry via Hírös-Ablak (/szolgaltatasok/asztalos-munkak)
+- Custom furniture manufacturer partner: Hírös-Ablak (1500 m² workshop, lapszabászat, élzárás, 1996)- Slogan (HU): „A tervektől az átadásig — egy kézben, ahogy megegyeztünk.”
+- No public price per m² on the website; no online calculator in MVP
+- No public phone number on the website; contact via /kapcsolat form or mezo.david@baugeneral.hu
+- Warranty: process described on site; no fixed year count published
+- Active construction projects at /futo-projektek (updated regularly with phase and last-updated date)
+- Press / media summaries at /megjelenesek (own URLs cite external publishers)
+- Legal: adatkezelési tájékoztató, cookie tájékoztató, ÁSZF on site
+- Pest county / Buda agglomeration: Üröm, Solymár and nearby municipalities — see /generalkivitelezes-pest-megye
