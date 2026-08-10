@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
-import { Geist, Geist_Mono, IBM_Plex_Sans } from "next/font/google"
+import { IBM_Plex_Sans } from "next/font/google"
 import Script from "next/script"
+import { Analytics } from "@vercel/analytics/next"
 import { SiteFooter } from "@/components/site/SiteFooter"
 import { SiteHeader } from "@/components/site/SiteHeader"
 import { SmoothScroll } from "@/components/site/SmoothScroll"
@@ -12,20 +13,10 @@ import {
 import { buildWebSiteJsonLd, DEFAULT_OG_IMAGE, getDefaultRobots } from "@/lib/seo"
 import "./globals.css"
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin", "latin-ext"],
-})
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-})
-
 const ibmPlex = IBM_Plex_Sans({
   variable: "--font-ibm-plex",
   subsets: ["latin", "latin-ext"],
-  weight: ["500", "600"],
+  weight: ["400", "500", "600", "700"],
 })
 
 export const metadata: Metadata = {
@@ -36,7 +27,15 @@ export const metadata: Metadata = {
   },
   description: COMPANY.entityDefinitionHu,
   applicationName: COMPANY.brand,
+  manifest: "/site.webmanifest",
   robots: getDefaultRobots(),
+  // Same token as previous Squarespace GSC property (https://www.baugeneral.hu).
+  // Override with GOOGLE_SITE_VERIFICATION if Google issues a new code.
+  verification: {
+    google:
+      process.env.GOOGLE_SITE_VERIFICATION ??
+      "uE5yQWs0cZTUxSF0yxxT_A3VrjJh1GsCwkeL-T3lWuo",
+  },
   openGraph: {
     type: "website",
     siteName: COMPANY.brand,
@@ -51,6 +50,12 @@ export const metadata: Metadata = {
       },
     ],
   },
+  twitter: {
+    card: "summary_large_image",
+    title: COMPANY.brand,
+    description: COMPANY.entityDefinitionHu,
+    images: [DEFAULT_OG_IMAGE],
+  },
 }
 
 export const viewport: Viewport = {
@@ -63,11 +68,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="hu"
-      className={`${geistSans.variable} ${geistMono.variable} ${ibmPlex.variable} h-full antialiased`}
-    >
-      <body className="flex min-h-full flex-col">
+    <html lang="hu" className={`${ibmPlex.variable} h-full antialiased`}>
+      <body className="flex min-h-full flex-col font-sans">
+        <a href="#main-content" className="skip-to-content">
+          Ugrás a tartalomhoz
+        </a>
         <Script
           id="jsonld-organization"
           type="application/ld+json"
@@ -91,9 +96,12 @@ export default function RootLayout({
         />
         <SmoothScroll>
           <SiteHeader />
-          <main className="flex-1">{children}</main>
+          <main id="main-content" className="flex-1">
+            {children}
+          </main>
           <SiteFooter />
         </SmoothScroll>
+        <Analytics />
       </body>
     </html>
   )

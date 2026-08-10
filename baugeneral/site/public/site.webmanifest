@@ -1,0 +1,22 @@
+{
+  "name": "BauGenerál",
+  "short_name": "BauGenerál",
+  "description": "Generálkivitelezés Kecskemét — ipari épületek, családi házak, felújítás, szakág.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#FFFFFF",
+  "theme_color": "#A60C19",
+  "lang": "hu-HU",
+  "icons": [
+    {
+      "src": "/img/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

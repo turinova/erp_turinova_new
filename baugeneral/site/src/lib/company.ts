@@ -69,11 +69,21 @@ export const COMPANY = {
     "Budapest",
     "Balaton környéke",
   ],
-  social: {} as Partial<{
+  social: {
+    facebook: "https://www.facebook.com/Baugeneral",
+    instagram: "https://www.instagram.com/baugeneral/",
+  } as Partial<{
     facebook: string
     instagram: string
     linkedin: string
+    googleBusiness: string
   }>,
+  /** Not published — no public office hours. */
+  openingHours: [] as readonly {
+    dayOfWeek: readonly string[]
+    opens: string
+    closes: string
+  }[],
 } as const
 
 export const PLACEHOLDER_PHONE = "+36700000000"
@@ -142,6 +152,7 @@ export function buildOrganizationJsonLd() {
     COMPANY.social.facebook,
     COMPANY.social.instagram,
     COMPANY.social.linkedin,
+    COMPANY.social.googleBusiness,
   ].filter(Boolean)
 
   const contactPoint: Record<string, unknown> = {
@@ -234,6 +245,14 @@ export function buildLocalBusinessJsonLd(opts?: { pageUrl?: string }) {
   }
   if (isPublicPhone(COMPANY.phones.primary)) {
     json.telephone = formatPhoneDisplay(COMPANY.phones.primary)
+  }
+  if (COMPANY.openingHours.length > 0) {
+    json.openingHoursSpecification = COMPANY.openingHours.map((slot) => ({
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: [...slot.dayOfWeek],
+      opens: slot.opens,
+      closes: slot.closes,
+    }))
   }
   return json
 }

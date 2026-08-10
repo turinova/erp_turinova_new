@@ -142,6 +142,8 @@ export function HomeHero() {
               width={2500}
               height={1773}
               priority
+              loading="eager"
+              fetchPriority="high"
               unoptimized
               sizes="100vw"
               draggable={false}
@@ -180,6 +182,8 @@ export function HomeHero() {
               width={1920}
               height={620}
               priority
+              loading="eager"
+              fetchPriority="high"
               unoptimized
               sizes="100vw"
               draggable={false}

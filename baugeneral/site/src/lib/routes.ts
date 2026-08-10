@@ -16,7 +16,6 @@ export type RouteKey =
   | "asztalos"
   | "pestMegye"
   | "bacsKiskun"
-  | "garancia"
   | "futoProjektek"
   | "referenciak"
   | "megjelenesek"
@@ -179,17 +178,6 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     breadcrumbs: [
       { name: "Főoldal", path: "/" },
       { name: "Bács-Kiskun", path: "/generalkivitelezes-bacs-kiskun" },
-    ],
-  },
-  garancia: {
-    path: "/garancia-es-felelosseg",
-    title: "Garancia és felelősség",
-    description:
-      "Hogyan vállalunk felelősséget projektjeiért. Minden megállapodás egyedi, a szerződésben rögzítve.",
-    label: "Garancia",
-    breadcrumbs: [
-      { name: "Főoldal", path: "/" },
-      { name: "Garancia és felelősség", path: "/garancia-es-felelosseg" },
     ],
   },
   futoProjektek: {
@@ -365,7 +353,6 @@ export const SITEMAP_ROUTE_KEYS: readonly RouteKey[] = [
   "asztalos",
   "pestMegye",
   "bacsKiskun",
-  "garancia",
   "futoProjektek",
   "referenciak",
   "megjelenesek",

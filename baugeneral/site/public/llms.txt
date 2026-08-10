@@ -110,6 +110,8 @@ Official summaries of local/county press coverage of BauGenerál Kft. handovers 
 - Cím: 6000 Kecskemét, Mindszenti krt. 10., Magyarország
 - E-mail: mezo.robert@baugeneral.hu
 - Telefon: +36 30 958 6331
+- Facebook: https://www.facebook.com/Baugeneral
+- Instagram: https://www.instagram.com/baugeneral/
 - Primary channel: contact form on /kapcsolat, email, or phone
 - Response: by phone or email after a form message or inquiry
 - Csapat a kapcsolat oldalon: ügyvezető (Mező Róbert), 2 építésvezető, művezető
@@ -144,7 +146,7 @@ Official summaries of local/county press coverage of BauGenerál Kft. handovers 
 - Slogan (HU): „A tervektől az átadásig, egy kézben, ahogy megegyeztünk.”
 - No public price per m² on the website; no online calculator in MVP
 - Public phone: +36 30 958 6331; email: mezo.robert@baugeneral.hu; contact also via /kapcsolat form
-- Warranty: process described on site; no fixed year count published
+- Warranty / liability: per individual construction contract; no fixed public warranty years on the website
 - Active construction projects at /futo-projektek (updated regularly with phase and last-updated date)
 - Press / media summaries at /megjelenesek (own URLs cite external publishers)
 - Legal: adatkezelési tájékoztató, cookie tájékoztató, ÁSZF on site

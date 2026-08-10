@@ -137,6 +137,30 @@ export function SiteFooter() {
                   </a>
                 </li>
               ) : null}
+              {COMPANY.social.facebook || COMPANY.social.instagram ? (
+                <li className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
+                  {COMPANY.social.facebook ? (
+                    <a
+                      href={COMPANY.social.facebook}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-[var(--color-brand)]"
+                    >
+                      Facebook
+                    </a>
+                  ) : null}
+                  {COMPANY.social.instagram ? (
+                    <a
+                      href={COMPANY.social.instagram}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-[var(--color-brand)]"
+                    >
+                      Instagram
+                    </a>
+                  ) : null}
+                </li>
+              ) : null}
             </ul>
           </div>
 

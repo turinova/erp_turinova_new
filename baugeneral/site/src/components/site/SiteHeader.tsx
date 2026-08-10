@@ -5,7 +5,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { MobileNavPanel, MenuIcon } from "@/components/site/nav/MobileNavOverlay"
-import { LocaleSwitch } from "@/components/site/nav/LocaleSwitch"
 import { NavChevron } from "@/components/site/nav/NavChevron"
 import { ServicesDropdown } from "@/components/site/nav/ServicesDropdown"
 import { COMPANY } from "@/lib/company"
@@ -137,6 +136,7 @@ export function SiteHeader() {
               className="header-logo-img"
               style={{ width: "auto" }}
               priority
+              loading="eager"
             />
           </Link>
         </div>
@@ -199,8 +199,6 @@ export function SiteHeader() {
               )
             })}
           </nav>
-
-          <LocaleSwitch locale={locale} className="header-pill-locale" />
 
           <Link href={contactHref} className="header-pill-cta">
             {ctaLabel}

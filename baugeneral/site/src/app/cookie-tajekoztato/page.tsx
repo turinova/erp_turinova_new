@@ -83,9 +83,19 @@ export default function CookieTajekoztatoPage() {
               biztonság).
             </p>
             <p className="mt-2">
-              Jelenleg nem üzemeltetünk külön marketing cookie-rendszert, és nem
+              A honlap forgalmát a{" "}
+              <strong className="font-semibold text-black/85">
+                Vercel Analytics
+              </strong>{" "}
+              anonim, cookie nélküli méréssel követi (oldalmegtekintések,
+              teljesítmény). Ez nem reklámkövető, és nem igényel cookie
+              hozzájárulási sávot.
+            </p>
+            <p className="mt-2">
+              Jelenleg nem üzemeltetünk külön marketing cookie-rendszert
+              (Google Analytics, Clarity, Facebook Pixel stb.), és nem
               használunk harmadik feles reklámkövetőt a Honlapon. Ha később
-              analitikai vagy marketing cookie-t vezetünk be, ezt a tájékoztatót
+              ilyen cookie-alapú analitikát vezetünk be, ezt a tájékoztatót
               frissítjük, és ahol jogszabály előírja, hozzájárulást kérünk.
             </p>
           </section>

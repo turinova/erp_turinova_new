@@ -5,7 +5,6 @@ import Link from "next/link"
 import { AnimatePresence, motion } from "motion/react"
 import { useEffect, useState } from "react"
 import { NavChevron } from "@/components/site/nav/NavChevron"
-import { LocaleSwitch } from "@/components/site/nav/LocaleSwitch"
 import { ServiceIcon } from "@/components/site/nav/ServiceIcon"
 import { HEADER_CTA, SERVICE_NAV_ITEMS } from "@/lib/nav-data"
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion"
@@ -225,9 +224,6 @@ export function MobileNavPanel({ open, onClose, locale = "hu" }: MobileNavPanelP
             </div>
 
             <div className="border-t border-[var(--color-border)]/70 bg-[var(--color-surface-soft)] px-4 py-3">
-              <div className="mb-3 flex justify-center">
-                <LocaleSwitch locale={locale} />
-              </div>
               <Link
                 href={locale === "en" ? "/en/contact" : locale === "de" ? "/de/contact" : HEADER_CTA.href}
                 onClick={onClose}

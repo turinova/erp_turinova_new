@@ -1,7 +1,8 @@
 import type { Metadata } from "next"
 import { COMPANY } from "@/lib/company"
 
-export const DEFAULT_OG_IMAGE_PATH = "/og/og-default.svg"
+/** App Router `opengraph-image.tsx` — PNG, social-platform friendly */
+export const DEFAULT_OG_IMAGE_PATH = "/opengraph-image"
 export const DEFAULT_OG_IMAGE = `${COMPANY.website}${DEFAULT_OG_IMAGE_PATH}`
 
 export function getDefaultRobots(): NonNullable<Metadata["robots"]> {
@@ -42,7 +43,7 @@ export function buildWebSiteJsonLd() {
     name: COMPANY.brand,
     alternateName: COMPANY.shortName,
     url: COMPANY.website,
-    inLanguage: ["hu-HU", "en", "de"],
+    inLanguage: "hu-HU",
     publisher: { "@id": `${COMPANY.website}/#organization` },
   }
 }
