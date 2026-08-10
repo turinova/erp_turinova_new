@@ -78,25 +78,26 @@ export function HomeHero() {
           trigger: root,
           start: "top top",
           end: "bottom top",
-          scrub: 0.35,
+          scrub: 0.5,
           invalidateOnRefresh: true,
         },
       })
 
       scrub.to(
         houseRef.current,
-        { y: "-35%", scale: 1.25, duration: 1, ease: "none" },
+        { y: "-22%", scale: 1.1, duration: 1, ease: "none" },
         0,
       )
       scrub.to(smokeRef.current, { y: "0%", duration: 1, ease: "none" }, 0)
-      scrub.to(cloudLRef.current, { x: "-15%", duration: 1, ease: "none" }, 0)
-      scrub.to(cloudRRef.current, { x: "15%", duration: 1, ease: "none" }, 0)
+      scrub.to(cloudLRef.current, { x: "-10%", duration: 1, ease: "none" }, 0)
+      scrub.to(cloudRRef.current, { x: "10%", duration: 1, ease: "none" }, 0)
       scrub.to(
         contentRef.current,
-        { y: "20%", scale: 0.9, duration: 1, ease: "none" },
+        { y: "12%", scale: 0.96, duration: 1, ease: "none" },
         0,
       )
-      scrub.to(contentRef.current, { opacity: 0, duration: 0.2, ease: "none" }, 0)
+      // Fade late — early opacity drop looked like a flash on first scroll
+      scrub.to(contentRef.current, { opacity: 0, duration: 0.35, ease: "none" }, 0.4)
 
       const playIntro = () => {
         requestAnimationFrame(() => intro.play(0))

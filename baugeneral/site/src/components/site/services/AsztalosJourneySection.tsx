@@ -21,7 +21,7 @@ const JOURNEY_STEPS = [
     step: "03",
     title: "Élzárás és gyártás",
     description:
-      "Élzárás, frontok, testek, munkalap — egyedi bútor összeszerelése a partnerüzemben.",
+      "Élzárás, frontok, testek, munkalap, egyedi bútor összeszerelése a partnerüzemben.",
     image: "/img/asztalos/elzaro.jpg",
     imageAlt: "Élzárógép a Hírös-Ablak kecskeméti gyártóüzemében",
   },

@@ -2,9 +2,11 @@ import { ContactForm } from "@/components/site/ContactForm"
 import { CopyToClipboardButton } from "@/components/site/CopyToClipboardButton"
 import {
   COMPANY,
+  formatPhoneDisplay,
   googleMapsDirectionsUrl,
   googleMapsEmbedUrl,
   googleMapsSearchUrl,
+  isPublicPhone,
 } from "@/lib/company"
 
 export function ContactMainPanel() {
@@ -37,6 +39,14 @@ export function ContactMainPanel() {
             >
               {COMPANY.emails.central}
             </a>
+            {isPublicPhone(COMPANY.phones.primary) ? (
+              <a
+                href={`tel:${COMPANY.phones.primary}`}
+                className="mt-1.5 block text-sm font-semibold text-[var(--color-brand)] underline underline-offset-4"
+              >
+                {formatPhoneDisplay(COMPANY.phones.primary)}
+              </a>
+            ) : null}
 
             <div className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-black/8">
               <iframe

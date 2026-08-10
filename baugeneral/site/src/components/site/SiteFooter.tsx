@@ -1,12 +1,17 @@
 import Image from "next/image"
 import Link from "next/link"
-import { COMPANY, googleMapsDirectionsUrl } from "@/lib/company"
-import { HEADER_CTA } from "@/lib/nav-data"
 import {
-  FOOTER_COMPANY,
+  COMPANY,
+  formatPhoneDisplay,
+  googleMapsDirectionsUrl,
+  isPublicPhone,
+} from "@/lib/company"
+import {
+  FOOTER_BLURB,
+  FOOTER_CTA,
   FOOTER_SERVICES,
+  FOOTER_WORK,
   LEGAL_LINKS,
-  TRUST_STATS,
 } from "@/lib/footer-data"
 
 function FooterColumn({
@@ -58,7 +63,10 @@ export function SiteFooter() {
   const year = new Date().getFullYear()
 
   return (
-    <footer role="contentinfo" className="mt-auto border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+    <footer
+      role="contentinfo"
+      className="mt-auto border-t border-[var(--color-border)] bg-[var(--color-surface)]"
+    >
       <section
         aria-label="Lépjen kapcsolatba"
         className="border-b border-[var(--color-border)] bg-[var(--color-brand-subtle)]"
@@ -66,18 +74,16 @@ export function SiteFooter() {
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xl font-semibold tracking-tight text-black/90">
-              {HEADER_CTA.label}
+              {FOOTER_CTA.title}
             </p>
-            <p className="mt-2 max-w-md text-sm text-black/70">
-              Írjon üzenetet. Válaszunkat e-mailben küldjük.
-            </p>
+            <p className="mt-2 max-w-md text-sm text-black/70">{FOOTER_CTA.body}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
               href="/kapcsolat"
               className="btn-primary inline-flex px-5 py-2.5 text-sm font-semibold"
             >
-              Kapcsolat
+              {FOOTER_CTA.button}
             </Link>
             <a
               href={`mailto:${COMPANY.emails.central}`}
@@ -99,7 +105,9 @@ export function SiteFooter() {
               height={50}
               className="h-10 w-auto"
             />
-            <p className="mt-3 text-sm text-black/70">{COMPANY.entityDefinitionHu}</p>
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-black/70">
+              {FOOTER_BLURB}
+            </p>
             <ul className="mt-4 grid gap-2 text-sm text-black/75">
               <li>
                 <a
@@ -119,6 +127,16 @@ export function SiteFooter() {
                   {COMPANY.emails.central}
                 </a>
               </li>
+              {isPublicPhone(COMPANY.phones.primary) ? (
+                <li>
+                  <a
+                    href={`tel:${COMPANY.phones.primary}`}
+                    className="hover:text-[var(--color-brand)]"
+                  >
+                    {formatPhoneDisplay(COMPANY.phones.primary)}
+                  </a>
+                </li>
+              ) : null}
             </ul>
           </div>
 
@@ -129,44 +147,34 @@ export function SiteFooter() {
             <FooterColumn title="Szolgáltatások">
               <LinkList items={FOOTER_SERVICES} />
             </FooterColumn>
-            <FooterColumn title="Cég">
-              <LinkList items={FOOTER_COMPANY} />
+            <FooterColumn title="Munkák">
+              <LinkList items={FOOTER_WORK} />
             </FooterColumn>
-            <FooterColumn title="Kiszolgálás">
-              <ul className="grid gap-1 text-sm text-black/70">
-                {COMPANY.serviceArea.map((area) => (
-                  <li key={area}>
-                    {area === "Pest megye" ? (
-                      <Link
-                        href="/generalkivitelezes-pest-megye"
-                        className="transition-colors hover:text-[var(--color-brand)]"
-                      >
-                        {area}
-                      </Link>
-                    ) : (
-                      area
-                    )}
-                  </li>
-                ))}
+            <FooterColumn title="Terület">
+              <ul className="grid gap-2 text-sm text-black/70">
+                <li>
+                  <Link
+                    href="/generalkivitelezes-bacs-kiskun"
+                    className="transition-colors hover:text-[var(--color-brand)]"
+                  >
+                    Bács-Kiskun megye
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/generalkivitelezes-pest-megye"
+                    className="transition-colors hover:text-[var(--color-brand)]"
+                  >
+                    Pest megye és Budapest
+                  </Link>
+                </li>
+                <li>Balaton környéke</li>
+                <li className="pt-1 text-black/55">
+                  Székhely: {COMPANY.address.full}
+                </li>
               </ul>
             </FooterColumn>
           </nav>
-        </div>
-      </section>
-
-      <section
-        aria-label="Bizalmi mutatók"
-        className="border-t border-[var(--color-border)] bg-[var(--color-background)]"
-      >
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-6 px-4 py-6">
-          {TRUST_STATS.map((s) => (
-            <div key={s.label} className="flex items-baseline gap-2">
-              <span className="text-lg font-bold tabular-nums text-[var(--color-brand)]">
-                {s.number}
-              </span>
-              <span className="text-xs text-black/60">{s.label}</span>
-            </div>
-          ))}
         </div>
       </section>
 

@@ -107,7 +107,7 @@ const INDUSTRIAL_SERVICE: ServiceDefinition = {
   layoutVariant: "default",
   referenceType: "industrial",
   projectCategory: "industrial",
-  proofReferenceSlug: "autoszalon-kecskemet",
+  proofReferenceSlug: "ipari-csarnok",
   proofProjectSlug: "hyundai-szalon-kecskemet",
   hook:
     "Ipari épületnél a nyugalom onnan jön, hogy a határidő és a szakágak egy kézben maradnak. Egy építésvezetés, heti státusz, átlátható átadás.",
@@ -254,6 +254,7 @@ const INDUSTRIAL_SERVICE: ServiceDefinition = {
   relatedLinks: [
     { href: "/referenciak", label: "Referenciák" },
     { href: "/futo-projektek", label: "Futó projektek" },
+    { href: "/generalkivitelezes-bacs-kiskun", label: "Bács-Kiskun" },
     { href: "/generalkivitelezes-pest-megye", label: "Pest megye" },
     { href: "/kapcsolat", label: "Kapcsolat" },
   ],
@@ -267,7 +268,7 @@ const TARSHAZAK_SERVICE: ServiceDefinition = {
   layoutVariant: "proofEarly",
   referenceType: "condo",
   projectCategory: "condo",
-  proofReferenceSlug: "tarshaz-lakopark",
+  proofReferenceSlug: "ikerhaz-butorozassal-a",
   hook:
     "Társasháznál és lakóparknál a nyugalom onnan jön, hogy az ütem egy kézben marad. Több épületrész, több szakma, egy felelős csapat.",
   tldr:
@@ -406,6 +407,7 @@ const TARSHAZAK_SERVICE: ServiceDefinition = {
   relatedLinks: [
     { href: "/referenciak", label: "Referenciák" },
     { href: "/futo-projektek", label: "Futó projektek" },
+    { href: "/generalkivitelezes-bacs-kiskun", label: "Bács-Kiskun" },
     { href: "/generalkivitelezes-pest-megye", label: "Pest megye" },
     { href: "/kapcsolat", label: "Kapcsolat" },
   ],
@@ -419,7 +421,7 @@ const CSALADI_HAZ_SERVICE: ServiceDefinition = {
   layoutVariant: "reverseHero",
   referenceType: "family",
   projectCategory: "family",
-  proofReferenceSlug: "csaladi-haz-bacs-kiskun",
+  proofReferenceSlug: "minimal-csaladihaz-butorozassal",
   proofProjectSlug: "ikerhaz-sajat-kecskemet",
   hook:
     "Családi háznál a nyugalom onnan jön, hogy egy felelős csapat viszi a kivitelezést. Nem tucatnyi szakma között kell egyeztetnie.",
@@ -558,6 +560,7 @@ const CSALADI_HAZ_SERVICE: ServiceDefinition = {
   ],
   relatedLinks: [
     { href: "/szolgaltatasok/asztalos-munkak", label: "Asztalos munkák" },
+    { href: "/generalkivitelezes-bacs-kiskun", label: "Bács-Kiskun" },
     { href: "/generalkivitelezes-pest-megye", label: "Pest megye" },
     { href: "/kapcsolat", label: "Kapcsolat" },
   ],
@@ -571,7 +574,7 @@ const KOZEPULETEK_SERVICE: ServiceDefinition = {
   layoutVariant: "typesGrid2x2",
   referenceType: "public",
   projectCategory: "public",
-  proofReferenceSlug: "kozepulet-ovoda",
+  proofReferenceSlug: "csillagszem-ovoda",
   hook:
     "Középületnél nem elég, hogy kész legyen. Az átadásnak dokumentáltnak és ellenőrizhetőnek is kell lennie.",
   tldr:
@@ -709,6 +712,7 @@ const KOZEPULETEK_SERVICE: ServiceDefinition = {
   ],
   relatedLinks: [
     { href: "/referenciak", label: "Referenciák" },
+    { href: "/generalkivitelezes-bacs-kiskun", label: "Bács-Kiskun" },
     { href: "/generalkivitelezes-pest-megye", label: "Pest megye" },
   ],
   ctaImage: S.telephelyPng,
@@ -721,17 +725,17 @@ const FELUJITAS_SERVICE: ServiceDefinition = {
   layoutVariant: "compactSingleCol",
   referenceType: "renovation",
   projectCategory: "renovation",
-  proofReferenceSlug: "felujitas-lakas",
+  proofReferenceSlug: "fokusz-centrum",
   proofProjectSlug: "zwack-rendezvenyhaz-kecskemet",
   hook:
     "Felújításnál a legtöbb gond nem a burkolatnál kezdődik. Hanem ott, amikor nincs sorrend a szakmák között.",
   tldr:
-    "A BauGenerál Kft. teljes lakás- és házfelújítást vállal Kecskeméten, Bács-Kiskun és Pest megyében, valamint a Balaton környékén. A bontástól a befejező munkákig egy kézben tartjuk a szakágakat, hogy ne kelljen minden mestert külön szervezni.",
+    "A BauGenerál Kft. teljes lakás- és házfelújítást vállal Budapesten, Pest megyében, Kecskeméten és Bács-Kiskunban, valamint a Balaton környékén. A bontástól a befejező munkákig egy kézben tartjuk a szakágakat. Székhely: Kecskemét.",
   takeaways: [
     { label: "Fő fókusz", value: "Teljes lakás- és házfelújítás" },
     { label: "Kiegészítés", value: "Hozzáépítés, korszerűsítés" },
     { label: "Szervezés", value: "Szakágak összehangolva" },
-    { label: "Terület", value: "Bács-Kiskun, Pest, Balaton" },
+    { label: "Terület", value: "Budapest, Pest, Bács-Kiskun" },
   ],
   whyParagraphs: [
     "Felújításnál sokszor nem maga a feladat a nehéz, hanem a sorrend. Ha a bontás, a gépészet, a villany és a befejezés nincs összehangolva, nő az állásidő, és gyakran újra kell bontani azt, ami már kész volt.",
@@ -790,9 +794,9 @@ const FELUJITAS_SERVICE: ServiceDefinition = {
     process: "Milyen sorrendben érdemes felújítani?",
     proof: "Befejezett és futó felújítási munkáink",
     faq: "Gyakori kérdések felújítás előtt",
-    ctaTitle: "Lakás- vagy házfelújítást tervez?",
+    ctaTitle: "Lakás- vagy házfelújítást tervez Budapesten vagy Pest megyében?",
     ctaBody:
-      "Írja meg, milyen állapotban van az ingatlan, és miben gondolkodik. Hamarosan emailben jelentkezünk.",
+      "Írja meg a kerületet vagy a települést (pl. Budapest XI., Üröm, Kecskemét), milyen állapotban van az ingatlan, és miben gondolkodik. Egy munkanapon belül válaszolunk.",
   },
   buildingTypes: [
     {
@@ -870,15 +874,21 @@ const FELUJITAS_SERVICE: ServiceDefinition = {
       a: "Érdemes tételes műszaki tartalmat, ütemet és fizetési szakaszokat kérni, ne csak egy végösszeget. Jó, ha világos, mi tartozik bele, és mi számít pótmunkának. Nálunk a vállalt kör írásban szerepel.",
     },
     {
+      id: "budapest",
+      q: "Vállalnak lakásfelújítást Budapesten is?",
+      a: "Igen. Budapesten és Pest megyében is. A székhelyünk Kecskeméten van; a helyszíni művezetést a projekt üteméhez igazítjuk. Írja meg a települést vagy a kerületet. Területi összefoglaló: /generalkivitelezes-pest-megye.",
+    },
+    {
       id: "area",
       q: "Milyen területen vállalnak felújítást?",
-      a: "Bács-Kiskun megyében (Kecskemét és környéke), Pest megyében (beleértve a budai agglomerációt) és a Balaton környékén. A székhelyünk Kecskeméten van.",
+      a: "Budapest, Pest megye, Bács-Kiskun és a Balaton környéke. Székhely: Kecskemét. A területi oldalakon a településnevek példák. Részletek: /generalkivitelezes-pest-megye és /generalkivitelezes-bacs-kiskun. Ha csak egy szakág hiányzik, nézze a szakági oldalt is.",
     },
   ],
   relatedLinks: [
-    { href: "/referenciak", label: "Referenciák" },
+    { href: "/szolgaltatasok/szakagi-kivitelezes", label: "Szakági kivitelezés" },
+    { href: "/generalkivitelezes-pest-megye", label: "Pest megye és Budapest" },
+    { href: "/generalkivitelezes-bacs-kiskun", label: "Bács-Kiskun" },
     { href: "/kapcsolat", label: "Kapcsolat" },
-    { href: "/generalkivitelezes-pest-megye", label: "Pest megye" },
   ],
   ctaImage: S.felujitas,
   ctaImageAlt: "Lakás- és házfelújítás, BauGenerál",
@@ -893,12 +903,12 @@ const SZAKAGI_SERVICE: ServiceDefinition = {
   hook:
     "Nem minden projekt igényel generálkivitelezőt. Ha csak egy szakág hiányzik, azt is vállaljuk: villany, gépészet, burkolás, térkő és a többi.",
   tldr:
-    "A BauGenerál Kft. szakági kivitelezést önálló megbízásként is vállal. Villanyszerelés, épületgépészet, szerkezet, burkolás, festés, térkövezés, kerítés, hőszigetelés, gipszkarton, napelem. Bács-Kiskun, Pest megye és a Balaton környéke, generál nélkül is.",
+    "A BauGenerál Kft. szakági kivitelezést önálló megbízásként is vállal. Villanyszerelés, épületgépészet, szerkezet, burkolás, festés, térkövezés, kerítés, hőszigetelés, gipszkarton, napelem. Budapest, Pest megye, Bács-Kiskun és a Balaton környéke, generál nélkül is.",
   takeaways: [
     { label: "Forma", value: "Önálló szakági megbízás" },
     { label: "Szakágak", value: "10 fő terület" },
-    { label: "Hol", value: "Bács-Kiskun, Pest, Balaton" },
-    { label: "Válasz", value: "Hamarosan emailben" },
+    { label: "Hol", value: "Budapest, Pest, Bács-Kiskun" },
+    { label: "Válasz", value: "Egy munkanapon belül" },
   ],
   whyParagraphs: [
     "Sok megrendelőnek nincs szüksége teljes generálkivitelezésre, csak egy hiányzó szakágra. Ilyenkor a teljes projektmenedzsment felesleges költség.",
@@ -1065,7 +1075,7 @@ const SZAKAGI_SERVICE: ServiceDefinition = {
     {
       id: "area",
       q: "Hol vállalnak szakági munkát?",
-      a: "Bács-Kiskun megyében, Pest megyében és a Balaton környékén. Ha a helyszín ettől távolabb esik, a kapcsolatfelvételnél jelezze. Megnézzük, és megmondjuk, vállalható-e.",
+      a: "Budapesten, Pest megyében, Bács-Kiskunban és a Balaton környékén. Székhely: Kecskemét. Ha a helyszín ettől távolabb esik, a kapcsolatfelvételnél jelezze. Megnézzük, és megmondjuk, vállalható-e.",
     },
     {
       id: "price",
@@ -1077,6 +1087,7 @@ const SZAKAGI_SERVICE: ServiceDefinition = {
     { href: "/szolgaltatasok/felujitas", label: "Felújítás" },
     { href: "/szolgaltatasok/csaladi-haz-epites", label: "Családi ház" },
     { href: "/szolgaltatasok/asztalos-munkak", label: "Asztalos munkák" },
+    { href: "/generalkivitelezes-bacs-kiskun", label: "Bács-Kiskun" },
     { href: "/generalkivitelezes-pest-megye", label: "Pest megye" },
     { href: "/kapcsolat", label: "Kapcsolat" },
   ],
@@ -1159,7 +1170,7 @@ const ASZTALOS_SERVICE: ServiceDefinition = {
   buildingTypes: [
     {
       title: "Beépített bútor",
-      description: "Gardrób, polcrendszer, tárolók — a falhoz és a térhez igazítva.",
+      description: "Gardrób, polcrendszer, tárolók, a falhoz és a térhez igazítva.",
       image: "/img/asztalos/bemutato.jpg",
       imageAlt: "Bútorlap- és fogantyúminták a Hírös-Ablak bemutatótermében",
     },
@@ -1223,7 +1234,7 @@ const ASZTALOS_SERVICE: ServiceDefinition = {
     {
       id: "area",
       q: "Hol vállalnak asztalos munkát?",
-      a: "Bács-Kiskun és Pest megyében (Üröm, Solymár és a budai agglomeráció is), valamint a Balaton környékén.",
+      a: "Bács-Kiskun és Pest megyében (Üröm, Solymár és a budai agglomeráció is), valamint a Balaton környékén. Gyártás Kecskeméten (Hírös-Ablak). Területi oldalak: /generalkivitelezes-bacs-kiskun és /generalkivitelezes-pest-megye.",
     },
     {
       id: "price",
@@ -1232,12 +1243,13 @@ const ASZTALOS_SERVICE: ServiceDefinition = {
     },
   ],
   relatedLinks: [
-    { href: "https://www.hirosablak.hu", label: "Hírös-Ablak — gyártó partner" },
+    { href: "https://www.hirosablak.hu", label: "Hírös-Ablak, gyártó partner" },
     {
       href: "https://www.hirosablak.hu/lapszabaszat-kecskemet",
       label: "Lapszabászat Kecskeméten",
     },
     { href: "/szolgaltatasok/csaladi-haz-epites", label: "Családi ház építés" },
+    { href: "/generalkivitelezes-bacs-kiskun", label: "Bács-Kiskun" },
     { href: "/generalkivitelezes-pest-megye", label: "Pest megye" },
     { href: "/kapcsolat", label: "Kapcsolat" },
   ],

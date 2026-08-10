@@ -1,10 +1,13 @@
-import { Suspense } from "react"
 import Script from "next/script"
 import { ReferencesBrowse } from "@/components/site/references/ReferencesBrowse"
 import { Breadcrumbs } from "@/components/site/Breadcrumbs"
-import { getPublishedReferences } from "@/lib/references"
+import { COMPANY } from "@/lib/company"
+import {
+  getPublishedReferences,
+  referenceDetailPath,
+} from "@/lib/references"
 import { ROUTES } from "@/lib/routes"
-import { buildBreadcrumbJsonLd, pageMetadata } from "@/lib/seo"
+import { absoluteUrl, buildBreadcrumbJsonLd, pageMetadata } from "@/lib/seo"
 
 export const metadata = pageMetadata({
   title: ROUTES.referenciak.title,
@@ -13,26 +16,38 @@ export const metadata = pageMetadata({
   ogImage: "/img/szolgaltatasok/ipari-epuletek.jpg",
 })
 
-function BrowseFallback({ count }: { count: number }) {
-  return (
-    <div>
-      <div className="flex gap-2 overflow-hidden">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-9 w-24 shrink-0 animate-pulse rounded-full bg-black/5"
-          />
-        ))}
-      </div>
-      <p className="mt-5 text-sm text-black/45">{count} referencia betöltése…</p>
-    </div>
-  )
+function buildReferencesCollectionJsonLd(
+  references: ReturnType<typeof getPublishedReferences>,
+) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "@id": absoluteUrl("/referenciak#collection"),
+    name: ROUTES.referenciak.title,
+    description: ROUTES.referenciak.description,
+    url: absoluteUrl("/referenciak"),
+    inLanguage: "hu-HU",
+    isPartOf: { "@id": `${COMPANY.website}/#website` },
+    mainEntity: {
+      "@type": "ItemList",
+      name: "BauGenerál referenciák",
+      numberOfItems: references.length,
+      itemListElement: references.map((reference, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: reference.title,
+        url: absoluteUrl(referenceDetailPath(reference.slug)),
+        image: absoluteUrl(reference.cardImage.src),
+      })),
+    },
+  }
 }
 
 export default function ReferenciakPage() {
   const route = ROUTES.referenciak
   const references = getPublishedReferences()
   const breadcrumbJsonLd = buildBreadcrumbJsonLd([...route.breadcrumbs])
+  const collectionJsonLd = buildReferencesCollectionJsonLd(references)
 
   return (
     <div className="bg-stone-wash">
@@ -41,6 +56,11 @@ export default function ReferenciakPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
+      <Script
+        id="jsonld-collection-referenciak"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
+      />
 
       <div className="mx-auto max-w-6xl px-4 pb-12 pt-4 md:pb-16">
         <Breadcrumbs items={route.breadcrumbs} />
@@ -48,16 +68,9 @@ export default function ReferenciakPage() {
         <h1 id="referenciak-heading" className="about-h1 mt-4">
           Referenciák
         </h1>
-        <p className="mt-3 max-w-2xl text-[0.9375rem] leading-relaxed text-black/60 md:text-base">
-          Befejezett projektek Kecskeméten és Bács-Kiskunban —{" "}
-          {references.length} publikus referencia, típus szerint
-          böngészhető.
-        </p>
 
         <div className="mt-6">
-          <Suspense fallback={<BrowseFallback count={references.length} />}>
-            <ReferencesBrowse references={references} />
-          </Suspense>
+          <ReferencesBrowse references={references} />
         </div>
       </div>
     </div>

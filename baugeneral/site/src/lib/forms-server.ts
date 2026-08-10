@@ -1,3 +1,5 @@
+import { sendFormEmail } from "@/lib/mail"
+
 const PROJECT_TYPES = new Set([
   "ipari",
   "kozepulet",
@@ -226,14 +228,93 @@ function parseSzakagi(body: RawFormBody): ParseFormResult {
   }
 }
 
+const FORM_LABELS: Record<ParsedFormSubmission["form"], string> = {
+  contact: "Kapcsolat",
+  szakagi: "Szakági megkeresés",
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
 export function logFormSubmission(
   data: ParsedFormSubmission,
   meta?: { referer?: string | null; userAgent?: string | null },
 ) {
   console.info(`[forms] ${data.form} submission`, {
-    ...data,
+    form: data.form,
+    name: data.name,
+    email: "email" in data ? data.email : "",
+    location: data.location,
     referer: meta?.referer ?? null,
-    userAgent: meta?.userAgent ?? null,
     at: new Date().toISOString(),
+  })
+}
+
+export async function deliverFormEmail(
+  data: ParsedFormSubmission,
+  meta?: { referer?: string | null; userAgent?: string | null },
+): Promise<void> {
+  const formLabel = FORM_LABELS[data.form]
+  const detailLabel =
+    data.form === "contact" ? data.projectTypeLabel : data.tradeLabel
+
+  const lines: string[] = [
+    `Űrlap: ${formLabel}`,
+    `Időpont: ${new Date().toLocaleString("hu-HU", { timeZone: "Europe/Budapest" })}`,
+    "",
+    `Név: ${data.name}`,
+  ]
+  if (data.email) lines.push(`E-mail: ${data.email}`)
+  lines.push(`Telefon: ${data.phone}`)
+  if (data.form === "contact" && data.company) {
+    lines.push(`Cég: ${data.company}`)
+  }
+  if (data.location) lines.push(`Helyszín: ${data.location}`)
+  lines.push(`${data.form === "contact" ? "Projekt típus" : "Szakág"}: ${detailLabel}`)
+  lines.push("", "Üzenet:", data.message)
+  if (meta?.referer) lines.push("", `Oldal: ${meta.referer}`)
+
+  const text = lines.join("\n")
+
+  const htmlRows: [string, string][] = [
+    ["Űrlap", formLabel],
+    ["Név", data.name],
+  ]
+  if (data.email) htmlRows.push(["E-mail", data.email])
+  htmlRows.push(["Telefon", data.phone])
+  if (data.form === "contact" && data.company) {
+    htmlRows.push(["Cég", data.company])
+  }
+  if (data.location) htmlRows.push(["Helyszín", data.location])
+  htmlRows.push([
+    data.form === "contact" ? "Projekt típus" : "Szakág",
+    detailLabel,
+  ])
+
+  const htmlTable = htmlRows
+    .map(
+      ([k, v]) =>
+        `<tr><td style="padding:6px 12px 6px 0;font-weight:600;vertical-align:top">${escapeHtml(k)}</td><td style="padding:6px 0">${escapeHtml(v)}</td></tr>`,
+    )
+    .join("")
+
+  const html = `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;color:#111">
+<p>Új beküldés a BauGenerál weboldalról.</p>
+<table>${htmlTable}</table>
+<p style="margin-top:16px;font-weight:600">Üzenet</p>
+<p style="white-space:pre-wrap">${escapeHtml(data.message)}</p>
+${meta?.referer ? `<p style="margin-top:16px;font-size:12px;color:#666">Forrás: ${escapeHtml(meta.referer)}</p>` : ""}
+</body></html>`
+
+  await sendFormEmail({
+    subject: `[BauGenerál] ${formLabel} – ${detailLabel} – ${data.name}`,
+    text,
+    html,
+    replyTo: data.email || undefined,
   })
 }

@@ -46,15 +46,6 @@ export const SERVICE_NAV_ITEMS: readonly ServiceNavChild[] = [
       "linear-gradient(135deg, #A60C19 0%, #6D0811 50%, #1C1A18 100%)",
   },
   {
-    href: "/szolgaltatasok/tarshazak",
-    label: "Társasházak",
-    description: "Társasházak és lakóparkok Bács-Kiskun és Pest megyében, dokumentált átadással.",
-    icon: "condo",
-    previewImage: "/img/nav/kozepuletek.jpg",
-    previewGradient:
-      "linear-gradient(135deg, #8A0A15 0%, #A60C19 45%, #4A4640 100%)",
-  },
-  {
     href: "/szolgaltatasok/csaladi-haz-epites",
     label: "Családi ház építés",
     description: "Egyedi családi ház Bács-Kiskun és Pest megyében, beköltözhető állapotig.",
@@ -66,7 +57,7 @@ export const SERVICE_NAV_ITEMS: readonly ServiceNavChild[] = [
   {
     href: "/szolgaltatasok/kozepuletek",
     label: "Középületek",
-    description: "Bölcsődék, óvodák, hivatalok — középületi generálkivitelezés.",
+    description: "Bölcsődék, óvodák, hivatalok. Középületi generálkivitelezés.",
     icon: "public",
     previewImage: "/img/szolgaltatasok/ipari-epuletek.jpg",
     previewGradient:
@@ -75,7 +66,8 @@ export const SERVICE_NAV_ITEMS: readonly ServiceNavChild[] = [
   {
     href: "/szolgaltatasok/felujitas",
     label: "Felújítás",
-    description: "Lakás- és házfelújítás Bács-Kiskun és Pest megyében.",
+    description:
+      "Lakás- és házfelújítás Budapesten, Pest megyében és Bács-Kiskunban.",
     icon: "reno",
     previewImage: "/img/nav/felujitas.jpg",
     previewGradient:
@@ -85,7 +77,7 @@ export const SERVICE_NAV_ITEMS: readonly ServiceNavChild[] = [
     href: "/szolgaltatasok/szakagi-kivitelezes",
     label: "Szakági kivitelezés",
     description:
-      "Gépészet, villanyszerelés, napelem, térkövezés — önállóan is vállaljuk.",
+      "Gépészet, villanyszerelés, napelem, térkövezés, önállóan is vállaljuk.",
     icon: "trades",
     previewImage: "/img/nav/szakagi-kivitelezes.jpg",
     previewGradient:
@@ -94,7 +86,8 @@ export const SERVICE_NAV_ITEMS: readonly ServiceNavChild[] = [
   {
     href: "/szolgaltatasok/asztalos-munkak",
     label: "Asztalos munkák",
-    description: "Egyedi asztalos munkák: beépített bútor, konyhabútor, belső terek.",
+    description:
+      "Beépített bútor Kecskemétről: Bács-Kiskun és Pest megyei beépítés.",
     icon: "carpentry",
     previewImage: "/img/asztalos/portfolio/kitchen-panorama.jpg",
     previewGradient:
@@ -102,6 +95,7 @@ export const SERVICE_NAV_ITEMS: readonly ServiceNavChild[] = [
   },
 ] as const
 
+/** Area hubs live in the footer (and on-page links), not in the main nav bar. */
 export const NAV_ITEMS: readonly NavItem[] = [
   {
     href: "/szolgaltatasok/ipari-epuletek",

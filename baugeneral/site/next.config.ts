@@ -7,6 +7,15 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  async redirects() {
+    return [
+      {
+        source: "/szolgaltatasok/tarshazak",
+        destination: "/szolgaltatasok/ipari-epuletek",
+        permanent: true,
+      },
+    ]
+  },
 };
 
 export default nextConfig;

@@ -11,7 +11,6 @@ import { getActiveProjectCount } from "@/lib/projects"
 import {
   getPublishedReferences,
   getReferenceBySlug,
-  REFERENCE_TYPE_LABELS,
   referenceDetailPath,
 } from "@/lib/references"
 import styles from "./home-below.module.css"
@@ -150,16 +149,12 @@ function HomeWorks() {
               >
                 <span className={styles.workMedia} aria-hidden>
                   <Image
-                    src={reference.heroImage.src}
+                    src={reference.cardImage.src}
                     alt=""
                     fill
                     sizes="(max-width: 768px) 100vw, 33vw"
                     className={styles.workImg}
                   />
-                </span>
-                <span className={styles.workMeta}>
-                  {REFERENCE_TYPE_LABELS[reference.type]} · {reference.city} ·{" "}
-                  {reference.yearCompleted}
                 </span>
                 <span className={styles.workTitle}>{reference.title}</span>
                 <span className={styles.workCta}>

@@ -78,17 +78,17 @@ export const CONTACT_FAQ: readonly ContactFaqItem[] = [
   {
     id: "munkakor",
     q: "Milyen munkát vállal a BauGenerál?",
-    a: "Ipari épület, társasház, családi ház, középület, felújítás. Az első beszélgetésen tisztázzuk a részleteket. Részletek a szolgáltatások oldalakon.",
+    a: "Ipari épület, családi ház, középület, felújítás, szakági munka. Az első beszélgetésen tisztázzuk a részleteket. Részletek a szolgáltatások oldalakon.",
   },
   {
     id: "terulet",
     q: "Mely területeken vállalnak kivitelezést?",
-    a: "Bács-Kiskun és Pest megyében, valamint a Balaton környékén. Székhely: Kecskemét. Pest megyei fókusz: generálkivitelezés Pest megyében oldal.",
+    a: "Budapesten, Pest megyében, Bács-Kiskunban és a Balaton környékén. Székhely: Kecskemét. Részletek: /generalkivitelezes-pest-megye és /generalkivitelezes-bacs-kiskun.",
   },
   {
     id: "telefon",
     q: "Van publikus telefonszám?",
-    a: "Nem. Megkeresést az űrlapon vagy e-mailben várunk (mezo.david@baugeneral.hu). Válaszunkat e-mailben küldjük.",
+    a: "Igen: +36 30 958 6331. Írhat e-mailben is (mezo.robert@baugeneral.hu), vagy az űrlapon.",
   },
   {
     id: "terv",
@@ -110,7 +110,6 @@ export const CONTACT_FAQ: readonly ContactFaqItem[] = [
 export const PROJECT_TYPE_OPTIONS = [
   { value: "ipari", label: "Ipari épület" },
   { value: "kozepulet", label: "Középület" },
-  { value: "tarshaz", label: "Társasház" },
   { value: "csaladi", label: "Családi ház" },
   { value: "felujitas", label: "Felújítás" },
   { value: "szakagi", label: "Szakági munka" },

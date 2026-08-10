@@ -36,6 +36,13 @@ export function ContactImpressum() {
                   >
                     {row.value}
                   </a>
+                ) : row.label === "Telefon" ? (
+                  <a
+                    href={`tel:${COMPANY.phones.primary}`}
+                    className="text-[var(--color-brand)] underline underline-offset-2"
+                  >
+                    {row.value}
+                  </a>
                 ) : (
                   row.value
                 )}

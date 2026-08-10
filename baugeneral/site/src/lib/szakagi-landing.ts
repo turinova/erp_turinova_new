@@ -6,9 +6,9 @@ import { REFERENCE_STOCK as S } from "@/lib/reference-stock-images"
 
 export const SZAKAGI_HERO = {
   eyebrow: "BauGenerál",
-  title: "Szakági kivitelezés Bács-Kiskun és Pest megyében",
+  title: "Szakági kivitelezés Budapesten, Pest megyében és Bács-Kiskunban",
   lead:
-    "Villanyszerelő, gépész, burkoló, térkövező, festő, kerítés, hőszigetelés, gipszkarton, napelem: szakáganként is, generálkivitelezés nélkül. Kecskemét és Bács-Kiskun, Pest megye, Balaton környéke.",
+    "Villanyszerelő, gépész, burkoló, térkövező, festő, kerítés, hőszigetelés, gipszkarton, napelem: szakáganként is, generálkivitelezés nélkül. Budapest, Pest megye, Kecskemét, Balaton környéke. Székhely: Kecskemét.",
   image: S.munka,
   imageAlt: "Szakági kivitelezés a helyszínen, BauGenerál",
   ctaPrimary: { href: "#szakagi-form", label: "Írjon nekünk" },
@@ -19,20 +19,20 @@ export const SZAKAGI_TRADES_HEAD = {
   label: "Szakágak",
   title: "Milyen szakembert keres?",
   intro:
-    "Villanyszerelő, burkoló, gépész, térkövező, festő, kerítés, hőszigetelés, gipszkarton vagy napelem: szakáganként is vállaljuk, generálkivitelezés nélkül. Bács-Kiskun (Kecskemét), Pest megye, Balaton környéke.",
+    "Villanyszerelő, burkoló, gépész, térkövező, festő, kerítés, hőszigetelés, gipszkarton vagy napelem: szakáganként is vállaljuk, generálkivitelezés nélkül. Budapest, Pest megye, Bács-Kiskun (Kecskemét), Balaton környéke.",
 } as const
 
 export const SZAKAGI_TRADES = [
   {
     id: "villany",
     title: "Villanyszerelés",
-    seoTitle: "Villanyszerelő Kecskeméten, Bács-Kiskun és Pest megyében",
+    seoTitle: "Villanyszerelő Budapesten, Pest megyében és Kecskeméten",
     description:
       "Erős- és gyengeáram, elosztók, világítás. Új hálózat vagy meglévő bővítés.",
     body: [
-      "Ha villanyszerelőt keres Kecskeméten vagy Pest megyében, gyakran nem generálkivitelezőre van szüksége, hanem egy megbízható villamos szakágra: új hálózat, lakásfelújítás, vezetékcsere, elosztó, világítás.",
+      "Ha villanyszerelőt keres Budapesten, Pest megyében vagy Kecskeméten, gyakran nem generálkivitelezőre van szüksége, hanem egy megbízható villamos szakágra: új hálózat, lakásfelújítás, vezetékcsere, elosztó, világítás.",
       "Vállaljuk az erősáramú és gyengeáramú szerelést, dokumentált átadással. Gyakori megkeresés: komplett hálózat felújítás, alumínium vezetékcsere, villanyóra szabványosítás vagy teljesítménybővítés, új épület villamos kiépítése.",
-      "Írja meg a helyszínt (Bács-Kiskun, Pest megye vagy Balaton környéke) és mit kér: négyzetméter, új vagy meglévő hálózat. Írásos ajánlatot adunk.",
+      "Írja meg a helyszínt (pl. Budapest XI., Üröm, Kecskemét) és mit kér: négyzetméter, új vagy meglévő hálózat. Írásos ajánlatot adunk.",
     ],
     bullets: [
       "Új villamos hálózat kiépítése",
@@ -46,12 +46,12 @@ export const SZAKAGI_TRADES = [
   {
     id: "gepeszet",
     title: "Épületgépészet",
-    seoTitle: "Vízszerelő, fűtésszerelő, épületgépészet",
+    seoTitle: "Vízszerelő, fűtésszerelő Budapesten és Pest megyében",
     description: "Fűtés, víz, csatorna, szellőzés. Meglévő vagy új épülethez.",
     body: [
-      "Gépészt, vízszerelőt vagy fűtésszerelőt sokan külön keresnek: radiátorcsere, padlófűtés, bojler, vízvezeték, csatorna, szellőzés. Nálunk ez egy szakági megbízás lehet, generál nélkül.",
-      "Új építésnél és felújításnál is vállaljuk a gépészeti kivitelezést egyeztetett műszaki tartalom alapján. Gyakori megkeresés: megbízható fűtés és víz a környéken, radiátorcsere, padlófűtés, bojler.",
-      "Bács-Kiskun megyében (Kecskemét) és Pest megyében is. Írja meg, fűtés, víz vagy mindkettő kell-e, és milyen készültségű a helyszín.",
+      "Gépészt, vízszerelőt vagy fűtésszerelőt sokan külön keresnek Budapesten és Pest megyében: radiátorcsere, padlófűtés, bojler, vízvezeték, csatorna, szellőzés. Nálunk ez egy szakági megbízás lehet, generál nélkül.",
+      "Új építésnél és felújításnál is vállaljuk a gépészeti kivitelezést egyeztetett műszaki tartalom alapján. Gyakori megkeresés: megbízható fűtés és víz, radiátorcsere, padlófűtés, bojler, fürdő felújítás mellé.",
+      "Budapest, Pest megye és Bács-Kiskun (Kecskemét). Írja meg a kerületet vagy települést, fűtés, víz vagy mindkettő kell-e, és milyen készültségű a helyszín.",
     ],
     bullets: [
       "Fűtésszerelés, radiátor, padlófűtés",
@@ -84,12 +84,12 @@ export const SZAKAGI_TRADES = [
   {
     id: "burkolas",
     title: "Burkolás",
-    seoTitle: "Burkoló, hidegburkolás Pest megyében és Bács-Kiskunban",
+    seoTitle: "Burkoló, hidegburkolás Budapesten és Pest megyében",
     description: "Fürdő, konyha, járólap, csempe. Pontos illesztés, tiszta átadás.",
     body: [
-      "Burkolót Pest megyében és Kecskemét környékén folyamatosan keresnek: fürdőszoba burkolás, konyha csempe, járólap, vízszigetelés, aljzatkiegyenlítés. Ez tipikus szakági megkeresés, nem generál.",
+      "Burkolót Budapesten, Pest megyében és Kecskemét környékén folyamatosan keresnek: fürdőszoba burkolás, konyha csempe, járólap, vízszigetelés, aljzatkiegyenlítés. Ez tipikus szakági megkeresés, nem generál.",
       "Hidegburkolást vállalunk beltérben: padló, fal, fürdő, wc, konyha. Gyakori megkeresés: megbízható hidegburkoló, fürdő felújítás burkolással, járólap és csempe.",
-      "Írja meg a négyzetmétert, hideg vagy vegyes burkolás kell-e, és hol van az ingatlan. Írásos ajánlatot adunk.",
+      "Írja meg a négyzetmétert, a kerületet vagy települést, és hideg vagy vegyes burkolás kell-e. Írásos ajánlatot adunk.",
     ],
     bullets: [
       "Fürdőszoba és wc hidegburkolás",
@@ -218,10 +218,10 @@ export const SZAKAGI_TRADES = [
 
 export const SZAKAGI_AREA = {
   label: "Hol dolgozunk",
-  title: "Bács-Kiskun, Pest megye, Balaton környéke",
+  title: "Budapest, Pest megye, Bács-Kiskun, Balaton környéke",
   body: [
-    "A BauGenerál Kecskeméten van. Szakági munkát elsősorban Bács-Kiskun megyében, Pest megyében és a Balaton környékén vállalunk.",
-    "Ha villanyszerelőt, burkolót, térkövezőt vagy más szakágat keres ezeken a területeken, írjon. Ha a helyszín távolabb esik, a kapcsolatfelvételnél jelezze: megmondjuk, vállalható-e.",
+    "A BauGenerál székhelye Kecskeméten van. Szakági munkát Budapesten, Pest megyében, Bács-Kiskunban és a Balaton környékén vállalunk.",
+    "Ha villanyszerelőt, burkolót, gépészt vagy más szakágat keres, írja meg a kerületet vagy a települést. Ha a helyszín távolabb esik, jelezze: megmondjuk, vállalható-e. Területi oldal: /generalkivitelezes-pest-megye.",
   ],
 } as const
 
@@ -302,15 +302,20 @@ export const SZAKAGI_FAQ = [
     a: "Szakági munkára nincs értelmes netes listaár. Az árat a műszaki tartalom, az anyag, a mennyiség, a helyszín és a beépítés nehézsége együtt határozza meg. Ugyanaz a „burkolás” két lakásban teljesen más összeg lehet.\n\nEzért először a kört tisztázzuk: melyik szakág, milyen helyiségek vagy felületek, milyen minőségi sáv. Utána írásos ajánlatot adunk. Ha változik, amit kér, az ár is változhat; ezt az ajánlatban és a szerződésben követjük. Árajánlatot a Kapcsolat oldalon tud kérni.",
   },
   {
+    id: "budapest",
+    q: "Vállalnak szakági munkát Budapesten is?",
+    a: "Igen. Budapesten és Pest megyében is, generál nélkül. Írja meg a települést vagy a kerületet és a szakágat. Ha több szakág függ egymástól, inkább a felújítás vagy a generál forma lehet jobb: ezt az első egyeztetésen tisztázzuk.",
+  },
+  {
     id: "area",
     q: "Hol vállalnak szakági munkát?",
-    a: "Bács-Kiskun megyében, Pest megyében és a Balaton környékén. Ha a helyszín ettől távolabb esik, a kapcsolatfelvételnél jelezze. Megnézzük, és megmondjuk, vállalható-e.",
+    a: "Budapesten, Pest megyében, Bács-Kiskunban (Kecskemét) és a Balaton környékén. Székhely: Kecskemét. Ha a helyszín ettől távolabb esik, a kapcsolatfelvételnél jelezze. Megnézzük, és megmondjuk, vállalható-e.",
   },
 ] as const
 
 export const SZAKAGI_CTA = {
-  title: "Szakági munkát tervez?",
-  body: "Válassza ki a szakágat, írja meg a helyszínt. Egy munkanapon belül visszajelzünk.",
+  title: "Szakági munkát tervez Budapesten vagy Pest megyében?",
+  body: "Válassza ki a szakágat, írja meg a kerületet vagy a települést. Egy munkanapon belül visszajelzünk.",
 } as const
 
 /** Form select options = published trades + Egyéb */
@@ -321,7 +326,7 @@ export const SZAKAGI_FORM_TRADES = [
 
 export const SZAKAGI_RELATED = [
   { href: "/szolgaltatasok/felujitas", label: "Felújítás" },
-  { href: "/szolgaltatasok/csaladi-haz-epites", label: "Családi ház" },
-  { href: "/generalkivitelezes-pest-megye", label: "Pest megye" },
+  { href: "/generalkivitelezes-pest-megye", label: "Pest megye és Budapest" },
+  { href: "/generalkivitelezes-bacs-kiskun", label: "Bács-Kiskun" },
   { href: "/szolgaltatasok/asztalos-munkak", label: "Asztalos munkák" },
 ] as const

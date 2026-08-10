@@ -5,13 +5,16 @@ import { ReferenceDetailGallery } from "@/components/site/references/ReferenceDe
 import { ReferenceFactsStrip } from "@/components/site/references/ReferenceFactsStrip"
 import { ReferenceThumbCard } from "@/components/site/references/ReferenceDetailParts"
 import { Breadcrumbs } from "@/components/site/Breadcrumbs"
-import { COMPANY } from "@/lib/company"
+import { COMPANY, ORGANIZATION_ID } from "@/lib/company"
 import {
   getReferenceBySlug,
   getReferenceDetailImages,
   getReferenceFactRows,
+  getReferenceSeoDescription,
   getReferenceSlugs,
   getRelatedReferences,
+  hasReferenceLead,
+  hasReferenceNarrative,
   referenceDetailPath,
   type Reference,
 } from "@/lib/references"
@@ -32,36 +35,59 @@ export async function generateMetadata({ params }: PageProps) {
 
   return pageMetadata({
     title: reference.title,
-    description: reference.tldr,
+    description: getReferenceSeoDescription(reference),
     canonical: referenceDetailPath(slug),
     ogImage: reference.heroImage.src,
   })
 }
 
 function buildReferenceJsonLd(reference: Reference) {
-  return {
+  const images = getReferenceDetailImages(reference)
+    .slice(0, 8)
+    .map((img) => ({
+      "@type": "ImageObject" as const,
+      contentUrl: absoluteUrl(img.src),
+      url: absoluteUrl(img.src),
+      description: img.alt,
+    }))
+
+  const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
-    "@type": "CreativeWork",
+    "@type": ["CreativeWork", "WebPage"],
+    "@id": absoluteUrl(`${referenceDetailPath(reference.slug)}#reference`),
     name: reference.title,
-    description: reference.tldr,
-    dateCreated: String(reference.yearCompleted),
-    locationCreated: {
+    headline: reference.title,
+    description: getReferenceSeoDescription(reference),
+    url: absoluteUrl(referenceDetailPath(reference.slug)),
+    inLanguage: "hu-HU",
+    isPartOf: { "@id": `${COMPANY.website}/#website` },
+    creator: { "@id": ORGANIZATION_ID },
+    provider: { "@id": ORGANIZATION_ID },
+    image: images,
+    primaryImageOfPage: images[0],
+  }
+
+  if (reference.yearCompleted > 0) {
+    jsonLd.dateCreated = String(reference.yearCompleted)
+    jsonLd.datePublished = `${reference.yearCompleted}-01-01`
+  }
+
+  if (reference.city && reference.city !== "—") {
+    jsonLd.locationCreated = {
       "@type": "Place",
       name: reference.city,
       address: {
         "@type": "PostalAddress",
         addressLocality: reference.city,
+        addressRegion: reference.city.includes("Pest")
+          ? "Pest"
+          : "Bács-Kiskun",
         addressCountry: "HU",
       },
-    },
-    creator: {
-      "@type": "Organization",
-      name: COMPANY.shortName,
-      url: COMPANY.website,
-    },
-    image: absoluteUrl(reference.heroImage.src),
-    url: absoluteUrl(referenceDetailPath(reference.slug)),
+    }
   }
+
+  return jsonLd
 }
 
 export default async function ReferenceDetailPage({ params }: PageProps) {
@@ -79,6 +105,8 @@ export default async function ReferenceDetailPage({ params }: PageProps) {
   const referenceJsonLd = buildReferenceJsonLd(reference)
   const images = getReferenceDetailImages(reference)
   const facts = getReferenceFactRows(reference)
+  const showLead = hasReferenceLead(reference)
+  const showNarrative = hasReferenceNarrative(reference)
 
   return (
     <div className="bg-stone-wash">
@@ -101,17 +129,67 @@ export default async function ReferenceDetailPage({ params }: PageProps) {
         <ReferenceDetailGallery reference={reference} images={images} />
       </div>
 
-      <div className="mt-3">
-        <ReferenceFactsStrip facts={facts} />
-      </div>
+      {facts.length > 0 ? (
+        <div className="mt-3">
+          <ReferenceFactsStrip facts={facts} />
+        </div>
+      ) : null}
 
       <article className="mx-auto max-w-6xl px-4 py-5">
-        <p className="max-w-3xl text-[0.875rem] leading-relaxed text-black/60">
-          {reference.tldr}
-        </p>
+        {showLead ? (
+          <p className="max-w-3xl text-[0.9375rem] leading-relaxed text-black/65 md:text-base">
+            {reference.tldr}
+          </p>
+        ) : null}
+
+        {showNarrative ? (
+          <div
+            className={[
+              "grid max-w-3xl gap-6 md:gap-7",
+              showLead ? "mt-8" : "",
+            ].join(" ")}
+          >
+            <section aria-labelledby="ref-challenge-heading">
+              <h2
+                id="ref-challenge-heading"
+                className="text-sm font-semibold tracking-tight text-[var(--foreground)]"
+              >
+                A feladat
+              </h2>
+              <p className="mt-2 text-[0.9375rem] leading-relaxed text-black/65">
+                {reference.challenge}
+              </p>
+            </section>
+            <section aria-labelledby="ref-solution-heading">
+              <h2
+                id="ref-solution-heading"
+                className="text-sm font-semibold tracking-tight text-[var(--foreground)]"
+              >
+                Hogyan vittük
+              </h2>
+              <p className="mt-2 text-[0.9375rem] leading-relaxed text-black/65">
+                {reference.solution}
+              </p>
+            </section>
+            <section aria-labelledby="ref-outcome-heading">
+              <h2
+                id="ref-outcome-heading"
+                className="text-sm font-semibold tracking-tight text-[var(--foreground)]"
+              >
+                Eredmény
+              </h2>
+              <p className="mt-2 text-[0.9375rem] leading-relaxed text-black/65">
+                {reference.outcome}
+              </p>
+            </section>
+          </div>
+        ) : null}
 
         {related.length > 0 ? (
-          <section aria-labelledby="related-references-heading" className="mt-6">
+          <section
+            aria-labelledby="related-references-heading"
+            className={showLead || showNarrative ? "mt-10" : "mt-2"}
+          >
             <h2
               id="related-references-heading"
               className="text-sm font-semibold text-black/55"
@@ -128,8 +206,19 @@ export default async function ReferenceDetailPage({ params }: PageProps) {
           </section>
         ) : null}
 
-        <p className="mt-5 text-sm text-black/55">
+        <p className="mt-6 text-sm text-black/55">
           Hasonló projektje van?{" "}
+          {reference.type === "industrial" ? (
+            <>
+              <Link
+                href="/szolgaltatasok/ipari-epuletek"
+                className="font-semibold text-[var(--color-brand)] hover:underline"
+              >
+                Ipari épületek
+              </Link>
+              {" · "}
+            </>
+          ) : null}
           <Link
             href="/kapcsolat"
             className="font-semibold text-[var(--color-brand)] hover:underline"

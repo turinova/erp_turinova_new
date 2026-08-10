@@ -8,7 +8,7 @@ function faqAnswerWithLinks(item: (typeof CONTACT_FAQ)[number]) {
   if (item.id === "munkakor") {
     return (
       <>
-        Ipari épület, társasház, családi ház, középület, felújítás. Az első
+        Ipari épület, családi ház, középület, felújítás, szakági munka. Az első
         beszélgetésen tisztázzuk a részleteket. Részletek a{" "}
         <Link
           href="/szolgaltatasok/ipari-epuletek"
@@ -23,13 +23,20 @@ function faqAnswerWithLinks(item: (typeof CONTACT_FAQ)[number]) {
   if (item.id === "terulet") {
     return (
       <>
-        Bács-Kiskun és Pest megyében, valamint a Balaton környékén. Székhely:
-        Kecskemét. Pest megyei fókusz:{" "}
+        Budapesten, Pest megyében, Bács-Kiskunban és a Balaton környékén.
+        Székhely: Kecskemét. Részletek:{" "}
         <Link
           href="/generalkivitelezes-pest-megye"
           className="font-medium text-[var(--color-brand)] underline-offset-2 hover:underline"
         >
-          generálkivitelezés Pest megyében
+          Pest megye és Budapest
+        </Link>
+        ,{" "}
+        <Link
+          href="/generalkivitelezes-bacs-kiskun"
+          className="font-medium text-[var(--color-brand)] underline-offset-2 hover:underline"
+        >
+          Bács-Kiskun
         </Link>
         .
       </>

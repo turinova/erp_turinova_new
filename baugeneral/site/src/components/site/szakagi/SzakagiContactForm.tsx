@@ -280,7 +280,7 @@ function SzakagiContactFormInner({ idPrefix = "szakagi" }: SzakagiContactFormPro
             aria-describedby={
               errors.location ? `${ids.location}-err` : undefined
             }
-            placeholder="Pl. Kecskemét, Bács-Kiskun"
+            placeholder="Pl. Budapest XI., Üröm, Kecskemét"
             onInput={() => clearError("location")}
           />
           {errors.location ? (
@@ -303,7 +303,7 @@ function SzakagiContactFormInner({ idPrefix = "szakagi" }: SzakagiContactFormPro
           className={`${inputClass(!!errors.message)} form-textarea`}
           aria-invalid={!!errors.message}
           aria-describedby={errors.message ? `${ids.message}-err` : undefined}
-          placeholder="Pl. udvari térkövezés, kb. 80 m², ősszel"
+          placeholder="Pl. fürdő burkolás, Budapest II., kb. 8 m²"
           onInput={(e) => {
             setMessageLength(e.currentTarget.value.length)
             clearError("message")

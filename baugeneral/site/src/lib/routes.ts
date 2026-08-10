@@ -15,6 +15,7 @@ export type RouteKey =
   | "szakagi"
   | "asztalos"
   | "pestMegye"
+  | "bacsKiskun"
   | "garancia"
   | "futoProjektek"
   | "referenciak"
@@ -48,7 +49,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/",
     title: "Generálkivitelezés Bács-Kiskun és Pest megyében",
     description:
-      "BauGenerál Kft.: ipari épületek, társasházak, családi házak, szakági és asztalos munkák. Kecskemét, Bács-Kiskun és Pest megye (Üröm, Solymár). Egy felelős csapat, a tervektől az átadásig, ahogy megegyeztünk.",
+      "BauGenerál Kft.: ipari épületek, családi házak, felújítás, szakági és asztalos munkák. Kecskemét, Bács-Kiskun, Pest megye és Budapest. Egy felelős csapat, a tervektől az átadásig, ahogy megegyeztünk.",
     label: "Főoldal",
     breadcrumbs: [{ name: "Főoldal", path: "/" }],
   },
@@ -56,7 +57,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/gyors-tenyek",
     title: "Gyors tények",
     description:
-      "BauGenerál Kft. rövid összefoglalója AI asszisztenseknek és gyors tájékozódáshoz.",
+      "BauGenerál Kft. rövid tények: székhely, kapcsolat, szolgáltatások, Bács-Kiskun és Pest. AI asszisztenseknek és gyors tájékozódáshoz.",
     label: "Gyors tények",
     breadcrumbs: [
       { name: "Főoldal", path: "/" },
@@ -117,9 +118,9 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
   },
   felujitas: {
     path: "/szolgaltatasok/felujitas",
-    title: "Lakás- és házfelújítás Bács-Kiskun és Pest megyében",
+    title: "Lakás- és házfelújítás Budapest, Pest megye, Bács-Kiskun",
     description:
-      "Teljes lakás- és házfelújítás összehangolt szakágakkal. Bontástól a befejezésig, Bács-Kiskun, Pest megye és a Balaton környéke. Írjon, emailben jelentkezünk.",
+      "Teljes lakás- és házfelújítás összehangolt szakágakkal. Budapest, Pest megye, Kecskemét és Bács-Kiskun. Írja meg a települést vagy a kerületet.",
     label: "Felújítás",
     heroImage: "/img/nav/felujitas.jpg",
     heroImageAlt: "Lakásfelújítás, BauGenerál kivitelezés",
@@ -130,9 +131,9 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
   },
   szakagi: {
     path: "/szolgaltatasok/szakagi-kivitelezes",
-    title: "Szakági kivitelezés Bács-Kiskun és Pest megyében",
+    title: "Szakági kivitelezés Budapest, Pest megye, Bács-Kiskun",
     description:
-      "Villanyszerelő, burkoló, gépész, térkövezés, hőszigetelés, kerítés, festés, gipszkarton, napelem. Szakáganként, generál nélkül. Kecskemét, Bács-Kiskun és Pest megye.",
+      "Villanyszerelő, burkoló, gépész, térkövezés, hőszigetelés, kerítés, festés, gipszkarton, napelem. Szakáganként, generál nélkül. Budapest, Pest megye, Kecskemét.",
     label: "Szakági kivitelezés",
     heroImage: "/img/rolunk/hero-work.jpg",
     heroImageAlt: "Szakági kivitelezés helyszínen, BauGenerál",
@@ -143,9 +144,9 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
   },
   asztalos: {
     path: "/szolgaltatasok/asztalos-munkak",
-    title: "Asztalos munkák",
+    title: "Asztalos munkák Kecskemét, Bács-Kiskun és Pest megye",
     description:
-      "Teljes ház bútorozás Kecskeméten: konyhától a hálóig. A bútor a saját üzemben készül, beépítés és átadás a BauGenerállal.",
+      "Beépített bútor és konyha: gyártás a Hírös-Ablak kecskeméti üzemében, beépítés Bács-Kiskunban és Pest megyében. BauGenerál Kft.",
     label: "Asztalos munkák",
     heroImage: "/img/asztalos/portfolio/hero-kitchen-island.jpg",
     heroImageAlt: "Egyedi konyha tölgy bútorral és kőszigettel",
@@ -156,22 +157,35 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
   },
   pestMegye: {
     path: "/generalkivitelezes-pest-megye",
-    title: "Generálkivitelezés Pest megyében",
+    title: "Generálkivitelezés Pest megyében és Budapesten",
     description:
-      "BauGenerál Kft. generálkivitelezés Pest megyében és a budai agglomerációban — Üröm, Solymár, Pilisvörösvár, Budakalász, Nagykovácsi. Ipari, társasház, családi ház.",
+      "BauGenerál Kft. felújítás, szakági és generálkivitelezés Pest megyében és Budapesten. Székhely: Kecskemét. Gyakori példák: Üröm, Solymár, budai agglomeráció; más helyszín is szóba jöhet.",
     label: "Pest megye",
     heroImage: "/img/hero/house.jpg",
-    heroImageAlt: "Generálkivitelezés Pest megyében — BauGenerál",
+    heroImageAlt: "Generálkivitelezés Pest megyében és Budapesten, BauGenerál",
     breadcrumbs: [
       { name: "Főoldal", path: "/" },
       { name: "Pest megye", path: "/generalkivitelezes-pest-megye" },
+    ],
+  },
+  bacsKiskun: {
+    path: "/generalkivitelezes-bacs-kiskun",
+    title: "Generálkivitelezés Bács-Kiskun megyében",
+    description:
+      "BauGenerál Kft. generálkivitelezés, felújítás, szakági és asztalos munkák Bács-Kiskun megyében. Székhely: Kecskemét. A megyében szélesebb körben; a településnevek példák.",
+    label: "Bács-Kiskun",
+    heroImage: "/img/rolunk/telephely.jpg",
+    heroImageAlt: "BauGenerál telephely, Kecskemét",
+    breadcrumbs: [
+      { name: "Főoldal", path: "/" },
+      { name: "Bács-Kiskun", path: "/generalkivitelezes-bacs-kiskun" },
     ],
   },
   garancia: {
     path: "/garancia-es-felelosseg",
     title: "Garancia és felelősség",
     description:
-      "Hogyan vállalunk felelősséget projektjeiért — minden megállapodás egyedi, a szerződésben rögzítve.",
+      "Hogyan vállalunk felelősséget projektjeiért. Minden megállapodás egyedi, a szerződésben rögzítve.",
     label: "Garancia",
     breadcrumbs: [
       { name: "Főoldal", path: "/" },
@@ -182,7 +196,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/futo-projektek",
     title: "Futó projektek",
     description:
-      "Jelenleg is építünk — aktív projektjeink frissítve, ügyfél-jóváhagyással.",
+      "Jelenleg is építünk. Aktív projektjeink frissítve, ügyfél-jóváhagyással.",
     label: "Futó projektek",
     breadcrumbs: [
       { name: "Főoldal", path: "/" },
@@ -193,7 +207,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/referenciak",
     title: "Referenciák",
     description:
-      "Befejezett projektjeink — ipari, társasház, családi ház, középület és felújítás.",
+      "Befejezett projektjeink: ipari, családi ház, középület és felújítás.",
     label: "Referenciák",
     breadcrumbs: [
       { name: "Főoldal", path: "/" },
@@ -215,7 +229,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/rolunk",
     title: "Rólunk",
     description:
-      "A BauGenerál Kft. generálkivitelező Kecskeméten: ipari épületek, társasházak, családi házak, középületek és felújítások Bács-Kiskun és Pest megyében, 2010 óta.",
+      "A BauGenerál Kft. generálkivitelező Kecskeméten: ipari épületek, családi házak, középületek és felújítások Bács-Kiskun és Pest megyében, 2010 óta.",
     label: "Rólunk",
     breadcrumbs: [
       { name: "Főoldal", path: "/" },
@@ -257,7 +271,8 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
   aszf: {
     path: "/aszf",
     title: "Általános szerződési feltételek",
-    description: "BauGenerál Kft. általános szerződési feltételek.",
+    description:
+      "BauGenerál Kft. ÁSZF: a baugeneral.hu honlap használata, megkeresések, felelősség. A kivitelezési szerződéseket nem helyettesíti.",
     label: "ÁSZF",
     breadcrumbs: [
       { name: "Főoldal", path: "/" },
@@ -268,7 +283,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/en",
     title: "General contracting in Bács-Kiskun and Pest counties, Hungary",
     description:
-      "BauGenerál Kft. — industrial buildings, condominiums, family homes and renovations in Bács-Kiskun and Pest counties. One team, start to finish. Based in Kecskemét.",
+      "BauGenerál Kft.: industrial buildings, family homes and renovations in Bács-Kiskun and Pest counties. One team, start to finish. Based in Kecskemét.",
     label: "Home",
     locale: "en",
     breadcrumbs: [
@@ -279,11 +294,11 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/en/services/industrial-buildings",
     title: "Industrial building construction",
     description:
-      "Warehouses, car dealerships and commercial facilities — general contracting in Bács-Kiskun and Pest counties, Hungary.",
+      "Warehouses, car dealerships and commercial facilities. General contracting in Bács-Kiskun and Pest counties, Hungary.",
     label: "Industrial",
     locale: "en",
     heroImage: "/img/szolgaltatasok/ipari-epuletek.jpg",
-    heroImageAlt: "Modern commercial building with green facade — BauGenerál industrial reference",
+    heroImageAlt: "Modern commercial building with green facade, BauGenerál industrial reference",
     breadcrumbs: [
       { name: "Home", path: "/en" },
       { name: "Industrial buildings", path: "/en/services/industrial-buildings" },
@@ -293,7 +308,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/en/contact",
     title: "Contact",
     description:
-      "Tell us about your project — we call you back within one business day.",
+      "Tell us about your project. We respond by email within one business day.",
     label: "Contact",
     locale: "en",
     breadcrumbs: [
@@ -305,7 +320,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/de",
     title: "Generalunternehmer in Bács-Kiskun und Pest, Ungarn",
     description:
-      "BauGenerál Kft. — Industriebauten, Wohnanlagen, Einfamilienhäuser, öffentliche Gebäude und Sanierungen in den Komitaten Bács-Kiskun und Pest. Ein Team von Anfang bis Übergabe. Sitz: Kecskemét.",
+      "BauGenerál Kft.: Industriebauten, Wohnanlagen, Einfamilienhäuser, öffentliche Gebäude und Sanierungen in den Komitaten Bács-Kiskun und Pest. Ein Team von Anfang bis Übergabe. Sitz: Kecskemét.",
     label: "Start",
     locale: "de",
     breadcrumbs: [{ name: "Start", path: "/de" }],
@@ -314,11 +329,11 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/de/services/industrial-buildings",
     title: "Industriebauten (Generalunternehmer)",
     description:
-      "Hallen, Autohäuser und Gewerbeimmobilien — Generalunternehmer in Bács-Kiskun und Pest, Ungarn.",
+      "Hallen, Autohäuser und Gewerbeimmobilien. Generalunternehmer in Bács-Kiskun und Pest, Ungarn.",
     label: "Industriebauten",
     locale: "de",
     heroImage: "/img/szolgaltatasok/ipari-epuletek.jpg",
-    heroImageAlt: "Modernes Gewerbegebäude mit grüner Fassade — BauGenerál Industriereferenz",
+    heroImageAlt: "Modernes Gewerbegebäude mit grüner Fassade, BauGenerál Industriereferenz",
     breadcrumbs: [
       { name: "Start", path: "/de" },
       { name: "Industriebauten", path: "/de/services/industrial-buildings" },
@@ -328,7 +343,7 @@ export const ROUTES: Record<RouteKey, SiteRoute> = {
     path: "/de/contact",
     title: "Kontakt",
     description:
-      "Schreiben Sie uns zu Ihrem Projekt — wir antworten per E‑Mail innerhalb eines Werktags.",
+      "Schreiben Sie uns zu Ihrem Projekt. Wir antworten per E-Mail innerhalb eines Werktags.",
     label: "Kontakt",
     locale: "de",
     breadcrumbs: [
@@ -343,23 +358,17 @@ export const SITEMAP_ROUTE_KEYS: readonly RouteKey[] = [
   "home",
   "gyorsTenyek",
   "ipari",
-  "tarshazak",
   "csaladiHaz",
   "kozepuletek",
   "felujitas",
   "szakagi",
   "asztalos",
   "pestMegye",
+  "bacsKiskun",
   "garancia",
   "futoProjektek",
   "referenciak",
   "megjelenesek",
   "rolunk",
   "kapcsolat",
-  "enHome",
-  "enIndustrial",
-  "enContact",
-  "deHome",
-  "deIndustrial",
-  "deContact",
 ]

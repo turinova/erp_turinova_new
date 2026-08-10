@@ -26,7 +26,7 @@ function GalleryImageButton({ image, index, onOpen, className }: GalleryImageBut
       type="button"
       onClick={() => onOpen(index)}
       className={`group relative cursor-zoom-in overflow-hidden bg-stone-300 ${className}`}
-      aria-label={`${image.alt} — nagyítás`}
+      aria-label={`${image.alt}: nagyítás`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img

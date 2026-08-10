@@ -249,7 +249,7 @@ export function ContactForm() {
             type="text"
             autoComplete="address-level2"
             className="form-input"
-            placeholder="Pl. Kecskemét, Bács-Kiskun"
+            placeholder="Pl. Budapest XI., Üröm, Kecskemét"
           />
         </div>
       </div>
@@ -271,7 +271,7 @@ export function ContactForm() {
           className={`${inputClass(!!errors.message)} form-textarea`}
           aria-invalid={!!errors.message}
           aria-describedby={errors.message ? "message-err" : undefined}
-          placeholder="Pl. 1200 m² ipari csarnok, Kecskemét, átadás 2027"
+          placeholder="Pl. lakásfelújítás, Budapest XI., vagy 1200 m² csarnok, Kecskemét"
           onInput={(e) => {
             setMessageLength(e.currentTarget.value.length)
             clearError("message")

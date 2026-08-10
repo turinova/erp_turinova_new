@@ -34,7 +34,7 @@ export default function FutoProjektekPage() {
           Futó projektek
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-black/60">
-          Jelenleg is építünk — {count} aktív projekt, frissítve ügyfél-jóváhagyással.
+          Jelenleg is építünk. {count} aktív projekt, frissítve ügyfél-jóváhagyással.
           Saját beruházás és megrendelésre készülő munkák.
         </p>
 

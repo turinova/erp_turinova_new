@@ -5,12 +5,12 @@
  * Never use "prémium", "olcsó", or "legolcsóbb". No em dashes.
  */
 
-/** Front-facing service grid — bento sizes so 7 cards fill without a lonely last tile */
+/** Front-facing service grid — bento sizes without a lonely last tile */
 export const HOME_OFFER = {
   label: "Amit vállalunk",
   title: "Generálkivitelezés. Egy felelős csapat.",
   lead:
-    "Ipari épületek, társasházak, családi házak és felújítások. Bács-Kiskun és Pest megyében, a tervektől az átadásig.",
+    "Ipari épületek, családi házak, középületek és felújítások. Bács-Kiskun és Pest megyében, a tervektől az átadásig.",
   cards: [
     {
       href: "/szolgaltatasok/ipari-epuletek",
@@ -18,13 +18,6 @@ export const HOME_OFFER = {
       text: "Csarnokok, autószalonok, gyártóüzemek. Határidőre, egy kézben.",
       image: "/img/nav/ipari-epuletek.jpg",
       size: "feature",
-    },
-    {
-      href: "/szolgaltatasok/tarshazak",
-      label: "Társasházak",
-      text: "Lakóparkok és társasházak. Ütem egy kézben, dokumentált átadás.",
-      image: "/img/nav/kozepuletek.jpg",
-      size: "md",
     },
     {
       href: "/szolgaltatasok/csaladi-haz-epites",
@@ -38,7 +31,7 @@ export const HOME_OFFER = {
       label: "Középületek",
       text: "Óvodák, bölcsődék, hivatalok. Dokumentált átadással.",
       image: "/img/szolgaltatasok/ipari-epuletek.jpg",
-      size: "lg",
+      size: "md",
     },
     {
       href: "/szolgaltatasok/felujitas",
@@ -105,9 +98,12 @@ export const HOME_WORKS = {
   secondaryCtaHref: "/futo-projektek",
   panelCta: "Megnézem",
   slugs: [
-    "ikerhaz-sajat-kecskemet",
-    "autoszalon-kecskemet",
-    "kozepulet-ovoda",
+    "minimal-csaladihaz-butorozassal",
+    "okoturisztikai-kozpont",
+    "janoshalma-jarasi-hivatal",
+    "ipari-csarnok",
+    "irattarolo-csarnok",
+    "cupra-szalon",
   ],
 } as const
 
@@ -121,11 +117,11 @@ export const HOME_FAQ = {
     },
     {
       q: "Mit vállal a BauGenerál Kft.?",
-      a: "Generálkivitelezést: ipari épületek, társasházak, családi házak, középületek, felújítások. Emellett szakági munkákat és asztalos munkákat. A tervektől az átadásig, egy felelős csapattal. Tervezést és engedélyezést nem vállalunk.",
+      a: "Generálkivitelezést: ipari épületek, családi házak, középületek, felújítások. Emellett szakági munkákat és asztalos munkákat. A tervektől az átadásig, egy felelős csapattal. Tervezést és engedélyezést nem vállalunk.",
     },
     {
       q: "Hol vállalnak munkát?",
-      a: "Bács-Kiskun megyében (Kecskemét és környéke), Pest megyében (kiemelten a budai agglomeráció: Üröm, Solymár, Pilisvörösvár, Budakalász, Nagykovácsi térsége), valamint a Balaton környékén. A székhelyünk Kecskeméten van.",
+      a: "Budapesten, Pest megyében, Bács-Kiskunban és a Balaton környékén. Székhely: Kecskemét. A településnevek a területi oldalakon példák, nem kizáró lista. Részletek: /generalkivitelezes-pest-megye és /generalkivitelezes-bacs-kiskun.",
     },
     {
       q: "Vállalnak szakági munkákat generálkivitelezés nélkül?",

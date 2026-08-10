@@ -9,5 +9,7 @@ export function stubPageMetadata(key: RouteKey): Metadata {
     description: route.description,
     canonical: route.path,
     locale: route.locale,
+    // EN/DE (and any remaining stubs) stay out of the index until real content ships.
+    robots: { index: false, follow: false },
   })
 }

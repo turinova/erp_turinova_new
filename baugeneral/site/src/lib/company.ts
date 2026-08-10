@@ -20,13 +20,12 @@ export const COMPANY = {
   headcount: 8,
   headcountAsOf: "2026-06-08",
   entityDefinitionHu:
-    "A BauGenerál Kft. 2010 óta működő generálkivitelező — ipari épületek, társasházak, családi házak, középületek, felújítások, szakági munkák és asztalos munkák, Bács-Kiskun és Pest megyében.",
+    "A BauGenerál Kft. 2010 óta működő generálkivitelező. Ipari épületek, családi házak, középületek, felújítások, szakági munkák és asztalos munkák Bács-Kiskunban, Pest megyében és Budapesten.",
   entityDefinitionEn:
-    "BauGenerál Kft. is a general contractor based in Kecskemét, Hungary — industrial buildings, condominiums, family homes, public buildings, renovations, trade works and custom carpentry in Bács-Kiskun and Pest counties since 2010.",
+    "BauGenerál Kft. is a general contractor based in Kecskemét, Hungary. Industrial buildings, family homes, public buildings, renovations, trade works and custom carpentry in Bács-Kiskun, Pest county and Budapest since 2010.",
   knowsAbout: [
     "generálkivitelezés",
     "ipari épületek",
-    "társasház építés",
     "családi ház építés",
     "középületek",
     "felújítás",
@@ -36,6 +35,7 @@ export const COMPANY = {
   ] as const,
   serviceCities: [
     "Kecskemét",
+    "Budapest",
     "Üröm",
     "Solymár",
     "Pilisvörösvár",
@@ -58,15 +58,15 @@ export const COMPANY = {
     longitude: 19.6920785,
   },
   phones: {
-    /** TODO: add public company phone when available */
-    primary: "+36700000000",
+    primary: "+36309586331",
   },
   emails: {
-    central: "mezo.david@baugeneral.hu",
+    central: "mezo.robert@baugeneral.hu",
   },
   serviceArea: [
     "Bács-Kiskun megye",
     "Pest megye",
+    "Budapest",
     "Balaton környéke",
   ],
   social: {} as Partial<{
@@ -241,15 +241,22 @@ export function buildLocalBusinessJsonLd(opts?: { pageUrl?: string }) {
 export type ImpressumRow = { label: string; value: string }
 
 export function getImpressumRows(): ImpressumRow[] {
-  return [
+  const rows: ImpressumRow[] = [
     { label: "Cégnév", value: COMPANY.legalName },
     { label: "Székhely", value: COMPANY.address.full },
     { label: "Adószám", value: formatTaxIdDisplay(COMPANY.taxId) },
     { label: "Cégjegyzékszám", value: COMPANY.companyRegistrationNumber },
     { label: "E-mail", value: COMPANY.emails.central },
-    {
-      label: "Honlap",
-      value: COMPANY.website.replace(/^https?:\/\//, ""),
-    },
   ]
+  if (isPublicPhone(COMPANY.phones.primary)) {
+    rows.push({
+      label: "Telefon",
+      value: formatPhoneDisplay(COMPANY.phones.primary),
+    })
+  }
+  rows.push({
+    label: "Honlap",
+    value: COMPANY.website.replace(/^https?:\/\//, ""),
+  })
+  return rows
 }

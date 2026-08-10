@@ -34,7 +34,8 @@ export function ContactHero() {
             Kapcsolat
           </h1>
           <p className="mt-3 max-w-lg text-pretty text-base leading-relaxed text-white/88 md:text-lg">
-            Van egy projektje? Írjon nekünk, és e-mailben jelentkezünk.
+            Van egy projektje? Hívjon, vagy írjon. Emailben és telefonon is elérhetőek
+            vagyunk.
           </p>
           <p className="mt-2 text-sm text-white/65">{COMPANY.address.full}</p>
           <a
