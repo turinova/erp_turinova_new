@@ -9,12 +9,17 @@ import TodayAttendanceDashboard, { type TodayAttendanceEmployee } from '@/compon
 import WeeklyCuttingChart from '@/components/WeeklyCuttingChart'
 import YearlyCuttingChart from '@/components/YearlyCuttingChart'
 import WeeklyEdgeBandingChart from '@/components/WeeklyEdgeBandingChart'
+import YearlyMachineCuttingAvgLineChart from '@/components/YearlyMachineCuttingAvgLineChart'
 import BacklogTotalsCard from '@/components/BacklogTotalsCard'
 import MonthlyQuotesCard from '@/components/MonthlyQuotesCard'
 import MonthlySupplierOrdersCard from '@/components/MonthlySupplierOrdersCard'
 import PosOrdersGoalsCard from '@/components/PosOrdersGoalsCard'
 import FootcounterHomeCard from '@/components/FootcounterHomeCard'
-import type { PosOrdersGoalStats, YearlyCuttingData } from '@/lib/dashboard-server'
+import type {
+  PosOrdersGoalStats,
+  YearlyCuttingData,
+  YearlyMachineCuttingAvgLineData
+} from '@/lib/dashboard-server'
 import type { FootcounterHomeSlim } from '@/types/footcounter'
 import type { HomeNewsPost } from '@/lib/home-news-server'
 
@@ -44,6 +49,7 @@ interface HomeClientProps {
   initialWeeklyCutting: any
   yearlyCutting: YearlyCuttingData
   initialWeeklyEdgeBanding: any
+  yearlyMachineCuttingAvg: YearlyMachineCuttingAvgLineData
   initialTodayAttendance: {
     dateLabel: string
     employees: TodayAttendanceEmployee[]
@@ -61,6 +67,7 @@ export default function HomeClient({
   initialWeeklyCutting,
   yearlyCutting,
   initialWeeklyEdgeBanding,
+  yearlyMachineCuttingAvg,
   initialTodayAttendance,
   posOrdersGoalStats,
   footcounterHome
@@ -103,6 +110,10 @@ export default function HomeClient({
 
         <Grid item xs={12}>
           <YearlyCuttingChart data={yearlyCutting} />
+        </Grid>
+
+        <Grid item xs={12}>
+          <YearlyMachineCuttingAvgLineChart data={yearlyMachineCuttingAvg} />
         </Grid>
 
         <Grid item xs={12}>

@@ -14,6 +14,7 @@ import {
   getWeeklyCuttingData,
   getYearlyCuttingData,
   getWeeklyEdgeBandingData,
+  getYearlyMachineCuttingAvgLineData,
   getTodayAttendanceForHome,
   getPosOrdersGoalStats
 } from '@/lib/dashboard-server'
@@ -67,6 +68,7 @@ export default async function Page() {
     weeklyCutting,
     yearlyCutting,
     weeklyEdgeBanding,
+    yearlyMachineCuttingAvg,
     todayAttendance,
     posOrdersGoalStats,
     footcounterHome
@@ -79,6 +81,7 @@ export default async function Page() {
     getWeeklyCuttingData(0),
     getYearlyCuttingData(),
     getWeeklyEdgeBandingData(0),
+    getYearlyMachineCuttingAvgLineData(),
     getTodayAttendanceForHome(),
     getPosOrdersGoalStats(),
     loadFootcounterHome()
@@ -94,6 +97,7 @@ export default async function Page() {
       initialWeeklyCutting={weeklyCutting}
       yearlyCutting={yearlyCutting}
       initialWeeklyEdgeBanding={weeklyEdgeBanding}
+      yearlyMachineCuttingAvg={yearlyMachineCuttingAvg}
       initialTodayAttendance={todayAttendance}
       posOrdersGoalStats={posOrdersGoalStats}
       footcounterHome={footcounterHome}

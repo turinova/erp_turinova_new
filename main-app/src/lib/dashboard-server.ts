@@ -3,6 +3,7 @@ import {
   countEmployeeMonthlyAttention,
   formatDateLocal,
   getBudapestTodayYmd,
+  getBudapestYearMonth,
   type PublicHolidayRow
 } from '@/components/attendance/attendanceUtils'
 
@@ -513,6 +514,488 @@ export async function getYearlyCuttingData(): Promise<YearlyCuttingData> {
     console.error('Error in getYearlyCuttingData:', error)
     // Home page should still render even if this card's data fails
     return { year, categories, data: new Array<number>(12).fill(0), totalMeters: 0 }
+  }
+}
+
+export type MachineCuttingHealthStatus = 'ok' | 'watch' | 'alert' | 'new'
+
+export interface MonthlyMachineCuttingAverageRow {
+  machineId: string
+  machineName: string
+  totalMeters: number
+  activeDays: number
+  averageMetersPerDay: number
+  /** Daily meter target from production_machines.usage_limit_per_day */
+  dailyLimitM: number | null
+  /** averageMetersPerDay / dailyLimitM × 100; null if no limit */
+  targetAttainmentPct: number | null
+  /** Charged material m²: boards_used × boardArea + charged_sqm */
+  totalTablaM2: number
+  averageTablaM2PerDay: number
+  /** Estimate: boards_used + charged_sqm / (boardArea × waste_multi) */
+  totalEquivBoards: number
+  averageEquivBoardsPerDay: number
+  /** Cutting meters per charged m² (density); null if no material m² */
+  densityMetersPerM2: number | null
+  prevAverageMetersPerDay: number | null
+  /** Percent change vs previous month average m/day; null if no baseline */
+  metersChangePct: number | null
+  status: MachineCuttingHealthStatus
+  quoteCount: number
+}
+
+export interface MonthlyMachineCuttingAveragesData {
+  year: number
+  month: number
+  monthLabel: string
+  previousMonthLabel: string
+  isPartialMonth: boolean
+  machines: MonthlyMachineCuttingAverageRow[]
+}
+
+type PricingBoardRow = {
+  cutting_length_m?: number | null
+  boards_used?: number | null
+  charged_sqm?: number | null
+  board_width_mm?: number | null
+  board_length_mm?: number | null
+  waste_multi?: number | null
+}
+
+type MachineMonthAgg = {
+  totalMeters: number
+  totalTablaM2: number
+  totalEquivBoards: number
+  activeDays: Set<string>
+  quoteCount: number
+}
+
+function toBudapestYmdFromIso(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Budapest',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(iso))
+}
+
+function isMondayToFridayYmd(ymd: string): boolean {
+  const y = Number(ymd.slice(0, 4))
+  const m = Number(ymd.slice(5, 7))
+  const d = Number(ymd.slice(8, 10))
+  if (!y || !m || !d) return false
+  const dow = new Date(Date.UTC(y, m - 1, d, 12, 0, 0)).getUTCDay()
+  return dow >= 1 && dow <= 5
+}
+
+function shiftBudapestYearMonth(monthOffset: number): { year: number; month: number } {
+  const current = getBudapestYearMonth()
+  const idx = current.year * 12 + (current.month - 1) + monthOffset
+  const year = Math.floor(idx / 12)
+  const month = (idx % 12) + 1
+  return { year, month }
+}
+
+function monthLabelHu(year: number, month: number): string {
+  return `${year}. ${monthNames[month - 1]}`
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+function sumPricingBoardMetrics(pricingRows: PricingBoardRow[] | null | undefined): {
+  meters: number
+  tablaM2: number
+  equivBoards: number
+} {
+  let meters = 0
+  let tablaM2 = 0
+  let equivBoards = 0
+
+  for (const pricing of pricingRows || []) {
+    meters += Number(pricing.cutting_length_m) || 0
+
+    const boardsUsed = Number(pricing.boards_used) || 0
+    const chargedSqm = Number(pricing.charged_sqm) || 0
+    const widthMm = Number(pricing.board_width_mm) || 0
+    const lengthMm = Number(pricing.board_length_mm) || 0
+    const wasteMulti = Number(pricing.waste_multi) > 0 ? Number(pricing.waste_multi) : 1
+    const boardAreaM2 = (widthMm * lengthMm) / 1_000_000
+
+    tablaM2 += boardsUsed * boardAreaM2 + chargedSqm
+    equivBoards += boardsUsed
+    if (boardAreaM2 > 0 && chargedSqm > 0) {
+      equivBoards += chargedSqm / (boardAreaM2 * wasteMulti)
+    }
+  }
+
+  return { meters, tablaM2, equivBoards }
+}
+
+/** Status vs daily meter target (usage_limit_per_day): ≥80% ok, ≥50% watch, else alert */
+function healthFromTargetAttainment(pct: number | null): MachineCuttingHealthStatus {
+  if (pct === null || !Number.isFinite(pct)) return 'new'
+  if (pct >= 80) return 'ok'
+  if (pct >= 50) return 'watch'
+  return 'alert'
+}
+
+async function aggregateMachineCuttingForMonth(
+  year: number,
+  month: number
+): Promise<Map<string, MachineMonthAgg>> {
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`
+  const rangeStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0) - 24 * 60 * 60 * 1000)
+  const rangeEnd = new Date(Date.UTC(year, month, 1, 0, 0, 0) + 24 * 60 * 60 * 1000)
+  const byMachine = new Map<string, MachineMonthAgg>()
+  const pageSize = 1000
+
+  for (let from = 0; ; from += pageSize) {
+    const { data: rows, error } = await supabaseServer
+      .from('quotes')
+      .select(
+        `
+        id,
+        production_machine_id,
+        ready_at,
+        quote_materials_pricing (
+          cutting_length_m,
+          boards_used,
+          charged_sqm,
+          board_width_mm,
+          board_length_mm,
+          waste_multi
+        )
+      `
+      )
+      .not('ready_at', 'is', null)
+      .not('production_machine_id', 'is', null)
+      .is('deleted_at', null)
+      .is('cancelled_at', null)
+      .gte('ready_at', rangeStart.toISOString())
+      .lt('ready_at', rangeEnd.toISOString())
+      .order('ready_at', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (error) {
+      console.error('Error fetching monthly machine cutting averages:', error)
+      throw error
+    }
+
+    for (const quote of rows || []) {
+      const machineId = quote.production_machine_id as string | null
+      const readyAt = quote.ready_at as string | null
+      if (!machineId || !readyAt) continue
+
+      const readyYmd = toBudapestYmdFromIso(readyAt)
+      if (!readyYmd.startsWith(monthKey)) continue
+      if (!isMondayToFridayYmd(readyYmd)) continue
+
+      const { meters, tablaM2, equivBoards } = sumPricingBoardMetrics(
+        quote.quote_materials_pricing as PricingBoardRow[] | null
+      )
+
+      if (!byMachine.has(machineId)) {
+        byMachine.set(machineId, {
+          totalMeters: 0,
+          totalTablaM2: 0,
+          totalEquivBoards: 0,
+          activeDays: new Set(),
+          quoteCount: 0
+        })
+      }
+      const row = byMachine.get(machineId)!
+      row.totalMeters += meters
+      row.totalTablaM2 += tablaM2
+      row.totalEquivBoards += equivBoards
+      row.activeDays.add(readyYmd)
+      row.quoteCount += 1
+    }
+
+    if (!rows || rows.length < pageSize) break
+  }
+
+  return byMachine
+}
+
+/**
+ * Monthly per-machine averages for ready (kész) quotes.
+ * - Status vs production_machines.usage_limit_per_day (m/nap): ≥80% ok, ≥50% watch, else alert
+ * - Previous month avg kept as secondary context only
+ */
+export async function getMonthlyMachineCuttingAverages(
+  monthOffset: number = 0
+): Promise<MonthlyMachineCuttingAveragesData> {
+  const startTime = performance.now()
+  const { year, month } = shiftBudapestYearMonth(monthOffset)
+  const prev = shiftBudapestYearMonth(monthOffset - 1)
+  const monthLabel = monthLabelHu(year, month)
+  const previousMonthLabel = monthLabelHu(prev.year, prev.month)
+  const current = getBudapestYearMonth()
+  const isPartialMonth = current.year === year && current.month === month
+
+  const empty: MonthlyMachineCuttingAveragesData = {
+    year,
+    month,
+    monthLabel,
+    previousMonthLabel,
+    isPartialMonth,
+    machines: []
+  }
+
+  try {
+    const [currentByMachine, prevByMachine] = await Promise.all([
+      aggregateMachineCuttingForMonth(year, month),
+      aggregateMachineCuttingForMonth(prev.year, prev.month)
+    ])
+
+    const machineIds = new Set([...currentByMachine.keys(), ...prevByMachine.keys()])
+    if (machineIds.size === 0) {
+      console.log(
+        `[PERF] Monthly Machine Cutting Averages: ${(performance.now() - startTime).toFixed(2)}ms`
+      )
+      return empty
+    }
+
+    const { data: machines } = await supabaseServer
+      .from('production_machines')
+      .select('id, machine_name, usage_limit_per_day')
+      .in('id', Array.from(machineIds))
+
+    const machineMeta = new Map(
+      (machines || []).map(m => [
+        m.id as string,
+        {
+          name: m.machine_name as string,
+          limit: Number(m.usage_limit_per_day) > 0 ? Number(m.usage_limit_per_day) : null
+        }
+      ])
+    )
+
+    const result: MonthlyMachineCuttingAverageRow[] = Array.from(machineIds)
+      .map(machineId => {
+        const agg = currentByMachine.get(machineId)
+        const prevAgg = prevByMachine.get(machineId)
+        const meta = machineMeta.get(machineId)
+
+        const activeDays = agg?.activeDays.size || 0
+        const totalMeters = round2(agg?.totalMeters || 0)
+        const totalTablaM2 = round2(agg?.totalTablaM2 || 0)
+        const totalEquivBoards = round2(agg?.totalEquivBoards || 0)
+        const averageMetersPerDay = activeDays > 0 ? round2(totalMeters / activeDays) : 0
+        const averageTablaM2PerDay = activeDays > 0 ? round2(totalTablaM2 / activeDays) : 0
+        const averageEquivBoardsPerDay =
+          activeDays > 0 ? round2(totalEquivBoards / activeDays) : 0
+
+        const dailyLimitM = meta?.limit ?? null
+        const targetAttainmentPct =
+          dailyLimitM != null && dailyLimitM > 0
+            ? round2((averageMetersPerDay / dailyLimitM) * 100)
+            : null
+
+        const prevActiveDays = prevAgg?.activeDays.size || 0
+        const prevTotalMeters = prevAgg?.totalMeters || 0
+        const prevAverageMetersPerDay =
+          prevActiveDays > 0 ? round2(prevTotalMeters / prevActiveDays) : null
+
+        let metersChangePct: number | null = null
+        if (prevAverageMetersPerDay !== null && prevAverageMetersPerDay > 0) {
+          metersChangePct = round2(
+            ((averageMetersPerDay - prevAverageMetersPerDay) / prevAverageMetersPerDay) * 100
+          )
+        }
+
+        return {
+          machineId,
+          machineName: meta?.name || `Gép ${machineId.substring(0, 8)}`,
+          totalMeters,
+          activeDays,
+          averageMetersPerDay,
+          dailyLimitM,
+          targetAttainmentPct,
+          totalTablaM2,
+          averageTablaM2PerDay,
+          totalEquivBoards,
+          averageEquivBoardsPerDay,
+          densityMetersPerM2: totalTablaM2 > 0 ? round2(totalMeters / totalTablaM2) : null,
+          prevAverageMetersPerDay,
+          metersChangePct,
+          status: healthFromTargetAttainment(targetAttainmentPct),
+          quoteCount: agg?.quoteCount || 0
+        }
+      })
+      .filter(row => row.activeDays > 0)
+      .sort((a, b) => {
+        const rank = { alert: 0, watch: 1, new: 2, ok: 3 }
+        if (rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status]
+        const aPct = a.targetAttainmentPct ?? -1
+        const bPct = b.targetAttainmentPct ?? -1
+        if (aPct !== bPct) return aPct - bPct
+        return a.machineName.localeCompare(b.machineName, 'hu')
+      })
+
+    console.log(
+      `[PERF] Monthly Machine Cutting Averages: ${(performance.now() - startTime).toFixed(2)}ms`
+    )
+
+    return {
+      year,
+      month,
+      monthLabel,
+      previousMonthLabel,
+      isPartialMonth,
+      machines: result
+    }
+  } catch (error) {
+    console.error('Error in getMonthlyMachineCuttingAverages:', error)
+    return empty
+  }
+}
+
+export interface YearlyMachineCuttingAvgLineSeries {
+  machineId: string
+  name: string
+  dailyLimitM: number | null
+  /** Average cutting m/day per calendar month (index 0 = Jan … 11 = Dec); 0 if no H–P ready work */
+  data: number[]
+}
+
+export interface YearlyMachineCuttingAvgLineData {
+  year: number
+  categories: string[]
+  series: YearlyMachineCuttingAvgLineSeries[]
+}
+
+/**
+ * Current-year monthly average cutting m/day per production machine (line chart).
+ * Same rules as monthly card: ready_at (Budapest), Mon–Fri only, assigned machines.
+ */
+export async function getYearlyMachineCuttingAvgLineData(
+  year?: number
+): Promise<YearlyMachineCuttingAvgLineData> {
+  const startTime = performance.now()
+  const { year: currentYear } = getBudapestYearMonth()
+  const y = year ?? currentYear
+  const categories = ['Jan', 'Feb', 'Már', 'Ápr', 'Máj', 'Jún', 'Júl', 'Aug', 'Szep', 'Okt', 'Nov', 'Dec']
+  const empty: YearlyMachineCuttingAvgLineData = { year: y, categories, series: [] }
+
+  try {
+    const rangeStart = new Date(Date.UTC(y, 0, 1, 0, 0, 0) - 24 * 60 * 60 * 1000)
+    const rangeEnd = new Date(Date.UTC(y + 1, 0, 1, 0, 0, 0) + 24 * 60 * 60 * 1000)
+
+    // machineId -> monthIndex -> { meters, days }
+    const byMachineMonth = new Map<string, Map<number, { meters: number; days: Set<string> }>>()
+    const pageSize = 1000
+
+    for (let from = 0; ; from += pageSize) {
+      const { data: rows, error } = await supabaseServer
+        .from('quotes')
+        .select(
+          `
+          id,
+          production_machine_id,
+          ready_at,
+          quote_materials_pricing (
+            cutting_length_m
+          )
+        `
+        )
+        .not('ready_at', 'is', null)
+        .not('production_machine_id', 'is', null)
+        .is('deleted_at', null)
+        .is('cancelled_at', null)
+        .gte('ready_at', rangeStart.toISOString())
+        .lt('ready_at', rangeEnd.toISOString())
+        .order('ready_at', { ascending: true })
+        .range(from, from + pageSize - 1)
+
+      if (error) {
+        console.error('Error fetching yearly machine cutting avg line:', error)
+        throw error
+      }
+
+      for (const quote of rows || []) {
+        const machineId = quote.production_machine_id as string | null
+        const readyAt = quote.ready_at as string | null
+        if (!machineId || !readyAt) continue
+
+        const readyYmd = toBudapestYmdFromIso(readyAt)
+        if (!readyYmd.startsWith(`${y}-`)) continue
+        if (!isMondayToFridayYmd(readyYmd)) continue
+
+        const monthIndex = Number(readyYmd.slice(5, 7)) - 1
+        if (monthIndex < 0 || monthIndex > 11) continue
+
+        const meters =
+          (quote.quote_materials_pricing as Array<{ cutting_length_m?: number | null }> | null)?.reduce(
+            (sum, p) => sum + (Number(p.cutting_length_m) || 0),
+            0
+          ) || 0
+
+        if (!byMachineMonth.has(machineId)) {
+          byMachineMonth.set(machineId, new Map())
+        }
+        const monthMap = byMachineMonth.get(machineId)!
+        if (!monthMap.has(monthIndex)) {
+          monthMap.set(monthIndex, { meters: 0, days: new Set() })
+        }
+        const cell = monthMap.get(monthIndex)!
+        cell.meters += meters
+        cell.days.add(readyYmd)
+      }
+
+      if (!rows || rows.length < pageSize) break
+    }
+
+    const { data: machines, error: machinesError } = await supabaseServer
+      .from('production_machines')
+      .select('id, machine_name, usage_limit_per_day')
+      .is('deleted_at', null)
+      .order('machine_name', { ascending: true })
+
+    if (machinesError) {
+      console.error('Error fetching production machines for yearly line:', machinesError)
+      throw machinesError
+    }
+
+    const series: YearlyMachineCuttingAvgLineSeries[] = (machines || []).map(m => {
+      const machineId = m.id as string
+      const monthMap = byMachineMonth.get(machineId)
+      const data = new Array<number>(12).fill(0)
+      for (let i = 0; i < 12; i++) {
+        const cell = monthMap?.get(i)
+        if (!cell || cell.days.size === 0) {
+          data[i] = 0
+        } else {
+          data[i] = round2(cell.meters / cell.days.size)
+        }
+      }
+      const limit = Number(m.usage_limit_per_day)
+      return {
+        machineId,
+        name: (m.machine_name as string) || `Gép ${machineId.substring(0, 8)}`,
+        dailyLimitM: limit > 0 ? limit : null,
+        data
+      }
+    })
+
+    // Prefer machines that have any data first, keep name order within groups
+    series.sort((a, b) => {
+      const aHas = a.data.some(v => v > 0) ? 0 : 1
+      const bHas = b.data.some(v => v > 0) ? 0 : 1
+      if (aHas !== bHas) return aHas - bHas
+      return a.name.localeCompare(b.name, 'hu')
+    })
+
+    console.log(
+      `[PERF] Yearly Machine Cutting Avg Line: ${(performance.now() - startTime).toFixed(2)}ms`
+    )
+
+    return { year: y, categories, series }
+  } catch (error) {
+    console.error('Error in getYearlyMachineCuttingAvgLineData:', error)
+    return empty
   }
 }
 
