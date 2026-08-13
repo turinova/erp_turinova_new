@@ -11,6 +11,8 @@ import type {
 
 const DOGE_RVOL_BASE = 1.3
 const DOGE_RVOL_CATALYST = 1.0
+/** SOL FVG / pullback: alacsony volume = zaj (paper vesztes minták) */
+const SOL_RVOL_FVG = 1.0
 
 export interface BuiltContext {
   context: MarketContext
@@ -58,7 +60,12 @@ export async function buildMarketContext(
       oiDelta4hPct: deltas.oiDelta4hPct,
       oiRegime,
       catalystMode,
-      rvolGate: sym === "DOGE" ? (catalystMode ? DOGE_RVOL_CATALYST : DOGE_RVOL_BASE) : 0,
+      rvolGate:
+        sym === "DOGE"
+          ? catalystMode
+            ? DOGE_RVOL_CATALYST
+            : DOGE_RVOL_BASE
+          : SOL_RVOL_FVG,
       catalysts: symCatalysts,
     }
   }
@@ -75,4 +82,4 @@ export async function buildMarketContext(
   return { context, catalysts }
 }
 
-export { DOGE_RVOL_BASE, DOGE_RVOL_CATALYST }
+export { DOGE_RVOL_BASE, DOGE_RVOL_CATALYST, SOL_RVOL_FVG }

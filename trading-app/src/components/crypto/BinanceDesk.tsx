@@ -55,7 +55,15 @@ type DeskState = {
   configured: boolean
   connected: boolean
   error: string | null
-  equity: { balance: number; available: number; unrealized: number; asset?: string; multiAssets?: boolean } | null
+  equity: {
+    balance: number
+    available: number
+    unrealized: number
+    marginBalance?: number
+    asset?: string
+    assetWallet?: number
+    multiAssets?: boolean
+  } | null
   positions: Position[]
   openOrders: OpenOrder[]
   settings: {
@@ -64,8 +72,19 @@ type DeskState = {
     leverageCap: number
     maxDailyFires: number
     maxDailyLossUsd: number
+    maxDailyLossPct?: number
+    cooldownMinutes?: number
     symbols: ("SOL" | "DOGE")[]
     killedToday: boolean
+    autoOnlyGradeA?: boolean
+    autoMinRvol?: number
+    matchPaperExit?: boolean
+    trailEnabled?: boolean
+    trailActivateR?: number
+    trailAtrMult?: number
+    tp1R?: number
+    tp1Frac?: number
+    runnerOnlyTrail?: boolean
   }
   liveTrades: LiveTrade[]
   warnings?: string[]
@@ -80,6 +99,13 @@ type DeskState = {
   lastError?: string | null
   lastErrorAt?: string | null
   fetchedAt?: string
+  health?: {
+    ok: boolean
+    feedSource: string | null
+    feedAgeSec: number | null
+    feedIsBinance: boolean
+    checks: { id: string; ok: boolean; label: string; detail?: string }[]
+  }
 }
 
 function fmtUsd(n: number) {
@@ -98,15 +124,23 @@ export function BinanceDesk() {
   const [flashOk, setFlashOk] = useState<boolean | null>(null)
   const [autoAck, setAutoAck] = useState(false)
 
-  const load = useCallback(async (sync = false) => {
+  const load = useCallback(async (mode: "fast" | "sync" | "preview" | "health" = "fast") => {
     try {
-      const res = await fetch(`/api/crypto/binance${sync ? "?sync=1" : "?preview=0"}`, {
+      const q =
+        mode === "health"
+          ? "?sync=1&health=1"
+          : mode === "sync"
+            ? "?sync=1&preview=0"
+            : mode === "preview"
+              ? "?sync=1"
+              : "?preview=0"
+      const res = await fetch(`/api/crypto/binance${q}`, {
         cache: "no-store",
       })
       const body = await res.json()
       if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
       setState((prev) => {
-        if (!sync && prev?.signalPreview?.length && !body.signalPreview?.length) {
+        if (mode === "fast" && prev?.signalPreview?.length && !body.signalPreview?.length) {
           return { ...body, signalPreview: prev.signalPreview }
         }
         return body
@@ -119,12 +153,24 @@ export function BinanceDesk() {
   }, [])
 
   useEffect(() => {
-    void load(true)
-    const fast = setInterval(() => void load(false), 3_000)
-    const slow = setInterval(() => void load(true), 15_000)
+    void load("health")
+    // openOrders symbol nélkül ~40 weight — 3s poll könnyen eléri a 2400/perc limetet
+    const fast = setInterval(() => {
+      if (document.visibilityState === "hidden") return
+      void load("fast")
+    }, 12_000)
+    const slow = setInterval(() => {
+      if (document.visibilityState === "hidden") return
+      void load("sync")
+    }, 45_000)
+    const preview = setInterval(() => {
+      if (document.visibilityState === "hidden") return
+      void load("preview")
+    }, 120_000)
     return () => {
       clearInterval(fast)
       clearInterval(slow)
+      clearInterval(preview)
     }
   }, [load])
 
@@ -154,7 +200,7 @@ export function BinanceDesk() {
         setFlashOk(body.ok !== false)
       }
       if (body.configured != null) setState((prev) => ({ ...(prev as DeskState), ...body }))
-      else await load(true)
+      else await load("sync")
       if (action === "settings" && body.settings?.autoTrade === false) setAutoAck(false)
     } catch (e) {
       setFlash(e instanceof Error ? e.message : "hiba")
@@ -187,7 +233,7 @@ export function BinanceDesk() {
           type="button"
           onClick={() => {
             setLoading(true)
-            void load(true)
+            void load("sync")
           }}
           className="rounded-md border border-line px-3 py-1.5 text-sm"
         >
@@ -200,7 +246,12 @@ export function BinanceDesk() {
   const s = state.settings
   const daily = state.daily
   const eq = state.equity
-  const total = eq ? eq.balance + eq.unrealized : null
+  const margin =
+    eq?.marginBalance != null && Number.isFinite(eq.marginBalance)
+      ? eq.marginBalance
+      : eq
+        ? eq.balance + eq.unrealized
+        : null
 
   return (
     <div className="space-y-4">
@@ -218,7 +269,8 @@ export function BinanceDesk() {
           <p className="text-sm font-bold text-loss">AUTO ÉLŐ — fire → Binance valódi pénz</p>
           <p className="mt-1 text-xs text-muted">
             Risk {s.riskPercent}% · max {s.leverageCap}x · {s.symbols.join(", ")} · napi max{" "}
-            {s.maxDailyFires} fire / −${s.maxDailyLossUsd} kill
+            {s.maxDailyFires} fire / −${daily?.maxLossUsd?.toFixed?.(0) ?? s.maxDailyLossUsd} kill
+            {s.cooldownMinutes != null ? ` · ${s.cooldownMinutes}p cooldown` : ""}
           </p>
           <button
             type="button"
@@ -228,6 +280,52 @@ export function BinanceDesk() {
           >
             Auto azonnal KI
           </button>
+        </section>
+      )}
+
+      {state.health && (
+        <section
+          className={`rounded-lg border px-4 py-3 ${
+            state.health.ok
+              ? "border-emerald-500/40 bg-emerald-500/5"
+              : "border-amber-500/40 bg-amber-500/5"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-semibold">
+              Adat-egészség{" "}
+              <span className={state.health.ok ? "text-win" : "text-warn"}>
+                {state.health.ok ? "OK" : "FIGYELEM"}
+              </span>
+            </p>
+            <button
+              type="button"
+              disabled={busy || loading}
+              onClick={() => void load("health")}
+              className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-foreground"
+            >
+              Újraellenőrzés
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Signal feed:{" "}
+            <span className="font-medium text-foreground">
+              {state.health.feedSource ?? "—"}
+            </span>
+            {state.health.feedAgeSec != null && ` · ${state.health.feedAgeSec}s`}
+            {state.health.feedIsBinance
+              ? " · Binance mark (jó a firehez)"
+              : " · nem Binance — fill eltérés lehetséges"}
+          </p>
+          <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+            {state.health.checks.map((c) => (
+              <li key={c.id} className="text-xs">
+                <span className={c.ok ? "text-win" : "text-loss"}>{c.ok ? "✓" : "✗"}</span>{" "}
+                <span className="text-foreground">{c.label}</span>
+                {c.detail && <span className="text-muted"> — {c.detail}</span>}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
@@ -250,6 +348,27 @@ export function BinanceDesk() {
               </span>
             )}
           </p>
+        </section>
+      )}
+
+      {s.killedToday && (
+        <section className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3">
+          <p className="text-sm font-medium text-warn">Napi loss kill aktív — auto tiltva</p>
+          <p className="mt-1 text-xs text-muted">
+            Ha a start equity rosszul lett mentve (pl. $489 vs ~$130), tévesen is scsattanhat.
+            Reset: kill ki + dayStart újra a mostani egyenlegre.
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!confirm("Napi kill reset ma? Auto KI marad, dayStart újraszámolódik.")) return
+              void post("resetKill")
+            }}
+            className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/15 px-3 py-1.5 text-sm text-warn"
+          >
+            Kill reset ma
+          </button>
         </section>
       )}
 
@@ -296,7 +415,7 @@ export function BinanceDesk() {
           <button
             type="button"
             disabled={busy}
-            onClick={() => void load(true)}
+            onClick={() => void load("sync")}
             className="rounded-md border border-line px-3 py-1.5 text-xs"
           >
             Frissít
@@ -309,28 +428,40 @@ export function BinanceDesk() {
         </div>
 
         {eq && (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-md border border-line bg-surface-2/60 px-4 py-3">
-              <div className="text-[11px] text-muted">Kupac (bal+uPnL)</div>
-              <div
-                className={`num mt-1 text-3xl font-semibold ${
-                  (total ?? 0) >= (eq.balance || 0) ? "text-win" : "text-loss"
-                }`}
-              >
-                {fmtUsd(total ?? 0)}
+          <div className="mt-4 space-y-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-md border border-line bg-surface-2/60 px-4 py-3">
+                <div className="text-[11px] text-muted">Margin Balance</div>
+                <div
+                  className={`num mt-1 text-3xl font-semibold ${
+                    (margin ?? 0) >= (eq.balance || 0) ? "text-win" : "text-loss"
+                  }`}
+                >
+                  {fmtUsd(margin ?? 0)}
+                </div>
+                <div className="mt-0.5 text-[10px] text-muted">= Wallet + Unrealized (Binance)</div>
               </div>
+              <Metric label="Wallet Balance" value={fmtUsd(eq.balance)} />
+              <Metric
+                label="Available Balance"
+                value={fmtUsd(eq.available)}
+                tone={eq.available < 5 ? "neg" : undefined}
+              />
+              <Metric
+                label="Unrealized PNL"
+                value={fmtUsd(eq.unrealized)}
+                tone={eq.unrealized >= 0 ? "pos" : "neg"}
+              />
             </div>
-            <Metric label="Balance" value={fmtUsd(eq.balance)} />
-            <Metric
-              label={`Available${eq.asset ? ` (${eq.asset})` : ""}`}
-              value={fmtUsd(eq.available)}
-              tone={eq.available < 5 ? "neg" : undefined}
-            />
-            <Metric
-              label="Unrealized"
-              value={fmtUsd(eq.unrealized)}
-              tone={eq.unrealized >= 0 ? "pos" : "neg"}
-            />
+            <p className="text-[11px] text-muted">
+              Forrás: <span className="num">/fapi/v2/account</span>
+              {eq.multiAssets ? " · Multi-Assets / BNFCR" : ""}
+              {eq.asset ? ` · primary ${eq.asset}` : ""}
+              {eq.assetWallet != null && eq.assetWallet > 0
+                ? ` wallet ${fmtUsd(eq.assetWallet)}`
+                : ""}
+              {" · "}ugyanazok a sorok, mint a Binance Futures appban
+            </p>
           </div>
         )}
 
@@ -381,14 +512,32 @@ export function BinanceDesk() {
 
       {/* Settings */}
       <section className="rounded-lg border border-line bg-surface p-4">
-        <h2 className="text-sm font-semibold">Live beállítások</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Live beállítások</h2>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (
+                !confirm(
+                  "Survivor preset: 2% risk · 10x · A+ only · 8 fire/nap · −3% kill · 90p cooldown · 35%@1.25R · trail@2R. Felülírja a risk/exit mezőket?"
+                )
+              )
+                return
+              void post("settings", { applySurvivor: true })
+            }}
+            className="rounded-md border border-accent/40 bg-accent/10 px-2.5 py-1 text-xs text-accent"
+          >
+            Survivor preset
+          </button>
+        </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-xs text-muted">
             Risk / trade ({s.riskPercent}%)
             <input
               type="range"
-              min={2}
-              max={15}
+              min={1}
+              max={10}
               value={s.riskPercent}
               disabled={busy}
               onChange={(e) => void post("settings", { riskPercent: Number(e.target.value) })}
@@ -399,9 +548,9 @@ export function BinanceDesk() {
             Max leverage ({s.leverageCap}x)
             <input
               type="range"
-              min={5}
-              max={50}
-              step={5}
+              min={3}
+              max={20}
+              step={1}
               value={s.leverageCap}
               disabled={busy}
               onChange={(e) => void post("settings", { leverageCap: Number(e.target.value) })}
@@ -413,7 +562,7 @@ export function BinanceDesk() {
             <input
               type="range"
               min={1}
-              max={15}
+              max={24}
               value={s.maxDailyFires}
               disabled={busy}
               onChange={(e) => void post("settings", { maxDailyFires: Number(e.target.value) })}
@@ -421,15 +570,44 @@ export function BinanceDesk() {
             />
           </label>
           <label className="text-xs text-muted">
-            Napi loss kill (${s.maxDailyLossUsd})
+            Napi loss kill USD (${s.maxDailyLossUsd})
             <input
               type="range"
-              min={10}
-              max={80}
+              min={5}
+              max={40}
               step={5}
               value={s.maxDailyLossUsd}
               disabled={busy}
               onChange={(e) => void post("settings", { maxDailyLossUsd: Number(e.target.value) })}
+              className="mt-2 w-full"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            Napi loss kill % ({s.maxDailyLossPct ?? 3}%)
+            <input
+              type="range"
+              min={1}
+              max={8}
+              step={1}
+              value={s.maxDailyLossPct ?? 3}
+              disabled={busy}
+              onChange={(e) => void post("settings", { maxDailyLossPct: Number(e.target.value) })}
+              className="mt-2 w-full"
+            />
+            <span className="mt-1 block text-[11px] text-muted">
+              Effektív limit: min(USD, %×equity) ≈ ${daily?.maxLossUsd?.toFixed?.(2) ?? "—"}
+            </span>
+          </label>
+          <label className="text-xs text-muted">
+            Cooldown / coin ({s.cooldownMinutes ?? 90}p)
+            <input
+              type="range"
+              min={0}
+              max={180}
+              step={15}
+              value={s.cooldownMinutes ?? 90}
+              disabled={busy}
+              onChange={(e) => void post("settings", { cooldownMinutes: Number(e.target.value) })}
               className="mt-2 w-full"
             />
           </label>
@@ -458,10 +636,92 @@ export function BinanceDesk() {
               })}
             </div>
           </div>
+          <label className="flex cursor-pointer items-start gap-2 text-xs text-muted sm:col-span-2 lg:col-span-3">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={s.autoOnlyGradeA === true}
+              disabled={busy}
+              onChange={(e) => void post("settings", { autoOnlyGradeA: e.target.checked })}
+            />
+            <span>
+              Csak A+ auto (FVG / SWEEP + RVOL≥{s.autoMinRvol ?? 1.2}). <strong>Ki</strong> = minden
+              setup (PB, MR, breakout is) — fee-veszélyesebb.
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 text-xs text-muted sm:col-span-2 lg:col-span-3">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={s.matchPaperExit !== false}
+              disabled={busy}
+              onChange={(e) => void post("settings", { matchPaperExit: e.target.checked })}
+            />
+            <span>
+              Paper exit: {Math.round((s.tp1Frac ?? 0.35) * 100)}% @ {s.tp1R ?? 1.25}R → SL @ BE+fee
+              → ATR trail @ {s.trailActivateR ?? 2}R → runner @ target. Kikapcsolva: full SL → full
+              TP.
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 text-xs text-muted sm:col-span-2 lg:col-span-3">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={s.trailEnabled !== false}
+              disabled={busy}
+              onChange={(e) => void post("settings", { trailEnabled: e.target.checked })}
+            />
+            <span>
+              ATR chandelier trail (HH − {s.trailAtrMult ?? 2.25}×ATR) TP1 után, ha MFE ≥{" "}
+              {s.trailActivateR ?? 2}R. Csak kedvező irányba ratchet.
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 text-xs text-muted sm:col-span-2 lg:col-span-3">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={s.runnerOnlyTrail === true}
+              disabled={busy}
+              onChange={(e) => void post("settings", { runnerOnlyTrail: e.target.checked })}
+            />
+            <span>
+              Runner trail-only — TP1 után nincs merev TP2; a maradék trail/BE-n zár.
+            </span>
+          </label>
+          <label className="text-xs text-muted">
+            Partial scale-out @ {s.tp1R ?? 1.25}R
+            <input
+              type="range"
+              min={1}
+              max={1.5}
+              step={0.25}
+              value={s.tp1R ?? 1.25}
+              disabled={busy}
+              onChange={(e) => void post("settings", { tp1R: Number(e.target.value) })}
+              className="mt-2 w-full"
+            />
+          </label>
+          <label className="text-xs text-muted">
+            TP1 méret ({Math.round((s.tp1Frac ?? 0.35) * 100)}%)
+            <input
+              type="range"
+              min={0.25}
+              max={0.5}
+              step={0.05}
+              value={s.tp1Frac ?? 0.35}
+              disabled={busy}
+              onChange={(e) => void post("settings", { tp1Frac: Number(e.target.value) })}
+              className="mt-2 w-full"
+            />
+          </label>
         </div>
 
         <div className="mt-4 rounded-md border border-line bg-surface-2/40 p-3">
           <p className="text-xs font-medium">Auto-trade</p>
+          <p className="mt-1 text-xs text-muted">
+            Fire = élő signal a /crypto tickből → Binance nyitás. SOL és DOGE párhuzamosan mehet
+            (coinonként 1 pozíció). Napi fire: {daily?.fires ?? 0}/{s.maxDailyFires}.
+          </p>
           {!s.autoTrade ? (
             <>
               <label className="mt-2 flex items-start gap-2 text-xs text-muted">

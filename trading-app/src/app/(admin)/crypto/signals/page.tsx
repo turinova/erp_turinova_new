@@ -1,6 +1,7 @@
 import { createSupabaseServer } from "@/lib/supabase/server"
 import { CRYPTO_KIND_LABEL } from "@/lib/crypto/types"
 import { SignalsBankrollViz } from "@/components/crypto/SignalsBankrollViz"
+import { describePaperCostModel, PAPER_EVAL_VERSION } from "@/lib/crypto/paper"
 import type { SimTradeInput } from "@/lib/crypto/bankroll-sim"
 
 export const metadata = { title: "Crypto signalok" }
@@ -21,7 +22,14 @@ interface CryptoSignalRow {
   source: string
   status: "open" | "win" | "loss" | "expired"
   exit_price: number | null
+  exited_at: string | null
   r_multiple: number | null
+  r_multiple_gross: number | null
+  fees_r: number | null
+  slippage_r: number | null
+  exit_reason: string | null
+  partial: boolean | null
+  eval_version: string | null
   oi_delta_1h: number | null
   catalyst_mode: boolean | null
   settlement_freeze: boolean | null
@@ -55,6 +63,18 @@ const STATUS_STYLE: Record<CryptoSignalRow["status"], string> = {
   expired: "bg-zinc-500/15 text-muted",
 }
 
+const EXIT_LABEL: Record<string, string> = {
+  stop: "SL",
+  tp2_full: "TP2",
+  gap_target: "Gap→TP",
+  tp1_then_be: "TP1→BE",
+  tp1_then_tp2: "TP1→TP2",
+  tp1_then_expire: "TP1→exp",
+  expire: "Expire",
+  data_gap: "Data gap",
+  target_lt_1r: "TP (<1R)",
+}
+
 export default async function CryptoSignalsPage() {
   const supabase = await createSupabaseServer()
   const { data, error } = await supabase
@@ -67,6 +87,17 @@ export default async function CryptoSignalsPage() {
   const closed = signals.filter((s) => s.status !== "open" && s.r_multiple != null)
   const wins = closed.filter((s) => (s.r_multiple ?? 0) > 0)
   const netR = closed.reduce((sum, s) => sum + Number(s.r_multiple ?? 0), 0)
+  const grossR = closed.reduce(
+    (sum, s) => sum + Number(s.r_multiple_gross ?? s.r_multiple ?? 0),
+    0
+  )
+  const costDragR = grossR - netR
+  const openStuck = signals.filter((s) => {
+    if (s.status !== "open") return false
+    const ageH = (Date.now() - new Date(s.bar_time).getTime()) / 3600_000
+    return ageH >= 12
+  })
+  const v2Count = closed.filter((s) => s.eval_version === PAPER_EVAL_VERSION).length
 
   const catalystClosed = closed.filter((s) => s.catalyst_mode)
   const catalystNetR = catalystClosed.reduce((sum, s) => sum + Number(s.r_multiple ?? 0), 0)
@@ -98,25 +129,50 @@ export default async function CryptoSignalsPage() {
     entry: Number(s.entry),
     stop: Number(s.stop),
     r_multiple: Number(s.r_multiple),
+    r_multiple_gross: s.r_multiple_gross != null ? Number(s.r_multiple_gross) : null,
     status: s.status,
+    exited_at: s.exited_at,
   }))
 
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-xl font-semibold">Crypto napló — paper</h1>
+        <h1 className="text-xl font-semibold">Crypto napló — paper edge</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">
-          Itt látod a fire-öket dollárban is: állítsd a startot / risket / leverage-t, és a
-          gép végigjátssza a naplót. Az R csak arány — 1R = amennyit egy vesztes trade
-          elvesz. Exit papíron: 50% @ 1R → BE → runner @ 2R.
+          Nettó R = bruttó OHLC − fee/slip ({PAPER_EVAL_VERSION}). Exit: 50% @ 1R → BE → runner @
+          2R. Konzervatív same-bar (stop elsőbbség). Ez auditálható paper — nem élő Binance
+          statement.
         </p>
       </header>
+
+      <section className="rounded-lg border border-line bg-surface-2/50 px-4 py-3 text-xs text-muted">
+        <p className="font-medium text-foreground/80">Fill modell</p>
+        <p className="mt-0.5">{describePaperCostModel()}</p>
+        <p className="mt-1">
+          Lezárt paper-v2: {v2Count}/{closed.length}
+          {closed.length > 0 && costDragR > 0
+            ? ` · költség drag ≈ −${costDragR.toFixed(2)}R (gross ${grossR >= 0 ? "+" : ""}${grossR.toFixed(2)} → net ${netR >= 0 ? "+" : ""}${netR.toFixed(2)})`
+            : ""}
+          .
+        </p>
+        <p className="mt-1 text-[11px]">
+          SQL audit oszlopokhoz futtasd:{" "}
+          <code className="rounded bg-surface px-1">sql/008_crypto_paper_audit.sql</code>
+        </p>
+      </section>
 
       {error && (
         <section className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm text-warn">
           Nem sikerült betölteni a signalokat — futtattad már a{" "}
           <code className="rounded bg-surface-2 px-1">sql/004_crypto_signals.sql</code>{" "}
           scriptet a Supabase-ben?
+        </section>
+      )}
+
+      {openStuck.length > 0 && (
+        <section className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm text-warn">
+          {openStuck.length} open signal &gt;12h — hiányzó bar / data gap (a következő tick
+          data_gap-ként zárhatja).
         </section>
       )}
 
@@ -131,14 +187,27 @@ export default async function CryptoSignalsPage() {
         <StatCard label="Összes signal" value={String(signals.length)} />
         <StatCard label="Lezárt" value={String(closed.length)} />
         <StatCard
-          label="Win rate"
+          label="Win rate (net R>0)"
           value={closed.length ? `${Math.round((wins.length / closed.length) * 100)}%` : "—"}
         />
         <StatCard
-          label="Nettó R (papír)"
+          label="Nettó R"
           value={closed.length ? `${netR >= 0 ? "+" : ""}${netR.toFixed(2)}R` : "—"}
           tone={netR > 0 ? "pos" : netR < 0 ? "neg" : undefined}
         />
+        <StatCard
+          label="Bruttó R"
+          value={closed.length ? `${grossR >= 0 ? "+" : ""}${grossR.toFixed(2)}R` : "—"}
+          tone={grossR > 0 ? "pos" : grossR < 0 ? "neg" : undefined}
+        />
+        <StatCard
+          label="Költség drag"
+          value={closed.length && costDragR > 0 ? `−${costDragR.toFixed(2)}R` : "—"}
+          tone={costDragR > 0 ? "neg" : undefined}
+        />
+      </section>
+
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <StatCard
           label="Katalizátoros"
           value={
@@ -157,20 +226,21 @@ export default async function CryptoSignalsPage() {
           }
           tone={plainNetR > 0 ? "pos" : plainNetR < 0 ? "neg" : undefined}
         />
+        <StatCard
+          label="7 nap nettó"
+          value={
+            weekClosed.length
+              ? `${weekNetR >= 0 ? "+" : ""}${weekNetR.toFixed(2)}R (${weekClosed.length})`
+              : "—"
+          }
+          tone={weekNetR > 0 ? "pos" : weekNetR < 0 ? "neg" : undefined}
+        />
       </section>
-
-      <p className="text-xs text-muted">
-        Utolsó 7 nap:{" "}
-        {weekClosed.length
-          ? `${weekNetR >= 0 ? "+" : ""}${weekNetR.toFixed(2)}R (${weekClosed.length} db)`
-          : "—"}
-        .
-      </p>
 
       {groups.size > 0 && (
         <section className="overflow-x-auto rounded-lg border border-line bg-surface">
           <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">
-            Coin + setup bontás — papír R
+            Coin + setup bontás — nettó R
           </h2>
           <table className="w-full text-sm">
             <thead>
@@ -222,16 +292,15 @@ export default async function CryptoSignalsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
-                <th className="px-4 py-3 font-medium">Dátum (UTC)</th>
+                <th className="px-4 py-3 font-medium">Dátum</th>
                 <th className="px-4 py-3 font-medium">Coin</th>
                 <th className="px-4 py-3 font-medium">Setup</th>
                 <th className="px-4 py-3 font-medium">Entry</th>
-                <th className="px-4 py-3 font-medium">Stop</th>
-                <th className="px-4 py-3 font-medium">Target</th>
                 <th className="px-4 py-3 font-medium">Exit</th>
-                <th className="px-4 py-3 font-medium">R</th>
+                <th className="px-4 py-3 font-medium">Ok</th>
+                <th className="px-4 py-3 font-medium">Gross R</th>
+                <th className="px-4 py-3 font-medium">Net R</th>
                 <th className="px-4 py-3 font-medium">OI 1h</th>
-                <th className="px-4 py-3 font-medium">Kat.</th>
                 <th className="px-4 py-3 font-medium">BTC</th>
                 <th className="px-4 py-3 font-medium">Státusz</th>
               </tr>
@@ -243,9 +312,16 @@ export default async function CryptoSignalsPage() {
                   <td className="px-4 py-3 font-medium">{s.symbol}</td>
                   <td className="px-4 py-3">{CRYPTO_KIND_LABEL[s.kind] ?? s.kind}</td>
                   <td className="num px-4 py-3">{fmt(s.entry)}</td>
-                  <td className="num px-4 py-3">{fmt(s.stop)}</td>
-                  <td className="num px-4 py-3">{fmt(s.target)}</td>
                   <td className="num px-4 py-3">{fmt(s.exit_price)}</td>
+                  <td className="px-4 py-3 text-xs text-muted">
+                    {s.exit_reason ? EXIT_LABEL[s.exit_reason] ?? s.exit_reason : "—"}
+                    {s.partial ? " ·½" : ""}
+                  </td>
+                  <td className="num px-4 py-3 text-xs text-muted">
+                    {s.r_multiple_gross != null
+                      ? `${Number(s.r_multiple_gross) >= 0 ? "+" : ""}${Number(s.r_multiple_gross).toFixed(2)}`
+                      : "—"}
+                  </td>
                   <td
                     className={`num px-4 py-3 ${
                       s.r_multiple == null
@@ -265,13 +341,6 @@ export default async function CryptoSignalsPage() {
                     {s.oi_delta_1h != null
                       ? `${Number(s.oi_delta_1h) >= 0 ? "+" : ""}${Number(s.oi_delta_1h).toFixed(1)}%`
                       : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-xs">
-                    {s.catalyst_mode ? (
-                      <span className="text-warn">igen</span>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted">{s.btc_regime ?? "—"}</td>
                   <td className="px-4 py-3">

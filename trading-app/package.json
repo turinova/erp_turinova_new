@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3010",
-    "dev:clean": "find src -name '._*' -delete 2>/dev/null; rm -rf .next && next dev -p 3010",
+    "dev": "bash scripts/dev-local-cache.sh",
+    "dev:plain": "next dev -p 3010",
+    "dev:clean": "find . -name '._*' -not -path './node_modules/*' -delete 2>/dev/null; rm -rf .next \"$HOME/.cache/trading-app-next\"; bash scripts/dev-local-cache.sh",
     "build": "next build",
     "start": "next start -p 3010",
     "lint": "eslint",

@@ -11,7 +11,7 @@ import {
   syncBinanceExits,
   testBinanceConnection,
 } from "@/lib/crypto/binance-bridge"
-import { loadBinanceSettings, updateBinanceSettings } from "@/lib/crypto/binance-settings"
+import { loadBinanceSettings, updateBinanceSettings, applySurvivorDeskDefaults } from "@/lib/crypto/binance-settings"
 import type { TradedSymbol } from "@/lib/crypto/types"
 
 async function requireUser() {
@@ -22,8 +22,8 @@ async function requireUser() {
   return { supabase, user }
 }
 
-async function withPreview(includePreview: boolean) {
-  if (!includePreview) return getBinanceDeskState([])
+async function withPreview(includePreview: boolean, refreshFeed = false) {
+  if (!includePreview) return getBinanceDeskState([], { refreshFeed })
   try {
     const supabase = await createSupabaseServer()
     const settings = await loadBinanceSettings()
@@ -31,7 +31,7 @@ async function withPreview(includePreview: boolean) {
       recordPaper: false,
       fetchNews: false,
     })
-    const state = await getBinanceDeskState()
+    const state = await getBinanceDeskState([], { refreshFeed })
     const preview = buildSignalPreview(
       snapshot,
       state.equity?.available ?? 0,
@@ -39,7 +39,7 @@ async function withPreview(includePreview: boolean) {
     )
     return { ...state, signalPreview: preview }
   } catch {
-    return getBinanceDeskState([])
+    return getBinanceDeskState([], { refreshFeed })
   }
 }
 
@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
 
     const sync = request.nextUrl.searchParams.get("sync") === "1"
     const preview = request.nextUrl.searchParams.get("preview") !== "0"
+    const refreshFeed = request.nextUrl.searchParams.get("health") === "1"
     let syncLogs: string[] = []
     if (sync) {
       try {
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const state = await withPreview(preview && sync)
+    const state = await withPreview(preview && sync, refreshFeed)
     return NextResponse.json({ ...state, syncLogs })
   } catch (e) {
     console.error("[api/crypto/binance GET]", e)
@@ -86,6 +87,19 @@ export async function POST(request: NextRequest) {
     symbols?: ("SOL" | "DOGE")[]
     symbol?: string
     confirmAuto?: boolean
+      autoOnlyGradeA?: boolean
+    autoMinRvol?: number
+    matchPaperExit?: boolean
+    trailEnabled?: boolean
+    beFeeBufferPct?: number
+    trailActivateR?: number
+    trailAtrMult?: number
+    tp1R?: number
+    tp1Frac?: number
+    runnerOnlyTrail?: boolean
+    maxDailyLossPct?: number
+    cooldownMinutes?: number
+    applySurvivor?: boolean
   }
 
   const action = body.action ?? "ping"
@@ -97,6 +111,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "settings") {
+      if (body.applySurvivor === true) {
+        const settings = await applySurvivorDeskDefaults()
+        const state = await getBinanceDeskState()
+        return NextResponse.json({
+          ok: true,
+          message: "Survivor preset alkalmazva (2% · 10x · A+ · cooldown 90p · trail 2R)",
+          ...state,
+          settings,
+        })
+      }
       const patch: Parameters<typeof updateBinanceSettings>[0] = {}
       if (typeof body.autoTrade === "boolean") {
         if (body.autoTrade === true) {
@@ -109,7 +133,7 @@ export async function POST(request: NextRequest) {
           const cur = await loadBinanceSettings()
           if (cur.killedToday) {
             return NextResponse.json(
-              { error: "Napi kill aktív — auto ma nem kapcsolható be. Holnap újra, vagy állítsd a limitet." },
+              { error: "Napi kill aktív — előbb „Kill reset ma”, aztán auto." },
               { status: 400 }
             )
           }
@@ -120,10 +144,39 @@ export async function POST(request: NextRequest) {
       if (typeof body.leverageCap === "number") patch.leverageCap = body.leverageCap
       if (typeof body.maxDailyFires === "number") patch.maxDailyFires = body.maxDailyFires
       if (typeof body.maxDailyLossUsd === "number") patch.maxDailyLossUsd = body.maxDailyLossUsd
+      if (typeof body.maxDailyLossPct === "number") patch.maxDailyLossPct = body.maxDailyLossPct
+      if (typeof body.cooldownMinutes === "number") patch.cooldownMinutes = body.cooldownMinutes
       if (body.symbols) patch.symbols = body.symbols
+      if (typeof body.autoOnlyGradeA === "boolean") patch.autoOnlyGradeA = body.autoOnlyGradeA
+      if (typeof body.autoMinRvol === "number") patch.autoMinRvol = body.autoMinRvol
+      if (typeof body.matchPaperExit === "boolean") patch.matchPaperExit = body.matchPaperExit
+      if (typeof body.trailEnabled === "boolean") patch.trailEnabled = body.trailEnabled
+      if (typeof body.beFeeBufferPct === "number") patch.beFeeBufferPct = body.beFeeBufferPct
+      if (typeof body.trailActivateR === "number") patch.trailActivateR = body.trailActivateR
+      if (typeof body.trailAtrMult === "number") patch.trailAtrMult = body.trailAtrMult
+      if (typeof body.tp1R === "number") patch.tp1R = body.tp1R
+      if (typeof body.tp1Frac === "number") patch.tp1Frac = body.tp1Frac
+      if (typeof body.runnerOnlyTrail === "boolean") patch.runnerOnlyTrail = body.runnerOnlyTrail
       const settings = await updateBinanceSettings(patch)
       const state = await getBinanceDeskState()
       return NextResponse.json({ ok: true, ...state, settings })
+    }
+
+    if (action === "resetKill") {
+      const settings = await updateBinanceSettings({
+        killedToday: false,
+        lastError: null,
+        lastErrorAt: null,
+        dayStartEquity: null,
+        autoTrade: false,
+      })
+      const state = await getBinanceDeskState()
+      return NextResponse.json({
+        ok: true,
+        message: "Napi kill törölve — dayStart újraáll. Auto még KI (kapcsold be ha kell).",
+        ...state,
+        settings,
+      })
     }
 
     if (action === "smoke") {

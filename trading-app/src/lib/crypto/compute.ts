@@ -1,6 +1,6 @@
 import type { Bar } from "../backtest/types"
 import { computeBuildups, type BuildupCtx } from "./buildup"
-import { DOGE_RVOL_BASE, DOGE_RVOL_CATALYST } from "./context"
+import { DOGE_RVOL_BASE, DOGE_RVOL_CATALYST, SOL_RVOL_FVG } from "./context"
 import { adx, aggregate, atr, rollingRvol, sessionVwapSeries } from "./indicators"
 import { getSettlementInfo } from "./settlement"
 import {
@@ -12,12 +12,18 @@ import {
   volumeConfluence,
 } from "./structure"
 import {
+  finalizeEntryStop,
+  structureBuffer,
+  type StopDir,
+} from "./stop-policy"
+import {
   ALL_SETUPS_ENABLED,
   TRADED_SYMBOLS,
   type BtcContext,
   type BtcRegime,
   type CryptoFeed,
   type CryptoSignal,
+  type CryptoSignalKind,
   type CryptoSnapshot,
   type EnabledSetups,
   type MarketContext,
@@ -41,9 +47,11 @@ import {
  *   - Funding settlement ±10p → minden setup tiltva
  *   - BTC-rezsim: long csak ha nem risk_off, short csak ha nem risk_on
  *   - DOGE: RVOL kapu (1.3 / 1.0 katalizátor módban)
+ *   - SOL: RVOL ≥ 1.0 FVG/PB-hez (sweep/breakout saját kapu)
  *   - OI squeeze → long sweep/breakout tiltva
  *   - Funding: z-score |z|≥2 elsődleges; fallback abszolút 0.05%/8h
  *   - Chase guard (≤0.75R), breakout életkor (≤30p), MR út ≥1R, PB stop ≤2×ATR
+ *   - Stop padló: struktúra + max(minStopPct, minStopAtr×ATR); túl széles → skip
  */
 
 const NO_SIGNAL: CryptoSignal = { kind: "NONE", entry: null, stop: null, target: null, reason: "", ageBars: null }
@@ -70,7 +78,7 @@ const EMPTY_CONTEXT: MarketContext = {
     oiDelta4hPct: null,
     oiRegime: "unknown",
     catalystMode: false,
-    rvolGate: 0,
+    rvolGate: SOL_RVOL_FVG,
     catalysts: [],
   },
   doge: {
@@ -92,6 +100,12 @@ export interface CryptoComputeInput {
   enabledSetups?: EnabledSetups
   /** OI + hír + settlement kontextus */
   marketContext?: MarketContext
+  /** learner policy kapuk */
+  policyGates?: {
+    disabledKinds?: string[]
+    solRvolFvgMin?: number
+    blockedHourBuckets?: number[]
+  }
 }
 
 export function computeCryptoSnapshot(input: CryptoComputeInput): CryptoSnapshot {
@@ -121,7 +135,8 @@ export function computeCryptoSnapshot(input: CryptoComputeInput): CryptoSnapshot
       now,
       input.guardrail ?? null,
       enabled,
-      marketContext
+      marketContext,
+      input.policyGates
     )
   )
 
@@ -204,7 +219,8 @@ function computeSymbol(
   now: number,
   guardrail: string | null,
   enabled: EnabledSetups,
-  market: MarketContext
+  market: MarketContext,
+  policyGates?: CryptoComputeInput["policyGates"]
 ): SymbolSnapshot {
   const bars = feed.bars.filter((b) => b.t <= now)
   const last = bars[bars.length - 1] ?? null
@@ -270,6 +286,7 @@ function computeSymbol(
       }
     } else {
       const ctx: SignalCtx = {
+        symbol,
         bars,
         bars5m,
         last,
@@ -298,13 +315,41 @@ function computeSymbol(
         oiRegime,
       }
 
-      signal =
-        (enabled.sweep ? trySweep(ctx) : null) ??
-        (enabled.fvg ? tryFvg(ctx) : null) ??
-        (enabled.breakout ? trySessionBreakouts(ctx) : null) ??
-        (enabled.pullback ? tryPullback(ctx) : null) ??
-        (enabled.mean_rev ? tryMeanReversion(ctx) : null) ??
-        { ...NO_SIGNAL, reason: waitReason(ctx) }
+      // SOL: gyenge volume → FVG/PB tilt (sweep/breakout saját RVOL kapuit használja)
+      const solRvolMin = policyGates?.solRvolFvgMin ?? SOL_RVOL_FVG
+      const solFvgPbOk =
+        symbol !== "SOL" || (rvol != null && rvol >= solRvolMin)
+
+      const utcHourBucket = Math.floor(Math.floor(nowMin / 60) / 4) * 4
+      const hourBlocked = policyGates?.blockedHourBuckets?.includes(utcHourBucket) ?? false
+
+      signal = hourBlocked
+        ? {
+            ...NO_SIGNAL,
+            reason: `Policy: UTC ${utcHourBucket}:00–${utcHourBucket + 4} óra-bucket tiltva`,
+          }
+        : (enabled.sweep ? trySweep(ctx) : null) ??
+          (enabled.fvg && solFvgPbOk ? tryFvg(ctx) : null) ??
+          (enabled.breakout ? trySessionBreakouts(ctx) : null) ??
+          (enabled.pullback && solFvgPbOk ? tryPullback(ctx) : null) ??
+          (enabled.mean_rev ? tryMeanReversion(ctx) : null) ??
+          {
+            ...NO_SIGNAL,
+            reason:
+              symbol === "SOL" && !solFvgPbOk && (enabled.fvg || enabled.pullback)
+                ? `SOL volumen-kapu: RVOL ${rvol?.toFixed(2) ?? "?"} < ${solRvolMin} — FVG/PB tiltva`
+                : waitReason(ctx),
+          }
+
+      if (
+        signal.kind !== "NONE" &&
+        policyGates?.disabledKinds?.includes(signal.kind)
+      ) {
+        signal = {
+          ...NO_SIGNAL,
+          reason: `Policy tilt: ${signal.kind}`,
+        }
+      }
     }
   } else {
     signal = { ...NO_SIGNAL, reason: "Kevés adat (ATR/VWAP még nem számolható)" }
@@ -385,6 +430,7 @@ function computeSymbol(
 }
 
 interface SignalCtx {
+  symbol: TradedSymbol
   bars: Bar[]
   bars5m: Bar[]
   last: Bar
@@ -411,6 +457,42 @@ interface SignalCtx {
   nowMin: number
   todayStart: number
   oiRegime: OiRegime
+}
+
+/** Struktúra-stop → padló → 2R target (vagy custom). Skip ha túl széles. */
+function sizedSignal(
+  ctx: SignalCtx,
+  opts: {
+    kind: Exclude<CryptoSignalKind, "NONE">
+    dir: StopDir
+    entry: number
+    structuralStop: number
+    reason: string
+    ageBars: number
+    target?: number
+  }
+): CryptoSignal | null {
+  const sized = finalizeEntryStop({
+    entry: opts.entry,
+    structuralStop: opts.structuralStop,
+    atr: ctx.atr,
+    dir: opts.dir,
+    symbol: ctx.symbol,
+  })
+  if (!sized.ok) {
+    return { ...NO_SIGNAL, reason: `${opts.kind}: ${sized.reason}`, ageBars: opts.ageBars }
+  }
+  const target =
+    opts.target ??
+    (opts.dir === "long" ? opts.entry + 2 * sized.risk : opts.entry - 2 * sized.risk)
+  return {
+    kind: opts.kind,
+    entry: opts.entry,
+    stop: sized.stop,
+    target: round(target),
+    reason: opts.reason,
+    ageBars: opts.ageBars,
+  }
 }
 
 function directionBlock(
@@ -493,19 +575,25 @@ function trySweep(ctx: SignalCtx): CryptoSignal | null {
             reason: `Sweep short a(z) ${name} szinten, de gyenge volumen (${vol.mult.toFixed(2)}× < ${SWEEP_VOL_MIN}×) — nincs absorption`,
           }
         const entry = b.c
-        const stop = b.h + 0.1 * ctx.atr
-        const risk = stop - entry
-        if (risk <= 0) continue
-        if (entry - ctx.last.c > CHASE_GUARD_R * risk)
-          return { ...NO_SIGNAL, reason: `Sweep short volt a(z) ${name} szinten, de az ár már elment — nem kergetjük` }
-        return {
-          kind: "SWEEP_SHORT",
+        const structural = b.h + structureBuffer(ctx.atr)
+        const sized = finalizeEntryStop({
           entry,
-          stop: round(stop),
-          target: round(entry - 2 * risk),
+          structuralStop: structural,
+          atr: ctx.atr,
+          dir: "short",
+          symbol: ctx.symbol,
+        })
+        if (!sized.ok) continue
+        if (entry - ctx.last.c > CHASE_GUARD_R * sized.risk)
+          return { ...NO_SIGNAL, reason: `Sweep short volt a(z) ${name} szinten, de az ár már elment — nem kergetjük` }
+        return sizedSignal(ctx, {
+          kind: "SWEEP_SHORT",
+          dir: "short",
+          entry,
+          structuralStop: structural,
           reason: `Liquidity sweep a(z) ${name} (${level}) fölé + reclaim (vol ${vol.mult.toFixed(1)}×)${fundingNote(ctx, "short")}`,
           ageBars: recent.length - 1 - i,
-        }
+        })
       }
     }
   }
@@ -524,19 +612,25 @@ function trySweep(ctx: SignalCtx): CryptoSignal | null {
             reason: `Sweep long a(z) ${name} szinten, de gyenge volumen (${vol.mult.toFixed(2)}× < ${SWEEP_VOL_MIN}×) — nincs absorption`,
           }
         const entry = b.c
-        const stop = b.l - 0.1 * ctx.atr
-        const risk = entry - stop
-        if (risk <= 0) continue
-        if (ctx.last.c - entry > CHASE_GUARD_R * risk)
-          return { ...NO_SIGNAL, reason: `Sweep long volt a(z) ${name} szinten, de az ár már elment — nem kergetjük` }
-        return {
-          kind: "SWEEP_LONG",
+        const structural = b.l - structureBuffer(ctx.atr)
+        const sized = finalizeEntryStop({
           entry,
-          stop: round(stop),
-          target: round(entry + 2 * risk),
+          structuralStop: structural,
+          atr: ctx.atr,
+          dir: "long",
+          symbol: ctx.symbol,
+        })
+        if (!sized.ok) continue
+        if (ctx.last.c - entry > CHASE_GUARD_R * sized.risk)
+          return { ...NO_SIGNAL, reason: `Sweep long volt a(z) ${name} szinten, de az ár már elment — nem kergetjük` }
+        return sizedSignal(ctx, {
+          kind: "SWEEP_LONG",
+          dir: "long",
+          entry,
+          structuralStop: structural,
           reason: `Liquidity sweep a(z) ${name} (${level}) alá + reclaim (vol ${vol.mult.toFixed(1)}×)${fundingNote(ctx, "long")}`,
           ageBars: recent.length - 1 - i,
-        }
+        })
       }
     }
   }
@@ -553,42 +647,60 @@ function tryFvg(ctx: SignalCtx): CryptoSignal | null {
       const b = recent[i]
       if (gap.dir === "long") {
         // tap: low belép a gapbe, close vissza a gap teteje fölé / gap belsejéből fel
-        if (b.l <= gap.top && b.l >= gap.bottom - 0.1 * ctx.atr && b.c > gap.bottom && b.c > b.o) {
+        const tapPad = structureBuffer(ctx.atr)
+        if (b.l <= gap.top && b.l >= gap.bottom - tapPad && b.c > gap.bottom && b.c > b.o) {
           const block = directionBlock(ctx, "long")
           if (block) return { ...NO_SIGNAL, reason: `FVG long tap, de: ${block}` }
           const entry = b.c
-          const stop = Math.min(b.l, gap.bottom) - 0.1 * ctx.atr
-          const risk = entry - stop
-          if (risk <= 0 || risk > 2 * ctx.atr) continue
-          if (ctx.last.c - entry > CHASE_GUARD_R * risk)
-            return { ...NO_SIGNAL, reason: "FVG long tap volt, de az ár már elment — nem kergetjük" }
-          return {
-            kind: "FVG_LONG",
+          const structural = Math.min(b.l, gap.bottom) - tapPad
+          const preRisk = entry - structural
+          if (preRisk <= 0 || preRisk > 2.5 * ctx.atr) continue
+          const sized = finalizeEntryStop({
             entry,
-            stop: round(stop),
-            target: round(entry + 2 * risk),
+            structuralStop: structural,
+            atr: ctx.atr,
+            dir: "long",
+            symbol: ctx.symbol,
+          })
+          if (!sized.ok) continue
+          if (ctx.last.c - entry > CHASE_GUARD_R * sized.risk)
+            return { ...NO_SIGNAL, reason: "FVG long tap volt, de az ár már elment — nem kergetjük" }
+          return sizedSignal(ctx, {
+            kind: "FVG_LONG",
+            dir: "long",
+            entry,
+            structuralStop: structural,
             reason: `Bullish FVG tap (${round(gap.bottom)}–${round(gap.top)}) + reclaim${fundingNote(ctx, "long")}`,
             ageBars: recent.length - 1 - i,
-          }
+          })
         }
       } else {
-        if (b.h >= gap.bottom && b.h <= gap.top + 0.1 * ctx.atr && b.c < gap.top && b.c < b.o) {
+        const tapPad = structureBuffer(ctx.atr)
+        if (b.h >= gap.bottom && b.h <= gap.top + tapPad && b.c < gap.top && b.c < b.o) {
           const block = directionBlock(ctx, "short")
           if (block) return { ...NO_SIGNAL, reason: `FVG short tap, de: ${block}` }
           const entry = b.c
-          const stop = Math.max(b.h, gap.top) + 0.1 * ctx.atr
-          const risk = stop - entry
-          if (risk <= 0 || risk > 2 * ctx.atr) continue
-          if (entry - ctx.last.c > CHASE_GUARD_R * risk)
-            return { ...NO_SIGNAL, reason: "FVG short tap volt, de az ár már elment — nem kergetjük" }
-          return {
-            kind: "FVG_SHORT",
+          const structural = Math.max(b.h, gap.top) + tapPad
+          const preRisk = structural - entry
+          if (preRisk <= 0 || preRisk > 2.5 * ctx.atr) continue
+          const sized = finalizeEntryStop({
             entry,
-            stop: round(stop),
-            target: round(entry - 2 * risk),
+            structuralStop: structural,
+            atr: ctx.atr,
+            dir: "short",
+            symbol: ctx.symbol,
+          })
+          if (!sized.ok) continue
+          if (entry - ctx.last.c > CHASE_GUARD_R * sized.risk)
+            return { ...NO_SIGNAL, reason: "FVG short tap volt, de az ár már elment — nem kergetjük" }
+          return sizedSignal(ctx, {
+            kind: "FVG_SHORT",
+            dir: "short",
+            entry,
+            structuralStop: structural,
             reason: `Bearish FVG tap (${round(gap.bottom)}–${round(gap.top)}) + reclaim${fundingNote(ctx, "short")}`,
             ageBars: recent.length - 1 - i,
-          }
+          })
         }
       }
     }
@@ -650,26 +762,32 @@ function tryOneSessionBreakout(ctx: SignalCtx, spec: (typeof SESSION_SPECS)[numb
   if (block) return { ...NO_SIGNAL, reason: `${spec.label} breakout ${breakout.dir}, de: ${block}` }
 
   const entry = breakout.bar.c
-  const stop =
+  const structural =
     breakout.dir === "long" ? Math.max(low, entry - 1.5 * ctx.atr) : Math.min(high, entry + 1.5 * ctx.atr)
-  const risk = Math.abs(entry - stop)
-  if (risk <= 0) return null
+  const sized = finalizeEntryStop({
+    entry,
+    structuralStop: structural,
+    atr: ctx.atr,
+    dir: breakout.dir,
+    symbol: ctx.symbol,
+  })
+  if (!sized.ok) return { ...NO_SIGNAL, reason: `${spec.label} breakout: ${sized.reason}` }
 
   const moved = breakout.dir === "long" ? ctx.last.c - entry : entry - ctx.last.c
-  if (moved > CHASE_GUARD_R * risk)
+  if (moved > CHASE_GUARD_R * sized.risk)
     return {
       ...NO_SIGNAL,
       reason: `${spec.label} breakout ${breakout.dir} megvolt, de az ár már elment — nem kergetjük`,
     }
 
-  return {
+  return sizedSignal(ctx, {
     kind: breakout.dir === "long" ? "BREAKOUT_LONG" : "BREAKOUT_SHORT",
+    dir: breakout.dir,
     entry,
-    stop: round(stop),
-    target: round(breakout.dir === "long" ? entry + 2 * risk : entry - 2 * risk),
+    structuralStop: structural,
     reason: `${spec.label} range breakout ${breakout.dir} (range: ${low}–${high}, RVOL ${ctx.rvol.toFixed(2)})`,
     ageBars: barsSince,
-  }
+  })
 }
 
 function tryPullback(ctx: SignalCtx): CryptoSignal | null {
@@ -709,23 +827,24 @@ function tryPullback(ctx: SignalCtx): CryptoSignal | null {
   const entry = ctx.last.c
   const recentLow = Math.min(...recent.map((b) => b.l))
   const recentHigh = Math.max(...recent.map((b) => b.h))
-  const stop = dir === "long" ? recentLow - 0.1 * ctx.atr : recentHigh + 0.1 * ctx.atr
-  const risk = Math.abs(entry - stop)
-  if (risk <= 0) return null
-  if (risk > PULLBACK_MAX_STOP_ATR * ctx.atr)
+  const structural =
+    dir === "long" ? recentLow - structureBuffer(ctx.atr) : recentHigh + structureBuffer(ctx.atr)
+  const preRisk = Math.abs(entry - structural)
+  if (preRisk <= 0) return null
+  if (preRisk > PULLBACK_MAX_STOP_ATR * ctx.atr)
     return {
       ...NO_SIGNAL,
-      reason: `Pullback ${dir} setup a VWAP-nál, de a stop túl széles (${(risk / ctx.atr).toFixed(1)}×ATR > ${PULLBACK_MAX_STOP_ATR}×ATR)`,
+      reason: `Pullback ${dir} setup a VWAP-nál, de a stop túl széles (${(preRisk / ctx.atr).toFixed(1)}×ATR > ${PULLBACK_MAX_STOP_ATR}×ATR)`,
     }
 
-  return {
+  return sizedSignal(ctx, {
     kind: dir === "long" ? "PB_LONG" : "PB_SHORT",
+    dir,
     entry,
-    stop: round(stop),
-    target: round(dir === "long" ? entry + 2 * risk : entry - 2 * risk),
+    structuralStop: structural,
     reason: `Momentum pullback ${dir}: trend után VWAP-visszateszt, close vissza trendirányba`,
     ageBars: 0,
-  }
+  })
 }
 
 function tryMeanReversion(ctx: SignalCtx): CryptoSignal | null {
@@ -744,28 +863,35 @@ function tryMeanReversion(ctx: SignalCtx): CryptoSignal | null {
 
   const recent = ctx.bars.slice(-SIGNAL_MAX_AGE_BARS)
   const entry = ctx.last.c
-  const stop =
+  const structural =
     dir === "long"
       ? Math.min(...recent.map((b) => b.l)) - 0.75 * ctx.atr
       : Math.max(...recent.map((b) => b.h)) + 0.75 * ctx.atr
-  const risk = Math.abs(entry - stop)
-  if (risk <= 0) return null
+  const sized = finalizeEntryStop({
+    entry,
+    structuralStop: structural,
+    atr: ctx.atr,
+    dir,
+    symbol: ctx.symbol,
+  })
+  if (!sized.ok) return { ...NO_SIGNAL, reason: `Mean reversion: ${sized.reason}` }
 
   const toVwap = Math.abs(ctx.vwap - entry)
-  if (toVwap < risk)
+  if (toVwap < sized.risk)
     return {
       ...NO_SIGNAL,
       reason: `Mean reversion ${dir} setup (${Math.abs(dist).toFixed(1)}×ATR a VWAP-tól), de az út a VWAP-ig nem éri meg (<1R)`,
     }
 
-  return {
+  return sizedSignal(ctx, {
     kind: dir === "long" ? "MR_LONG" : "MR_SHORT",
+    dir,
     entry,
-    stop: round(stop),
-    target: round(ctx.vwap),
+    structuralStop: structural,
+    target: ctx.vwap,
     reason: `VWAP mean reversion ${dir}: ár ${Math.abs(dist).toFixed(1)}×ATR-re a VWAP-tól, ADX ${ctx.adx.toFixed(0)} (range piac)${fundingNote(ctx, dir)}`,
     ageBars: 0,
-  }
+  })
 }
 
 function waitReason(ctx: SignalCtx): string {

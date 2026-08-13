@@ -192,6 +192,10 @@ export interface CryptoSnapshot {
     attempted: number
     saved: number
     errors: string[]
+    evaluated?: number
+    stuckOpen?: number
+    missingBars?: number
+    costModel?: string
   }
 }
 

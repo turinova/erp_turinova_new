@@ -6,6 +6,7 @@ import { fetchAndStoreCryptoPanic } from "./news"
 import { saveOiSnapshots } from "./oi-history"
 import { recordAndEvaluateCryptoSignals } from "./paper"
 import { maybeAutoOpenFromSnapshot, syncBinanceExits } from "./binance-bridge"
+import { getActivePolicy } from "./learn/store"
 import {
   ALL_SETUPS_ENABLED,
   type CryptoSnapshot,
@@ -24,7 +25,8 @@ export async function runCryptoTick(
   supabase: SupabaseClient,
   opts?: { enabledSetups?: EnabledSetups; recordPaper?: boolean; fetchNews?: boolean }
 ): Promise<CryptoSnapshot> {
-  const feed = await fetchCryptoFeed()
+  // Binance-first: a fire/paper entry a Binance markhoz igazodik (OKX/Bybit fallback)
+  const feed = await fetchCryptoFeed({ preferBinance: true })
   const enabled = opts?.enabledSetups ?? ALL_SETUPS_ENABLED
   const recordPaper = opts?.recordPaper ?? true
   const fetchNews = opts?.fetchNews ?? true
@@ -45,6 +47,24 @@ export async function runCryptoTick(
 
   const { context } = await buildMarketContext(supabase, feed)
 
+  let policyGates:
+    | {
+        disabledKinds: string[]
+        solRvolFvgMin: number
+        blockedHourBuckets: number[]
+      }
+    | undefined
+  try {
+    const policy = await getActivePolicy()
+    policyGates = {
+      disabledKinds: policy.disabledKinds,
+      solRvolFvgMin: policy.solRvolFvgMin,
+      blockedHourBuckets: policy.blockedHourBuckets,
+    }
+  } catch (e) {
+    console.warn("Policy load hiba:", e)
+  }
+
   let guardrail: string | null = null
   try {
     const utcDate = new Date().toISOString().slice(0, 10)
@@ -55,15 +75,17 @@ export async function runCryptoTick(
 
     if (today) {
       const closed = today.filter((s) => s.status !== "open")
-      const netR = closed.reduce((sum, s) => sum + Number(s.r_multiple ?? 0), 0)
-      if (today.length >= MAX_SIGNALS_PER_DAY) {
-        guardrail = `Napi signal-limit elérve (${today.length}/${MAX_SIGNALS_PER_DAY}) — ma nincs több crypto entry.`
-      } else if (netR <= -MAX_DAILY_LOSS_R) {
-        guardrail = `Napi veszteséglimit elérve (${netR.toFixed(2)}R / -${MAX_DAILY_LOSS_R}R) — ma nincs több crypto entry.`
+      if (closed.length >= MAX_SIGNALS_PER_DAY) {
+        guardrail = `Napi signal limit (${MAX_SIGNALS_PER_DAY})`
+      } else {
+        const dayR = closed.reduce((sum, s) => sum + Number(s.r_multiple ?? 0), 0)
+        if (dayR <= -MAX_DAILY_LOSS_R) {
+          guardrail = `Napi loss limit (${MAX_DAILY_LOSS_R}R)`
+        }
       }
     }
-  } catch (e) {
-    console.error("Crypto guardrail hiba:", e)
+  } catch {
+    /* ignore */
   }
 
   const snapshot = computeCryptoSnapshot({
@@ -71,6 +93,7 @@ export async function runCryptoTick(
     guardrail,
     enabledSetups: enabled,
     marketContext: context,
+    policyGates,
   })
 
   if (recordPaper) {
@@ -88,9 +111,8 @@ export async function runCryptoTick(
     }
   }
 
-  // Binance live (csak ha autoTrade be van kapcsolva a desk settingsben)
   try {
-    await syncBinanceExits()
+    await syncBinanceExits(undefined, snapshot)
     const logs = await maybeAutoOpenFromSnapshot(snapshot)
     if (logs.length) console.log("Binance auto:", logs.join(" | "))
   } catch (e) {

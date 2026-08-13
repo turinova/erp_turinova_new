@@ -3,8 +3,10 @@
 import { useMemo, useState, type ReactNode } from "react"
 import {
   DEFAULT_SIM_PARAMS,
+  LIVE_ADJ_DEFAULTS,
   simulateBankroll,
   type RiskMode,
+  type SimMode,
   type SimParams,
   type SimTradeInput,
 } from "@/lib/crypto/bankroll-sim"
@@ -20,13 +22,12 @@ type Props = {
 function fmtUsd(n: number, digits = 0): string {
   const abs = Math.abs(n)
   const d = abs >= 100 ? 0 : abs >= 10 ? 1 : 2
-  const s = n.toLocaleString("en-US", {
+  return n.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: digits || d,
     maximumFractionDigits: digits || d,
   })
-  return s
 }
 
 function fmtSignedUsd(n: number): string {
@@ -36,26 +37,44 @@ function fmtSignedUsd(n: number): string {
 }
 
 export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }: Props) {
+  const [mode, setMode] = useState<SimMode>("liveAdj")
   const [startUsd, setStartUsd] = useState(DEFAULT_SIM_PARAMS.startUsd)
   const [riskMode, setRiskMode] = useState<RiskMode>(DEFAULT_SIM_PARAMS.riskMode)
-  const [riskPercent, setRiskPercent] = useState(DEFAULT_SIM_PARAMS.riskPercent)
+  const [riskPercent, setRiskPercent] = useState(
+    LIVE_ADJ_DEFAULTS.riskPercent ?? DEFAULT_SIM_PARAMS.riskPercent
+  )
   const [riskFixedUsd, setRiskFixedUsd] = useState(DEFAULT_SIM_PARAMS.riskFixedUsd)
-  const [leverageCap, setLeverageCap] = useState(DEFAULT_SIM_PARAMS.leverageCap)
+  const [leverageCap, setLeverageCap] = useState(
+    LIVE_ADJ_DEFAULTS.leverageCap ?? DEFAULT_SIM_PARAMS.leverageCap
+  )
   const [compound, setCompound] = useState(DEFAULT_SIM_PARAMS.compound)
+  const [marginUsePct, setMarginUsePct] = useState(DEFAULT_SIM_PARAMS.marginUsePct)
 
   const params: SimParams = useMemo(
     () => ({
+      ...DEFAULT_SIM_PARAMS,
       startUsd: Math.max(1, startUsd || 0),
       riskMode,
       riskPercent: Math.max(0, riskPercent || 0),
       riskFixedUsd: Math.max(0, riskFixedUsd || 0),
       leverageCap: Math.max(1, leverageCap || 1),
       compound,
+      marginUsePct,
+      maxConcurrent: 1,
+      maxConcurrentPerSymbol: 1,
+      mode,
     }),
-    [startUsd, riskMode, riskPercent, riskFixedUsd, leverageCap, compound]
+    [startUsd, riskMode, riskPercent, riskFixedUsd, leverageCap, compound, marginUsePct, mode]
   )
 
   const sim = useMemo(() => simulateBankroll(trades, params), [trades, params])
+  const paperCompare = useMemo(
+    () =>
+      mode === "liveAdj"
+        ? simulateBankroll(trades, { ...params, mode: "paper" })
+        : null,
+    [trades, params, mode]
+  )
 
   const pct =
     params.startUsd > 0 ? ((sim.finalEquity - params.startUsd) / params.startUsd) * 100 : 0
@@ -68,25 +87,27 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
     )
   }
 
+  const liveAdj = mode === "liveAdj"
+
   return (
     <div className="space-y-4">
-      {/* R ELI */}
       <section className="rounded-lg border border-line bg-surface-2/60 px-4 py-3 text-sm">
         <p className="font-medium text-foreground/90">Mi az az R? (dollárban)</p>
         <p className="mt-1 text-muted">
           <span className="text-foreground/80">1R = amennyi dollárt szándékosan kockáztatsz</span>{" "}
           egy trade-en (stopig ennyit veszítenél). A naplóban a +2R / −1R csak arány — itt
-          átváltjuk pénzre a beállításaiddal. Példa: 1R = $8 → +2R = +$16, −1R = −$8.
+          átváltjuk pénzre a beállításaiddal.
         </p>
       </section>
 
-      {/* CONTROLS */}
       <section className="rounded-lg border border-line bg-surface p-4">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 className="text-sm font-semibold">Kupac-kalkulátor</h2>
             <p className="text-xs text-muted">
-              Végigjátssza az eddigi lezárt signalokat. Papír-mese — nem élő egyenleg.
+              {liveAdj
+                ? "Live-adj: bruttó R × risk$ − abszolút fee/slip a notionalon · bridge sizing (margin 75%, szűk stop→≤10x) · max 1 pos / coin. Becslés, nem Binance statement."
+                : "Paper ideal: nettó R (fee már az R-ben) × risk$. Optimistább, mint az élő."}
             </p>
           </div>
           <p className="text-xs text-muted">
@@ -99,6 +120,32 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
             {winCount}/{closedCount} nyert
           </p>
         </div>
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          <ModeBtn
+            active={!liveAdj}
+            onClick={() => setMode("paper")}
+            label="Paper ideal"
+            hint="nettó R × risk$"
+          />
+          <ModeBtn
+            active={liveAdj}
+            onClick={() => {
+              setMode("liveAdj")
+              setLeverageCap(LIVE_ADJ_DEFAULTS.leverageCap ?? 10)
+              setRiskPercent(LIVE_ADJ_DEFAULTS.riskPercent ?? 2)
+            }}
+            label="Live-adj (desk-szerű)"
+            hint="gross R − abszolút fee"
+          />
+        </div>
+
+        {liveAdj && (
+          <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-warn">
+            Live-adj ≈ Binance autotrade sizing + taker fee/slip a notionalon. Nem tartalmaz
+            likvidációt, order rejectet, sync késést. A valódi wallet a desk / Binance PnL.
+          </p>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <Field label="Start tőke ($)">
@@ -160,6 +207,18 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
             />
           </Field>
 
+          <Field label={`Margin budget (${Math.round(marginUsePct * 100)}%)`}>
+            <input
+              type="range"
+              min={50}
+              max={100}
+              step={5}
+              value={Math.round(marginUsePct * 100)}
+              onChange={(e) => setMarginUsePct(Number(e.target.value) / 100)}
+              className="w-full"
+            />
+          </Field>
+
           <Field label="Compound">
             <button
               type="button"
@@ -177,9 +236,9 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
           <Field label="Gyors preset">
             <div className="flex gap-1">
               {[
-                { label: "$100·8%", s: 100, p: 8, lev: 40 },
-                { label: "$500·10%", s: 500, p: 10, lev: 40 },
-                { label: "$100·2%", s: 100, p: 2, lev: 20 },
+                { label: "Survivor $100·2%·10x", s: 100, p: 2, lev: 10, m: "liveAdj" as SimMode },
+                { label: "Aggressive $100·8%·20x", s: 100, p: 8, lev: 20, m: "liveAdj" as SimMode },
+                { label: "Paper $100·2%·10x", s: 100, p: 2, lev: 10, m: "paper" as SimMode },
               ].map((pr) => (
                 <button
                   key={pr.label}
@@ -190,6 +249,8 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
                     setRiskPercent(pr.p)
                     setLeverageCap(pr.lev)
                     setCompound(true)
+                    setMode(pr.m)
+                    setMarginUsePct(0.75)
                   }}
                   className="flex-1 rounded-md border border-line bg-surface-2 px-1 py-1.5 text-[11px] text-muted hover:border-accent/40 hover:text-foreground"
                 >
@@ -201,12 +262,11 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
         </div>
       </section>
 
-      {/* HERO SCORE */}
       <section className="overflow-hidden rounded-lg border border-line bg-surface">
         <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="border-b border-line p-5 lg:border-b-0 lg:border-r">
             <p className="text-xs font-medium uppercase tracking-wider text-muted">
-              Most ennyi lenne a kupacod
+              {liveAdj ? "Live-adj becsült kupac" : "Paper ideal kupac"}
             </p>
             <p
               className={`num mt-1 text-4xl font-semibold tracking-tight sm:text-5xl ${
@@ -226,6 +286,30 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
                 {pct.toFixed(0)}%
               </span>
             </p>
+            {liveAdj && sim.totalFeesUsd > 0 && (
+              <p className="mt-2 text-xs text-muted">
+                Abszolút fee/slip levonva:{" "}
+                <span className="text-loss">−{fmtUsd(sim.totalFeesUsd, 2)}</span>
+              </p>
+            )}
+            {paperCompare && (
+              <p className="mt-2 text-xs text-muted">
+                Ugyanazzal a sizinggel paper ideal:{" "}
+                <span className={paperCompare.netPnl >= 0 ? "text-win" : "text-loss"}>
+                  {fmtUsd(paperCompare.finalEquity, 0)}
+                </span>
+                {" ("}
+                {fmtSignedUsd(paperCompare.netPnl)}
+                {") — live-adj Δ "}
+                <span
+                  className={
+                    sim.finalEquity - paperCompare.finalEquity >= 0 ? "text-win" : "text-loss"
+                  }
+                >
+                  {fmtSignedUsd(sim.finalEquity - paperCompare.finalEquity)}
+                </span>
+              </p>
+            )}
             {sim.ruined && (
               <p className="mt-2 text-sm text-loss">
                 Kinullázva a #{(sim.ruinedAtIndex ?? 0) + 1}. trade után.
@@ -233,8 +317,14 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
             )}
             {sim.cappedCount > 0 && (
               <p className="mt-2 text-xs text-warn">
-                {sim.cappedCount} trade-nél a {params.leverageCap}x cap csökkentette a risket
-                (stop túl szűk volt a teljes %-hoz).
+                {sim.cappedCount} trade-nél a lev/margin cap csökkentette a risket
+                {liveAdj ? " (szűk stopnál max 20x)" : ""}.
+              </p>
+            )}
+            {sim.skippedConcurrentCount > 0 && (
+              <p className="mt-2 text-xs text-warn">
+                {sim.skippedConcurrentCount} trade kihagyva (
+                {liveAdj ? "már nyitva ugyanazon a coinon" : "max 1 globális pozíció"}).
               </p>
             )}
           </div>
@@ -247,7 +337,6 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
         </div>
       </section>
 
-      {/* LEGO STRIP */}
       <section className="rounded-lg border border-line bg-surface p-4">
         <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
           Téglák — minden tipp dollárban
@@ -258,7 +347,6 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
         <LegoStrip steps={sim.steps} />
       </section>
 
-      {/* SETUP RACE */}
       {sim.setupRace.length > 0 && (
         <section className="rounded-lg border border-line bg-surface p-4">
           <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted">
@@ -269,7 +357,6 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
         </section>
       )}
 
-      {/* STEP LIST */}
       <section className="overflow-x-auto rounded-lg border border-line bg-surface">
         <h2 className="border-b border-line px-4 py-3 text-sm font-semibold">
           Trade-enként — mi történt a kupaccal
@@ -281,6 +368,7 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
               <th className="px-4 py-2.5 font-medium">Coin / setup</th>
               <th className="px-4 py-2.5 font-medium">1R ($)</th>
               <th className="px-4 py-2.5 font-medium">Lev</th>
+              {liveAdj && <th className="px-4 py-2.5 font-medium">Fee</th>}
               <th className="px-4 py-2.5 font-medium">Eredmény</th>
               <th className="px-4 py-2.5 font-medium">Kupac után</th>
             </tr>
@@ -298,11 +386,21 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
                   {s.capped && (
                     <span className="ml-2 text-[10px] uppercase text-warn">cap</span>
                   )}
+                  {s.skippedConcurrent && (
+                    <span className="ml-2 text-[10px] uppercase text-warn">
+                      {liveAdj ? "skip·coin" : "skip·1pos"}
+                    </span>
+                  )}
                 </td>
                 <td className="num px-4 py-2.5">{fmtUsd(s.actualRiskUsd, 2)}</td>
                 <td className="num px-4 py-2.5 text-muted">
                   {s.leverageUsed > 0 ? `${s.leverageUsed.toFixed(1)}x` : "—"}
                 </td>
+                {liveAdj && (
+                  <td className="num px-4 py-2.5 text-loss">
+                    {s.feeUsd > 0 ? `−${fmtUsd(s.feeUsd, 2)}` : "—"}
+                  </td>
+                )}
                 <td
                   className={`num px-4 py-2.5 ${
                     s.pnlUsd > 0 ? "text-win" : s.pnlUsd < 0 ? "text-loss" : ""
@@ -310,8 +408,12 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
                 >
                   {fmtSignedUsd(s.pnlUsd)}
                   <span className="ml-1 text-xs text-muted">
-                    ({s.rMultiple >= 0 ? "+" : ""}
-                    {s.rMultiple.toFixed(2)}R)
+                    ({s.rMultipleUsed >= 0 ? "+" : ""}
+                    {s.rMultipleUsed.toFixed(2)}R
+                    {liveAdj && Math.abs(s.rMultipleUsed - s.rMultiple) > 1e-6
+                      ? ` gross`
+                      : ""}
+                    )
                   </span>
                 </td>
                 <td className="num px-4 py-2.5 font-medium">{fmtUsd(s.equityAfter, 2)}</td>
@@ -321,6 +423,33 @@ export function SignalsBankrollViz({ trades, paperNetR, winCount, closedCount }:
         </table>
       </section>
     </div>
+  )
+}
+
+function ModeBtn({
+  active,
+  onClick,
+  label,
+  hint,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  hint: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md border px-3 py-2 text-left text-sm ${
+        active
+          ? "border-accent/50 bg-accent/10 text-accent"
+          : "border-line bg-surface-2 text-muted hover:border-accent/30"
+      }`}
+    >
+      <span className="font-medium">{label}</span>
+      <span className="mt-0.5 block text-[11px] opacity-80">{hint}</span>
+    </button>
   )
 }
 
@@ -371,7 +500,6 @@ function EquitySvg({ path, start }: { path: number[]; start: number }) {
         strokeLinejoin="round"
         strokeLinecap="round"
         points={line}
-        className="animate-[dash_1.2s_ease-out]"
       />
       {path.map((v, i) => {
         const x = pad + (i / (path.length - 1)) * (w - pad * 2)
@@ -400,7 +528,7 @@ function LegoStrip({
           <div
             key={s.id}
             className="group flex w-10 shrink-0 flex-col items-center justify-end"
-            title={`${s.symbol} ${fmtSignedUsd(s.pnlUsd)} (${s.rMultiple >= 0 ? "+" : ""}${s.rMultiple.toFixed(2)}R)`}
+            title={`${s.symbol} ${fmtSignedUsd(s.pnlUsd)} (${s.rMultipleUsed >= 0 ? "+" : ""}${s.rMultipleUsed.toFixed(2)}R)`}
           >
             <div className="flex h-24 w-full flex-col items-center justify-end">
               {!flat && win && (
@@ -439,12 +567,12 @@ function SetupRace({
   return (
     <ul className="space-y-2.5">
       {rows.map((r, i) => {
-        const pct = (Math.abs(r.netUsd) / maxAbs) * 100
+        const pctW = (Math.abs(r.netUsd) / maxAbs) * 100
         const pos = r.netUsd >= 0
-        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`
+        const medal = i === 0 ? "1." : i === 1 ? "2." : i === 2 ? "3." : `${i + 1}.`
         return (
           <li key={r.key} className="grid grid-cols-[2rem_1fr_auto] items-center gap-2 text-sm">
-            <span className="text-center text-xs">{medal}</span>
+            <span className="text-center text-xs text-muted">{medal}</span>
             <div className="min-w-0">
               <div className="mb-0.5 flex justify-between gap-2">
                 <span className="truncate font-medium">{r.key}</span>
@@ -455,7 +583,7 @@ function SetupRace({
               <div className="h-2 overflow-hidden rounded-sm bg-surface-2">
                 <div
                   className={`h-full rounded-sm ${pos ? "bg-emerald-500/70" : "bg-red-500/70"}`}
-                  style={{ width: `${pct}%` }}
+                  style={{ width: `${pctW}%` }}
                 />
               </div>
             </div>

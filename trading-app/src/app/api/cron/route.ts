@@ -61,5 +61,28 @@ export async function GET(request: NextRequest) {
     out.crypto = { error: e instanceof Error ? e.message : "crypto tick error" }
   }
 
+  // Learner: naponta egyszer 00:00–00:09 UTC (5p cron → ~1x/nap)
+  try {
+    const { getActivePolicy } = await import("@/lib/crypto/learn/store")
+    const { runLearner } = await import("@/lib/crypto/learn/run")
+    const policy = await getActivePolicy()
+    if (utcHour === 0 && now.getUTCMinutes() < 10) {
+      const learn = await runLearner(supabase, {
+        withAi: process.env.LEARN_ANTHROPIC === "1",
+      })
+      out.learn = {
+        tradesUsed: learn.tradesUsed,
+        proposals: learn.proposals.length,
+        autoApplied: learn.autoApplied.length,
+        autoTighten: policy.autoTighten,
+      }
+    } else {
+      out.learn = { skipped: "nem 00:00–00:09 UTC" }
+    }
+  } catch (e) {
+    console.error("Learner cron hiba:", e)
+    out.learn = { error: e instanceof Error ? e.message : "learn error" }
+  }
+
   return NextResponse.json(out)
 }

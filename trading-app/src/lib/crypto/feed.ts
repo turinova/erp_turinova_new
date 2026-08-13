@@ -9,9 +9,10 @@ import {
 
 /**
  * Publikus, kulcs nélküli perp piaci adat.
- * Sorrend: Bybit → OKX → Binance.
- * A Binance (és néha a Bybit) US-régiókból 451-et adhat; ezért a Vercel
- * functionök Frankfurtban (fra1) futnak, és van OKX fallback.
+ *
+ * Alap sorrend (Binance fire parity): **Binance → OKX → Bybit**.
+ * A signal entry/stop így a Binance markhoz igazodik, amikor elérhető.
+ * US/451 esetén OKX/Bybit fallback.
  */
 
 const PAIR: Record<CryptoSymbol, string> = {
@@ -28,25 +29,50 @@ const OKX_INST: Record<CryptoSymbol, string> = {
   ETH: "ETH-USDT-SWAP",
 }
 
-const CACHE_MS = 30_000
-let cache: { at: number; data: CryptoFeed } | null = null
+const CACHE_MS = 15_000
+let cache: { at: number; key: string; data: CryptoFeed } | null = null
 
 type Provider = { name: CryptoFeedSource; run: () => Promise<CryptoFeed> }
 
-export async function fetchCryptoFeed(): Promise<CryptoFeed> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.data
+export type FetchCryptoFeedOpts = {
+  /** true (default): Binance első. false: régi Bybit-first sorrend */
+  preferBinance?: boolean
+  /** cache kihagyása (desk health / manuális fire) */
+  bypassCache?: boolean
+}
 
-  const providers: Provider[] = [
-    { name: "bybit", run: fetchBybit },
-    { name: "okx", run: fetchOkx },
-    { name: "binance", run: fetchBinance },
-  ]
+export async function fetchCryptoFeed(
+  opts: FetchCryptoFeedOpts = {}
+): Promise<CryptoFeed> {
+  const preferBinance = opts.preferBinance !== false
+  const cacheKey = preferBinance ? "binance-first" : "bybit-first"
+
+  if (
+    !opts.bypassCache &&
+    cache &&
+    cache.key === cacheKey &&
+    Date.now() - cache.at < CACHE_MS
+  ) {
+    return cache.data
+  }
+
+  const providers: Provider[] = preferBinance
+    ? [
+        { name: "binance", run: fetchBinance },
+        { name: "okx", run: fetchOkx },
+        { name: "bybit", run: fetchBybit },
+      ]
+    : [
+        { name: "bybit", run: fetchBybit },
+        { name: "okx", run: fetchOkx },
+        { name: "binance", run: fetchBinance },
+      ]
 
   const errors: string[] = []
   for (const p of providers) {
     try {
       const data = await p.run()
-      cache = { at: Date.now(), data }
+      cache = { at: Date.now(), key: cacheKey, data }
       return data
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -56,6 +82,20 @@ export async function fetchCryptoFeed(): Promise<CryptoFeed> {
   }
 
   throw new Error(`Crypto feed elérhetetlen (${errors.join(" | ")})`)
+}
+
+/** Utolsó sikeres feed meta (cache) — desk healthhez */
+export function getCachedFeedMeta(): {
+  source: CryptoFeedSource
+  ageSec: number
+  preferKey: string
+} | null {
+  if (!cache) return null
+  return {
+    source: cache.data.source,
+    ageSec: Math.round((Date.now() - cache.at) / 1000),
+    preferKey: cache.key,
+  }
 }
 
 // ---------------------------------------------------------------

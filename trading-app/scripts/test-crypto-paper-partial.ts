@@ -1,5 +1,5 @@
 /**
- * Stresszteszt: crypto paper partial TP
+ * Stresszteszt: crypto paper partial TP + paper-v2 net R
  *   50% @ 1R → stop BE-re → 50% @ 2R (vagy BE / expire)
  *
  *   npx tsx scripts/test-crypto-paper-partial.ts
@@ -42,26 +42,29 @@ const signal = (kind: string, entry: number, stop: number, target: number): Cryp
   target,
 })
 
-console.log("=== Partial TP stress (50% @ 1R + BE + 50% @ 2R) ===\n")
+console.log("=== Partial TP stress (50% @ 1R + BE + 50% @ 2R) · paper-v2 ===\n")
 
 // LONG: entry 100, stop 90 → risk 10; TP1=110, TP2=120
 const long = signal("SWEEP_LONG", 100, 90, 120)
 
-// 1) Full stop before TP1 → -1R
+// 1) Full stop before TP1 → -1R gross
 {
   const r = evaluateCryptoSignal(long, [bar(1, 100, 101, 89, 92)], base + 3600)
   check("pre-TP1 stop → loss", r?.status, "loss")
-  check("pre-TP1 stop → -1R", r?.r_multiple, -1)
+  check("pre-TP1 stop → -1R gross", r?.r_multiple_gross, -1)
+  check("pre-TP1 exit_reason", r?.exit_reason, "stop")
+  checkCond("pre-TP1 net < gross", (r?.r_multiple ?? 0) < (r?.r_multiple_gross ?? 0), r)
 }
 
-// 2) Hit TP2 without visiting TP1 as separate (gap through) → full +2R still OK
+// 2) Gap through TP2
 {
   const r = evaluateCryptoSignal(long, [bar(1, 100, 121, 99, 118)], base + 3600)
   check("gap to TP2 → win", r?.status, "win")
-  check("gap to TP2 → +2R (full)", r?.r_multiple, 2)
+  check("gap to TP2 → +2R gross", r?.r_multiple_gross, 2)
+  check("gap exit_reason", r?.exit_reason, "gap_target")
 }
 
-// 3) TP1 then TP2 → blended +1.5R (0.5*1 + 0.5*2)
+// 3) TP1 then TP2 → blended +1.5R gross
 {
   const r = evaluateCryptoSignal(
     long,
@@ -69,11 +72,12 @@ const long = signal("SWEEP_LONG", 100, 90, 120)
     base + 3600
   )
   check("TP1→TP2 → win", r?.status, "win")
-  check("TP1→TP2 → +1.5R", r?.r_multiple, 1.5)
+  check("TP1→TP2 → +1.5R gross", r?.r_multiple_gross, 1.5)
+  check("TP1→TP2 exit_reason", r?.exit_reason, "tp1_then_tp2")
   checkCond("TP1→TP2 scale flag", r?.scale_plan === "partial_1r_be_2r" || r?.partial === true, r)
 }
 
-// 4) TP1 then BE → +0.5R (half banked, half scratch)
+// 4) TP1 then BE → +0.5R gross
 {
   const r = evaluateCryptoSignal(
     long,
@@ -81,17 +85,18 @@ const long = signal("SWEEP_LONG", 100, 90, 120)
     base + 3600
   )
   check("TP1→BE → win (banked)", r?.status, "win")
-  check("TP1→BE → +0.5R", r?.r_multiple, 0.5)
+  check("TP1→BE → +0.5R gross", r?.r_multiple_gross, 0.5)
+  check("TP1→BE exit_reason", r?.exit_reason, "tp1_then_be")
 }
 
-// 5) Same bar: TP1 and stop both touchable before TP1 taken → stop first
+// 5) Same bar: TP1 and stop → stop first
 {
   const r = evaluateCryptoSignal(long, [bar(1, 100, 111, 89, 95)], base + 3600)
   check("same-bar TP1+stop → loss (konzervatív)", r?.status, "loss")
-  check("same-bar TP1+stop → -1R", r?.r_multiple, -1)
+  check("same-bar TP1+stop → -1R gross", r?.r_multiple_gross, -1)
 }
 
-// 6) After TP1, same bar BE + TP2 → BE first (konzervatív) → +0.5R
+// 6) After TP1, same bar BE + TP2 → BE first
 {
   const r = evaluateCryptoSignal(
     long,
@@ -99,10 +104,10 @@ const long = signal("SWEEP_LONG", 100, 90, 120)
     base + 3600
   )
   check("post-TP1 same-bar BE+TP2 → BE first", r?.status, "win")
-  check("post-TP1 same-bar BE+TP2 → +0.5R", r?.r_multiple, 0.5)
+  check("post-TP1 same-bar BE+TP2 → +0.5R gross", r?.r_multiple_gross, 0.5)
 }
 
-// 7) SHORT: entry 100, stop 110, target 80; TP1=90
+// 7) SHORT
 {
   const short = signal("SWEEP_SHORT", 100, 110, 80)
   const r = evaluateCryptoSignal(
@@ -111,26 +116,36 @@ const long = signal("SWEEP_LONG", 100, 90, 120)
     base + 3600
   )
   check("SHORT TP1→TP2 → win", r?.status, "win")
-  check("SHORT TP1→TP2 → +1.5R", r?.r_multiple, 1.5)
+  check("SHORT TP1→TP2 → +1.5R gross", r?.r_multiple_gross, 1.5)
 }
 
-// 8) Target closer than 1R (MR-szerű) → nincs partial, full target
+// 8) Target closer than 1R
 {
-  const mr = signal("MR_LONG", 100, 90, 105) // target only +0.5R
+  const mr = signal("MR_LONG", 100, 90, 105)
   const r = evaluateCryptoSignal(mr, [bar(1, 100, 106, 99, 105)], base + 3600)
   check("short-target → no partial, win", r?.status, "win")
-  check("short-target → +0.5R full", r?.r_multiple, 0.5)
+  check("short-target → +0.5R gross", r?.r_multiple_gross, 0.5)
+  check("short-target exit_reason", r?.exit_reason, "target_lt_1r")
 }
 
-// 9) TP1 then expire at +0.3R on remainder → 0.5*1 + 0.5*0.3 = 0.65
+// 9) TP1 then expire
 {
   const r = evaluateCryptoSignal(
     long,
     [bar(1, 100, 111, 99, 110), bar(2, 110, 112, 102, 103)],
-    base + 13 * 3600 // past 12h hold
+    base + 13 * 3600
   )
   checkCond("TP1→expire → expired banked", r?.status === "expired", r?.status)
-  check("TP1→expire → +0.65R", r?.r_multiple, 0.65)
+  check("TP1→expire → +0.65R gross", r?.r_multiple_gross, 0.65)
+  check("TP1→expire exit_reason", r?.exit_reason, "tp1_then_expire")
+  checkCond("eval_version paper-v2", r?.eval_version === "paper-v2", r?.eval_version)
+}
+
+// 10) data gap: no bars after signal, past deadline
+{
+  const r = evaluateCryptoSignal(long, [bar(0, 100, 100, 100, 100)], base + 13 * 3600)
+  check("data_gap → expired", r?.status, "expired")
+  check("data_gap reason", r?.exit_reason, "data_gap")
 }
 
 console.log(failures === 0 ? "\nMinden partial stresszteszt OK" : `\n${failures} FAILED`)

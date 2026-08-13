@@ -11,6 +11,7 @@ import {
   volumeConfluence,
   type FairValueGap,
 } from "./structure"
+import { structureBuffer } from "./stop-policy"
 
 /** Küszöbök — szinkronban a compute.ts-sel. */
 const ADX_RANGE_MAX = 25
@@ -188,7 +189,9 @@ function sweepBuildup(ctx: BuildupCtx): SetupBuildup {
   if (reclaimed && reclaimBar && (bias === "long" || bias === "short")) {
     const entry = reclaimBar.c
     const stop =
-      bias === "short" ? reclaimBar.h + 0.1 * ctx.atr : reclaimBar.l - 0.1 * ctx.atr
+      bias === "short"
+        ? reclaimBar.h + structureBuffer(ctx.atr)
+        : reclaimBar.l - structureBuffer(ctx.atr)
     noChase = chaseOk(bias, entry, stop, ctx.last.c)
     if (!noChase) chaseDetail = `>${CHASE_GUARD_R}R a reclaim óta`
   }
@@ -241,14 +244,15 @@ function fvgBuildup(ctx: BuildupCtx): SetupBuildup {
   let detail: string | undefined
 
   for (const gap of fvgs) {
+    const pad = structureBuffer(ctx.atr)
     for (const b of recent) {
-      if (gap.dir === "long" && b.l <= gap.top && b.l >= gap.bottom - 0.1 * ctx.atr) {
+      if (gap.dir === "long" && b.l <= gap.top && b.l >= gap.bottom - pad) {
         tapped = true
         bias = "long"
         detail = `${gap.bottom.toFixed(2)}–${gap.top.toFixed(2)}`
         if (b.c > gap.bottom && b.c > b.o) reclaimed = true
       }
-      if (gap.dir === "short" && b.h >= gap.bottom && b.h <= gap.top + 0.1 * ctx.atr) {
+      if (gap.dir === "short" && b.h >= gap.bottom && b.h <= gap.top + pad) {
         tapped = true
         bias = "short"
         detail = `${gap.bottom.toFixed(2)}–${gap.top.toFixed(2)}`
@@ -426,7 +430,10 @@ function pullbackBuildup(ctx: BuildupCtx): SetupBuildup {
     const entry = ctx.last.c
     const recentLow = Math.min(...recent.map((b) => b.l))
     const recentHigh = Math.max(...recent.map((b) => b.h))
-    const stop = trend === "long" ? recentLow - 0.1 * ctx.atr : recentHigh + 0.1 * ctx.atr
+    const stop =
+      trend === "long"
+        ? recentLow - structureBuffer(ctx.atr)
+        : recentHigh + structureBuffer(ctx.atr)
     const risk = Math.abs(entry - stop)
     stopOk = risk > 0 && risk <= PULLBACK_MAX_STOP_ATR * ctx.atr
     if (!stopOk && risk > 0) stopDetail = `${(risk / ctx.atr).toFixed(1)}×ATR`

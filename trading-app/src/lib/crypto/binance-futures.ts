@@ -30,12 +30,36 @@ export class BinanceApiError extends Error {
   }
 }
 
+/** IP weight cooldown — Too many requests után ne hammereljük a REST-et */
+let rateLimitUntil = 0
+
+export function binanceRateLimited(): boolean {
+  return Date.now() < rateLimitUntil
+}
+
+export function binanceRateLimitRemainingMs(): number {
+  return Math.max(0, rateLimitUntil - Date.now())
+}
+
+function markRateLimit(msg: string) {
+  if (/too many requests|rate limit|-1003/i.test(msg)) {
+    rateLimitUntil = Date.now() + 60_000
+  }
+}
+
 async function signedRequest<T>(
   creds: BinanceCreds,
   method: "GET" | "POST" | "DELETE",
   path: string,
   params: Record<string, string | number | boolean | undefined> = {}
 ): Promise<T> {
+  if (binanceRateLimited()) {
+    throw new BinanceApiError(
+      `Rate limit cooldown (${Math.ceil(binanceRateLimitRemainingMs() / 1000)}s) — websocket helyett REST szünet`,
+      -1003
+    )
+  }
+
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null) continue
@@ -66,7 +90,9 @@ async function signedRequest<T>(
 
   if (!res.ok) {
     const err = json as { code?: number; msg?: string }
-    throw new BinanceApiError(err?.msg ?? `HTTP ${res.status}`, err?.code, json)
+    const msg = err?.msg ?? `HTTP ${res.status}`
+    markRateLimit(msg)
+    throw new BinanceApiError(msg, err?.code, json)
   }
   return json as T
 }
@@ -172,17 +198,26 @@ export async function getBalances(creds: BinanceCreds): Promise<FuturesBalance[]
 }
 
 export async function getUsdtEquity(creds: BinanceCreds): Promise<{
+  /** Binance: Wallet Balance (account totalWalletBalance) */
   balance: number
+  /** Binance: Margin Balance (totalMarginBalance ≈ wallet + uPnL) */
+  marginBalance: number
+  /** Binance: Available Balance (account-level, Multi-Assets / BNFCR) */
   available: number
+  /** Binance: Unrealized PNL */
   unrealized: number
+  /** Dominant stable for labels (USDC/USDT) */
   asset: string
+  /** Per-asset wallet of dominant stable (debug / compare) */
+  assetWallet: number
   multiAssets?: boolean
 }> {
-  // Multi-Assets Mode: per-asset availableBalance gyakran 0 (USDC),
-  // a szabad margin a /fapi/v2/account availableBalance mezőben van.
+  // Multi-Assets / BNFCR: a Futures app account-level mezőket mutat.
+  // Per-asset available gyakran 0 — sizinghez az account availableBalance kell.
   const acc = await signedRequest<{
     totalWalletBalance: string
     totalUnrealizedProfit: string
+    totalMarginBalance?: string
     availableBalance: string
     multiAssetsMargin?: boolean
     assets: Array<{
@@ -208,16 +243,27 @@ export async function getUsdtEquity(creds: BinanceCreds): Promise<{
       return b.availableBalance - a.availableBalance
     })[0] ?? null
 
+  const wallet = Number(acc.totalWalletBalance)
+  const unrealized = Number(acc.totalUnrealizedProfit)
+  const marginFromApi = acc.totalMarginBalance != null ? Number(acc.totalMarginBalance) : NaN
+  const marginBalance = Number.isFinite(marginFromApi)
+    ? marginFromApi
+    : (Number.isFinite(wallet) ? wallet : 0) + (Number.isFinite(unrealized) ? unrealized : 0)
+
   const accountAvailable = Number(acc.availableBalance)
   const assetAvailable = primary?.availableBalance ?? 0
-  // Multi-asset / BNFCR: account-level available a mérvadó
-  const available = Math.max(accountAvailable, assetAvailable)
+  const available = Math.max(
+    Number.isFinite(accountAvailable) ? accountAvailable : 0,
+    Number.isFinite(assetAvailable) ? assetAvailable : 0
+  )
 
   return {
-    balance: primary?.balance ?? (Number(acc.totalWalletBalance) || 0),
-    available: Number.isFinite(available) ? available : 0,
-    unrealized: Number(acc.totalUnrealizedProfit) || (primary?.crossUnPnl ?? 0),
+    balance: Number.isFinite(wallet) ? wallet : primary?.balance ?? 0,
+    marginBalance: Number.isFinite(marginBalance) ? marginBalance : 0,
+    available,
+    unrealized: Number.isFinite(unrealized) ? unrealized : primary?.crossUnPnl ?? 0,
     asset: primary?.asset ?? "USDT",
+    assetWallet: primary?.balance ?? 0,
     multiAssets: Boolean(acc.multiAssetsMargin),
   }
 }
@@ -580,6 +626,22 @@ export async function getAllOpenOrdersDisplay(
     getOpenAlgoOrders(creds, symbol),
   ])
   return [...algos, ...orders]
+}
+
+/**
+ * openOrders symbol nélkül = súly ~40. Szimbólumonként = ~1.
+ * Csak a traded / nyitott párokat kérdezzük.
+ */
+export async function getOpenOrdersForSymbols(
+  creds: BinanceCreds,
+  symbols: string[]
+): Promise<DisplayOrder[]> {
+  const unique = [...new Set(symbols.filter(Boolean))]
+  if (unique.length === 0) return []
+  const batches = await Promise.all(
+    unique.map((symbol) => getAllOpenOrdersDisplay(creds, symbol))
+  )
+  return batches.flat()
 }
 
 export async function closePositionMarket(

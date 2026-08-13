@@ -115,8 +115,8 @@ függetlenül működik, amikor nyitva van.
 
 Az NQ-tól teljesen külön modul (`src/lib/crypto/`, `/crypto` oldalak,
 `crypto_signals` tábla — `sql/004_crypto_signals.sql` futtatandó). Adatforrás:
-Bybit publikus perp API (kulcs nem kell), Binance USDT-M fallback. A trade-eket
-kézzel viszed be a saját platformodon — itt csak a signal születik.
+**Binance USDT-M első** (fire parity), OKX / Bybit fallback. A trade-eket
+kézzel vagy a `/crypto/binance` desk auto-val viszed be.
 
 Setupok prioritási sorrendben:
 
