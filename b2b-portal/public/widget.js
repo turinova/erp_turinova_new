@@ -1,14 +1,15 @@
 /**
- * Shoprenter B2B Quick Order — storefront widget (prototype)
+ * Shoprenter B2B gyors rendelés — storefront widget
  *
  * Config (before this script):
  *   window.SR_B2B_QUICKORDER = {
- *     apiBase: 'https://b2b.turinova.hu', // HTTPS tunnel / prod
+ *     apiBase: 'https://b2b.turinova.hu',
  *     shopId: '…' // shops.public_id — appearance loaded from portal
  *   };
  * Then: <script src="https://b2b.turinova.hu/widget.js?v=…"></script>
- * Optional overrides still work: buttonLabel, fabColor, requireLogin
+ * Optional overrides: buttonLabel, fabColor, requireLogin
  * (allowedGroupIds empty = everyone; do not use for access control)
+ * Menüpont: href="#sr-b2b-qo"
  */
 (function () {
   const cfg = Object.assign(
@@ -494,13 +495,14 @@
       "sr-b2b-qo-panel-css-v31",
       "sr-b2b-qo-panel-css-v32",
       "sr-b2b-qo-panel-css-v33",
+      "sr-b2b-qo-panel-css-v34",
     ].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.remove();
     });
-    if (document.getElementById("sr-b2b-qo-panel-css-v34")) return;
+    if (document.getElementById("sr-b2b-qo-panel-css-v35")) return;
     var style = document.createElement("style");
-    style.id = "sr-b2b-qo-panel-css-v34";
+    style.id = "sr-b2b-qo-panel-css-v35";
     style.textContent = [
       "#sr-b2b-quickorder-root{",
       "  --sr-qo-bg:#F7F6F3;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#EFEEE9;",
@@ -1101,8 +1103,8 @@
       "}",
       "#sr-b2b-quickorder-root .sr-qo-suggest.is-on{display:block}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-item{",
-      "  display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;",
-      "  padding:8px 12px;border:0;border-bottom:1px solid var(--sr-qo-line);",
+      "  display:flex;flex-direction:row;align-items:center;gap:10px;width:100%;text-align:left;",
+      "  padding:8px 10px;border:0;border-bottom:1px solid var(--sr-qo-line);",
       "  background:transparent;cursor:pointer;font:inherit;color:var(--sr-qo-text)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-item:last-child{border-bottom:0}",
@@ -1110,6 +1112,20 @@
       "#sr-b2b-quickorder-root .sr-qo-suggest-item.is-active{",
       "  background:var(--sr-qo-accent-soft)",
       "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-thumb{",
+      "  width:36px;height:36px;flex-shrink:0;overflow:hidden;",
+      "  background:var(--sr-qo-surface-2);border:0.5px solid var(--sr-qo-line);",
+      "  display:flex;align-items:center;justify-content:center",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-thumb img{",
+      "  width:100%;height:100%;object-fit:cover;display:block",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-thumb-code{",
+      "  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:8px;font-weight:700;",
+      "  letter-spacing:-.02em;color:var(--sr-qo-muted);line-height:1;text-align:center;",
+      "  padding:0 2px;overflow:hidden;max-width:100%",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-sku{",
       "  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;",
       "  display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px",
@@ -1120,6 +1136,10 @@
       "#sr-b2b-quickorder-root .sr-qo-suggest-meta{",
       "  font-size:11px;color:var(--sr-qo-muted);line-height:1.35;",
       "  display:flex;flex-wrap:wrap;gap:6px 10px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-price{",
+      "  flex-shrink:0;font-size:12px;font-weight:650;font-variant-numeric:tabular-nums;",
+      "  color:var(--sr-qo-text);text-align:right;max-width:42%",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-empty{",
       "  padding:10px 12px;font-size:12px;color:var(--sr-qo-muted)",
@@ -1301,6 +1321,19 @@
       "#sr-b2b-quickorder-root .sr-qo-footer-msg{flex:1;min-width:140px;font-size:12px;color:var(--sr-qo-muted)}",
       "#sr-b2b-quickorder-root .sr-qo-footer-msg.err{color:var(--sr-qo-danger);font-weight:600}",
       "#sr-b2b-quickorder-root .sr-qo-footer-actions{display:flex;gap:8px;align-items:center}",
+      "#sr-b2b-quickorder-root .sr-qo-cart-confirm,",
+      "#sr-b2b-quickorder-root .sr-qo-undo-bar{",
+      "  display:none;width:100%;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;",
+      "  padding:8px 12px;border:0.5px solid var(--sr-qo-line-strong);background:var(--sr-qo-surface-2)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-cart-confirm.is-on,",
+      "#sr-b2b-quickorder-root .sr-qo-undo-bar.is-on{display:flex}",
+      "#sr-b2b-quickorder-root .sr-qo-cart-confirm p,",
+      "#sr-b2b-quickorder-root .sr-qo-undo-bar p{",
+      "  margin:0;flex:1;min-width:160px;font-size:12px;font-weight:600;line-height:1.4;color:var(--sr-qo-text)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-cart-confirm .sr-qo-confirm-actions,",
+      "#sr-b2b-quickorder-root .sr-qo-undo-bar .sr-qo-confirm-actions{display:flex;gap:8px;flex-wrap:wrap}",
       "#sr-b2b-quickorder-root .sr-qo-tip{",
       "  position:fixed;z-index:var(--sr-qo-z-shell);pointer-events:none;padding:8px;",
       "  background:rgba(255,255,255,.88);",
@@ -1335,6 +1368,32 @@
       "  #sr-b2b-quickorder-root .sr-qo-sum-hero-amount{font-size:24px}",
       "  #sr-b2b-quickorder-root .sr-qo-aside-note{display:none}",
       "  #sr-b2b-quickorder-root .sr-qo-name{max-width:200px}",
+      "}",
+      "@media (max-width:767px){",
+      "  #sr-b2b-quickorder-root table.sr-qo-table thead{display:none}",
+      "  #sr-b2b-quickorder-root table.sr-qo-table,",
+      "  #sr-b2b-quickorder-root table.sr-qo-table tbody{",
+      "    display:block;width:100%",
+      "  }",
+      "  #sr-b2b-quickorder-root table.sr-qo-table tbody tr{",
+      "    display:block;margin:0 0 10px;padding:10px 12px 8px;",
+      "    border:0.5px solid var(--sr-qo-line-strong);background:var(--sr-qo-surface)",
+      "  }",
+      "  #sr-b2b-quickorder-root table.sr-qo-table tbody tr:hover{background:var(--sr-qo-surface)}",
+      "  #sr-b2b-quickorder-root table.sr-qo-table td{",
+      "    display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px;align-items:center;",
+      "    padding:6px 0;border-bottom:0.5px solid var(--sr-qo-line);width:100%;box-sizing:border-box",
+      "  }",
+      "  #sr-b2b-quickorder-root table.sr-qo-table td:last-child{border-bottom:0}",
+      "  #sr-b2b-quickorder-root table.sr-qo-table td::before{",
+      "    content:attr(data-label);font-size:11px;font-weight:600;color:var(--sr-qo-muted)",
+      "  }",
+      "  #sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-td-action{",
+      "    grid-template-columns:1fr;justify-items:end;padding-top:8px",
+      "  }",
+      "  #sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-td-action::before{content:none}",
+      "  #sr-b2b-quickorder-root .sr-qo-name{max-width:none}",
+      "  #sr-b2b-quickorder-root .sr-qo-qty-input{width:88px}",
       "}",
       "@media (prefers-reduced-motion:reduce){",
       "  #sr-b2b-quickorder-root .sr-qo-shell{animation:none}",
@@ -1446,18 +1505,108 @@
     }
   }
 
-  function openPanel() {
-    if (cfg.requireLogin && !isLoggedIn()) {
-      location.href =
+  function loginRedirectUrl() {
+    try {
+      return (
         "/customer/login?redirect=" +
-        encodeURIComponent(location.pathname + location.search + "#sr-b2b-qo");
-      return;
+        encodeURIComponent(location.pathname + location.search + "#sr-b2b-qo")
+      );
+    } catch (e) {
+      return "/customer/login";
     }
-    if (!groupAllowed()) {
-      alert("Ez a funkció a te vevőcsoportodnak nincs engedélyezve.");
-      return;
-    }
+  }
 
+  var gateKeyHandler = null;
+
+  function dismissAccessGate() {
+    var g = document.getElementById("sr-b2b-qo-gate");
+    if (g && g.parentNode) g.parentNode.removeChild(g);
+    if (gateKeyHandler) {
+      document.removeEventListener("keydown", gateKeyHandler, true);
+      gateKeyHandler = null;
+    }
+  }
+
+  function showAccessGate(kind) {
+    dismissAccessGate();
+    ensureFabStyles();
+    var isGroup = kind === "group";
+    var title = isGroup
+      ? "Ez a partner rendelő"
+      : "Viszonteladói gyors rendelés";
+    var body = isGroup
+      ? "A gyors rendelés a viszonteladói fiókokhoz tartozik. Ha van céges hozzáférésed, lépj be azzal — vagy írj a webáruháznak."
+      : "Cikkszámra, a saját áraidon, a webshop kosarába. Lépj be a partner fiókoddal.";
+    var cardKids = [
+      el("p", { className: "sr-b2b-qo-gate-kicker" }, ["Gyors rendelés"]),
+      el("h2", { id: "sr-b2b-qo-gate-title" }, [title]),
+      el("p", { className: "sr-b2b-qo-gate-body" }, [body]),
+    ];
+    var actions = [];
+    if (!isGroup) {
+      actions.push(
+        el(
+          "a",
+          {
+            className: "sr-b2b-qo-gate-primary",
+            href: loginRedirectUrl(),
+          },
+          ["Belépés"],
+        ),
+      );
+    }
+    actions.push(
+      el(
+        "button",
+        {
+          type: "button",
+          className: "sr-b2b-qo-gate-ghost",
+          onClick: dismissAccessGate,
+        },
+        [isGroup ? "Értem" : "Bezárás"],
+      ),
+    );
+    cardKids.push(el("div", { className: "sr-b2b-qo-gate-actions" }, actions));
+    var backdrop = el("div", {
+      className: "sr-b2b-qo-gate-backdrop",
+      onClick: dismissAccessGate,
+    });
+    var card = el(
+      "div",
+      {
+        className: "sr-b2b-qo-gate-card",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-labelledby": "sr-b2b-qo-gate-title",
+      },
+      cardKids,
+    );
+    var wrap = el("div", { id: "sr-b2b-qo-gate" }, [backdrop, card]);
+    document.body.appendChild(wrap);
+    gateKeyHandler = function (e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        dismissAccessGate();
+      }
+    };
+    document.addEventListener("keydown", gateKeyHandler, true);
+  }
+
+  function tryOpenPanel() {
+    dismissAccessGate();
+    if (!isLoggedIn()) {
+      if (cfg.requireLogin || (cfg.allowedGroupIds && cfg.allowedGroupIds.length)) {
+        showAccessGate("login");
+        return;
+      }
+    } else if (!groupAllowed()) {
+      showAccessGate("group");
+      return;
+    }
+    openPanel();
+  }
+
+  function openPanel() {
     ensurePanelStyles();
 
     var root = document.getElementById(cfg.mountId);
@@ -1995,10 +2144,10 @@
 
     function priceCell(line) {
       if (line.found === false) {
-        return el("td", { className: "sr-qo-price" }, ["—"]);
+        return el("td", { className: "sr-qo-price", "data-label": "Egységár" }, ["—"]);
       }
       if (!line.priceGrossFormatted && !line.priceFormatted) {
-        return el("td", { className: "sr-qo-price" }, ["…"]);
+        return el("td", { className: "sr-qo-price", "data-label": "Egységár" }, ["…"]);
       }
       var kids = [
         el("div", { className: "sr-qo-price-gross" }, [
@@ -2065,7 +2214,7 @@
           );
         }
       }
-      return el("td", { className: "sr-qo-price" }, kids);
+      return el("td", { className: "sr-qo-price", "data-label": "Egységár" }, kids);
     }
 
     function trashIconSvg() {
@@ -2102,10 +2251,10 @@
 
     function stockCell(line) {
       if (line.found === false) {
-        return el("td", { className: "sr-qo-stock" }, ["—"]);
+        return el("td", { className: "sr-qo-stock", "data-label": "Készlet" }, ["—"]);
       }
       if (typeof line.stockQty === "undefined" && !line.stockLabel && !line.stockTone) {
-        return el("td", { className: "sr-qo-stock" }, ["…"]);
+        return el("td", { className: "sr-qo-stock", "data-label": "Készlet" }, ["…"]);
       }
       var tone = line.stockTone || (line.inStock ? "ok" : "out");
       if (line.orderable === false || tone === "blocked") {
@@ -2131,7 +2280,11 @@
         el("span", { className: "sr-qo-stock-dot", "aria-hidden": "true" }),
         document.createTextNode(short),
       ];
-      return el("td", { className: "sr-qo-stock sr-qo-stock-" + tone }, kids);
+      return el(
+        "td",
+        { className: "sr-qo-stock sr-qo-stock-" + tone, "data-label": "Készlet" },
+        kids,
+      );
     }
 
     var listFilter = "all";
@@ -2267,7 +2420,7 @@
         var nameClass = "sr-qo-name" + (line.imageUrl ? " has-img" : "");
         var nameCell = el(
           "td",
-          { className: nameClass, title: line.name || "" },
+          { className: nameClass, title: line.name || "", "data-label": "Név" },
           [nameInner],
         );
         if (line.imageUrl) {
@@ -2288,19 +2441,19 @@
         }
 
         var tr = el("tr", { className: trClass }, [
-          el("td", { className: "sr-qo-mono" }, [line.sku]),
-          el("td", { className: "sr-qo-mono" }, [line.modelNumber || "—"]),
+          el("td", { className: "sr-qo-mono", "data-label": "Cikkszám" }, [line.sku]),
+          el("td", { className: "sr-qo-mono", "data-label": "Gyártói" }, [line.modelNumber || "—"]),
           nameCell,
           priceCell(line),
           stockCell(line),
-          el("td", null, [el("div", { className: "sr-qo-qty-cell" }, qtyKids)]),
-          el("td", { className: "sr-qo-line-total" }, [
+          el("td", { "data-label": "Db" }, [el("div", { className: "sr-qo-qty-cell" }, qtyKids)]),
+          el("td", { className: "sr-qo-line-total", "data-label": "Sorösszeg" }, [
             el("div", { className: "sr-qo-line-total-cell" }, [
               lineTotalEl,
               lineTotalMeta,
             ]),
           ]),
-          el("td", null, [
+          el("td", { className: "sr-qo-td-action" }, [
             el(
               "button",
               {
@@ -2601,7 +2754,7 @@
       opts = opts || {};
       if (busy) return;
       if (!lines.length) {
-        setStatus("Adj hozzá legalább egy terméket.", true);
+        setStatus("Adj legalább egy cikket a listához.", true);
         try {
           skuInput.focus();
         } catch (e) {}
@@ -2625,29 +2778,21 @@
             return l.found && l.productId && lineIsCartable(l);
           });
           if (s.hasBlockers && s.cartable > 0) {
-            var msg =
-              s.cartable +
-              " tétel mehet a kosárba, " +
-              s.hardBlockers +
-              " nem rendelhető / hiányzik.\n\nCsak a rendelhetőket rakjam a kosárba?\n\nOK = csak rendelhetők\nMégse = mégsem (javítsd a listát)";
-            if (window.confirm(msg)) {
-              ok = lines.filter(lineIsCartable);
-            } else {
-              return;
-            }
+            showCartSplitConfirm(s);
+            return;
           } else if (s.hasBlockers && s.cartable === 0) {
             ok = [];
           }
         }
         if (!ok.length) {
           setStatus(
-            "Nincs kosárba tehető termék. A „nem rendelhető” / hiányzó tételeket töröld vagy javítsd.",
+            "Nincs kosárba tehető termék. A hiányzó vagy nem rendelhető sorokat javítsd a listán.",
             true,
           );
           return;
         }
         for (var i = 0; i < ok.length; i++) {
-          setStatus("Kosárba… (" + (i + 1) + "/" + ok.length + ")");
+          setStatus("Kosárba… " + (i + 1) + " / " + ok.length);
           await addToCart(ok[i].productId, ok[i].quantity);
         }
         recordWidgetOrder(ok);
@@ -2655,7 +2800,14 @@
         ok.forEach(function (l) {
           okKeys[(l.productId != null ? "id:" + l.productId : "sku:" + l.sku)] = true;
         });
-        // ha onlySafe / részleges: a berakottakat töröljük, a problematikusak maradnak
+        var cartGross = 0;
+        ok.forEach(function (l) {
+          if (l.priceGross != null) cartGross += l.priceGross * (l.quantity || 1);
+        });
+        var cartLabel =
+          ok.length +
+          " tétel" +
+          (cartGross > 0 ? " · " + formatHufClient(cartGross) : "");
         if (ok.length < lines.length) {
           lines = lines.filter(function (l) {
             var k = l.productId != null ? "id:" + l.productId : "sku:" + l.sku;
@@ -2664,15 +2816,14 @@
           saveDraft(lines);
           renderList();
           setStatus(
-            ok.length +
-              " tétel a kosárban — a problematikus sorok a listán maradtak.",
+            cartLabel + " a kosárban. A problematikus sorok a listán maradtak.",
           );
-          flashInfo(ok.length + " tétel kosárba. A többi a listán maradt.", "warn");
+          flashInfo(cartLabel + " kosárba. A többi a listán maradt.", "warn");
           return;
         }
         lines = [];
         saveDraft([]);
-        setStatus("Kész — kosár megnyitása…");
+        setStatus(cartLabel + " — a Shoprenter kosár nyílik…");
         document.body.style.overflow = prevOverflow;
         location.href = "/cart";
       } catch (e) {
@@ -2710,13 +2861,10 @@
       { id: "home", label: "Kezdőlap", module: "insights" },
       { id: "order", label: "Új megrendelés", module: null },
       { id: "orders", label: "Rendeléseim", module: "orders" },
-      { id: "lists", label: "Listáim", module: null },
     ].filter(function (item) {
       return !item.module || moduleOn(item.module);
     });
     var activeView = "order";
-    if (NAV_ITEMS.some(function (i) { return i.id === "home"; })) activeView = "home";
-    else if (NAV_ITEMS.length) activeView = NAV_ITEMS[0].id;
     var navButtons = {};
     var viewEls = {};
 
@@ -2871,6 +3019,7 @@
             minQty: hit.minQty || 1,
             qtyStep: hit.qtyStep || 1,
             packLabel: hit.packLabel,
+            imageUrl: hit.imageUrl,
           },
           quantity,
         );
@@ -2921,7 +3070,7 @@
         if (q && q.length >= 2) {
           suggestBox.appendChild(
             el("div", { className: "sr-qo-suggest-empty" }, [
-              "Nincs találat: " + q,
+              "Nincs ilyen kód a katalógusban: " + q,
             ]),
           );
           suggestBox.classList.add("is-on");
@@ -2934,9 +3083,10 @@
       suggestItems.forEach(function (hit, i) {
         var meta = [];
         if (hit.name) meta.push(hit.name);
-        var price = hit.priceGrossFormatted || hit.priceNetFormatted;
-        if (price) meta.push(price + " / db");
         if (hit.packLabel) meta.push(hit.packLabel);
+        if (hit.orderable === false) meta.push("nem rendelhető");
+        else if (hit.inStock === false) meta.push("nincs készleten");
+        var price = hit.priceGrossFormatted || hit.priceNetFormatted;
         var skuKids = [hit.sku];
         if (
           hit.modelNumber &&
@@ -2950,6 +3100,27 @@
             ]),
           );
         }
+        var code = String(hit.sku || "").replace(/\s+/g, "").slice(0, 4);
+        var thumbKids = [];
+        if (hit.imageUrl) {
+          thumbKids.push(el("img", { src: hit.imageUrl, alt: "" }));
+        } else {
+          thumbKids.push(
+            el("span", { className: "sr-qo-suggest-thumb-code" }, [code || "•"]),
+          );
+        }
+        var kids = [
+          el("span", { className: "sr-qo-suggest-thumb", "aria-hidden": "true" }, thumbKids),
+          el("span", { className: "sr-qo-suggest-body" }, [
+            el("span", { className: "sr-qo-suggest-sku" }, skuKids),
+            el("span", { className: "sr-qo-suggest-meta" }, [
+              meta.join(" · ") || "—",
+            ]),
+          ]),
+        ];
+        if (price) {
+          kids.push(el("span", { className: "sr-qo-suggest-price" }, [price]));
+        }
         var btn = el(
           "button",
           {
@@ -2962,12 +3133,7 @@
               pickSuggest(hit);
             },
           },
-          [
-            el("span", { className: "sr-qo-suggest-sku" }, skuKids),
-            el("span", { className: "sr-qo-suggest-meta" }, [
-              meta.join(" · ") || "—",
-            ]),
-          ],
+          kids,
         );
         suggestBox.appendChild(btn);
       });
@@ -2994,7 +3160,7 @@
           suggestBox.innerHTML = "";
           suggestBox.appendChild(
             el("div", { className: "sr-qo-suggest-empty" }, [
-              "Katalógus még szinkronizál — próbáld pár perc múlva.",
+              "A termékek még másolódnak. Próbáld egy perc múlva.",
             ]),
           );
           suggestBox.classList.add("is-on");
@@ -3082,15 +3248,8 @@
       ["Hozzáad"],
     );
 
-    function confirmLeaveWork(actionLabel) {
-      if (!lines.length) return true;
-      return window.confirm(
-        "A listán " +
-          lines.length +
-          " tétel van. " +
-          (actionLabel || "Folytatod") +
-          "?\n(A lista megmarad, amíg nem törlöd.)",
-      );
+    function confirmLeaveWork() {
+      return true;
     }
 
     function closeImportMenu() {
@@ -3114,7 +3273,7 @@
           importToggleBtn.setAttribute("aria-expanded", open ? "true" : "false");
         },
       },
-      ["Import ▾"],
+      ["Excel / lista / fotó"],
     );
     var importMenu = el("div", {
       className: "sr-qo-import-menu",
@@ -3169,8 +3328,8 @@
           },
         },
         [
-          "Új forrás / indító",
-          el("small", null, ["Válassz új belépési módot"]),
+          "Új forrás",
+          el("small", null, ["Excel, lista vagy fotó — a kereső a főút"]),
         ],
       ),
     );
@@ -3193,7 +3352,7 @@
     });
 
     var toolbarHint = el("p", { className: "sr-qo-toolbar-hint" }, [
-      "Gépelés = javaslat · Enter = hozzáadás",
+      "Gépelés = találat · Enter = a listán van",
     ]);
     if (!moduleOn("search")) {
       skuWrap.style.display = "none";
@@ -3226,11 +3385,11 @@
     ]);
 
     var emptyEl = el("div", { className: "sr-qo-empty" }, [
-      el("div", null, ["Cikkszám, gyári szám vagy vonalkód — Enter = hozzáadás."]),
+      el("div", null, ["Cikkszám, gyártói szám vagy vonalkód — Enter, és bent van."]),
       el(
         "div",
         { style: { marginTop: "6px", color: "var(--sr-qo-faint)" } },
-        ["Import: Excel, szöveg/SKU lista vagy kép. A lista bezárás után is megmarad."],
+        ["Excel, lista vagy fotó: a kereső mellett. Bezárás után a lista megmarad."],
       ),
     ]);
     var tbody = el("tbody", null, []);
@@ -3238,7 +3397,7 @@
       el("thead", null, [
         el("tr", null, [
           el("th", null, ["Cikkszám"]),
-          el("th", null, ["Gyári"]),
+          el("th", null, ["Gyártói"]),
           el("th", null, ["Név"]),
           el("th", null, ["Egységár"]),
           el("th", null, ["Készlet"]),
@@ -3292,7 +3451,7 @@
       [
         asideStats,
         el("div", { className: "sr-qo-aside-note" }, [
-          "Nincs készleten ≠ tiltás: a shop szabályai szerint mehet kosárba.",
+          "Ha nincs készleten, a bolt szabálya dönti el, bekerül-e a kosárba.",
         ]),
       ],
     );
@@ -3300,9 +3459,95 @@
 
     var statusEl = el("div", { className: "sr-qo-footer-msg" }, [
       lines.length
-        ? "Visszatöltött lista — folytathatod."
-        : "Írd be a cikkszámot, majd Enter — végül Kosárba rakom",
+        ? "Mentett listád itt van — folytathatod."
+        : "Cikkszám, majd Enter. Ha kész: Kosárba.",
     ]);
+    var undoBar = el("div", { className: "sr-qo-undo-bar", "aria-live": "polite" });
+    var cartConfirmBar = el("div", { className: "sr-qo-cart-confirm", "aria-live": "polite" });
+    var undoSnapshot = null;
+    var undoTimer = null;
+    function hideUndoBar() {
+      undoSnapshot = null;
+      if (undoTimer) {
+        clearTimeout(undoTimer);
+        undoTimer = null;
+      }
+      undoBar.classList.remove("is-on");
+      undoBar.innerHTML = "";
+    }
+    function offerUndo(prev, message) {
+      undoSnapshot = prev || [];
+      if (undoTimer) clearTimeout(undoTimer);
+      undoBar.innerHTML = "";
+      undoBar.appendChild(el("p", null, [message || "Visszavonhatod."]));
+      undoBar.appendChild(
+        el("div", { className: "sr-qo-confirm-actions" }, [
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-btn sr-qo-btn-ghost",
+              onClick: function () {
+                if (!undoSnapshot) return;
+                lines = undoSnapshot;
+                hideUndoBar();
+                saveDraft(lines);
+                renderList();
+                if (lines.length) showOrderWork();
+                else showOrderWorkOrStart();
+                setStatus("Lista visszaállítva.");
+              },
+            },
+            ["Visszavonás"],
+          ),
+        ]),
+      );
+      undoBar.classList.add("is-on");
+      undoTimer = setTimeout(hideUndoBar, 8000);
+    }
+    function hideCartConfirm() {
+      cartConfirmBar.classList.remove("is-on");
+      cartConfirmBar.innerHTML = "";
+    }
+    function showCartSplitConfirm(s) {
+      hideUndoBar();
+      cartConfirmBar.innerHTML = "";
+      cartConfirmBar.appendChild(
+        el("p", null, [
+          s.cartable +
+            " tétel mehet a kosárba, " +
+            s.hardBlockers +
+            " nem rendelhető.",
+        ]),
+      );
+      cartConfirmBar.appendChild(
+        el("div", { className: "sr-qo-confirm-actions" }, [
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-btn sr-qo-btn-success",
+              onClick: function () {
+                hideCartConfirm();
+                addAllToCart({ onlySafe: true });
+              },
+            },
+            ["Csak a rendelhetőket"],
+          ),
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-btn sr-qo-btn-ghost",
+              onClick: hideCartConfirm,
+            },
+            ["Javítom a listát"],
+          ),
+        ]),
+      );
+      cartConfirmBar.classList.add("is-on");
+      setStatus("A problematikus sorok a listán maradhatnak.", true);
+    }
     var clearBtn = el(
       "button",
       {
@@ -3310,12 +3555,14 @@
         className: "sr-qo-btn sr-qo-btn-ghost",
         onClick: function () {
           if (!lines.length) return;
-          if (!window.confirm("Törlöd a listát?")) return;
+          var prev = lines.slice();
           lines = [];
           saveDraft([]);
           renderList();
+          hideCartConfirm();
+          showOrderWorkOrStart();
+          offerUndo(prev, "Lista törölve. Nyolc másodpercig vissza tudod hozni.");
           setStatus("Lista törölve.");
-          showOrderStart();
         },
       },
       ["Törlés"],
@@ -3332,6 +3579,8 @@
       ["Kosárba rakom"],
     );
     var footer = el("div", { className: "sr-qo-footer" }, [
+      undoBar,
+      cartConfirmBar,
       statusEl,
       el("div", { className: "sr-qo-footer-actions" }, [clearBtn, cartBtn]),
     ]);
@@ -3506,7 +3755,7 @@
             el("tr", null, [
               el("th", { style: { width: "36px" } }, [""]),
               el("th", null, ["Cikkszám"]),
-              el("th", null, ["Gyári"]),
+              el("th", null, ["Gyártói"]),
               el("th", null, ["Név"]),
               el("th", null, ["Db"]),
               el("th", null, ["Akkori nettó"]),
@@ -3557,11 +3806,11 @@
         if (table) table.style.display = "none";
         ordersListEmpty.innerHTML = "";
         ordersListEmpty.appendChild(
-          el("h3", { className: "sr-qo-placeholder-title" }, ["Bejelentkezés kell"]),
+          el("h3", { className: "sr-qo-placeholder-title" }, ["A rendeléseid a partner fiókhoz tartoznak"]),
         );
         ordersListEmpty.appendChild(
           el("p", { className: "sr-qo-placeholder-sub" }, [
-            "A rendelések megtekintéséhez jelentkezz be partnerfiókoddal.",
+            "Lépj be a céges fiókkal, és itt látod az ismételhető rendeléseket.",
           ]),
         );
         return;
@@ -3838,19 +4087,13 @@
       var MAX_EXPORT = 25;
       var exportIds = ids.slice(0, MAX_EXPORT);
       if (ids.length > MAX_EXPORT) {
-        if (
-          !window.confirm(
-            "Egyszerre legfeljebb " +
-              MAX_EXPORT +
-              " rendelés exportálható. Az első " +
-              MAX_EXPORT +
-              " kijelölést mentjük (" +
-              ids.length +
-              " helyett). Folytatod?",
-          )
-        ) {
-          return;
-        }
+        setStatus(
+          "Az első " +
+            MAX_EXPORT +
+            " rendelést exportáljuk (" +
+            ids.length +
+            " kijelölésből).",
+        );
       }
       ordersExportBusy = true;
       ordersExportBtn.disabled = true;
@@ -3914,13 +4157,11 @@
     async function bulkImportSelectedOrders() {
       var ids = selectedOrderIdList();
       if (!ids.length) return;
-      if (
-        !window.confirm(
-          ids.length +
-            " kijelölt rendelés tételei bekerülnek az Új megrendelés listába. Folytatod?",
-        )
-      ) {
-        return;
+      var prev = [];
+      try {
+        prev = JSON.parse(JSON.stringify(lines));
+      } catch (e2) {
+        prev = lines.slice();
       }
       ordersBulkReorderBtn.disabled = true;
       setStatus("Kijelölt rendelések betöltése…");
@@ -3943,6 +4184,10 @@
         flashInfo(
           allLines.length + " tétel a rendeléslistába (kijelölt rendelésekből).",
           "info",
+        );
+        offerUndo(
+          prev,
+          allLines.length + " tétel a listán. Nyolc másodpercig vissza tudod hozni az előzőt.",
         );
       } catch (e) {
         setStatus(e.message || "Nem sikerült a kijelöltek betöltése.", true);
@@ -4215,9 +4460,13 @@
 
     var orderStartPane = el("div", { className: "sr-qo-order-pane is-on", id: "sr-qo-pane-start" }, [
       el("div", { className: "sr-qo-start" }, [
-        el("h3", { className: "sr-qo-start-title" }, ["Hogyan indítod a rendelést?"]),
+        el("h3", { className: "sr-qo-start-title" }, [
+          moduleOn("search") ? "Tömeges belépés" : "Hogyan indítod a rendelést?",
+        ]),
         el("p", { className: "sr-qo-start-sub" }, [
-          "Válassz forrást. Rendeléseid és listáid a saját fülön maradnak.",
+          moduleOn("search")
+            ? "Excel, beillesztett lista vagy fotó. A keresőhöz: Vissza."
+            : "Válassz forrást. A rendeléseid a saját fülön maradnak.",
         ]),
         (function () {
           var cards = [];
@@ -4239,7 +4488,7 @@
                 },
                 [
                   el("strong", null, ["Kézi bevitel"]),
-                  el("span", null, ["Cikkszám / gyári / vonalkód + Enter"]),
+                  el("span", null, ["Cikkszám / gyártói / vonalkód, Enter"]),
                 ],
               ),
             );
@@ -4332,9 +4581,9 @@
       },
       ["Feltöltés és ellenőrzés"],
     );
-    var excelBusyTitle = el("p", { className: "sr-qo-busy-title" }, ["Egy pillanat…"]);
+    var excelBusyTitle = el("p", { className: "sr-qo-busy-title" }, ["Ellenőrizzük a cikkszámokat…"]);
     var excelBusySub = el("p", { className: "sr-qo-busy-sub" }, [
-      "A kollégák már dolgoznak az Excel listán.",
+      "A listát összevetjük a katalógussal. Ez általában néhány másodperc.",
     ]);
     var excelBusy = el("div", { className: "sr-qo-busy", "aria-live": "polite" }, [
       el("div", { className: "sr-qo-busy-card" }, [
@@ -4353,7 +4602,7 @@
               className: "sr-qo-btn-sm",
               onClick: function () {
                 if (excelBusy.classList.contains("is-on")) return;
-                showOrderStart();
+                showOrderWorkOrStart();
               },
             },
             ["← Vissza"],
@@ -4440,7 +4689,7 @@
               type: "button",
               className: "sr-qo-btn-sm",
               onClick: function () {
-                showOrderStart();
+                showOrderWorkOrStart();
               },
             },
             ["← Vissza"],
@@ -4488,9 +4737,9 @@
       var f = imageFileInput.files && imageFileInput.files[0];
       if (f) processImageFile(f);
     });
-    var imageBusyTitle = el("p", { className: "sr-qo-busy-title" }, ["Egy pillanat…"]);
+    var imageBusyTitle = el("p", { className: "sr-qo-busy-title" }, ["Kiolvassuk a sorokat…"]);
     var imageBusySub = el("p", { className: "sr-qo-busy-sub" }, [
-      "A kollégák már dolgoznak a listán — kézírásnál ez akár 20–40 mp is lehet.",
+      "Kézírásnál ez 20–40 másodperc is lehet. Utána te ellenőrzöd, mielőtt a listára kerül.",
     ]);
     var imageBusy = el("div", { className: "sr-qo-busy", "aria-live": "polite" }, [
       el("div", { className: "sr-qo-busy-card" }, [
@@ -4509,7 +4758,7 @@
               className: "sr-qo-btn-sm",
               onClick: function () {
                 if (imageBusy.classList.contains("is-on")) return;
-                showOrderStart();
+                showOrderWorkOrStart();
               },
             },
             ["← Vissza"],
@@ -4559,10 +4808,10 @@
               type: "button",
               className: "sr-qo-btn-sm",
               onClick: function () {
-                showOrderStart();
+                showOrderWorkOrStart();
               },
             },
-            ["← Indító"],
+            ["← Vissza"],
           ),
           el("h3", null, ["Ellenőrzés"]),
           reviewApplyBtn,
@@ -4629,6 +4878,10 @@
         } catch (e) {}
       }, 20);
     }
+    function showOrderWorkOrStart() {
+      if (moduleOn("search")) showOrderWork();
+      else showOrderStart();
+    }
     function openExcelIngest() {
       if (!moduleOn("excel")) { flashError("Ez a mód ki van kapcsolva."); return; }
 
@@ -4660,7 +4913,7 @@
         return;
       }
       if (lines.length) showOrderWork();
-      else showOrderStart();
+      else showOrderWorkOrStart();
     }
 
     function confClass(c) {
@@ -4841,7 +5094,7 @@
       }
       setBusy(true);
       setIngestBusy(excelBusy, true);
-      setStatus("A kollégák dolgoznak az Excel listán…");
+      setStatus("Excel ellenőrzése…");
       try {
         var fd = new FormData();
         fd.append("file", f, f.name || "lista.xlsx");
@@ -4906,7 +5159,7 @@
       var localUrl = URL.createObjectURL(file);
       setBusy(true);
       setIngestBusy(imageBusy, true);
-      setStatus("A kollégák dolgoznak a képen…");
+      setStatus("Kép feldolgozása…");
       try {
         var fd = new FormData();
         fd.append("file", file, file.name || "order.jpg");
@@ -4949,7 +5202,7 @@
             className: "sr-qo-btn sr-qo-btn-primary",
             onClick: function () {
               setView("order");
-              showOrderStart();
+              showOrderWorkOrStart();
             },
           },
           ["Új megrendelés"],
@@ -4981,9 +5234,9 @@
       homeGrid.innerHTML = "";
       homeGrid.appendChild(
         el("div", { className: "sr-qo-card" }, [
-          el("h4", null, ["Még nincs elég rendelési előzmény"]),
+          el("h4", null, ["Az első rendelés után okosabb lesz"]),
           el("p", { className: "sub" }, [
-            "Az első rendelések után itt jelennek meg a javasolt tételeid.",
+            "Itt jelenik meg, mit rendelsz gyakran — addig cikkszámra keresel, vagy a Rendeléseim fülön ismételsz.",
           ]),
           el(
             "button",
@@ -4993,10 +5246,10 @@
               style: { marginTop: "8px" },
               onClick: function () {
                 setView("order");
-                showOrderStart();
+                showOrderWorkOrStart();
               },
             },
-            ["Indítsd az első listát"],
+            ["Új lista — cikkszámmal"],
           ),
         ]),
       );
@@ -5106,7 +5359,7 @@
           useDue
             ? (st.nextOrderHint ||
               "Régóta nem rendelted — érdemes pótolni.")
-            : "Amit gyakran rendelsz — egy gombbal a listába.",
+            : "Amit gyakran rendelsz — egy kattintással a listára.",
         ]),
       ]);
       if (!suggestList.length) {
@@ -5244,12 +5497,12 @@
       el("div", { className: "sr-qo-lists-head" }, [
         el("h3", null, ["Listáim"]),
         el("p", null, [
-          "Még nem menthetsz saját listákat. Addig: Kezdőlap javaslatok, vagy ismételd az utolsó rendelést.",
+          "A saját listák később jönnek. Addig: Kezdőlap javaslatok, vagy ismételd a rendelést.",
         ]),
       ]),
       el("div", { className: "sr-qo-lists-empty" }, [
         el("p", { className: "sr-qo-lists-empty-note" }, [
-          "Hamarosan: heti lista, projektlista — egy gombbal a rendelésbe.",
+          "Addig a Kezdőlapon vagy a Rendeléseim fülön indíts új listát.",
         ]),
         el("div", { className: "sr-qo-home-actions" }, [
           el(
@@ -5271,7 +5524,7 @@
               className: "sr-qo-btn sr-qo-btn-ghost",
               onClick: function () {
                 setView("order");
-                showOrderStart();
+                showOrderWorkOrStart();
               },
             },
             ["Új megrendelés"],
@@ -5283,7 +5536,7 @@
     viewEls.home = el(
       "section",
       {
-        className: "sr-qo-view is-active",
+        className: "sr-qo-view",
         id: "sr-qo-view-home",
         role: "tabpanel",
         "aria-labelledby": "sr-qo-tab-home",
@@ -5294,7 +5547,7 @@
     viewEls.order = el(
       "section",
       {
-        className: "sr-qo-view",
+        className: "sr-qo-view is-active",
         id: "sr-qo-view-order",
         role: "tabpanel",
         "aria-labelledby": "sr-qo-tab-order",
@@ -5326,7 +5579,6 @@
       viewEls.home,
       viewEls.order,
       viewEls.orders,
-      viewEls.lists,
     ]);
 
     var shell = el(
@@ -5347,7 +5599,7 @@
     setView(activeView);
     renderList();
     if (lines.length) showOrderWork();
-    else showOrderStart();
+    else showOrderWorkOrStart();
 
     if (lines.length) {
       var idxs = [];
@@ -5402,14 +5654,14 @@
   }
 
   function ensureFabStyles() {
-    const existing = document.getElementById("sr-b2b-qo-fab-css-v6");
+    const existing = document.getElementById("sr-b2b-qo-fab-css-v7");
     if (existing) return;
-    ["sr-b2b-qo-fab-css", "sr-b2b-qo-fab-css-v2", "sr-b2b-qo-fab-css-v3", "sr-b2b-qo-fab-css-v4", "sr-b2b-qo-fab-css-v5"].forEach(function (id) {
+    ["sr-b2b-qo-fab-css", "sr-b2b-qo-fab-css-v2", "sr-b2b-qo-fab-css-v3", "sr-b2b-qo-fab-css-v4", "sr-b2b-qo-fab-css-v5", "sr-b2b-qo-fab-css-v6"].forEach(function (id) {
       const legacy = document.getElementById(id);
       if (legacy) legacy.remove();
     });
     const style = document.createElement("style");
-    style.id = "sr-b2b-qo-fab-css-v6";
+    style.id = "sr-b2b-qo-fab-css-v7";
     style.textContent = [
       "@keyframes sr-b2b-qo-fab-in{",
       "  from{ opacity:0; transform:translateY(10px) scale(0.98); }",
@@ -5492,6 +5744,39 @@
       "}",
       "@media (prefers-reduced-motion:reduce){",
       "  #sr-b2b-qo-btn{ animation:none; backdrop-filter:none; -webkit-backdrop-filter:none; }",
+      "}",
+      "#sr-b2b-qo-gate{",
+      "  position:fixed;inset:0;z-index:2147483600;",
+      "  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',system-ui,sans-serif",
+      "}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-backdrop{",
+      "  position:absolute;inset:0;background:rgba(26,25,23,.45)",
+      "}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-card{",
+      "  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);",
+      "  width:min(420px, calc(100vw - 32px));background:#fff;color:#1A1917;",
+      "  border:0.5px solid rgba(55,53,47,.22);padding:22px 22px 18px;",
+      "  box-shadow:0 24px 60px rgba(26,25,23,.28)",
+      "}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-kicker{",
+      "  margin:0 0 8px;font-size:11px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:#6F6E69",
+      "}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-card h2{",
+      "  margin:0;font-size:22px;font-weight:650;letter-spacing:-.03em;line-height:1.2",
+      "}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-body{",
+      "  margin:10px 0 0;font-size:14px;line-height:1.5;color:#6F6E69",
+      "}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-actions{",
+      "  display:flex;flex-wrap:wrap;gap:8px;margin-top:18px",
+      "}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-primary{",
+      "  display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 16px;",
+      "  background:#111;color:#fff;text-decoration:none;font-size:13px;font-weight:650",
+      "}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-ghost{",
+      "  height:40px;padding:0 14px;border:0.5px solid rgba(55,53,47,.28);background:#fff;",
+      "  color:#1A1917;font:inherit;font-size:13px;font-weight:600;cursor:pointer",
       "}",
     ].join("");
     document.head.appendChild(style);
@@ -5612,10 +5897,17 @@
   }
 
   function injectButton() {
+    if (cfg.enabled === false) {
+      var off = document.getElementById("sr-b2b-qo-btn");
+      if (off && off.parentNode) off.parentNode.removeChild(off);
+      return;
+    }
+    if (isLoggedIn() && !groupAllowed()) {
+      var denied = document.getElementById("sr-b2b-qo-btn");
+      if (denied && denied.parentNode) denied.parentNode.removeChild(denied);
+      return;
+    }
     if (document.getElementById("sr-b2b-qo-btn")) return;
-    if (cfg.enabled === false) return;
-    if (cfg.requireLogin && !isLoggedIn()) return;
-    if (!groupAllowed()) return;
 
     ensureFabStyles();
 
@@ -5635,9 +5927,9 @@
       {
         id: "sr-b2b-qo-btn",
         type: "button",
-        "aria-label": label + " — tömeges kosárba rakás",
+        "aria-label": label + " — cikkszámra, partneráron",
         title: label,
-        onClick: openPanel,
+        onClick: tryOpenPanel,
       },
       children,
     );
@@ -5653,7 +5945,7 @@
       setTimeout(injectButton, 800);
       setTimeout(injectButton, 2000);
       if (location.hash === "#sr-b2b-qo") {
-        setTimeout(openPanel, 300);
+        setTimeout(tryOpenPanel, 300);
       }
     });
   }

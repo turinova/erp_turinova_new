@@ -15,14 +15,14 @@ const NAV: NavItem[] = [
   { href: "/home", label: "Áttekintés", icon: "home" },
   { href: "/riport", label: "Riport", icon: "reports" },
   { href: "/vevok", label: "Vevők", icon: "customers" },
-  { href: "/widget", label: "Gomb", icon: "widget" },
+  { href: "/widget", label: "Gyors rendelés", icon: "widget" },
   { href: "/settings", label: "Beállítások", icon: "settings" },
 ];
 
 const TITLES: Record<string, string> = {
   "/home": "Áttekintés",
   "/riport": "Riport",
-  "/widget": "Gomb",
+  "/widget": "Gyors rendelés",
   "/vevok": "Vevők",
   "/settings": "Beállítások",
 };

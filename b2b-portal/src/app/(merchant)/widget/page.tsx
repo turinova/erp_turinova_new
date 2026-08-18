@@ -7,7 +7,7 @@ import { publicAppUrl } from "@/lib/public-app-url";
 import { loadMerchantWidget } from "@/lib/widget/settings";
 
 export const metadata: Metadata = {
-  title: "Widget",
+  title: "Gyors rendelés",
 };
 
 export default async function MerchantWidgetPage() {

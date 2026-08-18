@@ -183,9 +183,9 @@ export async function loadMerchantOverview(
   } else if (!shop.widgetEnabled) {
     next = {
       title: "A gyors rendelés ki van kapcsolva",
-      body: "Kapcsold be a gombot a boltban, hogy a vevők lássák.",
+      body: "Kapcsold be a boltban, hogy a partnerek cikkszámra rendelhessenek.",
       href: "/widget",
-      cta: "Gomb bekapcsolása",
+      cta: "Gyors rendelés bekapcsolása",
       external: false,
     };
   } else if (gate.overCap) {
@@ -210,7 +210,7 @@ export async function loadMerchantOverview(
       title: "Kész a beállítás",
       body: "Nyisd meg a boltod, lépj be vevőként, és próbáld a gyors rendelést.",
       href: store || "/widget",
-      cta: store ? "Bolt megnyitása" : "Gomb",
+      cta: store ? "Bolt megnyitása" : "Gyors rendelés",
       external: Boolean(store),
     };
   }

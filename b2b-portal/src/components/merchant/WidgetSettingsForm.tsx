@@ -163,7 +163,7 @@ window.SR_B2B_QUICKORDER = {
         setWidgetVersion(data.widget.widgetVersion);
       }
       setMessage(
-        "Mentve. Nyisd meg a boltot, és frissítsd erősen (Cmd/Ctrl + Shift + R), hogy az új gomb is látszódjon.",
+        "Mentve. Nyisd meg a boltot, és frissítsd erősen (Cmd/Ctrl + Shift + R), hogy a változás látszódjon.",
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Hiba");
@@ -260,13 +260,13 @@ window.SR_B2B_QUICKORDER = {
                     onChange={(e) => setWidgetEnabled(e.target.checked)}
                     className="accent-[var(--accent)]"
                   />
-                  Gomb bekapcsolva
+                  Megjelenik a boltban
                 </label>
               </div>
 
               <label className="flex flex-col gap-1">
                 <span className="text-[11px] font-semibold text-muted">
-                  Felirat
+                  Felirat a boltban
                 </span>
                 <input
                   value={buttonLabel}
@@ -425,11 +425,21 @@ window.SR_B2B_QUICKORDER = {
                 <p className="text-[11px] font-semibold text-muted">
                   Hova tedd
                 </p>
-                <ol className="mt-1 list-decimal space-y-1 pl-4 text-[12px] text-faint">
+                <ol className="mt-1 list-decimal space-y-1.5 pl-4 text-[12px] text-faint">
                   <li>Shoprenter → Design → Fejléc (header HTML)</li>
                   <li>Illeszd be a kódot egyszer, a záró fejléccímke elé</li>
                   <li>Mentsd a sablont, nyisd meg a boltot inkognitóban</li>
                 </ol>
+                <p className="mt-3 text-[12px] leading-relaxed text-faint">
+                  Ettől lesz a sablonotokban, nem csak a sarokban: adj egy
+                  menüpontot — felirat{" "}
+                  <span className="font-semibold text-text">Gyors rendelés</span>
+                  , hivatkozás{" "}
+                  <code className="rounded-none bg-surface-2 px-1 font-mono text-[11px] text-text">
+                    #sr-b2b-qo
+                  </code>
+                  . A partner rákattint, és azonnal a keresőben van.
+                </p>
               </div>
 
               <div>

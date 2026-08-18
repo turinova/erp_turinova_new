@@ -253,15 +253,7 @@ export function WidgetLivePreview({
     moduleOn("insights") ? "Kezdőlap" : null,
     "Új megrendelés",
     moduleOn("orders") ? "Rendeléseim" : null,
-    "Listáim",
   ].filter(Boolean) as string[];
-
-  const startCards = [
-    moduleOn("search") ? { t: "Kézi bevitel", s: "SKU + Enter" } : null,
-    moduleOn("excel") ? { t: "Excel", s: "Sablon + feltöltés" } : null,
-    moduleOn("email") ? { t: "Szöveg", s: "SKU lista" } : null,
-    moduleOn("image") ? { t: "Kép", s: "Fotó a listáról" } : null,
-  ].filter(Boolean) as { t: string; s: string }[];
 
   const showLabel = sizeMeta.showLabel;
   const compact = sizeMeta.compact;
@@ -277,7 +269,7 @@ export function WidgetLivePreview({
           onClick={onTogglePanel}
           className="tn-btn tn-btn-ghost !h-7 !px-2.5 text-[11px]"
         >
-          {showPanel ? "FAB nézet" : "Panel megnyitása"}
+          {showPanel ? "Sarokban" : "Megnyitás"}
         </button>
       </div>
 
@@ -387,48 +379,57 @@ export function WidgetLivePreview({
                 ))}
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto p-4">
-              <p
-                className="mb-1 text-center text-[14px] font-semibold"
-                style={{ color: theme.text }}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div
+                className="flex items-center gap-2 border-b px-3 py-2"
+                style={{ borderColor: theme.line, background: theme.surface }}
               >
-                Hogyan indítod a rendelést?
-              </p>
-              <p
-                className="mb-4 text-center text-[11px]"
-                style={{ color: theme.muted }}
-              >
-                A kikapcsolt módok nem látszanak
-              </p>
-              {startCards.length ? (
-                <div className="mx-auto grid max-w-[420px] grid-cols-2 gap-2">
-                  {startCards.map((c) => (
-                    <div
-                      key={c.t}
-                      className="rounded-none border p-3"
-                      style={{
-                        background: theme.surface,
-                        borderColor: theme.lineStrong,
-                      }}
-                    >
-                      <p className="text-[12px] font-semibold">{c.t}</p>
-                      <p
-                        className="mt-0.5 text-[10px]"
-                        style={{ color: theme.muted }}
-                      >
-                        {c.s}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p
-                  className="text-center text-[12px]"
-                  style={{ color: theme.muted }}
+                <div
+                  className="min-h-9 flex-1 px-3 py-2 text-[12px]"
+                  style={{
+                    background: theme.bg,
+                    border: `0.5px solid ${theme.lineStrong}`,
+                    color: theme.muted,
+                  }}
                 >
-                  Nincs engedélyezett rendelési mód
+                  Cikkszám / gyártói / vonalkód
+                </div>
+                <span
+                  className="inline-flex h-9 shrink-0 items-center px-3 text-[11px] font-semibold"
+                  style={{
+                    background: theme.accent,
+                    color: "#fff",
+                  }}
+                >
+                  Hozzáad
+                </span>
+              </div>
+              <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+                <p
+                  className="text-[13px] font-semibold"
+                  style={{ color: theme.text }}
+                >
+                  Cikkszám, gyártói szám vagy vonalkód — Enter, és bent van.
                 </p>
-              )}
+                <p className="mt-1.5 text-[11px]" style={{ color: theme.muted }}>
+                  Excel, lista vagy fotó a kereső mellett. Bezárás után a lista
+                  megmarad.
+                </p>
+              </div>
+              <div
+                className="flex items-center justify-between border-t px-3 py-2"
+                style={{ borderColor: theme.lineStrong, background: theme.bg }}
+              >
+                <span className="text-[11px]" style={{ color: theme.muted }}>
+                  Cikkszám, majd Enter. Ha kész: Kosárba.
+                </span>
+                <span
+                  className="inline-flex h-8 items-center px-3 text-[11px] font-semibold"
+                  style={{ background: theme.accent, color: "#fff" }}
+                >
+                  Kosárba rakom
+                </span>
+              </div>
             </div>
           </div>
         )}

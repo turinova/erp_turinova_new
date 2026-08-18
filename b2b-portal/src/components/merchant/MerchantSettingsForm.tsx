@@ -178,7 +178,7 @@ export function MerchantSettingsForm({ initial }: Props) {
       <div className="flex flex-wrap items-center gap-2 border-b border-line-strong pb-5">
         <StatusChip label="Kapcsolat" value={connValue} tone={connTone} />
         <StatusChip
-          label="Gomb"
+          label="Boltban"
           value={widgetEnabled ? "Be" : "Ki"}
           tone={widgetEnabled ? "ok" : "idle"}
         />
@@ -263,9 +263,9 @@ export function MerchantSettingsForm({ initial }: Props) {
         {/* Right — gomb + origins */}
         <div className="flex flex-col gap-5">
           <div>
-            <h2 className="text-[18px] font-semibold tracking-tight">Gomb</h2>
+            <h2 className="text-[18px] font-semibold tracking-tight">Gyors rendelés</h2>
             <p className="mt-1 text-[13px] text-faint">
-              A bolt sarkában lévő gomb. Be = látszik, Ki = el van rejtve.
+              Megjelenik a boltban a partnereknek. Be = látszik, Ki = el van rejtve.
             </p>
           </div>
 
