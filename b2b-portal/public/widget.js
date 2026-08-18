@@ -493,13 +493,14 @@
       "sr-b2b-qo-panel-css-v30",
       "sr-b2b-qo-panel-css-v31",
       "sr-b2b-qo-panel-css-v32",
+      "sr-b2b-qo-panel-css-v33",
     ].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.remove();
     });
-    if (document.getElementById("sr-b2b-qo-panel-css-v33")) return;
+    if (document.getElementById("sr-b2b-qo-panel-css-v34")) return;
     var style = document.createElement("style");
-    style.id = "sr-b2b-qo-panel-css-v33";
+    style.id = "sr-b2b-qo-panel-css-v34";
     style.textContent = [
       "#sr-b2b-quickorder-root{",
       "  --sr-qo-bg:#F7F6F3;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#EFEEE9;",
@@ -2649,9 +2650,7 @@
           setStatus("Kosárba… (" + (i + 1) + "/" + ok.length + ")");
           await addToCart(ok[i].productId, ok[i].quantity);
         }
-        try {
-          await recordWidgetOrder(ok);
-        } catch (e) {}
+        recordWidgetOrder(ok);
         var okKeys = {};
         ok.forEach(function (l) {
           okKeys[(l.productId != null ? "id:" + l.productId : "sku:" + l.sku)] = true;
@@ -2849,16 +2848,68 @@
     function pickSuggest(hit) {
       if (!hit || !hit.sku) return;
       hideSuggest();
-      skuInput.value = hit.sku;
+      var quantity = Math.max(1, parseInt(qtyInput.value, 10) || 1);
       if (hit.minQty && hit.minQty > 1) {
-        qtyInput.value = String(
-          normalizePackQuantity(qtyInput.value || hit.minQty, {
-            minQty: hit.minQty,
-            qtyStep: hit.qtyStep || 1,
-            maxQty: null,
-          }),
-        );
+        quantity = normalizePackQuantity(quantity || hit.minQty, {
+          minQty: hit.minQty,
+          qtyStep: hit.qtyStep || 1,
+          maxQty: null,
+        });
       }
+
+      if (hit.productId) {
+        var result = upsertResolvedProduct(
+          {
+            found: true,
+            sku: hit.sku,
+            productId: hit.productId,
+            name: hit.name,
+            modelNumber: hit.modelNumber,
+            gtin: hit.gtin,
+            priceNetFormatted: hit.priceNetFormatted,
+            priceGrossFormatted: hit.priceGrossFormatted,
+            minQty: hit.minQty || 1,
+            qtyStep: hit.qtyStep || 1,
+            packLabel: hit.packLabel,
+          },
+          quantity,
+        );
+        skuInput.value = "";
+        qtyInput.value = "1";
+        persist();
+        renderList();
+        setStatus(
+          result.merged
+            ? "Darabszám növelve (" + lines[result.index].quantity + " db)."
+            : "Hozzáadva — lista mentve.",
+          false,
+        );
+        try {
+          skuInput.focus();
+        } catch (e) {}
+        var idx = result.index;
+        var sku = hit.sku;
+        var qty = lines[idx] ? lines[idx].quantity : quantity;
+        resolveCodes([{ sku: sku, quantity: qty }])
+          .then(function (products) {
+            var p = products[0];
+            if (!p || !p.found || !lines[idx]) return;
+            var same =
+              String(lines[idx].sku || "").toUpperCase() ===
+                String(p.sku || "").toUpperCase() ||
+              String(lines[idx].sku || "").toUpperCase() ===
+                String(sku || "").toUpperCase();
+            if (!same) return;
+            lines[idx] = mapProductFields(p, lines[idx].quantity);
+            persist();
+            renderList();
+          })
+          .catch(function () {});
+        return;
+      }
+
+      skuInput.value = hit.sku;
+      qtyInput.value = String(quantity);
       addSkuFromInputs();
     }
 

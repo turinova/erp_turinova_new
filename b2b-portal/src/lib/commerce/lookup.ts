@@ -149,6 +149,53 @@ export async function lookupCatalogCode(
   return null;
 }
 
+export async function lookupCatalogCodes(
+  client: PoolClient,
+  shopId: string,
+  codes: string[],
+): Promise<Map<string, CatalogRow>> {
+  const unique = [...new Set(codes.map((c) => c.trim()).filter(Boolean))];
+  const out = new Map<string, CatalogRow>();
+  if (!unique.length) return out;
+
+  const needles = unique.map((c) => c.toUpperCase());
+  const exact = await query<CatalogRow & { hit: string }>(
+    client,
+    `select distinct on (x.hit)
+            p.sku, p.sku_norm, p.external_product_id, p.name, p.model_number, p.gtin,
+            p.min_qty, p.qty_step, p.list_price_net::text, p.active,
+            x.hit
+     from unnest($2::text[]) as x(hit)
+     join product_catalog p
+       on p.shop_id = $1 and p.active
+      and (p.sku_norm = x.hit or p.model_norm = x.hit or p.gtin_norm = x.hit)
+     order by x.hit,
+       case
+         when p.sku_norm = x.hit then 0
+         when p.model_norm = x.hit then 1
+         else 2
+       end,
+       case when p.sku_norm like 'SZULO%' then 1 else 0 end,
+       length(p.sku_norm)`,
+    [shopId, needles],
+  );
+  const byNeedle = new Map<string, CatalogRow>();
+  for (const row of exact.rows) {
+    byNeedle.set(row.hit, row);
+  }
+  for (const code of unique) {
+    const row = byNeedle.get(code.toUpperCase());
+    if (row) out.set(code, row);
+  }
+
+  const missing = unique.filter((c) => !out.has(c));
+  for (const code of missing) {
+    const row = await lookupCatalogCode(client, shopId, code);
+    if (row) out.set(code, row);
+  }
+  return out;
+}
+
 export async function loadShopCatalogStatus(
   client: PoolClient,
   shopId: string,

@@ -1,8 +1,9 @@
 import { jsonWithCors, optionsCors } from "@/lib/cors";
 import {
   catalogIsSearchable,
-  lookupCatalogCode,
+  lookupCatalogCodes,
   loadShopCatalogStatus,
+  type CatalogRow,
 } from "@/lib/commerce/lookup";
 import { withPlatformAdmin } from "@/lib/db";
 import {
@@ -34,6 +35,24 @@ function notFound(code: string): ResolvedProduct {
     found: false,
     error: "not found",
   };
+}
+
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  }
+  const n = Math.min(Math.max(1, limit), items.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return out;
 }
 
 export async function POST(request: Request) {
@@ -85,30 +104,32 @@ export async function POST(request: Request) {
       });
     }
 
-    const meta = await withPlatformAdmin((client) =>
-      loadShopCatalogStatus(client, shop.shopId),
-    );
+    const unique = [...new Set(skus.map((s) => s.trim()).filter(Boolean))];
+    const packed = await withPlatformAdmin(async (client) => {
+      const meta = await loadShopCatalogStatus(client, shop.shopId);
+      if (!catalogIsSearchable(meta.catalogStatus)) {
+        return { meta, rows: null as Map<string, CatalogRow> | null };
+      }
+      const rows = await lookupCatalogCodes(client, shop.shopId, unique);
+      return { meta, rows };
+    });
 
-    if (!catalogIsSearchable(meta.catalogStatus)) {
+    if (!catalogIsSearchable(packed.meta.catalogStatus) || !packed.rows) {
       return jsonWithCors(request, {
         error: "Katalógus még szinkronizál — próbáld pár perc múlva.",
         catalogReady: false,
-        catalogStatus: meta.catalogStatus,
+        catalogStatus: packed.meta.catalogStatus,
         products: skus.map((s) => notFound(s.trim())),
       });
     }
 
-    const unique = [...new Set(skus.map((s) => s.trim()).filter(Boolean))];
     const byQuery = new Map<string, ResolvedProduct>();
+    const foundCodes = unique.filter((code) => packed.rows!.has(code));
+    const missingCodes = unique.filter((code) => !packed.rows!.has(code));
+    for (const code of missingCodes) byQuery.set(code, notFound(code));
 
-    for (const code of unique) {
-      const row = await withPlatformAdmin((client) =>
-        lookupCatalogCode(client, shop.shopId, code),
-      );
-      if (!row) {
-        byQuery.set(code, notFound(code));
-        continue;
-      }
+    await mapLimit(foundCodes, 4, async (code) => {
+      const row = packed.rows!.get(code)!;
       try {
         const live = await resolveProductByExactSku(
           shop.config,
@@ -142,7 +163,7 @@ export async function POST(request: Request) {
           error: e instanceof Error ? e.message : "resolve failed",
         });
       }
-    }
+    });
 
     const qtyByIndex = body.lines?.map((l) => l.quantity ?? 1);
     return jsonWithCors(request, {

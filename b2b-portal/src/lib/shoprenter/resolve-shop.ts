@@ -7,7 +7,7 @@ import {
 import { configFromCredentials } from "@/lib/shoprenter/ping";
 import {
   isOriginAllowed,
-  loadAllowlistByShopId,
+  loadAllowlistByPublicId,
 } from "@/lib/shop-origins";
 
 /**
@@ -59,8 +59,17 @@ type ShopCredRow = {
   key_version: number;
 };
 
+const shopRowCache = new Map<
+  string,
+  { at: number; row: ShopCredRow | null }
+>();
+const SHOP_ROW_TTL_MS = 20_000;
+
 async function loadShopRowByPublicId(publicId: string): Promise<ShopCredRow | null> {
-  return withPlatformAdmin(async (client) => {
+  const key = publicId.trim();
+  const hit = shopRowCache.get(key);
+  if (hit && Date.now() - hit.at < SHOP_ROW_TTL_MS) return hit.row;
+  const row = await withPlatformAdmin(async (client) => {
     const res = await query<ShopCredRow>(
       client,
       `select
@@ -79,10 +88,12 @@ async function loadShopRowByPublicId(publicId: string): Promise<ShopCredRow | nu
        join shop_credentials c on c.shop_id = s.id
        where s.public_id = $1
        limit 1`,
-      [publicId],
+      [key],
     );
     return res.rows[0] ?? null;
   });
+  shopRowCache.set(key, { at: Date.now(), row });
+  return row;
 }
 
 async function loadShopRowByShopName(shopName: string): Promise<ShopCredRow | null> {
@@ -122,7 +133,7 @@ async function shopContextFromRow(
     throw new Error("Shop nincs aktív állapotban");
   }
 
-  const allow = await loadAllowlistByShopId(row.shop_id);
+  const allow = await loadAllowlistByPublicId(row.public_id);
   const origin = request.headers.get("origin");
   if (origin && !isOriginAllowed(origin, allow)) {
     throw new Error(`Origin nem engedélyezett: ${origin}`);

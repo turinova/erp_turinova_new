@@ -334,69 +334,31 @@ function isDateActive(
 }
 
 async function resolveVatRate(
-  config: ShoprenterConfig,
+  _config: ShoprenterConfig,
   taxClass: unknown,
 ): Promise<number | undefined> {
-  if (!taxClass || typeof taxClass !== "object") return undefined;
+  if (!taxClass || typeof taxClass !== "object") return 27;
   const tc = taxClass as { href?: string; name?: string; rate?: unknown };
   if (typeof tc.name === "string") {
     const fromName = parseVatPercent(tc.name);
     if (fromName != null) return fromName;
   }
   const href = tc.href;
-  if (!href) return undefined;
-  if (vatRateCache.has(href)) return vatRateCache.get(href);
+  if (href && vatRateCache.has(href)) return vatRateCache.get(href);
+  // Skip taxClass href waterfall (2–3 Shoprenter roundtrips). HU B2B default.
+  if (href) vatRateCache.set(href, 27);
+  return 27;
+}
 
-  try {
-    const headers = await authHeaders(config);
-    const res = await fetch(href, { headers, cache: "no-store" });
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as {
-      name?: string;
-      description?: string;
-      taxRates?: { href?: string; items?: { href?: string; rate?: unknown }[] };
-    };
-    let rate =
-      parseVatPercent(data.name) ?? parseVatPercent(data.description);
-
-    if (rate == null && data.taxRates?.href) {
-      const listRes = await fetch(data.taxRates.href, {
-        headers,
-        cache: "no-store",
-      });
-      if (listRes.ok) {
-        const list = (await listRes.json()) as {
-          items?: { href?: string; rate?: unknown; name?: string }[];
-        };
-        const first = list.items?.[0];
-        if (first) {
-          if (first.rate != null) rate = toNumber(first.rate);
-          if (rate == null) rate = parseVatPercent(first.name);
-          if (rate == null && first.href) {
-            const detailRes = await fetch(first.href, {
-              headers,
-              cache: "no-store",
-            });
-            if (detailRes.ok) {
-              const detail = (await detailRes.json()) as {
-                rate?: unknown;
-                name?: string;
-              };
-              rate = toNumber(detail.rate) ?? parseVatPercent(detail.name);
-            }
-          }
-        }
-      }
-    }
-
-    if (rate != null) {
-      vatRateCache.set(href, rate);
-      return rate;
-    }
-  } catch {
-    /* ignore */
-  }
-  return undefined;
+function inlineCollectionItems(
+  collection: unknown,
+): Record<string, unknown>[] {
+  if (!collection || typeof collection !== "object") return [];
+  const col = collection as { items?: Record<string, unknown>[] };
+  if (!Array.isArray(col.items)) return [];
+  return col.items.filter(
+    (it) => it && typeof it === "object" && typeof it.price !== "undefined",
+  );
 }
 
 async function fetchCollectionItems(
@@ -503,7 +465,8 @@ async function enrichPricing(
   let effectiveNet = listNet;
   let source: ResolvedProduct["priceSource"] = "list";
 
-  const specials = await fetchCollectionItems(config, item.productSpecials);
+  // Inline specials/group prices only — extra collection hrefs are 2–8 Shoprenter RTTs.
+  const specials = inlineCollectionItems(item.productSpecials);
   const now = new Date();
   let bestSpecial: number | undefined;
   for (const sp of specials) {
@@ -518,7 +481,6 @@ async function enrichPricing(
     ) {
       continue;
     }
-    // If special is tied to a group and we know the buyer group, skip others
     const spGroup = sp.customerGroup as
       | { innerId?: string | number }
       | undefined;
@@ -539,12 +501,8 @@ async function enrichPricing(
     source = "special";
   }
 
-  // Csoportár: CSAK a belépett vevő csoportja (ne a legolcsóbb az összes közül)
   if (customerGroupInnerId != null && Number.isFinite(customerGroupInnerId)) {
-    const groupPrices = await fetchCollectionItems(
-      config,
-      item.customerGroupProductPrices,
-    );
+    const groupPrices = inlineCollectionItems(item.customerGroupProductPrices);
     let bestGroup: number | undefined;
     for (const gp of groupPrices) {
       const p = toNumber(gp.price);
@@ -702,20 +660,24 @@ function buildStockPresentation(
 }
 
 async function enrichStock(
-  config: ShoprenterConfig,
+  _config: ShoprenterConfig,
   product: ResolvedProduct,
   item: Record<string, unknown>,
 ): Promise<ResolvedProduct> {
   const nums = pickStockNumbers(item);
   const statusRef =
     nums.stockQty > 0 ? item.inStockStatus : item.noStockStatus;
-  const statusName = await resolveStockStatusName(config, statusRef);
+  const inlineName =
+    statusRef && typeof statusRef === "object"
+      ? typeof (statusRef as { name?: string }).name === "string"
+        ? (statusRef as { name: string }).name.trim()
+        : undefined
+      : undefined;
   const presentation = buildStockPresentation(
     nums.stockQty,
     nums.orderable,
-    statusName,
+    inlineName || undefined,
   );
-
   return {
     ...product,
     stock1: nums.stock1,
@@ -819,48 +781,16 @@ function pickProductFields(
 }
 
 async function enrichProductName(
-  config: ShoprenterConfig,
+  _config: ShoprenterConfig,
   product: ResolvedProduct,
   item: Record<string, unknown>,
 ): Promise<ResolvedProduct> {
   if (product.name && product.name !== product.sku) return product;
-
   const descriptions = item.productDescriptions as
-    | { href?: string; items?: { href?: string; name?: string }[] }
+    | { items?: { name?: string }[] }
     | undefined;
-
-  try {
-    if (descriptions?.items?.[0]?.name) {
-      return { ...product, name: descriptions.items[0].name };
-    }
-
-    const listHref = descriptions?.href;
-    if (!listHref) return product;
-
-    const headers = await authHeaders(config);
-    const listRes = await fetch(listHref, {
-      headers,
-      cache: "no-store",
-    });
-    if (!listRes.ok) return product;
-    const listData = (await listRes.json()) as {
-      items?: { href?: string; name?: string }[];
-    };
-    const first = listData.items?.[0];
-    if (first?.name) return { ...product, name: first.name };
-    if (!first?.href) return product;
-
-    const detailRes = await fetch(first.href, {
-      headers,
-      cache: "no-store",
-    });
-    if (!detailRes.ok) return product;
-    const detail = (await detailRes.json()) as { name?: string };
-    if (detail.name) return { ...product, name: detail.name };
-  } catch {
-    /* keep fallback name */
-  }
-
+  const inline = descriptions?.items?.[0]?.name;
+  if (inline) return { ...product, name: inline };
   return product;
 }
 

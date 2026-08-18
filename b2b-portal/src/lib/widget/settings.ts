@@ -10,7 +10,7 @@ import {
 } from "@/lib/widget/presets";
 
 /** Bump together with injected CSS id in public/widget.js (sr-b2b-qo-panel-css-vN). */
-export const WIDGET_JS_ASSET = "33";
+export const WIDGET_JS_ASSET = "34";
 
 export function widgetCacheBust(opts: {
   settingsUpdatedAt: string | null;
