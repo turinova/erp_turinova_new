@@ -4,6 +4,7 @@ import {
   formatDateLocal,
   getBudapestTodayYmd,
   getBudapestYearMonth,
+  normalizeAttendanceYmd,
   type PublicHolidayRow
 } from '@/components/attendance/attendanceUtils'
 
@@ -1509,7 +1510,7 @@ export async function getEmployeesMonthlyAttention(
 
   const { data: employees, error: empErr } = await supabaseServer
     .from('employees')
-    .select('id, works_on_saturday, active')
+    .select('id')
     .is('deleted_at', null)
 
   if (empErr) {
@@ -1561,11 +1562,14 @@ export async function getEmployeesMonthlyAttention(
   const attendanceByEmployee = new Map<string, Map<string, { hasArrival: boolean; hasDeparture: boolean }>>()
 
   for (const row of summaryRes.data || []) {
+    const scanDate = normalizeAttendanceYmd(row.scan_date)
+    if (!scanDate) continue
+
     if (!attendanceByEmployee.has(row.employee_id)) {
       attendanceByEmployee.set(row.employee_id, new Map())
     }
 
-    attendanceByEmployee.get(row.employee_id)!.set(row.scan_date, {
+    attendanceByEmployee.get(row.employee_id)!.set(scanDate, {
       hasArrival: !!row.latest_arrival_time,
       hasDeparture: !!row.latest_departure_time
     })
@@ -1574,11 +1578,14 @@ export async function getEmployeesMonthlyAttention(
   const holidayByEmployee = new Map<string, Set<string>>()
 
   for (const row of holidaysRes.data || []) {
+    const holidayDate = normalizeAttendanceYmd(row.date)
+    if (!holidayDate) continue
+
     if (!holidayByEmployee.has(row.employee_id)) {
       holidayByEmployee.set(row.employee_id, new Set())
     }
 
-    holidayByEmployee.get(row.employee_id)!.add(row.date)
+    holidayByEmployee.get(row.employee_id)!.add(holidayDate)
   }
 
   const result: EmployeesMonthlyAttentionMap = {}
@@ -1588,7 +1595,6 @@ export async function getEmployeesMonthlyAttention(
       year,
       month,
       todayYmd,
-      worksOnSaturday: emp.works_on_saturday === true,
       publicHolidays,
       employeeHolidayDates: holidayByEmployee.get(emp.id) ?? new Set(),
       attendanceByDate: attendanceByEmployee.get(emp.id) ?? new Map()

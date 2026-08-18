@@ -146,9 +146,7 @@ function minutesToTimeString(totalMinutes: number): string {
 }
 
 /**
- * Returns policy display range for paid-window visualization.
- * - If shift is invalid/missing, returns raw range.
- * - Applies same grace + clipping logic as paid-hour calculation.
+ * Paid-window range (shift + grace clipping). Used in tooltips; the calendar shows raw scan times.
  */
 export function getPolicyDisplayRange(
   arrival: string | null,
@@ -436,11 +434,57 @@ export function getBudapestTodayYmd(): string {
   }).format(new Date())
 }
 
+/** Normalize DB/API date values to YYYY-MM-DD for map lookups. */
+export function normalizeAttendanceYmd(value: string | null | undefined): string | null {
+  if (!value) return null
+  const s = String(value).slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null
+}
+
+export function formatCalendarYmd(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** All calendar days in a month as YYYY-MM-DD (no local timezone drift). */
+export function getCalendarDaysInMonthYmd(year: number, month: number): string[] {
+  const dayCount = new Date(year, month, 0).getDate()
+  const days: string[] = []
+  for (let d = 1; d <= dayCount; d++) {
+    days.push(formatCalendarYmd(year, month, d))
+  }
+  return days
+}
+
+/** Weekday 0=Sun … 6=Sat for a calendar day (UTC noon avoids DST edge cases). */
+export function getWeekdayFromYmd(ymd: string): number {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0)).getUTCDay()
+}
+
+/** True when HR should review this day (strictly before Budapest today). */
+export function isClosedAttendanceReviewDay(dateStr: string, todayYmd: string): boolean {
+  return dateStr < todayYmd
+}
+
 export function getBudapestYearMonth(): { year: number; month: number } {
   const ymd = getBudapestTodayYmd()
   const [year, month] = ymd.split('-').map(Number)
 
   return { year, month }
+}
+
+/** Workday for HR empty/incomplete review: weekdays only (Saturday is never required). */
+export function isEmployeeWorkdayYmd(
+  dateStr: string,
+  publicHolidays: PublicHolidayRow[]
+): boolean {
+  const weekday = getWeekdayFromYmd(dateStr)
+  if (weekday === 0 || weekday === 6) return false
+
+  const [y, m, d] = dateStr.split('-').map(Number)
+  if (findPublicHolidayForDate(new Date(y, m - 1, d), publicHolidays)) return false
+
+  return true
 }
 
 /** Workday for attendance review: not weekend-off, not public holiday. */
@@ -462,7 +506,9 @@ export type MonthlyAttentionCounts = {
 }
 
 /**
- * Count workdays needing HR review in a month (days strictly before todayYmd).
+ * Count workdays needing HR review in a month.
+ * Only closed weekdays strictly before Budapest today count.
+ * Saturday, Sunday, today, and future days are never included (Saturday work is optional).
  * - empty: no scan and no employee holiday
  * - incomplete: exactly one of arrival / departure
  */
@@ -470,7 +516,6 @@ export function countEmployeeMonthlyAttention(params: {
   year: number
   month: number
   todayYmd: string
-  worksOnSaturday: boolean
   publicHolidays: PublicHolidayRow[]
   employeeHolidayDates: Set<string>
   attendanceByDate: Map<string, { hasArrival: boolean; hasDeparture: boolean }>
@@ -478,11 +523,9 @@ export function countEmployeeMonthlyAttention(params: {
   let empty = 0
   let incomplete = 0
 
-  for (const date of getDaysInMonth(params.year, params.month)) {
-    const dateStr = formatDateLocal(date)
-
-    if (dateStr >= params.todayYmd) continue
-    if (!isEmployeeWorkday(date, params.worksOnSaturday, params.publicHolidays)) continue
+  for (const dateStr of getCalendarDaysInMonthYmd(params.year, params.month)) {
+    if (!isClosedAttendanceReviewDay(dateStr, params.todayYmd)) continue
+    if (!isEmployeeWorkdayYmd(dateStr, params.publicHolidays)) continue
 
     const att = params.attendanceByDate.get(dateStr)
     const hasArrival = att?.hasArrival ?? false

@@ -11,8 +11,7 @@ import {
   computeAttendanceMetrics,
   computeEarlyOvertimeMinutes,
   computeOvertimeMinutes,
-  earlyOvertimePolicyFromEmployeeRow,
-  getPolicyDisplayRange
+  earlyOvertimePolicyFromEmployeeRow
 } from '@/components/attendance/attendanceUtils'
 import generateAttendancePdfHtml from './pdf-template'
 
@@ -114,7 +113,6 @@ return checkDate >= start && checkDate <= end
       const lunchEnd = employee.lunch_break_end || null
       const shiftS = employee.shift_start_time ? String(employee.shift_start_time).slice(0, 5) : null
       const shiftE = employee.shift_end_time ? String(employee.shift_end_time).slice(0, 5) : null
-      const policyRange = getPolicyDisplayRange(arrival, departure, shiftS, shiftE)
       const overtimeEnabled = employee.overtime_enabled === true
       const overtimeMinutes = computeOvertimeMinutes(arrival, departure, shiftS, shiftE, {
         enabled: overtimeEnabled,
@@ -140,8 +138,8 @@ return checkDate >= start && checkDate <= end
         dayOfWeek: day.getDay(), // 0 = Sunday, 6 = Saturday
         arrival,
         departure,
-        displayArrival: policyRange ? policyRange.start : arrival,
-        displayDeparture: policyRange ? policyRange.end : departure,
+        displayArrival: arrival,
+        displayDeparture: departure,
         lunchStart,
         lunchEnd,
         hoursWorked,

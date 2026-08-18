@@ -266,8 +266,8 @@ export default function generateAttendancePdfHtml({
       // Actual mode: show all real data, including holiday-work conflicts
       if (isHoliday && day.hoursWorked > 0) {
         // Holiday with work: show times and hours with badge
-        arrivalDisplay = formatTime(day.displayArrival)
-        departureDisplay = formatTime(day.displayDeparture)
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
         lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
         const holidayLabel = isSickLeave ? 'BETEG SZABADSÁG' : 'SZABADSÁG'
         hoursDisplay = `${day.hoursWorked.toFixed(2)} óra <span style="font-size: 0.75em; color: #666; font-style: italic;">(${holidayLabel})</span>`
@@ -280,9 +280,9 @@ export default function generateAttendancePdfHtml({
         hoursDisplay = isSickLeave ? '<strong>BETEG SZABADSÁG</strong>' : '<strong>SZABADSÁG</strong>'
         overtimeDisplay = '-'
       } else {
-        // Normal day: show all data
-        arrivalDisplay = formatTime(day.displayArrival)
-        departureDisplay = formatTime(day.displayDeparture)
+        // Normal day: show recorded arrival/departure (not the paid shift window)
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
         lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
         hoursDisplay = day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'
         overtimeDisplay = totalOvertimeMinutes > 0 ? `${(totalOvertimeMinutes / 60).toFixed(2)} óra` : '-'

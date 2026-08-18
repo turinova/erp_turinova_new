@@ -192,14 +192,17 @@ function getDayCellVisual(
 
   if (day.isEmployeeHoliday && (day.arrival || day.departure)) {
     const policyRange = getPolicyDisplayRange(day.arrival, day.departure, shiftStart, shiftEnd)
-    const displayRange = policyRange ? `${policyRange.start} – ${policyRange.end}` : (day.arrival && day.departure ? `${day.arrival} – ${day.departure}` : (day.arrival || day.departure || '—'))
+    const displayRange =
+      day.arrival && day.departure
+        ? `${day.arrival} – ${day.departure}`
+        : day.arrival || day.departure || '—'
 
     if (day.arrival && day.departure) {
       return {
         line1: displayRange,
         line2: `${day.hoursWorked.toFixed(1)} ó`,
         tooltip: policyRange?.usesPolicy
-          ? `Szabadságra jelölt nap, de munkaidő is rögzítve · Nyers: ${day.arrival} – ${day.departure}`
+          ? `Szabadságra jelölt nap, de munkaidő is rögzítve · Fizetett ablak: ${policyRange.start} – ${policyRange.end}`
           : 'Szabadságra jelölt nap, de munkaidő is rögzítve',
         bgcolor: 'rgba(2, 136, 209, 0.12)',
         borderColor: 'info.main',
@@ -270,7 +273,7 @@ function getDayCellVisual(
       tipParts.push(`Utótti túlóra: ${(lateOtMin / 60).toFixed(2)} ó`)
     }
     if (policyRange?.usesPolicy) {
-      tipParts.push(`Nyers: ${day.arrival} – ${day.departure}`)
+      tipParts.push(`Fizetett ablak: ${policyRange.start} – ${policyRange.end}`)
     }
 
     if (day.earlyMinutes > 0) tipParts.push(`Korán: ${day.earlyMinutes} p (ellenőrzés)`)
@@ -283,7 +286,7 @@ function getDayCellVisual(
         : `${day.hoursWorked.toFixed(1)} ó`
 
     return {
-      line1: policyRange ? `${policyRange.start} – ${policyRange.end}` : `${day.arrival} – ${day.departure}`,
+      line1: `${day.arrival} – ${day.departure}`,
       line2: line2Ot,
       tooltip: tipParts.join(' · '),
       bgcolor: 'background.paper',
@@ -635,8 +638,8 @@ export default function AttendanceMonthView({
 
       const hoursDiff = (departureTime.getTime() - arrivalTime.getTime()) / (1000 * 60 * 60)
 
-      if (hoursDiff > 12) {
-        toast.error('A munkavégzés időtartama nem lehet több 12 óránál.', { position: 'top-right' })
+      if (hoursDiff > 14) {
+        toast.error('A munkavégzés időtartama nem lehet több 14 óránál.', { position: 'top-right' })
 
         return false
       }
@@ -1125,9 +1128,9 @@ export default function AttendanceMonthView({
           </Paper>
 
           <Typography variant='body2' color='text.secondary' sx={{ mb: 2 }}>
-            Kattintson egy napra a részletek megnyitásához. A <strong>fizetett óra</strong> a tervezett műszak
-            szerint számolódik (ha van beállítva az „Alap adatok” fülön); a korai érkezés és késői távozás csak
-            ellenőrzésre jelenik meg.
+            A naptár a <strong>rögzített</strong> érkezést és távozást mutatja. A <strong>fizetett óra</strong> a
+            tervezett műszak szerint számolódik (ha van beállítva az „Alap adatok” fülön); a korai érkezés és a
+            késői távozás csak ellenőrzésre jelenik meg.
           </Typography>
 
           {isLoading ? (

@@ -42,6 +42,7 @@ import {
 import Link from 'next/link'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
+import { getBudapestTodayYmd } from '@/components/attendance/attendanceUtils'
 
 interface Employee {
   id: string
@@ -106,6 +107,7 @@ export default function EmployeesList({
   const [isExporting, setIsExporting] = useState(false)
   const [isExportingOfficial, setIsExportingOfficial] = useState(false)
   const [onlyAttention, setOnlyAttention] = useState(false)
+  const reviewThroughYmd = getBudapestTodayYmd()
 
   const monthlyAttention = initialMonthlyAttention
 
@@ -547,11 +549,12 @@ export default function EmployeesList({
       {monthSummary.employeesWithIssues > 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {MONTH_NAMES[viewMonth - 1]} {viewYear}: {monthSummary.employeesWithIssues} kollégánál van figyelendő nap
-          {' '}(összesen {monthSummary.totalEmpty} üres, {monthSummary.totalIncomplete} hiányos).
+          {' '}(összesen {monthSummary.totalEmpty} üres, {monthSummary.totalIncomplete} hiányos). A mai nap ({reviewThroughYmd})
+          és a szombatok nincsenek beleszámolva.
         </Typography>
       ) : (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {MONTH_NAMES[viewMonth - 1]} {viewYear}: nincs figyelendő nap a kiválasztott hónapban.
+          {MONTH_NAMES[viewMonth - 1]} {viewYear}: nincs figyelendő nap a lezárt hétköznapokon (a mai nap és a szombatok nincsenek beleszámolva).
         </Typography>
       )}
 
@@ -587,12 +590,12 @@ export default function EmployeesList({
               <TableCell>Név</TableCell>
               <TableCell>Munkakör</TableCell>
               <TableCell align="right">
-                <Tooltip title="Munkanap: nincs belépés, nincs kilépés, nincs szabadság rögzítve">
+                <Tooltip title="Lezárt hétköznap (mai nap és szombat nélkül): nincs belépés, nincs kilépés, nincs szabadság rögzítve">
                   <span>Üres</span>
                 </Tooltip>
               </TableCell>
               <TableCell align="right">
-                <Tooltip title="Munkanap: csak belépés vagy csak kilépés rögzítve">
+                <Tooltip title="Lezárt hétköznap (mai nap és szombat nélkül): csak belépés vagy csak kilépés rögzítve">
                   <span>Hiányos</span>
                 </Tooltip>
               </TableCell>
@@ -665,7 +668,7 @@ export default function EmployeesList({
                 <TableCell>{getEmployeeTypeLabel(employee.employee_type || 'MUHELY')}</TableCell>
                 <TableCell align="right">
                   {att.empty > 0 ? (
-                    <Tooltip title={`${att.empty} munkanap: nincs scan és nincs szabadság rögzítve`}>
+                    <Tooltip title={`${att.empty} lezárt hétköznap: nincs scan és nincs szabadság rögzítve (ma és szombat nincs benne)`}>
                       <Typography
                         component="span"
                         sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#8B5A00' }}
@@ -681,7 +684,7 @@ export default function EmployeesList({
                 </TableCell>
                 <TableCell align="right">
                   {att.incomplete > 0 ? (
-                    <Tooltip title={`${att.incomplete} munkanap: csak belépés vagy csak kilépés`}>
+                    <Tooltip title={`${att.incomplete} lezárt hétköznap: csak belépés vagy csak kilépés (ma és szombat nincs benne)`}>
                       <Typography
                         component="span"
                         sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#8B5A00' }}
