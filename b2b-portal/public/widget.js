@@ -57,14 +57,13 @@
         href: "https://turinova.hu",
         target: "_blank",
         rel: "noopener noreferrer",
+        "aria-label": "Turinova",
       },
       [
-        el("span", { className: "sr-qo-credit-kicker" }, ["Készítette a"]),
         el("img", {
           className: "sr-qo-credit-logo",
           src: apiBase() + "/brand/turinova-logo.png",
           alt: "Turinova",
-          height: "14",
         }),
       ],
     );
@@ -527,13 +526,14 @@
       "sr-b2b-qo-panel-css-v33",
       "sr-b2b-qo-panel-css-v34",
       "sr-b2b-qo-panel-css-v35",
+      "sr-b2b-qo-panel-css-v36",
     ].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.remove();
     });
-    if (document.getElementById("sr-b2b-qo-panel-css-v36")) return;
+    if (document.getElementById("sr-b2b-qo-panel-css-v37")) return;
     var style = document.createElement("style");
-    style.id = "sr-b2b-qo-panel-css-v36";
+    style.id = "sr-b2b-qo-panel-css-v37";
     style.textContent = [
       "#sr-b2b-quickorder-root{",
       "  --sr-qo-bg:#F7F6F3;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#EFEEE9;",
@@ -1422,15 +1422,14 @@
       "  #sr-b2b-quickorder-root .sr-qo-qty-input{width:88px}",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-credit{",
-      "  flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:6px;",
-      "  min-height:28px;padding:5px 12px calc(6px + env(safe-area-inset-bottom, 0px));",
+      "  flex-shrink:0;display:flex;align-items:center;justify-content:center;",
+      "  min-height:36px;padding:8px 16px calc(10px + env(safe-area-inset-bottom, 0px));",
       "  border-top:0.5px solid var(--sr-qo-line);background:var(--sr-qo-bg);",
-      "  text-decoration:none;color:var(--sr-qo-faint);",
-      "  font-size:10px;font-weight:500;letter-spacing:.01em;line-height:1",
+      "  text-decoration:none",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-credit:hover{color:var(--sr-qo-muted)}",
+      "#sr-b2b-quickorder-root .sr-qo-credit:hover .sr-qo-credit-logo{opacity:1}",
       "#sr-b2b-quickorder-root .sr-qo-credit-logo{",
-      "  height:12px;width:auto;display:block;opacity:.82",
+      "  height:20px;width:auto;display:block;opacity:.94",
       "}",
       "@media (prefers-reduced-motion:reduce){",
       "  #sr-b2b-quickorder-root .sr-qo-shell{animation:none}",
@@ -5816,12 +5815,12 @@
       "  color:#1A1917;font:inherit;font-size:13px;font-weight:600;cursor:pointer",
       "}",
       "#sr-b2b-qo-gate .sr-b2b-qo-gate-credit{",
-      "  display:flex;align-items:center;justify-content:center;gap:6px;",
-      "  margin-top:16px;padding-top:12px;border-top:0.5px solid rgba(55,53,47,.12);",
-      "  text-decoration:none;color:#9B9A97;font-size:10px;font-weight:500;letter-spacing:.01em",
+      "  display:flex;align-items:center;justify-content:center;",
+      "  margin-top:18px;padding-top:14px;border-top:0.5px solid rgba(55,53,47,.12);",
+      "  text-decoration:none",
       "}",
-      "#sr-b2b-qo-gate .sr-b2b-qo-gate-credit:hover{color:#6F6E69}",
-      "#sr-b2b-qo-gate .sr-b2b-qo-gate-credit img{height:12px;width:auto;display:block;opacity:.82}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-credit:hover img{opacity:1}",
+      "#sr-b2b-qo-gate .sr-b2b-qo-gate-credit img{height:22px;width:auto;display:block;opacity:.94}",
     ].join("");
     document.head.appendChild(style);
   }

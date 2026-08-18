@@ -438,21 +438,20 @@ export function WidgetLivePreview({
                 href="https://turinova.hu"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex shrink-0 items-center justify-center gap-1.5 border-t py-1.5 no-underline"
+                aria-label="Turinova"
+                className="flex h-9 shrink-0 items-center justify-center border-t no-underline"
                 style={{
                   borderColor: theme.line,
                   background: theme.bg,
-                  color: theme.muted,
                 }}
                 onClick={(e) => e.preventDefault()}
               >
-                <span className="text-[10px] font-medium">Készítette a</span>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/brand/turinova-logo.png"
                   alt="Turinova"
-                  height={12}
-                  style={{ height: 12, width: "auto", display: "block", opacity: 0.85 }}
+                  height={20}
+                  style={{ height: 20, width: "auto", display: "block", opacity: 0.94 }}
                 />
               </a>
             ) : null}
