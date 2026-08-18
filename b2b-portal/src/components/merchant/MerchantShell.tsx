@@ -9,7 +9,7 @@ import { ExitImpersonateButton } from "@/components/platform/ExitImpersonateButt
 type NavItem = {
   href: string;
   label: string;
-  icon: "home" | "widget" | "customers" | "reports" | "settings";
+  icon: "home" | "widget" | "customers" | "reports" | "settings" | "plans";
 };
 
 const NAV: NavItem[] = [
@@ -17,6 +17,7 @@ const NAV: NavItem[] = [
   { href: "/riport", label: "Riport", icon: "reports" },
   { href: "/vevok", label: "Vevők", icon: "customers" },
   { href: "/widget", label: "Gyors rendelés", icon: "widget" },
+  { href: "/csomag", label: "Csomagok", icon: "plans" },
   { href: "/settings", label: "Beállítások", icon: "settings" },
 ];
 
@@ -26,6 +27,7 @@ const TITLES: Record<string, string> = {
   "/widget": "Gyors rendelés",
   "/vevok": "Vevők",
   "/settings": "Beállítások",
+  "/csomag": "Csomagok",
 };
 
 function IconHome({ className }: { className?: string }) {
@@ -112,6 +114,27 @@ function IconCustomers({ className }: { className?: string }) {
   );
 }
 
+function IconPlans({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 3v18" />
+      <rect x="3" y="6" width="18" height="4" rx="0" />
+      <rect x="3" y="14" width="18" height="4" rx="0" />
+    </svg>
+  );
+}
+
 function IconReports({ className }: { className?: string }) {
   return (
     <svg
@@ -142,10 +165,18 @@ function NavIcon({
   className?: string;
 }) {
   if (name === "settings") return <IconSettings className={className} />;
+  if (name === "plans") return <IconPlans className={className} />;
   if (name === "widget") return <IconWidget className={className} />;
   if (name === "customers") return <IconCustomers className={className} />;
   if (name === "reports") return <IconReports className={className} />;
   return <IconHome className={className} />;
+}
+
+function shortHuDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("hu-HU", { month: "short", day: "numeric" });
 }
 
 function isActive(pathname: string, href: string) {
@@ -157,11 +188,18 @@ export function MerchantShell({
   email,
   displayName,
   impersonatingOrgName,
+  trialChip,
 }: {
   children: React.ReactNode;
   email?: string | null;
   displayName?: string | null;
   impersonatingOrgName?: string | null;
+  trialChip?: {
+    daysLeft: number | null;
+    expired: boolean;
+    planLabel?: string;
+    trialEndsAt?: string | null;
+  } | null;
 }) {
   const pathname = usePathname();
   const title =
@@ -169,13 +207,14 @@ export function MerchantShell({
       ? "Vevő"
       : (TITLES[pathname] ??
         NAV.find((item) => isActive(pathname, item.href))?.label ??
-        "Merchant");
+        "Áttekintés");
   const fullBleed =
     pathname === "/widget" ||
     pathname.startsWith("/widget/") ||
     pathname === "/vevok" ||
     pathname.startsWith("/vevok/");
 
+  const chipDate = shortHuDate(trialChip?.trialEndsAt);
   const linkClass = (active: boolean) =>
     active
       ? "flex h-9 cursor-pointer items-center gap-2 border-l-2 border-text bg-surface-2 px-3 text-[13px] font-semibold text-text"
@@ -236,9 +275,31 @@ export function MerchantShell({
           <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
             {title}
           </h1>
+          {trialChip ? (
+            <Link
+              href="/csomag"
+              className={
+                trialChip.expired || (trialChip.daysLeft != null && trialChip.daysLeft <= 3)
+                  ? "inline-flex shrink-0 border-2 border-warn px-2 py-1 text-[11px] font-bold"
+                  : trialChip.daysLeft != null && trialChip.daysLeft <= 7
+                    ? "inline-flex shrink-0 border-2 border-text px-2 py-1 text-[11px] font-bold"
+                    : "inline-flex shrink-0 border border-line-strong px-2 py-1 text-[11px] font-semibold text-faint"
+              }
+            >
+              {trialChip.expired
+                ? `A próba lejárt · ${trialChip.planLabel ?? "Start"}`
+                : trialChip.daysLeft === 0
+                  ? `Ma lejár${chipDate ? ` · ${chipDate}` : ""}`
+                  : trialChip.daysLeft === 1
+                    ? `Holnap lejár${chipDate ? ` · ${chipDate}` : ""}`
+                    : trialChip.daysLeft != null && trialChip.daysLeft <= 3
+                      ? `${trialChip.daysLeft} nap múlva lejár`
+                      : `Próba · ${trialChip.daysLeft} nap van hátra`}
+            </Link>
+          ) : null}
         </header>
 
-        <div className="glass-bar flex gap-1 px-3 py-2 md:hidden">
+        <div className="glass-bar flex gap-1 overflow-x-auto px-3 py-2 md:hidden">
           {NAV.map((item) => {
             const active = isActive(pathname, item.href);
             return (

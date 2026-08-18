@@ -3,7 +3,7 @@ import {
   isErrorResponse,
   requirePlatformAdminApi,
 } from "@/lib/auth/api";
-import { PLAN_DEFAULTS, PLAN_IDS, TRIAL_DAYS_DEFAULT, isPlanId, type PlanId } from "@/lib/billing/plans";
+import { PLAN_DEFAULTS, PLAN_IDS, TRIAL_DAYS_DEFAULT, isPlanId, parsePlanId, type PlanId } from "@/lib/billing/plans";
 import { withPlatformAdmin, query } from "@/lib/db";
 import { insertAudit } from "@/lib/orgs/ops";
 
@@ -30,7 +30,7 @@ async function loadSettings(client: Parameters<typeof query>[0]): Promise<Platfo
   }>(client, `select plan, partner_limit, sku_limit, list_price_huf from plan_defaults`);
 
   const plans: PlanDefaultRow[] = PLAN_IDS.map((id) => {
-    const row = plansRes.rows.find((r) => r.plan === id);
+    const row = plansRes.rows.find((r) => parsePlanId(r.plan) === id);
     const fallback = PLAN_DEFAULTS[id];
     return {
       plan: id,

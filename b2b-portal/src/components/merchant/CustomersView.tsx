@@ -9,8 +9,10 @@ import {
 } from "@/components/merchant/PartnerUsageBar";
 import {
   isPartnerLocked,
+  isPartnerPreviewLocked,
   type PartnerGateDto,
 } from "@/lib/billing/types";
+import { onPlan } from "@/lib/billing/plans";
 
 type ListFilter = "newcomers" | "partners" | "all";
 
@@ -41,7 +43,7 @@ const FILTERS: { id: ListFilter; label: string; hint: string }[] = [
   {
     id: "partners",
     label: "Partnerek",
-    hint: "Már nem az alap csoportban — átrakva",
+    hint: "Akiket már átraktál egy másik csoportba",
   },
   { id: "all", label: "Összes", hint: "Minden vevő ezen az oldalon" },
 ];
@@ -258,8 +260,20 @@ export function CustomersView() {
               used={gate.activePartners}
               limit={gate.partnerLimit}
             />
-          ) : gate?.warn80 ? (
-            <NearLimitBanner limit={gate.partnerLimit} />
+          ) : gate?.wouldLoseOnPaid ? (
+            <p className="border border-line-strong bg-surface-2 px-3 py-2 text-[12px] text-text">
+              A próba alatt mind a {gate.partnerLimit}-ig látszik.{" "}
+              {onPlan(gate.planLabel)} {gate.paidPartnerLimit} után a név
+              elmosódik.{" "}
+              <Link href="/csomag" className="font-semibold underline underline-offset-2">
+                Tartsd a {gate.activePartners} vevőt
+              </Link>
+            </p>
+          ) : gate?.warn80 && !gate.isTrial ? (
+            <NearLimitBanner
+              used={gate.activePartners}
+              limit={gate.partnerLimit}
+            />
           ) : null}
 
           <div className="flex flex-wrap items-center gap-2">
@@ -353,6 +367,7 @@ export function CustomersView() {
             {list.map((c) => {
               const on = selected.has(c.innerId);
               const locked = isPartnerLocked(c.isPartner, c.innerId, gate);
+              const preview = isPartnerPreviewLocked(c.isPartner, c.innerId, gate);
               return (
                 <tr
                   key={c.innerId}
@@ -362,7 +377,9 @@ export function CustomersView() {
                   className={
                     locked
                       ? "border-b border-line bg-surface"
-                      : on
+                      : preview
+                        ? "cursor-pointer border-b border-dashed border-warn bg-surface hover:bg-surface-2/60"
+                        : on
                         ? "cursor-pointer border-b border-line bg-accent-soft"
                         : "cursor-pointer border-b border-line bg-surface hover:bg-surface-2/60"
                   }
@@ -385,6 +402,16 @@ export function CustomersView() {
                       <span className="inline-flex items-center gap-2 blur-[5px] select-none">
                         {c.name}
                       </span>
+                    ) : preview ? (
+                      <span className="relative inline-flex items-center">
+                        <Link
+                          href={`/vevok/${c.innerId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="hover:underline"
+                        >
+                          {c.name}
+                        </Link>
+                      </span>
                     ) : (
                       <Link
                         href={`/vevok/${c.innerId}`}
@@ -405,7 +432,11 @@ export function CustomersView() {
                   <td className="px-4 py-2.5 md:px-6">
                     {locked ? (
                       <span className="text-[12px] font-medium text-faint">
-                        Emeld a csomagot, hogy lásd
+                        Tartsd a {gate?.activePartners ?? 0} vevőt, hogy lásd
+                      </span>
+                    ) : preview ? (
+                      <span className="text-[12px] font-medium text-faint">
+                        {onPlan(gate?.planLabel || "Start")} ez a név elmosódna
                       </span>
                     ) : (
                       <span className="inline-flex rounded-none bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-text">

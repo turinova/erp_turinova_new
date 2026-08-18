@@ -1,4 +1,5 @@
 import type { PlanId } from "@/lib/billing/plans";
+import type { ErpQualified } from "@/lib/billing/erp-qualified";
 import type { HealthLevel } from "@/lib/orgs/health";
 
 export type OrgListRow = {
@@ -34,6 +35,7 @@ export type OrgListRow = {
   last_login_at: string | null;
   partner_limit_override: number | null;
   sku_limit_override: number | null;
+  erpQualified: boolean;
 };
 
 export type OrgAuditRow = {
@@ -116,6 +118,7 @@ export type OrgDetail = {
     display_name: string | null;
     last_login_at: string | null;
   }>;
+  erpQualified: ErpQualified;
 };
 
 const HEALTH_RANK: Record<HealthLevel, number> = { crit: 0, warn: 1, ok: 2 };
@@ -136,6 +139,7 @@ export function fleetSummary(rows: OrgListRow[]): {
   warn: number;
   trialSoon: number;
   overCap: number;
+  erpQualified: number;
 } {
   return {
     crit: rows.filter((r) => r.health === "crit").length,
@@ -144,5 +148,6 @@ export function fleetSummary(rows: OrgListRow[]): {
       (r) => r.trialActive && r.trialDaysLeft != null && r.trialDaysLeft <= 7,
     ).length,
     overCap: rows.filter((r) => r.overCap).length,
+    erpQualified: rows.filter((r) => r.erpQualified).length,
   };
 }

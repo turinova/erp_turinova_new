@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { CreateOrgDrawer } from "@/components/platform/CreateOrgDrawer";
+import { PLAN_DEFAULTS } from "@/lib/billing/plans";
 import { relativeTime } from "@/lib/format";
 import { fleetSummary, type OrgListRow } from "@/lib/orgs/types";
 import { healthLabel, type HealthLevel } from "@/lib/orgs/health";
@@ -76,6 +77,7 @@ export function AdminTenantsView({ initialRows }: Props) {
         return false;
       }
       if (flag === "overCap" && !r.overCap) return false;
+      if (flag === "erpQualified" && !r.erpQualified) return false;
       return true;
     });
   }, [initialRows, health, catalog, widget, flag]);
@@ -119,13 +121,14 @@ export function AdminTenantsView({ initialRows }: Props) {
         </button>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-5">
         {(
           [
             ["health", "crit", "Ég", summary.crit],
             ["health", "warn", "Figyelj", summary.warn],
             ["flag", "trialSoon", "Próba ≤7 nap", summary.trialSoon],
             ["flag", "overCap", "Teli vevőcsomag", summary.overCap],
+            ["flag", "erpQualified", "ERP jelölt", summary.erpQualified],
           ] as const
         ).map(([key, value, label, n]) => {
           const on = searchParams.get(key) === value;
@@ -214,9 +217,8 @@ export function AdminTenantsView({ initialRows }: Props) {
         >
           <option value="">Csomag</option>
           <option value="start">Start</option>
-          <option value="grow">Grow</option>
+          <option value="plus">Plus</option>
           <option value="pro">Pro</option>
-          <option value="scale">Scale</option>
         </select>
         <select
           className="tn-input !w-auto cursor-pointer"
@@ -345,10 +347,18 @@ export function AdminTenantsView({ initialRows }: Props) {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-medium capitalize">{row.plan}</p>
+                      <p className="font-medium">
+                        {PLAN_DEFAULTS[row.plan].label}
+                      </p>
                       {row.trialActive && row.trialDaysLeft != null ? (
                         <p className="text-[12px] text-faint">
-                          Pro próba · {row.trialDaysLeft} nap
+                          {PLAN_DEFAULTS[row.plan].label} · próba {row.trialDaysLeft}{" "}
+                          nap
+                        </p>
+                      ) : null}
+                      {row.erpQualified ? (
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-ok">
+                          ERP jelölt
                         </p>
                       ) : null}
                     </td>

@@ -113,7 +113,7 @@ export function MerchantSettingsForm({ initial }: Props) {
       setMessage("Mentve");
       router.refresh();
     } catch {
-      setError("Nincs net.");
+      setError("Nincs kapcsolat.");
     } finally {
       setPending(false);
     }
@@ -146,7 +146,7 @@ export function MerchantSettingsForm({ initial }: Props) {
     } catch {
       setPingResult({
         kind: "fail",
-        message: "Nincs net.",
+        message: "Nincs kapcsolat.",
         at: new Date().toISOString(),
       });
     } finally {
@@ -265,7 +265,7 @@ export function MerchantSettingsForm({ initial }: Props) {
           <div>
             <h2 className="text-[18px] font-semibold tracking-tight">Gyors rendelés</h2>
             <p className="mt-1 text-[13px] text-faint">
-              Megjelenik a boltban a partnereknek. Be = látszik, Ki = el van rejtve.
+              Megjelenik a boltban a bejelentkezett vevőknek. Be = látszik, Ki = el van rejtve.
             </p>
           </div>
 

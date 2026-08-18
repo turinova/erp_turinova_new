@@ -125,7 +125,7 @@ export type WidgetAppearance = {
 export type WidgetFeatures = {
   requireLogin: boolean;
   modules: WidgetModuleId[];
-  /** Preference only — public config ignores unless paid Pro/Scale and not trial. */
+  /** Preference only — public config ignores unless paid Pro and not trial. */
   hideTurinovaMark: boolean;
 };
 

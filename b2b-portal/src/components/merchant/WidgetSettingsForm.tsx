@@ -314,11 +314,28 @@ window.SR_B2B_QUICKORDER = {
                 </label>
                 <p className="mt-1 text-[11px] leading-relaxed text-faint">
                   {initial.canHideTurinovaMark
-                    ? "A logó a gyors rendelés alján. Leveheted — a te márkád marad a boltban."
+                    ? "A jel a gyors rendelés alján. Leveheted — a te márkád marad a boltban."
                     : initial.isTrial
-                      ? "Próba alatt a Turinova a panel alján marad. Pro-tól elrejtheted."
-                      : "Pro-tól elrejtheted — a te márkád marad a boltban."}
+                      ? "Próba alatt a jel ott marad. A fizetett Pron leveheted."
+                      : "A fizetett Pron elrejtheted — a te márkád marad a boltban."}{" "}
+                  {!initial.canHideTurinovaMark ? (
+                    <a href="/csomag" className="font-semibold underline underline-offset-2">
+                      Csomagok
+                    </a>
+                  ) : null}
                 </p>
+                {!initial.canParseImage ? (
+                  <p className="mt-2 text-[11px] leading-relaxed text-faint">
+                    A fotós lista a Proé. Próba után a Starton és a Pluson nincs.{" "}
+                    <a href="/csomag" className="font-semibold underline underline-offset-2">
+                      Csomagok
+                    </a>
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[11px] leading-relaxed text-faint">
+                    A fotós lista most be van kapcsolva.
+                  </p>
+                )}
               </div>
 
               <ChipRow

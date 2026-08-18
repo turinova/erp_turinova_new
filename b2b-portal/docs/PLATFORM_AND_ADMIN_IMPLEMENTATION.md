@@ -2,17 +2,18 @@
 
 **Scope:** `b2b-portal` (merchant portál + storefront widget + platform admin)  
 **Státusz:** Source of truth a commerce sync, SKU-meteres billing, admin health és multi-platform adapter tervhez  
-**Utolsó frissítés:** 2026-08-18 (Active Partner **v2**: rendelés-meter, portál-gate, nincs Free launch, 30 nap trial, Start ≤15)  
-**Implementáció:** Ez a dokumentum a terv. Kódírás csak explicit következő lépés után.
+**Utolsó frissítés:** 2026-08-18 (árazás **v3** → [`PRICING.md`](./PRICING.md); motor/sync itt)  
+**Implementáció:** Motor, sync, admin health: ez a fájl. **Árak, próba-UX, FOMO, plan ID-k:** [`PRICING.md`](./PRICING.md). Kódírás csak explicit következő lépés után.
 
 Kapcsolódó dokumentumok:
 
 | Dokumentum | Szerep |
 |------------|--------|
+| [`PRICING.md`](./PRICING.md) | **Árazás v3** — Start 6 900 / Plus 12 900 / Pro 24 900, próba, FOMO |
 | [`SAAS_ARCHITECTURE.md`](./SAAS_ARCHITECTURE.md) | Tenancy, auth, shop creds, widget multi-tenant alap |
 | [`DATABASE.md`](./DATABASE.md) | Manuális SQL futtatás, meglévő séma |
 | [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) | UI nyelv (Olvasó / high_contrast, radius 0) |
-| [`../sql/`](../sql/) | Létező migrációk `001`–`012` (manuális) |
+| [`../sql/`](../sql/) | Létező migrációk (manuális) |
 | Repo: `ARCHITECTURE_STRATEGY.md` | Jövőbeli full ERP (külön DB, platform adapter minta) |
 
 ---
@@ -55,7 +56,7 @@ Olyan B2B SaaS, amely:
 1. **Shoprenteren most** kivitelezhető end-to-end.
 2. **Eszméletlenül gyors** a widget typeaheadben és a portál / admin listákon (olvasás = saját Postgres).
 3. **2–300 tenant** mellett is stabil (rate limit, queue, nincs process-helyi JSON index mint igazság).
-4. **Aktív partner / hó** (widget-**rendelés**) alapján eladható és érvényesíthető; SKU csak soft infra-cap; érvényesítés = **merchant portál** top-N gate.
+4. **Aktív vevő / hó** (widget-**rendelés**) alapján eladható; SKU soft infra-cap; érvényesítés = **merchant portál** top-N. Árak: [`PRICING.md`](./PRICING.md).
 5. A **platform adminon** minden tenant egészsége, partner meterje, syncje és widget használata követhető.
 6. Később **Unas, Shopify és más platformokra** adapterrel bővíthető, sémaújraírás nélkül.
 7. A jövőbeli **full fulfillment ERP** felé upsell-létra, anélkül hogy a B2B widget az ERP-től függene.
@@ -80,21 +81,21 @@ Olyan B2B SaaS, amely:
 
 Ezek **nem újratárgyalandók** implementáció közben, amíg explicit termékdöntés nem módosítja őket.  
 Minden döntéshez: **mi** + **miért**.  
-**v2 korrekció (stresszteszt):** D3 csak rendelés; D6 portál-gate; **nincs Free launch**; trial **30 nap**; Start **≤15**.
+**v3 árazás:** [`PRICING.md`](./PRICING.md) felülírja a D2/D4/D5/D11/D12 számokat és a D6 widget-kill részét. D3 (rendelés-meter), D6 portál-gate, nincs Free, trial 30 nap, Start ≤15 — elvben marad.
 
 ### D1 — Trial: 30 nap teljes Pro → fizetős Start minimum
 
 | | |
 |--|--|
-| **Döntés** | Org create → `status=trial`, `trial_ends_at = now()+30 days`. Trial = **teljes Pro**. Lejárat után **kötelező** fizetős plan (`start` minimum); nincs örök Free. |
-| **Miért** | 14 nap B2B-nél gyakran rövid. 30 nap Pro = endowment (árrés, szokás). Free launch + invite-only ellentmondás volt; Free-t később App Store-nál lehet visszahozni. Trial→Start kényszer = konverzió. |
+| **Döntés** | Org create → `status=trial`, `trial_ends_at = now()+30 days`. Trial = **Pro** (fotó, árrés, 120 vevő), **logó nem rejthető**. Lejárat után fizetős plan (`start` minimum); a **widget él**. [`PRICING.md`](./PRICING.md) §10–§11. |
+| **Miért** | 30 nap = catalog + egy rendelési ritmus. Endowment. Nincs örök Free. Widget-kill (M6) a demó után külön döntés. |
 
 ### D2 — Fő meter: aktív partner / hó (Active Partner)
 
 | | |
 |--|--|
-| **Döntés** | Látható árazás = hány **aktív partner** / naptári hónap. Plan: **Start ≤15 · Grow ≤30 · Pro ≤80 · Scale ≤200 · Enterprise 200+**. (Nincs Free tier a launchnál.) |
-| **Miért** | Partner = merchant-nyelv; nagy katalógus ICP nem büntetett. Start ≤15 elkerüli a 10→30 cliff-et (11–18 partneres tömeg). Csökkenő Ft/partner = volume discount. |
+| **Döntés** | Látható árazás = hány **aktív vevő** / naptári hónap. Plan v3: **Start ≤15 · Plus ≤40 · Pro ≤120 · Egyedi 120+**. Nincs Free, nincs Grow/Scale kártya. Részlet: [`PRICING.md`](./PRICING.md) §4–§7. |
+| **Miért** | Vevő = merchant-nyelv; nagy katalógus nem büntetett. Három plugin-kártya (Shopify/Shoper), nem négy szoftver-rúd. |
 
 ### D3 — Aktív = ≥1 widget-rendelés / hó (nem open)
 
@@ -107,22 +108,22 @@ Minden döntéshez: **mi** + **miért**.
 
 | | |
 |--|--|
-| **Döntés** | Start = widget + typeahead + alap vevők/riport. Grow = teljesebb 360. **Árrés + deep riport + priority sync = Pro+**. Multi-shop = Scale+. |
-| **Miért** | Trial után Start is ad értéket; Pro money salience (árrés) = upsell. Nincs Free feature-üres zuhanás trial végén. |
+| **Döntés** | Ugyanaz a widget mindhárom csomagon. Start/Plus = méret (15/40 vevő). **Fotó + logó elrejtés = Pro** (próba alatt fotó jár, logó nem). **Árrés = ERP**, nem a plugin. Multi-shop = Egyedi / később. [`PRICING.md`](./PRICING.md) §8. |
+| **Miért** | Shopify order-form: kevés kapu, a többi usage. Trial után Start is teljes gyors rendelés. |
 
 ### D5 — SKU soft cap (infra, háttér)
 
 | | |
 |--|--|
-| **Döntés** | Soft SKU: Start 15k · Grow 40k · Pro 80k · Scale 150k+. 80% warn; 100% sync-stop; widget él. Nem a fő pitch. |
+| **Döntés** | Soft SKU: Start 15k · Plus 40k · Pro 80k. 80% warn; 100% sync-stop; widget él. Nem a pitch, nem a `/csomag` kártya. [`PRICING.md`](./PRICING.md) §9. |
 | **Miért** | Sync költség SKU-val nő; partner-meter önmagában nem védi az infrát. |
 
 ### D6 — Widget soha nem áll le; érvényesítés = merchant portál top-N
 
 | | |
 |--|--|
-| **Döntés** | Partner/SKU limitnél a **storefront widget mindig megy** (partner rendelhet). Érvényesítés: a **merchant portálon** partner-limit felett csak a **legaktívabb N partner** adatai látszanak (N = plan limit); a többi sor elmosva + CTA „Emeld a csomagot”. SKU 100%: sync-stop. Widget kill csak: suspended / lejárt trial unpaid / `widget_enabled=false`. |
-| **Miért** | Loss aversion a végfelhasználónál. Portál-gate = Shopify-szerű paywall: merchant nem lát adatot → fizet; shop bevétel nem sérül. Banner önmagában (régi B9) **nem** kényszerít. |
+| **Döntés** | Partner/SKU limitnél a **storefront widget mindig megy**. Portál: top-N + blur + CTA *Tartsd a {n} vevőt*. SKU 100%: sync-stop. Widget off csak: `suspended` / `widget_enabled=false`. **Lejárt próba nem öli a widgetet** (M6 később, külön döntés). [`PRICING.md`](./PRICING.md) §7.3, §11. |
+| **Miért** | A végfelhasználót nem büntetjük a merchant latereléséért. Portál-gate = Shopify paywall. |
 
 ### D7 — Catalog ready csak complete
 
@@ -156,15 +157,15 @@ Minden döntéshez: **mi** + **miért**.
 
 | | |
 |--|--|
-| **Döntés** | Pro chip „Ajánlott”; Grow decoy; Start belépő. |
-| **Miért** | Anchoring. Árindoklás **ne** Logzi-hoz: hanem **bérköltség / elveszett admin idő** (pl. 80 partner × pár perc rögzítés ≈ munkaerő Ft). Logzi csak objection handlingben. |
+| **Döntés** | **Plus** chip „Ajánlott”; Start belépő; Pro = fotó/logó/árrés. [`PRICING.md`](./PRICING.md) §5.2, §6. |
+| **Miért** | Plugin decoy: a próba Pro, a menekülőút Plus (12 900), nem a 24 900. |
 
 ### D12 — Ársáv Ft (launch)
 
 | | |
 |--|--|
-| **Döntés** | Start **14 900** (≤15) · Grow **34 900** (≤30) · Pro **69 900** (≤80) · Scale **139 900** (≤200) · Enterprise egyedi (floor Scale, ≤~700 Ft/partner). Éves −15–20%. |
-| **Miért** | HU Ft. Start belépő &gt; számla-app, &lt; full ERP bevezetés. Start≤15 simítja a cliffet. ROI story: admin idő megtakarítás, nem „drágább mint Logzi”. |
+| **Döntés** | Start **6 900** (≤15) · Plus **12 900** (≤40) · Pro **24 900** (≤120) · Egyedi 120+. Éves **10× havi** (2 hónap ajándék). Teljes indoklás: [`PRICING.md`](./PRICING.md). |
+| **Miért** | Shopify/Shoper plugin-zóna, nem szoftver-létra. 14 900 a bolt fejében második rendszer volt. |
 
 ### D13 — ERP külön / co-opetitor
 
@@ -293,10 +294,10 @@ Analitika külön: „18 megnyitotta, 12 rendelt” — nem a számla alapja.
 | Szint | Merchant érzés | Termék | Upsell |
 |-------|----------------|--------|--------|
 | **0 Hook** | Működik? | Widget | — |
-| **1 Habit** | Partnereim rendelnek | Gyors rendelés | Partner limit → Grow/Pro |
-| **2 Insight** | Látom a pénzt | 360, árrés | **Pro** (portál-gate + feature) |
-| **3 Lock-in** | Ebből élek | Multi-shop, facts | Scale |
-| **4 ERP** | Egész cég | Fulfillment | Külön termék |
+| **1 Habit** | Vevőim rendelnek | Gyors rendelés | 15 vevő → Plus |
+| **2 Insight** | Látom a pénzt | Árrés | **Pro** |
+| **3 Lock-in** | Ebből élek | 40–120 vevő | Plus / Pro / Egyedi |
+| **4 ERP** | Egész cég | Fulfillment | Külön termék ([`PRICING.md`](./PRICING.md) §13) |
 
 ### 5.1 Upsell triggerök
 
@@ -312,48 +313,33 @@ Analitika külön: „18 megnyitotta, 12 rendelt” — nem a számla alapja.
 
 ---
 
-## 6. Planek, trial, Active Partner árazás (v2)
+## 6. Planek, trial, Active Partner árazás
+
+**v3 source of truth:** [`PRICING.md`](./PRICING.md). Itt csak a motor-rövidítés; árak, FOMO, copy ott.
 
 ### 6.0 Modell
 
-**Active Partner (rendelés)** + feature ladder + SKU soft cap + **portál top-N gate**.  
-**Launch:** nincs Free. Invite → 30 nap Pro trial → Start minimum.
+Aktív vevő (widget-**rendelés** / naptári hó) + kevés Pro-kapu + SKU soft + **portál top-N**. Nincs Free. Invite → 30 nap Pro próba (logó kint) → Start minimum. Widget lejáratkor **él**.
 
-### 6.1 Hivatalos ártábla (nettó Ft / hó)
+### 6.1 Ártábla (összefoglaló)
 
-| Csomag | Aktív partner / hó | Ár / hó | Ft / partner | Soft SKU | Szerep |
-|--------|--------------------|---------|--------------|----------|--------|
-| **Trial** | Pro keret (80) | 0 · **30 nap** | — | Pro | Teljes Pro |
-| **Start** | ≤ **15** | **14 900** | 993 | 15 000 | Minimum fizetős |
-| **Grow** | ≤ 30 | **34 900** | 1 163 | 40 000 | Decoy / közép |
-| **Pro** ★ | ≤ 80 | **69 900** | 874 | 80 000 | Ajánlott + árrés |
-| **Scale** | ≤ 200 | **139 900** | 700 | 150 000+ | Multi-shop |
-| **Enterprise** | 200+ | egyedi (floor Scale, ≤~700 Ft/p) | csökken | egyedi | Sales |
+| Csomag | Vevő / hó | Ft / hó | Szerep |
+|--------|-----------|---------|--------|
+| Próba | Pro 120 | 0 · 30 nap | Pro, logó kint |
+| Start | 15 | 6 900 | Belépő |
+| Plus ★ | 40 | 12 900 | Ajánlott; trial utáni cél |
+| Pro | 120 | 24 900 | Fotó, logó le, árrés |
+| Egyedi | 120+ | floor Pro | Override, nincs kártya |
 
-**Éves:** −15–20%.  
-**ROI indoklás (pitch):** pl. 80 partner × ~6 perc manuális rögzítés ≈ 8 óra/hó → bérköltség-összevetés; **ne** „Pro drágább mint Logzi”.  
-**Start ≤15:** elkerüli a 10→30 tier-cliffet.
+Éves: 10× havi (2 hónap ajándék). CTA: *Tartsd a {n} vevőt*.
 
-### 6.2 Feature mátrix
+### 6.2 Feature (összefoglaló)
 
-| Képesség | Start | Grow | Pro | Scale |
-|----------|-------|------|-----|-------|
-| Widget + typeahead | ✓ | ✓ | ✓ | ✓ |
-| Alap vevők + alap riport | ✓ | ✓ | ✓ | ✓ |
-| Teljes vevő 360 | korlátozott | ✓ | ✓ | ✓ |
-| Árrés + cost coverage | — | — | ✓ | ✓ |
-| Deep riport (NRR, sleeping, group) | — | részben | ✓ | ✓ |
-| Priority sync | — | — | ✓ | ✓ |
-| Multi-shop | — | — | — | ✓ |
-| Portál: partner sorok | top **15** | top **30** | top **80** | top **200** |
-
-Limit felett: elmosott sorok + upgrade CTA. Widget érintetlen.
+Ugyanaz a widget. Kapu = vevőszám + Pro extra (fotó, árrés, logó). Mátrix: [`PRICING.md`](./PRICING.md) §8.
 
 ### 6.3 Trial
 
-1. Create → trial +30 nap, Pro entitlements.  
-2. Lejárat + nincs fizetős plan → widget policy off + portal read-only + admin crit **amíg** Start+ nincs választva.  
-3. Nincs Free esés (rossz szájíz elkerülése).
+Create → +30 nap, effektív Pro, `plan=start` (post-trial). Lejárat: Start keret, blur, admin crit, **widget OK**, amíg Aktiválás.
 
 ### 6.4 Meter
 
@@ -361,32 +347,33 @@ Limit felett: elmosott sorok + upgrade CTA. Widget érintetlen.
 active_partners_month = COUNT DISTINCT customer_inner_id
   WHERE widget_order in calendar_month AND shop in org
 
-partner_limit = override ?? plan_defaults[plan].partner_limit
-  ?? (trial → 80)
+partner_limit = override
+  ?? (trial aktív → plan_defaults.pro)   -- v3: 120
+  ?? plan_defaults[organizations.plan]
 
-sku_count / sku_limit = soft infra (sync-stop at 100%)
-widget_opens = analytics only (NOT billing)
+widget_opens = analitika, NEM billing
 ```
 
 | Állapot | Widget | Merchant portál | Sync |
 |---------|--------|-----------------|------|
-| Partner ≤ limit | OK | Teljes lista (≤N) | OK |
-| Partner &gt; limit | **OK** | Top-N + blur + CTA | OK |
-| SKU ≥ 100% | OK (meglévő) | Infra üzenet | **Stop** |
-| Trial lejárt unpaid | Off policy | Read-only | — |
+| Vevő ≤ limit | OK | Teljes lista (≤N) | OK |
+| Vevő &gt; limit | **OK** | Top-N + blur + Tartsd… | OK |
+| SKU ≥ 100% | OK | Infra üzenet | **Stop** |
+| Próba lejárt, nincs aktiválás | **OK** (Start keret) | Blur + döntő képernyő | OK |
+| `suspended` | Off | — | — |
 
 ### 6.5 Stripe
 
-v1: manuális / admin plan váltás; meter DB-ben. Self-serve + App Store = később (D18).
+v1: mailto + admin Aktiválás. Self-serve = később (D18).
 
 ### 6.6 90 nap metrics
 
 | Metric | Cél |
 |--------|-----|
-| Trial→Start+ | ≥ 25% |
-| Start→Grow/Pro | partner limit / árrés miatt |
-| Churn | alacsony; panasz ≠ „open miatt számláztak” |
-| Upgrade oka | partner/feature ≫ SKU |
+| Trial → fizetős (Start vagy Plus) | ≥ 25% |
+| Ebből Plus arány | a 16+ vevősökön magas |
+| Churn | panasz ≠ „open miatt számláztak” |
+| Upgrade oka | vevőkeret ≫ SKU |
 
 ---
 
@@ -881,9 +868,9 @@ Elérés: `/admin` (platform admin session).
 
 ### 14.4 Admin settings
 
-- Default **partner** limits: start 15 / grow 30 / pro 80 / scale 200
-- Default **SKU** soft limits: 15k / 40k / 80k / 150k+
-- Default plan list prices (Ft): 14900 / 34900 / 69900 / 139900
+- Default **vevő** limits: start 15 / plus 40 / pro 120 — [`PRICING.md`](./PRICING.md)
+- Default **SKU** soft: 15k / 40k / 80k
+- Default listaár (Ft): 6900 / 12900 / 24900
 - Trial length days (default **30**)
 - Portal top-N gate enabled
 - Global sync concurrency
@@ -1099,7 +1086,7 @@ Ezek implementáció előtt / közben eldönthetők anélkül, hogy a 2. fejezet
 
 ## 22. Dokumentum-karbantartás
 
-- Minden termékdöntés-változás: frissítsd a **2. fejezet** tábláját és a dátumot a fejlécben.
+- Árazás / próba / FOMO változás: **[`PRICING.md`](./PRICING.md)** + a **2. fejezet** D-sorai, amelyekre hat. A dátum mindkét fejlécben.
 - Új SQL fájl: frissítsd a **9.1** táblát és a [`DATABASE.md`](./DATABASE.md) futtatási listát.
 - Fázis kész: pipáld az **18.** fejezet Done when sorát (vagy külön checklist issue).
 - Ez a fájl az implementáció **előtti** igazság; a kód nem térhet el hallgatólagosan.
@@ -1108,7 +1095,7 @@ Ezek implementáció előtt / közben eldönthetők anélkül, hogy a 2. fejezet
 
 ## Függelék A — Gyors referencia (v2)
 
-Trial **30 nap** Pro → Start minimum · Active Partner = **widget-rendelés** · Start≤15 / Grow≤30 / Pro≤80 / Scale≤200 · Ár 14 900 / 34 900 / 69 900 / 139 900 · Portál top-N gate · Widget soha nem áll le partner-cap miatt · Open = analitika · SKU soft infra · Árrés=Pro+ · Invite-only launch (nincs Free) · Co-opetitor Billingo/Logzi · ROI = admin idő · Order attribution = M1 · App Store később.
+**Árazás v3:** [`PRICING.md`](./PRICING.md) — Start 6 900≤15 · Plus 12 900≤40 · Pro 24 900≤120 · próba 30 nap Pro (logó kint) · widget lejáratkor él. Meter = widget-rendelés · top-N gate · Open = analitika · SKU soft · Invite-only · ERP külön.
 
 ## Függelék B — Typeahead jelenlegi vs cél
 

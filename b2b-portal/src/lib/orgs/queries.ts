@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
-import { isPlanId, parsePlanId } from "@/lib/billing/plans";
+import { evaluateErpQualified, loadErpQualified } from "@/lib/billing/erp-qualified";
+import { parsePlanId, planFilterValues } from "@/lib/billing/plans";
 import { query } from "@/lib/db";
 import {
   catalogLabel,
@@ -46,6 +47,8 @@ type RawListRow = {
   job_created_at: string | null;
   last_order_at: string | null;
   last_ping_at: string | null;
+  orders_month: number | null;
+  gross_month: number | null;
 };
 
 function enrichListRow(row: RawListRow): OrgListRow {
@@ -117,6 +120,12 @@ function enrichListRow(row: RawListRow): OrgListRow {
     last_login_at: row.last_login_at,
     partner_limit_override: row.partner_limit_override,
     sku_limit_override: row.sku_limit_override,
+    erpQualified: evaluateErpQualified({
+      activePartnersMonth: partnerUsed,
+      widgetOrdersMonth: Number(row.orders_month ?? 0),
+      skuCount: skuUsed,
+      widgetGrossMonth: Number(row.gross_month ?? 0),
+    }).qualified,
   };
 }
 
@@ -151,10 +160,10 @@ export async function listOrganizations(
     i++;
   }
   if (filters.plan) {
-    const plan = filters.plan === "starter" ? "start" : filters.plan;
-    if (isPlanId(plan)) {
-      clauses.push(`o.plan = $${i}`);
-      params.push(plan);
+    const vals = planFilterValues(filters.plan);
+    if (vals) {
+      clauses.push(`o.plan = any($${i}::text[])`);
+      params.push(vals);
       i++;
     }
   }
@@ -190,15 +199,25 @@ export async function listOrganizations(
       inv.expires_at as invite_expires_at,
       j.status as job_status,
       j.created_at as job_created_at,
-      ord.last_order_at
+      ord.last_order_at,
+      ord.orders_month,
+      ord.gross_month
     from organizations o
     left join lateral (
       select
-        shoprenter_shop_name, status, widget_enabled,
-        catalog_status, catalog_product_count, last_ping_at
-      from shops
-      where organization_id = o.id and purged_at is null
-      order by created_at
+        sh.shoprenter_shop_name,
+        sh.status,
+        sh.widget_enabled,
+        sh.catalog_status,
+        (
+          select count(*)::int
+          from product_catalog pc
+          where pc.shop_id = sh.id and pc.active
+        ) as catalog_product_count,
+        sh.last_ping_at
+      from shops sh
+      where sh.organization_id = o.id and sh.purged_at is null
+      order by sh.created_at
       limit 1
     ) s on true
     left join lateral (
@@ -224,7 +243,16 @@ export async function listOrganizations(
       limit 1
     ) j on true
     left join lateral (
-      select max(bo.created_at) as last_order_at
+      select
+        max(bo.created_at) as last_order_at,
+        count(*) filter (
+          where bo.created_at >= date_trunc('month', now())
+            and bo.status in ('recorded', 'linked')
+        )::int as orders_month,
+        coalesce(sum(coalesce(bo.gross_total, bo.net_total)) filter (
+          where bo.created_at >= date_trunc('month', now())
+            and bo.status in ('recorded', 'linked')
+        ), 0) as gross_month
       from b2b_orders bo
       join shops sx on sx.id = bo.shop_id
       where sx.organization_id = o.id and bo.source = 'widget'
@@ -263,6 +291,9 @@ export async function listOrganizations(
   }
   if (filters.flag === "overCap") {
     rows = rows.filter((r) => r.overCap);
+  }
+  if (filters.flag === "erpQualified") {
+    rows = rows.filter((r) => r.erpQualified);
   }
 
   return rows;
@@ -339,7 +370,7 @@ export async function getOrganizationDetail(
     [orgId],
   );
 
-  const [partnerUsedRes, partnerLimitRes, skuUsedRes, skuLimitRes] =
+  const [partnerUsedRes, partnerLimitRes, skuUsedRes, skuLimitRes, erpQualified] =
     await Promise.all([
       query<{ n: number }>(
         client,
@@ -364,6 +395,7 @@ export async function getOrganizationDetail(
         `select public.effective_sku_limit($1::uuid) as n`,
         [orgId],
       ),
+      loadErpQualified(client, orgId),
     ]);
 
   const partnerUsed = Number(partnerUsedRes.rows[0]?.n ?? 0);
@@ -508,7 +540,7 @@ export async function getOrganizationDetail(
           status: shop.status,
           widget_enabled: shop.widget_enabled,
           catalog_status: shop.catalog_status,
-          catalog_product_count: shop.catalog_product_count,
+          catalog_product_count: skuUsed,
           catalog_error: shop.catalog_error,
           catalog_synced_at: shop.catalog_synced_at,
           last_ping_ok: shop.last_ping_ok,
@@ -518,5 +550,6 @@ export async function getOrganizationDetail(
       : null,
     pending_invite: inviteRes.rows[0] ?? null,
     members: membersRes.rows,
+    erpQualified,
   };
 }

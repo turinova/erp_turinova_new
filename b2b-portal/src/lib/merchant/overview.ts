@@ -3,11 +3,8 @@ import {
   countActivePartnersMonth,
   effectivePartnerLimit,
 } from "@/lib/billing/active-partners";
-import { PLAN_DEFAULTS, parsePlanId, type PlanId } from "@/lib/billing/plans";
-import {
-  UPGRADE_MAILTO,
-  type PartnerGateDto,
-} from "@/lib/billing/types";
+import { PLAN_DEFAULTS, formatHuf, onPlan, parsePlanId, type PlanId } from "@/lib/billing/plans";
+import { type PartnerGateDto } from "@/lib/billing/types";
 import { catalogIsSearchable } from "@/lib/commerce/lookup";
 import { query } from "@/lib/db";
 import { loadMerchantShop, type MerchantShopDto } from "@/lib/merchant/shop";
@@ -17,11 +14,15 @@ export type MerchantOverview = {
   planLabel: string;
   status: "trial" | "active" | "suspended";
   isTrial: boolean;
+  trialExpired: boolean;
   trialDaysLeft: number | null;
+  trialEndsAt: string | null;
   partnersUsed: number;
   partnersLimit: number;
+  paidPartnerLimit: number;
   overCap: boolean;
   warn80: boolean;
+  wouldLoseOnPaid: boolean;
   catalogStatus: string;
   catalogReady: boolean;
   productCount: number;
@@ -93,21 +94,35 @@ export async function loadPartnerGate(
     countActivePartnersMonth(client, orgId),
     effectivePartnerLimit(client, orgId),
   ]);
+  const paidPartnerLimit = PLAN_DEFAULTS[plan].partnerLimit;
+  const trialExpired =
+    status === "trial" &&
+    !trialActive;
+  const warnBasis = trialActive ? paidPartnerLimit : partnerLimit;
   const overCap = activePartners > partnerLimit;
+  const wouldLoseOnPaid = trialActive && activePartners > paidPartnerLimit;
   const visibleInnerIds = overCap
     ? await listTopWidgetPartnerIds(client, orgId, partnerLimit)
+    : [];
+  const paidVisibleInnerIds = wouldLoseOnPaid
+    ? await listTopWidgetPartnerIds(client, orgId, paidPartnerLimit)
     : [];
 
   return {
     activePartners,
     partnerLimit,
+    paidPartnerLimit,
     overCap,
-    warn80: partnerLimit > 0 && activePartners / partnerLimit >= 0.8,
+    warn80: warnBasis > 0 && activePartners / warnBasis >= 0.8,
+    wouldLoseOnPaid,
     visibleInnerIds,
+    paidVisibleInnerIds,
     plan,
     planLabel: PLAN_DEFAULTS[plan]?.label ?? plan,
     isTrial: trialActive,
+    trialExpired,
     trialDaysLeft: trialActive ? daysLeft(org?.trial_ends_at ?? null) : null,
+    trialEndsAt: org?.trial_ends_at ?? null,
   };
 }
 
@@ -120,7 +135,6 @@ export async function loadMerchantOverview(
     status: "trial" | "active" | "suspended";
   }>(client, `select status from organizations where id = $1`, [orgId]);
   const status = orgRes.rows[0]?.status ?? "trial";
-  const trialExpired = status === "trial" && !gate.isTrial;
 
   const shop = await loadMerchantShop(client, orgId);
   const cat = shop
@@ -156,7 +170,7 @@ export async function loadMerchantOverview(
   if (!shop || !shop.hasCredentials) {
     next = {
       title: "Kapcsold össze a boltot",
-      body: "Írd be a Shoprenter jelszót a Beállításokban, aztán nyomd meg: Működik?",
+      body: "Írd be a Shoprenter API-nevet és jelszót, aztán: Működik?",
       href: "/settings",
       cta: "Beállítások",
       external: false,
@@ -191,24 +205,35 @@ export async function loadMerchantOverview(
   } else if (gate.overCap) {
     next = {
       title: "Elfogyott a hely a csomagban",
-      body: `Ebben a hónapban ${gate.activePartners} vevő rendelt a gyors rendeléssel. A csomag ${gate.partnerLimit} vevőt bír. A többi vevő adatai el vannak rejtve — a gyors rendelés ettől még megy.`,
-      href: "/vevok",
-      cta: "Vevők",
+      body: `Ebben a hónapban ${gate.activePartners} vevő rendelt a gyors rendeléssel. A csomagba ${gate.partnerLimit} fér. A többi vevő adatait itt nem látod — a gyors rendelés ettől még megy.`,
+      href: "/csomag",
+      cta: `Tartsd a ${gate.activePartners} vevőt`,
       external: false,
     };
-  } else if (trialExpired) {
+  } else if (gate.trialExpired) {
     next = {
       title: "Lejárt a próba",
-      body: "Írj a Turinovának, és válassz csomagot, hogy a gyors rendelés tovább menjen.",
-      href: UPGRADE_MAILTO,
-      cta: "Írj a Turinovának",
-      external: true,
+      body: `A boltban a gyors rendelés megy. Itt ${gate.paidPartnerLimit} vevőig látsz mindent. Plus: ${formatHuf(PLAN_DEFAULTS.plus.listPriceHuf)}.`,
+      href: "/csomag",
+      cta: `Tartsd a ${gate.activePartners} vevőt · Plus`,
+      external: false,
+    };
+  } else if (gate.isTrial && gate.trialDaysLeft != null && gate.trialDaysLeft <= 7) {
+    next = {
+      title: `A próba ${gate.trialDaysLeft} nap múlva lejár`,
+      body:
+        gate.wouldLoseOnPaid
+          ? `Ebben a hónapban ${gate.activePartners} vevő rendelt. ${onPlan(gate.planLabel)} ${gate.paidPartnerLimit}-ig látod őket.`
+          : "A gyors rendelés a boltban marad. A csomag azt szabja meg, hány vevőt látsz itt.",
+      href: "/csomag",
+      cta: `Tartsd a ${gate.activePartners} vevőt`,
+      external: false,
     };
   } else {
     const store = shop.storeUrl;
     next = {
-      title: "Kész a beállítás",
-      body: "Nyisd meg a boltod, lépj be vevőként, és próbáld a gyors rendelést.",
+      title: "A bolt kész",
+      body: "Nézd meg vevőként, hogy megy-e a gyors rendelés.",
       href: store || "/widget",
       cta: store ? "Bolt megnyitása" : "Gyors rendelés",
       external: Boolean(store),
@@ -216,15 +241,19 @@ export async function loadMerchantOverview(
   }
 
   return {
-    plan: gate.plan as PlanId,
+    plan: gate.plan,
     planLabel: gate.planLabel,
     status,
     isTrial: gate.isTrial,
+    trialExpired: gate.trialExpired,
     trialDaysLeft: gate.trialDaysLeft,
+    trialEndsAt: gate.trialEndsAt,
     partnersUsed: gate.activePartners,
     partnersLimit: gate.partnerLimit,
+    paidPartnerLimit: gate.paidPartnerLimit,
     overCap: gate.overCap,
     warn80: gate.warn80,
+    wouldLoseOnPaid: gate.wouldLoseOnPaid,
     catalogStatus,
     catalogReady: catalogIsSearchable(catalogStatus),
     productCount,

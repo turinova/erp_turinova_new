@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { InviteAcceptForm } from "@/components/auth/InviteAcceptForm";
+import { PlanPriceTable } from "@/components/billing/PlanPriceTable";
 import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { hashToken } from "@/lib/auth/tokens";
+import { PLAN_DEFAULTS, parsePlanId } from "@/lib/billing/plans";
 import { withPlatformAdmin, query } from "@/lib/db";
 
 export const metadata: Metadata = {
@@ -15,6 +17,7 @@ type InviteRow = {
   status: string;
   expires_at: string;
   org_name: string;
+  plan: string;
 };
 
 async function loadInvite(token: string): Promise<InviteRow | null> {
@@ -23,7 +26,7 @@ async function loadInvite(token: string): Promise<InviteRow | null> {
   return withPlatformAdmin(async (client) => {
     const res = await query<InviteRow>(
       client,
-      `select i.id, i.email, i.status, i.expires_at, o.name as org_name
+      `select i.id, i.email, i.status, i.expires_at, o.name as org_name, o.plan
        from invitations i
        join organizations o on o.id = i.organization_id
        where i.token_hash = $1
@@ -54,7 +57,7 @@ export default async function InvitePage({
 
   return (
     <main className="relative flex min-h-dvh flex-col items-center justify-center px-4 py-10">
-      <div className="relative w-full max-w-[380px]">
+        <div className="relative w-full max-w-[420px]">
         <div className="mb-5 flex justify-center">
           <TurinovaWordmark height={24} />
         </div>
@@ -77,6 +80,15 @@ export default async function InvitePage({
                 Szervezet:{" "}
                 <strong className="text-text">{invite.org_name}</strong>
               </p>
+              <p className="mt-3 text-[12px] text-muted">
+                30 napig Pro: fotó igen, a Turinova jel a gyors rendelésen
+                marad. Utána{" "}
+                <strong className="text-text">
+                  {PLAN_DEFAULTS[parsePlanId(invite.plan)].label}
+                </strong>
+                , ha nem írsz.
+              </p>
+              <PlanPriceTable highlight />
               <InviteAcceptForm token={token} email={invite.email} />
             </>
           )}

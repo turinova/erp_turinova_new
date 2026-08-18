@@ -5,7 +5,7 @@ import {
 } from "@/lib/auth/api";
 import { kickCatalogSync } from "@/lib/commerce/loop";
 import { withPlatformAdmin } from "@/lib/db";
-import { isPlanId } from "@/lib/billing/plans";
+import { isKnownPlanInput, parsePlanId } from "@/lib/billing/plans";
 import {
   patchOrganization,
   resumeCatalogAfterOverride,
@@ -46,8 +46,17 @@ export async function PATCH(req: Request, ctx: Ctx) {
     return NextResponse.json({ error: "Érvénytelen kérés" }, { status: 400 });
   }
 
-  if (body.plan && !isPlanId(body.plan)) {
+  if (body.plan && !isKnownPlanInput(body.plan)) {
     return NextResponse.json({ error: "Érvénytelen csomag" }, { status: 400 });
+  }
+  if (body.plan) body.plan = parsePlanId(body.plan);
+  if (
+    body.extendTrialDays != null &&
+    (!Number.isFinite(body.extendTrialDays) ||
+      body.extendTrialDays < 1 ||
+      body.extendTrialDays > 90)
+  ) {
+    return NextResponse.json({ error: "A hosszabbítás 1–90 nap" }, { status: 400 });
   }
 
   try {

@@ -3,7 +3,8 @@
 **Scope:** `b2b.turinova.hu` — merchant + platform + storefront widget (egy Next app: `b2b-portal`)  
 **Last updated:** 2026-08-18  
 **Status:** Source of truth for backend / multi-tenant decisions  
-**Lásd még:** commerce sync + admin implementációs terv — [`PLATFORM_AND_ADMIN_IMPLEMENTATION.md`](./PLATFORM_AND_ADMIN_IMPLEMENTATION.md)  
+**Árazás:** [`PRICING.md`](./PRICING.md)  
+**Lásd még:** commerce sync + admin — [`PLATFORM_AND_ADMIN_IMPLEMENTATION.md`](./PLATFORM_AND_ADMIN_IMPLEMENTATION.md)  
 
 Kapcsolódó:
 - UI: [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md)
@@ -21,7 +22,7 @@ Kapcsolódó:
 | Merchant portal | Webshop tulajdonos | Shop + widget beállítás |
 | Platform admin | Turinova | Tenant létrehozás, invite, suspend |
 
-**Üzleti modell:** invite-only SaaS; **Active Partner** árazás (widget-**rendelés**/hó): Start ≤15 · 14 900 Ft … Pro ≤80 · 69 900 Ft … + portál top-N gate + SKU soft cap — [`PLATFORM_AND_ADMIN_IMPLEMENTATION.md`](./PLATFORM_AND_ADMIN_IMPLEMENTATION.md) §2, §6–6c. **Nincs Free tier a launchnál**; trial **30 nap** Pro → Start minimum. Nincs nyilvános regisztráció.  
+**Üzleti modell:** invite-only SaaS; **Active Partner** (widget-**rendelés**/hó). Árak v3: Start 6 900 ≤15 · Plus 12 900 ≤40 · Pro 24 900 ≤120 — [`PRICING.md`](./PRICING.md). Portál top-N + SKU soft. **Nincs Free**; trial **30 nap** Pro (logó kint) → Start minimum. Nincs nyilvános regisztráció.  
 **Későbbi upsell:** teljes fulfillment ERP (külön termék / izoláció).  
 **Pozíció a Shoprenter ökoszisztémában:** nem Billingo/Logzi/CloudERP helyettesítő, hanem **B2B growth layer** mellettük. App Store self-serve = későbbi fázis.
 
@@ -75,7 +76,7 @@ Kapcsolódó:
 
 - Egy fizető ügyfél = egy `organization`
 - Státusz: `trial` | `active` | `suspended`
-- Plan: `start` | `grow` | `pro` | `scale` (Enterprise = custom / scale+override)
+- Plan: `start` | `plus` | `pro` (Enterprise = custom / `partner_limit_override`). Olvasáskor `grow`→`plus`, `scale`→`pro`. Kézi SQL: `019_plans_v3.sql`.
 - Trial: `trial_ends_at` (launch default **+30 nap**); trial alatt Pro entitlements
 - Partner limit / SKU soft limit: plan defaults + org override — lásd PLATFORM_AND_ADMIN_IMPLEMENTATION §6
 - Meter: aktív partner = **≥1 widget-rendelés / hó** (open ≠ billing)

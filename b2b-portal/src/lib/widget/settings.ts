@@ -3,6 +3,7 @@ import { catalogIsSearchable } from "@/lib/commerce/lookup";
 import { query, withPlatformAdmin } from "@/lib/db";
 import {
   canHideTurinovaMark,
+  canParseImage,
   parsePlanId,
   PLAN_DEFAULTS,
   resolveShowTurinovaMark,
@@ -44,6 +45,7 @@ export type MerchantWidgetDto = {
   /** Query on /widget.js so Shoprenter/HTML caches pick up new JS. */
   widgetVersion: string;
   canHideTurinovaMark: boolean;
+  canParseImage: boolean;
   isTrial: boolean;
   planLabel: string;
 };
@@ -84,6 +86,7 @@ function orgWidgetBranding(row: {
     plan,
     isTrial,
     canHideTurinovaMark: canHideTurinovaMark(plan, isTrial),
+    canParseImage: canParseImage(plan, isTrial),
     planLabel: PLAN_DEFAULTS[plan].label,
     showTurinovaMark: resolveShowTurinovaMark({
       hideRequested: row.hideRequested,
@@ -156,6 +159,7 @@ export async function loadMerchantWidget(
       catalogSyncedAt: toIso(row.catalog_synced_at),
     }),
     canHideTurinovaMark: branding.canHideTurinovaMark,
+    canParseImage: branding.canParseImage,
     isTrial: branding.isTrial,
     planLabel: branding.planLabel,
   };
@@ -273,14 +277,17 @@ export async function loadPublicWidgetConfig(
     });
     const disabled =
       row.status === "suspended" || row.status === "uninstalled";
-    // allowedGroupIds always [] → everyone (see widget.js groupAllowed)
+    const publicCfg = resolvePublicWidgetConfig({
+      enabled: disabled ? false : row.widget_enabled,
+      buttonLabel: row.button_label ?? "Gyors rendelés",
+      allowedGroupIds: [],
+      settings,
+    });
+    if (!branding.canParseImage) {
+      publicCfg.modules = publicCfg.modules.filter((m) => m !== "image");
+    }
     return {
-      ...resolvePublicWidgetConfig({
-        enabled: disabled ? false : row.widget_enabled,
-        buttonLabel: row.button_label ?? "Gyors rendelés",
-        allowedGroupIds: [],
-        settings,
-      }),
+      ...publicCfg,
       catalogStatus,
       catalogReady: disabled ? false : catalogReady,
       showTurinovaMark: branding.showTurinovaMark,

@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { PLAN_DEFAULTS, PLAN_IDS, TRIAL_DAYS_DEFAULT, type PlanId } from "@/lib/billing/plans";
+import { PLAN_DEFAULTS, PLAN_IDS, RECOMMENDED_PLAN, TRIAL_DAYS_DEFAULT, type PlanId } from "@/lib/billing/plans";
+import { PlanPriceTable } from "@/components/billing/PlanPriceTable";
 import { ensureSlug } from "@/lib/orgs/slug";
 
 type Props = {
@@ -118,7 +119,8 @@ export function CreateOrgDrawer({ open, onClose, onCreated }: Props) {
           className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
         >
           <p className="text-[13px] text-faint">
-            Org + shop + meghívó egy lépésben.
+            30 nap Pro (fotó igen, logó nem). Utána ez a csomag. Plus = ajánlott
+            ICP-nek (~40+ vevő). Start csak inbound kicsi boltnak.
           </p>
 
           <Field label="Szervezet neve">
@@ -160,7 +162,7 @@ export function CreateOrgDrawer({ open, onClose, onCreated }: Props) {
             />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Plan">
+            <Field label="Utána ez a csomag">
               <select
                 value={plan}
                 onChange={(e) =>
@@ -175,7 +177,7 @@ export function CreateOrgDrawer({ open, onClose, onCreated }: Props) {
                 {PLAN_IDS.map((id) => (
                   <option key={id} value={id}>
                     {PLAN_DEFAULTS[id].label}
-                    {id === "pro" ? " (ajánlott)" : ""}
+                    {id === RECOMMENDED_PLAN ? " (ajánlott)" : ""}
                   </option>
                 ))}
               </select>
@@ -191,6 +193,8 @@ export function CreateOrgDrawer({ open, onClose, onCreated }: Props) {
               />
             </Field>
           </div>
+          <PlanPriceTable highlight />
+
           <Field label="Owner email (meghívó)">
             <input
               required

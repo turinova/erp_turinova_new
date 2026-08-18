@@ -24,6 +24,7 @@ Architektúra: [`../docs/SAAS_ARCHITECTURE.md`](../docs/SAAS_ARCHITECTURE.md)
 016_partner_meter_and_orders.sql
 017_rls_commerce.sql
 018_platform_settings.sql     ← trial napok, sync concurrency (M5)
+019_plans_v3.sql              ← start|plus|pro; grow→plus, scale→pro
 ```
 
 Supabase: SQL Editor → paste → Run → következő.  

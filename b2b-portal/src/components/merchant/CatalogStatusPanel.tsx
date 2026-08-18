@@ -14,6 +14,11 @@ type CatalogPayload = {
   error: string | null;
   partnerUsed?: number;
   partnerLimit?: number;
+  paidPartnerLimit?: number;
+  isTrial?: boolean;
+  overCap?: boolean;
+  warn80?: boolean;
+  planLabel?: string;
 };
 
 function story(
@@ -28,7 +33,7 @@ function story(
   if (status === "ready") {
     return {
       title: "A termékek megvannak",
-      body: `${count.toLocaleString("hu-HU")} termékre lehet keresni a gyors rendelésben. A vevő cikkszámra vagy gyári számra talál.`,
+      body: `${count.toLocaleString("hu-HU")} termék kereshető a gyors rendelésben. A vevő cikkszámra vagy gyári számra talál.`,
       tone: "ok",
     };
   }
@@ -45,14 +50,14 @@ function story(
   if (status === "blocked_limit") {
     return {
       title: "Elfogyott a hely a termékeknek",
-      body: "Ami már bent van, arra lehet keresni. Új termék nem jön, amíg nem nő a csomag.",
+      body: "Ami már bent van, arra lehet keresni. Új termék nem jön, amíg több termékhely nincs.",
       tone: "bad",
     };
   }
   if (status === "error") {
     return {
       title: "Nem sikerült a másolás",
-      body: "Próbáld újra. Ha megint elhasal, a bolt-jelszó lehet rossz.",
+      body: "Próbáld újra. Ha megint elakad, a bolt-jelszó lehet rossz.",
       tone: "bad",
     };
   }
@@ -97,7 +102,7 @@ export function CatalogStatusPanel() {
       }
       await load();
     } catch {
-      setError("Nincs net.");
+      setError("Nincs kapcsolat.");
     } finally {
       setPending(false);
     }
@@ -147,21 +152,24 @@ export function CatalogStatusPanel() {
         </button>
       </section>
 
-      {partnerLimit > 0 ? (
+      {data && partnerLimit > 0 ? (
         <div className="mb-6">
           <PartnerUsageBar
             used={partnerUsed}
             limit={partnerLimit}
-            overCap={overCap}
-            warn80={warn80}
+            paidLimit={data.paidPartnerLimit ?? partnerLimit}
+            overCap={data.overCap ?? overCap}
+            warn80={data.warn80 ?? warn80}
+            isTrial={Boolean(data.isTrial)}
+            planLabel={data.planLabel}
           />
           {overCap ? (
             <div className="mt-4">
               <UpgradeBanner used={partnerUsed} limit={partnerLimit} />
             </div>
-          ) : warn80 ? (
+          ) : warn80 && !data.isTrial ? (
             <div className="mt-4">
-              <NearLimitBanner limit={partnerLimit} />
+              <NearLimitBanner used={partnerUsed} limit={partnerLimit} />
             </div>
           ) : null}
         </div>

@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  countActivePartnersMonth,
-  effectivePartnerLimit,
-  effectiveSkuLimit,
-} from "@/lib/billing/active-partners";
+import { effectiveSkuLimit } from "@/lib/billing/active-partners";
 import {
   isErrorResponse,
   requireMerchantApi,
@@ -11,6 +7,7 @@ import {
 import { countOrgActiveSkus } from "@/lib/commerce/catalog";
 import { loadLatestJob, loadShopForSync } from "@/lib/commerce/jobs";
 import { withTenant } from "@/lib/db";
+import { loadPartnerGate } from "@/lib/merchant/overview";
 import { loadMerchantShop } from "@/lib/merchant/shop";
 
 export async function GET() {
@@ -26,12 +23,11 @@ export async function GET() {
         if (!shopDto) return { error: "NO_SHOP" as const };
         const shop = await loadShopForSync(client, shopDto.shopId);
         const job = await loadLatestJob(client, shopDto.shopId);
-        const [skuUsed, skuLimit, partnerUsed, partnerLimit] =
+        const [skuUsed, skuLimit, gate] =
           await Promise.all([
             countOrgActiveSkus(client, orgId),
             effectiveSkuLimit(client, orgId),
-            countActivePartnersMonth(client, orgId),
-            effectivePartnerLimit(client, orgId),
+            loadPartnerGate(client, orgId),
           ]);
         const pagesDone = job?.pages_done ?? 0;
         const pagesTotal = job?.pages_total ?? null;
@@ -44,7 +40,7 @@ export async function GET() {
         return {
           shopId: shopDto.shopId,
           catalogStatus: shop?.catalog_status ?? "pending",
-          productCount: shop?.catalog_product_count ?? 0,
+          productCount: skuUsed,
           readyAt: shop?.catalog_ready_at ?? null,
           syncedAt: shop?.catalog_synced_at ?? null,
           error: shop?.catalog_error ?? null,
@@ -63,8 +59,13 @@ export async function GET() {
             : null,
           skuUsed,
           skuLimit,
-          partnerUsed,
-          partnerLimit,
+          partnerUsed: gate.activePartners,
+          partnerLimit: gate.partnerLimit,
+          paidPartnerLimit: gate.paidPartnerLimit,
+          planLabel: gate.planLabel,
+          isTrial: gate.isTrial,
+          overCap: gate.overCap,
+          warn80: gate.warn80,
         };
       },
     );

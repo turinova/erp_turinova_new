@@ -360,7 +360,7 @@ export function ReportsView() {
             Riport
           </h1>
           <p className="mt-0.5 text-[12px] text-faint">
-            Bevétel · partner növekedés · csoportok · árrés (ahol van cost)
+            Bevétel · ki rendelt · mit · mennyiért
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -399,7 +399,7 @@ export function ReportsView() {
 
       {loading && !report ? (
         <p className="mt-10 text-center text-[13px] text-faint">
-          Riport készül (Shoprenter + költségek)…
+          Riport készül a Shoprenter-rendelésekből…
         </p>
       ) : null}
 
@@ -473,28 +473,18 @@ export function ReportsView() {
             </div>
           </div>
 
-          <div className="grid gap-0 border-[1.5px] border-line-strong sm:grid-cols-5">
+          <div className="grid gap-0 border-[1.5px] border-line-strong sm:grid-cols-3">
             {[
-              {
-                label: "Partner NRR",
-                value: pct(report.partnerGrowth.nrrPercent),
-                sub: "Előző periódus partnerei most",
-              },
-              {
-                label: "Hallgató",
-                value: String(report.partnerGrowth.sleepingCount),
-                sub: `${report.partnerGrowth.activePartnersInRange} aktív / ${report.partnerGrowth.partnerFingerprintCount} partner`,
-              },
               {
                 label: "Rendelési ritmus",
                 value:
                   report.partnerGrowth.medianDaysBetweenOrders != null
                     ? `${report.partnerGrowth.medianDaysBetweenOrders} nap`
                     : "—",
-                sub: "Medián partner gap",
+                sub: "Medián a rendelések között",
               },
               {
-                label: "SKU / partner",
+                label: "SKU / vevő",
                 value:
                   report.partnerGrowth.avgSkuPerActivePartner != null
                     ? String(report.partnerGrowth.avgSkuPerActivePartner)
@@ -520,59 +510,6 @@ export function ReportsView() {
                 <p className="mt-1 text-[10px] text-faint">{k.sub}</p>
               </div>
             ))}
-          </div>
-
-          <div className="border-[1.5px] border-line-strong bg-surface p-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-[13px] font-semibold text-text">
-                Árrés (termék)
-              </p>
-              <p className="text-[11px] text-faint">
-                {report.profit.note}
-              </p>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase text-faint">
-                  Lefedettség
-                </p>
-                <p className="mt-0.5 text-[15px] font-semibold tabular-nums">
-                  {pct(report.profit.coveragePercent)}
-                </p>
-                <p className="text-[10px] text-faint">
-                  {report.profit.skuWithCost}/{report.profit.skuTotal} SKU
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase text-faint">
-                  Árbevétel (costos)
-                </p>
-                <p className="mt-0.5 text-[15px] font-semibold tabular-nums">
-                  {report.profit.revenueWithCostFormatted}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase text-faint">
-                  Költség
-                </p>
-                <p className="mt-0.5 text-[15px] font-semibold tabular-nums">
-                  {report.profit.costTotalFormatted}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase text-faint">
-                  Bruttó árrés
-                </p>
-                <p
-                  className={`mt-0.5 text-[15px] font-semibold tabular-nums ${deltaClass(report.profit.marginPercent)}`}
-                >
-                  {report.profit.grossProfitFormatted}
-                  {report.profit.marginPercent != null
-                    ? ` · ${report.profit.marginPercent}%`
-                    : ""}
-                </p>
-              </div>
-            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -631,8 +568,7 @@ export function ReportsView() {
                 Vevőcsoportok
               </p>
               <p className="text-[10px] text-faint">
-                Terhelés = kedvezmény + szállítás % · NRR az előző azonos
-                hosszúságú periódushoz
+                Terhelés = kedvezmény + szállítás %
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -646,15 +582,14 @@ export function ReportsView() {
                     <th className="px-2 py-2 text-right">Kedv%</th>
                     <th className="px-2 py-2 text-right">Száll%</th>
                     <th className="px-2 py-2 text-right">Terhelés</th>
-                    <th className="px-2 py-2 text-right">Widget%</th>
-                    <th className="px-3 py-2 text-right">NRR</th>
+                    <th className="px-3 py-2 text-right">Widget%</th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.groups.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={8}
                         className="px-3 py-6 text-center text-faint"
                       >
                         Nincs csoport-adat (ujjlenyomat / rendelés).
@@ -696,11 +631,6 @@ export function ReportsView() {
                         </td>
                         <td className="px-2 py-2 text-right tabular-nums">
                           {pct(g.widgetPercent)}
-                        </td>
-                        <td
-                          className={`px-3 py-2 text-right tabular-nums ${deltaClass(g.nrrPercent)}`}
-                        >
-                          {pct(g.nrrPercent)}
                         </td>
                       </tr>
                     ))
@@ -786,7 +716,7 @@ export function ReportsView() {
                   Top termékek
                 </p>
                 <p className="text-[10px] text-faint">
-                  Termék nettó − cost · szállítás/utánvét nélkül
+                  Db és bevétel a mintából
                 </p>
               </div>
               <div className="overflow-x-auto">
@@ -798,15 +728,13 @@ export function ReportsView() {
                       <th className="px-2 py-2 text-left">Gyártói</th>
                       <th className="px-2 py-2 text-right">Db</th>
                       <th className="px-2 py-2 text-right">Bevétel</th>
-                      <th className="px-2 py-2 text-right">Költség</th>
-                      <th className="px-3 py-2 text-right">Árrés</th>
                     </tr>
                   </thead>
                   <tbody>
                     {report.topProducts.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={5}
                           className="px-3 py-6 text-center text-faint"
                         >
                           Nincs tétel a mintában.
@@ -829,18 +757,6 @@ export function ReportsView() {
                           </td>
                           <td className="px-2 py-2 text-right tabular-nums">
                             {p.lineRevenueFormatted}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums text-faint">
-                            {p.hasCost ? p.costTotalFormatted : "—"}
-                          </td>
-                          <td
-                            className={`px-3 py-2 text-right font-semibold tabular-nums ${
-                              p.hasCost
-                                ? deltaClass(p.marginPercent)
-                                : "text-faint"
-                            }`}
-                          >
-                            {p.hasCost ? pct(p.marginPercent) : "nincs cost"}
                           </td>
                         </tr>
                       ))

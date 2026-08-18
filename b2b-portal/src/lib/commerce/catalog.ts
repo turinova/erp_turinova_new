@@ -87,7 +87,7 @@ export async function countShopCatalog(
 ): Promise<number> {
   const res = await query<{ n: string }>(
     client,
-    `select count(*)::text as n from product_catalog where shop_id = $1`,
+    `select count(*)::text as n from product_catalog where shop_id = $1 and active`,
     [shopId],
   );
   return Number(res.rows[0]?.n ?? 0);

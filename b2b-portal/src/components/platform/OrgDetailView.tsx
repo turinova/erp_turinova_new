@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ForceSyncButton } from "@/components/platform/ForceSyncButton";
 import { ResendInviteButton } from "@/components/platform/ResendInviteButton";
-import { PLAN_IDS, type PlanId } from "@/lib/billing/plans";
+import { PLAN_DEFAULTS, PLAN_IDS, type PlanId } from "@/lib/billing/plans";
 import { relativeTime } from "@/lib/format";
 import { catalogLabel, healthLabel } from "@/lib/orgs/health";
 import type { OrgDetail } from "@/lib/orgs/types";
@@ -129,11 +129,13 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
       : Math.min(100, Math.round((detail.sku_used / detail.sku_limit) * 100));
 
   const sentenceParts: string[] = [];
+  const planLabel = PLAN_DEFAULTS[detail.plan].label;
+  const paidLimit = PLAN_DEFAULTS[detail.plan].partnerLimit;
   if (detail.trialExpired) sentenceParts.push("lejárt próba");
   else if (detail.trialActive && detail.trialDaysLeft != null) {
-    sentenceParts.push(`próba, ${detail.trialDaysLeft} nap`);
+    sentenceParts.push(`${planLabel} · próba ${detail.trialDaysLeft} nap`);
   } else {
-    sentenceParts.push(detail.plan);
+    sentenceParts.push(planLabel);
   }
   sentenceParts.push(
     shop
@@ -226,9 +228,23 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
               ? "Közel a teli."
               : "A csomag bírja."}
           {detail.trialActive
-            ? " Próba alatt a Pro limitek mennek."
+            ? ` Próbában Pro limitek (${detail.partner_limit} vevő). Fizetés után ${planLabel}en ${paidLimit} férne el.`
             : ""}
         </p>
+        {detail.trialActive || detail.trialExpired ? (
+          <p className="mt-3 max-w-xl text-[13px] text-faint">
+            A kereskedő ezt látja: {planLabel}
+            {detail.trialActive && detail.trialDaysLeft != null
+              ? ` · próba ${detail.trialDaysLeft} nap`
+              : detail.trialExpired
+                ? " · lejárt próba"
+                : ""}
+            . A widget megy.
+            {detail.partner_used > paidLimit
+              ? ` ${paidLimit} felett a lista elmosódna, ha most aktiválnád ${planLabel}en.`
+              : ""}
+          </p>
+        ) : null}
         <div className="mt-3 h-2 w-full max-w-md border border-line-strong bg-surface-2">
           <div
             className={detail.overCap || detail.warn80 ? "h-full bg-warn" : "h-full bg-text"}
@@ -253,7 +269,8 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
             >
               {PLAN_IDS.map((id) => (
                 <option key={id} value={id}>
-                  {id}
+                  {PLAN_DEFAULTS[id].label}
+                  {id === "plus" ? " (ajánlott)" : ""}
                 </option>
               ))}
             </select>
@@ -263,7 +280,7 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
             <input
               className="tn-input"
               inputMode="numeric"
-              placeholder={`alap: ${detail.partner_limit}`}
+              placeholder={`üres = most ${detail.partner_limit} · ${planLabel} ${paidLimit}`}
               value={partnerOverride}
               onChange={(e) => setPartnerOverride(e.target.value)}
             />
@@ -273,7 +290,7 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
             <input
               className="tn-input"
               inputMode="numeric"
-              placeholder={`alap: ${detail.sku_limit}`}
+              placeholder={`üres = most ${detail.sku_limit.toLocaleString("hu-HU")} · ${planLabel} ${PLAN_DEFAULTS[detail.plan].skuLimit.toLocaleString("hu-HU")}`}
               value={skuOverride}
               onChange={(e) => setSkuOverride(e.target.value)}
             />
@@ -300,6 +317,77 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
         >
           Csomag / limitek mentése
         </button>
+
+        <div className="mt-6 flex flex-wrap gap-2">
+          {PLAN_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                void patch(
+                  { plan: id, activate: true },
+                  `Aktiválva: ${PLAN_DEFAULTS[id].label}`,
+                )
+              }
+              className="tn-btn tn-btn-ghost"
+            >
+              Aktivál {PLAN_DEFAULTS[id].label}
+            </button>
+          ))}
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => void patch({ extendTrialDays: 7 }, "+7 nap próba")}
+            className="tn-btn tn-btn-ghost"
+          >
+            +7 nap próba
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => void patch({ extendTrialDays: 14 }, "+14 nap próba")}
+            className="tn-btn tn-btn-ghost"
+          >
+            +14 nap próba
+          </button>
+        </div>
+        <p className="mt-2 text-[12px] text-faint">
+          Aktiválás lezárja a próbát. +7 / +14 kitolja a dátumot
+          {detail.trial_ends_at
+            ? ` (most: ${new Date(detail.trial_ends_at).toLocaleDateString("hu-HU")})`
+            : ""}
+          . A widget megy.
+        </p>
+      </section>
+
+      <section className="tn-section">
+        <p className="tn-label">ERP tölcsér</p>
+        <h3 className="tn-section-title mt-1">
+          {detail.erpQualified.qualified
+            ? "erp_qualified"
+            : `${detail.erpQualified.hits} / 4 jel`}
+        </h3>
+        <p className="tn-section-sub">
+          Belső KPI: legalább 3 a 4-ből. Nem a fizető tenantok száma.
+        </p>
+        <ul className="mt-4 space-y-2 text-[13px]">
+          {detail.erpQualified.signals.map((s) => (
+            <li key={s.id} className="flex justify-between gap-3">
+              <span>
+                {s.label}{" "}
+                <span className="text-faint">{s.threshold}</span>
+              </span>
+              <span
+                className={
+                  s.hit ? "font-semibold text-ok" : "tabular-nums text-faint"
+                }
+              >
+                {s.value}
+              </span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section className="tn-section">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { PlanId } from "@/lib/billing/plans";
+import { PLAN_DEFAULTS, type PlanId } from "@/lib/billing/plans";
 type PlanDefaultRow = {
   plan: PlanId;
   partnerLimit: number;
@@ -152,7 +152,9 @@ export function PlatformSettingsForm() {
             <tbody>
               {plans.map((p) => (
                 <tr key={p.plan} className="border-b border-line last:border-0">
-                  <td className="px-3 py-2 font-medium capitalize">{p.plan}</td>
+                  <td className="px-3 py-2 font-medium">
+                    {PLAN_DEFAULTS[p.plan].label}
+                  </td>
                   <td className="px-3 py-2">
                     <input
                       className="tn-input !h-8"

@@ -535,7 +535,7 @@ export function CustomerDetailView({
         </Link>
         <p className="mt-6 text-[18px] font-semibold">Ez a vevő el van rejtve</p>
         <p className="mt-2 text-[13px] text-faint">
-          A csomagod {gate.partnerLimit} rendelő vevőt bír. A gyors rendelés a
+          A csomagodba {gate.partnerLimit} rendelő vevő fér. A gyors rendelés a
           boltban ettől még megy. A plusz vevők adatait itt nem mutatjuk.
         </p>
         <div className="mt-5">

@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PartnerUsageBar, NearLimitBanner, UpgradeBanner } from "@/components/merchant/PartnerUsageBar";
+import {
+  PartnerUsageBar,
+  NearLimitBanner,
+  UpgradeBanner,
+  TrialWouldLoseBanner,
+} from "@/components/merchant/PartnerUsageBar";
 import { requireMerchant } from "@/lib/auth/require";
 import { withTenant } from "@/lib/db";
 import { loadMerchantOverview } from "@/lib/merchant/overview";
@@ -19,15 +24,12 @@ export default async function MerchantHomePage() {
 
   const shopTitle = overview.shop?.shoprenterShopName ?? "Még nincs bolt";
   const next = overview.next;
+  const showFomo =
+    overview.trialExpired ||
+    (overview.isTrial && overview.trialDaysLeft != null && overview.trialDaysLeft <= 7);
 
   return (
     <div className="mx-auto w-full max-w-[920px]">
-      {overview.isTrial && overview.trialDaysLeft != null ? (
-        <p className="mb-6 inline-flex h-10 items-center border-2 border-text px-3 text-[13px] font-bold">
-          Pro próba · {overview.trialDaysLeft} nap van hátra
-        </p>
-      ) : null}
-
       <p className="mb-1 text-[13px] text-faint">{shopTitle}</p>
       <p className="mb-8 text-[13px] text-faint">Egy dolog, amit most csinálj.</p>
 
@@ -54,19 +56,36 @@ export default async function MerchantHomePage() {
       <PartnerUsageBar
         used={overview.partnersUsed}
         limit={overview.partnersLimit}
+        paidLimit={overview.paidPartnerLimit}
         overCap={overview.overCap}
         warn80={overview.warn80}
+        isTrial={overview.isTrial}
+        planLabel={overview.planLabel}
       />
       {overview.overCap ? (
         <div className="mt-6">
           <UpgradeBanner
             used={overview.partnersUsed}
             limit={overview.partnersLimit}
+            shopName={overview.shop?.shoprenterShopName}
           />
         </div>
-      ) : overview.warn80 ? (
+      ) : overview.wouldLoseOnPaid && showFomo ? (
         <div className="mt-6">
-          <NearLimitBanner limit={overview.partnersLimit} />
+          <TrialWouldLoseBanner
+            used={overview.partnersUsed}
+            paidLimit={overview.paidPartnerLimit}
+            planLabel={overview.planLabel}
+            shopName={overview.shop?.shoprenterShopName}
+          />
+        </div>
+      ) : overview.warn80 && !overview.isTrial ? (
+        <div className="mt-6">
+          <NearLimitBanner
+            used={overview.partnersUsed}
+            limit={overview.partnersLimit}
+            shopName={overview.shop?.shoprenterShopName}
+          />
         </div>
       ) : null}
     </div>

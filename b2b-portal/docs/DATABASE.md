@@ -4,7 +4,8 @@
 Az app **nem** futtat migrációt bootoláskor.
 
 Teljes termékterv: [`SAAS_ARCHITECTURE.md`](./SAAS_ARCHITECTURE.md)  
-Commerce catalog · sync · **Active Partner** billing · admin stats: [`PLATFORM_AND_ADMIN_IMPLEMENTATION.md`](./PLATFORM_AND_ADMIN_IMPLEMENTATION.md)
+Árazás v3: [`PRICING.md`](./PRICING.md)  
+Commerce catalog · sync · admin stats: [`PLATFORM_AND_ADMIN_IMPLEMENTATION.md`](./PLATFORM_AND_ADMIN_IMPLEMENTATION.md)
 
 ---
 
@@ -42,8 +43,10 @@ Könyvtár: `b2b-portal/sql/`
 | 15 | `015_org_stats_and_limits.sql` | Plan `start\|grow\|pro\|scale`; `plan_defaults`; `organization_stats` |
 | 16 | `016_partner_meter_and_orders.sql` | Active Partner függvények + `widget_opens` |
 | 17 | `017_rls_commerce.sql` | RLS catalog/sync/stats/opens |
+| 18 | `018_platform_settings.sql` | Trial napok, sync concurrency |
+| 19 | `019_plans_v3.sql` | Plan `start\|plus\|pro`; grow→plus, scale→pro; árak 6900/12900/24900 |
 
-**M1:** futtasd `013`→`017` ezen a sorrenden. `015` kötelező, mielőtt új orgot hozol létre (`start`/`grow`/`pro`/`scale`) — a `002` még `starter`\|`pro` checket hagy.
+**M1:** futtasd `013`→`017` ezen a sorrenden. `015` kötelező, mielőtt új orgot hozol létre. **v3 csomagok:** futtasd `019` mielőtt `plus` kerül az `organizations.plan`-ba — a `015` checkje még `grow`/`scale`.
 
 ### Supabase SQL Editor
 
@@ -118,13 +121,13 @@ Supabase-nél: Settings → Database → Connection string (URI).
 | name | megjelenő név |
 | slug | unique, URL-barát |
 | status | trial \| active \| suspended |
-| plan | `start` \| `grow` \| `pro` \| `scale` (launch; Free nincs) |
+| plan | `start` \| `plus` \| `pro` (Free nincs). Alias olvasáskor: `grow`→`plus`, `scale`→`pro`. Kézi SQL: [`019_plans_v3.sql`](../sql/019_plans_v3.sql). [`PRICING.md`](./PRICING.md) §19. |
 | trial_ends_at | nullable; create-kor typically now+30d |
 | sku_limit_override | nullable; `015` |
 | partner_limit_override | nullable; `015` |
 | created_at / updated_at | |
 
-> Plan catch-up: `015` átírja a régi `starter` értéket `start`-ra. Az app típusa `PlanId` = start\|grow\|pro\|scale.
+> Plan catch-up: `015` `starter` → `start`. v3: `019` `grow` → `plus`, `scale` → `pro` + override 200. [`PRICING.md`](./PRICING.md) §19.
 
 ### users
 | Oszlop | Megjegyzés |
@@ -183,7 +186,7 @@ Vékony katalógus-tükör typeaheadhez. Unique `(shop_id, sku_norm)` és `(shop
 Egy queued\|running job / shop. Worker (M2) tölti.
 
 ### plan_defaults + organization_stats (015)
-Launch limitek (Start 15 / Grow 30 / Pro 80 / Scale 200 partner). Stats materialize később (M5/M9).
+v3: Start 15 / Plus 40 / Pro 120 vevő (`PRICING.md`). A `015` seed a v2 számokat tartalmazza, amíg a kézi `019` le nem fut.
 
 ### widget_opens (016)
 Analitika — **nem** billing. Active Partner = `count_active_partners_month(org, month)` a `b2b_orders` felett (`source='widget'`).
