@@ -1,0 +1,214 @@
+@import "tailwindcss";
+
+/*
+  Turinova B2B — „Olvasó” (widget panelTheme: high_contrast)
+  White canvas · black type/accent · strong black lines.
+*/
+
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f2f2f2;
+  --text: #000000;
+  --muted: #1c1c1e;
+  --faint: #3a3a3c;
+  --line: rgba(0, 0, 0, 0.45);
+  --line-strong: rgba(0, 0, 0, 0.75);
+  --accent: #000000;
+  --accent-soft: rgba(0, 0, 0, 0.08);
+  --ok: #008009;
+  --warn: #a05000;
+  --danger: #d70015;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --glass: #ffffff;
+  --glass-side: #ffffff;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui,
+    sans-serif;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --font-sans: var(--font);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Olvasó chrome — solid white, strong rules (no soft glass) */
+.glass-bar {
+  background: var(--glass);
+  border-bottom: 1.5px solid var(--line-strong);
+}
+
+.glass-side {
+  background: var(--glass-side);
+  border-right: 1.5px solid var(--line-strong);
+}
+
+.hairline {
+  border: 1.5px solid var(--line-strong);
+}
+
+.tn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tn-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.tn-input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.tn-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.tn-input:disabled {
+  background: var(--surface-2);
+  color: var(--faint);
+}
+
+.tn-textarea {
+  padding: 10px 12px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  resize: vertical;
+}
+
+.tn-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.tn-btn {
+  display: inline-flex;
+  height: 36px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  transition: opacity 150ms var(--ease);
+}
+
+.tn-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tn-btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.tn-btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.tn-btn-ghost {
+  background: var(--surface);
+  color: var(--text);
+  border: 1.5px solid var(--line-strong);
+}
+
+.tn-btn-ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.tn-section {
+  border-top: 1.5px solid var(--line-strong);
+  padding-top: 28px;
+  padding-bottom: 8px;
+}
+
+.tn-section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.tn-section-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.tn-section-sub {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--faint);
+  max-width: 42rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

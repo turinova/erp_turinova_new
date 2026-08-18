@@ -1,0 +1,37 @@
+{
+  "name": "b2b-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3030 --webpack",
+    "dev:turbo": "next dev -p 3030",
+    "clean:appledouble": "find . -name '._*' -not -path './node_modules/*' -delete 2>/dev/null; rm -rf ./Users",
+    "dev:clean": "npm run clean:appledouble && rm -rf .next && next dev -p 3030 --webpack",
+    "build": "next build --webpack",
+    "start": "next start -p 3030",
+    "lint": "eslint",
+    "hash-password": "node scripts/hash-password.cjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
+    "bcryptjs": "^3.0.3",
+    "next": "16.2.4",
+    "pg": "^8.23.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "xlsx": "^0.18.5",
+    "xlsx-js-style": "^1.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/pg": "^8.21.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
