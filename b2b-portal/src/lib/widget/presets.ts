@@ -125,6 +125,8 @@ export type WidgetAppearance = {
 export type WidgetFeatures = {
   requireLogin: boolean;
   modules: WidgetModuleId[];
+  /** Preference only — public config ignores unless paid Pro/Scale and not trial. */
+  hideTurinovaMark: boolean;
 };
 
 export type WidgetSettingsPayload = {
@@ -148,6 +150,7 @@ export type PublicWidgetConfig = {
   compact: boolean;
   catalogStatus?: string;
   catalogReady?: boolean;
+  showTurinovaMark?: boolean;
 };
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
@@ -163,6 +166,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
   features: {
     requireLogin: true,
     modules: ["search", "excel", "email", "image", "orders", "insights"],
+    hideTurinovaMark: false,
   },
 };
 
@@ -203,8 +207,7 @@ export function normalizeWidgetSettings(
   const posIds = FAB_POSITION_PRESETS.map((p) => p.id);
   const sizeIds = FAB_SIZE_PRESETS.map((p) => p.id);
   const custom = appearanceRaw.fabColorCustom;
-  // Modules + login are product core — not merchant-configurable.
-  void featuresRaw;
+  // Login + modules are product core — not merchant-configurable.
 
   return {
     appearance: {
@@ -244,6 +247,7 @@ export function normalizeWidgetSettings(
     features: {
       requireLogin: true,
       modules: [...DEFAULT_WIDGET_SETTINGS.features.modules],
+      hideTurinovaMark: featuresRaw.hideTurinovaMark === true,
     },
   };
 }
@@ -598,6 +602,7 @@ export function resolvePublicWidgetConfig(input: {
     modules: normalized.features.modules,
     showLabel: size.showLabel,
     compact: size.compact,
+    showTurinovaMark: true,
   };
 }
 

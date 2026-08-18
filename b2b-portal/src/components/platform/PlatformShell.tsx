@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { getSessionFromCookies } from "@/lib/auth/session";
 
 type NavItem = {
@@ -73,19 +74,13 @@ export async function PlatformShell({
   return (
     <div className="flex min-h-dvh bg-bg">
       <aside className="glass-side sticky top-0 hidden h-dvh w-[200px] shrink-0 flex-col md:flex">
-        <div className="flex h-12 items-center gap-2 border-b border-line-strong px-3">
-          <span className="flex h-6 w-6 items-center justify-center rounded-none bg-accent text-[11px] font-bold text-white">
-            T
-          </span>
-          <div className="min-w-0 leading-tight">
-            <p className="truncate text-[13px] font-semibold tracking-tight">
-              Turinova
-            </p>
-            <p className="truncate text-[11px] font-medium text-faint">
-              Platform
-            </p>
-          </div>
-        </div>
+        <Link
+          href="/admin"
+          className="flex h-14 items-center border-b border-line-strong px-3"
+          aria-label="Turinova"
+        >
+          <TurinovaWordmark height={24} className="w-full max-w-full object-contain object-left" />
+        </Link>
         <nav className="flex flex-1 flex-col gap-0.5 py-3">
           {items.map((item) => (
             <Link
@@ -118,9 +113,7 @@ export async function PlatformShell({
             className="flex items-center gap-1.5 md:hidden"
             aria-label="Platform"
           >
-            <span className="flex h-6 w-6 items-center justify-center rounded-none bg-accent text-[11px] font-bold text-white">
-              T
-            </span>
+            <TurinovaWordmark variant="icon" height={22} />
           </Link>
           <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
             {title}

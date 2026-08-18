@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LoginForm } from "@/components/auth/LoginForm";
+import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { redirectIfAuthenticated } from "@/lib/auth/require";
 
 export const metadata: Metadata = {
@@ -13,13 +14,8 @@ export default async function LoginPage() {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center bg-bg px-4 py-10">
       <div className="w-full max-w-[400px]">
-        <div className="mb-8 text-center">
-          <span className="mx-auto flex h-8 w-8 items-center justify-center rounded-none bg-accent text-[13px] font-bold text-white">
-            T
-          </span>
-          <p className="mt-3 text-[15px] font-semibold tracking-tight">
-            Turinova
-          </p>
+        <div className="mb-8 flex justify-center">
+          <TurinovaWordmark height={28} />
         </div>
 
         <div className="border border-line-strong bg-surface p-6">

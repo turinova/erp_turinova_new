@@ -2,6 +2,13 @@ import type { PoolClient } from "pg";
 import { catalogIsSearchable } from "@/lib/commerce/lookup";
 import { query, withPlatformAdmin } from "@/lib/db";
 import {
+  canHideTurinovaMark,
+  parsePlanId,
+  PLAN_DEFAULTS,
+  resolveShowTurinovaMark,
+} from "@/lib/billing/plans";
+import { isTrialActive } from "@/lib/orgs/health";
+import {
   DEFAULT_WIDGET_SETTINGS,
   normalizeWidgetSettings,
   resolvePublicWidgetConfig,
@@ -10,7 +17,7 @@ import {
 } from "@/lib/widget/presets";
 
 /** Bump together with injected CSS id in public/widget.js (sr-b2b-qo-panel-css-vN). */
-export const WIDGET_JS_ASSET = "35";
+export const WIDGET_JS_ASSET = "36";
 
 export function widgetCacheBust(opts: {
   settingsUpdatedAt: string | null;
@@ -36,6 +43,9 @@ export type MerchantWidgetDto = {
   catalogReady: boolean;
   /** Query on /widget.js so Shoprenter/HTML caches pick up new JS. */
   widgetVersion: string;
+  canHideTurinovaMark: boolean;
+  isTrial: boolean;
+  planLabel: string;
 };
 
 type WidgetRow = {
@@ -51,7 +61,37 @@ type WidgetRow = {
   customer_group_ids: number[] | null;
   settings: unknown;
   settings_updated_at: Date | string | null;
+  org_plan: string | null;
+  org_status: string | null;
+  trial_ends_at: Date | string | null;
 };
+
+function toIso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function orgWidgetBranding(row: {
+  org_plan: string | null;
+  org_status: string | null;
+  trial_ends_at: Date | string | null;
+  hideRequested: boolean;
+}) {
+  const plan = parsePlanId(row.org_plan);
+  const isTrial = isTrialActive(row.org_status ?? "", toIso(row.trial_ends_at));
+  return {
+    plan,
+    isTrial,
+    canHideTurinovaMark: canHideTurinovaMark(plan, isTrial),
+    planLabel: PLAN_DEFAULTS[plan].label,
+    showTurinovaMark: resolveShowTurinovaMark({
+      hideRequested: row.hideRequested,
+      plan,
+      isTrial,
+    }),
+  };
+}
 
 async function loadWidgetRow(
   client: PoolClient,
@@ -71,8 +111,12 @@ async function loadWidgetRow(
        w.button_label,
        w.customer_group_ids,
        w.settings,
-       w.updated_at as settings_updated_at
+       w.updated_at as settings_updated_at,
+       o.plan as org_plan,
+       o.status as org_status,
+       o.trial_ends_at
      from shops s
+     join organizations o on o.id = s.organization_id
      left join widget_settings w on w.shop_id = s.id
      where s.organization_id = $1
      order by s.created_at
@@ -88,13 +132,20 @@ export async function loadMerchantWidget(
 ): Promise<MerchantWidgetDto | null> {
   const row = await loadWidgetRow(client, orgId);
   if (!row) return null;
+  const settings = normalizeWidgetSettings(row.settings ?? {});
+  const branding = orgWidgetBranding({
+    org_plan: row.org_plan,
+    org_status: row.org_status,
+    trial_ends_at: row.trial_ends_at,
+    hideRequested: settings.features.hideTurinovaMark,
+  });
   return {
     shopId: row.shop_id,
     publicId: row.public_id,
     widgetEnabled: row.widget_enabled,
     buttonLabel: row.button_label ?? "Gyors rendelés",
     customerGroupIds: [],
-    settings: normalizeWidgetSettings(row.settings ?? {}),
+    settings,
     storeUrl: row.store_url,
     shoprenterShopName: row.shoprenter_shop_name,
     status: row.status,
@@ -104,13 +155,10 @@ export async function loadMerchantWidget(
       settingsUpdatedAt: toIso(row.settings_updated_at),
       catalogSyncedAt: toIso(row.catalog_synced_at),
     }),
+    canHideTurinovaMark: branding.canHideTurinovaMark,
+    isTrial: branding.isTrial,
+    planLabel: branding.planLabel,
   };
-}
-
-function toIso(value: Date | string | null | undefined): string | null {
-  if (!value) return null;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
 }
 
 export type UpdateWidgetInput = {
@@ -190,6 +238,9 @@ export async function loadPublicWidgetConfig(
       settings: unknown;
       status: string;
       catalog_status: string | null;
+      org_plan: string | null;
+      org_status: string | null;
+      trial_ends_at: Date | string | null;
     }>(
       client,
       `select
@@ -197,8 +248,12 @@ export async function loadPublicWidgetConfig(
          s.status,
          s.catalog_status,
          w.button_label,
-         w.settings
+         w.settings,
+         o.plan as org_plan,
+         o.status as org_status,
+         o.trial_ends_at
        from shops s
+       join organizations o on o.id = s.organization_id
        left join widget_settings w on w.shop_id = s.id
        where s.public_id = $1
        limit 1`,
@@ -208,28 +263,27 @@ export async function loadPublicWidgetConfig(
     if (!row) return null;
     const catalogStatus = row.catalog_status ?? "pending";
     const catalogReady = catalogIsSearchable(catalogStatus);
+    const settings = row.settings ?? DEFAULT_WIDGET_SETTINGS;
+    const normalized = normalizeWidgetSettings(settings);
+    const branding = orgWidgetBranding({
+      org_plan: row.org_plan,
+      org_status: row.org_status,
+      trial_ends_at: row.trial_ends_at,
+      hideRequested: normalized.features.hideTurinovaMark,
+    });
+    const disabled =
+      row.status === "suspended" || row.status === "uninstalled";
     // allowedGroupIds always [] → everyone (see widget.js groupAllowed)
-    if (row.status === "suspended" || row.status === "uninstalled") {
-      return {
-        ...resolvePublicWidgetConfig({
-          enabled: false,
-          buttonLabel: row.button_label ?? "Gyors rendelés",
-          allowedGroupIds: [],
-          settings: row.settings ?? DEFAULT_WIDGET_SETTINGS,
-        }),
-        catalogStatus,
-        catalogReady: false,
-      };
-    }
     return {
       ...resolvePublicWidgetConfig({
-        enabled: row.widget_enabled,
+        enabled: disabled ? false : row.widget_enabled,
         buttonLabel: row.button_label ?? "Gyors rendelés",
         allowedGroupIds: [],
-        settings: row.settings ?? DEFAULT_WIDGET_SETTINGS,
+        settings,
       }),
       catalogStatus,
-      catalogReady,
+      catalogReady: disabled ? false : catalogReady,
+      showTurinovaMark: branding.showTurinovaMark,
     };
   });
 }

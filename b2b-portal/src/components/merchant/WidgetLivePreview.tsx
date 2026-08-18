@@ -22,6 +22,7 @@ type Props = {
   fabSize: FabSizeId;
   panelTheme: PanelThemeId;
   modules: WidgetModuleId[];
+  showTurinovaMark?: boolean;
   showPanel: boolean;
   onTogglePanel: () => void;
 };
@@ -241,6 +242,7 @@ export function WidgetLivePreview({
   fabSize,
   panelTheme,
   modules,
+  showTurinovaMark = true,
   showPanel,
   onTogglePanel,
 }: Props) {
@@ -431,6 +433,29 @@ export function WidgetLivePreview({
                 </span>
               </div>
             </div>
+            {showTurinovaMark ? (
+              <a
+                href="https://turinova.hu"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex shrink-0 items-center justify-center gap-1.5 border-t py-1.5 no-underline"
+                style={{
+                  borderColor: theme.line,
+                  background: theme.bg,
+                  color: theme.muted,
+                }}
+                onClick={(e) => e.preventDefault()}
+              >
+                <span className="text-[10px] font-medium">Készítette a</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/brand/turinova-logo.png"
+                  alt="Turinova"
+                  height={12}
+                  style={{ height: 12, width: "auto", display: "block", opacity: 0.85 }}
+                />
+              </a>
+            ) : null}
           </div>
         )}
       </div>

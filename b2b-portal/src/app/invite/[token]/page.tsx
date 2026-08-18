@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { InviteAcceptForm } from "@/components/auth/InviteAcceptForm";
+import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { hashToken } from "@/lib/auth/tokens";
 import { withPlatformAdmin, query } from "@/lib/db";
 
@@ -54,11 +55,8 @@ export default async function InvitePage({
   return (
     <main className="relative flex min-h-dvh flex-col items-center justify-center px-4 py-10">
       <div className="relative w-full max-w-[380px]">
-        <div className="mb-5 flex flex-col items-center gap-2 text-center">
-          <span className="flex h-8 w-8 items-center justify-center rounded-none bg-accent text-[13px] font-semibold text-white">
-            T
-          </span>
-          <p className="text-[13px] font-semibold">Turinova B2B</p>
+        <div className="mb-5 flex justify-center">
+          <TurinovaWordmark height={24} />
         </div>
 
         <div className="rounded-none border-[0.5px] border-line-strong bg-surface p-5 shadow-[0_8px_24px_rgba(26,25,23,.06)]">

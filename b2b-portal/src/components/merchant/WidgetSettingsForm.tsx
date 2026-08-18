@@ -90,8 +90,14 @@ export function WidgetSettingsForm({ initial, apiBase }: Props) {
   const [widgetVersion, setWidgetVersion] = useState(initial.widgetVersion);
   const [settings, setSettings] = useState<WidgetSettingsPayload>({
     ...initial.settings,
-    features: { ...DEFAULT_WIDGET_SETTINGS.features },
+    features: {
+      ...DEFAULT_WIDGET_SETTINGS.features,
+      hideTurinovaMark: initial.settings.features.hideTurinovaMark === true,
+    },
   });
+  const [hideTurinovaMark, setHideTurinovaMark] = useState(
+    initial.settings.features.hideTurinovaMark === true,
+  );
   const [tab, setTab] = useState<TabId>("appear");
   const [showPanel, setShowPanel] = useState(false);
   const [pending, setPending] = useState(false);
@@ -137,7 +143,10 @@ window.SR_B2B_QUICKORDER = {
         ...settings.appearance,
         panelTheme: "high_contrast",
       },
-      features: { ...DEFAULT_WIDGET_SETTINGS.features },
+      features: {
+        ...DEFAULT_WIDGET_SETTINGS.features,
+        hideTurinovaMark,
+      },
     };
 
     try {
@@ -153,10 +162,16 @@ window.SR_B2B_QUICKORDER = {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Mentés sikertelen");
+      const nextHide =
+        data.widget.settings.features.hideTurinovaMark === true;
       setSettings({
         ...data.widget.settings,
-        features: { ...DEFAULT_WIDGET_SETTINGS.features },
+        features: {
+          ...DEFAULT_WIDGET_SETTINGS.features,
+          hideTurinovaMark: nextHide,
+        },
       });
+      setHideTurinovaMark(nextHide);
       setButtonLabel(data.widget.buttonLabel);
       setWidgetEnabled(data.widget.widgetEnabled);
       if (typeof data.widget.widgetVersion === "string") {
@@ -203,6 +218,9 @@ window.SR_B2B_QUICKORDER = {
           fabSize={settings.appearance.fabSize}
           panelTheme="high_contrast"
           modules={[...DEFAULT_WIDGET_SETTINGS.features.modules]}
+          showTurinovaMark={
+            initial.canHideTurinovaMark ? !hideTurinovaMark : true
+          }
           showPanel={showPanel}
           onTogglePanel={() => setShowPanel((v) => !v)}
         />
@@ -274,6 +292,34 @@ window.SR_B2B_QUICKORDER = {
                   className="h-8 rounded-none border-[0.5px] border-line-strong bg-surface px-3 text-[12px] outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 />
               </label>
+
+              <div>
+                <label
+                  className={
+                    initial.canHideTurinovaMark
+                      ? "flex cursor-pointer items-center gap-2 text-[12px]"
+                      : "flex items-center gap-2 text-[12px] text-faint"
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={
+                      initial.canHideTurinovaMark ? !hideTurinovaMark : true
+                    }
+                    disabled={!initial.canHideTurinovaMark}
+                    onChange={(e) => setHideTurinovaMark(!e.target.checked)}
+                    className="accent-[var(--accent)]"
+                  />
+                  Turinova a panel alján
+                </label>
+                <p className="mt-1 text-[11px] leading-relaxed text-faint">
+                  {initial.canHideTurinovaMark
+                    ? "A logó a gyors rendelés alján. Leveheted — a te márkád marad a boltban."
+                    : initial.isTrial
+                      ? "Próba alatt a Turinova a panel alján marad. Pro-tól elrejtheted."
+                      : "Pro-tól elrejtheted — a te márkád marad a boltban."}
+                </p>
+              </div>
 
               <ChipRow
                 label="Szín"

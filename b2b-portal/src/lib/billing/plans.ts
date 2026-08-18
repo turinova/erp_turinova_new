@@ -24,3 +24,17 @@ export function parsePlanId(v: unknown, fallback: PlanId = "start"): PlanId {
   if (v === "starter") return "start";
   return fallback;
 }
+
+/** Widget storefront mark may be hidden only on paid Pro/Scale — never during trial. */
+export function canHideTurinovaMark(plan: PlanId, isTrial: boolean): boolean {
+  return !isTrial && (plan === "pro" || plan === "scale");
+}
+
+export function resolveShowTurinovaMark(opts: {
+  hideRequested: boolean;
+  plan: PlanId;
+  isTrial: boolean;
+}): boolean {
+  if (!canHideTurinovaMark(opts.plan, opts.isTrial)) return true;
+  return !opts.hideRequested;
+}
