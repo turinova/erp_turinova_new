@@ -11,6 +11,19 @@ declare global {
   var __b2bPgPool: Pool | undefined;
 }
 
+/** pg v8 treats sslmode=require as verify-full and warns; be explicit. */
+function connectionStringForPool(url: string, onVercel: boolean): string {
+  if (!onVercel) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("uselibpqcompat");
+    parsed.searchParams.set("sslmode", "verify-full");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 function createPool(): Pool {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -20,10 +33,9 @@ function createPool(): Pool {
   }
   const onVercel = Boolean(process.env.VERCEL);
   return new Pool({
-    connectionString: url,
+    connectionString: connectionStringForPool(url, onVercel),
     max: onVercel ? 1 : 10,
     idleTimeoutMillis: 30_000,
-    ssl: onVercel ? { rejectUnauthorized: true } : undefined,
   });
 }
 
