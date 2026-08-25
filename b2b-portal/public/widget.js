@@ -1162,19 +1162,27 @@
       "}",
       "#sr-b2b-quickorder-root .sr-qo-tier-nudge{",
       "  appearance:none;border:0;background:transparent;padding:0;margin:0;",
-      "  max-width:100%;font-size:10px;font-weight:650;line-height:1.2;",
-      "  color:var(--sr-qo-ok);cursor:pointer;text-align:center;",
-      "  text-decoration:underline;text-decoration-color:rgba(47,111,78,.35);",
+      "  max-width:100%;font-size:10px;font-weight:600;line-height:1.2;",
+      "  color:var(--sr-qo-muted);cursor:pointer;text-align:center;",
+      "  text-decoration:underline;text-decoration-color:rgba(55,53,47,.25);",
       "  text-underline-offset:2px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-tier-nudge.is-near{",
+      "  font-weight:650;color:var(--sr-qo-ok);",
+      "  text-decoration-color:rgba(47,111,78,.35)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-tier-nudge:hover{",
       "  color:var(--sr-qo-accent);text-decoration-color:var(--sr-qo-accent)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-tier .k{",
-      "  color:var(--sr-qo-ok);font-weight:650",
+      "  color:var(--sr-qo-muted);font-weight:600",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-tier .v{",
-      "  color:var(--sr-qo-ok);font-weight:650;font-size:12px",
+      "  color:var(--sr-qo-text);font-weight:600;font-size:12px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-tier.is-near .k,",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-tier.is-near .v{",
+      "  color:var(--sr-qo-ok);font-weight:650",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-product-name{",
       "  font-weight:600;line-height:1.25;font-size:13px;",
@@ -2185,11 +2193,14 @@
           );
         }
 
-        var nearHints = collectNearTierHints();
+        var nearHints = collectNextTierHints();
         if (nearHints.length) {
           if (!(m.discount > 0)) {
             bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
           }
+          var anyNear = nearHints.some(function (h) {
+            return h.next.near;
+          });
           var missSum = 0;
           nearHints.forEach(function (h) {
             missSum += h.next.missingQty;
@@ -2197,23 +2208,26 @@
           var tierLabel = "Partner sáv";
           var tierVal;
           if (nearHints.length === 1) {
-            var h0 = nearHints[0];
-            tierVal =
-              "+" +
-              h0.next.missingQty +
-              " db → " +
-              formatHufClient(h0.next.priceNet) +
-              "/db" +
-              (h0.next.savePct > 0 ? " (−" + h0.next.savePct + "%)" : "");
-          } else {
+            tierVal = tierHintLabel(nearHints[0].next);
+          } else if (anyNear) {
             tierVal =
               "+" +
               missSum +
               " db a jobb sávokhoz (" +
               nearHints.length +
               " termék)";
+          } else {
+            tierVal =
+              nearHints.length +
+              " terméknél elérhető jobb sáv";
           }
-          bodyBox.appendChild(receiptRow(tierLabel, tierVal, "is-tier"));
+          bodyBox.appendChild(
+            receiptRow(
+              tierLabel,
+              tierVal,
+              "is-tier" + (anyNear ? " is-near" : ""),
+            ),
+          );
         }
 
         if (hardN > 0) {
@@ -2387,31 +2401,63 @@
       return null;
     }
 
-    /** Következő sáv FOMO — csak near + nem fix ár. */
-    function lineNearTier(line) {
+    /**
+     * Következő olcsóbb sáv hint.
+     * - mindig (ha van értelmes save) — tájékoztató
+     * - near — erősebb FOMO
+     * - savePct < 3% → elrejt
+     * - missing/qty > 10 → csak tájékoztató (nem near kiemelés)
+     */
+    function lineNextTierHint(line) {
       if (!line || line.found !== true) return null;
       if (line.priceSource === "own") return null;
       var nt = line.nextTier;
-      if (!nt || !nt.near) return null;
+      if (!nt) return null;
       var missing = Math.round(Number(nt.missingQty) || 0);
       var minQty = Math.round(Number(nt.minQty) || 0);
       var priceNet = Number(nt.priceNet);
+      var savePct = Number(nt.savePct) || 0;
       if (missing < 1 || minQty < 1 || !Number.isFinite(priceNet)) return null;
+      if (savePct < 3) return null;
+      var qty = Math.max(1, Math.round(Number(line.quantity) || 1));
+      var far = missing / qty > 10;
+      var near = Boolean(nt.near) && !far;
       return {
         missingQty: missing,
         minQty: minQty,
         priceNet: Math.round(priceNet),
-        savePct: Number(nt.savePct) || 0,
+        savePct: savePct,
+        near: near,
       };
     }
 
-    function collectNearTierHints() {
+    function collectNextTierHints() {
       var out = [];
       lines.forEach(function (l, i) {
-        var nt = lineNearTier(l);
+        var nt = lineNextTierHint(l);
         if (nt) out.push({ idx: i, line: l, next: nt });
       });
       return out;
+    }
+
+    function tierHintLabel(hint) {
+      if (hint.near) {
+        return (
+          "+" +
+          hint.missingQty +
+          " db → " +
+          formatHufClient(hint.priceNet) +
+          "/db" +
+          (hint.savePct > 0 ? " (−" + hint.savePct + "%)" : "")
+        );
+      }
+      return (
+        hint.minQty +
+        "+ → " +
+        formatHufClient(hint.priceNet) +
+        "/db" +
+        (hint.savePct > 0 ? " (−" + hint.savePct + "%)" : "")
+      );
     }
 
     function lineListNet(line) {
@@ -2853,27 +2899,21 @@
         }
 
         var qtyKids = [qtyField];
-        var near = lineNearTier(line);
-        if (near) {
-          var nudgeLabel =
-            "+" +
-            near.missingQty +
-            " db → " +
-            formatHufClient(near.priceNet) +
-            "/db" +
-            (near.savePct > 0 ? " (−" + near.savePct + "%)" : "");
+        var tierHint = lineNextTierHint(line);
+        if (tierHint) {
           qtyKids.push(
             el(
               "button",
               {
                 type: "button",
-                className: "sr-qo-tier-nudge",
-                title: "Beállítás: " + near.minQty + " db",
+                className:
+                  "sr-qo-tier-nudge" + (tierHint.near ? " is-near" : ""),
+                title: "Beállítás: " + tierHint.minQty + " db",
                 onClick: function (ev) {
                   ev.preventDefault();
                   ev.stopPropagation();
                   var next = normalizePackQuantity(
-                    near.minQty,
+                    tierHint.minQty,
                     packRulesFromLine(lines[idx]),
                   );
                   lines[idx].quantity = next;
@@ -2883,7 +2923,7 @@
                   refreshLinePricing(idx, { flash: true });
                 },
               },
-              [nudgeLabel],
+              [tierHintLabel(tierHint)],
             ),
           );
         }
