@@ -24,6 +24,8 @@ export type GroupMapItemDto = {
   role: CustomerGroupRole;
   isDefault: boolean;
   percentDiscount: number | null;
+  /** SR listában nincs — portal map árva. */
+  missingFromShop?: boolean;
 };
 
 async function getShopIdForOrg(
@@ -205,4 +207,98 @@ export async function saveGroupMap(
   );
 
   return allowed;
+}
+
+/**
+ * Portal-only cleanup after SR group delete / orphan.
+ * Does not call Shoprenter. Leaves shop_customers / b2b_orders history intact.
+ */
+export async function purgePortalCustomerGroup(
+  client: PoolClient,
+  opts: {
+    shopId: string;
+    groupInnerId: number;
+    groupOuterId?: string | null;
+  },
+): Promise<{
+  mapDeleted: number;
+  pricesDeleted: number;
+  tiersDeleted: number;
+  syncDeleted: number;
+}> {
+  const shopId = opts.shopId;
+  const innerId = Math.round(opts.groupInnerId);
+  const outer = (opts.groupOuterId ?? "").trim() || null;
+
+  let pricesDeleted = 0;
+  let tiersDeleted = 0;
+  let syncDeleted = 0;
+
+  if (outer) {
+    const prices = await query<{ n: string }>(
+      client,
+      `with d as (
+         delete from partner_group_prices
+         where shop_id = $1 and customer_group_outer_id = $2
+         returning 1
+       )
+       select count(*)::text as n from d`,
+      [shopId, outer],
+    );
+    pricesDeleted = Number(prices.rows[0]?.n ?? 0);
+
+    const tiers = await query<{ n: string }>(
+      client,
+      `with d as (
+         delete from partner_volume_tiers
+         where shop_id = $1 and customer_group_outer_id = $2
+         returning 1
+       )
+       select count(*)::text as n from d`,
+      [shopId, outer],
+    ).catch(() => ({ rows: [{ n: "0" }] }));
+    tiersDeleted = Number(tiers.rows[0]?.n ?? 0);
+
+    const sync = await query<{ n: string }>(
+      client,
+      `with d as (
+         delete from partner_group_price_sync
+         where shop_id = $1 and customer_group_outer_id = $2
+         returning 1
+       )
+       select count(*)::text as n from d`,
+      [shopId, outer],
+    ).catch(() => ({ rows: [{ n: "0" }] }));
+    syncDeleted = Number(sync.rows[0]?.n ?? 0);
+  }
+
+  // Widget ACL (legacy): remove inner id from allowlist if present
+  await query(
+    client,
+    `update widget_settings
+     set customer_group_ids = array_remove(customer_group_ids, $2),
+         updated_at = now()
+     where shop_id = $1
+       and customer_group_ids is not null
+       and $2 = any(customer_group_ids)`,
+    [shopId, innerId],
+  ).catch(() => null);
+
+  const map = await query<{ n: string }>(
+    client,
+    `with d as (
+       delete from shop_customer_group_map
+       where shop_id = $1 and sr_group_inner_id = $2
+       returning 1
+     )
+     select count(*)::text as n from d`,
+    [shopId, innerId],
+  );
+
+  return {
+    mapDeleted: Number(map.rows[0]?.n ?? 0),
+    pricesDeleted,
+    tiersDeleted,
+    syncDeleted,
+  };
 }

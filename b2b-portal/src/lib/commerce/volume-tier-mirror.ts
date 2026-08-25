@@ -204,3 +204,22 @@ export async function listMirroredVolumeTiers(
     })
     .filter((t): t is MirroredVolumeTier => t != null);
 }
+
+/** Distinct SR special ids mirrored for a group (best-effort SR cleanup). */
+export async function listMirroredSpecialIdsForGroup(
+  client: PoolClient,
+  shopId: string,
+  customerGroupOuterId: string,
+): Promise<string[]> {
+  const res = await query<{ sr_special_id: string }>(
+    client,
+    `select distinct sr_special_id
+     from partner_volume_tiers
+     where shop_id = $1
+       and customer_group_outer_id = $2
+       and sr_special_id is not null
+       and length(trim(sr_special_id)) > 0`,
+    [shopId, customerGroupOuterId],
+  ).catch(() => ({ rows: [] as { sr_special_id: string }[] }));
+  return res.rows.map((r) => r.sr_special_id.trim());
+}

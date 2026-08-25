@@ -66,6 +66,7 @@ export async function GET() {
             "bolt") as CustomerGroupRole,
           isDefault: g.isDefault,
           percentDiscount: g.percentDiscount,
+          missingFromShop: false,
         }));
 
         for (const row of refreshed) {
@@ -73,10 +74,11 @@ export async function GET() {
             groups.push({
               innerId: row.sr_group_inner_id,
               groupId: row.sr_group_id,
-              name: `${row.sr_name_snapshot} (hiányzik a boltból)`,
+              name: row.sr_name_snapshot || `Csoport #${row.sr_group_inner_id}`,
               role: "rejtett",
               isDefault: row.is_default_in_sr,
               percentDiscount: null,
+              missingFromShop: true,
             });
           }
         }

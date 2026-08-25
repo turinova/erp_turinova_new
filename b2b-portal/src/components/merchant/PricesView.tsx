@@ -17,6 +17,7 @@ type GroupDto = {
   role: string;
   isDefault: boolean;
   percentDiscount: number | null;
+  missingFromShop?: boolean;
 };
 
 type PriceRow = {
@@ -230,52 +231,91 @@ function GroupPick({
   group,
   active,
   onSelect,
+  onRemove,
+  removing,
 }: {
   group: GroupDto;
   active: boolean;
   onSelect: () => void;
+  onRemove?: () => void;
+  removing?: boolean;
 }) {
   const pct = group.percentDiscount;
+  const missing = Boolean(group.missingFromShop);
+  const canRemove =
+    Boolean(onRemove) && !group.isDefault && (missing || Boolean(group.groupId));
+
   return (
-    <button
-      type="button"
-      disabled={!group.groupId}
-      onClick={onSelect}
+    <div
       className={
         active
-          ? "relative min-w-[140px] shrink-0 cursor-pointer border-2 border-text bg-surface-2 p-2.5 text-left md:min-w-0 md:w-full"
-          : "min-w-[140px] shrink-0 cursor-pointer border border-line-strong bg-surface p-2.5 text-left hover:bg-surface-2 md:min-w-0 md:w-full disabled:cursor-not-allowed disabled:opacity-40"
+          ? "relative min-w-[140px] shrink-0 border-2 border-text bg-surface-2 md:min-w-0 md:w-full"
+          : "min-w-[140px] shrink-0 border border-line-strong bg-surface md:min-w-0 md:w-full"
       }
     >
       {active ? (
         <span className="absolute inset-y-0 left-0 w-1 bg-accent" aria-hidden />
       ) : null}
-      <div className="flex items-start justify-between gap-1">
-        <span
-          className={
-            active
-              ? "text-[12px] font-semibold leading-tight text-text"
-              : "text-[12px] font-medium leading-tight text-faint"
+      <button
+        type="button"
+        disabled={!group.groupId && !missing}
+        onClick={onSelect}
+        className={
+          active
+            ? "w-full cursor-pointer p-2.5 pr-8 text-left"
+            : "w-full cursor-pointer p-2.5 pr-8 text-left hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+        }
+      >
+        <div className="flex items-start justify-between gap-1">
+          <span
+            className={
+              active
+                ? "text-[12px] font-semibold leading-tight text-text"
+                : "text-[12px] font-medium leading-tight text-faint"
+            }
+          >
+            {group.name}
+          </span>
+          {!missing && pct != null && pct > 0 ? (
+            <span className="shrink-0 bg-accent px-1 py-px text-[9px] font-bold text-white">
+              −{pct}%
+            </span>
+          ) : !missing ? (
+            <span className="shrink-0 text-[9px] font-semibold text-faint">
+              0%
+            </span>
+          ) : null}
+        </div>
+        {missing ? (
+          <span className="mt-0.5 inline-block bg-[rgba(163,45,45,.1)] px-1 py-px text-[9px] font-bold uppercase tracking-wide text-danger">
+            Hiányzik a boltból
+          </span>
+        ) : group.isDefault ? (
+          <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-wide text-faint">
+            Alap
+          </span>
+        ) : null}
+      </button>
+      {canRemove ? (
+        <button
+          type="button"
+          title={
+            missing
+              ? "Eltávolítás a portálból"
+              : "Törlés a boltból és a portálból"
           }
+          disabled={removing}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove?.();
+          }}
+          className="absolute right-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center text-[14px] leading-none text-faint hover:bg-surface-2 hover:text-danger disabled:opacity-40"
+          aria-label={missing ? "Eltávolítás a portálból" : "Csoport törlése"}
         >
-          {group.name}
-        </span>
-        {pct != null && pct > 0 ? (
-          <span className="shrink-0 bg-accent px-1 py-px text-[9px] font-bold text-white">
-            −{pct}%
-          </span>
-        ) : (
-          <span className="shrink-0 text-[9px] font-semibold text-faint">
-            0%
-          </span>
-        )}
-      </div>
-      {group.isDefault ? (
-        <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-wide text-faint">
-          Alap
-        </span>
+          ×
+        </button>
       ) : null}
-    </button>
+    </div>
   );
 }
 
@@ -362,6 +402,7 @@ export function PricesView() {
     { minQty: string; priceNet: string; pct: string }[]
   >([{ minQty: "10", priceNet: "", pct: "10" }]);
   const [bulkTiersBusy, setBulkTiersBusy] = useState(false);
+  const [removingGroupKey, setRemovingGroupKey] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pctSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -489,13 +530,15 @@ export function PricesView() {
   }, [loadGroups]);
 
   const needsProductList = workTab === "exceptions" || workTab === "tiers";
+  const selectedGroup = groups.find((g) => g.groupId === groupId) ?? null;
+  const groupMissing = Boolean(selectedGroup?.missingFromShop);
   const ownOnly =
     workTab === "exceptions" ? listFilter === "own" : false;
   const tiersOnly = workTab === "tiers" ? listFilter === "tiers" : false;
 
   useEffect(() => {
-    if (!groupId || !needsProductList) {
-      if (!groupId) setLoading(false);
+    if (!groupId || !needsProductList || groupMissing) {
+      if (!groupId || groupMissing) setLoading(false);
       return;
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -523,12 +566,13 @@ export function PricesView() {
     ownOnly,
     tiersOnly,
     needsProductList,
+    groupMissing,
     loadPrices,
   ]);
 
   // Rule tab still needs group meta (name, %, counts) — light fetch once
   useEffect(() => {
-    if (!groupId || workTab !== "rule") return;
+    if (!groupId || workTab !== "rule" || groupMissing) return;
     void loadPrices({
       groupId,
       q: "",
@@ -538,7 +582,7 @@ export function PricesView() {
       ownOnly: false,
       tiersOnly: false,
     });
-  }, [groupId, workTab, loadPrices]);
+  }, [groupId, workTab, groupMissing, loadPrices]);
 
   useEffect(() => {
     if (editingSku) editInputRef.current?.focus();
@@ -965,6 +1009,61 @@ export function PricesView() {
     tierBadgeBySku.current.clear();
   }
 
+  async function removeGroup(g: GroupDto, force = false) {
+    if (g.isDefault) {
+      setError("Az alap csoportot nem törölheted.");
+      return;
+    }
+    const missing = Boolean(g.missingFromShop);
+    const label = g.name || "csoport";
+    if (!force) {
+      const ok = window.confirm(
+        missing
+          ? `„${label}” már nincs a boltban.\n\nEltávolítod a portálból? (helyi ár-/sáv-tükör is törlődik)`
+          : `„${label}” törlése a boltból és a portálból?\n\nA csoport fix árai és sávjai is törlődhetnek.`,
+      );
+      if (!ok) return;
+    }
+
+    const key = g.groupId || `inner:${g.innerId}`;
+    setRemovingGroupKey(key);
+    setError(null);
+    setMessage(null);
+    try {
+      const run = async (withForce: boolean) => {
+        const params = new URLSearchParams();
+        if (g.groupId) params.set("id", g.groupId);
+        params.set("innerId", String(g.innerId));
+        if (withForce) params.set("forcePrices", "1");
+        return fetch(`/api/merchant/customer-groups/sr?${params}`, {
+          method: "DELETE",
+        });
+      };
+
+      let res = await run(force);
+      let data = await res.json();
+      if (res.status === 409 && data.needsForce && !force) {
+        const again = window.confirm(
+          `${data.error || "Van kapcsolódó ár / sáv."}\n\nTörölöd ezeket is a boltból?`,
+        );
+        if (!again) return;
+        res = await run(true);
+        data = await res.json();
+      }
+      if (!res.ok) throw new Error(data.error || "Törlés sikertelen");
+      setMessage(data.message || "Kész.");
+      if (g.groupId && groupId === g.groupId) {
+        setGroupId("");
+        setRows([]);
+      }
+      await loadGroups();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Törlés sikertelen");
+    } finally {
+      setRemovingGroupKey(null);
+    }
+  }
+
   const tabBtn = (id: WorkTab, label: string) => (
     <button
       key={id}
@@ -1051,6 +1150,10 @@ export function PricesView() {
                 onSelect={() => {
                   if (g.groupId) selectGroup(g.groupId);
                 }}
+                removing={
+                  removingGroupKey === (g.groupId || `inner:${g.innerId}`)
+                }
+                onRemove={() => void removeGroup(g)}
               />
             ))}
           </div>
@@ -1070,6 +1173,34 @@ export function PricesView() {
             <p className="px-4 py-10 text-center text-[13px] text-faint">
               Válassz vagy hozz létre vevőcsoportot.
             </p>
+          ) : groupMissing ? (
+            <div className="flex flex-1 flex-col items-start justify-center gap-4 px-6 py-10 md:px-10">
+              <p className="inline-flex bg-[rgba(163,45,45,.1)] px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-danger">
+                Hiányzik a boltból
+              </p>
+              <h3 className="text-[18px] font-semibold text-text">
+                {selectedGroup?.name || "Csoport"}
+              </h3>
+              <p className="max-w-md text-[13px] leading-relaxed text-faint">
+                Ez a vevőcsoport már nincs a Shoprenterben (valószínűleg ott
+                törölték). A portálon megmaradt a helyi lista és az ár-/sáv-tükör.
+                Árazni már nem lehet — távolítsd el a portálból.
+              </p>
+              <button
+                type="button"
+                disabled={
+                  removingGroupKey ===
+                  (selectedGroup?.groupId ||
+                    `inner:${selectedGroup?.innerId ?? 0}`)
+                }
+                onClick={() => {
+                  if (selectedGroup) void removeGroup(selectedGroup);
+                }}
+                className="h-9 cursor-pointer border border-danger bg-surface px-4 text-[12px] font-semibold text-danger hover:bg-[rgba(163,45,45,.06)] disabled:opacity-50"
+              >
+                Eltávolítás a portálból
+              </button>
+            </div>
           ) : (
             <>
               {/* Fülek */}
