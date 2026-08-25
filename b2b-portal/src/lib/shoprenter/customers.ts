@@ -242,6 +242,14 @@ const groupsCache = new Map<
 >();
 const GROUPS_TTL_MS = 45_000;
 
+export function invalidateCustomerGroupsCache(shopName?: string): void {
+  if (!shopName) {
+    groupsCache.clear();
+    return;
+  }
+  groupsCache.delete(shopName.toLowerCase());
+}
+
 export async function listCustomerGroups(
   config: ShoprenterConfig,
   opts?: { bypassCache?: boolean },

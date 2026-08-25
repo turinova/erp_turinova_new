@@ -2,7 +2,7 @@
 
 **Scope:** `b2b.turinova.hu` (merchant) + Platform Admin (`/admin`) + Auth (`/login`, invite)  
 **Stack context:** Next.js App Router, Tailwind v4, Lucide icons (preferred)  
-**Last updated:** 2026-08-13  
+**Last updated:** 2026-08-25  
 
 This document is the **source of truth** for visual and interaction decisions.  
 When in doubt: **speed → compactness → clarity**. Everything else is secondary.
@@ -61,18 +61,18 @@ The portal **must feel like the B2B quick-order widget**, not a generic shadcn t
 
 | Element | Spec (from widget) |
 |---------|-------------------|
-| Canvas | `#F7F6F3` |
+| Canvas | `#FFFFFF` (portal Olvasó) |
 | Surface | `#FFFFFF` |
-| Accent | `#000000` (Olvasó) |
-| Text / muted | `#1A1917` / `#6F6E69` |
-| Hairline | `0.5px` `rgba(55,53,47,.16)` |
-| Glass chrome | `rgba(247,246,243,.82)` + `backdrop-filter: saturate(1.6) blur(20px)` on **header / sidebar only** |
-| Nav segment | Apple-style pill track `rgba(55,53,47,.08)` + white active chip + light shadow |
-| Radius | **0** — szögletes (Olvasó); sehol sem lekerekített kártya / control |
-| Font | system / SF Pro stack (fast, native) |
+| Text | `#000000` |
+| Accent | `#0B6BCB` — egyetlen jelzőszín (CTA / aktív / badge) |
+| Accent soft | `#E8F3FC` |
+| Accent ink | `#084A8C` (pressed / hover primary) |
+| Hairline | strong black rules (`line-strong`) |
+| Radius | **0** — szögletes (Olvasó) |
+| Font | system / SF Pro stack |
 | Motion | ≤180ms ease; respect `prefers-reduced-motion` |
 
-**Rule:** glass on **chrome**, solid surfaces on **content** (tables, forms) — keeps readability and paint performance.
+**Rule:** fekete tipográfia + erős vonal = papír; **kék csak jelzés** (CTA, tab, badge, focus) — Notion / Figma minta. A storefront widget `high_contrast` továbbra is fekete-tintás lehet; a **portal chrome** a fenti accentet használja.
 
 ---
 
@@ -82,16 +82,18 @@ The portal **must feel like the B2B quick-order widget**, not a generic shadcn t
 
 | Token | Value | Use |
 |-------|--------|-----|
-| `--bg` / canvas | `#F7F6F3` | Page background (widget) |
-| `--surface` | `#FFFFFF` | Cards, tables |
-| `--surface-2` | `#EFEEE9` | Inputs, table header |
-| `--text` | `#1A1917` | Primary text |
-| `--muted` | `#6F6E69` | Secondary — keep readable on surface |
-| `--line` / `--line-strong` | `rgba(55,53,47,.09/.16)` | Hairlines |
-| `--accent` | `#000000` | Primary CTA (Olvasó / high contrast) |
-| `--ok` / `--warn` / `--danger` | `#2F6F4E` / `#9A6700` / `#A32D2D` | Status |
+| `--bg` / canvas | `#FFFFFF` | Page background |
+| `--surface` | `#FFFFFF` | Tables, panels |
+| `--surface-2` | `#F2F2F2` | Nested / zebra |
+| `--text` | `#000000` | Primary text |
+| `--muted` / `--faint` | `#1C1C1E` / `#3A3A3C` | Secondary |
+| `--line` / `--line-strong` | black 45% / 75% | Rules |
+| `--accent` | `#0B6BCB` | CTA, active tab/nav, badges, links |
+| `--accent-soft` | `#E8F3FC` | Selection / badge wash |
+| `--accent-ink` | `#084A8C` | Primary hover / pressed |
+| `--ok` / `--warn` / `--danger` | status greens/ambers/reds | Status only |
 
-**Do not** default to purple-indigo SaaS cliché or cream + terracotta “AI landing” looks.
+**Do not** paint borders and body type with accent. **Do not** default to purple-indigo SaaS cliché or cream + terracotta “AI landing” looks.
 
 ### Typography
 

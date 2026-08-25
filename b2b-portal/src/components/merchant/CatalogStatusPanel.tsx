@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   NearLimitBanner,
   PartnerUsageBar,
@@ -19,6 +19,7 @@ type CatalogPayload = {
   overCap?: boolean;
   warn80?: boolean;
   planLabel?: string;
+  job?: { id: string; status: string } | null;
 };
 
 function story(
@@ -68,38 +69,77 @@ function story(
   };
 }
 
+function mergeCatalogPayload(
+  prev: CatalogPayload | null,
+  next: CatalogPayload,
+): CatalogPayload {
+  const syncing =
+    next.catalogStatus === "syncing" || next.catalogStatus === "pending";
+  if (!prev || !syncing) return next;
+  const sameJob =
+    !prev.job?.id || !next.job?.id || prev.job.id === next.job.id;
+  if (!sameJob) return next;
+  return {
+    ...next,
+    progressPct: Math.max(prev.progressPct ?? 0, next.progressPct ?? 0),
+  };
+}
+
 export function CatalogStatusPanel() {
   const [data, setData] = useState<CatalogPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const fetchSeq = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/merchant/catalog");
-    const json = (await res.json()) as CatalogPayload & { error?: string };
-    if (!res.ok) {
-      setError(json.error ?? "Nem sikerült betölteni.");
-      return;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const seq = ++fetchSeq.current;
+    try {
+      const res = await fetch("/api/merchant/catalog", { signal: ac.signal });
+      const json = (await res.json()) as CatalogPayload & { error?: string };
+      if (seq !== fetchSeq.current) return;
+      if (!res.ok) {
+        setError(json.error ?? "Nem sikerült betölteni.");
+        return;
+      }
+      setError(null);
+      setData((prev) => mergeCatalogPayload(prev, json));
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      if (seq !== fetchSeq.current) return;
+      setError("Nincs kapcsolat.");
     }
-    setError(null);
-    setData(json);
   }, []);
 
   useEffect(() => {
     void load();
     const id = setInterval(() => void load(), 4000);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      abortRef.current?.abort();
+    };
   }, [load]);
 
   async function resync() {
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/merchant/catalog/resync", { method: "POST" });
+      const res = await fetch("/api/merchant/catalog/resync", {
+        method: "POST",
+      });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) {
         setError(json.error ?? "Nem indult el.");
         return;
       }
+      setData((prev) =>
+        prev
+          ? { ...prev, catalogStatus: "pending", progressPct: 0, job: null }
+          : prev,
+      );
       await load();
     } catch {
       setError("Nincs kapcsolat.");
@@ -131,7 +171,8 @@ export function CatalogStatusPanel() {
         <p className="tn-label">Termékek a gyors rendelésben</p>
         <h3 className="tn-section-title mt-1">{s.title}</h3>
         <p className="tn-section-sub">{s.body}</p>
-        {data?.catalogStatus === "syncing" || data?.catalogStatus === "pending" ? (
+        {data?.catalogStatus === "syncing" ||
+        data?.catalogStatus === "pending" ? (
           <div
             className={`mt-3 inline-flex h-10 items-center rounded-none border-2 px-3 ${chip}`}
           >

@@ -108,33 +108,69 @@ export async function enqueueFullSync(
 
 export async function claimNextJob(
   client: PoolClient,
+  leaseOwner: string,
+  leaseSeconds = 180,
 ): Promise<SyncJobRow | null> {
   const res = await query<SyncJobRow>(
     client,
-    `select id, shop_id, organization_id, kind, status,
-            pages_done, pages_total, products_upserted,
-            error_code, error_message, started_at, finished_at, created_at
-     from sync_jobs
-     where status in ('queued', 'running')
-     order by created_at
-     limit 1
-     for update skip locked`,
+    `with candidate as (
+       select id
+       from sync_jobs
+       where status in ('queued', 'running')
+         and (lease_until is null or lease_until < now())
+       order by created_at
+       limit 1
+       for update skip locked
+     )
+     update sync_jobs j
+     set status = 'running',
+         started_at = coalesce(j.started_at, now()),
+         lease_owner = $1,
+         lease_until = now() + make_interval(secs => $2)
+     from candidate c
+     where j.id = c.id
+     returning j.id, j.shop_id, j.organization_id, j.kind, j.status,
+               j.pages_done, j.pages_total, j.products_upserted,
+               j.error_code, j.error_message, j.started_at, j.finished_at,
+               j.created_at`,
+    [leaseOwner, leaseSeconds],
   );
-  const job = res.rows[0];
-  if (!job) return null;
+  return res.rows[0] ?? null;
+}
 
-  if (job.status === "queued") {
-    await query(
-      client,
-      `update sync_jobs
-       set status = 'running', started_at = coalesce(started_at, now())
-       where id = $1`,
-      [job.id],
-    );
-    job.status = "running";
-    job.started_at = job.started_at ?? new Date().toISOString();
-  }
-  return job;
+/** Lease megújítás — false = elvesztettük (másik worker / lejárt). */
+export async function renewJobLease(
+  client: PoolClient,
+  jobId: string,
+  leaseOwner: string,
+  leaseSeconds = 180,
+): Promise<boolean> {
+  const res = await query<{ id: string }>(
+    client,
+    `update sync_jobs
+     set lease_until = now() + make_interval(secs => $3)
+     where id = $1
+       and lease_owner = $2
+       and status = 'running'
+     returning id`,
+    [jobId, leaseOwner, leaseSeconds],
+  );
+  return Boolean(res.rows[0]);
+}
+
+export async function releaseJobLease(
+  client: PoolClient,
+  jobId: string,
+  leaseOwner: string,
+): Promise<void> {
+  await query(
+    client,
+    `update sync_jobs
+     set lease_owner = null,
+         lease_until = null
+     where id = $1 and lease_owner = $2 and status = 'running'`,
+    [jobId, leaseOwner],
+  );
 }
 
 export async function loadShopForSync(
@@ -191,23 +227,36 @@ export async function markJobProgress(
     catalogCount: number;
   },
 ): Promise<void> {
+  // Monoton számlálók — párhuzamos tick / stale write ne ugrasson vissza.
   await query(
     client,
     `update sync_jobs
-     set pages_done = $2, pages_total = $3, products_upserted = $4
+     set pages_done = greatest(pages_done, $2),
+         pages_total = case
+           when $3::int is null then pages_total
+           when pages_total is null then $3
+           else greatest(pages_total, $3)
+         end,
+         products_upserted = greatest(products_upserted, $4)
      where id = $1`,
     [jobId, patch.pagesDone, patch.pagesTotal, patch.productsUpserted],
   );
+  // Only while this job is still running — otherwise a late tick after
+  // finishJobSuccess can overwrite catalog_status back to 'syncing' (99% stuck).
   await query(
     client,
-    `update shops
+    `update shops s
      set catalog_status = 'syncing',
-         catalog_product_count = $2,
+         catalog_product_count = greatest(s.catalog_product_count, $3),
          catalog_synced_at = now(),
          catalog_error = null,
          updated_at = now()
-     where id = $1`,
-    [shopId, patch.catalogCount],
+     from sync_jobs j
+     where s.id = $1
+       and j.id = $2
+       and j.shop_id = s.id
+       and j.status = 'running'`,
+    [shopId, jobId, patch.catalogCount],
   );
 }
 
@@ -304,7 +353,9 @@ export async function loadLatestJob(
             error_code, error_message, started_at, finished_at, created_at
      from sync_jobs
      where shop_id = $1
-     order by created_at desc
+     order by
+       case when status in ('queued', 'running') then 0 else 1 end,
+       created_at desc
      limit 1`,
     [shopId],
   );

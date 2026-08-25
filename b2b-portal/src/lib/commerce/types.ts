@@ -4,6 +4,11 @@ export type CatalogProductDraft = {
   modelNumber?: string | null;
   gtin?: string | null;
   name?: string | null;
+  imageUrl?: string | null;
+  manufacturerInnerId?: number | null;
+  manufacturerName?: string | null;
+  /** Shoprenter category inner id-k (M:N). */
+  categoryInnerIds?: number[];
   active: boolean;
   minQty: number;
   qtyStep: number;

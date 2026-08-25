@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 /*
-  Turinova B2B — „Olvasó” (widget panelTheme: high_contrast)
-  White canvas · black type/accent · strong black lines.
+  Turinova B2B — „Olvasó”
+  White canvas · black type · strong black lines · one signal blue (Notion/Figma pattern).
 */
 
 :root {
@@ -14,8 +14,11 @@
   --faint: #3a3a3c;
   --line: rgba(0, 0, 0, 0.45);
   --line-strong: rgba(0, 0, 0, 0.75);
-  --accent: #000000;
-  --accent-soft: rgba(0, 0, 0, 0.08);
+  /* Signal layer — CTA, active, badge, focus (not chrome borders) */
+  --accent: #0b6bcb;
+  --accent-ink: #084a8c;
+  --accent-soft: #e8f3fc;
+  --accent-ring: rgba(11, 107, 203, 0.28);
   --ok: #008009;
   --warn: #a05000;
   --danger: #d70015;
@@ -38,6 +41,7 @@
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
@@ -117,12 +121,80 @@ select {
 
 .tn-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-ring);
 }
 
 .tn-input:disabled {
   background: var(--surface-2);
   color: var(--faint);
+}
+
+/* Natív select — papír (Olvasó): erős vonal, fehér, 0 radius */
+.tn-select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 0;
+  background-color: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23000' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 8px 5px;
+}
+
+.tn-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.tn-select:disabled {
+  background-color: var(--surface-2);
+  color: var(--faint);
+  cursor: not-allowed;
+}
+
+.tn-select-sm {
+  height: 28px;
+  padding: 0 24px 0 8px;
+  font-size: 11px;
+  background-position: right 8px center;
+  background-size: 7px 4px;
+}
+
+/* PaperSelect trigger (custom lista) */
+.tn-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 8px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+  outline: none;
+}
+
+.tn-select-trigger:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+.tn-select-chevron {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 4.5px solid var(--text);
+  flex-shrink: 0;
+  opacity: 0.75;
 }
 
 .tn-textarea {
@@ -138,7 +210,7 @@ select {
 
 .tn-textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-ring);
 }
 
 .tn-btn {
@@ -166,7 +238,8 @@ select {
 }
 
 .tn-btn-primary:hover:not(:disabled) {
-  opacity: 0.88;
+  background: var(--accent-ink);
+  opacity: 1;
 }
 
 .tn-btn-ghost {

@@ -1,9 +1,17 @@
+import { randomBytes } from "crypto";
 import { decryptCredentials } from "@/lib/crypto/credentials";
 import { query, withPlatformAdmin } from "@/lib/db";
 import { effectiveSkuLimit } from "@/lib/billing/active-partners";
 import { configFromCredentials } from "@/lib/shoprenter/ping";
 import type { ShopCredentialsPlain } from "@/types/db";
-import { countOrgActiveSkus, countShopCatalog, upsertCatalogPage } from "./catalog";
+import {
+  countOrgActiveSkus,
+  countShopCatalog,
+  deactivateStaleCatalogProducts,
+  replaceShopProductCategoryLinks,
+  upsertCatalogCategories,
+  upsertCatalogPage,
+} from "./catalog";
 import {
   claimNextJob,
   finishJobBlocked,
@@ -12,18 +20,30 @@ import {
   getCursor,
   loadShopForSync,
   markJobProgress,
+  releaseJobLease,
+  renewJobLease,
   saveCursor,
   type SyncJobRow,
 } from "./jobs";
-import { createShoprenterAdapter } from "./shoprenter-adapter";
+import {
+  createShoprenterAdapter,
+  type CategoryMeta,
+  type ProductCategoryLink,
+  type ShoprenterAdapter,
+} from "./shoprenter-adapter";
 
 const MAX_PAGES_PER_TICK = 8;
 const MAX_429 = 8;
+const LEASE_SECONDS = 180;
 
 let tickBusy = false;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function newLeaseOwner(): string {
+  return `w-${process.pid}-${randomBytes(4).toString("hex")}`;
 }
 
 function httpStatus(err: unknown): number | null {
@@ -58,7 +78,10 @@ async function loadShopConfig(shopId: string, shopName: string) {
   });
 }
 
-async function runClaimedJob(job: SyncJobRow): Promise<"continue" | "done"> {
+async function runClaimedJob(
+  job: SyncJobRow,
+  leaseOwner: string,
+): Promise<"continue" | "done"> {
   const shop = await withPlatformAdmin((client) =>
     loadShopForSync(client, job.shop_id),
   );
@@ -95,7 +118,7 @@ async function runClaimedJob(job: SyncJobRow): Promise<"continue" | "done"> {
     return "done";
   }
 
-  const adapter = createShoprenterAdapter(config);
+  const adapter: ShoprenterAdapter = createShoprenterAdapter(config);
   const cursor = await withPlatformAdmin((client) =>
     getCursor(client, shop.id),
   );
@@ -105,8 +128,17 @@ async function runClaimedJob(job: SyncJobRow): Promise<"continue" | "done"> {
   let pagesTotal = job.pages_total;
   let nextCursor = cursor;
   let consecutive429 = 0;
+  let categoryBootstrapDone = Boolean(nextCursor);
 
   for (let i = 0; i < MAX_PAGES_PER_TICK; i++) {
+    const stillMine = await withPlatformAdmin((client) =>
+      renewJobLease(client, job.id, leaseOwner, LEASE_SECONDS),
+    );
+    if (!stillMine) {
+      console.warn("[catalog-sync] lease lost", job.id);
+      return "continue";
+    }
+
     let page;
     try {
       page = await adapter.listProductsPage(nextCursor);
@@ -152,9 +184,48 @@ async function runClaimedJob(job: SyncJobRow): Promise<"continue" | "done"> {
       return "done";
     }
 
-    if (page.pageCount != null) pagesTotal = page.pageCount;
+    if (page.pageCount != null) {
+      pagesTotal =
+        pagesTotal == null
+          ? page.pageCount
+          : Math.max(pagesTotal, page.pageCount);
+    }
+
+    // SR hívások DB connectionön kívül (kategória fa + M:N linkek).
+    let categoriesMeta: CategoryMeta[] | null = null;
+    let categoryLinks: ProductCategoryLink[] | null = null;
+    if (!categoryBootstrapDone && !nextCursor) {
+      try {
+        const meta = await adapter.getCategoriesMeta();
+        categoriesMeta = meta.size ? [...meta.values()] : [];
+      } catch (e) {
+        console.warn("[sync] catalog categories", e);
+        categoriesMeta = [];
+      }
+      try {
+        categoryLinks = await adapter.getProductCategoryLinks();
+      } catch (e) {
+        console.warn("[sync] product category links", e);
+        categoryLinks = [];
+      }
+      categoryBootstrapDone = true;
+    }
 
     const upserted = await withPlatformAdmin(async (client) => {
+      if (categoriesMeta?.length) {
+        await upsertCatalogCategories(client, shop.id, categoriesMeta);
+      }
+      if (categoryLinks?.length) {
+        const n = await replaceShopProductCategoryLinks(
+          client,
+          shop.id,
+          categoryLinks,
+        );
+        console.info("[sync] product↔category links", n);
+      }
+      categoriesMeta = null;
+      categoryLinks = null;
+
       const result = await upsertCatalogPage(
         client,
         shop.id,
@@ -179,8 +250,27 @@ async function runClaimedJob(job: SyncJobRow): Promise<"continue" | "done"> {
         return { blocked: true as const, catalogCount };
       }
       if (!page.nextCursor) {
-        await finishJobSuccess(client, job.id, shop.id, catalogCount);
-        return { blocked: false as const, done: true as const, catalogCount };
+        // Keep lease alive during stale cleanup (can be slow on large catalogs)
+        // so another worker cannot reclaim and markJobProgress→syncing after ready.
+        await renewJobLease(client, job.id, leaseOwner, LEASE_SECONDS);
+        const startedAt = job.started_at ?? new Date().toISOString();
+        const deactivated = await deactivateStaleCatalogProducts(
+          client,
+          shop.id,
+          startedAt,
+        );
+        if (deactivated > 0) {
+          console.info(
+            `[catalog-sync] shop=${shop.id} deactivated_stale=${deactivated}`,
+          );
+        }
+        const finalCount = await countShopCatalog(client, shop.id);
+        await finishJobSuccess(client, job.id, shop.id, finalCount);
+        return {
+          blocked: false as const,
+          done: true as const,
+          catalogCount: finalCount,
+        };
       }
       return { blocked: false as const, done: false as const, catalogCount };
     });
@@ -199,19 +289,23 @@ export async function processCatalogSyncTick(): Promise<void> {
   if (process.env.SYNC_WORKER_DISABLED === "1") return;
   if (tickBusy) return;
   tickBusy = true;
+  const leaseOwner = newLeaseOwner();
+  let job: SyncJobRow | null = null;
   try {
-    const job = await withPlatformAdmin((client) => claimNextJob(client));
+    job = await withPlatformAdmin((client) =>
+      claimNextJob(client, leaseOwner, LEASE_SECONDS),
+    );
     if (!job) return;
 
     try {
-      await runClaimedJob(job);
+      await runClaimedJob(job, leaseOwner);
     } catch (err) {
       console.error("[catalog-sync]", err);
       try {
         await withPlatformAdmin((client) =>
           finishJobFailed(
             client,
-            job,
+            job!,
             "crash",
             err instanceof Error ? err.message : "Ismeretlen hiba",
           ),
@@ -221,6 +315,15 @@ export async function processCatalogSyncTick(): Promise<void> {
       }
     }
   } finally {
+    if (job) {
+      try {
+        await withPlatformAdmin((client) =>
+          releaseJobLease(client, job!.id, leaseOwner),
+        );
+      } catch (e) {
+        console.warn("[catalog-sync] release lease", e);
+      }
+    }
     tickBusy = false;
   }
 }

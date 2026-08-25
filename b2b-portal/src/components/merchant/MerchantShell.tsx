@@ -2,20 +2,33 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { ExitImpersonateButton } from "@/components/platform/ExitImpersonateButton";
 
+type NavChild = { href: string; label: string };
+
 type NavItem = {
   href: string;
   label: string;
-  icon: "home" | "widget" | "customers" | "reports" | "settings" | "plans";
+  icon: "home" | "widget" | "customers" | "reports" | "settings" | "plans" | "prices";
+  children?: NavChild[];
 };
 
 const NAV: NavItem[] = [
   { href: "/home", label: "Áttekintés", icon: "home" },
   { href: "/riport", label: "Riport", icon: "reports" },
   { href: "/vevok", label: "Vevők", icon: "customers" },
+  {
+    href: "/arak",
+    label: "Árak",
+    icon: "prices",
+    children: [
+      { href: "/arak", label: "Árazás" },
+      { href: "/arak/utmutato", label: "Útmutató" },
+    ],
+  },
   { href: "/widget", label: "Gyors rendelés", icon: "widget" },
   { href: "/csomag", label: "Csomagok", icon: "plans" },
   { href: "/settings", label: "Beállítások", icon: "settings" },
@@ -26,9 +39,13 @@ const TITLES: Record<string, string> = {
   "/riport": "Riport",
   "/widget": "Gyors rendelés",
   "/vevok": "Vevők",
+  "/arak": "Árazás",
+  "/arak/utmutato": "Útmutató",
   "/settings": "Beállítások",
   "/csomag": "Csomagok",
 };
+
+const NAV_COLLAPSED_KEY = "tn-merchant-nav-collapsed";
 
 function IconHome({ className }: { className?: string }) {
   return (
@@ -135,6 +152,26 @@ function IconPlans({ className }: { className?: string }) {
   );
 }
 
+function IconPrices({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 2v20" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  );
+}
+
 function IconReports({ className }: { className?: string }) {
   return (
     <svg
@@ -157,6 +194,43 @@ function IconReports({ className }: { className?: string }) {
   );
 }
 
+function IconCollapse({
+  collapsed,
+  className,
+}: {
+  collapsed: boolean;
+  className?: string;
+}) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {collapsed ? (
+        <>
+          <rect x="3" y="3" width="18" height="18" />
+          <path d="M9 3v18" />
+          <path d="m14 9 3 3-3 3" />
+        </>
+      ) : (
+        <>
+          <rect x="3" y="3" width="18" height="18" />
+          <path d="M9 3v18" />
+          <path d="m15 15-3-3 3-3" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function NavIcon({
   name,
   className,
@@ -169,6 +243,7 @@ function NavIcon({
   if (name === "widget") return <IconWidget className={className} />;
   if (name === "customers") return <IconCustomers className={className} />;
   if (name === "reports") return <IconReports className={className} />;
+  if (name === "prices") return <IconPrices className={className} />;
   return <IconHome className={className} />;
 }
 
@@ -181,6 +256,11 @@ function shortHuDate(iso: string | null | undefined): string {
 
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** Exact path match (Árazás vs Útmutató children). */
+function isExactActive(pathname: string, href: string) {
+  return pathname === href;
 }
 
 export function MerchantShell({
@@ -202,23 +282,64 @@ export function MerchantShell({
   } | null;
 }) {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(NAV_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
   const title =
     pathname.startsWith("/vevok/") && pathname !== "/vevok"
       ? "Vevő"
       : (TITLES[pathname] ??
         NAV.find((item) => isActive(pathname, item.href))?.label ??
         "Áttekintés");
+  // Guide is padded content; only the price editor is full-bleed.
   const fullBleed =
     pathname === "/widget" ||
     pathname.startsWith("/widget/") ||
     pathname === "/vevok" ||
-    pathname.startsWith("/vevok/");
+    pathname.startsWith("/vevok/") ||
+    pathname === "/arak";
 
   const chipDate = shortHuDate(trialChip?.trialEndsAt);
   const linkClass = (active: boolean) =>
+    collapsed
+      ? active
+        ? "flex h-9 w-full cursor-pointer items-center justify-center border-l-2 border-text bg-surface-2 text-text"
+        : "flex h-9 w-full cursor-pointer items-center justify-center border-l-2 border-transparent text-faint transition-colors hover:bg-surface-2 hover:text-text"
+      : active
+        ? "flex h-9 cursor-pointer items-center gap-2 border-l-2 border-text bg-surface-2 px-3 text-[13px] font-semibold text-text"
+        : "flex h-9 cursor-pointer items-center gap-2 border-l-2 border-transparent px-3 text-[13px] font-medium text-faint transition-colors hover:bg-surface-2 hover:text-text";
+  const childLinkClass = (active: boolean) =>
     active
-      ? "flex h-9 cursor-pointer items-center gap-2 border-l-2 border-text bg-surface-2 px-3 text-[13px] font-semibold text-text"
-      : "flex h-9 cursor-pointer items-center gap-2 border-l-2 border-transparent px-3 text-[13px] font-medium text-faint transition-colors hover:bg-surface-2 hover:text-text";
+      ? "flex h-8 cursor-pointer items-center border-l-2 border-text bg-surface-2 py-0 pl-9 pr-3 text-[12px] font-semibold text-text"
+      : "flex h-8 cursor-pointer items-center border-l-2 border-transparent py-0 pl-9 pr-3 text-[12px] font-medium text-faint transition-colors hover:bg-surface-2 hover:text-text";
+
+  const mobileItems: { href: string; label: string }[] = [];
+  for (const item of NAV) {
+    if (item.children?.length) {
+      for (const c of item.children) mobileItems.push(c);
+    } else {
+      mobileItems.push({ href: item.href, label: item.label });
+    }
+  }
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
@@ -231,35 +352,133 @@ export function MerchantShell({
         </div>
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1">
-      <aside className="glass-side sticky top-0 hidden h-dvh w-[200px] shrink-0 flex-col md:flex">
-        <Link
-          href="/home"
-          className="flex h-14 items-center border-b border-line-strong px-3"
-          aria-label="Turinova"
+      <aside
+        className={
+          collapsed
+            ? "glass-side sticky top-0 hidden h-dvh w-14 shrink-0 flex-col md:flex"
+            : "glass-side sticky top-0 hidden h-dvh w-[200px] shrink-0 flex-col md:flex"
+        }
+      >
+        <div
+          className={
+            collapsed
+              ? "flex h-14 flex-col items-center justify-center gap-1 border-b border-line-strong px-1"
+              : "flex h-14 items-center justify-between gap-1 border-b border-line-strong px-2"
+          }
         >
-          <TurinovaWordmark height={24} className="w-full max-w-full object-contain object-left" />
-        </Link>
-        <nav className="flex flex-1 flex-col gap-0.5 py-3">
+          <Link
+            href="/home"
+            className={
+              collapsed
+                ? "flex items-center justify-center"
+                : "flex min-w-0 flex-1 items-center"
+            }
+            aria-label="Turinova"
+            title="Turinova"
+          >
+            {collapsed ? (
+              <TurinovaWordmark variant="icon" height={22} />
+            ) : (
+              <TurinovaWordmark
+                height={24}
+                className="w-full max-w-full object-contain object-left"
+              />
+            )}
+          </Link>
+          {!collapsed ? (
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center border border-line-strong bg-surface text-faint hover:bg-surface-2 hover:text-text"
+              aria-label="Menü összecsukása"
+              title="Menü összecsukása"
+            >
+              <IconCollapse collapsed={false} />
+            </button>
+          ) : null}
+        </div>
+        <nav className="flex flex-1 flex-col gap-0.5 py-2">
           {NAV.map((item) => {
-            const active = isActive(pathname, item.href);
+            const parentActive = isActive(pathname, item.href);
+            const hasChildren = Boolean(item.children?.length);
+            if (collapsed) {
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={linkClass(parentActive)}
+                  title={item.label}
+                  aria-label={item.label}
+                >
+                  <NavIcon name={item.icon} />
+                </Link>
+              );
+            }
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={linkClass(active)}
-              >
-                <NavIcon name={item.icon} />
-                {item.label}
-              </Link>
+              <div key={item.href}>
+                {hasChildren ? (
+                  <div
+                    className={
+                      parentActive
+                        ? "flex h-9 items-center gap-2 border-l-2 border-text bg-surface-2 px-3 text-[13px] font-semibold text-text"
+                        : "flex h-9 items-center gap-2 border-l-2 border-transparent px-3 text-[13px] font-medium text-faint"
+                    }
+                  >
+                    <NavIcon name={item.icon} />
+                    {item.label}
+                  </div>
+                ) : (
+                  <Link href={item.href} className={linkClass(parentActive)}>
+                    <NavIcon name={item.icon} />
+                    {item.label}
+                  </Link>
+                )}
+                {hasChildren
+                  ? item.children!.map((child) => (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className={childLinkClass(
+                          isExactActive(pathname, child.href),
+                        )}
+                      >
+                        {child.label}
+                      </Link>
+                    ))
+                  : null}
+              </div>
             );
           })}
         </nav>
-        <div className="border-t border-line-strong p-3">
-          <p className="truncate text-[12px] font-semibold text-text">
-            {displayName || email || "Te"}
-          </p>
-          <p className="truncate text-[11px] text-faint">{email ?? "—"}</p>
-          <LogoutButton />
+        <div
+          className={
+            collapsed
+              ? "flex flex-col items-center gap-2 border-t border-line-strong p-2"
+              : "border-t border-line-strong p-3"
+          }
+        >
+          {collapsed ? (
+            <>
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                className="inline-flex h-8 w-8 cursor-pointer items-center justify-center border border-line-strong bg-surface text-faint hover:bg-surface-2 hover:text-text"
+                aria-label="Menü kinyitása"
+                title="Menü kinyitása"
+              >
+                <IconCollapse collapsed />
+              </button>
+              <LogoutButton compact />
+            </>
+          ) : (
+            <>
+              <p className="truncate text-[12px] font-semibold text-text">
+                {displayName || email || "Te"}
+              </p>
+              <p className="truncate text-[11px] text-faint">{email ?? "—"}</p>
+              <LogoutButton />
+            </>
+          )}
         </div>
       </aside>
 
@@ -275,6 +494,14 @@ export function MerchantShell({
           <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
             {title}
           </h1>
+          {pathname === "/arak" ? (
+            <Link
+              href="/arak/utmutato"
+              className="shrink-0 cursor-pointer text-[12px] font-semibold text-faint hover:text-text"
+            >
+              Útmutató
+            </Link>
+          ) : null}
           {trialChip ? (
             <Link
               href="/csomag"
@@ -300,8 +527,10 @@ export function MerchantShell({
         </header>
 
         <div className="glass-bar flex gap-1 overflow-x-auto px-3 py-2 md:hidden">
-          {NAV.map((item) => {
-            const active = isActive(pathname, item.href);
+          {mobileItems.map((item) => {
+            const active = isExactActive(pathname, item.href)
+              ? true
+              : item.href !== "/arak" && isActive(pathname, item.href);
             return (
               <Link
                 key={item.href}

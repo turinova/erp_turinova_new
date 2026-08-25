@@ -3,7 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function LogoutButton({ className }: { className?: string }) {
+export function LogoutButton({
+  className,
+  compact,
+}: {
+  className?: string;
+  /** Ikon/rövid mód az összecsukott sidebarhoz. */
+  compact?: boolean;
+}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -16,6 +23,24 @@ export function LogoutButton({ className }: { className?: string }) {
       router.refresh();
       setPending(false);
     }
+  }
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={logout}
+        disabled={pending}
+        title="Kilépés"
+        aria-label="Kilépés"
+        className={
+          className ??
+          "inline-flex h-8 w-8 cursor-pointer items-center justify-center border border-line-strong bg-surface text-[11px] font-semibold text-faint hover:bg-surface-2 hover:text-text disabled:opacity-50"
+        }
+      >
+        {pending ? "…" : "→"}
+      </button>
+    );
   }
 
   return (

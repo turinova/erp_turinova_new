@@ -7,12 +7,31 @@ export type CatalogRow = {
   sku_norm: string;
   external_product_id: string;
   name: string | null;
+  image_url: string | null;
   model_number: string | null;
   gtin: string | null;
+  manufacturer_inner_id?: number | null;
+  manufacturer_name?: string | null;
   min_qty: number;
   qty_step: number;
   list_price_net: string | null;
+  cost_net?: string | null;
   active: boolean;
+};
+
+export type CatalogManufacturer = {
+  innerId: number;
+  name: string;
+  productCount: number;
+};
+
+export type CatalogCategory = {
+  innerId: number;
+  name: string;
+  parentInnerId: number | null;
+  /** Megjelenítés: „Szülő › Gyerek” */
+  label: string;
+  productCount: number;
 };
 
 export function catalogIsSearchable(status: string | null | undefined): boolean {
@@ -52,6 +71,298 @@ export function catalogRowToHit(row: CatalogRow): ProductSearchHit {
     qtyStep,
     packLabel: packLabel(minQty, qtyStep),
   };
+}
+
+/** Lapozott katalógus az Árak szerkesztőhöz. */
+export async function listCatalogPage(
+  client: PoolClient,
+  shopId: string,
+  opts?: {
+    page?: number;
+    limit?: number;
+    q?: string;
+    manufacturerInnerId?: number | null;
+    categoryInnerId?: number | null;
+    /** Szülő kategória → gyerekek is (default true). */
+    includeDescendants?: boolean;
+    /** Csak fix csoportáras termékek (JOIN partner_group_prices). */
+    ownOnly?: boolean;
+    /** Csak mennyiségi sávos termékek (EXISTS partner_volume_tiers). */
+    tiersOnly?: boolean;
+    customerGroupOuterId?: string | null;
+  },
+): Promise<{ rows: CatalogRow[]; pageCount: number; total: number }> {
+  const limit = Math.min(100, Math.max(1, opts?.limit ?? 50));
+  const page = Math.max(0, opts?.page ?? 0);
+  const q = (opts?.q ?? "").trim();
+  const offset = page * limit;
+  const mfrId =
+    opts?.manufacturerInnerId != null &&
+    Number.isFinite(opts.manufacturerInnerId) &&
+    opts.manufacturerInnerId > 0
+      ? Math.round(opts.manufacturerInnerId)
+      : null;
+  const catId =
+    opts?.categoryInnerId != null &&
+    Number.isFinite(opts.categoryInnerId) &&
+    opts.categoryInnerId > 0
+      ? Math.round(opts.categoryInnerId)
+      : null;
+  const includeDescendants = opts?.includeDescendants !== false;
+  const groupOuter = (opts?.customerGroupOuterId ?? "").trim();
+  const ownOnly = Boolean(opts?.ownOnly && groupOuter);
+  const tiersOnly = Boolean(opts?.tiersOnly && groupOuter);
+
+  let categoryIds: number[] | null = null;
+  if (catId != null) {
+    categoryIds = includeDescendants
+      ? await listCategoryDescendantIds(client, shopId, catId)
+      : [catId];
+  }
+
+  const whereParts = ["pc.shop_id = $1", "pc.active"];
+  const params: unknown[] = [shopId];
+  let p = 2;
+
+  if (ownOnly) {
+    whereParts.push(`pgp.customer_group_outer_id = $${p}`);
+    params.push(groupOuter);
+    p++;
+  }
+
+  if (tiersOnly) {
+    whereParts.push(`exists (
+      select 1 from partner_volume_tiers pvt
+      where pvt.shop_id = pc.shop_id
+        and pvt.customer_group_outer_id = $${p}
+        and pvt.product_inner_id::text = pc.external_product_id
+    )`);
+    params.push(groupOuter);
+    p++;
+  }
+
+  if (mfrId != null) {
+    whereParts.push(`pc.manufacturer_inner_id = $${p}`);
+    params.push(mfrId);
+    p++;
+  }
+
+  if (categoryIds != null && categoryIds.length > 0) {
+    whereParts.push(`exists (
+      select 1 from product_catalog_categories pcc
+      where pcc.shop_id = pc.shop_id
+        and pcc.product_inner_id::text = pc.external_product_id
+        and pcc.category_inner_id = any($${p}::int[])
+    )`);
+    params.push(categoryIds);
+    p++;
+  }
+
+  if (q.length >= 2) {
+    const needle = q.toUpperCase();
+    const namePat = q.length >= 3 ? `%${q}%` : null;
+    whereParts.push(`(
+      pc.sku_norm like $${p} || '%'
+      or pc.model_norm like $${p} || '%'
+      or pc.gtin_norm like $${p} || '%'
+      or ($${p + 1}::text is not null and pc.name ilike $${p + 1})
+    )`);
+    params.push(needle, namePat);
+    p += 2;
+  }
+
+  const whereSql = whereParts.join(" and ");
+  const fromSql = ownOnly
+    ? `product_catalog pc
+       inner join partner_group_prices pgp
+         on pgp.shop_id = pc.shop_id
+        and pc.external_product_id = pgp.product_inner_id::text`
+    : `product_catalog pc`;
+
+  const countRes = await query<{ n: string }>(
+    client,
+    `select count(*)::text as n from ${fromSql} where ${whereSql}`,
+    params,
+  );
+  const total = Number(countRes.rows[0]?.n ?? 0);
+
+  const res = await query<CatalogRow>(
+    client,
+    `select pc.sku, pc.sku_norm, pc.external_product_id, pc.name, pc.image_url,
+            pc.model_number, pc.gtin,
+            pc.manufacturer_inner_id, pc.manufacturer_name,
+            pc.min_qty, pc.qty_step, pc.list_price_net::text, pc.cost_net::text, pc.active
+     from ${fromSql}
+     where ${whereSql}
+     order by pc.sku_norm
+     limit $${p} offset $${p + 1}`,
+    [...params, limit, offset],
+  );
+  return {
+    rows: res.rows,
+    total,
+    pageCount: Math.max(1, Math.ceil(total / limit) || 1),
+  };
+}
+
+/** Szülő + összes leszármazott category_inner_id. */
+export async function listCategoryDescendantIds(
+  client: PoolClient,
+  shopId: string,
+  rootInnerId: number,
+): Promise<number[]> {
+  const res = await query<{ category_inner_id: number }>(
+    client,
+    `with recursive tree as (
+       select category_inner_id
+       from catalog_categories
+       where shop_id = $1 and category_inner_id = $2
+       union
+       select c.category_inner_id
+       from catalog_categories c
+       inner join tree t on c.parent_inner_id = t.category_inner_id
+       where c.shop_id = $1
+     )
+     select category_inner_id from tree`,
+    [shopId, rootInnerId],
+  );
+  const ids = res.rows.map((r) => r.category_inner_id);
+  return ids.length ? ids : [rootInnerId];
+}
+
+/** Márkák a bolt katalógusából (szűrő dropdown). */
+export async function listCatalogManufacturers(
+  client: PoolClient,
+  shopId: string,
+): Promise<CatalogManufacturer[]> {
+  const res = await query<{
+    manufacturer_inner_id: number;
+    manufacturer_name: string | null;
+    n: string;
+  }>(
+    client,
+    `select manufacturer_inner_id,
+            max(manufacturer_name) as manufacturer_name,
+            count(*)::text as n
+     from product_catalog
+     where shop_id = $1
+       and active
+       and manufacturer_inner_id is not null
+     group by manufacturer_inner_id
+     order by max(manufacturer_name) nulls last, manufacturer_inner_id`,
+    [shopId],
+  );
+  return res.rows.map((r) => ({
+    innerId: r.manufacturer_inner_id,
+    name: (r.manufacturer_name || "").trim() || `Gyártó #${r.manufacturer_inner_id}`,
+    productCount: Number(r.n) || 0,
+  }));
+}
+
+/** Összes termék inner id egy gyártóra (bulk hatókör). */
+export async function listProductInnersByManufacturer(
+  client: PoolClient,
+  shopId: string,
+  manufacturerInnerId: number,
+  limit = 200,
+): Promise<number[]> {
+  const cap = Math.min(500, Math.max(1, limit));
+  const res = await query<{ external_product_id: string }>(
+    client,
+    `select external_product_id
+     from product_catalog
+     where shop_id = $1
+       and active
+       and manufacturer_inner_id = $2
+       and external_product_id ~ '^[0-9]+$'
+     order by sku_norm
+     limit $3`,
+    [shopId, manufacturerInnerId, cap],
+  );
+  return res.rows
+    .map((r) => Number(r.external_product_id))
+    .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+/** Kategóriák dropdownhoz (label + direkt termék count). */
+export async function listCatalogCategories(
+  client: PoolClient,
+  shopId: string,
+): Promise<CatalogCategory[]> {
+  const res = await query<{
+    category_inner_id: number;
+    name: string | null;
+    parent_inner_id: number | null;
+    parent_name: string | null;
+    n: string;
+  }>(
+    client,
+    `select c.category_inner_id,
+            c.name,
+            c.parent_inner_id,
+            p.name as parent_name,
+            coalesce(cnt.n, '0') as n
+     from catalog_categories c
+     left join catalog_categories p
+       on p.shop_id = c.shop_id
+      and p.category_inner_id = c.parent_inner_id
+     left join lateral (
+       select count(*)::text as n
+       from product_catalog_categories pcc
+       inner join product_catalog pc
+         on pc.shop_id = pcc.shop_id
+        and pc.external_product_id = pcc.product_inner_id::text
+        and pc.active
+       where pcc.shop_id = c.shop_id
+         and pcc.category_inner_id = c.category_inner_id
+     ) cnt on true
+     where c.shop_id = $1
+     order by coalesce(p.name, c.name) nulls last, c.name nulls last, c.category_inner_id`,
+    [shopId],
+  );
+  return res.rows.map((r) => {
+    const name = (r.name || "").trim() || `Kategória #${r.category_inner_id}`;
+    const parent = (r.parent_name || "").trim();
+    return {
+      innerId: r.category_inner_id,
+      name,
+      parentInnerId: r.parent_inner_id,
+      label: parent ? `${parent} › ${name}` : name,
+      productCount: Number(r.n) || 0,
+    };
+  });
+}
+
+/** Termék inner id-k kategóriára (+ leszármazottak). */
+export async function listProductInnersByCategory(
+  client: PoolClient,
+  shopId: string,
+  categoryInnerId: number,
+  limit = 200,
+  includeDescendants = true,
+): Promise<number[]> {
+  const cap = Math.min(500, Math.max(1, limit));
+  const catIds = includeDescendants
+    ? await listCategoryDescendantIds(client, shopId, categoryInnerId)
+    : [categoryInnerId];
+  const res = await query<{ external_product_id: string }>(
+    client,
+    `select distinct pc.external_product_id
+     from product_catalog pc
+     inner join product_catalog_categories pcc
+       on pcc.shop_id = pc.shop_id
+      and pcc.product_inner_id::text = pc.external_product_id
+     where pc.shop_id = $1
+       and pc.active
+       and pcc.category_inner_id = any($2::int[])
+       and pc.external_product_id ~ '^[0-9]+$'
+     order by pc.external_product_id
+     limit $3`,
+    [shopId, catIds, cap],
+  );
+  return res.rows
+    .map((r) => Number(r.external_product_id))
+    .filter((n) => Number.isFinite(n) && n > 0);
 }
 
 export async function searchCatalog(

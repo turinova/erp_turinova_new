@@ -199,7 +199,7 @@ export function AdminTenantsView({ initialRows }: Props) {
           className="tn-input min-w-[160px] flex-1 sm:max-w-[280px]"
         />
         <select
-          className="tn-input !w-auto cursor-pointer"
+          className="tn-select cursor-pointer"
           value={status}
           onChange={(e) => setFilter("status", e.target.value)}
           aria-label="Státusz"
@@ -210,7 +210,7 @@ export function AdminTenantsView({ initialRows }: Props) {
           <option value="suspended">felfüggesztve</option>
         </select>
         <select
-          className="tn-input !w-auto cursor-pointer"
+          className="tn-select cursor-pointer"
           value={plan}
           onChange={(e) => setFilter("plan", e.target.value)}
           aria-label="Csomag"
@@ -221,7 +221,7 @@ export function AdminTenantsView({ initialRows }: Props) {
           <option value="pro">Pro</option>
         </select>
         <select
-          className="tn-input !w-auto cursor-pointer"
+          className="tn-select cursor-pointer"
           value={catalog}
           onChange={(e) => setFilter("catalog", e.target.value)}
           aria-label="Termékek"
@@ -232,7 +232,7 @@ export function AdminTenantsView({ initialRows }: Props) {
           <option value="error">hiba / teli</option>
         </select>
         <select
-          className="tn-input !w-auto cursor-pointer"
+          className="tn-select cursor-pointer"
           value={widget}
           onChange={(e) => setFilter("widget", e.target.value)}
           aria-label="Gyors rendelés"

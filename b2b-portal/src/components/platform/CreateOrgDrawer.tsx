@@ -172,7 +172,7 @@ export function CreateOrgDrawer({ open, onClose, onCreated }: Props) {
                       : "start",
                   )
                 }
-                className={inputClass}
+                className="tn-select w-full"
               >
                 {PLAN_IDS.map((id) => (
                   <option key={id} value={id}>

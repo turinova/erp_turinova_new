@@ -93,8 +93,15 @@ export async function POST(request: Request) {
     });
 
     if (useLegacySearch()) {
-      const products = await resolveProductsBySkus(shop.config, skus, groupId);
-      const qtyByIndex = body.lines?.map((l) => l.quantity ?? 1);
+      const qtyByIndex = body.lines?.map((l) =>
+        Math.max(1, Math.round(Number(l.quantity) || 1)),
+      );
+      const products = await resolveProductsBySkus(
+        shop.config,
+        skus,
+        groupId,
+        qtyByIndex,
+      );
       return jsonWithCors(request, {
         products: products.map((p, i) => ({
           ...p,
@@ -123,21 +130,34 @@ export async function POST(request: Request) {
       });
     }
 
-    const byQuery = new Map<string, ResolvedProduct>();
-    const foundCodes = unique.filter((code) => packed.rows!.has(code));
-    const missingCodes = unique.filter((code) => !packed.rows!.has(code));
-    for (const code of missingCodes) byQuery.set(code, notFound(code));
+    const qtyByIndex = skus.map((_, i) => {
+      const fromLine = body.lines?.[i]?.quantity;
+      return Math.max(1, Math.round(Number(fromLine) || 1));
+    });
 
-    await mapLimit(foundCodes, 4, async (code) => {
-      const row = packed.rows!.get(code)!;
+    const cache = new Map<string, ResolvedProduct>();
+    const jobs: { key: string; code: string; qty: number }[] = [];
+    for (let i = 0; i < skus.length; i++) {
+      const code = skus[i].trim();
+      const qty = qtyByIndex[i] ?? 1;
+      if (!code || !packed.rows.has(code)) continue;
+      const key = `${code}:${qty}`;
+      if (!cache.has(key) && !jobs.some((j) => j.key === key)) {
+        jobs.push({ key, code, qty });
+      }
+    }
+
+    await mapLimit(jobs, 4, async (job) => {
+      const row = packed.rows!.get(job.code)!;
       try {
         const live = await resolveProductByExactSku(
           shop.config,
           row.sku,
           groupId,
+          job.qty,
         );
         if (live.found) {
-          byQuery.set(code, {
+          cache.set(job.key, {
             ...live,
             sku: live.sku || row.sku,
             modelNumber: live.modelNumber || row.model_number || undefined,
@@ -145,14 +165,14 @@ export async function POST(request: Request) {
             name: live.name || row.name || undefined,
           });
         } else {
-          byQuery.set(code, {
+          cache.set(job.key, {
             ...live,
             sku: row.sku,
             error: live.error || "not found",
           });
         }
       } catch (e) {
-        byQuery.set(code, {
+        cache.set(job.key, {
           sku: row.sku,
           productId: /^\d+$/.test(row.external_product_id)
             ? Number(row.external_product_id)
@@ -165,12 +185,15 @@ export async function POST(request: Request) {
       }
     });
 
-    const qtyByIndex = body.lines?.map((l) => l.quantity ?? 1);
     return jsonWithCors(request, {
       products: skus.map((s, i) => {
         const key = s.trim();
-        const p = byQuery.get(key) ?? notFound(key);
-        return { ...p, quantity: qtyByIndex?.[i] ?? 1 };
+        const qty = qtyByIndex[i] ?? 1;
+        if (!key || !packed.rows!.has(key)) {
+          return { ...notFound(key), quantity: qty };
+        }
+        const p = cache.get(`${key}:${qty}`) ?? notFound(key);
+        return { ...p, quantity: qty };
       }),
       catalogReady: true,
       source: "db",

@@ -10,6 +10,7 @@ Kapcsolódó dokumentumok:
 | Dokumentum | Szerep |
 |------------|--------|
 | [`PRICING.md`](./PRICING.md) | **Árazás v3** — Start 6 900 / Plus 12 900 / Pro 24 900, próba, FOMO |
+| [`B2B_PRICING_STRATEGIES.md`](./B2B_PRICING_STRATEGIES.md) | **Partnerár-stratégiák** — `/arak`, SR precedencia, fázisok P0–P4 |
 | [`SAAS_ARCHITECTURE.md`](./SAAS_ARCHITECTURE.md) | Tenancy, auth, shop creds, widget multi-tenant alap |
 | [`DATABASE.md`](./DATABASE.md) | Manuális SQL futtatás, meglévő séma |
 | [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) | UI nyelv (Olvasó / high_contrast, radius 0) |

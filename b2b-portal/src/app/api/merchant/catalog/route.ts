@@ -32,10 +32,10 @@ export async function GET() {
         const pagesDone = job?.pages_done ?? 0;
         const pagesTotal = job?.pages_total ?? null;
         const progressPct =
-          pagesTotal && pagesTotal > 0
-            ? Math.min(100, Math.round((pagesDone / pagesTotal) * 100))
-            : shop?.catalog_status === "ready"
-              ? 100
+          shop?.catalog_status === "ready"
+            ? 100
+            : pagesTotal && pagesTotal > 0
+              ? Math.min(99, Math.round((pagesDone / pagesTotal) * 100))
               : 0;
         return {
           shopId: shopDto.shopId,

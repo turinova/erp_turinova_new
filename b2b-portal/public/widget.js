@@ -966,12 +966,10 @@
       "#sr-b2b-quickorder-root .sr-qo-import-item small{",
       "  display:block;font-size:11px;font-weight:450;color:var(--sr-qo-muted);margin-top:2px",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-toolbar-hint{",
-      "  width:100%;margin:0;padding:0 2px;font-size:11px;color:var(--sr-qo-faint)",
-      "}",
+      "#sr-b2b-quickorder-root .sr-qo-toolbar-hint{display:none}",
       "#sr-b2b-quickorder-root .sr-qo-list-filters{",
       "  display:none;align-items:center;gap:6px;flex-wrap:wrap;",
-      "  padding:8px 16px;border-bottom:0.5px solid var(--sr-qo-line);",
+      "  padding:6px 16px;border-bottom:0.5px solid var(--sr-qo-line);",
       "  background:var(--sr-qo-surface);flex-shrink:0",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-list-filters.is-on{display:flex}",
@@ -987,6 +985,220 @@
       "  display:none;padding:28px 16px;text-align:center;font-size:13px;color:var(--sr-qo-muted)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-filter-empty.is-on{display:block}",
+      "#sr-b2b-quickorder-root .sr-qo-empty{",
+      "  padding:48px 24px;text-align:center;color:var(--sr-qo-muted);font-size:14px;line-height:1.45",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-empty-title{",
+      "  margin:0;font-size:16px;font-weight:650;color:var(--sr-qo-text)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-empty-sub{",
+      "  margin:8px 0 0;font-size:13px;color:var(--sr-qo-muted)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-empty-actions{",
+      "  margin-top:18px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-aside{",
+      "  width:280px;flex-shrink:0;border-left:0.5px solid var(--sr-qo-line-strong);",
+      "  background:var(--sr-qo-bg);",
+      "  padding:14px 12px;overflow:auto;display:flex;flex-direction:column;gap:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-aside-stats{display:flex;flex-direction:column;flex:1;min-height:0}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt{",
+      "  display:flex;flex-direction:column;gap:0;flex:1;",
+      "  background:var(--sr-qo-surface);",
+      "  border:0.5px solid var(--sr-qo-line-strong);border-radius:8px;overflow:hidden",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-head{",
+      "  padding:10px 12px;border-bottom:0.5px solid var(--sr-qo-line);",
+      "  font-size:12px;font-weight:650;color:var(--sr-qo-text)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-body{padding:4px 0;flex:1}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row{",
+      "  display:flex;align-items:baseline;justify-content:space-between;gap:10px;",
+      "  padding:6px 12px;font-size:13px;line-height:1.35",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row .k{",
+      "  color:var(--sr-qo-muted);font-weight:500;flex-shrink:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row .v{",
+      "  font-variant-numeric:tabular-nums;font-weight:600;color:var(--sr-qo-text);",
+      "  text-align:right",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-total .k{",
+      "  color:var(--sr-qo-text);font-weight:650",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-total .v{",
+      "  font-size:16px;font-weight:700;letter-spacing:-.02em",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-save{",
+      "  flex-direction:column;align-items:stretch;gap:6px;padding:8px 12px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-save .k{",
+      "  color:var(--sr-qo-ok);font-weight:650",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-save .v{",
+      "  min-width:0;width:100%;text-align:left",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-save-chip{",
+      "  display:flex;align-items:center;justify-content:center;gap:6px;",
+      "  box-sizing:border-box;width:100%;min-width:0;",
+      "  min-height:30px;padding:6px 10px;border-radius:8px;",
+      "  font-size:12px;font-weight:700;letter-spacing:-0.01em;",
+      "  background:rgba(47,111,78,.14);color:var(--sr-qo-ok)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-save-amt{white-space:nowrap}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-save-pct{",
+      "  font-weight:650;opacity:.9;white-space:nowrap",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-muted .k,",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-muted .v{",
+      "  color:var(--sr-qo-faint);font-weight:500;font-size:12px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-warn .v{color:var(--sr-qo-danger);font-weight:650}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-rule{",
+      "  height:0;margin:4px 12px;border:0;border-top:0.5px solid var(--sr-qo-line-strong)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-foot{",
+      "  padding:10px 12px 12px;border-top:0.5px solid var(--sr-qo-line);",
+      "  background:var(--sr-qo-surface-2)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-receipt-foot .sr-qo-btn-success{",
+      "  width:100%;min-width:0;border-radius:8px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-aside-cart{display:none}",
+      "#sr-b2b-quickorder-root .sr-qo-aside-note{display:none}",
+      "#sr-b2b-quickorder-root table.sr-qo-table{",
+      "  width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed",
+      "}",
+      "#sr-b2b-quickorder-root table.sr-qo-table th,",
+      "#sr-b2b-quickorder-root table.sr-qo-table td{",
+      "  padding:6px 8px;border-bottom:0.5px solid var(--sr-qo-line);vertical-align:middle",
+      "}",
+      "#sr-b2b-quickorder-root table.sr-qo-table th{",
+      "  text-align:left;background:var(--sr-qo-surface-2);",
+      "  border-bottom:0.5px solid var(--sr-qo-line-strong);",
+      "  font-size:11px;font-weight:600;color:var(--sr-qo-muted);position:sticky;top:0;z-index:1;",
+      "  white-space:nowrap",
+      "}",
+      "#sr-b2b-quickorder-root table.sr-qo-table th.sr-qo-th-num,",
+      "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-num,",
+      "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-line-total{",
+      "  text-align:right",
+      "}",
+      "#sr-b2b-quickorder-root table.sr-qo-table th.sr-qo-th-stock,",
+      "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-stock{text-align:center;width:118px;padding-left:4px;padding-right:4px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table th.sr-qo-th-qty,",
+      "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-qty-td{text-align:center;width:64px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table th.sr-qo-th-action,",
+      "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-td-action{width:36px;padding-left:4px;padding-right:4px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-product{width:auto}",
+      "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-stock{width:118px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-qty{width:64px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-price{width:92px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-total{width:100px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-action{width:36px}",
+      "#sr-b2b-quickorder-root .sr-qo-stock-chip{",
+      "  display:inline-flex;align-items:center;justify-content:center;",
+      "  height:22px;padding:0 8px;border-radius:999px;",
+      "  font-size:11px;font-weight:650;line-height:1;white-space:nowrap",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-stock-chip.is-ok{",
+      "  background:rgba(47,111,78,.12);color:var(--sr-qo-ok)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-stock-chip.is-out,",
+      "#sr-b2b-quickorder-root .sr-qo-stock-chip.is-blocked{",
+      "  background:rgba(163,45,45,.1);color:var(--sr-qo-danger)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-stock-chip.is-pending{",
+      "  background:var(--sr-qo-surface-2);color:var(--sr-qo-muted)",
+      "}",
+      "#sr-b2b-quickorder-root table.sr-qo-table tbody tr{transition:background .15s ease}",
+      "#sr-b2b-quickorder-root table.sr-qo-table tbody tr:hover{background:var(--sr-qo-accent-soft)}",
+      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-flash{animation:sr-qo-row-flash .45s ease}",
+      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-err{",
+      "  box-shadow:inset 2px 0 0 var(--sr-qo-danger)",
+      "}",
+      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-oos{",
+      "  background:rgba(163,45,45,.07);",
+      "  box-shadow:inset 2px 0 0 rgba(163,45,45,.45)",
+      "}",
+      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-oos:hover{",
+      "  background:rgba(163,45,45,.11)",
+      "}",
+      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-ok{",
+      "  box-shadow:inset 2px 0 0 transparent",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-mono{",
+      "  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:12px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-name{",
+      "  max-width:420px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;",
+      "  line-height:1.35;cursor:default",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-product.sr-qo-name{",
+      "  max-width:none;overflow:hidden",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-name a.sr-qo-name-link{",
+      "  color:inherit;text-decoration:underline;text-decoration-color:rgba(55,53,47,.28);",
+      "  text-underline-offset:2px;cursor:pointer",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-name a.sr-qo-name-link:hover{",
+      "  color:var(--sr-qo-accent);text-decoration-color:var(--sr-qo-accent)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-name.has-img{",
+      "  cursor:zoom-in;text-decoration:none",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-name.has-img a.sr-qo-name-link{",
+      "  cursor:pointer",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-num{",
+      "  font-variant-numeric:tabular-nums;font-weight:600;font-size:13px;",
+      "  white-space:nowrap",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-num.is-muted{font-weight:500;color:var(--sr-qo-muted)}",
+      "#sr-b2b-quickorder-root .sr-qo-num.is-deal{font-weight:700;color:var(--sr-qo-ok)}",
+      "#sr-b2b-quickorder-root .sr-qo-product-name{",
+      "  font-weight:600;line-height:1.25;font-size:13px;",
+      "  overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-product-meta{",
+      "  margin-top:1px;font-size:10px;font-weight:500;color:var(--sr-qo-muted);",
+      "  font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-line-total{",
+      "  font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;font-size:13px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-qty-input{",
+      "  width:52px;height:26px;padding:0 4px;border:0.5px solid var(--sr-qo-line-strong);border-radius:6px;",
+      "  font-size:12px;font-variant-numeric:tabular-nums;background:var(--sr-qo-surface-2);text-align:center",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-qty-input.sr-qo-qty-over{",
+      "  border-color:var(--sr-qo-danger);outline:2px solid rgba(163,45,45,.2);background:#FDF2F2",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-status{",
+      "  display:inline-block;padding:0;border-radius:0;font-size:11px;font-weight:600;background:transparent",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-status-ok{color:var(--sr-qo-ok)}",
+      "#sr-b2b-quickorder-root .sr-qo-status-err{color:var(--sr-qo-danger)}",
+      "#sr-b2b-quickorder-root .sr-qo-status-wait{color:var(--sr-qo-faint)}",
+      "#sr-b2b-quickorder-root .sr-qo-del{",
+      "  border:none;background:transparent;color:var(--sr-qo-faint);cursor:pointer;",
+      "  width:28px;height:28px;padding:0;border-radius:8px;",
+      "  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-del svg{display:block;width:15px;height:15px}",
+      "#sr-b2b-quickorder-root .sr-qo-del:hover{color:var(--sr-qo-danger);background:rgba(163,45,45,.08)}",
+      "#sr-b2b-quickorder-root .sr-qo-del:focus-visible{outline:2px solid rgba(163,45,45,.35);outline-offset:1px}",
+      "#sr-b2b-quickorder-root .sr-qo-footer{",
+      "  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;",
+      "  min-height:52px;padding:8px 16px;",
+      "  background:var(--sr-qo-bg);",
+      "  border-top:0.5px solid var(--sr-qo-line-strong);",
+      "  flex-shrink:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-footer-msg{flex:1;min-width:140px;font-size:12px;color:var(--sr-qo-muted)}",
+      "#sr-b2b-quickorder-root .sr-qo-footer-msg.err{color:var(--sr-qo-danger);font-weight:600}",
+      "#sr-b2b-quickorder-root .sr-qo-footer-actions{display:flex;gap:8px;align-items:center}",
       "@media (max-width:560px){",
       "  #sr-b2b-quickorder-root .sr-qo-start-grid{grid-template-columns:1fr;max-width:320px}",
       "}",
@@ -1210,143 +1422,6 @@
       "  flex:1;min-height:0;display:flex;flex-direction:row;background:var(--sr-qo-surface)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-body{flex:1;min-width:0;min-height:0;overflow:auto}",
-      "#sr-b2b-quickorder-root .sr-qo-aside{",
-      "  width:292px;flex-shrink:0;border-left:0.5px solid var(--sr-qo-line-strong);",
-      "  background:var(--sr-qo-surface);",
-      "  padding:18px 16px;overflow:auto;display:flex;flex-direction:column;gap:12px",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-aside-stats{display:flex;flex-direction:column;gap:10px}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-hero{",
-      "  display:flex;flex-direction:column;gap:6px;padding:14px 14px 12px;",
-      "  border-radius:12px;background:var(--sr-qo-surface-2);",
-      "  border:0.5px solid var(--sr-qo-line-strong)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-hero-amount{",
-      "  font-size:28px;font-weight:700;letter-spacing:-.03em;line-height:1.15;",
-      "  font-variant-numeric:tabular-nums;color:var(--sr-qo-text)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-hero-label{",
-      "  font-size:13px;font-weight:600;color:var(--sr-qo-muted);line-height:1.35",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-chips{",
-      "  display:flex;flex-wrap:wrap;gap:6px",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-chip{",
-      "  display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;",
-      "  font-size:12px;font-weight:650;line-height:1.25;border:0.5px solid transparent",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-chip-warn{",
-      "  background:rgba(154,103,0,.12);border-color:rgba(154,103,0,.35);color:#7A5200",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-chip-danger{",
-      "  background:rgba(163,45,45,.1);border-color:rgba(163,45,45,.3);color:var(--sr-qo-danger)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-chip-ok{",
-      "  background:rgba(47,111,78,.1);border-color:rgba(47,111,78,.28);color:var(--sr-qo-ok)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-meta{",
-      "  font-size:13px;font-weight:550;color:var(--sr-qo-muted);line-height:1.4;",
-      "  font-variant-numeric:tabular-nums",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-sum-save{",
-      "  font-size:13px;font-weight:650;color:var(--sr-qo-warn);line-height:1.35",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-aside-note{",
-      "  font-size:12px;font-weight:500;color:var(--sr-qo-muted);line-height:1.45;margin-top:auto",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-empty{",
-      "  padding:72px 24px;text-align:center;color:var(--sr-qo-muted);font-size:14px;line-height:1.55",
-      "}",
-      "#sr-b2b-quickorder-root table.sr-qo-table{width:100%;border-collapse:collapse;font-size:13px}",
-      "#sr-b2b-quickorder-root table.sr-qo-table th{",
-      "  text-align:left;padding:8px 12px;background:var(--sr-qo-surface-2);",
-      "  border-bottom:0.5px solid var(--sr-qo-line-strong);",
-      "  font-size:11px;font-weight:600;color:var(--sr-qo-muted);position:sticky;top:0;z-index:1",
-      "}",
-      "#sr-b2b-quickorder-root table.sr-qo-table td{",
-      "  padding:8px 12px;border-bottom:0.5px solid var(--sr-qo-line);vertical-align:top",
-      "}",
-      "#sr-b2b-quickorder-root table.sr-qo-table tbody tr{transition:background .15s ease}",
-      "#sr-b2b-quickorder-root table.sr-qo-table tbody tr:hover{background:var(--sr-qo-accent-soft)}",
-      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-flash{animation:sr-qo-row-flash .45s ease}",
-      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-err{",
-      "  box-shadow:inset 2px 0 0 var(--sr-qo-danger)",
-      "}",
-      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-oos{",
-      "  background:rgba(163,45,45,.07);",
-      "  box-shadow:inset 2px 0 0 rgba(163,45,45,.45)",
-      "}",
-      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-oos:hover{",
-      "  background:rgba(163,45,45,.11)",
-      "}",
-      "#sr-b2b-quickorder-root table.sr-qo-table tr.sr-qo-row-ok{",
-      "  box-shadow:inset 2px 0 0 transparent",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-mono{",
-      "  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;font-size:12px",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-name{",
-      "  max-width:420px;white-space:normal;overflow-wrap:anywhere;word-break:break-word;",
-      "  line-height:1.35;cursor:default",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-name a.sr-qo-name-link{",
-      "  color:inherit;text-decoration:underline;text-decoration-color:rgba(55,53,47,.28);",
-      "  text-underline-offset:2px;cursor:pointer",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-name a.sr-qo-name-link:hover{",
-      "  color:var(--sr-qo-accent);text-decoration-color:var(--sr-qo-accent)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-name.has-img{",
-      "  cursor:zoom-in;text-decoration:none",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-name.has-img a.sr-qo-name-link{",
-      "  cursor:pointer",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-price{line-height:1.3;min-width:118px}",
-      "#sr-b2b-quickorder-root .sr-qo-price-gross{font-weight:600;font-variant-numeric:tabular-nums}",
-      "#sr-b2b-quickorder-root .sr-qo-price-meta{font-size:11px;color:var(--sr-qo-muted)}",
-      "#sr-b2b-quickorder-root .sr-qo-price-disc{font-size:11px;color:var(--sr-qo-warn);font-weight:600}",
-      "#sr-b2b-quickorder-root .sr-qo-line-total{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}",
-      "#sr-b2b-quickorder-root .sr-qo-stock{font-size:12px;line-height:1.25;white-space:nowrap}",
-      "#sr-b2b-quickorder-root .sr-qo-stock-dot{",
-      "  display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:middle",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-stock-ok .sr-qo-stock-dot{background:var(--sr-qo-ok)}",
-      "#sr-b2b-quickorder-root .sr-qo-stock-low .sr-qo-stock-dot{background:var(--sr-qo-warn)}",
-      "#sr-b2b-quickorder-root .sr-qo-stock-out .sr-qo-stock-dot{background:var(--sr-qo-faint);box-shadow:inset 0 0 0 1px var(--sr-qo-muted)}",
-      "#sr-b2b-quickorder-root .sr-qo-stock-blocked .sr-qo-stock-dot{background:var(--sr-qo-danger)}",
-      "#sr-b2b-quickorder-root .sr-qo-stock-meta{display:block;font-size:10px;color:var(--sr-qo-faint);margin-top:1px}",
-      "#sr-b2b-quickorder-root .sr-qo-qty-input{",
-      "  width:64px;height:28px;padding:0 6px;border:0.5px solid var(--sr-qo-line-strong);border-radius:8px;",
-      "  font-size:12px;font-variant-numeric:tabular-nums;background:var(--sr-qo-surface-2)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-qty-input.sr-qo-qty-over{",
-      "  border-color:var(--sr-qo-danger);outline:2px solid rgba(163,45,45,.2);background:#FDF2F2",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-status{",
-      "  display:inline-block;padding:0;border-radius:0;font-size:11px;font-weight:600;background:transparent",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-status-ok{color:var(--sr-qo-ok)}",
-      "#sr-b2b-quickorder-root .sr-qo-status-err{color:var(--sr-qo-danger)}",
-      "#sr-b2b-quickorder-root .sr-qo-status-wait{color:var(--sr-qo-faint)}",
-      "#sr-b2b-quickorder-root .sr-qo-del{",
-      "  border:none;background:transparent;color:var(--sr-qo-faint);cursor:pointer;",
-      "  width:28px;height:28px;padding:0;border-radius:8px;",
-      "  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-del svg{display:block;width:15px;height:15px}",
-      "#sr-b2b-quickorder-root .sr-qo-del:hover{color:var(--sr-qo-danger);background:rgba(163,45,45,.08)}",
-      "#sr-b2b-quickorder-root .sr-qo-del:focus-visible{outline:2px solid rgba(163,45,45,.35);outline-offset:1px}",
-      "#sr-b2b-quickorder-root .sr-qo-footer{",
-      "  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;",
-      "  min-height:56px;padding:10px 20px;",
-      "  background:var(--sr-qo-bg);",
-      "  border-top:0.5px solid var(--sr-qo-line-strong);",
-      "  flex-shrink:0",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-footer-msg{flex:1;min-width:140px;font-size:12px;color:var(--sr-qo-muted)}",
-      "#sr-b2b-quickorder-root .sr-qo-footer-msg.err{color:var(--sr-qo-danger);font-weight:600}",
-      "#sr-b2b-quickorder-root .sr-qo-footer-actions{display:flex;gap:8px;align-items:center}",
       "#sr-b2b-quickorder-root .sr-qo-cart-confirm,",
       "#sr-b2b-quickorder-root .sr-qo-undo-bar{",
       "  display:none;width:100%;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;",
@@ -1390,8 +1465,8 @@
       "  #sr-b2b-quickorder-root .sr-qo-aside-stats{",
       "    display:flex;flex-direction:column;gap:8px",
       "  }",
-      "  #sr-b2b-quickorder-root .sr-qo-sum-hero{width:100%}",
-      "  #sr-b2b-quickorder-root .sr-qo-sum-hero-amount{font-size:24px}",
+      "  #sr-b2b-quickorder-root .sr-qo-aside-cart{margin-top:0}",
+      "  #sr-b2b-quickorder-root .sr-qo-receipt{width:100%}",
       "  #sr-b2b-quickorder-root .sr-qo-aside-note{display:none}",
       "  #sr-b2b-quickorder-root .sr-qo-name{max-width:200px}",
       "}",
@@ -1482,8 +1557,11 @@
       vatRate: p.vatRate,
       vatAmountFormatted: p.vatAmountFormatted,
       discountPercent: p.discountPercent,
+      discountAmountNet: p.discountAmountNet,
       discountAmountNetFormatted: p.discountAmountNetFormatted,
       priceSource: p.priceSource,
+      tiers: Array.isArray(p.tiers) ? p.tiers : null,
+      nextTier: p.nextTier || null,
       stockQty: p.stockQty,
       stockLabel: p.stockLabel,
       stockTone: p.stockTone,
@@ -1742,6 +1820,13 @@
       if (l.stockTone === "out") return true;
       if (l.inStock === false) return true;
       if (typeof l.stockQty === "number" && l.stockQty <= 0) return true;
+      if (
+        typeof l.stockQty === "number" &&
+        l.stockQty >= 0 &&
+        (l.quantity || 0) > l.stockQty
+      ) {
+        return true;
+      }
       return false;
     }
 
@@ -1842,6 +1927,19 @@
         gross: Math.round(gross),
         vat: Math.max(0, Math.round(gross - net)),
         discount: Math.round(discount),
+        discountPct:
+          net + discount > 0
+            ? Math.round((discount / (net + discount)) * 1000) / 10
+            : 0,
+        nearTierCount: lines.filter(function (l) {
+          return (
+            l.found === true &&
+            l.nextTier &&
+            l.nextTier.near &&
+            l.priceSource !== "own" &&
+            l.priceSource !== "group"
+          );
+        }).length,
       };
     }
 
@@ -2000,81 +2098,134 @@
       var hardN = sAside.hardBlockers || 0;
       var oosN = sAside.oos || 0;
 
-      var heroMeta = c.total
-        ? "Bruttó · " + c.total + " tétel · " + c.qty + " db"
-        : "Nincs tétel a listán";
-      asideStats.appendChild(
-        el("div", { className: "sr-qo-sum-hero" }, [
-          el("div", { className: "sr-qo-sum-hero-amount" }, [
-            c.total ? formatHufClient(m.gross) : "—",
-          ]),
-          el("div", { className: "sr-qo-sum-hero-label" }, [heroMeta]),
-        ]),
-      );
+      function receiptRow(label, value, cls) {
+        return el(
+          "div",
+          { className: "sr-qo-receipt-row" + (cls ? " " + cls : "") },
+          [
+            el("span", { className: "k" }, [label]),
+            el("span", { className: "v" }, [value]),
+          ],
+        );
+      }
 
-      if (c.total) {
-        var chips = el("div", { className: "sr-qo-sum-chips" });
+      function receiptSaveRow(label, amountText, pctText) {
+        var chipKids = [
+          el("span", { className: "sr-qo-receipt-save-amt" }, [amountText]),
+        ];
+        if (pctText) {
+          chipKids.push(
+            el("span", { className: "sr-qo-receipt-save-pct" }, [pctText]),
+          );
+        }
+        return el("div", { className: "sr-qo-receipt-row is-save" }, [
+          el("span", { className: "k" }, [label]),
+          el("span", { className: "v" }, [
+            el("span", { className: "sr-qo-receipt-save-chip" }, chipKids),
+          ]),
+        ]);
+      }
+
+      var receipt = el("div", { className: "sr-qo-receipt" });
+      receipt.appendChild(
+        el("div", { className: "sr-qo-receipt-head" }, ["Összesítés"]),
+      );
+      var bodyBox = el("div", { className: "sr-qo-receipt-body" });
+
+      if (!c.total) {
+        bodyBox.appendChild(receiptRow("Nettó", "—", "is-total"));
+        bodyBox.appendChild(receiptRow("Tételek", "0", "is-muted"));
+      } else {
+        bodyBox.appendChild(
+          receiptRow("Nettó", formatHufClient(m.net), "is-total"),
+        );
+        bodyBox.appendChild(
+          receiptRow(
+            "Tételek",
+            c.total + " · " + c.qty + " db",
+            "is-muted",
+          ),
+        );
+
+        if (m.discount > 0) {
+          var listNetTotal = m.net + m.discount;
+          bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
+          bodyBox.appendChild(
+            receiptRow(
+              "Bolti ár (nettó)",
+              formatHufClient(listNetTotal),
+              "is-muted",
+            ),
+          );
+          bodyBox.appendChild(
+            receiptSaveRow(
+              "Partner kedvezmény",
+              "−" + formatHufClient(m.discount),
+              m.discountPct > 0 ? "(−" + m.discountPct + "%)" : "",
+            ),
+          );
+        }
+
         if (hardN > 0) {
-          chips.appendChild(
-            el("span", { className: "sr-qo-sum-chip sr-qo-sum-chip-danger" }, [
-              hardN === 1
-                ? "1 nem rendelhető"
-                : hardN + " nem rendelhető",
-            ]),
+          bodyBox.appendChild(
+            receiptRow(
+              "Nem rendelhető",
+              String(hardN),
+              "is-warn",
+            ),
           );
         }
         if (oosN > 0) {
-          chips.appendChild(
-            el("span", { className: "sr-qo-sum-chip sr-qo-sum-chip-warn" }, [
-              oosN === 1
-                ? "1 nincs készleten"
-                : oosN + " nincs készleten",
-            ]),
+          bodyBox.appendChild(
+            receiptRow(
+              "Nincs készleten",
+              String(oosN),
+              "is-warn",
+            ),
           );
         }
-        if (hardN === 0 && oosN === 0 && sAside.cartable > 0) {
-          chips.appendChild(
-            el("span", { className: "sr-qo-sum-chip sr-qo-sum-chip-ok" }, [
-              "Készleten",
-            ]),
+
+        if (m.vat > 0 || m.gross > 0) {
+          bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
+          if (m.vat > 0) {
+            bodyBox.appendChild(
+              receiptRow("ÁFA", formatHufClient(m.vat), "is-muted"),
+            );
+          }
+          bodyBox.appendChild(
+            receiptRow("Bruttó", formatHufClient(m.gross), "is-muted"),
           );
         }
-        if (chips.childNodes.length) asideStats.appendChild(chips);
       }
 
-      if (c.total && (m.net > 0 || m.vat > 0)) {
-        asideStats.appendChild(
-          el("div", { className: "sr-qo-sum-meta" }, [
-            "Nettó " +
-              formatHufClient(m.net) +
-              " · ÁFA " +
-              formatHufClient(m.vat),
-          ]),
-        );
-      }
+      receipt.appendChild(bodyBox);
 
-      if (m.discount > 0) {
-        asideStats.appendChild(
-          el("div", { className: "sr-qo-sum-save" }, [
-            "Kedvezmény −" + formatHufClient(m.discount),
-          ]),
-        );
+      var foot = el("div", { className: "sr-qo-receipt-foot" });
+      if (asideCartBtn) {
+        foot.appendChild(asideCartBtn);
       }
+      receipt.appendChild(foot);
+      asideStats.appendChild(receipt);
 
       updateOrderRemind();
-
       updateIncentiveBar(m.gross);
+      updateEmptyState();
 
-      cartBtn.textContent =
-        m.gross > 0
-          ? "Kosárba rakom · " + formatHufClient(m.gross)
+      var cartLabel =
+        m.net > 0
+          ? "Kosárba rakom · " + formatHufClient(m.net)
           : c.total === 0
             ? "Kosárba rakom"
             : "Kosárba rakom (" + c.total + ")";
+      if (cartBtn) cartBtn.textContent = cartLabel;
+      if (asideCartBtn) asideCartBtn.textContent = cartLabel;
     }
 
     var insightsData = null;
     var insightsLoading = false;
+    var cartBtn = null;
+    var asideCartBtn = null;
+    var emptyEl = null;
     var DEFAULT_INCENTIVES = {
       freeShippingGross: 80000,
       freeShippingLabel: "80\u00a0000 Ft",
@@ -2180,79 +2331,92 @@
       await importReorderLines(pairs, { replace: false });
     }
 
-    function priceCell(line) {
+    function lineUnitNet(line) {
+      if (line.priceNet != null) return line.priceNet;
+      if (line.price != null) return line.price;
+      return null;
+    }
+
+    function lineListNet(line) {
+      if (line.listPriceNet != null) return line.listPriceNet;
+      return lineUnitNet(line);
+    }
+
+    function netCell(value, label, opts) {
+      opts = opts || {};
+      if (value == null || !Number.isFinite(Number(value))) {
+        return el("td", { className: "sr-qo-num", "data-label": label }, ["—"]);
+      }
+      var cls = "sr-qo-num" + (opts.deal ? " is-deal" : "") + (opts.muted ? " is-muted" : "");
+      return el("td", { className: cls, "data-label": label }, [
+        formatHufClient(value),
+      ]);
+    }
+
+    function listPriceCell(line) {
       if (line.found === false) {
-        return el("td", { className: "sr-qo-price", "data-label": "Egységár" }, ["—"]);
+        return netCell(null, "Alap ár / db");
       }
-      if (!line.priceGrossFormatted && !line.priceFormatted) {
-        return el("td", { className: "sr-qo-price", "data-label": "Egységár" }, ["…"]);
+      if (line.found !== true && lineUnitNet(line) == null) {
+        return el("td", { className: "sr-qo-num", "data-label": "Alap ár / db" }, [
+          "…",
+        ]);
       }
-      var kids = [
-        el("div", { className: "sr-qo-price-gross" }, [
-          (line.priceGrossFormatted || line.priceFormatted || "—") + " / db",
-        ]),
-        el("div", { className: "sr-qo-price-meta" }, [
-          "Nettó " +
-            (line.priceNetFormatted || "—") +
-            (line.vatRate != null ? " · ÁFA " + line.vatRate + "%" : ""),
-        ]),
-      ];
-      if (line.packLabel) {
-        kids.push(
-          el("div", { className: "sr-qo-price-meta" }, [line.packLabel]),
+      return netCell(lineListNet(line), "Alap ár / db", { muted: true });
+    }
+
+    function dealPriceCell(line) {
+      if (line.found === false) {
+        return netCell(null, "Kedv. ár / db");
+      }
+      var unit = lineUnitNet(line);
+      if (unit == null) {
+        return el(
+          "td",
+          { className: "sr-qo-num", "data-label": "Kedv. ár / db" },
+          ["…"],
         );
       }
-      if (line.discountPercent) {
-        var src =
-          line.priceSource === "group"
-            ? "Csoportár"
-            : line.priceSource === "special"
-              ? "Akció"
-              : "Kedvezmény";
-        kids.push(
-          el("div", { className: "sr-qo-price-disc" }, [
-            src +
-              " −" +
-              line.discountPercent +
-              "%" +
-              (line.listPriceGrossFormatted
-                ? " (lista " + line.listPriceGrossFormatted + ")"
-                : ""),
-          ]),
-        );
+      var list = lineListNet(line);
+      var cheaper =
+        list != null && Number.isFinite(list) && unit < list - 0.5;
+      return netCell(unit, "Kedv. ár / db", { deal: cheaper });
+    }
+
+    var qtyPriceTimers = {};
+    function refreshLinePricing(idx, opts) {
+      opts = opts || {};
+      if (qtyPriceTimers[idx]) {
+        clearTimeout(qtyPriceTimers[idx]);
+        delete qtyPriceTimers[idx];
       }
-      if (
-        typeof line.prevPriceNet === "number" &&
-        typeof line.priceNet === "number"
-      ) {
-        var dlt = Math.round(line.priceNet - line.prevPriceNet);
-        if (dlt >= 1) {
-          kids.push(
-            el("div", { className: "sr-qo-diff-up" }, [
-              "▲ +" +
-                formatHufClient(dlt) +
-                " (előző " +
-                formatHufClient(line.prevPriceNet) +
-                ")",
-            ]),
-          );
-        } else if (dlt <= -1) {
-          kids.push(
-            el("div", { className: "sr-qo-diff-down" }, [
-              "▼ −" +
-                formatHufClient(Math.abs(dlt)) +
-                " (előző " +
-                formatHufClient(line.prevPriceNet) +
-                ")",
-            ]),
-          );
-        } else {
-          kids.push(
-            el("div", { className: "sr-qo-diff-same" }, ["= előző rendelés"]),
-          );
-        }
+      var line = lines[idx];
+      if (!line || !line.sku || line.found === false) {
+        renderList();
+        return;
       }
-      return el("td", { className: "sr-qo-price", "data-label": "Egységár" }, kids);
+      resolveCodes([{ sku: line.sku, quantity: line.quantity }])
+        .then(function (products) {
+          var p = products && products[0];
+          if (!p || !p.found) return;
+          var prev = lines[idx];
+          if (!prev || prev.sku !== line.sku) return;
+          var mapped = mapProductFields(p, prev.quantity);
+          mapped.prevPriceNet = prev.prevPriceNet;
+          lines[idx] = mapped;
+          if (opts.flash) lines[idx]._flashTier = true;
+          renderList();
+        })
+        .catch(function () {
+          /* keep current prices */
+        });
+    }
+    function scheduleLinePricing(idx) {
+      if (qtyPriceTimers[idx]) clearTimeout(qtyPriceTimers[idx]);
+      qtyPriceTimers[idx] = setTimeout(function () {
+        delete qtyPriceTimers[idx];
+        refreshLinePricing(idx);
+      }, 320);
     }
 
     function trashIconSvg() {
@@ -2287,41 +2451,79 @@
       return svg;
     }
 
-    function stockCell(line) {
+    function stockChipInfo(line) {
       if (line.found === false) {
-        return el("td", { className: "sr-qo-stock", "data-label": "Készlet" }, ["—"]);
+        return { cls: "is-pending", label: "—", title: "" };
       }
-      if (typeof line.stockQty === "undefined" && !line.stockLabel && !line.stockTone) {
-        return el("td", { className: "sr-qo-stock", "data-label": "Készlet" }, ["…"]);
+      if (
+        typeof line.stockQty === "undefined" &&
+        !line.stockLabel &&
+        !line.stockTone &&
+        typeof line.inStock === "undefined"
+      ) {
+        return { cls: "is-pending", label: "…", title: "" };
       }
       var tone = line.stockTone || (line.inStock ? "ok" : "out");
       if (line.orderable === false || tone === "blocked") {
-        tone = "blocked";
-      } else if (
-        tone === "out" ||
-        (typeof line.stockQty === "number" && line.stockQty <= 0) ||
-        line.inStock === false
-      ) {
-        tone = "out";
-      } else if (tone === "low") {
-        tone = "ok";
-      } else {
-        tone = "ok";
+        return {
+          cls: "is-blocked",
+          label: "Nem rendelhető",
+          title: "A termék jelenleg nem rendelhető",
+        };
       }
-      var short =
-        tone === "blocked"
-          ? "Nem rendelhető"
-          : tone === "out"
-            ? "Nincs készleten"
-            : "Készleten";
-      var kids = [
-        el("span", { className: "sr-qo-stock-dot", "aria-hidden": "true" }),
-        document.createTextNode(short),
-      ];
+      var qty = Math.max(0, parseInt(line.quantity, 10) || 0);
+      var stock =
+        typeof line.stockQty === "number" ? line.stockQty : null;
+      var over =
+        stock != null && stock >= 0 && qty > stock;
+      var empty =
+        tone === "out" ||
+        line.inStock === false ||
+        (stock != null && stock <= 0);
+      if (empty || over) {
+        var title = "";
+        if (stock != null && stock >= 0) {
+          title =
+            stock <= 0
+              ? "Nincs készleten"
+              : "Készleten: " + stock + " db · kért: " + qty + " db";
+        }
+        return {
+          cls: "is-out",
+          label: "Nincs készleten",
+          title: title,
+        };
+      }
+      return {
+        cls: "is-ok",
+        label: "Készleten",
+        title: stock != null && stock >= 0 ? "Készleten: " + stock + " db" : "",
+      };
+    }
+
+    function paintStockChip(chip, line) {
+      if (!chip) return;
+      var info = stockChipInfo(line);
+      chip.className = "sr-qo-stock-chip " + info.cls;
+      chip.textContent = info.label;
+      if (info.title) chip.setAttribute("title", info.title);
+      else chip.removeAttribute("title");
+    }
+
+    function stockCell(line) {
+      var info = stockChipInfo(line);
+      var chip = el(
+        "span",
+        {
+          className: "sr-qo-stock-chip " + info.cls,
+          title: info.title || undefined,
+        },
+        [info.label],
+      );
       return el(
         "td",
-        { className: "sr-qo-stock sr-qo-stock-" + tone, "data-label": "Készlet" },
-        kids,
+        { className: "sr-qo-stock", "data-label": "Készlet" },
+        [chip],
       );
     }
 
@@ -2336,19 +2538,27 @@
 
     function updateListFilterUi() {
       if (!listFilterBar) return;
-      var show = lines.length > 0;
+      var issueN = 0;
+      lines.forEach(function (l) {
+        if (lineNeedsAttention(l)) issueN++;
+      });
+      var show = lines.length > 0 && issueN > 0;
       listFilterBar.className =
         "sr-qo-list-filters" + (show ? " is-on" : "");
+      if (!show) {
+        if (listFilter !== "all") {
+          listFilter = "all";
+        }
+        return;
+      }
       ["all", "ok", "issue"].forEach(function (k) {
         if (listFilterBtns[k]) {
           listFilterBtns[k].classList.toggle("is-on", listFilter === k);
         }
       });
-      var okN = 0,
-        issueN = 0;
+      var okN = 0;
       lines.forEach(function (l) {
         if (lineInStockOk(l)) okN++;
-        if (lineNeedsAttention(l)) issueN++;
       });
       if (listFilterBtns.all)
         listFilterBtns.all.textContent = "Mind (" + lines.length + ")";
@@ -2358,9 +2568,73 @@
         listFilterBtns.issue.textContent = "Problémás (" + issueN + ")";
     }
 
+    function updateEmptyState() {
+      if (!emptyEl) return;
+      emptyEl.innerHTML = "";
+      if (lines.length) {
+        emptyEl.style.display = "none";
+        return;
+      }
+      emptyEl.style.display = "block";
+      emptyEl.appendChild(
+        el("p", { className: "sr-qo-empty-title" }, [
+          "Kezdd a rendelést",
+        ]),
+      );
+      emptyEl.appendChild(
+        el("p", { className: "sr-qo-empty-sub" }, [
+          "Cikkszám a keresőbe, Enter — vagy töltsd fel gyorsan.",
+        ]),
+      );
+      var actions = el("div", { className: "sr-qo-empty-actions" });
+      var last =
+        insightsData &&
+        insightsData.lastOrder &&
+        insightsData.lastOrder.lines &&
+        insightsData.lastOrder.lines.length
+          ? insightsData.lastOrder
+          : null;
+      if (last && moduleOn("orders")) {
+        var n = last.lines.length;
+        actions.appendChild(
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-btn sr-qo-btn-primary",
+              onClick: function () {
+                importReorderLines(last.lines, { replace: false });
+              },
+            },
+            [
+              n === 1
+                ? "Utolsó rendelés (1 tétel)"
+                : "Utolsó rendelés (" + n + " tétel)",
+            ],
+          ),
+        );
+      }
+      if (moduleOn("excel")) {
+        actions.appendChild(
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-btn sr-qo-btn-ghost",
+              onClick: function () {
+                openExcelIngest();
+              },
+            },
+            ["Excel lista"],
+          ),
+        );
+      }
+      if (actions.childNodes.length) emptyEl.appendChild(actions);
+    }
+
     function renderList() {
       tbody.innerHTML = "";
-      emptyEl.style.display = lines.length ? "none" : "block";
+      updateEmptyState();
       var visible = [];
       lines.forEach(function (line, idx) {
         if (lineMatchesFilter(line)) visible.push({ line: line, idx: idx });
@@ -2380,6 +2654,7 @@
         var line = item.line;
         var idx = item.idx;
         var over = lineOverStock(line);
+
         var trClass = "";
         if (line.found === false) trClass = "sr-qo-row-err";
         else if (line.found === true && !lineIsCartable(line))
@@ -2395,34 +2670,49 @@
           step: String(Math.max(1, line.qtyStep || 1)),
           value: String(line.quantity),
           "aria-label": "Darab " + line.sku,
+          title: line.packLabel || "",
         });
         if (line.maxQty != null && line.maxQty > 0) {
           qtyField.max = String(line.maxQty);
         }
+        var unitNet = lineUnitNet(line);
         var lineTotalEl = el("div", { className: "sr-qo-line-total" }, [
-          line.found === true && line.priceGross != null
-            ? formatHufClient(line.priceGross * (line.quantity || 1))
+          line.found === true && unitNet != null
+            ? formatHufClient(unitNet * (line.quantity || 1))
             : "—",
         ]);
-        var lineTotalMeta = el("div", { className: "sr-qo-line-total-meta" }, [
-          line.found === true && line.priceGross != null
-            ? (line.quantity || 1) + " × egység"
-            : "",
-        ]);
         function refreshLineTotalLive(q) {
-          if (line.found === true && line.priceGross != null) {
-            lineTotalEl.textContent = formatHufClient(line.priceGross * q);
-            lineTotalMeta.textContent = q + " × egység";
+          var u = lineUnitNet(lines[idx] || line);
+          if ((lines[idx] || line).found === true && u != null) {
+            lineTotalEl.textContent = formatHufClient(u * q);
           } else {
             lineTotalEl.textContent = "—";
-            lineTotalMeta.textContent = "";
+          }
+        }
+        function refreshStockLive() {
+          var cur = lines[idx] || line;
+          var overNow = lineOverStock(cur);
+          qtyField.classList.toggle("sr-qo-qty-over", overNow);
+          paintStockChip(stockChipEl, cur);
+          if (tr) {
+            var nextClass = "";
+            if (cur.found === false) nextClass = "sr-qo-row-err";
+            else if (cur.found === true && !lineIsCartable(cur))
+              nextClass = "sr-qo-row-oos";
+            else if (lineIsOutOfStock(cur) || overNow || linePriceUp(cur))
+              nextClass = "sr-qo-row-warn";
+            else if (cur.found === true) nextClass = "sr-qo-row-ok";
+            tr.className = nextClass;
           }
         }
         qtyField.addEventListener("input", function () {
           var raw = Math.max(1, parseInt(qtyField.value, 10) || 1);
           lines[idx].quantity = raw;
           refreshLineTotalLive(raw);
+          refreshStockLive();
           updateSummary();
+          updateListFilterUi();
+          scheduleLinePricing(idx);
         });
         qtyField.addEventListener("change", function () {
           var next = normalizePackQuantity(
@@ -2432,8 +2722,8 @@
           lines[idx].quantity = next;
           qtyField.value = String(next);
           persist();
-          updateSummary();
-          renderList();
+          refreshStockLive();
+          refreshLinePricing(idx);
         });
 
         var nameText =
@@ -2447,7 +2737,7 @@
                 href: href,
                 target: "_blank",
                 rel: "noopener noreferrer",
-                title: "Termék megnyitása új ablakban",
+                title: nameText,
                 onClick: function (ev) {
                   ev.stopPropagation();
                 },
@@ -2455,11 +2745,25 @@
               [nameText],
             )
           : nameText;
-        var nameClass = "sr-qo-name" + (line.imageUrl ? " has-img" : "");
+        var metaParts = [line.sku];
+        if (line.modelNumber) metaParts.push(line.modelNumber);
+        var productKids = [
+          el("div", { className: "sr-qo-product-name" }, [nameInner]),
+          el("div", { className: "sr-qo-product-meta" }, [
+            metaParts.join(" · "),
+          ]),
+        ];
+        var nameClass =
+          "sr-qo-product" +
+          (line.imageUrl ? " sr-qo-name has-img" : " sr-qo-name");
         var nameCell = el(
           "td",
-          { className: nameClass, title: line.name || "", "data-label": "Név" },
-          [nameInner],
+          {
+            className: nameClass,
+            title: line.name || "",
+            "data-label": "Termék",
+          },
+          productKids,
         );
         if (line.imageUrl) {
           nameCell.addEventListener("mouseenter", function (ev) {
@@ -2471,25 +2775,16 @@
           nameCell.addEventListener("mouseleave", hideTip);
         }
 
-        var qtyKids = [qtyField];
-        if (line.packLabel) {
-          qtyKids.push(
-            el("div", { className: "sr-qo-pack-hint" }, [line.packLabel]),
-          );
-        }
-
+        var stockTd = stockCell(line);
+        var stockChipEl = stockTd.querySelector(".sr-qo-stock-chip");
         var tr = el("tr", { className: trClass }, [
-          el("td", { className: "sr-qo-mono", "data-label": "Cikkszám" }, [line.sku]),
-          el("td", { className: "sr-qo-mono", "data-label": "Gyártói" }, [line.modelNumber || "—"]),
           nameCell,
-          priceCell(line),
-          stockCell(line),
-          el("td", { "data-label": "Db" }, [el("div", { className: "sr-qo-qty-cell" }, qtyKids)]),
-          el("td", { className: "sr-qo-line-total", "data-label": "Sorösszeg" }, [
-            el("div", { className: "sr-qo-line-total-cell" }, [
-              lineTotalEl,
-              lineTotalMeta,
-            ]),
+          stockTd,
+          el("td", { className: "sr-qo-qty-td", "data-label": "Db" }, [qtyField]),
+          listPriceCell(line),
+          dealPriceCell(line),
+          el("td", { className: "sr-qo-line-total", "data-label": "Összesen" }, [
+            lineTotalEl,
           ]),
           el("td", { className: "sr-qo-td-action" }, [
             el(
@@ -2570,12 +2865,39 @@
       if (idx < 0 && p.modelNumber) idx = findLineIndexByCode(p.modelNumber);
       if (idx < 0 && p.gtin) idx = findLineIndexByCode(p.gtin);
       if (idx >= 0) {
-        var mergedQty = Math.max(1, (lines[idx].quantity || 0) + qty);
-        lines[idx] = mapProductFields(p, mergedQty);
+        var mergedQty = normalizePackQuantity(
+          Math.max(1, (lines[idx].quantity || 0) + qty),
+          packRulesFromLine(lines[idx]),
+        );
+        var mapped = mapProductFields(p, mergedQty);
+        mapped.prevPriceNet = lines[idx].prevPriceNet;
+        lines[idx] = mapped;
         return { index: idx, merged: true };
       }
       lines.push(mapProductFields(p, qty));
       return { index: lines.length - 1, merged: false };
+    }
+
+    /** Összevonás / qty változás után: egységár újraszámolása a végleges db-re. */
+    async function softRefreshPricing() {
+      var payload = [];
+      var idxs = [];
+      lines.forEach(function (l, i) {
+        if (l.found === true && l.sku) {
+          payload.push({ sku: l.sku, quantity: l.quantity });
+          idxs.push(i);
+        }
+      });
+      if (!payload.length) return;
+      var products = await resolveCodes(payload);
+      products.forEach(function (p, j) {
+        var i = idxs[j];
+        if (!p || !p.found || !lines[i]) return;
+        var prev = lines[i];
+        var mapped = mapProductFields(p, prev.quantity);
+        mapped.prevPriceNet = prev.prevPriceNet;
+        lines[i] = mapped;
+      });
     }
 
     /** Korábbi rendelés tételei → Új megrendelés tábla (mai ár/készlet resolve) */
@@ -2631,6 +2953,7 @@
           else added++;
         });
         consolidateDuplicateProducts();
+        await softRefreshPricing();
         // prevPriceNet megőrzése consolidate után ugyanarra a sku-ra
         renderList();
         persist();
@@ -2721,6 +3044,13 @@
     async function addSkuFromInputs() {
       var sku = skuInput.value.trim();
       var quantity = Math.max(1, parseInt(qtyInput.value, 10) || 1);
+      var qtyManual = qtyInput.getAttribute("data-touched") === "1";
+      if (!qtyManual && quantity === 1) {
+        var tip = insightForSku(sku);
+        if (tip && tip.suggestedQty > 1) {
+          quantity = Math.max(1, parseInt(tip.suggestedQty, 10) || 1);
+        }
+      }
       if (!sku) {
         flashError("Írd be a cikkszámot, gyári számot vagy vonalkódot.");
         skuInput.focus();
@@ -2736,13 +3066,14 @@
         );
         skuInput.value = "";
         qtyInput.value = "1";
+        qtyInput.removeAttribute("data-touched");
         persist();
-        renderList();
         setStatus(
           "Darabszám növelve (" + lines[existing].quantity + " db).",
           false,
         );
         skuInput.focus();
+        refreshLinePricing(existing);
         return;
       }
 
@@ -2760,6 +3091,7 @@
         var snapped = lines[result.index].quantity !== quantity;
         skuInput.value = "";
         qtyInput.value = "1";
+        qtyInput.removeAttribute("data-touched");
         renderList();
         if (snapped && lines[result.index].packLabel) {
           flashInfo(
@@ -3006,6 +3338,9 @@
       min: "1",
       "aria-label": "Darab",
     });
+    qtyInput.addEventListener("input", function () {
+      qtyInput.setAttribute("data-touched", "1");
+    });
 
     var suggestItems = [];
     var suggestActive = -1;
@@ -3063,6 +3398,7 @@
         );
         skuInput.value = "";
         qtyInput.value = "1";
+        qtyInput.removeAttribute("data-touched");
         persist();
         renderList();
         setStatus(
@@ -3387,14 +3723,10 @@
       }
     });
 
-    var toolbarHint = el("p", { className: "sr-qo-toolbar-hint" }, [
-      "Gépelés = találat · Enter = a listán van",
-    ]);
     if (!moduleOn("search")) {
       skuWrap.style.display = "none";
       qtyInput.style.display = "none";
       addBtn.style.display = "none";
-      toolbarHint.style.display = "none";
     }
     var toolbar = el("div", { className: "sr-qo-toolbar" }, [
       skuWrap,
@@ -3403,7 +3735,6 @@
       importWrap,
       el("div", { className: "sr-qo-toolbar-spacer", "aria-hidden": "true" }),
       summaryEl,
-      toolbarHint,
     ]);
 
     var csvArea = el("textarea", {
@@ -3420,26 +3751,52 @@
       importBtn,
     ]);
 
-    var emptyEl = el("div", { className: "sr-qo-empty" }, [
-      el("div", null, ["Cikkszám, gyártói szám vagy vonalkód — Enter, és bent van."]),
-      el(
-        "div",
-        { style: { marginTop: "6px", color: "var(--sr-qo-faint)" } },
-        ["Excel, lista vagy fotó: a kereső mellett. Bezárás után a lista megmarad."],
-      ),
-    ]);
+    emptyEl = el("div", { className: "sr-qo-empty" }, []);
     var tbody = el("tbody", null, []);
     var table = el("table", { className: "sr-qo-table" }, [
+      el("colgroup", null, [
+        el("col", { className: "sr-qo-col-product" }),
+        el("col", { className: "sr-qo-col-stock" }),
+        el("col", { className: "sr-qo-col-qty" }),
+        el("col", { className: "sr-qo-col-price" }),
+        el("col", { className: "sr-qo-col-price" }),
+        el("col", { className: "sr-qo-col-total" }),
+        el("col", { className: "sr-qo-col-action" }),
+      ]),
       el("thead", null, [
         el("tr", null, [
-          el("th", null, ["Cikkszám"]),
-          el("th", null, ["Gyártói"]),
-          el("th", null, ["Név"]),
-          el("th", null, ["Egységár"]),
-          el("th", null, ["Készlet"]),
-          el("th", null, ["Db"]),
-          el("th", null, ["Sorösszeg"]),
-          el("th", null, [""]),
+          el("th", null, ["Termék"]),
+          el(
+            "th",
+            { className: "sr-qo-th-stock", title: "Készletállapot" },
+            ["Készlet"],
+          ),
+          el("th", { className: "sr-qo-th-qty", title: "Darabszám" }, ["Db"]),
+          el(
+            "th",
+            {
+              className: "sr-qo-th-num",
+              title: "Bolti listaár, nettó / db",
+            },
+            ["Alap"],
+          ),
+          el(
+            "th",
+            {
+              className: "sr-qo-th-num",
+              title: "Partnerár, nettó / db",
+            },
+            ["Kedv."],
+          ),
+          el(
+            "th",
+            {
+              className: "sr-qo-th-num",
+              title: "Sorösszeg nettó",
+            },
+            ["Össz."],
+          ),
+          el("th", { className: "sr-qo-th-action" }, [""]),
         ]),
       ]),
       tbody,
@@ -3481,22 +3838,28 @@
     ]);
     var asideStats = el("div", { className: "sr-qo-aside-stats" });
     var incentiveBox = null;
+    asideCartBtn = el(
+      "button",
+      {
+        type: "button",
+        className: "sr-qo-btn sr-qo-btn-success",
+        onClick: function () {
+          addAllToCart({});
+        },
+      },
+      ["Kosárba rakom"],
+    );
     var aside = el(
       "aside",
       { className: "sr-qo-aside", "aria-label": "Rendelés összesítő" },
-      [
-        asideStats,
-        el("div", { className: "sr-qo-aside-note" }, [
-          "Ha nincs készleten, a bolt szabálya dönti el, bekerül-e a kosárba.",
-        ]),
-      ],
+      [asideStats],
     );
     var main = el("div", { className: "sr-qo-main" }, [body, aside]);
 
     var statusEl = el("div", { className: "sr-qo-footer-msg" }, [
       lines.length
-        ? "Mentett listád itt van — folytathatod."
-        : "Cikkszám, majd Enter. Ha kész: Kosárba.",
+        ? "Lista mentve — folytathatod."
+        : "Cikkszám + Enter. Ha kész: Kosárba.",
     ]);
     var undoBar = el("div", { className: "sr-qo-undo-bar", "aria-live": "polite" });
     var cartConfirmBar = el("div", { className: "sr-qo-cart-confirm", "aria-live": "polite" });
@@ -3603,22 +3966,11 @@
       },
       ["Törlés"],
     );
-    var cartBtn = el(
-      "button",
-      {
-        type: "button",
-        className: "sr-qo-btn sr-qo-btn-success",
-        onClick: function () {
-          addAllToCart({});
-        },
-      },
-      ["Kosárba rakom"],
-    );
     var footer = el("div", { className: "sr-qo-footer" }, [
       undoBar,
       cartConfirmBar,
       statusEl,
-      el("div", { className: "sr-qo-footer-actions" }, [clearBtn, cartBtn]),
+      el("div", { className: "sr-qo-footer-actions" }, [clearBtn]),
     ]);
 
     function makePlaceholder(title, sub) {
@@ -5103,6 +5455,7 @@
           else added++;
         });
         consolidateDuplicateProducts();
+        await softRefreshPricing();
         renderList();
         persist();
         if (missing && !added && !merged) {
@@ -5361,6 +5714,7 @@
       insightsData = data;
       try {
         updateOrderRemind();
+        updateEmptyState();
       } catch (e) {}
       var st = data.stats || {};
       homeGrid.innerHTML = "";

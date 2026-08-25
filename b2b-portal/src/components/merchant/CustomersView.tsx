@@ -7,6 +7,7 @@ import {
   NearLimitBanner,
   UpgradeBanner,
 } from "@/components/merchant/PartnerUsageBar";
+import { PaperSelect } from "@/components/ui/PaperSelect";
 import {
   isPartnerLocked,
   isPartnerPreviewLocked,
@@ -42,7 +43,7 @@ const FILTERS: { id: ListFilter; label: string; hint: string }[] = [
   },
   {
     id: "partners",
-    label: "Partnerek",
+    label: "Átrakottak",
     hint: "Akiket már átraktál egy másik csoportba",
   },
   { id: "all", label: "Összes", hint: "Minden vevő ezen az oldalon" },
@@ -239,7 +240,7 @@ export function CustomersView() {
       : filter === "newcomers"
         ? "Nincs új vevő az alap csoportban. Ha valaki regisztrál, itt jelenik meg."
         : filter === "partners"
-          ? "Még nincs partner — rakj át valakit az Újak közül egy másik csoportba."
+          ? "Még senkit sem raktál át másik csoportba."
           : "Nincs vevő ezen az oldalon.";
 
   return (
@@ -251,7 +252,11 @@ export function CustomersView() {
               Vevők
             </p>
             <p className="mt-0.5 text-[12px] text-faint">
-              Újak → partner csoportba. Pipáld ki, válaszd a csoportot, Átrakás.
+              Újak → másik csoportba. Pipáld ki, válaszd a csoportot, Átrakás.
+              Árak:{" "}
+              <Link href="/arak" className="font-semibold underline underline-offset-2">
+                Árak
+              </Link>
             </p>
           </div>
 
@@ -303,26 +308,25 @@ export function CustomersView() {
               })}
             </div>
 
-            <select
+            <PaperSelect
               value={groupFilterId === "" ? "" : String(groupFilterId)}
-              onChange={(e) => {
-                const v = e.target.value;
+              onChange={(v) => {
                 setGroupFilterId(v === "" ? "" : Number(v));
                 setFilter("all");
                 setPage(0);
                 setSelected(new Set());
               }}
-              className="h-8 max-w-[200px] cursor-pointer rounded-none border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-medium text-text outline-none"
-              title="Szűrés egy konkrét csoportra"
-            >
-              <option value="">Csoport: mind</option>
-              {groups.map((g) => (
-                <option key={g.innerId} value={g.innerId}>
-                  {g.name}
-                  {g.isDefault ? " (alap)" : ""}
-                </option>
-              ))}
-            </select>
+              options={groups.map((g) => ({
+                value: String(g.innerId),
+                label: g.isDefault ? `${g.name} (alap)` : g.name,
+              }))}
+              emptyLabel="Csoport: mind"
+              ariaLabel="Csoport szűrő"
+              size="md"
+              denseFrom={10}
+              maxWidth={200}
+              className="w-full max-w-[200px]"
+            />
 
             <input
               value={q}
@@ -491,22 +495,23 @@ export function CustomersView() {
             <p className="mr-1 text-[13px] font-semibold text-text">
               {selectedCount} kiválasztva
             </p>
-            <select
+            <PaperSelect
               value={targetGroupId === "" ? "" : String(targetGroupId)}
-              onChange={(e) => {
-                const v = e.target.value;
+              onChange={(v) => {
                 setTargetGroupId(v === "" ? "" : Number(v));
               }}
-              className="h-9 min-w-[160px] flex-1 cursor-pointer rounded-none border-[1.5px] border-line-strong bg-surface px-3 text-[13px] font-medium text-text outline-none sm:max-w-[240px] sm:flex-none"
-            >
-              <option value="">Csoport…</option>
-              {groups.map((g) => (
-                <option key={g.innerId} value={g.innerId}>
-                  {g.name}
-                  {g.isDefault ? " (alap)" : ""}
-                </option>
-              ))}
-            </select>
+              options={groups.map((g) => ({
+                value: String(g.innerId),
+                label: g.isDefault ? `${g.name} (alap)` : g.name,
+              }))}
+              emptyLabel="Csoport…"
+              ariaLabel="Cél csoport"
+              size="md"
+              denseFrom={10}
+              maxWidth={240}
+              preferPlacement="up"
+              className="min-w-[160px] flex-1 sm:max-w-[240px] sm:flex-none"
+            />
             <button
               type="button"
               disabled={moving || targetGroupId === ""}

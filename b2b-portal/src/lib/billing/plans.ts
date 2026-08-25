@@ -70,6 +70,17 @@ export function formatHuf(n: number): string {
   return `${n.toLocaleString("hu-HU")} Ft`;
 }
 
+export function formatTrialEnd(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("hu-HU", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 /** „a Pluson”, „a Starton”, „a Pron” — ne Plusen / Starten. */
 export function onPlan(label: string): string {
   return `a ${label}on`;

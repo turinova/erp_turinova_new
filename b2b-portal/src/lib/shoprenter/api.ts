@@ -1,3 +1,10 @@
+import {
+  effectiveNet as calcEffectiveNet,
+  findNextTier,
+  listActiveTiers,
+  netToGross,
+} from "@/lib/merchant/pricing-engine";
+
 export type ShoprenterConfig = {
   shopName: string;
   /** OAuth custom API client (preferred / App Store path) */
@@ -45,7 +52,18 @@ export type ResolvedProduct = {
   discountPercent?: number;
   discountAmountNet?: number;
   discountAmountNetFormatted?: string;
-  priceSource?: "list" | "special" | "group";
+  priceSource?: "list" | "special" | "group" | "percent" | "own" | "tier";
+  /** Mennyiségi sávok (csoport-szűrt), UI ladder. */
+  tiers?: { minQty: number; priceNet: number; priceGrossFormatted?: string }[];
+  /** Következő olcsóbb sáv (FOMO nudge). */
+  nextTier?: {
+    minQty: number;
+    missingQty: number;
+    priceNet: number;
+    priceGrossFormatted: string;
+    savePct: number;
+    near: boolean;
+  } | null;
   /** Összes raktár (stock1…4) */
   stockQty?: number;
   stock1?: number;
@@ -246,6 +264,537 @@ export type ProductsPageResult =
     }
   | { ok: false; status: number; body: string };
 
+/** Shoprenter manufacturer_id a href / base64 id-ből. */
+export function parseManufacturerInnerId(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.round(raw);
+  }
+  if (typeof raw === "string" && /^\d+$/.test(raw.trim())) {
+    return Number(raw.trim());
+  }
+  if (typeof raw !== "object") return null;
+  const obj = raw as {
+    innerId?: unknown;
+    href?: string;
+    id?: string;
+  };
+  const fromInner = toNumber(obj.innerId);
+  if (fromInner != null && fromInner > 0) return Math.round(fromInner);
+  const token =
+    (typeof obj.href === "string" && obj.href) ||
+    (typeof obj.id === "string" && obj.id) ||
+    "";
+  if (!token) return null;
+  const leaf = token.includes("/") ? token.split("/").pop()! : token;
+  try {
+    const decoded = Buffer.from(leaf, "base64").toString("utf8");
+    const m = decoded.match(/manufacturer_id=(\d+)/i);
+    if (m) return Number(m[1]);
+  } catch {
+    /* ignore */
+  }
+  const m2 = token.match(/manufacturer_id[=-](\d+)/i);
+  return m2 ? Number(m2[1]) : null;
+}
+
+export type ManufacturerRef = {
+  innerId: number;
+  name: string | null;
+};
+
+/** Termék manufacturer mező → innerId + név (ha expanded). */
+export function pickManufacturerRef(
+  item: Record<string, unknown>,
+  nameByInner?: Map<number, string>,
+): ManufacturerRef | null {
+  const m = item.manufacturer;
+  const innerId = parseManufacturerInnerId(m);
+  if (innerId == null) return null;
+  let name: string | null = null;
+  if (m && typeof m === "object") {
+    const n = (m as { name?: unknown }).name;
+    if (typeof n === "string" && n.trim()) name = n.trim();
+  }
+  if (!name && nameByInner?.has(innerId)) {
+    name = nameByInner.get(innerId) ?? null;
+  }
+  return { innerId, name };
+}
+
+/** Összes gyártó: innerId → név (árazás szűrő + sync). */
+export async function fetchManufacturersMap(
+  config: ShoprenterConfig,
+): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  let page = 0;
+  const limit = 200;
+  for (let guard = 0; guard < 40; guard++) {
+    const res = await apiFetch(
+      config,
+      `/manufacturers?page=${page}&limit=${limit}&full=1`,
+    );
+    if (!res.ok) break;
+    let data: {
+      items?: Record<string, unknown>[];
+      pageCount?: number;
+    };
+    try {
+      data = (await res.json()) as typeof data;
+    } catch {
+      break;
+    }
+    const items = data.items ?? [];
+    for (const item of items) {
+      const id = parseManufacturerInnerId(item);
+      if (id == null) continue;
+      const name =
+        typeof item.name === "string" && item.name.trim()
+          ? item.name.trim()
+          : null;
+      if (name) out.set(id, name);
+      else if (!out.has(id)) out.set(id, `Gyártó #${id}`);
+    }
+    const pageCount =
+      typeof data.pageCount === "number" && data.pageCount > 0
+        ? data.pageCount
+        : page + 1;
+    page++;
+    if (items.length === 0 || page >= pageCount) break;
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  return out;
+}
+
+/** Shoprenter category_id a href / base64 id-ből. */
+export function parseCategoryInnerId(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.round(raw);
+  }
+  if (typeof raw === "string" && /^\d+$/.test(raw.trim())) {
+    return Number(raw.trim());
+  }
+  if (typeof raw !== "object") return null;
+  const obj = raw as {
+    innerId?: unknown;
+    href?: string;
+    id?: string;
+  };
+  const fromInner = toNumber(obj.innerId);
+  if (fromInner != null && fromInner > 0) return Math.round(fromInner);
+  const token =
+    (typeof obj.href === "string" && obj.href) ||
+    (typeof obj.id === "string" && obj.id) ||
+    "";
+  if (!token) return null;
+  const leaf = token.includes("/") ? token.split("/").pop()! : token;
+  try {
+    const decoded = Buffer.from(leaf, "base64").toString("utf8");
+    const m = decoded.match(/category_id=(\d+)/i);
+    if (m) return Number(m[1]);
+  } catch {
+    /* ignore */
+  }
+  const m2 = token.match(/category_id[=-](\d+)/i);
+  return m2 ? Number(m2[1]) : null;
+}
+
+export type CategoryMeta = {
+  innerId: number;
+  name: string;
+  parentInnerId: number | null;
+};
+
+function relationCollectionItems(
+  collection: unknown,
+): Record<string, unknown>[] {
+  if (!collection) return [];
+  if (Array.isArray(collection)) {
+    return collection.filter(
+      (it): it is Record<string, unknown> => !!it && typeof it === "object",
+    );
+  }
+  if (typeof collection !== "object") return [];
+  const col = collection as { items?: unknown[] };
+  if (!Array.isArray(col.items)) return [];
+  return col.items.filter(
+    (it): it is Record<string, unknown> => !!it && typeof it === "object",
+  );
+}
+
+function decodeResourceLeaf(token: string): string | null {
+  const leaf = token.includes("/") ? token.split("/").pop()! : token;
+  if (!leaf) return null;
+  try {
+    return Buffer.from(leaf, "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+export type ProductCategoryLink = {
+  productInnerId: number;
+  categoryInnerId: number;
+};
+
+/**
+ * productCategory relation href/id → product_id + category_id
+ * pl. productCategory-product_id=49&category_id=20
+ */
+export function parseProductCategoryRelationPair(
+  raw: unknown,
+): ProductCategoryLink | null {
+  if (raw == null) return null;
+
+  if (typeof raw === "string") {
+    const decoded = decodeResourceLeaf(raw) ?? raw;
+    const pm = decoded.match(/product_id=(\d+)/i);
+    const cm = decoded.match(/category_id=(\d+)/i);
+    if (pm && cm) {
+      return {
+        productInnerId: Number(pm[1]),
+        categoryInnerId: Number(cm[1]),
+      };
+    }
+    return null;
+  }
+
+  if (typeof raw !== "object") return null;
+  const obj = raw as {
+    href?: string;
+    id?: string;
+    product?: unknown;
+    category?: unknown;
+    productId?: unknown;
+    categoryId?: unknown;
+    innerId?: unknown;
+  };
+
+  const fromHref =
+    (typeof obj.href === "string" && parseProductCategoryRelationPair(obj.href)) ||
+    (typeof obj.id === "string" && parseProductCategoryRelationPair(obj.id)) ||
+    null;
+  if (fromHref) return fromHref;
+
+  const productInnerId =
+    parseProductInnerIdLoose(obj.product) ??
+    (typeof obj.productId === "number" || typeof obj.productId === "string"
+      ? Number(obj.productId)
+      : null);
+  const categoryInnerId =
+    parseCategoryInnerId(obj.category) ??
+    (typeof obj.categoryId === "number" || typeof obj.categoryId === "string"
+      ? Number(obj.categoryId)
+      : null);
+
+  if (
+    productInnerId != null &&
+    Number.isFinite(productInnerId) &&
+    productInnerId > 0 &&
+    categoryInnerId != null &&
+    categoryInnerId > 0
+  ) {
+    return {
+      productInnerId: Math.round(productInnerId),
+      categoryInnerId: Math.round(categoryInnerId),
+    };
+  }
+  return null;
+}
+
+function parseProductInnerIdLoose(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.round(raw);
+  }
+  if (typeof raw === "string" && /^\d+$/.test(raw.trim())) {
+    return Number(raw.trim());
+  }
+  if (typeof raw !== "object") return null;
+  const obj = raw as { innerId?: unknown; href?: string; id?: string };
+  const fromInner =
+    typeof obj.innerId === "number" || typeof obj.innerId === "string"
+      ? Number(obj.innerId)
+      : NaN;
+  if (Number.isFinite(fromInner) && fromInner > 0) return Math.round(fromInner);
+  const token =
+    (typeof obj.href === "string" && obj.href) ||
+    (typeof obj.id === "string" && obj.id) ||
+    "";
+  if (!token) return null;
+  const decoded = decodeResourceLeaf(token);
+  if (!decoded) return null;
+  const m = decoded.match(/product_id=(\d+)/i);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Shoprenter kategória megjelenő neve — categoryDescriptions[].name
+ * (a /categories resource-nak nincs top-level name mezője; lásd categoryExtend).
+ * Preferált: language_id=1 (HU), majd első nem üres név.
+ */
+export function pickCategoryDisplayName(
+  item: Record<string, unknown>,
+): string | undefined {
+  if (typeof item.name === "string" && item.name.trim()) {
+    return item.name.trim();
+  }
+
+  const descs = item.categoryDescriptions;
+  const list: Record<string, unknown>[] = Array.isArray(descs)
+    ? descs.filter(
+        (d): d is Record<string, unknown> => !!d && typeof d === "object",
+      )
+    : relationCollectionItems(descs);
+
+  let fallback: string | undefined;
+  for (const d of list) {
+    const n = typeof d.name === "string" ? d.name.trim() : "";
+    if (!n) continue;
+    const lang = d.language;
+    let langInner: unknown;
+    if (lang && typeof lang === "object") {
+      langInner = (lang as { innerId?: unknown }).innerId;
+      if (langInner == null) {
+        const href =
+          (typeof (lang as { href?: string }).href === "string" &&
+            (lang as { href: string }).href) ||
+          (typeof (lang as { id?: string }).id === "string" &&
+            (lang as { id: string }).id) ||
+          "";
+        if (href) {
+          const decoded = decodeResourceLeaf(href);
+          const m = decoded?.match(/language_id=(\d+)/i);
+          if (m) langInner = m[1];
+        }
+      }
+    }
+    if (langInner === 1 || langInner === "1") return n;
+    if (!fallback) fallback = n;
+  }
+  return fallback;
+}
+
+/** Termék → category inner id lista (productCategoryRelations / categories). */
+export function pickCategoryInnerIds(
+  item: Record<string, unknown>,
+): number[] {
+  const ids = new Set<number>();
+  const relations = relationCollectionItems(item.productCategoryRelations);
+  for (const rel of relations) {
+    const pair = parseProductCategoryRelationPair(rel);
+    if (pair) {
+      ids.add(pair.categoryInnerId);
+      continue;
+    }
+    const id =
+      parseCategoryInnerId(rel.category) ?? parseCategoryInnerId(rel);
+    if (id != null) ids.add(id);
+  }
+  const cats = item.categories;
+  if (Array.isArray(cats)) {
+    for (const c of cats) {
+      const id = parseCategoryInnerId(c);
+      if (id != null) ids.add(id);
+    }
+  } else {
+    for (const c of relationCollectionItems(cats)) {
+      const id = parseCategoryInnerId(c);
+      if (id != null) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * Összes termék↔kategória link a Shoprenter productCategoryRelations resource-ból.
+ * A /products lista csak href stubot ad — ez a M:N forrás.
+ */
+export async function fetchProductCategoryLinks(
+  config: ShoprenterConfig,
+): Promise<ProductCategoryLink[]> {
+  const out: ProductCategoryLink[] = [];
+  const seen = new Set<string>();
+  let page = 0;
+  const limit = 200;
+  let useFull = true;
+
+  for (let guard = 0; guard < 500; guard++) {
+    const q = useFull
+      ? `/productCategoryRelations?page=${page}&limit=${limit}&full=1`
+      : `/productCategoryRelations?page=${page}&limit=${limit}`;
+    const res = await apiFetch(config, q);
+    if (!res.ok) {
+      if (useFull && page === 0) {
+        useFull = false;
+        continue;
+      }
+      break;
+    }
+    let data: {
+      items?: unknown[];
+      pageCount?: number;
+    };
+    try {
+      data = (await res.json()) as typeof data;
+    } catch {
+      break;
+    }
+    const items = data.items ?? [];
+    for (const it of items) {
+      const pair = parseProductCategoryRelationPair(it);
+      if (!pair) continue;
+      const key = `${pair.productInnerId}:${pair.categoryInnerId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(pair);
+    }
+    const pageCount =
+      typeof data.pageCount === "number" && data.pageCount > 0
+        ? data.pageCount
+        : page + 1;
+    page++;
+    if (items.length === 0 || page >= pageCount) break;
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  return out;
+}
+
+
+function ingestCategoryPageItems(
+  items: Record<string, unknown>[],
+  out: Map<number, CategoryMeta>,
+): void {
+  for (const item of items) {
+    const id = parseCategoryInnerId(item);
+    if (id == null) continue;
+    const name = pickCategoryDisplayName(item) ?? "";
+    const parentInnerId =
+      parseCategoryInnerId(item.parentCategory) ??
+      parseCategoryInnerId(item.parent) ??
+      null;
+    const prev = out.get(id);
+    out.set(id, {
+      innerId: id,
+      name: name || prev?.name || "",
+      parentInnerId:
+        parentInnerId != null && parentInnerId !== id
+          ? parentInnerId
+          : (prev?.parentInnerId ?? null),
+    });
+  }
+}
+
+/**
+ * Összes kategória: innerId → név + parent (árazás szűrő + sync).
+ * Preferált forrás: /categoryExtend (beágyazott categoryDescriptions.name).
+ * Kiegészítés: /categoryDescriptions ha a név még hiányzik.
+ */
+export async function fetchCategoriesMap(
+  config: ShoprenterConfig,
+): Promise<Map<number, CategoryMeta>> {
+  const out = new Map<number, CategoryMeta>();
+  const limit = 200;
+
+  const fetchPaged = async (pathBase: string): Promise<boolean> => {
+    let page = 0;
+    let anyOk = false;
+    for (let guard = 0; guard < 80; guard++) {
+      const res = await apiFetch(
+        config,
+        `${pathBase}?page=${page}&limit=${limit}&full=1`,
+      );
+      if (!res.ok) break;
+      anyOk = true;
+      let data: {
+        items?: Record<string, unknown>[];
+        pageCount?: number;
+      };
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        break;
+      }
+      const items = data.items ?? [];
+      ingestCategoryPageItems(items, out);
+      const pageCount =
+        typeof data.pageCount === "number" && data.pageCount > 0
+          ? data.pageCount
+          : page + 1;
+      page++;
+      if (items.length === 0 || page >= pageCount) break;
+      await new Promise((r) => setTimeout(r, 80));
+    }
+    return anyOk;
+  };
+
+  // categoryExtend: név a categoryDescriptions-ben (SR docs)
+  const extendOk = await fetchPaged("/categoryExtend");
+  if (!extendOk) {
+    await fetchPaged("/categories");
+  }
+
+  const missingNames = [...out.values()].some((c) => !c.name);
+  if (missingNames || out.size === 0) {
+    // categoryDescriptions resource: name + category href
+    let page = 0;
+    for (let guard = 0; guard < 80; guard++) {
+      const res = await apiFetch(
+        config,
+        `/categoryDescriptions?page=${page}&limit=${limit}&full=1`,
+      );
+      if (!res.ok) break;
+      let data: {
+        items?: Record<string, unknown>[];
+        pageCount?: number;
+      };
+      try {
+        data = (await res.json()) as typeof data;
+      } catch {
+        break;
+      }
+      const items = data.items ?? [];
+      for (const item of items) {
+        const catId = parseCategoryInnerId(item.category);
+        if (catId == null) continue;
+        const name =
+          typeof item.name === "string" && item.name.trim()
+            ? item.name.trim()
+            : "";
+        if (!name) continue;
+        const lang = item.language;
+        let prefer = false;
+        if (lang && typeof lang === "object") {
+          const li = (lang as { innerId?: unknown }).innerId;
+          prefer = li === 1 || li === "1";
+        }
+        const prev = out.get(catId);
+        if (!prev) {
+          out.set(catId, {
+            innerId: catId,
+            name,
+            parentInnerId: null,
+          });
+        } else if (!prev.name || prefer) {
+          out.set(catId, { ...prev, name });
+        }
+      }
+      const pageCount =
+        typeof data.pageCount === "number" && data.pageCount > 0
+          ? data.pageCount
+          : page + 1;
+      page++;
+      if (items.length === 0 || page >= pageCount) break;
+      await new Promise((r) => setTimeout(r, 80));
+    }
+  }
+
+  // Név nélküli rekord: üres string — a UI `Kategória #id` fallbackot mutat;
+  // placeholder ne kerüljön a DB-be (felülírná a későbbi jó nevet).
+  return out;
+}
+
 /** Full product page for catalog sync (full=1 — full=0 csak href stub). */
 export async function fetchProductsPage(
   config: ShoprenterConfig,
@@ -297,7 +846,10 @@ function toNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-function buildImageUrl(shopName: string, mainPicture: unknown): string | undefined {
+export function buildProductImageUrl(
+  shopName: string,
+  mainPicture: unknown,
+): string | undefined {
   if (typeof mainPicture !== "string" || !mainPicture.trim()) return undefined;
   const path = mainPicture.replace(/^\//, "");
   if (/^https?:\/\//i.test(path)) return path;
@@ -315,28 +867,10 @@ function parseVatPercent(text: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function isDateActive(
-  dateStart?: string | null,
-  dateEnd?: string | null,
-  now = new Date(),
-): boolean {
-  const t = now.getTime();
-  if (dateStart) {
-    const s = Date.parse(dateStart);
-    if (!Number.isNaN(s) && t < s) return false;
-  }
-  if (dateEnd) {
-    const e = Date.parse(dateEnd);
-    // Shoprenter gyakran 0000-00-00 / üres = nyitott
-    if (!Number.isNaN(e) && e > 0 && t > e) return false;
-  }
-  return true;
-}
-
-async function resolveVatRate(
+function resolveVatRate(
   _config: ShoprenterConfig,
   taxClass: unknown,
-): Promise<number | undefined> {
+): number | undefined {
   if (!taxClass || typeof taxClass !== "object") return 27;
   const tc = taxClass as { href?: string; name?: string; rate?: unknown };
   if (typeof tc.name === "string") {
@@ -442,7 +976,11 @@ function applyPriceBreakdown(
     vatAmount,
     vatAmountFormatted: formatHuf(vatAmount),
     specialPriceNet:
-      source === "special" || source === "group"
+      source === "special" ||
+      source === "group" ||
+      source === "own" ||
+      source === "tier" ||
+      source === "percent"
         ? Math.round(effective)
         : undefined,
     discountPercent,
@@ -453,82 +991,250 @@ function applyPriceBreakdown(
   };
 }
 
+const groupPercentCache = new Map<
+  string,
+  { at: number; byInner: Map<number, number | null> }
+>();
+const GROUP_PCT_TTL_MS = 45_000;
+
+async function lookupGroupPercentDiscount(
+  config: ShoprenterConfig,
+  customerGroupInnerId: number,
+): Promise<number | null> {
+  const key = config.shopName.toLowerCase();
+  const hit = groupPercentCache.get(key);
+  if (hit && Date.now() - hit.at < GROUP_PCT_TTL_MS) {
+    return hit.byInner.get(customerGroupInnerId) ?? null;
+  }
+
+  const byInner = new Map<number, number | null>();
+  let page = 0;
+  for (;;) {
+    const res = await apiFetch(
+      config,
+      `/customerGroups?full=1&limit=100&page=${page}`,
+    );
+    if (!res.ok) break;
+    const data = (await res.json()) as {
+      items?: Record<string, unknown>[];
+      pageCount?: number | string;
+    };
+    for (const item of data.items ?? []) {
+      const inner =
+        typeof item.innerId === "number"
+          ? item.innerId
+          : typeof item.innerId === "string"
+            ? Number(item.innerId)
+            : NaN;
+      if (!Number.isFinite(inner)) continue;
+      const pct = toNumber(item.percentDiscount);
+      byInner.set(
+        Math.trunc(inner),
+        pct != null && pct > 0 ? Math.trunc(pct) : null,
+      );
+    }
+    const pageCount =
+      typeof data.pageCount === "number"
+        ? data.pageCount
+        : Number(data.pageCount) || 1;
+    page += 1;
+    if (page >= pageCount || !(data.items?.length)) break;
+    if (page > 50) break;
+  }
+  groupPercentCache.set(key, { at: Date.now(), byInner });
+  return byInner.get(customerGroupInnerId) ?? null;
+}
+
+function customerGroupInnerFromRef(ref: unknown): number | null {
+  if (!ref || typeof ref !== "object") return null;
+  const r = ref as Record<string, unknown>;
+  if (r.innerId != null) {
+    const n = Number(r.innerId);
+    if (Number.isFinite(n)) return Math.trunc(n);
+  }
+  const id = typeof r.id === "string" ? r.id : null;
+  if (id) {
+    try {
+      const decoded = Buffer.from(id, "base64").toString("utf8");
+      const m = decoded.match(/customer_group_id=(\d+)/i);
+      if (m) return Number(m[1]);
+    } catch {
+      /* ignore */
+    }
+    if (/^\d+$/.test(id)) return Number(id);
+  }
+  const href = typeof r.href === "string" ? r.href : null;
+  if (href) {
+    const plain = href.match(/customer_group_id[=-](\d+)/i);
+    if (plain) return Number(plain[1]);
+    const m = href.match(/\/customerGroups\/([^/?#]+)/i);
+    if (m?.[1]) {
+      try {
+        const decoded = Buffer.from(
+          decodeURIComponent(m[1]),
+          "base64",
+        ).toString("utf8");
+        const gm = decoded.match(/customer_group_id=(\d+)/i);
+        if (gm) return Number(gm[1]);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return null;
+}
+
 async function enrichPricing(
   config: ShoprenterConfig,
   product: ResolvedProduct,
   item: Record<string, unknown>,
   customerGroupInnerId?: number | null,
+  qty = 1,
 ): Promise<ResolvedProduct> {
-  const listNet = toNumber(item.price) ?? product.price;
+  const listNet = toNumber(item.price) ?? product.price ?? 0;
   const vatRate = await resolveVatRate(config, item.taxClass);
+  const qtySafe = Math.max(1, Math.round(Number(qty) || 1));
 
-  let effectiveNet = listNet;
-  let source: ResolvedProduct["priceSource"] = "list";
-
-  // Inline specials/group prices only — extra collection hrefs are 2–8 Shoprenter RTTs.
-  const specials = inlineCollectionItems(item.productSpecials);
-  const now = new Date();
-  let bestSpecial: number | undefined;
-  for (const sp of specials) {
-    const p = toNumber(sp.price);
-    if (p == null) continue;
-    if (
-      !isDateActive(
-        typeof sp.dateStart === "string" ? sp.dateStart : null,
-        typeof sp.dateEnd === "string" ? sp.dateEnd : null,
-        now,
-      )
-    ) {
-      continue;
-    }
-    const spGroup = sp.customerGroup as
-      | { innerId?: string | number }
-      | undefined;
-    const spGid =
-      spGroup?.innerId != null ? Number(spGroup.innerId) : null;
-    if (
-      customerGroupInnerId != null &&
-      spGid != null &&
-      Number.isFinite(spGid) &&
-      spGid !== customerGroupInnerId
-    ) {
-      continue;
-    }
-    if (bestSpecial == null || p < bestSpecial) bestSpecial = p;
-  }
-  if (bestSpecial != null && listNet != null && bestSpecial < listNet) {
-    effectiveNet = bestSpecial;
-    source = "special";
-  }
-
+  let ownGroupNet: number | null = null;
   if (customerGroupInnerId != null && Number.isFinite(customerGroupInnerId)) {
     const groupPrices = inlineCollectionItems(item.customerGroupProductPrices);
     let bestGroup: number | undefined;
     for (const gp of groupPrices) {
       const p = toNumber(gp.price);
       if (p == null) continue;
-      const cg = gp.customerGroup as
-        | { innerId?: string | number; href?: string }
-        | undefined;
-      let gid = cg?.innerId != null ? Number(cg.innerId) : NaN;
-      if (!Number.isFinite(gid) && typeof cg?.href === "string") {
-        const m = cg.href.match(/customer_group_id[=-](\d+)/i);
-        if (m) gid = Number(m[1]);
+      let gid = customerGroupInnerFromRef(gp.customerGroup);
+      if (gid == null) {
+        const cg = gp.customerGroup as
+          | { innerId?: string | number; href?: string }
+          | undefined;
+        if (cg?.innerId != null) gid = Number(cg.innerId);
       }
       if (gid !== customerGroupInnerId) continue;
       if (bestGroup == null || p < bestGroup) bestGroup = p;
     }
-    if (
-      bestGroup != null &&
-      effectiveNet != null &&
-      bestGroup < effectiveNet
-    ) {
-      effectiveNet = bestGroup;
-      source = "group";
+    if (bestGroup != null) ownGroupNet = bestGroup;
+  }
+
+  // productSpecials gyakran csak { href } / stub items — fetchCollectionItems követi
+  let specialsRaw = inlineCollectionItems(item.productSpecials);
+  if (!specialsRaw.length && item.productSpecials) {
+    try {
+      specialsRaw = await fetchCollectionItems(config, item.productSpecials);
+    } catch {
+      specialsRaw = [];
     }
   }
 
-  return applyPriceBreakdown(product, listNet, effectiveNet, vatRate, source);
+  const specials = specialsRaw
+    .map((sp) => {
+      const p = toNumber(sp.price);
+      if (p == null) return null;
+      const spGid = customerGroupInnerFromRef(sp.customerGroup);
+      if (
+        customerGroupInnerId != null &&
+        Number.isFinite(customerGroupInnerId)
+      ) {
+        // Csak a vevő csoportja; csoport nélküli specialt kihagyjuk (volume UI)
+        if (spGid == null || spGid !== customerGroupInnerId) return null;
+      }
+      const minQ = toNumber(sp.minQuantity) ?? 0;
+      const maxQ = toNumber(sp.maxQuantity) ?? 0;
+      return {
+        price: p,
+        minQty: Math.max(0, Math.round(minQ)),
+        maxQty: maxQ > 0 ? Math.round(maxQ) : null,
+        dateFrom:
+          typeof sp.dateFrom === "string"
+            ? sp.dateFrom
+            : typeof sp.dateStart === "string"
+              ? sp.dateStart
+              : null,
+        dateTo:
+          typeof sp.dateTo === "string"
+            ? sp.dateTo
+            : typeof sp.dateEnd === "string"
+              ? sp.dateEnd
+              : null,
+      };
+    })
+    .filter(Boolean) as {
+    price: number;
+    minQty: number;
+    maxQty: number | null;
+    dateFrom: string | null;
+    dateTo: string | null;
+  }[];
+
+  let groupPercent: number | null = null;
+  if (customerGroupInnerId != null && Number.isFinite(customerGroupInnerId)) {
+    try {
+      groupPercent = await lookupGroupPercentDiscount(
+        config,
+        customerGroupInnerId,
+      );
+    } catch {
+      groupPercent = null;
+    }
+  }
+
+  const result = calcEffectiveNet({
+    listNet,
+    groupPercent,
+    ownGroupNet,
+    specials,
+    qty: qtySafe,
+  });
+
+  const sourceMap: Record<
+    string,
+    NonNullable<ResolvedProduct["priceSource"]>
+  > = {
+    own: "own",
+    tier: "tier",
+    percent: "percent",
+    list: "list",
+    special: "special",
+  };
+  const source = sourceMap[result.source] ?? "list";
+
+  const vat = vatRate ?? 27;
+  const tiers = listActiveTiers(specials, listNet).map((t) => ({
+    minQty: t.minQty,
+    priceNet: t.priceNet,
+    priceGrossFormatted: formatHuf(netToGross(t.priceNet, vat)),
+  }));
+
+  const next = findNextTier({
+    specials,
+    qty: qtySafe,
+    currentNet: result.net,
+    listNet,
+    blockedByOwn: result.source === "own",
+  });
+  const nextTier =
+    next == null
+      ? null
+      : {
+          minQty: next.minQty,
+          missingQty: next.missingQty,
+          priceNet: next.priceNet,
+          priceGrossFormatted: formatHuf(netToGross(next.priceNet, vat)),
+          savePct: next.savePct,
+          near: next.near,
+        };
+
+  const priced = applyPriceBreakdown(
+    product,
+    listNet,
+    result.net,
+    vatRate,
+    source,
+  );
+  return {
+    ...priced,
+    tiers: tiers.length ? tiers : undefined,
+    nextTier,
+  };
 }
 
 /** stockStatus href → megjelenített név */
@@ -739,10 +1445,7 @@ function pickProductFields(
     toNumber(item.purchasePrice);
   const hasCost = costNum != null && costNum > 0;
 
-  const nameFromFields =
-    (typeof item.name === "string" && item.name) ||
-    (typeof item.imageAlt === "string" && item.imageAlt) ||
-    undefined;
+  const nameFromFields = pickProductDisplayName(item);
 
   const stock = pickStockNumbers(item);
   const stockPres = buildStockPresentation(stock.stockQty, stock.orderable);
@@ -763,7 +1466,7 @@ function pickProductFields(
     costNet: hasCost ? Math.round(costNum!) : undefined,
     costNetFormatted: hasCost ? formatHuf(Math.round(costNum!)) : undefined,
     hasCost,
-    imageUrl: buildImageUrl(shopName, item.mainPicture),
+    imageUrl: buildProductImageUrl(shopName, item.mainPicture),
     productUrl: storefrontProductUrl({ shopName } as ShoprenterConfig, productId),
     stock1: stock.stock1,
     stock2: stock.stock2,
@@ -780,17 +1483,170 @@ function pickProductFields(
   };
 }
 
+/**
+ * Shoprenter termék megjelenő neve — name / imageAlt / productDescriptions.
+ * A listaáras `product` resource gyakran üres `name`-et ad; a név a leírásban van.
+ */
+export function pickProductDisplayName(
+  item: Record<string, unknown>,
+): string | undefined {
+  const top =
+    (typeof item.name === "string" && item.name.trim()) ||
+    (typeof item.imageAlt === "string" && item.imageAlt.trim()) ||
+    "";
+  if (top) return top;
+
+  const descs = item.productDescriptions;
+  if (!descs || typeof descs !== "object") return undefined;
+
+  const col = descs as {
+    items?: unknown;
+    name?: unknown;
+  };
+  if (typeof col.name === "string" && col.name.trim()) return col.name.trim();
+
+  const items = Array.isArray(col.items)
+    ? col.items
+    : Array.isArray(descs)
+      ? descs
+      : [];
+
+  for (const raw of items) {
+    if (!raw || typeof raw !== "object") continue;
+    const d = raw as Record<string, unknown>;
+    if (typeof d.name === "string" && d.name.trim()) return d.name.trim();
+    // nested description object
+    const nested = d.productDescription ?? d.description;
+    if (nested && typeof nested === "object") {
+      const n = nested as Record<string, unknown>;
+      if (typeof n.name === "string" && n.name.trim()) return n.name.trim();
+    }
+  }
+  return undefined;
+}
+
+/** Shoprenter productDescription resource id (base64). */
+export function productDescriptionResourceId(
+  productInnerId: number,
+  languageId = 1,
+): string {
+  return Buffer.from(
+    `productDescription-product_id=${Math.round(productInnerId)}&language_id=${languageId}`,
+    "utf8",
+  ).toString("base64");
+}
+
+function nameFromDescriptionPayload(
+  data: Record<string, unknown>,
+): string | undefined {
+  if (typeof data.name === "string" && data.name.trim()) {
+    return data.name.trim();
+  }
+  const items = data.items;
+  if (Array.isArray(items)) {
+    let fallback: string | undefined;
+    for (const raw of items) {
+      if (!raw || typeof raw !== "object") continue;
+      const d = raw as Record<string, unknown>;
+      const n = typeof d.name === "string" ? d.name.trim() : "";
+      if (!n) continue;
+      const lang = d.language;
+      const langInner =
+        lang && typeof lang === "object"
+          ? (lang as { innerId?: unknown }).innerId
+          : undefined;
+      if (langInner === 1 || langInner === "1") return n;
+      if (!fallback) fallback = n;
+    }
+    return fallback;
+  }
+  return undefined;
+}
+
+async function fetchJsonRecord(
+  config: ShoprenterConfig,
+  path: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await apiFetch(config, path);
+    if (!res.ok) return null;
+    const data = (await res.json()) as unknown;
+    if (!data || typeof data !== "object") return null;
+    return data as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Terméknév Shoprenterből: inline mezők → productDescriptions href →
+ * productDescription resource product_id + language_id=1/2.
+ */
+export async function resolveProductDisplayName(
+  config: ShoprenterConfig,
+  opts: {
+    productInnerId?: number | null;
+    productItem?: Record<string, unknown> | null;
+  },
+): Promise<string | undefined> {
+  const item = opts.productItem;
+  if (item) {
+    const inline = pickProductDisplayName(item);
+    if (inline) return inline;
+
+    const descs = item.productDescriptions;
+    if (descs && typeof descs === "object" && !Array.isArray(descs)) {
+      const href = (descs as { href?: unknown }).href;
+      if (typeof href === "string" && href.trim()) {
+        try {
+          const u = new URL(href);
+          let path = u.pathname + u.search;
+          // OAuth base already includes /api
+          if (getAuthMode(config) === "oauth") {
+            path = path.replace(/^\/api(?=\/)/, "");
+          }
+          if (!path.includes("full=")) {
+            path += path.includes("?") ? "&full=1" : "?full=1";
+          }
+          const data = await fetchJsonRecord(config, path);
+          const fromHref = data ? nameFromDescriptionPayload(data) : undefined;
+          if (fromHref) return fromHref;
+        } catch {
+          /* fall through */
+        }
+      }
+    }
+  }
+
+  const inner =
+    opts.productInnerId != null && Number.isFinite(opts.productInnerId)
+      ? Math.round(opts.productInnerId)
+      : null;
+  if (inner == null || inner < 1) return undefined;
+
+  for (const lang of [1, 2]) {
+    const id = productDescriptionResourceId(inner, lang);
+    const data = await fetchJsonRecord(
+      config,
+      `/productDescriptions/${id}?full=1`,
+    );
+    const name = data ? nameFromDescriptionPayload(data) : undefined;
+    if (name) return name;
+  }
+  return undefined;
+}
+
 async function enrichProductName(
-  _config: ShoprenterConfig,
+  config: ShoprenterConfig,
   product: ResolvedProduct,
   item: Record<string, unknown>,
 ): Promise<ResolvedProduct> {
   if (product.name && product.name !== product.sku) return product;
-  const descriptions = item.productDescriptions as
-    | { items?: { name?: string }[] }
-    | undefined;
-  const inline = descriptions?.items?.[0]?.name;
-  if (inline) return { ...product, name: inline };
+  const fromDesc = await resolveProductDisplayName(config, {
+    productItem: item,
+    productInnerId: product.productId,
+  });
+  if (fromDesc) return { ...product, name: fromDesc };
   return product;
 }
 
@@ -1192,10 +2048,12 @@ export async function resolveProductByExactSku(
   config: ShoprenterConfig,
   lookupSku: string,
   customerGroupInnerId?: number | null,
+  qty = 1,
 ): Promise<ResolvedProduct> {
   const trimmed = lookupSku.trim();
   const encoded = encodeURIComponent(trimmed);
   const codeKey = normCode(trimmed);
+  const qtySafe = Math.max(1, Math.round(Number(qty) || 1));
 
   const matchesCode = (node: Record<string, unknown>): boolean => {
     const candidates = [node.sku];
@@ -1230,6 +2088,7 @@ export async function resolveProductByExactSku(
         picked,
         data,
         customerGroupInnerId,
+        qtySafe,
       );
       const stocked = await enrichStock(config, priced, data);
       return enrichProductName(config, stocked, data);
@@ -1271,6 +2130,7 @@ export async function resolveProductByExactSku(
         picked,
         merged,
         customerGroupInnerId,
+        qtySafe,
       );
       const stocked = await enrichStock(config, priced, merged);
       return enrichProductName(config, stocked, merged);
@@ -1291,6 +2151,7 @@ export async function resolveProductBySku(
   config: ShoprenterConfig,
   sku: string,
   customerGroupInnerId?: number | null,
+  qty = 1,
 ): Promise<ResolvedProduct> {
   const trimmed = sku.trim();
   if (!trimmed) {
@@ -1302,6 +2163,7 @@ export async function resolveProductBySku(
     config,
     trimmed,
     customerGroupInnerId,
+    qty,
   );
   if (direct.found) return direct;
 
@@ -1312,6 +2174,7 @@ export async function resolveProductBySku(
       config,
       alt,
       customerGroupInnerId,
+      qty,
     );
     if (viaAlt.found) return viaAlt;
   }
@@ -1328,37 +2191,46 @@ export async function resolveProductsBySkus(
   config: ShoprenterConfig,
   skus: string[],
   customerGroupInnerId?: number | null,
+  quantities?: number[],
 ): Promise<ResolvedProduct[]> {
-  const unique = [...new Set(skus.map((s) => s.trim()).filter(Boolean))];
-  const byQuery = new Map<string, ResolvedProduct>();
+  const cache = new Map<string, ResolvedProduct>();
 
-  for (const code of unique) {
-    try {
-      byQuery.set(
-        code,
-        await resolveProductBySku(config, code, customerGroupInnerId),
-      );
-    } catch (e) {
-      byQuery.set(code, {
-        sku: code,
-        productId: null,
-        found: false,
-        error: e instanceof Error ? e.message : "resolve failed",
-      });
-    }
-  }
-
-  return skus.map((s) => {
-    const key = s.trim();
-    return (
-      byQuery.get(key) ?? {
-        sku: key,
+  const results: ResolvedProduct[] = [];
+  for (let i = 0; i < skus.length; i++) {
+    const code = skus[i].trim();
+    const qty = Math.max(1, Math.round(Number(quantities?.[i]) || 1));
+    if (!code) {
+      results.push({
+        sku: skus[i],
         productId: null,
         found: false,
         error: "empty sku",
+      });
+      continue;
+    }
+    const key = `${normCode(code)}:${qty}`;
+    let hit = cache.get(key);
+    if (!hit) {
+      try {
+        hit = await resolveProductBySku(
+          config,
+          code,
+          customerGroupInnerId,
+          qty,
+        );
+      } catch (e) {
+        hit = {
+          sku: code,
+          productId: null,
+          found: false,
+          error: e instanceof Error ? e.message : "resolve failed",
+        };
       }
-    );
-  });
+      cache.set(key, hit);
+    }
+    results.push(hit);
+  }
+  return results;
 }
 
 /* ─── Customer orders (B2B „Rendeléseim”) ─── */
