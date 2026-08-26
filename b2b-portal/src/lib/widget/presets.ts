@@ -127,6 +127,10 @@ export type WidgetFeatures = {
   modules: WidgetModuleId[];
   /** Preference only — public config ignores unless paid Pro and not trial. */
   hideTurinovaMark: boolean;
+  /** Show SR customer group name in the widget panel. */
+  showCustomerGroupName: boolean;
+  /** Show “még X a következő csoporthoz” progress (FOMO). */
+  showNextLevelProgress: boolean;
 };
 
 export type WidgetSettingsPayload = {
@@ -151,6 +155,8 @@ export type PublicWidgetConfig = {
   catalogStatus?: string;
   catalogReady?: boolean;
   showTurinovaMark?: boolean;
+  showCustomerGroupName?: boolean;
+  showNextLevelProgress?: boolean;
 };
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
@@ -167,6 +173,8 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
     requireLogin: true,
     modules: ["search", "excel", "email", "image", "orders", "insights"],
     hideTurinovaMark: false,
+    showCustomerGroupName: false,
+    showNextLevelProgress: false,
   },
 };
 
@@ -248,6 +256,8 @@ export function normalizeWidgetSettings(
       requireLogin: true,
       modules: [...DEFAULT_WIDGET_SETTINGS.features.modules],
       hideTurinovaMark: featuresRaw.hideTurinovaMark === true,
+      showCustomerGroupName: featuresRaw.showCustomerGroupName === true,
+      showNextLevelProgress: featuresRaw.showNextLevelProgress === true,
     },
   };
 }
@@ -603,6 +613,8 @@ export function resolvePublicWidgetConfig(input: {
     showLabel: size.showLabel,
     compact: size.compact,
     showTurinovaMark: true,
+    showCustomerGroupName: normalized.features.showCustomerGroupName,
+    showNextLevelProgress: normalized.features.showNextLevelProgress,
   };
 }
 

@@ -93,10 +93,20 @@ export function WidgetSettingsForm({ initial, apiBase }: Props) {
     features: {
       ...DEFAULT_WIDGET_SETTINGS.features,
       hideTurinovaMark: initial.settings.features.hideTurinovaMark === true,
+      showCustomerGroupName:
+        initial.settings.features.showCustomerGroupName === true,
+      showNextLevelProgress:
+        initial.settings.features.showNextLevelProgress === true,
     },
   });
   const [hideTurinovaMark, setHideTurinovaMark] = useState(
     initial.settings.features.hideTurinovaMark === true,
+  );
+  const [showCustomerGroupName, setShowCustomerGroupName] = useState(
+    initial.settings.features.showCustomerGroupName === true,
+  );
+  const [showNextLevelProgress, setShowNextLevelProgress] = useState(
+    initial.settings.features.showNextLevelProgress === true,
   );
   const [tab, setTab] = useState<TabId>("appear");
   const [showPanel, setShowPanel] = useState(false);
@@ -146,6 +156,8 @@ window.SR_B2B_QUICKORDER = {
       features: {
         ...DEFAULT_WIDGET_SETTINGS.features,
         hideTurinovaMark,
+        showCustomerGroupName,
+        showNextLevelProgress,
       },
     };
 
@@ -164,14 +176,22 @@ window.SR_B2B_QUICKORDER = {
       if (!res.ok) throw new Error(data.error || "Mentés sikertelen");
       const nextHide =
         data.widget.settings.features.hideTurinovaMark === true;
+      const nextGroupName =
+        data.widget.settings.features.showCustomerGroupName === true;
+      const nextProgress =
+        data.widget.settings.features.showNextLevelProgress === true;
       setSettings({
         ...data.widget.settings,
         features: {
           ...DEFAULT_WIDGET_SETTINGS.features,
           hideTurinovaMark: nextHide,
+          showCustomerGroupName: nextGroupName,
+          showNextLevelProgress: nextProgress,
         },
       });
       setHideTurinovaMark(nextHide);
+      setShowCustomerGroupName(nextGroupName);
+      setShowNextLevelProgress(nextProgress);
       setButtonLabel(data.widget.buttonLabel);
       setWidgetEnabled(data.widget.widgetEnabled);
       if (typeof data.widget.widgetVersion === "string") {
@@ -324,6 +344,48 @@ window.SR_B2B_QUICKORDER = {
                     </a>
                   ) : null}
                 </p>
+
+                <div className="mt-4 space-y-2 border-t border-line pt-3">
+                  <p className="text-[11px] font-semibold text-muted">
+                    Partner szint a panelen
+                  </p>
+                  <label className="flex cursor-pointer items-start gap-2 text-[12px]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-[var(--accent)]"
+                      checked={showCustomerGroupName}
+                      onChange={(e) =>
+                        setShowCustomerGroupName(e.target.checked)
+                      }
+                    />
+                    <span>
+                      <span className="font-semibold">Csoportnév mutatása</span>
+                      <span className="mt-0.5 block text-[11px] text-faint">
+                        Pl. „Csoportod: Asztalosok”. Alapból ki — csak ha
+                        akarod.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 text-[12px]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-[var(--accent)]"
+                      checked={showNextLevelProgress}
+                      onChange={(e) =>
+                        setShowNextLevelProgress(e.target.checked)
+                      }
+                    />
+                    <span>
+                      <span className="font-semibold">
+                        Következő szint (még ennyi kell)
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-faint">
+                        „Még X Ft / rendelés a jobb csoporthoz” — a Szintlépés
+                        szabályokból számoljuk.
+                      </span>
+                    </span>
+                  </label>
+                </div>
                 {!initial.canParseImage ? (
                   <p className="mt-2 text-[11px] leading-relaxed text-faint">
                     A fotós lista a Proé. Próba után a Starton és a Pluson nincs.{" "}

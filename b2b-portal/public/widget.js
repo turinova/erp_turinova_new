@@ -28,6 +28,8 @@
       catalogReady: true,
       catalogStatus: "",
       showTurinovaMark: true,
+      showCustomerGroupName: false,
+      showNextLevelProgress: false,
       modules: null,
       showLabel: true,
       compact: false,
@@ -94,6 +96,12 @@
         var c = result.data.config;
         if (typeof c.showTurinovaMark === "boolean") {
           cfg.showTurinovaMark = c.showTurinovaMark;
+        }
+        if (typeof c.showCustomerGroupName === "boolean") {
+          cfg.showCustomerGroupName = c.showCustomerGroupName;
+        }
+        if (typeof c.showNextLevelProgress === "boolean") {
+          cfg.showNextLevelProgress = c.showNextLevelProgress;
         }
         if (c.enabled === false) {
           cfg.enabled = false;
@@ -527,13 +535,14 @@
       "sr-b2b-qo-panel-css-v34",
       "sr-b2b-qo-panel-css-v35",
       "sr-b2b-qo-panel-css-v36",
+      "sr-b2b-qo-panel-css-v37",
     ].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.remove();
     });
-    if (document.getElementById("sr-b2b-qo-panel-css-v37")) return;
+    if (document.getElementById("sr-b2b-qo-panel-css-v38")) return;
     var style = document.createElement("style");
-    style.id = "sr-b2b-qo-panel-css-v37";
+    style.id = "sr-b2b-qo-panel-css-v38";
     style.textContent = [
       "#sr-b2b-quickorder-root{",
       "  --sr-qo-bg:#F7F6F3;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#EFEEE9;",
@@ -597,6 +606,23 @@
       "#sr-b2b-quickorder-root .sr-qo-title{",
       "  margin:0;font-size:13px;font-weight:600;letter-spacing:-.01em;line-height:1.2;",
       "  white-space:nowrap;overflow:hidden;text-overflow:ellipsis",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-partner{",
+      "  flex-shrink:0;padding:8px 14px;border-bottom:0.5px solid var(--sr-qo-line-strong);",
+      "  background:var(--sr-qo-surface-2);",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-partner[hidden]{display:none!important}",
+      "#sr-b2b-quickorder-root .sr-qo-partner-label{",
+      "  margin:0;font-size:12px;font-weight:600;line-height:1.35;color:var(--sr-qo-text)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-partner-group{",
+      "  margin:0 0 4px;font-size:11px;color:var(--sr-qo-faint)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-partner-bar{",
+      "  margin-top:6px;height:4px;border-radius:2px;background:var(--sr-qo-line-strong);overflow:hidden",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-partner-bar > i{",
+      "  display:block;height:100%;width:0;background:var(--sr-qo-accent);border-radius:2px",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-topbar-right{",
       "  display:flex;align-items:center;justify-content:flex-end;justify-self:end;gap:8px;min-width:0",
@@ -6120,6 +6146,66 @@
       [listsRoot],
     );
 
+    var partnerStrip = el("div", {
+      className: "sr-qo-partner",
+      hidden: "hidden",
+      "aria-live": "polite",
+    });
+    var partnerGroupEl = el("p", { className: "sr-qo-partner-group" });
+    var partnerLabelEl = el("p", { className: "sr-qo-partner-label" });
+    var partnerBarFill = el("i", {});
+    var partnerBar = el("div", { className: "sr-qo-partner-bar" }, [
+      partnerBarFill,
+    ]);
+    partnerStrip.appendChild(partnerGroupEl);
+    partnerStrip.appendChild(partnerLabelEl);
+    partnerStrip.appendChild(partnerBar);
+
+    function loadPartnerStatus() {
+      if (!cfg.showCustomerGroupName && !cfg.showNextLevelProgress) return;
+      var uid = getCustomerUserId();
+      if (!uid) return;
+      fetch(
+        apiUrl(
+          "/api/widget/partner-status?userId=" + encodeURIComponent(String(uid)),
+        ),
+        { credentials: "omit", cache: "no-store" },
+      )
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (data) {
+          var p = data && data.progress;
+          if (!p) return;
+          var show = false;
+          partnerGroupEl.textContent = "";
+          partnerLabelEl.textContent = "";
+          partnerBar.hidden = true;
+          partnerBarFill.style.width = "0%";
+          if (p.showGroupName && p.groupName) {
+            partnerGroupEl.textContent = "Csoportod: " + p.groupName;
+            show = true;
+          }
+          if (p.showProgress && p.label) {
+            partnerLabelEl.textContent = p.label;
+            show = true;
+            if (
+              p.progressPercent != null &&
+              !p.atTop &&
+              p.remaining != null &&
+              p.remaining > 0
+            ) {
+              partnerBar.hidden = false;
+              partnerBarFill.style.width =
+                Math.min(100, Math.max(0, Number(p.progressPercent) || 0)) +
+                "%";
+            }
+          }
+          if (show) partnerStrip.removeAttribute("hidden");
+        })
+        .catch(function () {});
+    }
+
     var views = el("div", { className: "sr-qo-views" }, [
       viewEls.home,
       viewEls.order,
@@ -6134,7 +6220,7 @@
         "aria-modal": "true",
         "aria-labelledby": "sr-qo-dialog-title",
       },
-      [topbar, views, turinovaCredit(), toastEl],
+      [topbar, partnerStrip, views, turinovaCredit(), toastEl],
     );
 
     root.appendChild(el("div", { className: "sr-qo-backdrop", "aria-hidden": "true" }));
@@ -6143,6 +6229,7 @@
     document.addEventListener("keydown", onKeyDown, true);
     setView(activeView);
     renderList();
+    loadPartnerStatus();
     if (lines.length) showOrderWork();
     else showOrderWorkOrStart();
 

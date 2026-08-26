@@ -12,7 +12,7 @@ type NavChild = { href: string; label: string };
 type NavItem = {
   href: string;
   label: string;
-  icon: "home" | "widget" | "customers" | "reports" | "settings" | "plans" | "prices";
+  icon: "home" | "widget" | "customers" | "reports" | "settings" | "plans" | "prices" | "levelup";
   children?: NavChild[];
 };
 
@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { href: "/home", label: "Áttekintés", icon: "home" },
   { href: "/riport", label: "Riport", icon: "reports" },
   { href: "/vevok", label: "Vevők", icon: "customers" },
+  { href: "/szintlepes", label: "Szintlépés", icon: "levelup" },
   {
     href: "/arak",
     label: "Árak",
@@ -39,6 +40,7 @@ const TITLES: Record<string, string> = {
   "/riport": "Riport",
   "/widget": "Gyors rendelés",
   "/vevok": "Vevők",
+  "/szintlepes": "Szintlépés",
   "/arak": "Árazás",
   "/arak/utmutato": "Útmutató",
   "/settings": "Beállítások",
@@ -172,6 +174,26 @@ function IconPrices({ className }: { className?: string }) {
   );
 }
 
+function IconLevelUp({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </svg>
+  );
+}
+
 function IconReports({ className }: { className?: string }) {
   return (
     <svg
@@ -244,6 +266,7 @@ function NavIcon({
   if (name === "customers") return <IconCustomers className={className} />;
   if (name === "reports") return <IconReports className={className} />;
   if (name === "prices") return <IconPrices className={className} />;
+  if (name === "levelup") return <IconLevelUp className={className} />;
   return <IconHome className={className} />;
 }
 

@@ -7,15 +7,19 @@ import { withTenant } from "@/lib/db";
 import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
 import { formatHuf, getCustomerOrderDetail } from "@/lib/shoprenter";
 
-type Ctx = { params: Promise<{ id: string; orderId: string }> };
+type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(_req: Request, ctx: Ctx) {
+/**
+ * Nested `/orders/[orderId]` was never registered by Next on this stack
+ * (404 HTML → client JSON parse blow-up). Query-param route stays one dynamic segment.
+ */
+export async function GET(req: Request, ctx: Ctx) {
   const auth = await requireMerchantApi();
   if (isErrorResponse(auth)) return auth;
 
-  const { id: rawId, orderId: rawOrderId } = await ctx.params;
+  const { id: rawId } = await ctx.params;
   const customerInnerId = Number(rawId);
-  const orderId = decodeURIComponent(rawOrderId || "").trim();
+  const orderId = (new URL(req.url).searchParams.get("orderId") || "").trim();
   if (!Number.isFinite(customerInnerId) || customerInnerId <= 0) {
     return NextResponse.json({ error: "Érvénytelen vevő" }, { status: 400 });
   }
@@ -89,7 +93,7 @@ export async function GET(_req: Request, ctx: Ctx) {
 
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    console.error("[GET merchant/customers/:id/orders/:orderId]", err);
+    console.error("[GET merchant/customers/:id/order-detail]", err);
     const msg =
       err instanceof Error ? err.message : "Rendelés betöltése sikertelen";
     const status =

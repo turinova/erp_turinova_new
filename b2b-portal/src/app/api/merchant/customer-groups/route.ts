@@ -12,6 +12,7 @@ import {
   type GroupMapItemDto,
 } from "@/lib/merchant/customer-group-map";
 import { listCustomerGroups } from "@/lib/shoprenter/customers";
+import { mapTierProductCountsByGroup } from "@/lib/commerce/volume-tier-mirror";
 
 export async function GET() {
   const auth = await requireMerchantApi();
@@ -56,6 +57,10 @@ export async function GET() {
         const roleByInner2 = new Map(
           refreshed.map((r) => [r.sr_group_inner_id, r.role]),
         );
+        const tierByOuter = await mapTierProductCountsByGroup(
+          client,
+          loaded.shopId,
+        );
 
         const groups: GroupMapItemDto[] = srGroups.map((g) => ({
           innerId: g.innerId,
@@ -66,18 +71,21 @@ export async function GET() {
             "bolt") as CustomerGroupRole,
           isDefault: g.isDefault,
           percentDiscount: g.percentDiscount,
+          tierProductCount: g.id ? (tierByOuter.get(g.id) ?? 0) : 0,
           missingFromShop: false,
         }));
 
         for (const row of refreshed) {
           if (!groups.some((g) => g.innerId === row.sr_group_inner_id)) {
+            const oid = row.sr_group_id;
             groups.push({
               innerId: row.sr_group_inner_id,
-              groupId: row.sr_group_id,
+              groupId: oid,
               name: row.sr_name_snapshot || `Csoport #${row.sr_group_inner_id}`,
               role: "rejtett",
               isDefault: row.is_default_in_sr,
               percentDiscount: null,
+              tierProductCount: oid ? (tierByOuter.get(oid) ?? 0) : 0,
               missingFromShop: true,
             });
           }

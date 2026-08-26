@@ -149,6 +149,20 @@ export async function POST(request: Request) {
       }),
     );
 
+    /* Fire-and-forget: szintlépés „rendelés után” mód — 1 vevő, debounce-szal */
+    const customerInnerId = Number(userId);
+    if (Number.isFinite(customerInnerId) && customerInnerId > 0) {
+      void import("@/lib/merchant/group-rules-auto")
+        .then((m) =>
+          m.maybeRunGroupRulesAfterOrder({
+            shopId: shop.shopId,
+            organizationId: shop.organizationId,
+            customerInnerId,
+          }),
+        )
+        .catch(() => undefined);
+    }
+
     return jsonWithCors(request, { ok: true, id: inserted.id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "order attribute failed";

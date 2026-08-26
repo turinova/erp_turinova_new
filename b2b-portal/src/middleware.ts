@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 const SESSION_COOKIE = "b2b_session";
 
-const PROTECTED = ["/admin", "/home", "/settings", "/widget", "/vevok", "/riport", "/csomag"];
+const PROTECTED = ["/admin", "/home", "/settings", "/widget", "/vevok", "/riport", "/csomag", "/arak", "/szintlepes"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -36,5 +36,9 @@ export const config = {
     "/riport/:path*",
     "/csomag",
     "/csomag/:path*",
+    "/arak",
+    "/arak/:path*",
+    "/szintlepes",
+    "/szintlepes/:path*",
   ],
 };

@@ -170,6 +170,32 @@ export async function countMirroredTierProducts(
   return Number(res.rows[0]?.n ?? 0);
 }
 
+/** One query: outer group id → distinct product count with volume tiers. */
+export async function mapTierProductCountsByGroup(
+  client: PoolClient,
+  shopId: string,
+): Promise<Map<string, number>> {
+  const res = await query<{
+    customer_group_outer_id: string;
+    n: string;
+  }>(
+    client,
+    `select customer_group_outer_id, count(distinct product_inner_id)::text as n
+     from partner_volume_tiers
+     where shop_id = $1
+     group by customer_group_outer_id`,
+    [shopId],
+  ).catch(() => ({ rows: [] as { customer_group_outer_id: string; n: string }[] }));
+
+  const out = new Map<string, number>();
+  for (const row of res.rows) {
+    const id = (row.customer_group_outer_id || "").trim();
+    const n = Number(row.n);
+    if (id && Number.isFinite(n) && n > 0) out.set(id, n);
+  }
+  return out;
+}
+
 export async function listMirroredVolumeTiers(
   client: PoolClient,
   shopId: string,

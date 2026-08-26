@@ -24,6 +24,8 @@ export type GroupMapItemDto = {
   role: CustomerGroupRole;
   isDefault: boolean;
   percentDiscount: number | null;
+  /** Distinct products with mirrored volume tiers (0 if none / no mirror). */
+  tierProductCount?: number;
   /** SR listában nincs — portal map árva. */
   missingFromShop?: boolean;
 };

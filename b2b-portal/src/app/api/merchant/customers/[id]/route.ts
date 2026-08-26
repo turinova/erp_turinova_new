@@ -10,8 +10,12 @@ import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map"
 import {
   listGroupMovesForCustomer,
   listWidgetOrdersForCustomer,
+  getSkipAutoGroupMove,
+  setSkipAutoGroupMove,
   upsertShopCustomer,
 } from "@/lib/merchant/shop-customers";
+import { groupAtTimeFromMoves } from "@/lib/merchant/partner-progress";
+import { ensurePartnerGroupRulesSchema } from "@/lib/merchant/ensure-group-rules-schema";
 import {
   getCustomerByInnerId,
   listAddressesForCustomer,
@@ -101,17 +105,45 @@ export async function GET(_req: Request, ctx: Ctx) {
           srStatus: "active",
         });
 
-        const [moves, widgetOrders] = await Promise.all([
-          listGroupMovesForCustomer(client, loaded.shopId, customer.innerId),
+        await ensurePartnerGroupRulesSchema();
+        const [moves, widgetOrders, skipAuto] = await Promise.all([
+          listGroupMovesForCustomer(client, loaded.shopId, customer.innerId, 40),
           listWidgetOrdersForCustomer(
             client,
             loaded.shopId,
             customer.innerId,
           ),
+          getSkipAutoGroupMove(client, loaded.shopId, customer.innerId).catch(
+            () => false,
+          ),
         ]);
 
         const stats = buildMerchantCustomerStats(orderPage.orders);
         const behavior = buildPartnerBehavior(orderPage.orders);
+
+        const movesAsc = [...moves].reverse();
+        const ordersWithGroup = orderPage.orders.map((o) => {
+          const t = Date.parse(o.dateCreated) || 0;
+          const g = groupAtTimeFromMoves(
+            movesAsc,
+            t,
+            {
+              innerId: customer.groupInnerId,
+              name: customer.groupName,
+            },
+          );
+          return {
+            id: o.id,
+            innerId: o.innerId,
+            dateLabel: o.dateLabel,
+            dateCreated: o.dateCreated,
+            totalFormatted: o.totalFormatted,
+            total: o.total,
+            status: o.status,
+            groupInnerId: g.innerId,
+            groupName: g.name,
+          };
+        });
 
         return {
           shopId: loaded.shopId,
@@ -133,6 +165,7 @@ export async function GET(_req: Request, ctx: Ctx) {
             isPartner,
             company,
             taxNumber: taxFromAddress,
+            skipAutoGroupMove: skipAuto,
           },
           addresses: addresses.map((a) => ({
             id: a.id,
@@ -152,6 +185,7 @@ export async function GET(_req: Request, ctx: Ctx) {
           stats,
           behavior,
           orders: orderPage.orders,
+          ordersWithGroup,
           orderPageCount: orderPage.pageCount,
           widgetOrders: widgetOrders.map((w) => ({
             id: w.id,
@@ -168,6 +202,14 @@ export async function GET(_req: Request, ctx: Ctx) {
             fromGroupName: m.from_group_name,
             toGroupInnerId: m.to_group_inner_id,
             toGroupName: m.to_group_name,
+            reason: m.reason ?? null,
+            source: m.source ?? "manual",
+            metric: m.metric ?? null,
+            metricValue:
+              m.metric_value != null ? Number(m.metric_value) : null,
+            threshold: m.threshold != null ? Number(m.threshold) : null,
+            period: m.period ?? null,
+            direction: m.direction ?? null,
             createdAt: m.created_at,
           })),
           groups: srGroups.map((g) => ({
@@ -201,5 +243,79 @@ export async function GET(_req: Request, ctx: Ctx) {
     const msg = err instanceof Error ? err.message : "Vevő betöltése sikertelen";
     const status = msg.includes("429") ? 429 : 500;
     return NextResponse.json({ error: msg }, { status });
+  }
+}
+
+export async function PATCH(req: Request, ctx: Ctx) {
+  const auth = await requireMerchantApi();
+  if (isErrorResponse(auth)) return auth;
+
+  const { id: rawId } = await ctx.params;
+  const customerInnerId = Number(rawId);
+  if (!Number.isFinite(customerInnerId) || customerInnerId <= 0) {
+    return NextResponse.json({ error: "Érvénytelen vevő" }, { status: 400 });
+  }
+
+  let body: { skipAutoGroupMove?: boolean };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Érvénytelen kérés" }, { status: 400 });
+  }
+  if (typeof body.skipAutoGroupMove !== "boolean") {
+    return NextResponse.json(
+      { error: "skipAutoGroupMove (true/false) kötelező" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await withTenant(
+      {
+        organizationId: auth.activeOrganizationId,
+        userId: auth.userId,
+      },
+      async (client) => {
+        const loaded = await loadMerchantShoprenterConfig(
+          client,
+          auth.activeOrganizationId!,
+        );
+        if (!loaded) throw new Error("NO_SHOP_OR_CREDS");
+
+        await upsertShopCustomer(client, {
+          shopId: loaded.shopId,
+          srCustomerInnerId: customerInnerId,
+          srStatus: "active",
+        });
+        const skip = await setSkipAutoGroupMove(
+          client,
+          loaded.shopId,
+          customerInnerId,
+          body.skipAutoGroupMove!,
+        );
+        return { skipAutoGroupMove: skip };
+      },
+    );
+
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      message: result.skipAutoGroupMove
+        ? "Az automata nem nyúl ehhez a vevőhöz."
+        : "Az automata újra kezelheti ezt a vevőt.",
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg === "NO_SHOP_OR_CREDS") {
+      return NextResponse.json(
+        { error: "Nincs bolt vagy API kulcs" },
+        { status: 404 },
+      );
+    }
+    console.error("[PATCH merchant/customers/:id]", err);
+    return NextResponse.json(
+      { error: msg || "Mentés sikertelen" },
+      { status: 500 },
+    );
   }
 }

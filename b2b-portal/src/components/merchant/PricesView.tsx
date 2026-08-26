@@ -17,6 +17,8 @@ type GroupDto = {
   role: string;
   isDefault: boolean;
   percentDiscount: number | null;
+  /** Mirrored volume-tier products for this group. */
+  tierProductCount?: number;
   missingFromShop?: boolean;
 };
 
@@ -231,26 +233,32 @@ function GroupPick({
   group,
   active,
   onSelect,
+  onOpenTiers,
   onRemove,
   removing,
 }: {
   group: GroupDto;
   active: boolean;
   onSelect: () => void;
+  onOpenTiers?: () => void;
   onRemove?: () => void;
   removing?: boolean;
 }) {
   const pct = group.percentDiscount;
+  const tierN = group.tierProductCount ?? 0;
   const missing = Boolean(group.missingFromShop);
   const canRemove =
     Boolean(onRemove) && !group.isDefault && (missing || Boolean(group.groupId));
+  const hasPct = !missing && pct != null && pct > 0;
+  const hasTiers = !missing && tierN > 0;
+  const canSelect = Boolean(group.groupId) || missing;
 
   return (
     <div
       className={
         active
-          ? "relative min-w-[140px] shrink-0 border-2 border-text bg-surface-2 md:min-w-0 md:w-full"
-          : "min-w-[140px] shrink-0 border border-line-strong bg-surface md:min-w-0 md:w-full"
+          ? "relative min-w-[160px] shrink-0 border-2 border-text bg-surface-2 md:min-w-0 md:w-full"
+          : "min-w-[160px] shrink-0 border border-line-strong bg-surface md:min-w-0 md:w-full"
       }
     >
       {active ? (
@@ -258,44 +266,64 @@ function GroupPick({
       ) : null}
       <button
         type="button"
-        disabled={!group.groupId && !missing}
+        disabled={!canSelect}
         onClick={onSelect}
         className={
           active
-            ? "w-full cursor-pointer p-2.5 pr-8 text-left"
-            : "w-full cursor-pointer p-2.5 pr-8 text-left hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+            ? "w-full cursor-pointer px-2.5 pb-1 pt-2.5 pr-8 text-left"
+            : "w-full cursor-pointer px-2.5 pb-1 pt-2.5 pr-8 text-left hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
         }
       >
-        <div className="flex items-start justify-between gap-1">
-          <span
-            className={
-              active
-                ? "text-[12px] font-semibold leading-tight text-text"
-                : "text-[12px] font-medium leading-tight text-faint"
-            }
-          >
-            {group.name}
-          </span>
-          {!missing && pct != null && pct > 0 ? (
+        <span
+          className={
+            active
+              ? "block text-[12px] font-semibold leading-tight text-text"
+              : "block text-[12px] font-medium leading-tight text-faint"
+          }
+        >
+          {group.name}
+        </span>
+      </button>
+      {!missing ? (
+        <div className="flex flex-wrap items-center gap-1 px-2.5 pb-2 pr-8">
+          {hasPct ? (
             <span className="shrink-0 bg-accent px-1 py-px text-[9px] font-bold text-white">
               −{pct}%
             </span>
-          ) : !missing ? (
+          ) : (
             <span className="shrink-0 text-[9px] font-semibold text-faint">
               0%
             </span>
+          )}
+          {hasTiers ? (
+            onOpenTiers ? (
+              <button
+                type="button"
+                onClick={onOpenTiers}
+                title="Mennyiségi sávok"
+                className="shrink-0 cursor-pointer bg-ok/15 px-1 py-px text-[9px] font-bold text-ok hover:underline"
+              >
+                {tierN} sávos
+              </button>
+            ) : (
+              <span className="shrink-0 bg-ok/15 px-1 py-px text-[9px] font-bold text-ok">
+                {tierN} sávos
+              </span>
+            )
           ) : null}
         </div>
-        {missing ? (
-          <span className="mt-0.5 inline-block bg-[rgba(163,45,45,.1)] px-1 py-px text-[9px] font-bold uppercase tracking-wide text-danger">
+      ) : (
+        <div className="px-2.5 pb-2 pr-8">
+          <span className="inline-block bg-[rgba(163,45,45,.1)] px-1 py-px text-[9px] font-bold uppercase tracking-wide text-danger">
             Hiányzik a boltból
           </span>
-        ) : group.isDefault ? (
-          <span className="mt-0.5 block text-[9px] font-semibold uppercase tracking-wide text-faint">
-            Alap
-          </span>
-        ) : null}
-      </button>
+        </div>
+      )}
+      {!missing && group.isDefault ? (
+        <span className="block px-2.5 pb-2 text-[9px] font-semibold uppercase tracking-wide text-faint">
+          Alap
+        </span>
+      ) : null}
       {canRemove ? (
         <button
           type="button"
@@ -495,6 +523,13 @@ export function PricesView() {
         setPageCount(data.pageCount || 1);
         setOwnPriceCount(data.ownPriceCount ?? 0);
         setTierProductCount(data.tierProductCount ?? 0);
+        setGroups((gs) =>
+          gs.map((g) =>
+            g.groupId === opts.groupId
+              ? { ...g, tierProductCount: data.tierProductCount ?? 0 }
+              : g,
+          ),
+        );
         setCatalogCount(data.catalogCount ?? 0);
         setCatalogEmpty(Boolean(data.catalogEmpty));
         setFilteredTotal(Number(data.total) || 0);
@@ -1135,7 +1170,7 @@ export function PricesView() {
       )}
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="flex shrink-0 flex-col border-b border-line-strong md:w-[180px] md:border-b-0 md:border-r">
+        <aside className="flex shrink-0 flex-col border-b border-line-strong md:w-[220px] md:border-b-0 md:border-r">
           <div className="hidden items-center justify-between px-3 pt-3 md:flex">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
               Kinek?
@@ -1150,6 +1185,16 @@ export function PricesView() {
                 onSelect={() => {
                   if (g.groupId) selectGroup(g.groupId);
                 }}
+                onOpenTiers={
+                  g.groupId && (g.tierProductCount ?? 0) > 0
+                    ? () => {
+                        if (g.groupId) selectGroup(g.groupId);
+                        setWorkTab("tiers");
+                        setListFilter("tiers");
+                        setPage(0);
+                      }
+                    : undefined
+                }
                 removing={
                   removingGroupKey === (g.groupId || `inner:${g.innerId}`)
                 }
@@ -2064,10 +2109,18 @@ export function PricesView() {
                                       const had =
                                         (row.tierCount ?? 0) > 0;
                                       const has = tierCount > 0;
-                                      if (!had && has) return prev + 1;
-                                      if (had && !has)
-                                        return Math.max(0, prev - 1);
-                                      return prev;
+                                      let next = prev;
+                                      if (!had && has) next = prev + 1;
+                                      else if (had && !has)
+                                        next = Math.max(0, prev - 1);
+                                      setGroups((gs) =>
+                                        gs.map((g) =>
+                                          g.groupId === groupId
+                                            ? { ...g, tierProductCount: next }
+                                            : g,
+                                        ),
+                                      );
+                                      return next;
                                     });
                                   }}
                                 />

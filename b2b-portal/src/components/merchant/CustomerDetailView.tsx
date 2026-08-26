@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { gateFromBilling, UpgradeBanner } from "@/components/merchant/PartnerUsageBar";
+import {
+  gateFromBilling,
+  UpgradeBanner,
+} from "@/components/merchant/PartnerUsageBar";
+import { PaperSelect } from "@/components/ui/PaperSelect";
 import { isPartnerLocked, type PartnerGateDto } from "@/lib/billing/types";
 import { relativeTime } from "@/lib/format";
+import { groupChipTone } from "@/lib/merchant/group-chip";
 
-type TabId = "finance" | "products" | "orders" | "profile";
+type TabId = "orders" | "products" | "finance" | "profile";
 type FinanceMonths = 3 | 6 | 12 | 24;
 
 type BehaviorDto = {
@@ -89,10 +94,13 @@ type CustomerDto = {
   telephone: string | null;
   approved: boolean;
   dateCreated: string | null;
+  groupInnerId: number | null;
   groupName: string | null;
+  isDefaultGroup?: boolean;
   isPartner: boolean;
   company: string | null;
   taxNumber: string | null;
+  skipAutoGroupMove?: boolean;
 };
 
 type MoveDto = {
@@ -100,6 +108,11 @@ type MoveDto = {
   fromGroupName: string | null;
   toGroupName: string | null;
   createdAt: string;
+  reason?: string | null;
+  source?: string | null;
+  metricValue?: number | null;
+  threshold?: number | null;
+  direction?: string | null;
 };
 
 type WidgetOrderDto = {
@@ -178,21 +191,37 @@ type ProductsReport = {
   legend: string;
 };
 
+type OrderWithGroupDto = {
+  id: string;
+  innerId: string;
+  dateLabel: string;
+  totalFormatted: string;
+  status: string;
+  groupName: string | null;
+};
+
 type DetailPayload = {
   customer: CustomerDto;
   addresses: AddressDto[];
   stats: StatsDto;
   behavior: BehaviorDto;
   orders: OrderDto[];
+  ordersWithGroup?: OrderWithGroupDto[];
   widgetOrders: WidgetOrderDto[];
   moves: MoveDto[];
 };
 
+type GroupDto = {
+  innerId: number;
+  name: string;
+  isDefault: boolean;
+};
+
 const TABS: { id: TabId; label: string }[] = [
-  { id: "finance", label: "Pénz" },
-  { id: "products", label: "Termékek" },
   { id: "orders", label: "Rendelések" },
-  { id: "profile", label: "Profil" },
+  { id: "products", label: "Mit vesz" },
+  { id: "finance", label: "Forgalom" },
+  { id: "profile", label: "Adatok" },
 ];
 
 const RANGE_OPTS: { months: FinanceMonths; label: string }[] = [
@@ -202,12 +231,7 @@ const RANGE_OPTS: { months: FinanceMonths; label: string }[] = [
   { months: 24, label: "24 hó" },
 ];
 
-function toneClass(tone: BehaviorDto["tone"]) {
-  if (tone === "ok") return "bg-ok/15 text-ok";
-  if (tone === "warn") return "bg-warn/15 text-warn";
-  if (tone === "danger") return "bg-danger/15 text-danger";
-  return "bg-surface-2 text-text";
-}
+const PRODUCTS_PREVIEW = 15;
 
 function deltaText(pct: number | null) {
   if (pct == null) return "—";
@@ -311,11 +335,7 @@ function NameWithHoverImage({
   );
 }
 
-function ChipTrack({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function ChipTrack({ children }: { children: React.ReactNode }) {
   return (
     <div className="inline-flex gap-0.5 overflow-x-auto rounded-none bg-surface-2 p-0.5">
       {children}
@@ -356,9 +376,11 @@ export function CustomerDetailView({
   const [gate, setGate] = useState<PartnerGateDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabId>("finance");
+  const [tab, setTab] = useState<TabId>("orders");
   const [financeMonths, setFinanceMonths] = useState<FinanceMonths>(12);
   const [showFinanceExtra, setShowFinanceExtra] = useState(false);
+  const [showProductsAdvanced, setShowProductsAdvanced] = useState(false);
+  const [showAllProducts, setShowAllProducts] = useState(false);
 
   const [finance, setFinance] = useState<FinanceReport | null>(null);
   const [financeLoading, setFinanceLoading] = useState(false);
@@ -376,6 +398,14 @@ export function CustomerDetailView({
     null,
   );
   const [orderDetailError, setOrderDetailError] = useState<string | null>(null);
+
+  const [groups, setGroups] = useState<GroupDto[]>([]);
+  const [moveToId, setMoveToId] = useState<number | "">("");
+  const [moving, setMoving] = useState(false);
+  const [moveMsg, setMoveMsg] = useState<string | null>(null);
+  const [moveErr, setMoveErr] = useState<string | null>(null);
+  const [skipAuto, setSkipAuto] = useState(false);
+  const [skipSaving, setSkipSaving] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -404,6 +434,27 @@ export function CustomerDetailView({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/merchant/customer-groups");
+        const json = await res.json();
+        if (!res.ok) return;
+        const gs = (json.groups || []) as GroupDto[];
+        setGroups(gs);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!data) return;
+    const gid = data.customer.groupInnerId;
+    setMoveToId(gid != null ? gid : "");
+    setSkipAuto(Boolean(data.customer.skipAutoGroupMove));
+  }, [data]);
+
   const loadFinance = useCallback(
     async (months: FinanceMonths) => {
       setFinanceLoading(true);
@@ -413,7 +464,7 @@ export function CustomerDetailView({
           `/api/merchant/customers/${customerInnerId}/finance?months=${months}`,
         );
         const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Pénz riport sikertelen");
+        if (!res.ok) throw new Error(json.error || "Forgalom betöltése sikertelen");
         setFinance(json.finance as FinanceReport);
       } catch (e) {
         setFinanceError(e instanceof Error ? e.message : "Hiba");
@@ -446,11 +497,23 @@ export function CustomerDetailView({
       setOrderDetailLoading(orderId);
       setOrderDetailError(null);
       try {
+        const qs = new URLSearchParams({ orderId });
         const res = await fetch(
-          `/api/merchant/customers/${customerInnerId}/orders/${encodeURIComponent(orderId)}`,
+          `/api/merchant/customers/${customerInnerId}/order-detail?${qs}`,
         );
-        const json = await res.json();
+        const raw = await res.text();
+        let json: { error?: string; order?: OrderDetailDto } = {};
+        try {
+          json = raw ? (JSON.parse(raw) as typeof json) : {};
+        } catch {
+          throw new Error(
+            res.ok
+              ? "Érvénytelen válasz a szervertől."
+              : `Rendelés betöltése sikertelen (${res.status}).`,
+          );
+        }
         if (!res.ok) throw new Error(json.error || "Rendelés sikertelen");
+        if (!json.order) throw new Error("Hiányzó rendelés adat");
         setOrderDetails((prev) => ({
           ...prev,
           [orderId]: json.order as OrderDetailDto,
@@ -472,6 +535,56 @@ export function CustomerDetailView({
     setOpenOrderId(orderId);
     if (!orderDetails[orderId]) {
       void loadOrderDetail(orderId);
+    }
+  }
+
+  async function runMove() {
+    if (moveToId === "") {
+      setMoveErr("Válaszd ki a csoportot.");
+      return;
+    }
+    setMoving(true);
+    setMoveErr(null);
+    setMoveMsg(null);
+    try {
+      const res = await fetch(
+        `/api/merchant/customers/${customerInnerId}/move`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toGroupInnerId: moveToId }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Átrakás sikertelen");
+      setMoveMsg(json.message || "Csoport frissítve.");
+      await load();
+    } catch (e) {
+      setMoveErr(e instanceof Error ? e.message : "Átrakás sikertelen");
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  async function toggleSkipAuto() {
+    const next = !skipAuto;
+    setSkipSaving(true);
+    setMoveErr(null);
+    setMoveMsg(null);
+    try {
+      const res = await fetch(`/api/merchant/customers/${customerInnerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skipAutoGroupMove: next }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Mentés sikertelen");
+      setSkipAuto(Boolean(json.skipAutoGroupMove));
+      setMoveMsg(json.message || "Mentve.");
+    } catch (e) {
+      setMoveErr(e instanceof Error ? e.message : "Mentés sikertelen");
+    } finally {
+      setSkipSaving(false);
     }
   }
 
@@ -526,6 +639,10 @@ export function CustomerDetailView({
   if (!data) return null;
   const { customer, addresses, stats, behavior, orders, widgetOrders, moves } =
     data;
+  const ordersWithGroup = data.ordersWithGroup || [];
+  const groupByOrderId = new Map(
+    ordersWithGroup.map((o) => [o.id, o.groupName] as const),
+  );
   const locked = isPartnerLocked(customer.isPartner, customer.innerId, gate);
   if (locked && gate) {
     return (
@@ -547,8 +664,21 @@ export function CustomerDetailView({
       </div>
     );
   }
-  const b = finance?.behavior ?? behavior;
+
+  const daysSince =
+    behavior.daysSinceLastOrder ?? stats.daysSinceLastOrder;
   const productRows = products?.products ?? [];
+  const visibleProducts = showAllProducts
+    ? productRows
+    : productRows.slice(0, PRODUCTS_PREVIEW);
+  const groupTone = groupChipTone({
+    groupInnerId: customer.groupInnerId,
+    groupName: customer.groupName,
+    isDefaultGroup: customer.isDefaultGroup,
+    isPartner: customer.isPartner,
+  });
+  const moveDirty =
+    moveToId !== "" && moveToId !== (customer.groupInnerId ?? "");
 
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-bg">
@@ -556,9 +686,9 @@ export function CustomerDetailView({
         <Link href="/vevok" className="text-[12px] font-semibold underline">
           ← Vevők
         </Link>
-        <div className="mt-1 flex flex-wrap items-start justify-between gap-2">
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate text-[17px] font-semibold tracking-tight text-text">
+            <h2 className="truncate text-[18px] font-semibold tracking-tight text-text">
               {customer.company || customer.name}
             </h2>
             {customer.company && customer.company !== customer.name ? (
@@ -573,52 +703,101 @@ export function CustomerDetailView({
                   {customer.telephone}
                 </a>
               ) : null}
-            </div>
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              <span className={`inline-flex rounded-none px-2 py-0.5 text-[11px] font-semibold ${toneClass(b.tone)}`}>
-                {b.label}
-              </span>
-              <span className="inline-flex rounded-none bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-text">
-                {customer.groupName || "Nincs csoport"}
-              </span>
-              <span
-                className={
-                  customer.isPartner
-                    ? "inline-flex rounded-none bg-ok/15 px-2 py-0.5 text-[11px] font-semibold text-ok"
-                    : "inline-flex rounded-none bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-text"
-                }
-              >
-                {customer.isPartner ? "Partner" : "Új / alap"}
-              </span>
-              <span className="inline-flex rounded-none bg-surface-2 px-2 py-0.5 text-[11px] text-faint">
+              <span className="text-[11px] text-faint" title="Shoprenter ID">
                 #{customer.innerId}
               </span>
             </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <span className={groupTone.className} style={groupTone.style}>
+                {customer.groupName || "Nincs csoport"}
+              </span>
+              {customer.isPartner ? (
+                <span className="text-[11px] font-medium text-faint">
+                  Partner
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium text-faint">
+                  Új / alap
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex w-full max-w-md flex-col gap-1 sm:w-auto">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <PaperSelect
+                value={moveToId === "" ? "" : String(moveToId)}
+                onChange={(v) => {
+                  setMoveToId(v === "" ? "" : Number(v));
+                  setMoveErr(null);
+                  setMoveMsg(null);
+                }}
+                options={groups.map((g) => ({
+                  value: String(g.innerId),
+                  label: g.isDefault ? `${g.name} (alap)` : g.name,
+                }))}
+                emptyLabel="Csoport…"
+                ariaLabel="Csoport váltása"
+                size="sm"
+                denseFrom={10}
+                maxWidth={200}
+                className="min-w-[140px] flex-1 sm:max-w-[200px]"
+              />
+              <button
+                type="button"
+                disabled={moving || !moveDirty}
+                onClick={() => void runMove()}
+                className="inline-flex h-8 cursor-pointer items-center rounded-none bg-accent px-3 text-[12px] font-semibold text-white disabled:opacity-40"
+              >
+                {moving ? "…" : "Átrakás"}
+              </button>
+            </div>
+            {moveErr ? (
+              <p className="text-[11px] font-medium text-danger">{moveErr}</p>
+            ) : null}
+            {moveMsg ? (
+              <p className="text-[11px] font-medium text-ok">{moveMsg}</p>
+            ) : null}
+            <label className="mt-1 flex cursor-pointer items-start gap-2 text-[11px] text-faint">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={skipAuto}
+                disabled={skipSaving}
+                onChange={() => void toggleSkipAuto()}
+              />
+              <span>
+                <span className="font-semibold text-text">
+                  Ne nyúljon hozzá az automata
+                </span>
+                <span className="mt-0.5 block">
+                  A szintlépés szabályok nem rakják át ezt a vevőt.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
-        {b.decisionLine ? (
-          <p className="mt-2 text-[12px] leading-snug text-faint">
-            {b.decisionLine}
-          </p>
-        ) : null}
       </div>
 
       <div className="mx-auto max-w-6xl px-4 py-3 md:px-6">
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
           {[
-            { label: "Összesen", value: stats.totalSpentFormatted },
-            { label: "30 nap", value: stats.totalSpent30dFormatted },
             {
-              label: "Utolsó óta",
-              value:
-                b.daysSinceLastOrder != null
-                  ? `${b.daysSinceLastOrder} nap`
-                  : "—",
+              label: "Eddig ennyit fizetett",
+              value: stats.totalSpentFormatted,
             },
             {
-              label: "3 hó trend",
-              value: deltaText(b.trend3mPercent),
-              cls: deltaClass(b.trend3mPercent),
+              label: "Az elmúlt 30 napban",
+              value: stats.totalSpent30dFormatted,
+            },
+            {
+              label: "Utolsó rendelés",
+              value:
+                daysSince != null ? `${daysSince} napja` : "—",
+            },
+            {
+              label: "Rendelések",
+              value: `${stats.orderCount} db`,
             },
           ].map((k) => (
             <div
@@ -628,9 +807,7 @@ export function CustomerDetailView({
               <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
                 {k.label}
               </p>
-              <p
-                className={`mt-0.5 text-[14px] font-semibold tabular-nums ${k.cls ?? "text-text"}`}
-              >
+              <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-text">
                 {k.value}
               </p>
             </div>
@@ -652,342 +829,22 @@ export function CustomerDetailView({
         </div>
 
         <div className="mt-3 pb-10">
-          {tab === "finance" ? (
-            <div className="space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <ChipTrack>
-                  {RANGE_OPTS.map((r) => (
-                    <Chip
-                      key={r.months}
-                      active={financeMonths === r.months}
-                      onClick={() => setFinanceMonths(r.months)}
-                    >
-                      {r.label}
-                    </Chip>
-                  ))}
-                </ChipTrack>
-                <button
-                  type="button"
-                  disabled={financeLoading}
-                  onClick={() => void loadFinance(financeMonths)}
-                  className="text-[12px] font-semibold underline disabled:opacity-40"
-                >
-                  {financeLoading ? "…" : "Frissít"}
-                </button>
-              </div>
-
-              {financeError ? (
-                <p className="text-[12px] text-danger">{financeError}</p>
-              ) : null}
-              {financeLoading && !finance ? (
-                <p className="text-[12px] text-faint">Pénz riport…</p>
-              ) : null}
-
-              {finance ? (
-                <>
-                  <Surface>
-                    <p className="text-[12px] font-medium leading-snug text-text">
-                      {finance.narrative}
-                    </p>
-                    <p className="mt-1 text-[11px] text-faint">
-                      {finance.rangeLabel} · minta {finance.sampleOrderCount}{" "}
-                      rendelés
-                    </p>
-                  </Surface>
-
-                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                    {[
-                      {
-                        label: "Költés",
-                        value: finance.totals.spentFormatted,
-                      },
-                      {
-                        label: "Áru (becslés)",
-                        value: finance.totals.goodsEstimateFormatted,
-                      },
-                      {
-                        label: "Szállítás",
-                        value: `${finance.totals.shippingFormatted}${
-                          finance.totals.shippingPercent != null
-                            ? ` · ${finance.totals.shippingPercent}%`
-                            : ""
-                        }`,
-                      },
-                      {
-                        label: "Kedvezmény",
-                        value: `${finance.totals.discountFormatted}${
-                          finance.totals.discountPercent != null
-                            ? ` · ${finance.totals.discountPercent}%`
-                            : ""
-                        }`,
-                      },
-                    ].map((k) => (
-                      <div
-                        key={k.label}
-                        className="rounded-none border-[1.5px] border-line-strong bg-surface px-2.5 py-2"
-                      >
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
-                          {k.label}
-                        </p>
-                        <p className="mt-0.5 text-[13px] font-semibold tabular-nums text-text">
-                          {k.value}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <Surface>
-                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-                      <h3 className="text-[13px] font-semibold text-text">
-                        Havi bontás
-                      </h3>
-                      <p className="text-[11px] text-faint">
-                        Δ = változás az előző hónaphoz
-                      </p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full min-w-[560px] border-collapse text-left text-[12px]">
-                        <thead>
-                          <tr className="border-b border-line-strong text-[10px] font-semibold uppercase tracking-wide text-faint">
-                            <th className="py-1.5 pr-2">Hónap</th>
-                            <th className="py-1.5 pr-2 text-right">Db</th>
-                            <th className="py-1.5 pr-2 text-right">Költés</th>
-                            <th className="py-1.5 pr-2 text-right">Δ</th>
-                            <th className="py-1.5 pr-2 text-right">Száll.</th>
-                            <th className="py-1.5 pr-2 text-right">Kedv.</th>
-                            <th className="py-1.5">Megj.</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {finance.byMonth.map((m) => (
-                            <tr
-                              key={m.key}
-                              className="border-b border-line"
-                            >
-                              <td className="py-1.5 pr-2 font-medium text-text">
-                                {m.label}
-                              </td>
-                              <td className="py-1.5 pr-2 text-right tabular-nums text-faint">
-                                {m.orderCount}
-                              </td>
-                              <td className="py-1.5 pr-2 text-right font-semibold tabular-nums text-text">
-                                {m.spentFormatted}
-                              </td>
-                              <td
-                                className={`py-1.5 pr-2 text-right tabular-nums ${deltaClass(m.deltaPercent)}`}
-                              >
-                                {deltaText(m.deltaPercent)}
-                              </td>
-                              <td className="py-1.5 pr-2 text-right tabular-nums text-faint">
-                                {m.shippingFormatted}
-                              </td>
-                              <td className="py-1.5 pr-2 text-right tabular-nums text-faint">
-                                {m.discountFormatted}
-                              </td>
-                              <td className="py-1.5 text-faint">
-                                {m.note || "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Surface>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Surface>
-                      <p className="text-[11px] font-semibold uppercase text-faint">
-                        Ez a hónap
-                      </p>
-                      <p className="mt-1 text-[13px] font-semibold text-text">
-                        {finance.thisMonth?.spentFormatted} ·{" "}
-                        {finance.thisMonth?.orderCount} rendelés
-                      </p>
-                      <p className="text-[12px] text-faint">
-                        Előző: {finance.prevMonth?.spentFormatted} · Δ{" "}
-                        <span className={deltaClass(finance.monthDeltaPercent)}>
-                          {deltaText(finance.monthDeltaPercent)}
-                        </span>
-                      </p>
-                    </Surface>
-                    <Surface>
-                      <p className="text-[11px] font-semibold uppercase text-faint">
-                        Éves
-                      </p>
-                      {finance.thisYear ? (
-                        <p className="mt-1 text-[13px] font-semibold text-text">
-                          {finance.thisYear.year}:{" "}
-                          {finance.thisYear.spentFormatted}
-                        </p>
-                      ) : null}
-                      {finance.prevYear ? (
-                        <p className="text-[12px] text-faint">
-                          {finance.prevYear.year}:{" "}
-                          {finance.prevYear.spentFormatted}
-                        </p>
-                      ) : null}
-                    </Surface>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowFinanceExtra((v) => !v)}
-                    className="text-[12px] font-semibold underline"
-                  >
-                    {showFinanceExtra
-                      ? "Részletek elrejtése"
-                      : "ÁFA / fiz. díj / ingy. szállítás"}
-                  </button>
-                  {showFinanceExtra ? (
-                    <Surface>
-                      <dl className="grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-3">
-                        <div>
-                          <dt className="text-faint">ÁFA Σ</dt>
-                          <dd className="font-semibold">
-                            {finance.totals.taxFormatted}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-faint">Fiz. díj Σ</dt>
-                          <dd className="font-semibold">
-                            {finance.totals.paymentFeesFormatted}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-faint">Ingy. szállítás</dt>
-                          <dd className="font-semibold">
-                            {finance.totals.freeShippingRate != null
-                              ? `${finance.totals.freeShippingRate}%`
-                              : "—"}
-                          </dd>
-                        </div>
-                      </dl>
-                    </Surface>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-          ) : null}
-
-          {tab === "products" ? (
-            <div className="space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[11px] text-faint">
-                  {products?.legend ||
-                    "Bolti rendelésekből. Tipikus db = medián mennyiség. Képre a név fölé húzva."}
-                </p>
-                <button
-                  type="button"
-                  disabled={productsLoading}
-                  onClick={() => void loadProducts()}
-                  className="text-[12px] font-semibold underline disabled:opacity-40"
-                >
-                  {productsLoading ? "…" : "Frissít"}
-                </button>
-              </div>
-              {productsError ? (
-                <p className="text-[12px] text-danger">{productsError}</p>
-              ) : null}
-              {productsLoading && !products ? (
-                <p className="text-[12px] text-faint">
-                  Termékek elemzése (pár mp)…
-                </p>
-              ) : null}
-
-              {products ? (
-                <Surface className="!p-0 overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[760px] border-collapse text-left text-[12px]">
-                      <thead>
-                        <tr className="border-b border-line-strong bg-surface-2 text-[10px] font-semibold uppercase tracking-wide text-faint">
-                          <th className="px-3 py-2">Termék</th>
-                          <th className="px-2 py-2">SKU</th>
-                          <th className="px-2 py-2">Gyártói cikkszám</th>
-                          <th className="px-2 py-2 text-right">Nettó</th>
-                          <th className="px-2 py-2 text-right">Bruttó</th>
-                          <th className="px-2 py-2 text-right">Össz db</th>
-                          <th className="px-2 py-2 text-right">Rend.</th>
-                          <th className="px-2 py-2">Utoljára</th>
-                          <th className="px-3 py-2 text-right">Tipikus db</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {productRows.length === 0 ? (
-                          <tr>
-                            <td
-                              colSpan={9}
-                              className="px-3 py-6 text-center text-faint"
-                            >
-                              Nincs tétel a mintában.
-                            </td>
-                          </tr>
-                        ) : (
-                          productRows.map((p) => (
-                            <tr
-                              key={p.sku}
-                              className="border-b border-line align-middle"
-                            >
-                              <td className="px-3 py-2.5">
-                                <NameWithHoverImage
-                                  name={p.name || p.sku}
-                                  href={p.productUrl}
-                                  imageUrl={p.imageUrl}
-                                />
-                              </td>
-                              <td className="px-2 py-2.5 font-mono text-[12px] font-semibold text-text">
-                                {p.sku || "—"}
-                              </td>
-                              <td className="px-2 py-2.5 font-mono text-[12px] text-text">
-                                {p.modelNumber || "—"}
-                              </td>
-                              <td className="px-2 py-2.5 text-right tabular-nums">
-                                {p.lastPriceNetFormatted || "—"}
-                              </td>
-                              <td className="px-2 py-2.5 text-right tabular-nums">
-                                {p.lastPriceGrossFormatted || "—"}
-                              </td>
-                              <td className="px-2 py-2.5 text-right tabular-nums font-semibold">
-                                {p.totalQty}
-                              </td>
-                              <td className="px-2 py-2.5 text-right tabular-nums text-faint">
-                                {p.orderCount}
-                              </td>
-                              <td className="px-2 py-2.5 text-faint">
-                                {p.lastOrderedLabel}
-                                <span className="block text-[10px]">
-                                  {p.daysSince} napja
-                                </span>
-                              </td>
-                              <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
-                                {p.suggestedQty != null
-                                  ? `${p.suggestedQty} db`
-                                  : "—"}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </Surface>
-              ) : null}
-            </div>
-          ) : null}
-
           {tab === "orders" ? (
             <div className="space-y-2">
               {orderDetailError ? (
                 <p className="text-[12px] text-danger">{orderDetailError}</p>
               ) : null}
+              <p className="text-[12px] text-faint">
+                Kattints egy sorra a tételekhez.
+              </p>
               <div className="overflow-x-auto border-[1.5px] border-line-strong bg-surface">
-                <table className="w-full min-w-[520px] border-collapse text-[12px]">
+                <table className="w-full min-w-[480px] border-collapse text-[12px]">
                   <thead>
                     <tr className="border-b border-line-strong bg-surface-2 text-[10px] font-semibold uppercase text-faint">
                       <th className="w-8 px-2 py-2" />
-                      <th className="px-2 py-2 text-left">Dátum</th>
-                      <th className="px-2 py-2 text-left">#</th>
+                      <th className="px-2 py-2 text-left">Mikor</th>
                       <th className="px-2 py-2 text-left">Státusz</th>
-                      <th className="px-2 py-2 text-right">Szállítás</th>
+                      <th className="px-2 py-2 text-left">Akkori csoport</th>
                       <th className="px-3 py-2 text-right">Összeg</th>
                     </tr>
                   </thead>
@@ -995,72 +852,61 @@ export function CustomerDetailView({
                     {orders.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={5}
                           className="px-3 py-8 text-center text-faint"
                         >
-                          Nincs rendelés.
+                          Még nincs rendelése.
                         </td>
                       </tr>
                     ) : (
                       orders.map((o) => {
                         const open = openOrderId === o.id;
                         const detail = orderDetails[o.id];
-                        const loading = orderDetailLoading === o.id;
+                        const loadingRow = orderDetailLoading === o.id;
                         return (
                           <Fragment key={o.id}>
                             <tr
                               className="cursor-pointer border-b border-line hover:bg-surface-2/60"
                               onClick={() => toggleOrder(o.id)}
                             >
-                              <td className="px-2 py-2 text-center text-faint">
+                              <td className="px-2 py-2.5 text-center text-faint">
                                 {open ? "▾" : "▸"}
                               </td>
-                              <td className="px-2 py-2 font-medium">
+                              <td className="px-2 py-2.5 font-medium">
                                 {o.dateLabel}
+                                <span className="mt-0.5 block text-[10px] font-normal text-faint">
+                                  #{o.innerId}
+                                </span>
                               </td>
-                              <td className="px-2 py-2 text-faint">
-                                {o.innerId}
+                              <td className="px-2 py-2.5">
+                                <span className="text-[12px]">{o.status}</span>
                               </td>
-                              <td className="px-2 py-2">
-                                <span className="text-[11px]">{o.status}</span>
+                              <td className="px-2 py-2.5 text-[11px] text-faint">
+                                {groupByOrderId.get(o.id) || "—"}
                               </td>
-                              <td className="px-2 py-2 text-right tabular-nums text-faint">
-                                {o.shippingGross != null
-                                  ? `${o.shippingGross.toLocaleString("hu-HU")} Ft`
-                                  : "—"}
-                              </td>
-                              <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                              <td className="px-3 py-2.5 text-right text-[13px] font-semibold tabular-nums">
                                 {o.totalFormatted}
                               </td>
                             </tr>
                             {open ? (
                               <tr className="border-b border-line">
-                                <td colSpan={6} className="bg-surface-2/50 px-2 py-0">
-                                  {loading && !detail ? (
+                                <td
+                                  colSpan={5}
+                                  className="bg-surface-2/50 px-2 py-0"
+                                >
+                                  {loadingRow && !detail ? (
                                     <p className="px-2 py-3 text-[12px] text-faint">
                                       Tételek…
                                     </p>
                                   ) : detail ? (
-                                    <table className="w-full min-w-[640px] border-collapse text-[12px]">
+                                    <table className="w-full min-w-[520px] border-collapse text-[12px]">
                                       <thead>
                                         <tr className="text-[10px] font-semibold uppercase text-faint">
                                           <th className="px-2 py-2 text-left">
                                             Termék
                                           </th>
-                                          <th className="px-2 py-2 text-left">
-                                            SKU
-                                          </th>
-                                          <th className="px-2 py-2 text-left">
-                                            Gyártói cikkszám
-                                          </th>
                                           <th className="px-2 py-2 text-right">
                                             Db
-                                          </th>
-                                          <th className="px-2 py-2 text-right">
-                                            Nettó
-                                          </th>
-                                          <th className="px-2 py-2 text-right">
-                                            Bruttó
                                           </th>
                                           <th className="px-2 py-2 text-right">
                                             Sor
@@ -1071,7 +917,7 @@ export function CustomerDetailView({
                                         {detail.lines.length === 0 ? (
                                           <tr>
                                             <td
-                                              colSpan={7}
+                                              colSpan={3}
                                               className="px-2 py-3 text-faint"
                                             >
                                               Nincs tétel.
@@ -1083,39 +929,37 @@ export function CustomerDetailView({
                                               key={`${l.sku}-${i}`}
                                               className="border-t border-line"
                                             >
-                                              <td className="px-2 py-1.5 font-medium">
-                                                {l.productUrl ? (
-                                                  <a
-                                                    href={l.productUrl}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="underline"
-                                                    onClick={(e) =>
-                                                      e.stopPropagation()
-                                                    }
-                                                  >
-                                                    {l.name || l.sku || "—"}
-                                                  </a>
-                                                ) : (
-                                                  l.name || l.sku || "—"
-                                                )}
+                                              <td className="px-2 py-1.5">
+                                                <span className="font-medium">
+                                                  {l.productUrl ? (
+                                                    <a
+                                                      href={l.productUrl}
+                                                      target="_blank"
+                                                      rel="noreferrer"
+                                                      className="underline"
+                                                      onClick={(e) =>
+                                                        e.stopPropagation()
+                                                      }
+                                                    >
+                                                      {l.name || l.sku || "—"}
+                                                    </a>
+                                                  ) : (
+                                                    l.name || l.sku || "—"
+                                                  )}
+                                                </span>
+                                                {l.sku ? (
+                                                  <span className="mt-0.5 block font-mono text-[10px] text-faint">
+                                                    {l.sku}
+                                                    {l.modelNumber
+                                                      ? ` · ${l.modelNumber}`
+                                                      : ""}
+                                                  </span>
+                                                ) : null}
                                               </td>
-                                              <td className="px-2 py-1.5 font-mono text-[11px] font-semibold">
-                                                {l.sku || "—"}
-                                              </td>
-                                              <td className="px-2 py-1.5 font-mono text-[11px]">
-                                                {l.modelNumber || "—"}
-                                              </td>
-                                              <td className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                                              <td className="px-2 py-1.5 text-right font-semibold tabular-nums">
                                                 {l.quantity}
                                               </td>
-                                              <td className="px-2 py-1.5 text-right tabular-nums">
-                                                {l.priceNetFormatted || "—"}
-                                              </td>
-                                              <td className="px-2 py-1.5 text-right tabular-nums">
-                                                {l.priceGrossFormatted || "—"}
-                                              </td>
-                                              <td className="px-2 py-1.5 text-right tabular-nums font-semibold">
+                                              <td className="px-2 py-1.5 text-right font-semibold tabular-nums">
                                                 {l.lineTotalGrossFormatted ||
                                                   "—"}
                                               </td>
@@ -1127,7 +971,7 @@ export function CustomerDetailView({
                                         detail.discountFormatted ? (
                                           <tr className="border-t border-line">
                                             <td
-                                              colSpan={7}
+                                              colSpan={3}
                                               className="px-2 py-2 text-[11px] text-faint"
                                             >
                                               {[
@@ -1163,13 +1007,370 @@ export function CustomerDetailView({
                   </tbody>
                 </table>
               </div>
+              {orders.length >= 25 ? (
+                <p className="text-[11px] text-faint">
+                  Az utolsó 25 rendelés látszik.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {tab === "products" ? (
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[12px] text-faint">
+                  Amit eddig rendelt — db és utolsó alkalom.
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowProductsAdvanced((v) => !v)}
+                    className="text-[12px] font-semibold underline"
+                  >
+                    {showProductsAdvanced ? "Egyszerű nézet" : "Haladó oszlopok"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={productsLoading}
+                    onClick={() => void loadProducts()}
+                    className="text-[12px] font-semibold underline disabled:opacity-40"
+                  >
+                    {productsLoading ? "…" : "Frissít"}
+                  </button>
+                </div>
+              </div>
+              {productsError ? (
+                <p className="text-[12px] text-danger">{productsError}</p>
+              ) : null}
+              {productsLoading && !products ? (
+                <p className="text-[12px] text-faint">Termékek betöltése…</p>
+              ) : null}
+
+              {products ? (
+                <Surface className="!p-0 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[560px] border-collapse text-left text-[12px]">
+                      <thead>
+                        <tr className="border-b border-line-strong bg-surface-2 text-[10px] font-semibold uppercase tracking-wide text-faint">
+                          <th className="px-3 py-2">Termék</th>
+                          <th className="px-2 py-2 text-right">Össz db</th>
+                          <th className="px-2 py-2">Utoljára</th>
+                          <th className="px-3 py-2 text-right">Utolsó ár</th>
+                          {showProductsAdvanced ? (
+                            <>
+                              <th className="px-2 py-2">SKU</th>
+                              <th className="px-2 py-2 text-right">Rend.</th>
+                              <th className="px-3 py-2 text-right">Tipikus db</th>
+                            </>
+                          ) : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleProducts.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={showProductsAdvanced ? 7 : 4}
+                              className="px-3 py-6 text-center text-faint"
+                            >
+                              Még nincs termék a rendeléseiben.
+                            </td>
+                          </tr>
+                        ) : (
+                          visibleProducts.map((p) => (
+                            <tr
+                              key={p.sku}
+                              className="border-b border-line align-middle"
+                            >
+                              <td className="px-3 py-2.5">
+                                <NameWithHoverImage
+                                  name={p.name || p.sku}
+                                  href={p.productUrl}
+                                  imageUrl={p.imageUrl}
+                                />
+                                {!showProductsAdvanced && p.sku ? (
+                                  <span className="mt-0.5 block font-mono text-[10px] text-faint">
+                                    {p.sku}
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="px-2 py-2.5 text-right text-[13px] font-semibold tabular-nums">
+                                {p.totalQty}
+                              </td>
+                              <td className="px-2 py-2.5 text-faint">
+                                {p.daysSince} napja
+                              </td>
+                              <td className="px-3 py-2.5 text-right tabular-nums font-medium">
+                                {p.lastPriceGrossFormatted ||
+                                  p.lastPriceNetFormatted ||
+                                  "—"}
+                              </td>
+                              {showProductsAdvanced ? (
+                                <>
+                                  <td className="px-2 py-2.5 font-mono text-[11px]">
+                                    {p.sku || "—"}
+                                  </td>
+                                  <td className="px-2 py-2.5 text-right tabular-nums text-faint">
+                                    {p.orderCount}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                                    {p.suggestedQty != null
+                                      ? `${p.suggestedQty} db`
+                                      : "—"}
+                                  </td>
+                                </>
+                              ) : null}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {productRows.length > PRODUCTS_PREVIEW ? (
+                    <div className="border-t border-line px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowAllProducts((v) => !v)}
+                        className="text-[12px] font-semibold underline"
+                      >
+                        {showAllProducts
+                          ? "Kevesebb"
+                          : `Összes mutatása (${productRows.length})`}
+                      </button>
+                    </div>
+                  ) : null}
+                </Surface>
+              ) : null}
+            </div>
+          ) : null}
+
+          {tab === "finance" ? (
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <ChipTrack>
+                  {RANGE_OPTS.map((r) => (
+                    <Chip
+                      key={r.months}
+                      active={financeMonths === r.months}
+                      onClick={() => setFinanceMonths(r.months)}
+                    >
+                      {r.label}
+                    </Chip>
+                  ))}
+                </ChipTrack>
+                <button
+                  type="button"
+                  disabled={financeLoading}
+                  onClick={() => void loadFinance(financeMonths)}
+                  className="text-[12px] font-semibold underline disabled:opacity-40"
+                >
+                  {financeLoading ? "…" : "Frissít"}
+                </button>
+              </div>
+
+              {financeError ? (
+                <p className="text-[12px] text-danger">{financeError}</p>
+              ) : null}
+              {financeLoading && !finance ? (
+                <p className="text-[12px] text-faint">Forgalom…</p>
+              ) : null}
+
+              {finance ? (
+                <>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                    {[
+                      {
+                        label: "Költés",
+                        value: finance.totals.spentFormatted,
+                      },
+                      {
+                        label: "Áru (becslés)",
+                        value: finance.totals.goodsEstimateFormatted,
+                      },
+                      {
+                        label: "Szállításra ment",
+                        value: `${finance.totals.shippingFormatted}${
+                          finance.totals.shippingPercent != null
+                            ? ` · ${finance.totals.shippingPercent}%`
+                            : ""
+                        }`,
+                      },
+                      {
+                        label: "Kedvezmény",
+                        value: `${finance.totals.discountFormatted}${
+                          finance.totals.discountPercent != null
+                            ? ` · ${finance.totals.discountPercent}%`
+                            : ""
+                        }`,
+                      },
+                    ].map((k) => (
+                      <div
+                        key={k.label}
+                        className="rounded-none border-[1.5px] border-line-strong bg-surface px-2.5 py-2"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
+                          {k.label}
+                        </p>
+                        <p className="mt-0.5 text-[14px] font-semibold tabular-nums text-text">
+                          {k.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[11px] text-faint">
+                    {finance.rangeLabel} · {finance.sampleOrderCount} rendelés
+                    alapján
+                  </p>
+
+                  <Surface>
+                    <h3 className="mb-2 text-[13px] font-semibold text-text">
+                      Havi bontás
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[420px] border-collapse text-left text-[12px]">
+                        <thead>
+                          <tr className="border-b border-line-strong text-[10px] font-semibold uppercase tracking-wide text-faint">
+                            <th className="py-1.5 pr-2">Hónap</th>
+                            <th className="py-1.5 pr-2 text-right">Db</th>
+                            <th className="py-1.5 pr-2 text-right">Költés</th>
+                            {showFinanceExtra ? (
+                              <>
+                                <th className="py-1.5 pr-2 text-right">Δ</th>
+                                <th className="py-1.5 pr-2 text-right">
+                                  Száll.
+                                </th>
+                                <th className="py-1.5 pr-2 text-right">
+                                  Kedv.
+                                </th>
+                              </>
+                            ) : null}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {finance.byMonth.map((m) => (
+                            <tr key={m.key} className="border-b border-line">
+                              <td className="py-1.5 pr-2 font-medium text-text">
+                                {m.label}
+                              </td>
+                              <td className="py-1.5 pr-2 text-right tabular-nums text-faint">
+                                {m.orderCount}
+                              </td>
+                              <td className="py-1.5 pr-2 text-right font-semibold tabular-nums text-text">
+                                {m.spentFormatted}
+                              </td>
+                              {showFinanceExtra ? (
+                                <>
+                                  <td
+                                    className={`py-1.5 pr-2 text-right tabular-nums ${deltaClass(m.deltaPercent)}`}
+                                  >
+                                    {deltaText(m.deltaPercent)}
+                                  </td>
+                                  <td className="py-1.5 pr-2 text-right tabular-nums text-faint">
+                                    {m.shippingFormatted}
+                                  </td>
+                                  <td className="py-1.5 pr-2 text-right tabular-nums text-faint">
+                                    {m.discountFormatted}
+                                  </td>
+                                </>
+                              ) : null}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Surface>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Surface>
+                      <p className="text-[11px] font-semibold uppercase text-faint">
+                        Ez a hónap
+                      </p>
+                      <p className="mt-1 text-[14px] font-semibold text-text">
+                        {finance.thisMonth?.spentFormatted}
+                      </p>
+                      <p className="text-[12px] text-faint">
+                        {finance.thisMonth?.orderCount ?? 0} rendelés
+                        {finance.prevMonth
+                          ? ` · előző: ${finance.prevMonth.spentFormatted}`
+                          : ""}
+                      </p>
+                    </Surface>
+                    <Surface>
+                      <p className="text-[11px] font-semibold uppercase text-faint">
+                        Éves
+                      </p>
+                      {finance.thisYear ? (
+                        <p className="mt-1 text-[14px] font-semibold text-text">
+                          {finance.thisYear.year}:{" "}
+                          {finance.thisYear.spentFormatted}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[12px] text-faint">—</p>
+                      )}
+                      {finance.prevYear ? (
+                        <p className="text-[12px] text-faint">
+                          {finance.prevYear.year}:{" "}
+                          {finance.prevYear.spentFormatted}
+                        </p>
+                      ) : null}
+                    </Surface>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowFinanceExtra((v) => !v)}
+                    className="text-[12px] font-semibold underline"
+                  >
+                    {showFinanceExtra
+                      ? "Részletek elrejtése"
+                      : "További számok (Δ, ÁFA, díjak)"}
+                  </button>
+                  {showFinanceExtra ? (
+                    <Surface>
+                      <dl className="grid grid-cols-2 gap-2 text-[12px] sm:grid-cols-3">
+                        <div>
+                          <dt className="text-faint">ÁFA Σ</dt>
+                          <dd className="font-semibold">
+                            {finance.totals.taxFormatted}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-faint">Fizetési díj Σ</dt>
+                          <dd className="font-semibold">
+                            {finance.totals.paymentFeesFormatted}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-faint">Ingyenes szállítás</dt>
+                          <dd className="font-semibold">
+                            {finance.totals.freeShippingRate != null
+                              ? `${finance.totals.freeShippingRate}%`
+                              : "—"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-faint">3 hó trend</dt>
+                          <dd
+                            className={`font-semibold ${deltaClass(behavior.trend3mPercent)}`}
+                          >
+                            {deltaText(
+                              finance.behavior?.trend3mPercent ??
+                                behavior.trend3mPercent,
+                            )}
+                          </dd>
+                        </div>
+                      </dl>
+                    </Surface>
+                  ) : null}
+                </>
+              ) : null}
             </div>
           ) : null}
 
           {tab === "profile" ? (
             <div className="grid gap-2 md:grid-cols-2">
               <Surface>
-                <h3 className="text-[13px] font-semibold">Adatok</h3>
+                <h3 className="text-[13px] font-semibold">Alapadatok</h3>
                 <dl className="mt-2 space-y-1.5 text-[12px]">
                   <div className="flex justify-between gap-2">
                     <dt className="text-faint">Regisztráció</dt>
@@ -1206,33 +1407,44 @@ export function CustomerDetailView({
               </Surface>
               <div className="space-y-2">
                 <Surface>
-                  <h3 className="text-[13px] font-semibold">Átrakások</h3>
+                  <h3 className="text-[13px] font-semibold">
+                    Csoportváltások
+                  </h3>
                   {moves.length === 0 ? (
                     <p className="mt-1 text-[12px] text-faint">
-                      Nincs rögzítve. Átrakás a Vevők listán.
+                      Még nem volt váltás. Fent az Átrakással tudsz csoportot
+                      cserélni.
                     </p>
                   ) : (
                     <ul className="mt-2 space-y-1 text-[12px]">
                       {moves.map((m) => (
-                        <li key={m.id}>
+                        <li key={m.id} className="border-b border-line py-1.5 last:border-0">
                           <span className="font-medium">
                             {m.fromGroupName || "—"} → {m.toGroupName || "—"}
                           </span>
                           <span className="ml-1 text-faint">
                             {relativeTime(m.createdAt)}
+                            {m.source === "rule"
+                              ? " · automata"
+                              : m.source === "manual"
+                                ? " · kézi"
+                                : ""}
                           </span>
+                          {m.reason ? (
+                            <span className="mt-0.5 block text-[11px] text-faint">
+                              {m.reason}
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
                   )}
                 </Surface>
-                <Surface>
-                  <h3 className="text-[13px] font-semibold">Widget</h3>
-                  {widgetOrders.length === 0 ? (
-                    <p className="mt-1 text-[12px] text-faint">
-                      Nincs widget fact.
-                    </p>
-                  ) : (
+                {widgetOrders.length > 0 ? (
+                  <Surface>
+                    <h3 className="text-[13px] font-semibold">
+                      Gyors rendelések a boltból
+                    </h3>
                     <ul className="mt-2 space-y-1 text-[12px]">
                       {widgetOrders.map((w) => (
                         <li
@@ -1250,8 +1462,8 @@ export function CustomerDetailView({
                         </li>
                       ))}
                     </ul>
-                  )}
-                </Surface>
+                  </Surface>
+                ) : null}
               </div>
             </div>
           ) : null}

@@ -14,6 +14,7 @@ import {
   type PartnerGateDto,
 } from "@/lib/billing/types";
 import { onPlan } from "@/lib/billing/plans";
+import { groupChipTone } from "@/lib/merchant/group-chip";
 
 type ListFilter = "newcomers" | "partners" | "all";
 
@@ -43,8 +44,8 @@ const FILTERS: { id: ListFilter; label: string; hint: string }[] = [
   },
   {
     id: "partners",
-    label: "Átrakottak",
-    hint: "Akiket már átraktál egy másik csoportba",
+    label: "Partnerek",
+    hint: "Nem az alap csoportban — partner árazás",
   },
   { id: "all", label: "Összes", hint: "Minden vevő ezen az oldalon" },
 ];
@@ -240,7 +241,7 @@ export function CustomersView() {
       : filter === "newcomers"
         ? "Nincs új vevő az alap csoportban. Ha valaki regisztrál, itt jelenik meg."
         : filter === "partners"
-          ? "Még senkit sem raktál át másik csoportba."
+          ? "Nincs partner ebben a listában."
           : "Nincs vevő ezen az oldalon.";
 
   return (
@@ -252,10 +253,16 @@ export function CustomersView() {
               Vevők
             </p>
             <p className="mt-0.5 text-[12px] text-faint">
-              Újak → másik csoportba. Pipáld ki, válaszd a csoportot, Átrakás.
-              Árak:{" "}
+              Újak és partnerek. Pipáld ki, válaszd a csoportot, Átrakás. Árak:{" "}
               <Link href="/arak" className="font-semibold underline underline-offset-2">
                 Árak
+              </Link>
+              {" · "}
+              <Link
+                href="/szintlepes"
+                className="font-semibold underline underline-offset-2"
+              >
+                Szintlépés
               </Link>
             </p>
           </div>
@@ -372,6 +379,12 @@ export function CustomersView() {
               const on = selected.has(c.innerId);
               const locked = isPartnerLocked(c.isPartner, c.innerId, gate);
               const preview = isPartnerPreviewLocked(c.isPartner, c.innerId, gate);
+              const groupTone = groupChipTone({
+                groupInnerId: c.groupInnerId,
+                groupName: c.groupName,
+                isDefaultGroup: c.isDefaultGroup,
+                isPartner: c.isPartner,
+              });
               return (
                 <tr
                   key={c.innerId}
@@ -443,7 +456,10 @@ export function CustomersView() {
                         {onPlan(gate?.planLabel || "Start")} ez a név elmosódna
                       </span>
                     ) : (
-                      <span className="inline-flex rounded-none bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-text">
+                      <span
+                        className={groupTone.className}
+                        style={groupTone.style}
+                      >
                         {c.groupName || "Nincs csoport"}
                       </span>
                     )}

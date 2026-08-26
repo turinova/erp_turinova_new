@@ -68,6 +68,37 @@ export async function upsertShopCustomer(
   return res.rows[0];
 }
 
+export async function getSkipAutoGroupMove(
+  client: PoolClient,
+  shopId: string,
+  srCustomerInnerId: number,
+): Promise<boolean> {
+  const res = await query<{ skip_auto_group_move: boolean }>(
+    client,
+    `select skip_auto_group_move from shop_customers
+     where shop_id = $1 and sr_customer_inner_id = $2`,
+    [shopId, srCustomerInnerId],
+  );
+  return Boolean(res.rows[0]?.skip_auto_group_move);
+}
+
+export async function setSkipAutoGroupMove(
+  client: PoolClient,
+  shopId: string,
+  srCustomerInnerId: number,
+  skip: boolean,
+): Promise<boolean> {
+  const res = await query<{ skip_auto_group_move: boolean }>(
+    client,
+    `update shop_customers
+     set skip_auto_group_move = $3, updated_at = now()
+     where shop_id = $1 and sr_customer_inner_id = $2
+     returning skip_auto_group_move`,
+    [shopId, srCustomerInnerId, skip],
+  );
+  return Boolean(res.rows[0]?.skip_auto_group_move);
+}
+
 export async function recordGroupMove(
   client: PoolClient,
   input: {
@@ -79,29 +110,94 @@ export async function recordGroupMove(
     fromGroupName?: string | null;
     toGroupInnerId: number;
     toGroupName?: string | null;
-    actorUserId: string;
+    actorUserId: string | null;
     orgId: string;
+    source?: "manual" | "system" | "rule";
+    ruleId?: string | null;
+    reason?: string | null;
+    metric?: string | null;
+    metricValue?: number | null;
+    threshold?: number | null;
+    period?: string | null;
+    direction?: "up" | "down" | null;
   },
 ): Promise<void> {
-  await query(
-    client,
-    `insert into shop_customer_group_moves (
-       shop_id, shop_customer_id, sr_customer_inner_id, email_snapshot,
-       from_group_inner_id, from_group_name, to_group_inner_id, to_group_name,
-       actor_user_id
-     ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [
-      input.shopId,
-      input.shopCustomerId,
-      input.srCustomerInnerId,
-      input.emailSnapshot ?? null,
-      input.fromGroupInnerId ?? null,
-      input.fromGroupName ?? null,
-      input.toGroupInnerId,
-      input.toGroupName ?? null,
-      input.actorUserId,
-    ],
-  );
+  const source = input.source ?? "manual";
+  try {
+    await query(
+      client,
+      `insert into shop_customer_group_moves (
+         shop_id, shop_customer_id, sr_customer_inner_id, email_snapshot,
+         from_group_inner_id, from_group_name, to_group_inner_id, to_group_name,
+         actor_user_id, source, rule_id, reason,
+         metric, metric_value, threshold, period, direction
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      [
+        input.shopId,
+        input.shopCustomerId,
+        input.srCustomerInnerId,
+        input.emailSnapshot ?? null,
+        input.fromGroupInnerId ?? null,
+        input.fromGroupName ?? null,
+        input.toGroupInnerId,
+        input.toGroupName ?? null,
+        input.actorUserId,
+        source,
+        input.ruleId ?? null,
+        input.reason ?? null,
+        input.metric ?? null,
+        input.metricValue ?? null,
+        input.threshold ?? null,
+        input.period ?? null,
+        input.direction ?? null,
+      ],
+    );
+  } catch {
+    try {
+      await query(
+        client,
+        `insert into shop_customer_group_moves (
+           shop_id, shop_customer_id, sr_customer_inner_id, email_snapshot,
+           from_group_inner_id, from_group_name, to_group_inner_id, to_group_name,
+           actor_user_id, source, rule_id, reason
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [
+          input.shopId,
+          input.shopCustomerId,
+          input.srCustomerInnerId,
+          input.emailSnapshot ?? null,
+          input.fromGroupInnerId ?? null,
+          input.fromGroupName ?? null,
+          input.toGroupInnerId,
+          input.toGroupName ?? null,
+          input.actorUserId,
+          source,
+          input.ruleId ?? null,
+          input.reason ?? null,
+        ],
+      );
+    } catch {
+      await query(
+        client,
+        `insert into shop_customer_group_moves (
+           shop_id, shop_customer_id, sr_customer_inner_id, email_snapshot,
+           from_group_inner_id, from_group_name, to_group_inner_id, to_group_name,
+           actor_user_id
+         ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          input.shopId,
+          input.shopCustomerId,
+          input.srCustomerInnerId,
+          input.emailSnapshot ?? null,
+          input.fromGroupInnerId ?? null,
+          input.fromGroupName ?? null,
+          input.toGroupInnerId,
+          input.toGroupName ?? null,
+          input.actorUserId,
+        ],
+      );
+    }
+  }
 
   await query(
     client,
@@ -117,6 +213,14 @@ export async function recordGroupMove(
         from: input.fromGroupInnerId,
         to: input.toGroupInnerId,
         toName: input.toGroupName,
+        source,
+        ruleId: input.ruleId ?? null,
+        reason: input.reason ?? null,
+        metric: input.metric ?? null,
+        metricValue: input.metricValue ?? null,
+        threshold: input.threshold ?? null,
+        period: input.period ?? null,
+        direction: input.direction ?? null,
       }),
     ],
   );
@@ -129,6 +233,13 @@ export type GroupMoveRow = {
   to_group_inner_id: number;
   to_group_name: string | null;
   created_at: string;
+  source?: string | null;
+  reason?: string | null;
+  metric?: string | null;
+  metric_value?: string | null;
+  threshold?: string | null;
+  period?: string | null;
+  direction?: string | null;
 };
 
 export async function listGroupMovesForCustomer(
@@ -140,12 +251,47 @@ export async function listGroupMovesForCustomer(
   const res = await query<GroupMoveRow>(
     client,
     `select id, from_group_inner_id, from_group_name,
-            to_group_inner_id, to_group_name, created_at::text
+            to_group_inner_id, to_group_name, created_at::text,
+            source, reason, metric, metric_value::text, threshold::text,
+            period, direction
      from shop_customer_group_moves
      where shop_id = $1 and sr_customer_inner_id = $2
      order by created_at desc
      limit $3`,
     [shopId, srCustomerInnerId, Math.min(50, Math.max(1, limit))],
+  );
+  return res.rows;
+}
+
+export async function listRecentSystemGroupMoves(
+  client: PoolClient,
+  shopId: string,
+  limit = 20,
+): Promise<
+  Array<
+    GroupMoveRow & {
+      email_snapshot: string | null;
+      sr_customer_inner_id: number;
+    }
+  >
+> {
+  const res = await query<
+    GroupMoveRow & {
+      email_snapshot: string | null;
+      sr_customer_inner_id: number;
+    }
+  >(
+    client,
+    `select id, from_group_inner_id, from_group_name,
+            to_group_inner_id, to_group_name, created_at::text,
+            source, reason, email_snapshot, sr_customer_inner_id,
+            metric, metric_value::text, threshold::text, period, direction
+     from shop_customer_group_moves
+     where shop_id = $1
+       and coalesce(source, 'manual') in ('system', 'rule', 'manual')
+     order by created_at desc
+     limit $2`,
+    [shopId, Math.min(100, Math.max(1, limit))],
   );
   return res.rows;
 }
