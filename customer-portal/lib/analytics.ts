@@ -68,23 +68,28 @@ function waitForGtag(timeoutMs: number): Promise<boolean> {
 
 /**
  * Fire sign_up and wait until GA acknowledges (or timeout).
- * Requires cookie consent; uses Consent Mode + send_to.
+ * Requires cookie consent; uses Consent Mode + send_to + beacon.
+ * Returns true if the event was dispatched.
  */
-export async function trackSignUpAndWait(timeoutMs = 2500): Promise<void> {
-  if (typeof window === 'undefined') return
+export async function trackSignUpAndWait(timeoutMs = 2500): Promise<boolean> {
+  if (typeof window === 'undefined') return false
   if (!hasAnalyticsConsent()) {
     console.warn('[GA4] sign_up skipped: cookie consent not granted')
-    return
+    return false
   }
 
   const ready = await waitForGtag(timeoutMs)
   if (!ready || typeof window.gtag !== 'function') {
     console.warn('[GA4] sign_up skipped: gtag not ready')
-    return
+    return false
   }
 
   // Ensure storage is granted right before conversion (Consent Mode)
   gtagConsentUpdate(true)
+
+  const debugMode =
+    new URLSearchParams(window.location.search).get('ga_debug') === '1' ||
+    localStorage.getItem('turinova_ga_debug') === '1'
 
   await new Promise<void>(resolve => {
     let done = false
@@ -100,16 +105,22 @@ export async function trackSignUpAndWait(timeoutMs = 2500): Promise<void> {
       window.gtag('event', 'sign_up', {
         method: 'email',
         send_to: GA_MEASUREMENT_ID,
+        transport_type: 'beacon',
+        ...(debugMode ? { debug_mode: true } : {}),
         event_callback: () => {
+          console.info('[GA4] sign_up sent OK', { tid: GA_MEASUREMENT_ID })
           window.clearTimeout(timer)
           finish()
         },
         event_timeout: timeoutMs
       })
+      console.info('[GA4] sign_up dispatched', { tid: GA_MEASUREMENT_ID, debugMode })
     } catch (err) {
       console.warn('[GA4] sign_up error', err)
       window.clearTimeout(timer)
       finish()
     }
   })
+
+  return true
 }

@@ -69,7 +69,7 @@ export default function CookieBanner() {
             <Typography variant="caption" color="text.secondary" sx={{ wordWrap: 'break-word' }}>
               A folytatással elfogadja a sütik használatát.{' '}
               <Link 
-                href="/cookie-policy" 
+                href="/sutik" 
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ 

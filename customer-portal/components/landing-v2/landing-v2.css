@@ -1,3 +1,12 @@
+/* Hero Soft stage: subtle line grid (Linear / Notion feel) */
+.lv2-hero-grid {
+  background-image:
+    linear-gradient(to right, #fff 1px, transparent 1px),
+    linear-gradient(to bottom, #fff 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 75% 70% at 70% 45%, #000 20%, transparent 75%);
+}
+
 /* Scoped reset for /v2 landing page — counteracts corePlugins: { preflight: false } */
 .lv2-root *,
 .lv2-root *::before,

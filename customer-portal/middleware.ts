@@ -38,7 +38,23 @@ export async function middleware(req: NextRequest) {
   }
   
   // Define public routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/terms-and-conditions', '/privacy-policy', '/cookie-policy', '/v2']
+  const publicRoutes = [
+    '/',
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
+    '/terms-and-conditions',
+    '/privacy-policy',
+    '/cookie-policy',
+    '/aszf',
+    '/adatkezeles',
+    '/adatvedelem',
+    '/adatvedelmi-nyilatkozat',
+    '/sutik',
+    '/v2',
+    '/kapcsolat',
+  ]
   const pathname = req.nextUrl.pathname
   const isV2Landing =
     pathname === '/v2' || pathname.startsWith('/v2/')

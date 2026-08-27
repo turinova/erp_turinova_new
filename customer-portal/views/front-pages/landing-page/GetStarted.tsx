@@ -138,7 +138,7 @@ const GetStarted = () => {
         )}
 
         <Typography variant='body2' color='text.secondary' className='max-w-[500px]'>
-          Regisztrációval elfogadod az <Link href='/terms-and-conditions' className='text-primary'>Felhasználási feltételeket</Link> és az <Link href='/privacy-policy' className='text-primary'>Adatvédelmi irányelveket</Link>.
+          Regisztrációval elfogadod az <Link href='/aszf' className='text-primary'>ÁSZF-et</Link> és az <Link href='/adatkezeles' className='text-primary'>Adatkezelési tájékoztatót</Link>.
         </Typography>
       </div>
     </section>

@@ -1,8 +1,6 @@
-/** Közös navigáció: Navbar + Footer (ne essen szét a két hely). */
+/** Közös navigáció: Navbar + Footer. */
 
-export const LANDING_V2_NAV = [
-  { label: 'Főoldal', href: '/' },
-  { label: 'Árazás', href: '/v2#arazas' },
-] as const
+/** Főoldali top-nav linkek: üres, csak logo + CTA. */
+export const LANDING_V2_NAV = [] as const
 
-export const LANDING_V2_DEMO = { label: 'Ingyenes konzultáció', href: '/kapcsolat#demo' } as const
+export const LANDING_V2_DEMO = { label: 'Kérek visszahívást', href: '#demo' } as const

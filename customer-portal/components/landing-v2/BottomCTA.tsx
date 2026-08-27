@@ -5,12 +5,6 @@ import { supabase } from '@/lib/supabase-client'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-const trustPoints = [
-  'Egy készlet a webshopban és a boltban, ugyanaz a szám, kevesebb egyeztetés.',
-  'Versenytárs elemzés és AI tartalomgenerálás, élőben megmutatjuk, ha ez is számít neked.',
-  'Shoprenter, számlázás, futárok, amiket már ismersz, demó kötelezettség nélkül, utána szabadon döntesz.',
-] as const
-
 export default function BottomCTA() {
   const [demoName, setDemoName] = useState('')
   const [demoEmail, setDemoEmail] = useState('')
@@ -60,92 +54,44 @@ export default function BottomCTA() {
   }
 
   return (
-    <section id="demo" className="relative bg-white py-16 sm:py-20 overflow-hidden scroll-mt-16">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(251,146,60,0.10) 0%, transparent 70%)',
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage: 'radial-gradient(circle at 1px 1px, #e2e8f0 1px, transparent 0)',
-          backgroundSize: '32px 32px',
-          opacity: 0.4,
-        }}
-      />
-
+    <section id="demo" className="relative bg-white py-14 sm:py-16 border-t border-slate-200 scroll-mt-16">
       <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {submitted ? (
           <div className="max-w-md mx-auto text-center py-4">
-            <div className="rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-100/80 p-10">
-              <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto">
-                <svg className="w-7 h-7 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                </svg>
-              </div>
-              <p className="mt-5 text-xl font-bold text-slate-900">Köszönjük, megkaptuk az adataidat.</p>
-              <p className="mt-2 text-sm text-slate-500 leading-relaxed">
-                1 munkanapon belül felvesszük veled a kapcsolatot, és egyeztetünk egy 20 perces hívást vagy online bemutatót.
+            <div className="rounded-xl border border-slate-200 bg-white p-8">
+              <p className="text-xl font-bold text-slate-900">Megkaptuk.</p>
+              <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                Egy munkanapon belül jelentkezünk.
               </p>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 xl:gap-16 items-start">
-            {/* Left: value prop + proof */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-start">
             <div className="text-center lg:text-left pt-1">
-              <div className="flex justify-center lg:justify-start">
-                <span className="inline-flex items-center gap-2 rounded-full border border-orange-200/60 bg-white px-4 py-1.5 text-[11px] font-bold uppercase tracking-widest text-orange-600 shadow-sm">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500" />
-                  </span>
-                  Ingyenes bemutató · 20 perc · Kötelezettség nélkül
-                </span>
-              </div>
-
-              <h2 className="mt-6 text-3xl sm:text-4xl lg:text-[2.35rem] xl:text-5xl font-bold tracking-tight text-slate-900 leading-[1.12]">
-                Beszéljünk 20 percet arról,{' '}
-                <span
-                  className="bg-clip-text text-transparent"
-                  style={{ backgroundImage: 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' }}
-                >
-                  hogyan futhat együtt a webshopod, a bolti kassza és a készlet
-                </span>{' '}
-                egy rendszerben.
+              <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 leading-tight">
+                Visszahívás
               </h2>
-
-              <p className="mt-5 text-slate-600 text-base sm:text-lg leading-relaxed max-w-xl mx-auto lg:mx-0">
-                Visszahívunk <strong className="font-semibold text-slate-700">1 munkanapon belül</strong>, és élőben végigmegyünk a
-                neked fontos részeken, a készlettől a versenytárs elemzésig és az AI tartalomgenerálásig, mindezt konkrét
-                példákkal.
+              <p className="mt-4 text-slate-600 text-base sm:text-lg leading-relaxed max-w-xl mx-auto lg:mx-0">
+                Egy munkanapon belül felhívunk. Megbeszéljük, mire van szükséged.
               </p>
-
-              <ul className="mt-8 space-y-3 max-w-xl mx-auto lg:mx-0 text-left">
-                {trustPoints.map(text => (
-                  <li key={text} className="flex gap-3 text-sm sm:text-[15px] text-slate-600 leading-snug">
-                    <span
-                      className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700"
-                      aria-hidden
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                      </svg>
-                    </span>
-                    <span>{text}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-6 space-y-1 text-sm text-slate-600">
+                <p>
+                  <a className="hover:text-orange-700" href="mailto:info@turinova.hu">
+                    info@turinova.hu
+                  </a>
+                </p>
+                <p>
+                  <a className="hover:text-orange-700" href="tel:+36309992800">
+                    +36 30 999 2800
+                  </a>
+                </p>
+              </div>
             </div>
 
-            {/* Right: form */}
-            <div className="lg:sticky lg:top-28">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-xl shadow-slate-100/80 p-8 sm:p-10 text-left">
-                <p className="text-sm font-semibold text-slate-900 mb-1">Kérd a bemutatót</p>
-                <p className="text-xs text-slate-500 mb-6">Név és e-mail elég a visszajelzéshez, a telefon segít gyorsabban egyeztetni.</p>
+            <div>
+              <div className="bg-white rounded-xl border border-slate-200 p-6 sm:p-8 text-left">
+                <p className="text-sm font-semibold text-slate-900 mb-1">Írj nekünk</p>
+                <p className="text-xs text-slate-500 mb-6">Név és e-mail elég. A telefon opcionális.</p>
 
                 <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
                   <div className="flex flex-col sm:flex-row gap-4">
@@ -161,7 +107,7 @@ export default function BottomCTA() {
                         placeholder="Kovács János"
                         required
                         autoComplete="name"
-                        className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-colors"
+                        className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-colors"
                       />
                     </div>
                     <div className="flex-1 flex flex-col gap-1.5">
@@ -176,7 +122,7 @@ export default function BottomCTA() {
                         placeholder="pelda@webshop.hu"
                         required
                         autoComplete="email"
-                        className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-colors"
+                        className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-colors"
                       />
                     </div>
                   </div>
@@ -192,7 +138,7 @@ export default function BottomCTA() {
                       onChange={e => setDemoPhone(e.target.value)}
                       placeholder="+36 30 999 2800"
                       autoComplete="tel"
-                      className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-xl placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-colors"
+                      className="w-full px-3.5 py-2.5 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 transition-colors"
                     />
                   </div>
 
@@ -203,25 +149,15 @@ export default function BottomCTA() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="mt-1 w-full py-3.5 px-6 text-sm font-semibold text-white bg-orange-600 rounded-xl hover:bg-orange-700 active:bg-orange-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors duration-150 shadow-md shadow-orange-200"
+                    className="mt-1 w-full py-3 px-6 text-sm font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                   >
-                    {submitting ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                        </svg>
-                        Küldés...
-                      </span>
-                    ) : (
-                      '20 perces bemutatót kérek →'
-                    )}
+                    {submitting ? 'Küldés...' : 'Küldés'}
                   </button>
 
                   <p className="text-[11px] text-slate-400 text-center leading-relaxed">
-                    A küldéssel elfogadja az{' '}
-                    <a href="/privacy-policy" className="underline hover:text-slate-600">
-                      adatvédelmi irányelveket
+                    A küldéssel elfogadod az{' '}
+                    <a href="/adatkezeles" className="underline hover:text-slate-600">
+                      adatkezelési tájékoztatót
                     </a>
                     .
                   </p>

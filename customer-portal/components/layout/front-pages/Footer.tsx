@@ -92,14 +92,14 @@ const Footer = () => {
             © {new Date().getFullYear()} Turinova. Minden jog fenntartva.
           </Typography>
           <div className="flex flex-wrap gap-x-4 gap-y-1 items-center text-sm">
-            <Typography component={Link} href="/terms-and-conditions" color="text.secondary" variant="body2" className="hover:text-primary">
-              Felhasználási feltételek
+            <Typography component={Link} href="/aszf" color="text.secondary" variant="body2" className="hover:text-primary">
+              ÁSZF
             </Typography>
-            <Typography component={Link} href="/privacy-policy" color="text.secondary" variant="body2" className="hover:text-primary">
-              Adatvédelmi irányelvek
+            <Typography component={Link} href="/adatkezeles" color="text.secondary" variant="body2" className="hover:text-primary">
+              Adatkezelés
             </Typography>
-            <Typography component={Link} href="/cookie-policy" color="text.secondary" variant="body2" className="hover:text-primary">
-              Cookie szabályzat
+            <Typography component={Link} href="/sutik" color="text.secondary" variant="body2" className="hover:text-primary">
+              Sütik
             </Typography>
           </div>
         </div>

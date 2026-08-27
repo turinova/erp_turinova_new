@@ -263,7 +263,12 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
         // GA4 conversion: wait for hit before redirect so Network shows en=sign_up
         try {
           const { trackSignUpAndWait } = await import('@/lib/analytics')
-          await trackSignUpAndWait(2000)
+          const sent = await trackSignUpAndWait(2500)
+          if (!sent) {
+            console.warn(
+              '[GA4] sign_up not sent — accept cookies (Elfogadom), then register with a NEW email'
+            )
+          }
         } catch {
           /* ignore analytics errors */
         }
@@ -489,7 +494,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
                   <Typography variant='body2'>
                     Elfogadom az{' '}
                     <Link 
-                      href='/terms-and-conditions' 
+                      href='/aszf' 
                       target='_blank' 
                       rel='noopener noreferrer'
                       style={{ color: 'var(--mui-palette-primary-main)', textDecoration: 'underline' }}
@@ -498,7 +503,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
                     </Link>
                     {' '}és az{' '}
                     <Link 
-                      href='/privacy-policy' 
+                      href='/adatkezeles' 
                       target='_blank' 
                       rel='noopener noreferrer'
                       style={{ color: 'var(--mui-palette-primary-main)', textDecoration: 'underline' }}

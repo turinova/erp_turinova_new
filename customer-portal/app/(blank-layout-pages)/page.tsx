@@ -1,11 +1,13 @@
 import type { Metadata } from 'next'
 import MarketingShell from '@/components/landing-v2/MarketingShell'
 import Hero from '@/components/landing-v2/Hero'
+import SolutionsStack from '@/components/landing-v2/solutions/SolutionsStack'
+import BottomCTA from '@/components/landing-v2/BottomCTA'
 
 export const metadata: Metadata = {
-  title: 'Turinova — Szoftver megoldások magyar cégeknek',
+  title: 'Turinova',
   description:
-    'Webshop ERP, vásárlószámláló (footcounter), munkaidő nyilvántartás és iparági ERP megoldások — találkozó egyeztetéssel.',
+    'Turinova: nagyker árak, webshop ERP, lapszabászat. Kapcsolat: info@turinova.hu',
 }
 
 export default async function MainLandingPage() {
@@ -13,6 +15,8 @@ export default async function MainLandingPage() {
     <MarketingShell>
       <main>
         <Hero />
+        <SolutionsStack />
+        <BottomCTA />
       </main>
     </MarketingShell>
   )

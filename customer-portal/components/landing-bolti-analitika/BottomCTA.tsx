@@ -283,7 +283,7 @@ export default function BottomCTA() {
 
                   <p className="text-[11px] text-zinc-400 text-center leading-relaxed">
                     A küldéssel elfogadod az{' '}
-                    <Link href="/privacy-policy" className="underline hover:text-zinc-600">
+                    <Link href="/adatkezeles" className="underline hover:text-zinc-600">
                       adatvédelmi irányelveket
                     </Link>
                     .

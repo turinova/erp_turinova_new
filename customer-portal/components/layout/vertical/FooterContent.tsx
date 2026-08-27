@@ -31,7 +31,7 @@ const FooterContent = () => {
         </a>
         <span className='text-textSecondary'>{` | `}</span>
         <Link 
-          href='/terms-and-conditions' 
+          href='/aszf' 
           target='_blank' 
           rel='noopener noreferrer'
           className='text-primary hover:underline'
@@ -40,7 +40,7 @@ const FooterContent = () => {
         </Link>
         <span className='text-textSecondary'>{` | `}</span>
         <Link 
-          href='/privacy-policy' 
+          href='/adatkezeles' 
           target='_blank' 
           rel='noopener noreferrer'
           className='text-primary hover:underline'
@@ -49,7 +49,7 @@ const FooterContent = () => {
         </Link>
         <span className='text-textSecondary'>{` | `}</span>
         <Link 
-          href='/cookie-policy' 
+          href='/sutik' 
           target='_blank' 
           rel='noopener noreferrer'
           className='text-primary hover:underline'

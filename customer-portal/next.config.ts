@@ -7,6 +7,25 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  async redirects() {
+    return [
+      {
+        source: '/terms-and-conditions',
+        destination: '/aszf',
+        permanent: true,
+      },
+      {
+        source: '/privacy-policy',
+        destination: '/adatkezeles',
+        permanent: true,
+      },
+      {
+        source: '/cookie-policy',
+        destination: '/sutik',
+        permanent: true,
+      },
+    ]
+  },
   productionBrowserSourceMaps: false,
   compress: true,
   poweredByHeader: false,
