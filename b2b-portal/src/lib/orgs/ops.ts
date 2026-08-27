@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { parsePlanId, type PlanId } from "@/lib/billing/plans";
 import { query } from "@/lib/db";
 import { enqueueFullSync } from "@/lib/commerce/jobs";
+import { revokeSessionsForOrganization } from "@/lib/auth/session";
 
 export async function insertAudit(
   client: PoolClient,
@@ -115,6 +116,7 @@ export async function patchOrganization(
        where organization_id = $1 and purged_at is null`,
       [orgId],
     );
+    await revokeSessionsForOrganization(client, orgId);
   }
 
   await insertAudit(client, {

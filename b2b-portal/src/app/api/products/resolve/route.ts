@@ -123,7 +123,7 @@ export async function POST(request: Request) {
 
     if (!catalogIsSearchable(packed.meta.catalogStatus) || !packed.rows) {
       return jsonWithCors(request, {
-        error: "Katalógus még szinkronizál — próbáld pár perc múlva.",
+        error: "Katalógus még szinkronizál. Próbáld pár perc múlva.",
         catalogReady: false,
         catalogStatus: packed.meta.catalogStatus,
         products: skus.map((s) => notFound(s.trim())),

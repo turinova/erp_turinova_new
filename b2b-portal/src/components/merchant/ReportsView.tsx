@@ -327,26 +327,91 @@ function FunnelMix({
 }
 
 export function ReportsView() {
-  const [months, setMonths] = useState<ReportMonths>(12);
+  const [months, setMonths] = useState<ReportMonths>(6);
   const [report, setReport] = useState<ShopReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [productsLoading, setProductsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<"live" | "db" | null>(null);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [coverageHint, setCoverageHint] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async (m: ReportMonths) => {
     setLoading(true);
+    setProductsLoading(false);
     setError(null);
+    setCoverageHint(null);
     try {
-      const res = await fetch(`/api/merchant/reports?months=${m}`);
-      const json = await res.json();
+      const res = await fetch(
+        `/api/merchant/reports?months=${m}&phase=summary`,
+      );
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        report?: ShopReport;
+        source?: "live" | "db";
+        syncedAt?: string | null;
+        liveFallback?: boolean;
+        coverageHint?: string;
+      };
       if (!res.ok) throw new Error(json.error || "Riport sikertelen");
       setReport(json.report as ShopReport);
+      setSource(json.source ?? "live");
+      setSyncedAt(json.syncedAt ?? null);
+      if (json.liveFallback && json.coverageHint) {
+        setCoverageHint(json.coverageHint);
+      }
+
+      const fromDb = json.source === "db";
+      if (!fromDb) {
+        setProductsLoading(true);
+        setLoading(false);
+        try {
+          const pr = await fetch(
+            `/api/merchant/reports?months=${m}&phase=products`,
+          );
+          const pj = (await pr.json()) as {
+            ok?: boolean;
+            error?: string;
+            report?: ShopReport;
+          };
+          if (pr.ok && pj.report) {
+            setReport(pj.report);
+          }
+        } catch {
+          /* summary already shown */
+        } finally {
+          setProductsLoading(false);
+        }
+      } else {
+        setLoading(false);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Hiba");
       setReport(null);
-    } finally {
       setLoading(false);
     }
   }, []);
+
+  async function kickSync() {
+    setSyncing(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/merchant/reports", { method: "POST" });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(json.error || "Sync sikertelen");
+      await load(months);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sync hiba");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   useEffect(() => {
     void load(months);
@@ -361,7 +426,17 @@ export function ReportsView() {
           </h1>
           <p className="mt-0.5 text-[12px] text-faint">
             Bevétel · ki rendelt · mit · mennyiért
+            {source === "db" && syncedAt
+              ? ` · DB tükör · frissítve ${new Date(syncedAt).toLocaleString("hu-HU")}`
+              : source === "live"
+                ? " · élő Shoprenter"
+                : ""}
           </p>
+          {coverageHint ? (
+            <p className="mt-1 text-[11px] text-warn">
+              Élő Shoprenter (tükör nem elég friss / mély). {coverageHint}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex gap-0.5 bg-surface-2 p-0.5">
@@ -382,6 +457,15 @@ export function ReportsView() {
           </div>
           <button
             type="button"
+            disabled={loading || syncing}
+            onClick={() => void kickSync()}
+            className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold disabled:opacity-40"
+            title="Rendelés-tükör frissítése (sql/029 után)"
+          >
+            {syncing ? "…" : "Tükör frissít"}
+          </button>
+          <button
+            type="button"
             disabled={loading}
             onClick={() => void load(months)}
             className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold disabled:opacity-40"
@@ -399,7 +483,13 @@ export function ReportsView() {
 
       {loading && !report ? (
         <p className="mt-10 text-center text-[13px] text-faint">
-          Riport készül a Shoprenter-rendelésekből…
+          Összesítő készül…
+        </p>
+      ) : null}
+
+      {productsLoading ? (
+        <p className="mt-2 text-[11px] text-faint">
+          Termék / árrés még számolódik…
         </p>
       ) : null}
 

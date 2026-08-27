@@ -14,6 +14,7 @@ export async function GET() {
       displayName: session.displayName,
       isPlatformAdmin: session.isPlatformAdmin,
       activeOrganizationId: session.activeOrganizationId,
+      orgRole: session.orgRole,
     },
   });
 }

@@ -4,10 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ForceSyncButton } from "@/components/platform/ForceSyncButton";
-import { ResendInviteButton } from "@/components/platform/ResendInviteButton";
-import { PLAN_DEFAULTS, PLAN_IDS, type PlanId } from "@/lib/billing/plans";
-import { relativeTime } from "@/lib/format";
+import { OrgMembersPanel } from "@/components/platform/OrgMembersPanel";
+import {
+  BASE_PRICE_HUF,
+  WHITE_LABEL_PRICE_HUF,
+  formatHuf,
+  hasWhiteLabel,
+  type PlanId,
+} from "@/lib/billing/plans";
 import { catalogLabel, healthLabel } from "@/lib/orgs/health";
+import { relativeTime } from "@/lib/format";
 import type { OrgDetail } from "@/lib/orgs/types";
 
 const HEALTH_CLASS = {
@@ -16,10 +22,29 @@ const HEALTH_CLASS = {
   crit: "border-2 border-danger text-danger",
 } as const;
 
+function statusLine(detail: OrgDetail): string {
+  if (detail.status === "suspended") return "Felfüggesztve";
+  if (detail.trialExpired) return "Lejárt próba";
+  if (detail.trialActive && detail.trialDaysLeft != null) {
+    return `Próba · ${detail.trialDaysLeft} nap van hátra`;
+  }
+  if (detail.trialActive) return "Próba";
+  return "Fizető";
+}
+
+function packageLine(plan: PlanId, isTrial: boolean): string {
+  if (isTrial) {
+    return `Próba. Turinova felirat látszik · utána ${formatHuf(BASE_PRICE_HUF)} / hó`;
+  }
+  if (hasWhiteLabel(plan)) {
+    return `Felirat nélkül: ${formatHuf(WHITE_LABEL_PRICE_HUF)} / hó`;
+  }
+  return `Alap: ${formatHuf(BASE_PRICE_HUF)} / hó (Turinova felirat látszik)`;
+}
+
 export function OrgDetailView({ initial }: { initial: OrgDetail }) {
   const router = useRouter();
   const [detail, setDetail] = useState(initial);
-  const [plan, setPlan] = useState<PlanId>(initial.plan);
   const [partnerOverride, setPartnerOverride] = useState(
     initial.partner_limit_override != null
       ? String(initial.partner_limit_override)
@@ -53,7 +78,6 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
         return;
       }
       setDetail(json.organization);
-      setPlan(json.organization.plan);
       setPartnerOverride(
         json.organization.partner_limit_override != null
           ? String(json.organization.partner_limit_override)
@@ -80,7 +104,11 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
       const res = await fetch(`/api/admin/orgs/${detail.id}/impersonate`, {
         method: "POST",
       });
-      const json = (await res.json()) as { ok?: boolean; error?: string; redirect?: string };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        redirect?: string;
+      };
       if (!res.ok || !json.ok) {
         setError(json.error ?? "Nem sikerült");
         setPending(false);
@@ -119,59 +147,36 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
   }
 
   const shop = detail.shop;
-  const fill =
-    detail.partner_limit <= 0
-      ? 0
-      : Math.min(100, Math.round((detail.partner_used / detail.partner_limit) * 100));
-  const skuFill =
-    detail.sku_limit <= 0
-      ? 0
-      : Math.min(100, Math.round((detail.sku_used / detail.sku_limit) * 100));
-
-  const sentenceParts: string[] = [];
-  const planLabel = PLAN_DEFAULTS[detail.plan].label;
-  const paidLimit = PLAN_DEFAULTS[detail.plan].partnerLimit;
-  if (detail.trialExpired) sentenceParts.push("lejárt próba");
-  else if (detail.trialActive && detail.trialDaysLeft != null) {
-    sentenceParts.push(`${planLabel} · próba ${detail.trialDaysLeft} nap`);
-  } else {
-    sentenceParts.push(planLabel);
-  }
-  sentenceParts.push(
-    shop
-      ? `termékek ${catalogLabel(shop.catalog_status)}`
-      : "nincs bolt",
-  );
-  sentenceParts.push(
-    `${detail.partner_used} vevő rendelt / ${detail.partner_limit} fér el`,
-  );
-  sentenceParts.push(
-    `gyors rendelés ${shop?.widget_enabled ? "be" : "ki"}`,
-  );
+  const onWhiteLabel = !detail.trialActive && hasWhiteLabel(detail.plan);
+  const onBase =
+    !detail.trialActive && !hasWhiteLabel(detail.plan) && detail.status !== "suspended";
 
   return (
-    <div className="mx-auto w-full max-w-[920px]">
+    <div className="mx-auto w-full max-w-[720px]">
       <Link
         href="/admin"
         className="text-[13px] font-medium text-faint underline underline-offset-2 hover:text-text"
       >
-        Tenantok
+        ← Tenantok
       </Link>
 
-      <header className="mt-4 mb-2">
-        <h2 className="text-[28px] font-semibold tracking-tight">{detail.name}</h2>
+      <header className="mt-4">
+        <h2 className="text-[24px] font-semibold tracking-tight">{detail.name}</h2>
         <p className="mt-1 text-[13px] text-faint">
-          {detail.slug}
-          {shop ? ` · ${shop.shoprenter_shop_name}` : ""}
+          {shop?.shoprenter_shop_name ?? "Nincs bolt"}
+          {shop?.store_url ? ` · ${shop.store_url}` : ""}
         </p>
       </header>
 
-      <div className={`mt-4 inline-flex h-10 items-center px-3 text-[13px] font-bold ${HEALTH_CLASS[detail.health]}`}>
+      <div
+        className={`mt-4 inline-flex h-10 items-center px-3 text-[13px] font-bold ${HEALTH_CLASS[detail.health]}`}
+      >
         {healthLabel(detail.health)} · {detail.healthReason}
       </div>
 
-      <p className="mt-3 max-w-2xl text-[14px] text-faint">
-        {sentenceParts.join(" · ")}.
+      <p className="mt-3 text-[15px] font-semibold text-text">{statusLine(detail)}</p>
+      <p className="mt-1 text-[13px] text-faint">
+        {packageLine(detail.plan, detail.trialActive)}
       </p>
 
       {error ? (
@@ -216,125 +221,44 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
         )}
       </div>
 
+      {/* —— Csomag —— */}
       <section className="tn-section">
-        <p className="tn-label">Számlázás</p>
-        <h3 className="tn-section-title mt-1">
-          {detail.partner_used} / {detail.partner_limit} vevő ebben a hónapban
-        </h3>
+        <h3 className="tn-section-title">Csomag</h3>
         <p className="tn-section-sub">
-          {detail.overCap
-            ? "A portál a plusz vevőket elrejti. A gyors rendelés a boltban megy."
-            : detail.warn80
-              ? "Közel a teli."
-              : "A csomag bírja."}
-          {detail.trialActive
-            ? ` Próbában Pro limitek (${detail.partner_limit} vevő). Fizetés után ${planLabel}en ${paidLimit} férne el.`
+          Aktiválás lezárja a próbát.
+          {detail.trial_ends_at
+            ? ` Próba vége: ${new Date(detail.trial_ends_at).toLocaleDateString("hu-HU")}.`
             : ""}
         </p>
-        {detail.trialActive || detail.trialExpired ? (
-          <p className="mt-3 max-w-xl text-[13px] text-faint">
-            A kereskedő ezt látja: {planLabel}
-            {detail.trialActive && detail.trialDaysLeft != null
-              ? ` · próba ${detail.trialDaysLeft} nap`
-              : detail.trialExpired
-                ? " · lejárt próba"
-                : ""}
-            . A widget megy.
-            {detail.partner_used > paidLimit
-              ? ` ${paidLimit} felett a lista elmosódna, ha most aktiválnád ${planLabel}en.`
-              : ""}
-          </p>
-        ) : null}
-        <div className="mt-3 h-2 w-full max-w-md border border-line-strong bg-surface-2">
-          <div
-            className={detail.overCap || detail.warn80 ? "h-full bg-warn" : "h-full bg-text"}
-            style={{ width: `${fill}%` }}
-          />
-        </div>
-        <p className="mt-4 text-[13px] text-faint">
-          Termékhely: {detail.sku_used.toLocaleString("hu-HU")} /{" "}
-          {detail.sku_limit.toLocaleString("hu-HU")}
-        </p>
-        <div className="mt-1 h-1.5 w-full max-w-md border border-line-strong bg-surface-2">
-          <div className="h-full bg-text" style={{ width: `${skuFill}%` }} />
-        </div>
-
-        <div className="mt-6 grid max-w-xl gap-4 sm:grid-cols-2">
-          <label className="tn-field">
-            <span className="tn-label">Csomag</span>
-            <select
-              className="tn-input"
-              value={plan}
-              onChange={(e) => setPlan(e.target.value as PlanId)}
-            >
-              {PLAN_IDS.map((id) => (
-                <option key={id} value={id}>
-                  {PLAN_DEFAULTS[id].label}
-                  {id === "plus" ? " (ajánlott)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="tn-field">
-            <span className="tn-label">Vevő-limit felülírás</span>
-            <input
-              className="tn-input"
-              inputMode="numeric"
-              placeholder={`üres = most ${detail.partner_limit} · ${planLabel} ${paidLimit}`}
-              value={partnerOverride}
-              onChange={(e) => setPartnerOverride(e.target.value)}
-            />
-          </label>
-          <label className="tn-field">
-            <span className="tn-label">Termékhely felülírás</span>
-            <input
-              className="tn-input"
-              inputMode="numeric"
-              placeholder={`üres = most ${detail.sku_limit.toLocaleString("hu-HU")} · ${planLabel} ${PLAN_DEFAULTS[detail.plan].skuLimit.toLocaleString("hu-HU")}`}
-              value={skuOverride}
-              onChange={(e) => setSkuOverride(e.target.value)}
-            />
-          </label>
-        </div>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() =>
-            void patch(
-              {
-                plan,
-                partnerLimitOverride: partnerOverride.trim()
-                  ? Number(partnerOverride)
-                  : null,
-                skuLimitOverride: skuOverride.trim()
-                  ? Number(skuOverride)
-                  : null,
-              },
-              "Mentve",
-            )
-          }
-          className="tn-btn tn-btn-primary mt-4"
-        >
-          Csomag / limitek mentése
-        </button>
-
-        <div className="mt-6 flex flex-wrap gap-2">
-          {PLAN_IDS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              disabled={pending}
-              onClick={() =>
-                void patch(
-                  { plan: id, activate: true },
-                  `Aktiválva: ${PLAN_DEFAULTS[id].label}`,
-                )
-              }
-              className="tn-btn tn-btn-ghost"
-            >
-              Aktivál {PLAN_DEFAULTS[id].label}
-            </button>
-          ))}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={pending || onBase}
+            onClick={() =>
+              void patch(
+                { plan: "start", activate: true },
+                `Aktiválva: Alap ${formatHuf(BASE_PRICE_HUF)}`,
+              )
+            }
+            className="tn-btn tn-btn-ghost"
+          >
+            Alap {formatHuf(BASE_PRICE_HUF)}
+            {onBase ? " · most" : ""}
+          </button>
+          <button
+            type="button"
+            disabled={pending || onWhiteLabel}
+            onClick={() =>
+              void patch(
+                { plan: "plus", activate: true },
+                `Aktiválva: Felirat nélkül ${formatHuf(WHITE_LABEL_PRICE_HUF)}`,
+              )
+            }
+            className="tn-btn tn-btn-ghost"
+          >
+            Felirat nélkül {formatHuf(WHITE_LABEL_PRICE_HUF)}
+            {onWhiteLabel ? " · most" : ""}
+          </button>
           <button
             type="button"
             disabled={pending}
@@ -352,89 +276,54 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
             +14 nap próba
           </button>
         </div>
-        <p className="mt-2 text-[12px] text-faint">
-          Aktiválás lezárja a próbát. +7 / +14 kitolja a dátumot
-          {detail.trial_ends_at
-            ? ` (most: ${new Date(detail.trial_ends_at).toLocaleDateString("hu-HU")})`
-            : ""}
-          . A widget megy.
-        </p>
       </section>
 
-      <section className="tn-section">
-        <p className="tn-label">ERP tölcsér</p>
-        <h3 className="tn-section-title mt-1">
-          {detail.erpQualified.qualified
-            ? "erp_qualified"
-            : `${detail.erpQualified.hits} / 4 jel`}
-        </h3>
-        <p className="tn-section-sub">
-          Belső KPI: legalább 3 a 4-ből. Nem a fizető tenantok száma.
-        </p>
-        <ul className="mt-4 space-y-2 text-[13px]">
-          {detail.erpQualified.signals.map((s) => (
-            <li key={s.id} className="flex justify-between gap-3">
-              <span>
-                {s.label}{" "}
-                <span className="text-faint">{s.threshold}</span>
-              </span>
-              <span
-                className={
-                  s.hit ? "font-semibold text-ok" : "tabular-nums text-faint"
-                }
-              >
-                {s.value}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
+      {/* —— Bolt —— */}
       <section className="tn-section">
         <h3 className="tn-section-title">Bolt</h3>
         {shop ? (
           <>
-            <dl className="mt-5 grid gap-4 text-[14px] sm:grid-cols-2">
-              <div>
-                <dt className="tn-label">Név</dt>
-                <dd className="mt-1 font-medium">{shop.shoprenter_shop_name}</dd>
-              </div>
-              <div>
-                <dt className="tn-label">Bolt állapota</dt>
-                <dd className="mt-1 font-medium">
-                  {shop.status === "needs_reauth"
-                    ? "nem válaszol"
-                    : shop.status === "draft"
-                      ? "még nincs kulcs"
-                      : shop.status}
-                </dd>
-              </div>
-              <div>
-                <dt className="tn-label">URL</dt>
-                <dd className="mt-1 font-medium">{shop.store_url ?? "—"}</dd>
-              </div>
-              <div>
-                <dt className="tn-label">public_id</dt>
-                <dd className="mt-1 break-all font-mono text-[12px]">
-                  {shop.public_id}
-                </dd>
-              </div>
+            <dl className="mt-4 grid gap-3 text-[14px] sm:grid-cols-2">
               <div>
                 <dt className="tn-label">Termékek</dt>
-                <dd className="mt-1 font-medium">
-                  {shop.catalog_product_count.toLocaleString("hu-HU")} ·{" "}
-                  {catalogLabel(shop.catalog_status)}
+                <dd className="mt-1 font-semibold tabular-nums">
+                  {shop.catalog_product_count.toLocaleString("hu-HU")}
+                  <span className="font-normal text-faint">
+                    {" "}
+                    · {catalogLabel(shop.catalog_status)}
+                  </span>
                 </dd>
               </div>
               <div>
-                <dt className="tn-label">Utolsó teszt</dt>
-                <dd className="mt-1 font-medium">
+                <dt className="tn-label">Kapcsolat</dt>
+                <dd className="mt-1 font-semibold">
                   {shop.last_ping_ok === true
-                    ? "rendben"
+                    ? "Rendben"
                     : shop.last_ping_ok === false
-                      ? "nem megy"
+                      ? "Nem megy"
                       : "—"}
-                  {shop.last_ping_at ? ` · ${relativeTime(shop.last_ping_at)}` : ""}
+                  {shop.last_ping_at ? (
+                    <span className="font-normal text-faint">
+                      {" "}
+                      · {relativeTime(shop.last_ping_at)}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+              <div>
+                <dt className="tn-label">Gyors rendelés</dt>
+                <dd className="mt-1 font-semibold">
+                  {shop.widget_enabled ? "Be" : "Ki"}
+                </dd>
+              </div>
+              <div>
+                <dt className="tn-label">Bolt státusz</dt>
+                <dd className="mt-1 font-semibold">
+                  {shop.status === "needs_reauth"
+                    ? "Nem válaszol"
+                    : shop.status === "draft"
+                      ? "Még nincs kulcs"
+                      : shop.status}
                 </dd>
               </div>
             </dl>
@@ -451,133 +340,205 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
         )}
       </section>
 
+      {/* —— Használat —— */}
       <section className="tn-section">
         <h3 className="tn-section-title">Használat</h3>
-        <p className="tn-section-sub">
-          A nyitás csak szám, nem számlázás. A rendelés számít a vevőcsomagba.
+        <p className="mt-3 text-[28px] font-semibold tabular-nums tracking-tight">
+          {detail.usage.orders7d}
+          <span className="ml-2 text-[14px] font-normal text-faint">
+            rendelés / 7 nap
+          </span>
         </p>
-        <dl className="mt-4 grid grid-cols-2 gap-3 text-[14px] sm:grid-cols-4">
-          <div>
-            <dt className="tn-label">Rendelés 24ó</dt>
-            <dd className="mt-1 font-semibold tabular-nums">{detail.usage.orders24h}</dd>
-          </div>
-          <div>
-            <dt className="tn-label">Rendelés 7 nap</dt>
-            <dd className="mt-1 font-semibold tabular-nums">{detail.usage.orders7d}</dd>
-          </div>
-          <div>
-            <dt className="tn-label">Rendelés e hó</dt>
-            <dd className="mt-1 font-semibold tabular-nums">{detail.usage.ordersMonth}</dd>
-          </div>
-          <div>
-            <dt className="tn-label">Nyitás 24ó</dt>
-            <dd className="mt-1 font-semibold tabular-nums">{detail.usage.opens24h}</dd>
-          </div>
-        </dl>
+        <p className="mt-2 text-[13px] text-faint">
+          24 óra: {detail.usage.orders24h} · e hó: {detail.usage.ordersMonth}
+        </p>
       </section>
 
-      <section className="tn-section">
-        <h3 className="tn-section-title">Termékmásolás</h3>
-        {detail.jobs.length === 0 ? (
-          <p className="mt-3 text-[13px] text-faint">Még nem futott másolás.</p>
-        ) : (
-          <ul className="mt-4 space-y-2 text-[13px]">
-            {detail.jobs.map((j) => (
-              <li key={j.id} className="flex flex-wrap justify-between gap-2 border-b border-line py-2 last:border-0">
-                <span>
-                  <span className="font-medium">{j.status}</span>
-                  <span className="text-faint">
-                    {" "}
-                    · {j.pages_done}
-                    {j.pages_total != null ? `/${j.pages_total}` : ""} oldal
-                  </span>
-                  {j.error_message ? (
-                    <span className="block text-danger">{j.error_message}</span>
-                  ) : null}
-                </span>
-                <span className="text-faint">{relativeTime(j.created_at)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {/* —— Emberek —— */}
+      <OrgMembersPanel
+        orgId={detail.id}
+        members={detail.members}
+        pendingInvite={detail.pending_invite}
+        onOrganization={(org) => setDetail(org)}
+      />
 
-      <section className="tn-section">
-        <h3 className="tn-section-title">Emberek</h3>
-        {detail.members.length === 0 && !detail.pending_invite ? (
-          <p className="mt-3 text-[13px] text-faint">Nincs tag</p>
-        ) : null}
-        <ul className="mt-4 space-y-3 text-[14px]">
-          {detail.members.map((m) => (
-            <li key={m.email} className="flex justify-between gap-2">
-              <span>
-                <span className="font-medium">{m.email}</span>
-                <span className="text-faint"> · {m.role}</span>
-              </span>
-              <span className="text-faint">
-                {m.last_login_at ? relativeTime(m.last_login_at) : "még nem lépett be"}
-              </span>
-            </li>
-          ))}
-          {detail.pending_invite ? (
-            <li className="text-warn">
-              Függő meghívó: {detail.pending_invite.email}
+      {/* —— Haladó —— */}
+      <details className="tn-section group">
+        <summary className="cursor-pointer list-none text-[15px] font-semibold tracking-tight text-text [&::-webkit-details-marker]:hidden">
+          Haladó
+          <span className="ml-2 text-[12px] font-normal text-faint group-open:hidden">
+            limitek · másolás · napló · törlés
+          </span>
+        </summary>
+
+        <div className="mt-5 space-y-8">
+          <div>
+            <p className="tn-label">Soft limitek (infra)</p>
+            <p className="mt-1 text-[13px] text-faint">
+              Vevő: {detail.partner_used} / {detail.partner_limit}
               {" · "}
-              {new Date(detail.pending_invite.expires_at) <= new Date()
-                ? "lejárt"
-                : `lejár ${new Date(detail.pending_invite.expires_at).toLocaleDateString("hu-HU")}`}
-            </li>
-          ) : null}
-        </ul>
-        {detail.pending_invite ? (
-          <div className="mt-4">
-            <ResendInviteButton orgId={detail.id} />
+              Termékhely: {detail.sku_used.toLocaleString("hu-HU")} /{" "}
+              {detail.sku_limit.toLocaleString("hu-HU")}
+            </p>
+            <div className="mt-4 grid max-w-xl gap-3 sm:grid-cols-2">
+              <label className="tn-field">
+                <span className="tn-label">Vevő-limit felülírás</span>
+                <input
+                  className="tn-input"
+                  inputMode="numeric"
+                  placeholder="üres = alapértelmezett"
+                  value={partnerOverride}
+                  onChange={(e) => setPartnerOverride(e.target.value)}
+                />
+              </label>
+              <label className="tn-field">
+                <span className="tn-label">Termékhely felülírás</span>
+                <input
+                  className="tn-input"
+                  inputMode="numeric"
+                  placeholder="üres = alapértelmezett"
+                  value={skuOverride}
+                  onChange={(e) => setSkuOverride(e.target.value)}
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                void patch(
+                  {
+                    partnerLimitOverride: partnerOverride.trim()
+                      ? Number(partnerOverride)
+                      : null,
+                    skuLimitOverride: skuOverride.trim()
+                      ? Number(skuOverride)
+                      : null,
+                  },
+                  "Limitek mentve",
+                )
+              }
+              className="tn-btn tn-btn-ghost mt-3"
+            >
+              Limitek mentése
+            </button>
           </div>
-        ) : null}
-      </section>
 
-      <section className="tn-section">
-        <h3 className="tn-section-title">Napló</h3>
-        {detail.audit.length === 0 ? (
-          <p className="mt-3 text-[13px] text-faint">Üres.</p>
-        ) : (
-          <ul className="mt-4 space-y-2 text-[13px]">
-            {detail.audit.map((a) => (
-              <li key={a.id} className="flex flex-wrap justify-between gap-2 border-b border-line py-2 last:border-0">
-                <span>
-                  <span className="font-medium">{a.action}</span>
-                  <span className="text-faint">
-                    {a.actor_email ? ` · ${a.actor_email}` : ""}
+          <div>
+            <p className="tn-label">ERP tölcsér (belső KPI)</p>
+            <p className="mt-1 text-[13px] font-medium">
+              {detail.erpQualified.qualified
+                ? "erp_qualified"
+                : `${detail.erpQualified.hits} / 4 jel`}
+            </p>
+            <ul className="mt-3 space-y-1 text-[13px]">
+              {detail.erpQualified.signals.map((s) => (
+                <li key={s.id} className="flex justify-between gap-3">
+                  <span>
+                    {s.label}{" "}
+                    <span className="text-faint">{s.threshold}</span>
                   </span>
-                </span>
-                <span className="text-faint">{relativeTime(a.created_at)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  <span
+                    className={
+                      s.hit ? "font-semibold text-ok" : "tabular-nums text-faint"
+                    }
+                  >
+                    {s.value}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
 
-      <section className="tn-section">
-        <h3 className="tn-section-title">Veszély</h3>
-        <p className="tn-section-sub">
-          Törli a másolt termékeket. A gyors rendelés keresője üres lesz, amíg újra
-          másoltok. Írd be a bolt Shoprenter nevét.
-        </p>
-        <input
-          className="tn-input mt-4 max-w-sm"
-          value={purgeName}
-          onChange={(e) => setPurgeName(e.target.value)}
-          placeholder={shop?.shoprenter_shop_name ?? "bolt neve"}
-        />
-        <button
-          type="button"
-          disabled={pending || !purgeName.trim()}
-          onClick={() => void purge()}
-          className="tn-btn tn-btn-ghost mt-3"
-        >
-          Termékek törlése
-        </button>
-      </section>
+          {shop ? (
+            <div>
+              <p className="tn-label">Technikai</p>
+              <p className="mt-1 break-all font-mono text-[12px] text-faint">
+                slug: {detail.slug}
+                <br />
+                public_id: {shop.public_id}
+              </p>
+              <p className="mt-2 text-[13px] text-faint">
+                Widget nyitás 24ó: {detail.usage.opens24h}
+              </p>
+            </div>
+          ) : null}
+
+          <div>
+            <p className="tn-label">Termékmásolás</p>
+            {detail.jobs.length === 0 ? (
+              <p className="mt-2 text-[13px] text-faint">Még nem futott másolás.</p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-[13px]">
+                {detail.jobs.map((j) => (
+                  <li
+                    key={j.id}
+                    className="flex flex-wrap justify-between gap-2 border-b border-line py-2 last:border-0"
+                  >
+                    <span>
+                      <span className="font-medium">{j.status}</span>
+                      <span className="text-faint">
+                        {" "}
+                        · {j.pages_done}
+                        {j.pages_total != null ? `/${j.pages_total}` : ""} oldal
+                      </span>
+                      {j.error_message ? (
+                        <span className="block text-danger">{j.error_message}</span>
+                      ) : null}
+                    </span>
+                    <span className="text-faint">{relativeTime(j.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <p className="tn-label">Napló</p>
+            {detail.audit.length === 0 ? (
+              <p className="mt-2 text-[13px] text-faint">Üres.</p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-[13px]">
+                {detail.audit.map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex flex-wrap justify-between gap-2 border-b border-line py-2 last:border-0"
+                  >
+                    <span>
+                      <span className="font-medium">{a.action}</span>
+                      <span className="text-faint">
+                        {a.actor_email ? ` · ${a.actor_email}` : ""}
+                      </span>
+                    </span>
+                    <span className="text-faint">{relativeTime(a.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <p className="tn-label">Veszély</p>
+            <p className="mt-1 text-[13px] text-faint">
+              Törli a másolt termékeket. Írd be a bolt Shoprenter nevét.
+            </p>
+            <input
+              className="tn-input mt-3 max-w-sm"
+              value={purgeName}
+              onChange={(e) => setPurgeName(e.target.value)}
+              placeholder={shop?.shoprenter_shop_name ?? "bolt neve"}
+            />
+            <button
+              type="button"
+              disabled={pending || !purgeName.trim()}
+              onClick={() => void purge()}
+              className="tn-btn tn-btn-ghost mt-3"
+            >
+              Termékek törlése
+            </button>
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     template: "%s · Turinova B2B",
     default: "Turinova B2B",
   },
-  description: "Shoprenter B2B gyors rendelés — merchant + platform portál",
+  description: "Shoprenter B2B gyors rendelés. Merchant és platform portál.",
   robots: { index: false, follow: false },
 };
 

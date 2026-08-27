@@ -423,7 +423,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json(
         {
           error:
-            "A bolt csoportlistája nem elérhető. Próbáld újra — árva takarítást csak biztos SR válasz után végzünk.",
+            "A bolt csoportlistája nem elérhető. Próbáld újra. Árva takarítást csak biztos SR válasz után végzünk.",
         },
         { status: 503 },
       );

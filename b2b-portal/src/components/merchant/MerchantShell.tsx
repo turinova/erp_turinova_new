@@ -12,39 +12,54 @@ type NavChild = { href: string; label: string };
 type NavItem = {
   href: string;
   label: string;
-  icon: "home" | "widget" | "customers" | "reports" | "settings" | "plans" | "prices" | "levelup";
+  icon:
+    | "home"
+    | "widget"
+    | "customers"
+    | "reports"
+    | "settings"
+    | "plans"
+    | "prices"
+    | "levelup"
+    | "knowledge";
   children?: NavChild[];
+  /** Path prefixes that keep this section highlighted (multi-route groups). */
+  matchPrefixes?: string[];
+  /** Render below a divider (account / billing zone). */
+  footer?: boolean;
 };
 
 const NAV: NavItem[] = [
   { href: "/home", label: "Áttekintés", icon: "home" },
   { href: "/riport", label: "Riport", icon: "reports" },
   { href: "/vevok", label: "Vevők", icon: "customers" },
-  { href: "/szintlepes", label: "Szintlépés", icon: "levelup" },
   {
     href: "/arak",
-    label: "Árak",
+    label: "Partnerárak",
     icon: "prices",
+    matchPrefixes: ["/arak", "/automatizmus", "/szintlepes"],
     children: [
       { href: "/arak", label: "Árazás" },
-      { href: "/arak/utmutato", label: "Útmutató" },
+      { href: "/automatizmus", label: "Automatizmus" },
     ],
   },
-  { href: "/widget", label: "Gyors rendelés", icon: "widget" },
-  { href: "/csomag", label: "Csomagok", icon: "plans" },
-  { href: "/settings", label: "Beállítások", icon: "settings" },
+  { href: "/widget", label: "Widget", icon: "widget" },
+  { href: "/settings", label: "Beállítások", icon: "settings", footer: true },
+  { href: "/csomag", label: "Előfizetésem", icon: "plans", footer: true },
+  { href: "/tudasbazis", label: "Tudásbázis", icon: "knowledge", footer: true },
 ];
 
 const TITLES: Record<string, string> = {
   "/home": "Áttekintés",
   "/riport": "Riport",
-  "/widget": "Gyors rendelés",
+  "/widget": "Widget",
   "/vevok": "Vevők",
-  "/szintlepes": "Szintlépés",
+  "/automatizmus": "Automatizmus",
+  "/szintlepes": "Automatizmus",
   "/arak": "Árazás",
-  "/arak/utmutato": "Útmutató",
   "/settings": "Beállítások",
-  "/csomag": "Csomagok",
+  "/csomag": "Előfizetésem",
+  "/tudasbazis": "Tudásbázis",
 };
 
 const NAV_COLLAPSED_KEY = "tn-merchant-nav-collapsed";
@@ -194,6 +209,26 @@ function IconLevelUp({ className }: { className?: string }) {
   );
 }
 
+function IconKnowledge({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
+}
+
 function IconReports({ className }: { className?: string }) {
   return (
     <svg
@@ -267,6 +302,7 @@ function NavIcon({
   if (name === "reports") return <IconReports className={className} />;
   if (name === "prices") return <IconPrices className={className} />;
   if (name === "levelup") return <IconLevelUp className={className} />;
+  if (name === "knowledge") return <IconKnowledge className={className} />;
   return <IconHome className={className} />;
 }
 
@@ -281,9 +317,18 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** Exact path match (Árazás vs Útmutató children). */
+/** Exact path match for sibling routes under a section. */
 function isExactActive(pathname: string, href: string) {
   return pathname === href;
+}
+
+function isSectionActive(pathname: string, item: NavItem) {
+  const prefixes = item.matchPrefixes?.length
+    ? item.matchPrefixes
+    : [item.href];
+  return prefixes.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
 }
 
 export function MerchantShell({
@@ -292,6 +337,7 @@ export function MerchantShell({
   displayName,
   impersonatingOrgName,
   trialChip,
+  canAccessSettings = true,
 }: {
   children: React.ReactNode;
   email?: string | null;
@@ -303,9 +349,12 @@ export function MerchantShell({
     planLabel?: string;
     trialEndsAt?: string | null;
   } | null;
+  /** Admin / impersonation — hide Beállítások for Users. */
+  canAccessSettings?: boolean;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     try {
@@ -314,6 +363,19 @@ export function MerchantShell({
       /* ignore */
     }
   }, []);
+
+  /* Auto-expand Partnerárak (and any group) when a child route is active. */
+  useEffect(() => {
+    setOpenSections((prev) => {
+      const next = { ...prev };
+      for (const item of NAV) {
+        if (item.children?.length && isSectionActive(pathname, item)) {
+          next[item.href] = true;
+        }
+      }
+      return next;
+    });
+  }, [pathname]);
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -327,11 +389,15 @@ export function MerchantShell({
     });
   }
 
+  function toggleSection(href: string) {
+    setOpenSections((prev) => ({ ...prev, [href]: !prev[href] }));
+  }
+
   const title =
     pathname.startsWith("/vevok/") && pathname !== "/vevok"
       ? "Vevő"
       : (TITLES[pathname] ??
-        NAV.find((item) => isActive(pathname, item.href))?.label ??
+        NAV.find((item) => isSectionActive(pathname, item))?.label ??
         "Áttekintés");
   // Guide is padded content; only the price editor is full-bleed.
   const fullBleed =
@@ -355,13 +421,92 @@ export function MerchantShell({
       ? "flex h-8 cursor-pointer items-center border-l-2 border-text bg-surface-2 py-0 pl-9 pr-3 text-[12px] font-semibold text-text"
       : "flex h-8 cursor-pointer items-center border-l-2 border-transparent py-0 pl-9 pr-3 text-[12px] font-medium text-faint transition-colors hover:bg-surface-2 hover:text-text";
 
+  const primaryNav = NAV.filter((i) => !i.footer);
+  const footerNav = NAV.filter(
+    (i) =>
+      i.footer &&
+      (canAccessSettings || i.href !== "/settings"),
+  );
+
   const mobileItems: { href: string; label: string }[] = [];
   for (const item of NAV) {
+    if (!canAccessSettings && item.href === "/settings") continue;
     if (item.children?.length) {
       for (const c of item.children) mobileItems.push(c);
     } else {
       mobileItems.push({ href: item.href, label: item.label });
     }
+  }
+
+  function renderNavItem(item: NavItem) {
+    const parentActive = isSectionActive(pathname, item);
+    const hasChildren = Boolean(item.children?.length);
+    const expanded = hasChildren
+      ? openSections[item.href] ?? parentActive
+      : false;
+
+    if (collapsed) {
+      return (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={linkClass(parentActive)}
+          title={item.label}
+          aria-label={item.label}
+        >
+          <NavIcon name={item.icon} />
+        </Link>
+      );
+    }
+
+    return (
+      <div key={item.href}>
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => toggleSection(item.href)}
+            aria-expanded={expanded}
+            className={
+              parentActive
+                ? "flex h-9 w-full cursor-pointer items-center gap-2 border-l-2 border-text bg-surface-2 px-3 text-[13px] font-semibold text-text"
+                : "flex h-9 w-full cursor-pointer items-center gap-2 border-l-2 border-transparent px-3 text-[13px] font-medium text-faint transition-colors hover:bg-surface-2 hover:text-text"
+            }
+          >
+            <NavIcon name={item.icon} />
+            <span className="min-w-0 flex-1 truncate text-left">
+              {item.label}
+            </span>
+            <span
+              className="text-[10px] text-faint transition-transform"
+              style={{
+                transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+              }}
+              aria-hidden
+            >
+              ›
+            </span>
+          </button>
+        ) : (
+          <Link href={item.href} className={linkClass(parentActive)}>
+            <NavIcon name={item.icon} />
+            {item.label}
+          </Link>
+        )}
+        {hasChildren && expanded
+          ? item.children!.map((child) => (
+              <Link
+                key={child.href}
+                href={child.href}
+                className={childLinkClass(
+                  isExactActive(pathname, child.href),
+                )}
+              >
+                {child.label}
+              </Link>
+            ))
+          : null}
+      </div>
+    );
   }
 
   return (
@@ -421,57 +566,20 @@ export function MerchantShell({
           ) : null}
         </div>
         <nav className="flex flex-1 flex-col gap-0.5 py-2">
-          {NAV.map((item) => {
-            const parentActive = isActive(pathname, item.href);
-            const hasChildren = Boolean(item.children?.length);
-            if (collapsed) {
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={linkClass(parentActive)}
-                  title={item.label}
-                  aria-label={item.label}
-                >
-                  <NavIcon name={item.icon} />
-                </Link>
-              );
-            }
-            return (
-              <div key={item.href}>
-                {hasChildren ? (
-                  <div
-                    className={
-                      parentActive
-                        ? "flex h-9 items-center gap-2 border-l-2 border-text bg-surface-2 px-3 text-[13px] font-semibold text-text"
-                        : "flex h-9 items-center gap-2 border-l-2 border-transparent px-3 text-[13px] font-medium text-faint"
-                    }
-                  >
-                    <NavIcon name={item.icon} />
-                    {item.label}
-                  </div>
-                ) : (
-                  <Link href={item.href} className={linkClass(parentActive)}>
-                    <NavIcon name={item.icon} />
-                    {item.label}
-                  </Link>
-                )}
-                {hasChildren
-                  ? item.children!.map((child) => (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className={childLinkClass(
-                          isExactActive(pathname, child.href),
-                        )}
-                      >
-                        {child.label}
-                      </Link>
-                    ))
-                  : null}
-              </div>
-            );
-          })}
+          {primaryNav.map((item) => renderNavItem(item))}
+          {footerNav.length > 0 ? (
+            <>
+              <div
+                className={
+                  collapsed
+                    ? "mx-2 my-2 border-t border-line"
+                    : "mx-3 my-2 border-t border-line"
+                }
+                aria-hidden
+              />
+              {footerNav.map((item) => renderNavItem(item))}
+            </>
+          ) : null}
         </nav>
         <div
           className={
@@ -499,6 +607,17 @@ export function MerchantShell({
                 {displayName || email || "Te"}
               </p>
               <p className="truncate text-[11px] text-faint">{email ?? "—"}</p>
+              <p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-faint">
+                <Link href="/aszf" className="underline underline-offset-2 hover:text-text">
+                  ÁSZF
+                </Link>
+                <Link
+                  href="/adatkezeles"
+                  className="underline underline-offset-2 hover:text-text"
+                >
+                  Adatkezelés
+                </Link>
+              </p>
               <LogoutButton />
             </>
           )}
@@ -517,14 +636,6 @@ export function MerchantShell({
           <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">
             {title}
           </h1>
-          {pathname === "/arak" ? (
-            <Link
-              href="/arak/utmutato"
-              className="shrink-0 cursor-pointer text-[12px] font-semibold text-faint hover:text-text"
-            >
-              Útmutató
-            </Link>
-          ) : null}
           {trialChip ? (
             <Link
               href="/csomag"

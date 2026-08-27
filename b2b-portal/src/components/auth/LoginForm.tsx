@@ -1,11 +1,17 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export function LoginForm() {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const search = useSearchParams();
+  const reason = search.get("reason");
+  const [error, setError] = useState<string | null>(
+    reason === "suspended"
+      ? "A fiók fel van függesztve. Írj a hello@turinova.hu címre, ha szerinted ez hiba."
+      : null,
+  );
   const [pending, setPending] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -26,6 +32,7 @@ export function LoginForm() {
         ok?: boolean;
         redirectTo?: string;
         error?: string;
+        code?: string;
       };
       if (!res.ok || !data.ok) {
         setError(data.error ?? "Bejelentkezés sikertelen");
@@ -73,7 +80,7 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={pending}
-        className="tn-btn tn-btn-primary w-full"
+        className="tn-btn tn-btn-primary w-full cursor-pointer"
       >
         {pending ? "…" : "Belépés"}
       </button>

@@ -1,12 +1,6 @@
-import type { Metadata } from "next";
-import { requireMerchant } from "@/lib/auth/require";
-import { LevelUpView } from "@/components/merchant/LevelUpView";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Szintlépés",
-};
-
-export default async function LevelUpPage() {
-  await requireMerchant();
-  return <LevelUpView />;
+/** Régi URL — átirányítás. */
+export default function SzintlepesRedirectPage() {
+  redirect("/automatizmus");
 }

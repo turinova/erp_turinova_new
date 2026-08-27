@@ -72,15 +72,15 @@ export function buildMerchantCustomerStats(
   let nextActionHint: string | null = null;
   if (orders.length === 0) {
     nextActionHint =
-      "Még nincs rendelése a boltból — érdemes felhívni / partner csoportba tenni.";
+      "Még nincs rendelése a boltból. Érdemes felhívni, vagy partner csoportba tenni.";
   } else if (daysSinceLast != null && typicalDays != null) {
     if (daysSinceLast >= typicalDays) {
-      nextActionHint = `Szokásos ritmusa ~${typicalDays} nap — most jönne a következő kör (${daysSinceLast} napja hallgat).`;
+      nextActionHint = `Szokásos ritmusa ~${typicalDays} nap. Most jönne a következő kör (${daysSinceLast} napja hallgat).`;
     } else {
       nextActionHint = `Szokásos ritmus ~${typicalDays} nap. Kb. ${typicalDays - daysSinceLast} nap múlva esedékes.`;
     }
   } else if (daysSinceLast != null && daysSinceLast >= 30) {
-    nextActionHint = `Már ${daysSinceLast} napja nem rendelt — sleeping partner?`;
+    nextActionHint = `Már ${daysSinceLast} napja nem rendelt. Sleeping partner?`;
   }
 
   return {

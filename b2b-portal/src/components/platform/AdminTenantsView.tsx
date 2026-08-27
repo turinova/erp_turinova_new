@@ -4,23 +4,53 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { CreateOrgDrawer } from "@/components/platform/CreateOrgDrawer";
-import { PLAN_DEFAULTS } from "@/lib/billing/plans";
+import {
+  BASE_PRICE_HUF,
+  WHITE_LABEL_PRICE_HUF,
+  formatHuf,
+  hasWhiteLabel,
+  type PlanId,
+} from "@/lib/billing/plans";
 import { relativeTime } from "@/lib/format";
-import { fleetSummary, type OrgListRow } from "@/lib/orgs/types";
-import { healthLabel, type HealthLevel } from "@/lib/orgs/health";
+import { fleetSummary, sortFleet, type OrgListRow } from "@/lib/orgs/types";
 
-const STATUS_CLASS: Record<string, string> = {
-  active: "border border-ok text-ok",
-  trial: "border border-line-strong text-text",
-  suspended: "border border-danger text-danger",
-  lejárt: "border border-danger text-danger",
-};
+function adminPlanLabel(plan: PlanId, trialActive: boolean): string {
+  if (trialActive) return "Próba";
+  if (hasWhiteLabel(plan)) {
+    return `Felirat nélkül · ${formatHuf(WHITE_LABEL_PRICE_HUF)}`;
+  }
+  return `Alap · ${formatHuf(BASE_PRICE_HUF)}`;
+}
 
-const HEALTH_CLASS: Record<HealthLevel, string> = {
+function rowStatusLine(row: OrgListRow): { label: string; tone: "ok" | "warn" | "crit" | "muted" } {
+  if (row.health === "crit") {
+    return { label: row.healthReason || "Baj", tone: "crit" };
+  }
+  if (row.status === "suspended") {
+    return { label: "Felfüggesztve", tone: "crit" };
+  }
+  if (row.trialExpired) {
+    return { label: "Lejárt próba", tone: "crit" };
+  }
+  if (row.health === "warn") {
+    return { label: row.healthReason || "Figyelem", tone: "warn" };
+  }
+  if (row.trialActive && row.trialDaysLeft != null) {
+    return {
+      label: `Próba · ${row.trialDaysLeft} nap`,
+      tone: row.trialDaysLeft <= 7 ? "warn" : "muted",
+    };
+  }
+  if (row.trialActive) return { label: "Próba", tone: "muted" };
+  return { label: adminPlanLabel(row.plan, false), tone: "ok" };
+}
+
+const TONE_CLASS = {
   ok: "border border-ok text-ok",
   warn: "border border-warn text-warn",
   crit: "border border-danger text-danger",
-};
+  muted: "border border-line-strong text-text",
+} as const;
 
 type Props = {
   initialRows: OrgListRow[];
@@ -31,6 +61,7 @@ export function AdminTenantsView({ initialRows }: Props) {
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [moreFilters, setMoreFilters] = useState(false);
   const [inviteBanner, setInviteBanner] = useState<{
     url: string;
     email: string;
@@ -47,10 +78,13 @@ export function AdminTenantsView({ initialRows }: Props) {
   const flag = searchParams.get("flag") ?? "";
 
   const summary = useMemo(() => fleetSummary(initialRows), [initialRows]);
+  const troubleCount = summary.crit + summary.warn;
 
   const rows = useMemo(() => {
-    return initialRows.filter((r) => {
-      if (health === "ok" || health === "warn" || health === "crit") {
+    const filtered = initialRows.filter((r) => {
+      if (health === "trouble") {
+        if (r.health !== "crit" && r.health !== "warn") return false;
+      } else if (health === "ok" || health === "warn" || health === "crit") {
         if (r.health !== health) return false;
       }
       if (catalog === "ready" && r.catalog_status !== "ready") return false;
@@ -78,9 +112,16 @@ export function AdminTenantsView({ initialRows }: Props) {
       }
       if (flag === "overCap" && !r.overCap) return false;
       if (flag === "erpQualified" && !r.erpQualified) return false;
+      if (plan === "plus" || plan === "pro") {
+        if (!hasWhiteLabel(r.plan) || r.trialActive) return false;
+      }
+      if (plan === "start") {
+        if (hasWhiteLabel(r.plan) || r.trialActive) return false;
+      }
       return true;
     });
-  }, [initialRows, health, catalog, widget, flag]);
+    return sortFleet(filtered);
+  }, [initialRows, health, catalog, widget, flag, plan]);
 
   function setFilter(key: string, value: string) {
     const next = new URLSearchParams(searchParams.toString());
@@ -106,12 +147,22 @@ export function AdminTenantsView({ initialRows }: Props) {
     }
   }
 
+  const extraFilterOn = Boolean(catalog || widget || flag === "overCap" || flag === "erpQualified");
+
   return (
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <p className="text-[13px] text-faint">
-          {rows.length} / {initialRows.length} szervezet{pending ? " · …" : ""}
-        </p>
+        <div>
+          <p className="text-[15px] font-semibold tracking-tight text-text">
+            {troubleCount > 0
+              ? `${troubleCount} tenant vár intézkedést`
+              : "Minden rendben"}
+          </p>
+          <p className="mt-0.5 text-[12px] text-faint">
+            {rows.length} megjelenítve
+            {pending ? " · …" : ""}
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setDrawerOpen(true)}
@@ -121,14 +172,12 @@ export function AdminTenantsView({ initialRows }: Props) {
         </button>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {(
           [
-            ["health", "crit", "Ég", summary.crit],
-            ["health", "warn", "Figyelj", summary.warn],
+            ["health", "trouble", "Bajban", troubleCount],
             ["flag", "trialSoon", "Próba ≤7 nap", summary.trialSoon],
-            ["flag", "overCap", "Teli vevőcsomag", summary.overCap],
-            ["flag", "erpQualified", "ERP jelölt", summary.erpQualified],
+            ["health", "ok", "Rendben", summary.ok],
           ] as const
         ).map(([key, value, label, n]) => {
           const on = searchParams.get(key) === value;
@@ -188,7 +237,7 @@ export function AdminTenantsView({ initialRows }: Props) {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           type="search"
-          placeholder="Név, shop, email…"
+          placeholder="Keresés: név, shop, email…"
           defaultValue={q}
           key={q}
           onKeyDown={(e) => {
@@ -196,7 +245,12 @@ export function AdminTenantsView({ initialRows }: Props) {
               setFilter("q", (e.target as HTMLInputElement).value.trim());
             }
           }}
-          className="tn-input min-w-[160px] flex-1 sm:max-w-[280px]"
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v !== q) setFilter("q", v);
+          }}
+          className="tn-input min-w-[180px] flex-1 sm:max-w-[320px]"
+          id="admin-tenant-search"
         />
         <select
           className="tn-select cursor-pointer"
@@ -209,39 +263,61 @@ export function AdminTenantsView({ initialRows }: Props) {
           <option value="trial">próba</option>
           <option value="suspended">felfüggesztve</option>
         </select>
-        <select
-          className="tn-select cursor-pointer"
-          value={plan}
-          onChange={(e) => setFilter("plan", e.target.value)}
-          aria-label="Csomag"
+        <button
+          type="button"
+          onClick={() => setMoreFilters((v) => !v)}
+          className="tn-btn tn-btn-ghost !h-9 text-[12px]"
         >
-          <option value="">Csomag</option>
-          <option value="start">Start</option>
-          <option value="plus">Plus</option>
-          <option value="pro">Pro</option>
-        </select>
-        <select
-          className="tn-select cursor-pointer"
-          value={catalog}
-          onChange={(e) => setFilter("catalog", e.target.value)}
-          aria-label="Termékek"
-        >
-          <option value="">Termékek</option>
-          <option value="ready">kész</option>
-          <option value="syncing">másolódik</option>
-          <option value="error">hiba / teli</option>
-        </select>
-        <select
-          className="tn-select cursor-pointer"
-          value={widget}
-          onChange={(e) => setFilter("widget", e.target.value)}
-          aria-label="Gyors rendelés"
-        >
-          <option value="">Gyors rendelés</option>
-          <option value="on">be</option>
-          <option value="off">ki</option>
-        </select>
+          {moreFilters ? "Kevesebb szűrő" : "Több szűrő"}
+          {extraFilterOn && !moreFilters ? " ·" : ""}
+        </button>
       </div>
+
+      {moreFilters ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <select
+            className="tn-select cursor-pointer"
+            value={plan === "pro" ? "plus" : plan}
+            onChange={(e) => setFilter("plan", e.target.value)}
+            aria-label="Csomag"
+          >
+            <option value="">Csomag</option>
+            <option value="start">Alap (felirat van)</option>
+            <option value="plus">Felirat nélkül</option>
+          </select>
+          <select
+            className="tn-select cursor-pointer"
+            value={catalog}
+            onChange={(e) => setFilter("catalog", e.target.value)}
+            aria-label="Termékek"
+          >
+            <option value="">Termékek</option>
+            <option value="ready">kész</option>
+            <option value="syncing">másolódik</option>
+            <option value="error">hiba / teli</option>
+          </select>
+          <select
+            className="tn-select cursor-pointer"
+            value={widget}
+            onChange={(e) => setFilter("widget", e.target.value)}
+            aria-label="Gyors rendelés"
+          >
+            <option value="">Gyors rendelés</option>
+            <option value="on">be</option>
+            <option value="off">ki</option>
+          </select>
+          <select
+            className="tn-select cursor-pointer"
+            value={flag === "overCap" || flag === "erpQualified" ? flag : ""}
+            onChange={(e) => setFilter("flag", e.target.value)}
+            aria-label="Egyéb"
+          >
+            <option value="">Egyéb</option>
+            <option value="overCap">Soft limit tele</option>
+            <option value="erpQualified">ERP jelölt</option>
+          </select>
+        </div>
+      ) : null}
 
       {rows.length === 0 ? (
         <div className="border border-line-strong px-6 py-14 text-center">
@@ -265,21 +341,12 @@ export function AdminTenantsView({ initialRows }: Props) {
         </div>
       ) : (
         <div className="w-full overflow-x-auto border border-line-strong">
-          <table className="w-full min-w-[980px] border-collapse text-left text-[13px]">
+          <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
             <thead>
               <tr className="border-b border-line-strong bg-surface-2">
-                {[
-                  "Szervezet",
-                  "Állapot",
-                  "Csomag",
-                  "Vevők / hó",
-                  "Termékek",
-                  "Gyors rendelés",
-                  "Aktivitás",
-                  "",
-                ].map((h) => (
+                {["Szervezet", "Állapot", "Termékek", "Widget"].map((h) => (
                   <th
-                    key={h || "actions"}
+                    key={h}
                     className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-faint"
                   >
                     {h}
@@ -289,37 +356,15 @@ export function AdminTenantsView({ initialRows }: Props) {
             </thead>
             <tbody>
               {rows.map((row) => {
-                const statusLabel = row.trialExpired
-                  ? "lejárt"
-                  : row.status === "trial"
-                    ? "próba"
-                    : row.status === "suspended"
-                      ? "felfüggesztve"
-                      : "éles";
-                const statusClass =
-                  row.shop_status === "needs_reauth"
-                    ? "border border-warn text-warn"
-                    : STATUS_CLASS[row.trialExpired ? "lejárt" : row.status] ??
-                      STATUS_CLASS.trial;
-                const fill =
-                  row.partner_limit <= 0
-                    ? 0
-                    : Math.min(
-                        100,
-                        Math.round((row.partner_used / row.partner_limit) * 100),
-                      );
+                const st = rowStatusLine(row);
                 return (
                   <tr
                     key={row.id}
-                    className="border-b border-line last:border-0 hover:bg-surface-2"
+                    className="cursor-pointer border-b border-line last:border-0 hover:bg-surface-2"
+                    onClick={() => router.push(`/admin/orgs/${row.id}`)}
                   >
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/orgs/${row.id}`}
-                        className="font-semibold underline-offset-2 hover:underline"
-                      >
-                        {row.name}
-                      </Link>
+                      <p className="font-semibold text-text">{row.name}</p>
                       <p className="text-[12px] text-faint">
                         {row.shop_name ?? "—"}
                         {row.owner_email ? ` · ${row.owner_email}` : ""}
@@ -329,53 +374,18 @@ export function AdminTenantsView({ initialRows }: Props) {
                             : " · meghívó"
                           : ""}
                       </p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex h-6 items-center px-2 text-[11px] font-semibold ${HEALTH_CLASS[row.health]}`}
-                        title={row.healthReason}
-                      >
-                        {healthLabel(row.health)}
-                      </span>
-                      <p className="mt-1 max-w-[220px] text-[11px] text-faint">
-                        {row.healthReason}
-                      </p>
-                      <span
-                        className={`mt-1 inline-flex h-5 items-center px-1.5 text-[10px] font-semibold ${statusClass}`}
-                      >
-                        {statusLabel}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">
-                        {PLAN_DEFAULTS[row.plan].label}
-                      </p>
-                      {row.trialActive && row.trialDaysLeft != null ? (
-                        <p className="text-[12px] text-faint">
-                          {PLAN_DEFAULTS[row.plan].label} · próba {row.trialDaysLeft}{" "}
-                          nap
-                        </p>
-                      ) : null}
-                      {row.erpQualified ? (
-                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-ok">
-                          ERP jelölt
+                      {row.last_activity_at ? (
+                        <p className="mt-0.5 text-[11px] text-faint">
+                          Aktivitás {relativeTime(row.last_activity_at)}
                         </p>
                       ) : null}
                     </td>
                     <td className="px-4 py-3">
-                      <p className="tabular-nums font-medium">
-                        {row.partner_used} / {row.partner_limit}
-                      </p>
-                      <div className="mt-1 h-1.5 w-24 border border-line-strong bg-surface-2">
-                        <div
-                          className={
-                            row.overCap || row.warn80
-                              ? "h-full bg-warn"
-                              : "h-full bg-text"
-                          }
-                          style={{ width: `${fill}%` }}
-                        />
-                      </div>
+                      <span
+                        className={`inline-flex max-w-[240px] items-center px-2 py-1 text-[11px] font-semibold ${TONE_CLASS[st.tone]}`}
+                      >
+                        {st.label}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <p className="tabular-nums font-medium">
@@ -393,19 +403,6 @@ export function AdminTenantsView({ initialRows }: Props) {
                       >
                         {row.widget_enabled ? "Be" : "Ki"}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-faint">
-                      {row.last_activity_at
-                        ? relativeTime(row.last_activity_at)
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/admin/orgs/${row.id}`}
-                        className="text-[12px] font-semibold underline underline-offset-2"
-                      >
-                        Megnyitás
-                      </Link>
                     </td>
                   </tr>
                 );

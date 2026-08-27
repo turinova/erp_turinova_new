@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   isErrorResponse,
-  requireMerchantApi,
+  requireSettingsAdminApi,
 } from "@/lib/auth/merchant-api";
 import { enqueueFullSync } from "@/lib/commerce/jobs";
 import { kickCatalogSync } from "@/lib/commerce/loop";
@@ -9,7 +9,7 @@ import { withTenant } from "@/lib/db";
 import { loadMerchantShop } from "@/lib/merchant/shop";
 
 export async function POST() {
-  const auth = await requireMerchantApi();
+  const auth = await requireSettingsAdminApi();
   if (isErrorResponse(auth)) return auth;
 
   const orgId = auth.activeOrganizationId!;

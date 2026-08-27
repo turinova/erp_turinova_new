@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   isErrorResponse,
   requireMerchantApi,
+  requireSettingsAdminApi,
 } from "@/lib/auth/merchant-api";
 import { withTenant } from "@/lib/db";
 import {
@@ -35,7 +36,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const auth = await requireMerchantApi();
+  const auth = await requireSettingsAdminApi();
   if (isErrorResponse(auth)) return auth;
 
   let body: Record<string, unknown>;

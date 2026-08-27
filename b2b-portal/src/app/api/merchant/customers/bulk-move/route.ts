@@ -176,7 +176,7 @@ export async function POST(req: Request) {
     const message =
       fail === 0
         ? `${ok} vevő átkerült ide: ${result.groupName}`
-        : `${ok} sikerült, ${fail} nem — nézd a listát.`;
+        : `${ok} sikerült, ${fail} nem. Nézd a listát.`;
 
     return NextResponse.json({ ok: true, message, ...result });
   } catch (err) {

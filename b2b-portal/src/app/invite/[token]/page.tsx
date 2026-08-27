@@ -4,7 +4,7 @@ import { InviteAcceptForm } from "@/components/auth/InviteAcceptForm";
 import { PlanPriceTable } from "@/components/billing/PlanPriceTable";
 import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { hashToken } from "@/lib/auth/tokens";
-import { PLAN_DEFAULTS, parsePlanId } from "@/lib/billing/plans";
+import { PLAN_DEFAULTS, TRIAL_DAYS_DEFAULT, parsePlanId } from "@/lib/billing/plans";
 import { withPlatformAdmin, query } from "@/lib/db";
 
 export const metadata: Metadata = {
@@ -81,8 +81,8 @@ export default async function InvitePage({
                 <strong className="text-text">{invite.org_name}</strong>
               </p>
               <p className="mt-3 text-[12px] text-muted">
-                30 napig Pro: fotó igen, a Turinova jel a gyors rendelésen
-                marad. Utána{" "}
+                {TRIAL_DAYS_DEFAULT} nap próba: teljes gyors rendelés. A Turinova
+                felirat a widgeten látszik. Utána{" "}
                 <strong className="text-text">
                   {PLAN_DEFAULTS[parsePlanId(invite.plan)].label}
                 </strong>

@@ -149,7 +149,7 @@ export async function POST(request: Request) {
       }),
     );
 
-    /* Fire-and-forget: szintlépés „rendelés után” mód — 1 vevő, debounce-szal */
+    /* Fire-and-forget: automatizmus „rendelés után” mód — 1 vevő, debounce-szal */
     const customerInnerId = Number(userId);
     if (Number.isFinite(customerInnerId) && customerInnerId > 0) {
       void import("@/lib/merchant/group-rules-auto")

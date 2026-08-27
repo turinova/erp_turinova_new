@@ -45,6 +45,21 @@ export async function POST(req: Request) {
         return { ok: false as const, status: 403 as const, code: "no_org" };
       }
 
+      if (orgId) {
+        const org = await query<{ status: string }>(
+          client,
+          `select status from organizations where id = $1`,
+          [orgId],
+        );
+        if (org.rows[0]?.status === "suspended") {
+          return {
+            ok: false as const,
+            status: 403 as const,
+            code: "suspended" as const,
+          };
+        }
+      }
+
       const ua = req.headers.get("user-agent");
       const { sessionId, expiresAt } = await createSession(client, {
         userId: user.id,
@@ -75,6 +90,16 @@ export async function POST(req: Request) {
       if ("code" in result && result.code === "no_org") {
         return NextResponse.json(
           { error: "Nincs szervezet tagság. Kérj meghívót." },
+          { status: 403 },
+        );
+      }
+      if ("code" in result && result.code === "suspended") {
+        return NextResponse.json(
+          {
+            error:
+              "A fiók fel van függesztve. Írj a hello@turinova.hu címre, ha szerinted ez hiba.",
+            code: "suspended",
+          },
           { status: 403 },
         );
       }

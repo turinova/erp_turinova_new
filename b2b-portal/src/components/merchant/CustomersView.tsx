@@ -40,12 +40,12 @@ const FILTERS: { id: ListFilter; label: string; hint: string }[] = [
   {
     id: "newcomers",
     label: "Újak",
-    hint: "Alapértelmezett csoport — új regisztrálók",
+    hint: "Alapértelmezett csoport: új regisztrálók",
   },
   {
     id: "partners",
     label: "Partnerek",
-    hint: "Nem az alap csoportban — partner árazás",
+    hint: "Nem az alap csoportban: partner árazás",
   },
   { id: "all", label: "Összes", hint: "Minden vevő ezen az oldalon" },
 ];
@@ -65,6 +65,28 @@ export function CustomersView() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [gate, setGate] = useState<PartnerGateDto | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importPreview, setImportPreview] = useState<{
+    rows: {
+      row: number;
+      email: string;
+      status: string;
+      message: string;
+      customerInnerId: number | null;
+      toGroupInnerId: number | null;
+      customerName: string | null;
+    }[];
+    summary: {
+      total: number;
+      ok: number;
+      same: number;
+      unknownEmail: number;
+      unknownGroup: number;
+      invalid: number;
+    };
+  } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadGroups = useCallback(async () => {
@@ -234,6 +256,138 @@ export function CustomersView() {
     void runBulkMove(targetGroupId);
   }
 
+  async function downloadExport() {
+    setExporting(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("q", q.trim());
+      else {
+        params.set("filter", filter);
+        if (groupFilterId !== "") {
+          params.set("groupInnerId", String(groupFilterId));
+        }
+      }
+      const res = await fetch(`/api/merchant/customers/export?${params}`);
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error || "Export sikertelen");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `vevok-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage("Excel letöltve.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export sikertelen");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function downloadTemplate() {
+    setError(null);
+    try {
+      const res = await fetch("/api/merchant/customers/import/template");
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error || "Sablon hiba");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "vevok-import-sablon.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sablon hiba");
+    }
+  }
+
+  async function onImportFile(file: File | null) {
+    if (!file) return;
+    setImportBusy(true);
+    setError(null);
+    setImportPreview(null);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      const res = await fetch("/api/merchant/customers/import", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import előnézet sikertelen");
+      setImportPreview({
+        rows: data.rows || [],
+        summary: data.summary,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import hiba");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function applyImport() {
+    if (!importPreview) return;
+    const moves = importPreview.rows
+      .filter(
+        (r) =>
+          r.status === "ok" &&
+          r.customerInnerId != null &&
+          r.toGroupInnerId != null,
+      )
+      .map((r) => ({
+        customerInnerId: r.customerInnerId!,
+        toGroupInnerId: r.toGroupInnerId!,
+      }));
+    if (moves.length === 0) {
+      setError("Nincs alkalmazható sor.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `${moves.length} vevő csoportját frissíted a boltban. Folytatod?`,
+      )
+    ) {
+      return;
+    }
+    setImportBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/merchant/customers/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apply: true, moves }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import sikertelen");
+      setMessage(data.message || "Kész.");
+      setImportPreview(null);
+      setShowImport(false);
+      await loadCustomers({
+        query: q,
+        filter,
+        page,
+        groupInnerId: groupFilterId,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import sikertelen");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
   const emptyCopy = q.trim()
     ? "Nincs ilyen nevű vagy emailű vevő."
     : groupFilterId !== ""
@@ -251,19 +405,6 @@ export function CustomersView() {
           <div>
             <p className="text-[15px] font-semibold tracking-tight text-text">
               Vevők
-            </p>
-            <p className="mt-0.5 text-[12px] text-faint">
-              Újak és partnerek. Pipáld ki, válaszd a csoportot, Átrakás. Árak:{" "}
-              <Link href="/arak" className="font-semibold underline underline-offset-2">
-                Árak
-              </Link>
-              {" · "}
-              <Link
-                href="/szintlepes"
-                className="font-semibold underline underline-offset-2"
-              >
-                Szintlépés
-              </Link>
             </p>
           </div>
 
@@ -344,7 +485,116 @@ export function CustomersView() {
               placeholder="Keresés: név vagy email…"
               className="h-8 min-w-[180px] flex-1 rounded-none border-[1.5px] border-line-strong bg-surface px-3 text-[13px] text-text outline-none placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent/15"
             />
+
+            <button
+              type="button"
+              disabled={exporting}
+              onClick={() => void downloadExport()}
+              className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold disabled:opacity-40"
+            >
+              {exporting ? "…" : "Excel letöltés"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowImport((v) => !v);
+                setImportPreview(null);
+              }}
+              className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold"
+            >
+              {showImport ? "Import bezárás" : "Excel import"}
+            </button>
           </div>
+
+          {showImport ? (
+            <div className="border-[1.5px] border-line-strong bg-surface p-3">
+              <p className="text-[13px] font-semibold text-text">
+                Csoportok Excelből
+              </p>
+              <p className="mt-1 text-[12px] text-faint">
+                Letöltés → írd át a{" "}
+                <span className="font-medium text-text">csoport</span> oszlopot
+                → import. Kulcs:{" "}
+                <span className="font-medium text-text">email</span>. A{" "}
+                <span className="font-medium text-text">nev</span> csak
+                tájékoztató.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={importBusy}
+                  onClick={() => void downloadTemplate()}
+                  className="h-8 cursor-pointer border border-line-strong px-3 text-[12px] font-semibold disabled:opacity-40"
+                >
+                  Sablon
+                </button>
+                <label className="inline-flex h-8 cursor-pointer items-center border border-line-strong bg-accent px-3 text-[12px] font-semibold text-white">
+                  {importBusy ? "…" : "Fájl kiválasztása"}
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    disabled={importBusy}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      e.target.value = "";
+                      void onImportFile(f);
+                    }}
+                  />
+                </label>
+                {importPreview && importPreview.summary.ok > 0 ? (
+                  <button
+                    type="button"
+                    disabled={importBusy}
+                    onClick={() => void applyImport()}
+                    className="h-8 cursor-pointer bg-accent px-3 text-[12px] font-semibold text-white disabled:opacity-40"
+                  >
+                    Alkalmaz ({importPreview.summary.ok})
+                  </button>
+                ) : null}
+              </div>
+              {importPreview ? (
+                <div className="mt-3">
+                  <p className="text-[12px] text-faint">
+                    {importPreview.summary.total} sor ·{" "}
+                    <span className="text-ok">
+                      {importPreview.summary.ok} ok
+                    </span>
+                    {importPreview.summary.same
+                      ? ` · ${importPreview.summary.same} változatlan`
+                      : ""}
+                    {importPreview.summary.unknownEmail
+                      ? ` · ${importPreview.summary.unknownEmail} ismeretlen email`
+                      : ""}
+                    {importPreview.summary.unknownGroup
+                      ? ` · ${importPreview.summary.unknownGroup} ismeretlen csoport`
+                      : ""}
+                    {importPreview.summary.invalid
+                      ? ` · ${importPreview.summary.invalid} hibás`
+                      : ""}
+                  </p>
+                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-[12px]">
+                    {importPreview.rows.slice(0, 40).map((r) => (
+                      <li
+                        key={`${r.row}-${r.email}`}
+                        className={
+                          r.status === "ok"
+                            ? "text-text"
+                            : r.status === "same_group"
+                              ? "text-faint"
+                              : "text-danger"
+                        }
+                      >
+                        <span className="text-faint">#{r.row}</span> {r.email}
+                        {r.customerName ? ` · ${r.customerName}` : ""}:{" "}
+                        {r.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {error ? (

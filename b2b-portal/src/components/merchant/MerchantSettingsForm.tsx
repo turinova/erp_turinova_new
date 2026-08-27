@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { CatalogResyncButton, CatalogStatusChip } from "@/components/merchant/CatalogStatusPanel";
 import type { MerchantShopDto } from "@/lib/merchant/shop";
 
 type Props = { initial: MerchantShopDto };
@@ -45,7 +46,6 @@ export function MerchantSettingsForm({ initial }: Props) {
   const [storeUrl, setStoreUrl] = useState(initial.storeUrl ?? "");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [widgetEnabled, setWidgetEnabled] = useState(initial.widgetEnabled);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -65,7 +65,6 @@ export function MerchantSettingsForm({ initial }: Props) {
   function applyShop(next: MerchantShopDto) {
     setShop(next);
     setStoreUrl(next.storeUrl ?? "");
-    setWidgetEnabled(next.widgetEnabled);
     setUsername("");
     setPassword("");
   }
@@ -75,7 +74,6 @@ export function MerchantSettingsForm({ initial }: Props) {
     setError(null);
     setMessage(null);
     setPending(true);
-    const customerGroupIds: number[] = [];
 
     try {
       if (!shop.hasCredentials && (!username.trim() || !password.trim())) {
@@ -84,12 +82,12 @@ export function MerchantSettingsForm({ initial }: Props) {
         return;
       }
 
+      /* widgetEnabled only on /widget — omit so shop PATCH leaves it alone */
       const body: Record<string, unknown> = {
         storeUrl,
         authType: "basic_legacy",
         buttonLabel: shop.buttonLabel,
-        customerGroupIds,
-        widgetEnabled,
+        customerGroupIds: [],
       };
       if (username.trim()) body.username = username.trim();
       if (password.trim()) body.password = password.trim();
@@ -165,7 +163,7 @@ export function MerchantSettingsForm({ initial }: Props) {
     : failed
       ? "bad"
       : "idle";
-  const connValue = connected ? "Rendben" : failed ? "Nem megy" : "—";
+  const connValue = connected ? "OK" : failed ? "Hiba" : "—";
   const failMsg =
     failed
       ? pingResult?.kind === "fail"
@@ -176,21 +174,23 @@ export function MerchantSettingsForm({ initial }: Props) {
   return (
     <form className="flex w-full flex-col gap-6" onSubmit={save}>
       <div className="flex flex-wrap items-center gap-2 border-b border-line-strong pb-5">
-        <StatusChip label="Kapcsolat" value={connValue} tone={connTone} />
+        <StatusChip label="Bolt API" value={connValue} tone={connTone} />
         <StatusChip
-          label="Boltban"
-          value={widgetEnabled ? "Be" : "Ki"}
-          tone={widgetEnabled ? "ok" : "idle"}
+          label="Gomb"
+          value={shop.widgetEnabled ? "Látszik" : "Rejtve"}
+          tone={shop.widgetEnabled ? "ok" : "idle"}
         />
+        <CatalogStatusChip />
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <CatalogResyncButton />
           <button
             type="button"
             onClick={ping}
             disabled={pinging || !shop.hasCredentials}
             className="tn-btn tn-btn-ghost"
           >
-            {pinging ? "…" : "Működik?"}
+            {pinging ? "…" : "Kapcsolat tesztelése"}
           </button>
           <button
             type="submit"
@@ -213,9 +213,7 @@ export function MerchantSettingsForm({ initial }: Props) {
         </p>
       )}
 
-      {/* 2 columns */}
       <div className="grid w-full gap-8 lg:grid-cols-2 lg:gap-10">
-        {/* Left — essentials */}
         <div className="flex flex-col gap-5">
           <div>
             <h2 className="text-[18px] font-semibold tracking-tight">
@@ -260,43 +258,33 @@ export function MerchantSettingsForm({ initial }: Props) {
           </label>
         </div>
 
-        {/* Right — gomb + origins */}
         <div className="flex flex-col gap-5">
-          <div>
-            <h2 className="text-[18px] font-semibold tracking-tight">Gyors rendelés</h2>
-            <p className="mt-1 text-[13px] text-faint">
-              Megjelenik a boltban a bejelentkezett vevőknek. Be = látszik, Ki = el van rejtve.
+          <div className="border-[1.5px] border-line-strong bg-surface p-4">
+            <h2 className="text-[15px] font-semibold tracking-tight">Widget</h2>
+            <p className="mt-1 text-[12px] text-faint">
+              Ki/be, nézet és telepítés a Widget oldalon.
             </p>
+            <p className="mt-3 text-[13px]">
+              Most:{" "}
+              <span className="font-semibold">
+                {shop.widgetEnabled ? "be van kapcsolva" : "ki van kapcsolva"}
+              </span>
+            </p>
+            <Link href="/widget" className="tn-btn tn-btn-ghost mt-3 inline-flex">
+              Widget →
+            </Link>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setWidgetEnabled(true)}
-              className={
-                widgetEnabled
-                  ? "inline-flex h-10 cursor-pointer items-center rounded-none border-2 border-text bg-text px-4 text-[13px] font-bold text-white"
-                  : "inline-flex h-10 cursor-pointer items-center rounded-none border-2 border-line-strong bg-surface px-4 text-[13px] font-semibold text-faint"
-              }
-            >
-              Be
-            </button>
-            <button
-              type="button"
-              onClick={() => setWidgetEnabled(false)}
-              className={
-                !widgetEnabled
-                  ? "inline-flex h-10 cursor-pointer items-center rounded-none border-2 border-text bg-text px-4 text-[13px] font-bold text-white"
-                  : "inline-flex h-10 cursor-pointer items-center rounded-none border-2 border-line-strong bg-surface px-4 text-[13px] font-semibold text-faint"
-              }
-            >
-              Ki
-            </button>
-            <Link
-              href="/widget"
-              className="tn-btn tn-btn-ghost ml-auto"
-            >
-              Nézet →
+          <div className="border-[1.5px] border-line-strong bg-surface p-4">
+            <h2 className="text-[15px] font-semibold tracking-tight">
+              Előfizetés
+            </h2>
+            <p className="mt-1 text-[12px] text-faint">
+              Egy előfizetés + opcionális saját márka (felirat). Részletek az
+              Előfizetésem oldalon.
+            </p>
+            <Link href="/csomag" className="tn-btn tn-btn-ghost mt-3 inline-flex">
+              Előfizetésem →
             </Link>
           </div>
         </div>

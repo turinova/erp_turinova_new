@@ -21,6 +21,35 @@ npm run dev
 → http://localhost:3030  
 → Widget: http://localhost:3030/widget.js (+ `/api/products/*`, `/api/orders/*`)
 
+### Élő bolt teszt (HTTPS + localhost) — Cloudflare tunnel
+
+A https bolt **blokkolja** a `http://localhost` scriptet (mixed content). Ugyanaz a megoldás, ami korábban is működött:
+
+```bash
+# terminál 1 — portal
+cd b2b-portal && npm run dev
+
+# terminál 2 — tunnel a :3030-ra
+cd b2b-portal && npm run tunnel
+```
+
+A cloudflared kiír egy `https://….trycloudflare.com` URL-t. Ezt:
+
+1. tedd `.env.local`-ba: `NEXT_PUBLIC_APP_URL=https://….trycloudflare.com` (restart `npm run dev`)
+2. a Shoprenter `footer_scripts.tpl`-be (ne localhostot):
+
+```html
+<script>
+window.SR_B2B_QUICKORDER = {
+  apiBase: "https://….trycloudflare.com",
+  shopId: "<shops.public_id>"
+};
+</script>
+<script src="https://….trycloudflare.com/widget.js?v=39"></script>
+```
+
+Ha újraindítod a tunnel-t, az URL **megváltozik** — cseréld a scriptben és az env-ben.
+
 A régi `shoprenter-b2b-quickorder` (port 3020) nem kell a napi teszthez — a widget a portalból fut.
 
 ## Widget install (Shoprenter)
@@ -30,17 +59,17 @@ Merchant **Beállítások** → másold az install snippetet. Lényeg:
 ```html
 <script>
 window.SR_B2B_QUICKORDER = {
-  apiBase: "http://localhost:3030",
+  apiBase: "https://b2b.turinova.hu",
   shopId: "<shops.public_id>",
   allowedGroupIds: [],
   requireLogin: true,
   buttonLabel: "Gyors rendelés"
 };
 </script>
-<script src="http://localhost:3030/widget.js" defer></script>
+<script src="https://b2b.turinova.hu/widget.js" defer></script>
 ```
 
-Prod: `apiBase` = `https://b2b.turinova.hu` (vagy a tunnel URL).
+Local bolt-teszt: tunnel URL (lásd fent). Prod: `https://b2b.turinova.hu`.
 
 ## Adatbázis — fontos
 

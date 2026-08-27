@@ -1,15 +1,7 @@
 /** Widget appearance / feature presets — shared by portal UI + runtime config.
- * Color direction: Apple HIG + Notion neutrals (not purple SaaS).
+ * Color direction: Apple HIG + Notion neutrals + GitHub Primer (not purple SaaS).
+ * Merchant picks one of 5 locked themes — not orthogonal color×ink×style.
  */
-
-/** Jobs / Apple / Notion — short labels, vivid fills that don’t look muddy. */
-export const FAB_COLOR_PRESETS = [
-  { id: "shoprenter_blue", label: "Kék", color: "#007AFF" },
-  { id: "platform_teal", label: "Zöld", color: "#1A9B84" },
-  { id: "charcoal", label: "Éjjel", color: "#000000" },
-  { id: "ember", label: "Nap", color: "#FF9F0A" },
-  { id: "custom", label: "Saját", color: null as string | null },
-] as const;
 
 /** Letter color on solid/glass FAB — Auto follows contrast. */
 export const FAB_INK_PRESETS = [
@@ -18,12 +10,69 @@ export const FAB_INK_PRESETS = [
   { id: "black", label: "Fekete" },
 ] as const;
 
+/** Runtime FAB finishes — merchant picks separately from color theme. */
 export const FAB_STYLE_PRESETS = [
   { id: "solid", label: "Tömör", hint: "Erős, egyértelmű" },
-  { id: "glass", label: "Üveg", hint: "Áttetsző, selymes" },
-  { id: "outline", label: "Keret", hint: "Világos háttéren" },
-  { id: "soft", label: "Lágy", hint: "Halvány szín" },
-  { id: "contrast", label: "Éles", hint: "Fekete-fehér" },
+  { id: "glass", label: "Üveg", hint: "Liquid glass" },
+  { id: "neon", label: "Neon", hint: "Izzó fény" },
+] as const;
+
+/**
+ * Five curated color skins (Figma / Notion / GitHub).
+ * Ink is "auto" → max WCAG contrast on the solid fill.
+ * Finish (solid/glass/neon) is chosen separately.
+ * Panel is always portal „Olvasó” (`high_contrast`) — themes only skin the FAB.
+ */
+export const WIDGET_THEME_PRESETS = [
+  {
+    id: "ocean",
+    label: "Kék",
+    hint: "Bizalom (iOS / Shoprenter)",
+    fabColor: "#007AFF",
+    fabInk: "auto" as const,
+    panelTheme: "high_contrast" as const,
+  },
+  {
+    id: "forest",
+    label: "Zöld",
+    hint: "Nyugodt (Notion teal)",
+    fabColor: "#0F7B6C",
+    fabInk: "auto" as const,
+    panelTheme: "high_contrast" as const,
+  },
+  {
+    id: "ink",
+    label: "Éjjel",
+    hint: "Sötét (GitHub Primer)",
+    fabColor: "#24292F",
+    fabInk: "auto" as const,
+    panelTheme: "high_contrast" as const,
+  },
+  {
+    id: "ember",
+    label: "Nap",
+    hint: "Meleg energia, sötét betű",
+    fabColor: "#E8871E",
+    fabInk: "auto" as const,
+    panelTheme: "high_contrast" as const,
+  },
+  {
+    id: "paper",
+    label: "Papír",
+    hint: "Minimal, fehér betű",
+    fabColor: "#1C1C1E",
+    fabInk: "auto" as const,
+    panelTheme: "high_contrast" as const,
+  },
+] as const;
+
+/** @deprecated Kept for DB migration / resolveFabColor fallback. */
+export const FAB_COLOR_PRESETS = [
+  { id: "shoprenter_blue", label: "Kék", color: "#007AFF" },
+  { id: "platform_teal", label: "Zöld", color: "#0F7B6C" },
+  { id: "charcoal", label: "Éjjel", color: "#24292F" },
+  { id: "ember", label: "Nap", color: "#E8871E" },
+  { id: "custom", label: "Saját", color: null as string | null },
 ] as const;
 
 export const FAB_POSITION_PRESETS = [
@@ -47,43 +96,10 @@ export const FAB_POSITION_PRESETS = [
       top: "auto",
     },
   },
-  {
-    id: "bottom_right_mobile_offset",
-    label: "Jobb, kosár fölött",
-    css: {
-      right: "20px",
-      left: "auto",
-      bottom: "max(80px, calc(20px + env(safe-area-inset-bottom, 0px)))",
-      top: "auto",
-    },
-  },
-  {
-    id: "bottom_left_mobile_offset",
-    label: "Bal, kosár fölött",
-    css: {
-      left: "20px",
-      right: "auto",
-      bottom: "max(80px, calc(20px + env(safe-area-inset-bottom, 0px)))",
-      top: "auto",
-    },
-  },
-  {
-    id: "bottom_right_raised",
-    label: "Jobb, magasan",
-    css: {
-      right: "20px",
-      left: "auto",
-      bottom: "max(96px, calc(72px + env(safe-area-inset-bottom, 0px)))",
-      top: "auto",
-    },
-  },
 ] as const;
 
 export const FAB_SIZE_PRESETS = [
   { id: "icon_label", label: "Teljes", showLabel: true, compact: false },
-  { id: "compact", label: "Kicsi", showLabel: true, compact: true },
-  { id: "large", label: "Nagy", showLabel: true, compact: false },
-  { id: "label_only", label: "Szöveg", showLabel: true, compact: false },
   { id: "icon_only", label: "Ikon", showLabel: false, compact: true },
 ] as const;
 
@@ -104,6 +120,7 @@ export const WIDGET_MODULES = [
   { id: "insights", label: "Javaslatok" },
 ] as const;
 
+export type WidgetThemeId = (typeof WIDGET_THEME_PRESETS)[number]["id"];
 export type FabColorPresetId = (typeof FAB_COLOR_PRESETS)[number]["id"];
 export type FabInkId = (typeof FAB_INK_PRESETS)[number]["id"];
 export type FabStyleId = (typeof FAB_STYLE_PRESETS)[number]["id"];
@@ -112,7 +129,16 @@ export type FabSizeId = (typeof FAB_SIZE_PRESETS)[number]["id"];
 export type PanelThemeId = (typeof PANEL_THEME_PRESETS)[number]["id"];
 export type WidgetModuleId = (typeof WIDGET_MODULES)[number]["id"];
 
+/** Panel chrome = portal app („Olvasó”) — never follows FAB theme. */
+export const LOCKED_PANEL_THEME: PanelThemeId = "high_contrast";
+/** Portal signal blue — same as globals.css --accent. */
+export const LOCKED_PANEL_ACCENT = "#0B6BCB";
+export const LOCKED_PANEL_ACCENT_SOFT = "#E8F3FC";
+
 export type WidgetAppearance = {
+  /** Locked skin — drives FAB color / ink. Panel stays portal „Olvasó”. */
+  themeId: WidgetThemeId;
+  /** @deprecated Derived from themeId for older readers. */
   fabColorPreset: FabColorPresetId;
   fabColorCustom: string | null;
   fabInk: FabInkId;
@@ -161,10 +187,11 @@ export type PublicWidgetConfig = {
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
   appearance: {
+    themeId: "ocean",
     fabColorPreset: "shoprenter_blue",
     fabColorCustom: null,
     fabInk: "auto",
-    fabStyle: "solid",
+    fabStyle: "glass",
     fabPosition: "bottom_right",
     fabSize: "icon_label",
     panelTheme: "high_contrast",
@@ -178,24 +205,88 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
   },
 };
 
-function isHexColor(v: unknown): v is string {
-  return typeof v === "string" && /^#[0-9A-Fa-f]{6}$/.test(v.trim());
+function themeById(id: WidgetThemeId) {
+  return WIDGET_THEME_PRESETS.find((t) => t.id === id) ?? WIDGET_THEME_PRESETS[0];
 }
 
-function pickId<T extends string>(
-  value: unknown,
-  allowed: readonly T[],
-  fallback: T,
-): T {
-  return typeof value === "string" && (allowed as readonly string[]).includes(value)
-    ? (value as T)
-    : fallback;
+/** Map legacy color preset / hex → theme. */
+function inferThemeId(appearanceRaw: Record<string, unknown>): WidgetThemeId {
+  const rawTheme = appearanceRaw.themeId;
+  if (
+    typeof rawTheme === "string" &&
+    WIDGET_THEME_PRESETS.some((t) => t.id === rawTheme)
+  ) {
+    return rawTheme as WidgetThemeId;
+  }
+  const colorPreset = appearanceRaw.fabColorPreset;
+  if (colorPreset === "shoprenter_blue") return "ocean";
+  if (colorPreset === "platform_teal") return "forest";
+  if (colorPreset === "charcoal") return "ink";
+  if (colorPreset === "ember") return "ember";
+  if (colorPreset === "custom") {
+    const custom =
+      typeof appearanceRaw.fabColorCustom === "string"
+        ? appearanceRaw.fabColorCustom.trim().toLowerCase()
+        : "";
+    if (custom === "#0f7b6c" || custom === "#1a9b84") return "forest";
+    if (custom === "#24292f" || custom === "#000000") return "ink";
+    if (custom === "#e8871e" || custom === "#ff9f0a") return "ember";
+    if (custom === "#1c1c1e") return "paper";
+  }
+  return "ocean";
+}
+
+function mapPositionId(raw: unknown): FabPositionId {
+  if (raw === "bottom_left" || raw === "bottom_left_mobile_offset") {
+    return "bottom_left";
+  }
+  if (
+    raw === "bottom_right" ||
+    raw === "bottom_right_mobile_offset" ||
+    raw === "bottom_right_raised" ||
+    raw === "middle_left" ||
+    raw === "middle_right"
+  ) {
+    return "bottom_right";
+  }
+  if (raw === "bottom_left") return "bottom_left";
+  return "bottom_right";
+}
+
+function mapSizeId(raw: unknown): FabSizeId {
+  if (raw === "icon_only") return "icon_only";
+  /* compact / large / label_only / icon_label → Teljes */
+  return "icon_label";
+}
+
+function mapStyleId(raw: unknown): FabStyleId {
+  if (raw === "glass" || raw === "neon" || raw === "solid") return raw;
+  /* Legacy finishes → closest new finish */
+  if (raw === "soft" || raw === "outline") return "glass";
+  if (raw === "contrast") return "neon";
+  return DEFAULT_WIDGET_SETTINGS.appearance.fabStyle;
+}
+
+function themeToColorPreset(themeId: WidgetThemeId): FabColorPresetId {
+  switch (themeId) {
+    case "forest":
+      return "platform_teal";
+    case "ink":
+      return "charcoal";
+    case "ember":
+      return "ember";
+    case "paper":
+      return "charcoal";
+    default:
+      return "shoprenter_blue";
+  }
 }
 
 export function normalizeWidgetSettings(
   raw: unknown,
   buttonLabelFallback = "Gyors rendelés",
 ): WidgetSettingsPayload {
+  void buttonLabelFallback;
   const obj =
     raw && typeof raw === "object" && !Array.isArray(raw)
       ? (raw as Record<string, unknown>)
@@ -209,48 +300,20 @@ export function normalizeWidgetSettings(
       ? (obj.features as Record<string, unknown>)
       : {};
 
-  const colorIds = FAB_COLOR_PRESETS.map((p) => p.id);
-  const inkIds = FAB_INK_PRESETS.map((p) => p.id);
-  const styleIds = FAB_STYLE_PRESETS.map((p) => p.id);
-  const posIds = FAB_POSITION_PRESETS.map((p) => p.id);
-  const sizeIds = FAB_SIZE_PRESETS.map((p) => p.id);
-  const custom = appearanceRaw.fabColorCustom;
+  const themeId = inferThemeId(appearanceRaw);
+  const theme = themeById(themeId);
   // Login + modules are product core — not merchant-configurable.
 
   return {
     appearance: {
-      fabColorPreset: pickId(
-        appearanceRaw.fabColorPreset,
-        colorIds,
-        DEFAULT_WIDGET_SETTINGS.appearance.fabColorPreset,
-      ),
-      fabColorCustom: isHexColor(custom) ? custom.trim() : null,
-      fabInk: pickId(
-        appearanceRaw.fabInk,
-        inkIds,
-        DEFAULT_WIDGET_SETTINGS.appearance.fabInk,
-      ),
-      fabStyle: pickId(
-        appearanceRaw.fabStyle,
-        styleIds,
-        DEFAULT_WIDGET_SETTINGS.appearance.fabStyle,
-      ),
-      fabPosition: pickId(
-        (() => {
-          const raw = appearanceRaw.fabPosition;
-          if (raw === "middle_left") return "bottom_right";
-          if (raw === "middle_right") return "bottom_right";
-          return raw;
-        })(),
-        posIds,
-        DEFAULT_WIDGET_SETTINGS.appearance.fabPosition,
-      ),
-      fabSize: pickId(
-        appearanceRaw.fabSize,
-        sizeIds,
-        DEFAULT_WIDGET_SETTINGS.appearance.fabSize,
-      ),
-      panelTheme: "high_contrast",
+      themeId,
+      fabColorPreset: themeToColorPreset(themeId),
+      fabColorCustom: null,
+      fabInk: theme.fabInk,
+      fabStyle: mapStyleId(appearanceRaw.fabStyle),
+      fabPosition: mapPositionId(appearanceRaw.fabPosition),
+      fabSize: mapSizeId(appearanceRaw.fabSize),
+      panelTheme: LOCKED_PANEL_THEME,
     },
     features: {
       requireLogin: true,
@@ -263,11 +326,24 @@ export function normalizeWidgetSettings(
 }
 
 export function resolveFabColor(appearance: WidgetAppearance): string {
-  if (appearance.fabColorPreset === "custom" && appearance.fabColorCustom) {
-    return appearance.fabColorCustom;
-  }
-  const preset = FAB_COLOR_PRESETS.find((p) => p.id === appearance.fabColorPreset);
-  return preset?.color ?? "#007AFF";
+  const theme = themeById(appearance.themeId);
+  return theme.fabColor;
+}
+
+export function applyWidgetTheme(
+  appearance: WidgetAppearance,
+  themeId: WidgetThemeId,
+): WidgetAppearance {
+  const theme = themeById(themeId);
+  return {
+    ...appearance,
+    themeId,
+    fabColorPreset: themeToColorPreset(themeId),
+    fabColorCustom: null,
+    fabInk: theme.fabInk,
+    /* Keep merchant-chosen finish (solid / glass / neon). */
+    panelTheme: LOCKED_PANEL_THEME,
+  };
 }
 
 /** Resolve letter color for solid/glass fills. */
@@ -362,7 +438,7 @@ export function resolvePanelThemeTokens(
   const brand = brandAccent || "#0F7B6C";
   switch (theme) {
     case "light_flat":
-      // Apple light grouped background — muted darkened past system gray for AA
+      // Apple light grouped (legacy — locked panel uses high_contrast)
       return {
         bg: "#F2F2F7",
         surface: "#FFFFFF",
@@ -402,6 +478,7 @@ export function resolvePanelThemeTokens(
         danger: "#FF453A",
       };
     case "high_contrast":
+      // Portal „Olvasó” — white canvas, strong lines, signal blue (globals.css)
       return {
         bg: "#FFFFFF",
         surface: "#FFFFFF",
@@ -411,8 +488,8 @@ export function resolvePanelThemeTokens(
         faint: "#3A3A3C",
         line: "rgba(0,0,0,.45)",
         lineStrong: "rgba(0,0,0,.75)",
-        accent: "#000000",
-        accentSoft: "rgba(0,0,0,.08)",
+        accent: LOCKED_PANEL_ACCENT,
+        accentSoft: LOCKED_PANEL_ACCENT_SOFT,
         topbar: "#FFFFFF",
         navTrack: "rgba(0,0,0,.08)",
         navActive: "#FFFFFF",
@@ -477,50 +554,50 @@ export function resolveFabVisual(
   inkMode: FabInkId = "auto",
 ): FabVisual {
   const ink = resolveFabInk(inkMode, color);
-  if (style === "outline") {
+
+  if (style === "neon") {
     return {
-      background: "#FFFFFF",
-      color,
-      border: `1.5px solid ${color}`,
-      backdrop: "none",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-    };
-  }
-  if (style === "soft") {
-    return {
-      background: hexToRgba(color, 0.12),
-      color,
-      border: `0.5px solid ${hexToRgba(color, 0.28)}`,
-      backdrop: "none",
-      boxShadow: "none",
-    };
-  }
-  if (style === "contrast") {
-    return {
-      background: "#000000",
+      background: "#0A0A0C",
       color: "#FFFFFF",
-      border: "0.5px solid rgba(255,255,255,0.45)",
+      border: `1px solid ${hexToRgba(color, 0.9)}`,
       backdrop: "none",
-      boxShadow: "0 8px 20px rgba(0,0,0,0.28)",
+      boxShadow: [
+        `0 0 6px ${hexToRgba(color, 0.95)}`,
+        `0 0 18px ${hexToRgba(color, 0.55)}`,
+        `0 0 36px ${hexToRgba(color, 0.28)}`,
+        `inset 0 0 14px ${hexToRgba(color, 0.18)}`,
+      ].join(", "),
     };
   }
-  if (style === "solid") {
+
+  if (style === "glass") {
     return {
-      background: color,
+      background: [
+        `linear-gradient(155deg, ${hexToRgba("#FFFFFF", 0.48)} 0%, ${hexToRgba(color, 0.38)} 42%, ${hexToRgba(color, 0.72)} 100%)`,
+      ].join(""),
       color: ink,
-      border: "0.5px solid transparent",
-      backdrop: "none",
-      boxShadow: "0 6px 16px rgba(0,0,0,0.14)",
+      border: `1px solid ${hexToRgba("#FFFFFF", 0.55)}`,
+      backdrop: "saturate(180%) blur(18px)",
+      boxShadow: [
+        `0 10px 28px ${hexToRgba(color, 0.32)}`,
+        "0 2px 8px rgba(0,0,0,0.12)",
+        "inset 0 1px 0 rgba(255,255,255,0.55)",
+        `inset 0 -1px 0 ${hexToRgba(color, 0.22)}`,
+      ].join(", "),
     };
   }
-  // glass — slightly clearer, less muddy
+
+  /* solid — slight top sheen so it isn’t a flat sticker */
   return {
-    background: hexToRgba(color, 0.92),
+    background: `linear-gradient(180deg, ${hexToRgba("#FFFFFF", 0.18)} 0%, transparent 42%), ${color}`,
     color: ink,
-    border: "0.5px solid rgba(255,255,255,0.35)",
-    backdrop: "saturate(1.2) blur(14px)",
-    boxShadow:
-      "0 8px 20px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.22)",
+    border: `0.5px solid ${hexToRgba("#000000", 0.12)}`,
+    backdrop: "none",
+    boxShadow: [
+      `0 8px 20px ${hexToRgba(color, 0.35)}`,
+      "0 2px 6px rgba(0,0,0,0.12)",
+      "inset 0 1px 0 rgba(255,255,255,0.28)",
+    ].join(", "),
   };
 }
 
@@ -538,7 +615,7 @@ export function stressTestThemeCombos(): {
     "high_contrast",
     "brand_tinted",
   ];
-  const brands = FAB_COLOR_PRESETS.filter((p) => p.color).map((p) => p.color!);
+  const brands = WIDGET_THEME_PRESETS.map((p) => p.fabColor);
   const out: {
     theme: PanelThemeId;
     check: string;
@@ -570,11 +647,15 @@ export function stressTestThemeCombos(): {
           ok: ratio >= min,
         });
       }
-      for (const style of ["solid", "glass", "outline", "soft"] as const) {
+      for (const style of ["solid", "glass", "neon"] as const) {
         const fab = resolveFabVisual(style, brand, "auto");
         const fg = fab.color;
         const bg =
-          style === "outline" || style === "soft" ? "#FFFFFF" : brand;
+          style === "neon"
+            ? "#0A0A0C"
+            : style === "glass"
+              ? brand
+              : brand;
         const fabRatio = contrastRatio(fg, bg);
         out.push({
           theme,
@@ -597,7 +678,7 @@ export function resolvePublicWidgetConfig(input: {
   const normalized = normalizeWidgetSettings(input.settings, input.buttonLabel);
   const size = FAB_SIZE_PRESETS.find(
     (p) => p.id === normalized.appearance.fabSize,
-  )!;
+  ) ?? FAB_SIZE_PRESETS[0];
   return {
     enabled: input.enabled,
     buttonLabel: input.buttonLabel || "Gyors rendelés",
@@ -608,7 +689,7 @@ export function resolvePublicWidgetConfig(input: {
     fabStyle: normalized.appearance.fabStyle,
     fabPosition: normalized.appearance.fabPosition,
     fabSize: normalized.appearance.fabSize,
-    panelTheme: normalized.appearance.panelTheme,
+    panelTheme: LOCKED_PANEL_THEME,
     modules: normalized.features.modules,
     showLabel: size.showLabel,
     compact: size.compact,

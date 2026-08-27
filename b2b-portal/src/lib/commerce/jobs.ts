@@ -308,7 +308,7 @@ export async function finishJobBlocked(
      set catalog_status = 'blocked_limit',
          catalog_product_count = $2,
          catalog_synced_at = now(),
-         catalog_error = 'SKU limit — sync megállt, a widget él',
+         catalog_error = 'SKU limit: sync megállt, a widget él',
          updated_at = now()
      where id = $1`,
     [shopId, catalogCount],

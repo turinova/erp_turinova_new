@@ -771,7 +771,7 @@ export function CustomerDetailView({
                   Ne nyúljon hozzá az automata
                 </span>
                 <span className="mt-0.5 block">
-                  A szintlépés szabályok nem rakják át ezt a vevőt.
+                  Az automatizmus szabályok nem rakják át ezt a vevőt.
                 </span>
               </span>
             </label>
@@ -1019,7 +1019,7 @@ export function CustomerDetailView({
             <div className="space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[12px] text-faint">
-                  Amit eddig rendelt — db és utolsó alkalom.
+                  Amit eddig rendelt: db és utolsó alkalom.
                 </p>
                 <div className="flex items-center gap-3">
                   <button

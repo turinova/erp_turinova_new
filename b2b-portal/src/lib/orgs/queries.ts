@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { evaluateErpQualified, loadErpQualified } from "@/lib/billing/erp-qualified";
-import { parsePlanId, planFilterValues } from "@/lib/billing/plans";
+import { parsePlanId, planFilterValues, PLAN_DEFAULTS } from "@/lib/billing/plans";
 import { query } from "@/lib/db";
 import {
   catalogLabel,
@@ -53,7 +53,7 @@ type RawListRow = {
 
 function enrichListRow(row: RawListRow): OrgListRow {
   const plan = parsePlanId(row.plan);
-  const partnerLimit = Number(row.partner_limit ?? 15);
+  const partnerLimit = Number(row.partner_limit ?? PLAN_DEFAULTS.start.partnerLimit);
   const partnerUsed = Number(row.partner_used ?? 0);
   const skuLimit = Number(row.sku_limit ?? 15_000);
   const skuUsed = Number(row.catalog_product_count ?? 0);
@@ -356,13 +356,15 @@ export async function getOrganizationDetail(
   );
 
   const membersRes = await query<{
+    user_id: string;
     email: string;
     role: string;
     display_name: string | null;
     last_login_at: string | null;
+    disabled_at: string | null;
   }>(
     client,
-    `select u.email, m.role, u.display_name, u.last_login_at
+    `select u.id as user_id, u.email, m.role, u.display_name, u.last_login_at, u.disabled_at
      from memberships m
      join users u on u.id = m.user_id
      where m.organization_id = $1
@@ -399,7 +401,9 @@ export async function getOrganizationDetail(
     ]);
 
   const partnerUsed = Number(partnerUsedRes.rows[0]?.n ?? 0);
-  const partnerLimit = Number(partnerLimitRes.rows[0]?.n ?? 15);
+  const partnerLimit = Number(
+    partnerLimitRes.rows[0]?.n ?? PLAN_DEFAULTS.start.partnerLimit,
+  );
   const skuUsed = Number(skuUsedRes.rows[0]?.n ?? 0);
   const skuLimit = Number(skuLimitRes.rows[0]?.n ?? 15_000);
   const shop = shopRes.rows[0] ?? null;
@@ -549,7 +553,15 @@ export async function getOrganizationDetail(
         }
       : null,
     pending_invite: inviteRes.rows[0] ?? null,
-    members: membersRes.rows,
+    members: membersRes.rows.map((m) => ({
+      userId: m.user_id,
+      email: m.email,
+      role: m.role,
+      roleLabel: m.role === "owner" || m.role === "admin" ? "Admin" : "User",
+      display_name: m.display_name,
+      last_login_at: m.last_login_at,
+      disabled_at: m.disabled_at,
+    })),
     erpQualified,
   };
 }

@@ -1,3 +1,27 @@
+# Turinova B2B — árazás (**v5**)
+
+**Dátum:** 2026-08-26 · **v5** — egy alapár + opcionális Turinova-felirat eltávolítás  
+**Kód:** `sql/028_plans_v5.sql` + `src/lib/billing/plans.ts`
+
+### Hivatalos ártábla (v5)
+
+| Tétel | Nettó / hó |
+|-------|------------|
+| **Gyors rendelés** (teljes termék) | **9 900 Ft** |
+| **Turinova felirat eltávolítása** (opcionális) | **+4 900 Ft** |
+| Összesen saját márkával | **14 800 Ft** |
+| Éves | 10× havi (2 hónap kedvezmény) |
+| Próba | **14 nap**, teljes termék, felirat **bent** |
+| Aktív vevő soft cap | 500 (nem pitch) |
+
+**Plan ID-k (DB):** `start` = alap · `plus` / `pro` = saját márka (felirat elrejthető).
+
+Az alábbi v3/v4 szöveg történeti; ahol ütközik, **a v5 a mérvadó**.
+
+---
+
+# (Archív)
+
 # Turinova B2B — árazás, próba, FOMO (v3)
 
 **Scope:** `b2b.turinova.hu` gyors rendelés (widget + merchant portál + platform admin)  

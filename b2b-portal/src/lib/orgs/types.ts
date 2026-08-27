@@ -113,10 +113,13 @@ export type OrgDetail = {
     created_at: string;
   } | null;
   members: Array<{
+    userId: string;
     email: string;
     role: string;
+    roleLabel: string;
     display_name: string | null;
     last_login_at: string | null;
+    disabled_at: string | null;
   }>;
   erpQualified: ErpQualified;
 };
@@ -137,6 +140,7 @@ export function sortFleet(rows: OrgListRow[]): OrgListRow[] {
 export function fleetSummary(rows: OrgListRow[]): {
   crit: number;
   warn: number;
+  ok: number;
   trialSoon: number;
   overCap: number;
   erpQualified: number;
@@ -144,6 +148,7 @@ export function fleetSummary(rows: OrgListRow[]): {
   return {
     crit: rows.filter((r) => r.health === "crit").length,
     warn: rows.filter((r) => r.health === "warn").length,
+    ok: rows.filter((r) => r.health === "ok").length,
     trialSoon: rows.filter(
       (r) => r.trialActive && r.trialDaysLeft != null && r.trialDaysLeft <= 7,
     ).length,

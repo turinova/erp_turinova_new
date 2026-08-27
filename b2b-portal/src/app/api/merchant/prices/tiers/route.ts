@@ -212,7 +212,7 @@ export async function PUT(req: Request) {
           message:
             tiers.length === 0
               ? "Sávok törölve SR-ben, de a lista-badge tükör nem frissült."
-              : `${saved.length} sáv mentve SR-be; lista-badge tükör hiba — nyisd újra a panelt.`,
+              : `${saved.length} sáv mentve SR-be; lista-badge tükör hiba. Nyisd újra a panelt.`,
           mirrorError: e instanceof Error ? e.message : "mirror fail",
         },
         { status: 200 },

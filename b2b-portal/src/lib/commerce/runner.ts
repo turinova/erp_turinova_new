@@ -153,7 +153,7 @@ async function runClaimedJob(
               client,
               job,
               "rate_limit",
-              "Shoprenter 429 — túl sok retry",
+              "Shoprenter 429: túl sok retry",
             ),
           );
           return "done";

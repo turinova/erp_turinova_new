@@ -2,6 +2,7 @@
 
 import {
   FAB_SIZE_PRESETS,
+  LOCKED_PANEL_THEME,
   PANEL_THEME_PRESETS,
   resolveFabVisual,
   resolvePanelThemeTokens,
@@ -23,8 +24,11 @@ type Props = {
   panelTheme: PanelThemeId;
   modules: WidgetModuleId[];
   showTurinovaMark?: boolean;
+  /** Mirror widget partner FOMO footer. */
+  showCustomerGroupName?: boolean;
+  showNextLevelProgress?: boolean;
   showPanel: boolean;
-  onTogglePanel: () => void;
+  onShowPanel: (open: boolean) => void;
 };
 
 const S = {
@@ -91,12 +95,6 @@ function fabPosClass(position: FabPositionId): string {
   switch (position) {
     case "bottom_left":
       return "left-4 bottom-4 right-auto top-auto";
-    case "bottom_left_mobile_offset":
-      return "left-4 bottom-20 right-auto top-auto";
-    case "bottom_right_mobile_offset":
-      return "right-4 bottom-20 left-auto top-auto";
-    case "bottom_right_raised":
-      return "right-4 bottom-24 left-auto top-auto";
     case "bottom_right":
     default:
       return "right-4 bottom-4 left-auto top-auto";
@@ -233,6 +231,129 @@ function StorefrontMock() {
   );
 }
 
+/** Demo partner progress — matches real widget FOMO footer layout. */
+const PREVIEW_PARTNER = {
+  groupName: "Asztalosok",
+  remainingLabel: "184 200 Ft",
+  nextGroupName: "Arany partner",
+  progressPercent: 62,
+  rewardHeadline: "−12% kedvezmény",
+  rewardDetail: "Az árlistás termékekre",
+  urgency: "mid" as const,
+};
+
+function PartnerFomoPreview({
+  theme,
+  showGroupName,
+  showProgress,
+}: {
+  theme: ReturnType<typeof resolvePanelThemeTokens>;
+  showGroupName: boolean;
+  showProgress: boolean;
+}) {
+  if (!showGroupName && !showProgress) return null;
+  const accent = theme.accent;
+  const warn = theme.warn;
+  const gapEmColor =
+    PREVIEW_PARTNER.urgency === "mid" || PREVIEW_PARTNER.urgency === "high"
+      ? warn
+      : accent;
+
+  return (
+    <div
+      className="flex min-w-0 flex-1 flex-col gap-1.5"
+      style={{ maxWidth: 520 }}
+      data-urgency={showProgress ? PREVIEW_PARTNER.urgency : undefined}
+    >
+      {showGroupName ? (
+        <div className="flex min-w-0 items-center">
+          <span
+            className="inline-flex h-6 items-center whitespace-nowrap px-2.5 text-[11px] font-bold tracking-tight"
+            style={{
+              borderRadius: 6,
+              background: "rgba(15,123,108,.12)",
+              border: "1px solid rgba(15,123,108,.45)",
+              color: accent,
+            }}
+          >
+            {PREVIEW_PARTNER.groupName}
+          </span>
+        </div>
+      ) : null}
+
+      {showProgress ? (
+        <>
+          <p
+            className="m-0 text-[15px] font-extrabold leading-tight tracking-tight"
+            style={{ color: theme.text }}
+          >
+            Még{" "}
+            <em className="not-italic font-extrabold" style={{ color: gapEmColor }}>
+              {PREVIEW_PARTNER.remainingLabel}
+            </em>
+          </p>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div
+              className="h-2.5 min-w-0 flex-1 overflow-hidden"
+              style={{
+                borderRadius: 5,
+                background: "rgba(55,53,47,.12)",
+              }}
+            >
+              <i
+                className="block h-full not-italic"
+                style={{
+                  width: `${PREVIEW_PARTNER.progressPercent}%`,
+                  borderRadius: 5,
+                  background: accent,
+                }}
+              />
+            </div>
+            <span className="inline-flex max-w-[48%] shrink-0 items-center gap-1.5">
+              <span
+                className="shrink-0 text-[12px] font-bold"
+                style={{ color: theme.faint }}
+              >
+                →
+              </span>
+              <span
+                className="inline-flex h-6 max-w-full items-center truncate px-2.5 text-[11px] font-bold text-white"
+                style={{
+                  borderRadius: 6,
+                  background: accent,
+                  border: `1px solid ${accent}`,
+                  boxShadow: `0 1px 2px ${accent}40`,
+                }}
+              >
+                {PREVIEW_PARTNER.nextGroupName}
+              </span>
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="inline-flex h-7 items-center px-3 text-[12px] font-bold"
+              style={{
+                borderRadius: 6,
+                background: "#FFF4E5",
+                border: "1px solid #F5C57A",
+                color: "#9A3412",
+              }}
+            >
+              <em className="not-italic">{PREVIEW_PARTNER.rewardHeadline}</em>
+            </span>
+          </div>
+          <p
+            className="m-0 text-[11px] leading-snug"
+            style={{ color: theme.muted }}
+          >
+            {PREVIEW_PARTNER.rewardDetail}
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 export function WidgetLivePreview({
   buttonLabel,
   fabColor,
@@ -240,15 +361,18 @@ export function WidgetLivePreview({
   fabStyle,
   fabPosition,
   fabSize,
-  panelTheme,
+  panelTheme: _panelTheme,
   modules,
   showTurinovaMark = true,
+  showCustomerGroupName = false,
+  showNextLevelProgress = false,
   showPanel,
-  onTogglePanel,
+  onShowPanel,
 }: Props) {
-  const sizeMeta = FAB_SIZE_PRESETS.find((p) => p.id === fabSize)!;
+  const sizeMeta =
+    FAB_SIZE_PRESETS.find((p) => p.id === fabSize) ?? FAB_SIZE_PRESETS[0];
   const visual = resolveFabVisual(fabStyle, fabColor, fabInk);
-  const theme = resolvePanelThemeTokens(panelTheme, fabColor);
+  const theme = resolvePanelThemeTokens(LOCKED_PANEL_THEME, fabColor);
   const moduleOn = (id: WidgetModuleId) => modules.includes(id);
 
   const tabs = [
@@ -259,20 +383,50 @@ export function WidgetLivePreview({
 
   const showLabel = sizeMeta.showLabel;
   const compact = sizeMeta.compact;
-  const isLarge = fabSize === "large";
-  const labelOnly = fabSize === "label_only";
+  const isLarge = false;
+  const labelOnly = false;
 
   return (
     <div className="flex h-full min-h-[420px] flex-col overflow-hidden border border-line-strong bg-surface">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-line-strong px-3">
-        <p className="text-[11px] font-semibold text-faint">Élő előnézet</p>
-        <button
-          type="button"
-          onClick={onTogglePanel}
-          className="tn-btn tn-btn-ghost !h-7 !px-2.5 text-[11px]"
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b-[1.5px] border-line-strong bg-surface-2 px-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold text-text">Élő előnézet</p>
+          <p className="truncate text-[10px] text-faint">
+            Válts nézetet jobbra →
+          </p>
+        </div>
+        <div
+          className="inline-flex shrink-0 gap-0.5 border-[1.5px] border-text bg-bg p-1"
+          role="tablist"
+          aria-label="Előnézet nézet"
         >
-          {showPanel ? "Sarokban" : "Megnyitás"}
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!showPanel}
+            onClick={() => onShowPanel(false)}
+            className={
+              !showPanel
+                ? "h-8 min-w-[4.5rem] cursor-pointer bg-accent px-3 text-[12px] font-bold text-white"
+                : "h-8 min-w-[4.5rem] cursor-pointer px-3 text-[12px] font-semibold text-faint hover:bg-surface-2 hover:text-text"
+            }
+          >
+            Gomb
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={showPanel}
+            onClick={() => onShowPanel(true)}
+            className={
+              showPanel
+                ? "h-8 min-w-[4.5rem] cursor-pointer bg-accent px-3 text-[12px] font-bold text-white"
+                : "h-8 min-w-[4.5rem] cursor-pointer px-3 text-[12px] font-semibold text-faint hover:bg-surface-2 hover:text-text"
+            }
+          >
+            Widget
+          </button>
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -411,7 +565,7 @@ export function WidgetLivePreview({
                   className="text-[13px] font-semibold"
                   style={{ color: theme.text }}
                 >
-                  Cikkszám, gyártói szám vagy vonalkód — Enter, és bent van.
+                  Cikkszám, gyártói szám vagy vonalkód. Enter, és bent van.
                 </p>
                 <p className="mt-1.5 text-[11px]" style={{ color: theme.muted }}>
                   Excel, lista vagy fotó a kereső mellett. Bezárás után a lista
@@ -419,14 +573,26 @@ export function WidgetLivePreview({
                 </p>
               </div>
               <div
-                className="flex items-center justify-between border-t px-3 py-2"
-                style={{ borderColor: theme.lineStrong, background: theme.bg }}
+                className="flex items-end justify-between gap-3 border-t px-3 py-2.5"
+                style={{
+                  borderColor: theme.lineStrong,
+                  background: theme.bg,
+                  minHeight: showCustomerGroupName || showNextLevelProgress ? 96 : undefined,
+                }}
               >
-                <span className="text-[11px]" style={{ color: theme.muted }}>
-                  Cikkszám, majd Enter. Ha kész: Kosárba.
-                </span>
+                {showCustomerGroupName || showNextLevelProgress ? (
+                  <PartnerFomoPreview
+                    theme={theme}
+                    showGroupName={showCustomerGroupName}
+                    showProgress={showNextLevelProgress}
+                  />
+                ) : (
+                  <span className="text-[11px]" style={{ color: theme.muted }}>
+                    Cikkszám, majd Enter. Ha kész: Kosárba.
+                  </span>
+                )}
                 <span
-                  className="inline-flex h-8 items-center px-3 text-[11px] font-semibold"
+                  className="inline-flex h-8 shrink-0 items-center self-center px-3 text-[11px] font-semibold"
                   style={{ background: theme.accent, color: "#fff" }}
                 >
                   Kosárba rakom
@@ -463,8 +629,8 @@ export function WidgetLivePreview({
         <span className="font-mono">{fabColor}</span>
         <span>·</span>
         <span>
-          {PANEL_THEME_PRESETS.find((p) => p.id === panelTheme)?.label ??
-            panelTheme}
+          {PANEL_THEME_PRESETS.find((p) => p.id === LOCKED_PANEL_THEME)?.label ??
+            LOCKED_PANEL_THEME}
         </span>
         <span>·</span>
         <span>{modules.length} mód</span>

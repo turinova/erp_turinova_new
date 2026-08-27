@@ -53,6 +53,9 @@ export function getPool(): Pool {
     void import("@/lib/merchant/group-rules-auto-loop")
       .then((m) => m.startGroupRulesAutoLoop())
       .catch((err) => console.error("[group-rules-auto] loop start", err));
+    void import("@/lib/commerce/order-facts-loop")
+      .then((m) => m.startOrderFactsSyncLoop())
+      .catch((err) => console.error("[order-facts] loop start", err));
   }
   return global.__b2bPgPool;
 }

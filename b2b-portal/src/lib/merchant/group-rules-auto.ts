@@ -1,6 +1,7 @@
 /**
- * Cross-tenant group-rules scheduling (manual / daily / hourly / on_order).
- * Rate-limit friendly: batch ticks claim one shop; on_order evaluates 1 customer.
+ * Cross-tenant group-rules scheduling.
+ * Product model: nightly (Europe/Budapest) for shops with enabled rules + manual run.
+ * Legacy schedule values (hourly / on_order / manual) are ignored for claiming.
  */
 
 import type { PoolClient } from "pg";
@@ -14,10 +15,9 @@ import type { ShopCredentialsPlain } from "@/types/db";
 declare global {
   // eslint-disable-next-line no-var
   var __b2bGroupRulesAutoBusy: boolean | undefined;
-  // eslint-disable-next-line no-var
-  var __b2bGroupRulesOnOrderDebounce: Map<string, number> | undefined;
 }
 
+/** Kept for DB/API compat — product always behaves as daily. */
 export type GroupRulesSchedule =
   | "manual"
   | "daily"
@@ -25,24 +25,41 @@ export type GroupRulesSchedule =
   | "hourly";
 
 export type ShopAutoSettings = {
-  schedule: GroupRulesSchedule;
-  /** Derived: anything other than manual */
-  autoEnabled: boolean;
+  schedule: "daily";
+  autoEnabled: true;
   lastRunAt: string | null;
 };
 
-const SCHEDULES = new Set<GroupRulesSchedule>([
-  "manual",
-  "daily",
-  "on_order",
-  "hourly",
-]);
-
-function parseSchedule(raw: string | null | undefined): GroupRulesSchedule {
-  if (raw && SCHEDULES.has(raw as GroupRulesSchedule)) {
-    return raw as GroupRulesSchedule;
+/** Ensure shop is on nightly schedule (idempotent). */
+export async function ensureShopGroupRulesDaily(
+  client: PoolClient,
+  shopId: string,
+): Promise<ShopAutoSettings> {
+  await ensurePartnerGroupRulesSchema();
+  const res = await query<{
+    group_rules_auto_last_run_at: string | null;
+  }>(
+    client,
+    `update shops
+     set group_rules_schedule = 'daily',
+         group_rules_auto_enabled = true,
+         updated_at = now()
+     where id = $1
+       and (
+         group_rules_schedule is distinct from 'daily'
+         or group_rules_auto_enabled is not true
+       )
+     returning group_rules_auto_last_run_at::text`,
+    [shopId],
+  );
+  if (res.rows[0]) {
+    return {
+      schedule: "daily",
+      autoEnabled: true,
+      lastRunAt: res.rows[0].group_rules_auto_last_run_at,
+    };
   }
-  return "manual";
+  return getShopGroupRulesAuto(client, shopId);
 }
 
 export async function getShopGroupRulesAuto(
@@ -51,57 +68,44 @@ export async function getShopGroupRulesAuto(
 ): Promise<ShopAutoSettings> {
   await ensurePartnerGroupRulesSchema();
   const res = await query<{
-    group_rules_schedule: string | null;
-    group_rules_auto_enabled: boolean;
     group_rules_auto_last_run_at: string | null;
   }>(
     client,
-    `select group_rules_schedule,
-            group_rules_auto_enabled,
-            group_rules_auto_last_run_at::text
+    `select group_rules_auto_last_run_at::text
      from shops where id = $1`,
     [shopId],
   );
-  const row = res.rows[0];
-  let schedule = parseSchedule(row?.group_rules_schedule);
-  /* Legacy: boolean on, schedule still default manual */
-  if (schedule === "manual" && row?.group_rules_auto_enabled) {
-    schedule = "daily";
-  }
   return {
-    schedule,
-    autoEnabled: schedule !== "manual",
-    lastRunAt: row?.group_rules_auto_last_run_at ?? null,
+    schedule: "daily",
+    autoEnabled: true,
+    lastRunAt: res.rows[0]?.group_rules_auto_last_run_at ?? null,
   };
 }
 
 export async function setShopGroupRulesSchedule(
   client: PoolClient,
   shopId: string,
-  schedule: GroupRulesSchedule,
+  _schedule?: GroupRulesSchedule,
 ): Promise<ShopAutoSettings> {
+  /* Product: always nightly — ignore requested schedule. */
+  void _schedule;
   await ensurePartnerGroupRulesSchema();
-  const next = parseSchedule(schedule);
   const res = await query<{
-    group_rules_schedule: string;
     group_rules_auto_last_run_at: string | null;
   }>(
     client,
     `update shops
-     set group_rules_schedule = $2,
-         group_rules_auto_enabled = ($2 <> 'manual'),
+     set group_rules_schedule = 'daily',
+         group_rules_auto_enabled = true,
          updated_at = now()
      where id = $1
-     returning group_rules_schedule,
-               group_rules_auto_last_run_at::text`,
-    [shopId, next],
+     returning group_rules_auto_last_run_at::text`,
+    [shopId],
   );
-  const row = res.rows[0];
-  const s = parseSchedule(row?.group_rules_schedule);
   return {
-    schedule: s,
-    autoEnabled: s !== "manual",
-    lastRunAt: row?.group_rules_auto_last_run_at ?? null,
+    schedule: "daily",
+    autoEnabled: true,
+    lastRunAt: res.rows[0]?.group_rules_auto_last_run_at ?? null,
   };
 }
 
@@ -109,59 +113,55 @@ export async function setShopGroupRulesSchedule(
 export async function setShopGroupRulesAuto(
   client: PoolClient,
   shopId: string,
-  enabled: boolean,
+  _enabled: boolean,
 ): Promise<ShopAutoSettings> {
-  return setShopGroupRulesSchedule(
-    client,
-    shopId,
-    enabled ? "daily" : "manual",
-  );
+  void _enabled;
+  return setShopGroupRulesSchedule(client, shopId, "daily");
 }
 
 type DueShop = {
   id: string;
   organization_id: string;
   shoprenter_shop_name: string;
-  group_rules_schedule: string;
 };
 
-async function claimDueShop(
-  mode: "daily" | "hourly",
-): Promise<DueShop | null> {
+/**
+ * Claim one shop that has enabled rules and has not run yet today (Budapest).
+ */
+async function claimDueShop(): Promise<DueShop | null> {
   return withPlatformAdmin(async (client) => {
     await ensurePartnerGroupRulesSchema();
-    const dueFilter =
-      mode === "hourly"
-        ? `group_rules_schedule = 'hourly'
-           and (
-             group_rules_auto_last_run_at is null
-             or group_rules_auto_last_run_at < now() - interval '55 minutes'
-           )`
-        : `group_rules_schedule = 'daily'
-           and (
-             group_rules_auto_last_run_at is null
-             or (group_rules_auto_last_run_at at time zone 'Europe/Budapest')::date
-                < (now() at time zone 'Europe/Budapest')::date
-           )`;
 
     const res = await query<DueShop>(
       client,
       `with due as (
-         select id
-         from shops
-         where purged_at is null
-           and status in ('active', 'draft')
-           and ${dueFilter}
-         order by group_rules_auto_last_run_at nulls first
+         select s.id
+         from shops s
+         where s.purged_at is null
+           and s.status in ('active', 'draft')
+           and exists (
+             select 1
+             from partner_group_rules r
+             where r.shop_id = s.id
+               and r.enabled
+           )
+           and (
+             s.group_rules_auto_last_run_at is null
+             or (s.group_rules_auto_last_run_at at time zone 'Europe/Budapest')::date
+                < (now() at time zone 'Europe/Budapest')::date
+           )
+         order by s.group_rules_auto_last_run_at nulls first
          limit 1
-         for update skip locked
+         for update of s skip locked
        )
        update shops s
        set group_rules_auto_last_run_at = now(),
+           group_rules_schedule = 'daily',
+           group_rules_auto_enabled = true,
            updated_at = now()
        from due
        where s.id = due.id
-       returning s.id, s.organization_id, s.shoprenter_shop_name, s.group_rules_schedule`,
+       returning s.id, s.organization_id, s.shoprenter_shop_name`,
     );
     return res.rows[0] ?? null;
   });
@@ -240,36 +240,37 @@ export async function runGroupRulesForShop(opts: {
   }
 }
 
-async function claimAndRun(
-  mode: "daily" | "hourly",
-): Promise<{ ran: boolean; shopId?: string; applied?: number; error?: string }> {
-  const shop = await claimDueShop(mode);
+async function claimAndRun(): Promise<{
+  ran: boolean;
+  shopId?: string;
+  applied?: number;
+  error?: string;
+}> {
+  const shop = await claimDueShop();
   if (!shop) return { ran: false };
 
   const result = await runGroupRulesForShop({
     shopId: shop.id,
     organizationId: shop.organization_id,
     shopName: shop.shoprenter_shop_name,
-    maxCustomers: mode === "hourly" ? 25 : 40,
+    maxCustomers: 40,
   });
 
   if (result.error) {
-    console.warn("[group-rules-auto]", mode, shop.id, result.error);
+    console.warn("[group-rules-auto]", "daily", shop.id, result.error);
     return { ran: true, shopId: shop.id, applied: 0, error: result.error };
   }
 
   console.info(
     "[group-rules-auto]",
-    mode,
+    "daily",
     shop.id,
     `scanned=${result.scanned} applied=${result.applied}`,
   );
   return { ran: true, shopId: shop.id, applied: result.applied };
 }
 
-/**
- * Process at most one due shop (hourly preferred, then daily).
- */
+/** Process at most one due shop (nightly batch). */
 export async function processGroupRulesAutoTick(): Promise<{
   ran: boolean;
   shopId?: string;
@@ -280,9 +281,7 @@ export async function processGroupRulesAutoTick(): Promise<{
   global.__b2bGroupRulesAutoBusy = true;
   try {
     await ensurePartnerGroupRulesSchema();
-    const hourly = await claimAndRun("hourly");
-    if (hourly.ran) return hourly;
-    return claimAndRun("daily");
+    return claimAndRun();
   } finally {
     global.__b2bGroupRulesAutoBusy = false;
   }
@@ -302,74 +301,13 @@ export async function processGroupRulesAutoBatch(
   return { processed, applied };
 }
 
-const ON_ORDER_DEBOUNCE_MS = 3 * 60_000;
-
 /**
- * After a widget/order event: evaluate one customer if shop schedule is on_order.
- * Fire-and-forget safe; respects Shoprenter by debouncing 3 min / customer.
+ * Legacy on_order path — disabled (product is nightly + manual only).
  */
-export async function maybeRunGroupRulesAfterOrder(opts: {
+export async function maybeRunGroupRulesAfterOrder(_opts: {
   shopId: string;
   organizationId: string;
   customerInnerId: number;
 }): Promise<void> {
-  if (!opts.customerInnerId || opts.customerInnerId <= 0) return;
-
-  const debounceKey = `${opts.shopId}:${opts.customerInnerId}`;
-  if (!global.__b2bGroupRulesOnOrderDebounce) {
-    global.__b2bGroupRulesOnOrderDebounce = new Map();
-  }
-  const last = global.__b2bGroupRulesOnOrderDebounce.get(debounceKey) ?? 0;
-  if (Date.now() - last < ON_ORDER_DEBOUNCE_MS) return;
-  global.__b2bGroupRulesOnOrderDebounce.set(debounceKey, Date.now());
-
-  try {
-    const shopMeta = await withPlatformAdmin(async (client) => {
-      await ensurePartnerGroupRulesSchema();
-      const res = await query<{
-        group_rules_schedule: string;
-        shoprenter_shop_name: string;
-      }>(
-        client,
-        `select group_rules_schedule, shoprenter_shop_name
-         from shops where id = $1`,
-        [opts.shopId],
-      );
-      return res.rows[0] ?? null;
-    });
-    if (!shopMeta) return;
-    if (parseSchedule(shopMeta.group_rules_schedule) !== "on_order") return;
-
-    const result = await runGroupRulesForShop({
-      shopId: opts.shopId,
-      organizationId: opts.organizationId,
-      shopName: shopMeta.shoprenter_shop_name,
-      onlyCustomerInnerIds: [opts.customerInnerId],
-    });
-
-    await withPlatformAdmin(async (client) => {
-      await query(
-        client,
-        `update shops
-         set group_rules_auto_last_run_at = now(), updated_at = now()
-         where id = $1`,
-        [opts.shopId],
-      );
-    });
-
-    if (result.error) {
-      console.warn("[group-rules-on-order]", opts.shopId, result.error);
-    } else if (result.applied > 0) {
-      console.info(
-        "[group-rules-on-order]",
-        opts.shopId,
-        `customer=${opts.customerInnerId} applied=${result.applied}`,
-      );
-    }
-  } catch (e) {
-    console.warn(
-      "[group-rules-on-order]",
-      e instanceof Error ? e.message : e,
-    );
-  }
+  void _opts;
 }

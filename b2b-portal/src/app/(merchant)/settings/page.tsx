@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { CatalogStatusPanel } from "@/components/merchant/CatalogStatusPanel";
 import { MerchantSettingsForm } from "@/components/merchant/MerchantSettingsForm";
-import { requireMerchant } from "@/lib/auth/require";
+import { MerchantTeamSection } from "@/components/merchant/MerchantTeamSection";
+import { requireOrgAdminPage } from "@/lib/auth/require";
 import { withTenant } from "@/lib/db";
 import { loadMerchantShop } from "@/lib/merchant/shop";
 
@@ -10,10 +10,14 @@ export const metadata: Metadata = {
 };
 
 export default async function MerchantSettingsPage() {
-  const session = await requireMerchant();
+  const session = await requireOrgAdminPage();
   const orgId = session.activeOrganizationId!;
   const shop = await withTenant(
-    { organizationId: orgId, userId: session.userId },
+    {
+      organizationId: orgId,
+      userId: session.userId,
+      isPlatformAdmin: session.isPlatformAdmin,
+    },
     (client) => loadMerchantShop(client, orgId),
   );
 
@@ -29,9 +33,9 @@ export default async function MerchantSettingsPage() {
   }
 
   return (
-    <>
-      <CatalogStatusPanel />
+    <div className="flex w-full flex-col gap-10">
       <MerchantSettingsForm initial={shop} />
-    </>
+      {!session.isPlatformAdmin ? <MerchantTeamSection /> : null}
+    </div>
   );
 }

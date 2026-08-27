@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PLAN_DEFAULTS, type PlanId } from "@/lib/billing/plans";
+import { PLAN_DEFAULTS, TRIAL_DAYS_DEFAULT, type PlanId } from "@/lib/billing/plans";
 type PlanDefaultRow = {
   plan: PlanId;
   partnerLimit: number;
@@ -24,7 +24,7 @@ type PlanDraft = {
 };
 
 export function PlatformSettingsForm() {
-  const [trialDays, setTrialDays] = useState("30");
+  const [trialDays, setTrialDays] = useState(String(TRIAL_DAYS_DEFAULT));
   const [syncConcurrency, setSyncConcurrency] = useState("10");
   const [portalTopNGate, setPortalTopNGate] = useState(true);
   const [plans, setPlans] = useState<PlanDraft[]>([]);
@@ -113,7 +113,9 @@ export function PlatformSettingsForm() {
       <section>
         <h2 className="tn-section-title">Új szervezet</h2>
         <p className="tn-section-sub">
-          Ennyi napos Pro próba jár. Futtasd a sql/018-at, ha a mentés nem marad meg.
+          Alapértelmezett próbaidő új tenantoknak (nap). A merchant oldalon teljes
+          termék jár; a Turinova felirat próba alatt látszik. Futtasd a sql/018-at
+          (és 028-at v5 árakhoz), ha a mentés nem marad meg.
         </p>
         <label className="tn-field mt-4 max-w-xs">
           <span className="tn-label">Próba napok</span>
@@ -128,8 +130,9 @@ export function PlatformSettingsForm() {
       <section className="tn-section">
         <h2 className="tn-section-title">Csomagok</h2>
         <p className="tn-section-sub">
-          Vevő = hányan rendelhetnek a gyors rendeléssel. Termékhely = hány termék
-          másolható be.
+          Merchant pitch: egy termék (Gyors rendelés) + opcionális saját márka.
+          Itt a soft limitek és listárak. Start = alapár; plus / pro = fehér címke
+          (ugyanaz az ár). Vevő / termékhely = infra cap, nem a fő eladási üzenet.
         </p>
         <div className="mt-4 overflow-x-auto border border-line-strong">
           <table className="w-full min-w-[520px] text-left text-[13px]">

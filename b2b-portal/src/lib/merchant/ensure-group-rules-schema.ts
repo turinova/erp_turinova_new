@@ -7,7 +7,7 @@ import type { PoolClient } from "pg";
 import { withPlatformAdmin } from "@/lib/db";
 
 /** Bump when adding columns so running servers re-apply DDL. */
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 7;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -145,6 +145,28 @@ async function runDdl(client: PoolClient): Promise<void> {
   await client.query(`
     alter table public.shops
       add column if not exists group_rules_ladder integer[] not null default '{}'
+  `);
+  await client.query(`
+    alter table public.shops
+      add column if not exists group_rules_rewards jsonb not null default '{}'::jsonb
+  `);
+  await client.query(`
+    alter table public.shops
+      add column if not exists group_rules_order_status_mode text not null default 'exclude_cancelled'
+  `);
+  await client.query(`
+    do $$ begin
+      alter table public.shops
+        drop constraint if exists shops_group_rules_order_status_mode_check;
+      alter table public.shops
+        add constraint shops_group_rules_order_status_mode_check
+        check (group_rules_order_status_mode in ('exclude_cancelled', 'allowlist'));
+    exception when others then null;
+    end $$
+  `);
+  await client.query(`
+    alter table public.shops
+      add column if not exists group_rules_order_status_ids text[] not null default '{}'
   `);
 
   /* Rule: time window + keep threshold */

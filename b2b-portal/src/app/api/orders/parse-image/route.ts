@@ -76,7 +76,7 @@ export async function POST(request: Request) {
         request,
         {
           error:
-            "PDF egyelőre nem támogatott — készíts egy oldalas JPG/PNG fotót a listáról.",
+            "PDF egyelőre nem támogatott. Készíts egy oldalas JPG/PNG fotót a listáról.",
         },
         { status: 415 },
       );

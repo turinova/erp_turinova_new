@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import { PlanCards } from "@/components/merchant/PlanCards";
 import { requireMerchant } from "@/lib/auth/require";
-import { PLAN_DEFAULTS, formatTrialEnd, onPlan } from "@/lib/billing/plans";
+import {
+  formatTrialEnd,
+  hasWhiteLabel,
+} from "@/lib/billing/plans";
 import { withTenant } from "@/lib/db";
 import { loadMerchantOverview } from "@/lib/merchant/overview";
 
 export const metadata: Metadata = {
-  title: "Csomagok",
+  title: "Előfizetésem",
 };
 
 export default async function MerchantPlansPage() {
@@ -18,73 +21,71 @@ export default async function MerchantPlansPage() {
   );
   const shopName = overview.shop?.shoprenterShopName;
   const end = formatTrialEnd(overview.trialEndsAt);
-  const showDecision =
-    overview.trialExpired ||
-    (overview.isTrial && overview.trialDaysLeft != null && overview.trialDaysLeft <= 7);
-  const used = overview.partnersUsed;
-  const startLimit = PLAN_DEFAULTS.start.partnerLimit;
+  const whiteLabel = !overview.isTrial && hasWhiteLabel(overview.plan);
 
   return (
     <div className="mx-auto w-full max-w-[1080px]">
-      <div className="mb-5 flex flex-wrap items-center gap-2">
+      <header className="mb-6">
         <StatusPill
           isTrial={overview.isTrial}
           trialExpired={overview.trialExpired}
           trialDaysLeft={overview.trialDaysLeft}
-          planLabel={overview.planLabel}
+          whiteLabel={whiteLabel}
         />
-        <p className="text-[13px] text-faint">
-          {overview.trialExpired ? (
-            <>
-              Most csak {startLimit} vevőt látsz
-              {used > startLimit ? ` · ${used} helyett` : ""}
-            </>
-          ) : (
-            <>
-              Most {used} vevőt látsz
-              {overview.isTrial ? " · a fotós lista be van kapcsolva" : ""}
-              {overview.isTrial && end ? ` · a próba ekkor ér véget: ${end}` : ""}
-            </>
-          )}
-        </p>
-      </div>
+        {overview.isTrial && end && !overview.trialExpired ? (
+          <p className="mt-3 text-[15px] font-semibold tracking-tight text-text">
+            {trialEndsHeadline(overview.trialDaysLeft, end)}
+          </p>
+        ) : null}
+        {overview.trialExpired ? (
+          <p className="mt-3 text-[15px] font-semibold tracking-tight text-text">
+            A próbaidőszakod lejárt. Válaszd az előfizetést, hogy hivatalosan is
+            nálad maradjon a szolgáltatás.
+          </p>
+        ) : null}
+      </header>
 
-      <h1 className="text-[28px] font-semibold leading-tight tracking-tight">
-        {showDecision
-          ? "Melyik csomagot tartod meg?"
-          : "Válaszd ki, hány vevőt akarsz látni."}
+      <h1 className="mb-6 text-[28px] font-semibold leading-tight tracking-tight">
+        Előfizetés
       </h1>
-      <p className="tn-section-sub mb-6">
-        {showDecision
-          ? `A próba után a Starton csak ${startLimit} vevőt látsz. A fotós lista kikapcsol. A Plus megtartja a tiédet.`
-          : "A boltban a rendelés mindhárom csomagban megy. Itt az a kérdés: hány rendelő vevőt látsz te."}
-      </p>
 
       <PlanCards
         currentPlan={overview.plan}
         isTrial={overview.isTrial}
-        used={used}
         shopName={shopName}
       />
     </div>
   );
 }
 
+function trialEndsHeadline(
+  daysLeft: number | null,
+  endFormatted: string,
+): string {
+  if (daysLeft === 0) {
+    return `A próbaidőszakod ma lejár (${endFormatted}).`;
+  }
+  if (daysLeft === 1) {
+    return `A próbaidőszakod holnap, ${endFormatted} lejár.`;
+  }
+  return `A próbaidőszakod ${endFormatted} lejár.`;
+}
+
 function StatusPill({
   isTrial,
   trialExpired,
   trialDaysLeft,
-  planLabel,
+  whiteLabel,
 }: {
   isTrial: boolean;
   trialExpired: boolean;
   trialDaysLeft: number | null;
-  planLabel: string;
+  whiteLabel: boolean;
 }) {
   if (trialExpired) {
     return (
       <span className="inline-flex shrink-0 border-2 border-warn px-2 py-1 text-[11px] font-bold text-warn">
-        Lejárt a próba
+        Lejárt a próbaidőszak
       </span>
     );
   }
@@ -95,8 +96,8 @@ function StatusPill({
         : trialDaysLeft === 1
           ? "Holnap lejár"
           : trialDaysLeft != null
-            ? `Próba · ${trialDaysLeft} nap van hátra`
-            : "Próba";
+            ? `Próbaidőszak · még ${trialDaysLeft} nap`
+            : "Próbaidőszak";
     const urgent = trialDaysLeft != null && trialDaysLeft <= 3;
     return (
       <span
@@ -112,7 +113,7 @@ function StatusPill({
   }
   return (
     <span className="inline-flex shrink-0 border border-line-strong px-2 py-1 text-[11px] font-semibold text-faint">
-      Most {onPlan(planLabel)} vagy
+      {whiteLabel ? "Gyors rendelés + saját márka" : "Gyors rendelés"}
     </span>
   );
 }

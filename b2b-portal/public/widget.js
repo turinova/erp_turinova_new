@@ -149,8 +149,9 @@
 
   function applyPanelTheme(root) {
     if (!root) return;
-    var theme = cfg.panelTheme || "high_contrast";
-    var brand = cfg.fabColor || "#007AFF";
+    /* Panel = portal „Olvasó” — FAB theme must not change it. */
+    var theme = "high_contrast";
+    var brand = "#0B6BCB";
     var presets = {
       light_glass: {
         bg: "#F7F6F3",
@@ -215,8 +216,8 @@
         faint: "#3A3A3C",
         line: "rgba(0,0,0,.45)",
         lineStrong: "rgba(0,0,0,.75)",
-        accent: "#000000",
-        accentSoft: "rgba(0,0,0,.08)",
+        accent: "#0B6BCB",
+        accentSoft: "#E8F3FC",
         topbar: "#FFFFFF",
         navTrack: "rgba(0,0,0,.08)",
         navActive: "#FFFFFF",
@@ -265,6 +266,7 @@
     root.style.setProperty("--sr-qo-ok", c.ok);
     root.style.setProperty("--sr-qo-warn", c.warn);
     root.style.setProperty("--sr-qo-danger", c.danger);
+    root.style.setProperty("--sr-qo-radius", "0px");
   }
 
   function isLoggedIn() {
@@ -536,22 +538,33 @@
       "sr-b2b-qo-panel-css-v35",
       "sr-b2b-qo-panel-css-v36",
       "sr-b2b-qo-panel-css-v37",
+      "sr-b2b-qo-panel-css-v38",
+      "sr-b2b-qo-panel-css-v39",
+      "sr-b2b-qo-panel-css-v40",
+      "sr-b2b-qo-panel-css-v41",
+      "sr-b2b-qo-panel-css-v42",
+      "sr-b2b-qo-panel-css-v43",
+      "sr-b2b-qo-panel-css-v44",
+      "sr-b2b-qo-panel-css-v45",
+      "sr-b2b-qo-panel-css-v46",
+      "sr-b2b-qo-panel-css-v47",
+      "sr-b2b-qo-panel-css-v48",
     ].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.remove();
     });
-    if (document.getElementById("sr-b2b-qo-panel-css-v38")) return;
+    if (document.getElementById("sr-b2b-qo-panel-css-v49")) return;
     var style = document.createElement("style");
-    style.id = "sr-b2b-qo-panel-css-v38";
+    style.id = "sr-b2b-qo-panel-css-v49";
     style.textContent = [
       "#sr-b2b-quickorder-root{",
-      "  --sr-qo-bg:#F7F6F3;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#EFEEE9;",
-      "  --sr-qo-text:#37352F;--sr-qo-muted:#5F5E5A;--sr-qo-faint:#9B9A97;",
-      "  --sr-qo-line:rgba(55,53,47,.09);--sr-qo-line-strong:rgba(55,53,47,.16);",
-      "  --sr-qo-accent:#0F7B6C;--sr-qo-accent-soft:rgba(15,123,108,.1);",
-      "  --sr-qo-topbar:rgba(247,246,243,.86);--sr-qo-nav-track:rgba(55,53,47,.08);--sr-qo-nav-active:#FFFFFF;",
-      "  --sr-qo-ok:#0F7B6C;--sr-qo-warn:#C2410C;--sr-qo-danger:#E03E3E;",
-      "  --sr-qo-radius:16px;--sr-qo-ease:cubic-bezier(.2,.8,.2,1);",
+      "  --sr-qo-bg:#FFFFFF;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#F2F2F2;",
+      "  --sr-qo-text:#000000;--sr-qo-muted:#1C1C1E;--sr-qo-faint:#3A3A3C;",
+      "  --sr-qo-line:rgba(0,0,0,.45);--sr-qo-line-strong:rgba(0,0,0,.75);",
+      "  --sr-qo-accent:#0B6BCB;--sr-qo-accent-soft:#E8F3FC;",
+      "  --sr-qo-topbar:#FFFFFF;--sr-qo-nav-track:rgba(0,0,0,.08);--sr-qo-nav-active:#FFFFFF;",
+      "  --sr-qo-ok:#008009;--sr-qo-warn:#A05000;--sr-qo-danger:#D70015;",
+      "  --sr-qo-radius:0px;--sr-qo-ease:cubic-bezier(.2,.8,.2,1);",
       "  /* Shoprenter cookie/chat/admin sávok fölé — max signed 32-bit z-index */",
       "  --sr-qo-z-fab:2147483000;--sr-qo-z-backdrop:2147483646;--sr-qo-z-shell:2147483647;",
       "  position:relative;z-index:var(--sr-qo-z-shell);isolation:isolate;",
@@ -606,23 +619,6 @@
       "#sr-b2b-quickorder-root .sr-qo-title{",
       "  margin:0;font-size:13px;font-weight:600;letter-spacing:-.01em;line-height:1.2;",
       "  white-space:nowrap;overflow:hidden;text-overflow:ellipsis",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-partner{",
-      "  flex-shrink:0;padding:8px 14px;border-bottom:0.5px solid var(--sr-qo-line-strong);",
-      "  background:var(--sr-qo-surface-2);",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-partner[hidden]{display:none!important}",
-      "#sr-b2b-quickorder-root .sr-qo-partner-label{",
-      "  margin:0;font-size:12px;font-weight:600;line-height:1.35;color:var(--sr-qo-text)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-partner-group{",
-      "  margin:0 0 4px;font-size:11px;color:var(--sr-qo-faint)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-partner-bar{",
-      "  margin-top:6px;height:4px;border-radius:2px;background:var(--sr-qo-line-strong);overflow:hidden",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-partner-bar > i{",
-      "  display:block;height:100%;width:0;background:var(--sr-qo-accent);border-radius:2px",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-topbar-right{",
       "  display:flex;align-items:center;justify-content:flex-end;justify-self:end;gap:8px;min-width:0",
@@ -1243,17 +1239,112 @@
       "#sr-b2b-quickorder-root .sr-qo-del:hover{color:var(--sr-qo-danger);background:rgba(163,45,45,.08)}",
       "#sr-b2b-quickorder-root .sr-qo-del:focus-visible{outline:2px solid rgba(163,45,45,.35);outline-offset:1px}",
       "#sr-b2b-quickorder-root .sr-qo-footer{",
-      "  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;",
-      "  min-height:52px;padding:8px 16px;",
+      "  display:flex;flex-direction:column;gap:0;flex-shrink:0;",
       "  background:var(--sr-qo-bg);",
-      "  border-top:0.5px solid var(--sr-qo-line-strong);",
-      "  flex-shrink:0",
+      "  border-top:0.5px solid var(--sr-qo-line-strong)",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-footer-msg{flex:1;min-width:140px;font-size:12px;color:var(--sr-qo-muted)}",
+      "#sr-b2b-quickorder-root .sr-qo-footer-main{",
+      "  display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;",
+      "  min-height:96px;padding:12px 16px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-footer-msg{",
+      "  flex:1;min-width:120px;font-size:12px;color:var(--sr-qo-muted)",
+      "}",
       "#sr-b2b-quickorder-root .sr-qo-footer-msg.err{color:var(--sr-qo-danger);font-weight:600}",
-      "#sr-b2b-quickorder-root .sr-qo-footer-actions{display:flex;gap:8px;align-items:center}",
+      "#sr-b2b-quickorder-root .sr-qo-footer-msg[hidden]{display:none!important}",
+      "#sr-b2b-quickorder-root .sr-qo-footer-actions{display:flex;gap:8px;align-items:center;flex-shrink:0;align-self:center}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress{",
+      "  flex:1;min-width:min(100%,280px);max-width:520px;display:flex;flex-direction:column;gap:6px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[hidden]{display:none!important}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-top{",
+      "  display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-chip{",
+      "  display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:6px;",
+      "  font-size:11.5px;font-weight:750;letter-spacing:-.01em;white-space:nowrap;",
+      "  background:var(--sr-qo-surface-2);border:1px solid var(--sr-qo-line-strong);color:var(--sr-qo-text)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-chip.is-current{",
+      "  background:rgba(15,123,108,.12);border-color:rgba(15,123,108,.45);color:var(--sr-qo-accent)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-chip.is-next{",
+      "  background:var(--sr-qo-accent);border-color:var(--sr-qo-accent);color:#fff;",
+      "  box-shadow:0 1px 2px rgba(15,123,108,.25)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-pct{",
+      "  margin:0;font-size:12px;font-weight:700;color:var(--sr-qo-muted);",
+      "  font-variant-numeric:tabular-nums;letter-spacing:-.02em;flex-shrink:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-gap{",
+      "  margin:0;font-size:17px;font-weight:800;line-height:1.15;",
+      "  letter-spacing:-.03em;color:var(--sr-qo-text);font-variant-numeric:tabular-nums",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-gap em{",
+      "  font-style:normal;font-weight:800;color:var(--sr-qo-accent)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='high'] .sr-qo-foot-gap em{",
+      "  color:var(--sr-qo-warn)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='high'] .sr-qo-foot-pct{",
+      "  color:var(--sr-qo-warn)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-gap{",
+      "  color:var(--sr-qo-ok);font-weight:700;font-size:15px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-chip.is-current{",
+      "  border-color:rgba(47,111,78,.45);background:rgba(47,111,78,.14);color:var(--sr-qo-ok)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-pct{",
+      "  color:var(--sr-qo-ok)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-bar-row{",
+      "  display:flex;align-items:center;gap:10px;min-width:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-bar{",
+      "  flex:1;min-width:0;height:10px;border-radius:5px;background:rgba(55,53,47,.12);overflow:hidden",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-bar[hidden]{display:none!important}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-bar > i{",
+      "  display:block;height:100%;width:0;border-radius:5px;",
+      "  background:var(--sr-qo-accent);",
+      "  transition:width .35s var(--sr-qo-ease)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-bar > i{",
+      "  background:var(--sr-qo-ok);width:100%!important",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-target{",
+      "  margin:0;flex-shrink:0;display:inline-flex;align-items:center;gap:6px;max-width:48%;min-width:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-target[hidden]{display:none!important}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-target-arrow{",
+      "  font-size:13px;font-weight:700;color:var(--sr-qo-faint);flex-shrink:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-reward{",
+      "  margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-reward[hidden]{display:none!important}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-deal{",
+      "  display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:6px;",
+      "  font-size:13.5px;font-weight:800;letter-spacing:-.02em;white-space:nowrap;",
+      "  color:#9A3412;background:#FFEDD5;border:1px solid #FDBA74;",
+      "  box-shadow:0 1px 2px rgba(194,65,12,.12)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-deal em{",
+      "  font-style:normal;font-weight:900;color:#C2410C",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-detail{",
+      "  margin:0;font-size:12px;font-weight:550;line-height:1.3;color:var(--sr-qo-muted)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-detail[hidden]{display:none!important}",
+      "@media (prefers-reduced-motion:reduce){",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-bar > i{transition:none}",
+      "}",
       "@media (max-width:560px){",
       "  #sr-b2b-quickorder-root .sr-qo-start-grid{grid-template-columns:1fr;max-width:320px}",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-gap{font-size:15px}",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-reward{font-size:13px}",
+      "  #sr-b2b-quickorder-root .sr-qo-footer-main{min-height:88px;padding:10px 12px}",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-close{",
       "  height:28px;padding:0 10px;border:0.5px solid var(--sr-qo-line-strong);border-radius:8px;",
@@ -1509,7 +1600,7 @@
       "  }",
       "  #sr-b2b-quickorder-root .sr-qo-nav-btn{flex:1;padding:0 8px;text-align:center}",
       "  #sr-b2b-quickorder-root .sr-qo-toolbar{padding:10px 12px}",
-      "  #sr-b2b-quickorder-root .sr-qo-footer{padding:8px 12px}",
+      "  #sr-b2b-quickorder-root .sr-qo-footer-main{padding:8px 12px}",
       "  #sr-b2b-quickorder-root .sr-qo-main{flex-direction:column}",
       "  #sr-b2b-quickorder-root .sr-qo-aside{",
       "    width:100%;border-left:none;border-top:0.5px solid var(--sr-qo-line-strong);",
@@ -1807,6 +1898,8 @@
       role: "status",
       "aria-live": "assertive",
     });
+    var partnerProgressOn = false;
+    var partnerProgressEl = null;
 
     function hideTip() {
       tip.classList.remove("is-on");
@@ -2021,8 +2114,25 @@
     }
 
     function setStatus(msg, isErr) {
+      if (!isErr && partnerProgressOn && msg) {
+        /* FOMO footer stays; no toast spam for routine status (Ár… / Hozzáadva…). */
+        statusEl.textContent = "";
+        statusEl.className = "sr-qo-footer-msg";
+        statusEl.hidden = true;
+        if (partnerProgressEl) partnerProgressEl.hidden = false;
+        return;
+      }
       statusEl.textContent = msg || "";
       statusEl.className = "sr-qo-footer-msg" + (isErr ? " err" : "");
+      if (isErr || msg) {
+        statusEl.hidden = false;
+        if (isErr && partnerProgressEl) partnerProgressEl.hidden = true;
+      } else if (partnerProgressOn) {
+        statusEl.hidden = true;
+        if (partnerProgressEl) partnerProgressEl.hidden = false;
+      } else {
+        statusEl.hidden = false;
+      }
     }
 
     var toastTimer = null;
@@ -2041,7 +2151,17 @@
     }
 
     function flashInfo(msg, tone) {
-      setStatus(msg, false);
+      /* Never call setStatus here when partnerProgressOn — that path calls flashInfo. */
+      if (partnerProgressOn) {
+        statusEl.textContent = "";
+        statusEl.className = "sr-qo-footer-msg";
+        statusEl.hidden = true;
+        if (partnerProgressEl) partnerProgressEl.hidden = false;
+      } else {
+        statusEl.textContent = msg || "";
+        statusEl.className = "sr-qo-footer-msg";
+        statusEl.hidden = !msg;
+      }
       toastEl.textContent = msg || "";
       toastEl.className =
         "sr-qo-toast is-on " + (tone === "warn" ? "warn" : "info");
@@ -2556,8 +2676,12 @@
           if (opts.flash) lines[idx]._flashTier = true;
           renderList();
         })
-        .catch(function () {
-          /* keep current prices */
+        .catch(function (e) {
+          if (lineUnitNet(lines[idx] || line) == null) {
+            flashError(
+              (e && e.message) || "Ár / készlet frissítés sikertelen.",
+            );
+          }
         });
     }
     function scheduleLinePricing(idx) {
@@ -3193,9 +3317,18 @@
           })(),
         }),
       });
-      var data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Hiba a termékkeresésnél");
-      return data.products || [];
+      var data = null;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error(
+          res.ok
+            ? "Érvénytelen válasz az ár/készlet lekérésnél"
+            : "Hiba a termékkeresésnél (" + res.status + ")",
+        );
+      }
+      if (!res.ok) throw new Error((data && data.error) || "Hiba a termékkeresésnél");
+      return (data && data.products) || [];
     }
 
     async function resolveIndices(indices) {
@@ -3560,55 +3693,48 @@
       }
 
       if (hit.productId) {
-        var result = upsertResolvedProduct(
-          {
-            found: true,
-            sku: hit.sku,
-            productId: hit.productId,
-            name: hit.name,
-            modelNumber: hit.modelNumber,
-            gtin: hit.gtin,
-            priceNetFormatted: hit.priceNetFormatted,
-            priceGrossFormatted: hit.priceGrossFormatted,
-            minQty: hit.minQty || 1,
-            qtyStep: hit.qtyStep || 1,
-            packLabel: hit.packLabel,
-            imageUrl: hit.imageUrl,
-          },
-          quantity,
-        );
+        /* Search hits lack numeric price/stock — resolve first, then upsert. */
+        var code = hit.sku;
         skuInput.value = "";
         qtyInput.value = "1";
         qtyInput.removeAttribute("data-touched");
-        persist();
-        renderList();
-        setStatus(
-          result.merged
-            ? "Darabszám növelve (" + lines[result.index].quantity + " db)."
-            : "Hozzáadva — lista mentve.",
-          false,
-        );
-        try {
-          skuInput.focus();
-        } catch (e) {}
-        var idx = result.index;
-        var sku = hit.sku;
-        var qty = lines[idx] ? lines[idx].quantity : quantity;
-        resolveCodes([{ sku: sku, quantity: qty }])
+        setBusy(true);
+        setStatus("Ár és készlet…");
+        resolveCodes([{ sku: code, quantity: quantity }])
           .then(function (products) {
             var p = products[0];
-            if (!p || !p.found || !lines[idx]) return;
-            var same =
-              String(lines[idx].sku || "").toUpperCase() ===
-                String(p.sku || "").toUpperCase() ||
-              String(lines[idx].sku || "").toUpperCase() ===
-                String(sku || "").toUpperCase();
-            if (!same) return;
-            lines[idx] = mapProductFields(p, lines[idx].quantity);
+            if (!p || !p.found) {
+              flashError(
+                "Nem található: " +
+                  (hit.sku || code) +
+                  (hit.name ? " — " + hit.name : ""),
+              );
+              return;
+            }
+            var result = upsertResolvedProduct(p, quantity);
+            consolidateDuplicateProducts();
             persist();
             renderList();
+            setStatus(
+              result.merged
+                ? "Darabszám növelve (" +
+                    lines[result.index].quantity +
+                    " db)."
+                : "Hozzáadva — lista mentve.",
+              false,
+            );
           })
-          .catch(function () {});
+          .catch(function (e) {
+            flashError(
+              (e && e.message) || "Nem sikerült lekérni az árat / készletet.",
+            );
+          })
+          .finally(function () {
+            setBusy(false);
+            try {
+              skuInput.focus();
+            } catch (e2) {}
+          });
         return;
       }
 
@@ -4042,6 +4168,182 @@
         ? "Lista mentve — folytathatod."
         : "Cikkszám + Enter. Ha kész: Kosárba.",
     ]);
+
+    var footChip = el("span", { className: "sr-qo-foot-chip is-current" });
+    var footGap = el("span", { className: "sr-qo-foot-gap" });
+    var footTargetArrow = el("span", { className: "sr-qo-foot-target-arrow" }, [
+      "→",
+    ]);
+    var footTargetChip = el("span", {
+      className: "sr-qo-foot-chip is-next",
+    });
+    var footTarget = el("span", { className: "sr-qo-foot-target" }, [
+      footTargetArrow,
+      footTargetChip,
+    ]);
+    var footDeal = el("span", { className: "sr-qo-foot-deal" });
+    var footReward = el("div", { className: "sr-qo-foot-reward" }, [footDeal]);
+    var footDetail = el("p", { className: "sr-qo-foot-detail" });
+    var footBarFill = el("i", {});
+    var footBar = el("div", { className: "sr-qo-foot-bar" }, [footBarFill]);
+    partnerProgressEl = el(
+      "div",
+      {
+        className: "sr-qo-foot-progress",
+        hidden: "hidden",
+        "aria-live": "polite",
+      },
+      [
+        el("div", { className: "sr-qo-foot-top" }, [footChip]),
+        footGap,
+        el("div", { className: "sr-qo-foot-bar-row" }, [
+          footBar,
+          footTarget,
+        ]),
+        footReward,
+        footDetail,
+      ],
+    );
+
+    function formatDealLabel(headline) {
+      var h = String(headline || "").trim();
+      if (!h) return "";
+      if (/kedvezm/i.test(h)) return h;
+      if (/^−?-?\d/.test(h) || /%/.test(h)) {
+        return h.replace(/\s*nettó\s*$/i, "").trim() + " kedvezmény";
+      }
+      return h;
+    }
+
+    function applyPartnerProgress(p) {
+      if (!p) return;
+      var showName = p.showGroupName && p.groupName;
+      /* Only real, applicable rule progress — not empty “next level” placeholders. */
+      var showProg =
+        p.showProgress === true &&
+        (p.remainingLabel != null ||
+          (p.remaining != null && p.nextThreshold != null) ||
+          (p.atTop === true && p.progressPercent === 100 && p.label));
+      if (!showName && !showProg) return;
+
+      partnerProgressOn = showProg;
+      partnerProgressEl.hidden = false;
+      if (showProg) statusEl.hidden = true;
+
+      footChip.textContent = "";
+      footChip.hidden = true;
+      footChip.className = "sr-qo-foot-chip is-current";
+      if (showName) {
+        footChip.textContent = p.groupName;
+        footChip.hidden = false;
+      }
+
+      var pct =
+        p.progressPercent != null
+          ? Math.min(100, Math.max(0, Number(p.progressPercent) || 0))
+          : null;
+
+      footGap.textContent = "";
+      footTargetChip.textContent = "";
+      footTarget.hidden = true;
+      footDeal.textContent = "";
+      footReward.hidden = true;
+      footDetail.textContent = "";
+      footDetail.hidden = true;
+      footBar.hidden = true;
+      footBarFill.style.width = "0%";
+      partnerProgressEl.removeAttribute("data-urgency");
+      partnerProgressEl.removeAttribute("title");
+
+      if (!showProg) {
+        if (!showName) partnerProgressEl.hidden = true;
+        return;
+      }
+
+      if (p.atTop) {
+        footGap.textContent = "Legjobb szinted";
+      } else if (
+        p.remaining != null &&
+        p.remaining <= 0 &&
+        p.nextGroupName
+      ) {
+        footGap.textContent = "Küszöb megvan";
+        footTargetChip.textContent = String(p.nextGroupName);
+        footTarget.hidden = false;
+      } else if (p.remainingLabel) {
+        footGap.appendChild(document.createTextNode("Még "));
+        footGap.appendChild(el("em", null, [String(p.remainingLabel)]));
+        if (p.nextGroupName) {
+          footTargetChip.textContent =
+            String(p.nextGroupName) +
+            (p.urgency === "high" ? " · Majdnem" : "");
+          footTarget.hidden = false;
+        }
+      } else if (p.label) {
+        footGap.textContent = p.label;
+      }
+
+      if (p.urgency) {
+        partnerProgressEl.setAttribute("data-urgency", p.urgency);
+      }
+
+      var headline =
+        (p.rewardHeadline && String(p.rewardHeadline).trim()) ||
+        (p.nextBenefitLabel && String(p.nextBenefitLabel).trim()) ||
+        "";
+      var detail =
+        (p.rewardDetail && String(p.rewardDetail).trim()) || "";
+      var dealTxt = formatDealLabel(headline);
+
+      if (p.atTop && (p.currentBenefitLabel || headline)) {
+        footDeal.textContent = "";
+        footDeal.appendChild(
+          el("em", null, [
+            formatDealLabel(p.currentBenefitLabel || headline),
+          ]),
+        );
+        footReward.hidden = false;
+      } else if (dealTxt) {
+        footDeal.textContent = "";
+        footDeal.appendChild(el("em", null, [dealTxt]));
+        footReward.hidden = false;
+        if (detail) {
+          footDetail.textContent = detail;
+          footDetail.hidden = false;
+        }
+      }
+
+      if (p.currentFormatted) {
+        partnerProgressEl.setAttribute("title", String(p.currentFormatted));
+      }
+
+      if (p.atTop || (p.remaining != null && p.remaining <= 0)) {
+        footBar.hidden = false;
+        footBarFill.style.width = "100%";
+      } else if (pct != null) {
+        footBar.hidden = false;
+        footBarFill.style.width = pct + "%";
+      }
+    }
+
+    function loadPartnerStatus() {
+      if (!cfg.showCustomerGroupName && !cfg.showNextLevelProgress) return;
+      var uid = getCustomerUserId();
+      if (!uid) return;
+      fetch(
+        apiUrl(
+          "/api/widget/partner-status?userId=" + encodeURIComponent(String(uid)),
+        ),
+        { credentials: "omit", cache: "no-store" },
+      )
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (data) {
+          applyPartnerProgress(data && data.progress);
+        })
+        .catch(function () {});
+    }
     var undoBar = el("div", { className: "sr-qo-undo-bar", "aria-live": "polite" });
     var cartConfirmBar = el("div", { className: "sr-qo-cart-confirm", "aria-live": "polite" });
     var undoSnapshot = null;
@@ -4150,9 +4452,13 @@
     var footer = el("div", { className: "sr-qo-footer" }, [
       undoBar,
       cartConfirmBar,
-      statusEl,
-      el("div", { className: "sr-qo-footer-actions" }, [clearBtn]),
+      el("div", { className: "sr-qo-footer-main" }, [
+        partnerProgressEl,
+        statusEl,
+        el("div", { className: "sr-qo-footer-actions" }, [clearBtn]),
+      ]),
     ]);
+    loadPartnerStatus();
 
     function makePlaceholder(title, sub) {
       return el("div", { className: "sr-qo-placeholder" }, [
@@ -6146,66 +6452,6 @@
       [listsRoot],
     );
 
-    var partnerStrip = el("div", {
-      className: "sr-qo-partner",
-      hidden: "hidden",
-      "aria-live": "polite",
-    });
-    var partnerGroupEl = el("p", { className: "sr-qo-partner-group" });
-    var partnerLabelEl = el("p", { className: "sr-qo-partner-label" });
-    var partnerBarFill = el("i", {});
-    var partnerBar = el("div", { className: "sr-qo-partner-bar" }, [
-      partnerBarFill,
-    ]);
-    partnerStrip.appendChild(partnerGroupEl);
-    partnerStrip.appendChild(partnerLabelEl);
-    partnerStrip.appendChild(partnerBar);
-
-    function loadPartnerStatus() {
-      if (!cfg.showCustomerGroupName && !cfg.showNextLevelProgress) return;
-      var uid = getCustomerUserId();
-      if (!uid) return;
-      fetch(
-        apiUrl(
-          "/api/widget/partner-status?userId=" + encodeURIComponent(String(uid)),
-        ),
-        { credentials: "omit", cache: "no-store" },
-      )
-        .then(function (r) {
-          return r.json();
-        })
-        .then(function (data) {
-          var p = data && data.progress;
-          if (!p) return;
-          var show = false;
-          partnerGroupEl.textContent = "";
-          partnerLabelEl.textContent = "";
-          partnerBar.hidden = true;
-          partnerBarFill.style.width = "0%";
-          if (p.showGroupName && p.groupName) {
-            partnerGroupEl.textContent = "Csoportod: " + p.groupName;
-            show = true;
-          }
-          if (p.showProgress && p.label) {
-            partnerLabelEl.textContent = p.label;
-            show = true;
-            if (
-              p.progressPercent != null &&
-              !p.atTop &&
-              p.remaining != null &&
-              p.remaining > 0
-            ) {
-              partnerBar.hidden = false;
-              partnerBarFill.style.width =
-                Math.min(100, Math.max(0, Number(p.progressPercent) || 0)) +
-                "%";
-            }
-          }
-          if (show) partnerStrip.removeAttribute("hidden");
-        })
-        .catch(function () {});
-    }
-
     var views = el("div", { className: "sr-qo-views" }, [
       viewEls.home,
       viewEls.order,
@@ -6220,7 +6466,7 @@
         "aria-modal": "true",
         "aria-labelledby": "sr-qo-dialog-title",
       },
-      [topbar, partnerStrip, views, turinovaCredit(), toastEl],
+      [topbar, views, turinovaCredit(), toastEl],
     );
 
     root.appendChild(el("div", { className: "sr-qo-backdrop", "aria-hidden": "true" }));
@@ -6229,7 +6475,6 @@
     document.addEventListener("keydown", onKeyDown, true);
     setView(activeView);
     renderList();
-    loadPartnerStatus();
     if (lines.length) showOrderWork();
     else showOrderWorkOrStart();
 
@@ -6495,7 +6740,44 @@
     }
 
     var ink = resolveFabInk(inkMode, color);
-    if (style === "outline") {
+    if (style === "neon") {
+      btn.style.background = "#0A0A0C";
+      btn.style.color = "#FFFFFF";
+      btn.style.borderColor = hexToRgba(color, 0.9);
+      btn.style.borderWidth = "1px";
+      btn.style.borderStyle = "solid";
+      btn.style.backdropFilter = "none";
+      btn.style.webkitBackdropFilter = "none";
+      btn.style.boxShadow =
+        "0 0 6px " +
+        hexToRgba(color, 0.95) +
+        ", 0 0 18px " +
+        hexToRgba(color, 0.55) +
+        ", 0 0 36px " +
+        hexToRgba(color, 0.28) +
+        ", inset 0 0 14px " +
+        hexToRgba(color, 0.18);
+    } else if (style === "glass") {
+      btn.style.background =
+        "linear-gradient(155deg, " +
+        hexToRgba("#FFFFFF", 0.48) +
+        " 0%, " +
+        hexToRgba(color, 0.38) +
+        " 42%, " +
+        hexToRgba(color, 0.72) +
+        " 100%)";
+      btn.style.color = ink;
+      btn.style.borderColor = hexToRgba("#FFFFFF", 0.55);
+      btn.style.borderWidth = "1px";
+      btn.style.borderStyle = "solid";
+      btn.style.backdropFilter = "saturate(180%) blur(18px)";
+      btn.style.webkitBackdropFilter = "saturate(180%) blur(18px)";
+      btn.style.boxShadow =
+        "0 10px 28px " +
+        hexToRgba(color, 0.32) +
+        ", 0 2px 8px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 0 " +
+        hexToRgba(color, 0.22);
+    } else if (style === "outline") {
       btn.style.background = "#FFFFFF";
       btn.style.color = color;
       btn.style.borderColor = color;
@@ -6511,27 +6793,33 @@
       btn.style.webkitBackdropFilter = "none";
       btn.style.boxShadow = "none";
     } else if (style === "contrast") {
-      btn.style.background = "#000000";
+      btn.style.background = "#0A0A0C";
       btn.style.color = "#FFFFFF";
-      btn.style.borderColor = "rgba(255,255,255,0.45)";
+      btn.style.borderColor = hexToRgba(color, 0.9);
       btn.style.backdropFilter = "none";
       btn.style.webkitBackdropFilter = "none";
-      btn.style.boxShadow = "0 8px 20px rgba(0,0,0,0.28)";
-    } else if (style === "solid") {
-      btn.style.background = color;
-      btn.style.color = ink;
-      btn.style.borderColor = "transparent";
-      btn.style.backdropFilter = "none";
-      btn.style.webkitBackdropFilter = "none";
-      btn.style.boxShadow = "0 6px 16px rgba(0,0,0,0.14)";
+      btn.style.boxShadow =
+        "0 0 6px " +
+        hexToRgba(color, 0.95) +
+        ", 0 0 18px " +
+        hexToRgba(color, 0.55);
     } else {
-      // glass — clearer, less muddy
-      btn.style.background = hexToRgba(color, 0.92);
+      /* solid — slight sheen */
+      btn.style.background =
+        "linear-gradient(180deg, " +
+        hexToRgba("#FFFFFF", 0.18) +
+        " 0%, transparent 42%), " +
+        color;
       btn.style.color = ink;
-      btn.style.borderColor = "rgba(255,255,255,0.35)";
-      btn.style.backdropFilter = "saturate(1.2) blur(14px)";
-      btn.style.webkitBackdropFilter = "saturate(1.2) blur(14px)";
-      btn.style.boxShadow = "0 8px 20px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.22)";
+      btn.style.borderColor = hexToRgba("#000000", 0.12);
+      btn.style.borderWidth = "0.5px";
+      btn.style.borderStyle = "solid";
+      btn.style.backdropFilter = "none";
+      btn.style.webkitBackdropFilter = "none";
+      btn.style.boxShadow =
+        "0 8px 20px " +
+        hexToRgba(color, 0.35) +
+        ", 0 2px 6px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.28)";
     }
   }
 

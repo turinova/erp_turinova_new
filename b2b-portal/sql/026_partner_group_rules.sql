@@ -1,6 +1,6 @@
 -- =============================================================================
 -- b2b-portal / 026_partner_group_rules.sql
--- Partner szintlépés szabályok (automatikus vevőcsoport-átrakás).
+-- Partner automatizmus szabályok (automatikus vevőcsoport-átrakás).
 -- Az app első API híváskor is létrehozza (ensurePartnerGroupRulesSchema) —
 -- ezt a fájlt deploy/docs célra tartjuk; manuális futtatás NEM kötelező.
 -- =============================================================================
@@ -92,6 +92,22 @@ alter table public.shops
   add column if not exists group_rules_downgrade_after_md text;
 alter table public.shops
   add column if not exists group_rules_ladder integer[] not null default '{}';
+alter table public.shops
+  add column if not exists group_rules_rewards jsonb not null default '{}'::jsonb;
+alter table public.shops
+  add column if not exists group_rules_order_status_mode text not null default 'exclude_cancelled';
+
+do $$ begin
+  alter table public.shops
+    drop constraint if exists shops_group_rules_order_status_mode_check;
+  alter table public.shops
+    add constraint shops_group_rules_order_status_mode_check
+    check (group_rules_order_status_mode in ('exclude_cancelled', 'allowlist'));
+exception when others then null;
+end $$;
+
+alter table public.shops
+  add column if not exists group_rules_order_status_ids text[] not null default '{}';
 
 -- idempotent alters for existing installs
 alter table public.partner_group_rules

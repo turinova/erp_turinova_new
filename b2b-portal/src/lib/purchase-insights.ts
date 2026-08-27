@@ -161,13 +161,13 @@ export async function getCustomerPurchaseInsights(
   let nextOrderHint: string | null = null;
   if (daysSinceLast != null && typicalDays != null) {
     if (daysSinceLast >= typicalDays) {
-      nextOrderHint = `Általában ~${typicalDays} naponta rendelsz — most jönne a következő kör.`;
+      nextOrderHint = `Általában ~${typicalDays} naponta rendelsz. Most jönne a következő kör.`;
     } else {
       const left = typicalDays - daysSinceLast;
       nextOrderHint = `Szokásos ritmusod ~${typicalDays} nap. Kb. ${left} nap múlva esedékes a következő.`;
     }
   } else if (daysSinceLast != null && daysSinceLast >= 21) {
-    nextOrderHint = `Már ${daysSinceLast} napja nem rendeltél — érdemes átnézni a top tételeket.`;
+    nextOrderHint = `Már ${daysSinceLast} napja nem rendeltél. Érdemes átnézni a top tételeket.`;
   }
 
   const sample = orders.slice(0, 10);

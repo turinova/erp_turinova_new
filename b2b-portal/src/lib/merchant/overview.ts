@@ -9,6 +9,19 @@ import { catalogIsSearchable } from "@/lib/commerce/lookup";
 import { query } from "@/lib/db";
 import { loadMerchantShop, type MerchantShopDto } from "@/lib/merchant/shop";
 
+export type SetupStepId =
+  | "shop"
+  | "catalog"
+  | "widget"
+  | "pricing";
+
+export type SetupStep = {
+  id: SetupStepId;
+  label: string;
+  done: boolean;
+  href: string;
+};
+
 export type MerchantOverview = {
   plan: PlanId;
   planLabel: string;
@@ -27,6 +40,11 @@ export type MerchantOverview = {
   catalogReady: boolean;
   productCount: number;
   progressPct: number;
+  /** Widget-sourced B2B orders this calendar month. */
+  widgetOrdersMonth: number;
+  hasPricing: boolean;
+  setup: SetupStep[];
+  setupComplete: boolean;
   shop: MerchantShopDto | null;
   next: {
     title: string;
@@ -166,6 +184,73 @@ export async function loadMerchantOverview(
         ? Math.min(99, Math.round((pagesDone / pagesTotal) * 100))
         : 0;
 
+  const catalogReady = catalogIsSearchable(catalogStatus);
+  const shopConnected = Boolean(
+    shop?.hasCredentials && shop.lastPingOk !== false,
+  );
+  const widgetOn = Boolean(shop?.widgetEnabled);
+
+  let hasPricing = false;
+  let widgetOrdersMonth = 0;
+  if (shop) {
+    try {
+      const priceRes = await query<{ n: string }>(
+        client,
+        `select (
+           (select count(*)::int from partner_group_prices where shop_id = $1) +
+           (select count(*)::int from partner_volume_tiers where shop_id = $1)
+         )::text as n`,
+        [shop.shopId],
+      );
+      hasPricing = Number(priceRes.rows[0]?.n ?? 0) > 0;
+    } catch {
+      hasPricing = false;
+    }
+    try {
+      const ordRes = await query<{ n: string }>(
+        client,
+        `select count(*)::text as n
+         from b2b_orders
+         where shop_id = $1
+           and source = 'widget'
+           and status in ('recorded', 'linked')
+           and created_at >= date_trunc('month', now())`,
+        [shop.shopId],
+      );
+      widgetOrdersMonth = Number(ordRes.rows[0]?.n ?? 0);
+    } catch {
+      widgetOrdersMonth = 0;
+    }
+  }
+
+  const setup: SetupStep[] = [
+    {
+      id: "shop",
+      label: "Bolt összekötve",
+      done: shopConnected,
+      href: "/settings",
+    },
+    {
+      id: "catalog",
+      label: "Termékek szinkronban",
+      done: catalogReady,
+      href: "/settings",
+    },
+    {
+      id: "widget",
+      label: "Widget bekapcsolva",
+      done: widgetOn,
+      href: "/widget",
+    },
+    {
+      id: "pricing",
+      label: "Partnerár vagy sáv",
+      done: hasPricing,
+      href: "/arak",
+    },
+  ];
+  const setupComplete = setup.every((s) => s.done);
+
   let next: MerchantOverview["next"];
   if (!shop || !shop.hasCredentials) {
     next = {
@@ -183,7 +268,7 @@ export async function loadMerchantOverview(
       cta: "Beállítások",
       external: false,
     };
-  } else if (!catalogIsSearchable(catalogStatus)) {
+  } else if (!catalogReady) {
     next = {
       title: "Még másoljuk a termékeket",
       body:
@@ -202,10 +287,18 @@ export async function loadMerchantOverview(
       cta: "Gyors rendelés bekapcsolása",
       external: false,
     };
+  } else if (!hasPricing) {
+    next = {
+      title: "Állíts be partnerárat",
+      body: "Csoportár vagy mennyiségi sáv. Így látják a viszonteladók a saját árukat.",
+      href: "/arak",
+      cta: "Árazás",
+      external: false,
+    };
   } else if (gate.overCap) {
     next = {
       title: "Elfogyott a hely a csomagban",
-      body: `Ebben a hónapban ${gate.activePartners} vevő rendelt a gyors rendeléssel. A csomagba ${gate.partnerLimit} fér. A többi vevő adatait itt nem látod — a gyors rendelés ettől még megy.`,
+      body: `Ebben a hónapban ${gate.activePartners} vevő rendelt a gyors rendeléssel. A csomagba ${gate.partnerLimit} fér. A többi vevő adatait itt nem látod. A gyors rendelés ettől még megy.`,
       href: "/csomag",
       cta: `Tartsd a ${gate.activePartners} vevőt`,
       external: false,
@@ -255,9 +348,13 @@ export async function loadMerchantOverview(
     warn80: gate.warn80,
     wouldLoseOnPaid: gate.wouldLoseOnPaid,
     catalogStatus,
-    catalogReady: catalogIsSearchable(catalogStatus),
+    catalogReady,
     productCount,
     progressPct,
+    widgetOrdersMonth,
+    hasPricing,
+    setup,
+    setupComplete,
     shop,
     next,
   };

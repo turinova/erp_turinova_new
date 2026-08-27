@@ -9,7 +9,7 @@ import {
   formatHuf,
   getOrderDetailById,
   listShopOrders,
-  resolveProductBySku,
+  parseShoprenterOrderTime,
   type CustomerOrderSummary,
   type ShoprenterConfig,
 } from "@/lib/shoprenter";
@@ -179,28 +179,28 @@ type GroupAgg = {
 const reportCache = new Map<string, { at: number; data: ShopReport }>();
 const TTL = 10 * 60 * 1000;
 
+export type ReportPhase = "summary" | "products" | "full";
+
+type SummaryScratch = {
+  at: number;
+  months: ReportMonths;
+  inRange: CustomerOrderSummary[];
+  report: ShopReport;
+  partners: Map<string, PartnerAgg>;
+};
+
+const summaryScratch = new Map<string, SummaryScratch>();
+
+const DETAIL_CONCURRENCY = 3;
+const PRODUCT_SAMPLE = 14;
+
 function dayMs(n: number) {
   return n * 24 * 60 * 60 * 1000;
 }
 
 /** Shoprenter: "2024-03-15 12:30:00" — Date.parse gyakran NaN. */
 function parseOrderTime(raw: string | null | undefined): number {
-  if (!raw || !raw.trim()) return 0;
-  const s = raw.trim();
-  const iso = Date.parse(s.includes("T") ? s : s.replace(" ", "T"));
-  if (Number.isFinite(iso)) return iso;
-  const m = s.match(
-    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/,
-  );
-  if (!m) return 0;
-  return new Date(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    Number(m[4] || 0),
-    Number(m[5] || 0),
-    Number(m[6] || 0),
-  ).getTime();
+  return parseShoprenterOrderTime(raw);
 }
 
 function monthKey(t: number): string {
@@ -323,18 +323,47 @@ export async function buildShopReport(
   shopId: string,
   cacheKey: string,
   months: ReportMonths,
+  phase: ReportPhase = "full",
 ): Promise<ShopReport> {
-  const hit = reportCache.get(cacheKey);
-  if (hit && Date.now() - hit.at < TTL) return hit.data;
+  let activePhase: ReportPhase = phase;
+  const fullKey = `${cacheKey}:full`;
+  const summaryKey = `${cacheKey}:summary`;
+
+  if (activePhase === "full" || activePhase === "summary") {
+    const hit = reportCache.get(activePhase === "full" ? fullKey : summaryKey);
+    if (hit && Date.now() - hit.at < TTL) {
+      return hit.data;
+    }
+  }
+
+  if (activePhase === "products") {
+    const fullHit = reportCache.get(fullKey);
+    if (fullHit && Date.now() - fullHit.at < TTL) return fullHit.data;
+    const scratch = summaryScratch.get(summaryKey);
+    if (scratch && Date.now() - scratch.at < TTL) {
+      const enriched = await enrichReportProducts(
+        config,
+        client,
+        shopId,
+        scratch,
+      );
+      reportCache.set(fullKey, { at: Date.now(), data: enriched });
+      reportCache.set(summaryKey, { at: Date.now(), data: enriched });
+      return enriched;
+    }
+    activePhase = "full";
+  }
 
   const now = Date.now();
   const rangeMs = dayMs(months * 30);
   const rangeStart = now - rangeMs;
   const prevStart = rangeStart - rangeMs;
 
-  const maxPages = months <= 6 ? 6 : months <= 12 ? 8 : 10;
+  const maxPages =
+    months <= 3 ? 12 : months <= 6 ? 16 : months <= 12 ? 20 : 24;
   const all = await listShopOrders(config, {
     dateFromMs: prevStart,
+    dateToMs: now,
     maxPages,
     limit: 50,
   });
@@ -393,34 +422,16 @@ export async function buildShopReport(
 
   let defaultGroupId: number | null = null;
   const groupNameById = new Map<number, string>();
-  try {
-    const groups = await listCustomerGroups(config);
-    for (const g of groups) {
-      groupNameById.set(g.innerId, g.name);
-      if (g.isDefault) defaultGroupId = g.innerId;
-    }
-  } catch {
-    /* optional */
-  }
-
   const roleByGroup = new Map<number, string>();
-  try {
-    const map = await listGroupMap(client, shopId);
-    for (const row of map) {
-      roleByGroup.set(row.sr_group_inner_id, row.role);
-      if (row.sr_name_snapshot) {
-        groupNameById.set(row.sr_group_inner_id, row.sr_name_snapshot);
-      }
-    }
-  } catch {
-    /* optional */
-  }
-
   const partnerByInner = new Map<number, boolean>();
   const groupByInner = new Map<number, number | null>();
   const partnerFingerprintIds = new Set<number>();
-  try {
-    const fp = await query<{
+  const widgetByInner = new Map<number, number>();
+
+  const [groupsResult, mapResult, fpResult, widgetResult] = await Promise.all([
+    listCustomerGroups(config).catch(() => [] as Awaited<ReturnType<typeof listCustomerGroups>>),
+    listGroupMap(client, shopId).catch(() => [] as Awaited<ReturnType<typeof listGroupMap>>),
+    query<{
       sr_customer_inner_id: number;
       sr_group_inner_id: number | null;
     }>(
@@ -429,23 +440,8 @@ export async function buildShopReport(
        from shop_customers
        where shop_id = $1 and sr_status = 'active'`,
       [shopId],
-    );
-    for (const row of fp.rows) {
-      groupByInner.set(row.sr_customer_inner_id, row.sr_group_inner_id);
-      if (defaultGroupId == null) continue;
-      const isPartner =
-        row.sr_group_inner_id != null &&
-        row.sr_group_inner_id !== defaultGroupId;
-      partnerByInner.set(row.sr_customer_inner_id, isPartner);
-      if (isPartner) partnerFingerprintIds.add(row.sr_customer_inner_id);
-    }
-  } catch {
-    /* table may be empty */
-  }
-
-  const widgetByInner = new Map<number, number>();
-  try {
-    const wr = await query<{
+    ).catch(() => ({ rows: [] as { sr_customer_inner_id: number; sr_group_inner_id: number | null }[] })),
+    query<{
       sr_customer_inner_id: number | null;
       sum: string | null;
     }>(
@@ -458,16 +454,34 @@ export async function buildShopReport(
          and created_at <= to_timestamp($3 / 1000.0)
        group by sr_customer_inner_id`,
       [shopId, rangeStart, now],
-    );
-    for (const row of wr.rows) {
-      if (row.sr_customer_inner_id == null) continue;
-      widgetByInner.set(
-        row.sr_customer_inner_id,
-        Math.round(Number(row.sum || 0)),
-      );
+    ).catch(() => ({ rows: [] as { sr_customer_inner_id: number | null; sum: string | null }[] })),
+  ]);
+
+  for (const g of groupsResult) {
+    groupNameById.set(g.innerId, g.name);
+    if (g.isDefault) defaultGroupId = g.innerId;
+  }
+  for (const row of mapResult) {
+    roleByGroup.set(row.sr_group_inner_id, row.role);
+    if (row.sr_name_snapshot) {
+      groupNameById.set(row.sr_group_inner_id, row.sr_name_snapshot);
     }
-  } catch {
-    /* optional */
+  }
+  for (const row of fpResult.rows) {
+    groupByInner.set(row.sr_customer_inner_id, row.sr_group_inner_id);
+    if (defaultGroupId == null) continue;
+    const isPartner =
+      row.sr_group_inner_id != null &&
+      row.sr_group_inner_id !== defaultGroupId;
+    partnerByInner.set(row.sr_customer_inner_id, isPartner);
+    if (isPartner) partnerFingerprintIds.add(row.sr_customer_inner_id);
+  }
+  for (const row of widgetResult.rows) {
+    if (row.sr_customer_inner_id == null) continue;
+    widgetByInner.set(
+      row.sr_customer_inner_id,
+      Math.round(Number(row.sum || 0)),
+    );
   }
 
   let partnerSpent = 0;
@@ -544,6 +558,11 @@ export async function buildShopReport(
         groupInnerId === defaultGroupId
       ) {
         isPartner = false;
+      } else if (groupInnerId != null) {
+        const role = roleByGroup.get(groupInnerId);
+        if (role === "rejtett") isPartner = false;
+        else if (role === "bolt" || role === "gomb") isPartner = true;
+        else isPartner = true;
       }
 
       if (isPartner === true) {
@@ -643,8 +662,9 @@ export async function buildShopReport(
   let widgetSpent = 0;
   let widgetOrderCount = 0;
   for (const v of widgetByInner.values()) widgetSpent += v;
-  try {
-    const wr = await query<{ cnt: string }>(
+  let movesInRange = 0;
+  const [wrCnt, mrCnt] = await Promise.all([
+    query<{ cnt: string }>(
       client,
       `select count(*)::text as cnt
        from b2b_orders
@@ -653,21 +673,8 @@ export async function buildShopReport(
          and created_at >= to_timestamp($2 / 1000.0)
          and created_at <= to_timestamp($3 / 1000.0)`,
       [shopId, rangeStart, now],
-    );
-    widgetOrderCount = Number(wr.rows[0]?.cnt || 0);
-  } catch {
-    /* optional */
-  }
-
-  const storeSpent = Math.max(0, spent - widgetSpent);
-  const widgetPercent =
-    spent > 0 ? Math.round((Math.min(widgetSpent, spent) / spent) * 100) : null;
-  const storePercent =
-    spent > 0 ? Math.round((storeSpent / spent) * 100) : null;
-
-  let movesInRange = 0;
-  try {
-    const mr = await query<{ cnt: string }>(
+    ).catch(() => ({ rows: [{ cnt: "0" }] })),
+    query<{ cnt: string }>(
       client,
       `select count(*)::text as cnt
        from shop_customer_group_moves
@@ -675,11 +682,16 @@ export async function buildShopReport(
          and created_at >= to_timestamp($2 / 1000.0)
          and created_at <= to_timestamp($3 / 1000.0)`,
       [shopId, rangeStart, now],
-    );
-    movesInRange = Number(mr.rows[0]?.cnt || 0);
-  } catch {
-    /* optional */
-  }
+    ).catch(() => ({ rows: [{ cnt: "0" }] })),
+  ]);
+  widgetOrderCount = Number(wrCnt.rows[0]?.cnt || 0);
+  movesInRange = Number(mrCnt.rows[0]?.cnt || 0);
+
+  const storeSpent = Math.max(0, spent - widgetSpent);
+  const widgetPercent =
+    spent > 0 ? Math.round((Math.min(widgetSpent, spent) / spent) * 100) : null;
+  const storePercent =
+    spent > 0 ? Math.round((storeSpent / spent) * 100) : null;
 
   // Partner NRR: előző periódusban költő partnerek mostani / akkori költése
   let nrrBase = 0;
@@ -724,149 +736,43 @@ export async function buildShopReport(
     partnerGaps.map((d) => Math.max(1, Math.round(d))),
   );
 
-  const sampleForProducts = inRange.slice(0, 14);
-  const details = await mapPool(sampleForProducts, 2, async (o) => {
-    try {
-      await new Promise((r) => setTimeout(r, 200));
-      const detail = await getOrderDetailById(config, o.id);
-      return { order: o, detail };
-    } catch {
-      return null;
-    }
-  });
+  const sampleForProducts = inRange.slice(0, PRODUCT_SAMPLE);
+  let topProducts: ShopReport["topProducts"] = [];
+  let avgSkuPerActivePartner: number | null = null;
+  let revenueWithCost = 0;
+  let costTotal = 0;
+  let grossProfit = 0;
+  let marginPercent: number | null = null;
+  let coveragePercent: number | null = null;
+  let skuWithCost = 0;
+  let skuListLen = 0;
+  let profitNote = "Termék / árrés betöltése…";
 
-  const bySku = new Map<
-    string,
-    {
-      sku: string;
-      modelNumber: string | null;
-      name: string | null;
-      quantity: number;
-      lineRevenue: number;
-      lineRevenueNet: number;
-    }
-  >();
-
-  for (const row of details) {
-    if (!row) continue;
-    const key = buyerKey(row.order);
-    const agg = partners.get(key);
-    for (const line of row.detail.lines) {
-      if (isFeeOrShippingLine(line)) continue;
-      const sku = (line.sku || line.modelNumber || "").trim();
-      if (!sku) continue;
-      const skuKey = sku.toUpperCase();
-      if (agg) agg.skus.add(skuKey);
-      const revGross = productLineGross(line);
-      const revNet = productLineNet(line);
-      const cur = bySku.get(skuKey) || {
-        sku,
-        modelNumber: line.modelNumber ?? null,
-        name: line.name ?? null,
-        quantity: 0,
-        lineRevenue: 0,
-        lineRevenueNet: 0,
-      };
-      if (!cur.modelNumber && line.modelNumber) cur.modelNumber = line.modelNumber;
-      if (!cur.name && line.name) cur.name = line.name;
-      cur.quantity += Math.max(1, line.quantity || 1);
-      cur.lineRevenue += revGross;
-      if (revNet != null) cur.lineRevenueNet += revNet;
-      bySku.set(skuKey, cur);
-    }
+  const needProducts = activePhase !== "summary";
+  if (needProducts) {
+    const productBlock = await computeProductBlock(
+      config,
+      client,
+      shopId,
+      sampleForProducts,
+      partners,
+    );
+    topProducts = productBlock.topProducts;
+    avgSkuPerActivePartner = productBlock.avgSkuPerActivePartner;
+    revenueWithCost = productBlock.revenueWithCost;
+    costTotal = productBlock.costTotal;
+    grossProfit = productBlock.grossProfit;
+    marginPercent = productBlock.marginPercent;
+    coveragePercent = productBlock.coveragePercent;
+    skuWithCost = productBlock.skuWithCost;
+    skuListLen = productBlock.skuListLen;
+    profitNote = productBlock.note;
   }
-
-  const partnerSkuCounts: number[] = [];
-  for (const p of partners.values()) {
-    if (p.isPartner === true && p.skus.size > 0) {
-      partnerSkuCounts.push(p.skus.size);
-    }
-  }
-  const avgSkuPerActivePartner =
-    partnerSkuCounts.length > 0
-      ? Math.round(
-          (partnerSkuCounts.reduce((a, b) => a + b, 0) /
-            partnerSkuCounts.length) *
-            10,
-        ) / 10
-      : null;
 
   const widgetPercentOfPartner =
     partnerSpent > 0
       ? Math.round((Math.min(partnerWidgetSpent, partnerSpent) / partnerSpent) * 100)
       : null;
-
-  // Költség lookup — csak unique SKU, hiányzó cost OK
-  const skuList = [...bySku.values()];
-  const costBySku = new Map<string, number | null>();
-  await mapPool(skuList.slice(0, 40), 2, async (p) => {
-    try {
-      await new Promise((r) => setTimeout(r, 180));
-      const resolved = await resolveProductBySku(config, p.sku);
-      const c =
-        resolved.hasCost && resolved.costNet != null && resolved.costNet > 0
-          ? resolved.costNet
-          : null;
-      costBySku.set(p.sku.toUpperCase(), c);
-    } catch {
-      costBySku.set(p.sku.toUpperCase(), null);
-    }
-    return null;
-  });
-
-  let revenueWithCost = 0;
-  let revenueAllProductNet = 0;
-  let costTotal = 0;
-  let skuWithCost = 0;
-  for (const p of skuList) {
-    // Árrés BÁZIS: csak termék nettó. Szállítás / utánvét / order total soha.
-    if (p.lineRevenueNet > 0) revenueAllProductNet += p.lineRevenueNet;
-    const unitCost = costBySku.get(p.sku.toUpperCase());
-    if (
-      unitCost != null &&
-      unitCost > 0 &&
-      p.lineRevenueNet > 0
-    ) {
-      skuWithCost += 1;
-      const lineCost = Math.round(unitCost * p.quantity);
-      revenueWithCost += p.lineRevenueNet;
-      costTotal += lineCost;
-    }
-  }
-  const grossProfit = revenueWithCost - costTotal;
-  const marginPercent =
-    revenueWithCost > 0
-      ? Math.round((grossProfit / revenueWithCost) * 100)
-      : null;
-  const coveragePercent =
-    revenueAllProductNet > 0
-      ? Math.round((revenueWithCost / revenueAllProductNet) * 100)
-      : null;
-
-  const topProducts = skuList
-    .sort((a, b) => b.lineRevenue - a.lineRevenue || b.quantity - a.quantity)
-    .slice(0, 10)
-    .map((p) => {
-      const unitCost = costBySku.get(p.sku.toUpperCase());
-      const hasCost = unitCost != null && unitCost > 0 && p.lineRevenueNet > 0;
-      const lineCost = hasCost ? Math.round(unitCost! * p.quantity) : null;
-      const m =
-        hasCost && lineCost != null && p.lineRevenueNet > 0
-          ? Math.round(((p.lineRevenueNet - lineCost) / p.lineRevenueNet) * 100)
-          : null;
-      return {
-        sku: p.sku,
-        modelNumber: p.modelNumber,
-        name: p.name,
-        quantity: p.quantity,
-        lineRevenue: p.lineRevenue,
-        lineRevenueFormatted: formatHuf(p.lineRevenue),
-        costTotal: lineCost,
-        costTotalFormatted: lineCost != null ? formatHuf(lineCost) : null,
-        marginPercent: m,
-        hasCost,
-      };
-    });
 
   const topPartners = [...partners.values()]
     .sort((a, b) => b.spent - a.spent)
@@ -946,7 +852,7 @@ export async function buildShopReport(
     rangeMonths: months,
     rangeLabel,
     sampleOrderCount: all.length,
-    truncated: all.length >= maxPages * 45,
+    truncated: all.length >= maxPages * 40,
     totals: {
       spent,
       spentFormatted: formatHuf(spent),
@@ -988,14 +894,9 @@ export async function buildShopReport(
       marginPercent,
       coveragePercent,
       skuWithCost,
-      skuTotal: skuList.length,
+      skuTotal: skuListLen,
       excludesShippingAndFees: true,
-      note:
-        skuList.length === 0
-          ? "Nincs terméktétel a mintában."
-          : coveragePercent == null || coveragePercent === 0
-            ? "Árrés = termék nettó − cost. Szállítás és utánvét nincs benne. Egyik SKU-nál sincs kitöltve a cost."
-            : `Árrés = termék nettó − cost (szállítás / utánvét nélkül). Lefedettség ${coveragePercent}% (${skuWithCost}/${skuList.length} SKU).`,
+      note: profitNote,
     },
     trend,
     mix: {
@@ -1032,6 +933,272 @@ export async function buildShopReport(
     topProducts,
   };
 
-  reportCache.set(cacheKey, { at: Date.now(), data });
+  const at = Date.now();
+  summaryScratch.set(summaryKey, {
+    at,
+    months,
+    inRange,
+    report: data,
+    partners,
+  });
+  reportCache.set(summaryKey, { at, data });
+  if (needProducts) {
+    reportCache.set(fullKey, { at, data });
+  }
   return data;
+}
+
+async function mapCostsFromCatalog(
+  client: PoolClient,
+  shopId: string,
+  skus: string[],
+): Promise<Map<string, number | null>> {
+  const out = new Map<string, number | null>();
+  const norms = [
+    ...new Set(skus.map((s) => s.trim().toUpperCase()).filter(Boolean)),
+  ];
+  for (const n of norms) out.set(n, null);
+  if (!norms.length) return out;
+  try {
+    const res = await query<{ sku_norm: string; cost_net: string | null }>(
+      client,
+      `select sku_norm, cost_net::text as cost_net
+       from product_catalog
+       where shop_id = $1
+         and active
+         and sku_norm = any($2::text[])`,
+      [shopId, norms],
+    );
+    for (const row of res.rows) {
+      const c = row.cost_net != null ? Number(row.cost_net) : NaN;
+      out.set(
+        row.sku_norm,
+        Number.isFinite(c) && c > 0 ? Math.round(c) : null,
+      );
+    }
+  } catch {
+    /* catalog missing */
+  }
+  return out;
+}
+
+async function computeProductBlock(
+  config: ShoprenterConfig,
+  client: PoolClient,
+  shopId: string,
+  sampleForProducts: CustomerOrderSummary[],
+  partners: Map<string, PartnerAgg>,
+): Promise<{
+  topProducts: ShopReport["topProducts"];
+  avgSkuPerActivePartner: number | null;
+  revenueWithCost: number;
+  costTotal: number;
+  grossProfit: number;
+  marginPercent: number | null;
+  coveragePercent: number | null;
+  skuWithCost: number;
+  skuListLen: number;
+  note: string;
+}> {
+  type LineLike = {
+    sku?: string;
+    modelNumber?: string;
+    name?: string;
+    quantity: number;
+    lineTotalNet?: number;
+    priceNet?: number;
+    lineTotalGross?: number;
+    priceGross?: number;
+  };
+
+  const orderLines: { order: CustomerOrderSummary; lines: LineLike[] }[] = [];
+  const needDetail: CustomerOrderSummary[] = [];
+  for (const o of sampleForProducts) {
+    if (o.lines && o.lines.length) {
+      orderLines.push({ order: o, lines: o.lines });
+    } else {
+      needDetail.push(o);
+    }
+  }
+
+  const details = await mapPool(needDetail, DETAIL_CONCURRENCY, async (o) => {
+    try {
+      const detail = await getOrderDetailById(config, o.id);
+      return { order: o, lines: detail.lines as LineLike[] };
+    } catch {
+      return null;
+    }
+  });
+  for (const row of details) {
+    if (row) orderLines.push(row);
+  }
+
+  const bySku = new Map<
+    string,
+    {
+      sku: string;
+      modelNumber: string | null;
+      name: string | null;
+      quantity: number;
+      lineRevenue: number;
+      lineRevenueNet: number;
+    }
+  >();
+
+  for (const row of orderLines) {
+    const key = buyerKey(row.order);
+    const agg = partners.get(key);
+    for (const line of row.lines) {
+      if (isFeeOrShippingLine(line)) continue;
+      const sku = (line.sku || line.modelNumber || "").trim();
+      if (!sku) continue;
+      const skuKey = sku.toUpperCase();
+      if (agg) agg.skus.add(skuKey);
+      const revGross = productLineGross(line);
+      const revNet = productLineNet(line);
+      const cur = bySku.get(skuKey) || {
+        sku,
+        modelNumber: line.modelNumber ?? null,
+        name: line.name ?? null,
+        quantity: 0,
+        lineRevenue: 0,
+        lineRevenueNet: 0,
+      };
+      if (!cur.modelNumber && line.modelNumber) cur.modelNumber = line.modelNumber;
+      if (!cur.name && line.name) cur.name = line.name;
+      cur.quantity += Math.max(1, line.quantity || 1);
+      cur.lineRevenue += revGross;
+      if (revNet != null) cur.lineRevenueNet += revNet;
+      bySku.set(skuKey, cur);
+    }
+  }
+
+  const partnerSkuCounts: number[] = [];
+  for (const p of partners.values()) {
+    if (p.isPartner === true && p.skus.size > 0) {
+      partnerSkuCounts.push(p.skus.size);
+    }
+  }
+  const avgSkuPerActivePartner =
+    partnerSkuCounts.length > 0
+      ? Math.round(
+          (partnerSkuCounts.reduce((a, b) => a + b, 0) /
+            partnerSkuCounts.length) *
+            10,
+        ) / 10
+      : null;
+
+  const skuList = [...bySku.values()];
+  const costBySku = await mapCostsFromCatalog(
+    client,
+    shopId,
+    skuList.slice(0, 40).map((p) => p.sku),
+  );
+
+  let revenueWithCost = 0;
+  let revenueAllProductNet = 0;
+  let costTotal = 0;
+  let skuWithCost = 0;
+  for (const p of skuList) {
+    if (p.lineRevenueNet > 0) revenueAllProductNet += p.lineRevenueNet;
+    const unitCost = costBySku.get(p.sku.toUpperCase());
+    if (unitCost != null && unitCost > 0 && p.lineRevenueNet > 0) {
+      skuWithCost += 1;
+      const lineCost = Math.round(unitCost * p.quantity);
+      revenueWithCost += p.lineRevenueNet;
+      costTotal += lineCost;
+    }
+  }
+  const grossProfit = revenueWithCost - costTotal;
+  const marginPercent =
+    revenueWithCost > 0
+      ? Math.round((grossProfit / revenueWithCost) * 100)
+      : null;
+  const coveragePercent =
+    revenueAllProductNet > 0
+      ? Math.round((revenueWithCost / revenueAllProductNet) * 100)
+      : null;
+
+  const topProducts = skuList
+    .sort((a, b) => b.lineRevenue - a.lineRevenue || b.quantity - a.quantity)
+    .slice(0, 10)
+    .map((p) => {
+      const unitCost = costBySku.get(p.sku.toUpperCase());
+      const hasCost = unitCost != null && unitCost > 0 && p.lineRevenueNet > 0;
+      const lineCost = hasCost ? Math.round(unitCost! * p.quantity) : null;
+      const m =
+        hasCost && lineCost != null && p.lineRevenueNet > 0
+          ? Math.round(((p.lineRevenueNet - lineCost) / p.lineRevenueNet) * 100)
+          : null;
+      return {
+        sku: p.sku,
+        modelNumber: p.modelNumber,
+        name: p.name,
+        quantity: p.quantity,
+        lineRevenue: p.lineRevenue,
+        lineRevenueFormatted: formatHuf(p.lineRevenue),
+        costTotal: lineCost,
+        costTotalFormatted: lineCost != null ? formatHuf(lineCost) : null,
+        marginPercent: m,
+        hasCost,
+      };
+    });
+
+  const note =
+    skuList.length === 0
+      ? "Nincs terméktétel a mintában."
+      : coveragePercent == null || coveragePercent === 0
+        ? "Árrés = termék nettó − cost (catalog). Szállítás és utánvét nincs benne. Egyik SKU-nál sincs cost."
+        : `Árrés = termék nettó − cost (catalog, szállítás nélkül). Lefedettség ${coveragePercent}% (${skuWithCost}/${skuList.length} SKU).`;
+
+  return {
+    topProducts,
+    avgSkuPerActivePartner,
+    revenueWithCost,
+    costTotal,
+    grossProfit,
+    marginPercent,
+    coveragePercent,
+    skuWithCost,
+    skuListLen: skuList.length,
+    note,
+  };
+}
+
+async function enrichReportProducts(
+  config: ShoprenterConfig,
+  client: PoolClient,
+  shopId: string,
+  scratch: SummaryScratch,
+): Promise<ShopReport> {
+  const sample = scratch.inRange.slice(0, PRODUCT_SAMPLE);
+  const block = await computeProductBlock(
+    config,
+    client,
+    shopId,
+    sample,
+    scratch.partners,
+  );
+  return {
+    ...scratch.report,
+    partnerGrowth: {
+      ...scratch.report.partnerGrowth,
+      avgSkuPerActivePartner: block.avgSkuPerActivePartner,
+    },
+    profit: {
+      revenueWithCost: block.revenueWithCost,
+      revenueWithCostFormatted: formatHuf(block.revenueWithCost),
+      costTotal: block.costTotal,
+      costTotalFormatted: formatHuf(block.costTotal),
+      grossProfit: block.grossProfit,
+      grossProfitFormatted: formatHuf(block.grossProfit),
+      marginPercent: block.marginPercent,
+      coveragePercent: block.coveragePercent,
+      skuWithCost: block.skuWithCost,
+      skuTotal: block.skuListLen,
+      excludesShippingAndFees: true,
+      note: block.note,
+    },
+    topProducts: block.topProducts,
+  };
 }

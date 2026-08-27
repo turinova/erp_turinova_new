@@ -236,7 +236,7 @@ export async function POST(req: Request) {
       ownerEmail: created.ownerEmail,
       emailSent: false,
       message:
-        "Szervezet létrehozva. Másold a meghívó linket — email küldés még nincs bekötve.",
+        "Szervezet létrehozva. Másold a meghívó linket. Email küldés még nincs bekötve.",
     });
   } catch (err) {
     console.error("[POST /api/admin/orgs]", err);

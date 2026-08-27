@@ -34,10 +34,7 @@ export async function GET(request: Request) {
       config: {
         ...config,
         positionCss: positionCss(config.fabPosition),
-        positionMobileBottom:
-          config.fabPosition === "bottom_right_mobile_offset"
-            ? pos?.css.bottom
-            : undefined,
+        positionMobileBottom: pos?.css.bottom,
       },
     });
   } catch (err) {

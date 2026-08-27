@@ -1229,7 +1229,7 @@ export function PricesView() {
               <p className="max-w-md text-[13px] leading-relaxed text-faint">
                 Ez a vevőcsoport már nincs a Shoprenterben (valószínűleg ott
                 törölték). A portálon megmaradt a helyi lista és az ár-/sáv-tükör.
-                Árazni már nem lehet — távolítsd el a portálból.
+                Árazni már nem lehet. Távolítsd el a portálból.
               </p>
               <button
                 type="button"
@@ -1311,7 +1311,7 @@ export function PricesView() {
                       Kedvezmény az egész listára
                     </h3>
                     <p className="mt-1 text-[13px] text-faint">
-                      Minden termékre vonatkozik — kivéve a fix árasakat.
+                      Minden termékre vonatkozik, kivéve a fix árasakat.
                     </p>
 
                     <div className="mt-8 flex items-end justify-between gap-4">

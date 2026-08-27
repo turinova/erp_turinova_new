@@ -16,6 +16,7 @@ import {
 } from "@/lib/merchant/group-rules";
 import {
   getShopGroupRulesAuto,
+  ensureShopGroupRulesDaily,
   setShopGroupRulesAuto,
   setShopGroupRulesSchedule,
   type GroupRulesSchedule,
@@ -58,7 +59,7 @@ export async function GET() {
           listGroupRules(client, loaded.shopId),
           listCustomerGroups(loaded.config),
           listRecentSystemGroupMoves(client, loaded.shopId, 40).catch(() => []),
-          getShopGroupRulesAuto(client, loaded.shopId),
+          ensureShopGroupRulesDaily(client, loaded.shopId),
           getShopGroupRulesPolicy(client, loaded.shopId),
         ]);
 
@@ -201,7 +202,7 @@ export async function POST(req: Request) {
 
         const rule = await createGroupRule(client, {
           shopId: loaded.shopId,
-          name: (body.name || "").trim() || "Szintlépés",
+          name: (body.name || "").trim() || "Automatizmus",
           metric,
           threshold,
           keepThreshold: keepThreshold ?? null,
@@ -328,13 +329,7 @@ export async function PATCH(req: Request) {
 
     const parts: string[] = [];
     if (hasSchedule || typeof body.autoEnabled === "boolean") {
-      const labels: Record<string, string> = {
-        manual: "Csak kézi futtatás.",
-        daily: "Naponta egyszer fog futni.",
-        on_order: "Rendelés után ellenőrzi az adott vevőt.",
-        hourly: "Kb. óránként fut (kíméletes).",
-      };
-      parts.push(labels[result.schedule] || "Ütemezés mentve.");
+      parts.push("Minden nap éjfélkor fut (Budapest).");
     }
     if (body.policy) parts.push("Beállítások mentve.");
 

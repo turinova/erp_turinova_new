@@ -85,17 +85,17 @@ export function computeHealth(i: HealthInput): {
   if (overCap) {
     return {
       health: "warn",
-      reason: "Betelt a vevőcsomag — a portál rejt, a gyors rendelés megy",
+      reason: "Betelt a vevőcsomag. A portál rejt, a gyors rendelés megy",
     };
   }
   if (i.partnerLimit > 0 && i.partnerUsed / i.partnerLimit >= 0.8) {
     return { health: "warn", reason: "Közel a teli a vevőcsomag" };
   }
   if (i.catalogStatus === "blocked_limit") {
-    return { health: "warn", reason: "Termékhely teli — új termék nem jön" };
+    return { health: "warn", reason: "Termékhely teli, új termék nem jön" };
   }
   if (i.skuLimit > 0 && i.skuUsed / i.skuLimit >= 1) {
-    return { health: "warn", reason: "Termékhely teli — új termék nem jön" };
+    return { health: "warn", reason: "Termékhely teli, új termék nem jön" };
   }
   if (i.skuLimit > 0 && i.skuUsed / i.skuLimit >= 0.8) {
     return { health: "warn", reason: "Közel a teli a termékhely" };
@@ -160,7 +160,7 @@ export function catalogLabel(status: string | null | undefined): string {
 }
 
 export function healthLabel(h: HealthLevel): string {
-  if (h === "crit") return "Ég";
-  if (h === "warn") return "Figyelj";
+  if (h === "crit") return "Baj";
+  if (h === "warn") return "Figyelem";
   return "Rendben";
 }

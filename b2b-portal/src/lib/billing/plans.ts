@@ -1,20 +1,55 @@
-/** Launch plans — mirrors sql/019_plans_v3.sql (kézi). Alias: grow→plus, scale→pro. */
+/** Launch plans v5 — one base product + optional Turinova-mark removal.
+ * start = Gyors rendelés (base)
+ * plus / pro = same product + white-label (mark hideable when paid)
+ * Partner limit is soft infra (high) — not the sales pitch.
+ * Alias: grow→plus, scale→pro.
+ */
 
 export const PLAN_IDS = ["start", "plus", "pro"] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
+
+/** Base subscription (nettó Ft / hó). */
+export const BASE_PRICE_HUF = 9_900;
+/** Add-on: hide Turinova mark on the widget. */
+export const MARK_ADDON_HUF = 4_900;
+/** Base + mark add-on. */
+export const WHITE_LABEL_PRICE_HUF = BASE_PRICE_HUF + MARK_ADDON_HUF;
+
+/** Soft cap — not marketed; avoids blur for normal B2B volume. */
+export const SOFT_PARTNER_LIMIT = 500;
+export const SOFT_SKU_LIMIT = 80_000;
 
 export const PLAN_DEFAULTS: Record<
   PlanId,
   { partnerLimit: number; skuLimit: number; listPriceHuf: number; label: string }
 > = {
-  start: { partnerLimit: 15, skuLimit: 15_000, listPriceHuf: 6_900, label: "Start" },
-  plus: { partnerLimit: 40, skuLimit: 40_000, listPriceHuf: 12_900, label: "Plus" },
-  pro: { partnerLimit: 120, skuLimit: 80_000, listPriceHuf: 24_900, label: "Pro" },
+  start: {
+    partnerLimit: SOFT_PARTNER_LIMIT,
+    skuLimit: SOFT_SKU_LIMIT,
+    listPriceHuf: BASE_PRICE_HUF,
+    label: "Gyors rendelés",
+  },
+  plus: {
+    partnerLimit: SOFT_PARTNER_LIMIT,
+    skuLimit: SOFT_SKU_LIMIT,
+    listPriceHuf: WHITE_LABEL_PRICE_HUF,
+    label: "Saját márka",
+  },
+  pro: {
+    partnerLimit: SOFT_PARTNER_LIMIT,
+    skuLimit: SOFT_SKU_LIMIT,
+    listPriceHuf: WHITE_LABEL_PRICE_HUF,
+    label: "Saját márka (Pro)",
+  },
 };
 
-export const TRIAL_DAYS_DEFAULT = 30;
+export const TRIAL_DAYS_DEFAULT = 14;
 
-export const RECOMMENDED_PLAN: PlanId = "plus";
+/** Default paid plan after trial / recommended buy. */
+export const RECOMMENDED_PLAN: PlanId = "start";
+
+/** Plans shown on merchant pricing UI (pro aliases plus for white-label). */
+export const MERCHANT_PLAN_IDS = ["start", "plus"] as const;
 
 export function isPlanId(v: string): v is PlanId {
   return (PLAN_IDS as readonly string[]).includes(v);
@@ -29,7 +64,6 @@ export function parsePlanId(v: unknown, fallback: PlanId = "start"): PlanId {
   return fallback;
 }
 
-/** Admin filter / PATCH: canonical + legacy aliases until SQL 019 is applied. */
 export function isKnownPlanInput(v: string): boolean {
   return isPlanId(v) || v === "grow" || v === "scale" || v === "starter";
 }
@@ -37,19 +71,24 @@ export function isKnownPlanInput(v: string): boolean {
 export function planFilterValues(raw: string): string[] | null {
   if (!isKnownPlanInput(raw)) return null;
   const id = parsePlanId(raw);
-  if (id === "plus") return ["plus", "grow"];
-  if (id === "pro") return ["pro", "scale"];
+  /* Admin „Felirat nélkül” = plus + pro (white-label). */
+  if (id === "plus" || id === "pro") return ["plus", "grow", "pro", "scale"];
   return ["start", "starter"];
 }
 
-/** Widget storefront mark may be hidden only on paid Pro — never during trial. */
-export function canHideTurinovaMark(plan: PlanId, isTrial: boolean): boolean {
-  return !isTrial && plan === "pro";
+/** True if this plan includes paid white-label (mark may be hidden). */
+export function hasWhiteLabel(plan: PlanId): boolean {
+  return plan === "plus" || plan === "pro";
 }
 
-/** Photo→list: trial or paid Pro. Buyer never sees upgrade copy. */
-export function canParseImage(plan: PlanId, isTrial: boolean): boolean {
-  return isTrial || plan === "pro";
+/** Widget mark may be hidden only on paid white-label — never during trial. */
+export function canHideTurinovaMark(plan: PlanId, isTrial: boolean): boolean {
+  return !isTrial && hasWhiteLabel(plan);
+}
+
+/** Photo→list: always on. */
+export function canParseImage(_plan: PlanId, _isTrial: boolean): boolean {
+  return true;
 }
 
 export function resolveShowTurinovaMark(opts: {
@@ -81,9 +120,11 @@ export function formatTrialEnd(iso: string | null): string {
   });
 }
 
-/** „a Pluson”, „a Starton”, „a Pron” — ne Plusen / Starten. */
 export function onPlan(label: string): string {
-  return `a ${label}on`;
+  const l = label.trim();
+  if (!l) return "a csomagon";
+  if (/[aeiouáéíóöőúüű]$/i.test(l)) return `a ${l}n`;
+  return `a ${l}on`;
 }
 
 export function upgradeMailto(opts: {
@@ -92,9 +133,10 @@ export function upgradeMailto(opts: {
   annual?: boolean;
 }): string {
   const label = PLAN_DEFAULTS[opts.plan].label;
-  const shop = opts.shopName?.trim() || "bolt";
-  const subject = opts.annual
-    ? `${label} éves kellene — ${shop}`
-    : `${label} kellene — ${shop}`;
-  return `mailto:hello@turinova.hu?subject=${encodeURIComponent(subject)}`;
+  const period = opts.annual ? "éves" : "havi";
+  const shop = opts.shopName?.trim() ? ` (${opts.shopName.trim()})` : "";
+  const subject = encodeURIComponent(
+    `Turinova B2B — ${label}, ${period}${shop}`,
+  );
+  return `mailto:hello@turinova.hu?subject=${subject}`;
 }

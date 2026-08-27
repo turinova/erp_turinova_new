@@ -1,5 +1,5 @@
 /**
- * Partner szintlépés — szabályok + kiértékelés.
+ * Partner automatizmus — szabályok + kiértékelés.
  * Időablak, csak-felfelé / visszaléptetés, megtartó küszöb, türelmi idő.
  */
 
@@ -13,6 +13,7 @@ import {
 import type { ShoprenterConfig } from "@/lib/shoprenter/api";
 import {
   listCustomerOrders,
+  orderStatusNameLooksCancelled,
   type CustomerOrderSummary,
 } from "@/lib/shoprenter/api";
 import {
@@ -49,6 +50,15 @@ export type GroupRuleDto = {
   priority: number;
 };
 
+export type GroupRewardCopy = {
+  /** Short, concrete — e.g. "−12% nettó" / "Egyedi partnerárak" */
+  headline: string;
+  /** Optional one-liner — e.g. "Minden listás termékre" */
+  detail: string | null;
+};
+
+export type OrderStatusMode = "exclude_cancelled" | "allowlist";
+
 export type ShopGroupRulesPolicy = {
   allowDowngrade: boolean;
   graceDays: number;
@@ -57,7 +67,77 @@ export type ShopGroupRulesPolicy = {
   downgradeAfterMd: string | null;
   /** Worst → best group inner ids */
   ladder: number[];
+  /** Per group-inner-id FOMO reward copy for the widget */
+  rewards: Record<string, GroupRewardCopy>;
+  /**
+   * How order statuses count toward spent / order_count.
+   * exclude_cancelled (default): all except cancelled/refund-like status names.
+   * allowlist: only orderStatusIds count (empty → fall back to exclude_cancelled).
+   */
+  orderStatusMode: OrderStatusMode;
+  /** SR orderStatus resource ids — used when orderStatusMode === 'allowlist' */
+  orderStatusIds: string[];
 };
+
+function normalizeOrderStatusMode(raw: unknown): OrderStatusMode {
+  return raw === "allowlist" ? "allowlist" : "exclude_cancelled";
+}
+
+function normalizeOrderStatusIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of raw) {
+    if (typeof v !== "string") continue;
+    const id = v.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id.slice(0, 200));
+    if (out.length >= 80) break;
+  }
+  return out;
+}
+
+/**
+ * Whether an order counts toward automatizmus / FOMO metrics.
+ */
+export function orderCountsTowardLevelUp(
+  o: Pick<CustomerOrderSummary, "status" | "statusId">,
+  policy: Pick<ShopGroupRulesPolicy, "orderStatusMode" | "orderStatusIds">,
+): boolean {
+  const ids = policy.orderStatusIds || [];
+  const statusId =
+    typeof o.statusId === "string" && o.statusId.trim()
+      ? o.statusId.trim()
+      : null;
+
+  if (policy.orderStatusMode === "allowlist" && ids.length > 0) {
+    if (statusId) return ids.includes(statusId);
+    /* No id on order: do not invent membership — exclude cancelled names only */
+    return !orderStatusNameLooksCancelled(o.status || "");
+  }
+
+  return !orderStatusNameLooksCancelled(o.status || "");
+}
+
+function normalizeRewards(raw: unknown): Record<string, GroupRewardCopy> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, GroupRewardCopy> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^\d+$/.test(k)) continue;
+    if (!v || typeof v !== "object" || Array.isArray(v)) continue;
+    const o = v as Record<string, unknown>;
+    const headline =
+      typeof o.headline === "string" ? o.headline.trim() : "";
+    if (!headline) continue;
+    const detail =
+      typeof o.detail === "string" && o.detail.trim()
+        ? o.detail.trim()
+        : null;
+    out[k] = { headline: headline.slice(0, 80), detail: detail?.slice(0, 160) ?? null };
+  }
+  return out;
+}
 
 export type RuleEvalHit = {
   customerInnerId: number;
@@ -134,19 +214,6 @@ export function periodBounds(rule: GroupRuleDto): {
     default:
       return { fromMs: null, toMs: null };
   }
-}
-
-function orderLooksCancelled(o: CustomerOrderSummary): boolean {
-  const s = (o.status || "").toLowerCase();
-  if (!s) return false;
-  return (
-    s.includes("storn") ||
-    s.includes("cancel") ||
-    s.includes("töröl") ||
-    s.includes("torol") ||
-    s.includes("refund") ||
-    s.includes("visszatér")
-  );
 }
 
 function orderInWindow(
@@ -262,7 +329,7 @@ export async function createGroupRule(
      returning ${RULE_SELECT}`,
     [
       input.shopId,
-      input.name.trim() || "Szintlépés",
+      input.name.trim() || "Automatizmus",
       input.enabled !== false,
       input.metric,
       input.threshold,
@@ -379,13 +446,19 @@ export async function getShopGroupRulesPolicy(
     group_rules_cooldown_days: number;
     group_rules_downgrade_after_md: string | null;
     group_rules_ladder: number[] | null;
+    group_rules_rewards: unknown;
+    group_rules_order_status_mode: string | null;
+    group_rules_order_status_ids: string[] | null;
   }>(
     client,
     `select group_rules_allow_downgrade,
             group_rules_grace_days,
             group_rules_cooldown_days,
             group_rules_downgrade_after_md,
-            group_rules_ladder
+            group_rules_ladder,
+            group_rules_rewards,
+            group_rules_order_status_mode,
+            group_rules_order_status_ids
      from shops where id = $1`,
     [shopId],
   );
@@ -398,6 +471,11 @@ export async function getShopGroupRulesPolicy(
     ladder: Array.isArray(row?.group_rules_ladder)
       ? row!.group_rules_ladder.map(Number).filter((n) => Number.isFinite(n))
       : [],
+    rewards: normalizeRewards(row?.group_rules_rewards),
+    orderStatusMode: normalizeOrderStatusMode(
+      row?.group_rules_order_status_mode,
+    ),
+    orderStatusIds: normalizeOrderStatusIds(row?.group_rules_order_status_ids),
   };
 }
 
@@ -408,6 +486,18 @@ export async function setShopGroupRulesPolicy(
 ): Promise<ShopGroupRulesPolicy> {
   await ensurePartnerGroupRulesSchema();
   const cur = await getShopGroupRulesPolicy(client, shopId);
+  let orderStatusMode =
+    patch.orderStatusMode !== undefined
+      ? normalizeOrderStatusMode(patch.orderStatusMode)
+      : cur.orderStatusMode;
+  let orderStatusIds =
+    patch.orderStatusIds !== undefined
+      ? normalizeOrderStatusIds(patch.orderStatusIds)
+      : cur.orderStatusIds;
+  if (orderStatusMode === "allowlist" && orderStatusIds.length === 0) {
+    orderStatusMode = "exclude_cancelled";
+  }
+
   const next: ShopGroupRulesPolicy = {
     allowDowngrade: patch.allowDowngrade ?? cur.allowDowngrade,
     graceDays:
@@ -423,6 +513,12 @@ export async function setShopGroupRulesPolicy(
         ? patch.downgradeAfterMd
         : cur.downgradeAfterMd,
     ladder: patch.ladder ?? cur.ladder,
+    rewards:
+      patch.rewards !== undefined
+        ? normalizeRewards(patch.rewards)
+        : cur.rewards,
+    orderStatusMode,
+    orderStatusIds,
   };
 
   let md: string | null = next.downgradeAfterMd;
@@ -439,6 +535,9 @@ export async function setShopGroupRulesPolicy(
        group_rules_cooldown_days = $4,
        group_rules_downgrade_after_md = $5,
        group_rules_ladder = $6,
+       group_rules_rewards = $7::jsonb,
+       group_rules_order_status_mode = $8,
+       group_rules_order_status_ids = $9,
        updated_at = now()
      where id = $1`,
     [
@@ -448,6 +547,9 @@ export async function setShopGroupRulesPolicy(
       next.cooldownDays,
       md,
       next.ladder,
+      JSON.stringify(next.rewards),
+      next.orderStatusMode,
+      next.orderStatusIds,
     ],
   );
   return { ...next, downgradeAfterMd: md };
@@ -476,18 +578,31 @@ function daysBetween(a: Date, b: Date): number {
   return Math.floor((b.getTime() - a.getTime()) / 86_400_000);
 }
 
-async function metricForCustomer(
+/**
+ * Shared spent / order_count for automatizmus eval + widget FOMO.
+ */
+export async function computeCustomerOrderMetrics(
   config: ShoprenterConfig,
   customerInnerId: number,
   bounds: { fromMs: number | null; toMs: number | null },
+  policy: Pick<ShopGroupRulesPolicy, "orderStatusMode" | "orderStatusIds">,
+  opts?: {
+    maxPagesLifetime?: number;
+    maxPagesWindowed?: number;
+    sleepMs?: number;
+  },
 ): Promise<{ spent: number; orderCount: number }> {
-  const maxPages = bounds.fromMs == null ? 6 : 8;
+  const maxPages =
+    bounds.fromMs == null
+      ? (opts?.maxPagesLifetime ?? 6)
+      : (opts?.maxPagesWindowed ?? 8);
+  const sleepMs = opts?.sleepMs ?? 250;
   let spent = 0;
   let orderCount = 0;
   let hitOlderThanWindow = false;
 
   for (let page = 0; page < maxPages; page++) {
-    if (page > 0) await sleep(250);
+    if (page > 0) await sleep(sleepMs);
     const { orders, pageCount } = await listCustomerOrders(
       config,
       customerInnerId,
@@ -496,7 +611,7 @@ async function metricForCustomer(
     if (orders.length === 0) break;
 
     for (const o of orders) {
-      if (orderLooksCancelled(o)) continue;
+      if (!orderCountsTowardLevelUp(o, policy)) continue;
       const t = Date.parse(o.dateCreated) || 0;
       if (bounds.fromMs != null && t && t < bounds.fromMs) {
         hitOlderThanWindow = true;
@@ -512,6 +627,15 @@ async function metricForCustomer(
   }
 
   return { spent: Math.round(spent), orderCount };
+}
+
+async function metricForCustomer(
+  config: ShoprenterConfig,
+  customerInnerId: number,
+  bounds: { fromMs: number | null; toMs: number | null },
+  policy: Pick<ShopGroupRulesPolicy, "orderStatusMode" | "orderStatusIds">,
+): Promise<{ spent: number; orderCount: number }> {
+  return computeCustomerOrderMetrics(config, customerInnerId, bounds, policy);
 }
 
 function valueFor(
@@ -718,7 +842,7 @@ export async function evaluateGroupRules(opts: {
       let m = metricsCache.get(key);
       if (!m) {
         await sleep(180);
-        m = await metricForCustomer(opts.config, customer.innerId, b);
+        m = await metricForCustomer(opts.config, customer.innerId, b, policy);
         metricsCache.set(key, m);
       }
       return m;
@@ -914,7 +1038,7 @@ export async function evaluateGroupRules(opts: {
         orgId: opts.orgId,
         source: "rule",
         ruleId: planned.rule.id,
-        reason: `${dirLabel}: ${planned.rule.name || "Szintlépés"} — ${reason}`,
+        reason: `${dirLabel}: ${planned.rule.name || "Automatizmus"}. ${reason}`,
         metric: planned.rule.metric,
         metricValue: planned.value,
         threshold: hit.threshold,

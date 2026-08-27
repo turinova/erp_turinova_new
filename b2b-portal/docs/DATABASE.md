@@ -45,6 +45,9 @@ Könyvtár: `b2b-portal/sql/`
 | 17 | `017_rls_commerce.sql` | RLS catalog/sync/stats/opens |
 | 18 | `018_platform_settings.sql` | Trial napok, sync concurrency |
 | 19 | `019_plans_v3.sql` | Plan `start\|plus\|pro`; grow→plus, scale→pro; árak 6900/12900/24900 |
+| … | `020`–`028` | catalog image, manufacturer, partner prices, sync lease, categories, volume tiers, group rules, plans v4/v5 |
+| 29 | `029_shop_order_facts.sql` | Bolt rendelés-tükör a gyors `/riport`-hoz (`shop_order_facts` + lines + sync state). **App nem futtat DDL-t.** Utána: `REPORT_USE_ORDER_FACTS=1` + cron `/api/cron/order-facts` |
+| 30 | `030_signup_intents.sql` | Self-serve próba: `signup_intents` + `organizations.signup_source` / `purge_protected`. Utána cron `/api/cron/signup-cleanup` |
 
 **M1:** futtasd `013`→`017` ezen a sorrenden. `015` kötelező, mielőtt új orgot hozol létre. **v3 csomagok:** futtasd `019` mielőtt `plus` kerül az `organizations.plan`-ba — a `015` checkje még `grow`/`scale`.
 

@@ -47,6 +47,11 @@ export default async function MerchantLayout({
       displayName={session.displayName}
       impersonatingOrgName={impersonatingOrgName}
       trialChip={trialChip}
+      canAccessSettings={
+        session.isPlatformAdmin ||
+        session.orgRole === "owner" ||
+        session.orgRole === "admin"
+      }
     >
       {children}
     </MerchantShell>

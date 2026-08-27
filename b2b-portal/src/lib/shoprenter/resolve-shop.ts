@@ -193,7 +193,7 @@ export async function resolveShopContextForRequest(
     throw new Error(
       publicId
         ? "Ismeretlen shopId (public_id)"
-        : "Shop nincs a portál DB-ben — attribúció nem menthető",
+        : "Shop nincs a portál DB-ben. Attribúció nem menthető.",
     );
   }
   return shopContextFromRow(row, request);

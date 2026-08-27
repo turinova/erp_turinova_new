@@ -1,8 +1,7 @@
 import {
-  PLAN_DEFAULTS,
-  PLAN_IDS,
-  RECOMMENDED_PLAN,
-  annualPriceHuf,
+  BASE_PRICE_HUF,
+  MARK_ADDON_HUF,
+  WHITE_LABEL_PRICE_HUF,
   formatHuf,
 } from "@/lib/billing/plans";
 
@@ -11,50 +10,40 @@ export function PlanPriceTable({
 }: {
   highlight?: boolean;
 }) {
+  void highlight;
   return (
     <div className="mt-4 border border-line-strong">
       <table className="w-full border-collapse text-left text-[12px]">
         <thead>
           <tr className="border-b border-line bg-surface-2 text-[10px] font-semibold uppercase tracking-wide text-faint">
-            <th className="px-3 py-2">Csomag</th>
-            <th className="px-2 py-2 text-right">Havi</th>
-            <th className="px-2 py-2 text-right">Éves</th>
-            <th className="px-3 py-2 text-right">Vevő / hó</th>
+            <th className="px-3 py-2">Tétel</th>
+            <th className="px-3 py-2 text-right">Havi</th>
           </tr>
         </thead>
         <tbody>
-          {PLAN_IDS.map((id) => {
-            const d = PLAN_DEFAULTS[id];
-            const rec = id === RECOMMENDED_PLAN;
-            return (
-              <tr
-                key={id}
-                className={
-                  highlight && rec
-                    ? "border-b border-line bg-surface-2 last:border-0"
-                    : "border-b border-line last:border-0"
-                }
-              >
-                <td className="px-3 py-2 font-semibold">
-                  {d.label}
-                  {rec ? (
-                    <span className="ml-1 text-[10px] font-semibold uppercase text-faint">
-                      Ajánlott
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-2 py-2 text-right tabular-nums">
-                  {formatHuf(d.listPriceHuf)}
-                </td>
-                <td className="px-2 py-2 text-right tabular-nums text-faint">
-                  {formatHuf(annualPriceHuf(id))}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {d.partnerLimit}
-                </td>
-              </tr>
-            );
-          })}
+          <tr className="border-b border-line bg-surface-2">
+            <td className="px-3 py-2 font-semibold">Gyors rendelés</td>
+            <td className="px-3 py-2 text-right tabular-nums">
+              {formatHuf(BASE_PRICE_HUF)}
+            </td>
+          </tr>
+          <tr className="border-b border-line last:border-0">
+            <td className="px-3 py-2">
+              Turinova felirat eltávolítása{" "}
+              <span className="text-faint">(opcionális)</span>
+            </td>
+            <td className="px-3 py-2 text-right tabular-nums">
+              +{formatHuf(MARK_ADDON_HUF)}
+            </td>
+          </tr>
+          <tr className="last:border-0">
+            <td className="px-3 py-2 font-semibold text-faint">
+              Összesen saját márkával
+            </td>
+            <td className="px-3 py-2 text-right tabular-nums font-semibold">
+              {formatHuf(WHITE_LABEL_PRICE_HUF)}
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>

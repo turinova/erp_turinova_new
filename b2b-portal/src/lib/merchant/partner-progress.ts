@@ -1,28 +1,30 @@
 /**
  * Partner next-level progress (FOMO) — shared by widget + merchant preview.
- * Uses the same ladder + rules as szintlépés evaluation.
+ * Uses the same ladder + rules as automatizmus evaluation.
  */
 
 import type { PoolClient } from "pg";
+import { query } from "@/lib/db";
 import {
   getShopGroupRulesPolicy,
   listGroupRules,
   periodBounds,
+  computeCustomerOrderMetrics,
+  type GroupRewardCopy,
   type GroupRuleDto,
   type GroupRuleMetric,
   type GroupRulePeriod,
+  type ShopGroupRulesPolicy,
 } from "@/lib/merchant/group-rules";
 import type { ShoprenterConfig } from "@/lib/shoprenter/api";
-import {
-  listCustomerOrders,
-  type CustomerOrderSummary,
-} from "@/lib/shoprenter/api";
 import {
   getCustomerByInnerId,
   listCustomerGroups,
   type SrCustomer,
   type SrCustomerGroup,
 } from "@/lib/shoprenter/customers";
+
+export type PartnerProgressUrgency = "low" | "mid" | "high" | "done";
 
 export type PartnerProgressDto = {
   groupInnerId: number | null;
@@ -34,64 +36,135 @@ export type PartnerProgressDto = {
   current: number;
   nextThreshold: number | null;
   remaining: number | null;
+  /** Absolute gap without "Még" — e.g. "184 200 Ft" / "2 rendelés". */
+  remainingLabel: string | null;
   nextGroupName: string | null;
   nextGroupInnerId: number | null;
   atTop: boolean;
   progressPercent: number | null;
+  /**
+   * Hero / status line for legacy + fallback.
+   * Prefer remainingLabel + nextGroupName in the widget UI.
+   */
   label: string | null;
+  /** e.g. "2 / 5 rendelés" — secondary; widget hides from primary FOMO. */
+  currentFormatted: string | null;
+  /** Concrete current tier — only if % > 0. */
+  currentBenefitLabel: string | null;
+  /** @deprecated use rewardHeadline */
+  nextBenefitLabel: string | null;
+  /** Concrete unlock — e.g. "−12% nettó". Null = hide reward row. */
+  rewardHeadline: string | null;
+  /** One-liner under headline. */
+  rewardDetail: string | null;
+  urgency: PartnerProgressUrgency | null;
 };
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+function percentLabel(pct: number | null | undefined): string | null {
+  if (pct == null || !Number.isFinite(pct) || pct <= 0) return null;
+  return `−${Math.round(pct)}% nettó`;
 }
 
-function orderLooksCancelled(o: CustomerOrderSummary): boolean {
-  const s = (o.status || "").toLowerCase();
-  if (!s) return false;
-  return (
-    s.includes("storn") ||
-    s.includes("cancel") ||
-    s.includes("töröl") ||
-    s.includes("torol") ||
-    s.includes("refund") ||
-    s.includes("visszatér")
-  );
-}
-
-async function metricInWindow(
-  config: ShoprenterConfig,
-  customerInnerId: number,
-  bounds: { fromMs: number | null; toMs: number | null },
-): Promise<{ spent: number; orderCount: number }> {
-  const maxPages = bounds.fromMs == null ? 4 : 6;
-  let spent = 0;
-  let orderCount = 0;
-  let hitOlder = false;
-
-  for (let page = 0; page < maxPages; page++) {
-    if (page > 0) await sleep(200);
-    const { orders, pageCount } = await listCustomerOrders(
-      config,
-      customerInnerId,
-      { limit: 50, page },
+async function countGroupFixPrices(
+  client: PoolClient,
+  shopId: string,
+  groupOuterId: string | null | undefined,
+): Promise<number> {
+  if (!groupOuterId) return 0;
+  try {
+    const res = await query<{ n: string }>(
+      client,
+      `select count(*)::text as n
+       from partner_group_prices
+       where shop_id = $1 and customer_group_outer_id = $2`,
+      [shopId, groupOuterId],
     );
-    if (!orders.length) break;
-    for (const o of orders) {
-      if (orderLooksCancelled(o)) continue;
-      const t = Date.parse(o.dateCreated) || 0;
-      if (bounds.fromMs != null && t && t < bounds.fromMs) {
-        hitOlder = true;
-        continue;
-      }
-      if (bounds.toMs != null && t && t > bounds.toMs) continue;
-      if (bounds.fromMs != null && t && t < bounds.fromMs) continue;
-      spent += o.total ?? o.totalGross ?? 0;
-      orderCount += 1;
-    }
-    if (hitOlder && bounds.fromMs != null) break;
-    if (page + 1 >= pageCount) break;
+    return Math.max(0, parseInt(res.rows[0]?.n || "0", 10) || 0);
+  } catch {
+    return 0;
   }
-  return { spent: Math.round(spent), orderCount };
+}
+
+/**
+ * Resolve concrete FOMO reward. Never returns vague "kedvezőbb…" copy.
+ * Priority: merchant manual → % discount → fix group prices → null.
+ */
+async function resolveNextReward(opts: {
+  client: PoolClient;
+  shopId: string;
+  policy: ShopGroupRulesPolicy;
+  currentGroup: SrCustomerGroup | null | undefined;
+  nextGroup: SrCustomerGroup | null | undefined;
+  nextInnerId: number | null;
+}): Promise<{
+  rewardHeadline: string | null;
+  rewardDetail: string | null;
+  currentBenefitLabel: string | null;
+  nextBenefitLabel: string | null;
+}> {
+  const currentBenefitLabel = percentLabel(
+    opts.currentGroup?.percentDiscount,
+  );
+  const nextId = opts.nextInnerId;
+  if (nextId == null) {
+    return {
+      rewardHeadline: null,
+      rewardDetail: null,
+      currentBenefitLabel,
+      nextBenefitLabel: null,
+    };
+  }
+
+  const manual: GroupRewardCopy | undefined =
+    opts.policy.rewards[String(nextId)];
+  if (manual?.headline) {
+    return {
+      rewardHeadline: manual.headline,
+      rewardDetail: manual.detail,
+      currentBenefitLabel,
+      nextBenefitLabel: manual.headline,
+    };
+  }
+
+  const nextPct = opts.nextGroup?.percentDiscount ?? null;
+  const nextPctLabel = percentLabel(nextPct);
+  if (nextPctLabel) {
+    const curPct = opts.currentGroup?.percentDiscount ?? 0;
+    const detail =
+      curPct > 0 && nextPct != null && nextPct > curPct
+        ? `most −${Math.round(curPct)}% → következő ${nextPctLabel}`
+        : "Az árlistás termékekre";
+    return {
+      rewardHeadline: nextPctLabel,
+      rewardDetail: detail,
+      currentBenefitLabel,
+      nextBenefitLabel: nextPctLabel,
+    };
+  }
+
+  const n = await countGroupFixPrices(
+    opts.client,
+    opts.shopId,
+    opts.nextGroup?.id,
+  );
+  if (n > 0) {
+    const name = opts.nextGroup?.name || "partner";
+    const headline = "Egyedi partnerárak";
+    const detail = `${n.toLocaleString("hu-HU")} termék ${name} áron`;
+    return {
+      rewardHeadline: headline,
+      rewardDetail: detail,
+      currentBenefitLabel,
+      nextBenefitLabel: headline,
+    };
+  }
+
+  return {
+    rewardHeadline: null,
+    rewardDetail: null,
+    currentBenefitLabel,
+    nextBenefitLabel: null,
+  };
 }
 
 function ladderRank(ladder: number[], groupInnerId: number | null): number {
@@ -107,6 +180,29 @@ function formatRemaining(metric: GroupRuleMetric, n: number): string {
     return k === 1 ? "1 rendelés" : `${k} rendelés`;
   }
   return `${Math.round(n).toLocaleString("hu-HU")} Ft`;
+}
+
+function formatCurrentVsThreshold(
+  metric: GroupRuleMetric,
+  current: number,
+  threshold: number,
+): string {
+  if (metric === "order_count") {
+    return `${Math.round(current)} / ${Math.round(threshold)} rendelés`;
+  }
+  return `${Math.round(current).toLocaleString("hu-HU")} / ${Math.round(threshold).toLocaleString("hu-HU")} Ft`;
+}
+
+function urgencyFromPercent(
+  pct: number | null,
+  atTop: boolean,
+  remaining: number | null,
+): PartnerProgressUrgency | null {
+  if (atTop || (remaining != null && remaining <= 0)) return "done";
+  if (pct == null) return null;
+  if (pct >= 70) return "high";
+  if (pct >= 35) return "mid";
+  return "low";
 }
 
 export async function getPartnerProgress(opts: {
@@ -129,11 +225,18 @@ export async function getPartnerProgress(opts: {
     current: 0,
     nextThreshold: null,
     remaining: null,
+    remainingLabel: null,
     nextGroupName: null,
     nextGroupInnerId: null,
     atTop: false,
     progressPercent: null,
     label: null,
+    currentFormatted: null,
+    currentBenefitLabel: null,
+    nextBenefitLabel: null,
+    rewardHeadline: null,
+    rewardDetail: null,
+    urgency: null,
   };
 
   const groups =
@@ -155,15 +258,22 @@ export async function getPartnerProgress(opts: {
   if (!opts.showProgress) {
     return {
       ...base,
-      label: opts.showGroupName && customer.groupName
-        ? `Csoportod: ${customer.groupName}`
-        : null,
+      label: null,
     };
   }
 
   const rules = (await listGroupRules(opts.client, opts.shopId)).filter(
     (r) => r.enabled,
   );
+  /* No rules configured → never show FOMO progress (group name chip OK). */
+  if (rules.length === 0) {
+    return {
+      ...base,
+      showProgress: false,
+      label: null,
+    };
+  }
+
   const policy = await getShopGroupRulesPolicy(opts.client, opts.shopId);
   const ladder =
     policy.ladder.length > 0
@@ -176,14 +286,18 @@ export async function getPartnerProgress(opts: {
   const curRank = ladderRank(ladder, customer.groupInnerId);
   const betterTargets = ladder.filter((_, i) => i > curRank);
 
+  const curGroup =
+    customer.groupInnerId != null
+      ? groups.find((g) => g.innerId === customer.groupInnerId)
+      : null;
+
   if (betterTargets.length === 0 && curRank >= 0) {
+    /* Top of ladder — nothing to unlock; hide progress bar. */
     return {
       ...base,
-      showProgress: true,
+      showProgress: false,
       atTop: true,
-      label: customer.groupName
-        ? `Legjobb csoportod: ${customer.groupName}`
-        : "Legjobb csoportod van.",
+      label: null,
     };
   }
 
@@ -214,7 +328,13 @@ export async function getPartnerProgress(opts: {
     const key = `${rule.period}:${b.fromMs ?? ""}:${b.toMs ?? ""}`;
     let m = metricsCache.get(key);
     if (!m) {
-      m = await metricInWindow(opts.config, customer.innerId, b);
+      m = await computeCustomerOrderMetrics(
+        opts.config,
+        customer.innerId,
+        b,
+        policy,
+        { maxPagesLifetime: 4, maxPagesWindowed: 6, sleepMs: 200 },
+      );
       metricsCache.set(key, m);
     }
     const value =
@@ -236,14 +356,12 @@ export async function getPartnerProgress(opts: {
   }
 
   if (!best) {
+    /* Rules exist but none apply to this customer's group → hide progress. */
     return {
       ...base,
-      showProgress: true,
-      atTop: betterTargets.length === 0,
-      label:
-        opts.showGroupName && customer.groupName
-          ? `Csoportod: ${customer.groupName}`
-          : null,
+      showProgress: false,
+      atTop: betterTargets.length === 0 && curRank >= 0,
+      label: null,
     };
   }
 
@@ -254,10 +372,20 @@ export async function getPartnerProgress(opts: {
     Math.max(0, Math.round(((best.value - floor) / span) * 100)),
   );
   const remLabel = formatRemaining(best.rule.metric, best.remaining);
+  const nextGroup =
+    groups.find((g) => g.innerId === best.rule.toGroupInnerId) ?? null;
+  const reward = await resolveNextReward({
+    client: opts.client,
+    shopId: opts.shopId,
+    policy,
+    currentGroup: curGroup,
+    nextGroup,
+    nextInnerId: best.rule.toGroupInnerId,
+  });
   const label =
     best.remaining <= 0
-      ? `Elérted a küszöböt: ${best.toName}`
-      : `Még ${remLabel} a(z) ${best.toName} csoporthoz`;
+      ? `Elérted: ${best.toName}`
+      : `Még ${remLabel} → ${best.toName}`;
 
   return {
     groupInnerId: customer.groupInnerId,
@@ -269,11 +397,22 @@ export async function getPartnerProgress(opts: {
     current: best.value,
     nextThreshold: best.rule.threshold,
     remaining: best.remaining,
+    remainingLabel: best.remaining <= 0 ? null : remLabel,
     nextGroupName: best.toName,
     nextGroupInnerId: best.rule.toGroupInnerId,
     atTop: false,
     progressPercent: pct,
     label,
+    currentFormatted: formatCurrentVsThreshold(
+      best.rule.metric,
+      best.value,
+      best.rule.threshold,
+    ),
+    currentBenefitLabel: reward.currentBenefitLabel,
+    nextBenefitLabel: reward.nextBenefitLabel,
+    rewardHeadline: reward.rewardHeadline,
+    rewardDetail: reward.rewardDetail,
+    urgency: urgencyFromPercent(pct, false, best.remaining),
   };
 }
 

@@ -72,7 +72,7 @@ export type ResolvedProduct = {
   stock4?: number;
   orderable?: boolean;
   inStock?: boolean;
-  /** pl. "Készleten: 5 db" / "Nincs raktáron — rendelhető" */
+  /** pl. "Készleten: 5 db" / "Nincs raktáron, rendelhető" */
   stockLabel?: string;
   stockTone?: "ok" | "low" | "out" | "blocked";
   imageUrl?: string;
@@ -1354,8 +1354,8 @@ function buildStockPresentation(
       inStock: false,
       stockTone: "out",
       stockLabel: statusName
-        ? `${statusName} — rendelhető`
-        : "Nincs raktáron — rendelhető",
+        ? `${statusName}, rendelhető`
+        : "Nincs raktáron, rendelhető",
     };
   }
   return {
@@ -2269,11 +2269,15 @@ export type CustomerOrderSummary = {
   tax?: number;
   couponCode?: string | null;
   status: string;
+  /** Shoprenter orderStatus resource id (or href key) when available */
+  statusId?: string | null;
   statusColor?: string;
   itemCount: number;
   email?: string | null;
   customerInnerId?: number | null;
   customerName?: string | null;
+  /** Present when list `full=1` already embeds orderProducts. */
+  lines?: CustomerOrderLine[];
 };
 
 export type CustomerOrderDetail = CustomerOrderSummary & {
@@ -2282,8 +2286,43 @@ export type CustomerOrderDetail = CustomerOrderSummary & {
   shippingMethodName?: string;
 };
 
-type StatusMeta = { name: string; color?: string };
+type StatusMeta = { name: string; color?: string; id?: string };
 let orderStatusCache: Map<string, StatusMeta> | null = null;
+
+export type ShopOrderStatus = {
+  id: string;
+  name: string;
+  color?: string;
+  /** True if name looks like cancelled / refunded (UI hint). */
+  looksCancelled: boolean;
+};
+
+/** Extract stable status key from an order's orderStatus field. */
+export function extractOrderStatusId(orderStatus: unknown): string | null {
+  if (!orderStatus || typeof orderStatus !== "object") return null;
+  const os = orderStatus as { href?: string; id?: string };
+  if (typeof os.id === "string" && os.id.trim()) return os.id.trim();
+  if (typeof os.href === "string" && os.href.trim()) {
+    const href = os.href.trim();
+    const m = href.match(/orderStatuses\/([^/?#]+)/i);
+    if (m?.[1]) return decodeURIComponent(m[1]);
+    return href;
+  }
+  return null;
+}
+
+export function orderStatusNameLooksCancelled(name: string): boolean {
+  const s = (name || "").toLowerCase();
+  if (!s) return false;
+  return (
+    s.includes("storn") ||
+    s.includes("cancel") ||
+    s.includes("töröl") ||
+    s.includes("torol") ||
+    s.includes("refund") ||
+    s.includes("visszatér")
+  );
+}
 
 function formatOrderDate(iso: string): string {
   const t = Date.parse(iso);
@@ -2412,12 +2451,19 @@ async function ensureOrderStatusCache(
       for (const it of items) {
         const name = typeof it.name === "string" ? it.name.trim() : "";
         if (!name) continue;
+        const href = it.orderStatus?.href;
+        const idRaw = it.orderStatus?.id;
+        const id =
+          typeof idRaw === "string" && idRaw.trim()
+            ? idRaw.trim()
+            : href
+              ? extractOrderStatusId({ href })
+              : null;
         const meta: StatusMeta = {
           name,
           color: typeof it.color === "string" ? it.color : undefined,
+          id: id || undefined,
         };
-        const href = it.orderStatus?.href;
-        const id = it.orderStatus?.id;
         if (href) map.set(href, meta);
         if (id) map.set(id, meta);
       }
@@ -2431,20 +2477,50 @@ async function ensureOrderStatusCache(
   return map;
 }
 
+/**
+ * Unique order statuses for the shop (merchant UI: which count toward level-up).
+ */
+export async function listOrderStatuses(
+  config: ShoprenterConfig,
+): Promise<ShopOrderStatus[]> {
+  const cache = await ensureOrderStatusCache(config);
+  const byId = new Map<string, ShopOrderStatus>();
+  for (const meta of cache.values()) {
+    const id = meta.id;
+    if (!id || byId.has(id)) continue;
+    byId.set(id, {
+      id,
+      name: meta.name,
+      color: meta.color,
+      looksCancelled: orderStatusNameLooksCancelled(meta.name),
+    });
+  }
+  return [...byId.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, "hu"),
+  );
+}
+
 async function statusForOrder(
   config: ShoprenterConfig,
   orderStatus: unknown,
 ): Promise<StatusMeta> {
   const cache = await ensureOrderStatusCache(config);
+  const statusId = extractOrderStatusId(orderStatus);
   if (orderStatus && typeof orderStatus === "object") {
     const os = orderStatus as { href?: string; id?: string; name?: string };
     if (typeof os.name === "string" && os.name.trim()) {
-      return { name: os.name.trim() };
+      return { name: os.name.trim(), id: statusId || undefined };
     }
-    if (os.href && cache.has(os.href)) return cache.get(os.href)!;
-    if (os.id && cache.has(os.id)) return cache.get(os.id)!;
+    if (os.href && cache.has(os.href)) {
+      const hit = cache.get(os.href)!;
+      return { ...hit, id: hit.id || statusId || undefined };
+    }
+    if (os.id && cache.has(os.id)) {
+      const hit = cache.get(os.id)!;
+      return { ...hit, id: hit.id || statusId || undefined };
+    }
   }
-  return { name: "—" };
+  return { name: "—", id: statusId || undefined };
 }
 
 function extractOrderProducts(
@@ -2563,10 +2639,16 @@ async function mapOrderSummary(
       : null;
   const products = extractOrderProducts(row.orderProducts);
   const status = await statusForOrder(config, row.orderStatus);
+  const statusId =
+    status.id || extractOrderStatusId(row.orderStatus) || null;
   const email =
     typeof row.email === "string" && row.email.trim()
       ? row.email.trim().toLowerCase()
       : null;
+  const lines = products
+    .map((p) => mapOrderLine(p))
+    .filter((x): x is CustomerOrderLine => Boolean(x));
+
   return {
     id: id || innerId,
     innerId,
@@ -2584,11 +2666,13 @@ async function mapOrderSummary(
     tax: tax != null ? Math.round(tax) : undefined,
     couponCode,
     status: status.name,
+    statusId,
     statusColor: status.color,
-    itemCount: products.length,
+    itemCount: products.length || lines.length,
     email,
     customerInnerId: customerInnerFromOrderRow(row),
     customerName: customerNameFromOrderRow(row),
+    lines: lines.length ? lines : undefined,
   };
 }
 
@@ -2648,33 +2732,65 @@ export async function listCustomerOrders(
     if (mapped) orders.push(mapped);
   }
   // newest first (API usually is, but sort defensively)
-  orders.sort((a, b) => {
-    const ta = Date.parse(a.dateCreated) || 0;
-    const tb = Date.parse(b.dateCreated) || 0;
-    return tb - ta;
-  });
+  orders.sort(
+    (a, b) =>
+      parseShoprenterOrderTime(b.dateCreated) -
+      parseShoprenterOrderTime(a.dateCreated),
+  );
   return { orders, pageCount: data.pageCount ?? 1 };
 }
 
 /**
- * Bolt összes rendelése (merchant riport) — lapozva, rate-limit barát.
- * dateFromIso: ISO; a listázás megáll, ha egy teljes oldal a tartomány előtt van.
+ * Shoprenter order timestamps are often "YYYY-MM-DD HH:mm:ss" — raw Date.parse is NaN.
+ */
+export function parseShoprenterOrderTime(
+  raw: string | null | undefined,
+): number {
+  if (!raw || !raw.trim()) return 0;
+  const s = raw.trim();
+  const iso = Date.parse(s.includes("T") ? s : s.replace(" ", "T"));
+  if (Number.isFinite(iso)) return iso;
+  const m = s.match(
+    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/,
+  );
+  if (!m) return 0;
+  return new Date(
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    Number(m[4] || 0),
+    Number(m[5] || 0),
+    Number(m[6] || 0),
+  ).getTime();
+}
+
+type OrderExtendPage = {
+  items: CustomerOrderSummary[];
+  pageCount: number;
+  newestMs: number;
+  oldestMs: number;
+};
+
+/**
+ * Bolt összes rendelése (merchant riport / sync) — lapozva, rate-limit barát.
+ * Mindig a legújabb felől tölt (detektálja, ha az API ascending), amíg
+ * dateFromMs el nincs érve vagy maxPages.
  */
 export async function listShopOrders(
   config: ShoprenterConfig,
   opts?: {
     dateFromMs?: number;
+    dateToMs?: number;
     maxPages?: number;
     limit?: number;
   },
 ): Promise<CustomerOrderSummary[]> {
   const limit = Math.min(50, Math.max(10, opts?.limit ?? 50));
-  const maxPages = Math.min(12, Math.max(1, opts?.maxPages ?? 8));
+  const maxPages = Math.min(24, Math.max(1, opts?.maxPages ?? 8));
   const dateFrom = opts?.dateFromMs ?? 0;
-  const out: CustomerOrderSummary[] = [];
+  const dateTo = opts?.dateToMs ?? 0;
 
-  for (let page = 0; page < maxPages; page++) {
-    if (page > 0) await sleep(400);
+  async function fetchPage(page: number): Promise<OrderExtendPage> {
     const qs = new URLSearchParams({
       excludeAbandonedCart: "1",
       excludeStorno: "1",
@@ -2682,6 +2798,9 @@ export async function listShopOrders(
       limit: String(limit),
       page: String(page),
     });
+    // Note: OrderExtend has no dateFrom/dateTo query params (40010 if sent).
+    // Date window is applied client-side after newest-first pagination.
+
     const res = await apiFetch(config, `/orderExtend?${qs.toString()}`);
     if (!res.ok) {
       if (res.status === 429) {
@@ -2698,49 +2817,80 @@ export async function listShopOrders(
       items?: Record<string, unknown>[];
       pageCount?: number;
     };
-    const items = data.items ?? [];
-    if (!items.length) break;
-
-    let oldestOnPage = Number.POSITIVE_INFINITY;
-    for (const row of items) {
-      const mapped = await mapOrderSummary(config, row);
-      if (!mapped) continue;
-      const raw = mapped.dateCreated || "";
-      const isoTry = Date.parse(
-        raw.includes("T") ? raw : raw.replace(" ", "T"),
-      );
-      let t = Number.isFinite(isoTry) ? isoTry : 0;
-      if (!t) {
-        const m = raw.match(
-          /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/,
-        );
-        if (m) {
-          t = new Date(
-            Number(m[1]),
-            Number(m[2]) - 1,
-            Number(m[3]),
-            Number(m[4] || 0),
-            Number(m[5] || 0),
-            Number(m[6] || 0),
-          ).getTime();
-        }
+    const mapped: CustomerOrderSummary[] = [];
+    let newestMs = 0;
+    let oldestMs = Number.POSITIVE_INFINITY;
+    for (const row of data.items ?? []) {
+      const m = await mapOrderSummary(config, row);
+      if (!m) continue;
+      const t = parseShoprenterOrderTime(m.dateCreated);
+      if (t) {
+        if (t > newestMs) newestMs = t;
+        if (t < oldestMs) oldestMs = t;
       }
-      if (t && t < oldestOnPage) oldestOnPage = t;
-      if (!dateFrom || t >= dateFrom) out.push(mapped);
+      mapped.push(m);
     }
+    if (!Number.isFinite(oldestMs)) oldestMs = 0;
+    return {
+      items: mapped,
+      pageCount: Math.max(1, data.pageCount ?? page + 1),
+      newestMs,
+      oldestMs,
+    };
+  }
 
-    const pageCount = data.pageCount ?? page + 1;
-    if (page + 1 >= pageCount) break;
-    if (dateFrom && Number.isFinite(oldestOnPage) && oldestOnPage < dateFrom) {
-      break;
+  const cache = new Map<number, OrderExtendPage>();
+  async function getPage(page: number): Promise<OrderExtendPage> {
+    const hit = cache.get(page);
+    if (hit) return hit;
+    if (cache.size > 0) await sleep(180);
+    const data = await fetchPage(page);
+    cache.set(page, data);
+    return data;
+  }
+
+  const first = await getPage(0);
+  const pageCount = first.pageCount;
+
+  let newestFirst = true;
+  if (pageCount > 1) {
+    const last = await getPage(pageCount - 1);
+    if (first.newestMs && last.newestMs) {
+      newestFirst = first.newestMs >= last.newestMs;
+    } else if (first.oldestMs && last.oldestMs) {
+      newestFirst = first.oldestMs >= last.oldestMs;
     }
   }
 
-  out.sort((a, b) => {
-    const ta = Date.parse(a.dateCreated) || 0;
-    const tb = Date.parse(b.dateCreated) || 0;
-    return tb - ta;
-  });
+  const byId = new Map<string, CustomerOrderSummary>();
+  const absorb = (items: CustomerOrderSummary[]) => {
+    for (const o of items) {
+      const t = parseShoprenterOrderTime(o.dateCreated);
+      if (!t) continue;
+      if (dateFrom && t < dateFrom) continue;
+      if (dateTo && t > dateTo) continue;
+      byId.set(o.id, o);
+    }
+  };
+
+  for (let i = 0; i < Math.min(maxPages, pageCount); i++) {
+    const page = newestFirst ? i : pageCount - 1 - i;
+    const data = await getPage(page);
+    absorb(data.items);
+
+    // Walking toward older: stop once the whole page is before dateFrom.
+    if (dateFrom && data.oldestMs > 0 && data.oldestMs < dateFrom) {
+      break;
+    }
+    if (!data.items.length) break;
+  }
+
+  const out = [...byId.values()];
+  out.sort(
+    (a, b) =>
+      parseShoprenterOrderTime(b.dateCreated) -
+      parseShoprenterOrderTime(a.dateCreated),
+  );
   return out;
 }
 

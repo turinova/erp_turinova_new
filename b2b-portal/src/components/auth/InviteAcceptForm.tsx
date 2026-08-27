@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -13,10 +14,15 @@ export function InviteAcceptForm({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    if (!acceptedLegal) {
+      setError("Az ÁSZF és az adatkezelési tájékoztató elfogadása kötelező.");
+      return;
+    }
     setPending(true);
     const fd = new FormData(e.currentTarget);
     const password = String(fd.get("password") ?? "");
@@ -70,6 +76,34 @@ export function InviteAcceptForm({
           className="h-9 rounded-none border-[0.5px] border-line-strong bg-surface-2 px-3 text-[13px]"
         />
       </label>
+      <label className="flex cursor-pointer items-start gap-2 text-[12px] leading-snug text-muted">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={acceptedLegal}
+          onChange={(e) => setAcceptedLegal(e.target.checked)}
+          required
+        />
+        <span>
+          Elfogadom az{" "}
+          <Link
+            href="/aszf"
+            target="_blank"
+            className="font-medium text-text underline underline-offset-2"
+          >
+            ÁSZF
+          </Link>
+          -et és az{" "}
+          <Link
+            href="/adatkezeles"
+            target="_blank"
+            className="font-medium text-text underline underline-offset-2"
+          >
+            Adatkezelési tájékoztatót
+          </Link>
+          .
+        </span>
+      </label>
       {error ? (
         <p className="text-[12px] font-medium text-danger" role="alert">
           {error}
@@ -77,7 +111,7 @@ export function InviteAcceptForm({
       ) : null}
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !acceptedLegal}
         className="inline-flex h-9 cursor-pointer items-center justify-center rounded-none bg-accent text-[13px] font-semibold text-white disabled:opacity-60"
       >
         {pending ? "Mentés…" : "Fiók aktiválása"}

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import type { PoolClient } from "pg";
 import { withPlatformAdmin, query } from "@/lib/db";
 import { sessionExpiresAt } from "@/lib/auth/tokens";
-import type { User } from "@/types/db";
+import type { MembershipRole, User } from "@/types/db";
 
 export const SESSION_COOKIE = "b2b_session";
 
@@ -13,6 +13,10 @@ export type AuthSession = {
   displayName: string | null;
   isPlatformAdmin: boolean;
   activeOrganizationId: string | null;
+  /** Membership role in activeOrganizationId; null if none / platform-only. */
+  orgRole: MembershipRole | null;
+  /** organizations.status for active org; null if no org. */
+  orgStatus: "trial" | "active" | "suspended" | null;
 };
 
 type SessionJoinRow = {
@@ -25,6 +29,8 @@ type SessionJoinRow = {
   disabled_at: string | null;
   expires_at: string;
   revoked_at: string | null;
+  org_role: MembershipRole | null;
+  org_status: string | null;
 };
 
 export async function createSession(
@@ -67,9 +73,15 @@ export async function findSessionById(
          u.email,
          u.display_name,
          u.is_platform_admin,
-         u.disabled_at
+         u.disabled_at,
+         m.role as org_role,
+         o.status as org_status
        from sessions s
        join users u on u.id = s.user_id
+       left join memberships m
+         on m.user_id = s.user_id
+        and m.organization_id = s.active_organization_id
+       left join organizations o on o.id = s.active_organization_id
        where s.id = $1
        limit 1`,
       [sessionId],
@@ -80,15 +92,67 @@ export async function findSessionById(
     if (row.disabled_at) return null;
     if (new Date(row.expires_at) <= new Date()) return null;
 
+    const activeOrganizationId = row.active_organization_id;
+    let resolvedOrgId = activeOrganizationId;
+    let orgRole = row.org_role;
+    // Non-admins lose the org pointer if membership was removed.
+    if (activeOrganizationId && !orgRole && !row.is_platform_admin) {
+      resolvedOrgId = null;
+      orgRole = null;
+    }
+
     return {
       sessionId: row.session_id,
       userId: row.user_id,
       email: row.email,
       displayName: row.display_name,
       isPlatformAdmin: row.is_platform_admin,
-      activeOrganizationId: row.active_organization_id,
+      activeOrganizationId: resolvedOrgId,
+      orgRole: resolvedOrgId ? orgRole : null,
+      orgStatus: resolvedOrgId
+        ? ((row.org_status as AuthSession["orgStatus"]) ?? null)
+        : null,
     };
   });
+}
+
+/** Revoke every session currently pointed at this org (e.g. after suspend). */
+export async function revokeSessionsForOrganization(
+  client: PoolClient,
+  organizationId: string,
+): Promise<void> {
+  await query(
+    client,
+    `update sessions
+     set revoked_at = now()
+     where active_organization_id = $1
+       and revoked_at is null`,
+    [organizationId],
+  );
+}
+
+export async function revokeUserSessions(
+  client: PoolClient,
+  userId: string,
+  opts?: { organizationId?: string },
+): Promise<void> {
+  if (opts?.organizationId) {
+    await query(
+      client,
+      `update sessions
+       set revoked_at = now()
+       where user_id = $1
+         and active_organization_id = $2
+         and revoked_at is null`,
+      [userId, opts.organizationId],
+    );
+    return;
+  }
+  await query(
+    client,
+    `update sessions set revoked_at = now() where user_id = $1 and revoked_at is null`,
+    [userId],
+  );
 }
 
 export async function revokeSession(sessionId: string): Promise<void> {
