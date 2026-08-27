@@ -549,13 +549,14 @@
       "sr-b2b-qo-panel-css-v46",
       "sr-b2b-qo-panel-css-v47",
       "sr-b2b-qo-panel-css-v48",
+      "sr-b2b-qo-panel-css-v49",
     ].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.remove();
     });
-    if (document.getElementById("sr-b2b-qo-panel-css-v49")) return;
+    if (document.getElementById("sr-b2b-qo-panel-css-v50")) return;
     var style = document.createElement("style");
-    style.id = "sr-b2b-qo-panel-css-v49";
+    style.id = "sr-b2b-qo-panel-css-v50";
     style.textContent = [
       "#sr-b2b-quickorder-root{",
       "  --sr-qo-bg:#FFFFFF;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#F2F2F2;",
@@ -1111,14 +1112,27 @@
       "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-stock{text-align:center;width:118px;padding-left:4px;padding-right:4px}",
       "#sr-b2b-quickorder-root table.sr-qo-table th.sr-qo-th-qty,",
       "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-qty-td{text-align:center;width:64px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table th.sr-qo-th-tier,",
+      "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-tier-td{text-align:center;width:44px;padding-left:4px;padding-right:4px}",
       "#sr-b2b-quickorder-root table.sr-qo-table th.sr-qo-th-action,",
       "#sr-b2b-quickorder-root table.sr-qo-table td.sr-qo-td-action{width:36px;padding-left:4px;padding-right:4px}",
       "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-product{width:auto}",
       "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-stock{width:118px}",
       "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-qty{width:64px}",
+      "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-tier{width:44px}",
       "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-price{width:92px}",
       "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-total{width:100px}",
       "#sr-b2b-quickorder-root table.sr-qo-table col.sr-qo-col-action{width:36px}",
+      "#sr-b2b-quickorder-root .sr-qo-tier-pip{",
+      "  display:inline-block;width:10px;height:10px;border-radius:50%;",
+      "  vertical-align:middle;cursor:default",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-tier-pip.is-on{",
+      "  background:var(--sr-qo-ok);box-shadow:0 0 0 2px rgba(0,128,9,.18);cursor:help",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-tier-pip.is-off{",
+      "  background:var(--sr-qo-danger);box-shadow:0 0 0 2px rgba(215,0,21,.14)",
+      "}",
       "#sr-b2b-quickorder-root .sr-qo-stock-chip{",
       "  display:inline-flex;align-items:center;justify-content:center;",
       "  height:22px;padding:0 8px;border-radius:999px;",
@@ -1181,20 +1195,6 @@
       "#sr-b2b-quickorder-root .sr-qo-num.is-deal{font-weight:700;color:var(--sr-qo-ok)}",
       "#sr-b2b-quickorder-root .sr-qo-qty-wrap{",
       "  display:flex;flex-direction:column;align-items:center;gap:3px",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-tier-nudge{",
-      "  appearance:none;border:0;background:transparent;padding:0;margin:0;",
-      "  max-width:100%;font-size:10px;font-weight:600;line-height:1.2;",
-      "  color:var(--sr-qo-muted);cursor:pointer;text-align:center;",
-      "  text-decoration:underline;text-decoration-color:rgba(55,53,47,.25);",
-      "  text-underline-offset:2px",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-tier-nudge.is-near{",
-      "  font-weight:650;color:var(--sr-qo-ok);",
-      "  text-decoration-color:rgba(47,111,78,.35)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-tier-nudge:hover{",
-      "  color:var(--sr-qo-accent);text-decoration-color:var(--sr-qo-accent)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-receipt-row.is-tier .k{",
       "  color:var(--sr-qo-muted);font-weight:600",
@@ -2606,6 +2606,65 @@
       );
     }
 
+    function lineVolumeTiers(line) {
+      if (!line || line.found !== true || !Array.isArray(line.tiers)) return [];
+      return line.tiers
+        .map(function (t) {
+          var minQty = Math.round(Number(t && t.minQty) || 0);
+          var priceNet = Number(t && t.priceNet);
+          if (minQty < 1 || !Number.isFinite(priceNet)) return null;
+          return { minQty: minQty, priceNet: Math.round(priceNet) };
+        })
+        .filter(Boolean)
+        .sort(function (a, b) {
+          return a.minQty - b.minQty;
+        });
+    }
+
+    function tiersTooltipText(tiers) {
+      return tiers
+        .map(function (t) {
+          return t.minQty + "+ db → " + formatHufClient(t.priceNet) + "/db";
+        })
+        .join("\n");
+    }
+
+    function tierPipCell(line) {
+      var tiers = lineVolumeTiers(line);
+      if (line.found !== true) {
+        return el(
+          "td",
+          { className: "sr-qo-tier-td", "data-label": "Sáv" },
+          ["—"],
+        );
+      }
+      if (tiers.length) {
+        var tip = tiersTooltipText(tiers);
+        return el(
+          "td",
+          { className: "sr-qo-tier-td", "data-label": "Sáv" },
+          [
+            el("span", {
+              className: "sr-qo-tier-pip is-on",
+              title: tip,
+              "aria-label": "Sávos ár: " + tip.replace(/\n/g, "; "),
+            }),
+          ],
+        );
+      }
+      return el(
+        "td",
+        { className: "sr-qo-tier-td", "data-label": "Sáv" },
+        [
+          el("span", {
+            className: "sr-qo-tier-pip is-off",
+            title: "Nincs sávos ár",
+            "aria-label": "Nincs sávos ár",
+          }),
+        ],
+      );
+    }
+
     function lineListNet(line) {
       if (line.listPriceNet != null) return line.listPriceNet;
       return lineUnitNet(line);
@@ -3048,44 +3107,15 @@
           nameCell.addEventListener("mouseleave", hideTip);
         }
 
-        var qtyKids = [qtyField];
-        var tierHint = lineNextTierHint(line);
-        if (tierHint) {
-          qtyKids.push(
-            el(
-              "button",
-              {
-                type: "button",
-                className:
-                  "sr-qo-tier-nudge" + (tierHint.near ? " is-near" : ""),
-                title: "Beállítás: " + tierHint.minQty + " db",
-                onClick: function (ev) {
-                  ev.preventDefault();
-                  ev.stopPropagation();
-                  var next = normalizePackQuantity(
-                    tierHint.minQty,
-                    packRulesFromLine(lines[idx]),
-                  );
-                  lines[idx].quantity = next;
-                  qtyField.value = String(next);
-                  persist();
-                  refreshStockLive();
-                  refreshLinePricing(idx, { flash: true });
-                },
-              },
-              [tierHintLabel(tierHint)],
-            ),
-          );
-        }
-
         var stockTd = stockCell(line);
         var stockChipEl = stockTd.querySelector(".sr-qo-stock-chip");
         var tr = el("tr", { className: trClass }, [
           nameCell,
           stockTd,
           el("td", { className: "sr-qo-qty-td", "data-label": "Db" }, [
-            el("div", { className: "sr-qo-qty-wrap" }, qtyKids),
+            el("div", { className: "sr-qo-qty-wrap" }, [qtyField]),
           ]),
+          tierPipCell(line),
           listPriceCell(line),
           dealPriceCell(line),
           el("td", { className: "sr-qo-line-total", "data-label": "Összesen" }, [
@@ -4065,6 +4095,7 @@
         el("col", { className: "sr-qo-col-product" }),
         el("col", { className: "sr-qo-col-stock" }),
         el("col", { className: "sr-qo-col-qty" }),
+        el("col", { className: "sr-qo-col-tier" }),
         el("col", { className: "sr-qo-col-price" }),
         el("col", { className: "sr-qo-col-price" }),
         el("col", { className: "sr-qo-col-total" }),
@@ -4079,6 +4110,14 @@
             ["Készlet"],
           ),
           el("th", { className: "sr-qo-th-qty", title: "Darabszám" }, ["Db"]),
+          el(
+            "th",
+            {
+              className: "sr-qo-th-tier",
+              title: "Sávos árazás (zöld = van, piros = nincs)",
+            },
+            ["Sáv"],
+          ),
           el(
             "th",
             {

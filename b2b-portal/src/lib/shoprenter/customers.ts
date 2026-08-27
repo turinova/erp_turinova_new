@@ -527,21 +527,124 @@ export async function listAddressesForCustomer(
   return [];
 }
 
+/**
+ * Shoprenter resource IDs are base64 and often end with `=`.
+ * Official docs put them raw in the path (e.g. /customers/…MjQ=).
+ * encodeURIComponent turns `=` into `%3D` and SR returns 40401.
+ */
+function resourceIdInPath(id: string): string {
+  const trimmed = id.trim();
+  if (!trimmed) return trimmed;
+  if (/%[0-9A-Fa-f]{2}/.test(trimmed)) {
+    try {
+      return decodeURIComponent(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+function innerIdFromCustomerOuterId(outerId: string): number | null {
+  try {
+    const decoded = Buffer.from(resourceIdInPath(outerId), "base64").toString(
+      "utf8",
+    );
+    const m = decoded.match(/customer_id=(\d+)/i);
+    if (m) return Number(m[1]);
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+async function fetchCustomerFullRaw(
+  config: ShoprenterConfig,
+  customerId: string,
+): Promise<Record<string, unknown>> {
+  const pathId = resourceIdInPath(customerId);
+  // Prefer list-by-innerId (same pattern as getCustomerEmailByUserId) —
+  // avoids path-encoding issues on some SR stacks.
+  const innerId = innerIdFromCustomerOuterId(pathId);
+  if (innerId != null) {
+    const listRes = await apiFetch(
+      config,
+      `/customers?innerId=${innerId}&full=1&limit=1`,
+    );
+    if (listRes.ok) {
+      const data = (await listRes.json()) as {
+        items?: Record<string, unknown>[];
+      };
+      const item = data.items?.[0];
+      if (item && typeof item.id === "string") return item;
+    }
+  }
+
+  const getRes = await apiFetch(config, `/customers/${pathId}?full=1`);
+  if (!getRes.ok) {
+    const text = await getRes.text();
+    throw new Error(
+      `Vevő betöltése átrakáshoz sikertelen (${getRes.status}): ${text.slice(0, 200)}`,
+    );
+  }
+  return (await getRes.json()) as Record<string, unknown>;
+}
+
 export async function updateCustomerGroup(
   config: ShoprenterConfig,
   customerId: string,
   customerGroupId: string,
 ): Promise<void> {
-  const res = await apiFetch(
-    config,
-    `/customers/${encodeURIComponent(customerId)}`,
-    {
-      method: "PUT",
-      body: JSON.stringify({
-        customerGroup: { id: customerGroupId },
-      }),
-    },
+  // Shoprenter PUT /customers/:id requires firstname, lastname, email,
+  // telephone, password even when only changing customerGroup (see
+  // sr-api-docs fixtures/api/customer/request/put.json). Echo the existing
+  // bcrypt hash so the login password is not reset.
+  const raw = await fetchCustomerFullRaw(config, customerId);
+  const pathId = resourceIdInPath(
+    typeof raw.id === "string" && raw.id.trim() ? raw.id : customerId,
   );
+  const firstname =
+    typeof raw.firstname === "string" && raw.firstname.trim()
+      ? raw.firstname.trim()
+      : "-";
+  const lastname =
+    typeof raw.lastname === "string" && raw.lastname.trim()
+      ? raw.lastname.trim()
+      : "-";
+  const email =
+    typeof raw.email === "string" && raw.email.trim() ? raw.email.trim() : "";
+  if (!email) {
+    throw new Error(
+      "A vevőnek nincs email címe a Shoprenterben; átrakás nem lehetséges.",
+    );
+  }
+  const telephone =
+    typeof raw.telephone === "string" && raw.telephone.trim()
+      ? raw.telephone.trim()
+      : "-";
+  const password =
+    typeof raw.password === "string" && raw.password.trim()
+      ? raw.password.trim()
+      : "";
+  if (!password) {
+    throw new Error(
+      "A vevő jelszóhash-e nem olvasható a Shoprenterből; átrakás nem lehetséges.",
+    );
+  }
+
+  const groupId = resourceIdInPath(customerGroupId);
+
+  const res = await apiFetch(config, `/customers/${pathId}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      firstname,
+      lastname,
+      email,
+      telephone,
+      password,
+      customerGroup: { id: groupId },
+    }),
+  });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(
