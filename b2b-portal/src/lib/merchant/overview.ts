@@ -3,7 +3,7 @@ import {
   countActivePartnersMonth,
   effectivePartnerLimit,
 } from "@/lib/billing/active-partners";
-import { PLAN_DEFAULTS, formatHuf, onPlan, parsePlanId, type PlanId } from "@/lib/billing/plans";
+import { PLAN_DEFAULTS, formatPlanPrice, onPlan, parsePlanId, type PlanId } from "@/lib/billing/plans";
 import { type PartnerGateDto } from "@/lib/billing/types";
 import { catalogIsSearchable } from "@/lib/commerce/lookup";
 import { query } from "@/lib/db";
@@ -306,7 +306,7 @@ export async function loadMerchantOverview(
   } else if (gate.trialExpired) {
     next = {
       title: "Lejárt a próba",
-      body: `A boltban a gyors rendelés megy. Itt ${gate.paidPartnerLimit} vevőig látsz mindent. Plus: ${formatHuf(PLAN_DEFAULTS.plus.listPriceHuf)}.`,
+      body: `A boltban a gyors rendelés megy. Itt ${gate.paidPartnerLimit} vevőig látsz mindent. Plus: ${formatPlanPrice(PLAN_DEFAULTS.plus.listPriceHuf)}.`,
       href: "/csomag",
       cta: `Tartsd a ${gate.activePartners} vevőt · Plus`,
       external: false,

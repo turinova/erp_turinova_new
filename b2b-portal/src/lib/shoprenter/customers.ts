@@ -359,27 +359,35 @@ function throwFriendlyHttp(kind: string, status: number, text: string): never {
   );
 }
 
-export async function searchCustomers(
+function customerMatchesQuery(c: SrCustomer, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (!needle) return false;
+  const hay = [
+    c.email,
+    c.firstname,
+    c.lastname,
+    `${c.lastname} ${c.firstname}`,
+    `${c.firstname} ${c.lastname}`,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(needle);
+}
+
+async function fetchCustomersByParam(
   config: ShoprenterConfig,
-  q: string,
+  param: "email" | "innerId",
+  value: string,
   opts?: { limit?: number; groups?: SrCustomerGroup[] },
 ): Promise<SrCustomer[]> {
-  const query = q.trim();
-  if (!query) return [];
   const limit = Math.min(50, Math.max(1, opts?.limit ?? 25));
   const qs = new URLSearchParams({
     full: "1",
     limit: String(limit),
     page: "0",
+    [param]: value,
   });
-  if (query.includes("@")) {
-    qs.set("email", query);
-  } else if (/^\d+$/.test(query)) {
-    qs.set("innerId", query);
-  } else {
-    qs.set("email", query);
-  }
-
   const res = await apiFetch(config, `/customers?${qs.toString()}`);
   if (!res.ok) {
     throwFriendlyHttp("Vevő keresés", res.status, await res.text());
@@ -391,6 +399,66 @@ export async function searchCustomers(
     if (row) out.push(row);
   }
   return out;
+}
+
+/**
+ * Shoprenter customer collection only filters by email / innerId (no name).
+ * Name and partial text: scan recent pages and match locally.
+ */
+export async function searchCustomers(
+  config: ShoprenterConfig,
+  q: string,
+  opts?: { limit?: number; groups?: SrCustomerGroup[] },
+): Promise<SrCustomer[]> {
+  const query = q.trim();
+  if (!query) return [];
+  const limit = Math.min(50, Math.max(1, opts?.limit ?? 25));
+
+  if (query.includes("@")) {
+    return fetchCustomersByParam(config, "email", query, opts);
+  }
+  if (/^\d+$/.test(query)) {
+    return fetchCustomersByParam(config, "innerId", query, opts);
+  }
+
+  const seen = new Set<number>();
+  const out: SrCustomer[] = [];
+  const push = (row: SrCustomer) => {
+    if (seen.has(row.innerId)) return;
+    if (!customerMatchesQuery(row, query)) return;
+    seen.add(row.innerId);
+    out.push(row);
+  };
+
+  // Exact/prefix email attempts (some shops store partial lookups); then scan.
+  try {
+    const emailHits = await fetchCustomersByParam(config, "email", query, {
+      limit,
+      groups: opts?.groups,
+    });
+    for (const row of emailHits) push(row);
+  } catch {
+    /* scan below */
+  }
+
+  let page = 0;
+  let pageCount = 1;
+  const maxPages = 20;
+  while (out.length < limit && page < pageCount && page < maxPages) {
+    const listed = await listRecentCustomers(config, {
+      limit: 50,
+      page,
+      groups: opts?.groups,
+    });
+    pageCount = Math.max(1, listed.pageCount);
+    for (const row of listed.customers) {
+      push(row);
+      if (out.length >= limit) break;
+    }
+    page += 1;
+    if (listed.customers.length === 0) break;
+  }
+  return out.slice(0, limit);
 }
 
 export async function listRecentCustomers(

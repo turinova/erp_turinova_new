@@ -1,5 +1,5 @@
-/** Launch plans v5 — one base product + optional Turinova-mark removal.
- * start = Gyors rendelés (base)
+/** Launch plans v6 — base + optional Turinova-mark removal.
+ * start = Gyors rendelés (base, mark visible)
  * plus / pro = same product + white-label (mark hideable when paid)
  * Partner limit is soft infra (high) — not the sales pitch.
  * Alias: grow→plus, scale→pro.
@@ -8,12 +8,12 @@
 export const PLAN_IDS = ["start", "plus", "pro"] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
-/** Base subscription (nettó Ft / hó). */
-export const BASE_PRICE_HUF = 9_900;
-/** Add-on: hide Turinova mark on the widget. */
-export const MARK_ADDON_HUF = 4_900;
-/** Base + mark add-on. */
-export const WHITE_LABEL_PRICE_HUF = BASE_PRICE_HUF + MARK_ADDON_HUF;
+/** Base subscription (bruttó Ft / hó) — Turinova felirat látszik. */
+export const BASE_PRICE_HUF = 7_500;
+/** Add-on: hide Turinova mark on the widget (bruttó). */
+export const MARK_ADDON_HUF = 2_499;
+/** Saját márka összesen (7500 + 2499), bruttó. */
+export const WHITE_LABEL_PRICE_HUF = BASE_PRICE_HUF + MARK_ADDON_HUF; // 9_999
 
 /** Soft cap — not marketed; avoids blur for normal B2B volume. */
 export const SOFT_PARTNER_LIMIT = 500;
@@ -107,6 +107,11 @@ export function annualPriceHuf(plan: PlanId): number {
 
 export function formatHuf(n: number): string {
   return `${n.toLocaleString("hu-HU")} Ft`;
+}
+
+/** Előfizetés listára — mindig bruttó (ÁFÁS). */
+export function formatPlanPrice(n: number): string {
+  return `${formatHuf(n)} bruttó`;
 }
 
 export function formatTrialEnd(iso: string | null): string {

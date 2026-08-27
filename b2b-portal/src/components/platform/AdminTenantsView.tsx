@@ -7,7 +7,7 @@ import { CreateOrgDrawer } from "@/components/platform/CreateOrgDrawer";
 import {
   BASE_PRICE_HUF,
   WHITE_LABEL_PRICE_HUF,
-  formatHuf,
+  formatPlanPrice,
   hasWhiteLabel,
   type PlanId,
 } from "@/lib/billing/plans";
@@ -17,9 +17,9 @@ import { fleetSummary, sortFleet, type OrgListRow } from "@/lib/orgs/types";
 function adminPlanLabel(plan: PlanId, trialActive: boolean): string {
   if (trialActive) return "Próba";
   if (hasWhiteLabel(plan)) {
-    return `Felirat nélkül · ${formatHuf(WHITE_LABEL_PRICE_HUF)}`;
+    return `Felirat nélkül · ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)}`;
   }
-  return `Alap · ${formatHuf(BASE_PRICE_HUF)}`;
+  return `Alap · ${formatPlanPrice(BASE_PRICE_HUF)}`;
 }
 
 function rowStatusLine(row: OrgListRow): { label: string; tone: "ok" | "warn" | "crit" | "muted" } {

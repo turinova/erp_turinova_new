@@ -109,6 +109,32 @@ export async function patchOrganization(
     [orgId, nextPlan, nextStatus, partnerOverride, skuOverride, trialEndsAt],
   );
 
+  // White-label (plus/pro) + active → hide Turinova mark on the live widget.
+  // Start / trial → force mark visible.
+  const hideMark =
+    nextStatus === "active" && (nextPlan === "plus" || nextPlan === "pro");
+  await query(
+    client,
+    `update widget_settings w
+     set settings = jsonb_set(
+           jsonb_set(
+             coalesce(w.settings, '{}'::jsonb),
+             '{features}',
+             coalesce(w.settings->'features', '{}'::jsonb),
+             true
+           ),
+           '{features,hideTurinovaMark}',
+           $2::jsonb,
+           true
+         ),
+         updated_at = now()
+     from shops s
+     where w.shop_id = s.id
+       and s.organization_id = $1
+       and s.purged_at is null`,
+    [orgId, JSON.stringify(hideMark)],
+  );
+
   if (nextStatus === "suspended") {
     await query(
       client,

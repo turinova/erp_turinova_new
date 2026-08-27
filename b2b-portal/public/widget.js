@@ -550,13 +550,14 @@
       "sr-b2b-qo-panel-css-v47",
       "sr-b2b-qo-panel-css-v48",
       "sr-b2b-qo-panel-css-v49",
+      "sr-b2b-qo-panel-css-v50",
     ].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.remove();
     });
-    if (document.getElementById("sr-b2b-qo-panel-css-v50")) return;
+    if (document.getElementById("sr-b2b-qo-panel-css-v51")) return;
     var style = document.createElement("style");
-    style.id = "sr-b2b-qo-panel-css-v50";
+    style.id = "sr-b2b-qo-panel-css-v51";
     style.textContent = [
       "#sr-b2b-quickorder-root{",
       "  --sr-qo-bg:#FFFFFF;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#F2F2F2;",
@@ -1128,7 +1129,7 @@
       "  vertical-align:middle;cursor:default",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-tier-pip.is-on{",
-      "  background:var(--sr-qo-ok);box-shadow:0 0 0 2px rgba(0,128,9,.18);cursor:help",
+      "  background:var(--sr-qo-ok);box-shadow:0 0 0 2px rgba(0,128,9,.18)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-tier-pip.is-off{",
       "  background:var(--sr-qo-danger);box-shadow:0 0 0 2px rgba(215,0,21,.14)",
@@ -1588,6 +1589,15 @@
       "}",
       "#sr-b2b-quickorder-root .sr-qo-tip.is-on{display:block}",
       "#sr-b2b-quickorder-root .sr-qo-tip img{display:block;width:160px;height:160px;object-fit:contain}",
+      "#sr-b2b-quickorder-root .sr-qo-text-tip{",
+      "  position:fixed;z-index:var(--sr-qo-z-shell);pointer-events:none;display:none;",
+      "  max-width:min(280px,calc(100vw - 24px));padding:8px 10px;",
+      "  background:rgba(20,20,20,.92);color:#fff;",
+      "  border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.28);",
+      "  font-size:12px;font-weight:600;line-height:1.35;white-space:pre-line",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-text-tip.is-on{display:block}",
+      "#sr-b2b-quickorder-root .sr-qo-tier-pip.is-on{cursor:help}",
       "@media (max-width:900px){",
       "  #sr-b2b-quickorder-root .sr-qo-topbar{",
       "    grid-template-columns:1fr auto;grid-template-rows:auto auto;padding:8px 12px;gap:8px",
@@ -1893,6 +1903,11 @@
       el("img", { alt: "" }),
     ]);
     var tipImg = tip.querySelector("img");
+    var textTip = el("div", {
+      className: "sr-qo-text-tip",
+      role: "tooltip",
+      "aria-hidden": "true",
+    });
     var toastEl = el("div", {
       className: "sr-qo-toast",
       role: "status",
@@ -1903,16 +1918,58 @@
 
     function hideTip() {
       tip.classList.remove("is-on");
+      textTip.classList.remove("is-on");
+      textTip.setAttribute("aria-hidden", "true");
+    }
+
+    function placeFloatingTip(node, ev, padW, padH) {
+      var cx = ev && typeof ev.clientX === "number" ? ev.clientX : 0;
+      var cy = ev && typeof ev.clientY === "number" ? ev.clientY : 0;
+      if ((!cx && !cy) && ev && ev.currentTarget && ev.currentTarget.getBoundingClientRect) {
+        var r = ev.currentTarget.getBoundingClientRect();
+        cx = r.left + r.width / 2;
+        cy = r.bottom;
+      }
+      var x = Math.min(cx + 14, window.innerWidth - padW);
+      var y = Math.min(cy + 14, window.innerHeight - padH);
+      if (x < 8) x = 8;
+      if (y < 8) y = 8;
+      node.style.left = x + "px";
+      node.style.top = y + "px";
     }
 
     function showTip(url, ev) {
       if (!url || !tipImg) return;
+      textTip.classList.remove("is-on");
       tipImg.src = url;
       tip.classList.add("is-on");
-      var x = Math.min(ev.clientX + 14, window.innerWidth - 180);
-      var y = Math.min(ev.clientY + 14, window.innerHeight - 180);
-      tip.style.left = x + "px";
-      tip.style.top = y + "px";
+      placeFloatingTip(tip, ev, 180, 180);
+    }
+
+    function showTextTip(text, ev) {
+      if (!text) return;
+      tip.classList.remove("is-on");
+      textTip.textContent = text;
+      textTip.classList.add("is-on");
+      textTip.setAttribute("aria-hidden", "false");
+      placeFloatingTip(textTip, ev, 290, 120);
+    }
+
+    function bindTextTip(node, text) {
+      if (!node || !text) return;
+      node.addEventListener("mouseenter", function (ev) {
+        showTextTip(text, ev);
+      });
+      node.addEventListener("mousemove", function (ev) {
+        if (textTip.classList.contains("is-on")) {
+          placeFloatingTip(textTip, ev, 290, 120);
+        }
+      });
+      node.addEventListener("mouseleave", hideTip);
+      node.addEventListener("focus", function (ev) {
+        showTextTip(text, ev);
+      });
+      node.addEventListener("blur", hideTip);
     }
 
     var reviewApplyBtn = null;
@@ -2639,29 +2696,29 @@
         );
       }
       if (tiers.length) {
-        var tip = tiersTooltipText(tiers);
+        var tipText = tiersTooltipText(tiers);
+        var pipOn = el("span", {
+          className: "sr-qo-tier-pip is-on",
+          tabIndex: 0,
+          "aria-label": "Sávos ár: " + tipText.replace(/\n/g, "; "),
+        });
+        bindTextTip(pipOn, tipText);
         return el(
           "td",
           { className: "sr-qo-tier-td", "data-label": "Sáv" },
-          [
-            el("span", {
-              className: "sr-qo-tier-pip is-on",
-              title: tip,
-              "aria-label": "Sávos ár: " + tip.replace(/\n/g, "; "),
-            }),
-          ],
+          [pipOn],
         );
       }
+      var pipOff = el("span", {
+        className: "sr-qo-tier-pip is-off",
+        tabIndex: 0,
+        "aria-label": "Nincs sávos ár",
+      });
+      bindTextTip(pipOff, "Nincs sávos ár");
       return el(
         "td",
         { className: "sr-qo-tier-td", "data-label": "Sáv" },
-        [
-          el("span", {
-            className: "sr-qo-tier-pip is-off",
-            title: "Nincs sávos ár",
-            "aria-label": "Nincs sávos ár",
-          }),
-        ],
+        [pipOff],
       );
     }
 
@@ -6511,6 +6568,7 @@
     root.appendChild(el("div", { className: "sr-qo-backdrop", "aria-hidden": "true" }));
     root.appendChild(shell);
     root.appendChild(tip);
+    root.appendChild(textTip);
     document.addEventListener("keydown", onKeyDown, true);
     setView(activeView);
     renderList();

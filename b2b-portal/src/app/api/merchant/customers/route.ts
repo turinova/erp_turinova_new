@@ -6,6 +6,11 @@ import {
 import { withTenant } from "@/lib/db";
 import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
 import {
+  mapLifetimeSpendByInnerId,
+  searchShopCustomerInnerIds,
+} from "@/lib/merchant/customer-spend";
+import {
+  getCustomerByInnerId,
   listCustomerGroups,
   listRecentCustomers,
   searchCustomers,
@@ -14,6 +19,7 @@ import {
 } from "@/lib/shoprenter/customers";
 
 export type CustomerListFilter = "newcomers" | "partners" | "all";
+export type CustomerListSort = "spent" | "-spent" | null;
 
 type MappedCustomer = {
   id: string;
@@ -27,6 +33,7 @@ type MappedCustomer = {
   groupName: string | null;
   isDefaultGroup: boolean;
   isPartner: boolean;
+  totalSpent: number;
 };
 
 function parseFilter(raw: string): CustomerListFilter {
@@ -35,9 +42,15 @@ function parseFilter(raw: string): CustomerListFilter {
   return "newcomers";
 }
 
+function parseSort(raw: string | null): CustomerListSort {
+  if (raw === "spent" || raw === "-spent") return raw;
+  return null;
+}
+
 function mapCustomer(
   c: SrCustomer,
   defaultIds: Set<number>,
+  totalSpent = 0,
 ): MappedCustomer {
   const isDefaultGroup =
     c.groupInnerId != null && defaultIds.has(c.groupInnerId);
@@ -53,8 +66,8 @@ function mapCustomer(
     groupInnerId: c.groupInnerId,
     groupName: c.groupName,
     isDefaultGroup,
-    /** Partner = nem az alap csoportban */
     isPartner: c.groupInnerId != null && !isDefaultGroup,
+    totalSpent,
   };
 }
 
@@ -71,9 +84,21 @@ function matchesFilter(
   return true;
 }
 
+function sortBySpent(
+  rows: MappedCustomer[],
+  sort: CustomerListSort,
+): MappedCustomer[] {
+  if (!sort) return rows;
+  const asc = sort === "spent";
+  return [...rows].sort((a, b) =>
+    asc ? a.totalSpent - b.totalSpent : b.totalSpent - a.totalSpent,
+  );
+}
+
 /**
  * SR only pages unfiltered customers. For partners/newcomers/group we scan
  * forward until this portal page is full (cap SR pages to avoid 429).
+ * When sorting by spend, collect a larger pool then sort + slice.
  */
 async function listFilteredPage(opts: {
   config: Parameters<typeof listRecentCustomers>[0];
@@ -83,13 +108,17 @@ async function listFilteredPage(opts: {
   groupInnerId: number | null;
   page: number;
   limit: number;
+  sort: CustomerListSort;
 }): Promise<{ customers: MappedCustomer[]; pageCount: number }> {
   const needsScan =
     opts.groupInnerId != null ||
     opts.filter === "newcomers" ||
     opts.filter === "partners";
 
-  if (!needsScan) {
+  const poolCap = opts.sort ? Math.min(500, opts.limit * 20) : null;
+  const need = poolCap ?? opts.page * opts.limit + opts.limit;
+
+  if (!needsScan && !opts.sort) {
     const listed = await listRecentCustomers(opts.config, {
       limit: opts.limit,
       page: opts.page,
@@ -103,11 +132,10 @@ async function listFilteredPage(opts: {
     };
   }
 
-  const need = opts.page * opts.limit + opts.limit;
   const collected: MappedCustomer[] = [];
   let srPage = 0;
   let srPageCount = 1;
-  const maxSrPages = 20;
+  const maxSrPages = opts.sort ? 20 : 20;
   const srLimit = 50;
 
   while (
@@ -123,12 +151,18 @@ async function listFilteredPage(opts: {
     srPageCount = Math.max(1, listed.pageCount);
     for (const row of listed.customers) {
       const mapped = mapCustomer(row, opts.defaultIds);
-      if (matchesFilter(mapped, opts.filter, opts.groupInnerId)) {
+      if (!needsScan || matchesFilter(mapped, opts.filter, opts.groupInnerId)) {
         collected.push(mapped);
+        if (collected.length >= need) break;
       }
     }
     srPage += 1;
     if (listed.customers.length === 0) break;
+  }
+
+  if (opts.sort) {
+    // Spend attached later in route; return pool for enrich+sort+slice
+    return { customers: collected, pageCount: 1 };
   }
 
   const start = opts.page * opts.limit;
@@ -138,11 +172,29 @@ async function listFilteredPage(opts: {
   if (exhausted) {
     pageCount = Math.max(1, Math.ceil(collected.length / opts.limit) || 1);
   } else {
-    // More SR pages exist → at least one more portal page after current fill
-    pageCount = Math.max(opts.page + 2, Math.ceil(collected.length / opts.limit));
+    pageCount = Math.max(
+      opts.page + 2,
+      Math.ceil(collected.length / opts.limit),
+    );
   }
 
   return { customers: slice, pageCount };
+}
+
+async function enrichSpent(
+  client: Parameters<typeof mapLifetimeSpendByInnerId>[0],
+  shopId: string,
+  rows: MappedCustomer[],
+): Promise<MappedCustomer[]> {
+  const spend = await mapLifetimeSpendByInnerId(
+    client,
+    shopId,
+    rows.map((r) => r.innerId),
+  );
+  return rows.map((r) => ({
+    ...r,
+    totalSpent: spend.get(r.innerId) ?? 0,
+  }));
 }
 
 export async function GET(req: Request) {
@@ -152,6 +204,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") || "").trim();
   const filter = parseFilter(url.searchParams.get("filter") || "newcomers");
+  const sort = parseSort(url.searchParams.get("sort"));
   const groupInnerRaw = url.searchParams.get("groupInnerId");
   const groupInnerId =
     groupInnerRaw != null && groupInnerRaw !== ""
@@ -183,23 +236,44 @@ export async function GET(req: Request) {
 
         if (q) {
           const found = await searchCustomers(loaded.config, q, {
-            limit: Math.min(50, limit),
+            limit: Math.min(50, Math.max(limit, 25)),
             groups: srGroups,
           });
-          // Search ignores tab filter — merchant looks up by name/email across all.
-          let mapped = found.map((c) => mapCustomer(c, defaultIds));
+          const byId = new Map<number, SrCustomer>();
+          for (const c of found) byId.set(c.innerId, c);
+
+          const localIds = await searchShopCustomerInnerIds(
+            client,
+            loaded.shopId,
+            q,
+            50,
+          );
+          for (const innerId of localIds) {
+            if (byId.has(innerId)) continue;
+            const row = await getCustomerByInnerId(loaded.config, innerId, {
+              groups: srGroups,
+            });
+            if (row) byId.set(row.innerId, row);
+          }
+
+          let mapped = [...byId.values()].map((c) =>
+            mapCustomer(c, defaultIds),
+          );
           if (Number.isFinite(groupInnerId) && groupInnerId != null) {
             mapped = mapped.filter((c) => c.groupInnerId === groupInnerId);
           }
+          mapped = await enrichSpent(client, loaded.shopId, mapped);
+          mapped = sortBySpent(mapped, sort);
           return {
             shopId: loaded.shopId,
             defaultGroupIds: [...defaultIds],
             filter,
+            sort,
             groupInnerId: Number.isFinite(groupInnerId) ? groupInnerId : null,
             page: 0,
             pageCount: 1,
             limit,
-            customers: mapped,
+            customers: mapped.slice(0, Math.min(50, limit)),
           };
         }
 
@@ -211,17 +285,33 @@ export async function GET(req: Request) {
           groupInnerId: Number.isFinite(groupInnerId) ? groupInnerId : null,
           page,
           limit,
+          sort,
         });
+
+        let customers = await enrichSpent(
+          client,
+          loaded.shopId,
+          listed.customers,
+        );
+        let pageCount = listed.pageCount;
+
+        if (sort) {
+          customers = sortBySpent(customers, sort);
+          pageCount = Math.max(1, Math.ceil(customers.length / limit) || 1);
+          const start = page * limit;
+          customers = customers.slice(start, start + limit);
+        }
 
         return {
           shopId: loaded.shopId,
           defaultGroupIds: [...defaultIds],
           filter,
+          sort,
           groupInnerId: Number.isFinite(groupInnerId) ? groupInnerId : null,
           page,
-          pageCount: listed.pageCount,
+          pageCount,
           limit,
-          customers: listed.customers,
+          customers,
         };
       },
     );

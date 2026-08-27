@@ -7,6 +7,7 @@ import {
   WHITE_LABEL_PRICE_HUF,
   annualPriceHuf,
   formatHuf,
+  formatPlanPrice,
   hasWhiteLabel,
   upgradeMailto,
   type PlanId,
@@ -77,19 +78,23 @@ export function PlanCards({
 
         <p className="mt-5 text-[28px] font-semibold leading-none tracking-tight tabular-nums">
           {formatHuf(price)}
-          <span className="ml-1 text-[13px] font-medium text-faint">{period}</span>
+          <span className="ml-1 text-[13px] font-medium text-faint">
+            {period} · bruttó
+          </span>
         </p>
         {!wantMarkOff ? (
           <p className="mt-2 text-[13px] text-faint">
-            Alapár {formatHuf(BASE_PRICE_HUF)} / hó
-            {annual ? ` · évesen ${formatHuf(annualPriceHuf("start"))}` : ""}
+            Turinova felirattal · {formatPlanPrice(BASE_PRICE_HUF)} / hó
+            {annual
+              ? ` · évesen ${formatPlanPrice(annualPriceHuf("start"))}`
+              : ""}
           </p>
         ) : (
           <p className="mt-2 text-[13px] text-faint">
-            {formatHuf(BASE_PRICE_HUF)} + {formatHuf(MARK_ADDON_HUF)} felirat
-            eltávolítás
+            Saját márka · {formatPlanPrice(WHITE_LABEL_PRICE_HUF)} / hó (
+            {formatPlanPrice(BASE_PRICE_HUF)} + {formatPlanPrice(MARK_ADDON_HUF)})
             {annual
-              ? ` · évesen ${formatHuf(annualPriceHuf("plus"))}`
+              ? ` · évesen ${formatPlanPrice(annualPriceHuf("plus"))}`
               : ""}
           </p>
         )}
@@ -104,11 +109,13 @@ export function PlanCards({
           />
           <span className="text-[13px] leading-relaxed">
             <span className="font-semibold">
-              Turinova felirat eltávolítása (+{formatHuf(MARK_ADDON_HUF)} / hó)
+              Saját márka — Turinova felirat nélkül (
+              {formatPlanPrice(WHITE_LABEL_PRICE_HUF)} / hó)
             </span>
             <span className="mt-0.5 block text-[12px] text-faint">
-              A widget panelén nem jelenik meg a Turinova felirat, csak a te
-              márkád. Próba alatt a felirat mindig látszik.
+              A widget panelén nem jelenik meg a Turinova logó. A Widget
+              beállításokban kapcsold ki a feliratot, miután bekapcsoltuk a
+              csomagot. Próba alatt a felirat mindig látszik.
             </span>
           </span>
         </label>

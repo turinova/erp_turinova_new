@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { BASE_PRICE_HUF, PLAN_IDS, RECOMMENDED_PLAN, TRIAL_DAYS_DEFAULT, WHITE_LABEL_PRICE_HUF, formatHuf, type PlanId } from "@/lib/billing/plans";
+import { BASE_PRICE_HUF, PLAN_IDS, RECOMMENDED_PLAN, TRIAL_DAYS_DEFAULT, WHITE_LABEL_PRICE_HUF, formatPlanPrice, type PlanId } from "@/lib/billing/plans";
 import { PlanPriceTable } from "@/components/billing/PlanPriceTable";
 import { ensureSlug } from "@/lib/orgs/slug";
 
@@ -120,8 +120,8 @@ export function CreateOrgDrawer({ open, onClose, onCreated }: Props) {
         >
           <p className="text-[13px] text-faint">
             {TRIAL_DAYS_DEFAULT} nap próba (teljes termék, Turinova felirat
-            látszik). Utána: Alap {formatHuf(BASE_PRICE_HUF)}, vagy Felirat nélkül{" "}
-            {formatHuf(WHITE_LABEL_PRICE_HUF)}.
+            látszik). Utána: Alap {formatPlanPrice(BASE_PRICE_HUF)}, vagy Felirat nélkül{" "}
+            {formatPlanPrice(WHITE_LABEL_PRICE_HUF)}.
           </p>
 
           <Field label="Szervezet neve">
@@ -178,8 +178,8 @@ export function CreateOrgDrawer({ open, onClose, onCreated }: Props) {
                 {PLAN_IDS.map((id) => (
                   <option key={id} value={id}>
                     {id === "start"
-                      ? `Alap · ${formatHuf(BASE_PRICE_HUF)}`
-                      : `Felirat nélkül · ${formatHuf(WHITE_LABEL_PRICE_HUF)}`}
+                      ? `Alap · ${formatPlanPrice(BASE_PRICE_HUF)}`
+                      : `Felirat nélkül · ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)}`}
                     {id === RECOMMENDED_PLAN ? " (ajánlott)" : ""}
                     {id === "pro" ? " (pro)" : ""}
                   </option>

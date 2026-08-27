@@ -8,7 +8,7 @@ import { OrgMembersPanel } from "@/components/platform/OrgMembersPanel";
 import {
   BASE_PRICE_HUF,
   WHITE_LABEL_PRICE_HUF,
-  formatHuf,
+  formatPlanPrice,
   hasWhiteLabel,
   type PlanId,
 } from "@/lib/billing/plans";
@@ -34,12 +34,12 @@ function statusLine(detail: OrgDetail): string {
 
 function packageLine(plan: PlanId, isTrial: boolean): string {
   if (isTrial) {
-    return `Próba. Turinova felirat látszik · utána ${formatHuf(BASE_PRICE_HUF)} / hó`;
+    return `Próba. Turinova felirat látszik · utána ${formatPlanPrice(BASE_PRICE_HUF)} / hó`;
   }
   if (hasWhiteLabel(plan)) {
-    return `Felirat nélkül: ${formatHuf(WHITE_LABEL_PRICE_HUF)} / hó`;
+    return `Felirat nélkül: ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)} / hó`;
   }
-  return `Alap: ${formatHuf(BASE_PRICE_HUF)} / hó (Turinova felirat látszik)`;
+  return `Alap: ${formatPlanPrice(BASE_PRICE_HUF)} / hó (Turinova felirat látszik)`;
 }
 
 export function OrgDetailView({ initial }: { initial: OrgDetail }) {
@@ -237,12 +237,12 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
             onClick={() =>
               void patch(
                 { plan: "start", activate: true },
-                `Aktiválva: Alap ${formatHuf(BASE_PRICE_HUF)}`,
+                `Aktiválva: Alap ${formatPlanPrice(BASE_PRICE_HUF)}`,
               )
             }
             className="tn-btn tn-btn-ghost"
           >
-            Alap {formatHuf(BASE_PRICE_HUF)}
+            Alap {formatPlanPrice(BASE_PRICE_HUF)}
             {onBase ? " · most" : ""}
           </button>
           <button
@@ -251,12 +251,12 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
             onClick={() =>
               void patch(
                 { plan: "plus", activate: true },
-                `Aktiválva: Felirat nélkül ${formatHuf(WHITE_LABEL_PRICE_HUF)}`,
+                `Aktiválva: Felirat nélkül ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)}`,
               )
             }
             className="tn-btn tn-btn-ghost"
           >
-            Felirat nélkül {formatHuf(WHITE_LABEL_PRICE_HUF)}
+            Felirat nélkül {formatPlanPrice(WHITE_LABEL_PRICE_HUF)}
             {onWhiteLabel ? " · most" : ""}
           </button>
           <button

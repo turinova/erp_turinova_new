@@ -18,7 +18,7 @@ import {
 } from "@/lib/widget/presets";
 
 /** Bump together with injected CSS id in public/widget.js (sr-b2b-qo-panel-css-vN). */
-export const WIDGET_JS_ASSET = "50";
+export const WIDGET_JS_ASSET = "51";
 
 export function widgetCacheBust(opts: {
   settingsUpdatedAt: string | null;
@@ -196,10 +196,27 @@ export async function updateMerchantWidget(
       : row.button_label ?? "Gyors rendelés";
   // Always empty = everyone sees the button (widget.js)
   const nextGroups: number[] = [];
-  const nextSettings =
+  let nextSettings =
     input.settings !== undefined
       ? normalizeWidgetSettings(input.settings)
       : normalizeWidgetSettings(row.settings ?? {});
+
+  const brandingGate = orgWidgetBranding({
+    org_plan: row.org_plan,
+    org_status: row.org_status,
+    trial_ends_at: row.trial_ends_at,
+    hideRequested: nextSettings.features.hideTurinovaMark,
+  });
+  // Paid white-label only — trial / start cannot hide the mark.
+  if (!brandingGate.canHideTurinovaMark) {
+    nextSettings = {
+      ...nextSettings,
+      features: {
+        ...nextSettings.features,
+        hideTurinovaMark: false,
+      },
+    };
+  }
 
   await query(
     client,

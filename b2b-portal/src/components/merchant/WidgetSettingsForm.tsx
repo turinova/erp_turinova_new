@@ -477,14 +477,14 @@ window.SR_B2B_QUICKORDER = {
                       />
                       <span>
                         <span className="font-semibold">
-                          Turinova felirat a panel alján
+                          Turinova logó a panel alján
                         </span>
                         <span className="mt-0.5 block text-[11px] text-faint">
                           {initial.canHideTurinovaMark
-                            ? "Kapcsold ki, ha csak a te márkád legyen látható."
+                            ? "Kapcsold ki, ha a Turinova logó ne jelenjen meg (saját márka csomag)."
                             : initial.isTrial
-                              ? "Próba alatt a felirat ott marad. Fizetés után a saját márka opcióval leveheted."
-                              : "A saját márka opcióval (előfizetés) elrejtheted."}{" "}
+                              ? "Próba alatt a logó ott marad. Fizetés után a saját márka (9999 Ft bruttó) opcióval leveheted."
+                              : "A saját márka előfizetéssel (Előfizetésem) elrejtheted."}{" "}
                           {!initial.canHideTurinovaMark ? (
                             <a
                               href="/csomag"

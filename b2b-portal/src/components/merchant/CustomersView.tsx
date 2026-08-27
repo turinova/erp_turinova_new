@@ -34,7 +34,23 @@ type CustomerRow = {
   groupName: string | null;
   isDefaultGroup?: boolean;
   isPartner?: boolean;
+  totalSpent?: number;
 };
+
+type SpendSort = "spent" | "-spent" | "";
+
+function formatSpent(n: number | undefined): string {
+  const v = Math.round(Number(n) || 0);
+  try {
+    return new Intl.NumberFormat("hu-HU", {
+      style: "currency",
+      currency: "HUF",
+      maximumFractionDigits: 0,
+    }).format(v);
+  } catch {
+    return `${v} Ft`;
+  }
+}
 
 const FILTERS: { id: ListFilter; label: string; hint: string }[] = [
   {
@@ -56,6 +72,7 @@ export function CustomersView() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<ListFilter>("newcomers");
   const [groupFilterId, setGroupFilterId] = useState<number | "">("");
+  const [spendSort, setSpendSort] = useState<SpendSort>("");
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
@@ -116,6 +133,7 @@ export function CustomersView() {
       filter: ListFilter;
       page: number;
       groupInnerId: number | "";
+      spendSort: SpendSort;
     }) => {
       const params = new URLSearchParams();
       if (opts.query.trim()) {
@@ -128,6 +146,7 @@ export function CustomersView() {
           params.set("groupInnerId", String(opts.groupInnerId));
         }
       }
+      if (opts.spendSort) params.set("sort", opts.spendSort);
       const res = await fetch(`/api/merchant/customers?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Vevők betöltése sikertelen");
@@ -147,13 +166,14 @@ export function CustomersView() {
         filter,
         page,
         groupInnerId: groupFilterId,
+        spendSort,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Hiba");
     } finally {
       setLoading(false);
     }
-  }, [loadGroups, loadCustomers, q, filter, page, groupFilterId]);
+  }, [loadGroups, loadCustomers, q, filter, page, groupFilterId, spendSort]);
 
   useEffect(() => {
     setLoading(true);
@@ -176,6 +196,7 @@ export function CustomersView() {
         filter,
         page,
         groupInnerId: groupFilterId,
+        spendSort,
       })
         .then(() => setSelected(new Set()))
         .catch((e) =>
@@ -186,7 +207,16 @@ export function CustomersView() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [q, filter, page, groupFilterId, loadCustomers]);
+  }, [q, filter, page, groupFilterId, spendSort, loadCustomers]);
+
+  function cycleSpendSort() {
+    setSpendSort((prev) => {
+      if (prev === "") return "-spent";
+      if (prev === "-spent") return "spent";
+      return "";
+    });
+    setPage(0);
+  }
 
   const unlocked = list.filter(
     (c) => !isPartnerLocked(c.isPartner, c.innerId, gate),
@@ -240,6 +270,7 @@ export function CustomersView() {
         filter,
         page,
         groupInnerId: groupFilterId,
+        spendSort,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Átrakás sikertelen");
@@ -380,6 +411,7 @@ export function CustomersView() {
         filter,
         page,
         groupInnerId: groupFilterId,
+        spendSort,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import sikertelen");
@@ -389,7 +421,7 @@ export function CustomersView() {
   }
 
   const emptyCopy = q.trim()
-    ? "Nincs ilyen nevű vagy emailű vevő."
+    ? "Nincs találat a keresésre (név / email / ID)."
     : groupFilterId !== ""
       ? "Ebben a csoportban nincs vevő ezen az oldalon."
       : filter === "newcomers"
@@ -482,7 +514,7 @@ export function CustomersView() {
                 setQ(e.target.value);
                 setPage(0);
               }}
-              placeholder="Keresés: név vagy email…"
+              placeholder="Keresés: név, email vagy ID…"
               className="h-8 min-w-[180px] flex-1 rounded-none border-[1.5px] border-line-strong bg-surface px-3 text-[13px] text-text outline-none placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent/15"
             />
 
@@ -621,6 +653,23 @@ export function CustomersView() {
               </th>
               <th className="px-2 py-2.5 font-semibold">Név</th>
               <th className="px-3 py-2.5 font-semibold">Email</th>
+              <th className="px-3 py-2.5 text-right font-semibold">
+                <button
+                  type="button"
+                  onClick={cycleSpendSort}
+                  title="Rendezés összes költés szerint"
+                  className="inline-flex cursor-pointer items-center gap-1 uppercase tracking-wide hover:text-text"
+                >
+                  Költés
+                  <span className="text-[10px] font-bold normal-case tracking-normal text-faint">
+                    {spendSort === "-spent"
+                      ? "↓"
+                      : spendSort === "spent"
+                        ? "↑"
+                        : "↕"}
+                  </span>
+                </button>
+              </th>
               <th className="px-4 py-2.5 font-semibold md:px-6">Csoport</th>
             </tr>
           </thead>
@@ -694,6 +743,13 @@ export function CustomersView() {
                       <span className="blur-[5px] select-none">{c.email}</span>
                     ) : (
                       c.email
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right text-[12px] font-semibold tabular-nums text-text">
+                    {locked ? (
+                      <span className="blur-[5px] select-none">—</span>
+                    ) : (
+                      formatSpent(c.totalSpent)
                     )}
                   </td>
                   <td className="px-4 py-2.5 md:px-6">

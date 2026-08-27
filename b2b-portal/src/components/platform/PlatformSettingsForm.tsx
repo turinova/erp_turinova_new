@@ -114,8 +114,8 @@ export function PlatformSettingsForm() {
         <h2 className="tn-section-title">Új szervezet</h2>
         <p className="tn-section-sub">
           Alapértelmezett próbaidő új tenantoknak (nap). A merchant oldalon teljes
-          termék jár; a Turinova felirat próba alatt látszik. Futtasd a sql/018-at
-          (és 028-at v5 árakhoz), ha a mentés nem marad meg.
+          termék jár; a Turinova felirat próba alatt látszik. Árak bruttó: sql/031
+          (v6: 7500 / 9999), ha a mentés nem marad meg.
         </p>
         <label className="tn-field mt-4 max-w-xs">
           <span className="tn-label">Próba napok</span>
@@ -130,9 +130,10 @@ export function PlatformSettingsForm() {
       <section className="tn-section">
         <h2 className="tn-section-title">Csomagok</h2>
         <p className="tn-section-sub">
-          Merchant pitch: egy termék (Gyors rendelés) + opcionális saját márka.
-          Itt a soft limitek és listárak. Start = alapár; plus / pro = fehér címke
-          (ugyanaz az ár). Vevő / termékhely = infra cap, nem a fő eladási üzenet.
+          Merchant pitch: Gyors rendelés {PLAN_DEFAULTS.start.listPriceHuf} Ft
+          bruttó / hó, saját márka {PLAN_DEFAULTS.plus.listPriceHuf} Ft bruttó /
+          hó. Start = alapár; plus / pro = fehér címke. Vevő / termékhely = infra
+          cap.
         </p>
         <div className="mt-4 overflow-x-auto border border-line-strong">
           <table className="w-full min-w-[520px] text-left text-[13px]">
@@ -148,7 +149,7 @@ export function PlatformSettingsForm() {
                   Termékhely
                 </th>
                 <th className="px-3 py-2 text-[11px] font-semibold uppercase text-faint">
-                  Ár (Ft)
+                  Ár (Ft bruttó)
                 </th>
               </tr>
             </thead>

@@ -1,7 +1,7 @@
 import type { PartnerGateDto } from "@/lib/billing/types";
 import {
   PLAN_DEFAULTS,
-  formatHuf,
+  formatPlanPrice,
   upgradeMailto,
   type PlanId,
 } from "@/lib/billing/plans";
@@ -105,7 +105,7 @@ export function UpgradeBanner({
         is befutnak.
       </p>
       <a href={href} className="tn-btn tn-btn-primary mt-3 inline-flex">
-        Saját márka: {formatHuf(PLAN_DEFAULTS.plus.listPriceHuf)} / hó
+        Saját márka: {formatPlanPrice(PLAN_DEFAULTS.plus.listPriceHuf)} / hó
       </a>
     </div>
   );

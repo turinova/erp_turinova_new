@@ -2,7 +2,7 @@ import {
   BASE_PRICE_HUF,
   MARK_ADDON_HUF,
   WHITE_LABEL_PRICE_HUF,
-  formatHuf,
+  formatPlanPrice,
 } from "@/lib/billing/plans";
 
 export function PlanPriceTable({
@@ -17,23 +17,25 @@ export function PlanPriceTable({
         <thead>
           <tr className="border-b border-line bg-surface-2 text-[10px] font-semibold uppercase tracking-wide text-faint">
             <th className="px-3 py-2">Tétel</th>
-            <th className="px-3 py-2 text-right">Havi</th>
+            <th className="px-3 py-2 text-right">Havi bruttó</th>
           </tr>
         </thead>
         <tbody>
           <tr className="border-b border-line bg-surface-2">
             <td className="px-3 py-2 font-semibold">Gyors rendelés</td>
             <td className="px-3 py-2 text-right tabular-nums">
-              {formatHuf(BASE_PRICE_HUF)}
+              {formatPlanPrice(BASE_PRICE_HUF)}
             </td>
           </tr>
           <tr className="border-b border-line last:border-0">
             <td className="px-3 py-2">
-              Turinova felirat eltávolítása{" "}
-              <span className="text-faint">(opcionális)</span>
+              Saját márka (felirat nélkül){" "}
+              <span className="text-faint">
+                (+{formatPlanPrice(MARK_ADDON_HUF)})
+              </span>
             </td>
             <td className="px-3 py-2 text-right tabular-nums">
-              +{formatHuf(MARK_ADDON_HUF)}
+              {formatPlanPrice(WHITE_LABEL_PRICE_HUF)}
             </td>
           </tr>
           <tr className="last:border-0">
@@ -41,7 +43,7 @@ export function PlanPriceTable({
               Összesen saját márkával
             </td>
             <td className="px-3 py-2 text-right tabular-nums font-semibold">
-              {formatHuf(WHITE_LABEL_PRICE_HUF)}
+              {formatPlanPrice(WHITE_LABEL_PRICE_HUF)}
             </td>
           </tr>
         </tbody>

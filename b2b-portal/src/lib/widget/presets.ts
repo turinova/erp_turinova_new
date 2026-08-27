@@ -693,7 +693,8 @@ export function resolvePublicWidgetConfig(input: {
     modules: normalized.features.modules,
     showLabel: size.showLabel,
     compact: size.compact,
-    showTurinovaMark: true,
+    // Overridden by loadPublicWidgetConfig from org plan + settings.
+    showTurinovaMark: !normalized.features.hideTurinovaMark,
     showCustomerGroupName: normalized.features.showCustomerGroupName,
     showNextLevelProgress: normalized.features.showNextLevelProgress,
   };
