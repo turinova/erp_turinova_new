@@ -30,6 +30,7 @@
       showTurinovaMark: true,
       showCustomerGroupName: false,
       showNextLevelProgress: false,
+      freeShipping: null,
       modules: null,
       showLabel: true,
       compact: false,
@@ -102,6 +103,23 @@
         }
         if (typeof c.showNextLevelProgress === "boolean") {
           cfg.showNextLevelProgress = c.showNextLevelProgress;
+        }
+        if (c.freeShipping && typeof c.freeShipping === "object") {
+          cfg.freeShipping =
+            c.freeShipping.enabled === true &&
+            typeof c.freeShipping.thresholdGross === "number" &&
+            c.freeShipping.thresholdGross > 0
+              ? {
+                  enabled: true,
+                  thresholdGross: Math.round(c.freeShipping.thresholdGross),
+                  thresholdLabel:
+                    typeof c.freeShipping.thresholdLabel === "string"
+                      ? c.freeShipping.thresholdLabel
+                      : null,
+                }
+              : null;
+        } else {
+          cfg.freeShipping = null;
         }
         if (c.enabled === false) {
           cfg.enabled = false;
@@ -551,15 +569,35 @@
       "sr-b2b-qo-panel-css-v48",
       "sr-b2b-qo-panel-css-v49",
       "sr-b2b-qo-panel-css-v50",
+      "sr-b2b-qo-panel-css-v51",
+      "sr-b2b-qo-panel-css-v52",
+      "sr-b2b-qo-panel-css-v53",
+      "sr-b2b-qo-panel-css-v54",
+      "sr-b2b-qo-panel-css-v55",
+      "sr-b2b-qo-panel-css-v56",
+      "sr-b2b-qo-panel-css-v57",
+      "sr-b2b-qo-panel-css-v58",
+      "sr-b2b-qo-panel-css-v59",
+      "sr-b2b-qo-panel-css-v60",
+      "sr-b2b-qo-panel-css-v61",
     ].forEach(function (id) {
       var n = document.getElementById(id);
       if (n) n.remove();
     });
-    if (document.getElementById("sr-b2b-qo-panel-css-v51")) return;
+    if (document.getElementById("sr-b2b-qo-panel-css-v62")) return;
     var style = document.createElement("style");
-    style.id = "sr-b2b-qo-panel-css-v51";
+    style.id = "sr-b2b-qo-panel-css-v62";
     style.textContent = [
       "#sr-b2b-quickorder-root{",
+      "  --sr-qo-tier-now:var(--sr-qo-accent);",
+      "  --sr-qo-tier-cyan:#22D3EE;",
+      "  --sr-qo-tier-mint:#34D399;",
+      "  --sr-qo-tier-gap:#06B6D4;",
+      "  --sr-qo-tier-next:#10B981;",
+      "  --sr-qo-tier-hot:#FF6B4A;",
+      "  --sr-qo-tier-hot-2:#FBBF24;",
+      "  --sr-qo-tier-gold:#FDE68A;",
+      "  --sr-qo-tier-done:#4ADE80;",
       "  --sr-qo-bg:#FFFFFF;--sr-qo-surface:#FFFFFF;--sr-qo-surface-2:#F2F2F2;",
       "  --sr-qo-text:#000000;--sr-qo-muted:#1C1C1E;--sr-qo-faint:#3A3A3C;",
       "  --sr-qo-line:rgba(0,0,0,.45);--sr-qo-line-strong:rgba(0,0,0,.75);",
@@ -902,39 +940,49 @@
       "  background:rgba(47,111,78,.1);border-color:rgba(47,111,78,.28)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-lists{",
-      "  flex:1;min-height:0;overflow:auto;padding:24px 20px;",
-      "  background:radial-gradient(900px 420px at 90% 0%,var(--sr-qo-accent-soft),transparent 50%),var(--sr-qo-bg)",
+      "  flex:1;min-height:0;display:flex;flex-direction:column;background:var(--sr-qo-bg)",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-lists-head{max-width:520px;margin:0 auto 18px;text-align:center}",
-      "#sr-b2b-quickorder-root .sr-qo-lists-head h3{",
-      "  margin:0;font-size:24px;font-weight:650;letter-spacing:-.03em",
+      "#sr-b2b-quickorder-root .sr-qo-lists-name-form{",
+      "  display:none;gap:8px;align-items:center;flex-wrap:wrap;",
+      "  padding:8px 12px;border-bottom:0.5px solid var(--sr-qo-line);background:var(--sr-qo-surface-2)",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-lists-head p{",
-      "  margin:8px 0 0;font-size:14px;color:var(--sr-qo-muted);line-height:1.45",
+      "#sr-b2b-quickorder-root .sr-qo-lists-name-form.is-on{display:flex}",
+      "#sr-b2b-quickorder-root .sr-qo-lists-name-form input{",
+      "  flex:1;min-width:140px;height:32px;padding:0 10px;border:1.5px solid var(--sr-qo-line-strong);",
+      "  background:var(--sr-qo-surface);font-size:13px;font-weight:550",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-lists-empty{",
-      "  max-width:520px;margin:0 auto;text-align:center;",
-      "  padding:28px 20px;border-radius:16px;",
-      "  background:var(--sr-qo-surface);border:0.5px solid var(--sr-qo-line)",
+      "#sr-b2b-quickorder-root .sr-qo-lists-name-form p{",
+      "  margin:0;flex:1 1 100%;font-size:12px;color:var(--sr-qo-muted)",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-lists-empty-note{",
-      "  margin:0 0 16px;font-size:13px;color:var(--sr-qo-faint);line-height:1.45",
+      "#sr-b2b-quickorder-root .sr-qo-lists-addrow{",
+      "  display:flex;gap:8px;align-items:center;flex-wrap:nowrap;padding:10px 16px;",
+      "  border-top:0.5px solid var(--sr-qo-line);background:var(--sr-qo-surface);flex-shrink:0;",
+      "  position:relative;z-index:30",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-lists-empty .sr-qo-home-actions{justify-content:center}",
-      "#sr-b2b-quickorder-root .sr-qo-lists-grid{",
-      "  max-width:720px;margin:0 auto;display:none;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr))",
+      "#sr-b2b-quickorder-root .sr-qo-lists-addrow .sr-qo-sku-wrap{",
+      "  flex:1;min-width:140px;position:relative",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-list-card{",
-      "  position:relative;border-radius:16px;padding:16px;min-height:170px;",
-      "  background:var(--sr-qo-surface);border:0.5px solid var(--sr-qo-line);",
-      "  display:flex;flex-direction:column;gap:8px",
+      "#sr-b2b-quickorder-root .sr-qo-lists-addrow .sr-qo-input{",
+      "  height:32px;padding:0 10px;border:1.5px solid var(--sr-qo-line-strong);",
+      "  border-radius:0;background:var(--sr-qo-surface);font-size:13px",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-list-card .soon{",
-      "  align-self:flex-start;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;",
-      "  padding:3px 8px;border-radius:999px;background:var(--sr-qo-accent-soft);color:var(--sr-qo-accent)",
+      "#sr-b2b-quickorder-root .sr-qo-lists-addrow .sr-qo-qty-toolbar{width:72px;flex-shrink:0}",
+      "#sr-b2b-quickorder-root .sr-qo-lists-addrow .sr-qo-suggest{",
+      "  top:auto;bottom:calc(100% + 4px);max-height:min(280px,42vh);",
+      "  box-shadow:0 -10px 28px rgba(26,25,23,.14)",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-list-card strong{font-size:15px;letter-spacing:-.02em}",
-      "#sr-b2b-quickorder-root .sr-qo-list-card span{font-size:12.5px;color:var(--sr-qo-muted);line-height:1.4;flex:1}",
+      "#sr-b2b-quickorder-root .sr-qo-lists .sr-qo-orders-table td.actions{",
+      "  width:1%;white-space:nowrap;text-align:right",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-lists .sr-qo-orders-table input.sr-qo-qty-input{",
+      "  width:64px;height:28px;text-align:center;border:1px solid var(--sr-qo-line-strong);",
+      "  background:var(--sr-qo-surface);font-size:13px;font-variant-numeric:tabular-nums",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-lists .sr-qo-orders-table tbody tr.is-clickable{cursor:pointer}",
+      "#sr-b2b-quickorder-root .sr-qo-lists-detail-name{",
+      "  flex:1;min-width:120px;height:32px;padding:0 10px;border:1.5px solid var(--sr-qo-line-strong);",
+      "  background:var(--sr-qo-surface);font-size:14px;font-weight:600",
+      "}",
       "#sr-b2b-quickorder-root .sr-qo-qty-suggest{",
       "  display:flex;flex-wrap:wrap;gap:4px;margin-top:4px",
       "}",
@@ -944,7 +992,6 @@
       "}",
       "@media (max-width:900px){",
       "  #sr-b2b-quickorder-root .sr-qo-home-grid{max-width:none}",
-      "  #sr-b2b-quickorder-root .sr-qo-lists-grid{grid-template-columns:1fr}",
       "}",
 
 
@@ -992,11 +1039,34 @@
       "}",
       "#sr-b2b-quickorder-root .sr-qo-toolbar-hint{display:none}",
       "#sr-b2b-quickorder-root .sr-qo-list-filters{",
-      "  display:none;align-items:center;gap:6px;flex-wrap:wrap;",
+      "  display:none;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;",
       "  padding:6px 16px;border-bottom:0.5px solid var(--sr-qo-line);",
       "  background:var(--sr-qo-surface);flex-shrink:0",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-list-filters.is-on{display:flex}",
+      "#sr-b2b-quickorder-root .sr-qo-list-filters-left{",
+      "  display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-price-mode{",
+      "  display:inline-flex;align-items:stretch;flex-shrink:0;margin-left:auto;",
+      "  border:0.5px solid var(--sr-qo-line-strong);border-radius:8px;overflow:hidden;",
+      "  background:var(--sr-qo-surface-2)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-price-mode-btn{",
+      "  appearance:none;border:0;background:transparent;margin:0;",
+      "  height:26px;padding:0 11px;font-size:12px;font-weight:550;",
+      "  color:var(--sr-qo-muted);cursor:pointer;line-height:1",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-price-mode-btn + .sr-qo-price-mode-btn{",
+      "  border-left:0.5px solid var(--sr-qo-line-strong)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-price-mode-btn.is-on{",
+      "  background:var(--sr-qo-accent-soft);color:var(--sr-qo-accent);font-weight:650",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-price-mode-btn:focus{outline:none}",
+      "#sr-b2b-quickorder-root .sr-qo-price-mode-btn:focus-visible{",
+      "  box-shadow:inset 0 0 0 2px var(--sr-qo-accent)",
+      "}",
       "#sr-b2b-quickorder-root .sr-qo-filter-chip{",
       "  appearance:none;border:0.5px solid var(--sr-qo-line-strong);background:var(--sr-qo-surface-2);",
       "  height:26px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:550;",
@@ -1246,7 +1316,7 @@
       "}",
       "#sr-b2b-quickorder-root .sr-qo-footer-main{",
       "  display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;",
-      "  min-height:96px;padding:12px 16px",
+      "  min-height:52px;padding:10px 16px",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-footer-msg{",
       "  flex:1;min-width:120px;font-size:12px;color:var(--sr-qo-muted)",
@@ -1254,98 +1324,135 @@
       "#sr-b2b-quickorder-root .sr-qo-footer-msg.err{color:var(--sr-qo-danger);font-weight:600}",
       "#sr-b2b-quickorder-root .sr-qo-footer-msg[hidden]{display:none!important}",
       "#sr-b2b-quickorder-root .sr-qo-footer-actions{display:flex;gap:8px;align-items:center;flex-shrink:0;align-self:center}",
+      "@keyframes sr-qo-fomo-sheen{",
+      "  0%{transform:translateX(-120%)}",
+      "  100%{transform:translateX(220%)}",
+      "}",
+      "@keyframes sr-qo-fomo-glow{",
+      "  0%,100%{filter:brightness(1)}",
+      "  50%{filter:brightness(1.08)}",
+      "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-progress{",
-      "  flex:1;min-width:min(100%,280px);max-width:520px;display:flex;flex-direction:column;gap:6px",
+      "  flex:1;min-width:0;max-width:640px;display:flex;flex-wrap:wrap;align-items:center;",
+      "  gap:8px 10px;max-height:56px",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-progress[hidden]{display:none!important}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-top{",
-      "  display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0",
-      "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-chip{",
-      "  display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:6px;",
-      "  font-size:11.5px;font-weight:750;letter-spacing:-.01em;white-space:nowrap;",
-      "  background:var(--sr-qo-surface-2);border:1px solid var(--sr-qo-line-strong);color:var(--sr-qo-text)",
+      "  display:inline-flex;align-items:center;justify-content:center;",
+      "  height:30px;padding:0 11px;border-radius:999px;",
+      "  font-size:12.5px;font-weight:750;letter-spacing:-.02em;line-height:1;",
+      "  white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;",
+      "  border:1px solid rgba(255,255,255,.55);",
+      "  backdrop-filter:blur(10px) saturate(1.35);-webkit-backdrop-filter:blur(10px) saturate(1.35);",
+      "  box-shadow:0 1px 0 rgba(255,255,255,.65) inset,0 4px 14px rgba(6,182,212,.12)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-chip.is-current{",
-      "  background:rgba(15,123,108,.12);border-color:rgba(15,123,108,.45);color:var(--sr-qo-accent)",
+      "  color:#0369A1;",
+      "  background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(255,255,255,.72));",
+      "  border-color:color-mix(in srgb, var(--sr-qo-tier-cyan) 40%, transparent)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-chip.is-next{",
-      "  background:var(--sr-qo-accent);border-color:var(--sr-qo-accent);color:#fff;",
-      "  box-shadow:0 1px 2px rgba(15,123,108,.25)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-pct{",
-      "  margin:0;font-size:12px;font-weight:700;color:var(--sr-qo-muted);",
-      "  font-variant-numeric:tabular-nums;letter-spacing:-.02em;flex-shrink:0",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-gap{",
-      "  margin:0;font-size:17px;font-weight:800;line-height:1.15;",
-      "  letter-spacing:-.03em;color:var(--sr-qo-text);font-variant-numeric:tabular-nums",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-gap em{",
-      "  font-style:normal;font-weight:800;color:var(--sr-qo-accent)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='high'] .sr-qo-foot-gap em{",
-      "  color:var(--sr-qo-warn)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='high'] .sr-qo-foot-pct{",
-      "  color:var(--sr-qo-warn)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-gap{",
-      "  color:var(--sr-qo-ok);font-weight:700;font-size:15px",
+      "  max-width:180px;color:#047857;",
+      "  background:linear-gradient(135deg,rgba(52,211,153,.24),rgba(255,255,255,.72));",
+      "  border-color:color-mix(in srgb, var(--sr-qo-tier-mint) 45%, transparent)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-chip.is-current{",
-      "  border-color:rgba(47,111,78,.45);background:rgba(47,111,78,.14);color:var(--sr-qo-ok)",
+      "  color:#166534;",
+      "  background:linear-gradient(135deg,rgba(74,222,128,.28),rgba(253,230,138,.45));",
+      "  border-color:color-mix(in srgb, var(--sr-qo-tier-done) 50%, transparent);",
+      "  box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 0 16px rgba(74,222,128,.35)",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-pct{",
-      "  color:var(--sr-qo-ok)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-bar-row{",
-      "  display:flex;align-items:center;gap:10px;min-width:0",
-      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-chip[hidden]{display:none!important}",
       "#sr-b2b-quickorder-root .sr-qo-foot-bar{",
-      "  flex:1;min-width:0;height:10px;border-radius:5px;background:rgba(55,53,47,.12);overflow:hidden",
+      "  position:relative;flex:1 1 80px;min-width:64px;max-width:160px;height:11px;",
+      "  border-radius:999px;overflow:hidden;",
+      "  background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(241,245,249,.92));",
+      "  border:1px solid rgba(148,163,184,.35);",
+      "  box-shadow:0 1px 0 rgba(255,255,255,.9) inset,0 2px 8px rgba(15,23,42,.06);",
+      "  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-bar[hidden]{display:none!important}",
       "#sr-b2b-quickorder-root .sr-qo-foot-bar > i{",
-      "  display:block;height:100%;width:0;border-radius:5px;",
-      "  background:var(--sr-qo-accent);",
-      "  transition:width .35s var(--sr-qo-ease)",
+      "  position:relative;display:block;height:100%;width:0;border-radius:999px;",
+      "  background:linear-gradient(90deg,var(--sr-qo-tier-cyan),var(--sr-qo-tier-mint));",
+      "  box-shadow:0 0 10px rgba(34,211,238,.55),0 0 18px rgba(52,211,153,.35);",
+      "  transition:width .4s var(--sr-qo-ease);",
+      "  overflow:hidden",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-bar > i{",
-      "  background:var(--sr-qo-ok);width:100%!important",
+      "#sr-b2b-quickorder-root .sr-qo-foot-bar > i::after{",
+      "  content:'';position:absolute;inset:0;width:42%;",
+      "  background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);",
+      "  animation:sr-qo-fomo-sheen 2.4s ease-in-out infinite",
       "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='high'] .sr-qo-foot-bar > i,",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship[data-urgency='high'] .sr-qo-foot-bar > i{",
+      "  background:linear-gradient(90deg,var(--sr-qo-tier-hot),var(--sr-qo-tier-hot-2));",
+      "  box-shadow:0 0 12px rgba(255,107,74,.55),0 0 20px rgba(251,191,36,.35);",
+      "  animation:sr-qo-fomo-glow 1.4s ease-in-out infinite",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-bar > i,",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship[data-urgency='done'] .sr-qo-foot-bar > i{",
+      "  background:linear-gradient(90deg,var(--sr-qo-tier-done),var(--sr-qo-tier-gold));",
+      "  box-shadow:0 0 14px rgba(74,222,128,.5),0 0 22px rgba(253,230,138,.4);",
+      "  width:100%!important",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-gap{",
+      "  margin:0;flex-shrink:0;font-size:12.5px;font-weight:650;line-height:1;",
+      "  letter-spacing:-.02em;color:var(--sr-qo-muted);font-variant-numeric:tabular-nums;",
+      "  white-space:nowrap",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-gap em{",
+      "  font-style:normal;font-weight:900;color:#0891B2",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='high'] .sr-qo-foot-gap em,",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship[data-urgency='high'] .sr-qo-foot-gap em{",
+      "  color:var(--sr-qo-tier-hot)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-progress[data-urgency='done'] .sr-qo-foot-gap,",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship[data-urgency='done'] .sr-qo-foot-gap{",
+      "  color:#059669;font-weight:800",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-gap[hidden]{display:none!important}",
       "#sr-b2b-quickorder-root .sr-qo-foot-target{",
-      "  margin:0;flex-shrink:0;display:inline-flex;align-items:center;gap:6px;max-width:48%;min-width:0",
+      "  margin:0;flex-shrink:0;display:inline-flex;align-items:center;gap:5px;min-width:0",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-target[hidden]{display:none!important}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship{",
+      "  flex:1;min-width:0;max-width:640px;display:flex;flex-wrap:wrap;align-items:center;",
+      "  gap:8px 10px;max-height:56px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship[hidden]{display:none!important}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship .sr-qo-foot-chip.is-ship{",
+      "  color:#047857;",
+      "  background:linear-gradient(135deg,rgba(52,211,153,.26),rgba(34,211,238,.16),rgba(255,255,255,.7));",
+      "  border-color:color-mix(in srgb, var(--sr-qo-tier-mint) 48%, transparent)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship[data-urgency='done'] .sr-qo-foot-chip.is-ship{",
+      "  color:#166534;",
+      "  background:linear-gradient(135deg,rgba(74,222,128,.3),rgba(253,230,138,.5));",
+      "  border-color:color-mix(in srgb, var(--sr-qo-tier-done) 55%, transparent);",
+      "  box-shadow:0 1px 0 rgba(255,255,255,.7) inset,0 0 16px rgba(74,222,128,.35)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-foot-freeship .sr-qo-foot-bar > i{",
+      "  background:linear-gradient(90deg,var(--sr-qo-tier-cyan),var(--sr-qo-tier-mint))",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-footer-fomo{",
+      "  flex:1;min-width:0;display:flex;flex-direction:column;gap:6px",
+      "}",
       "#sr-b2b-quickorder-root .sr-qo-foot-target-arrow{",
-      "  font-size:13px;font-weight:700;color:var(--sr-qo-faint);flex-shrink:0",
+      "  font-size:13px;font-weight:800;color:var(--sr-qo-tier-next);flex-shrink:0",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-reward{",
-      "  margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-reward[hidden]{display:none!important}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-deal{",
-      "  display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:6px;",
-      "  font-size:13.5px;font-weight:800;letter-spacing:-.02em;white-space:nowrap;",
-      "  color:#9A3412;background:#FFEDD5;border:1px solid #FDBA74;",
-      "  box-shadow:0 1px 2px rgba(194,65,12,.12)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-deal em{",
-      "  font-style:normal;font-weight:900;color:#C2410C",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-detail{",
-      "  margin:0;font-size:12px;font-weight:550;line-height:1.3;color:var(--sr-qo-muted)",
-      "}",
-      "#sr-b2b-quickorder-root .sr-qo-foot-detail[hidden]{display:none!important}",
       "@media (prefers-reduced-motion:reduce){",
-      "  #sr-b2b-quickorder-root .sr-qo-foot-bar > i{transition:none}",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-bar > i{transition:none;animation:none}",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-bar > i::after{animation:none;display:none}",
       "}",
       "@media (max-width:560px){",
       "  #sr-b2b-quickorder-root .sr-qo-start-grid{grid-template-columns:1fr;max-width:320px}",
-      "  #sr-b2b-quickorder-root .sr-qo-foot-gap{font-size:15px}",
-      "  #sr-b2b-quickorder-root .sr-qo-foot-reward{font-size:13px}",
-      "  #sr-b2b-quickorder-root .sr-qo-footer-main{min-height:88px;padding:10px 12px}",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-progress{max-height:56px}",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-freeship{max-height:56px}",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-chip{max-width:110px;font-size:12px;height:28px;padding:0 9px}",
+      "  #sr-b2b-quickorder-root .sr-qo-foot-bar{max-width:none;flex:1 1 100%}",
+      "  #sr-b2b-quickorder-root .sr-qo-footer-main{min-height:56px;padding:8px 12px}",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-close{",
       "  height:28px;padding:0 10px;border:0.5px solid var(--sr-qo-line-strong);border-radius:8px;",
@@ -1682,6 +1789,33 @@
     }
   }
 
+  function priceModeStorageKey() {
+    return (
+      "sr-qo-price-mode:" + String(cfg.shopId || cfg.publicId || "default")
+    );
+  }
+
+  function loadPriceMode() {
+    try {
+      var v = localStorage.getItem(priceModeStorageKey());
+      if (v === "gross" || v === "net") return v;
+    } catch (e) {
+      /* ignore */
+    }
+    return "net";
+  }
+
+  function savePriceMode(mode) {
+    try {
+      localStorage.setItem(
+        priceModeStorageKey(),
+        mode === "gross" ? "gross" : "net",
+      );
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
   function mapProductFields(p, quantity) {
     var minQty = Math.max(1, parseInt(p.minQty, 10) || 1);
     var qtyStep = Math.max(1, parseInt(p.qtyStep, 10) || 1);
@@ -1893,6 +2027,17 @@
 
     var lines = loadDraft();
     var busy = false;
+    var priceMode = loadPriceMode();
+    var priceModeBtns = { net: null, gross: null };
+    var thListPrice = null;
+    var thDealPrice = null;
+    var thLineTotal = null;
+    function isGrossMode() {
+      return priceMode === "gross";
+    }
+    function priceModeSuffix() {
+      return isGrossMode() ? "bruttó" : "nettó";
+    }
     var prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     try {
@@ -2102,20 +2247,36 @@
     function moneyTotals() {
       var net = 0,
         gross = 0,
-        discount = 0;
+        discount = 0,
+        listNetSum = 0,
+        listGrossSum = 0;
       lines.forEach(function (l) {
         if (l.found !== true) return;
         var q = l.quantity || 1;
         var unitNet = l.priceNet != null ? l.priceNet : l.price;
+        var vat =
+          l.vatRate != null && Number.isFinite(Number(l.vatRate))
+            ? Number(l.vatRate)
+            : 27;
         var unitGross = l.priceGross;
+        if (unitGross == null && unitNet != null) {
+          unitGross = Math.round(unitNet * (1 + vat / 100));
+        }
         if (unitNet == null && unitGross == null) return;
         if (unitNet != null) net += unitNet * q;
         if (unitGross != null) gross += unitGross * q;
-        else if (unitNet != null && l.vatRate != null) {
-          gross += Math.round(unitNet * (1 + l.vatRate / 100)) * q;
-        }
-        if (typeof l.listPriceNet === "number" && typeof unitNet === "number") {
-          discount += Math.max(0, l.listPriceNet - unitNet) * q;
+        var listN =
+          typeof l.listPriceNet === "number" ? l.listPriceNet : unitNet;
+        var listG =
+          typeof l.listPriceGross === "number"
+            ? l.listPriceGross
+            : listN != null
+              ? Math.round(listN * (1 + vat / 100))
+              : unitGross;
+        if (listN != null) listNetSum += listN * q;
+        if (listG != null) listGrossSum += listG * q;
+        if (typeof listN === "number" && typeof unitNet === "number") {
+          discount += Math.max(0, listN - unitNet) * q;
         } else if (
           typeof l.discountPercent === "number" &&
           l.discountPercent > 0 &&
@@ -2125,14 +2286,21 @@
           discount += Math.max(0, listGuess - unitNet) * q;
         }
       });
+      var netR = Math.round(net);
+      var grossR = Math.round(gross);
+      var listNetR = Math.round(listNetSum);
+      var listGrossR = Math.round(listGrossSum);
       return {
-        net: Math.round(net),
-        gross: Math.round(gross),
-        vat: Math.max(0, Math.round(gross - net)),
+        net: netR,
+        gross: grossR,
+        vat: Math.max(0, Math.round(grossR - netR)),
+        listNet: listNetR,
+        listGross: listGrossR,
         discount: Math.round(discount),
+        discountGross: Math.max(0, Math.round(listGrossR - grossR)),
         discountPct:
-          net + discount > 0
-            ? Math.round((discount / (net + discount)) * 1000) / 10
+          netR + discount > 0
+            ? Math.round((discount / (netR + discount)) * 1000) / 10
             : 0,
         nearTierCount: lines.filter(function (l) {
           return (
@@ -2171,24 +2339,30 @@
     }
 
     function setStatus(msg, isErr) {
-      if (!isErr && partnerProgressOn && msg) {
-        /* FOMO footer stays; no toast spam for routine status (Ár… / Hozzáadva…). */
-        statusEl.textContent = "";
-        statusEl.className = "sr-qo-footer-msg";
-        statusEl.hidden = true;
-        if (partnerProgressEl) partnerProgressEl.hidden = false;
-        return;
+      if (!isErr) {
+        var m = String(msg || "");
+        /* Siker / busy: néma. Csak kosár-folyamat és üres-lista tipp marad. */
+        var keep =
+          /^Kosárba/i.test(m) ||
+          /kosár nyílik/i.test(m) ||
+          /^Cikkszám \+ Enter/i.test(m);
+        if (!keep) msg = "";
       }
       statusEl.textContent = msg || "";
       statusEl.className = "sr-qo-footer-msg" + (isErr ? " err" : "");
-      if (isErr || msg) {
+      if (isErr) {
         statusEl.hidden = false;
-        if (isErr && partnerProgressEl) partnerProgressEl.hidden = true;
-      } else if (partnerProgressOn) {
-        statusEl.hidden = true;
-        if (partnerProgressEl) partnerProgressEl.hidden = false;
-      } else {
+        if (partnerProgressEl) partnerProgressEl.hidden = true;
+        return;
+      }
+      if (msg) {
         statusEl.hidden = false;
+        if (partnerProgressEl) partnerProgressEl.hidden = true;
+        return;
+      }
+      statusEl.hidden = true;
+      if (partnerProgressOn && partnerProgressEl) {
+        partnerProgressEl.hidden = false;
       }
     }
 
@@ -2208,20 +2382,24 @@
     }
 
     function flashInfo(msg, tone) {
-      /* Never call setStatus here when partnerProgressOn — that path calls flashInfo. */
+      /* Siker: néma. Figyelmeztetés (warn): toast. */
+      if (tone !== "warn") {
+        if (partnerProgressOn) {
+          statusEl.textContent = "";
+          statusEl.className = "sr-qo-footer-msg";
+          statusEl.hidden = true;
+          if (partnerProgressEl) partnerProgressEl.hidden = false;
+        }
+        return;
+      }
       if (partnerProgressOn) {
         statusEl.textContent = "";
         statusEl.className = "sr-qo-footer-msg";
         statusEl.hidden = true;
         if (partnerProgressEl) partnerProgressEl.hidden = false;
-      } else {
-        statusEl.textContent = msg || "";
-        statusEl.className = "sr-qo-footer-msg";
-        statusEl.hidden = !msg;
       }
       toastEl.textContent = msg || "";
-      toastEl.className =
-        "sr-qo-toast is-on " + (tone === "warn" ? "warn" : "info");
+      toastEl.className = "sr-qo-toast is-on warn";
       if (toastTimer) clearTimeout(toastTimer);
       toastTimer = setTimeout(function () {
         toastEl.classList.remove("is-on");
@@ -2277,51 +2455,7 @@
       var c = counts();
       var m = moneyTotals();
       summaryEl.innerHTML = "";
-      summaryEl.appendChild(
-        el("span", { className: "sr-qo-badge" }, [c.total + " sor"]),
-      );
-      if (c.ok)
-        summaryEl.appendChild(
-          el("span", { className: "sr-qo-badge sr-qo-badge-ok" }, [
-            c.ok + " OK",
-          ]),
-        );
-      if (c.err)
-        summaryEl.appendChild(
-          el("span", { className: "sr-qo-badge sr-qo-badge-err" }, [
-            c.err + " hiba",
-          ]),
-        );
-      if (c.total)
-        summaryEl.appendChild(
-          el("span", { className: "sr-qo-badge sr-qo-badge-save" }, ["Mentve"]),
-        );
-      if (lastReorderDiff) {
-        if (lastReorderDiff.priceUp)
-          summaryEl.appendChild(
-            el("span", { className: "sr-qo-badge-pill up" }, [
-              lastReorderDiff.priceUp + " ár↑",
-            ]),
-          );
-        if (lastReorderDiff.priceDown)
-          summaryEl.appendChild(
-            el("span", { className: "sr-qo-badge-pill down" }, [
-              lastReorderDiff.priceDown + " ár↓",
-            ]),
-          );
-        if (lastReorderDiff.missing)
-          summaryEl.appendChild(
-            el("span", { className: "sr-qo-badge-pill miss" }, [
-              lastReorderDiff.missing + " hiányzik",
-            ]),
-          );
-        if (lastReorderDiff.stockOut)
-          summaryEl.appendChild(
-            el("span", { className: "sr-qo-badge-pill stock" }, [
-              lastReorderDiff.stockOut + " nincs készleten",
-            ]),
-          );
-      }
+      /* Header badge-ek (N sor / OK / Mentve) szándékosan elhagyva — zaj. */
 
       asideStats.innerHTML = "";
       var sAside = safetyReport();
@@ -2363,104 +2497,126 @@
       var bodyBox = el("div", { className: "sr-qo-receipt-body" });
 
       if (!c.total) {
-        bodyBox.appendChild(receiptRow("Nettó", "—", "is-total"));
-        bodyBox.appendChild(receiptRow("Tételek", "0", "is-muted"));
-      } else {
         bodyBox.appendChild(
-          receiptRow("Nettó", formatHufClient(m.net), "is-total"),
+          receiptRow("Alap (" + priceModeSuffix() + ")", "—", "is-muted"),
         );
         bodyBox.appendChild(
           receiptRow(
-            "Tételek",
-            c.total + " · " + c.qty + " db",
+            "Kedvezményes (" + priceModeSuffix() + ")",
+            "—",
             "is-muted",
           ),
         );
-
-        if (m.discount > 0) {
-          var listNetTotal = m.net + m.discount;
-          bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
+        bodyBox.appendChild(
+          receiptRow(
+            "Összesen (" + priceModeSuffix() + ")",
+            "—",
+            "is-total",
+          ),
+        );
+      } else {
+        var primaryTotal = isGrossMode() ? m.gross : m.net;
+        var listPrimary = isGrossMode()
+          ? m.listGross || m.gross + (m.discountGross || 0)
+          : m.listNet || m.net + (m.discount > 0 ? m.discount : 0);
+        var dealPrimary = primaryTotal;
+        var saveAmt = isGrossMode() ? m.discountGross : m.discount;
+        bodyBox.appendChild(
+          receiptRow(
+            "Alap (" + priceModeSuffix() + ")",
+            formatHufClient(listPrimary),
+            "is-muted",
+          ),
+        );
+        bodyBox.appendChild(
+          receiptRow(
+            "Kedvezményes (" + priceModeSuffix() + ")",
+            formatHufClient(dealPrimary),
+            saveAmt > 0 ? "" : "is-muted",
+          ),
+        );
+        bodyBox.appendChild(
+          receiptRow(
+            "Összesen (" + priceModeSuffix() + ")",
+            formatHufClient(primaryTotal),
+            "is-total",
+          ),
+        );
+        if (c.qty > 0) {
           bodyBox.appendChild(
             receiptRow(
-              "Bolti ár (nettó)",
-              formatHufClient(listNetTotal),
+              "Mennyiség",
+              c.qty + " db · " + c.total + " tétel",
               "is-muted",
             ),
           );
+        }
+        if (saveAmt > 0) {
+          bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
           bodyBox.appendChild(
             receiptSaveRow(
-              "Partner kedvezmény",
-              "−" + formatHufClient(m.discount),
+              "Megtakarítás",
+              "−" + formatHufClient(saveAmt),
               m.discountPct > 0 ? "(−" + m.discountPct + "%)" : "",
-            ),
-          );
-        }
-
-        var nearHints = collectNextTierHints();
-        if (nearHints.length) {
-          if (!(m.discount > 0)) {
-            bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
-          }
-          var anyNear = nearHints.some(function (h) {
-            return h.next.near;
-          });
-          var missSum = 0;
-          nearHints.forEach(function (h) {
-            missSum += h.next.missingQty;
-          });
-          var tierLabel = "Partner sáv";
-          var tierVal;
-          if (nearHints.length === 1) {
-            tierVal = tierHintLabel(nearHints[0].next);
-          } else if (anyNear) {
-            tierVal =
-              "+" +
-              missSum +
-              " db a jobb sávokhoz (" +
-              nearHints.length +
-              " termék)";
-          } else {
-            tierVal =
-              nearHints.length +
-              " terméknél elérhető jobb sáv";
-          }
-          bodyBox.appendChild(
-            receiptRow(
-              tierLabel,
-              tierVal,
-              "is-tier" + (anyNear ? " is-near" : ""),
             ),
           );
         }
 
         if (hardN > 0) {
           bodyBox.appendChild(
-            receiptRow(
-              "Nem rendelhető",
-              String(hardN),
-              "is-warn",
-            ),
+            receiptRow("Nem rendelhető", String(hardN), "is-warn"),
           );
         }
         if (oosN > 0) {
           bodyBox.appendChild(
-            receiptRow(
-              "Nincs készleten",
-              String(oosN),
-              "is-warn",
-            ),
+            receiptRow("Nincs készleten", String(oosN), "is-warn"),
           );
         }
 
-        if (m.vat > 0 || m.gross > 0) {
-          bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
+        bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
+        if (isGrossMode()) {
+          bodyBox.appendChild(
+            receiptRow("Nettó", formatHufClient(m.net), "is-muted"),
+          );
           if (m.vat > 0) {
             bodyBox.appendChild(
               receiptRow("ÁFA", formatHufClient(m.vat), "is-muted"),
             );
           }
+        } else {
+          if (m.vat > 0) {
+            bodyBox.appendChild(
+              receiptRow("ÁFA", formatHufClient(m.vat), "is-muted"),
+            );
+          }
+          if (m.gross > 0) {
+            bodyBox.appendChild(
+              receiptRow("Bruttó", formatHufClient(m.gross), "is-muted"),
+            );
+          }
+        }
+      }
+
+      var fs = cfg.freeShipping;
+      if (
+        fs &&
+        fs.enabled &&
+        typeof fs.thresholdGross === "number" &&
+        fs.thresholdGross > 0
+      ) {
+        bodyBox.appendChild(el("hr", { className: "sr-qo-receipt-rule" }));
+        var gap = Math.max(0, Math.round(fs.thresholdGross - (m.gross || 0)));
+        if (gap <= 0) {
           bodyBox.appendChild(
-            receiptRow("Bruttó", formatHufClient(m.gross), "is-muted"),
+            receiptRow("Ingyenes szállítás", "Elérted ✓", ""),
+          );
+        } else {
+          bodyBox.appendChild(
+            receiptRow(
+              "Ingyenes szállításhoz még",
+              formatHufClient(gap) + " (bruttó)",
+              "is-muted",
+            ),
           );
         }
       }
@@ -2475,12 +2631,15 @@
       asideStats.appendChild(receipt);
 
       updateOrderRemind();
-      updateIncentiveBar(m.gross);
+      updateFreeShippingProgress(m.gross);
       updateEmptyState();
 
+      var cartPrimary = isGrossMode() ? m.gross : m.net;
       var cartLabel =
-        m.net > 0
-          ? "Kosárba rakom · " + formatHufClient(m.net)
+        cartPrimary > 0
+          ? "Kosárba rakom · " +
+            formatHufClient(cartPrimary) +
+            (isGrossMode() ? " bruttó" : "")
           : c.total === 0
             ? "Kosárba rakom"
             : "Kosárba rakom (" + c.total + ")";
@@ -2493,22 +2652,45 @@
     var cartBtn = null;
     var asideCartBtn = null;
     var emptyEl = null;
-    var DEFAULT_INCENTIVES = {
-      freeShippingGross: 80000,
-      freeShippingLabel: "80\u00a0000 Ft",
-      minOrderGross: 25000,
-      minOrderLabel: "25\u00a0000 Ft",
-    };
-
-    function incentives() {
-      return (insightsData && insightsData.incentives) || DEFAULT_INCENTIVES;
-    }
-
-    function updateIncentiveBar() {
-      if (incentiveBox) {
-        incentiveBox.style.display = "none";
-        incentiveBox.innerHTML = "";
+    function updateFreeShippingProgress(cartGross) {
+      if (!freeShipEl) return;
+      var fs = cfg.freeShipping;
+      if (
+        !fs ||
+        fs.enabled !== true ||
+        typeof fs.thresholdGross !== "number" ||
+        fs.thresholdGross <= 0
+      ) {
+        freeShipEl.hidden = true;
+        freeShipEl.removeAttribute("data-urgency");
+        return;
       }
+      var T = Math.round(fs.thresholdGross);
+      var C = Math.max(0, Math.round(cartGross || 0));
+      var gap = Math.max(0, T - C);
+      var pct = T > 0 ? Math.min(100, Math.round((C / T) * 100)) : 0;
+      freeShipEl.hidden = false;
+      freeShipChip.textContent = "Ingyenes szállítás";
+      freeShipChip.hidden = false;
+      freeShipBar.hidden = false;
+      freeShipBarFill.style.width = (gap <= 0 ? 100 : pct) + "%";
+      freeShipBar.setAttribute("aria-valuenow", String(gap <= 0 ? 100 : pct));
+      freeShipGap.textContent = "";
+      freeShipGap.hidden = false;
+      if (gap <= 0) {
+        freeShipEl.setAttribute("data-urgency", "done");
+        freeShipGap.textContent = "Elérted";
+      } else {
+        var urg = gap / T <= 0.1 ? "high" : "mid";
+        freeShipEl.setAttribute("data-urgency", urg);
+        freeShipGap.appendChild(document.createTextNode("Még "));
+        freeShipGap.appendChild(
+          el("em", null, [formatHufClient(gap)]),
+        );
+      }
+      var tipParts = ["Küszöb bruttóban számolva"];
+      if (fs.thresholdLabel) tipParts.push("Küszöb: " + fs.thresholdLabel);
+      freeShipEl.title = tipParts.join(" · ");
     }
 
     function updateOrderRemind() {
@@ -2604,6 +2786,108 @@
       return null;
     }
 
+    function lineVatRate(line) {
+      var r = Number(line && line.vatRate);
+      if (Number.isFinite(r) && r >= 0) return r;
+      return 27;
+    }
+
+    function lineUnitGross(line) {
+      if (line.priceGross != null && Number.isFinite(Number(line.priceGross))) {
+        return Math.round(Number(line.priceGross));
+      }
+      var net = lineUnitNet(line);
+      if (net == null) return null;
+      return Math.round(net * (1 + lineVatRate(line) / 100));
+    }
+
+    function lineListNet(line) {
+      if (line.listPriceNet != null) return line.listPriceNet;
+      return lineUnitNet(line);
+    }
+
+    function lineListGross(line) {
+      if (
+        line.listPriceGross != null &&
+        Number.isFinite(Number(line.listPriceGross))
+      ) {
+        return Math.round(Number(line.listPriceGross));
+      }
+      var net = lineListNet(line);
+      if (net == null) return null;
+      return Math.round(net * (1 + lineVatRate(line) / 100));
+    }
+
+    function lineDisplayUnit(line) {
+      return isGrossMode() ? lineUnitGross(line) : lineUnitNet(line);
+    }
+
+    function lineDisplayList(line) {
+      return isGrossMode() ? lineListGross(line) : lineListNet(line);
+    }
+
+    function formatHitPrice(hit) {
+      if (!hit) return "";
+      if (isGrossMode()) {
+        if (hit.priceGrossFormatted) return hit.priceGrossFormatted;
+        if (hit.priceGross != null) return formatHufClient(hit.priceGross);
+        if (hit.priceNet != null) {
+          var vat =
+            hit.vatRate != null && Number.isFinite(Number(hit.vatRate))
+              ? Number(hit.vatRate)
+              : 27;
+          return formatHufClient(Math.round(hit.priceNet * (1 + vat / 100)));
+        }
+        return hit.priceNetFormatted || "";
+      }
+      if (hit.priceNetFormatted) return hit.priceNetFormatted;
+      if (hit.priceNet != null) return formatHufClient(hit.priceNet);
+      return hit.priceGrossFormatted || "";
+    }
+
+    function setPriceMode(next) {
+      var mode = next === "gross" ? "gross" : "net";
+      if (priceMode === mode) return;
+      priceMode = mode;
+      savePriceMode(mode);
+      updatePriceModeUi();
+      renderList();
+    }
+
+    function updatePriceModeUi() {
+      var gross = isGrossMode();
+      if (priceModeBtns.net) {
+        priceModeBtns.net.classList.toggle("is-on", !gross);
+        priceModeBtns.net.setAttribute("aria-pressed", gross ? "false" : "true");
+      }
+      if (priceModeBtns.gross) {
+        priceModeBtns.gross.classList.toggle("is-on", gross);
+        priceModeBtns.gross.setAttribute(
+          "aria-pressed",
+          gross ? "true" : "false",
+        );
+      }
+      var listLab = gross ? "Alap bruttó" : "Alap nettó";
+      var dealLab = gross ? "Kedv. bruttó" : "Kedv. nettó";
+      var totLab = gross ? "Össz. bruttó" : "Össz. nettó";
+      if (thListPrice) {
+        thListPrice.textContent = listLab;
+        thListPrice.title = gross
+          ? "Bolti listaár, bruttó / db"
+          : "Bolti listaár, nettó / db";
+      }
+      if (thDealPrice) {
+        thDealPrice.textContent = dealLab;
+        thDealPrice.title = gross
+          ? "Partnerár, bruttó / db"
+          : "Partnerár, nettó / db";
+      }
+      if (thLineTotal) {
+        thLineTotal.textContent = totLab;
+        thLineTotal.title = gross ? "Sorösszeg bruttó" : "Sorösszeg nettó";
+      }
+    }
+
     /**
      * Következő olcsóbb sáv hint.
      * - mindig (ha van értelmes save) — tájékoztató
@@ -2691,7 +2975,7 @@
       if (line.found !== true) {
         return el(
           "td",
-          { className: "sr-qo-tier-td", "data-label": "Sáv" },
+          { className: "sr-qo-tier-td", "data-label": "Árkedv." },
           ["—"],
         );
       }
@@ -2700,12 +2984,12 @@
         var pipOn = el("span", {
           className: "sr-qo-tier-pip is-on",
           tabIndex: 0,
-          "aria-label": "Sávos ár: " + tipText.replace(/\n/g, "; "),
+          "aria-label": "Árkedv.: " + tipText.replace(/\n/g, "; "),
         });
         bindTextTip(pipOn, tipText);
         return el(
           "td",
-          { className: "sr-qo-tier-td", "data-label": "Sáv" },
+          { className: "sr-qo-tier-td", "data-label": "Árkedv." },
           [pipOn],
         );
       }
@@ -2717,14 +3001,9 @@
       bindTextTip(pipOff, "Nincs sávos ár");
       return el(
         "td",
-        { className: "sr-qo-tier-td", "data-label": "Sáv" },
+        { className: "sr-qo-tier-td", "data-label": "Árkedv." },
         [pipOff],
       );
-    }
-
-    function lineListNet(line) {
-      if (line.listPriceNet != null) return line.listPriceNet;
-      return lineUnitNet(line);
     }
 
     function netCell(value, label, opts) {
@@ -2739,33 +3018,29 @@
     }
 
     function listPriceCell(line) {
+      var lab = isGrossMode() ? "Alap bruttó" : "Alap nettó";
       if (line.found === false) {
-        return netCell(null, "Alap ár / db");
+        return netCell(null, lab);
       }
-      if (line.found !== true && lineUnitNet(line) == null) {
-        return el("td", { className: "sr-qo-num", "data-label": "Alap ár / db" }, [
-          "…",
-        ]);
+      if (line.found !== true && lineDisplayUnit(line) == null) {
+        return el("td", { className: "sr-qo-num", "data-label": lab }, ["…"]);
       }
-      return netCell(lineListNet(line), "Alap ár / db", { muted: true });
+      return netCell(lineDisplayList(line), lab, { muted: true });
     }
 
     function dealPriceCell(line) {
+      var lab = isGrossMode() ? "Kedv. bruttó" : "Kedv. nettó";
       if (line.found === false) {
-        return netCell(null, "Kedv. ár / db");
+        return netCell(null, lab);
       }
-      var unit = lineUnitNet(line);
+      var unit = lineDisplayUnit(line);
       if (unit == null) {
-        return el(
-          "td",
-          { className: "sr-qo-num", "data-label": "Kedv. ár / db" },
-          ["…"],
-        );
+        return el("td", { className: "sr-qo-num", "data-label": lab }, ["…"]);
       }
-      var list = lineListNet(line);
+      var list = lineDisplayList(line);
       var cheaper =
         list != null && Number.isFinite(list) && unit < list - 0.5;
-      return netCell(unit, "Kedv. ár / db", { deal: cheaper });
+      return netCell(unit, lab, { deal: cheaper });
     }
 
     var qtyPriceTimers = {};
@@ -2931,15 +3206,18 @@
       lines.forEach(function (l) {
         if (lineNeedsAttention(l)) issueN++;
       });
-      var show = lines.length > 0 && issueN > 0;
+      var showBar = lines.length > 0;
+      var showChips = showBar && issueN > 0;
       listFilterBar.className =
-        "sr-qo-list-filters" + (show ? " is-on" : "");
-      if (!show) {
+        "sr-qo-list-filters" + (showBar ? " is-on" : "");
+      var left = listFilterBar.querySelector(".sr-qo-list-filters-left");
+      if (left) left.style.display = showChips ? "" : "none";
+      if (!showChips) {
         if (listFilter !== "all") {
           listFilter = "all";
         }
-        return;
       }
+      if (!showBar) return;
       ["all", "ok", "issue"].forEach(function (k) {
         if (listFilterBtns[k]) {
           listFilterBtns[k].classList.toggle("is-on", listFilter === k);
@@ -2972,7 +3250,7 @@
       );
       emptyEl.appendChild(
         el("p", { className: "sr-qo-empty-sub" }, [
-          "Cikkszám a keresőbe, Enter — vagy töltsd fel gyorsan.",
+          "Írd be a cikkszámot fent, vagy tölts fel listát (Import).",
         ]),
       );
       var actions = el("div", { className: "sr-qo-empty-actions" });
@@ -3003,18 +3281,19 @@
           ),
         );
       }
-      if (moduleOn("excel")) {
+      if (moduleOn("excel") || moduleOn("email") || moduleOn("image")) {
         actions.appendChild(
           el(
             "button",
             {
               type: "button",
               className: "sr-qo-btn sr-qo-btn-ghost",
-              onClick: function () {
-                openExcelIngest();
+              onClick: function (ev) {
+                ev.stopPropagation();
+                if (typeof openImportMenu === "function") openImportMenu();
               },
             },
-            ["Excel lista"],
+            ["Import"],
           ),
         );
       }
@@ -3064,14 +3343,15 @@
         if (line.maxQty != null && line.maxQty > 0) {
           qtyField.max = String(line.maxQty);
         }
-        var unitNet = lineUnitNet(line);
+        var unitDisp = lineDisplayUnit(line);
+        var totLab = isGrossMode() ? "Össz. bruttó" : "Össz. nettó";
         var lineTotalEl = el("div", { className: "sr-qo-line-total" }, [
-          line.found === true && unitNet != null
-            ? formatHufClient(unitNet * (line.quantity || 1))
+          line.found === true && unitDisp != null
+            ? formatHufClient(unitDisp * (line.quantity || 1))
             : "—",
         ]);
         function refreshLineTotalLive(q) {
-          var u = lineUnitNet(lines[idx] || line);
+          var u = lineDisplayUnit(lines[idx] || line);
           if ((lines[idx] || line).found === true && u != null) {
             lineTotalEl.textContent = formatHufClient(u * q);
           } else {
@@ -3175,7 +3455,7 @@
           tierPipCell(line),
           listPriceCell(line),
           dealPriceCell(line),
-          el("td", { className: "sr-qo-line-total", "data-label": "Összesen" }, [
+          el("td", { className: "sr-qo-line-total", "data-label": totLab }, [
             lineTotalEl,
           ]),
           el("td", { className: "sr-qo-td-action" }, [
@@ -3631,6 +3911,7 @@
     var NAV_ITEMS = [
       { id: "home", label: "Kezdőlap", module: "insights" },
       { id: "order", label: "Új megrendelés", module: null },
+      { id: "lists", label: "Listáim", module: null },
       { id: "orders", label: "Rendeléseim", module: "orders" },
     ].filter(function (item) {
       return !item.module || moduleOn(item.module);
@@ -3669,6 +3950,15 @@
         setTimeout(function () {
           try {
             ordersSearchInput.focus();
+          } catch (e) {}
+        }, 20);
+      }
+      if (id === "lists") {
+        showListsIndex();
+        loadSavedLists();
+        setTimeout(function () {
+          try {
+            listsSearchInput.focus();
           } catch (e) {}
         }, 20);
       }
@@ -3854,7 +4144,7 @@
         if (hit.packLabel) meta.push(hit.packLabel);
         if (hit.orderable === false) meta.push("nem rendelhető");
         else if (hit.inStock === false) meta.push("nincs készleten");
-        var price = hit.priceGrossFormatted || hit.priceNetFormatted;
+        var price = formatHitPrice(hit);
         var skuKids = [hit.sku];
         if (
           hit.modelNumber &&
@@ -4031,15 +4321,16 @@
         className: "sr-qo-btn sr-qo-btn-ghost",
         "aria-haspopup": "menu",
         "aria-expanded": "false",
+        "aria-label": "Import — Excel, beillesztés vagy fotó",
+        title: "Lista feltöltése Excelből, szövegből vagy fotóról",
         onClick: function (ev) {
           ev.stopPropagation();
           var open = !importWrap.classList.contains("is-open");
-          if (open) importWrap.classList.add("is-open");
-          else importWrap.classList.remove("is-open");
-          importToggleBtn.setAttribute("aria-expanded", open ? "true" : "false");
+          if (open) openImportMenu();
+          else closeImportMenu();
         },
       },
-      ["Excel / lista / fotó"],
+      ["Import"],
     );
     var importMenu = el("div", {
       className: "sr-qo-import-menu",
@@ -4065,44 +4356,30 @@
       );
     }
     if (moduleOn("excel")) {
-      addImportItem("Excel", "Sablon + .xlsx feltöltés", function () {
+      addImportItem("Excel", "Táblázat feltöltése (.xlsx)", function () {
         openExcelIngest();
       });
     }
     if (moduleOn("email")) {
-      addImportItem("Szöveg / SKU lista", "Többsoros beillesztés", function () {
+      addImportItem("Beillesztés", "Másold be a szöveget vagy e-mailt", function () {
         openEmailIngest();
       });
     }
     if (moduleOn("image")) {
-      addImportItem("Kép / kézírás", "Fotó a listáról", function () {
+      addImportItem("Fotó", "Készíts képet a papírlistáról", function () {
         openImageIngest();
       });
     }
-    importMenu.appendChild(
-      el(
-        "button",
-        {
-          type: "button",
-          className: "sr-qo-import-item",
-          role: "menuitem",
-          onClick: function (ev) {
-            ev.stopPropagation();
-            closeImportMenu();
-            if (!confirmLeaveWork("Vissza az indítóhoz")) return;
-            showOrderStart();
-          },
-        },
-        [
-          "Új forrás",
-          el("small", null, ["Excel, lista vagy fotó — a kereső a főút"]),
-        ],
-      ),
-    );
     var importWrap = el("div", { className: "sr-qo-import" }, [
       importToggleBtn,
       importMenu,
     ]);
+    function openImportMenu() {
+      if (!importWrap || importWrap.style.display === "none") return;
+      importWrap.classList.add("is-open");
+      if (importToggleBtn)
+        importToggleBtn.setAttribute("aria-expanded", "true");
+    }
     if (!moduleOn("excel") && !moduleOn("email") && !moduleOn("image")) {
       importWrap.style.display = "none";
     }
@@ -4171,34 +4448,34 @@
             "th",
             {
               className: "sr-qo-th-tier",
-              title: "Sávos árazás (zöld = van, piros = nincs)",
+              title: "Sávos / mennyiségi kedvezmény",
             },
-            ["Sáv"],
+            ["Árkedv."],
           ),
-          el(
+          (thListPrice = el(
             "th",
             {
               className: "sr-qo-th-num",
               title: "Bolti listaár, nettó / db",
             },
-            ["Alap"],
-          ),
-          el(
+            ["Alap nettó"],
+          )),
+          (thDealPrice = el(
             "th",
             {
               className: "sr-qo-th-num",
               title: "Partnerár, nettó / db",
             },
-            ["Kedv."],
-          ),
-          el(
+            ["Kedv. nettó"],
+          )),
+          (thLineTotal = el(
             "th",
             {
               className: "sr-qo-th-num",
               title: "Sorösszeg nettó",
             },
-            ["Össz."],
-          ),
+            ["Össz. nettó"],
+          )),
           el("th", { className: "sr-qo-th-action" }, [""]),
         ]),
       ]),
@@ -4224,10 +4501,38 @@
       listFilterBtns[key] = btn;
       return btn;
     }
+    function makePriceModeBtn(mode, label) {
+      var btn = el(
+        "button",
+        {
+          type: "button",
+          className:
+            "sr-qo-price-mode-btn" + (priceMode === mode ? " is-on" : ""),
+          "aria-pressed": priceMode === mode ? "true" : "false",
+          onClick: function () {
+            setPriceMode(mode);
+          },
+        },
+        [label],
+      );
+      priceModeBtns[mode] = btn;
+      return btn;
+    }
     var listFilterBar = el("div", { className: "sr-qo-list-filters" }, [
-      makeFilterChip("all", "Mind"),
-      makeFilterChip("ok", "Készleten"),
-      makeFilterChip("issue", "Problémás"),
+      el("div", { className: "sr-qo-list-filters-left" }, [
+        makeFilterChip("all", "Mind"),
+        makeFilterChip("ok", "Készleten"),
+        makeFilterChip("issue", "Problémás"),
+      ]),
+      el(
+        "div",
+        {
+          className: "sr-qo-price-mode",
+          role: "group",
+          "aria-label": "Árak megjelenítése",
+        },
+        [makePriceModeBtn("net", "Nettó"), makePriceModeBtn("gross", "Bruttó")],
+      ),
     ]);
     var filterEmptyEl = el("div", { className: "sr-qo-filter-empty" }, [
       "Nincs sor ebben a szűrésben. Válts „Mind”-re.",
@@ -4240,7 +4545,6 @@
       table,
     ]);
     var asideStats = el("div", { className: "sr-qo-aside-stats" });
-    var incentiveBox = null;
     asideCartBtn = el(
       "button",
       {
@@ -4259,29 +4563,61 @@
     );
     var main = el("div", { className: "sr-qo-main" }, [body, aside]);
 
-    var statusEl = el("div", { className: "sr-qo-footer-msg" }, [
-      lines.length
-        ? "Lista mentve — folytathatod."
-        : "Cikkszám + Enter. Ha kész: Kosárba.",
+    var statusEl = el("div", { className: "sr-qo-footer-msg", hidden: "hidden" }, [
+      "",
     ]);
 
+    var freeShipChip = el("span", { className: "sr-qo-foot-chip is-ship" }, [
+      "Ingyenes szállítás",
+    ]);
+    var freeShipGap = el("span", { className: "sr-qo-foot-gap" });
+    var freeShipBarFill = el("i", {});
+    var freeShipBar = el(
+      "div",
+      {
+        className: "sr-qo-foot-bar",
+        role: "progressbar",
+        "aria-valuemin": "0",
+        "aria-valuemax": "100",
+        "aria-valuenow": "0",
+        "aria-label": "Ingyenes szállítás előrehaladás",
+      },
+      [freeShipBarFill],
+    );
+    var freeShipEl = el(
+      "div",
+      {
+        className: "sr-qo-foot-freeship",
+        hidden: "hidden",
+        "aria-live": "polite",
+      },
+      [freeShipChip, freeShipBar, freeShipGap],
+    );
+
     var footChip = el("span", { className: "sr-qo-foot-chip is-current" });
-    var footGap = el("span", { className: "sr-qo-foot-gap" });
+    var footGap = el("span", { className: "sr-qo-foot-gap", hidden: "hidden" });
     var footTargetArrow = el("span", { className: "sr-qo-foot-target-arrow" }, [
       "→",
     ]);
-    var footTargetChip = el("span", {
-      className: "sr-qo-foot-chip is-next",
-    });
-    var footTarget = el("span", { className: "sr-qo-foot-target" }, [
+    var footTargetChip = el("span", { className: "sr-qo-foot-chip is-next" });
+    var footTarget = el("span", { className: "sr-qo-foot-target", hidden: "hidden" }, [
       footTargetArrow,
       footTargetChip,
     ]);
-    var footDeal = el("span", { className: "sr-qo-foot-deal" });
-    var footReward = el("div", { className: "sr-qo-foot-reward" }, [footDeal]);
-    var footDetail = el("p", { className: "sr-qo-foot-detail" });
     var footBarFill = el("i", {});
-    var footBar = el("div", { className: "sr-qo-foot-bar" }, [footBarFill]);
+    var footBar = el(
+      "div",
+      {
+        className: "sr-qo-foot-bar",
+        hidden: "hidden",
+        role: "progressbar",
+        "aria-valuemin": "0",
+        "aria-valuemax": "100",
+        "aria-valuenow": "0",
+        "aria-label": "Szint előrehaladás",
+      },
+      [footBarFill],
+    );
     partnerProgressEl = el(
       "div",
       {
@@ -4289,136 +4625,123 @@
         hidden: "hidden",
         "aria-live": "polite",
       },
-      [
-        el("div", { className: "sr-qo-foot-top" }, [footChip]),
-        footGap,
-        el("div", { className: "sr-qo-foot-bar-row" }, [
-          footBar,
-          footTarget,
-        ]),
-        footReward,
-        footDetail,
-      ],
+      [footChip, footBar, footGap, footTarget],
     );
 
-    function formatDealLabel(headline) {
+    function shortRewardLabel(headline) {
       var h = String(headline || "").trim();
       if (!h) return "";
-      if (/kedvezm/i.test(h)) return h;
-      if (/^−?-?\d/.test(h) || /%/.test(h)) {
-        return h.replace(/\s*nettó\s*$/i, "").trim() + " kedvezmény";
-      }
-      return h;
+      var m = h.match(/−?-?\s*\d+(?:[.,]\d+)?\s*%/);
+      if (m) return m[0].replace(/\s+/g, "").replace(/^-/, "−");
+      if (/kedvezm/i.test(h) && h.length <= 18) return h;
+      return "";
     }
 
     function applyPartnerProgress(p) {
       if (!p) return;
-      var showName = p.showGroupName && p.groupName;
-      /* Only real, applicable rule progress — not empty “next level” placeholders. */
+      var showName = !!(p.showGroupName && p.groupName);
       var showProg =
         p.showProgress === true &&
         (p.remainingLabel != null ||
           (p.remaining != null && p.nextThreshold != null) ||
-          (p.atTop === true && p.progressPercent === 100 && p.label));
-      if (!showName && !showProg) return;
+          (p.atTop === true && p.progressPercent === 100) ||
+          !!p.label);
+      if (!showName && !showProg) {
+        partnerProgressOn = false;
+        partnerProgressEl.hidden = true;
+        return;
+      }
 
-      partnerProgressOn = showProg;
+      partnerProgressOn = true;
       partnerProgressEl.hidden = false;
-      if (showProg) statusEl.hidden = true;
+      statusEl.hidden = true;
 
       footChip.textContent = "";
       footChip.hidden = true;
-      footChip.className = "sr-qo-foot-chip is-current";
+      footGap.textContent = "";
+      footGap.hidden = true;
+      footTargetChip.textContent = "";
+      footTarget.hidden = true;
+      footBar.hidden = true;
+      footBarFill.style.width = "0%";
+      footBar.setAttribute("aria-valuenow", "0");
+      partnerProgressEl.removeAttribute("data-urgency");
+      partnerProgressEl.removeAttribute("title");
+
+      var headline =
+        (p.rewardHeadline && String(p.rewardHeadline).trim()) ||
+        (p.nextBenefitLabel && String(p.nextBenefitLabel).trim()) ||
+        "";
+      var rewardShort = shortRewardLabel(
+        p.atTop && p.currentBenefitLabel ? p.currentBenefitLabel : headline,
+      );
+
       if (showName) {
-        footChip.textContent = p.groupName;
+        var chipLabel = String(p.groupName);
+        if (p.atTop) chipLabel += " · max";
+        footChip.textContent = chipLabel;
         footChip.hidden = false;
       }
+
+      if (!showProg) return;
 
       var pct =
         p.progressPercent != null
           ? Math.min(100, Math.max(0, Number(p.progressPercent) || 0))
           : null;
 
-      footGap.textContent = "";
-      footTargetChip.textContent = "";
-      footTarget.hidden = true;
-      footDeal.textContent = "";
-      footReward.hidden = true;
-      footDetail.textContent = "";
-      footDetail.hidden = true;
-      footBar.hidden = true;
-      footBarFill.style.width = "0%";
-      partnerProgressEl.removeAttribute("data-urgency");
-      partnerProgressEl.removeAttribute("title");
-
-      if (!showProg) {
-        if (!showName) partnerProgressEl.hidden = true;
-        return;
-      }
-
-      if (p.atTop) {
-        footGap.textContent = "Legjobb szinted";
-      } else if (
-        p.remaining != null &&
-        p.remaining <= 0 &&
-        p.nextGroupName
-      ) {
-        footGap.textContent = "Küszöb megvan";
-        footTargetChip.textContent = String(p.nextGroupName);
-        footTarget.hidden = false;
-      } else if (p.remainingLabel) {
-        footGap.appendChild(document.createTextNode("Még "));
-        footGap.appendChild(el("em", null, [String(p.remainingLabel)]));
-        if (p.nextGroupName) {
-          footTargetChip.textContent =
-            String(p.nextGroupName) +
-            (p.urgency === "high" ? " · Majdnem" : "");
-          footTarget.hidden = false;
-        }
-      } else if (p.label) {
-        footGap.textContent = p.label;
-      }
-
       if (p.urgency) {
         partnerProgressEl.setAttribute("data-urgency", p.urgency);
       }
 
-      var headline =
-        (p.rewardHeadline && String(p.rewardHeadline).trim()) ||
-        (p.nextBenefitLabel && String(p.nextBenefitLabel).trim()) ||
-        "";
-      var detail =
-        (p.rewardDetail && String(p.rewardDetail).trim()) || "";
-      var dealTxt = formatDealLabel(headline);
-
-      if (p.atTop && (p.currentBenefitLabel || headline)) {
-        footDeal.textContent = "";
-        footDeal.appendChild(
-          el("em", null, [
-            formatDealLabel(p.currentBenefitLabel || headline),
-          ]),
-        );
-        footReward.hidden = false;
-      } else if (dealTxt) {
-        footDeal.textContent = "";
-        footDeal.appendChild(el("em", null, [dealTxt]));
-        footReward.hidden = false;
-        if (detail) {
-          footDetail.textContent = detail;
-          footDetail.hidden = false;
+      if (p.atTop) {
+        footGap.textContent = "Legjobb szint";
+        footGap.hidden = false;
+        footBar.hidden = false;
+        footBarFill.style.width = "100%";
+        footBar.setAttribute("aria-valuenow", "100");
+      } else if (p.remaining != null && p.remaining <= 0 && p.nextGroupName) {
+        footGap.textContent = "Küszöb megvan";
+        footGap.hidden = false;
+        var nextLabel = String(p.nextGroupName);
+        if (rewardShort) nextLabel += " · " + rewardShort;
+        footTargetChip.textContent = nextLabel;
+        footTarget.hidden = false;
+        footBar.hidden = false;
+        footBarFill.style.width = "100%";
+        footBar.setAttribute("aria-valuenow", "100");
+      } else if (p.remainingLabel) {
+        footGap.textContent = "";
+        footGap.appendChild(document.createTextNode("Még "));
+        footGap.appendChild(el("em", null, [String(p.remainingLabel)]));
+        footGap.hidden = false;
+        if (p.nextGroupName) {
+          var nl = String(p.nextGroupName);
+          if (rewardShort) nl += " · " + rewardShort;
+          footTargetChip.textContent = nl;
+          footTarget.hidden = false;
         }
+        if (pct != null) {
+          footBar.hidden = false;
+          footBarFill.style.width = pct + "%";
+          footBar.setAttribute("aria-valuenow", String(Math.round(pct)));
+        }
+      } else if (p.label) {
+        footGap.textContent = p.label;
+        footGap.hidden = false;
+        if (pct != null) {
+          footBar.hidden = false;
+          footBarFill.style.width = pct + "%";
+          footBar.setAttribute("aria-valuenow", String(Math.round(pct)));
+        }
+      } else if (pct != null) {
+        footBar.hidden = false;
+        footBarFill.style.width = pct + "%";
+        footBar.setAttribute("aria-valuenow", String(Math.round(pct)));
       }
 
       if (p.currentFormatted) {
         partnerProgressEl.setAttribute("title", String(p.currentFormatted));
-      }
-
-      if (p.atTop || (p.remaining != null && p.remaining <= 0)) {
-        footBar.hidden = false;
-        footBarFill.style.width = "100%";
-      } else if (pct != null) {
-        footBar.hidden = false;
-        footBarFill.style.width = pct + "%";
       }
     }
 
@@ -4545,13 +4868,72 @@
       },
       ["Törlés"],
     );
+    var saveListBtn = el(
+      "button",
+      {
+        type: "button",
+        className: "sr-qo-btn sr-qo-btn-ghost",
+        onClick: function () {
+          void promptSaveCurrentList();
+        },
+      },
+      ["Mentés listaként"],
+    );
+    var listSaveNameInput = el("input", {
+      type: "text",
+      maxlength: "80",
+      placeholder: "Lista neve",
+      "aria-label": "Lista neve",
+    });
+    listSaveNameInput.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        void submitListSaveForm();
+      }
+      if (ev.key === "Escape") {
+        hideListSaveForm();
+      }
+    });
+    var listSaveBar = el("div", { className: "sr-qo-lists-name-form" }, [
+      el("p", null, ["Mentés listaként — add meg a nevet:"]),
+      listSaveNameInput,
+      el(
+        "button",
+        {
+          type: "button",
+          className: "sr-qo-btn sr-qo-btn-success",
+          onClick: function () {
+            void submitListSaveForm();
+          },
+        },
+        ["Mentés"],
+      ),
+      el(
+        "button",
+        {
+          type: "button",
+          className: "sr-qo-btn sr-qo-btn-ghost",
+          onClick: function () {
+            hideListSaveForm();
+          },
+        },
+        ["Mégse"],
+      ),
+    ]);
     var footer = el("div", { className: "sr-qo-footer" }, [
       undoBar,
       cartConfirmBar,
+      listSaveBar,
       el("div", { className: "sr-qo-footer-main" }, [
-        partnerProgressEl,
+        el("div", { className: "sr-qo-footer-fomo" }, [
+          freeShipEl,
+          partnerProgressEl,
+        ]),
         statusEl,
-        el("div", { className: "sr-qo-footer-actions" }, [clearBtn]),
+        el("div", { className: "sr-qo-footer-actions" }, [
+          saveListBtn,
+          clearBtn,
+        ]),
       ]),
     ]);
     loadPartnerStatus();
@@ -5432,12 +5814,12 @@
     var orderStartPane = el("div", { className: "sr-qo-order-pane is-on", id: "sr-qo-pane-start" }, [
       el("div", { className: "sr-qo-start" }, [
         el("h3", { className: "sr-qo-start-title" }, [
-          moduleOn("search") ? "Tömeges belépés" : "Hogyan indítod a rendelést?",
+          "Hogyan adod hozzá?",
         ]),
         el("p", { className: "sr-qo-start-sub" }, [
           moduleOn("search")
-            ? "Excel, beillesztett lista vagy fotó. A keresőhöz: Vissza."
-            : "Válassz forrást. A rendeléseid a saját fülön maradnak.",
+            ? "Válassz egyet. A kereső a leggyorsabb, ha kevés tétel van."
+            : "Válassz, honnan jön a lista.",
         ]),
         (function () {
           var cards = [];
@@ -5458,8 +5840,8 @@
                   },
                 },
                 [
-                  el("strong", null, ["Kézi bevitel"]),
-                  el("span", null, ["Cikkszám / gyártói / vonalkód, Enter"]),
+                  el("strong", null, ["Kereső"]),
+                  el("span", null, ["Írd be a cikkszámot, majd Enter"]),
                 ],
               ),
             );
@@ -5477,7 +5859,7 @@
                 },
                 [
                   el("strong", null, ["Excel"]),
-                  el("span", null, ["Sablon letöltés + feltöltés (.xlsx)"]),
+                  el("span", null, ["Táblázat feltöltése (.xlsx)"]),
                 ],
               ),
             );
@@ -5494,10 +5876,8 @@
                   },
                 },
                 [
-                  el("strong", null, ["Szöveg / SKU lista"]),
-                  el("span", null, [
-                    "Illeszd be a sorokat: SKU + db (email szöveg is OK)",
-                  ]),
+                  el("strong", null, ["Beillesztés"]),
+                  el("span", null, ["Másold be a szöveget vagy e-mailt"]),
                 ],
               ),
             );
@@ -5514,8 +5894,8 @@
                   },
                 },
                 [
-                  el("strong", null, ["Kép / kézírás"]),
-                  el("span", null, ["Fotó a listáról — ellenőrzés után beemelés"]),
+                  el("strong", null, ["Fotó"]),
+                  el("span", null, ["Készíts képet a papírlistáról"]),
                 ],
               ),
             );
@@ -5583,7 +5963,7 @@
         ]),
         el("div", { className: "sr-qo-ingest-body" }, [
           el("p", { className: "sr-qo-ingest-hint" }, [
-            "Töltsd le a sablont, töltsd ki (A: cikkszám / gyári / vonalkód, B: mennyiség), majd töltsd fel az .xlsx fájlt.",
+            "1) Töltsd le a sablont. 2) A oszlop: cikkszám, B: darab. 3) Töltsd fel az .xlsx fájlt.",
           ]),
           el("div", { className: "sr-qo-source-btns" }, [
             el(
@@ -5626,8 +6006,8 @@
       className: "sr-qo-textarea",
       style: { minHeight: "220px", height: "220px" },
       placeholder:
-        "Illeszd be a SKU listát vagy email szöveget…\n\nPl.:\nSS11,2\nSS12 5\nF014891 — 5\n\nVagy:\nSziasztok, kérek:\nSS11 2db",
-      "aria-label": "Szöveg / SKU lista",
+        "Másold ide a listát vagy az e-mailt…\n\nPl.:\nSS11,2\nSS12 5\nF014891 — 5\n\nVagy:\nSziasztok, kérek:\nSS11 2db",
+      "aria-label": "Beillesztés",
     });
     emailParseBtn = el(
       "button",
@@ -5642,7 +6022,7 @@
     );
     var emailBusyTitle = el("p", { className: "sr-qo-busy-title" }, ["Egy pillanat…"]);
     var emailBusySub = el("p", { className: "sr-qo-busy-sub" }, [
-      "Kinyerjük a cikkszámokat és darabszámokat…",
+      "Kikeressük a cikkszámokat és a darabszámokat…",
     ]);
     var emailBusy = el("div", { className: "sr-qo-busy", "aria-live": "polite" }, [
       el("div", { className: "sr-qo-busy-card" }, [
@@ -5665,12 +6045,12 @@
             },
             ["← Vissza"],
           ),
-          el("h3", null, ["Szöveg / SKU lista"]),
+          el("h3", null, ["Beillesztés"]),
           emailParseBtn,
         ]),
         el("div", { className: "sr-qo-ingest-body" }, [
           el("p", { className: "sr-qo-ingest-hint" }, [
-            "Egy sor = egy tétel. Formátum: SKU,db vagy SKU 2db — email szöveg is működik. Utána ellenőrzöd a sorokat.",
+            "Egy sor = egy termék. Írd: cikkszám és darab (pl. SS11, 2). E-mail szöveg is jó.",
           ]),
           emailArea,
         ]),
@@ -5684,7 +6064,7 @@
       style: { display: "none" },
     });
     var imageDrop = el("div", { className: "sr-qo-drop" }, [
-      "Húzd ide a képet, vagy kattints a fájlválasztáshoz.\nJPG / PNG / WebP — kézírás is OK.",
+      "Húzd ide a képet, vagy kattints ide.\nJPG / PNG — kézírás is lehet.",
     ]);
     imageDrop.addEventListener("click", function () {
       imageFileInput.click();
@@ -5734,11 +6114,11 @@
             },
             ["← Vissza"],
           ),
-          el("h3", null, ["Kép / kézírás"]),
+          el("h3", null, ["Fotó"]),
         ]),
         el("div", { className: "sr-qo-ingest-body" }, [
           el("p", { className: "sr-qo-ingest-hint" }, [
-            "Készíts éles, felülről fotót a listáról. Kinyerjük a sorokat; te ellenőrzöd, mielőtt a rendelésbe kerül.",
+            "Fotózd le a listát felülről, élesen. Utána te ellenőrzöd a sorokat, mielőtt a rendelésbe kerülnek.",
           ]),
           imageDrop,
           imageFileInput,
@@ -6466,45 +6846,1216 @@
       }
     }
 
-    var listsRoot = el("div", { className: "sr-qo-lists" }, [
-      el("div", { className: "sr-qo-lists-head" }, [
-        el("h3", null, ["Listáim"]),
-        el("p", null, [
-          "A saját listák később jönnek. Addig: Kezdőlap javaslatok, vagy ismételd a rendelést.",
-        ]),
-      ]),
-      el("div", { className: "sr-qo-lists-empty" }, [
-        el("p", { className: "sr-qo-lists-empty-note" }, [
-          "Addig a Kezdőlapon vagy a Rendeléseim fülön indíts új listát.",
-        ]),
-        el("div", { className: "sr-qo-home-actions" }, [
-          el(
-            "button",
-            {
-              type: "button",
-              className: "sr-qo-btn sr-qo-btn-success",
-              onClick: function () {
-                setView("home");
-                loadHomeInsights(true);
-              },
-            },
-            ["Kezdőlapra"],
-          ),
-          el(
-            "button",
-            {
-              type: "button",
-              className: "sr-qo-btn sr-qo-btn-ghost",
-              onClick: function () {
-                setView("order");
-                showOrderWorkOrStart();
-              },
-            },
-            ["Új megrendelés"],
-          ),
-        ]),
-      ]),
+    /* ─── Listáim (Rendeléseim-szerű index + részletek) ─── */
+    var savedListsCache = [];
+    var listsLoading = false;
+    var listsSearchQuery = "";
+    var selectedListIds = {};
+    var currentListDetail = null;
+    var listDetailDirty = false;
+
+    var listsSearchInput = el("input", {
+      className: "sr-qo-orders-search",
+      type: "search",
+      placeholder: "Keresés név szerint…",
+      autocomplete: "off",
+      "aria-label": "Listák keresése",
+    });
+    var listsCountEl = el("span", { className: "sr-qo-orders-count" }, [""]);
+    var listsSelectAllCb = el("input", {
+      type: "checkbox",
+      "aria-label": "Összes látható kijelölése",
+    });
+    var listsSelCountEl = el("span", { className: "sr-qo-orders-selcount" }, [""]);
+    var listsBulkReorderBtn = el(
+      "button",
+      { type: "button", className: "sr-qo-btn-sm", disabled: true },
+      ["Új megrendelésbe"],
+    );
+    var listsBulkDeleteBtn = el(
+      "button",
+      { type: "button", className: "sr-qo-btn-sm", disabled: true },
+      ["Törlés"],
+    );
+    var listsSelBar = el("div", { className: "sr-qo-orders-selbar" }, [
+      listsSelCountEl,
+      listsBulkReorderBtn,
+      listsBulkDeleteBtn,
     ]);
+
+    function refreshListsSearchUi() {
+      listsSearchQuery = listsSearchInput.value || "";
+      renderListsIndex();
+    }
+    listsSearchInput.addEventListener("input", refreshListsSearchUi);
+
+    var listsListBody = el("tbody", null, []);
+    var listsListEmpty = el("div", { className: "sr-qo-placeholder" }, [
+      el("h3", { className: "sr-qo-placeholder-title" }, ["Listáim"]),
+      el("p", { className: "sr-qo-placeholder-sub" }, ["Betöltés…"]),
+    ]);
+    var listsListTable = el(
+      "table",
+      {
+        className: "sr-qo-orders-table",
+        style: { display: "none" },
+        id: "sr-qo-lists-list-table",
+      },
+      [
+        el("thead", null, [
+          el("tr", null, [
+            el("th", { className: "check" }, [listsSelectAllCb]),
+            el("th", null, ["Név"]),
+            el("th", null, ["Tételek"]),
+            el("th", null, ["Módosítva"]),
+          ]),
+        ]),
+        listsListBody,
+      ],
+    );
+    var listsListScroll = el("div", { className: "sr-qo-orders-scroll" }, [
+      listsListEmpty,
+      listsListTable,
+    ]);
+
+    var listsNewBtn = el(
+      "button",
+      {
+        type: "button",
+        className: "sr-qo-btn-sm sr-qo-btn-sm-primary",
+        onClick: function () {
+          void createEmptyListAndOpen();
+        },
+      },
+      ["+ Új lista"],
+    );
+
+    var listsListPane = el("div", { className: "sr-qo-orders-pane is-on" }, [
+      el("div", { className: "sr-qo-orders-toolbar" }, [
+        el("h3", null, ["Listáim"]),
+        listsSearchInput,
+        listsCountEl,
+        listsNewBtn,
+        el(
+          "button",
+          {
+            type: "button",
+            className: "sr-qo-btn-sm",
+            onClick: function () {
+              loadSavedLists(true);
+            },
+          },
+          ["Frissítés"],
+        ),
+      ]),
+      listsSelBar,
+      listsListScroll,
+    ]);
+
+    var listsDetailNameInput = el("input", {
+      className: "sr-qo-lists-detail-name",
+      type: "text",
+      maxlength: "80",
+      "aria-label": "Lista neve",
+    });
+    listsDetailNameInput.addEventListener("input", function () {
+      listDetailDirty = true;
+    });
+    var listsDetailMeta = el("div", { className: "sr-qo-orders-detail-meta" });
+    var listsDetailBody = el("tbody", null, []);
+    var listsAddSkuInput = el("input", {
+      className: "sr-qo-input sr-qo-sku-input",
+      type: "text",
+      placeholder: "Cikkszám / gyári / vonalkód",
+      autocomplete: "off",
+      "aria-label": "Cikkszám, gyári cikkszám vagy vonalkód",
+      "aria-autocomplete": "list",
+      "aria-controls": "sr-qo-lists-sku-suggest",
+      role: "combobox",
+      "aria-expanded": "false",
+    });
+    var listsSuggestBox = el("div", {
+      className: "sr-qo-suggest",
+      id: "sr-qo-lists-sku-suggest",
+      role: "listbox",
+      "aria-label": "Termékjavaslatok",
+    });
+    var listsSkuWrap = el("div", { className: "sr-qo-sku-wrap" }, [
+      listsAddSkuInput,
+      listsSuggestBox,
+    ]);
+    var listsAddQtyInput = el("input", {
+      className: "sr-qo-input sr-qo-qty-toolbar",
+      type: "number",
+      min: "1",
+      step: "1",
+      value: "1",
+      "aria-label": "Mennyiség",
+    });
+    var listsSuggestItems = [];
+    var listsSuggestActive = -1;
+    var listsSuggestTimer = null;
+    var listsSuggestSeq = 0;
+
+    function hideListsSuggest() {
+      listsSuggestBox.classList.remove("is-on");
+      listsSuggestBox.innerHTML = "";
+      listsSuggestItems = [];
+      listsSuggestActive = -1;
+      listsAddSkuInput.setAttribute("aria-expanded", "false");
+    }
+
+    function setListsSuggestActive(i) {
+      listsSuggestActive = i;
+      var nodes = listsSuggestBox.querySelectorAll(".sr-qo-suggest-item");
+      for (var n = 0; n < nodes.length; n++) {
+        nodes[n].classList.toggle("is-active", n === listsSuggestActive);
+      }
+      if (listsSuggestActive >= 0 && nodes[listsSuggestActive]) {
+        nodes[listsSuggestActive].scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function pickListsSuggest(hit) {
+      if (!hit || !hit.sku) return;
+      hideListsSuggest();
+      var quantity = Math.max(1, parseInt(listsAddQtyInput.value, 10) || 1);
+      if (hit.minQty && hit.minQty > 1) {
+        quantity = normalizePackQuantity(quantity || hit.minQty, {
+          minQty: hit.minQty,
+          qtyStep: hit.qtyStep || 1,
+          maxQty: null,
+        });
+      }
+      addLineToCurrentList({
+        sku: hit.sku,
+        quantity: quantity,
+        productId: hit.productId != null ? hit.productId : null,
+        name: hit.name || null,
+      });
+    }
+
+    function renderListsSuggest(list, q) {
+      listsSuggestBox.innerHTML = "";
+      listsSuggestItems = list || [];
+      listsSuggestActive = -1;
+      if (!listsSuggestItems.length) {
+        if (q && q.length >= 2) {
+          listsSuggestBox.appendChild(
+            el("div", { className: "sr-qo-suggest-empty" }, [
+              "Nincs találat: " + q,
+            ]),
+          );
+          listsSuggestBox.classList.add("is-on");
+          listsAddSkuInput.setAttribute("aria-expanded", "true");
+        } else {
+          hideListsSuggest();
+        }
+        return;
+      }
+      listsSuggestItems.forEach(function (hit, i) {
+        var meta = [];
+        if (hit.name) meta.push(hit.name);
+        if (hit.packLabel) meta.push(hit.packLabel);
+        if (hit.orderable === false) meta.push("nem rendelhető");
+        else if (hit.inStock === false) meta.push("nincs készleten");
+        var price = formatHitPrice(hit);
+        var skuKids = [hit.sku];
+        if (
+          hit.modelNumber &&
+          String(hit.modelNumber).trim() &&
+          String(hit.modelNumber).trim().toUpperCase() !==
+            String(hit.sku).trim().toUpperCase()
+        ) {
+          skuKids.push(
+            el("span", { className: "sr-qo-suggest-model" }, [
+              hit.modelNumber,
+            ]),
+          );
+        }
+        var kids = [];
+        if (hit.imageUrl) {
+          kids.push(
+            el("span", { className: "sr-qo-suggest-thumb", "aria-hidden": "true" }, [
+              el("img", { src: hit.imageUrl, alt: "" }),
+            ]),
+          );
+        }
+        kids.push(
+          el("span", { className: "sr-qo-suggest-body" }, [
+            el("span", { className: "sr-qo-suggest-sku" }, skuKids),
+            el("span", { className: "sr-qo-suggest-meta" }, [
+              meta.join(" · ") || "—",
+            ]),
+          ]),
+        );
+        if (price) {
+          kids.push(el("span", { className: "sr-qo-suggest-price" }, [price]));
+        }
+        listsSuggestBox.appendChild(
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-suggest-item",
+              role: "option",
+              id: "sr-qo-lists-suggest-" + i,
+              onClick: function (ev) {
+                ev.preventDefault();
+                pickListsSuggest(hit);
+              },
+            },
+            kids,
+          ),
+        );
+      });
+      listsSuggestBox.classList.add("is-on");
+      listsAddSkuInput.setAttribute("aria-expanded", "true");
+    }
+
+    async function runListsSkuSuggest() {
+      var q = listsAddSkuInput.value.trim();
+      if (q.length < 2) {
+        hideListsSuggest();
+        return;
+      }
+      var seq = ++listsSuggestSeq;
+      try {
+        var res = await fetch(
+          apiUrl("/api/products/search?q=" + encodeURIComponent(q) + "&limit=8"),
+        );
+        var data = await res.json();
+        if (seq !== listsSuggestSeq) return;
+        if (!res.ok) throw new Error(data.error || "Keresés sikertelen");
+        if (data.catalogReady === false) {
+          cfg.catalogReady = false;
+          listsSuggestBox.innerHTML = "";
+          listsSuggestBox.appendChild(
+            el("div", { className: "sr-qo-suggest-empty" }, [
+              "A termékek még másolódnak. Próbáld egy perc múlva.",
+            ]),
+          );
+          listsSuggestBox.classList.add("is-on");
+          listsAddSkuInput.setAttribute("aria-expanded", "true");
+          return;
+        }
+        cfg.catalogReady = true;
+        renderListsSuggest(data.products || [], q);
+      } catch (e) {
+        if (seq !== listsSuggestSeq) return;
+        listsSuggestBox.innerHTML = "";
+        listsSuggestBox.appendChild(
+          el("div", { className: "sr-qo-suggest-empty" }, [
+            e.message || "Keresés sikertelen",
+          ]),
+        );
+        listsSuggestBox.classList.add("is-on");
+      }
+    }
+
+    function scheduleListsSkuSuggest() {
+      if (listsSuggestTimer) clearTimeout(listsSuggestTimer);
+      listsSuggestTimer = setTimeout(function () {
+        runListsSkuSuggest();
+      }, 220);
+    }
+
+    listsAddSkuInput.addEventListener("input", scheduleListsSkuSuggest);
+    listsAddSkuInput.addEventListener("focus", function () {
+      if (listsAddSkuInput.value.trim().length >= 2) scheduleListsSkuSuggest();
+    });
+    listsAddSkuInput.addEventListener("blur", function () {
+      setTimeout(hideListsSuggest, 160);
+    });
+    listsAddSkuInput.addEventListener("keydown", function (e) {
+      var open =
+        listsSuggestBox.classList.contains("is-on") && listsSuggestItems.length;
+      if (e.key === "ArrowDown" && open) {
+        e.preventDefault();
+        setListsSuggestActive(
+          listsSuggestActive < listsSuggestItems.length - 1
+            ? listsSuggestActive + 1
+            : 0,
+        );
+        return;
+      }
+      if (e.key === "ArrowUp" && open) {
+        e.preventDefault();
+        setListsSuggestActive(
+          listsSuggestActive > 0
+            ? listsSuggestActive - 1
+            : listsSuggestItems.length - 1,
+        );
+        return;
+      }
+      if (e.key === "Escape" && listsSuggestBox.classList.contains("is-on")) {
+        e.preventDefault();
+        hideListsSuggest();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (open && listsSuggestActive >= 0 && listsSuggestItems[listsSuggestActive]) {
+          pickListsSuggest(listsSuggestItems[listsSuggestActive]);
+        } else if (open && listsSuggestItems.length === 1) {
+          pickListsSuggest(listsSuggestItems[0]);
+        } else {
+          hideListsSuggest();
+          addLineToCurrentList();
+        }
+      }
+    });
+    listsAddQtyInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        hideListsSuggest();
+        addLineToCurrentList();
+      }
+    });
+
+    var listsAddRow = el("div", { className: "sr-qo-lists-addrow" }, [
+      listsSkuWrap,
+      listsAddQtyInput,
+      el(
+        "button",
+        {
+          type: "button",
+          className: "sr-qo-btn-sm sr-qo-btn-sm-primary",
+          onClick: function () {
+            hideListsSuggest();
+            addLineToCurrentList();
+          },
+        },
+        ["Hozzáad"],
+      ),
+    ]);
+    var listsDetailFoot = el("div", { className: "sr-qo-orders-foot" });
+    var listsDetailPane = el("div", { className: "sr-qo-orders-pane" }, [
+      el("div", { className: "sr-qo-orders-toolbar" }, [
+        el(
+          "button",
+          {
+            type: "button",
+            className: "sr-qo-btn-sm",
+            onClick: function () {
+              if (
+                listDetailDirty &&
+                !window.confirm("Mentetlen módosítások. Visszalépsz mentés nélkül?")
+              ) {
+                return;
+              }
+              hideListsSuggest();
+              showListsIndex();
+            },
+          },
+          ["← Lista"],
+        ),
+        listsDetailNameInput,
+      ]),
+      listsDetailMeta,
+      el("div", { className: "sr-qo-orders-scroll" }, [
+        el("table", { className: "sr-qo-orders-table" }, [
+          el("thead", null, [
+            el("tr", null, [
+              el("th", null, ["Cikkszám"]),
+              el("th", null, ["Név"]),
+              el("th", null, ["Db"]),
+              el("th", { className: "actions" }, [""]),
+            ]),
+          ]),
+          listsDetailBody,
+        ]),
+      ]),
+      listsAddRow,
+      listsDetailFoot,
+    ]);
+
+    var listsRoot = el("div", { className: "sr-qo-lists" }, [
+      listsListPane,
+      listsDetailPane,
+    ]);
+
+    function formatListDate(iso) {
+      try {
+        var d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "";
+        return d.toLocaleDateString("hu-HU", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        });
+      } catch (e) {
+        return "";
+      }
+    }
+
+    function showListsIndex() {
+      hideListsSuggest();
+      listsListPane.classList.add("is-on");
+      listsDetailPane.classList.remove("is-on");
+      currentListDetail = null;
+      listDetailDirty = false;
+      renderListsIndex();
+    }
+
+    function showListsDetail() {
+      listsListPane.classList.remove("is-on");
+      listsDetailPane.classList.add("is-on");
+    }
+
+    function filteredSavedLists() {
+      var q = String(listsSearchQuery || "")
+        .trim()
+        .toLowerCase();
+      if (!q) return savedListsCache.slice();
+      return savedListsCache.filter(function (item) {
+        return String(item.name || "")
+          .toLowerCase()
+          .indexOf(q) >= 0;
+      });
+    }
+
+    function selectedListIdList() {
+      return Object.keys(selectedListIds).filter(function (id) {
+        return selectedListIds[id];
+      });
+    }
+
+    function refreshListsSelBar() {
+      var ids = selectedListIdList();
+      var n = ids.length;
+      listsSelBar.classList.toggle("is-on", n > 0);
+      listsSelCountEl.textContent = n ? n + " kijelölve" : "";
+      listsBulkReorderBtn.disabled = n === 0;
+      listsBulkDeleteBtn.disabled = n === 0;
+    }
+
+    function renderListsIndex() {
+      var table = listsListTable;
+      listsListBody.innerHTML = "";
+      if (!isLoggedIn()) {
+        listsListEmpty.style.display = "";
+        table.style.display = "none";
+        listsListEmpty.innerHTML = "";
+        listsListEmpty.appendChild(
+          el("h3", { className: "sr-qo-placeholder-title" }, ["Listáim"]),
+        );
+        listsListEmpty.appendChild(
+          el("p", { className: "sr-qo-placeholder-sub" }, [
+            "A listákhoz jelentkezz be a boltban.",
+          ]),
+        );
+        listsCountEl.textContent = "";
+        listsSelBar.classList.remove("is-on");
+        return;
+      }
+      if (listsLoading) {
+        listsListEmpty.style.display = "";
+        table.style.display = "none";
+        listsListEmpty.innerHTML = "";
+        listsListEmpty.appendChild(
+          el("h3", { className: "sr-qo-placeholder-title" }, ["Listáim"]),
+        );
+        listsListEmpty.appendChild(
+          el("p", { className: "sr-qo-placeholder-sub" }, ["Betöltés…"]),
+        );
+        listsCountEl.textContent = "";
+        return;
+      }
+      var rows = filteredSavedLists();
+      listsCountEl.textContent = rows.length
+        ? rows.length + " lista"
+        : savedListsCache.length
+          ? "0 találat"
+          : "";
+      if (!savedListsCache.length) {
+        listsListEmpty.style.display = "";
+        table.style.display = "none";
+        listsListEmpty.innerHTML = "";
+        listsListEmpty.appendChild(
+          el("h3", { className: "sr-qo-placeholder-title" }, ["Még nincs listád"]),
+        );
+        listsListEmpty.appendChild(
+          el("p", { className: "sr-qo-placeholder-sub" }, [
+            "Hozz létre egyet a „+ Új lista” gombbal, vagy mentsd az aktuális rendelést „Mentés listaként”.",
+          ]),
+        );
+        refreshListsSelBar();
+        return;
+      }
+      if (!rows.length) {
+        listsListEmpty.style.display = "";
+        table.style.display = "none";
+        listsListEmpty.innerHTML = "";
+        listsListEmpty.appendChild(
+          el("h3", { className: "sr-qo-placeholder-title" }, ["Nincs találat"]),
+        );
+        listsListEmpty.appendChild(
+          el("p", { className: "sr-qo-placeholder-sub" }, [
+            "Próbálj másik keresőkifejezést.",
+          ]),
+        );
+        refreshListsSelBar();
+        return;
+      }
+      listsListEmpty.style.display = "none";
+      table.style.display = "";
+      var allSelected = true;
+      rows.forEach(function (item) {
+        var checked = !!selectedListIds[item.id];
+        if (!checked) allSelected = false;
+        var cb = el("input", {
+          type: "checkbox",
+          checked: checked,
+          "aria-label": "Lista kijelölése",
+        });
+        cb.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+        });
+        cb.addEventListener("change", function () {
+          if (cb.checked) selectedListIds[item.id] = true;
+          else delete selectedListIds[item.id];
+          tr.classList.toggle("is-selected", !!selectedListIds[item.id]);
+          refreshListsSelBar();
+        });
+        var tr = el("tr", { className: "is-clickable" + (checked ? " is-selected" : "") }, [
+          el("td", { className: "check" }, [cb]),
+          el("td", null, [item.name || "—"]),
+          el("td", null, [String(item.lineCount != null ? item.lineCount : 0)]),
+          el("td", null, [formatListDate(item.updatedAt) || "—"]),
+        ]);
+        tr.addEventListener("click", function () {
+          void openListDetail(item.id);
+        });
+        listsListBody.appendChild(tr);
+      });
+      listsSelectAllCb.checked = allSelected && rows.length > 0;
+      listsSelectAllCb.indeterminate = !allSelected && selectedListIdList().length > 0;
+      refreshListsSelBar();
+    }
+
+    listsSelectAllCb.addEventListener("change", function () {
+      var rows = filteredSavedLists();
+      if (listsSelectAllCb.checked) {
+        rows.forEach(function (item) {
+          selectedListIds[item.id] = true;
+        });
+      } else {
+        rows.forEach(function (item) {
+          delete selectedListIds[item.id];
+        });
+      }
+      renderListsIndex();
+    });
+
+    listsBulkReorderBtn.addEventListener("click", function () {
+      void bulkReorderSelectedLists();
+    });
+    listsBulkDeleteBtn.addEventListener("click", function () {
+      void bulkDeleteSelectedLists();
+    });
+
+    async function loadSavedLists(force) {
+      if (!isLoggedIn()) {
+        savedListsCache = [];
+        listsLoading = false;
+        selectedListIds = {};
+        if (!listsDetailPane.classList.contains("is-on")) renderListsIndex();
+        return;
+      }
+      if (listsLoading && !force) return;
+      listsLoading = true;
+      if (!listsDetailPane.classList.contains("is-on")) renderListsIndex();
+      var userId = getCustomerUserId();
+      try {
+        var res = await fetch(
+          apiUrl("/api/widget/lists?userId=" + encodeURIComponent(userId)),
+          { credentials: "omit", cache: "no-store" },
+        );
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Listák betöltése sikertelen");
+        savedListsCache = Array.isArray(data.lists) ? data.lists : [];
+        Object.keys(selectedListIds).forEach(function (id) {
+          if (
+            !savedListsCache.some(function (x) {
+              return x.id === id;
+            })
+          ) {
+            delete selectedListIds[id];
+          }
+        });
+      } catch (e) {
+        savedListsCache = [];
+        flashError(e.message || "Listák betöltése sikertelen");
+      } finally {
+        listsLoading = false;
+        if (!listsDetailPane.classList.contains("is-on")) renderListsIndex();
+      }
+    }
+
+    function cloneListLines(lines) {
+      return (lines || []).map(function (l) {
+        return {
+          sku: String(l.sku || "").trim(),
+          quantity: Math.max(1, parseInt(l.quantity, 10) || 1),
+          productId: l.productId != null ? l.productId : null,
+          name: l.name || null,
+        };
+      });
+    }
+
+    function renderListDetail() {
+      if (!currentListDetail) return;
+      listsDetailNameInput.value = currentListDetail.name || "";
+      var n = (currentListDetail.lines || []).length;
+      listsDetailMeta.innerHTML = "";
+      listsDetailMeta.appendChild(
+        el("span", null, [
+          n + " tétel" + (currentListDetail.updatedAt ? " · " + formatListDate(currentListDetail.updatedAt) : ""),
+        ]),
+      );
+      listsDetailBody.innerHTML = "";
+      (currentListDetail.lines || []).forEach(function (line, idx) {
+        var qtyInput = el("input", {
+          className: "sr-qo-qty-input",
+          type: "number",
+          min: "1",
+          step: "1",
+          value: String(Math.max(1, parseInt(line.quantity, 10) || 1)),
+        });
+        qtyInput.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+        });
+        qtyInput.addEventListener("change", function () {
+          var q = Math.max(1, parseInt(qtyInput.value, 10) || 1);
+          qtyInput.value = String(q);
+          currentListDetail.lines[idx].quantity = q;
+          listDetailDirty = true;
+        });
+        var remBtn = el(
+          "button",
+          {
+            type: "button",
+            className: "sr-qo-btn-sm",
+            onClick: function (ev) {
+              ev.stopPropagation();
+              currentListDetail.lines.splice(idx, 1);
+              listDetailDirty = true;
+              renderListDetail();
+            },
+          },
+          ["Eltávolít"],
+        );
+        listsDetailBody.appendChild(
+          el("tr", null, [
+            el("td", null, [line.sku || "—"]),
+            el("td", null, [line.name || "—"]),
+            el("td", null, [qtyInput]),
+            el("td", { className: "actions" }, [remBtn]),
+          ]),
+        );
+      });
+      listsDetailFoot.innerHTML = "";
+      listsDetailFoot.appendChild(
+        el(
+          "button",
+          {
+            type: "button",
+            className: "sr-qo-btn sr-qo-btn-success",
+            onClick: function () {
+              void saveCurrentListDetail();
+            },
+          },
+          ["Mentés"],
+        ),
+      );
+      listsDetailFoot.appendChild(
+        el(
+          "button",
+          {
+            type: "button",
+            className: "sr-qo-btn sr-qo-btn-success",
+            onClick: function () {
+              void sendListToOrder(currentListDetail);
+            },
+          },
+          ["Új megrendelésbe"],
+        ),
+      );
+      listsDetailFoot.appendChild(
+        el(
+          "button",
+          {
+            type: "button",
+            className: "sr-qo-btn sr-qo-btn-ghost",
+            onClick: function () {
+              void deleteListById(currentListDetail && currentListDetail.id, currentListDetail && currentListDetail.name);
+            },
+          },
+          ["Törlés"],
+        ),
+      );
+    }
+
+    function addLineToCurrentList(preset) {
+      if (!currentListDetail) return;
+      var sku = preset && preset.sku
+        ? String(preset.sku).trim()
+        : String(listsAddSkuInput.value || "").trim();
+      if (!sku) {
+        flashError("Add meg a cikkszámot.");
+        return;
+      }
+      var qty =
+        preset && preset.quantity != null
+          ? Math.max(1, parseInt(preset.quantity, 10) || 1)
+          : Math.max(1, parseInt(listsAddQtyInput.value, 10) || 1);
+      var productId =
+        preset && preset.productId != null ? preset.productId : null;
+      var name = preset && preset.name ? preset.name : null;
+      var lines = currentListDetail.lines || (currentListDetail.lines = []);
+      if (lines.length >= 200) {
+        flashError("Legfeljebb 200 tétel / lista.");
+        return;
+      }
+      var found = -1;
+      for (var i = 0; i < lines.length; i++) {
+        if (String(lines[i].sku).toLowerCase() === sku.toLowerCase()) {
+          found = i;
+          break;
+        }
+      }
+      if (found >= 0) {
+        lines[found].quantity = Math.max(
+          1,
+          (parseInt(lines[found].quantity, 10) || 0) + qty,
+        );
+        if (name && !lines[found].name) lines[found].name = name;
+        if (productId != null && lines[found].productId == null) {
+          lines[found].productId = productId;
+        }
+      } else {
+        lines.push({
+          sku: sku,
+          quantity: qty,
+          productId: productId,
+          name: name,
+        });
+      }
+      listsAddSkuInput.value = "";
+      listsAddQtyInput.value = "1";
+      hideListsSuggest();
+      listDetailDirty = true;
+      renderListDetail();
+      try {
+        listsAddSkuInput.focus();
+      } catch (e) {}
+    }
+
+    async function openListDetail(listId) {
+      var userId = getCustomerUserId();
+      if (!userId) {
+        flashError("Bejelentkezés szükséges");
+        return;
+      }
+      setBusy(true);
+      setStatus("Lista betöltése…");
+      try {
+        var res = await fetch(
+          apiUrl(
+            "/api/widget/lists/" +
+              encodeURIComponent(listId) +
+              "?userId=" +
+              encodeURIComponent(userId),
+          ),
+          { credentials: "omit", cache: "no-store" },
+        );
+        var data = await res.json();
+        if (!res.ok || !data.list) {
+          throw new Error(data.error || "Lista nem található");
+        }
+        currentListDetail = {
+          id: data.list.id,
+          name: data.list.name,
+          lineCount: data.list.lineCount,
+          updatedAt: data.list.updatedAt,
+          createdAt: data.list.createdAt,
+          lines: cloneListLines(data.list.lines),
+        };
+        listDetailDirty = false;
+        listsAddSkuInput.value = "";
+        listsAddQtyInput.value = "1";
+        renderListDetail();
+        showListsDetail();
+        setStatus("");
+      } catch (e) {
+        flashError(e.message || "Lista megnyitása sikertelen");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function saveCurrentListDetail() {
+      var userId = getCustomerUserId();
+      if (!userId || !currentListDetail) return;
+      var name = String(listsDetailNameInput.value || "").trim();
+      if (!name) {
+        flashError("Adj meg egy nevet.");
+        return;
+      }
+      setBusy(true);
+      try {
+        var res = await fetch(
+          apiUrl("/api/widget/lists/" + encodeURIComponent(currentListDetail.id)),
+          {
+            method: "PATCH",
+            credentials: "omit",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: userId,
+              name: name,
+              lines: cloneListLines(currentListDetail.lines),
+            }),
+          },
+        );
+        var data = await res.json();
+        if (!res.ok || !data.list) throw new Error(data.error || "Mentés sikertelen");
+        currentListDetail = {
+          id: data.list.id,
+          name: data.list.name,
+          lineCount: data.list.lineCount,
+          updatedAt: data.list.updatedAt,
+          createdAt: data.list.createdAt,
+          lines: cloneListLines(data.list.lines),
+        };
+        listDetailDirty = false;
+        savedListsCache = [data.list].concat(
+          savedListsCache.filter(function (x) {
+            return x.id !== data.list.id;
+          }),
+        );
+        renderListDetail();
+        setStatus("Lista mentve.");
+      } catch (e) {
+        flashError(e.message || "Mentés sikertelen");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function createEmptyListAndOpen() {
+      var userId = getCustomerUserId();
+      if (!userId) {
+        flashError("A létrehozáshoz jelentkezz be a boltban.");
+        return;
+      }
+      var defaultName =
+        "Lista " +
+        new Date().toLocaleDateString("hu-HU", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      setBusy(true);
+      try {
+        var res = await fetch(apiUrl("/api/widget/lists"), {
+          method: "POST",
+          credentials: "omit",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: userId,
+            name: defaultName,
+            lines: [],
+          }),
+        });
+        var data = await res.json();
+        if (!res.ok || !data.list) throw new Error(data.error || "Létrehozás sikertelen");
+        savedListsCache = [data.list].concat(
+          savedListsCache.filter(function (x) {
+            return x.id !== data.list.id;
+          }),
+        );
+        currentListDetail = {
+          id: data.list.id,
+          name: data.list.name,
+          lineCount: data.list.lineCount,
+          updatedAt: data.list.updatedAt,
+          createdAt: data.list.createdAt,
+          lines: cloneListLines(data.list.lines),
+        };
+        listDetailDirty = false;
+        listsAddSkuInput.value = "";
+        listsAddQtyInput.value = "1";
+        renderListDetail();
+        showListsDetail();
+        setStatus("Új lista létrehozva.");
+        try {
+          listsDetailNameInput.focus();
+          listsDetailNameInput.select();
+        } catch (e) {}
+      } catch (e) {
+        flashError(e.message || "Létrehozás sikertelen");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function sendListToOrder(list) {
+      if (!list) return;
+      if (listDetailDirty) {
+        await saveCurrentListDetail();
+        if (listDetailDirty) return;
+        list = currentListDetail;
+      }
+      setBusy(true);
+      setStatus("Lista betöltése a rendelésbe…");
+      try {
+        await importReorderLines(list.lines || [], { replace: true });
+        setView("order");
+        showOrderWorkOrStart();
+        setStatus("Lista betöltve: " + (list.name || ""));
+      } catch (e) {
+        flashError(e.message || "Betöltés sikertelen");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function deleteListById(listId, listName) {
+      var userId = getCustomerUserId();
+      if (!userId || !listId) return;
+      if (!window.confirm('Törlöd a listát: „' + (listName || "") + '”?')) return;
+      setBusy(true);
+      try {
+        var res = await fetch(
+          apiUrl(
+            "/api/widget/lists/" +
+              encodeURIComponent(listId) +
+              "?userId=" +
+              encodeURIComponent(userId),
+          ),
+          { method: "DELETE", credentials: "omit" },
+        );
+        var data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) throw new Error(data.error || "Törlés sikertelen");
+        savedListsCache = savedListsCache.filter(function (x) {
+          return x.id !== listId;
+        });
+        delete selectedListIds[listId];
+        if (currentListDetail && currentListDetail.id === listId) {
+          showListsIndex();
+        } else {
+          renderListsIndex();
+        }
+        setStatus("Lista törölve.");
+      } catch (e) {
+        flashError(e.message || "Törlés sikertelen");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function bulkDeleteSelectedLists() {
+      var ids = selectedListIdList();
+      if (!ids.length) return;
+      if (!window.confirm("Törlöd a kijelölt " + ids.length + " listát?")) return;
+      var userId = getCustomerUserId();
+      if (!userId) return;
+      setBusy(true);
+      try {
+        for (var i = 0; i < ids.length; i++) {
+          var res = await fetch(
+            apiUrl(
+              "/api/widget/lists/" +
+                encodeURIComponent(ids[i]) +
+                "?userId=" +
+                encodeURIComponent(userId),
+            ),
+            { method: "DELETE", credentials: "omit" },
+          );
+          if (!res.ok) {
+            var data = await res.json().catch(function () {
+              return {};
+            });
+            throw new Error(data.error || "Törlés sikertelen");
+          }
+          delete selectedListIds[ids[i]];
+        }
+        await loadSavedLists(true);
+        setStatus(ids.length + " lista törölve.");
+      } catch (e) {
+        flashError(e.message || "Törlés sikertelen");
+        await loadSavedLists(true);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function bulkReorderSelectedLists() {
+      var ids = selectedListIdList();
+      if (!ids.length) return;
+      var userId = getCustomerUserId();
+      if (!userId) return;
+      setBusy(true);
+      setStatus("Listák betöltése…");
+      try {
+        var merged = [];
+        var seen = {};
+        for (var i = 0; i < ids.length; i++) {
+          var res = await fetch(
+            apiUrl(
+              "/api/widget/lists/" +
+                encodeURIComponent(ids[i]) +
+                "?userId=" +
+                encodeURIComponent(userId),
+            ),
+            { credentials: "omit", cache: "no-store" },
+          );
+          var data = await res.json();
+          if (!res.ok || !data.list) {
+            throw new Error(data.error || "Lista betöltése sikertelen");
+          }
+          (data.list.lines || []).forEach(function (line) {
+            var sku = String(line.sku || "").trim();
+            if (!sku) return;
+            var key = sku.toLowerCase();
+            var qty = Math.max(1, parseInt(line.quantity, 10) || 1);
+            if (seen[key] != null) {
+              merged[seen[key]].quantity += qty;
+            } else {
+              seen[key] = merged.length;
+              merged.push({
+                sku: sku,
+                quantity: qty,
+                productId: line.productId != null ? line.productId : null,
+                name: line.name || null,
+              });
+            }
+          });
+        }
+        if (!merged.length) {
+          flashError("A kijelölt listák üresek.");
+          return;
+        }
+        await importReorderLines(merged, { replace: true });
+        setView("order");
+        showOrderWorkOrStart();
+        setStatus(ids.length + " lista betöltve a rendelésbe.");
+      } catch (e) {
+        flashError(e.message || "Betöltés sikertelen");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function hideListSaveForm() {
+      listSaveBar.classList.remove("is-on");
+    }
+
+    function showListSaveForm() {
+      var userId = getCustomerUserId();
+      if (!userId) {
+        flashError("A mentéshez jelentkezz be a boltban.");
+        return;
+      }
+      var payloadLines = lines
+        .filter(function (l) {
+          return l && l.sku && String(l.sku).trim();
+        })
+        .map(function (l) {
+          return {
+            sku: String(l.sku).trim(),
+            quantity: Math.max(1, parseInt(l.quantity, 10) || 1),
+            productId: l.productId || null,
+            name: l.name || null,
+          };
+        });
+      if (!payloadLines.length) {
+        flashError("Nincs mit menteni — adj hozzá legalább egy tételt.");
+        return;
+      }
+      hideCartConfirm();
+      hideUndoBar();
+      var defaultName =
+        "Lista " +
+        new Date().toLocaleDateString("hu-HU", {
+          month: "short",
+          day: "numeric",
+        });
+      listSaveNameInput.value = defaultName;
+      listSaveBar.classList.add("is-on");
+      try {
+        listSaveNameInput.focus();
+        listSaveNameInput.select();
+      } catch (e) {}
+    }
+
+    async function submitListSaveForm() {
+      var userId = getCustomerUserId();
+      if (!userId) {
+        flashError("A mentéshez jelentkezz be a boltban.");
+        return;
+      }
+      var name = String(listSaveNameInput.value || "").trim();
+      if (!name) {
+        flashError("Adj meg egy nevet.");
+        return;
+      }
+      var payloadLines = lines
+        .filter(function (l) {
+          return l && l.sku && String(l.sku).trim();
+        })
+        .map(function (l) {
+          return {
+            sku: String(l.sku).trim(),
+            quantity: Math.max(1, parseInt(l.quantity, 10) || 1),
+            productId: l.productId || null,
+            name: l.name || null,
+          };
+        });
+      if (!payloadLines.length) {
+        flashError("Nincs mit menteni — adj hozzá legalább egy tételt.");
+        return;
+      }
+      setBusy(true);
+      try {
+        var res = await fetch(apiUrl("/api/widget/lists"), {
+          method: "POST",
+          credentials: "omit",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: userId,
+            name: name,
+            lines: payloadLines,
+          }),
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Mentés sikertelen");
+        hideListSaveForm();
+        setStatus("Lista elmentve: " + (data.list && data.list.name ? data.list.name : name));
+        if (data.list) {
+          savedListsCache = [data.list].concat(
+            savedListsCache.filter(function (x) {
+              return x.id !== data.list.id;
+            }),
+          );
+        }
+      } catch (e) {
+        flashError(e.message || "Mentés sikertelen");
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function promptSaveCurrentList() {
+      showListSaveForm();
+    }
+
+    showListsIndex();
+
 
     viewEls.home = el(
       "section",
@@ -6551,6 +8102,7 @@
     var views = el("div", { className: "sr-qo-views" }, [
       viewEls.home,
       viewEls.order,
+      viewEls.lists,
       viewEls.orders,
     ]);
 
@@ -6571,6 +8123,7 @@
     root.appendChild(textTip);
     document.addEventListener("keydown", onKeyDown, true);
     setView(activeView);
+    updatePriceModeUi();
     renderList();
     if (lines.length) showOrderWork();
     else showOrderWorkOrStart();

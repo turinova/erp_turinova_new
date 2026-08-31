@@ -25,6 +25,7 @@ import {
   saveCursor,
   type SyncJobRow,
 } from "./jobs";
+import { onCatalogSyncFinished } from "./bootstrap";
 import {
   createShoprenterAdapter,
   type CategoryMeta,
@@ -247,6 +248,7 @@ async function runClaimedJob(
       const skuUsed = await countOrgActiveSkus(client, shop.organization_id);
       if (skuUsed >= skuLimit && page.nextCursor) {
         await finishJobBlocked(client, job.id, shop.id, catalogCount);
+        await onCatalogSyncFinished(client, shop.id);
         return { blocked: true as const, catalogCount };
       }
       if (!page.nextCursor) {
@@ -266,6 +268,7 @@ async function runClaimedJob(
         }
         const finalCount = await countShopCatalog(client, shop.id);
         await finishJobSuccess(client, job.id, shop.id, finalCount);
+        await onCatalogSyncFinished(client, shop.id);
         return {
           blocked: false as const,
           done: true as const,

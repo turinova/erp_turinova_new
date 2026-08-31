@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   costPlusNet,
@@ -1123,6 +1124,13 @@ export function PricesView() {
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col bg-bg">
+      <div className="mb-0 border-b border-line bg-surface-2 px-4 py-2.5 text-[12px] leading-relaxed text-faint md:px-6">
+        Nem vagy biztos, melyik árazást válaszd?{" "}
+        <Link href="/arak/utmutato" className="font-semibold text-text underline-offset-2 hover:underline">
+          Árazás útmutató
+        </Link>
+        {" "}— fix ár, csoport %, mennyiségi sáv.
+      </div>
       {showNew ? (
         <div className="border-b border-line-strong bg-surface px-4 py-2 md:px-6">
           <div className="flex flex-wrap gap-2">

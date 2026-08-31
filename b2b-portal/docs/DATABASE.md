@@ -4,7 +4,7 @@
 Az app **nem** futtat migrációt bootoláskor.
 
 Teljes termékterv: [`SAAS_ARCHITECTURE.md`](./SAAS_ARCHITECTURE.md)  
-Árazás v3: [`PRICING.md`](./PRICING.md)  
+Árazás v6: [`PRICING_V6_CURRENT.md`](./PRICING_V6_CURRENT.md)  
 Commerce catalog · sync · admin stats: [`PLATFORM_AND_ADMIN_IMPLEMENTATION.md`](./PLATFORM_AND_ADMIN_IMPLEMENTATION.md)
 
 ---
@@ -49,6 +49,10 @@ Könyvtár: `b2b-portal/sql/`
 | 29 | `029_shop_order_facts.sql` | Bolt rendelés-tükör a gyors `/riport`-hoz (`shop_order_facts` + lines + sync state). **App nem futtat DDL-t.** Utána: `REPORT_USE_ORDER_FACTS=1` + cron `/api/cron/order-facts` |
 | 30 | `030_signup_intents.sql` | Self-serve próba: `signup_intents` + `organizations.signup_source` / `purge_protected`. Utána cron `/api/cron/signup-cleanup` |
 | 31 | `031_plans_v6.sql` | Árak v6 bruttó: start **7500** · plus/pro **9999** (saját márka) |
+| 32 | `032_widget_customer_lists.sql` | Widget **Listáim** |
+| — | `035_marketing_profile.sql` | **Archiválva** — `_archived/partner-activation/sql/` |
+| 34 | `036_platform_trial_default_14.sql` | `platform_settings.trial_days` default **14** |
+| 37 | `037_shop_bootstrap.sql` | Egységes bolt-betöltés státusz (`bootstrap_*` oszlopok). Utána cron: `/api/cron/customer-groups` |
 
 **M1:** futtasd `013`→`017` ezen a sorrenden. `015` kötelező, mielőtt új orgot hozol létre. **v3 csomagok:** futtasd `019` mielőtt `plus` kerül az `organizations.plan`-ba — a `015` checkje még `grow`/`scale`.
 

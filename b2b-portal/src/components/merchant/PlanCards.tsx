@@ -113,9 +113,9 @@ export function PlanCards({
               {formatPlanPrice(WHITE_LABEL_PRICE_HUF)} / hó)
             </span>
             <span className="mt-0.5 block text-[12px] text-faint">
-              A widget panelén nem jelenik meg a Turinova logó. A Widget
-              beállításokban kapcsold ki a feliratot, miután bekapcsoltuk a
-              csomagot. Próba alatt a felirat mindig látszik.
+              A widget panelén nem jelenik meg a Turinova logó (automatikusan,
+              amint bekapcsoljuk a csomagot). Próba alatt a felirat mindig
+              látszik.
             </span>
           </span>
         </label>

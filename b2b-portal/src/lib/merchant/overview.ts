@@ -3,7 +3,15 @@ import {
   countActivePartnersMonth,
   effectivePartnerLimit,
 } from "@/lib/billing/active-partners";
-import { PLAN_DEFAULTS, formatPlanPrice, onPlan, parsePlanId, type PlanId } from "@/lib/billing/plans";
+import {
+  BASE_PRICE_HUF,
+  PLAN_DEFAULTS,
+  WHITE_LABEL_PRICE_HUF,
+  formatPlanPrice,
+  onPlan,
+  parsePlanId,
+  type PlanId,
+} from "@/lib/billing/plans";
 import { type PartnerGateDto } from "@/lib/billing/types";
 import { catalogIsSearchable } from "@/lib/commerce/lookup";
 import { query } from "@/lib/db";
@@ -11,7 +19,6 @@ import { loadMerchantShop, type MerchantShopDto } from "@/lib/merchant/shop";
 
 export type SetupStepId =
   | "shop"
-  | "catalog"
   | "widget"
   | "pricing";
 
@@ -161,13 +168,14 @@ export async function loadMerchantOverview(
         catalog_product_count: number;
       }>(
         client,
-        `select catalog_status, catalog_product_count from shops where id = $1`,
+        `select catalog_status, catalog_product_count
+         from shops where id = $1`,
         [shop.shopId],
       )
     : null;
   const catalogStatus = cat?.rows[0]?.catalog_status ?? "pending";
   const productCount = cat?.rows[0]?.catalog_product_count ?? 0;
-  const job = shop
+const job = shop
     ? await query<{ pages_done: number; pages_total: number | null }>(
         client,
         `select pages_done, pages_total from sync_jobs
@@ -227,13 +235,7 @@ export async function loadMerchantOverview(
     {
       id: "shop",
       label: "Bolt összekötve",
-      done: shopConnected,
-      href: "/settings",
-    },
-    {
-      id: "catalog",
-      label: "Termékek szinkronban",
-      done: catalogReady,
+      done: shopConnected && catalogReady,
       href: "/settings",
     },
     {
@@ -255,7 +257,7 @@ export async function loadMerchantOverview(
   if (!shop || !shop.hasCredentials) {
     next = {
       title: "Kapcsold össze a boltot",
-      body: "Írd be a Shoprenter API-nevet és jelszót, aztán: Működik?",
+      body: "Írd be a Shoprenter API-nevet és jelszót, majd: Összekötés és betöltés. A termékek és csoportok maguktól jönnek.",
       href: "/settings",
       cta: "Beállítások",
       external: false,
@@ -270,13 +272,13 @@ export async function loadMerchantOverview(
     };
   } else if (!catalogReady) {
     next = {
-      title: "Még másoljuk a termékeket",
+      title: "Másoljuk a bolt adatait",
       body:
         progressPct > 0
-          ? `Kb. ${progressPct}% kész. Utána a kereső a boltban működik.`
-          : "Ez eltarthat pár percig. Addig a gyors rendelésben még nincs teljes lista.",
-      href: "/settings",
-      cta: "Megnézem",
+          ? `Kb. ${progressPct}% kész. Nem kell külön frissíteni — alább látod a lépéseket.`
+          : "Termékek, csoportok, rendelések. Ez pár perc. Nem kell külön gomb.",
+      href: "/home",
+      cta: "Várok",
       external: false,
     };
   } else if (!shop.widgetEnabled) {
@@ -290,9 +292,9 @@ export async function loadMerchantOverview(
   } else if (!hasPricing) {
     next = {
       title: "Állíts be partnerárat",
-      body: "Csoportár vagy mennyiségi sáv. Így látják a viszonteladók a saját árukat.",
-      href: "/arak",
-      cta: "Árazás",
+      body: "Csoportár vagy mennyiségi sáv. Ha nem vagy biztos, nézd meg az útmutatót.",
+      href: "/arak/utmutato",
+      cta: "Árazás útmutató",
       external: false,
     };
   } else if (gate.overCap) {
@@ -306,9 +308,9 @@ export async function loadMerchantOverview(
   } else if (gate.trialExpired) {
     next = {
       title: "Lejárt a próba",
-      body: `A boltban a gyors rendelés megy. Itt ${gate.paidPartnerLimit} vevőig látsz mindent. Plus: ${formatPlanPrice(PLAN_DEFAULTS.plus.listPriceHuf)}.`,
+      body: `A boltban a gyors rendelés továbbra is megy. Előfizetés: ${formatPlanPrice(BASE_PRICE_HUF)} vagy saját márka ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)}.`,
       href: "/csomag",
-      cta: `Tartsd a ${gate.activePartners} vevőt · Plus`,
+      cta: "Előfizetésem",
       external: false,
     };
   } else if (gate.isTrial && gate.trialDaysLeft != null && gate.trialDaysLeft <= 7) {

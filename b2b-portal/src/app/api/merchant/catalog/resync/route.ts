@@ -3,10 +3,10 @@ import {
   isErrorResponse,
   requireSettingsAdminApi,
 } from "@/lib/auth/merchant-api";
-import { enqueueFullSync } from "@/lib/commerce/jobs";
-import { kickCatalogSync } from "@/lib/commerce/loop";
+import { kickBootstrapWorkers, startShopBootstrap } from "@/lib/commerce/bootstrap";
 import { withTenant } from "@/lib/db";
 import { loadMerchantShop } from "@/lib/merchant/shop";
+import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
 
 export async function POST() {
   const auth = await requireSettingsAdminApi();
@@ -23,8 +23,16 @@ export async function POST() {
         if (shop.status === "needs_reauth") {
           return { error: "REAUTH" as const };
         }
-        const enq = await enqueueFullSync(client, shop.shopId, orgId);
-        return { jobId: enq.jobId, created: enq.created };
+        const loaded = await loadMerchantShoprenterConfig(client, orgId);
+        if (!loaded) return { error: "NO_CREDS" as const };
+        const enq = await startShopBootstrap(
+          client,
+          shop.shopId,
+          orgId,
+          loaded.config,
+          { force: true },
+        );
+        return { jobId: enq.catalogJobId, created: true };
       },
     );
 
@@ -44,7 +52,7 @@ export async function POST() {
       );
     }
 
-    kickCatalogSync();
+    kickBootstrapWorkers();
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     console.error("[POST /api/merchant/catalog/resync]", err);

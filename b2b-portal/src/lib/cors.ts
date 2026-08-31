@@ -10,7 +10,7 @@ export function corsHeadersFor(
   extra?: HeadersInit,
 ): HeadersInit {
   const headers: Record<string, string> = {
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Expose-Headers":
       "Content-Disposition, X-Export-Orders, X-Export-Lines, X-Export-Errors, X-Export-Truncated",

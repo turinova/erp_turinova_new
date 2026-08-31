@@ -92,12 +92,14 @@ export function canParseImage(_plan: PlanId, _isTrial: boolean): boolean {
 }
 
 export function resolveShowTurinovaMark(opts: {
-  hideRequested: boolean;
+  hideRequested?: boolean;
   plan: PlanId;
   isTrial: boolean;
 }): boolean {
-  if (!canHideTurinovaMark(opts.plan, opts.isTrial)) return true;
-  return !opts.hideRequested;
+  // Paid saját márka (plus/pro) → logó mindig elrejtve. Próba / start → mindig látszik.
+  // Nincs merchant kapcsoló: a csomag dönt.
+  void opts.hideRequested;
+  return !canHideTurinovaMark(opts.plan, opts.isTrial);
 }
 
 /** 10× monthly = 2 months free. */

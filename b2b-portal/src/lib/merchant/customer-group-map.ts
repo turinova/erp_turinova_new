@@ -15,7 +15,18 @@ export type GroupMapRow = {
   sr_name_snapshot: string;
   role: CustomerGroupRole;
   is_default_in_sr: boolean;
+  percent_discount: number | null;
 };
+
+/** DB / SR → UI: 0 is valid; null = unknown. */
+export function percentDiscountFromDb(
+  v: number | string | null | undefined,
+): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.min(100, Math.max(0, Math.trunc(n)));
+}
 
 export type GroupMapItemDto = {
   innerId: number;
@@ -99,7 +110,7 @@ export async function listGroupMap(
   const res = await query<GroupMapRow>(
     client,
     `select id, shop_id, sr_group_inner_id, sr_group_id, sr_name_snapshot,
-            role, is_default_in_sr
+            role, is_default_in_sr, percent_discount
      from shop_customer_group_map
      where shop_id = $1
      order by sr_name_snapshot`,

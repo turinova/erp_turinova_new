@@ -99,6 +99,8 @@ Ezenkívül megadhat adatokat a: cég struktúrájára és munkatársakra vonatk
 Miért kezeljük a személyes adatait?
 Az adatok kezelésének célja, hogy a regisztrált érintett igénybe vegye a Turinova B2B szolgáltatást (fiók, portál, widget, előfizetés).
 
+A widget „Listáim” funkciója a bejelentkezett webshop-vevő (Shoprenter ügyfélazonosító) által mentett rendelési listákat (cikkszám, mennyiség, opcionális terméknév) tárolja a szolgáltatás teljesítése érdekében. A listák a vevő kérésére törölhetők; a bolt / előfizetés megszűnésekor a kapcsolódó adatok törölhetők.
+
 Mi a jogalapja a személyes adatai kezelésének?
 Személyes adatait a szerződés megkötése és teljesítése alapján kezeljük (GDPR 6. cikk (1) bekezdés b) pont). Egyes önkéntes megkeresések, hírlevél esetén a jogalap a hozzájárulás (GDPR 6. cikk (1) bekezdés a) pont).
 

@@ -20,6 +20,10 @@ Az árak **bruttó** (ÁFÁS).
 
 Az alábbi v3/v4/v5 szöveg történeti; ahol ütközik, **a v6 a mérvadó**.
 
+**Teljes aktuális spec:** [`PRICING_V6_CURRENT.md`](./PRICING_V6_CURRENT.md) — trial 14 nap, soft cap 500, fotó minden csomagon, két merchant csomag.
+
+> ⚠️ **Archív figyelmeztetés:** A dokumentum alábbi v3 szekciói (30 napos próba, 6 900/12 900/24 900, top 15/40/120, fotó=Pro) **nem tükrözik a jelenlegi kódot**. Implementációhoz csak a fenti v6 blokk + `PRICING_V6_CURRENT.md`.
+
 ---
 
 # (Archív — v5)

@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db";
 import { buildPartnerBehavior } from "@/lib/merchant/customer-behavior";
 import { buildMerchantCustomerStats } from "@/lib/merchant/customer-stats";
 import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
+import { resolveCustomerGroups } from "@/lib/merchant/customer-group-sync";
 import {
   listGroupMovesForCustomer,
   listWidgetOrdersForCustomer,
@@ -19,7 +20,6 @@ import { ensurePartnerGroupRulesSchema } from "@/lib/merchant/ensure-group-rules
 import {
   getCustomerByInnerId,
   listAddressesForCustomer,
-  listCustomerGroups,
 } from "@/lib/shoprenter/customers";
 import { listCustomerOrders } from "@/lib/shoprenter";
 
@@ -48,7 +48,11 @@ export async function GET(_req: Request, ctx: Ctx) {
         );
         if (!loaded) return { error: "NO_SHOP_OR_CREDS" as const };
 
-        const srGroups = await listCustomerGroups(loaded.config);
+        const srGroups = await resolveCustomerGroups(
+          client,
+          loaded.shopId,
+          loaded.config,
+        );
         const customer = await getCustomerByInnerId(
           loaded.config,
           customerInnerId,

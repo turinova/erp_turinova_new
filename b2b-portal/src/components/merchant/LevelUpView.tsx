@@ -513,7 +513,7 @@ export function LevelUpView() {
     const nextRewards = pruneRewards(policy.rewards, next);
     void savePolicy({ ladder: next, rewards: nextRewards });
     setMessage(
-      "Létra újraépítve az aktuális csoportokból (alap → többi). Állítsd a sorrendet ↑↓-vel.",
+      "Létra újraépítve a betöltött csoportokból (alap → többi). Állítsd a sorrendet ↑↓-vel.",
     );
   }
 
@@ -1099,18 +1099,22 @@ export function LevelUpView() {
                 meg.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={policySaving || groups.length === 0}
-              onClick={() => refreshLadderFromGroups()}
-              className="h-8 shrink-0 cursor-pointer border border-line-strong px-2 text-[11px] font-semibold disabled:opacity-40"
-            >
-              Frissítés a bolt csoportjaiból
-            </button>
+            {ladderHasOrphans ? (
+              <button
+                type="button"
+                disabled={policySaving || groups.length === 0}
+                onClick={() => refreshLadderFromGroups()}
+                className="h-8 shrink-0 cursor-pointer border border-line-strong px-2 text-[11px] font-semibold disabled:opacity-40"
+                title="Eltávolítja a törölt csoportokat, és újraépíti a sorrendet"
+              >
+                Létra újraépítése
+              </button>
+            ) : null}
           </div>
           {ladderHasOrphans ? (
             <p className="mt-2 border border-amber-700/30 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-950">
-              Van olyan ID a létrán, ami már nincs a boltban. Nyomd a frissítést.
+              Van olyan ID a létrán, ami már nincs a csoportlistában. Építsd újra
+              a létrát, vagy kösd újra a boltot a Beállításokban.
             </p>
           ) : null}
           <ul className="mt-3 space-y-2">

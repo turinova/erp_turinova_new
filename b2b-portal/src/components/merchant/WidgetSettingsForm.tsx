@@ -88,14 +88,19 @@ export function WidgetSettingsForm({ initial, apiBase }: Props) {
   const [settings, setSettings] = useState<WidgetSettingsPayload>(() =>
     normalizeWidgetSettings(initial.settings),
   );
-  const [hideTurinovaMark, setHideTurinovaMark] = useState(
-    initial.settings.features.hideTurinovaMark === true,
-  );
   const [showCustomerGroupName, setShowCustomerGroupName] = useState(
     initial.settings.features.showCustomerGroupName === true,
   );
   const [showNextLevelProgress, setShowNextLevelProgress] = useState(
     initial.settings.features.showNextLevelProgress === true,
+  );
+  const [showFreeShippingProgress, setShowFreeShippingProgress] = useState(
+    initial.settings.features.showFreeShippingProgress === true,
+  );
+  const [freeShippingManual, setFreeShippingManual] = useState(
+    initial.settings.freeShipping?.manualGross != null
+      ? String(initial.settings.freeShipping.manualGross)
+      : "",
   );
   const [tab, setTab] = useState<TabId>("appear");
   const [showPanel, setShowPanel] = useState(false);
@@ -104,12 +109,27 @@ export function WidgetSettingsForm({ initial, apiBase }: Props) {
   const [message, setMessage] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  /* Partner FOMO only visible in open panel — open preview when toggled on. */
+  const freeShipThresholdLabel = useMemo(() => {
+    const t = Number(String(freeShippingManual).replace(/\s/g, ""));
+    if (Number.isFinite(t) && t > 0) {
+      return (
+        Math.round(t).toLocaleString("hu-HU", { maximumFractionDigits: 0 }) +
+        " Ft"
+      );
+    }
+    return "50 000 Ft";
+  }, [freeShippingManual]);
+
+  /* Partner / free-ship FOMO only visible in open panel — open preview when toggled on. */
   useEffect(() => {
-    if (showCustomerGroupName || showNextLevelProgress) {
+    if (
+      showCustomerGroupName ||
+      showNextLevelProgress ||
+      showFreeShippingProgress
+    ) {
       setShowPanel(true);
     }
-  }, [showCustomerGroupName, showNextLevelProgress]);
+  }, [showCustomerGroupName, showNextLevelProgress, showFreeShippingProgress]);
 
   const apiBaseLocal = isLocalAppUrl(apiBase);
   const snippet = useMemo(
@@ -151,6 +171,11 @@ window.SR_B2B_QUICKORDER = {
     setMessage(null);
     setPending(true);
 
+    const manualParsed = (() => {
+      const n = Number(String(freeShippingManual).replace(/\s/g, ""));
+      return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+    })();
+
     const payload: WidgetSettingsPayload = {
       appearance: applyWidgetTheme(
         {
@@ -160,9 +185,13 @@ window.SR_B2B_QUICKORDER = {
       ),
       features: {
         ...DEFAULT_WIDGET_SETTINGS.features,
-        hideTurinovaMark,
+        hideTurinovaMark: initial.canHideTurinovaMark,
         showCustomerGroupName,
         showNextLevelProgress,
+        showFreeShippingProgress,
+      },
+      freeShipping: {
+        manualGross: manualParsed,
       },
     };
 
@@ -179,16 +208,22 @@ window.SR_B2B_QUICKORDER = {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Mentés sikertelen");
-      const nextHide =
-        data.widget.settings.features.hideTurinovaMark === true;
       const nextGroupName =
         data.widget.settings.features.showCustomerGroupName === true;
       const nextProgress =
         data.widget.settings.features.showNextLevelProgress === true;
-      setSettings(normalizeWidgetSettings(data.widget.settings));
-      setHideTurinovaMark(nextHide);
+      const nextFree =
+        data.widget.settings.features.showFreeShippingProgress === true;
+      const norm = normalizeWidgetSettings(data.widget.settings);
+      setSettings(norm);
       setShowCustomerGroupName(nextGroupName);
       setShowNextLevelProgress(nextProgress);
+      setShowFreeShippingProgress(nextFree);
+      setFreeShippingManual(
+        norm.freeShipping.manualGross != null
+          ? String(norm.freeShipping.manualGross)
+          : "",
+      );
       setButtonLabel(data.widget.buttonLabel);
       setWidgetEnabled(data.widget.widgetEnabled);
       if (typeof data.widget.widgetVersion === "string") {
@@ -235,11 +270,11 @@ window.SR_B2B_QUICKORDER = {
           fabSize={settings.appearance.fabSize}
           panelTheme={settings.appearance.panelTheme}
           modules={[...DEFAULT_WIDGET_SETTINGS.features.modules]}
-          showTurinovaMark={
-            initial.canHideTurinovaMark ? !hideTurinovaMark : true
-          }
+          showTurinovaMark={!initial.canHideTurinovaMark}
           showCustomerGroupName={showCustomerGroupName}
           showNextLevelProgress={showNextLevelProgress}
+          showFreeShippingProgress={showFreeShippingProgress}
+          freeShippingThresholdLabel={freeShipThresholdLabel}
           showPanel={showPanel}
           onShowPanel={setShowPanel}
         />
@@ -459,44 +494,54 @@ window.SR_B2B_QUICKORDER = {
                         </span>
                       </span>
                     </label>
-                    <label
-                      className={
-                        initial.canHideTurinovaMark
-                          ? "flex cursor-pointer items-start gap-2 text-[12px]"
-                          : "flex items-start gap-2 text-[12px] text-faint"
-                      }
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 accent-[var(--accent)]"
-                        checked={
-                          initial.canHideTurinovaMark ? !hideTurinovaMark : true
-                        }
-                        disabled={!initial.canHideTurinovaMark}
-                        onChange={(e) => setHideTurinovaMark(!e.target.checked)}
-                      />
-                      <span>
-                        <span className="font-semibold">
-                          Turinova logó a panel alján
-                        </span>
-                        <span className="mt-0.5 block text-[11px] text-faint">
-                          {initial.canHideTurinovaMark
-                            ? "Kapcsold ki, ha a Turinova logó ne jelenjen meg (saját márka csomag)."
-                            : initial.isTrial
-                              ? "Próba alatt a logó ott marad. Fizetés után a saját márka (9999 Ft bruttó) opcióval leveheted."
-                              : "A saját márka előfizetéssel (Előfizetésem) elrejtheted."}{" "}
-                          {!initial.canHideTurinovaMark ? (
-                            <a
-                              href="/csomag"
-                              className="font-semibold underline underline-offset-2"
-                            >
-                              Előfizetésem
-                            </a>
-                          ) : null}
-                        </span>
-                      </span>
-                    </label>
                   </div>
+                </div>
+
+                <div className="border-[1.5px] border-line-strong bg-surface p-3">
+                  <p className="text-[11px] font-semibold text-muted">
+                    Ingyenes szállítás
+                  </p>
+                  <label className="mt-2 flex cursor-pointer items-start gap-2 text-[12px]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-[var(--accent)]"
+                      checked={showFreeShippingProgress}
+                      onChange={(e) =>
+                        setShowFreeShippingProgress(e.target.checked)
+                      }
+                    />
+                    <span>
+                      <span className="font-semibold">Küszöb jelző</span>
+                      <span className="mt-0.5 block text-[11px] text-faint">
+                        „Még X Ft → ingyenes szállítás” a panelen (bruttó
+                        kosár).
+                      </span>
+                    </span>
+                  </label>
+
+                  {showFreeShippingProgress ? (
+                    <div className="mt-3 space-y-2 border-t-[0.5px] border-line pt-3">
+                      <label className="block">
+                        <span className="text-[11px] font-semibold text-muted">
+                          Küszöb (bruttó Ft)
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          className="mt-1 w-full border-[1.5px] border-line-strong bg-bg px-2.5 py-1.5 text-[13px] tabular-nums outline-none focus:border-text"
+                          value={freeShippingManual}
+                          onChange={(e) =>
+                            setFreeShippingManual(e.target.value)
+                          }
+                          placeholder="pl. 50000"
+                        />
+                      </label>
+                      <p className="text-[11px] leading-relaxed text-faint">
+                        A végleges díjat a checkout számolja; ez csak a
+                        küszöb-FOMO a widgetben.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               </>
             )

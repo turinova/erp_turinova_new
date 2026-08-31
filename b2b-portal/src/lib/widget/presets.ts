@@ -114,8 +114,8 @@ export const PANEL_THEME_PRESETS = [
 export const WIDGET_MODULES = [
   { id: "search", label: "Kereső" },
   { id: "excel", label: "Excel" },
-  { id: "email", label: "Lista" },
-  { id: "image", label: "Kép" },
+  { id: "email", label: "Beillesztés" },
+  { id: "image", label: "Fotó" },
   { id: "orders", label: "Rendelések" },
   { id: "insights", label: "Javaslatok" },
 ] as const;
@@ -157,11 +157,26 @@ export type WidgetFeatures = {
   showCustomerGroupName: boolean;
   /** Show “még X a következő csoporthoz” progress (FOMO). */
   showNextLevelProgress: boolean;
+  /** Show free-shipping threshold progress in footer + receipt. */
+  showFreeShippingProgress: boolean;
+};
+
+export type WidgetFreeShippingSettings = {
+  /** Manual free-shipping threshold in HUF gross. */
+  manualGross: number | null;
 };
 
 export type WidgetSettingsPayload = {
   appearance: WidgetAppearance;
   features: WidgetFeatures;
+  freeShipping: WidgetFreeShippingSettings;
+};
+
+/** Resolved free-shipping FOMO for the storefront widget. */
+export type PublicFreeShipping = {
+  enabled: boolean;
+  thresholdGross: number;
+  thresholdLabel: string;
 };
 
 export type PublicWidgetConfig = {
@@ -183,6 +198,7 @@ export type PublicWidgetConfig = {
   showTurinovaMark?: boolean;
   showCustomerGroupName?: boolean;
   showNextLevelProgress?: boolean;
+  freeShipping?: PublicFreeShipping | null;
 };
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
@@ -202,8 +218,48 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
     hideTurinovaMark: false,
     showCustomerGroupName: false,
     showNextLevelProgress: false,
+    showFreeShippingProgress: false,
+  },
+  freeShipping: {
+    manualGross: null,
   },
 };
+
+function formatThresholdHuf(amount: number): string {
+  return (
+    Math.round(amount).toLocaleString("hu-HU", { maximumFractionDigits: 0 }) +
+    " Ft"
+  );
+}
+
+function parsePositiveInt(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.round(raw);
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    const n = Number(String(raw).replace(/\s/g, "").replace(",", "."));
+    if (Number.isFinite(n) && n > 0) return Math.round(n);
+  }
+  return null;
+}
+
+/**
+ * Resolve free-shipping FOMO from merchant manual threshold only.
+ */
+export function resolveFreeShippingPublic(input: {
+  settings: WidgetSettingsPayload;
+}): PublicFreeShipping | null {
+  const { settings } = input;
+  if (!settings.features.showFreeShippingProgress) return null;
+  const threshold = settings.freeShipping.manualGross;
+  if (threshold == null || threshold <= 0) return null;
+
+  return {
+    enabled: true,
+    thresholdGross: threshold,
+    thresholdLabel: formatThresholdHuf(threshold),
+  };
+}
 
 function themeById(id: WidgetThemeId) {
   return WIDGET_THEME_PRESETS.find((t) => t.id === id) ?? WIDGET_THEME_PRESETS[0];
@@ -299,6 +355,10 @@ export function normalizeWidgetSettings(
     obj.features && typeof obj.features === "object"
       ? (obj.features as Record<string, unknown>)
       : {};
+  const freeShipRaw =
+    obj.freeShipping && typeof obj.freeShipping === "object"
+      ? (obj.freeShipping as Record<string, unknown>)
+      : {};
 
   const themeId = inferThemeId(appearanceRaw);
   const theme = themeById(themeId);
@@ -321,6 +381,10 @@ export function normalizeWidgetSettings(
       hideTurinovaMark: featuresRaw.hideTurinovaMark === true,
       showCustomerGroupName: featuresRaw.showCustomerGroupName === true,
       showNextLevelProgress: featuresRaw.showNextLevelProgress === true,
+      showFreeShippingProgress: featuresRaw.showFreeShippingProgress === true,
+    },
+    freeShipping: {
+      manualGross: parsePositiveInt(freeShipRaw.manualGross),
     },
   };
 }
@@ -697,6 +761,7 @@ export function resolvePublicWidgetConfig(input: {
     showTurinovaMark: !normalized.features.hideTurinovaMark,
     showCustomerGroupName: normalized.features.showCustomerGroupName,
     showNextLevelProgress: normalized.features.showNextLevelProgress,
+    freeShipping: resolveFreeShippingPublic({ settings: normalized }),
   };
 }
 

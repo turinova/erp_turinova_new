@@ -40,6 +40,7 @@ const NAV: NavItem[] = [
     matchPrefixes: ["/arak", "/automatizmus", "/szintlepes"],
     children: [
       { href: "/arak", label: "Árazás" },
+      { href: "/arak/utmutato", label: "Útmutató" },
       { href: "/automatizmus", label: "Automatizmus" },
     ],
   },
@@ -57,6 +58,7 @@ const TITLES: Record<string, string> = {
   "/automatizmus": "Automatizmus",
   "/szintlepes": "Automatizmus",
   "/arak": "Árazás",
+  "/arak/utmutato": "Útmutató",
   "/settings": "Beállítások",
   "/csomag": "Előfizetésem",
   "/tudasbazis": "Tudásbázis",

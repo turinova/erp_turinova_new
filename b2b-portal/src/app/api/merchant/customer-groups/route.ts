@@ -6,17 +6,26 @@ import {
 import { withTenant } from "@/lib/db";
 import {
   loadMerchantShoprenterConfig,
-  listGroupMap,
   saveGroupMap,
   type CustomerGroupRole,
-  type GroupMapItemDto,
 } from "@/lib/merchant/customer-group-map";
+import {
+  groupMapItemsFromDb,
+  softSyncCustomerGroupsFromShoprenter,
+} from "@/lib/merchant/customer-group-sync";
 import { listCustomerGroups } from "@/lib/shoprenter/customers";
-import { mapTierProductCountsByGroup } from "@/lib/commerce/volume-tier-mirror";
 
-export async function GET() {
+/**
+ * GET — csoportok a DB mapból (bootstrap / cron tölti).
+ * ?sync=1 — egyszeri élő soft-sync a Shoprenterből (haladó).
+ */
+export async function GET(req: Request) {
   const auth = await requireMerchantApi();
   if (isErrorResponse(auth)) return auth;
+
+  const forceSync =
+    new URL(req.url).searchParams.get("sync") === "1" ||
+    new URL(req.url).searchParams.get("sync") === "true";
 
   try {
     const result = await withTenant(
@@ -31,67 +40,22 @@ export async function GET() {
         );
         if (!loaded) return { error: "NO_SHOP_OR_CREDS" as const };
 
-        const srGroups = await listCustomerGroups(loaded.config);
-        const mapRows = await listGroupMap(client, loaded.shopId);
-        const roleByInner = new Map(
-          mapRows.map((r) => [r.sr_group_inner_id, r.role]),
-        );
-
-        // Soft-sync SR ids/names into map (keep existing roles)
-        for (const g of srGroups) {
-          await client.query(
-            `insert into shop_customer_group_map (
-               shop_id, sr_group_inner_id, sr_group_id, sr_name_snapshot,
-               role, is_default_in_sr
-             ) values ($1,$2,$3,$4,'bolt',$5)
-             on conflict (shop_id, sr_group_inner_id) do update set
-               sr_group_id = excluded.sr_group_id,
-               sr_name_snapshot = excluded.sr_name_snapshot,
-               is_default_in_sr = excluded.is_default_in_sr,
-               updated_at = now()`,
-            [loaded.shopId, g.innerId, g.id, g.name, g.isDefault],
+        let liveGroups: Awaited<ReturnType<typeof listCustomerGroups>> | undefined;
+        if (forceSync) {
+          liveGroups = await listCustomerGroups(loaded.config);
+          await softSyncCustomerGroupsFromShoprenter(
+            client,
+            loaded.shopId,
+            loaded.config,
           );
         }
 
-        const refreshed = await listGroupMap(client, loaded.shopId);
-        const roleByInner2 = new Map(
-          refreshed.map((r) => [r.sr_group_inner_id, r.role]),
-        );
-        const tierByOuter = await mapTierProductCountsByGroup(
-          client,
-          loaded.shopId,
-        );
+        const groups = await groupMapItemsFromDb(client, loaded.shopId, {
+          config: loaded.config,
+          liveGroups,
+        });
 
-        const groups: GroupMapItemDto[] = srGroups.map((g) => ({
-          innerId: g.innerId,
-          groupId: g.id,
-          name: g.name,
-          role: (roleByInner2.get(g.innerId) ??
-            roleByInner.get(g.innerId) ??
-            "bolt") as CustomerGroupRole,
-          isDefault: g.isDefault,
-          percentDiscount: g.percentDiscount,
-          tierProductCount: g.id ? (tierByOuter.get(g.id) ?? 0) : 0,
-          missingFromShop: false,
-        }));
-
-        for (const row of refreshed) {
-          if (!groups.some((g) => g.innerId === row.sr_group_inner_id)) {
-            const oid = row.sr_group_id;
-            groups.push({
-              innerId: row.sr_group_inner_id,
-              groupId: oid,
-              name: row.sr_name_snapshot || `Csoport #${row.sr_group_inner_id}`,
-              role: "rejtett",
-              isDefault: row.is_default_in_sr,
-              percentDiscount: null,
-              tierProductCount: oid ? (tierByOuter.get(oid) ?? 0) : 0,
-              missingFromShop: true,
-            });
-          }
-        }
-
-        return { shopId: loaded.shopId, groups };
+        return { shopId: loaded.shopId, groups, syncedFromShop: forceSync };
       },
     );
 

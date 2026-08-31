@@ -12,13 +12,15 @@ import { isTrialActive } from "@/lib/orgs/health";
 import {
   DEFAULT_WIDGET_SETTINGS,
   normalizeWidgetSettings,
+  resolveFreeShippingPublic,
   resolvePublicWidgetConfig,
+  type PublicFreeShipping,
   type PublicWidgetConfig,
   type WidgetSettingsPayload,
 } from "@/lib/widget/presets";
 
 /** Bump together with injected CSS id in public/widget.js (sr-b2b-qo-panel-css-vN). */
-export const WIDGET_JS_ASSET = "51";
+export const WIDGET_JS_ASSET = "64";
 
 export function widgetCacheBust(opts: {
   settingsUpdatedAt: string | null;
@@ -48,6 +50,8 @@ export type MerchantWidgetDto = {
   canParseImage: boolean;
   isTrial: boolean;
   planLabel: string;
+  /** Resolved FOMO payload (same shape as public config). */
+  freeShippingResolved: PublicFreeShipping | null;
 };
 
 type WidgetRow = {
@@ -162,6 +166,7 @@ export async function loadMerchantWidget(
     canParseImage: branding.canParseImage,
     isTrial: branding.isTrial,
     planLabel: branding.planLabel,
+    freeShippingResolved: resolveFreeShippingPublic({ settings }),
   };
 }
 
@@ -207,16 +212,14 @@ export async function updateMerchantWidget(
     trial_ends_at: row.trial_ends_at,
     hideRequested: nextSettings.features.hideTurinovaMark,
   });
-  // Paid white-label only — trial / start cannot hide the mark.
-  if (!brandingGate.canHideTurinovaMark) {
-    nextSettings = {
-      ...nextSettings,
-      features: {
-        ...nextSettings.features,
-        hideTurinovaMark: false,
-      },
-    };
-  }
+  // Plan drives mark: paid white-label → always hide; trial/start → always show.
+  nextSettings = {
+    ...nextSettings,
+    features: {
+      ...nextSettings.features,
+      hideTurinovaMark: brandingGate.canHideTurinovaMark,
+    },
+  };
 
   await query(
     client,

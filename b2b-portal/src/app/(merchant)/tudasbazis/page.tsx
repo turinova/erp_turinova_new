@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { HelpIndexView } from "@/components/help/HelpIndexView";
 import { requireMerchant } from "@/lib/auth/require";
+import { listPublishedHelpArticles } from "@/lib/help/load";
 
 export const metadata: Metadata = {
   title: "Tudásbázis",
@@ -7,15 +9,6 @@ export const metadata: Metadata = {
 
 export default async function TudasbazisPage() {
   await requireMerchant();
-
-  return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8 md:px-6">
-      <h1 className="text-[20px] font-semibold tracking-tight text-text">
-        Tudásbázis
-      </h1>
-      <p className="mt-2 text-[13px] text-faint">
-        A súgó hamarosan ide kerül.
-      </p>
-    </div>
-  );
+  const articles = listPublishedHelpArticles();
+  return <HelpIndexView articles={articles} />;
 }

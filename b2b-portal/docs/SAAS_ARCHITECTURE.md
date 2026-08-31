@@ -22,7 +22,7 @@ Kapcsolódó:
 | Merchant portal | Webshop tulajdonos | Shop + widget beállítás |
 | Platform admin | Turinova | Tenant létrehozás, invite, suspend |
 
-**Üzleti modell:** invite-only SaaS; **Active Partner** (widget-**rendelés**/hó). Árak v3: Start 6 900 ≤15 · Plus 12 900 ≤40 · Pro 24 900 ≤120 — [`PRICING.md`](./PRICING.md). Portál top-N + SKU soft. **Nincs Free**; trial **30 nap** Pro (logó kint) → Start minimum. Nincs nyilvános regisztráció.  
+**Üzleti modell:** invite-only + self-serve trial SaaS; **Active Partner** (widget-rendelés/hó). Árak v6: **7 500 / 9 999 Ft bruttó** — [`PRICING_V6_CURRENT.md`](./PRICING_V6_CURRENT.md). Soft cap 500 vevő. **Próba 14 nap** (teljes termék, felirat bent). Nincs Free tier.  
 **Későbbi upsell:** teljes fulfillment ERP (külön termék / izoláció).  
 **Pozíció a Shoprenter ökoszisztémában:** nem Billingo/Logzi/CloudERP helyettesítő, hanem **B2B growth layer** mellettük. App Store self-serve = későbbi fázis.
 
@@ -77,7 +77,7 @@ Kapcsolódó:
 - Egy fizető ügyfél = egy `organization`
 - Státusz: `trial` | `active` | `suspended`
 - Plan: `start` | `plus` | `pro` (Enterprise = custom / `partner_limit_override`). Olvasáskor `grow`→`plus`, `scale`→`pro`. Kézi SQL: `019_plans_v3.sql`.
-- Trial: `trial_ends_at` (launch default **+30 nap**); trial alatt Pro entitlements
+- Trial: `trial_ends_at` (default **+14 nap**, `platform_settings.trial_days`); trial alatt teljes termék, soft limit 500
 - Partner limit / SKU soft limit: plan defaults + org override — lásd PLATFORM_AND_ADMIN_IMPLEMENTATION §6
 - Meter: aktív partner = **≥1 widget-rendelés / hó** (open ≠ billing)
 - Trial vége → policy: widget off vagy read-only (döntés: v1 = suspend + widget_enabled=false)

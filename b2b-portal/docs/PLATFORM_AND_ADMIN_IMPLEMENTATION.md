@@ -9,13 +9,31 @@ Kapcsolódó dokumentumok:
 
 | Dokumentum | Szerep |
 |------------|--------|
-| [`PRICING.md`](./PRICING.md) | **Árazás v3** — Start 6 900 / Plus 12 900 / Pro 24 900, próba, FOMO |
+| [`PRICING.md`](./PRICING.md) | Árazás történet + v6 fejléc |
+| [`PRICING_V6_CURRENT.md`](./PRICING_V6_CURRENT.md) | **Aktuális** billing / próba / feature gate |
 | [`B2B_PRICING_STRATEGIES.md`](./B2B_PRICING_STRATEGIES.md) | **Partnerár-stratégiák** — `/arak`, SR precedencia, fázisok P0–P4 |
 | [`SAAS_ARCHITECTURE.md`](./SAAS_ARCHITECTURE.md) | Tenancy, auth, shop creds, widget multi-tenant alap |
 | [`DATABASE.md`](./DATABASE.md) | Manuális SQL futtatás, meglévő séma |
 | [`DESIGN_SYSTEM.md`](./DESIGN_SYSTEM.md) | UI nyelv (Olvasó / high_contrast, radius 0) |
 | [`../sql/`](../sql/) | Létező migrációk (manuális) |
 | Repo: `ARCHITECTURE_STRATEGY.md` | Jövőbeli full ERP (külön DB, platform adapter minta) |
+
+---
+
+## v6 addendum (2026-08-28) — billing doc szinkron
+
+**Aktuális árazás / próba / feature gate:** [`PRICING_V6_CURRENT.md`](./PRICING_V6_CURRENT.md) — **nem** a lenti D1/D4/D11 v3 számok.
+
+| Téma | v3 doc (archív) | v6 kód |
+|------|-----------------|--------|
+| Próba | 30 nap Pro | **14 nap**, teljes termék |
+| Árak | 6 900 / 12 900 / 24 900 | **7 500 / 9 999** bruttó |
+| Vevő limit pitch | 15 / 40 / 120 | **Soft 500** (infra) |
+| Fotó modul | Csak Pro | **Minden csomag + próba** |
+| White-label | Pro | **plus/pro** fizetős, soha trialban |
+| Merchant UI csomag | 3 kártya | **1 kártya + saját márka checkbox** |
+
+Az alábbi D-döntések **történeti indoklás**; implementáció előtt mindig ellenőrizd a kódot és a `PRICING_V6_CURRENT.md`-t.
 
 ---
 

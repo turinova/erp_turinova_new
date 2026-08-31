@@ -24,7 +24,7 @@ import {
 import { withTenant } from "@/lib/db";
 import { effectiveNet, marginPercent, netToGross } from "@/lib/merchant/pricing-engine";
 import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
-import { listCustomerGroups } from "@/lib/shoprenter/customers";
+import { resolveCustomerGroups } from "@/lib/merchant/customer-group-sync";
 import {
   deleteGroupPrice,
   upsertGroupPrice,
@@ -54,7 +54,7 @@ function parseInnerId(external: string): number | null {
 
 /**
  * GET /api/merchant/prices?groupId=&q=&page=&limit=&manufacturerInnerId=&resync=1&debug=1
- * Hot path: Postgres only (mirror + catalog). SR only for groups cache + stale mirror sync.
+ * Hot path: Postgres only (mirror + catalog). Groups a DB mapból.
  */
 export async function GET(req: Request) {
   const auth = await requireMerchantApi();
@@ -130,7 +130,12 @@ export async function GET(req: Request) {
         if (!loaded) return { error: "NO_SHOP_OR_CREDS" as const };
 
         const tGroups = Date.now();
-        const groups = await listCustomerGroups(loaded.config);
+        const groups = await resolveCustomerGroups(
+          client,
+          loaded.shopId,
+          loaded.config,
+          { forceSync: forceResync },
+        );
         mark("listCustomerGroups", tGroups);
         const group = groups.find((g) => g.id === groupId);
         if (!group) {

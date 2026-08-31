@@ -1021,23 +1021,13 @@ export function CustomerDetailView({
                 <p className="text-[12px] text-faint">
                   Amit eddig rendelt: db és utolsó alkalom.
                 </p>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowProductsAdvanced((v) => !v)}
-                    className="text-[12px] font-semibold underline"
-                  >
-                    {showProductsAdvanced ? "Egyszerű nézet" : "Haladó oszlopok"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={productsLoading}
-                    onClick={() => void loadProducts()}
-                    className="text-[12px] font-semibold underline disabled:opacity-40"
-                  >
-                    {productsLoading ? "…" : "Frissít"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowProductsAdvanced((v) => !v)}
+                  className="text-[12px] font-semibold underline"
+                >
+                  {showProductsAdvanced ? "Egyszerű nézet" : "Haladó oszlopok"}
+                </button>
               </div>
               {productsError ? (
                 <p className="text-[12px] text-danger">{productsError}</p>
@@ -1157,14 +1147,6 @@ export function CustomerDetailView({
                     </Chip>
                   ))}
                 </ChipTrack>
-                <button
-                  type="button"
-                  disabled={financeLoading}
-                  onClick={() => void loadFinance(financeMonths)}
-                  className="text-[12px] font-semibold underline disabled:opacity-40"
-                >
-                  {financeLoading ? "…" : "Frissít"}
-                </button>
               </div>
 
               {financeError ? (

@@ -40,15 +40,14 @@ export type PurchaseInsights = {
     totalFormatted: string;
     lines: { sku: string; quantity: number; name?: string }[];
   } | null;
-  incentives: {
-    freeShippingGross: number;
-    freeShippingLabel: string;
-    minOrderGross: number;
-    minOrderLabel: string;
+  incentives?: {
+    freeShippingGross?: number;
+    freeShippingLabel?: string;
+    minOrderGross?: number;
+    minOrderLabel?: string;
   };
 };
 
-const FREE_SHIP_GROSS = 80_000;
 const MIN_ORDER_GROSS = 25_000;
 
 type Agg = {
@@ -283,8 +282,6 @@ export async function getCustomerPurchaseInsights(
     dueSoon,
     lastOrder,
     incentives: {
-      freeShippingGross: FREE_SHIP_GROSS,
-      freeShippingLabel: formatHuf(FREE_SHIP_GROSS),
       minOrderGross: MIN_ORDER_GROSS,
       minOrderLabel: formatHuf(MIN_ORDER_GROSS),
     },

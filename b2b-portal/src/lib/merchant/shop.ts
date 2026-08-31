@@ -323,10 +323,10 @@ export async function pingMerchantShop(
       ],
     );
     const dto = await loadMerchantShop(client, orgId);
-    const { enqueueFullSync } = await import("@/lib/commerce/jobs");
-    if (shop.catalog_status === "pending" || shop.catalog_status === "error" || !shop.catalog_status) {
-      await enqueueFullSync(client, shop.id, orgId);
-    }
+    const { startShopBootstrap } = await import("@/lib/commerce/bootstrap");
+    await startShopBootstrap(client, shop.id, orgId, config, {
+      force: shop.catalog_status === "error",
+    });
     return { ok: true, dto: dto! };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Ping sikertelen";

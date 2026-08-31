@@ -12,7 +12,7 @@ import {
   type GroupRulePeriod,
 } from "@/lib/merchant/group-rules";
 import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
-import { listCustomerGroups } from "@/lib/shoprenter/customers";
+import { resolveCustomerGroups } from "@/lib/merchant/customer-group-sync";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -73,7 +73,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
         let toOuter: string | null | undefined;
         let toName: string | null | undefined;
         if (body.toGroupInnerId != null) {
-          const groups = await listCustomerGroups(loaded.config);
+          const groups = await resolveCustomerGroups(
+            client,
+            loaded.shopId,
+            loaded.config,
+          );
           const target = groups.find(
             (g) => g.innerId === Number(body.toGroupInnerId),
           );

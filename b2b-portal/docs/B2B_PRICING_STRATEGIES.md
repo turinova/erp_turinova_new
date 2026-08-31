@@ -612,17 +612,16 @@ Részletek: [`ARAK_UX_PLAN.md`](./ARAK_UX_PLAN.md).
 
 ## 12. Plan-kapuk és ERP határ
 
-### 12.1 Plugin csomagok ([`PRICING.md`](./PRICING.md))
+### 12.1 Plugin csomagok ([`PRICING_V6_CURRENT.md`](./PRICING_V6_CURRENT.md))
 
-| Funkció | Start | Plus | Pro |
-|---------|-------|------|-----|
+| Funkció | start | plus/pro | Próba |
+|---------|-------|----------|-------|
 | P-01…P-04 árazás | ✅ | ✅ | ✅ |
-| Vevők / árak top-N | 15 | 40 | 120 |
-| Nettó/bruttó (P1) | ✅ | ✅ | ✅ |
-| Cost oszlop (P10) | **❓** | **❓** | **❓** |
-| P-06 sávok | ✅ | ✅ | ✅ |
-| P-13 import | — | 📋 | 📋 |
-| Mély árrés riport | — | — | — (ERP) |
+| P-06 mennyiségi sáv | ✅ | ✅ | ✅ |
+| Widget modulok (kereső, excel, kép, …) | ✅ | ✅ | ✅ |
+| Turinova felirat elrejtése | — | ✅ (fizetős) | soha |
+| Portál vevő soft cap | 500 | 500 | 500 |
+| Mély árrés riport / NRR | — | — | — (ERP) |
 
 ### 12.2 Lezárandó product döntés
 

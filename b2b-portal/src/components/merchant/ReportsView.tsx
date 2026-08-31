@@ -438,7 +438,7 @@ export function ReportsView() {
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex gap-0.5 bg-surface-2 p-0.5">
             {RANGE_OPTS.map((r) => (
               <button
@@ -455,23 +455,17 @@ export function ReportsView() {
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            disabled={loading || syncing}
-            onClick={() => void kickSync()}
-            className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold disabled:opacity-40"
-            title="Rendelés-tükör frissítése (sql/029 után)"
-          >
-            {syncing ? "…" : "Tükör frissít"}
-          </button>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => void load(months)}
-            className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold disabled:opacity-40"
-          >
-            {loading ? "…" : "Frissít"}
-          </button>
+          {source !== "db" || coverageHint ? (
+            <button
+              type="button"
+              disabled={loading || syncing}
+              onClick={() => void kickSync()}
+              className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold disabled:opacity-40"
+              title="Rendelési adatok betöltése a boltból"
+            >
+              {syncing ? "…" : "Adatok betöltése"}
+            </button>
+          ) : null}
         </div>
       </div>
 

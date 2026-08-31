@@ -9,9 +9,9 @@ import {
   mapLifetimeSpendByInnerId,
   searchShopCustomerInnerIds,
 } from "@/lib/merchant/customer-spend";
+import { resolveCustomerGroups } from "@/lib/merchant/customer-group-sync";
 import {
   getCustomerByInnerId,
-  listCustomerGroups,
   listRecentCustomers,
   searchCustomers,
   type SrCustomer,
@@ -229,7 +229,11 @@ export async function GET(req: Request) {
         );
         if (!loaded) return { error: "NO_SHOP_OR_CREDS" as const };
 
-        const srGroups = await listCustomerGroups(loaded.config);
+        const srGroups = await resolveCustomerGroups(
+          client,
+          loaded.shopId,
+          loaded.config,
+        );
         const defaultIds = new Set(
           srGroups.filter((g) => g.isDefault).map((g) => g.innerId),
         );

@@ -5,6 +5,7 @@ import {
   UpgradeBanner,
   TrialWouldLoseBanner,
 } from "@/components/merchant/PartnerUsageBar";
+import { ShopBootstrapPanel } from "@/components/merchant/ShopBootstrapPanel";
 import { requireMerchant } from "@/lib/auth/require";
 import { withTenant } from "@/lib/db";
 import { loadMerchantOverview } from "@/lib/merchant/overview";
@@ -67,36 +68,42 @@ export default async function MerchantHomePage() {
       overview.widgetOrdersMonth > 0);
 
   const setupDoneCount = overview.setup.filter((s) => s.done).length;
+  const bootstrapping =
+    Boolean(overview.shop?.hasCredentials) &&
+    overview.shop?.lastPingOk !== false &&
+    !overview.catalogReady;
 
   return (
     <div className="mx-auto w-full max-w-[920px]">
       <p className="mb-6 text-[13px] text-faint">{shopTitle}</p>
 
-      {/* Next action */}
-      <section className="tn-section">
-        <p className="tn-label">Következő lépés</p>
-        <h2 className="tn-section-title mt-1">{next.title}</h2>
-        <p className="tn-section-sub">{next.body}</p>
-        {next.external ? (
-          <a
-            href={next.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="tn-btn tn-btn-primary mt-5 inline-flex cursor-pointer"
-          >
-            {next.cta}
-          </a>
-        ) : (
-          <Link
-            href={next.href}
-            className="tn-btn tn-btn-primary mt-5 inline-flex cursor-pointer"
-          >
-            {next.cta}
-          </Link>
-        )}
-      </section>
+      <ShopBootstrapPanel />
 
-      {/* Setup checklist */}
+      {!bootstrapping ? (
+        <section className="tn-section mt-8">
+          <p className="tn-label">Következő lépés</p>
+          <h2 className="tn-section-title mt-1">{next.title}</h2>
+          <p className="tn-section-sub">{next.body}</p>
+          {next.external ? (
+            <a
+              href={next.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tn-btn tn-btn-primary mt-5 inline-flex cursor-pointer"
+            >
+              {next.cta}
+            </a>
+          ) : (
+            <Link
+              href={next.href}
+              className="tn-btn tn-btn-primary mt-5 inline-flex cursor-pointer"
+            >
+              {next.cta}
+            </Link>
+          )}
+        </section>
+      ) : null}
+
       <section className="tn-section mt-8">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="tn-label">Beállítás</p>
@@ -131,7 +138,6 @@ export default async function MerchantHomePage() {
         </ul>
       </section>
 
-      {/* Mini metrics — only when there is something to show */}
       {showMetrics ? (
         <section className="tn-section mt-8">
           <p className="tn-label">Ez a hónap</p>
@@ -162,7 +168,6 @@ export default async function MerchantHomePage() {
         </section>
       ) : null}
 
-      {/* Quick links */}
       <section className="tn-section mt-8">
         <p className="tn-label">Gyors linkek</p>
         <div className="mt-3 flex flex-wrap gap-2">

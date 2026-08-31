@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CatalogResyncButton, CatalogStatusChip } from "@/components/merchant/CatalogStatusPanel";
+import {
+  CatalogResyncAdvancedButton,
+  ShopBootstrapPanel,
+} from "@/components/merchant/ShopBootstrapPanel";
+import { CatalogStatusChip } from "@/components/merchant/CatalogStatusPanel";
 import type { MerchantShopDto } from "@/lib/merchant/shop";
 
 type Props = { initial: MerchantShopDto };
@@ -49,7 +53,6 @@ export function MerchantSettingsForm({ initial }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [pinging, setPinging] = useState(false);
   const [pingResult, setPingResult] = useState<PingResult>(() =>
     initial.lastPingOk === true && initial.lastPingAt
       ? { kind: "ok", at: initial.lastPingAt }
@@ -69,11 +72,12 @@ export function MerchantSettingsForm({ initial }: Props) {
     setPassword("");
   }
 
-  async function save(e: React.FormEvent) {
+  async function connect(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setMessage(null);
     setPending(true);
+    setPingResult(null);
 
     try {
       if (!shop.hasCredentials && (!username.trim() || !password.trim())) {
@@ -82,7 +86,6 @@ export function MerchantSettingsForm({ initial }: Props) {
         return;
       }
 
-      /* widgetEnabled only on /widget — omit so shop PATCH leaves it alone */
       const body: Record<string, unknown> = {
         storeUrl,
         authType: "basic_legacy",
@@ -92,10 +95,56 @@ export function MerchantSettingsForm({ initial }: Props) {
       if (username.trim()) body.username = username.trim();
       if (password.trim()) body.password = password.trim();
 
+      const res = await fetch("/api/merchant/shop/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        shop?: MerchantShopDto;
+      };
+      if (!res.ok || !data.shop) {
+        setError(data.error ?? "Összekötés sikertelen");
+        setPending(false);
+        return;
+      }
+      applyShop(data.shop);
+      const at = data.shop.lastPingAt ?? new Date().toISOString();
+      if (!data.ok) {
+        setPingResult({
+          kind: "fail",
+          message: data.error ?? "A bolt nem válaszol",
+          at,
+        });
+      } else {
+        setPingResult({ kind: "ok", at });
+        setMessage("Összekötve — betöltés elindult");
+      }
+      router.refresh();
+    } catch {
+      setError("Nincs kapcsolat.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function saveUrlOnly(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    setPending(true);
+    try {
       const res = await fetch("/api/merchant/shop", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          storeUrl,
+          authType: "basic_legacy",
+          buttonLabel: shop.buttonLabel,
+          customerGroupIds: [],
+        }),
       });
       const data = (await res.json()) as {
         ok?: boolean;
@@ -114,41 +163,6 @@ export function MerchantSettingsForm({ initial }: Props) {
       setError("Nincs kapcsolat.");
     } finally {
       setPending(false);
-    }
-  }
-
-  async function ping() {
-    setError(null);
-    setMessage(null);
-    setPinging(true);
-    setPingResult(null);
-    try {
-      const res = await fetch("/api/merchant/shop/ping", { method: "POST" });
-      const data = (await res.json()) as {
-        ok?: boolean;
-        error?: string;
-        shop?: MerchantShopDto;
-      };
-      if (data.shop) applyShop(data.shop);
-      const at = data.shop?.lastPingAt ?? new Date().toISOString();
-      if (!data.ok) {
-        setPingResult({
-          kind: "fail",
-          message: data.error ?? "A bolt nem válaszol",
-          at,
-        });
-      } else {
-        setPingResult({ kind: "ok", at });
-      }
-      router.refresh();
-    } catch {
-      setPingResult({
-        kind: "fail",
-        message: "Nincs kapcsolat.",
-        at: new Date().toISOString(),
-      });
-    } finally {
-      setPinging(false);
     }
   }
 
@@ -171,8 +185,16 @@ export function MerchantSettingsForm({ initial }: Props) {
         : shop.lastPingError
       : null;
 
+  const needsConnect =
+    !shop.hasCredentials ||
+    Boolean(username.trim()) ||
+    Boolean(password.trim());
+
   return (
-    <form className="flex w-full flex-col gap-6" onSubmit={save}>
+    <form
+      className="flex w-full flex-col gap-6"
+      onSubmit={needsConnect ? connect : saveUrlOnly}
+    >
       <div className="flex flex-wrap items-center gap-2 border-b border-line-strong pb-5">
         <StatusChip label="Bolt API" value={connValue} tone={connTone} />
         <StatusChip
@@ -183,24 +205,23 @@ export function MerchantSettingsForm({ initial }: Props) {
         <CatalogStatusChip />
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <CatalogResyncButton />
-          <button
-            type="button"
-            onClick={ping}
-            disabled={pinging || !shop.hasCredentials}
-            className="tn-btn tn-btn-ghost"
-          >
-            {pinging ? "…" : "Kapcsolat tesztelése"}
-          </button>
           <button
             type="submit"
             disabled={pending}
             className="tn-btn tn-btn-primary"
           >
-            {pending ? "…" : "Mentés"}
+            {pending
+              ? "…"
+              : needsConnect
+                ? "Összekötés és betöltés"
+                : "Mentés"}
           </button>
         </div>
       </div>
+
+      <ShopBootstrapPanel compact />
+
+      <CatalogResyncAdvancedButton />
 
       {(error || message || failMsg) && (
         <p

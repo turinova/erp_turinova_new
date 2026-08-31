@@ -3,7 +3,7 @@ import {
   isErrorResponse,
   requireSettingsAdminApi,
 } from "@/lib/auth/merchant-api";
-import { kickCatalogSync } from "@/lib/commerce/loop";
+import { kickBootstrapWorkers } from "@/lib/commerce/bootstrap";
 import { withTenant } from "@/lib/db";
 import { pingMerchantShop } from "@/lib/merchant/shop";
 
@@ -20,7 +20,7 @@ export async function POST() {
       (client) =>
         pingMerchantShop(client, auth.activeOrganizationId!, auth.userId),
     );
-    if (result.ok) kickCatalogSync();
+    if (result.ok) kickBootstrapWorkers();
     return NextResponse.json({
       ok: result.ok,
       error: result.error,

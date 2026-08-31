@@ -27,6 +27,9 @@ type Props = {
   /** Mirror widget partner FOMO footer. */
   showCustomerGroupName?: boolean;
   showNextLevelProgress?: boolean;
+  /** Free-shipping FOMO strip. */
+  showFreeShippingProgress?: boolean;
+  freeShippingThresholdLabel?: string;
   showPanel: boolean;
   onShowPanel: (open: boolean) => void;
 };
@@ -113,7 +116,7 @@ function StorefrontMock() {
         className="flex h-8 items-center justify-between px-4 text-[10px]"
         style={{ background: S.ink, color: "rgba(255,255,255,.75)" }}
       >
-        <span>Ingyenes szállítás 25.000 Ft felett</span>
+        <span>Demo bolt</span>
         <span>Belépés</span>
       </div>
 
@@ -232,6 +235,23 @@ function StorefrontMock() {
 }
 
 /** Demo partner progress — matches real widget FOMO footer layout. */
+const PREVIEW_FOMO = {
+  cyan: "#22D3EE",
+  mint: "#34D399",
+  gap: "#0891B2",
+  next: "#10B981",
+  nextText: "#047857",
+  hot: "#FF6B4A",
+  chipCyanBg:
+    "linear-gradient(135deg, rgba(34,211,238,.22), rgba(255,255,255,.72))",
+  chipMintBg:
+    "linear-gradient(135deg, rgba(52,211,153,.26), rgba(34,211,238,.16), rgba(255,255,255,.7))",
+  barTrack:
+    "linear-gradient(180deg, rgba(255,255,255,.78), rgba(241,245,249,.92))",
+  barFill: "linear-gradient(90deg, #22D3EE, #34D399)",
+  barGlow: "0 0 10px rgba(34,211,238,.55), 0 0 18px rgba(52,211,153,.35)",
+};
+
 const PREVIEW_PARTNER = {
   groupName: "Asztalosok",
   remainingLabel: "184 200 Ft",
@@ -239,7 +259,7 @@ const PREVIEW_PARTNER = {
   progressPercent: 62,
   rewardHeadline: "−12% kedvezmény",
   rewardDetail: "Az árlistás termékekre",
-  urgency: "mid" as const,
+  urgency: "mid" as "mid" | "high" | "done",
 };
 
 function PartnerFomoPreview({
@@ -252,104 +272,165 @@ function PartnerFomoPreview({
   showProgress: boolean;
 }) {
   if (!showGroupName && !showProgress) return null;
-  const accent = theme.accent;
-  const warn = theme.warn;
-  const gapEmColor =
-    PREVIEW_PARTNER.urgency === "mid" || PREVIEW_PARTNER.urgency === "high"
-      ? warn
-      : accent;
+  const gapColor =
+    PREVIEW_PARTNER.urgency === "high" ? PREVIEW_FOMO.hot : PREVIEW_FOMO.gap;
+  const fill =
+    PREVIEW_PARTNER.urgency === "high"
+      ? "linear-gradient(90deg, #FF6B4A, #FBBF24)"
+      : PREVIEW_FOMO.barFill;
 
   return (
     <div
-      className="flex min-w-0 flex-1 flex-col gap-1.5"
-      style={{ maxWidth: 520 }}
+      className="flex min-w-0 max-w-[640px] flex-1 flex-wrap items-center gap-x-2.5 gap-y-2"
+      style={{ maxHeight: 56 }}
       data-urgency={showProgress ? PREVIEW_PARTNER.urgency : undefined}
     >
       {showGroupName ? (
-        <div className="flex min-w-0 items-center">
-          <span
-            className="inline-flex h-6 items-center whitespace-nowrap px-2.5 text-[11px] font-bold tracking-tight"
-            style={{
-              borderRadius: 6,
-              background: "rgba(15,123,108,.12)",
-              border: "1px solid rgba(15,123,108,.45)",
-              color: accent,
-            }}
-          >
-            {PREVIEW_PARTNER.groupName}
-          </span>
-        </div>
+        <span
+          className="inline-flex h-[30px] max-w-[140px] shrink-0 items-center truncate px-[11px] text-[12.5px] font-bold tracking-tight"
+          style={{
+            borderRadius: 999,
+            color: "#0369A1",
+            background: PREVIEW_FOMO.chipCyanBg,
+            border: "1px solid rgba(34,211,238,.4)",
+            boxShadow:
+              "0 1px 0 rgba(255,255,255,.65) inset, 0 4px 14px rgba(6,182,212,.12)",
+            backdropFilter: "blur(10px) saturate(1.35)",
+          }}
+        >
+          {PREVIEW_PARTNER.groupName}
+        </span>
       ) : null}
 
       {showProgress ? (
         <>
-          <p
-            className="m-0 text-[15px] font-extrabold leading-tight tracking-tight"
-            style={{ color: theme.text }}
+          <div
+            className="relative h-[11px] min-w-[64px] max-w-[160px] flex-1 overflow-hidden"
+            style={{
+              borderRadius: 999,
+              background: PREVIEW_FOMO.barTrack,
+              border: "1px solid rgba(148,163,184,.35)",
+              boxShadow:
+                "0 1px 0 rgba(255,255,255,.9) inset, 0 2px 8px rgba(15,23,42,.06)",
+            }}
+            role="progressbar"
+            aria-valuenow={PREVIEW_PARTNER.progressPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
           >
-            Még{" "}
-            <em className="not-italic font-extrabold" style={{ color: gapEmColor }}>
-              {PREVIEW_PARTNER.remainingLabel}
-            </em>
-          </p>
-          <div className="flex min-w-0 items-center gap-2.5">
-            <div
-              className="h-2.5 min-w-0 flex-1 overflow-hidden"
+            <i
+              className="block h-full not-italic"
               style={{
-                borderRadius: 5,
-                background: "rgba(55,53,47,.12)",
+                width: `${PREVIEW_PARTNER.progressPercent}%`,
+                borderRadius: 999,
+                background: fill,
+                boxShadow: PREVIEW_FOMO.barGlow,
               }}
-            >
-              <i
-                className="block h-full not-italic"
-                style={{
-                  width: `${PREVIEW_PARTNER.progressPercent}%`,
-                  borderRadius: 5,
-                  background: accent,
-                }}
-              />
-            </div>
-            <span className="inline-flex max-w-[48%] shrink-0 items-center gap-1.5">
-              <span
-                className="shrink-0 text-[12px] font-bold"
-                style={{ color: theme.faint }}
-              >
-                →
-              </span>
-              <span
-                className="inline-flex h-6 max-w-full items-center truncate px-2.5 text-[11px] font-bold text-white"
-                style={{
-                  borderRadius: 6,
-                  background: accent,
-                  border: `1px solid ${accent}`,
-                  boxShadow: `0 1px 2px ${accent}40`,
-                }}
-              >
-                {PREVIEW_PARTNER.nextGroupName}
-              </span>
-            </span>
+            />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="inline-flex h-7 items-center px-3 text-[12px] font-bold"
-              style={{
-                borderRadius: 6,
-                background: "#FFF4E5",
-                border: "1px solid #F5C57A",
-                color: "#9A3412",
-              }}
-            >
-              <em className="not-italic">{PREVIEW_PARTNER.rewardHeadline}</em>
-            </span>
-          </div>
-          <p
-            className="m-0 text-[11px] leading-snug"
+          <span
+            className="shrink-0 whitespace-nowrap text-[12.5px] font-semibold tracking-tight tabular-nums"
             style={{ color: theme.muted }}
           >
-            {PREVIEW_PARTNER.rewardDetail}
-          </p>
+            Még{" "}
+            <em className="not-italic font-black" style={{ color: gapColor }}>
+              {PREVIEW_PARTNER.remainingLabel}
+            </em>
+          </span>
+          <span className="inline-flex min-w-0 shrink-0 items-center gap-1.5">
+            <span
+              className="shrink-0 text-[13px] font-extrabold"
+              style={{ color: PREVIEW_FOMO.next }}
+            >
+              →
+            </span>
+            <span
+              className="inline-flex h-[30px] max-w-[180px] items-center truncate px-[11px] text-[12.5px] font-bold tracking-tight"
+              style={{
+                borderRadius: 999,
+                color: PREVIEW_FOMO.nextText,
+                background:
+                  "linear-gradient(135deg, rgba(52,211,153,.24), rgba(255,255,255,.72))",
+                border: "1px solid rgba(52,211,153,.45)",
+                boxShadow:
+                  "0 1px 0 rgba(255,255,255,.65) inset, 0 4px 14px rgba(16,185,129,.12)",
+                backdropFilter: "blur(10px) saturate(1.35)",
+              }}
+            >
+              {PREVIEW_PARTNER.nextGroupName} · −12%
+            </span>
+          </span>
         </>
       ) : null}
+    </div>
+  );
+}
+
+const PREVIEW_FREE_SHIP = {
+  remainingLabel: "18 400 Ft",
+  progressPercent: 63,
+};
+
+function FreeShipFomoPreview({
+  theme,
+  thresholdLabel,
+}: {
+  theme: ReturnType<typeof resolvePanelThemeTokens>;
+  thresholdLabel: string;
+}) {
+  return (
+    <div className="flex min-w-0 max-w-[640px] flex-1 flex-wrap items-center gap-x-2.5 gap-y-2">
+      <span
+        className="inline-flex h-[30px] max-w-[160px] shrink-0 items-center truncate px-[11px] text-[12.5px] font-bold tracking-tight"
+        style={{
+          borderRadius: 999,
+          color: PREVIEW_FOMO.nextText,
+          background: PREVIEW_FOMO.chipMintBg,
+          border: "1px solid rgba(52,211,153,.48)",
+          boxShadow:
+            "0 1px 0 rgba(255,255,255,.65) inset, 0 4px 14px rgba(16,185,129,.12)",
+          backdropFilter: "blur(10px) saturate(1.35)",
+        }}
+        title={thresholdLabel ? `Küszöb: ${thresholdLabel}` : undefined}
+      >
+        Ingyenes szállítás
+      </span>
+      <div
+        className="relative h-[11px] min-w-[64px] max-w-[160px] flex-1 overflow-hidden"
+        style={{
+          borderRadius: 999,
+          background: PREVIEW_FOMO.barTrack,
+          border: "1px solid rgba(148,163,184,.35)",
+          boxShadow:
+            "0 1px 0 rgba(255,255,255,.9) inset, 0 2px 8px rgba(15,23,42,.06)",
+        }}
+        role="progressbar"
+        aria-valuenow={PREVIEW_FREE_SHIP.progressPercent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <i
+          className="block h-full not-italic"
+          style={{
+            width: `${PREVIEW_FREE_SHIP.progressPercent}%`,
+            borderRadius: 999,
+            background: PREVIEW_FOMO.barFill,
+            boxShadow: PREVIEW_FOMO.barGlow,
+          }}
+        />
+      </div>
+      <span
+        className="shrink-0 whitespace-nowrap text-[12.5px] font-semibold tracking-tight tabular-nums"
+        style={{ color: theme.muted }}
+      >
+        Még{" "}
+        <em
+          className="not-italic font-black"
+          style={{ color: PREVIEW_FOMO.gap }}
+        >
+          {PREVIEW_FREE_SHIP.remainingLabel}
+        </em>
+      </span>
     </div>
   );
 }
@@ -366,6 +447,8 @@ export function WidgetLivePreview({
   showTurinovaMark = true,
   showCustomerGroupName = false,
   showNextLevelProgress = false,
+  showFreeShippingProgress = false,
+  freeShippingThresholdLabel = "50 000 Ft",
   showPanel,
   onShowPanel,
 }: Props) {
@@ -568,35 +651,53 @@ export function WidgetLivePreview({
                   Cikkszám, gyártói szám vagy vonalkód. Enter, és bent van.
                 </p>
                 <p className="mt-1.5 text-[11px]" style={{ color: theme.muted }}>
-                  Excel, lista vagy fotó a kereső mellett. Bezárás után a lista
-                  megmarad.
+                  Írd be a cikkszámot. Import: Excel, beillesztés vagy fotó.
+                  Bezárás után a lista megmarad.
                 </p>
               </div>
               <div
-                className="flex items-end justify-between gap-3 border-t px-3 py-2.5"
+                className="flex flex-col items-stretch gap-2 border-t px-3 py-2.5"
                 style={{
                   borderColor: theme.lineStrong,
                   background: theme.bg,
-                  minHeight: showCustomerGroupName || showNextLevelProgress ? 96 : undefined,
+                  minHeight:
+                    showCustomerGroupName ||
+                    showNextLevelProgress ||
+                    showFreeShippingProgress
+                      ? 40
+                      : undefined,
                 }}
               >
-                {showCustomerGroupName || showNextLevelProgress ? (
-                  <PartnerFomoPreview
+                {showFreeShippingProgress ? (
+                  <FreeShipFomoPreview
                     theme={theme}
-                    showGroupName={showCustomerGroupName}
-                    showProgress={showNextLevelProgress}
+                    thresholdLabel={freeShippingThresholdLabel}
                   />
-                ) : (
-                  <span className="text-[11px]" style={{ color: theme.muted }}>
-                    Cikkszám, majd Enter. Ha kész: Kosárba.
+                ) : null}
+                <div className="flex items-end justify-between gap-3">
+                  {showCustomerGroupName || showNextLevelProgress ? (
+                    <PartnerFomoPreview
+                      theme={theme}
+                      showGroupName={showCustomerGroupName}
+                      showProgress={showNextLevelProgress}
+                    />
+                  ) : !showFreeShippingProgress ? (
+                    <span
+                      className="text-[11px]"
+                      style={{ color: theme.muted }}
+                    >
+                      Cikkszám, majd Enter. Ha kész: Kosárba.
+                    </span>
+                  ) : (
+                    <span />
+                  )}
+                  <span
+                    className="inline-flex h-8 shrink-0 items-center self-center px-3 text-[11px] font-semibold"
+                    style={{ background: theme.accent, color: "#fff" }}
+                  >
+                    Kosárba rakom
                   </span>
-                )}
-                <span
-                  className="inline-flex h-8 shrink-0 items-center self-center px-3 text-[11px] font-semibold"
-                  style={{ background: theme.accent, color: "#fff" }}
-                >
-                  Kosárba rakom
-                </span>
+                </div>
               </div>
             </div>
             {showTurinovaMark ? (

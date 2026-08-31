@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { SOFT_PARTNER_LIMIT, SOFT_SKU_LIMIT } from "@/lib/billing/plans";
 import { query } from "@/lib/db";
 
 /** Active Partner = distinct widget orderers in the calendar month (D3). */
@@ -42,7 +43,7 @@ export async function effectivePartnerLimit(
     `select public.effective_partner_limit($1::uuid) as effective_partner_limit`,
     [organizationId],
   );
-  return Number(res.rows[0]?.effective_partner_limit ?? 15);
+  return Number(res.rows[0]?.effective_partner_limit ?? SOFT_PARTNER_LIMIT);
 }
 
 export async function effectiveSkuLimit(
@@ -54,5 +55,5 @@ export async function effectiveSkuLimit(
     `select public.effective_sku_limit($1::uuid) as effective_sku_limit`,
     [organizationId],
   );
-  return Number(res.rows[0]?.effective_sku_limit ?? 15_000);
+  return Number(res.rows[0]?.effective_sku_limit ?? SOFT_SKU_LIMIT);
 }

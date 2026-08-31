@@ -24,3 +24,8 @@ export function startOrderFactsSyncLoop(): void {
     global.__b2bOrderFactsSyncLoop.timer.unref();
   }
 }
+
+export function kickOrderFactsSync(): void {
+  startOrderFactsSyncLoop();
+  void processOrderFactsSyncTick();
+}

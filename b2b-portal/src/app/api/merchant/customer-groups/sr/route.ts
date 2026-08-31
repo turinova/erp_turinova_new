@@ -69,18 +69,25 @@ export async function POST(req: Request) {
           percentDiscount: body.percentDiscount ?? null,
         });
 
+        const pct =
+          group.percentDiscount != null &&
+          Number.isFinite(group.percentDiscount) &&
+          group.percentDiscount > 0
+            ? Math.min(100, Math.trunc(group.percentDiscount))
+            : 0;
         await query(
           client,
           `insert into shop_customer_group_map (
              shop_id, sr_group_inner_id, sr_group_id, sr_name_snapshot,
-             role, is_default_in_sr
-           ) values ($1,$2,$3,$4,$5,false)
+             role, is_default_in_sr, percent_discount
+           ) values ($1,$2,$3,$4,$5,false,$6)
            on conflict (shop_id, sr_group_inner_id) do update set
              sr_group_id = excluded.sr_group_id,
              sr_name_snapshot = excluded.sr_name_snapshot,
              role = excluded.role,
+             percent_discount = excluded.percent_discount,
              updated_at = now()`,
-          [loaded.shopId, group.innerId, group.id, group.name, role],
+          [loaded.shopId, group.innerId, group.id, group.name, role, pct],
         );
 
         return { group };
@@ -151,12 +158,21 @@ export async function PATCH(req: Request) {
           percentDiscount: body.percentDiscount,
         });
 
+        const pct =
+          group.percentDiscount != null &&
+          Number.isFinite(group.percentDiscount) &&
+          group.percentDiscount > 0
+            ? Math.min(100, Math.trunc(group.percentDiscount))
+            : 0;
         await query(
           client,
           `update shop_customer_group_map
-           set sr_name_snapshot = $3, sr_group_id = $2, updated_at = now()
+           set sr_name_snapshot = $3,
+               sr_group_id = $2,
+               percent_discount = $5,
+               updated_at = now()
            where shop_id = $1 and sr_group_inner_id = $4`,
-          [loaded.shopId, group.id, group.name, group.innerId],
+          [loaded.shopId, group.id, group.name, group.innerId, pct],
         );
 
         return { group };

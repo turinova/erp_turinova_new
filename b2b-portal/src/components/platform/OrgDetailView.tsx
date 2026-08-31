@@ -251,13 +251,13 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
             onClick={() =>
               void patch(
                 { plan: "plus", activate: true },
-                `Aktiválva: Felirat nélkül ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)}`,
+                `Aktiválva: Felirat nélkül ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)} · logó elrejtve`,
               )
             }
             className="tn-btn tn-btn-ghost"
           >
             Felirat nélkül {formatPlanPrice(WHITE_LABEL_PRICE_HUF)}
-            {onWhiteLabel ? " · most" : ""}
+            {onWhiteLabel ? " · most · logó elrejtve" : ""}
           </button>
           <button
             type="button"

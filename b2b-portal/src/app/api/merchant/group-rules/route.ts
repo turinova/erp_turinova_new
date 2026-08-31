@@ -22,8 +22,8 @@ import {
   type GroupRulesSchedule,
 } from "@/lib/merchant/group-rules-auto";
 import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
+import { resolveCustomerGroups } from "@/lib/merchant/customer-group-sync";
 import { listRecentSystemGroupMoves } from "@/lib/merchant/shop-customers";
-import { listCustomerGroups } from "@/lib/shoprenter/customers";
 
 function parsePeriod(raw: unknown): GroupRulePeriod | null {
   if (
@@ -57,7 +57,7 @@ export async function GET() {
 
         const [rules, groups, recentMoves, auto, policy] = await Promise.all([
           listGroupRules(client, loaded.shopId),
-          listCustomerGroups(loaded.config),
+          resolveCustomerGroups(client, loaded.shopId, loaded.config),
           listRecentSystemGroupMoves(client, loaded.shopId, 40).catch(() => []),
           ensureShopGroupRulesDaily(client, loaded.shopId),
           getShopGroupRulesPolicy(client, loaded.shopId),
@@ -192,7 +192,11 @@ export async function POST(req: Request) {
         );
         if (!loaded) throw new Error("NO_SHOP_OR_CREDS");
 
-        const groups = await listCustomerGroups(loaded.config);
+        const groups = await resolveCustomerGroups(
+          client,
+          loaded.shopId,
+          loaded.config,
+        );
         const target = groups.find((g) => g.innerId === toGroupInnerId);
         if (!target) throw new Error("UNKNOWN_GROUP");
 

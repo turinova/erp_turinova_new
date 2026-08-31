@@ -69,7 +69,7 @@ function catalogChip(data: CatalogPayload | null): {
   return { value: "—", tone: "idle", title: "Kereső" };
 }
 
-/** Status only — no action buttons. */
+/** Status only — resync is CatalogResyncAdvancedButton on Beállítások. */
 export function CatalogStatusChip() {
   const [data, setData] = useState<CatalogPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,30 +82,38 @@ export function CatalogStatusChip() {
     abortRef.current = ac;
     const seq = ++fetchSeq.current;
     try {
-      const res = await fetch("/api/merchant/catalog", { signal: ac.signal });
+      const res = await fetch("/api/merchant/catalog", {
+        signal: ac.signal,
+        cache: "no-store",
+      });
       const json = (await res.json()) as CatalogPayload & { error?: string };
-      if (seq !== fetchSeq.current) return;
       if (!res.ok) {
-        setError(json.error ?? "Nem sikerült betölteni.");
+        if (seq === fetchSeq.current) {
+          setError(json.error ?? "Nem sikerült lekérdezni.");
+        }
         return;
       }
-      setError(null);
-      setData((prev) => mergeCatalogPayload(prev, json));
+      if (seq === fetchSeq.current) {
+        setData((prev) => mergeCatalogPayload(prev, json));
+        setError(null);
+      }
     } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") return;
-      if (seq !== fetchSeq.current) return;
-      setError("Nincs kapcsolat.");
+      if (e instanceof Error && e.name === "AbortError") return;
+      if (seq === fetchSeq.current) setError("Nincs kapcsolat.");
     }
   }, []);
 
   useEffect(() => {
     void load();
-    const id = setInterval(() => void load(), 4000);
-    return () => {
-      clearInterval(id);
-      abortRef.current?.abort();
-    };
   }, [load]);
+
+  useEffect(() => {
+    const syncing =
+      data?.catalogStatus === "syncing" || data?.catalogStatus === "pending";
+    if (!syncing) return;
+    const t = setInterval(() => void load(), 2500);
+    return () => clearInterval(t);
+  }, [data?.catalogStatus, load]);
 
   const chip = catalogChip(data);
   const styles =
@@ -134,50 +142,7 @@ export function CatalogStatusChip() {
   );
 }
 
-/** Action button — sits with Mentés / Működik?, not among status chips. */
-export function CatalogResyncButton() {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function resync() {
-    setPending(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/merchant/catalog/resync", {
-        method: "POST",
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setError(json.error ?? "Nem indult el.");
-      }
-    } catch {
-      setError("Nincs kapcsolat.");
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => void resync()}
-        disabled={pending}
-        className="tn-btn tn-btn-ghost"
-        title="Másold újra a termékeket a boltból"
-      >
-        {pending ? "…" : "Frissítés"}
-      </button>
-      {error ? (
-        <span className="text-[12px] font-medium text-danger" role="alert">
-          {error}
-        </span>
-      ) : null}
-    </>
-  );
-}
-
-/** @deprecated Use CatalogStatusChip in the settings status row. */
+/** @deprecated Use CatalogStatusChip. */
 export function CatalogStatusPanel() {
   return <CatalogStatusChip />;
 }
