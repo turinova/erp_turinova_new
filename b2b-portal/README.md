@@ -1,4 +1,4 @@
-# B2B Portal (`b2b.turinova.hu`)
+# ProGate B2B Portal (`app.progate.hu`)
 
 Invite-only multi-tenant SaaS: merchant portal + platform admin + **storefront widget** (egy Next app).
 
@@ -59,17 +59,17 @@ Merchant **Beállítások** → másold az install snippetet. Lényeg:
 ```html
 <script>
 window.SR_B2B_QUICKORDER = {
-  apiBase: "https://b2b.turinova.hu",
+  apiBase: "https://app.progate.hu",
   shopId: "<shops.public_id>",
   allowedGroupIds: [],
   requireLogin: true,
   buttonLabel: "Gyors rendelés"
 };
 </script>
-<script src="https://b2b.turinova.hu/widget.js" defer></script>
+<script src="https://app.progate.hu/widget.js" defer></script>
 ```
 
-Local bolt-teszt: tunnel URL (lásd fent). Prod: `https://b2b.turinova.hu`.
+Local bolt-teszt: tunnel URL (lásd fent). Prod: `https://app.progate.hu`.
 
 ## Adatbázis — fontos
 

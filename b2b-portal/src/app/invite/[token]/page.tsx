@@ -81,7 +81,7 @@ export default async function InvitePage({
                 <strong className="text-text">{invite.org_name}</strong>
               </p>
               <p className="mt-3 text-[12px] text-muted">
-                {TRIAL_DAYS_DEFAULT} nap próba: teljes gyors rendelés. A Turinova
+                {TRIAL_DAYS_DEFAULT} nap próba: teljes gyors rendelés. A ProGate
                 felirat a widgeten látszik. Utána{" "}
                 <strong className="text-text">
                   {PLAN_DEFAULTS[parsePlanId(invite.plan)].label}

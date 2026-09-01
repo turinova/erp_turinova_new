@@ -565,15 +565,25 @@ export function ReportsView() {
                   report.partnerGrowth.medianDaysBetweenOrders != null
                     ? `${report.partnerGrowth.medianDaysBetweenOrders} nap`
                     : "—",
-                sub: "Medián a rendelések között",
+                sub:
+                  report.partnerGrowth.medianDaysBetweenOrders != null
+                    ? "Medián a partner-rendelések között"
+                    : "Nincs ismétlő partner (≥2 rendelés) a tartományban",
               },
               {
                 label: "SKU / vevő",
                 value:
                   report.partnerGrowth.avgSkuPerActivePartner != null
                     ? String(report.partnerGrowth.avgSkuPerActivePartner)
-                    : "—",
-                sub: "Átlag a mintából",
+                    : productsLoading
+                      ? "…"
+                      : "—",
+                sub:
+                  report.partnerGrowth.avgSkuPerActivePartner != null
+                    ? "Átlag distinct SKU / aktív partner"
+                    : productsLoading
+                      ? "Termékek betöltése…"
+                      : "Nincs partner-tétel a mintában",
               },
               {
                 label: "Widget @ partner",

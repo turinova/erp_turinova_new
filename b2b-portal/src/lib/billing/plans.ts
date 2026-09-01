@@ -8,7 +8,7 @@
 export const PLAN_IDS = ["start", "plus", "pro"] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
-/** Base subscription (bruttó Ft / hó) — Turinova felirat látszik. */
+/** Base subscription (bruttó Ft / hó) — ProGate felirat látszik. */
 export const BASE_PRICE_HUF = 7_500;
 /** Add-on: hide Turinova mark on the widget (bruttó). */
 export const MARK_ADDON_HUF = 2_499;
@@ -143,7 +143,7 @@ export function upgradeMailto(opts: {
   const period = opts.annual ? "éves" : "havi";
   const shop = opts.shopName?.trim() ? ` (${opts.shopName.trim()})` : "";
   const subject = encodeURIComponent(
-    `Turinova B2B — ${label}, ${period}${shop}`,
+    `ProGate — ${label}, ${period}${shop}`,
   );
-  return `mailto:hello@turinova.hu?subject=${subject}`;
+  return `mailto:hello@progate.hu?subject=${subject}`;
 }

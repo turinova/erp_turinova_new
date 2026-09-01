@@ -57,9 +57,9 @@ export async function PlatformShell({
         <Link
           href="/admin"
           className="flex h-14 items-center border-b border-line-strong px-3"
-          aria-label="Turinova"
+          aria-label="ProGate"
         >
-          <TurinovaWordmark height={24} className="w-full max-w-full object-contain object-left" />
+          <TurinovaWordmark height={24} className="w-full max-w-full" />
         </Link>
         <nav className="flex flex-1 flex-col gap-0.5 py-3">
           {items.map((item) => (

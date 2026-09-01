@@ -2,7 +2,7 @@
 
 Jelen Általános Szerződési Feltételek hatályba lépésének ideje: 2026.08.27.
 
-Jelen dokumentum tartalmazza HÍRÖS-ABLAK Kft., mint szolgáltató (a továbbiakban: „Szolgáltató”) által üzemeltetett Turinova B2B elnevezésű Szoftvert (a továbbiakban: Szoftver) használó személyekre vonatkozó általános szerződési feltételeket (a továbbiakban: „ÁSZF”).
+Jelen dokumentum tartalmazza HÍRÖS-ABLAK Kft., mint szolgáltató (a továbbiakban: „Szolgáltató”) által üzemeltetett ProGate elnevezésű Szoftvert — a Turinova / HÍRÖS-ABLAK Kft. SaaS termékét — (a továbbiakban: Szoftver) használó személyekre vonatkozó általános szerződési feltételeket (a továbbiakban: „ÁSZF”).
 
 A Szoftver használatához szükséges azon technikai tájékoztatást, melyet jelen ÁSZF nem tartalmaz, a Szoftver elérhetőségét biztosító honlapon elérhető egyéb tájékoztatások nyújtják.
 
@@ -16,7 +16,7 @@ Email: info@turinova.hu
 
 ## 1. A Szerződés tárgya
 
-Szolgáltató felhő alapú, SaaS (Software as a Service) típusú szolgáltatást értékesít Turinova B2B néven, amely Shoprenter webáruházakhoz kapcsolódó B2B partnerkezelést, partnerárakat, widget alapú rendelést és kapcsolódó merchant portál funkciókat biztosít (a továbbiakban: Szoftver). A Szoftver a kereskedő Shoprenter boltjával API-n keresztül működik együtt; a Shoprenter platformot harmadik fél üzemelteti.
+Szolgáltató felhő alapú, SaaS (Software as a Service) típusú szolgáltatást értékesít ProGate néven, amely Shoprenter webáruházakhoz kapcsolódó B2B partnerkezelést, partnerárakat, widget alapú rendelést és kapcsolódó merchant portál funkciókat biztosít (a továbbiakban: Szoftver). A Szoftver a kereskedő Shoprenter boltjával API-n keresztül működik együtt; a Shoprenter platformot harmadik fél üzemelteti.
 
 A Szoftver használatát Szolgáltató csak jogi személyek (ideértve az egyéni vállalkozókat is, a Továbbiakban: Ügyfél) és az Ügyfelek által a Szoftverben biztosított keretek között erre feljogosított személyek (a továbbiakban: Felhasználók) számára biztosítja.
 
@@ -36,7 +36,7 @@ A Szoftver használata jelenti különösen:
 
 - felhasználókezelést,
 
-- vállalatirányítási funkciók használatát, ezen belül az Ügyfél által választott csomagnak megfelelő funkcionalitások használatát, amelyet részeletesen a https://www.turinova.hu és az oldalon elérhető egyéb tájékoztatások tartalmaznak.
+- vállalatirányítási funkciók használatát, ezen belül az Ügyfél által választott csomagnak megfelelő funkcionalitások használatát, amelyet részeletesen a https://app.progate.hu és https://www.turinova.hu, valamint az oldalon elérhető egyéb tájékoztatások tartalmaznak.
 
 Ügyfél köteles:
 
@@ -124,7 +124,7 @@ Szolgáltató ugyanígy nem felel a 3. személyek által fejlesztett, vagy üzem
 
 Szolgáltató továbbá nem vállal felelősséget a Szoftver helyes vagy helytelen használata következtében, vagy vis maior esemény folytán felmerült károkért.
 
-Az Ügyfél kizárólagos felelősséggel tartozik azért, hogy a Turinova B2B szolgáltatás keretében kezelt adatait rendszeresen és az adatok jelentőségéhez mérten mentse, archiválja és tárolja. Szolgáltató mindent megtesz annak érdekében, hogy az Ügyfél Szoftverben tárolt adatait rendszeresen és folyamatosan mentse és biztonságosan tárolja.
+Az Ügyfél kizárólagos felelősséggel tartozik azért, hogy a ProGate szolgáltatás keretében kezelt adatait rendszeresen és az adatok jelentőségéhez mérten mentse, archiválja és tárolja. Szolgáltató mindent megtesz annak érdekében, hogy az Ügyfél Szoftverben tárolt adatait rendszeresen és folyamatosan mentse és biztonságosan tárolja.
 
 A Szoftver és az informatikai háttérrendszerek komplex természetéből adódóan, a Szolgáltató nem vállal felelősséget azért, hogy a Szoftver hibamentesen és zavartalanul működik, illetve, hogy valamennyi informatikai rendszerrel és eszközzel együtt tud működni és az együttműködési képesség zavatalanul és tartósan fenntartható.
 
@@ -158,7 +158,7 @@ Szolgáltató nem vállal felelősséget:
 
 Ügyfél felelőssége a funkcionalitások használatához szükséges beállításokat elvégezni. A beállítások elmaradása, vagy hibás beállítások használata a funkcionalitás használatát megakadályozhatják, vagy korlátozhatják. Szolgáltatót nem terheli felelősség az ebből fakadó hibákért.
 
-Szolgáltató a Szoftver megfelelő működését a turinova.hu oldalon elérhető hardveres és szoftveres feltételek megléte esetén biztosítja.
+Szolgáltató a Szoftver megfelelő működését az app.progate.hu oldalon elérhető hardveres és szoftveres feltételek megléte esetén biztosítja.
 
 A technikai feltételek biztosítása az Ügyfél felelőssége.
 

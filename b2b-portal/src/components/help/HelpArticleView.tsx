@@ -6,7 +6,7 @@ import {
 } from "@/lib/help/catalog";
 import type { HelpArticle } from "@/lib/help/types";
 
-const SUPPORT_EMAIL = "hello@turinova.hu";
+const SUPPORT_EMAIL = "hello@progate.hu";
 
 export function HelpArticleView({ article }: { article: HelpArticle }) {
   const category = getHelpCategory(article.categoryId);

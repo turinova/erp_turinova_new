@@ -14,6 +14,6 @@ Az Áttekintésen látod, mi a következő lépés.
 
 ## Elakadtál?
 
-hello@turinova.hu
+hello@progate.hu
 
 Írd meg a bolt nevét és mit látsz a képernyőn. Így nem kell találgatnunk.

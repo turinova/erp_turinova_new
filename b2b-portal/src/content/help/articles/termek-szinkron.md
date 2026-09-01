@@ -1,6 +1,6 @@
 # Termékek szinkronizálása
 
-API összekötés után a Turinova lemásolja a Shoprenter termékeidet. A gyors rendelés keresője erre épül.
+API összekötés után a ProGate lemásolja a Shoprenter termékeidet. A gyors rendelés keresője erre épül.
 
 ## Hol látod?
 
@@ -32,4 +32,4 @@ Beállítások: Termékek újraszinkronizálása, ha megjelenik a gomb. Akkor ke
 
 1. Kapcsolat tesztelése. OK?
 2. Hiba esetén: [Bolt összekötése](/tudasbazis/bolt-osszekotes)
-3. OK, de áll: hello@turinova.hu
+3. OK, de áll: hello@progate.hu

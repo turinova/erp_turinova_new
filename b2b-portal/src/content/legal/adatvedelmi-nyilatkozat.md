@@ -1,10 +1,10 @@
 # Adatvédelmi nyilatkozat
 
-Jelen Adatvédelmi Nyilatkozat hatályba lépésének ideje: 2026.08.27.
+Jelen Adatvédelmi Nyilatkozat hatályba lépésének ideje: 2026.08.31.
 
 ### 1. Általános jogi közlemény
 
-Mi, a HÍRÖS-ABLAK Kft. (továbbiakban: Adatkezelő) a www.turinova.hu internetes weboldalt (továbbiakban: Weboldal) üzemeltetjük, amely Weboldalon Ön bármikor kapcsolatba léphet velünk.
+Mi, a HÍRÖS-ABLAK Kft. (továbbiakban: Adatkezelő) a ProGate szolgáltatást (elérhető: https://app.progate.hu, továbbiakban: Szolgáltatás / Weboldal) üzemeltetjük; a Szolgáltató anyamárkája a Turinova (https://www.turinova.hu). Ön a Weboldalon bármikor kapcsolatba léphet velünk.
 
 Kizárólag azon nagykorú (18. életévüket betöltött) személyek adatait kezeljük, akik a Weboldalon a kapcsolat menüpont alatt felveszik velünk a kapcsolatot. A kapcsolatfelvétel az Ön hozzájárulásán alapul, amelyet Ön bármikor jogosult visszavonni.
 
@@ -28,7 +28,7 @@ A fentiek alapján az adatkezelés az információs önrendelkezési jogról és
 
 Kapcsolati form esetén
 
-Az adatkezelés célja, hogy Önnel felvegyük a kapcsolatot az Ön által küldött üzenet megválaszolása érdekében, a Turinova B2B rendszer tájékoztatásával kapcsolatban.
+Az adatkezelés célja, hogy Önnel felvegyük a kapcsolatot az Ön által küldött üzenet megválaszolása érdekében, a ProGate (Turinova) rendszer tájékoztatásával kapcsolatban.
 
 Hírlevelek esetén
 

@@ -194,6 +194,38 @@ const summaryScratch = new Map<string, SummaryScratch>();
 const DETAIL_CONCURRENCY = 3;
 const PRODUCT_SAMPLE = 14;
 
+/**
+ * Live path only fetches line details for a small sample.
+ * Prefer partner (and then logged-in) orders so SKU / vevő isn't empty
+ * when the newest N rows are almost all guests.
+ */
+function sampleOrdersForProducts(
+  inRange: CustomerOrderSummary[],
+  partners: Map<string, PartnerAgg>,
+  limit: number,
+): CustomerOrderSummary[] {
+  if (inRange.length <= limit) return inRange;
+  const partnerOrders: CustomerOrderSummary[] = [];
+  const loggedOrders: CustomerOrderSummary[] = [];
+  const guestOrders: CustomerOrderSummary[] = [];
+  for (const o of inRange) {
+    const key = buyerKey(o);
+    const p = partners.get(key);
+    if (p?.isPartner === true) partnerOrders.push(o);
+    else if (o.customerInnerId != null) loggedOrders.push(o);
+    else guestOrders.push(o);
+  }
+  const out: CustomerOrderSummary[] = [];
+  const seen = new Set<string>();
+  for (const o of [...partnerOrders, ...loggedOrders, ...guestOrders]) {
+    if (out.length >= limit) break;
+    if (seen.has(o.id)) continue;
+    seen.add(o.id);
+    out.push(o);
+  }
+  return out;
+}
+
 function dayMs(n: number) {
   return n * 24 * 60 * 60 * 1000;
 }
@@ -736,7 +768,11 @@ export async function buildShopReport(
     partnerGaps.map((d) => Math.max(1, Math.round(d))),
   );
 
-  const sampleForProducts = inRange.slice(0, PRODUCT_SAMPLE);
+  const sampleForProducts = sampleOrdersForProducts(
+    inRange,
+    partners,
+    PRODUCT_SAMPLE,
+  );
   let topProducts: ShopReport["topProducts"] = [];
   let avgSkuPerActivePartner: number | null = null;
   let revenueWithCost = 0;
@@ -1171,7 +1207,11 @@ async function enrichReportProducts(
   shopId: string,
   scratch: SummaryScratch,
 ): Promise<ShopReport> {
-  const sample = scratch.inRange.slice(0, PRODUCT_SAMPLE);
+  const sample = sampleOrdersForProducts(
+    scratch.inRange,
+    scratch.partners,
+    PRODUCT_SAMPLE,
+  );
   const block = await computeProductBlock(
     config,
     client,

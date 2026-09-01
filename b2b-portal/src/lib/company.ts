@@ -1,15 +1,27 @@
 /**
- * Szolgáltató cégadatok (HÍRÖS-ABLAK Kft.) + Turinova B2B termék.
- * Jogi oldalak és impresszum forrása.
+ * Szolgáltató (HÍRÖS-ABLAK Kft. / Turinova) + ProGate termék.
+ * Jogi oldalak, impresszum, UI brand forrása.
  */
 
 export const COMPANY = {
-  brand: "Turinova B2B",
+  /** Ügyfélnek látszó termékmárka */
+  brand: "ProGate",
+  /** Anyacég / cégmárka (jogi szövegben is) */
+  parentBrand: "Turinova",
+  /** Rövid termék-leírás */
+  brandTagline: "B2B gyors rendelés Shoprenterhez",
   legalName:
     "HÍRÖS-ABLAK Kereskedelmi és Szolgáltató Korlátolt Felelősségű Társaság",
   shortName: "HÍRÖS-ABLAK Kft.",
   taxIdDisplay: "11421386-2-03",
   companyRegistrationNumber: "03-09-104700",
+  /** Termék app */
+  productUrl: "https://app.progate.hu",
+  productHost: "app.progate.hu",
+  /** Marketing / termék web (ha él) */
+  marketingUrl: "https://progate.hu",
+  marketingHost: "progate.hu",
+  /** Anyacég web / impresszum */
   website: "https://www.turinova.hu",
   websiteHost: "www.turinova.hu",
   address: {
@@ -20,7 +32,10 @@ export const COMPANY = {
   },
   contactPerson: "Mező Dávid",
   emails: {
+    /** Jogi / céges */
     central: "info@turinova.hu",
+    /** Termék support */
+    support: "hello@progate.hu",
   },
   webInfrastructure: {
     hostingProvider: "Vercel Inc.",

@@ -28,6 +28,6 @@ Más footer_scripts.tpl lehet. Kérdezd a sablon készítőjét, hova mehet a l�
 
 ## Még mindig nem?
 
-hello@turinova.hu
+hello@progate.hu
 
 Bolt URL, kép a Widget oldalról, kép a boltról, F12 hiba szövege.

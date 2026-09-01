@@ -97,7 +97,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             error:
-              "A fiók fel van függesztve. Írj a hello@turinova.hu címre, ha szerinted ez hiba.",
+              "A fiók fel van függesztve. Írj a hello@progate.hu címre, ha szerinted ez hiba.",
             code: "suspended",
           },
           { status: 403 },

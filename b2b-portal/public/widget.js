@@ -3,10 +3,10 @@
  *
  * Config (before this script):
  *   window.SR_B2B_QUICKORDER = {
- *     apiBase: 'https://b2b.turinova.hu',
+ *     apiBase: 'https://app.progate.hu',
  *     shopId: '…' // shops.public_id — appearance loaded from portal
  *   };
- * Then: <script src="https://b2b.turinova.hu/widget.js?v=…"></script>
+ * Then: <script src="https://app.progate.hu/widget.js?v=…"></script>
  * Optional overrides: buttonLabel, fabColor, requireLogin
  * (allowedGroupIds empty = everyone; do not use for access control)
  * Menüpont: href="#sr-b2b-qo"
@@ -41,6 +41,364 @@
     typeof window !== "undefined" ? window.SR_B2B_QUICKORDER || {} : {},
   );
 
+  /** Landing / interactive demo — no live Shoprenter, seed catalog. */
+  if (cfg.demo) {
+    cfg.requireLogin = false;
+    cfg.hideFab = cfg.hideFab !== false;
+    cfg.showTurinovaMark = true;
+    cfg.showCustomerGroupName = true;
+    cfg.showNextLevelProgress = true;
+    cfg.catalogReady = true;
+    cfg.enabled = true;
+    cfg.shopId = cfg.shopId || "demo";
+    cfg.buttonLabel = cfg.buttonLabel || "Gyors rendelés";
+    cfg.modules = cfg.modules || [
+      "search",
+      "excel",
+      "paste",
+      "photo",
+      "insights",
+      "orders",
+      "lists",
+    ];
+    try {
+      window.ShopRenter = window.ShopRenter || {};
+      window.ShopRenter.customer = {
+        userId: 900001,
+        userGroupId: 12,
+        name: "Kovács Barkács Kft.",
+      };
+    } catch (e) {}
+  }
+
+  var nativeFetch = window.fetch.bind(window);
+
+  function demoFmt(n) {
+    try {
+      return (
+        new Intl.NumberFormat("hu-HU").format(Math.round(Number(n) || 0)) + " Ft"
+      );
+    } catch (e) {
+      return Math.round(Number(n) || 0) + " Ft";
+    }
+  }
+
+  function demoProduct(partial) {
+    var listNet = partial.listPriceNet;
+    var dealNet = partial.priceNet;
+    var vat = partial.vatRate != null ? partial.vatRate : 27;
+    var listGross = Math.round(listNet * (1 + vat / 100));
+    var dealGross = Math.round(dealNet * (1 + vat / 100));
+    var disc = listNet > 0 ? Math.round((1 - dealNet / listNet) * 1000) / 10 : 0;
+    return Object.assign(
+      {
+        found: true,
+        orderable: true,
+        inStock: true,
+        stockTone: "ok",
+        stockLabel: "Készleten",
+        stockQty: 120,
+        minQty: 1,
+        qtyStep: 1,
+        maxQty: null,
+        packLabel: null,
+        vatRate: vat,
+        listPriceNet: listNet,
+        listPriceGross: listGross,
+        listPriceNetFormatted: demoFmt(listNet),
+        listPriceGrossFormatted: demoFmt(listGross),
+        price: dealNet,
+        priceNet: dealNet,
+        priceGross: dealGross,
+        priceNetFormatted: demoFmt(dealNet),
+        priceGrossFormatted: demoFmt(dealGross),
+        discountPercent: disc,
+        discountAmountNet: Math.max(0, listNet - dealNet),
+        discountAmountNetFormatted: demoFmt(Math.max(0, listNet - dealNet)),
+        priceSource: "group",
+        imageUrl: null,
+        productUrl: null,
+        tiers: null,
+        nextTier: null,
+        error: null,
+      },
+      partial,
+    );
+  }
+
+  var DEMO_CATALOG = [
+    demoProduct({
+      productId: 101,
+      sku: "SS11",
+      name: "Rozsdamentes csavar M8",
+      modelNumber: "RH-M8",
+      gtin: "5990000110011",
+      listPriceNet: 48,
+      priceNet: 41,
+      stockQty: 840,
+      packLabel: "24 db / doboz",
+      minQty: 24,
+      qtyStep: 24,
+      tiers: [
+        { minQty: 24, priceNet: 41 },
+        { minQty: 96, priceNet: 38 },
+      ],
+      priceSource: "tier",
+    }),
+    demoProduct({
+      productId: 102,
+      sku: "F014",
+      name: "Zsanér 110°",
+      modelNumber: "ZN-110",
+      listPriceNet: 1890,
+      priceNet: 1739,
+      stockQty: 64,
+      discountPercent: 8,
+      priceSource: "override",
+    }),
+    demoProduct({
+      productId: 103,
+      sku: "HG-220",
+      name: "Fogantyú matt fekete",
+      modelNumber: "HG-220",
+      listPriceNet: 3200,
+      priceNet: 2880,
+      stockQty: 28,
+    }),
+    demoProduct({
+      productId: 104,
+      sku: "KL-440",
+      name: "Króm kilincs",
+      modelNumber: "KL-440",
+      listPriceNet: 4120,
+      priceNet: 3708,
+      stockQty: 15,
+    }),
+    demoProduct({
+      productId: 105,
+      sku: "ZR-55",
+      name: "Zár 55 mm",
+      modelNumber: "ZR-55",
+      listPriceNet: 2490,
+      priceNet: 2241,
+      stockQty: 42,
+    }),
+  ];
+
+  function demoFindSku(code) {
+    var q = String(code || "")
+      .trim()
+      .toLowerCase();
+    if (!q) return null;
+    for (var i = 0; i < DEMO_CATALOG.length; i++) {
+      var p = DEMO_CATALOG[i];
+      if (
+        String(p.sku).toLowerCase() === q ||
+        String(p.modelNumber || "").toLowerCase() === q ||
+        String(p.gtin || "") === q
+      ) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  function demoSeedLines() {
+    return [
+      Object.assign({}, DEMO_CATALOG[0], { quantity: 24, found: true }),
+      Object.assign({}, DEMO_CATALOG[1], { quantity: 12, found: true }),
+      Object.assign({}, DEMO_CATALOG[2], { quantity: 6, found: true }),
+      {
+        sku: "XX99",
+        quantity: 2,
+        name: "Ismeretlen tétel",
+        found: false,
+        error: "Nem található",
+        orderable: false,
+        inStock: false,
+        stockLabel: "Nem található",
+        stockTone: "err",
+        priceNet: null,
+        priceGross: null,
+        listPriceNet: null,
+        productId: null,
+      },
+    ];
+  }
+
+  function demoJson(data, status) {
+    status = status || 200;
+    return Promise.resolve({
+      ok: status >= 200 && status < 300,
+      status: status,
+      json: function () {
+        return Promise.resolve(data);
+      },
+      text: function () {
+        return Promise.resolve(JSON.stringify(data));
+      },
+    });
+  }
+
+  function handleDemoFetch(url, init) {
+    init = init || {};
+    var u = String(url || "");
+    var method = String(init.method || "GET").toUpperCase();
+    var path = u.replace(/^https?:\/\/[^/]+/i, "");
+    var qIdx = path.indexOf("?");
+    var pathOnly = qIdx >= 0 ? path.slice(0, qIdx) : path;
+
+    if (pathOnly.indexOf("/api/widget/config") !== -1) {
+      return demoJson({
+        config: {
+          enabled: true,
+          buttonLabel: cfg.buttonLabel,
+          requireLogin: false,
+          allowedGroupIds: [],
+          fabColor: "#0B6BCB",
+          fabInk: "auto",
+          fabStyle: "solid",
+          fabPosition: "bottom_right",
+          fabSize: "icon_label",
+          panelTheme: "high_contrast",
+          modules: cfg.modules,
+          showLabel: true,
+          compact: false,
+          showTurinovaMark: true,
+          showCustomerGroupName: true,
+          showNextLevelProgress: true,
+          catalogReady: true,
+          freeShipping: null,
+        },
+      });
+    }
+
+    if (pathOnly.indexOf("/api/widget/partner-status") !== -1) {
+      return demoJson({
+        ok: true,
+        progress: {
+          groupInnerId: 12,
+          groupName: "Asztalosok",
+          showGroupName: true,
+          showProgress: true,
+          metric: "spend",
+          period: "calendar_year",
+          current: 815800,
+          nextThreshold: 1000000,
+          remaining: 184200,
+          remainingLabel: "184 200 Ft",
+          progressRatio: 0.82,
+          urgency: "mid",
+          nextGroupName: "Arany partner",
+          nextReward: { kind: "percent", value: 12, label: "−12%" },
+          rewardShort: "−12%",
+        },
+      });
+    }
+
+    if (pathOnly.indexOf("/api/products/resolve") !== -1 && method === "POST") {
+      var body = {};
+      try {
+        body = JSON.parse(init.body || "{}");
+      } catch (e) {}
+      var linesIn = Array.isArray(body.lines) ? body.lines : [];
+      var products = linesIn.map(function (line) {
+        var hit = demoFindSku(line.sku || line);
+        if (!hit) {
+          return {
+            found: false,
+            sku: String((line && line.sku) || line || ""),
+            error: "Nem található",
+          };
+        }
+        return Object.assign({}, hit, {
+          quantity: line.quantity != null ? line.quantity : 1,
+        });
+      });
+      return demoJson({ products: products });
+    }
+
+    if (pathOnly.indexOf("/api/products/search") !== -1) {
+      var m = u.match(/[?&]q=([^&]*)/);
+      var q = m ? decodeURIComponent(m[1] || "").toLowerCase() : "";
+      var hits = DEMO_CATALOG.filter(function (p) {
+        if (!q) return true;
+        return (
+          p.sku.toLowerCase().indexOf(q) !== -1 ||
+          p.name.toLowerCase().indexOf(q) !== -1 ||
+          String(p.modelNumber || "")
+            .toLowerCase()
+            .indexOf(q) !== -1
+        );
+      }).slice(0, 8);
+      return demoJson({ products: hits });
+    }
+
+    if (pathOnly.indexOf("/api/orders/insights") !== -1) {
+      return demoJson({
+        ok: true,
+        stats: { nextOrderHint: "A demóban a tipikus havi lista 3–4 tétel." },
+        topProducts: [
+          { sku: "SS11", name: "Rozsdamentes csavar M8", suggestedQty: 24 },
+          { sku: "F014", name: "Zsanér 110°", suggestedQty: 12 },
+        ],
+        dueSoon: [],
+        lastOrder: null,
+      });
+    }
+
+    if (pathOnly.indexOf("/api/widget/lists") !== -1) {
+      if (method === "GET" && pathOnly.match(/\/lists\/?$/)) {
+        return demoJson({
+          lists: [
+            {
+              id: "demo-list-1",
+              name: "Havi alap",
+              itemCount: 3,
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        });
+      }
+      return demoJson({ ok: true, list: { id: "demo-list-1", name: "Havi alap", lines: [] } });
+    }
+
+    if (pathOnly.indexOf("/api/orders") !== -1) {
+      if (method === "POST") return demoJson({ ok: true });
+      return demoJson({
+        orders: [
+          {
+            id: "demo-o1",
+            number: "V-10482",
+            date: "2026-08-12",
+            status: "Teljesítve",
+            totalFormatted: "128 400 Ft",
+          },
+        ],
+      });
+    }
+
+    if (u.indexOf("index.php?route=module/cart/callback") !== -1) {
+      return demoJson({
+        countProducts: 3,
+        total: "39 132 Ft",
+        message: "Kosárba rakva (minta demó)",
+        products: [],
+      });
+    }
+
+    if (pathOnly.indexOf("/api/") !== -1) {
+      return demoJson({ ok: true });
+    }
+
+    return nativeFetch(url, init);
+  }
+
+  function fetch(input, init) {
+    if (cfg.demo) return handleDemoFetch(input, init);
+    return nativeFetch(input, init);
+  }
+
   function apiBase() {
     if (cfg.apiBase) return String(cfg.apiBase).replace(/\/$/, "");
     // same origin if hosted on Next public/
@@ -57,16 +415,18 @@
       "a",
       {
         className: className || "sr-qo-credit",
-        href: "https://turinova.hu",
+        href: "https://progate.hu",
         target: "_blank",
         rel: "noopener noreferrer",
-        "aria-label": "Turinova",
+        "aria-label": "ProGate",
       },
       [
+        el("span", { className: "sr-qo-credit-kicker" }, ["Készítette"]),
         el("img", {
           className: "sr-qo-credit-logo",
-          src: apiBase() + "/brand/turinova-logo.png",
-          alt: "Turinova",
+          src: apiBase() + "/brand/progate-logo.svg",
+          alt: "ProGate",
+          height: "20",
         }),
       ],
     );
@@ -84,6 +444,7 @@
   }
 
   function loadRemoteConfig() {
+    if (cfg.demo) return Promise.resolve(true);
     var id = cfg.shopId || cfg.publicId || "";
     if (!id) return Promise.resolve(false);
     return fetch(apiUrl("/api/widget/config"), { credentials: "omit", cache: "no-store" })
@@ -375,6 +736,14 @@
    * Proven on vasalatmester.hu: JSON with countProducts, total, message, products.
    */
   function addToCart(productId, quantity) {
+    if (cfg.demo) {
+      return Promise.resolve({
+        countProducts: 1,
+        total: "—",
+        message: "Kosárba rakva (minta demó)",
+        products: [],
+      });
+    }
     return new Promise(function (resolve, reject) {
       const body =
         "product_id=" +
@@ -454,6 +823,14 @@
   var DRAFT_KEY = "sr-b2b-qo-draft-v1";
 
   function loadDraft() {
+    if (cfg.demo && cfg.demoPrefill !== false) {
+      try {
+        var rawDemo = sessionStorage.getItem(DRAFT_KEY);
+        if (!rawDemo) return demoSeedLines();
+      } catch (e0) {
+        return demoSeedLines();
+      }
+    }
     try {
       var raw = sessionStorage.getItem(DRAFT_KEY);
       if (!raw) return [];
@@ -656,6 +1033,15 @@
       "  box-shadow:inset 0 1px 0 rgba(255,255,255,.18)",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-app-mark svg{display:block;width:14px;height:14px}",
+      "#sr-b2b-quickorder-root .sr-qo-brand{",
+      "  display:flex;align-items:center;gap:10px;min-width:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-demo-badge{",
+      "  display:inline-flex;align-items:center;flex-shrink:0;",
+      "  padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;",
+      "  letter-spacing:.02em;text-transform:uppercase;",
+      "  background:#E8F3FC;color:#0B6BCB;border:0.5px solid rgba(11,107,203,.35)",
+      "}",
       "#sr-b2b-quickorder-root .sr-qo-title{",
       "  margin:0;font-size:13px;font-weight:600;letter-spacing:-.01em;line-height:1.2;",
       "  white-space:nowrap;overflow:hidden;text-overflow:ellipsis",
@@ -1758,14 +2144,15 @@
       "  #sr-b2b-quickorder-root .sr-qo-qty-input{width:88px}",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-credit{",
-      "  flex-shrink:0;display:flex;align-items:center;justify-content:center;",
-      "  min-height:36px;padding:8px 16px calc(10px + env(safe-area-inset-bottom, 0px));",
+      "  flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:6px;",
+      "  min-height:28px;padding:5px 12px calc(6px + env(safe-area-inset-bottom, 0px));",
       "  border-top:0.5px solid var(--sr-qo-line);background:var(--sr-qo-bg);",
-      "  text-decoration:none",
+      "  text-decoration:none;color:var(--sr-qo-faint);",
+      "  font-size:10px;font-weight:500;letter-spacing:.01em;line-height:1",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-credit:hover .sr-qo-credit-logo{opacity:1}",
+      "#sr-b2b-quickorder-root .sr-qo-credit:hover{color:var(--sr-qo-muted)}",
       "#sr-b2b-quickorder-root .sr-qo-credit-logo{",
-      "  height:20px;width:auto;display:block;opacity:.94",
+      "  height:18px;width:auto;display:block;opacity:.9",
       "}",
       "@media (prefers-reduced-motion:reduce){",
       "  #sr-b2b-quickorder-root .sr-qo-shell{animation:none}",
@@ -2329,6 +2716,10 @@
           history.replaceState(null, "", location.pathname + location.search);
         }
       } catch (e) {}
+      try {
+        if (typeof cfg.onDemoClose === "function") cfg.onDemoClose();
+        window.dispatchEvent(new CustomEvent("sr-b2b-demo-close"));
+      } catch (e2) {}
     }
 
     function onKeyDown(e) {
@@ -3907,6 +4298,13 @@
         cfg.buttonLabel || "Gyors rendelés",
       ]),
     ]);
+    if (cfg.demo) {
+      brand.appendChild(
+        el("span", { className: "sr-qo-demo-badge", title: "Mintaadat — nem éles bolt" }, [
+          "Mintaadat",
+        ]),
+      );
+    }
 
     var NAV_ITEMS = [
       { id: "home", label: "Kezdőlap", module: "insights" },
@@ -8474,6 +8872,7 @@
   }
 
   function injectButton() {
+    if (cfg.hideFab || cfg.demo) return;
     if (cfg.enabled === false) {
       var off = document.getElementById("sr-b2b-qo-btn");
       if (off && off.parentNode) off.parentNode.removeChild(off);
@@ -8515,6 +8914,8 @@
     document.body.appendChild(btn);
   }
 
+  var demoReady = false;
+
   function boot() {
     loadRemoteConfig().then(function () {
       injectButton();
@@ -8524,8 +8925,54 @@
       if (location.hash === "#sr-b2b-qo") {
         setTimeout(tryOpenPanel, 300);
       }
+      if (cfg.demo && cfg.demoAutoOpen) {
+        setTimeout(tryOpenPanel, 120);
+      }
+      demoReady = true;
+      try {
+        window.dispatchEvent(new CustomEvent("sr-b2b-demo-ready"));
+      } catch (eReady) {}
     });
   }
+
+  try {
+    window.SR_B2B_DEMO = {
+      open: function () {
+        function go() {
+          try {
+            sessionStorage.removeItem(DRAFT_KEY);
+          } catch (e) {}
+          tryOpenPanel();
+        }
+        if (demoReady) {
+          go();
+          return;
+        }
+        var done = false;
+        function once() {
+          if (done) return;
+          done = true;
+          go();
+        }
+        try {
+          window.addEventListener("sr-b2b-demo-ready", once, { once: true });
+        } catch (e2) {}
+        setTimeout(once, 900);
+      },
+      close: function () {
+        var root = document.getElementById(cfg.mountId);
+        if (root) root.innerHTML = "";
+        document.body.style.overflow = "";
+        try {
+          window.dispatchEvent(new CustomEvent("sr-b2b-demo-close"));
+        } catch (e2) {}
+      },
+      isDemo: !!cfg.demo,
+      ready: function () {
+        return demoReady;
+      },
+    };
+  } catch (e3) {}
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);

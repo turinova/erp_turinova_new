@@ -1,6 +1,6 @@
 # Adatvédelmi irányelvek
 
-- Utolsó frissítés : 2026.08.27.
+- Utolsó frissítés: 2026.08.31.
 
 Társaságunk a weboldala használatával, e-mail és hírlevél-feliratkozásokkal, illetve egyéb, tevékenységével kapcsolatban a felhasználóktól, ügyfeleitől bekért személyes adatok kezelése során csak olyan jellegű és mennyiségű személyes adatot kér és kezelni, amely az adatkezelés céljához feltétlenül szükséges és arra alkalmas.
 
@@ -14,7 +14,7 @@ Az általunk kezelt adatok biztonságáért felelősséget vállalunk, szavatolj
 
 Az ön által megadott adatokat harmadik fél számára sem kereskedelmi, sem egyéb indokkal nem adjuk ki, kivéve, ha ahhoz – például más kereskedők ajánlatainak fogadása céljával – ön kifejezetten hozzájárult, vagy ha adatfeldolgozó igénybevétele (például számlázz.hu, tárhely) a szolgáltatás nyújtásához szükséges.
 
-Társaságunk a Turinova B2B portálon a bejelentkezéshez szükséges munkamenet-sütit (session cookie) használ. Ez a süti a szolgáltatás működéséhez szükséges; marketing vagy statisztikai sütiket jelenleg nem alkalmazunk, és külön süti-banner hozzájárulást nem kérünk. Ha a jövőben nem szükséges sütiket vezetünk be, arról előzetesen tájékoztatunk, és ahol jogszabály előírja, hozzájárulást kérünk.
+Társaságunk a ProGate portálon (app.progate.hu) a bejelentkezéshez szükséges munkamenet-sütit (session cookie) használ. Ez a süti a szolgáltatás működéséhez szükséges; marketing vagy statisztikai sütiket jelenleg nem alkalmazunk, és külön süti-banner hozzájárulást nem kérünk. Ha a jövőben nem szükséges sütiket vezetünk be, arról előzetesen tájékoztatunk, és ahol jogszabály előírja, hozzájárulást kérünk.
 
 Önnek joga van ahhoz, hogy bármikor kérje az általunk kezelt adatainak módosítását, törlését, az alábbi elérhetőségeinken:
 info@turinova.hu

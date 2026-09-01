@@ -1,6 +1,6 @@
-# Turinova B2B Portal — SaaS Architecture (komplett terv)
+# ProGate Portal — SaaS Architecture (komplett terv)
 
-**Scope:** `b2b.turinova.hu` — merchant + platform + storefront widget (egy Next app: `b2b-portal`)  
+**Scope:** `app.progate.hu` — merchant + platform + storefront widget (egy Next app: `b2b-portal`)  
 **Last updated:** 2026-08-18  
 **Status:** Source of truth for backend / multi-tenant decisions  
 **Árazás:** [`PRICING.md`](./PRICING.md)  

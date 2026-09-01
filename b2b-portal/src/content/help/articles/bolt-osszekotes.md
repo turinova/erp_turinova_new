@@ -1,6 +1,6 @@
 # Bolt összekötése (Shoprenter API)
 
-A Turinova a Shoprenter API-n olvassa a termékeket és írja a partnerárat. Kell hozzá egy API felhasználó.
+A ProGate a Shoprenter API-n olvassa a termékeket és írja a partnerárat. Kell hozzá egy API felhasználó.
 
 ## Hol a kulcs?
 

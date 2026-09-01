@@ -6,7 +6,7 @@ A gyors rendelés egy rövid kód a láblécben. Egyszer beilleszted, minden old
 
 Widget, Telepítés fül.
 
-Másold ki a Másolás gombbal. Ne babráld, hacsak a Turinova mást nem kér.
+Másold ki a Másolás gombbal. Ne babráld, hacsak a ProGate mást nem kér.
 
 ## Shoprenterben hova?
 
@@ -27,4 +27,4 @@ Fejléc menü: név Gyors rendelés, link `#sr-b2b-qo`. Ugyanazt nyitja, mint a 
 
 ## Localhost
 
-Ha a kódban nem b2b.turinova.hu van, az éles bolt nem tölti be. Élesítés előtt a Widget oldalon az éles cím kell.
+Ha a kódban nem app.progate.hu van, az éles bolt nem tölti be. Élesítés előtt a Widget oldalon az éles cím kell.

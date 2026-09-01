@@ -3,10 +3,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    template: "%s · Turinova B2B",
-    default: "Turinova B2B",
+    template: "%s · ProGate",
+    default: "ProGate",
   },
-  description: "Shoprenter B2B gyors rendelés. Merchant és platform portál.",
+  description:
+    "ProGate — B2B gyors rendelés Shoprenterhez. A Turinova terméke.",
   robots: { index: false, follow: false },
 };
 

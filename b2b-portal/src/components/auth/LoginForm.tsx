@@ -9,7 +9,7 @@ export function LoginForm() {
   const reason = search.get("reason");
   const [error, setError] = useState<string | null>(
     reason === "suspended"
-      ? "A fiók fel van függesztve. Írj a hello@turinova.hu címre, ha szerinted ez hiba."
+      ? "A fiók fel van függesztve. Írj a hello@progate.hu címre, ha szerinted ez hiba."
       : null,
   );
   const [pending, setPending] = useState(false);

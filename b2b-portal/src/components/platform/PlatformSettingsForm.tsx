@@ -114,7 +114,7 @@ export function PlatformSettingsForm() {
         <h2 className="tn-section-title">Új szervezet</h2>
         <p className="tn-section-sub">
           Alapértelmezett próbaidő új tenantoknak (nap). A merchant oldalon teljes
-          termék jár; a Turinova felirat próba alatt látszik. Árak bruttó: sql/031
+          termék jár; a ProGate felirat próba alatt látszik. Árak bruttó: sql/031
           (v6: 7500 / 9999), ha a mentés nem marad meg.
         </p>
         <label className="tn-field mt-4 max-w-xs">

@@ -1,5 +1,6 @@
-# Turinova B2B — billing & plans (v6, **aktuális**)
+# ProGate — billing & plans (v6, **aktuális**)
 
+**Termék:** ProGate (Turinova / HÍRÖS-ABLAK Kft.) · **App:** https://app.progate.hu  
 **Státusz:** Source of truth — a kód (`src/lib/billing/plans.ts`) és ez a doc egyezik.  
 **Dátum:** 2026-08-28  
 **SQL:** `031_plans_v6.sql` · `028_plans_v5.sql` (trial_days → 14) · `036_platform_trial_default_14.sql`
@@ -10,7 +11,7 @@ A `PRICING.md` archív v3–v5 szekciói **történeti** kontextus; ütközés e
 
 ## 1. Csomagok (merchant UI)
 
-| Plan ID | Merchant név | Bruttó / hó | Turinova felirat a widgeten |
+| Plan ID | Merchant név | Bruttó / hó | ProGate felirat a widgeten |
 |---------|--------------|-------------|----------------------------|
 | `start` | Gyors rendelés | **7 500 Ft** | Látszik |
 | `plus` / `pro` | Saját márka | **9 999 Ft** | Elrejthető (fizetés után) |
@@ -30,7 +31,7 @@ A `PRICING.md` archív v3–v5 szekciói **történeti** kontextus; ütközés e
 | Self-serve signup | Igen (`/signup`) — ugyanaz a hossz |
 | Invite / admin create | Alapértelmezés 14; platform admin 1–90 felülírható |
 | Trial alatt widget | Teljes termék, minden modul |
-| Turinova felirat próba alatt | **Mindig látszik** — nincs white-label trialban |
+| ProGate felirat próba alatt | **Mindig látszik** — nincs white-label trialban |
 | `organizations.plan` trial alatt | `start` (post-trial csomag jelzése) |
 | Effektív partner limit trial alatt | `plan_defaults.pro.partner_limit` (= **500** v6 után) |
 
@@ -48,7 +49,7 @@ A `PRICING.md` archív v3–v5 szekciói **történeti** kontextus; ütközés e
 | Gyors rendelés (widget) | ✓ | ✓ | ✓ |
 | Kereső, Excel, email lista, kép, rendelések, javaslatok, listáim | ✓ | ✓ | ✓ |
 | Fotó → lista (`canParseImage`) | ✓ | ✓ | ✓ |
-| Turinova felirat elrejtése | — | ✓ (csak fizetős) | **soha** |
+| ProGate felirat elrejtése | — | ✓ (csak fizetős) | **soha** |
 | Merchant modul ki/bekapcsolás | — | — | Minden modul mindig be (v6) |
 
 **v3-tól eltérés (szándékos v6):**
@@ -82,7 +83,7 @@ Override: `organizations.partner_limit_override` (admin „Egyedi”).
 | Trial napok signup | `src/lib/auth/signup.ts` → `TRIAL_DAYS_DEFAULT` |
 | Trial napok admin create | `src/app/api/admin/orgs/route.ts` |
 | Platform default trial | `platform_settings.trial_days` |
-| Widget mark | `resolveShowTurinovaMark()` |
+| Product mark (ProGate) | `resolveShowTurinovaMark()` |
 | Kép parse API | `canParseImage()` → mindig true |
 | Merchant csomag UI | `PlanCards.tsx` |
 

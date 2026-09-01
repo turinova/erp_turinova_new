@@ -4,7 +4,7 @@ import { loadLegalMarkdown } from "@/lib/legal/load";
 
 export const metadata: Metadata = {
   title: "Adatvédelmi nyilatkozat",
-  description: "Turinova B2B adatvédelmi nyilatkozat.",
+  description: "ProGate adatvédelmi nyilatkozat.",
   robots: { index: true, follow: true },
 };
 

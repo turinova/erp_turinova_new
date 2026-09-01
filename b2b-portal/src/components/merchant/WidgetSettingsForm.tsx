@@ -562,7 +562,7 @@ window.SR_B2B_QUICKORDER = {
                   <p className="mt-1 text-[12px] leading-relaxed text-faint">
                     A valódi bolt nem fogadja a localhostot. Használd a{" "}
                     <span className="font-semibold text-text">
-                      b2b.turinova.hu
+                      app.progate.hu
                     </span>{" "}
                     címet, vagy futtasd:{" "}
                     <code className="rounded-none bg-surface px-1 font-mono text-[11px] text-text">

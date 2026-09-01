@@ -139,7 +139,7 @@ export function LegalShell({
             href="/"
             className="inline-flex transition-opacity hover:opacity-80"
           >
-            <TurinovaWordmark height={24} />
+            <TurinovaWordmark height={24} showParent />
           </Link>
           <p className="text-[12px] text-faint">{COMPANY.shortName}</p>
         </div>

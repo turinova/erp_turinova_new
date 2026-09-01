@@ -543,8 +543,8 @@ export function MerchantShell({
                 ? "flex items-center justify-center"
                 : "flex min-w-0 flex-1 items-center"
             }
-            aria-label="Turinova"
-            title="Turinova"
+            aria-label="ProGate"
+            title="ProGate"
           >
             {collapsed ? (
               <TurinovaWordmark variant="icon" height={22} />
@@ -631,7 +631,7 @@ export function MerchantShell({
           <Link
             href="/home"
             className="flex items-center gap-1.5 md:hidden"
-            aria-label="Turinova"
+            aria-label="ProGate"
           >
             <TurinovaWordmark variant="icon" height={22} />
           </Link>

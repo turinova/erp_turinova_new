@@ -18,9 +18,9 @@ import {
   type PublicWidgetConfig,
   type WidgetSettingsPayload,
 } from "@/lib/widget/presets";
+import { WIDGET_JS_ASSET } from "@/lib/widget/asset-version";
 
-/** Bump together with injected CSS id in public/widget.js (sr-b2b-qo-panel-css-vN). */
-export const WIDGET_JS_ASSET = "64";
+export { WIDGET_JS_ASSET } from "@/lib/widget/asset-version";
 
 export function widgetCacheBust(opts: {
   settingsUpdatedAt: string | null;

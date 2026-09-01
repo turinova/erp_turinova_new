@@ -12,7 +12,7 @@ type Props = {
   footer?: ReactNode;
 };
 
-/** Auth layout: form left, large Turinova mark centered on the right. */
+/** Auth layout: form left, large ProGate mark centered on the right. */
 export function AuthShell({ title, subtitle, children, footer }: Props) {
   return (
     <main className="relative min-h-dvh bg-bg">
@@ -37,7 +37,7 @@ export function AuthShell({ title, subtitle, children, footer }: Props) {
               href="/"
               className="inline-flex lg:hidden transition-opacity duration-150 hover:opacity-80"
             >
-              <TurinovaWordmark height={28} />
+              <TurinovaWordmark height={28} showParent />
             </Link>
 
             <h1 className="mt-8 text-[26px] font-semibold tracking-tight text-text sm:text-[28px] lg:mt-0">
@@ -66,7 +66,7 @@ export function AuthShell({ title, subtitle, children, footer }: Props) {
             href="/"
             className="inline-flex transition-opacity duration-150 hover:opacity-80"
           >
-            <TurinovaWordmark height={72} />
+            <TurinovaWordmark height={72} showParent />
           </Link>
         </aside>
       </div>

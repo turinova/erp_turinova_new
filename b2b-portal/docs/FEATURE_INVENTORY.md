@@ -1,6 +1,8 @@
-# Turinova B2B — termék képességek (befektetői áttekintő)
+# ProGate — termék képességek (befektetői áttekintő)
 
-**Mi ez?** SaaS réteg Shoprenter webshopokra: a viszonteladóknak **önkiszolgáló, gyors B2B rendelést** ad a meglévő bolton, a kereskedőnek pedig **partnerárakat, vevőkezelést és riportot** egy portálon.
+**Mi ez?** SaaS réteg Shoprenter webshopokra (**ProGate**, a Turinova terméke): a viszonteladóknak **önkiszolgáló, gyors B2B rendelést** ad a meglévő bolton, a kereskedőnek pedig **partnerárakat, vevőkezelést és riportot** egy portálon.
+
+**Domain:** `https://app.progate.hu` · anyacég: turinova.hu
 
 **Kiknek?** Magyar B2B/viszonteladói webshopok (Shoprenter), akik ma e-mailben, Excelben vagy bolti kosárral szenvednek a partner-rendelésekkel.
 
@@ -131,7 +133,7 @@ Shoprenter bolt
 
 | Csomag | Bruttó / hó | Jelleg |
 |--------|-------------|--------|
-| **Gyors rendelés** | 7 500 Ft | Teljes termék, Turinova felirat a widgeten |
+| **Gyors rendelés** | 7 500 Ft | Teljes termék, ProGate felirat a widgeten |
 | **Saját márka** | 9 999 Ft | Ugyanaz + white-label (saját márka a partnerfelületen) |
 
 - **14 napos próba**, self-serve signup.

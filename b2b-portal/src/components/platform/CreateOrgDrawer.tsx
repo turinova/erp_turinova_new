@@ -119,7 +119,7 @@ export function CreateOrgDrawer({ open, onClose, onCreated }: Props) {
           className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-5"
         >
           <p className="text-[13px] text-faint">
-            {TRIAL_DAYS_DEFAULT} nap próba (teljes termék, Turinova felirat
+            {TRIAL_DAYS_DEFAULT} nap próba (teljes termék, ProGate felirat
             látszik). Utána: Alap {formatPlanPrice(BASE_PRICE_HUF)}, vagy Felirat nélkül{" "}
             {formatPlanPrice(WHITE_LABEL_PRICE_HUF)}.
           </p>

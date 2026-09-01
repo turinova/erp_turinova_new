@@ -1,6 +1,6 @@
-# Turinova B2B Portal — Design System & UI/UX Principles
+# ProGate Portal — Design System & UI/UX Principles
 
-**Scope:** `b2b.turinova.hu` (merchant) + Platform Admin (`/admin`) + Auth (`/login`, invite)  
+**Scope:** `app.progate.hu` (merchant) + Platform Admin (`/admin`) + Auth (`/login`, invite) · product of Turinova  
 **Stack context:** Next.js App Router, Tailwind v4, Lucide icons (preferred)  
 **Last updated:** 2026-08-25  
 
@@ -173,7 +173,7 @@ The portal **must feel like the B2B quick-order widget**, not a generic shadcn t
 **Goal:** 3 seconds to understand and act.
 
 Content (top → bottom):
-1. Brand wordmark: `Turinova B2B`
+1. Brand wordmark: `ProGate` (parent: Turinova)
 2. Title: `Bejelentkezés`
 3. One-line: access by invite only; no public registration
 4. Email (autofocus)

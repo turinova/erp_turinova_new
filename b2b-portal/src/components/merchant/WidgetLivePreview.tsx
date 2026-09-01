@@ -702,23 +702,27 @@ export function WidgetLivePreview({
             </div>
             {showTurinovaMark ? (
               <a
-                href="https://turinova.hu"
+                href="https://progate.hu"
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="Turinova"
-                className="flex h-9 shrink-0 items-center justify-center border-t no-underline"
+                aria-label="ProGate"
+                className="flex h-9 shrink-0 items-center justify-center gap-1.5 border-t no-underline"
                 style={{
                   borderColor: theme.line,
                   background: theme.bg,
+                  color: theme.faint,
+                  fontSize: 10,
+                  fontWeight: 500,
                 }}
                 onClick={(e) => e.preventDefault()}
               >
+                <span>Készítette</span>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src="/brand/turinova-logo.png"
-                  alt="Turinova"
+                  src="/brand/progate-logo.svg"
+                  alt="ProGate"
                   height={20}
-                  style={{ height: 20, width: "auto", display: "block", opacity: 0.94 }}
+                  style={{ height: 20, width: "auto", display: "block" }}
                 />
               </a>
             ) : null}

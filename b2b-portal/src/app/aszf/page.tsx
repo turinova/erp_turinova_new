@@ -4,7 +4,7 @@ import { loadLegalMarkdown } from "@/lib/legal/load";
 
 export const metadata: Metadata = {
   title: "Általános szerződési feltételek",
-  description: "Turinova B2B Általános szerződési feltételek (ÁSZF).",
+  description: "ProGate Általános szerződési feltételek (ÁSZF).",
   robots: { index: true, follow: true },
 };
 

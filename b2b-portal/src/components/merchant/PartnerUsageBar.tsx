@@ -156,7 +156,7 @@ export function TrialWouldLoseBanner({
         A próba után a felirat továbbra is látszik az alap előfizetésen
       </p>
       <p className="mt-1 text-[13px] text-faint">
-        Most {used} aktív vevőd van. A saját márka opcióval (+felár) a Turinova
+        Most {used} aktív vevőd van. A saját márka opcióval (+felár) a ProGate
         felirat elrejthető. A rendelések a webshopodba továbbra is befutnak.
       </p>
       <a href={href} className="tn-btn tn-btn-primary mt-3 inline-flex">
