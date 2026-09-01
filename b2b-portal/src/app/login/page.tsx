@@ -5,6 +5,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { LegalFooterLinks } from "@/components/legal/LegalFooterLinks";
 import { redirectIfAuthenticated } from "@/lib/auth/require";
+import { marketingHomeHref } from "@/lib/hosts";
 
 export const metadata: Metadata = {
   title: "Bejelentkezés",
@@ -28,7 +29,7 @@ export default async function LoginPage() {
           </Link>
           <span className="mx-2 text-line">·</span>
           <Link
-            href="/"
+            href={marketingHomeHref()}
             className="underline underline-offset-2 hover:text-text"
           >
             Vissza

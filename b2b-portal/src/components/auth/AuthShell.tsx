@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
+import { marketingHomeHref } from "@/lib/hosts";
 
 export type AuthShellVariant = "login" | "signup" | "verify";
 
@@ -34,7 +35,7 @@ export function AuthShell({ title, subtitle, children, footer }: Props) {
           <div className="mx-auto w-full max-w-[420px]">
             {/* Mobile only — desktop logo lives in the right panel */}
             <Link
-              href="/"
+              href={marketingHomeHref()}
               className="inline-flex lg:hidden transition-opacity duration-150 hover:opacity-80"
             >
               <TurinovaWordmark height={28} showParent />
@@ -63,7 +64,7 @@ export function AuthShell({ title, subtitle, children, footer }: Props) {
 
         <aside className="relative hidden min-h-dvh border-l border-line-strong lg:flex lg:items-center lg:justify-center lg:px-12">
           <Link
-            href="/"
+            href={marketingHomeHref()}
             className="inline-flex transition-opacity duration-150 hover:opacity-80"
           >
             <TurinovaWordmark height={72} showParent />

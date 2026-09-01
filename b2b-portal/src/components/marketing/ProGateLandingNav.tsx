@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { TRIAL_DAYS_DEFAULT } from "@/lib/billing/plans";
 import { COMPANY } from "@/lib/company";
+import { appAuthHref, appPathHref } from "@/lib/hosts";
 
 const DEMO_MAIL = `mailto:${COMPANY.emails.support}?subject=${encodeURIComponent("ProGate demo")}`;
 
@@ -48,7 +49,7 @@ const PLATFORM_MODULES = [
     body: "Partnerek, forgalom, widget vs. bolti mix.",
   },
   {
-    href: "/tudasbazis",
+    href: appPathHref("/tudasbazis"),
     title: "Tudásbázis",
     body: "Összekötés, script, szinkron — lépésről lépésre.",
   },
@@ -62,7 +63,7 @@ const AUDIENCE = [
 
 const RESOURCES = [
   { href: "#gyik", title: "GYIK", body: "Gyakori kérdések a ProGate-ről." },
-  { href: "/tudasbazis", title: "Segítség", body: "Telepítés, szinkron, widget." },
+  { href: appPathHref("/tudasbazis"), title: "Segítség", body: "Telepítés, szinkron, widget." },
   { href: "/aszf", title: "ÁSZF", body: "Szerződéses feltételek." },
   { href: DEMO_MAIL, title: "Demo egyeztetés", body: "Írj a hello@progate.hu címre." },
 ] as const;
@@ -193,7 +194,7 @@ export function ProGateLandingNav() {
                     <p className="pg-mega-blurb">
                       {TRIAL_DAYS_DEFAULT} nap próba kártya nélkül, magyar support.
                     </p>
-                    <Link href="/signup" className="pg-nav-btn pg-nav-btn--solid">
+                    <Link href={appAuthHref("/signup")} className="pg-nav-btn pg-nav-btn--solid">
                       Ingyen kipróbálom →
                     </Link>
                     <a href={DEMO_MAIL} className="pg-mega-text-link">
@@ -240,10 +241,10 @@ export function ProGateLandingNav() {
         </nav>
 
         <div className="pg-nav-actions">
-          <Link href="/signup" className="pg-nav-btn pg-nav-btn--ghost hide-narrow">
+          <Link href={appAuthHref("/signup")} className="pg-nav-btn pg-nav-btn--ghost hide-narrow">
             Ingyen kipróbálom <em>→</em>
           </Link>
-          <Link href="/login" className="pg-nav-btn pg-nav-btn--border hide-narrow">
+          <Link href={appAuthHref("/login")} className="pg-nav-btn pg-nav-btn--border hide-narrow">
             Belépés <em>→</em>
           </Link>
           <a href={DEMO_MAIL} className="pg-nav-btn pg-nav-btn--demo">
@@ -287,14 +288,14 @@ export function ProGateLandingNav() {
           <a href="#gyik" onClick={closeMobile}>
             GYIK
           </a>
-          <a href="/tudasbazis" onClick={closeMobile}>
+          <a href={appPathHref("/tudasbazis")} onClick={closeMobile}>
             Tudásbázis
           </a>
           <div className="pg-mnav-cta">
-            <Link href="/signup" className="pg-nav-btn pg-nav-btn--solid" onClick={closeMobile}>
+            <Link href={appAuthHref("/signup")} className="pg-nav-btn pg-nav-btn--solid" onClick={closeMobile}>
               {TRIAL_DAYS_DEFAULT} nap próba →
             </Link>
-            <Link href="/login" className="pg-nav-btn pg-nav-btn--border-dark" onClick={closeMobile}>
+            <Link href={appAuthHref("/login")} className="pg-nav-btn pg-nav-btn--border-dark" onClick={closeMobile}>
               Belépés
             </Link>
             <a href={DEMO_MAIL} className="pg-nav-btn pg-nav-btn--demo" onClick={closeMobile}>

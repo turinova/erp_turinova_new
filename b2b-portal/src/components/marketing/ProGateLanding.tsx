@@ -11,6 +11,7 @@ import {
   formatPlanPrice,
 } from "@/lib/billing/plans";
 import { COMPANY, LEGAL_LINKS } from "@/lib/company";
+import { appAuthHref } from "@/lib/hosts";
 
 const DEMO_MAIL = `mailto:${COMPANY.emails.support}?subject=${encodeURIComponent("ProGate demo")}`;
 
@@ -107,7 +108,7 @@ export function ProGateLanding() {
                 rendelnek, te egy portálon árazol — külön B2B shop nélkül.
               </p>
               <div className="pg-hero-actions">
-                <Link href="/signup" className="pg-btn pg-btn-primary pg-btn-lg">
+                <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary pg-btn-lg">
                   Ingyen kipróbálom →
                 </Link>
                 <a href="#demo" className="pg-btn pg-btn-ghost-on-dark pg-btn-lg">
@@ -117,7 +118,7 @@ export function ProGateLanding() {
               <p className="pg-hero-trust">
                 {TRIAL_DAYS_DEFAULT} nap · kártya nélkül · magyar support
                 <span aria-hidden> · </span>
-                <Link href="/login">Belépés</Link>
+                <Link href={appAuthHref("/login")}>Belépés</Link>
               </p>
             </div>
 
@@ -221,7 +222,7 @@ export function ProGateLanding() {
                 <li>ProGate felirat a widgeten</li>
                 <li>{TRIAL_DAYS_DEFAULT} nap próba</li>
               </ul>
-              <Link href="/signup" className="pg-btn pg-btn-primary">
+              <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary">
                 Kezdd a próbát
               </Link>
             </article>
@@ -238,7 +239,7 @@ export function ProGateLanding() {
                 </li>
                 <li>Ugyanaz a termék, white-label widget</li>
               </ul>
-              <Link href="/signup" className="pg-btn pg-btn-ghost">
+              <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-ghost">
                 Próbából választok
               </Link>
             </article>
@@ -266,7 +267,7 @@ export function ProGateLanding() {
             Shoprenteres nagykered van, írj nekünk.
           </p>
           <div className="pg-hero-actions">
-            <Link href="/signup" className="pg-btn pg-btn-primary pg-btn-lg">
+            <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary pg-btn-lg">
               {TRIAL_DAYS_DEFAULT} nap próba
             </Link>
             <a
@@ -293,8 +294,8 @@ export function ProGateLanding() {
             <a href="#demo">Demó</a>
             <a href="#portal">Portál</a>
             <a href="#csomag">Csomagok</a>
-            <Link href="/signup">Regisztráció</Link>
-            <Link href="/login">Belépés</Link>
+            <Link href={appAuthHref("/signup")}>Regisztráció</Link>
+            <Link href={appAuthHref("/login")}>Belépés</Link>
           </div>
           <div>
             <p className="pg-footer-h">Jogi</p>

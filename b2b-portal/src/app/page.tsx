@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ProGateLanding } from "@/components/marketing/ProGateLanding";
 import { getSessionFromCookies } from "@/lib/auth/session";
 import { COMPANY } from "@/lib/company";
+import { hostFromHeaders, isAppHost, isMarketingHost } from "@/lib/hosts";
 
 export const metadata: Metadata = {
   title: {
@@ -13,14 +15,23 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
-/** Public entry — logged-in → app; guests → marketing landing. */
+/** Marketing on progate.hu; app.progate.hu is the portal (guests → marketing). */
 export default async function RootPage() {
+  const host = hostFromHeaders(await headers());
   const session = await getSessionFromCookies();
+
+  if (isMarketingHost(host)) {
+    return <ProGateLanding />;
+  }
+
   if (session?.isPlatformAdmin) {
     redirect("/admin");
   }
   if (session) {
     redirect("/home");
+  }
+  if (isAppHost(host)) {
+    redirect(`${COMPANY.marketingUrl}/`);
   }
   return <ProGateLanding />;
 }
