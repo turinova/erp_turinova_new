@@ -145,5 +145,5 @@ export function upgradeMailto(opts: {
   const subject = encodeURIComponent(
     `ProGate — ${label}, ${period}${shop}`,
   );
-  return `mailto:hello@progate.hu?subject=${subject}`;
+  return `mailto:info@turinova.hu?subject=${subject}`;
 }

@@ -78,8 +78,10 @@ function loadDemoWidgetScript(): Promise<void> {
   });
 }
 
-/** Hero: shop teaser + CTA → real widget.js demo with seed data. */
-export function ProGateHeroMocks() {
+type Props = { embed?: boolean };
+
+/** Shop teaser + CTA → real widget.js demo with seed data. */
+export function ProGateHeroMocks({ embed = false }: Props) {
   const [phase, setPhase] = useState<Phase>("shop");
   const [demo, setDemo] = useState<DemoState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +155,7 @@ export function ProGateHeroMocks() {
 
   return (
     <div
-      className={`pg-hero-visual pg-hm-stage is-${phase}${demo === "live" ? " is-demo-live" : ""}`}
+      className={`pg-hm-stage is-${phase}${embed ? " pg-hm-stage--embed" : " pg-hero-visual"}${demo === "live" ? " is-demo-live" : ""}`}
     >
       <div className="pg-hm-shop" aria-hidden={demo === "live"}>
         <div className="pg-hm-browser">

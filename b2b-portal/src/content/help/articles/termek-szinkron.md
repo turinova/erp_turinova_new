@@ -32,4 +32,4 @@ Beállítások: Termékek újraszinkronizálása, ha megjelenik a gomb. Akkor ke
 
 1. Kapcsolat tesztelése. OK?
 2. Hiba esetén: [Bolt összekötése](/tudasbazis/bolt-osszekotes)
-3. OK, de áll: hello@progate.hu
+3. OK, de áll: info@turinova.hu

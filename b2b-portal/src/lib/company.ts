@@ -32,10 +32,10 @@ export const COMPANY = {
   },
   contactPerson: "Mező Dávid",
   emails: {
-    /** Jogi / céges */
+    /** Jogi / céges / termék support */
     central: "info@turinova.hu",
-    /** Termék support */
-    support: "hello@progate.hu",
+    /** Termék support (ugyanaz, mint central) */
+    support: "info@turinova.hu",
   },
   webInfrastructure: {
     hostingProvider: "Vercel Inc.",

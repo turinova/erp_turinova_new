@@ -14,7 +14,7 @@ Fájl: `src/content/help/articles/udvozlo.md`
 **Jelenlegi szöveg röviden:**
 - Bemutatkozás, fokozatos bővítés
 - Hivatkozás: Áttekintés, Widget, Beállítások, Árazás útmutató
-- Kapcsolat: hello@progate.hu
+- Kapcsolat: info@turinova.hu
 
 **Kérdés neked:** Maradjon így, vagy máshogy fogalmazzuk?
 

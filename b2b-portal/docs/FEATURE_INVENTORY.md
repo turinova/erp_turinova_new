@@ -184,3 +184,5 @@ A jelenlegi app **komplett go-to-market termék** a Shoprenter B2B gyors rendel�
 ---
 
 *Forrás: a jelenlegi, éles kódbázis képességei. Technikai oldal-/API-leltár: `FEATURE_INVENTORY` belső változat vagy repo docs; ez a fájl a befektetői / üzleti olvasatra van hangolva.*
+
+**Részletes érték- és erősségelemzés (nagyker pitch, ROI, demó script):** [`PROGATE_ERTEK_ES_EROSSGEK.md`](./PROGATE_ERTEK_ES_EROSSGEK.md)

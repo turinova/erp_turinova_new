@@ -1,8 +1,10 @@
 import "@/app/globals-landing.css";
 import Link from "next/link";
-import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
+import { ProGateHeroBenefits } from "@/components/marketing/ProGateHeroBenefits";
 import { ProGateHeroMocks } from "@/components/marketing/ProGateHeroMocks";
+import { ProGateLandingFooter } from "@/components/marketing/ProGateLandingFooter";
 import { ProGateLandingNav } from "@/components/marketing/ProGateLandingNav";
+import { ProGateLossCalc } from "@/components/marketing/ProGateLossCalc";
 import {
   BASE_PRICE_HUF,
   MARK_ADDON_HUF,
@@ -10,70 +12,48 @@ import {
   WHITE_LABEL_PRICE_HUF,
   formatPlanPrice,
 } from "@/lib/billing/plans";
-import { COMPANY, LEGAL_LINKS } from "@/lib/company";
+import { COMPANY } from "@/lib/company";
 import { appAuthHref } from "@/lib/hosts";
+import { getFeaturedVerticals, PROGATE_VERTICALS } from "@/lib/marketing/verticals";
 
 const DEMO_MAIL = `mailto:${COMPANY.emails.support}?subject=${encodeURIComponent("ProGate demo")}`;
 
-/** 7-block one-pager IA — nav locked; pillars/early/proof folded in. */
+/** FOMO one-pager — hero + trust + proof + decision. */
 
-const STEPS = [
+const TRUST_BADGES = [
+  "Shoprenter-natív",
+  `${TRIAL_DAYS_DEFAULT} nap · kártya nélkül`,
+  "Pár óra alatt élő",
+  "Magyar support",
+] as const;
+
+const LOSS_LINES = [
   {
-    title: "API összekötés",
-    body: "Shoprenter API a merchant portálon. Termékek és vevők betöltése — innen indul a B2B réteg.",
+    strong: "Órák",
+    rest: " — kézi rendelésfelvétel minden hónapban.",
   },
   {
-    title: "Script a sablonba",
-    body: "Egy snippet a footerbe. A gyors rendelés a meglévő bolton jelenik meg, külön URL nélkül.",
+    strong: "Partner",
+    rest: " — vár az e-mailre, közben máshol is rendel.",
   },
   {
-    title: "Partnerár + próba",
-    body: `${TRIAL_DAYS_DEFAULT} nap teljes termék. Első partnereknek élő demó gyakran órák–napok alatt.`,
+    strong: "Te",
+    rest: " — admin helyett értékesítésre, beszerzésre kellene menned.",
   },
 ] as const;
 
-const DEMO_POINTS = [
-  {
-    title: "Kereső és tömeges lista",
-    body: "Cikkszám, gyári szám, vonalkód. Excel, beillesztett szöveg vagy fotó a papírlistáról.",
-  },
-  {
-    title: "Élő partnerár és készlet",
-    body: "Nettó/bruttó, sávos kedvezmény, pack szabályok — majd kosárba egy kattintással.",
-  },
-  {
-    title: "Újrarendelés és listák",
-    body: "Korábbi rendelések visszatöltése, mentett listák, javaslatok a gyakori tételekre.",
-  },
+const STEPS_INLINE = [
+  { label: "API", desc: "összekötés" },
+  { label: "Script", desc: "a sablonba" },
+  { label: "Élő próba", desc: `${TRIAL_DAYS_DEFAULT} nap` },
 ] as const;
 
-const FEATURES = [
-  {
-    title: "Partnerár-motor",
-    body: "Fix kivétel → mennyiségi sáv → csoport % → listaár. Tömeges szerkesztés kategóriára és gyártóra.",
-  },
-  {
-    title: "Automatizmus",
-    body: "Szabályok: költés vagy rendelésszám alapján csoportváltás. A widgeten látszik a következő szint.",
-  },
-  {
-    title: "Vevők és riport",
-    body: "Partnerek, forgalom, top termékek, widget vs. bolti mix — látod, mit hoz a B2B réteg.",
-  },
-  {
-    title: "Tudásbázis",
-    body: "Összekötés, script, szinkron, Excel — tegezve, lépésről lépésre a portálban.",
-  },
-] as const;
+const PORTAL_PILLS = ["Partnerár", "Vevők", "Riport"] as const;
 
 const FAQS = [
   {
     q: "Kell külön B2B webshop?",
     a: "Nem. A ProGate a meglévő Shoprenter boltra épül: a partner ott rendel, te a merchant portálon állítod az árakat és a widgetet.",
-  },
-  {
-    q: "Miben több, mint a Shoprenter vevőcsoport-kedvezmény?",
-    a: "Egy helyen kezeled a %, a fix árakat és a sávokat, van tömeges munka, automatikus szintlépés, riport — a bolton pedig gyors rendelés Excel/fotó/újrarendeléssel.",
   },
   {
     q: "Mennyi idő az indulás?",
@@ -83,11 +63,9 @@ const FAQS = [
     q: "Mi van a próba után?",
     a: `${TRIAL_DAYS_DEFAULT} nap teljes termék. Utána a Gyors rendelés csomag ${formatPlanPrice(BASE_PRICE_HUF)} / hó bruttó; saját márka opcióval a ProGate felirat elrejthető.`,
   },
-  {
-    q: "Kiknek szól most?",
-    a: "Shoprenteres nagyker / viszonteladós boltoknak. Multi-platform és Sales Agent funkciók nincsenek a scope-ban — a fókusz: partnerár + gyors rendelés a meglévő bolton.",
-  },
 ] as const;
+
+const FEATURED_VERTICALS = getFeaturedVerticals();
 
 export function ProGateLanding() {
   return (
@@ -97,124 +75,125 @@ export function ProGateLanding() {
       <main id="top">
         {/* 1 — Hero */}
         <section className="pg-hero">
-          <div className="pg-hero-grid">
-            <div className="pg-hero-copy">
-              <h1>
-                Valódi nagyker a bolton,{" "}
-                <span className="pg-em">amit már futtatsz.</span>
-              </h1>
-              <p className="pg-hero-lead">
-                B2B réteg a Shoprenteredre: a viszonteladók partneráron
-                rendelnek, te egy portálon árazol — külön B2B shop nélkül.
-              </p>
-              <div className="pg-hero-actions">
-                <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary pg-btn-lg">
-                  Ingyen kipróbálom →
-                </Link>
-                <a href="#demo" className="pg-btn pg-btn-ghost-on-dark pg-btn-lg">
-                  Így látja a partner →
-                </a>
+          <div className="pg-hero-main">
+            <div className="pg-hero-grid">
+              <div className="pg-hero-copy">
+                <h1 className="pg-hero-lines">
+                  <span>Gyorsabb feldolgozás neked.</span>
+                  <span>Könnyebb rendelés a partnerednek.</span>
+                  <span className="pg-em">Több forgalom mindkettőtöknek.</span>
+                </h1>
+                <div className="pg-hero-actions">
+                  <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary pg-btn-lg">
+                    Ingyen kipróbálom →
+                  </Link>
+                </div>
               </div>
-              <p className="pg-hero-trust">
-                {TRIAL_DAYS_DEFAULT} nap · kártya nélkül · magyar support
-                <span aria-hidden> · </span>
-                <Link href={appAuthHref("/login")}>Belépés</Link>
-              </p>
+
+              <ProGateLossCalc />
             </div>
-
-            <ProGateHeroMocks />
           </div>
+
+          <ProGateHeroBenefits />
         </section>
 
-        {/* 2 — Trust strip */}
-        <section className="pg-strip" aria-label="Platform">
-          <p>A meglévő Shoprenter boltodra épül</p>
+        {/* 2 — Trust */}
+        <section className="pg-strip pg-strip--compact" id="hogyan" aria-label="Platform">
           <div className="pg-strip-logos">
-            <span>Shoprenter-natív</span>
-            <span>Partnerár</span>
-            <span>Widget</span>
-            <span>{TRIAL_DAYS_DEFAULT} nap próba</span>
-          </div>
-        </section>
-
-        {/* 3 — How it works (pillars folded into steps) */}
-        <section className="pg-section" id="hogyan">
-          <p className="pg-kicker">Indulás</p>
-          <h2 className="pg-h2">Három lépés a meglévő bolton</h2>
-          <p className="pg-lead">
-            Nincs külön B2B shop. A partner a boltodon rendel, te a portálon
-            irányítasz — API, script, partnerár.
-          </p>
-          <div className="pg-steps">
-            {STEPS.map((s, i) => (
-              <article key={s.title} className="pg-card">
-                <span className="pg-step-num">{i + 1}</span>
-                <h3>{s.title}</h3>
-                <p>{s.body}</p>
-              </article>
+            {TRUST_BADGES.map((badge) => (
+              <span key={badge}>{badge}</span>
             ))}
           </div>
         </section>
 
-        {/* 4 — Product demo */}
-        <section className="pg-section pg-section-alt" id="demo">
-          <p className="pg-kicker">Bolti élmény</p>
-          <h2 className="pg-h2">Így rendel a partner</h2>
-          <p className="pg-lead">
-            A megszokott bolton nyit egy gyors rendelőt. Nem kell külön URL, nem
-            kell e-mailben Excel-t küldözgetni.
+        {/* 2b — Iparágak */}
+        <section className="pg-section pg-section-kiknek" id="kiknek">
+          <h2 className="pg-h2">Kiknek?</h2>
+          <p className="pg-lead pg-kiknek-lead">
+            Shoprenteres nagyker, ahol a partner listában rendel. Válaszd ki a
+            szektorod — mindegyik oldalon konkrét helyzet, nem általános marketing.
           </p>
-          <ul className="pg-demo-points">
-            {DEMO_POINTS.map((w) => (
-              <li key={w.title}>
-                <strong>{w.title}</strong>
-                <span>{w.body}</span>
+          <ul className="pg-kiknek-grid">
+            {FEATURED_VERTICALS.map((v) => (
+              <li key={v.slug}>
+                <Link href={`/kiknek/${v.slug}`} className="pg-kiknek-card">
+                  <span className="pg-kiknek-card-title">{v.footerLabel}</span>
+                  <span className="pg-kiknek-card-pain">{v.pains[0]}</span>
+                </Link>
               </li>
             ))}
           </ul>
-          <div className="pg-inline-cta">
-            <a href="#top" className="pg-btn pg-btn-primary">
-              Próbáld a demót felül
-            </a>
-            <a href="#csomag" className="pg-link-quiet">
-              Árak →
-            </a>
+          <p className="pg-kiknek-more">
+            <Link href="/kiknek">Összes iparág ({PROGATE_VERTICALS.length}) →</Link>
+          </p>
+        </section>
+
+        {/* 3 — Proof: loss + demo + steps + portal */}
+        <section className="pg-section pg-section-proof" id="demo">
+          <p className="pg-kicker">Amíg e-mailben rendelnek</p>
+          <h2 className="pg-h2 pg-h2-wide">
+            A partnered addig is a versenytársadnál rendelhet.
+          </h2>
+
+          <div className="pg-proof-split">
+            <div className="pg-proof-copy">
+              <ul className="pg-loss-list">
+                {LOSS_LINES.map((line) => (
+                  <li key={line.strong}>
+                    <strong>{line.strong}</strong>
+                    {line.rest}
+                  </li>
+                ))}
+              </ul>
+
+              <ol className="pg-steps-inline" aria-label="Indulás három lépésben">
+                {STEPS_INLINE.map((step, i) => (
+                  <li key={step.label}>
+                    <span className="pg-steps-inline-num">{i + 1}</span>
+                    <span className="pg-steps-inline-text">
+                      <strong>{step.label}</strong>
+                      <span>{step.desc}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+
+              <div className="pg-proof-actions">
+                <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary pg-btn-lg">
+                  Ingyen kipróbálom →
+                </Link>
+              </div>
+            </div>
+
+            <div className="pg-proof-visual">
+              <ProGateHeroMocks embed />
+            </div>
+          </div>
+
+          <div className="pg-portal-row" id="portal">
+            <span className="pg-portal-row-label">Portálon irányítasz:</span>
+            <div className="pg-portal-pills">
+              {PORTAL_PILLS.map((pill) => (
+                <span key={pill}>{pill}</span>
+              ))}
+            </div>
           </div>
         </section>
 
-        {/* 5 — Value (merchant portal) */}
-        <section className="pg-section" id="portal">
-          <p className="pg-kicker">Merchant portál</p>
-          <h2 className="pg-h2">Te a portálon irányítasz</h2>
+        {/* 4 — Decision: pricing + FAQ + close */}
+        <section className="pg-section pg-section-alt pg-section-decision" id="csomag">
+          <h2 className="pg-h2">Kezdd ingyen — utána havi 1 vacsora áráért</h2>
           <p className="pg-lead">
-            Árazás, vevők, automatizmus, riport. Beállítod, a boltban él.
+            {TRIAL_DAYS_DEFAULT} nap teljes termék, kártya nélkül. Ma indítva:{" "}
+            {TRIAL_DAYS_DEFAULT} nap múlva döntesz.
           </p>
-          <div className="pg-features">
-            {FEATURES.map((f) => (
-              <article key={f.title} className="pg-card">
-                <h3>{f.title}</h3>
-                <p>{f.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
 
-        {/* 6 — Pricing (early-access folded into lead) */}
-        <section className="pg-section pg-section-alt" id="csomag">
-          <h2 className="pg-h2">Egyszerű csomagok</h2>
-          <p className="pg-lead">
-            Teljes termék a próba alatt — első Shoprenteres partnereknek közvetlen
-            support. Utána egy alapár; a saját márka opcionális.
-          </p>
-          <p className="pg-pricing-note">
-            {TRIAL_DAYS_DEFAULT} nap, kártya nélkül.
-          </p>
           <div className="pg-pricing">
             <article className="pg-price-card pg-price-card-hl">
               <h3>Gyors rendelés</h3>
               <p className="pg-price">
                 {formatPlanPrice(BASE_PRICE_HUF)}
-                <span>/ hó · bruttó</span>
+                <span>/ hó · bruttó · ≈ 1 vacsora</span>
               </p>
               <ul>
                 <li>Widget + merchant portál</li>
@@ -244,12 +223,9 @@ export function ProGateLanding() {
               </Link>
             </article>
           </div>
-        </section>
 
-        {/* 7 — FAQ + close */}
-        <section className="pg-section" id="gyik">
-          <h2 className="pg-h2">Gyakori kérdések</h2>
-          <div className="pg-faq">
+          <div className="pg-faq" id="gyik">
+            <h3 className="pg-faq-title">Gyakori kérdések</h3>
             {FAQS.map((item) => (
               <details key={item.q} className="pg-faq-item">
                 <summary>{item.q}</summary>
@@ -257,66 +233,26 @@ export function ProGateLanding() {
               </details>
             ))}
           </div>
-        </section>
 
-        <section className="pg-cta-band">
-          <h2>Indítsd a Shoprenter B2B réteget</h2>
-          <p>
-            {TRIAL_DAYS_DEFAULT} napos próba és közvetlen support — nem
-            marketing-lista, hanem élő boltokkal finomhangoljuk a terméket. Ha
-            Shoprenteres nagykered van, írj nekünk.
-          </p>
-          <div className="pg-hero-actions">
-            <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary pg-btn-lg">
-              {TRIAL_DAYS_DEFAULT} nap próba
-            </Link>
-            <a
-              href={DEMO_MAIL}
-              className="pg-btn pg-btn-ghost-on-dark pg-btn-lg"
-            >
-              Írj a {COMPANY.emails.support} címre
-            </a>
+          <div className="pg-decision-close">
+            <h2>Indítsd ma a Shoprenter B2B réteget</h2>
+            <p>
+              {TRIAL_DAYS_DEFAULT} napos próba és közvetlen support — élő boltokkal
+              finomhangoljuk a terméket.
+            </p>
+            <div className="pg-hero-actions">
+              <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary pg-btn-lg">
+                {TRIAL_DAYS_DEFAULT} nap próba
+              </Link>
+              <a href={DEMO_MAIL} className="pg-btn pg-btn-ghost-on-dark pg-btn-lg">
+                Írj a {COMPANY.emails.support} címre
+              </a>
+            </div>
           </div>
         </section>
       </main>
 
-      <footer className="pg-footer">
-        <div className="pg-footer-grid">
-          <div>
-            <p className="pg-logo">
-              <TurinovaWordmark height={36} />
-            </p>
-            <p className="pg-footer-muted">{COMPANY.brandTagline}</p>
-          </div>
-          <div>
-            <p className="pg-footer-h">Termék</p>
-            <a href="#hogyan">Hogyan működik</a>
-            <a href="#demo">Demó</a>
-            <a href="#portal">Portál</a>
-            <a href="#csomag">Csomagok</a>
-            <Link href={appAuthHref("/signup")}>Regisztráció</Link>
-            <Link href={appAuthHref("/login")}>Belépés</Link>
-          </div>
-          <div>
-            <p className="pg-footer-h">Jogi</p>
-            {LEGAL_LINKS.map((l) => (
-              <Link key={l.href} href={l.href}>
-                {l.label}
-              </Link>
-            ))}
-          </div>
-          <div>
-            <p className="pg-footer-h">Kapcsolat</p>
-            <a href={`mailto:${COMPANY.emails.support}`}>
-              {COMPANY.emails.support}
-            </a>
-            <a href={COMPANY.website} target="_blank" rel="noopener noreferrer">
-              {COMPANY.websiteHost}
-            </a>
-            <p className="pg-footer-muted">{COMPANY.shortName}</p>
-          </div>
-        </div>
-      </footer>
+      <ProGateLandingFooter />
     </div>
   );
 }

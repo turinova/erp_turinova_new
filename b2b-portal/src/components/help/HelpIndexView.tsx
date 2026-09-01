@@ -8,7 +8,7 @@ import {
 } from "@/lib/help/catalog";
 import type { HelpArticleMeta } from "@/lib/help/types";
 
-const SUPPORT_EMAIL = "hello@progate.hu";
+const SUPPORT_EMAIL = "info@turinova.hu";
 
 export function HelpIndexView({
   articles,

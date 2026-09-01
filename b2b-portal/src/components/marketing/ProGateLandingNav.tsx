@@ -65,7 +65,7 @@ const RESOURCES = [
   { href: "#gyik", title: "GYIK", body: "Gyakori kérdések a ProGate-ről." },
   { href: appPathHref("/tudasbazis"), title: "Segítség", body: "Telepítés, szinkron, widget." },
   { href: "/aszf", title: "ÁSZF", body: "Szerződéses feltételek." },
-  { href: DEMO_MAIL, title: "Demo egyeztetés", body: "Írj a hello@progate.hu címre." },
+  { href: DEMO_MAIL, title: "Demo egyeztetés", body: "Írj a info@turinova.hu címre." },
 ] as const;
 
 type MegaKey = "platform" | "audience" | "resources" | null;
