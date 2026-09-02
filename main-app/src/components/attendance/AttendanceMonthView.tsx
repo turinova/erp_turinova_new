@@ -38,7 +38,9 @@ import {
   isSunday,
   isSaturday,
   isToday,
-  findPublicHolidayForDate,
+  findCalendarRestForDate,
+  findRelocatedWorkdayForDate,
+  parsePublicHolidayType,
   type PublicHolidayRow,
   computeAttendanceMetrics,
   computeEarlyOvertimeMinutes,
@@ -173,9 +175,13 @@ function getDayCellVisual(
   /** Larger first line for arrival–departure time range */
   emphasizeLine1: boolean
 } {
-  const ph = findPublicHolidayForDate(day.date, publicHolidays)
+  const rest = findCalendarRestForDate(day.date, publicHolidays)
+  const relocated = findRelocatedWorkdayForDate(day.date, publicHolidays)
 
-  const weekendOff = (isSunday(day.date) || (isSaturday(day.date) && !worksOnSaturday)) && !ph
+  const weekendOff =
+    !relocated &&
+    (isSunday(day.date) || (isSaturday(day.date) && !worksOnSaturday)) &&
+    !rest
 
   if (day.isEmployeeHoliday && !day.arrival && !day.departure) {
     const sick = day.holidayType === 'Betegszabadság'
@@ -220,14 +226,37 @@ function getDayCellVisual(
     }
   }
 
-  if (day.isDisabled && ph) {
-    const national = ph.type === 'national'
+  if (day.isDisabled && rest) {
+    const national = rest.type === 'national'
+    const relocatedRest = rest.type === 'relocated_rest'
+    const line2 = national
+      ? 'Állami ünnep'
+      : relocatedRest
+        ? 'Áthelyezett pihenő'
+        : 'Céges ünnep'
 
     return {
-      line1: ph.name,
-      line2: national ? 'Állami ünnep' : 'Céges ünnep',
-      tooltip: ph.name,
-      bgcolor: national ? 'rgba(25, 118, 210, 0.09)' : 'rgba(123, 31, 162, 0.08)',
+      line1: rest.name,
+      line2,
+      tooltip: rest.name,
+      bgcolor: national
+        ? 'rgba(25, 118, 210, 0.09)'
+        : relocatedRest
+          ? 'rgba(237, 108, 2, 0.1)'
+          : 'rgba(123, 31, 162, 0.08)',
+      borderColor: 'transparent',
+      emphasizeLine1: false
+    }
+  }
+
+  if (relocated && (day.arrival || day.departure || !day.isDisabled)) {
+    // Fall through to normal workday rendering below — áthelyezett munkanap.
+  } else if (relocated && day.isDisabled) {
+    return {
+      line1: relocated.name,
+      line2: 'Áthelyezett munkanap',
+      tooltip: relocated.name,
+      bgcolor: 'rgba(46, 125, 50, 0.1)',
       borderColor: 'transparent',
       emphasizeLine1: false
     }
@@ -322,8 +351,10 @@ type DayStatusMeta = {
 }
 
 function getDayStatus(day: DayData, publicHolidays: PublicHolidayRow[], worksOnSaturday: boolean): DayStatusMeta | null {
-  const ph = findPublicHolidayForDate(day.date, publicHolidays)
-  const weekendOff = isSunday(day.date) || (isSaturday(day.date) && !worksOnSaturday)
+  const rest = findCalendarRestForDate(day.date, publicHolidays)
+  const relocated = findRelocatedWorkdayForDate(day.date, publicHolidays)
+  const weekendOff =
+    !relocated && (isSunday(day.date) || (isSaturday(day.date) && !worksOnSaturday))
 
   if (day.isEmployeeHoliday && (day.arrival || day.departure)) {
     return { label: 'Szabadság + Munka', color: 'info' }
@@ -336,7 +367,15 @@ function getDayStatus(day: DayData, publicHolidays: PublicHolidayRow[], worksOnS
     }
   }
 
-  if (ph || weekendOff) return { label: 'Munkaszünet', color: 'default' }
+  if (rest) return { label: 'Munkaszünet', color: 'default' }
+  if (relocated) {
+    if (day.arrival || day.departure) {
+      if (!(day.arrival && day.departure)) return { label: 'Hiányos', color: 'warning' }
+      return { label: 'Áthelyezett nap', color: 'success' }
+    }
+    return { label: 'Áthelyezett munkanap', color: 'info' }
+  }
+  if (weekendOff) return { label: 'Munkaszünet', color: 'default' }
 
   if (day.arrival || day.departure) {
     if (!(day.arrival && day.departure)) return { label: 'Hiányos', color: 'warning' }
@@ -427,10 +466,14 @@ export default function AttendanceMonthView({
         const dateStr = formatDateLocal(day.date)
         const dayLog = logs.find((log: any) => log.date === dateStr)
         const empHoliday = empHolidays.find((h: any) => h.date === dateStr)
-        const isHolidayDay = !!findPublicHolidayForDate(day.date, activeHolidays)
+        const isHolidayDay = !!findCalendarRestForDate(day.date, activeHolidays)
+        const isRelocated = !!findRelocatedWorkdayForDate(day.date, activeHolidays)
         const isEmpHoliday = !!empHoliday
 
-        const shouldBeDisabled = isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay
+        const shouldBeDisabled =
+          isHolidayDay ||
+          isSunday(day.date) ||
+          (!worksOnSaturday && isSaturday(day.date) && !isRelocated)
 
         const updatedDay: DayData = {
           ...day,
@@ -518,7 +561,7 @@ export default function AttendanceMonthView({
               name: String(h.name ?? ''),
               start_date: String(h.start_date),
               end_date: String(h.end_date),
-              type: h.type === 'company' ? 'company' : 'national'
+              type: parsePublicHolidayType(h.type)
             }))
           setHolidays(activeHolidays)
         }
@@ -571,7 +614,8 @@ export default function AttendanceMonthView({
       prev.map(day => {
         const dateStr = formatDateLocal(day.date)
         const empHoliday = employeeHolidays.find(h => h.date === dateStr)
-        const isHolidayDay = !!findPublicHolidayForDate(day.date, holidays)
+        const isHolidayDay = !!findCalendarRestForDate(day.date, holidays)
+        const isRelocated = !!findRelocatedWorkdayForDate(day.date, holidays)
         const isEmpHoliday = !!empHoliday
         let metrics = { paid: 0, actual: 0, early: 0, late: 0 }
         let overtimeMinutes = 0
@@ -594,7 +638,10 @@ export default function AttendanceMonthView({
 
         return {
           ...day,
-          isDisabled: isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay,
+          isDisabled:
+            isHolidayDay ||
+            isSunday(day.date) ||
+            (!worksOnSaturday && isSaturday(day.date) && !isRelocated),
           isEmployeeHoliday: isEmpHoliday,
           holidayType: empHoliday?.type,
           hoursWorked: metrics.paid,
@@ -1359,8 +1406,12 @@ export default function AttendanceMonthView({
               {(() => {
                 const dateStr = formatDateLocal(selectedDay.date)
                 const linkedHoliday = employeeHolidays.find(h => h.date === dateStr)
-                const isPublicHoliday = !!findPublicHolidayForDate(selectedDay.date, holidays)
-                const isWeekendOff = isSunday(selectedDay.date) || (isSaturday(selectedDay.date) && !worksOnSaturday)
+                const isPublicHoliday = !!findCalendarRestForDate(selectedDay.date, holidays)
+                const isRelocated = !!findRelocatedWorkdayForDate(selectedDay.date, holidays)
+                const isWeekendOff =
+                  !isRelocated &&
+                  (isSunday(selectedDay.date) ||
+                    (isSaturday(selectedDay.date) && !worksOnSaturday))
                 const canQuickHoliday = !isPublicHoliday && !isWeekendOff
 
                 return (

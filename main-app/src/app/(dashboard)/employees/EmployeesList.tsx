@@ -550,11 +550,12 @@ export default function EmployeesList({
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {MONTH_NAMES[viewMonth - 1]} {viewYear}: {monthSummary.employeesWithIssues} kollégánál van figyelendő nap
           {' '}(összesen {monthSummary.totalEmpty} üres, {monthSummary.totalIncomplete} hiányos). A mai nap ({reviewThroughYmd})
-          és a szombatok nincsenek beleszámolva.
+          nincs beleszámolva; sima szombat sem — az áthelyezett munkanap viszont igen.
         </Typography>
       ) : (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {MONTH_NAMES[viewMonth - 1]} {viewYear}: nincs figyelendő nap a lezárt hétköznapokon (a mai nap és a szombatok nincsenek beleszámolva).
+          {MONTH_NAMES[viewMonth - 1]} {viewYear}: nincs figyelendő nap a lezárt kötelező munkanapokon
+          (a mai nap kimarad; sima szombat nem kötelező, áthelyezett munkanap igen).
         </Typography>
       )}
 
@@ -590,12 +591,12 @@ export default function EmployeesList({
               <TableCell>Név</TableCell>
               <TableCell>Munkakör</TableCell>
               <TableCell align="right">
-                <Tooltip title="Lezárt hétköznap (mai nap és szombat nélkül): nincs belépés, nincs kilépés, nincs szabadság rögzítve">
+                <Tooltip title="Lezárt kötelező munkanap (mai nap nélkül; sima szombat nélkül, áthelyezett munkanap igen): nincs belépés, nincs kilépés, nincs szabadság rögzítve">
                   <span>Üres</span>
                 </Tooltip>
               </TableCell>
               <TableCell align="right">
-                <Tooltip title="Lezárt hétköznap (mai nap és szombat nélkül): csak belépés vagy csak kilépés rögzítve">
+                <Tooltip title="Lezárt kötelező munkanap (mai nap nélkül; sima szombat nélkül, áthelyezett munkanap igen): csak belépés vagy csak kilépés rögzítve">
                   <span>Hiányos</span>
                 </Tooltip>
               </TableCell>
@@ -668,7 +669,7 @@ export default function EmployeesList({
                 <TableCell>{getEmployeeTypeLabel(employee.employee_type || 'MUHELY')}</TableCell>
                 <TableCell align="right">
                   {att.empty > 0 ? (
-                    <Tooltip title={`${att.empty} lezárt hétköznap: nincs scan és nincs szabadság rögzítve (ma és szombat nincs benne)`}>
+                    <Tooltip title={`${att.empty} lezárt kötelező nap: nincs scan és nincs szabadság (ma kimarad; sima szombat nem, áthelyezett igen)`}>
                       <Typography
                         component="span"
                         sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#8B5A00' }}
@@ -684,7 +685,7 @@ export default function EmployeesList({
                 </TableCell>
                 <TableCell align="right">
                   {att.incomplete > 0 ? (
-                    <Tooltip title={`${att.incomplete} lezárt hétköznap: csak belépés vagy csak kilépés (ma és szombat nincs benne)`}>
+                    <Tooltip title={`${att.incomplete} lezárt kötelező nap: csak belépés vagy csak kilépés (ma kimarad; sima szombat nem, áthelyezett igen)`}>
                       <Typography
                         component="span"
                         sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#8B5A00' }}

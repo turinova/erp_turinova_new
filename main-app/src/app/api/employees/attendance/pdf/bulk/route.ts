@@ -16,7 +16,12 @@ import {
   computeAttendanceMetrics,
   computeEarlyOvertimeMinutes,
   computeOvertimeMinutes,
-  earlyOvertimePolicyFromEmployeeRow
+  computePaperEightHourMonthSummary,
+  earlyOvertimePolicyFromEmployeeRow,
+  findCalendarRestForDate,
+  findRelocatedWorkdayForDate,
+  parsePublicHolidayType,
+  type PublicHolidayRow
 } from '@/components/attendance/attendanceUtils'
 import generateAttendancePdfHtml from '../../../[id]/attendance/pdf/pdf-template'
 
@@ -223,6 +228,13 @@ export async function POST(request: NextRequest) {
 
         const earlyOtPolicy = earlyOvertimePolicyFromEmployeeRow(employee as Record<string, unknown>)
 
+        const publicHolidays: PublicHolidayRow[] = (holidays || []).map((h: any) => ({
+          name: String(h.name ?? ''),
+          start_date: String(h.start_date).slice(0, 10),
+          end_date: String(h.end_date).slice(0, 10),
+          type: parsePublicHolidayType(h.type)
+        }))
+
         const daysData = daysInMonth.map(day => {
           const yearLocal = day.getFullYear()
           const monthLocal = String(day.getMonth() + 1).padStart(2, '0')
@@ -232,17 +244,17 @@ export async function POST(request: NextRequest) {
           const dayLog = attendanceLogs.find((log: any) => log.date === dateStr)
           const empHoliday = employeeHolidays.find((h: any) => h.date === dateStr)
 
-          const isHolidayDay = holidays.some(h => {
-            const start = new Date(h.start_date)
-            const end = new Date(h.end_date)
-            const checkDate = new Date(dateStr)
-            return checkDate >= start && checkDate <= end
-          })
+          const calendarRest = findCalendarRestForDate(day, publicHolidays)
+          const relocatedWorkday = findRelocatedWorkdayForDate(day, publicHolidays)
+          const isHolidayDay = !!calendarRest
+          const isRelocatedWorkday = !!relocatedWorkday
 
           const arrival = dayLog?.arrival?.time || null
           const departure = dayLog?.departure?.time || null
           const isEmpHoliday = !!empHoliday
-          const isWeekendOff = day.getDay() === 0 || ((employee.works_on_saturday === false) && day.getDay() === 6)
+          const isWeekendOff =
+            day.getDay() === 0 ||
+            (day.getDay() === 6 && employee.works_on_saturday === false && !isRelocatedWorkday)
           const hasAttendance = !!(arrival || departure)
           const hasCompleteAttendance = !!(arrival && departure)
           const isConflictHolidayWork = isEmpHoliday && hasAttendance
@@ -288,31 +300,18 @@ export async function POST(request: NextRequest) {
             holidayType: empHoliday?.type || null,
             isConflictHolidayWork,
             isGlobalHoliday: isHolidayDay,
+            isRelocatedWorkday,
             isDisabled: isWeekendOff || isHolidayDay || isEmpHoliday
           }
         })
 
-        const conflictDays = daysData.filter(day => day.isConflictHolidayWork).length
-        const saturdayDays = daysData.filter(day => day.dayOfWeek === 6 && day.hasCompleteAttendance).length
-
         // Bulk export is always papír nézet — 8 órás normál keret + túlóra összesítő (paperBulkEightHourDisplay).
-        const totalHours = daysData.reduce((sum, day) => {
-          if (day.dayOfWeek === 6) return sum
-          if (day.isEmployeeHoliday) return sum
-          return sum + Math.min(day.hoursWorked, 8)
-        }, 0)
-        const policyOtMinutes = daysData.reduce(
-          (s, d) => s + d.overtimeMinutes + (d.earlyOvertimeMinutes ?? 0),
-          0
-        )
-        const excessOver8Minutes = daysData.reduce((sum, day) => {
-          if (day.dayOfWeek === 6) return sum
-          if (day.isEmployeeHoliday) return sum
-          const excessH = Math.max(0, day.hoursWorked - 8)
-          return sum + Math.round(excessH * 60)
-        }, 0)
-        const totalOvertimeMinutes = policyOtMinutes + excessOver8Minutes
-        const daysWorked = daysData.filter(day => day.hasCompleteAttendance && !day.isEmployeeHoliday && !day.isGlobalHoliday).length
+        const paper = computePaperEightHourMonthSummary(daysData)
+        const totalHours = paper.totalHours
+        const totalOvertimeMinutes = paper.totalOvertimeMinutes
+        const daysWorked = paper.daysWorked
+        const saturdayDays = paper.saturdayDays
+        const conflictDays = paper.conflictDays
         const absentDays = daysData.filter(day => day.isEmployeeHoliday).length
 
         const html = generateAttendancePdfHtml({

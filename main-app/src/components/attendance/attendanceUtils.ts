@@ -43,11 +43,39 @@ export function isToday(date: Date): boolean {
   return date.toDateString() === today.toDateString()
 }
 
+export type PublicHolidayType =
+  | 'national'
+  | 'company'
+  | 'relocated_workday'
+  | 'relocated_rest'
+
 export type PublicHolidayRow = {
   name: string
   start_date: string
   end_date: string
-  type: 'national' | 'company'
+  type: PublicHolidayType
+}
+
+const HOLIDAY_TYPES = new Set<PublicHolidayType>([
+  'national',
+  'company',
+  'relocated_workday',
+  'relocated_rest'
+])
+
+export function parsePublicHolidayType(raw: unknown): PublicHolidayType {
+  const s = typeof raw === 'string' ? raw.trim() : ''
+  if (HOLIDAY_TYPES.has(s as PublicHolidayType)) return s as PublicHolidayType
+
+  return 'national'
+}
+
+export function isCalendarRestType(type: PublicHolidayType): boolean {
+  return type === 'national' || type === 'company' || type === 'relocated_rest'
+}
+
+export function isRelocatedWorkdayType(type: PublicHolidayType): boolean {
+  return type === 'relocated_workday'
 }
 
 /** First matching public holiday row for a calendar day (YYYY-MM-DD string compare). */
@@ -60,6 +88,55 @@ export function findPublicHolidayForDate(date: Date, holidays: PublicHolidayRow[
   }
 
   return null
+}
+
+/** Ünnep / áthelyezett pihenő — a nap pihenő. */
+export function findCalendarRestForDate(date: Date, holidays: PublicHolidayRow[]): PublicHolidayRow | null {
+  const h = findPublicHolidayForDate(date, holidays)
+  if (!h || !isCalendarRestType(h.type)) return null
+
+  return h
+}
+
+/** Áthelyezett munkanap (tipikusan szombat). */
+export function findRelocatedWorkdayForDate(date: Date, holidays: PublicHolidayRow[]): PublicHolidayRow | null {
+  const h = findPublicHolidayForDate(date, holidays)
+  if (!h || !isRelocatedWorkdayType(h.type)) return null
+
+  return h
+}
+
+/**
+ * Kötelező munkanap HR / papír összesítőhöz:
+ * - vasárnap soha
+ * - ünnep / áthelyezett pihenő: nem
+ * - áthelyezett munkanap: igen (akár szombat)
+ * - szombat: csak ha worksOnSaturday
+ * - hétköznap: igen
+ */
+export function isRequiredWorkday(
+  date: Date,
+  worksOnSaturday: boolean,
+  publicHolidays: PublicHolidayRow[]
+): boolean {
+  if (isSunday(date)) return false
+  if (findCalendarRestForDate(date, publicHolidays)) return false
+  if (findRelocatedWorkdayForDate(date, publicHolidays)) return true
+  if (isSaturday(date)) return worksOnSaturday
+
+  return true
+}
+
+/** YMD helper for monthly attention (Budapest calendar strings). */
+export function isRequiredWorkdayYmd(
+  dateStr: string,
+  worksOnSaturday: boolean,
+  publicHolidays: PublicHolidayRow[]
+): boolean {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  if (!y || !m || !d) return false
+
+  return isRequiredWorkday(new Date(y, m - 1, d), worksOnSaturday, publicHolidays)
 }
 
 export function isHoliday(date: Date, holidays: Array<{ start_date: string; end_date: string }>): boolean {
@@ -473,31 +550,22 @@ export function getBudapestYearMonth(): { year: number; month: number } {
   return { year, month }
 }
 
-/** Workday for HR empty/incomplete review: weekdays only (Saturday is never required). */
+/** @deprecated Prefer isRequiredWorkdayYmd. */
 export function isEmployeeWorkdayYmd(
   dateStr: string,
-  publicHolidays: PublicHolidayRow[]
+  publicHolidays: PublicHolidayRow[],
+  worksOnSaturday = false
 ): boolean {
-  const weekday = getWeekdayFromYmd(dateStr)
-  if (weekday === 0 || weekday === 6) return false
-
-  const [y, m, d] = dateStr.split('-').map(Number)
-  if (findPublicHolidayForDate(new Date(y, m - 1, d), publicHolidays)) return false
-
-  return true
+  return isRequiredWorkdayYmd(dateStr, worksOnSaturday, publicHolidays)
 }
 
-/** Workday for attendance review: not weekend-off, not public holiday. */
+/** Workday for attendance review (relocated Saturday counts; calendar rest does not). */
 export function isEmployeeWorkday(
   date: Date,
   worksOnSaturday: boolean,
   publicHolidays: PublicHolidayRow[]
 ): boolean {
-  if (isSunday(date)) return false
-  if (isSaturday(date) && !worksOnSaturday) return false
-  if (findPublicHolidayForDate(date, publicHolidays)) return false
-
-  return true
+  return isRequiredWorkday(date, worksOnSaturday, publicHolidays)
 }
 
 export type MonthlyAttentionCounts = {
@@ -507,8 +575,8 @@ export type MonthlyAttentionCounts = {
 
 /**
  * Count workdays needing HR review in a month.
- * Only closed weekdays strictly before Budapest today count.
- * Saturday, Sunday, today, and future days are never included (Saturday work is optional).
+ * Only closed required workdays strictly before Budapest today count.
+ * Relocated workdays (even Saturdays) are required; calendar rest days are not.
  * - empty: no scan and no employee holiday
  * - incomplete: exactly one of arrival / departure
  */
@@ -517,15 +585,17 @@ export function countEmployeeMonthlyAttention(params: {
   month: number
   todayYmd: string
   publicHolidays: PublicHolidayRow[]
+  worksOnSaturday?: boolean
   employeeHolidayDates: Set<string>
   attendanceByDate: Map<string, { hasArrival: boolean; hasDeparture: boolean }>
 }): MonthlyAttentionCounts {
+  const worksOnSaturday = params.worksOnSaturday === true
   let empty = 0
   let incomplete = 0
 
   for (const dateStr of getCalendarDaysInMonthYmd(params.year, params.month)) {
     if (!isClosedAttendanceReviewDay(dateStr, params.todayYmd)) continue
-    if (!isEmployeeWorkdayYmd(dateStr, params.publicHolidays)) continue
+    if (!isRequiredWorkdayYmd(dateStr, worksOnSaturday, params.publicHolidays)) continue
 
     const att = params.attendanceByDate.get(dateStr)
     const hasArrival = att?.hasArrival ?? false
@@ -540,4 +610,128 @@ export function countEmployeeMonthlyAttention(params: {
   }
 
   return { empty, incomplete }
+}
+
+/** One calendar day row used by attendance PDF builders. */
+export type PaperAttendanceDayRow = {
+  dayOfWeek: number
+  hoursWorked: number
+  hasCompleteAttendance: boolean
+  hasAttendance?: boolean
+  isEmployeeHoliday: boolean
+  isConflictHolidayWork?: boolean
+  /** Calendar rest (national/company/relocated_rest) — not relocated workday. */
+  isGlobalHoliday: boolean
+  /** Áthelyezett munkanap (kötelező, beleszámol). */
+  isRelocatedWorkday?: boolean
+  overtimeMinutes?: number
+  earlyOvertimeMinutes?: number
+}
+
+/**
+ * Papír összesítő:
+ * - sima szombat: nem ledolgozott nap, órák kizárva (külön saturdayDays)
+ * - áthelyezett munkanap (szombat is): ledolgozott nap + órák beleszámítanak
+ * - naptári pihenő: nem ledolgozott
+ */
+export function computePaperMonthSummary(daysData: PaperAttendanceDayRow[]): {
+  totalHours: number
+  daysWorked: number
+  absentDays: number
+  saturdayDays: number
+  conflictDays: number
+  totalOvertimeMinutes: number
+} {
+  const isOptionalSaturday = (day: PaperAttendanceDayRow) =>
+    day.dayOfWeek === 6 && !day.isRelocatedWorkday
+
+  const totalHours = daysData.reduce((sum, day) => {
+    if (isOptionalSaturday(day)) return sum
+    if (day.isGlobalHoliday) return sum
+    if (day.isEmployeeHoliday && !day.hasAttendance && !day.isConflictHolidayWork) return sum
+    return sum + day.hoursWorked
+  }, 0)
+
+  const totalOvertimeMinutes = daysData.reduce(
+    (sum, day) => sum + (day.overtimeMinutes ?? 0) + (day.earlyOvertimeMinutes ?? 0),
+    0
+  )
+
+  const daysWorked = daysData.filter(day => {
+    if (!day.hasCompleteAttendance) return false
+    if (isOptionalSaturday(day)) return false
+    if (day.isGlobalHoliday) return false
+    if (day.isEmployeeHoliday && !day.isConflictHolidayWork) return false
+    return true
+  }).length
+
+  const saturdayDays = daysData.filter(
+    day => isOptionalSaturday(day) && day.hasCompleteAttendance
+  ).length
+
+  const conflictDays = daysData.filter(day => day.isConflictHolidayWork).length
+  const absentDays = daysData.filter(
+    day => day.isEmployeeHoliday && !day.hasAttendance
+  ).length
+
+  return {
+    totalHours,
+    daysWorked,
+    absentDays,
+    saturdayDays,
+    conflictDays,
+    totalOvertimeMinutes
+  }
+}
+
+/**
+ * Papír 8 órás keret (egyedi + tömeges PDF):
+ * - naponként max 8 óra a „Összes dolgozott óra”-ba
+ * - túlóra = policy (előtti+utótti) + 8 óra feletti ledolgozott
+ * - sima szombat / naptári pihenő / egyéni távollét: ki a keretből
+ */
+export function computePaperEightHourMonthSummary(daysData: PaperAttendanceDayRow[]): {
+  totalHours: number
+  daysWorked: number
+  absentDays: number
+  saturdayDays: number
+  conflictDays: number
+  totalOvertimeMinutes: number
+  policyOvertimeMinutes: number
+  excessOver8Minutes: number
+} {
+  const base = computePaperMonthSummary(daysData)
+  const isOptionalSaturday = (day: PaperAttendanceDayRow) =>
+    day.dayOfWeek === 6 && !day.isRelocatedWorkday
+
+  const countsTowardEightHourFrame = (day: PaperAttendanceDayRow) => {
+    if (isOptionalSaturday(day)) return false
+    if (day.isGlobalHoliday) return false
+    if (day.isEmployeeHoliday) return false
+    return true
+  }
+
+  const totalHours = daysData.reduce((sum, day) => {
+    if (!countsTowardEightHourFrame(day)) return sum
+    return sum + Math.min(day.hoursWorked, 8)
+  }, 0)
+
+  const excessOver8Minutes = daysData.reduce((sum, day) => {
+    if (!countsTowardEightHourFrame(day)) return sum
+    const excessH = Math.max(0, day.hoursWorked - 8)
+    return sum + Math.round(excessH * 60)
+  }, 0)
+
+  const policyOvertimeMinutes = base.totalOvertimeMinutes
+
+  return {
+    totalHours,
+    daysWorked: base.daysWorked,
+    absentDays: base.absentDays,
+    saturdayDays: base.saturdayDays,
+    conflictDays: base.conflictDays,
+    policyOvertimeMinutes,
+    excessOver8Minutes,
+    totalOvertimeMinutes: policyOvertimeMinutes + excessOver8Minutes
+  }
 }

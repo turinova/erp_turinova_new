@@ -26,6 +26,8 @@ interface DayData {
   holidayType: string | null
   isConflictHolidayWork: boolean
   isGlobalHoliday: boolean
+  /** Áthelyezett munkanap — szombaton is normál munkanapként jelenik meg. */
+  isRelocatedWorkday?: boolean
   isDisabled: boolean
 }
 
@@ -159,10 +161,14 @@ export default function generateAttendancePdfHtml({
       else if (day.hasCompleteAttendance) statusDisplay = 'MUNKA'
     } else if (mode === 'paper') {
       // Saturday: keep holiday labels ONLY when there is no work logged.
-      // - If worked (complete): SZOMBATI MUNKA
-      // - If partial log: SZOMBAT
-      // - If no log: preserve MUNKASZÜNET / SZABADSÁG / BETEGSZABADSÁG, otherwise "-"
-      if (isSaturday) {
+      // Relocated Saturday = normal workday (áthelyezett munkanap).
+      if (isSaturday && day.isRelocatedWorkday) {
+        if (isConflict) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG + MUNKA' : 'SZABADSÁG + MUNKA'
+        else if (isHoliday) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG' : 'SZABADSÁG'
+        else if (day.hasAttendance && !day.hasCompleteAttendance) statusDisplay = 'HIÁNYOS'
+        else if (day.hasCompleteAttendance) statusDisplay = 'ÁTHELYEZETT MUNKANAP'
+        else statusDisplay = 'ÁTHELYEZETT MUNKANAP'
+      } else if (isSaturday) {
         if (day.hasCompleteAttendance) statusDisplay = 'SZOMBATI MUNKA'
         else if (!hasNoData) statusDisplay = 'SZOMBAT'
         else if (day.isGlobalHoliday) statusDisplay = 'MUNKASZÜNET'
@@ -213,8 +219,8 @@ export default function generateAttendancePdfHtml({
         overtimeDisplay = '-'
       }
     } else if (mode === 'paper') {
-      if (isSaturday) {
-        // Saturday: show times (if any). Ledolgozott óra a cellában (havi összesítő továbbra is kizárja a szombatot).
+      if (isSaturday && !day.isRelocatedWorkday) {
+        // Saturday: show times (if any). Ledolgozott óra a cellában (havi összesítő továbbra is kizárja a sima szombatot).
         // Paper view must show raw recorded times (not policy-clipped display times).
         arrivalDisplay = formatTime(day.arrival)
         departureDisplay = formatTime(day.departure)
@@ -251,7 +257,7 @@ export default function generateAttendancePdfHtml({
         const strongLeave = hoursDisplay.includes('<strong>')
         if (!strongLeave) {
           // Csak hétközi „szabadság + munka” ág illeszkedik a (SZABADSÁG) címkéhez; szombat külön ág.
-          if (isHoliday && day.hoursWorked > 0 && !isSaturday) {
+          if (isHoliday && day.hoursWorked > 0 && !(isSaturday && !day.isRelocatedWorkday)) {
             const holidayLabel = isSickLeave ? 'BETEG SZABADSÁG' : 'SZABADSÁG'
             const core = formatBulkPaperEightHourHoursCell(day)
             hoursDisplay = `${core} <span style="font-size: 0.75em; color: #666; font-style: italic;">(${holidayLabel})</span>`
@@ -545,12 +551,12 @@ export default function generateAttendancePdfHtml({
         </div>
         ${mode === 'paper' ? `
         <div class="summary-row">
-          <span class="summary-label">Szombati napok:</span>
+          <span class="summary-label">Szombati napok (nem áthelyezett):</span>
           <span style="font-size: 11px;">${Number(summary.saturdayDays || 0)} nap</span>
         </div>
         ` : ''}
         <div class="summary-row">
-          <span class="summary-label">Dolgozott napok:</span>
+          <span class="summary-label">Ledolgozott munkanapok:</span>
           <span style="font-size: 11px;">${summary.daysWorked} nap</span>
         </div>
         <div class="summary-row">

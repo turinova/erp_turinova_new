@@ -83,8 +83,14 @@ export async function PUT(
       return NextResponse.json({ error: 'A vég dátum nem lehet korábbi, mint a kezdő dátum' }, { status: 400 })
     }
 
-    if (!type || !['national', 'company'].includes(type)) {
-      return NextResponse.json({ error: 'Érvénytelen ünnep típus' }, { status: 400 })
+    if (!type || !['national', 'company', 'relocated_workday', 'relocated_rest'].includes(type)) {
+      return NextResponse.json(
+        {
+          error:
+            'Érvénytelen típus. Használható: national, company, relocated_workday, relocated_rest'
+        },
+        { status: 400 }
+      )
     }
 
     // Check for duplicate (excluding current holiday)

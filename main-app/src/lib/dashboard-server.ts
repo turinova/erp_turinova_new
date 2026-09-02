@@ -5,6 +5,7 @@ import {
   getBudapestTodayYmd,
   getBudapestYearMonth,
   normalizeAttendanceYmd,
+  parsePublicHolidayType,
   type PublicHolidayRow
 } from '@/components/attendance/attendanceUtils'
 
@@ -1510,7 +1511,7 @@ export async function getEmployeesMonthlyAttention(
 
   const { data: employees, error: empErr } = await supabaseServer
     .from('employees')
-    .select('id')
+    .select('id, works_on_saturday')
     .is('deleted_at', null)
 
   if (empErr) {
@@ -1556,7 +1557,7 @@ export async function getEmployeesMonthlyAttention(
     name: String(h.name ?? ''),
     start_date: String(h.start_date),
     end_date: String(h.end_date),
-    type: h.type === 'company' ? 'company' : 'national'
+    type: parsePublicHolidayType(h.type)
   }))
 
   const attendanceByEmployee = new Map<string, Map<string, { hasArrival: boolean; hasDeparture: boolean }>>()
@@ -1596,6 +1597,7 @@ export async function getEmployeesMonthlyAttention(
       month,
       todayYmd,
       publicHolidays,
+      worksOnSaturday: emp.works_on_saturday === true,
       employeeHolidayDates: holidayByEmployee.get(emp.id) ?? new Set(),
       attendanceByDate: attendanceByEmployee.get(emp.id) ?? new Map()
     })

@@ -32,7 +32,7 @@ interface Holiday {
   name: string
   start_date: string
   end_date: string
-  type: 'national' | 'company'
+  type: 'national' | 'company' | 'relocated_workday' | 'relocated_rest'
   active: boolean
   created_at: string
   updated_at: string
@@ -135,12 +135,20 @@ export default function HolidaysList({ initialHolidays }: HolidaysListProps) {
     })
   }
 
-  const getTypeLabel = (type: string) => {
-    return type === 'national' ? 'Nemzeti' : 'Céges'
+  const getTypeLabel = (type: Holiday['type']) => {
+    if (type === 'national') return 'Nemzeti'
+    if (type === 'company') return 'Céges'
+    if (type === 'relocated_workday') return 'Áthelyezett munkanap'
+    if (type === 'relocated_rest') return 'Áthelyezett pihenő'
+    return type
   }
 
-  const getTypeColor = (type: string) => {
-    return type === 'national' ? 'primary' : 'secondary'
+  const getTypeColor = (type: Holiday['type']): 'primary' | 'secondary' | 'success' | 'warning' | 'default' => {
+    if (type === 'national') return 'primary'
+    if (type === 'company') return 'secondary'
+    if (type === 'relocated_workday') return 'success'
+    if (type === 'relocated_rest') return 'warning'
+    return 'default'
   }
 
   return (

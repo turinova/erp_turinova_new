@@ -7,7 +7,13 @@ import { NextResponse } from 'next/server'
 import JSZip from 'jszip'
 
 import { getAllEmployees, getAttendanceLogsForMonth, getEmployeeById, getEmployeeHolidays, getHolidaysForDateRange } from '@/lib/supabase-server'
-import { computeAttendanceMetrics } from '@/components/attendance/attendanceUtils'
+import {
+  computeAttendanceMetrics,
+  findCalendarRestForDate,
+  findRelocatedWorkdayForDate,
+  parsePublicHolidayType,
+  type PublicHolidayRow
+} from '@/components/attendance/attendanceUtils'
 import generateAttendancePdfHtml from '../../../[id]/attendance/pdf/pdf-template'
 
 export const runtime = 'nodejs'
@@ -50,6 +56,12 @@ function minutesToTimeString(totalMinutes: number): string {
 function isWeekday(d: Date): boolean {
   const dow = d.getDay()
   return dow >= 1 && dow <= 5
+}
+
+function isCoverageDay(d: Date, publicHolidays: PublicHolidayRow[]): boolean {
+  if (findCalendarRestForDate(d, publicHolidays)) return false
+  if (findRelocatedWorkdayForDate(d, publicHolidays)) return true
+  return isWeekday(d)
 }
 
 function nextMonday(date: Date): Date {
@@ -225,10 +237,28 @@ export async function POST(request: NextRequest) {
       d0.setDate(d0.getDate() + 1)
     }
 
+    const publicHolidays: PublicHolidayRow[] = (holidays || []).map((h: any) => ({
+      name: String(h.name ?? ''),
+      start_date: String(h.start_date).slice(0, 10),
+      end_date: String(h.end_date).slice(0, 10),
+      type: parsePublicHolidayType(h.type)
+    }))
+
+    const dateFromYmd = (dateStr: string): Date => {
+      const [y, m, d] = dateStr.split('-').map(Number)
+      return new Date(y, m - 1, d)
+    }
+
+    const isGlobalHolidayDate = (dateStr: string): boolean =>
+      !!findCalendarRestForDate(dateFromYmd(dateStr), publicHolidays)
+
+    const isRelocatedWorkdayDate = (dateStr: string): boolean =>
+      !!findRelocatedWorkdayForDate(dateFromYmd(dateStr), publicHolidays)
+
     const coverageByDate: Record<string, { openId: string | null; closeId: string | null }> = {}
     for (let i = 0; i < daysInMonth.length; i++) {
       const day = daysInMonth[i]
-      if (!isWeekday(day)) continue
+      if (!isCoverageDay(day, publicHolidays)) continue
       if (eligible.length === 0) {
         coverageByDate[dayKey(day)] = { openId: null, closeId: null }
         continue
@@ -236,15 +266,6 @@ export async function POST(request: NextRequest) {
       const open = eligible[i % eligible.length]?.id ?? null
       const close = eligible[(i + 1) % eligible.length]?.id ?? open
       coverageByDate[dayKey(day)] = { openId: open, closeId: close }
-    }
-
-    const isGlobalHolidayDate = (dateStr: string): boolean => {
-      return holidays.some(h => {
-        const start = new Date(h.start_date)
-        const end = new Date(h.end_date)
-        const checkDate = new Date(dateStr)
-        return checkDate >= start && checkDate <= end
-      })
     }
 
     const concurrency = Math.min(4, Math.max(1, Number(process.env.PDF_BULK_CONCURRENCY || 3)))
@@ -265,6 +286,8 @@ export async function POST(request: NextRequest) {
         for (const day of daysInMonth) {
           if (day.getDay() !== 6) continue
           const dateStr = dayKey(day)
+          // Áthelyezett szombat = normál munkanap, nem megy a hétfői levonásba.
+          if (isRelocatedWorkdayDate(dateStr)) continue
           const dayLog = attendanceLogs.find((log: any) => log.date === dateStr)
           const arrival = dayLog?.arrival?.time || null
           const departure = dayLog?.departure?.time || null
@@ -305,6 +328,7 @@ export async function POST(request: NextRequest) {
           const isEmpHoliday = !!empHoliday
           const isSickLeave = empHoliday?.type === 'Betegszabadság'
           const isGlobalHoliday = isGlobalHolidayDate(dateStr)
+          const isRelocatedWorkday = isRelocatedWorkdayDate(dateStr)
 
           // Official export: holidays/leave always override to leave with 0h, no times.
           if (isGlobalHoliday || isEmpHoliday) {
@@ -326,12 +350,14 @@ export async function POST(request: NextRequest) {
               holidayType: isEmpHoliday ? (isSickLeave ? 'Betegszabadság' : 'Szabadság') : null,
               isConflictHolidayWork: false,
               isGlobalHoliday: isGlobalHoliday,
+              isRelocatedWorkday,
               isDisabled: true
             }
           }
 
-          // Saturday: show at most 4h if there was real attendance; otherwise blank.
-          if (day.getDay() === 6) {
+          // Saturday (optional): show at most 4h if there was real attendance; otherwise blank.
+          // Relocated Saturday falls through to weekday official template below.
+          if (day.getDay() === 6 && !isRelocatedWorkday) {
             const dayLog = attendanceLogs.find((log: any) => log.date === dateStr)
             const arrivalReal = dayLog?.arrival?.time || null
             const departureReal = dayLog?.departure?.time || null
@@ -363,6 +389,7 @@ export async function POST(request: NextRequest) {
               holidayType: null,
               isConflictHolidayWork: false,
               isGlobalHoliday: false,
+              isRelocatedWorkday: false,
               isDisabled: false
             }
           }
@@ -387,6 +414,7 @@ export async function POST(request: NextRequest) {
               holidayType: null,
               isConflictHolidayWork: false,
               isGlobalHoliday: false,
+              isRelocatedWorkday: false,
               isDisabled: true
             }
           }
@@ -415,6 +443,7 @@ export async function POST(request: NextRequest) {
               holidayType: null,
               isConflictHolidayWork: false,
               isGlobalHoliday: false,
+              isRelocatedWorkday,
               isDisabled: false
             }
           }
@@ -462,15 +491,29 @@ export async function POST(request: NextRequest) {
             holidayType: null,
             isConflictHolidayWork: false,
             isGlobalHoliday: false,
+            isRelocatedWorkday,
             isDisabled: false
           }
         })
 
-        const totalHours = daysData.reduce((sum, day) => sum + (day.hoursWorked || 0), 0)
-        const daysWorked = daysData.filter(day => day.hasCompleteAttendance && day.hoursWorked > 0).length
+        const isOptionalSaturday = (day: (typeof daysData)[number]) =>
+          day.dayOfWeek === 6 && !day.isRelocatedWorkday
+
+        const totalHours = daysData.reduce((sum, day) => {
+          if (isOptionalSaturday(day)) return sum
+          return sum + (day.hoursWorked || 0)
+        }, 0)
+        const daysWorked = daysData.filter(
+          day =>
+            day.hasCompleteAttendance &&
+            day.hoursWorked > 0 &&
+            !isOptionalSaturday(day)
+        ).length
         const absentDays = daysData.filter(day => day.isEmployeeHoliday && !day.hasAttendance).length
         const conflictDays = 0
-        const saturdayDays = daysData.filter(day => day.dayOfWeek === 6 && day.hoursWorked > 0).length
+        const saturdayDays = daysData.filter(
+          day => isOptionalSaturday(day) && day.hoursWorked > 0
+        ).length
         const totalOvertimeMinutes = 0
 
         const html = generateAttendancePdfHtml({

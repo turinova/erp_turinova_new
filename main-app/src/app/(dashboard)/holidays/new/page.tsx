@@ -26,7 +26,7 @@ interface Holiday {
   name: string
   start_date: string
   end_date: string
-  type: 'national' | 'company'
+  type: 'national' | 'company' | 'relocated_workday' | 'relocated_rest'
   active: boolean
   created_at: string
   updated_at: string
@@ -220,8 +220,10 @@ export default function NewHolidayPage() {
                     onChange={(e) => handleInputChange('type', e.target.value)}
                     required
                   >
-                    <MenuItem value="national">Nemzeti</MenuItem>
-                    <MenuItem value="company">Céges</MenuItem>
+                    <MenuItem value="national">Nemzeti ünnep</MenuItem>
+                    <MenuItem value="company">Céges szabadnap</MenuItem>
+                    <MenuItem value="relocated_workday">Áthelyezett munkanap</MenuItem>
+                    <MenuItem value="relocated_rest">Áthelyezett pihenőnap</MenuItem>
                   </TextField>
                 </Grid>
 
