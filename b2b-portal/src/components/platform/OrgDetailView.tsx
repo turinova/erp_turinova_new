@@ -34,12 +34,12 @@ function statusLine(detail: OrgDetail): string {
 
 function packageLine(plan: PlanId, isTrial: boolean): string {
   if (isTrial) {
-    return `Próba. ProGate felirat látszik · utána ${formatPlanPrice(BASE_PRICE_HUF)} / hó`;
+    return `Próba. Turinova felirat látszik · utána ${formatPlanPrice(BASE_PRICE_HUF)} / hó`;
   }
   if (hasWhiteLabel(plan)) {
     return `Felirat nélkül: ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)} / hó`;
   }
-  return `Alap: ${formatPlanPrice(BASE_PRICE_HUF)} / hó (ProGate felirat látszik)`;
+  return `Alap: ${formatPlanPrice(BASE_PRICE_HUF)} / hó (Turinova felirat látszik)`;
 }
 
 export function OrgDetailView({ initial }: { initial: OrgDetail }) {

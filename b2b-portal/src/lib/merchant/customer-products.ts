@@ -130,10 +130,192 @@ const productsCache = new Map<
 >();
 const TTL = 12 * 60 * 1000;
 
+function num(v: string | number | null | undefined): number {
+  if (v == null) return 0;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** DB-first termék riport shop_order_line_facts-ből (0 SR hot path). */
+export function buildCustomerProductsReportFromLineFacts(
+  lines: Array<{
+    sku: string | null;
+    sku_norm: string | null;
+    model_number: string | null;
+    name: string | null;
+    quantity: string | number;
+    line_gross: string | number;
+    line_net: string | number | null;
+    date_created: Date | string;
+    sr_order_id: string;
+  }>,
+): CustomerProductsReport | null {
+  if (!lines.length) return null;
+  const now = Date.now();
+  const byCode = new Map<string, Agg>();
+  const orderTimes = new Set<number>();
+
+  for (const row of lines) {
+    const sku = (row.sku || row.model_number || "").trim();
+    const key = (row.sku_norm || sku).toUpperCase();
+    if (!key) continue;
+    const t =
+      row.date_created instanceof Date
+        ? row.date_created.getTime()
+        : Date.parse(
+            String(row.date_created).includes("T")
+              ? String(row.date_created)
+              : String(row.date_created).replace(" ", "T"),
+          );
+    if (Number.isFinite(t)) orderTimes.add(t);
+    let agg = byCode.get(key);
+    if (!agg) {
+      agg = {
+        sku: sku || key,
+        modelNumber: row.model_number || undefined,
+        name: row.name || undefined,
+        qtys: [],
+        dates: [],
+        lastDate: 0,
+      };
+      byCode.set(key, agg);
+    }
+    if (!agg.name && row.name) agg.name = row.name;
+    if (!agg.modelNumber && row.model_number) {
+      agg.modelNumber = row.model_number;
+    }
+    const qty = Math.max(1, num(row.quantity) || 1);
+    agg.qtys.push(qty);
+    if (Number.isFinite(t) && t) {
+      agg.dates.push(t);
+      if (t >= agg.lastDate) {
+        agg.lastDate = t;
+        const gross = num(row.line_gross);
+        const net = num(row.line_net);
+        if (gross) agg.lastGross = Math.round(gross / qty);
+        if (net) agg.lastNet = Math.round(net / qty);
+      }
+    }
+  }
+
+  const times = [...orderTimes].sort((a, b) => b - a);
+  let typicalDays: number | null = null;
+  if (times.length >= 3) {
+    const gaps: number[] = [];
+    for (let i = 0; i < Math.min(times.length - 1, 8); i++) {
+      gaps.push((times[i]! - times[i + 1]!) / dayMs(1));
+    }
+    typicalDays = Math.max(1, Math.round(median(gaps)));
+  }
+
+  const products: ProductCatalogRow[] = [];
+  byCode.forEach((agg) => {
+    const lastT = agg.lastDate || (agg.dates.length ? Math.max(...agg.dates) : 0);
+    const suggested = Math.max(
+      1,
+      median(agg.qtys.filter((q) => q >= 1).slice(0, 12)),
+    );
+    const daysSince = lastT
+      ? Math.max(0, Math.round((now - lastT) / dayMs(1)))
+      : 999;
+    const orderCount = agg.qtys.length;
+    const due =
+      orderCount >= 2 && daysSince >= Math.max(10, (typicalDays || 14) - 2);
+    products.push({
+      sku: agg.sku,
+      modelNumber: agg.modelNumber,
+      name: agg.name,
+      productUrl: null,
+      imageUrl: null,
+      lastPriceNet: agg.lastNet,
+      lastPriceGross: agg.lastGross,
+      lastPriceNetFormatted:
+        agg.lastNet != null ? formatHuf(Math.round(agg.lastNet)) : undefined,
+      lastPriceGrossFormatted:
+        agg.lastGross != null
+          ? formatHuf(Math.round(agg.lastGross))
+          : undefined,
+      totalQty: agg.qtys.reduce((a, b) => a + b, 0),
+      orderCount,
+      lastOrderedAt: lastT ? new Date(lastT).toISOString() : "",
+      lastOrderedLabel: lastT ? formatDay(new Date(lastT).toISOString()) : "—",
+      daysSince,
+      suggestedQty: suggested,
+      flag: due ? "due_soon" : null,
+    });
+  });
+
+  products.sort(
+    (a, b) =>
+      (b.flag === "due_soon" ? 1 : 0) - (a.flag === "due_soon" ? 1 : 0) ||
+      b.orderCount - a.orderCount ||
+      b.totalQty - a.totalQty,
+  );
+  for (const p of products.slice(0, 5)) {
+    if (!p.flag) p.flag = "top";
+  }
+
+  const dueSoon = products.filter((p) => p.flag === "due_soon").slice(0, 8);
+  const lastOrderId = lines[0]?.sr_order_id;
+  const lastLines = lines.filter((l) => l.sr_order_id === lastOrderId).slice(0, 40);
+  const lastT = lastLines[0]?.date_created;
+  const lastIso =
+    lastT instanceof Date
+      ? lastT.toISOString()
+      : lastT
+        ? String(lastT)
+        : "";
+
+  return {
+    products,
+    dueSoon,
+    lastOrder: lastOrderId
+      ? {
+          id: lastOrderId,
+          dateLabel: lastIso ? formatDay(lastIso) : "—",
+          totalFormatted: formatHuf(
+            Math.round(
+              lastLines.reduce((s, l) => s + num(l.line_gross), 0),
+            ),
+          ),
+          lines: lastLines.map((l) => {
+            const qty = Math.max(1, num(l.quantity) || 1);
+            const gross = num(l.line_gross);
+            const net = num(l.line_net);
+            return {
+              sku: (l.sku || l.model_number || "").trim(),
+              modelNumber: l.model_number || undefined,
+              name: l.name || undefined,
+              quantity: qty,
+              priceNet: net ? Math.round(net / qty) : undefined,
+              priceGross: gross ? Math.round(gross / qty) : undefined,
+              priceNetFormatted: net
+                ? formatHuf(Math.round(net / qty))
+                : undefined,
+              priceGrossFormatted: gross
+                ? formatHuf(Math.round(gross / qty))
+                : undefined,
+              lineTotalGross: gross ? Math.round(gross) : undefined,
+              lineTotalGrossFormatted: gross
+                ? formatHuf(Math.round(gross))
+                : undefined,
+              productUrl: null,
+              imageUrl: null,
+            };
+          }),
+        }
+      : null,
+    legend:
+      "Syncelt rendeléssorból. Tipikus db = medián mennyiség. Élő képhez: Frissítés a Shoprenterből.",
+    sampleOrderCount: orderTimes.size,
+  };
+}
+
 export async function buildCustomerProductsReport(
   config: ShoprenterConfig,
   userId: number | string,
   cacheKey: string,
+  opts?: { email?: string | null },
 ): Promise<CustomerProductsReport> {
   const hit = productsCache.get(cacheKey);
   if (hit && Date.now() - hit.at < TTL) return hit.data;
@@ -141,6 +323,7 @@ export async function buildCustomerProductsReport(
   const { orders } = await listCustomerOrders(config, userId, {
     limit: 30,
     page: 0,
+    email: opts?.email,
   });
   const now = Date.now();
 

@@ -53,6 +53,8 @@ Könyvtár: `b2b-portal/sql/`
 | — | `035_marketing_profile.sql` | **Archiválva** — `_archived/partner-activation/sql/` |
 | 34 | `036_platform_trial_default_14.sql` | `platform_settings.trial_days` default **14** |
 | 37 | `037_shop_bootstrap.sql` | Egységes bolt-betöltés státusz (`bootstrap_*` oszlopok). Utána cron: `/api/cron/customer-groups` |
+| 38 | `038_group_map_percent_discount.sql` | Csoport % kedvezmény tükör |
+| 39 | `039_shop_customers_mirror.sql` | Vevő-tükör bővítés (`company_snapshot`, `approved`, `date_created_sr`) + `shop_customer_sync_state`. Cron: `/api/cron/customer-mirror`. Detail: DB-first (`CUSTOMER_DETAIL_USE_FACTS`, default on) |
 
 **M1:** futtasd `013`→`017` ezen a sorrenden. `015` kötelező, mielőtt új orgot hozol létre. **v3 csomagok:** futtasd `019` mielőtt `plus` kerül az `organizations.plan`-ba — a `015` checkje még `grow`/`scale`.
 
@@ -233,8 +235,10 @@ Widget rendelés fact (lines jsonb) + átrakás history. Riport / billing gerinc
 | sr_name_snapshot | UI |
 | role | `bolt` \| `gomb` \| `rejtett` |
 
-### shop_customers (009)
-Vékony ujjlenyomat (nem full CRM). Touch / átrakás / widget fact.
+### shop_customers (009 + 039)
+Vékony ujjlenyomat / tükör (nem full CRM). Touch / átrakás / widget fact / detail fejléc.
+039: `company_snapshot`, `approved`, `date_created_sr` + `shop_customer_sync_state` (cron `/api/cron/customer-mirror`).
+Detail hot path: rendelések `shop_order_facts`-ből (`CUSTOMER_DETAIL_USE_FACTS`, default on).
 
 ### audit_events
 | Oszlop | Megjegyzés |

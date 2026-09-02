@@ -45,10 +45,16 @@ export async function GET(_req: Request, ctx: Ctx) {
         );
         if (!loaded) return { error: "NO_SHOP_OR_CREDS" as const };
 
-        const [activities, followUp] = await Promise.all([
-          listCustomerActivities(client, loaded.shopId, customerInnerId),
-          getCustomerFollowUp(client, loaded.shopId, customerInnerId),
-        ]);
+        const activities = await listCustomerActivities(
+          client,
+          loaded.shopId,
+          customerInnerId,
+        );
+        const followUp = await getCustomerFollowUp(
+          client,
+          loaded.shopId,
+          customerInnerId,
+        );
 
         return {
           activities: activities.map((a) => ({

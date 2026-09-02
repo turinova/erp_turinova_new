@@ -5,15 +5,15 @@
 ##### ÁLTALÁNOS ADATKEZELÉSI TÁJÉKOZTATÓ
 
 Miért készítettük ezt a tájékoztatót?
-A HÍRÖS-ABLAK Kft. (Turinova) a ProGate szolgáltatás (https://app.progate.hu) keretében több célból kezel személyes adatokat és mindezt az érintettek jogainak tiszteletben tartásával és a vonatkozó jogszabályi kötelezettségeinek maradéktalan teljesítésével kívánja tenni.
+A www.turinova.hu több célból kezel személyes adatokat és mindezt az érintettek jogainak tiszteletben tartásával és a vonatkozó jogszabályi kötelezettségeinek maradéktalan teljesítésével kívánja tenni.
 
-A Szolgáltató kiemelten fontosnak tartja, hogy bemutassa az érintetteknek az adatkezelési tevékenysége során a tudomására jutott személyes adatok kezelésének szabályait, módját, valamint ezek legfontosabb jellemzőit.
+A www.turinova.hu kiemelten fontosnak tartja, hogy bemutassa az érintetteknek az adatkezelési tevékenysége során a tudomására jutott személyes adatok kezelésének szabályait, módját, valamint ezek legfontosabb jellemzőit.
 
 Milyen alapon kezeljük az érintettek adatait?
 A személyes adatokat csak meghatározott célból és megfelelő jogalappal kezeljük. Ezeket a célokat és jogalapokat a konkrét adatkezelések egyedi tájékoztatójában mutatjuk be.
 
 Ki kezeli személyes adatait?
-A személyes adatait a „HÍRÖS-ABLAK Kereskedelmi és Szolgáltató Korlátolt Felelősségű Társaság” (Szolgáltató) kezeli a ProGate termék keretében.
+A személyes adatait a www.turinova.hu üzemeltetője a „HÍRÖS-ABLAK Kereskedelmi és Szolgáltató Korlátolt Felelősségű Társaság ” kezeli.
 
 A kapcsolattartás lehetőségei:
 
@@ -21,9 +21,7 @@ Postai címünk: 6000 Kecskemét, Mindszenti krt. 10.
 
 E-mail címünk: info@turinova.hu
 
-Termék webcím: app.progate.hu
-
-Cég webcím: www.turinova.hu
+Webcímünk: www.turinova.hu
 
 Telefonszámunk: +36 30 999 2800
 
@@ -33,20 +31,20 @@ A személyes adatokat kezeléséhez bizonyos esetekben külső segítséget, ada
 Milyen elveket tartunk fontosnak az adatai kezelése során?
 A személyes adatok kezelését a hatályos jogi szabályozás alapján végezzük.
 
-A Szolgáltató csak az egyedi adatkezelések körében meghatározott személyes adatokat kezel. A megadott, személyes adatok biztonságát minden szükséges technikai és szervezési intézkedéssel megvédi. A Szolgáltató kiemelt figyelmet fordít a személyes adatok bizalmasságának, sértetlenségének és rendelkezésre állásának biztosítására.
+A www.turinova.hu csak az egyedi adatkezelések körében meghatározott személyes adatokat kezel. A megadott, személyes adatok biztonságát minden szükséges technikai és szervezési intézkedéssel megvédi. A www.turinova.hu kiemelt figyelmet fordít a személyes adatok bizalmasságának, sértetlenségének és rendelkezésre állásának biztosítására.
 
-Miután Ön megadta személyes adatait, azok valódiságáért és pontosságért a Szolgáltató felel.
+Miután Ön megadta személyes adatait, azok valódiságáért és pontosságért a www.turinova.hu felel.
 
 Lényeges, hogy azokat a kifejezéseket, amiket ebben a tájékoztatóban használunk az információs önrendelkezési jogról és az információszabadságról szóló 2011. évi CXII. törvény értelmező rendelkezései között meghatározott fogalmak szerint értelmezzük.
 
-Milyen jogai vannak a Szolgáltató által kezelt személyes adataival kapcsolatban? Kérheti az adatainak
+Milyen jogai vannak a www.turinova.hu által kezelt személyes adataival kapcsolatban? Kérheti az adatainak
 - módosítását : a megadott elérhetőségeinken keresztül kérheti tőlünk adatainak módosítását, a személyes adatok kezelésének ideje alatt.
 
 - törlését, illetve zárolását : a hozzájárulásán alapuló adatkezelés esetén bármikor visszavonhatja hozzájárulását és kérheti, hogy adatait töröljük. A kérésére - a kérelmének kézhezvételét követő 25 napon belül - írásban, vagy elektronikus úton (beleegyezésével) válaszolunk. Ha valamilyen törvényes oknál fogva nem tudjuk teljesíteni a kérését, akkor elutasítjuk azt és természetesen annak ténybeli és jogi indokait is közöljük. A személyes adatait abban az esetben is töröljük, ha a kezelése jogellenes, az adatkezelés célja megszűnt, vagy az adatok tárolásának meghatározott határideje lejárt; illetve a bíróság vagy a Nemzeti Adatvédelmi és Információszabadság Hatóság elrendelte. Zároljuk a személyes adatait, ha ezt kéri, vagy ha a rendelkezésére álló információk alapján feltételezhető, hogy a törlés sértené a jogos érdekeit.
 
 Tájékoztatást kérhet :
 
-Az adatkezelés teljes tartama alatt jogosult a megadott elérhetőségeken tájékoztatást kérni a Szolgáltató által kezelt, személyes adatokról, valamint az adatkezelés jellemzőiről, különösen:
+Az adatkezelés teljes tartama alatt jogosult a megadott elérhetőségeken tájékoztatást kérni a www.turinova.hu által kezelt, személyes adatokról, valamint az adatkezelés jellemzőiről, különösen:
 
 - az adatok forrásáról,
 
@@ -60,15 +58,15 @@ Az adatkezelés teljes tartama alatt jogosult a megadott elérhetőségeken táj
 
 A tájékoztatást a kérelem benyújtásától számított 25 nap alatt teljesítjük. Folyó évben ingyenesen egyszer kérhető ugyanarra az adatra tájékoztatás.
 
-Szabálysértési hatóság, nyomozó hatóság, ügyészség, bíróság, más közigazgatási hatóság, a Nemzeti Adatvédelmi és Információszabadság Hatóság, illetve jogszabály felhatalmazása alapján más szervek megkereshetik a Szolgáltatót az adatok közlése, az adatokba történő betekintés, illetve azok átadása érdekében.
+Szabálysértési hatóság, nyomozó hatóság, ügyészség, bíróság, más közigazgatási hatóság, a Nemzeti Adatvédelmi és Információszabadság Hatóság, illetve jogszabály felhatalmazása alapján más szervek megkereshetik a www.turinova.hu-t az adatok közlése, az adatokba történő betekintés, illetve azok átadása érdekében.
 
 Amennyiben a megkereső szerv a jogalapot és az adatok körét pontosan megjelölte, akkor a megkeresés céljának megvalósításához elengedhetetlenül szükséges személyes adatokat rendelkezésükre bocsátjuk.
 
 Tiltakozhat a személyes adatainak a kezelése ellen
 
-Kifejezheti a tiltakozását, ha adatainak kezelését hozzájárulásának visszavonása után a Szolgáltató a jogi kötelezettségének teljesítése miatt, illetve a Szolgáltató, vagy harmadik személy jogos érdekének érvényesítése miatt tovább kezeli.
+Kifejezheti a tiltakozását, ha adatainak kezelését hozzájárulásának visszavonása után a www.turinova.hu a jogi kötelezettségének teljesítése miatt, illetve www.turinova.hu, vagy harmadik személy jogos érdekének érvényesítése miatt tovább kezeli.
 
-A tiltakozását a megadott elérhetőségen keresztül közölheti. A tiltakozásának a Szolgáltatóhoz történő beérkezésétől számított legfeljebb 15 napon belül döntünk és válaszolunk a kérésére. Ha ez nem történik meg, akkor Bírósághoz fordulhat az érdekei védelmében.
+A tiltakozását a megadott elérhetőségen keresztül közölheti. A tiltakozásának a www.turinova.hu-hoz történő beérkezésétől számított legfeljebb 15 napon belül döntünk és válaszolunk a kérésére. Ha ez nem történik meg, akkor Bírósághoz fordulhat az érdekei védelmében.
 
 Jogorvoslati lehetőségei
 
@@ -89,17 +87,17 @@ Web: http://naih.hu
 Az adatkezelés NAIH száma: nem kötelező a NAIH-hoz bejelentés a GDPR hatálybalépése óta; külön nyilvántartási szám nincs.
 
 Kinek az adatait kezeljük?
-Az adatkezelés során a ProGate regisztrált felhasználóinak (jogi személyek és azok kapcsolattartói) adatait kezeljük.
+Az adatkezelés során a www.turinova.hu regisztrált felhasználóinak (jogi személyek és azok kapcsolattartói) adatait kezeljük.
 
 Milyen adatait kezeljük?
-A Szolgáltató a regisztrált tagjainak alábbi adatait kezeli:
+A www.turinova.hu a regisztrál tagjainak alábbi adatait kezeli:
 
 Vállalkozás neve, E-mail címe, Kapcsolattartó neve, Telefonszáma (ha megadja), Jelszava, Shoprenter shop name / bolt URL, előfizetési és számlázási adatok
 
 Ezenkívül megadhat adatokat a: cég struktúrájára és munkatársakra vonatkozóan.
 
 Miért kezeljük a személyes adatait?
-Az adatok kezelésének célja, hogy a regisztrált érintett igénybe vegye a ProGate szolgáltatást (fiók, portál, widget, előfizetés).
+Az adatok kezelésének célja, hogy a regisztrált érintett igénybe vegye a Turinova B2B szolgáltatást (fiók, portál, widget, előfizetés).
 
 A widget „Listáim” funkciója a bejelentkezett webshop-vevő (Shoprenter ügyfélazonosító) által mentett rendelési listákat (cikkszám, mennyiség, opcionális terméknév) tárolja a szolgáltatás teljesítése érdekében. A listák a vevő kérésére törölhetők; a bolt / előfizetés megszűnésekor a kapcsolódó adatok törölhetők.
 
@@ -110,7 +108,7 @@ Meddig kezeljük a személyes adatait?
 A személyes adatait a szerződés fennállása alatt, valamint a megszűnést követően a jogszabályban előírt megőrzési ideig (különösen számviteli bizonylatoknál 8 évig) kezeljük. A próbaidőszak lejárta után a nem előfizető fiókok adatait a Szolgáltató törölheti.
 
 Ki kezelheti az adatait?
-Az adatait csak a Szolgáltató kijelölt munkatársai kezelhetik.
+Az adatait csak a www.turinova.hu kijelölt munkatársai kezelhetik.
 
 Kinek továbbítjuk az adatait?
 A személyes adatait nem továbbítjuk másnak, kivéve az adatfeldolgozókat (lásd lent), illetve törvényi kötelezettségeink, illetve a hatóság vagy hivatalos szerv megfelelő jogalappal rendelkező hivatalos megkeresése esetén.
@@ -127,10 +125,10 @@ Adatkezelési tájékoztató: https://vercel.com/legal/privacy-policy / https://
 ##### SZÁMVITELI ADATKEZELÉSÉNEK EGYEDI ADATKEZELÉSI TÁJÉKOZTATÓJA
 
 Kinek az adatait kezeljük?
-Az adatkezelés során a Szolgáltatóval üzleti jogviszonyban álló természetes személyek adatait kezeljük.
+Az adatkezelés során a www.turinova.hu üzemeltetőjével üzleti jogviszonyban álló természetes személyek adatait kezeljük.
 
 Milyen adatait kezeljük?
-A Szolgáltató (ProGate) ügyfeleinek, regisztrált tagjainak, adatait (név, számlázási cím, kapcsolattartó).
+A www.turinova.hu ügyfeleinek, regisztrált tagjainak, adatait (név, számlázási cím, kapcsolattartó).
 
 Miért kezeljük a személyes adatait?
 A személyes adatait a számviteli jogszabályokban meghatározott bizonylatok készítése érdekében tarjuk nyilván.
@@ -142,7 +140,7 @@ Meddig kezeljük a személyes adatait?
 A személyes adatait a számla kiállítását követő 8 évig tároljuk.
 
 Ki kezelheti az adatait?
-Az adatait csak a Szolgáltató kijelölt munkatársai kezelhetik.
+Az adatait csak a www.turinova.hu kijelölt munkatársai kezelhetik.
 
 Kinek továbbítjuk az adatait?
 A személyes adatait nem továbbítjuk. Csak törvényi kötelezettségeink, illetve a hatóság vagy hivatalos szerv megfelelő jogalappal rendelkező hivatalos megkeresésére adjuk ki. Díjbekérő / számla kiállításához a számlázz.hu (KBOSS.hu Kft.) adatfeldolgozóként jár el.
@@ -159,19 +157,19 @@ számlázz.hu: https://www.szamlazz.hu / adatvédelem: https://www.szamlazz.hu/a
 Az adatkezelés NAIH száma: nem kötelező a NAIH-hoz bejelentés a GDPR hatálybalépése óta; külön nyilvántartási szám nincs.
 
 Kinek az adatait kezeljük?
-A ProGate / Turinova hírlevelére regisztrált természetes személyek adatait kezeljük (amennyiben hírlevél-feliratkozás elérhető).
+A www.turinova.hu hírlevelére regisztrált természetes személyek adatait kezeljük (amennyiben hírlevél-feliratkozás elérhető).
 
 Milyen adatait kezeljük?
 Az Ön marketing célú eléréshez név, email cím adatait használjuk.
 
 Miért kezeljük a személyes adatait?
-A ProGate / Turinova eseményeinek, szolgáltatásainak megismertetése céljából kezeljük adatait.
+A www.turinova.hu eseményeinek, szolgáltatásainak megismertetése céljából kezeljük adatait.
 
 Mi a jogalapja a személyes adatai kezelésének?
-A Szolgáltató az adatait a hozzájárulása alapján tartja nyilván.
+A www.turinova.hu adatait a hozzájárulása alapján tartja nyilván.
 
 Meddig kezeljük a személyes adatait?
-A Szolgáltató az adatokat a hozzájárulás visszavonásáig kezeli. A hozzájárulás bármikor visszavonható a megadott elérhetőségeinken.
+A www.turinova.hu az adatokat a hozzájárulás visszavonásáig kezeli. A hozzájárulás bármikor visszavonható a megadott elérhetőségeinken.
 
 Kinek továbbítjuk az adatait?
 A személyes adatait nem továbbítjuk harmadik félnek, természetes személynek. Csak törvényi kötelezettségeink, illetve a hatóság vagy hivatalos szerv megfelelő jogalappal rendelkező hivatalos megkeresésére adjuk ki.
@@ -189,10 +187,10 @@ A HÍRÖS-ABLAK Kft. a következő címeken elérhető:
 
 Postai címük: 6000 Kecskemét, Mindszenti krt. 10.
 
-webcímük: app.progate.hu · www.turinova.hu
+webcímük: www.turinova.hu
 
 Kapcsolattartó: Mező Dávid
 
 Telefonszámuk: +36 30 999 2800
 
-Adatkezelési tájékoztató: https://app.progate.hu/adatvedelem
+Adatkezelési tájékoztatójuk: www.turinova.hu/adatvedelem

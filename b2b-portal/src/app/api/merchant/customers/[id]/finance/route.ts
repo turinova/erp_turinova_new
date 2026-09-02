@@ -5,6 +5,12 @@ import {
 } from "@/lib/auth/merchant-api";
 import { withTenant } from "@/lib/db";
 import {
+  customerDetailUseFactsEnabled,
+  getShopCustomerFingerprint,
+  listAllCustomerOrdersFromFacts,
+  orderFactsTableExists,
+} from "@/lib/merchant/customer-detail-from-db";
+import {
   buildCustomerFinanceReport,
   type FinanceRangeMonths,
 } from "@/lib/merchant/customer-finance";
@@ -60,21 +66,45 @@ export async function GET(req: Request, ctx: Ctx) {
         );
         if (!loaded) return { error: "NO_SHOP_OR_CREDS" as const };
 
-        const page0 = await listCustomerOrders(loaded.config, customerInnerId, {
-          limit: 50,
-          page: 0,
-        });
-        let all = [...page0.orders];
-        if (page0.pageCount > 1) {
-          await new Promise((r) => setTimeout(r, 400));
-          const page1 = await listCustomerOrders(
+        const useFacts =
+          customerDetailUseFactsEnabled() &&
+          (await orderFactsTableExists(client));
+
+        let all =
+          useFacts
+            ? await listAllCustomerOrdersFromFacts(
+                client,
+                loaded.shopId,
+                customerInnerId,
+                {
+                  sinceMs: Date.now() - months * 31 * 24 * 60 * 60 * 1000,
+                },
+              )
+            : [];
+
+        if (!all.length) {
+          const fp = await getShopCustomerFingerprint(
+            client,
+            loaded.shopId,
+            customerInnerId,
+          );
+          const page0 = await listCustomerOrders(
             loaded.config,
             customerInnerId,
-            { limit: 50, page: 1 },
+            { limit: 50, page: 0, email: fp?.email },
           );
-          const seen = new Set(all.map((o) => o.id));
-          for (const o of page1.orders) {
-            if (!seen.has(o.id)) all.push(o);
+          all = [...page0.orders];
+          if (page0.pageCount > 1) {
+            await new Promise((r) => setTimeout(r, 400));
+            const page1 = await listCustomerOrders(
+              loaded.config,
+              customerInnerId,
+              { limit: 50, page: 1, email: fp?.email },
+            );
+            const seen = new Set(all.map((o) => o.id));
+            for (const o of page1.orders) {
+              if (!seen.has(o.id)) all.push(o);
+            }
           }
         }
 
@@ -86,7 +116,7 @@ export async function GET(req: Request, ctx: Ctx) {
 
         const finance = buildCustomerFinanceReport(all, { months });
         financeCache.set(cacheKey, { at: Date.now(), payload: finance });
-        return { finance };
+        return { finance, source: useFacts && all.length ? "db" : "shoprenter" };
       },
     );
 
@@ -97,21 +127,17 @@ export async function GET(req: Request, ctx: Ctx) {
       );
     }
 
-    return NextResponse.json({ ok: true, cached: false, ...result });
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     console.error("[GET merchant/customers/:id/finance]", err);
     const msg =
-      err instanceof Error ? err.message : "Pénz riport sikertelen";
+      err instanceof Error ? err.message : "Forgalom betöltése sikertelen";
     const status =
-      msg.includes("429") || msg.includes("Request Limit") ? 429 : 500;
-    return NextResponse.json(
-      {
-        error:
-          status === 429
-            ? "A Shoprenter most túl sok kérést kapott (429). Várj, majd próbáld újra."
-            : msg,
-      },
-      { status },
-    );
+      msg.includes("429") || msg.includes("Request Limit")
+        ? 429
+        : msg.includes("timeout")
+          ? 504
+          : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

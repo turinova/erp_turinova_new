@@ -2388,14 +2388,14 @@
     if (!isLoggedIn()) {
       if (cfg.requireLogin || (cfg.allowedGroupIds && cfg.allowedGroupIds.length)) {
         showAccessGate("login");
-        return;
-      }
+      return;
+    }
     } else if (!groupAllowed()) {
       showAccessGate("group");
       return;
     }
     openPanel();
-  }
+    }
 
   function openPanel() {
     ensurePanelStyles();
@@ -3540,7 +3540,7 @@
         if (stock != null && stock >= 0) {
           title =
             stock <= 0
-              ? "Nincs készleten"
+            ? "Nincs készleten"
               : "Készleten: " + stock + " db · kért: " + qty + " db";
         }
         return {
@@ -3847,8 +3847,8 @@
           listPriceCell(line),
           dealPriceCell(line),
           el("td", { className: "sr-qo-line-total", "data-label": totLab }, [
-            lineTotalEl,
-          ]),
+              lineTotalEl,
+            ]),
           el("td", { className: "sr-qo-td-action" }, [
             el(
               "button",
@@ -4221,7 +4221,7 @@
           });
           if (s.hasBlockers && s.cartable > 0) {
             showCartSplitConfirm(s);
-            return;
+              return;
           } else if (s.hasBlockers && s.cartable === 0) {
             ok = [];
           }
@@ -4461,9 +4461,9 @@
       var quantity = Math.max(1, parseInt(qtyInput.value, 10) || 1);
       if (hit.minQty && hit.minQty > 1) {
         quantity = normalizePackQuantity(quantity || hit.minQty, {
-          minQty: hit.minQty,
-          qtyStep: hit.qtyStep || 1,
-          maxQty: null,
+            minQty: hit.minQty,
+            qtyStep: hit.qtyStep || 1,
+            maxQty: null,
         });
       }
 
@@ -4625,13 +4625,13 @@
         renderSuggest(data.products || [], q);
       } catch (e) {
         if (seq !== suggestSeq) return;
-        suggestBox.innerHTML = "";
-        suggestBox.appendChild(
-          el("div", { className: "sr-qo-suggest-empty" }, [
-            e.message || "Keresés sikertelen",
-          ]),
-        );
-        suggestBox.classList.add("is-on");
+          suggestBox.innerHTML = "";
+          suggestBox.appendChild(
+            el("div", { className: "sr-qo-suggest-empty" }, [
+              e.message || "Keresés sikertelen",
+            ]),
+          );
+          suggestBox.classList.add("is-on");
       }
     }
 
@@ -4755,18 +4755,18 @@
     }
     if (moduleOn("excel")) {
       addImportItem("Excel", "Táblázat feltöltése (.xlsx)", function () {
-        openExcelIngest();
-      });
+      openExcelIngest();
+    });
     }
     if (moduleOn("email")) {
       addImportItem("Beillesztés", "Másold be a szöveget vagy e-mailt", function () {
-        openEmailIngest();
-      });
+      openEmailIngest();
+    });
     }
     if (moduleOn("image")) {
       addImportItem("Fotó", "Készíts képet a papírlistáról", function () {
-        openImageIngest();
-      });
+      openImageIngest();
+    });
     }
     var importWrap = el("div", { className: "sr-qo-import" }, [
       importToggleBtn,
@@ -4918,9 +4918,9 @@
     }
     var listFilterBar = el("div", { className: "sr-qo-list-filters" }, [
       el("div", { className: "sr-qo-list-filters-left" }, [
-        makeFilterChip("all", "Mind"),
-        makeFilterChip("ok", "Készleten"),
-        makeFilterChip("issue", "Problémás"),
+      makeFilterChip("all", "Mind"),
+      makeFilterChip("ok", "Készleten"),
+      makeFilterChip("issue", "Problémás"),
       ]),
       el(
         "div",
@@ -5327,7 +5327,7 @@
           freeShipEl,
           partnerProgressEl,
         ]),
-        statusEl,
+      statusEl,
         el("div", { className: "sr-qo-footer-actions" }, [
           saveListBtn,
           clearBtn,
@@ -5840,9 +5840,9 @@
       if (ids.length > MAX_EXPORT) {
         setStatus(
           "Az első " +
-            MAX_EXPORT +
+              MAX_EXPORT +
             " rendelést exportáljuk (" +
-            ids.length +
+              ids.length +
             " kijelölésből).",
         );
       }
@@ -6223,57 +6223,57 @@
           var cards = [];
           if (moduleOn("search")) {
             cards.push(
-              el(
-                "button",
-                {
-                  type: "button",
-                  className: "sr-qo-start-card",
-                  onClick: function () {
-                    showOrderWork();
-                    setTimeout(function () {
-                      try {
-                        skuInput.focus();
-                      } catch (e) {}
-                    }, 30);
-                  },
-                },
-                [
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-start-card",
+              onClick: function () {
+                showOrderWork();
+                setTimeout(function () {
+                  try {
+                    skuInput.focus();
+                  } catch (e) {}
+                }, 30);
+              },
+            },
+            [
                   el("strong", null, ["Kereső"]),
                   el("span", null, ["Írd be a cikkszámot, majd Enter"]),
-                ],
-              ),
+            ],
+          ),
             );
           }
           if (moduleOn("excel")) {
             cards.push(
-              el(
-                "button",
-                {
-                  type: "button",
-                  className: "sr-qo-start-card",
-                  onClick: function () {
-                    openExcelIngest();
-                  },
-                },
-                [
-                  el("strong", null, ["Excel"]),
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-start-card",
+              onClick: function () {
+                openExcelIngest();
+              },
+            },
+            [
+              el("strong", null, ["Excel"]),
                   el("span", null, ["Táblázat feltöltése (.xlsx)"]),
-                ],
-              ),
+            ],
+          ),
             );
           }
           if (moduleOn("email")) {
             cards.push(
-              el(
-                "button",
-                {
-                  type: "button",
-                  className: "sr-qo-start-card",
-                  onClick: function () {
-                    openEmailIngest();
-                  },
-                },
-                [
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-start-card",
+              onClick: function () {
+                openEmailIngest();
+              },
+            },
+            [
                   el("strong", null, ["Beillesztés"]),
                   el("span", null, ["Másold be a szöveget vagy e-mailt"]),
                 ],
@@ -6282,16 +6282,16 @@
           }
           if (moduleOn("image")) {
             cards.push(
-              el(
-                "button",
-                {
-                  type: "button",
-                  className: "sr-qo-start-card",
-                  onClick: function () {
-                    openImageIngest();
-                  },
-                },
-                [
+          el(
+            "button",
+            {
+              type: "button",
+              className: "sr-qo-start-card",
+              onClick: function () {
+                openImageIngest();
+              },
+            },
+            [
                   el("strong", null, ["Fotó"]),
                   el("span", null, ["Készíts képet a papírlistáról"]),
                 ],
@@ -7619,23 +7619,23 @@
         {
           type: "button",
           className: "sr-qo-btn-sm sr-qo-btn-sm-primary",
-          onClick: function () {
+              onClick: function () {
             hideListsSuggest();
             addLineToCurrentList();
-          },
-        },
+              },
+            },
         ["Hozzáad"],
-      ),
+          ),
     ]);
     var listsDetailFoot = el("div", { className: "sr-qo-orders-foot" });
     var listsDetailPane = el("div", { className: "sr-qo-orders-pane" }, [
       el("div", { className: "sr-qo-orders-toolbar" }, [
-        el(
-          "button",
-          {
-            type: "button",
+          el(
+            "button",
+            {
+              type: "button",
             className: "sr-qo-btn-sm",
-            onClick: function () {
+              onClick: function () {
               if (
                 listDetailDirty &&
                 !window.confirm("Mentetlen módosítások. Visszalépsz mentés nélkül?")

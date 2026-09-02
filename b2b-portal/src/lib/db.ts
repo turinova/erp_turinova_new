@@ -56,6 +56,9 @@ export function getPool(): Pool {
     void import("@/lib/commerce/order-facts-loop")
       .then((m) => m.startOrderFactsSyncLoop())
       .catch((err) => console.error("[order-facts] loop start", err));
+    void import("@/lib/commerce/customer-mirror-loop")
+      .then((m) => m.startCustomerMirrorSyncLoop())
+      .catch((err) => console.error("[customer-mirror] loop start", err));
   }
   return global.__b2bPgPool;
 }

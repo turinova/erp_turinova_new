@@ -61,7 +61,7 @@ const FAQS = [
   },
   {
     q: "Mi van a próba után?",
-    a: `${TRIAL_DAYS_DEFAULT} nap teljes termék. Utána a Gyors rendelés csomag ${formatPlanPrice(BASE_PRICE_HUF)} / hó bruttó; saját márka opcióval a ProGate felirat elrejthető.`,
+    a: `${TRIAL_DAYS_DEFAULT} nap után a ProGate ${formatPlanPrice(BASE_PRICE_HUF)} / hó bruttó. Ha a widgeten nem szeretnéd a ProGate feliratot: ${formatPlanPrice(WHITE_LABEL_PRICE_HUF)} / hó bruttó.`,
   },
 ] as const;
 
@@ -182,46 +182,22 @@ export function ProGateLanding() {
 
         {/* 4 — Decision: pricing + FAQ + close */}
         <section className="pg-section pg-section-alt pg-section-decision" id="csomag">
-          <h2 className="pg-h2">Kezdd ingyen — utána havi 1 vacsora áráért</h2>
-          <p className="pg-lead">
-            {TRIAL_DAYS_DEFAULT} nap teljes termék, kártya nélkül. Ma indítva:{" "}
-            {TRIAL_DAYS_DEFAULT} nap múlva döntesz.
-          </p>
+          <h2 className="pg-h2">
+            {TRIAL_DAYS_DEFAULT} nap próba. Utána {formatPlanPrice(BASE_PRICE_HUF)} / hó.
+          </h2>
 
-          <div className="pg-pricing">
-            <article className="pg-price-card pg-price-card-hl">
-              <h3>Gyors rendelés</h3>
-              <p className="pg-price">
-                {formatPlanPrice(BASE_PRICE_HUF)}
-                <span>/ hó · bruttó · ≈ 1 vacsora</span>
-              </p>
-              <ul>
-                <li>Widget + merchant portál</li>
-                <li>Partnerár, vevők, riport</li>
-                <li>ProGate felirat a widgeten</li>
-                <li>{TRIAL_DAYS_DEFAULT} nap próba</li>
-              </ul>
-              <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary">
-                Kezdd a próbát
-              </Link>
-            </article>
-            <article className="pg-price-card">
-              <h3>Saját márka</h3>
-              <p className="pg-price">
-                {formatPlanPrice(WHITE_LABEL_PRICE_HUF)}
-                <span>/ hó · bruttó</span>
-              </p>
-              <ul>
-                <li>Minden a Gyors rendelésből</li>
-                <li>
-                  ProGate felirat nélkül (+{formatPlanPrice(MARK_ADDON_HUF)})
-                </li>
-                <li>Ugyanaz a termék, white-label widget</li>
-              </ul>
-              <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-ghost">
-                Próbából választok
-              </Link>
-            </article>
+          <div className="pg-price-single">
+            <p className="pg-price-hero">
+              {formatPlanPrice(BASE_PRICE_HUF)}
+              <span>/ hó · bruttó</span>
+            </p>
+            <p className="pg-price-upsell">
+              Felirat nélkül: {formatPlanPrice(WHITE_LABEL_PRICE_HUF)} / hó (+
+              {formatPlanPrice(MARK_ADDON_HUF)})
+            </p>
+            <Link href={appAuthHref("/signup")} className="pg-btn pg-btn-primary">
+              {TRIAL_DAYS_DEFAULT} nap próba →
+            </Link>
           </div>
 
           <div className="pg-faq" id="gyik">

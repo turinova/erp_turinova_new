@@ -21,15 +21,68 @@ export type UpsertShopCustomerInput = {
   nameSnapshot?: string | null;
   phoneSnapshot?: string | null;
   taxNumberSnapshot?: string | null;
+  companySnapshot?: string | null;
   srGroupInnerId?: number | null;
   srGroupNameSnapshot?: string | null;
   srStatus?: "active" | "missing" | "deleted";
+  approved?: boolean | null;
+  dateCreatedSr?: string | null;
 };
 
 export async function upsertShopCustomer(
   client: PoolClient,
   input: UpsertShopCustomerInput,
 ): Promise<ShopCustomerRef> {
+  // Try extended mirror columns (039); fall back if migration not applied.
+  try {
+    const res = await query<ShopCustomerRef>(
+      client,
+      `insert into shop_customers (
+         shop_id, sr_customer_inner_id, sr_customer_id, email, name_snapshot,
+         phone_snapshot, tax_number_snapshot, company_snapshot,
+         sr_group_inner_id, sr_group_name_snapshot,
+         sr_status, approved, date_created_sr, last_seen_at, last_synced_at
+       ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::timestamptz, now(), now())
+       on conflict (shop_id, sr_customer_inner_id) do update set
+         sr_customer_id = coalesce(excluded.sr_customer_id, shop_customers.sr_customer_id),
+         email = coalesce(excluded.email, shop_customers.email),
+         name_snapshot = coalesce(excluded.name_snapshot, shop_customers.name_snapshot),
+         phone_snapshot = coalesce(excluded.phone_snapshot, shop_customers.phone_snapshot),
+         tax_number_snapshot = coalesce(excluded.tax_number_snapshot, shop_customers.tax_number_snapshot),
+         company_snapshot = coalesce(excluded.company_snapshot, shop_customers.company_snapshot),
+         sr_group_inner_id = coalesce(excluded.sr_group_inner_id, shop_customers.sr_group_inner_id),
+         sr_group_name_snapshot = coalesce(excluded.sr_group_name_snapshot, shop_customers.sr_group_name_snapshot),
+         sr_status = excluded.sr_status,
+         approved = coalesce(excluded.approved, shop_customers.approved),
+         date_created_sr = coalesce(excluded.date_created_sr, shop_customers.date_created_sr),
+         last_seen_at = now(),
+         last_synced_at = now(),
+         updated_at = now()
+       returning
+         id, shop_id, sr_customer_inner_id, sr_customer_id, email, name_snapshot,
+         sr_group_inner_id, sr_group_name_snapshot, sr_status`,
+      [
+        input.shopId,
+        input.srCustomerInnerId,
+        input.srCustomerId ?? null,
+        input.email ?? null,
+        input.nameSnapshot ?? null,
+        input.phoneSnapshot ?? null,
+        input.taxNumberSnapshot ?? null,
+        input.companySnapshot ?? null,
+        input.srGroupInnerId ?? null,
+        input.srGroupNameSnapshot ?? null,
+        input.srStatus ?? "active",
+        input.approved ?? null,
+        input.dateCreatedSr ?? null,
+      ],
+    );
+    return res.rows[0];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/company_snapshot|approved|date_created_sr/i.test(msg)) throw err;
+  }
+
   const res = await query<ShopCustomerRef>(
     client,
     `insert into shop_customers (

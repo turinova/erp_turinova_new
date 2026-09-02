@@ -1,30 +1,29 @@
 import Link from "next/link";
 import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { COMPANY, LEGAL_LINKS } from "@/lib/company";
-import { appAuthHref, appPathHref } from "@/lib/hosts";
+import { appAuthHref, marketingHomeHref } from "@/lib/hosts";
 import { PROGATE_VERTICALS } from "@/lib/marketing/verticals";
 
 const FOOTER_NAV = [
-  { href: "#hogyan", label: "Hogyan" },
-  { href: "#demo", label: "Demó" },
-  { href: "#csomag", label: "Csomagok" },
+  { href: "#demo", label: "Hogyan" },
+  { href: "#kiknek", label: "Kiknek" },
+  { href: "#csomag", label: "Árak" },
   { href: "#gyik", label: "GYIK" },
-  { href: "/kiknek", label: "Kiknek?", route: true },
   { href: appAuthHref("/signup"), label: "Próba", route: true },
   { href: appAuthHref("/login"), label: "Belépés", route: true },
-  { href: appPathHref("/tudasbazis"), label: "Segítség", route: true },
 ] as const;
 
 const YEAR = new Date().getFullYear();
 
 export function ProGateLandingFooter() {
+  const home = marketingHomeHref();
   return (
     <footer className="pg-footer">
       <div className="pg-footer-inner">
         <div className="pg-footer-row">
-          <a href="#top" className="pg-footer-logo" aria-label="ProGate főoldal">
+          <Link href={home} className="pg-footer-logo" aria-label="ProGate főoldal">
             <TurinovaWordmark height={28} />
-          </a>
+          </Link>
           <nav className="pg-footer-nav" aria-label="Lábléc navigáció">
             {FOOTER_NAV.map((item) =>
               "route" in item && item.route ? (

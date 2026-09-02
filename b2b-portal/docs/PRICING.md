@@ -246,7 +246,7 @@ Nettó Ft / hó. Áfa a számlán (v1: manuális számla, nincs Stripe).
 | Árrés / NRR / alvó vevő | — | — | **nincs a pluginban** (ERP-horog) |
 | Soft SKU (nem a pitch) | 15 000 | 40 000 | 80 000 |
 
-**Egyedi (120+ vevő):** nincs kártya. `info@turinova.hu`. Admin: `partner_limit_override`. Floor: Pro listaára.
+**Egyedi (120+ vevő):** nincs kártya. `hello@turinova.hu`. Admin: `partner_limit_override`. Floor: Pro listaára.
 
 **Ajánlott chip:** Plus.  
 **Próba alatt a Pro sor:** `Most ezt használod` — tény, nem dicsekvés.
@@ -639,7 +639,7 @@ Lejárat: a következő lépés **a döntő képernyő**, ne a bolt.
 | Holnap lejár (dátum nélkül) | A próba {dátum}-án lejár |
 | Pro-t veszítesz | 23 vevőből 15-öt látnál a Starten |
 
-Mailto: `info@turinova.hu`, subject `Plus kellene — {shoprenterShopName}` (vagy Start/Pro/éves).
+Mailto: `hello@turinova.hu`, subject `Plus kellene — {shoprenterShopName}` (vagy Start/Pro/éves).
 
 ---
 

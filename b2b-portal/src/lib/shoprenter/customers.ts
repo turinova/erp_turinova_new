@@ -7,6 +7,7 @@ import {
   getAuthMode,
   type ShoprenterConfig,
 } from "@/lib/shoprenter/api";
+import { fetchWithTimeout } from "@/lib/shoprenter/http";
 
 function api2BaseUrl(shopName: string): string {
   return `https://${shopName}.api2.myshoprenter.hu/api`;
@@ -53,11 +54,14 @@ async function apiFetch(
   const headers = await authHeaders(config);
   const url = `${baseUrl(config)}${path.startsWith("/") ? path : `/${path}`}`;
   const doFetch = () =>
-    fetch(url, {
-      ...init,
-      headers: { ...headers, ...(init?.headers ?? {}) },
-      cache: "no-store",
-    });
+    fetchWithTimeout(
+      url,
+      {
+        ...init,
+        headers: { ...headers, ...(init?.headers ?? {}) },
+      },
+      { pathLabel: path },
+    );
 
   let res = await doFetch();
   // Shoprenter rate limit — egy rövid várás + 1 retry

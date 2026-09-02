@@ -4,6 +4,7 @@ import {
   listActiveTiers,
   netToGross,
 } from "@/lib/merchant/pricing-engine";
+import { fetchWithTimeout } from "@/lib/shoprenter/http";
 
 export type ShoprenterConfig = {
   shopName: string;
@@ -244,14 +245,17 @@ async function apiFetch(
 ): Promise<Response> {
   const headers = await authHeaders(config);
   const url = `${baseUrl(config)}${path.startsWith("/") ? path : `/${path}`}`;
-  return fetch(url, {
-    ...init,
-    headers: {
-      ...headers,
-      ...(init?.headers ?? {}),
+  return fetchWithTimeout(
+    url,
+    {
+      ...init,
+      headers: {
+        ...headers,
+        ...(init?.headers ?? {}),
+      },
     },
-    cache: "no-store",
-  });
+    { pathLabel: path },
+  );
 }
 
 export const PRODUCTS_PAGE_LIMIT = 200;
@@ -853,7 +857,9 @@ export function buildProductImageUrl(
   if (typeof mainPicture !== "string" || !mainPicture.trim()) return undefined;
   const path = mainPicture.replace(/^\//, "");
   if (/^https?:\/\//i.test(path)) return path;
-  return `https://${shopName}.cdn.shoprenter.hu/custom/${shopName}/image/cache/w200h200q85/${path}`;
+  // CDN /custom/{shop}/ path is case-sensitive; live themes use lowercase.
+  const slug = shopName.trim().toLowerCase();
+  return `https://${slug}.cdn.shoprenter.hu/custom/${slug}/image/cache/w200h200q100/${path}`;
 }
 
 /** taxClass href → ÁFA % (pl. 27) */
@@ -2704,9 +2710,13 @@ export async function getCustomerEmailByUserId(
 export async function listCustomerOrders(
   config: ShoprenterConfig,
   userId: number | string,
-  opts?: { limit?: number; page?: number },
+  opts?: { limit?: number; page?: number; email?: string | null },
 ): Promise<{ orders: CustomerOrderSummary[]; pageCount: number }> {
-  const email = await getCustomerEmailByUserId(config, userId);
+  const known = typeof opts?.email === "string" ? opts.email.trim() : "";
+  const email =
+    known.includes("@")
+      ? known
+      : await getCustomerEmailByUserId(config, userId);
   const limit = Math.min(50, Math.max(1, opts?.limit ?? 30));
   const page = Math.max(0, opts?.page ?? 0);
   const qs = new URLSearchParams({
@@ -2726,6 +2736,8 @@ export async function listCustomerOrders(
     items?: Record<string, unknown>[];
     pageCount?: number;
   };
+  // Warm status cache once (not per row) — stays under 3 rps budget.
+  await ensureOrderStatusCache(config).catch(() => null);
   const orders: CustomerOrderSummary[] = [];
   for (const row of data.items ?? []) {
     const mapped = await mapOrderSummary(config, row);

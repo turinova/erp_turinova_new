@@ -84,7 +84,7 @@ export function PlanCards({
         </p>
         {!wantMarkOff ? (
           <p className="mt-2 text-[13px] text-faint">
-            ProGate felirattal · {formatPlanPrice(BASE_PRICE_HUF)} / hó
+            Turinova felirattal · {formatPlanPrice(BASE_PRICE_HUF)} / hó
             {annual
               ? ` · évesen ${formatPlanPrice(annualPriceHuf("start"))}`
               : ""}
@@ -109,11 +109,11 @@ export function PlanCards({
           />
           <span className="text-[13px] leading-relaxed">
             <span className="font-semibold">
-              Saját márka — ProGate felirat nélkül (
+              Saját márka — Turinova felirat nélkül (
               {formatPlanPrice(WHITE_LABEL_PRICE_HUF)} / hó)
             </span>
             <span className="mt-0.5 block text-[12px] text-faint">
-              A widget panelén nem jelenik meg a ProGate felirat (automatikusan,
+              A widget panelén nem jelenik meg a Turinova logó (automatikusan,
               amint bekapcsoljuk a csomagot). Próba alatt a felirat mindig
               látszik.
             </span>
