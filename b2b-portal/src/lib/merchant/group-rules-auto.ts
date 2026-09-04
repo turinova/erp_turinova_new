@@ -221,7 +221,7 @@ export async function runGroupRulesForShop(opts: {
           orgId: opts.organizationId,
           actorUserId: null,
           dryRun: false,
-          maxCustomers: opts.maxCustomers ?? 40,
+          maxCustomers: opts.maxCustomers ?? 120,
           onlyCustomerInnerIds: opts.onlyCustomerInnerIds,
         }),
     );
@@ -253,7 +253,7 @@ async function claimAndRun(): Promise<{
     shopId: shop.id,
     organizationId: shop.organization_id,
     shopName: shop.shoprenter_shop_name,
-    maxCustomers: 40,
+    maxCustomers: 120,
   });
 
   if (result.error) {

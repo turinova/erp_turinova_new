@@ -6,6 +6,10 @@ import {
 import { withTenant } from "@/lib/db";
 import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
 import {
+  listCustomersFromMirror,
+  shopCustomersMirrorReady,
+} from "@/lib/merchant/customer-list-from-db";
+import {
   mapLifetimeSpendByInnerId,
   searchShopCustomerInnerIds,
 } from "@/lib/merchant/customer-spend";
@@ -96,9 +100,7 @@ function sortBySpent(
 }
 
 /**
- * SR only pages unfiltered customers. For partners/newcomers/group we scan
- * forward until this portal page is full (cap SR pages to avoid 429).
- * When sorting by spend, collect a larger pool then sort + slice.
+ * SR fallback scan. Prefer listCustomersFromMirror for partners/newcomers.
  */
 async function listFilteredPage(opts: {
   config: Parameters<typeof listRecentCustomers>[0];
@@ -135,7 +137,7 @@ async function listFilteredPage(opts: {
   const collected: MappedCustomer[] = [];
   let srPage = 0;
   let srPageCount = 1;
-  const maxSrPages = opts.sort ? 20 : 20;
+  const maxSrPages = opts.sort ? 40 : 40;
   const srLimit = 50;
 
   while (
@@ -161,7 +163,6 @@ async function listFilteredPage(opts: {
   }
 
   if (opts.sort) {
-    // Spend attached later in route; return pool for enrich+sort+slice
     return { customers: collected, pageCount: 1 };
   }
 
@@ -193,7 +194,7 @@ async function enrichSpent(
   );
   return rows.map((r) => ({
     ...r,
-    totalSpent: spend.get(r.innerId) ?? 0,
+    totalSpent: spend.get(r.innerId) ?? r.totalSpent ?? 0,
   }));
 }
 
@@ -237,6 +238,56 @@ export async function GET(req: Request) {
         const defaultIds = new Set(
           srGroups.filter((g) => g.isDefault).map((g) => g.innerId),
         );
+        const groupNameById = new Map(
+          srGroups.map((g) => [g.innerId, g.name] as const),
+        );
+
+        const preferMirror =
+          filter === "partners" ||
+          filter === "newcomers" ||
+          (groupInnerId != null && Number.isFinite(groupInnerId));
+
+        // DB-first: teljes partner / új / csoport lista (SR scan limit nélkül)
+        if (
+          preferMirror &&
+          (await shopCustomersMirrorReady(client, loaded.shopId))
+        ) {
+          const mirrored = await listCustomersFromMirror(
+            client,
+            loaded.shopId,
+            {
+              filter,
+              groupInnerId: Number.isFinite(groupInnerId) ? groupInnerId : null,
+              defaultGroupIds: [...defaultIds],
+              groupNameById,
+              page: q ? 0 : page,
+              limit: q ? Math.min(50, Math.max(limit, 25)) : limit,
+              sort,
+              q: q || undefined,
+            },
+          );
+          if (mirrored) {
+            let customers = mirrored.customers as MappedCustomer[];
+            if (!sort) {
+              customers = await enrichSpent(client, loaded.shopId, customers);
+            }
+            return {
+              shopId: loaded.shopId,
+              defaultGroupIds: [...defaultIds],
+              filter,
+              sort,
+              groupInnerId: Number.isFinite(groupInnerId) ? groupInnerId : null,
+              page: q ? 0 : page,
+              pageCount: mirrored.pageCount,
+              total: mirrored.total,
+              limit,
+              source: "db" as const,
+              customers: q
+                ? customers.slice(0, Math.min(50, limit))
+                : customers,
+            };
+          }
+        }
 
         if (q) {
           const found = await searchCustomers(loaded.config, q, {
@@ -265,6 +316,8 @@ export async function GET(req: Request) {
           );
           if (Number.isFinite(groupInnerId) && groupInnerId != null) {
             mapped = mapped.filter((c) => c.groupInnerId === groupInnerId);
+          } else if (filter === "partners" || filter === "newcomers") {
+            mapped = mapped.filter((c) => matchesFilter(c, filter, null));
           }
           mapped = await enrichSpent(client, loaded.shopId, mapped);
           mapped = sortBySpent(mapped, sort);
@@ -277,6 +330,7 @@ export async function GET(req: Request) {
             page: 0,
             pageCount: 1,
             limit,
+            source: "live" as const,
             customers: mapped.slice(0, Math.min(50, limit)),
           };
         }
@@ -315,6 +369,7 @@ export async function GET(req: Request) {
           page,
           pageCount,
           limit,
+          source: "live" as const,
           customers,
         };
       },

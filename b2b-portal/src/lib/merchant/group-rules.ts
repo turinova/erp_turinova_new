@@ -664,7 +664,106 @@ function fromMatches(rule: GroupRuleDto, customer: SrCustomer): boolean {
 }
 
 /**
- * Scan recent SR customers; return hits (dry) or apply moves.
+ * Candidate inner IDs from shop_customers (+ recent order facts),
+ * prioritized by latest order / last_seen — so fresh buyers are evaluated
+ * even if they are not in Shoprenter's first "recent" pages.
+ */
+async function listCandidateInnerIdsFromMirror(
+  client: PoolClient,
+  shopId: string,
+  limit: number,
+): Promise<number[]> {
+  const cap = Math.min(300, Math.max(10, limit));
+  try {
+    const res = await query<{ sr_customer_inner_id: number }>(
+      client,
+      `with recent_orders as (
+         select sr_customer_inner_id,
+                max(date_created) as last_order_at
+           from shop_order_facts
+          where shop_id = $1
+            and sr_customer_inner_id is not null
+            and date_created >= now() - interval '120 days'
+          group by sr_customer_inner_id
+       )
+       select c.sr_customer_inner_id
+         from shop_customers c
+         left join recent_orders r
+           on r.sr_customer_inner_id = c.sr_customer_inner_id
+        where c.shop_id = $1
+          and c.sr_status = 'active'
+          and coalesce(c.skip_auto_group_move, false) = false
+        order by coalesce(r.last_order_at, c.last_seen_at) desc nulls last,
+                 c.sr_customer_inner_id desc
+        limit $2`,
+      [shopId, cap],
+    );
+    return res.rows
+      .map((r) => Number(r.sr_customer_inner_id))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  } catch (err) {
+    // shop_order_facts or skip column may be missing — simpler query
+    try {
+      const res = await query<{ sr_customer_inner_id: number }>(
+        client,
+        `select sr_customer_inner_id
+           from shop_customers
+          where shop_id = $1
+            and sr_status = 'active'
+            and coalesce(skip_auto_group_move, false) = false
+          order by last_seen_at desc nulls last, sr_customer_inner_id desc
+          limit $2`,
+        [shopId, cap],
+      );
+      return res.rows
+        .map((r) => Number(r.sr_customer_inner_id))
+        .filter((n) => Number.isFinite(n) && n > 0);
+    } catch (err2) {
+      console.warn("[group-rules] listCandidateInnerIdsFromMirror", err2);
+      return [];
+    }
+  }
+}
+
+async function hydrateSrCustomers(
+  config: ShoprenterConfig,
+  innerIds: number[],
+  srGroups: SrCustomerGroup[],
+  errors: string[],
+): Promise<SrCustomer[]> {
+  const out: SrCustomer[] = [];
+  const seen = new Set<number>();
+  const concurrency = 3;
+
+  for (let i = 0; i < innerIds.length; i += concurrency) {
+    if (i > 0) await sleep(220);
+    const batch = innerIds.slice(i, i + concurrency);
+    const results = await Promise.all(
+      batch.map(async (innerId) => {
+        if (seen.has(innerId)) return null;
+        seen.add(innerId);
+        try {
+          return await getCustomerByInnerId(config, innerId, {
+            groups: srGroups,
+          });
+        } catch (e) {
+          errors.push(
+            `#${innerId}: ${e instanceof Error ? e.message : "vevő hiba"}`,
+          );
+          return null;
+        }
+      }),
+    );
+    for (const c of results) {
+      if (c) out.push(c);
+    }
+  }
+  return out;
+}
+
+/**
+ * Evaluate group rules: DB-first candidates (recent orders / last_seen),
+ * SR recent list only as fallback. Return hits (dry) or apply moves.
  */
 export async function evaluateGroupRules(opts: {
   client: PoolClient;
@@ -684,6 +783,7 @@ export async function evaluateGroupRules(opts: {
   skippedCooldown: number;
   skippedGrace: number;
   errors: string[];
+  candidateSource?: "targeted" | "mirror" | "live";
 }> {
   await ensurePartnerGroupRulesSchema();
   const rules = (await listGroupRules(opts.client, opts.shopId)).filter(
@@ -697,6 +797,7 @@ export async function evaluateGroupRules(opts: {
   let skippedCooldown = 0;
   let skippedGrace = 0;
   let scanned = 0;
+  let candidateSource: "targeted" | "mirror" | "live" = "live";
 
   if (rules.length === 0) {
     return {
@@ -707,6 +808,7 @@ export async function evaluateGroupRules(opts: {
       skippedCooldown: 0,
       skippedGrace: 0,
       errors,
+      candidateSource,
     };
   }
 
@@ -726,38 +828,56 @@ export async function evaluateGroupRules(opts: {
   const onlyIds = (opts.onlyCustomerInnerIds || [])
     .map(Number)
     .filter((n) => Number.isFinite(n) && n > 0);
+  const maxCustomers = Math.min(
+    200,
+    Math.max(20, opts.maxCustomers ?? 120),
+  );
 
   if (onlyIds.length > 0) {
-    for (const innerId of onlyIds.slice(0, 5)) {
-      try {
-        const c = await getCustomerByInnerId(opts.config, innerId, {
+    candidateSource = "targeted";
+    const hydrated = await hydrateSrCustomers(
+      opts.config,
+      [...new Set(onlyIds)].slice(0, 50),
+      srGroups,
+      errors,
+    );
+    candidates.push(...hydrated);
+  } else {
+    const mirrorIds = await listCandidateInnerIdsFromMirror(
+      opts.client,
+      opts.shopId,
+      maxCustomers,
+    );
+    if (mirrorIds.length > 0) {
+      candidateSource = "mirror";
+      const hydrated = await hydrateSrCustomers(
+        opts.config,
+        mirrorIds.slice(0, maxCustomers),
+        srGroups,
+        errors,
+      );
+      candidates.push(...hydrated);
+    }
+
+    // Fallback / top-up from SR recent if mirror thin
+    if (candidates.length < Math.min(25, maxCustomers)) {
+      if (mirrorIds.length === 0) candidateSource = "live";
+      const seen = new Set(candidates.map((c) => c.innerId));
+      for (let page = 0; page < 6 && candidates.length < maxCustomers; page++) {
+        if (page > 0) await sleep(350);
+        const listed = await listRecentCustomers(opts.config, {
+          limit: 25,
+          page,
           groups: srGroups,
         });
-        if (c) candidates.push(c);
-        await sleep(150);
-      } catch (e) {
-        errors.push(
-          `#${innerId}: ${e instanceof Error ? e.message : "vevő hiba"}`,
-        );
+        for (const c of listed.customers) {
+          if (seen.has(c.innerId)) continue;
+          seen.add(c.innerId);
+          candidates.push(c);
+          if (candidates.length >= maxCustomers) break;
+        }
+        if (page + 1 >= listed.pageCount) break;
       }
-    }
-  } else {
-    const maxCustomers = Math.min(80, Math.max(10, opts.maxCustomers ?? 40));
-    const seen = new Set<number>();
-    for (let page = 0; page < 4 && candidates.length < maxCustomers; page++) {
-      if (page > 0) await sleep(350);
-      const listed = await listRecentCustomers(opts.config, {
-        limit: 25,
-        page,
-        groups: srGroups,
-      });
-      for (const c of listed.customers) {
-        if (seen.has(c.innerId)) continue;
-        seen.add(c.innerId);
-        candidates.push(c);
-        if (candidates.length >= maxCustomers) break;
-      }
-      if (page + 1 >= listed.pageCount) break;
     }
   }
 
@@ -1062,5 +1182,6 @@ export async function evaluateGroupRules(opts: {
     skippedCooldown,
     skippedGrace,
     errors,
+    candidateSource,
   };
 }

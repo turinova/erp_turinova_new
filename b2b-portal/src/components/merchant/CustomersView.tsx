@@ -75,6 +75,8 @@ export function CustomersView() {
   const [spendSort, setSpendSort] = useState<SpendSort>("");
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [listSource, setListSource] = useState<"db" | "live" | null>(null);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [targetGroupId, setTargetGroupId] = useState<number | "">("");
   const [loading, setLoading] = useState(true);
@@ -136,15 +138,15 @@ export function CustomersView() {
       spendSort: SpendSort;
     }) => {
       const params = new URLSearchParams();
+      params.set("filter", opts.filter);
+      if (opts.groupInnerId !== "") {
+        params.set("groupInnerId", String(opts.groupInnerId));
+      }
       if (opts.query.trim()) {
         params.set("q", opts.query.trim());
       } else {
-        params.set("filter", opts.filter);
         params.set("page", String(opts.page));
         params.set("limit", "25");
-        if (opts.groupInnerId !== "") {
-          params.set("groupInnerId", String(opts.groupInnerId));
-        }
       }
       if (opts.spendSort) params.set("sort", opts.spendSort);
       const res = await fetch(`/api/merchant/customers?${params}`);
@@ -152,6 +154,14 @@ export function CustomersView() {
       if (!res.ok) throw new Error(data.error || "Vevők betöltése sikertelen");
       setList(data.customers || []);
       setPageCount(Math.max(1, Number(data.pageCount) || 1));
+      setTotalCount(
+        typeof data.total === "number" && Number.isFinite(data.total)
+          ? data.total
+          : null,
+      );
+      setListSource(
+        data.source === "db" || data.source === "live" ? data.source : null,
+      );
     },
     [],
   );
@@ -438,6 +448,18 @@ export function CustomersView() {
             <p className="text-[15px] font-semibold tracking-tight text-text">
               Vevők
             </p>
+            {totalCount != null && !q.trim() ? (
+              <p className="mt-0.5 text-[11px] text-faint">
+                {totalCount}{" "}
+                {filter === "partners"
+                  ? "partner"
+                  : filter === "newcomers"
+                    ? "új"
+                    : "vevő"}
+                {listSource === "db" ? " · teljes tükörlista" : ""}
+                {pageCount > 1 ? ` · oldal ${page + 1}/${pageCount}` : ""}
+              </p>
+            ) : null}
           </div>
 
           {gate?.overCap ? (
@@ -799,6 +821,7 @@ export function CustomersView() {
           </button>
           <p className="text-[12px] text-faint">
             Oldal {page + 1} / {pageCount}
+            {totalCount != null ? ` · ${totalCount} összesen` : ""}
           </p>
           <button
             type="button"

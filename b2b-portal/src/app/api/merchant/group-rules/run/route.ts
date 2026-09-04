@@ -9,18 +9,30 @@ import { evaluateGroupRules } from "@/lib/merchant/group-rules";
 import { loadMerchantShoprenterConfig } from "@/lib/merchant/customer-group-map";
 
 /**
- * POST { dryRun?: boolean }
+ * POST { dryRun?: boolean, customerInnerIds?: number[], maxCustomers?: number }
  * dryRun=true (default): csak listázza, kik lépnének szintet.
  * dryRun=false: ténylegesen átrak SR-be.
+ * customerInnerIds: célzott kiértékelés (pl. egy friss vevő).
  */
 export async function POST(req: Request) {
   const auth = await requireMerchantApi();
   if (isErrorResponse(auth)) return auth;
 
   let dryRun = true;
+  let customerInnerIds: number[] | undefined;
+  let maxCustomers = 120;
   try {
     const body = await req.json();
     if (body && typeof body.dryRun === "boolean") dryRun = body.dryRun;
+    if (body && Array.isArray(body.customerInnerIds)) {
+      customerInnerIds = body.customerInnerIds
+        .map((n: unknown) => Number(n))
+        .filter((n: number) => Number.isFinite(n) && n > 0)
+        .slice(0, 50);
+    }
+    if (body && Number.isFinite(Number(body.maxCustomers))) {
+      maxCustomers = Math.min(200, Math.max(20, Number(body.maxCustomers)));
+    }
   } catch {
     /* default dryRun */
   }
@@ -46,10 +58,18 @@ export async function POST(req: Request) {
           orgId: auth.activeOrganizationId!,
           actorUserId: dryRun ? null : auth.userId,
           dryRun,
-          maxCustomers: 40,
+          maxCustomers,
+          onlyCustomerInnerIds: customerInnerIds,
         });
       },
     );
+
+    const sourceLabel =
+      result.candidateSource === "mirror"
+        ? "tükör+rendelés prioritás"
+        : result.candidateSource === "targeted"
+          ? "célzott vevők"
+          : "élő Shoprenter recent";
 
     return NextResponse.json({
       ok: true,
@@ -62,6 +82,7 @@ export async function POST(req: Request) {
         : result.applied
           ? `${result.applied} vevő átrakva.`
           : "Senki sem került át.",
+      sourceLabel,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";

@@ -3189,3 +3189,129 @@
     opacity: 0;
   }
 }
+
+/* —— Hamarosan / coming soon placeholder —— */
+.pg-soon {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 50% -10%, #dbeafe 0%, transparent 55%),
+    radial-gradient(90% 60% at 100% 100%, #e8f1fb 0%, transparent 45%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.pg-soon-atmosphere {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.5;
+}
+
+.pg-soon-main {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: clamp(2rem, 6vw, 4rem) 1.5rem;
+  max-width: 36rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.pg-soon-brand {
+  margin-bottom: clamp(1.75rem, 4vw, 2.5rem);
+  animation: pg-soon-in 0.7s ease both;
+}
+
+.pg-soon-logo {
+  height: clamp(48px, 8vw, 72px) !important;
+  width: auto;
+}
+
+.pg-soon-title {
+  margin: 0 0 0.65rem;
+  font-size: clamp(2rem, 5vw, 2.75rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: var(--pg-ink);
+  animation: pg-soon-in 0.7s ease 0.08s both;
+}
+
+.pg-soon-lead {
+  margin: 0 0 1.75rem;
+  font-size: clamp(1rem, 2.2vw, 1.125rem);
+  line-height: 1.5;
+  color: var(--pg-muted);
+  max-width: 28rem;
+  animation: pg-soon-in 0.7s ease 0.14s both;
+}
+
+.pg-soon-contact {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  animation: pg-soon-in 0.7s ease 0.2s both;
+}
+
+.pg-soon-contact a {
+  color: var(--pg-accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease, color 0.2s ease;
+  cursor: pointer;
+}
+
+.pg-soon-contact a:hover {
+  color: var(--pg-accent-hover);
+  border-bottom-color: currentColor;
+}
+
+.pg-soon-sep {
+  color: var(--pg-faint);
+  user-select: none;
+}
+
+.pg-soon-foot {
+  position: relative;
+  z-index: 1;
+  padding: 1.25rem 1.5rem 1.75rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--pg-faint);
+  animation: pg-soon-in 0.7s ease 0.28s both;
+}
+
+@keyframes pg-soon-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-soon-brand,
+  .pg-soon-title,
+  .pg-soon-lead,
+  .pg-soon-contact,
+  .pg-soon-foot {
+    animation: none;
+  }
+}

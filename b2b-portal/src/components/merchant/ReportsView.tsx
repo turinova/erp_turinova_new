@@ -1,113 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChannelDonut,
+  GroupBarList,
+  HealthTracker,
+  RevenueAreaChart,
+  SkuBarChart,
+} from "@/components/merchant/ReportCharts";
+import { downloadShopReportXlsx } from "@/lib/merchant/report-export";
+import type { ReportMonths, ShopReport } from "@/lib/merchant/shop-report";
 
-type ReportMonths = 3 | 6 | 12 | 24;
-
-type ShopReport = {
-  rangeMonths: ReportMonths;
-  rangeLabel: string;
-  sampleOrderCount: number;
-  truncated: boolean;
-  totals: {
-    spentFormatted: string;
-    orderCount: number;
-    aovFormatted: string;
-    deltaPercent: number | null;
-    shippingPercent: number | null;
-    discountPercent: number | null;
-  };
-  prev: {
-    spentFormatted: string;
-    orderCount: number;
-  };
-  partnerGrowth: {
-    nrrPercent: number | null;
-    sleepingCount: number;
-    partnerFingerprintCount: number;
-    activePartnersInRange: number;
-    medianDaysBetweenOrders: number | null;
-    avgSkuPerActivePartner: number | null;
-    widgetPercentOfPartner: number | null;
-    partnerWidgetSpentFormatted: string;
-  };
-  profit: {
-    revenueWithCostFormatted: string;
-    costTotalFormatted: string;
-    grossProfitFormatted: string;
-    marginPercent: number | null;
-    coveragePercent: number | null;
-    skuWithCost: number;
-    skuTotal: number;
-    note: string;
-  };
-  trend: {
-    key: string;
-    label: string;
-    spent: number;
-    spentFormatted: string;
-    orderCount: number;
-  }[];
-  mix: {
-    guestSpentFormatted: string;
-    guestPercent: number | null;
-    guestOrderCount: number;
-    guestBuyers: number;
-    newcomerSpentFormatted: string;
-    newcomerPercent: number | null;
-    newcomerOrderCount: number;
-    newcomerBuyers: number;
-    partnerSpentFormatted: string;
-    partnerPercent: number | null;
-    partnerOrderCount: number;
-    partnerBuyers: number;
-    otherSpentFormatted: string;
-    otherPercent: number | null;
-    widgetSpentFormatted: string;
-    widgetOrderCount: number;
-    widgetPercent: number | null;
-    storeSpentFormatted: string;
-    storePercent: number | null;
-  };
-  movesInRange: number;
-  activeBuyers: number;
-  groups: {
-    groupInnerId: number;
-    name: string;
-    role: string | null;
-    isDefault: boolean;
-    spentFormatted: string;
-    orderCount: number;
-    aovFormatted: string;
-    buyers: number;
-    discountPercent: number | null;
-    shippingPercent: number | null;
-    loadPercent: number | null;
-    widgetPercent: number | null;
-    nrrPercent: number | null;
-  }[];
-  topPartners: {
-    key: string;
-    name: string;
-    email: string | null;
-    customerInnerId: number | null;
-    isPartner: boolean | null;
-    orderCount: number;
-    spentFormatted: string;
-    deltaPercent: number | null;
-  }[];
-  topProducts: {
-    sku: string;
-    modelNumber: string | null;
-    name: string | null;
-    quantity: number;
-    lineRevenueFormatted: string;
-    costTotalFormatted: string | null;
-    marginPercent: number | null;
-    hasCost: boolean;
-  }[];
-};
+type ChannelFilter = "all" | "widget" | "store";
 
 const RANGE_OPTS: { months: ReportMonths; label: string }[] = [
   { months: 3, label: "3 hó" },
@@ -131,203 +36,53 @@ function pct(n: number | null) {
   return n == null ? "—" : `${n}%`;
 }
 
-function TrendBars({ trend }: { trend: ShopReport["trend"] }) {
-  if (!trend.length) {
-    return (
-      <p className="py-8 text-center text-[12px] text-faint">
-        Nincs adat a trendhez ebben a tartományban.
-      </p>
-    );
-  }
-  const max = Math.max(...trend.map((t) => t.spent), 1);
-  const plotH = 128;
-  return (
-    <div className="flex items-end gap-1">
-      {trend.map((t) => {
-        const h =
-          t.spent <= 0
-            ? 0
-            : Math.max(3, Math.round((t.spent / max) * plotH));
-        const monthShort =
-          t.label.replace(/\s*20\d{2}/, "").trim() || t.label;
-        return (
-          <div
-            key={t.key}
-            className="group relative flex min-w-0 flex-1 flex-col items-center"
-          >
-            <div
-              className="flex w-full max-w-[36px] items-end justify-center"
-              style={{ height: plotH }}
-            >
-              <div
-                className="w-full cursor-default bg-text transition-opacity group-hover:opacity-80"
-                style={{ height: h }}
-                aria-label={`${t.label}: ${t.spentFormatted}, ${t.orderCount} rendelés`}
-              />
-            </div>
-            <p className="mt-1.5 w-full truncate text-center text-[9px] font-medium text-faint">
-              {monthShort}
-            </p>
-            {/* Hover érték — natív title helyett jól látható */}
-            <div
-              className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 hidden w-max max-w-[160px] -translate-x-1/2 border-[1.5px] border-line-strong bg-surface px-2 py-1.5 text-left shadow-[0_4px_12px_rgba(0,0,0,.12)] group-hover:block"
-              role="tooltip"
-            >
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
-                {t.label}
-              </p>
-              <p className="mt-0.5 text-[13px] font-semibold tabular-nums text-text">
-                {t.spentFormatted}
-              </p>
-              <p className="text-[11px] text-faint">
-                {t.orderCount} rendelés
-              </p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+function emptyWatchlist(): ShopReport["watchlist"] {
+  return { sleeping: [], declining: [] };
 }
 
-function MixBar({
-  leftLabel,
-  leftPct,
-  rightLabel,
-  rightPct,
-}: {
-  leftLabel: string;
-  leftPct: number | null;
-  rightLabel: string;
-  rightPct: number | null;
-}) {
-  const l = leftPct ?? 0;
-  const r = rightPct ?? 0;
-  const sum = l + r;
-  const lw = sum > 0 ? Math.round((l / sum) * 100) : 50;
-  return (
-    <div>
-      <div className="flex h-2 w-full overflow-hidden border border-line-strong">
-        <div className="bg-text" style={{ width: `${lw}%` }} />
-        <div className="bg-surface-2" style={{ width: `${100 - lw}%` }} />
-      </div>
-      <div className="mt-1.5 flex justify-between gap-2 text-[11px]">
-        <span className="font-medium text-text">
-          {leftLabel} {leftPct != null ? `${leftPct}%` : "—"}
-        </span>
-        <span className="font-medium text-faint">
-          {rightLabel} {rightPct != null ? `${rightPct}%` : "—"}
-        </span>
-      </div>
-    </div>
-  );
+function emptyPartnerTotals(report: ShopReport): ShopReport["partnerTotals"] {
+  return {
+    spent: report.mix.partnerSpent,
+    spentFormatted: report.mix.partnerSpentFormatted,
+    orderCount: report.mix.partnerOrderCount,
+    aov:
+      report.mix.partnerOrderCount > 0
+        ? Math.round(report.mix.partnerSpent / report.mix.partnerOrderCount)
+        : 0,
+    aovFormatted:
+      report.mix.partnerOrderCount > 0
+        ? report.mix.partnerSpentFormatted
+        : "—",
+    buyers: report.mix.partnerBuyers,
+  };
 }
 
-function FunnelMix({
-  guestPct,
-  guestSpent,
-  guestMeta,
-  newcomerPct,
-  newcomerSpent,
-  newcomerMeta,
-  partnerPct,
-  partnerSpent,
-  partnerMeta,
-  otherPct,
-  otherSpent,
-}: {
-  guestPct: number | null;
-  guestSpent: string;
-  guestMeta: string;
-  newcomerPct: number | null;
-  newcomerSpent: string;
-  newcomerMeta: string;
-  partnerPct: number | null;
-  partnerSpent: string;
-  partnerMeta: string;
-  otherPct: number | null;
-  otherSpent: string;
-}) {
-  const g = guestPct ?? 0;
-  const n = newcomerPct ?? 0;
-  const p = partnerPct ?? 0;
-  const o = otherPct ?? 0;
-  const sum = g + n + p + o;
-  const w = (x: number) => (sum > 0 ? Math.max(x > 0 ? 2 : 0, Math.round((x / sum) * 100)) : 0);
-  let gw = w(g);
-  let nw = w(n);
-  let pw = w(p);
-  let ow = w(o);
-  const totalW = gw + nw + pw + ow;
-  if (totalW > 100 && pw > 0) pw = Math.max(0, pw - (totalW - 100));
-
-  return (
-    <div>
-      <div className="flex h-2.5 w-full overflow-hidden border border-line-strong">
-        {gw > 0 ? (
-          <div
-            className="bg-[#9a9a9a]"
-            style={{ width: `${gw}%` }}
-            title={`Vendég ${guestPct}%`}
-          />
-        ) : null}
-        {nw > 0 ? (
-          <div
-            className="bg-[#5c5c5c]"
-            style={{ width: `${nw}%` }}
-            title={`Új ${newcomerPct}%`}
-          />
-        ) : null}
-        {pw > 0 ? (
-          <div
-            className="bg-text"
-            style={{ width: `${pw}%` }}
-            title={`Partner ${partnerPct}%`}
-          />
-        ) : null}
-        {ow > 0 ? (
-          <div
-            className="bg-surface-2"
-            style={{ width: `${ow}%` }}
-            title={`Egyéb ${otherPct}%`}
-          />
-        ) : null}
-      </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
-        <div>
-          <p className="font-semibold text-text">
-            Vendég {pct(guestPct)}
-          </p>
-          <p className="tabular-nums">{guestSpent}</p>
-          <p className="text-faint">{guestMeta}</p>
-        </div>
-        <div>
-          <p className="font-semibold text-text">
-            Új / alap {pct(newcomerPct)}
-          </p>
-          <p className="tabular-nums">{newcomerSpent}</p>
-          <p className="text-faint">{newcomerMeta}</p>
-        </div>
-        <div>
-          <p className="font-semibold text-text">
-            Partner {pct(partnerPct)}
-          </p>
-          <p className="tabular-nums">{partnerSpent}</p>
-          <p className="text-faint">{partnerMeta}</p>
-        </div>
-      </div>
-      {otherPct != null && otherPct > 0 ? (
-        <p className="mt-2 text-[10px] text-faint">
-          Egyéb (regisztrált, csoport ismeretlen): {otherSpent} ·{" "}
-          {pct(otherPct)}
-        </p>
-      ) : null}
-    </div>
-  );
+function normalizeReport(raw: ShopReport): ShopReport {
+  const trend = (raw.trend || []).map((t) => ({
+    ...t,
+    partnerSpent: t.partnerSpent ?? 0,
+    newcomerSpent: t.newcomerSpent ?? 0,
+    guestSpent: t.guestSpent ?? 0,
+    otherSpent: t.otherSpent ?? 0,
+  }));
+  return {
+    ...raw,
+    trend,
+    partnerTotals: raw.partnerTotals ?? emptyPartnerTotals(raw),
+    watchlist: raw.watchlist ?? emptyWatchlist(),
+    topPartners: (raw.topPartners || []).map((p) => ({
+      ...p,
+      groupInnerId: p.groupInnerId ?? null,
+    })),
+  };
 }
 
 export function ReportsView() {
   const [months, setMonths] = useState<ReportMonths>(6);
+  const [channel, setChannel] = useState<ChannelFilter>("all");
+  const [groupId, setGroupId] = useState<number | "all">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [report, setReport] = useState<ShopReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -336,6 +91,7 @@ export function ReportsView() {
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [coverageHint, setCoverageHint] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async (m: ReportMonths) => {
     setLoading(true);
@@ -356,7 +112,7 @@ export function ReportsView() {
         coverageHint?: string;
       };
       if (!res.ok) throw new Error(json.error || "Riport sikertelen");
-      setReport(json.report as ShopReport);
+      setReport(normalizeReport(json.report as ShopReport));
       setSource(json.source ?? "live");
       setSyncedAt(json.syncedAt ?? null);
       if (json.liveFallback && json.coverageHint) {
@@ -377,7 +133,7 @@ export function ReportsView() {
             report?: ShopReport;
           };
           if (pr.ok && pj.report) {
-            setReport(pj.report);
+            setReport(normalizeReport(pj.report));
           }
         } catch {
           /* summary already shown */
@@ -399,11 +155,7 @@ export function ReportsView() {
     setError(null);
     try {
       const res = await fetch("/api/merchant/reports", { method: "POST" });
-      const json = (await res.json()) as {
-        ok?: boolean;
-        error?: string;
-        message?: string;
-      };
+      const json = (await res.json()) as { ok?: boolean; error?: string };
       if (!res.ok) throw new Error(json.error || "Sync sikertelen");
       await load(months);
     } catch (e) {
@@ -417,6 +169,48 @@ export function ReportsView() {
     void load(months);
   }, [load, months]);
 
+  const filteredGroups = useMemo(() => {
+    if (!report) return [];
+    if (groupId === "all") return report.groups;
+    return report.groups.filter((g) => g.groupInnerId === groupId);
+  }, [report, groupId]);
+
+  const filteredPartners = useMemo(() => {
+    if (!report) return [];
+    let rows = report.topPartners;
+    if (groupId !== "all") {
+      rows = rows.filter((p) => p.groupInnerId === groupId);
+    }
+    return rows;
+  }, [report, groupId]);
+
+  const dateFilteredTrend = useMemo(() => {
+    if (!report) return [];
+    if (!dateFrom && !dateTo) return report.trend;
+    return report.trend.filter((t) => {
+      const key = t.key; // YYYY-MM
+      if (dateFrom && key < dateFrom.slice(0, 7)) return false;
+      if (dateTo && key > dateTo.slice(0, 7)) return false;
+      return true;
+    });
+  }, [report, dateFrom, dateTo]);
+
+  function onExport() {
+    if (!report) return;
+    setExporting(true);
+    try {
+      const filtered: ShopReport = {
+        ...report,
+        groups: filteredGroups,
+        topPartners: filteredPartners,
+        trend: dateFilteredTrend,
+      };
+      downloadShopReportXlsx(filtered);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-4 md:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -425,49 +219,125 @@ export function ReportsView() {
             Riport
           </h1>
           <p className="mt-0.5 text-[12px] text-faint">
-            Bevétel · ki rendelt · mit · mennyiért
+            Partner egészség · widget ROI · csoport · SKU
             {source === "db" && syncedAt
-              ? ` · DB tükör · frissítve ${new Date(syncedAt).toLocaleString("hu-HU")}`
+              ? ` · DB tükör · ${new Date(syncedAt).toLocaleString("hu-HU")}`
               : source === "live"
                 ? " · élő Shoprenter"
                 : ""}
           </p>
           {coverageHint ? (
             <p className="mt-1 text-[11px] text-warn">
-              Élő Shoprenter (tükör nem elég friss / mély). {coverageHint}
+              Élő Shoprenter (tükör nem elég friss). {coverageHint}
             </p>
           ) : null}
         </div>
-          <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex gap-0.5 bg-surface-2 p-0.5">
-            {RANGE_OPTS.map((r) => (
-              <button
-                key={r.months}
-                type="button"
-                onClick={() => setMonths(r.months)}
-                className={
-                  months === r.months
-                    ? "h-8 cursor-pointer bg-surface px-3 text-[12px] font-semibold text-text"
-                    : "h-8 cursor-pointer px-3 text-[12px] font-medium text-faint hover:text-text"
-                }
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={!report || exporting}
+            onClick={onExport}
+            className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold disabled:opacity-40"
+          >
+            {exporting ? "…" : "Excel export"}
+          </button>
           {source !== "db" || coverageHint ? (
             <button
               type="button"
               disabled={loading || syncing}
               onClick={() => void kickSync()}
               className="h-8 cursor-pointer border-[1.5px] border-line-strong bg-surface px-3 text-[12px] font-semibold disabled:opacity-40"
-              title="Rendelési adatok betöltése a boltból"
             >
               {syncing ? "…" : "Adatok betöltése"}
             </button>
           ) : null}
         </div>
       </div>
+
+      {/* Filter bar */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-[1.5px] border-line-strong bg-surface p-2">
+        <div className="inline-flex gap-0.5 bg-surface-2 p-0.5">
+          {RANGE_OPTS.map((r) => (
+            <button
+              key={r.months}
+              type="button"
+              onClick={() => setMonths(r.months)}
+              className={
+                months === r.months
+                  ? "h-8 cursor-pointer bg-surface px-3 text-[12px] font-semibold text-text"
+                  : "h-8 cursor-pointer px-3 text-[12px] font-medium text-faint hover:text-text"
+              }
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1 text-[11px] text-faint">
+          Tól
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-8 border-[1.5px] border-line bg-surface px-2 text-[12px] text-text"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-faint">
+          Ig
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-8 border-[1.5px] border-line bg-surface px-2 text-[12px] text-text"
+          />
+        </label>
+        <select
+          value={channel}
+          onChange={(e) => setChannel(e.target.value as ChannelFilter)}
+          className="h-8 cursor-pointer border-[1.5px] border-line bg-surface px-2 text-[12px]"
+          aria-label="Csatorna"
+        >
+          <option value="all">Minden csatorna</option>
+          <option value="widget">Csak widget</option>
+          <option value="store">Csak bolt</option>
+        </select>
+        <select
+          value={groupId === "all" ? "all" : String(groupId)}
+          onChange={(e) =>
+            setGroupId(
+              e.target.value === "all" ? "all" : Number(e.target.value),
+            )
+          }
+          className="h-8 min-w-[140px] cursor-pointer border-[1.5px] border-line bg-surface px-2 text-[12px]"
+          aria-label="Csoport"
+        >
+          <option value="all">Minden csoport</option>
+          {(report?.groups || []).map((g) => (
+            <option key={g.groupInnerId} value={g.groupInnerId}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+        {(dateFrom || dateTo || channel !== "all" || groupId !== "all") && (
+          <button
+            type="button"
+            className="h-8 cursor-pointer px-2 text-[11px] font-medium text-faint hover:text-text"
+            onClick={() => {
+              setDateFrom("");
+              setDateTo("");
+              setChannel("all");
+              setGroupId("all");
+            }}
+          >
+            Szűrők törlése
+          </button>
+        )}
+      </div>
+      {channel !== "all" ? (
+        <p className="mt-1 text-[11px] text-faint">
+          Csatorna-szűrő: a mix / widget blokkok kiemelése — a táblák a teljes
+          mintát mutatják (csoport-szűrővel).
+        </p>
+      ) : null}
 
       {error ? (
         <p className="mt-4 border-[1.5px] border-danger bg-surface px-3 py-2 text-[13px] text-danger">
@@ -489,10 +359,89 @@ export function ReportsView() {
 
       {report ? (
         <div className="mt-4 space-y-4">
-          <div className="grid grid-cols-1 gap-0 border-[1.5px] border-line-strong sm:grid-cols-3">
+          {/* Hero KPIs — B2B first */}
+          <div className="grid grid-cols-2 gap-0 border-[1.5px] border-line-strong sm:grid-cols-3 lg:grid-cols-6">
             {[
               {
-                label: "Bevétel",
+                label: "Partner bevétel",
+                value: report.partnerTotals.spentFormatted,
+                sub: (
+                  <span className="text-faint">
+                    {report.partnerTotals.orderCount} rend. ·{" "}
+                    {pct(report.mix.partnerPercent)}
+                  </span>
+                ),
+              },
+              {
+                label: "Partner AOV",
+                value: report.partnerTotals.aovFormatted,
+                sub: (
+                  <span className="text-faint">
+                    Bolt AOV: {report.totals.aovFormatted}
+                  </span>
+                ),
+              },
+              {
+                label: "Aktív partnerek",
+                value: String(report.partnerGrowth.activePartnersInRange),
+                sub: (
+                  <span className="text-faint">
+                    / {report.partnerGrowth.partnerFingerprintCount} össz.
+                  </span>
+                ),
+              },
+              {
+                label: "NRR",
+                value: pct(report.partnerGrowth.nrrPercent),
+                sub: (
+                  <span className="text-faint">
+                    Partner visszatérő költés
+                  </span>
+                ),
+              },
+              {
+                label: "Alvó partnerek",
+                value: String(report.partnerGrowth.sleepingCount),
+                sub: (
+                  <span className="text-faint">
+                    Nincs rendelés a tartományban
+                  </span>
+                ),
+              },
+              {
+                label: "Widget @ partner",
+                value: pct(report.partnerGrowth.widgetPercentOfPartner),
+                sub: (
+                  <span className="text-faint">
+                    {report.partnerGrowth.partnerWidgetSpentFormatted}
+                  </span>
+                ),
+              },
+            ].map((k, i) => (
+              <div
+                key={k.label}
+                className={`min-w-0 bg-surface px-3 py-3 ${
+                  i > 0 ? "border-t-[1.5px] border-line-strong sm:border-t-0" : ""
+                } ${i % 2 === 1 ? "border-l-[1.5px] border-line-strong" : ""} ${
+                  i >= 2 ? "sm:border-l-[1.5px]" : ""
+                } lg:border-l-[1.5px] lg:border-t-0 ${i === 0 ? "lg:border-l-0" : ""}`}
+              >
+                <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-faint">
+                  {k.label}
+                </p>
+                <p className="mt-1 truncate text-[18px] font-semibold tabular-nums tracking-tight text-text">
+                  {k.value}
+                </p>
+                <p className="mt-1 truncate text-[10px]">{k.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Secondary totals */}
+          <div className="grid grid-cols-1 gap-0 border-[1.5px] border-line-strong sm:grid-cols-4">
+            {[
+              {
+                label: "Összes bevétel",
                 value: report.totals.spentFormatted,
                 sub: (
                   <span className={deltaClass(report.totals.deltaPercent)}>
@@ -506,18 +455,32 @@ export function ReportsView() {
                 value: String(report.totals.orderCount),
                 sub: (
                   <span className="text-faint">
-                    Előző: {report.prev.orderCount} · vevő:{" "}
-                    {report.activeBuyers}
+                    Vevő: {report.activeBuyers}
                   </span>
                 ),
               },
               {
-                label: "AOV",
-                value: report.totals.aovFormatted,
+                label: "Árrés",
+                value: productsLoading
+                  ? "…"
+                  : pct(report.profit.marginPercent),
                 sub: (
                   <span className="text-faint">
-                    Száll. {report.totals.shippingPercent ?? 0}% · kedv.{" "}
-                    {report.totals.discountPercent ?? 0}%
+                    {report.profit.grossProfitFormatted} · lefed.{" "}
+                    {pct(report.profit.coveragePercent)}
+                  </span>
+                ),
+              },
+              {
+                label: "Ritmus / SKU",
+                value:
+                  report.partnerGrowth.medianDaysBetweenOrders != null
+                    ? `${report.partnerGrowth.medianDaysBetweenOrders} nap`
+                    : "—",
+                sub: (
+                  <span className="text-faint">
+                    SKU/partner:{" "}
+                    {report.partnerGrowth.avgSkuPerActivePartner ?? "—"}
                   </span>
                 ),
               },
@@ -529,7 +492,7 @@ export function ReportsView() {
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
                   {k.label}
                 </p>
-                <p className="mt-1 text-[20px] font-semibold tabular-nums tracking-tight text-text">
+                <p className="mt-1 text-[16px] font-semibold tabular-nums text-text">
                   {k.value}
                 </p>
                 <p className="mt-1 text-[11px]">{k.sub}</p>
@@ -537,160 +500,203 @@ export function ReportsView() {
             ))}
           </div>
 
-          <div className="border-[1.5px] border-line-strong bg-surface p-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-[13px] font-semibold text-text">
-                Bevétel trend · {report.rangeLabel}
-              </p>
-              {report.truncated ? (
-                <p className="text-[11px] text-warn">
-                  Minta: legutóbbi ~{report.sampleOrderCount} rendelés
+          {/* Charts */}
+          <div className="grid gap-4 lg:grid-cols-5">
+            <div className="border-[1.5px] border-line-strong bg-surface p-4 lg:col-span-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-[13px] font-semibold text-text">
+                  Bevétel trend · {report.rangeLabel}
                 </p>
-              ) : (
                 <p className="text-[11px] text-faint">
-                  {report.sampleOrderCount} rendelés a mintában
+                  {report.truncated
+                    ? `Minta ~${report.sampleOrderCount}`
+                    : `${report.sampleOrderCount} rendelés`}
                 </p>
-              )}
-            </div>
-            <div className="mt-3 overflow-visible pt-14">
-              <TrendBars trend={report.trend} />
-            </div>
-          </div>
-
-          <div className="grid gap-0 border-[1.5px] border-line-strong sm:grid-cols-3">
-            {[
-              {
-                label: "Rendelési ritmus",
-                value:
-                  report.partnerGrowth.medianDaysBetweenOrders != null
-                    ? `${report.partnerGrowth.medianDaysBetweenOrders} nap`
-                    : "—",
-                sub:
-                  report.partnerGrowth.medianDaysBetweenOrders != null
-                    ? "Medián a partner-rendelések között"
-                    : "Nincs ismétlő partner (≥2 rendelés) a tartományban",
-              },
-              {
-                label: "SKU / vevő",
-                value:
-                  report.partnerGrowth.avgSkuPerActivePartner != null
-                    ? String(report.partnerGrowth.avgSkuPerActivePartner)
-                    : productsLoading
-                      ? "…"
-                      : "—",
-                sub:
-                  report.partnerGrowth.avgSkuPerActivePartner != null
-                    ? "Átlag distinct SKU / aktív partner"
-                    : productsLoading
-                      ? "Termékek betöltése…"
-                      : "Nincs partner-tétel a mintában",
-              },
-              {
-                label: "Widget @ partner",
-                value: pct(report.partnerGrowth.widgetPercentOfPartner),
-                sub: report.partnerGrowth.partnerWidgetSpentFormatted,
-              },
-            ].map((k, i) => (
-              <div
-                key={k.label}
-                className={`bg-surface px-3 py-3 ${i > 0 ? "border-t-[1.5px] border-line-strong sm:border-t-0 sm:border-l-[1.5px]" : ""}`}
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
-                  {k.label}
-                </p>
-                <p className="mt-1 text-[16px] font-semibold tabular-nums text-text">
-                  {k.value}
-                </p>
-                <p className="mt-1 text-[10px] text-faint">{k.sub}</p>
               </div>
-            ))}
+              <div className="mt-2">
+                <RevenueAreaChart trend={dateFilteredTrend} />
+              </div>
+              <p className="mt-2 text-[10px] leading-snug text-faint">
+                <span className="font-semibold text-text">Vendég</span> = nincs
+                Shoprenter fiók (checkout vendég).{" "}
+                <span className="font-semibold text-text">Új</span> = regisztrált,
+                még az alap vevőcsoportban.{" "}
+                <span className="font-semibold text-text">Partner</span> =
+                átrakva partner csoportba.
+              </p>
+            </div>
+            <div className="border-[1.5px] border-line-strong bg-surface p-4 lg:col-span-2">
+              <p className="text-[13px] font-semibold text-text">
+                Widget · Bolt
+                {channel !== "all" ? (
+                  <span className="ml-1 text-[11px] font-normal text-faint">
+                    (szűrő: {channel})
+                  </span>
+                ) : null}
+              </p>
+              <p className="mt-0.5 text-[11px] text-faint">
+                Widget fact: {report.mix.widgetOrderCount} rendelés · átrakás:{" "}
+                {report.movesInRange}
+              </p>
+              <div className="mt-3">
+                <ChannelDonut
+                  widgetPercent={
+                    channel === "store" ? 0 : report.mix.widgetPercent
+                  }
+                  storePercent={
+                    channel === "widget" ? 0 : report.mix.storePercent
+                  }
+                  widgetLabel={report.mix.widgetSpentFormatted}
+                  storeLabel={report.mix.storeSpentFormatted}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="border-[1.5px] border-line-strong bg-surface p-4">
               <p className="text-[13px] font-semibold text-text">
-                Vendég · Új · Partner
+                Partner egészség
               </p>
               <p className="mt-0.5 text-[11px] text-faint">
-                Vendég = nincs fiók · Új = alap csoport · Partner = átrakva.
-                Átrakás a periódusban: {report.movesInRange}
+                Aktív vs alvó ujjlenyomat partnerek
               </p>
               <div className="mt-3">
-                <FunnelMix
-                  guestPct={report.mix.guestPercent}
-                  guestSpent={report.mix.guestSpentFormatted}
-                  guestMeta={`${report.mix.guestOrderCount} rend. · ${report.mix.guestBuyers} vevő`}
-                  newcomerPct={report.mix.newcomerPercent}
-                  newcomerSpent={report.mix.newcomerSpentFormatted}
-                  newcomerMeta={`${report.mix.newcomerOrderCount} rend. · ${report.mix.newcomerBuyers} vevő`}
-                  partnerPct={report.mix.partnerPercent}
-                  partnerSpent={report.mix.partnerSpentFormatted}
-                  partnerMeta={`${report.mix.partnerOrderCount} rend. · ${report.mix.partnerBuyers} vevő`}
-                  otherPct={report.mix.otherPercent}
-                  otherSpent={report.mix.otherSpentFormatted}
+                <HealthTracker
+                  active={report.partnerGrowth.activePartnersInRange}
+                  sleeping={report.partnerGrowth.sleepingCount}
+                  total={report.partnerGrowth.partnerFingerprintCount}
                 />
               </div>
             </div>
-
             <div className="border-[1.5px] border-line-strong bg-surface p-4">
               <p className="text-[13px] font-semibold text-text">
-                Widget · Bolt
-              </p>
-              <p className="mt-0.5 text-[11px] text-faint">
-                Widget fact: {report.mix.widgetOrderCount} rendelés
+                Top csoportok
               </p>
               <div className="mt-3">
-                <MixBar
-                  leftLabel="Widget"
-                  leftPct={report.mix.widgetPercent}
-                  rightLabel="Bolt"
-                  rightPct={report.mix.storePercent}
-                />
-              </div>
-              <div className="mt-2 flex justify-between text-[12px] tabular-nums">
-                <span>{report.mix.widgetSpentFormatted}</span>
-                <span className="text-faint">
-                  {report.mix.storeSpentFormatted}
-                </span>
+                <GroupBarList groups={filteredGroups} />
               </div>
             </div>
           </div>
 
+          {/* Watchlist */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="border-[1.5px] border-line-strong bg-surface">
+              <div className="border-b-[1.5px] border-line-strong px-4 py-2.5">
+                <p className="text-[13px] font-semibold text-text">
+                  Figyelendő · zuhanó (≤ −20%)
+                </p>
+              </div>
+              <ul className="divide-y divide-line">
+                {report.watchlist.declining.length === 0 ? (
+                  <li className="px-4 py-6 text-center text-[12px] text-faint">
+                    Nincs jelentősen zuhanó partner.
+                  </li>
+                ) : (
+                  report.watchlist.declining.map((p) => (
+                    <li
+                      key={p.key}
+                      className="flex items-center justify-between gap-2 px-4 py-2.5 text-[12px]"
+                    >
+                      <div className="min-w-0">
+                        {p.customerInnerId != null ? (
+                          <Link
+                            href={`/vevok/${p.customerInnerId}`}
+                            className="font-semibold text-text hover:underline"
+                          >
+                            {p.name}
+                          </Link>
+                        ) : (
+                          <span className="font-semibold">{p.name}</span>
+                        )}
+                        <p className="truncate text-[10px] text-faint">
+                          {p.spentFormatted} · {p.orderCount} rend.
+                        </p>
+                      </div>
+                      <span className={deltaClass(p.deltaPercent)}>
+                        {deltaText(p.deltaPercent)}
+                      </span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+            <div className="border-[1.5px] border-line-strong bg-surface">
+              <div className="border-b-[1.5px] border-line-strong px-4 py-2.5">
+                <p className="text-[13px] font-semibold text-text">
+                  Figyelendő · alvó partnerek
+                </p>
+              </div>
+              <ul className="divide-y divide-line">
+                {report.watchlist.sleeping.length === 0 ? (
+                  <li className="px-4 py-6 text-center text-[12px] text-faint">
+                    Nincs alvó partner a listában.
+                  </li>
+                ) : (
+                  report.watchlist.sleeping.map((p) => (
+                    <li
+                      key={p.customerInnerId}
+                      className="flex items-center justify-between gap-2 px-4 py-2.5 text-[12px]"
+                    >
+                      <div className="min-w-0">
+                        <Link
+                          href={`/vevok/${p.customerInnerId}`}
+                          className="font-semibold text-text hover:underline"
+                        >
+                          {p.name}
+                        </Link>
+                        {p.email ? (
+                          <p className="truncate text-[10px] text-faint">
+                            {p.email}
+                          </p>
+                        ) : null}
+                      </div>
+                      <span className="text-[10px] font-medium text-warn">
+                        Hallgat
+                      </span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </div>
+
+          {/* Groups table */}
           <div className="border-[1.5px] border-line-strong bg-surface">
             <div className="border-b-[1.5px] border-line-strong px-4 py-2.5">
               <p className="text-[13px] font-semibold text-text">
                 Vevőcsoportok
               </p>
               <p className="text-[10px] text-faint">
-                Terhelés = kedvezmény + szállítás %
+                Terhelés = kedvezmény + szállítás % · NRR = most / előző
               </p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-[12px]">
+              <table className="w-full min-w-[800px] border-collapse text-[12px]">
                 <thead>
                   <tr className="border-b border-line bg-surface-2 text-[10px] font-semibold uppercase text-faint">
                     <th className="px-3 py-2 text-left">Csoport</th>
                     <th className="px-2 py-2 text-right">Bevétel</th>
                     <th className="px-2 py-2 text-right">AOV</th>
                     <th className="px-2 py-2 text-right">Vevő</th>
+                    <th className="px-2 py-2 text-right">NRR</th>
                     <th className="px-2 py-2 text-right">Kedv%</th>
-                    <th className="px-2 py-2 text-right">Száll%</th>
                     <th className="px-2 py-2 text-right">Terhelés</th>
                     <th className="px-3 py-2 text-right">Widget%</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {report.groups.length === 0 ? (
+                  {filteredGroups.length === 0 ? (
                     <tr>
                       <td
                         colSpan={8}
                         className="px-3 py-6 text-center text-faint"
                       >
-                        Nincs csoport-adat (ujjlenyomat / rendelés).
+                        Nincs csoport-adat.
                       </td>
                     </tr>
                   ) : (
-                    report.groups.map((g) => (
+                    filteredGroups.map((g) => (
                       <tr
                         key={g.groupInnerId}
                         className="border-b border-line"
@@ -715,10 +721,10 @@ export function ReportsView() {
                           {g.buyers}
                         </td>
                         <td className="px-2 py-2 text-right tabular-nums">
-                          {pct(g.discountPercent)}
+                          {pct(g.nrrPercent)}
                         </td>
                         <td className="px-2 py-2 text-right tabular-nums">
-                          {pct(g.shippingPercent)}
+                          {pct(g.discountPercent)}
                         </td>
                         <td className="px-2 py-2 text-right font-semibold tabular-nums">
                           {pct(g.loadPercent)}
@@ -752,38 +758,29 @@ export function ReportsView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {report.topPartners.length === 0 ? (
+                    {filteredPartners.length === 0 ? (
                       <tr>
                         <td
                           colSpan={4}
                           className="px-3 py-6 text-center text-faint"
                         >
-                          Nincs adat.
+                          Nincs partner a szűrésben.
                         </td>
                       </tr>
                     ) : (
-                      report.topPartners.map((p) => (
+                      filteredPartners.slice(0, 15).map((p) => (
                         <tr key={p.key} className="border-b border-line">
                           <td className="px-3 py-2">
                             {p.customerInnerId != null ? (
                               <Link
                                 href={`/vevok/${p.customerInnerId}`}
-                                className="font-semibold underline"
+                                className="font-semibold hover:underline"
                               >
                                 {p.name}
                               </Link>
                             ) : (
                               <span className="font-semibold">{p.name}</span>
                             )}
-                            <span className="mt-0.5 block text-[10px] text-faint">
-                              {p.isPartner === true
-                                ? "Partner"
-                                : p.isPartner === false
-                                  ? "Új / alap"
-                                  : p.customerInnerId == null
-                                    ? "Vendég"
-                                    : p.email || ""}
-                            </span>
                           </td>
                           <td className="px-2 py-2 text-right tabular-nums text-faint">
                             {p.orderCount}
@@ -809,47 +806,52 @@ export function ReportsView() {
                 <p className="text-[13px] font-semibold text-text">
                   Top termékek
                 </p>
-                <p className="text-[10px] text-faint">
-                  Db és bevétel a mintából
-                </p>
+                <p className="text-[10px] text-faint">{report.profit.note}</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[480px] border-collapse text-[12px]">
+              <div className="px-3 pt-3">
+                <SkuBarChart products={report.topProducts} />
+              </div>
+              <div className="overflow-x-auto border-t border-line">
+                <table className="w-full min-w-[420px] border-collapse text-[12px]">
                   <thead>
                     <tr className="border-b border-line bg-surface-2 text-[10px] font-semibold uppercase text-faint">
                       <th className="px-3 py-2 text-left">Termék</th>
-                      <th className="px-2 py-2 text-left">SKU</th>
-                      <th className="px-2 py-2 text-left">Gyártói</th>
                       <th className="px-2 py-2 text-right">Db</th>
-                      <th className="px-2 py-2 text-right">Bevétel</th>
+                      <th className="px-2 py-2 text-right">Árrés</th>
+                      <th className="px-3 py-2 text-right">Bevétel</th>
                     </tr>
                   </thead>
                   <tbody>
                     {report.topProducts.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={4}
                           className="px-3 py-6 text-center text-faint"
                         >
-                          Nincs tétel a mintában.
+                          {productsLoading
+                            ? "Termékek betöltése…"
+                            : "Nincs termék a mintában."}
                         </td>
                       </tr>
                     ) : (
-                      report.topProducts.map((p) => (
+                      report.topProducts.slice(0, 12).map((p) => (
                         <tr key={p.sku} className="border-b border-line">
-                          <td className="px-3 py-2 font-medium">
-                            {p.name || p.sku}
+                          <td className="px-3 py-2">
+                            <span className="font-semibold">
+                              {p.name || p.sku}
+                            </span>
+                            <span className="mt-0.5 block text-[10px] text-faint">
+                              {p.sku}
+                              {p.modelNumber ? ` · ${p.modelNumber}` : ""}
+                            </span>
                           </td>
-                          <td className="px-2 py-2 font-mono text-[11px] font-semibold">
-                            {p.sku}
-                          </td>
-                          <td className="px-2 py-2 font-mono text-[11px]">
-                            {p.modelNumber || "—"}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums font-semibold">
+                          <td className="px-2 py-2 text-right tabular-nums text-faint">
                             {p.quantity}
                           </td>
                           <td className="px-2 py-2 text-right tabular-nums">
+                            {p.hasCost ? pct(p.marginPercent) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums">
                             {p.lineRevenueFormatted}
                           </td>
                         </tr>

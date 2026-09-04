@@ -75,7 +75,37 @@ export type ShopReport = {
     spent: number;
     spentFormatted: string;
     orderCount: number;
+    partnerSpent: number;
+    newcomerSpent: number;
+    guestSpent: number;
+    otherSpent: number;
   }[];
+  /** Partner AOV a tartományban (partner szegmens). */
+  partnerTotals: {
+    spent: number;
+    spentFormatted: string;
+    orderCount: number;
+    aov: number;
+    aovFormatted: string;
+    buyers: number;
+  };
+  watchlist: {
+    sleeping: {
+      customerInnerId: number;
+      name: string;
+      email: string | null;
+    }[];
+    declining: {
+      key: string;
+      name: string;
+      email: string | null;
+      customerInnerId: number | null;
+      orderCount: number;
+      spent: number;
+      spentFormatted: string;
+      deltaPercent: number | null;
+    }[];
+  };
   mix: {
     /** Vendég = nincs SR fiók (customerInnerId) */
     guestSpent: number;
@@ -130,6 +160,7 @@ export type ShopReport = {
     name: string;
     email: string | null;
     customerInnerId: number | null;
+    groupInnerId: number | null;
     isPartner: boolean | null;
     orderCount: number;
     spent: number;
@@ -429,28 +460,27 @@ export async function buildShopReport(
         ? 100
         : null;
 
-  const byMonth = new Map<string, { spent: number; orderCount: number }>();
+  const byMonth = new Map<
+    string,
+    {
+      spent: number;
+      orderCount: number;
+      partnerSpent: number;
+      newcomerSpent: number;
+      guestSpent: number;
+      otherSpent: number;
+    }
+  >();
   for (const key of buildMonthKeys(rangeStart, now)) {
-    byMonth.set(key, { spent: 0, orderCount: 0 });
+    byMonth.set(key, {
+      spent: 0,
+      orderCount: 0,
+      partnerSpent: 0,
+      newcomerSpent: 0,
+      guestSpent: 0,
+      otherSpent: 0,
+    });
   }
-  for (const o of inRange) {
-    const t = parseOrderTime(o.dateCreated);
-    if (!t) continue;
-    const key = monthKey(t);
-    const cur = byMonth.get(key) || { spent: 0, orderCount: 0 };
-    cur.spent += spentOf(o);
-    cur.orderCount += 1;
-    byMonth.set(key, cur);
-  }
-  const trend = [...byMonth.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([key, v]) => ({
-      key,
-      label: monthLabel(key),
-      spent: v.spent,
-      spentFormatted: formatHuf(v.spent),
-      orderCount: v.orderCount,
-    }));
 
   let defaultGroupId: number | null = null;
   const groupNameById = new Map<number, string>();
@@ -466,13 +496,22 @@ export async function buildShopReport(
     query<{
       sr_customer_inner_id: number;
       sr_group_inner_id: number | null;
+      email: string | null;
+      name_snapshot: string | null;
     }>(
       client,
-      `select sr_customer_inner_id, sr_group_inner_id
+      `select sr_customer_inner_id, sr_group_inner_id, email, name_snapshot
        from shop_customers
        where shop_id = $1 and sr_status = 'active'`,
       [shopId],
-    ).catch(() => ({ rows: [] as { sr_customer_inner_id: number; sr_group_inner_id: number | null }[] })),
+    ).catch(() => ({
+      rows: [] as {
+        sr_customer_inner_id: number;
+        sr_group_inner_id: number | null;
+        email: string | null;
+        name_snapshot: string | null;
+      }[],
+    })),
     query<{
       sr_customer_inner_id: number | null;
       sum: string | null;
@@ -489,6 +528,7 @@ export async function buildShopReport(
     ).catch(() => ({ rows: [] as { sr_customer_inner_id: number | null; sum: string | null }[] })),
   ]);
 
+  const fpNameById = new Map<number, { name: string; email: string | null }>();
   for (const g of groupsResult) {
     groupNameById.set(g.innerId, g.name);
     if (g.isDefault) defaultGroupId = g.innerId;
@@ -501,6 +541,10 @@ export async function buildShopReport(
   }
   for (const row of fpResult.rows) {
     groupByInner.set(row.sr_customer_inner_id, row.sr_group_inner_id);
+    fpNameById.set(row.sr_customer_inner_id, {
+      name: row.name_snapshot?.trim() || row.email || `Vevő #${row.sr_customer_inner_id}`,
+      email: row.email ?? null,
+    });
     if (defaultGroupId == null) continue;
     const isPartner =
       row.sr_group_inner_id != null &&
@@ -621,6 +665,28 @@ export async function buildShopReport(
       partnerBuyers.add(key);
     } else {
       otherSpent += s;
+    }
+
+    {
+      const t = parseOrderTime(o.dateCreated);
+      if (t) {
+        const mk = monthKey(t);
+        const cur = byMonth.get(mk) || {
+          spent: 0,
+          orderCount: 0,
+          partnerSpent: 0,
+          newcomerSpent: 0,
+          guestSpent: 0,
+          otherSpent: 0,
+        };
+        cur.spent += s;
+        cur.orderCount += 1;
+        if (segment === "partner") cur.partnerSpent += s;
+        else if (segment === "newcomer") cur.newcomerSpent += s;
+        else if (segment === "guest") cur.guestSpent += s;
+        else cur.otherSpent += s;
+        byMonth.set(mk, cur);
+      }
     }
 
     if (groupInnerId != null) {
@@ -812,7 +878,7 @@ export async function buildShopReport(
 
   const topPartners = [...partners.values()]
     .sort((a, b) => b.spent - a.spent)
-    .slice(0, 10)
+    .slice(0, 25)
     .map((p) => {
       const prev = prevPartnerSpend.get(p.key) || 0;
       const dlt =
@@ -826,6 +892,7 @@ export async function buildShopReport(
         name: p.name,
         email: p.email,
         customerInnerId: p.customerInnerId,
+        groupInnerId: p.groupInnerId,
         isPartner: p.isPartner,
         orderCount: p.orderCount,
         spent: p.spent,
@@ -833,6 +900,59 @@ export async function buildShopReport(
         deltaPercent: dlt,
       };
     });
+
+  const declining = [...partners.values()]
+    .map((p) => {
+      const prev = prevPartnerSpend.get(p.key) || 0;
+      const dlt =
+        prev > 0 ? Math.round(((p.spent - prev) / prev) * 100) : null;
+      return { p, prev, dlt };
+    })
+    .filter((x) => x.dlt != null && x.dlt <= -20 && x.prev > 0)
+    .sort((a, b) => (a.dlt ?? 0) - (b.dlt ?? 0))
+    .slice(0, 15)
+    .map(({ p, dlt }) => ({
+      key: p.key,
+      name: p.name,
+      email: p.email,
+      customerInnerId: p.customerInnerId,
+      orderCount: p.orderCount,
+      spent: p.spent,
+      spentFormatted: formatHuf(p.spent),
+      deltaPercent: dlt,
+    }));
+
+  const sleeping: ShopReport["watchlist"]["sleeping"] = [];
+  for (const id of partnerFingerprintIds) {
+    if (activePartnerIds.has(id)) continue;
+    const snap = fpNameById.get(id);
+    const fromPartner = [...partners.values()].find(
+      (p) => p.customerInnerId === id,
+    );
+    sleeping.push({
+      customerInnerId: id,
+      name: fromPartner?.name || snap?.name || `Vevő #${id}`,
+      email: fromPartner?.email ?? snap?.email ?? null,
+    });
+    if (sleeping.length >= 15) break;
+  }
+
+  const trend = [...byMonth.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, v]) => ({
+      key,
+      label: monthLabel(key),
+      spent: v.spent,
+      spentFormatted: formatHuf(v.spent),
+      orderCount: v.orderCount,
+      partnerSpent: v.partnerSpent,
+      newcomerSpent: v.newcomerSpent,
+      guestSpent: v.guestSpent,
+      otherSpent: v.otherSpent,
+    }));
+
+  const partnerAov =
+    partnerOrderCount > 0 ? Math.round(partnerSpent / partnerOrderCount) : 0;
 
   const groups = [...groupsAgg.values()]
     .filter((g) => g.spent > 0 || g.prevSpent > 0)
@@ -964,6 +1084,18 @@ export async function buildShopReport(
     },
     movesInRange,
     activeBuyers: buyerKeys.size,
+    partnerTotals: {
+      spent: partnerSpent,
+      spentFormatted: formatHuf(partnerSpent),
+      orderCount: partnerOrderCount,
+      aov: partnerAov,
+      aovFormatted: formatHuf(partnerAov),
+      buyers: partnerBuyers.size,
+    },
+    watchlist: {
+      sleeping,
+      declining,
+    },
     groups,
     topPartners,
     topProducts,

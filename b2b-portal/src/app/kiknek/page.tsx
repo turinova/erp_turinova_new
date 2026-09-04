@@ -1,19 +1,33 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "@/app/globals-landing.css";
+import { ProGateComingSoon } from "@/components/marketing/ProGateComingSoon";
 import { ProGateLandingFooter } from "@/components/marketing/ProGateLandingFooter";
 import { ProGateLandingNav } from "@/components/marketing/ProGateLandingNav";
 import { COMPANY } from "@/lib/company";
+import { isProGateLandingComingSoon } from "@/lib/landing-mode";
 import { PROGATE_VERTICALS } from "@/lib/marketing/verticals";
 
-export const metadata: Metadata = {
-  title: `Kiknek? — B2B gyors rendelés iparágak szerint | ${COMPANY.brand}`,
-  description:
-    "ProGate Shoprenter nagyker és viszonteladó iparágak: autóalkatrész, állateledel, bútorlap, építőanyag és további szektorok.",
-  robots: { index: true, follow: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  if (isProGateLandingComingSoon()) {
+    return {
+      title: { absolute: `${COMPANY.brand} — Hamarosan` },
+      robots: { index: false, follow: false },
+    };
+  }
+  return {
+    title: `Kiknek? — B2B gyors rendelés iparágak szerint | ${COMPANY.brand}`,
+    description:
+      "ProGate Shoprenter nagyker és viszonteladó iparágak: autóalkatrész, állateledel, bútorlap, építőanyag és további szektorok.",
+    robots: { index: true, follow: true },
+  };
+}
 
 export default function KiknekIndexPage() {
+  if (isProGateLandingComingSoon()) {
+    return <ProGateComingSoon />;
+  }
+
   return (
     <div className="pg">
       <ProGateLandingNav />

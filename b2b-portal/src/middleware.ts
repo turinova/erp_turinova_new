@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { COMPANY } from "@/lib/company";
 import { isAppHost, isMarketingHost, normalizeHost } from "@/lib/hosts";
+import { isProGateLandingComingSoon } from "@/lib/landing-mode";
 
 const SESSION_COOKIE = "b2b_session";
 
@@ -37,6 +38,18 @@ export function middleware(req: NextRequest) {
   const marketing = isMarketingHost(host);
   const app = isAppHost(host);
   const session = req.cookies.get(SESSION_COOKIE)?.value;
+  const comingSoon = isProGateLandingComingSoon();
+
+  // Marketing „Hamarosan”: minden publikus marketing útvonal → /
+  if (
+    comingSoon &&
+    (marketing || host === "localhost" || host === "127.0.0.1") &&
+    pathname.startsWith("/kiknek")
+  ) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
 
   if (app && pathname === "/" && !session) {
     return NextResponse.redirect(`${COMPANY.marketingUrl}/`);
@@ -76,6 +89,8 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/",
+    "/kiknek",
+    "/kiknek/:path*",
     "/login",
     "/login/:path*",
     "/signup",

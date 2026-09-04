@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { ProGateComingSoon } from "@/components/marketing/ProGateComingSoon";
 import { ProGateVerticalPage } from "@/components/marketing/ProGateVerticalPage";
+import { COMPANY } from "@/lib/company";
+import { isProGateLandingComingSoon } from "@/lib/landing-mode";
 import {
   getAllVerticalSlugs,
   getVerticalBySlug,
@@ -15,6 +18,12 @@ export function generateStaticParams() {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  if (isProGateLandingComingSoon()) {
+    return {
+      title: { absolute: `${COMPANY.brand} — Hamarosan` },
+      robots: { index: false, follow: false },
+    };
+  }
   const { slug } = await params;
   const vertical = getVerticalBySlug(slug);
   if (!vertical) {
@@ -28,6 +37,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function KiknekSlugPage({ params }: PageProps) {
+  if (isProGateLandingComingSoon()) {
+    return <ProGateComingSoon />;
+  }
+
   const { slug } = await params;
   const vertical = getVerticalBySlug(slug);
   if (!vertical) {

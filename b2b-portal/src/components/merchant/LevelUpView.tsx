@@ -477,8 +477,8 @@ export function LevelUpView() {
       setHits(json.hits || []);
       setMessage(
         `${json.message} (átnézve: ${json.scanned ?? 0} vevő${
-          json.errors?.length ? `, hibák: ${json.errors.length}` : ""
-        })`,
+          json.sourceLabel ? `, forrás: ${json.sourceLabel}` : ""
+        }${json.errors?.length ? `, hibák: ${json.errors.length}` : ""})`,
       );
       if (!dryRun) await load();
     } catch (e) {
