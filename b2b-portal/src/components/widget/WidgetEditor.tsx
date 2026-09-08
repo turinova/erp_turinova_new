@@ -427,6 +427,7 @@ export function WidgetEditor({
                   fabStyle={settings.appearance.fabStyle}
                   fabPosition={settings.appearance.fabPosition}
                   fabSize={settings.appearance.fabSize}
+                  fabRingChase={settings.appearance.fabRingChase}
                   panelTheme={settings.appearance.panelTheme}
                   modules={settings.features.modules}
                   showTurinovaMark={!settings.features.hideTurinovaMark}
@@ -549,6 +550,22 @@ export function WidgetEditor({
                         label: p.label,
                       }))}
                       onChange={(id) => patchAppearance({ fabStyle: id })}
+                    />
+                  </Field>
+
+                  <Field
+                    title="Futó neon keret"
+                    hint="Fénycsík körbefut a gombon — felhívó, de ki is kapcsolható."
+                    dense
+                  >
+                    <BigToggle
+                      label={
+                        settings.appearance.fabRingChase
+                          ? "Be van kapcsolva"
+                          : "Ki van kapcsolva"
+                      }
+                      checked={settings.appearance.fabRingChase === true}
+                      onChange={(v) => patchAppearance({ fabRingChase: v })}
                     />
                   </Field>
 

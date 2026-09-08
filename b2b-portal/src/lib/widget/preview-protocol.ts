@@ -10,6 +10,7 @@ export type PreviewConfigPayload = {
   fabStyle?: string;
   fabPosition?: string;
   fabSize?: string;
+  fabRingChase?: boolean;
   panelTheme?: string;
   modules?: string[];
   showTurinovaMark?: boolean;

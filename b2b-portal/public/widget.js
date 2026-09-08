@@ -53,6 +53,7 @@
       fabStyle: "solid",
       fabPosition: "bottom_right",
       fabSize: "icon_label",
+      fabRingChase: false,
       panelTheme: "high_contrast",
       catalogReady: true,
       catalogStatus: "",
@@ -310,6 +311,7 @@
           fabStyle: cfg.fabStyle || "solid",
           fabPosition: cfg.fabPosition || "bottom_right",
           fabSize: cfg.fabSize || "icon_label",
+          fabRingChase: cfg.fabRingChase === true,
           panelTheme: cfg.panelTheme || "high_contrast",
           modules: cfg.modules,
           showLabel: cfg.showLabel !== false,
@@ -554,6 +556,7 @@
         if (c.fabStyle) cfg.fabStyle = c.fabStyle;
         if (c.fabPosition) cfg.fabPosition = c.fabPosition;
         if (c.fabSize) cfg.fabSize = c.fabSize;
+        if (typeof c.fabRingChase === "boolean") cfg.fabRingChase = c.fabRingChase;
         if (c.panelTheme) cfg.panelTheme = c.panelTheme;
         if (Array.isArray(c.modules)) cfg.modules = c.modules;
         if (typeof c.showLabel === "boolean") cfg.showLabel = c.showLabel;
@@ -8653,18 +8656,21 @@
   }
 
   function ensureFabStyles() {
-    const existing = document.getElementById("sr-b2b-qo-fab-css-v7");
+    const existing = document.getElementById("sr-b2b-qo-fab-css-v8");
     if (existing) return;
-    ["sr-b2b-qo-fab-css", "sr-b2b-qo-fab-css-v2", "sr-b2b-qo-fab-css-v3", "sr-b2b-qo-fab-css-v4", "sr-b2b-qo-fab-css-v5", "sr-b2b-qo-fab-css-v6"].forEach(function (id) {
+    ["sr-b2b-qo-fab-css", "sr-b2b-qo-fab-css-v2", "sr-b2b-qo-fab-css-v3", "sr-b2b-qo-fab-css-v4", "sr-b2b-qo-fab-css-v5", "sr-b2b-qo-fab-css-v6", "sr-b2b-qo-fab-css-v7"].forEach(function (id) {
       const legacy = document.getElementById(id);
       if (legacy) legacy.remove();
     });
     const style = document.createElement("style");
-    style.id = "sr-b2b-qo-fab-css-v7";
+    style.id = "sr-b2b-qo-fab-css-v8";
     style.textContent = [
       "@keyframes sr-b2b-qo-fab-in{",
       "  from{ opacity:0; transform:translateY(10px) scale(0.98); }",
       "  to{ opacity:1; transform:translateY(0) scale(1); }",
+      "}",
+      "@keyframes sr-b2b-qo-ring-spin{",
+      "  to{ transform:rotate(360deg); }",
       "}",
       "#sr-b2b-qo-btn{",
       "  position:fixed;",
@@ -8697,6 +8703,24 @@
       "  isolation:isolate;",
       "  transition:background-color 180ms ease, box-shadow 180ms ease, transform 180ms cubic-bezier(0.2,0.8,0.2,1);",
       "  animation:sr-b2b-qo-fab-in 240ms cubic-bezier(0.2,0.8,0.2,1) both;",
+      "}",
+      "#sr-b2b-qo-btn[data-ring-chase='1']{",
+      "  overflow:visible;",
+      "}",
+      "#sr-b2b-qo-btn[data-ring-chase='1']::before{",
+      "  content:'';",
+      "  position:absolute;",
+      "  inset:-3px;",
+      "  border-radius:inherit;",
+      "  padding:2px;",
+      "  background:conic-gradient(from 0deg, transparent 0 58%, var(--sr-qo-ring, #007AFF) 72%, #fff 86%, var(--sr-qo-ring, #007AFF) 94%, transparent 100%);",
+      "  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);",
+      "  -webkit-mask-composite:xor;",
+      "  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);",
+      "  mask-composite:exclude;",
+      "  animation:sr-b2b-qo-ring-spin 1.85s linear infinite;",
+      "  pointer-events:none;",
+      "  z-index:0;",
       "}",
       "#sr-b2b-qo-btn:hover{",
       "  box-shadow:0 14px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.22);",
@@ -8743,6 +8767,7 @@
       "}",
       "@media (prefers-reduced-motion:reduce){",
       "  #sr-b2b-qo-btn{ animation:none; backdrop-filter:none; -webkit-backdrop-filter:none; }",
+      "  #sr-b2b-qo-btn[data-ring-chase='1']::before{ animation:none; opacity:0.85; }",
       "}",
       "#sr-b2b-qo-gate{",
       "  position:fixed;inset:0;z-index:2147483600;",
@@ -8870,6 +8895,12 @@
     }
 
     var ink = resolveFabInk(inkMode, color);
+    btn.style.setProperty("--sr-qo-ring", color);
+    if (cfg.fabRingChase === true) {
+      btn.setAttribute("data-ring-chase", "1");
+    } else {
+      btn.removeAttribute("data-ring-chase");
+    }
     if (style === "neon") {
       btn.style.background = "#0A0A0C";
       btn.style.color = "#FFFFFF";

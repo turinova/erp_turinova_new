@@ -175,6 +175,8 @@ export type WidgetAppearance = {
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
   panelTheme: PanelThemeId;
+  /** Animated neon ring that runs around the FAB. */
+  fabRingChase: boolean;
 };
 
 export type WidgetFeatures = {
@@ -233,6 +235,8 @@ export type PublicWidgetConfig = {
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
   panelTheme: PanelThemeId;
+  /** Animated neon ring around the storefront FAB. */
+  fabRingChase?: boolean;
   modules: WidgetModuleId[];
   showLabel: boolean;
   compact: boolean;
@@ -265,6 +269,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
     fabPosition: "bottom_right",
     fabSize: "icon_label",
     panelTheme: "high_contrast",
+    fabRingChase: false,
   },
   features: {
     requireLogin: true,
@@ -516,6 +521,7 @@ export function normalizeWidgetSettings(
       fabPosition: mapPositionId(appearanceRaw.fabPosition),
       fabSize: mapSizeId(appearanceRaw.fabSize),
       panelTheme,
+      fabRingChase: appearanceRaw.fabRingChase === true,
     },
     features: {
       requireLogin: featuresRaw.requireLogin === false ? false : true,
@@ -950,6 +956,7 @@ export function resolvePublicWidgetConfig(input: {
     fabPosition: normalized.appearance.fabPosition,
     fabSize: normalized.appearance.fabSize,
     panelTheme: normalized.appearance.panelTheme || LOCKED_PANEL_THEME,
+    fabRingChase: normalized.appearance.fabRingChase === true,
     modules: normalized.features.modules,
     showLabel: size.showLabel,
     compact: size.compact,

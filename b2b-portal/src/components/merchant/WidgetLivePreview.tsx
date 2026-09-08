@@ -31,6 +31,7 @@ type Props = {
   fabStyle: FabStyleId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
+  fabRingChase?: boolean;
   panelTheme: PanelThemeId;
   modules: WidgetModuleId[];
   showTurinovaMark?: boolean;
@@ -247,6 +248,7 @@ function buildConfig(props: {
   fabStyle: FabStyleId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
+  fabRingChase?: boolean;
   panelTheme: PanelThemeId;
   modules: WidgetModuleId[];
   showTurinovaMark?: boolean;
@@ -273,6 +275,7 @@ function buildConfig(props: {
     fabStyle: props.fabStyle,
     fabPosition: props.fabPosition,
     fabSize: props.fabSize,
+    fabRingChase: props.fabRingChase === true,
     panelTheme: props.panelTheme,
     modules: props.modules,
     showTurinovaMark: props.showTurinovaMark !== false,
@@ -322,6 +325,17 @@ export function WidgetLivePreview(props: Props) {
   const showPanelRef = useRef(showPanel);
   const onShowPanelRef = useRef(onShowPanel);
 
+  useEffect(() => {
+    const id = "sr-fab-ring-chase-css";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent =
+      "@keyframes sr-fab-ring-chase{to{transform:rotate(360deg)}}" +
+      "@media (prefers-reduced-motion:reduce){.sr-fab-ring-chase-el{animation:none!important}}";
+    document.head.appendChild(style);
+  }, []);
+
   const sizeMeta =
     FAB_SIZE_PRESETS.find((p) => p.id === props.fabSize) ?? FAB_SIZE_PRESETS[0];
   const visual = resolveFabVisual(
@@ -343,6 +357,7 @@ export function WidgetLivePreview(props: Props) {
         fabStyle: props.fabStyle,
         fabPosition: props.fabPosition,
         fabSize: props.fabSize,
+        fabRingChase: props.fabRingChase,
         panelTheme: props.panelTheme,
         modules: props.modules,
         showTurinovaMark: props.showTurinovaMark,
@@ -361,6 +376,7 @@ export function WidgetLivePreview(props: Props) {
       props.fabStyle,
       props.fabPosition,
       props.fabSize,
+      props.fabRingChase,
       props.panelTheme,
       props.modules,
       props.showTurinovaMark,
@@ -535,13 +551,36 @@ export function WidgetLivePreview(props: Props) {
                   fontSize: compact ? 12 : 13,
                   fontWeight: 600,
                   letterSpacing: "-0.01em",
+                  overflow: props.fabRingChase ? "visible" : undefined,
+                  isolation: "isolate",
+                  // CSS var for ring color
+                  ["--sr-qo-ring" as string]: props.fabColor,
                 }}
                 aria-label={`${props.buttonLabel || "Gyors rendelés"} megnyitása`}
               >
-                <ListIcon color="currentColor" />
-                {showLabel ? (
-                  <span>{props.buttonLabel || "Gyors rendelés"}</span>
+                {props.fabRingChase ? (
+                  <span
+                    aria-hidden
+                    className="sr-fab-ring-chase-el pointer-events-none absolute z-0 rounded-[inherit]"
+                    style={{
+                      inset: -3,
+                      padding: 2,
+                      background: `conic-gradient(from 0deg, transparent 0 58%, ${props.fabColor} 72%, #fff 86%, ${props.fabColor} 94%, transparent 100%)`,
+                      WebkitMask:
+                        "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+                      WebkitMaskComposite: "xor",
+                      mask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+                      maskComposite: "exclude",
+                      animation: "sr-fab-ring-chase 1.85s linear infinite",
+                    }}
+                  />
                 ) : null}
+                <span className="relative z-[1] inline-flex items-center justify-center gap-[inherit]">
+                  <ListIcon color="currentColor" />
+                  {showLabel ? (
+                    <span>{props.buttonLabel || "Gyors rendelés"}</span>
+                  ) : null}
+                </span>
               </button>
             ) : (
               <p className="absolute bottom-4 left-4 right-4 z-[3] text-center text-[11px] text-faint">
