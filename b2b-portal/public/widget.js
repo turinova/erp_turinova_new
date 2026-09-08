@@ -126,12 +126,18 @@
   }
 
   function demoProduct(partial) {
-    var listNet = partial.listPriceNet;
-    var dealNet = partial.priceNet;
+    var listNet = Math.round(Number(partial.listPriceNet) || 0);
+    var dealNet = Math.round(Number(partial.priceNet) || 0);
     var vat = partial.vatRate != null ? partial.vatRate : 27;
-    var listGross = Math.round(listNet * (1 + vat / 100));
+    if (listNet === dealNet) listNet = dealNet;
     var dealGross = Math.round(dealNet * (1 + vat / 100));
-    var disc = listNet > 0 ? Math.round((1 - dealNet / listNet) * 1000) / 10 : 0;
+    var listGross =
+      listNet === dealNet ? dealGross : Math.round(listNet * (1 + vat / 100));
+    var discNet = Math.max(0, listNet - dealNet);
+    var disc =
+      discNet > 0 && listNet > 0
+        ? Math.round((discNet / listNet) * 1000) / 10
+        : 0;
     return Object.assign(
       {
         found: true,
@@ -154,9 +160,10 @@
         priceGross: dealGross,
         priceNetFormatted: demoFmt(dealNet),
         priceGrossFormatted: demoFmt(dealGross),
-        discountPercent: disc,
-        discountAmountNet: Math.max(0, listNet - dealNet),
-        discountAmountNetFormatted: demoFmt(Math.max(0, listNet - dealNet)),
+        discountPercent: disc || undefined,
+        discountAmountNet: discNet > 0 ? discNet : undefined,
+        discountAmountNetFormatted:
+          discNet > 0 ? demoFmt(discNet) : undefined,
         priceSource: "group",
         imageUrl: null,
         productUrl: null,
@@ -2692,54 +2699,51 @@
       lines.forEach(function (l) {
         if (l.found !== true) return;
         var q = l.quantity || 1;
-        var unitNet = l.priceNet != null ? l.priceNet : l.price;
         var vat =
           l.vatRate != null && Number.isFinite(Number(l.vatRate))
             ? Number(l.vatRate)
             : 27;
-        var unitGross = l.priceGross;
-        if (unitGross == null && unitNet != null) {
-          unitGross = Math.round(unitNet * (1 + vat / 100));
-        }
-        if (unitNet == null && unitGross == null) return;
-        if (unitNet != null) net += unitNet * q;
-        if (unitGross != null) gross += unitGross * q;
+        var unitNetRaw = l.priceNet != null ? l.priceNet : l.price;
+        if (unitNetRaw == null && l.priceGross == null) return;
+        var unitNet =
+          unitNetRaw != null
+            ? Math.round(Number(unitNetRaw))
+            : Math.round(Number(l.priceGross) / (1 + vat / 100));
         var listN =
-          typeof l.listPriceNet === "number" ? l.listPriceNet : unitNet;
+          typeof l.listPriceNet === "number"
+            ? Math.round(l.listPriceNet)
+            : unitNet;
+        if (listN === unitNet) listN = unitNet;
+        var unitGross = Math.round(unitNet * (1 + vat / 100));
         var listG =
-          typeof l.listPriceGross === "number"
-            ? l.listPriceGross
-            : listN != null
-              ? Math.round(listN * (1 + vat / 100))
-              : unitGross;
-        if (listN != null) listNetSum += listN * q;
-        if (listG != null) listGrossSum += listG * q;
-        if (typeof listN === "number" && typeof unitNet === "number") {
-          discount += Math.max(0, listN - unitNet) * q;
-        } else if (
-          typeof l.discountPercent === "number" &&
-          l.discountPercent > 0 &&
-          typeof unitNet === "number"
-        ) {
-          var listGuess = unitNet / (1 - l.discountPercent / 100);
-          discount += Math.max(0, listGuess - unitNet) * q;
-        }
+          listN === unitNet
+            ? unitGross
+            : Math.round(listN * (1 + vat / 100));
+        net += unitNet * q;
+        gross += unitGross * q;
+        listNetSum += listN * q;
+        listGrossSum += listG * q;
+        discount += Math.max(0, listN - unitNet) * q;
       });
       var netR = Math.round(net);
       var grossR = Math.round(gross);
       var listNetR = Math.round(listNetSum);
       var listGrossR = Math.round(listGrossSum);
+      var discountR = Math.round(discount);
+      var discountGrossR = Math.max(0, Math.round(listGrossR - grossR));
+      // No phantom 1 Ft savings when nets match after rounding.
+      if (discountR <= 0) discountGrossR = 0;
       return {
         net: netR,
         gross: grossR,
         vat: Math.max(0, Math.round(grossR - netR)),
         listNet: listNetR,
         listGross: listGrossR,
-        discount: Math.round(discount),
-        discountGross: Math.max(0, Math.round(listGrossR - grossR)),
+        discount: discountR,
+        discountGross: discountGrossR,
         discountPct:
-          netR + discount > 0
-            ? Math.round((discount / (netR + discount)) * 1000) / 10
+          netR + discountR > 0
+            ? Math.round((discountR / (netR + discountR)) * 1000) / 10
             : 0,
         nearTierCount: lines.filter(function (l) {
           return (
@@ -3236,29 +3240,45 @@
     }
 
     function lineUnitGross(line) {
-      if (line.priceGross != null && Number.isFinite(Number(line.priceGross))) {
-        return Math.round(Number(line.priceGross));
-      }
       var net = lineUnitNet(line);
-      if (net == null) return null;
-      return Math.round(net * (1 + lineVatRate(line) / 100));
+      if (net == null) {
+        if (line.priceGross != null && Number.isFinite(Number(line.priceGross))) {
+          return Math.round(Number(line.priceGross));
+        }
+        return null;
+      }
+      return Math.round(Math.round(Number(net)) * (1 + lineVatRate(line) / 100));
     }
 
     function lineListNet(line) {
-      if (line.listPriceNet != null) return line.listPriceNet;
-      return lineUnitNet(line);
+      var unit = lineUnitNet(line);
+      if (line.listPriceNet != null) {
+        var list = Math.round(Number(line.listPriceNet));
+        if (unit != null && list === Math.round(Number(unit))) {
+          return Math.round(Number(unit));
+        }
+        return list;
+      }
+      return unit != null ? Math.round(Number(unit)) : null;
     }
 
     function lineListGross(line) {
+      var unitG = lineUnitGross(line);
+      var listN = lineListNet(line);
+      var unitN = lineUnitNet(line);
       if (
-        line.listPriceGross != null &&
-        Number.isFinite(Number(line.listPriceGross))
+        listN != null &&
+        unitN != null &&
+        Math.round(Number(listN)) === Math.round(Number(unitN))
       ) {
-        return Math.round(Number(line.listPriceGross));
+        return unitG;
       }
-      var net = lineListNet(line);
-      if (net == null) return null;
-      return Math.round(net * (1 + lineVatRate(line) / 100));
+      if (listN != null) {
+        return Math.round(
+          Math.round(Number(listN)) * (1 + lineVatRate(line) / 100),
+        );
+      }
+      return unitG;
     }
 
     function lineDisplayUnit(line) {
@@ -3482,7 +3502,9 @@
       }
       var list = lineDisplayList(line);
       var cheaper =
-        list != null && Number.isFinite(list) && unit < list - 0.5;
+        list != null &&
+        Number.isFinite(list) &&
+        Math.round(list) - Math.round(unit) >= 1;
       return netCell(unit, lab, { deal: cheaper });
     }
 

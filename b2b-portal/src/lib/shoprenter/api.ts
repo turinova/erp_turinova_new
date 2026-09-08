@@ -953,30 +953,39 @@ function applyPriceBreakdown(
 ): ResolvedProduct {
   if (effectiveNet == null && listNet == null) return product;
 
-  const list = listNet ?? effectiveNet!;
-  const effective = effectiveNet ?? listNet!;
   const vat = vatRate ?? 27;
-  const gross = Math.round(effective * (1 + vat / 100));
-  const listGross = Math.round(list * (1 + vat / 100));
-  const vatAmount = Math.round(gross - effective);
+  // Round nets first, then derive gross — avoids 1 Ft phantom "Kedv." from float noise.
+  let listRounded = Math.round(listNet ?? effectiveNet!);
+  let effectiveRounded = Math.round(effectiveNet ?? listNet!);
+  if (listRounded === effectiveRounded) {
+    listRounded = effectiveRounded;
+  }
+  const gross = netToGross(effectiveRounded, vat);
+  const listGross =
+    listRounded === effectiveRounded
+      ? gross
+      : netToGross(listRounded, vat);
+  const vatAmount = Math.max(0, gross - effectiveRounded);
   const discountNet =
-    list > effective + 0.5 ? Math.round(list - effective) : undefined;
+    listRounded > effectiveRounded
+      ? listRounded - effectiveRounded
+      : undefined;
   const discountPercent =
-    discountNet != null && list > 0
-      ? Math.round((discountNet / list) * 1000) / 10
+    discountNet != null && listRounded > 0
+      ? Math.round((discountNet / listRounded) * 1000) / 10
       : undefined;
 
   return {
     ...product,
-    price: effective,
+    price: effectiveRounded,
     priceFormatted: formatHuf(gross),
-    priceNet: Math.round(effective),
+    priceNet: effectiveRounded,
     priceGross: gross,
-    priceNetFormatted: formatHuf(Math.round(effective)),
+    priceNetFormatted: formatHuf(effectiveRounded),
     priceGrossFormatted: formatHuf(gross),
-    listPriceNet: Math.round(list),
+    listPriceNet: listRounded,
     listPriceGross: listGross,
-    listPriceNetFormatted: formatHuf(Math.round(list)),
+    listPriceNetFormatted: formatHuf(listRounded),
     listPriceGrossFormatted: formatHuf(listGross),
     vatRate: vat,
     vatAmount,
@@ -987,7 +996,7 @@ function applyPriceBreakdown(
       source === "own" ||
       source === "tier" ||
       source === "percent"
-        ? Math.round(effective)
+        ? effectiveRounded
         : undefined,
     discountPercent,
     discountAmountNet: discountNet,

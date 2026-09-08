@@ -1,5 +1,6 @@
 import {
   DEFAULT_WIDGET_SETTINGS,
+  ensureLockedWidgetModules,
   type FabSizeId,
   type FabStyleId,
   type PanelThemeId,
@@ -102,7 +103,7 @@ export const EMBED_PROFILES: {
       fabPosition: "bottom_right",
       panelTheme: "light_flat" as PanelThemeId,
     },
-    modules: ["search", "excel", "email", "orders"],
+    modules: ["search", "excel", "email", "image", "orders"],
   },
 ];
 
@@ -120,7 +121,7 @@ export function applyEmbedProfile(
     },
     features: {
       ...settings.features,
-      modules: [...profile.modules],
+      modules: ensureLockedWidgetModules([...profile.modules]),
     },
     launch: {
       ...settings.launch,

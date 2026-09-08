@@ -130,6 +130,32 @@ export type FabSizeId = (typeof FAB_SIZE_PRESETS)[number]["id"];
 export type PanelThemeId = (typeof PANEL_THEME_PRESETS)[number]["id"];
 export type WidgetModuleId = (typeof WIDGET_MODULES)[number]["id"];
 
+/** Always on for every tenant — not merchant/embed toggleable. */
+export const LOCKED_IMPORT_MODULES: WidgetModuleId[] = [
+  "excel",
+  "email",
+  "image",
+];
+
+/** Ensure search + import modules; keep optional orders/insights from input. */
+export function ensureLockedWidgetModules(
+  raw: WidgetModuleId[] | undefined | null,
+): WidgetModuleId[] {
+  const set = new Set<WidgetModuleId>(["search", ...LOCKED_IMPORT_MODULES]);
+  for (const m of raw || []) {
+    if (m === "orders" || m === "insights") set.add(m);
+  }
+  const order: WidgetModuleId[] = [
+    "search",
+    "excel",
+    "email",
+    "image",
+    "orders",
+    "insights",
+  ];
+  return order.filter((id) => set.has(id));
+}
+
 /** Panel chrome = portal app („Olvasó”) — never follows FAB theme. */
 export const LOCKED_PANEL_THEME: PanelThemeId = "high_contrast";
 /** Portal signal blue — same as globals.css --accent. */
@@ -438,13 +464,16 @@ export function normalizeWidgetSettings(
   if (Array.isArray(featuresRaw.modules)) {
     const parsed = featuresRaw.modules
       .filter((m): m is string => typeof m === "string")
-      .filter((m): m is WidgetModuleId => allowedModules.has(m as WidgetModuleId));
+      .filter((m): m is WidgetModuleId =>
+        allowedModules.has(m as WidgetModuleId),
+      );
     if (parsed.length) {
       modules = parsed.includes("search")
         ? parsed
         : (["search", ...parsed] as WidgetModuleId[]);
     }
   }
+  modules = ensureLockedWidgetModules(modules);
 
   const presentation =
     launchRaw.presentation === "auto" ||

@@ -303,9 +303,6 @@ export async function loadPublicWidgetConfig(
       allowedGroupIds: [],
       settings,
     });
-    if (!branding.canParseImage) {
-      publicCfg.modules = publicCfg.modules.filter((m) => m !== "image");
-    }
     return {
       ...publicCfg,
       catalogStatus,
