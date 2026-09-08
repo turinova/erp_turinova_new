@@ -323,7 +323,67 @@ export function OrgDetailView({ initial }: { initial: OrgDetail }) {
                     ? "Nem válaszol"
                     : shop.status === "draft"
                       ? "Még nincs kulcs"
-                      : shop.status}
+                      : shop.status === "uninstalled"
+                        ? "Eltávolítva (App Store)"
+                        : shop.status}
+                </dd>
+              </div>
+              <div>
+                <dt className="tn-label">Embed fázis</dt>
+                <dd className="mt-1 font-semibold">
+                  {shop.embed_phase} ·{" "}
+                  {
+                    (
+                      {
+                        A: "Script hiányzik",
+                        B: "Gomb ki",
+                        C: "Katalógus tölt",
+                        D: "Él",
+                        E: "API hiba",
+                      } as const
+                    )[shop.embed_phase]
+                  }
+                </dd>
+              </div>
+              <div>
+                <dt className="tn-label">Script a bolton</dt>
+                <dd className="mt-1 font-semibold">
+                  {shop.script_installed
+                    ? shop.widget_script_method === "script_tag"
+                      ? "ScriptTag"
+                      : shop.widget_script_method === "manual"
+                        ? "Manuális"
+                        : shop.widget_script_method === "stub"
+                          ? "Stub"
+                          : "Bent"
+                    : "Nincs"}
+                  {shop.widget_script_installed_at ? (
+                    <span className="font-normal text-faint">
+                      {" "}
+                      · {relativeTime(shop.widget_script_installed_at)}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+              <div>
+                <dt className="tn-label">Telepítési mód (env)</dt>
+                <dd className="mt-1 font-semibold">{detail.install_mode_label}</dd>
+              </div>
+              <div>
+                <dt className="tn-label">App Store számlázás</dt>
+                <dd className="mt-1 font-semibold">
+                  {detail.billing.status
+                    ? `${detail.billing.status}${
+                        detail.billing.interval
+                          ? ` · ${detail.billing.interval === "annual" ? "éves" : "havi"}`
+                          : ""
+                      }`
+                    : "Nincs charge"}
+                  {detail.billing.chargeId ? (
+                    <span className="block font-mono text-[11px] font-normal text-faint">
+                      {detail.billing.chargeId}
+                    </span>
+                  ) : null}
                 </dd>
               </div>
             </dl>

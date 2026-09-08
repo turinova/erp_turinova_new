@@ -22,6 +22,41 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Same-origin iframe host for merchant / embed live preview
+        source: "/widget-preview",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self'",
+          },
+          {
+            key: "Cache-Control",
+            value: "private, no-store",
+          },
+        ],
+      },
+      {
+        // Shoprenter admin embeds EntryPoint in iframe (CSP only — no X-Frame-Options)
+        source: "/sr-embed/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value:
+              "frame-ancestors 'self' https://*.myshoprenter.hu https://*.shoprenter.hu https://admin.shoprenter.hu",
+          },
+        ],
+      },
+      {
+        source: "/sr-embed",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value:
+              "frame-ancestors 'self' https://*.myshoprenter.hu https://*.shoprenter.hu https://admin.shoprenter.hu",
+          },
+        ],
+      },
     ];
   },
   webpack: (config, { dev, isServer }) => {

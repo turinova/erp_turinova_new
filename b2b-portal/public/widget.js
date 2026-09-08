@@ -7,11 +7,40 @@
  *     shopId: '…' // shops.public_id — appearance loaded from portal
  *   };
  * Then: <script src="https://app.progate.hu/widget.js?v=…"></script>
+ *
+ * Or single loader (ScriptTag / footer):
+ *   <script src="https://app.progate.hu/widget.js?v=…&shopId=…&apiBase=…" defer></script>
+ *
  * Optional overrides: buttonLabel, fabColor, requireLogin
  * (allowedGroupIds empty = everyone; do not use for access control)
  * Menüpont: href="#sr-b2b-qo"
  */
 (function () {
+  function readScriptQuery() {
+    try {
+      var el =
+        document.currentScript ||
+        (function () {
+          var list = document.getElementsByTagName("script");
+          for (var i = list.length - 1; i >= 0; i--) {
+            var s = list[i];
+            if (s && s.src && /\/widget\.js(\?|$)/.test(s.src)) return s;
+          }
+          return null;
+        })();
+      if (!el || !el.src) return {};
+      var u = new URL(el.src, window.location.href);
+      var out = {};
+      var shopId = u.searchParams.get("shopId") || u.searchParams.get("publicId");
+      var apiBase = u.searchParams.get("apiBase");
+      if (shopId) out.shopId = shopId;
+      if (apiBase) out.apiBase = apiBase;
+      return out;
+    } catch (e) {
+      return {};
+    }
+  }
+
   const cfg = Object.assign(
     {
       apiBase: "",
@@ -37,17 +66,30 @@
       positionCss: null,
       enabled: true,
       mountId: "sr-b2b-quickorder-root",
+      fabInkCustom: "",
     },
+    readScriptQuery(),
     typeof window !== "undefined" ? window.SR_B2B_QUICKORDER || {} : {},
   );
+
+  // If loader URL omitted apiBase, use the script's origin.
+  if (!cfg.apiBase) {
+    try {
+      var el2 = document.currentScript;
+      if (el2 && el2.src) {
+        cfg.apiBase = new URL(el2.src, window.location.href).origin;
+      }
+    } catch (e2) {}
+  }
 
   /** Landing / interactive demo — no live Shoprenter, seed catalog. */
   if (cfg.demo) {
     cfg.requireLogin = false;
-    cfg.hideFab = cfg.hideFab !== false;
-    cfg.showTurinovaMark = true;
-    cfg.showCustomerGroupName = true;
-    cfg.showNextLevelProgress = true;
+    /* Default: hide FAB (landing). Preview iframe passes hideFab: false. */
+    if (cfg.hideFab === undefined) cfg.hideFab = true;
+    if (cfg.showTurinovaMark === undefined) cfg.showTurinovaMark = true;
+    if (cfg.showCustomerGroupName === undefined) cfg.showCustomerGroupName = true;
+    if (cfg.showNextLevelProgress === undefined) cfg.showNextLevelProgress = true;
     cfg.catalogReady = true;
     cfg.enabled = true;
     cfg.shopId = cfg.shopId || "demo";
@@ -255,20 +297,23 @@
           buttonLabel: cfg.buttonLabel,
           requireLogin: false,
           allowedGroupIds: [],
-          fabColor: "#0B6BCB",
-          fabInk: "auto",
-          fabStyle: "solid",
-          fabPosition: "bottom_right",
-          fabSize: "icon_label",
-          panelTheme: "high_contrast",
+          fabColor: cfg.fabColor || "#0B6BCB",
+          fabInk: cfg.fabInk || "auto",
+          fabInkCustom: cfg.fabInkCustom || "",
+          fabStyle: cfg.fabStyle || "solid",
+          fabPosition: cfg.fabPosition || "bottom_right",
+          fabSize: cfg.fabSize || "icon_label",
+          panelTheme: cfg.panelTheme || "high_contrast",
           modules: cfg.modules,
-          showLabel: true,
-          compact: false,
-          showTurinovaMark: true,
-          showCustomerGroupName: true,
-          showNextLevelProgress: true,
+          showLabel: cfg.showLabel !== false,
+          compact: !!cfg.compact,
+          showTurinovaMark: cfg.showTurinovaMark !== false,
+          showCustomerGroupName: !!cfg.showCustomerGroupName,
+          showNextLevelProgress: !!cfg.showNextLevelProgress,
           catalogReady: true,
-          freeShipping: null,
+          freeShipping: cfg.freeShipping || null,
+          showFab: !cfg.hideFab,
+          hideFab: !!cfg.hideFab,
         },
       });
     }
@@ -279,8 +324,8 @@
         progress: {
           groupInnerId: 12,
           groupName: "Asztalosok",
-          showGroupName: true,
-          showProgress: true,
+          showGroupName: !!cfg.showCustomerGroupName,
+          showProgress: !!cfg.showNextLevelProgress,
           metric: "spend",
           period: "calendar_year",
           current: 815800,
@@ -491,8 +536,13 @@
         if (Array.isArray(c.allowedGroupIds)) cfg.allowedGroupIds = c.allowedGroupIds;
         if (typeof c.requireLogin === "boolean") cfg.requireLogin = c.requireLogin;
         if (c.fabColor) cfg.fabColor = c.fabColor;
-        if (c.fabInk === "auto" || c.fabInk === "white" || c.fabInk === "black") {
+        if (c.fabInk === "auto" || c.fabInk === "white" || c.fabInk === "black" || c.fabInk === "custom") {
           cfg.fabInk = c.fabInk;
+        }
+        if (typeof c.fabInkCustom === "string" && c.fabInkCustom.trim()) {
+          cfg.fabInkCustom = c.fabInkCustom.trim();
+        } else if (c.fabInk !== "custom") {
+          cfg.fabInkCustom = "";
         }
         if (c.fabStyle) cfg.fabStyle = c.fabStyle;
         if (c.fabPosition) cfg.fabPosition = c.fabPosition;
@@ -501,6 +551,8 @@
         if (Array.isArray(c.modules)) cfg.modules = c.modules;
         if (typeof c.showLabel === "boolean") cfg.showLabel = c.showLabel;
         if (typeof c.compact === "boolean") cfg.compact = c.compact;
+        if (typeof c.showFab === "boolean") cfg.hideFab = !c.showFab;
+        if (typeof c.hideFab === "boolean") cfg.hideFab = c.hideFab;
         if (c.positionCss) cfg.positionCss = c.positionCss;
         if (typeof c.catalogReady === "boolean") cfg.catalogReady = c.catalogReady;
         if (c.catalogStatus) cfg.catalogStatus = c.catalogStatus;
@@ -8745,6 +8797,14 @@
   function resolveFabInk(mode, bgHex) {
     if (mode === "white") return "#FFFFFF";
     if (mode === "black") return "#1C1C1E";
+    if (mode === "custom") {
+      var custom = String(cfg.fabInkCustom || "").trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(custom)) return custom;
+      if (/^#[0-9a-fA-F]{3}$/.test(custom)) {
+        var h = custom.slice(1);
+        return "#" + h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      }
+    }
     return contrastingInk(bgHex);
   }
 
@@ -8872,7 +8932,7 @@
   }
 
   function injectButton() {
-    if (cfg.hideFab || cfg.demo) return;
+    if (cfg.hideFab) return;
     if (cfg.enabled === false) {
       var off = document.getElementById("sr-b2b-qo-btn");
       if (off && off.parentNode) off.parentNode.removeChild(off);
@@ -8935,6 +8995,37 @@
     });
   }
 
+  function panelIsOpen() {
+    var root = document.getElementById(cfg.mountId);
+    return !!(root && root.childNodes && root.childNodes.length);
+  }
+
+  function applyDemoConfig(partial) {
+    if (!partial || typeof partial !== "object") return;
+    var k;
+    for (k in partial) {
+      if (!Object.prototype.hasOwnProperty.call(partial, k)) continue;
+      if (k === "showFab") {
+        cfg.hideFab = partial.showFab === false;
+        continue;
+      }
+      if (partial[k] === undefined) continue;
+      cfg[k] = partial[k];
+    }
+    if (typeof partial.showLabel !== "boolean" && partial.fabSize) {
+      cfg.showLabel = partial.fabSize !== "icon_only";
+      cfg.compact = partial.fabSize === "icon_only";
+    }
+    var wasOpen = panelIsOpen();
+    var oldBtn = document.getElementById("sr-b2b-qo-btn");
+    if (oldBtn && oldBtn.parentNode) oldBtn.parentNode.removeChild(oldBtn);
+    if (wasOpen) {
+      openPanel();
+    } else {
+      injectButton();
+    }
+  }
+
   try {
     window.SR_B2B_DEMO = {
       open: function () {
@@ -8963,13 +9054,22 @@
         var root = document.getElementById(cfg.mountId);
         if (root) root.innerHTML = "";
         document.body.style.overflow = "";
+        var fab = document.getElementById("sr-b2b-qo-btn");
+        if (fab) fab.style.display = "";
+        else injectButton();
         try {
           window.dispatchEvent(new CustomEvent("sr-b2b-demo-close"));
         } catch (e2) {}
       },
+      configure: function (partial) {
+        applyDemoConfig(partial);
+      },
       isDemo: !!cfg.demo,
       ready: function () {
         return demoReady;
+      },
+      isOpen: function () {
+        return panelIsOpen();
       },
     };
   } catch (e3) {}

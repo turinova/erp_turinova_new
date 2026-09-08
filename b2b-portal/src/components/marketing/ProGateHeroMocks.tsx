@@ -21,6 +21,9 @@ declare global {
     SR_B2B_DEMO?: {
       open: () => void;
       close: () => void;
+      configure?: (partial: Record<string, unknown>) => void;
+      ready?: () => boolean;
+      isOpen?: () => boolean;
       isDemo?: boolean;
     };
   }

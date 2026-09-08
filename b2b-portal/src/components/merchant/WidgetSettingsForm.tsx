@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { WidgetLivePreview } from "@/components/merchant/WidgetLivePreview";
 import { isLocalAppUrl } from "@/lib/public-app-url";
+import { buildLoaderSnippet } from "@/lib/shoprenter/install/snippet";
 import type { MerchantWidgetDto } from "@/lib/widget/settings";
 import {
   applyWidgetTheme,
@@ -134,13 +135,11 @@ export function WidgetSettingsForm({ initial, apiBase }: Props) {
   const apiBaseLocal = isLocalAppUrl(apiBase);
   const snippet = useMemo(
     () =>
-      `<script>
-window.SR_B2B_QUICKORDER = {
-  apiBase: ${JSON.stringify(apiBase)},
-  shopId: ${JSON.stringify(initial.publicId)}
-};
-</script>
-<script src=${JSON.stringify(`${apiBase}/widget.js?v=${widgetVersion}`)}></script>`,
+      buildLoaderSnippet({
+        apiBase,
+        publicId: initial.publicId,
+        version: widgetVersion,
+      }),
     [apiBase, initial.publicId, widgetVersion],
   );
 
@@ -193,6 +192,7 @@ window.SR_B2B_QUICKORDER = {
       freeShipping: {
         manualGross: manualParsed,
       },
+      launch: settings.launch ?? DEFAULT_WIDGET_SETTINGS.launch,
     };
 
     try {
@@ -258,13 +258,14 @@ window.SR_B2B_QUICKORDER = {
   return (
     <form
       onSubmit={save}
-      className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)] lg:overflow-hidden"
+      className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.8fr)] lg:overflow-hidden"
     >
       <section className="flex min-h-[380px] flex-col border-b-[0.5px] border-line-strong p-3 md:p-4 lg:min-h-0 lg:border-b-0 lg:border-r-[0.5px]">
         <WidgetLivePreview
           buttonLabel={buttonLabel}
           fabColor={fabColor}
           fabInk={settings.appearance.fabInk}
+          fabInkCustom={settings.appearance.fabInkCustom}
           fabStyle={settings.appearance.fabStyle}
           fabPosition={settings.appearance.fabPosition}
           fabSize={settings.appearance.fabSize}
@@ -275,6 +276,9 @@ window.SR_B2B_QUICKORDER = {
           showNextLevelProgress={showNextLevelProgress}
           showFreeShippingProgress={showFreeShippingProgress}
           freeShippingThresholdLabel={freeShipThresholdLabel}
+          freeShippingThresholdGross={
+            Number(String(freeShippingManual).replace(/\s/g, "")) || 50_000
+          }
           showPanel={showPanel}
           onShowPanel={setShowPanel}
         />

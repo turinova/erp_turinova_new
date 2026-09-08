@@ -1,7 +1,12 @@
 import type { PoolClient } from "pg";
+import { getOrgBillingState } from "@/lib/billing/org-billing";
 import { evaluateErpQualified, loadErpQualified } from "@/lib/billing/erp-qualified";
 import { parsePlanId, planFilterValues, PLAN_DEFAULTS } from "@/lib/billing/plans";
 import { query } from "@/lib/db";
+import {
+  phaseFromShop,
+  scriptIsInstalled,
+} from "@/lib/embed/phase";
 import {
   catalogLabel,
   computeHealth,
@@ -16,6 +21,7 @@ import {
   type OrgJobRow,
   type OrgListRow,
 } from "@/lib/orgs/types";
+import { getInstallCapability } from "@/lib/shoprenter/install/mode";
 
 export type { OrgDetail, OrgListRow, OrgAuditRow, OrgJobRow } from "@/lib/orgs/types";
 export { fleetSummary, sortFleet } from "@/lib/orgs/types";
@@ -34,6 +40,9 @@ type RawListRow = {
   shop_name: string | null;
   shop_status: string | null;
   widget_enabled: boolean | null;
+  widget_script_method: string | null;
+  widget_script_installed_at: Date | string | null;
+  sr_billing_status: string | null;
   catalog_status: string | null;
   catalog_product_count: number | null;
   owner_email: string | null;
@@ -51,6 +60,12 @@ type RawListRow = {
   gross_month: number | null;
 };
 
+function toIso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
 function enrichListRow(row: RawListRow): OrgListRow {
   const plan = parsePlanId(row.plan);
   const partnerLimit = Number(row.partner_limit ?? PLAN_DEFAULTS.start.partnerLimit);
@@ -58,6 +73,18 @@ function enrichListRow(row: RawListRow): OrgListRow {
   const skuLimit = Number(row.sku_limit ?? 15_000);
   const skuUsed = Number(row.catalog_product_count ?? 0);
   const widgetEnabled = Boolean(row.widget_enabled);
+  const scriptInstalledAt = toIso(row.widget_script_installed_at);
+  const scriptInstalled = scriptIsInstalled({
+    method: row.widget_script_method,
+    installedAt: scriptInstalledAt,
+  });
+  const embed_phase = phaseFromShop({
+    widgetEnabled,
+    catalogStatus: row.catalog_status,
+    shopStatus: row.shop_status,
+    scriptMethod: row.widget_script_method,
+    scriptInstalledAt,
+  });
   const { health, reason } = computeHealth({
     status: row.status,
     trialEndsAt: row.trial_ends_at,
@@ -102,6 +129,11 @@ function enrichListRow(row: RawListRow): OrgListRow {
     shop_name: row.shop_name,
     shop_status: row.shop_status,
     widget_enabled: row.widget_enabled,
+    widget_script_method: row.widget_script_method,
+    widget_script_installed_at: scriptInstalledAt,
+    script_installed: scriptInstalled,
+    embed_phase,
+    billing_status: row.sr_billing_status,
     owner_email: row.owner_email,
     invite_status: row.invite_status,
     invite_expired: inviteExpired,
@@ -137,6 +169,7 @@ export type OrgListFilters = {
   catalog?: string;
   widget?: string;
   flag?: string;
+  phase?: string;
 };
 
 export async function listOrganizations(
@@ -170,9 +203,11 @@ export async function listOrganizations(
 
   const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
 
-  const res = await query<RawListRow>(
-    client,
-    `
+  let rows: OrgListRow[];
+  try {
+    const res = await query<RawListRow>(
+      client,
+      `
     select
       o.id,
       o.name,
@@ -187,6 +222,9 @@ export async function listOrganizations(
       s.shoprenter_shop_name as shop_name,
       s.status as shop_status,
       s.widget_enabled,
+      s.widget_script_method,
+      s.widget_script_installed_at,
+      o.sr_billing_status,
       s.catalog_status,
       s.catalog_product_count,
       s.last_ping_at,
@@ -208,6 +246,8 @@ export async function listOrganizations(
         sh.shoprenter_shop_name,
         sh.status,
         sh.widget_enabled,
+        sh.widget_script_method,
+        sh.widget_script_installed_at,
         sh.catalog_status,
         (
           select count(*)::int
@@ -259,10 +299,16 @@ export async function listOrganizations(
     ) ord on true
     ${where}
     `,
-    params,
-  );
-
-  let rows = sortFleet(res.rows.map(enrichListRow));
+      params,
+    );
+    rows = sortFleet(res.rows.map(enrichListRow));
+  } catch (err) {
+    console.error(
+      "[listOrganizations] embed columns missing? run sql/040 + sql/041",
+      err,
+    );
+    throw err;
+  }
 
   if (filters.health === "ok" || filters.health === "warn" || filters.health === "crit") {
     rows = rows.filter((r) => r.health === filters.health);
@@ -294,6 +340,15 @@ export async function listOrganizations(
   }
   if (filters.flag === "erpQualified") {
     rows = rows.filter((r) => r.erpQualified);
+  }
+  if (filters.flag === "noScript") {
+    rows = rows.filter((r) => !r.script_installed && r.shop_status !== "uninstalled");
+  }
+  if (filters.flag === "uninstalled") {
+    rows = rows.filter((r) => r.shop_status === "uninstalled");
+  }
+  if (filters.phase && ["A", "B", "C", "D", "E"].includes(filters.phase)) {
+    rows = rows.filter((r) => r.embed_phase === filters.phase);
   }
 
   return rows;
@@ -332,13 +387,21 @@ export async function getOrganizationDetail(
     last_ping_ok: boolean | null;
     last_ping_at: string | null;
     last_ping_error: string | null;
+    widget_script_method: string | null;
+    widget_script_tag_id: string | null;
+    widget_script_installed_at: Date | string | null;
+    widget_script_verified_at: Date | string | null;
+    has_credentials: boolean;
   }>(
     client,
-    `select id, shoprenter_shop_name, store_url, public_id, status, widget_enabled,
-            catalog_status, catalog_product_count, catalog_error, catalog_synced_at,
-            last_ping_ok, last_ping_at, last_ping_error
-     from shops where organization_id = $1 and purged_at is null
-     order by created_at limit 1`,
+    `select s.id, s.shoprenter_shop_name, s.store_url, s.public_id, s.status, s.widget_enabled,
+            s.catalog_status, s.catalog_product_count, s.catalog_error, s.catalog_synced_at,
+            s.last_ping_ok, s.last_ping_at, s.last_ping_error,
+            s.widget_script_method, s.widget_script_tag_id,
+            s.widget_script_installed_at, s.widget_script_verified_at,
+            exists(select 1 from shop_credentials c where c.shop_id = s.id) as has_credentials
+     from shops s where s.organization_id = $1 and s.purged_at is null
+     order by s.created_at limit 1`,
     [orgId],
   );
 
@@ -493,6 +556,28 @@ export async function getOrganizationDetail(
   );
 
   const plan = parsePlanId(org.plan);
+  const billing = await getOrgBillingState(client, orgId);
+  const installCap = getInstallCapability();
+
+  const scriptInstalledAt = shop
+    ? toIso(shop.widget_script_installed_at)
+    : null;
+  const scriptInstalled = shop
+    ? scriptIsInstalled({
+        method: shop.widget_script_method,
+        installedAt: scriptInstalledAt,
+      })
+    : false;
+  const embedPhase = shop
+    ? phaseFromShop({
+        widgetEnabled: shop.widget_enabled,
+        catalogStatus: shop.catalog_status,
+        shopStatus: shop.status,
+        scriptMethod: shop.widget_script_method,
+        scriptInstalledAt,
+        hasCredentials: shop.has_credentials,
+      })
+    : "A";
 
   return {
     id: org.id,
@@ -550,8 +635,17 @@ export async function getOrganizationDetail(
           last_ping_ok: shop.last_ping_ok,
           last_ping_at: shop.last_ping_at,
           last_ping_error: shop.last_ping_error,
+          widget_script_method: shop.widget_script_method,
+          widget_script_tag_id: shop.widget_script_tag_id,
+          widget_script_installed_at: scriptInstalledAt,
+          widget_script_verified_at: toIso(shop.widget_script_verified_at),
+          script_installed: scriptInstalled,
+          has_credentials: Boolean(shop.has_credentials),
+          embed_phase: embedPhase,
         }
       : null,
+    billing,
+    install_mode_label: installCap.label,
     pending_invite: inviteRes.rows[0] ?? null,
     members: membersRes.rows.map((m) => ({
       userId: m.user_id,

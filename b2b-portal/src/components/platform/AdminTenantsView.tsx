@@ -11,6 +11,7 @@ import {
   hasWhiteLabel,
   type PlanId,
 } from "@/lib/billing/plans";
+import { EMBED_PHASE_LABEL } from "@/lib/embed/phase";
 import { relativeTime } from "@/lib/format";
 import { fleetSummary, sortFleet, type OrgListRow } from "@/lib/orgs/types";
 
@@ -75,6 +76,7 @@ export function AdminTenantsView({ initialRows }: Props) {
   const health = searchParams.get("health") ?? "";
   const catalog = searchParams.get("catalog") ?? "";
   const widget = searchParams.get("widget") ?? "";
+  const phase = searchParams.get("phase") ?? "";
   const flag = searchParams.get("flag") ?? "";
 
   const summary = useMemo(() => fleetSummary(initialRows), [initialRows]);
@@ -112,6 +114,11 @@ export function AdminTenantsView({ initialRows }: Props) {
       }
       if (flag === "overCap" && !r.overCap) return false;
       if (flag === "erpQualified" && !r.erpQualified) return false;
+      if (flag === "noScript" && (r.script_installed || r.shop_status === "uninstalled")) {
+        return false;
+      }
+      if (flag === "uninstalled" && r.shop_status !== "uninstalled") return false;
+      if (phase && r.embed_phase !== phase) return false;
       if (plan === "plus" || plan === "pro") {
         if (!hasWhiteLabel(r.plan) || r.trialActive) return false;
       }
@@ -121,7 +128,7 @@ export function AdminTenantsView({ initialRows }: Props) {
       return true;
     });
     return sortFleet(filtered);
-  }, [initialRows, health, catalog, widget, flag, plan]);
+  }, [initialRows, health, catalog, widget, flag, plan, phase]);
 
   function setFilter(key: string, value: string) {
     const next = new URLSearchParams(searchParams.toString());
@@ -147,7 +154,15 @@ export function AdminTenantsView({ initialRows }: Props) {
     }
   }
 
-  const extraFilterOn = Boolean(catalog || widget || flag === "overCap" || flag === "erpQualified");
+  const extraFilterOn = Boolean(
+    catalog ||
+      widget ||
+      phase ||
+      flag === "overCap" ||
+      flag === "erpQualified" ||
+      flag === "noScript" ||
+      flag === "uninstalled",
+  );
 
   return (
     <>
@@ -308,11 +323,33 @@ export function AdminTenantsView({ initialRows }: Props) {
           </select>
           <select
             className="tn-select cursor-pointer"
-            value={flag === "overCap" || flag === "erpQualified" ? flag : ""}
+            value={phase}
+            onChange={(e) => setFilter("phase", e.target.value)}
+            aria-label="Embed fázis"
+          >
+            <option value="">Embed fázis</option>
+            <option value="A">A · Script hiányzik</option>
+            <option value="B">B · Gomb ki</option>
+            <option value="C">C · Katalógus tölt</option>
+            <option value="D">D · Él</option>
+            <option value="E">E · API hiba</option>
+          </select>
+          <select
+            className="tn-select cursor-pointer"
+            value={
+              flag === "overCap" ||
+              flag === "erpQualified" ||
+              flag === "noScript" ||
+              flag === "uninstalled"
+                ? flag
+                : ""
+            }
             onChange={(e) => setFilter("flag", e.target.value)}
             aria-label="Egyéb"
           >
             <option value="">Egyéb</option>
+            <option value="noScript">Script nincs bent</option>
+            <option value="uninstalled">App eltávolítva</option>
             <option value="overCap">Soft limit tele</option>
             <option value="erpQualified">ERP jelölt</option>
           </select>
@@ -344,7 +381,7 @@ export function AdminTenantsView({ initialRows }: Props) {
           <table className="w-full min-w-[640px] border-collapse text-left text-[13px]">
             <thead>
               <tr className="border-b border-line-strong bg-surface-2">
-                {["Szervezet", "Állapot", "Termékek", "Widget"].map((h) => (
+                {["Szervezet", "Állapot", "Embed", "Widget"].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-faint"
@@ -388,10 +425,22 @@ export function AdminTenantsView({ initialRows }: Props) {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="tabular-nums font-medium">
-                        {row.product_count.toLocaleString("hu-HU")}
+                      <p className="font-medium">
+                        {row.embed_phase} · {EMBED_PHASE_LABEL[row.embed_phase]}
                       </p>
-                      <p className="text-[12px] text-faint">{row.catalog_label}</p>
+                      <p className="text-[12px] text-faint">
+                        Script:{" "}
+                        {row.script_installed
+                          ? row.widget_script_method || "bent"
+                          : "nincs"}
+                        {" · "}
+                        {row.product_count.toLocaleString("hu-HU")} termék
+                      </p>
+                      {row.shop_status === "uninstalled" ? (
+                        <p className="text-[11px] font-semibold text-danger">
+                          Eltávolítva
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <span

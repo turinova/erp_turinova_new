@@ -1,5 +1,6 @@
 import type { PlanId } from "@/lib/billing/plans";
 import type { ErpQualified } from "@/lib/billing/erp-qualified";
+import type { EmbedOpsPhase } from "@/lib/embed/phase";
 import type { HealthLevel } from "@/lib/orgs/health";
 
 export type OrgListRow = {
@@ -17,6 +18,11 @@ export type OrgListRow = {
   shop_name: string | null;
   shop_status: string | null;
   widget_enabled: boolean | null;
+  widget_script_method: string | null;
+  widget_script_installed_at: string | null;
+  script_installed: boolean;
+  embed_phase: EmbedOpsPhase;
+  billing_status: string | null;
   owner_email: string | null;
   invite_status: string | null;
   invite_expired: boolean;
@@ -105,7 +111,21 @@ export type OrgDetail = {
     last_ping_ok: boolean | null;
     last_ping_at: string | null;
     last_ping_error: string | null;
+    widget_script_method: string | null;
+    widget_script_tag_id: string | null;
+    widget_script_installed_at: string | null;
+    widget_script_verified_at: string | null;
+    script_installed: boolean;
+    has_credentials: boolean;
+    embed_phase: EmbedOpsPhase;
   } | null;
+  billing: {
+    chargeId: string | null;
+    status: string | null;
+    interval: "monthly" | "annual" | null;
+    updatedAt: string | null;
+  };
+  install_mode_label: string;
   pending_invite: {
     id: string;
     email: string;

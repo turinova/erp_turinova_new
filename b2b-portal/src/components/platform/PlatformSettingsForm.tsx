@@ -13,6 +13,10 @@ type PlatformSettingsDto = {
   trialDays: number;
   syncConcurrency: number;
   portalTopNGate: boolean;
+  embedMonthlyListNet: number;
+  embedCampaignPct: number;
+  installModeLabel: string;
+  billingEnabled: boolean;
   plans: PlanDefaultRow[];
 };
 
@@ -27,6 +31,10 @@ export function PlatformSettingsForm() {
   const [trialDays, setTrialDays] = useState(String(TRIAL_DAYS_DEFAULT));
   const [syncConcurrency, setSyncConcurrency] = useState("10");
   const [portalTopNGate, setPortalTopNGate] = useState(true);
+  const [embedMonthlyListNet, setEmbedMonthlyListNet] = useState("9999");
+  const [embedCampaignPct, setEmbedCampaignPct] = useState("27");
+  const [installModeLabel, setInstallModeLabel] = useState("");
+  const [billingEnabled, setBillingEnabled] = useState(false);
   const [plans, setPlans] = useState<PlanDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -49,6 +57,10 @@ export function PlatformSettingsForm() {
       setTrialDays(String(s.trialDays));
       setSyncConcurrency(String(s.syncConcurrency));
       setPortalTopNGate(s.portalTopNGate);
+      setEmbedMonthlyListNet(String(s.embedMonthlyListNet));
+      setEmbedCampaignPct(String(s.embedCampaignPct));
+      setInstallModeLabel(s.installModeLabel);
+      setBillingEnabled(s.billingEnabled);
       setPlans(
         s.plans.map((p) => ({
           plan: p.plan,
@@ -74,6 +86,8 @@ export function PlatformSettingsForm() {
           trialDays: Number(trialDays),
           syncConcurrency: Number(syncConcurrency),
           portalTopNGate,
+          embedMonthlyListNet: Number(embedMonthlyListNet),
+          embedCampaignPct: Number(embedCampaignPct),
           plans: plans.map((p) => ({
             plan: p.plan,
             partnerLimit: Number(p.partnerLimit),
@@ -125,6 +139,33 @@ export function PlatformSettingsForm() {
             onChange={(e) => setTrialDays(e.target.value)}
           />
         </label>
+      </section>
+
+      <section className="tn-section">
+        <h2 className="tn-section-title">App Store árazás (embed)</h2>
+        <p className="tn-section-sub">
+          Az /sr-embed/elofizetes oldal innen olvassa a listárat és a kedvezményt
+          (nettó). Telepítési mód: {installModeLabel || "—"}. Payment API:{" "}
+          {billingEnabled ? "bekapcsolva (env)" : "mailto fallback (env ki)"}.
+        </p>
+        <div className="mt-4 grid max-w-lg gap-3 sm:grid-cols-2">
+          <label className="tn-field">
+            <span className="tn-label">Havi listaár (nettó Ft)</span>
+            <input
+              className="tn-input"
+              value={embedMonthlyListNet}
+              onChange={(e) => setEmbedMonthlyListNet(e.target.value)}
+            />
+          </label>
+          <label className="tn-field">
+            <span className="tn-label">Kampány kedvezmény (%)</span>
+            <input
+              className="tn-input"
+              value={embedCampaignPct}
+              onChange={(e) => setEmbedCampaignPct(e.target.value)}
+            />
+          </label>
+        </div>
       </section>
 
       <section className="tn-section">

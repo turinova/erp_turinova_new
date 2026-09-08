@@ -1,11 +1,9 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FAB_SIZE_PRESETS,
-  LOCKED_PANEL_THEME,
-  PANEL_THEME_PRESETS,
   resolveFabVisual,
-  resolvePanelThemeTokens,
   type FabInkId,
   type FabPositionId,
   type FabSizeId,
@@ -13,25 +11,38 @@ import {
   type PanelThemeId,
   type WidgetModuleId,
 } from "@/lib/widget/presets";
+import {
+  PREVIEW_MESSAGE_SOURCE,
+  type PreviewConfigPayload,
+  type PreviewHostMessage,
+  type PreviewSandboxMessage,
+} from "@/lib/widget/preview-protocol";
+import { WIDGET_JS_ASSET } from "@/lib/widget/asset-version";
+
+/** Virtual laptop viewport so widget.js media queries stay desktop. */
+const DESKTOP_W = 1200;
+const DESKTOP_H = 780;
 
 type Props = {
   buttonLabel: string;
   fabColor: string;
   fabInk?: FabInkId;
+  fabInkCustom?: string | null;
   fabStyle: FabStyleId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
   panelTheme: PanelThemeId;
   modules: WidgetModuleId[];
   showTurinovaMark?: boolean;
-  /** Mirror widget partner FOMO footer. */
   showCustomerGroupName?: boolean;
   showNextLevelProgress?: boolean;
-  /** Free-shipping FOMO strip. */
   showFreeShippingProgress?: boolean;
   freeShippingThresholdLabel?: string;
+  freeShippingThresholdGross?: number | null;
   showPanel: boolean;
   onShowPanel: (open: boolean) => void;
+  showFab?: boolean;
+  presentation?: "auto" | "fullscreen" | "drawer";
 };
 
 const S = {
@@ -41,10 +52,8 @@ const S = {
   muted: "#5C5C5C",
   faint: "#8A8A8A",
   line: "rgba(0,0,0,.1)",
-  lineStrong: "rgba(0,0,0,.45)",
 };
 
-/** Unsplash — hardware / home fixtures (stable crop URLs) */
 const HERO_IMG =
   "https://images.unsplash.com/photo-1556912173-46c336c7fd55?auto=format&fit=crop&w=1400&q=80";
 
@@ -111,7 +120,6 @@ function StorefrontMock() {
       style={{ background: S.bg, color: S.ink }}
       aria-hidden
     >
-      {/* Top bar */}
       <div
         className="flex h-8 items-center justify-between px-4 text-[10px]"
         style={{ background: S.ink, color: "rgba(255,255,255,.75)" }}
@@ -120,7 +128,6 @@ function StorefrontMock() {
         <span>Belépés</span>
       </div>
 
-      {/* Header */}
       <div
         className="flex h-12 items-center gap-3 border-b px-4"
         style={{ background: S.surface, borderColor: S.line }}
@@ -154,7 +161,6 @@ function StorefrontMock() {
         </span>
       </div>
 
-      {/* Real hero — full-bleed photo + overlay */}
       <div className="relative mx-0 overflow-hidden" style={{ minHeight: 168 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -188,7 +194,6 @@ function StorefrontMock() {
         </div>
       </div>
 
-      {/* Product grid with real photos */}
       <div className="px-3 pb-20 pt-4">
         <div className="mb-3 flex items-baseline justify-between px-1">
           <p className="text-[13px] font-semibold tracking-tight">
@@ -234,240 +239,227 @@ function StorefrontMock() {
   );
 }
 
-/** Demo partner progress — matches real widget FOMO footer layout. */
-const PREVIEW_FOMO = {
-  cyan: "#22D3EE",
-  mint: "#34D399",
-  gap: "#0891B2",
-  next: "#10B981",
-  nextText: "#047857",
-  hot: "#FF6B4A",
-  chipCyanBg:
-    "linear-gradient(135deg, rgba(34,211,238,.22), rgba(255,255,255,.72))",
-  chipMintBg:
-    "linear-gradient(135deg, rgba(52,211,153,.26), rgba(34,211,238,.16), rgba(255,255,255,.7))",
-  barTrack:
-    "linear-gradient(180deg, rgba(255,255,255,.78), rgba(241,245,249,.92))",
-  barFill: "linear-gradient(90deg, #22D3EE, #34D399)",
-  barGlow: "0 0 10px rgba(34,211,238,.55), 0 0 18px rgba(52,211,153,.35)",
-};
-
-const PREVIEW_PARTNER = {
-  groupName: "Asztalosok",
-  remainingLabel: "184 200 Ft",
-  nextGroupName: "Arany partner",
-  progressPercent: 62,
-  rewardHeadline: "−12% kedvezmény",
-  rewardDetail: "Az árlistás termékekre",
-  urgency: "mid" as "mid" | "high" | "done",
-};
-
-function PartnerFomoPreview({
-  theme,
-  showGroupName,
-  showProgress,
-}: {
-  theme: ReturnType<typeof resolvePanelThemeTokens>;
-  showGroupName: boolean;
-  showProgress: boolean;
-}) {
-  if (!showGroupName && !showProgress) return null;
-  const gapColor =
-    PREVIEW_PARTNER.urgency === "high" ? PREVIEW_FOMO.hot : PREVIEW_FOMO.gap;
-  const fill =
-    PREVIEW_PARTNER.urgency === "high"
-      ? "linear-gradient(90deg, #FF6B4A, #FBBF24)"
-      : PREVIEW_FOMO.barFill;
-
-  return (
-    <div
-      className="flex min-w-0 max-w-[640px] flex-1 flex-wrap items-center gap-x-2.5 gap-y-2"
-      style={{ maxHeight: 56 }}
-      data-urgency={showProgress ? PREVIEW_PARTNER.urgency : undefined}
-    >
-      {showGroupName ? (
-        <span
-          className="inline-flex h-[30px] max-w-[140px] shrink-0 items-center truncate px-[11px] text-[12.5px] font-bold tracking-tight"
-          style={{
-            borderRadius: 999,
-            color: "#0369A1",
-            background: PREVIEW_FOMO.chipCyanBg,
-            border: "1px solid rgba(34,211,238,.4)",
-            boxShadow:
-              "0 1px 0 rgba(255,255,255,.65) inset, 0 4px 14px rgba(6,182,212,.12)",
-            backdropFilter: "blur(10px) saturate(1.35)",
-          }}
-        >
-          {PREVIEW_PARTNER.groupName}
-        </span>
-      ) : null}
-
-      {showProgress ? (
-        <>
-          <div
-            className="relative h-[11px] min-w-[64px] max-w-[160px] flex-1 overflow-hidden"
-            style={{
-              borderRadius: 999,
-              background: PREVIEW_FOMO.barTrack,
-              border: "1px solid rgba(148,163,184,.35)",
-              boxShadow:
-                "0 1px 0 rgba(255,255,255,.9) inset, 0 2px 8px rgba(15,23,42,.06)",
-            }}
-            role="progressbar"
-            aria-valuenow={PREVIEW_PARTNER.progressPercent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <i
-              className="block h-full not-italic"
-              style={{
-                width: `${PREVIEW_PARTNER.progressPercent}%`,
-                borderRadius: 999,
-                background: fill,
-                boxShadow: PREVIEW_FOMO.barGlow,
-              }}
-            />
-          </div>
-          <span
-            className="shrink-0 whitespace-nowrap text-[12.5px] font-semibold tracking-tight tabular-nums"
-            style={{ color: theme.muted }}
-          >
-            Még{" "}
-            <em className="not-italic font-black" style={{ color: gapColor }}>
-              {PREVIEW_PARTNER.remainingLabel}
-            </em>
-          </span>
-          <span className="inline-flex min-w-0 shrink-0 items-center gap-1.5">
-            <span
-              className="shrink-0 text-[13px] font-extrabold"
-              style={{ color: PREVIEW_FOMO.next }}
-            >
-              →
-            </span>
-            <span
-              className="inline-flex h-[30px] max-w-[180px] items-center truncate px-[11px] text-[12.5px] font-bold tracking-tight"
-              style={{
-                borderRadius: 999,
-                color: PREVIEW_FOMO.nextText,
-                background:
-                  "linear-gradient(135deg, rgba(52,211,153,.24), rgba(255,255,255,.72))",
-                border: "1px solid rgba(52,211,153,.45)",
-                boxShadow:
-                  "0 1px 0 rgba(255,255,255,.65) inset, 0 4px 14px rgba(16,185,129,.12)",
-                backdropFilter: "blur(10px) saturate(1.35)",
-              }}
-            >
-              {PREVIEW_PARTNER.nextGroupName} · −12%
-            </span>
-          </span>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-const PREVIEW_FREE_SHIP = {
-  remainingLabel: "18 400 Ft",
-  progressPercent: 63,
-};
-
-function FreeShipFomoPreview({
-  theme,
-  thresholdLabel,
-}: {
-  theme: ReturnType<typeof resolvePanelThemeTokens>;
-  thresholdLabel: string;
-}) {
-  return (
-    <div className="flex min-w-0 max-w-[640px] flex-1 flex-wrap items-center gap-x-2.5 gap-y-2">
-      <span
-        className="inline-flex h-[30px] max-w-[160px] shrink-0 items-center truncate px-[11px] text-[12.5px] font-bold tracking-tight"
-        style={{
-          borderRadius: 999,
-          color: PREVIEW_FOMO.nextText,
-          background: PREVIEW_FOMO.chipMintBg,
-          border: "1px solid rgba(52,211,153,.48)",
-          boxShadow:
-            "0 1px 0 rgba(255,255,255,.65) inset, 0 4px 14px rgba(16,185,129,.12)",
-          backdropFilter: "blur(10px) saturate(1.35)",
-        }}
-        title={thresholdLabel ? `Küszöb: ${thresholdLabel}` : undefined}
-      >
-        Ingyenes szállítás
-      </span>
-      <div
-        className="relative h-[11px] min-w-[64px] max-w-[160px] flex-1 overflow-hidden"
-        style={{
-          borderRadius: 999,
-          background: PREVIEW_FOMO.barTrack,
-          border: "1px solid rgba(148,163,184,.35)",
-          boxShadow:
-            "0 1px 0 rgba(255,255,255,.9) inset, 0 2px 8px rgba(15,23,42,.06)",
-        }}
-        role="progressbar"
-        aria-valuenow={PREVIEW_FREE_SHIP.progressPercent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <i
-          className="block h-full not-italic"
-          style={{
-            width: `${PREVIEW_FREE_SHIP.progressPercent}%`,
-            borderRadius: 999,
-            background: PREVIEW_FOMO.barFill,
-            boxShadow: PREVIEW_FOMO.barGlow,
-          }}
-        />
-      </div>
-      <span
-        className="shrink-0 whitespace-nowrap text-[12.5px] font-semibold tracking-tight tabular-nums"
-        style={{ color: theme.muted }}
-      >
-        Még{" "}
-        <em
-          className="not-italic font-black"
-          style={{ color: PREVIEW_FOMO.gap }}
-        >
-          {PREVIEW_FREE_SHIP.remainingLabel}
-        </em>
-      </span>
-    </div>
-  );
-}
-
-export function WidgetLivePreview({
-  buttonLabel,
-  fabColor,
-  fabInk = "auto",
-  fabStyle,
-  fabPosition,
-  fabSize,
-  panelTheme: _panelTheme,
-  modules,
-  showTurinovaMark = true,
-  showCustomerGroupName = false,
-  showNextLevelProgress = false,
-  showFreeShippingProgress = false,
-  freeShippingThresholdLabel = "50 000 Ft",
-  showPanel,
-  onShowPanel,
-}: Props) {
+function buildConfig(props: {
+  buttonLabel: string;
+  fabColor: string;
+  fabInk?: FabInkId;
+  fabInkCustom?: string | null;
+  fabStyle: FabStyleId;
+  fabPosition: FabPositionId;
+  fabSize: FabSizeId;
+  panelTheme: PanelThemeId;
+  modules: WidgetModuleId[];
+  showTurinovaMark?: boolean;
+  showCustomerGroupName?: boolean;
+  showNextLevelProgress?: boolean;
+  showFreeShippingProgress?: boolean;
+  freeShippingThresholdLabel?: string;
+  freeShippingThresholdGross?: number | null;
+  showFab?: boolean;
+}): PreviewConfigPayload {
   const sizeMeta =
-    FAB_SIZE_PRESETS.find((p) => p.id === fabSize) ?? FAB_SIZE_PRESETS[0];
-  const visual = resolveFabVisual(fabStyle, fabColor, fabInk);
-  const theme = resolvePanelThemeTokens(LOCKED_PANEL_THEME, fabColor);
-  const moduleOn = (id: WidgetModuleId) => modules.includes(id);
+    FAB_SIZE_PRESETS.find((p) => p.id === props.fabSize) ?? FAB_SIZE_PRESETS[0];
+  const threshold =
+    typeof props.freeShippingThresholdGross === "number" &&
+    props.freeShippingThresholdGross > 0
+      ? props.freeShippingThresholdGross
+      : 50_000;
 
-  const tabs = [
-    moduleOn("insights") ? "Kezdőlap" : null,
-    "Új megrendelés",
-    moduleOn("orders") ? "Rendeléseim" : null,
-  ].filter(Boolean) as string[];
+  return {
+    buttonLabel: props.buttonLabel || "Gyors rendelés",
+    fabColor: props.fabColor,
+    fabInk: props.fabInk ?? "auto",
+    fabInkCustom: props.fabInkCustom ?? "",
+    fabStyle: props.fabStyle,
+    fabPosition: props.fabPosition,
+    fabSize: props.fabSize,
+    panelTheme: props.panelTheme,
+    modules: props.modules,
+    showTurinovaMark: props.showTurinovaMark !== false,
+    showCustomerGroupName: !!props.showCustomerGroupName,
+    showNextLevelProgress: !!props.showNextLevelProgress,
+    /* FAB lives on React mock in Gomb mode; hide inside iframe always */
+    showFab: false,
+    hideFab: true,
+    showLabel: sizeMeta.showLabel,
+    compact: sizeMeta.compact,
+    freeShipping: props.showFreeShippingProgress
+      ? {
+          enabled: true,
+          thresholdGross: threshold,
+          thresholdLabel: props.freeShippingThresholdLabel ?? null,
+        }
+      : null,
+  };
+}
 
+function postToFrame(
+  win: Window | null | undefined,
+  msg: PreviewHostMessage,
+) {
+  if (!win) return;
+  try {
+    win.postMessage(msg, window.location.origin);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Hybrid preview:
+ * - Gomb: rich storefront mock + FAB (laptop-facing shop context)
+ * - Widget: real widget.js in a scaled 1200px desktop viewport
+ */
+export function WidgetLivePreview(props: Props) {
+  const { showPanel, onShowPanel, showFab = true } = props;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const [frameReady, setFrameReady] = useState(false);
+  const [frameError, setFrameError] = useState<string | null>(null);
+  const [scale, setScale] = useState(1);
+  const lastPanelRef = useRef<boolean | null>(null);
+  const configRef = useRef<PreviewConfigPayload | null>(null);
+  const showPanelRef = useRef(showPanel);
+  const onShowPanelRef = useRef(onShowPanel);
+
+  const sizeMeta =
+    FAB_SIZE_PRESETS.find((p) => p.id === props.fabSize) ?? FAB_SIZE_PRESETS[0];
+  const visual = resolveFabVisual(
+    props.fabStyle,
+    props.fabColor,
+    props.fabInk ?? "auto",
+    props.fabInkCustom,
+  );
   const showLabel = sizeMeta.showLabel;
   const compact = sizeMeta.compact;
-  const isLarge = false;
-  const labelOnly = false;
+
+  const config = useMemo(
+    () =>
+      buildConfig({
+        buttonLabel: props.buttonLabel,
+        fabColor: props.fabColor,
+        fabInk: props.fabInk,
+        fabInkCustom: props.fabInkCustom,
+        fabStyle: props.fabStyle,
+        fabPosition: props.fabPosition,
+        fabSize: props.fabSize,
+        panelTheme: props.panelTheme,
+        modules: props.modules,
+        showTurinovaMark: props.showTurinovaMark,
+        showCustomerGroupName: props.showCustomerGroupName,
+        showNextLevelProgress: props.showNextLevelProgress,
+        showFreeShippingProgress: props.showFreeShippingProgress,
+        freeShippingThresholdLabel: props.freeShippingThresholdLabel,
+        freeShippingThresholdGross: props.freeShippingThresholdGross,
+        showFab: props.showFab,
+      }),
+    [
+      props.buttonLabel,
+      props.fabColor,
+      props.fabInk,
+      props.fabInkCustom,
+      props.fabStyle,
+      props.fabPosition,
+      props.fabSize,
+      props.panelTheme,
+      props.modules,
+      props.showTurinovaMark,
+      props.showCustomerGroupName,
+      props.showNextLevelProgress,
+      props.showFreeShippingProgress,
+      props.freeShippingThresholdLabel,
+      props.freeShippingThresholdGross,
+      props.showFab,
+    ],
+  );
+
+  configRef.current = config;
+  showPanelRef.current = showPanel;
+  onShowPanelRef.current = onShowPanel;
+
+  const previewSrc = `/widget-preview?v=${WIDGET_JS_ASSET}`;
+
+  useEffect(() => {
+    setFrameReady(false);
+    setFrameError(null);
+    lastPanelRef.current = null;
+  }, [previewSrc]);
+
+  useEffect(() => {
+    const el = paneRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect;
+      if (!box) return;
+      const next = Math.min(box.width / DESKTOP_W, box.height / DESKTOP_H, 1);
+      setScale(Number.isFinite(next) && next > 0 ? next : 1);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const data = ev.data as PreviewSandboxMessage | null;
+      if (!data || data.source !== PREVIEW_MESSAGE_SOURCE) return;
+
+      if (data.type === "ready") {
+        setFrameReady(true);
+        setFrameError(null);
+        const win = iframeRef.current?.contentWindow;
+        const cfg = configRef.current;
+        if (cfg) {
+          postToFrame(win, {
+            source: PREVIEW_MESSAGE_SOURCE,
+            type: "configure",
+            config: cfg,
+          });
+        }
+        postToFrame(win, {
+          source: PREVIEW_MESSAGE_SOURCE,
+          type: "setPanel",
+          open: showPanelRef.current,
+        });
+        lastPanelRef.current = showPanelRef.current;
+        return;
+      }
+      if (data.type === "panelClosed") {
+        lastPanelRef.current = false;
+        onShowPanelRef.current(false);
+        return;
+      }
+      if (data.type === "error") {
+        setFrameError(data.message || "Előnézet hiba");
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  useEffect(() => {
+    if (!frameReady) return;
+    const win = iframeRef.current?.contentWindow;
+    const t = window.setTimeout(() => {
+      postToFrame(win, {
+        source: PREVIEW_MESSAGE_SOURCE,
+        type: "configure",
+        config,
+      });
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [config, frameReady]);
+
+  useEffect(() => {
+    if (!frameReady) return;
+    if (lastPanelRef.current === showPanel) return;
+    lastPanelRef.current = showPanel;
+    postToFrame(iframeRef.current?.contentWindow, {
+      source: PREVIEW_MESSAGE_SOURCE,
+      type: "setPanel",
+      open: showPanel,
+    });
+  }, [showPanel, frameReady]);
 
   return (
     <div className="flex h-full min-h-[420px] flex-col overflow-hidden border border-line-strong bg-surface">
@@ -475,7 +467,9 @@ export function WidgetLivePreview({
         <div className="min-w-0">
           <p className="text-[11px] font-semibold text-text">Élő előnézet</p>
           <p className="truncate text-[10px] text-faint">
-            Válts nézetet jobbra →
+            {showPanel
+              ? "Laptop nézet · csak kinézet"
+              : "Webshop + gomb · így látja a partner"}
           </p>
         </div>
         <div
@@ -512,233 +506,109 @@ export function WidgetLivePreview({
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <StorefrontMock />
-
+      <div ref={paneRef} className="relative min-h-0 flex-1 overflow-hidden bg-[#E8E8E4]">
+        {/* Gomb: rich storefront + FAB */}
         {!showPanel ? (
-          <div
-            className={`absolute z-[2] inline-flex items-center justify-center transition-[left,right,bottom,top,padding,min-height] duration-150 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${fabPosClass(fabPosition)}`}
-            style={{
-              gap: showLabel ? 8 : 0,
-              minHeight: isLarge ? 52 : compact ? 40 : 44,
-              minWidth: showLabel ? undefined : compact ? 40 : 44,
-              padding: showLabel
-                ? isLarge
-                  ? "14px 20px"
-                  : compact
-                    ? "8px 12px"
-                    : "10px 16px"
-                : labelOnly
-                  ? "12px 18px"
-                  : "0",
-              borderRadius: 999,
-              background: visual.background,
-              color: visual.color,
-              border: visual.border,
-              backdropFilter: visual.backdrop,
-              WebkitBackdropFilter: visual.backdrop,
-              boxShadow: visual.boxShadow,
-              fontSize: compact ? 12 : 13,
-              fontWeight: 600,
-              letterSpacing: "-0.01em",
-              pointerEvents: "none",
-            }}
-            aria-hidden
-          >
-            {!labelOnly ? <ListIcon color="currentColor" /> : null}
-            {showLabel ? <span>{buttonLabel || "Gyors rendelés"}</span> : null}
+          <div className="absolute inset-0 z-[2]">
+            <StorefrontMock />
+            {showFab ? (
+              <button
+                type="button"
+                onClick={() => onShowPanel(true)}
+                className={`absolute z-[3] inline-flex cursor-pointer items-center justify-center transition-[left,right,bottom,top,padding,min-height] duration-150 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${fabPosClass(props.fabPosition)}`}
+                style={{
+                  gap: showLabel ? 8 : 0,
+                  minHeight: compact ? 40 : 44,
+                  minWidth: showLabel ? undefined : compact ? 40 : 44,
+                  padding: showLabel
+                    ? compact
+                      ? "8px 12px"
+                      : "10px 16px"
+                    : "0",
+                  borderRadius: 999,
+                  background: visual.background,
+                  color: visual.color,
+                  border: visual.border,
+                  backdropFilter: visual.backdrop,
+                  WebkitBackdropFilter: visual.backdrop,
+                  boxShadow: visual.boxShadow,
+                  fontSize: compact ? 12 : 13,
+                  fontWeight: 600,
+                  letterSpacing: "-0.01em",
+                }}
+                aria-label={`${props.buttonLabel || "Gyors rendelés"} megnyitása`}
+              >
+                <ListIcon color="currentColor" />
+                {showLabel ? (
+                  <span>{props.buttonLabel || "Gyors rendelés"}</span>
+                ) : null}
+              </button>
+            ) : (
+              <p className="absolute bottom-4 left-4 right-4 z-[3] text-center text-[11px] text-faint">
+                A lebegő gomb ki van kapcsolva — a Widget fülön az ablakot látod.
+              </p>
+            )}
           </div>
-        ) : (
+        ) : null}
+
+        {/* Widget: scaled desktop iframe (kept mounted) */}
+        <div
+          className={
+            showPanel
+              ? "absolute inset-0 z-[1] flex items-start justify-center overflow-hidden"
+              : "invisible absolute inset-0 z-0 overflow-hidden"
+          }
+          aria-hidden={!showPanel}
+        >
+          {showPanel && !frameReady && !frameError ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80 text-[13px] text-faint">
+              Widget betöltése…
+            </div>
+          ) : null}
+          {showPanel && frameError ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-surface px-4 text-center text-[13px] text-danger">
+              {frameError}
+            </div>
+          ) : null}
           <div
-            className="absolute inset-0 z-[3] flex flex-col overflow-hidden"
             style={{
-              background: theme.bg,
-              color: theme.text,
-              ["--p-accent" as string]: theme.accent,
+              width: DESKTOP_W * scale,
+              height: DESKTOP_H * scale,
+              position: "relative",
+              flexShrink: 0,
             }}
           >
             <div
-              className="flex h-11 shrink-0 items-center gap-2 border-b px-3"
               style={{
-                background: theme.topbar,
-                borderColor: theme.lineStrong,
+                width: DESKTOP_W,
+                height: DESKTOP_H,
+                transform: `scale(${scale})`,
+                transformOrigin: "top left",
+                pointerEvents: "none",
               }}
             >
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-none"
-                style={{
-                  background: theme.accent,
-                  color: "#fff",
-                }}
-              >
-                <ListIcon color="#fff" />
-              </span>
-              <span className="text-[12px] font-semibold tracking-tight">
-                {buttonLabel || "Gyors rendelés"}
-              </span>
-              <span
-                className="ml-auto rounded-none border px-2 py-1 text-[11px] font-medium"
-                style={{
-                  color: theme.text,
-                  background: theme.surface2,
-                  borderColor: theme.lineStrong,
-                }}
-              >
-                Kilépés
-              </span>
+              <iframe
+                ref={iframeRef}
+                title="ProGate widget élő előnézet"
+                src={previewSrc}
+                className="border-0"
+                style={{ width: DESKTOP_W, height: DESKTOP_H }}
+                tabIndex={-1}
+                sandbox="allow-scripts allow-same-origin"
+              />
             </div>
-            <div
-              className="flex justify-center border-b px-2 py-1.5"
-              style={{
-                background: theme.bg,
-                borderColor: theme.line,
-              }}
-            >
+            {showPanel ? (
               <div
-                className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-none p-0.5"
-                style={{ background: theme.navTrack }}
+                className="pointer-events-none absolute inset-0 z-[2] flex items-start justify-end p-2"
+                aria-hidden
               >
-                {tabs.map((tab, i) => (
-                  <span
-                    key={tab}
-                    className="shrink-0 rounded-none px-2.5 py-1 text-[11px] font-semibold"
-                    style={
-                      i === (moduleOn("insights") ? 1 : 0)
-                        ? {
-                            background: theme.navActive,
-                            color: theme.text,
-                            boxShadow:
-                              "0 0.5px 1px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.12)",
-                          }
-                        : { color: theme.muted, fontWeight: 500 }
-                    }
-                  >
-                    {tab}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div
-                className="flex items-center gap-2 border-b px-3 py-2"
-                style={{ borderColor: theme.line, background: theme.surface }}
-              >
-                <div
-                  className="min-h-9 flex-1 px-3 py-2 text-[12px]"
-                  style={{
-                    background: theme.bg,
-                    border: `0.5px solid ${theme.lineStrong}`,
-                    color: theme.muted,
-                  }}
-                >
-                  Cikkszám / gyártói / vonalkód
-                </div>
-                <span
-                  className="inline-flex h-9 shrink-0 items-center px-3 text-[11px] font-semibold"
-                  style={{
-                    background: theme.accent,
-                    color: "#fff",
-                  }}
-                >
-                  Hozzáad
+                <span className="border border-line-strong bg-surface/95 px-2 py-1 text-[10px] font-semibold text-faint shadow-sm">
+                  Csak kinézet
                 </span>
               </div>
-              <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-                <p
-                  className="text-[13px] font-semibold"
-                  style={{ color: theme.text }}
-                >
-                  Cikkszám, gyártói szám vagy vonalkód. Enter, és bent van.
-                </p>
-                <p className="mt-1.5 text-[11px]" style={{ color: theme.muted }}>
-                  Írd be a cikkszámot. Import: Excel, beillesztés vagy fotó.
-                  Bezárás után a lista megmarad.
-                </p>
-              </div>
-              <div
-                className="flex flex-col items-stretch gap-2 border-t px-3 py-2.5"
-                style={{
-                  borderColor: theme.lineStrong,
-                  background: theme.bg,
-                  minHeight:
-                    showCustomerGroupName ||
-                    showNextLevelProgress ||
-                    showFreeShippingProgress
-                      ? 40
-                      : undefined,
-                }}
-              >
-                {showFreeShippingProgress ? (
-                  <FreeShipFomoPreview
-                    theme={theme}
-                    thresholdLabel={freeShippingThresholdLabel}
-                  />
-                ) : null}
-                <div className="flex items-end justify-between gap-3">
-                  {showCustomerGroupName || showNextLevelProgress ? (
-                    <PartnerFomoPreview
-                      theme={theme}
-                      showGroupName={showCustomerGroupName}
-                      showProgress={showNextLevelProgress}
-                    />
-                  ) : !showFreeShippingProgress ? (
-                    <span
-                      className="text-[11px]"
-                      style={{ color: theme.muted }}
-                    >
-                      Cikkszám, majd Enter. Ha kész: Kosárba.
-                    </span>
-                  ) : (
-                    <span />
-                  )}
-                  <span
-                    className="inline-flex h-8 shrink-0 items-center self-center px-3 text-[11px] font-semibold"
-                    style={{ background: theme.accent, color: "#fff" }}
-                  >
-                    Kosárba rakom
-                  </span>
-                </div>
-              </div>
-            </div>
-            {showTurinovaMark ? (
-              <a
-                href="https://progate.hu"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="ProGate"
-                className="flex h-9 shrink-0 items-center justify-center gap-1.5 border-t no-underline"
-                style={{
-                  borderColor: theme.line,
-                  background: theme.bg,
-                  color: theme.faint,
-                  fontSize: 10,
-                  fontWeight: 500,
-                }}
-                onClick={(e) => e.preventDefault()}
-              >
-                <span>Készítette</span>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/brand/progate-logo.svg"
-                  alt="ProGate"
-                  height={20}
-                  style={{ height: 20, width: "auto", display: "block" }}
-                />
-              </a>
             ) : null}
           </div>
-        )}
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2 border-t border-line-strong px-3 py-2 text-[10px] text-faint">
-        <span className="font-mono">{fabColor}</span>
-        <span>·</span>
-        <span>
-          {PANEL_THEME_PRESETS.find((p) => p.id === LOCKED_PANEL_THEME)?.label ??
-            LOCKED_PANEL_THEME}
-        </span>
-        <span>·</span>
-        <span>{modules.length} mód</span>
+        </div>
       </div>
     </div>
   );

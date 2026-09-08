@@ -181,7 +181,7 @@ export type UpdateWidgetInput = {
 export async function updateMerchantWidget(
   client: PoolClient,
   orgId: string,
-  userId: string,
+  userId: string | null,
   input: UpdateWidgetInput,
 ): Promise<MerchantWidgetDto> {
   const row = await loadWidgetRow(client, orgId);

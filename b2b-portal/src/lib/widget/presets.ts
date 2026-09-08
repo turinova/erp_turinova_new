@@ -3,12 +3,14 @@
  * Merchant picks one of 5 locked themes — not orthogonal color×ink×style.
  */
 
-/** Letter color on solid/glass FAB — Auto follows contrast. */
+/** Letter color on solid/glass FAB. Legacy `auto` = contrast against fill. */
 export const FAB_INK_PRESETS = [
-  { id: "auto", label: "Auto" },
-  { id: "white", label: "Fehér" },
-  { id: "black", label: "Fekete" },
+  { id: "white", label: "Fehér", color: "#FFFFFF" },
+  { id: "black", label: "Fekete", color: "#1C1C1E" },
 ] as const;
+
+/** Includes legacy `auto` + `custom` (hex in fabInkCustom). */
+export type FabInkId = "auto" | "white" | "black" | "custom";
 
 /** Runtime FAB finishes — merchant picks separately from color theme. */
 export const FAB_STYLE_PRESETS = [
@@ -122,7 +124,6 @@ export const WIDGET_MODULES = [
 
 export type WidgetThemeId = (typeof WIDGET_THEME_PRESETS)[number]["id"];
 export type FabColorPresetId = (typeof FAB_COLOR_PRESETS)[number]["id"];
-export type FabInkId = (typeof FAB_INK_PRESETS)[number]["id"];
 export type FabStyleId = (typeof FAB_STYLE_PRESETS)[number]["id"];
 export type FabPositionId = (typeof FAB_POSITION_PRESETS)[number]["id"];
 export type FabSizeId = (typeof FAB_SIZE_PRESETS)[number]["id"];
@@ -142,6 +143,8 @@ export type WidgetAppearance = {
   fabColorPreset: FabColorPresetId;
   fabColorCustom: string | null;
   fabInk: FabInkId;
+  /** Used when fabInk === "custom". */
+  fabInkCustom: string | null;
   fabStyle: FabStyleId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
@@ -166,10 +169,22 @@ export type WidgetFreeShippingSettings = {
   manualGross: number | null;
 };
 
+export type WidgetLaunchSettings = {
+  showFab: boolean;
+  presentation: "auto" | "fullscreen" | "drawer";
+  profileId: "visible" | "clean_b2b" | "discreet" | "custom";
+  panelTitle: string;
+  emptyMessage: string;
+  loginMessage: string;
+  homeView: "search" | "orders" | "empty";
+  autoOpen: "never" | "hash";
+};
+
 export type WidgetSettingsPayload = {
   appearance: WidgetAppearance;
   features: WidgetFeatures;
   freeShipping: WidgetFreeShippingSettings;
+  launch: WidgetLaunchSettings;
 };
 
 /** Resolved free-shipping FOMO for the storefront widget. */
@@ -186,6 +201,8 @@ export type PublicWidgetConfig = {
   requireLogin: boolean;
   fabColor: string;
   fabInk: FabInkId;
+  /** Hex when fabInk is custom; otherwise null. */
+  fabInkCustom?: string | null;
   fabStyle: FabStyleId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
@@ -199,6 +216,16 @@ export type PublicWidgetConfig = {
   showCustomerGroupName?: boolean;
   showNextLevelProgress?: boolean;
   freeShipping?: PublicFreeShipping | null;
+  /** When false, storefront hides the FAB (menu/hash still open). */
+  showFab?: boolean;
+  /** Alias for widget.js (`hideFab`). */
+  hideFab?: boolean;
+  presentation?: WidgetLaunchSettings["presentation"];
+  panelTitle?: string;
+  emptyMessage?: string;
+  loginMessage?: string;
+  homeView?: WidgetLaunchSettings["homeView"];
+  autoOpen?: WidgetLaunchSettings["autoOpen"];
 };
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
@@ -206,7 +233,8 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
     themeId: "ocean",
     fabColorPreset: "shoprenter_blue",
     fabColorCustom: null,
-    fabInk: "auto",
+    fabInk: "white",
+    fabInkCustom: null,
     fabStyle: "glass",
     fabPosition: "bottom_right",
     fabSize: "icon_label",
@@ -222,6 +250,16 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
   },
   freeShipping: {
     manualGross: null,
+  },
+  launch: {
+    showFab: true,
+    presentation: "fullscreen",
+    profileId: "visible",
+    panelTitle: "Gyors rendelés",
+    emptyMessage: "Írd be a cikkszámot, vagy tölts fel listát.",
+    loginMessage: "Jelentkezz be a gyors rendeléshez.",
+    homeView: "search",
+    autoOpen: "hash",
   },
 };
 
@@ -359,25 +397,100 @@ export function normalizeWidgetSettings(
     obj.freeShipping && typeof obj.freeShipping === "object"
       ? (obj.freeShipping as Record<string, unknown>)
       : {};
+  const launchRaw =
+    obj.launch && typeof obj.launch === "object"
+      ? (obj.launch as Record<string, unknown>)
+      : {};
 
   const themeId = inferThemeId(appearanceRaw);
   const theme = themeById(themeId);
-  // Login + modules are product core — not merchant-configurable.
+
+  const fabColorCustom = normalizeFabHex(appearanceRaw.fabColorCustom);
+  const fabInkCustom = normalizeFabHex(appearanceRaw.fabInkCustom);
+  const fabInkRaw = appearanceRaw.fabInk;
+  let fabInk: FabInkId =
+    fabInkRaw === "white" ||
+    fabInkRaw === "black" ||
+    fabInkRaw === "auto" ||
+    fabInkRaw === "custom"
+      ? fabInkRaw
+      : theme.fabInk;
+  if (fabInk === "custom" && !fabInkCustom) {
+    fabInk = "white";
+  }
+  if (fabInkCustom && fabInkRaw !== "white" && fabInkRaw !== "black" && fabInkRaw !== "auto") {
+    fabInk = "custom";
+  }
+
+  const panelThemeRaw = appearanceRaw.panelTheme;
+  const panelTheme =
+    typeof panelThemeRaw === "string" &&
+    PANEL_THEME_PRESETS.some((p) => p.id === panelThemeRaw)
+      ? (panelThemeRaw as PanelThemeId)
+      : LOCKED_PANEL_THEME;
+
+  const allowedModules = new Set(
+    WIDGET_MODULES.map((m) => m.id as WidgetModuleId),
+  );
+  let modules: WidgetModuleId[] = [
+    ...DEFAULT_WIDGET_SETTINGS.features.modules,
+  ];
+  if (Array.isArray(featuresRaw.modules)) {
+    const parsed = featuresRaw.modules
+      .filter((m): m is string => typeof m === "string")
+      .filter((m): m is WidgetModuleId => allowedModules.has(m as WidgetModuleId));
+    if (parsed.length) {
+      modules = parsed.includes("search")
+        ? parsed
+        : (["search", ...parsed] as WidgetModuleId[]);
+    }
+  }
+
+  const presentation =
+    launchRaw.presentation === "auto" ||
+    launchRaw.presentation === "fullscreen" ||
+    launchRaw.presentation === "drawer"
+      ? launchRaw.presentation
+      : DEFAULT_WIDGET_SETTINGS.launch.presentation;
+  const profileId =
+    launchRaw.profileId === "visible" ||
+    launchRaw.profileId === "clean_b2b" ||
+    launchRaw.profileId === "discreet" ||
+    launchRaw.profileId === "custom"
+      ? launchRaw.profileId
+      : DEFAULT_WIDGET_SETTINGS.launch.profileId;
+  const homeView =
+    launchRaw.homeView === "search" ||
+    launchRaw.homeView === "orders" ||
+    launchRaw.homeView === "empty"
+      ? launchRaw.homeView
+      : DEFAULT_WIDGET_SETTINGS.launch.homeView;
+  const autoOpen =
+    launchRaw.autoOpen === "never" || launchRaw.autoOpen === "hash"
+      ? launchRaw.autoOpen
+      : DEFAULT_WIDGET_SETTINGS.launch.autoOpen;
+  const launchStr = (key: string, fallback: string) => {
+    const v = launchRaw[key];
+    return typeof v === "string" && v.trim() ? v.trim().slice(0, 200) : fallback;
+  };
 
   return {
     appearance: {
       themeId,
-      fabColorPreset: themeToColorPreset(themeId),
-      fabColorCustom: null,
-      fabInk: theme.fabInk,
+      fabColorPreset: fabColorCustom
+        ? ("custom" as FabColorPresetId)
+        : themeToColorPreset(themeId),
+      fabColorCustom,
+      fabInk,
+      fabInkCustom: fabInk === "custom" ? fabInkCustom : null,
       fabStyle: mapStyleId(appearanceRaw.fabStyle),
       fabPosition: mapPositionId(appearanceRaw.fabPosition),
       fabSize: mapSizeId(appearanceRaw.fabSize),
-      panelTheme: LOCKED_PANEL_THEME,
+      panelTheme,
     },
     features: {
-      requireLogin: true,
-      modules: [...DEFAULT_WIDGET_SETTINGS.features.modules],
+      requireLogin: featuresRaw.requireLogin === false ? false : true,
+      modules,
       hideTurinovaMark: featuresRaw.hideTurinovaMark === true,
       showCustomerGroupName: featuresRaw.showCustomerGroupName === true,
       showNextLevelProgress: featuresRaw.showNextLevelProgress === true,
@@ -386,12 +499,51 @@ export function normalizeWidgetSettings(
     freeShipping: {
       manualGross: parsePositiveInt(freeShipRaw.manualGross),
     },
+    launch: {
+      showFab: launchRaw.showFab === false ? false : true,
+      presentation,
+      profileId,
+      panelTitle: launchStr(
+        "panelTitle",
+        DEFAULT_WIDGET_SETTINGS.launch.panelTitle,
+      ),
+      emptyMessage: launchStr(
+        "emptyMessage",
+        DEFAULT_WIDGET_SETTINGS.launch.emptyMessage,
+      ),
+      loginMessage: launchStr(
+        "loginMessage",
+        DEFAULT_WIDGET_SETTINGS.launch.loginMessage,
+      ),
+      homeView,
+      autoOpen,
+    },
   };
 }
 
 export function resolveFabColor(appearance: WidgetAppearance): string {
-  const theme = themeById(appearance.themeId);
-  return theme.fabColor;
+  const custom = appearance.fabColorCustom?.trim();
+  if (custom && /^#[0-9a-fA-F]{6}$/.test(custom)) {
+    return custom.toUpperCase();
+  }
+  if (custom && /^#[0-9a-fA-F]{3}$/.test(custom)) {
+    const h = custom.slice(1);
+    return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`.toUpperCase();
+  }
+  return themeById(appearance.themeId).fabColor;
+}
+
+/** Normalize merchant-picked hex or return null. */
+export function normalizeFabHex(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  let h = raw.trim().toLowerCase();
+  if (!h) return null;
+  if (h[0] !== "#") h = `#${h}`;
+  if (/^#[0-9a-f]{3}$/.test(h)) {
+    h = `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`;
+  }
+  if (!/^#[0-9a-f]{6}$/.test(h)) return null;
+  return h.toUpperCase();
 }
 
 export function applyWidgetTheme(
@@ -405,15 +557,24 @@ export function applyWidgetTheme(
     fabColorPreset: themeToColorPreset(themeId),
     fabColorCustom: null,
     fabInk: theme.fabInk,
-    /* Keep merchant-chosen finish (solid / glass / neon). */
-    panelTheme: LOCKED_PANEL_THEME,
+    fabInkCustom: null,
+    /* Keep merchant-chosen finish + panel skin. */
+    panelTheme: appearance.panelTheme ?? LOCKED_PANEL_THEME,
   };
 }
 
 /** Resolve letter color for solid/glass fills. */
-export function resolveFabInk(mode: FabInkId, bgHex: string): string {
+export function resolveFabInk(
+  mode: FabInkId,
+  bgHex: string,
+  customHex?: string | null,
+): string {
   if (mode === "white") return "#FFFFFF";
   if (mode === "black") return "#1C1C1E";
+  if (mode === "custom") {
+    const c = normalizeFabHex(customHex);
+    if (c) return c;
+  }
   return contrastingInk(bgHex);
 }
 
@@ -616,8 +777,9 @@ export function resolveFabVisual(
   style: FabStyleId,
   color: string,
   inkMode: FabInkId = "auto",
+  inkCustom?: string | null,
 ): FabVisual {
-  const ink = resolveFabInk(inkMode, color);
+  const ink = resolveFabInk(inkMode, color, inkCustom);
 
   if (style === "neon") {
     return {
@@ -743,6 +905,7 @@ export function resolvePublicWidgetConfig(input: {
   const size = FAB_SIZE_PRESETS.find(
     (p) => p.id === normalized.appearance.fabSize,
   ) ?? FAB_SIZE_PRESETS[0];
+  const showFab = normalized.launch.showFab !== false;
   return {
     enabled: input.enabled,
     buttonLabel: input.buttonLabel || "Gyors rendelés",
@@ -750,10 +913,14 @@ export function resolvePublicWidgetConfig(input: {
     requireLogin: normalized.features.requireLogin,
     fabColor: resolveFabColor(normalized.appearance),
     fabInk: normalized.appearance.fabInk,
+    fabInkCustom:
+      normalized.appearance.fabInk === "custom"
+        ? normalized.appearance.fabInkCustom
+        : null,
     fabStyle: normalized.appearance.fabStyle,
     fabPosition: normalized.appearance.fabPosition,
     fabSize: normalized.appearance.fabSize,
-    panelTheme: LOCKED_PANEL_THEME,
+    panelTheme: normalized.appearance.panelTheme || LOCKED_PANEL_THEME,
     modules: normalized.features.modules,
     showLabel: size.showLabel,
     compact: size.compact,
@@ -762,6 +929,14 @@ export function resolvePublicWidgetConfig(input: {
     showCustomerGroupName: normalized.features.showCustomerGroupName,
     showNextLevelProgress: normalized.features.showNextLevelProgress,
     freeShipping: resolveFreeShippingPublic({ settings: normalized }),
+    showFab,
+    hideFab: !showFab,
+    presentation: normalized.launch.presentation,
+    panelTitle: normalized.launch.panelTitle,
+    emptyMessage: normalized.launch.emptyMessage,
+    loginMessage: normalized.launch.loginMessage,
+    homeView: normalized.launch.homeView,
+    autoOpen: normalized.launch.autoOpen,
   };
 }
 

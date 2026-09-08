@@ -33,11 +33,12 @@ export async function GET(req: Request) {
   const health = url.searchParams.get("health")?.trim() || undefined;
   const catalog = url.searchParams.get("catalog")?.trim() || undefined;
   const widget = url.searchParams.get("widget")?.trim() || undefined;
+  const phase = url.searchParams.get("phase")?.trim() || undefined;
   const flag = url.searchParams.get("flag")?.trim() || undefined;
 
   try {
     const rows = await withPlatformAdmin((client) =>
-      listOrganizations(client, { q, status, plan, health, catalog, widget, flag }),
+      listOrganizations(client, { q, status, plan, health, catalog, widget, flag, phase }),
     );
     return NextResponse.json({ ok: true, organizations: rows });
   } catch (err) {

@@ -3,9 +3,16 @@ import {
   isErrorResponse,
   requirePlatformAdminApi,
 } from "@/lib/auth/api";
+import {
+  EMBED_CAMPAIGN_PCT_DEFAULT,
+  EMBED_MONTHLY_LIST_NET,
+  isAppStoreBillingEnabled,
+} from "@/lib/billing/embed-pricing";
+import { loadEmbedPricingConfig } from "@/lib/billing/org-billing";
 import { PLAN_DEFAULTS, PLAN_IDS, TRIAL_DAYS_DEFAULT, isPlanId, parsePlanId, type PlanId } from "@/lib/billing/plans";
 import { withPlatformAdmin, query } from "@/lib/db";
 import { insertAudit } from "@/lib/orgs/ops";
+import { getInstallCapability } from "@/lib/shoprenter/install/mode";
 
 export type PlanDefaultRow = {
   plan: PlanId;
@@ -18,6 +25,10 @@ export type PlatformSettingsDto = {
   trialDays: number;
   syncConcurrency: number;
   portalTopNGate: boolean;
+  embedMonthlyListNet: number;
+  embedCampaignPct: number;
+  installModeLabel: string;
+  billingEnabled: boolean;
   plans: PlanDefaultRow[];
 };
 
@@ -43,24 +54,37 @@ async function loadSettings(client: Parameters<typeof query>[0]): Promise<Platfo
   let trialDays = TRIAL_DAYS_DEFAULT;
   let syncConcurrency = 10;
   let portalTopNGate = true;
+  let embedMonthlyListNet = EMBED_MONTHLY_LIST_NET;
+  let embedCampaignPct = EMBED_CAMPAIGN_PCT_DEFAULT;
   const hasSettings = await query<{ t: string | null }>(
     client,
     `select to_regclass('public.platform_settings')::text as t`,
   );
   if (hasSettings.rows[0]?.t) {
+    const pricing = await loadEmbedPricingConfig(client);
+    trialDays = pricing.trialDays;
+    embedMonthlyListNet = pricing.monthlyListNet;
+    embedCampaignPct = pricing.campaignPct;
     const s = await query<{
-      trial_days: number;
       sync_concurrency: number;
       portal_top_n_gate: boolean;
-    }>(client, `select trial_days, sync_concurrency, portal_top_n_gate from platform_settings where id = 1`);
+    }>(client, `select sync_concurrency, portal_top_n_gate from platform_settings where id = 1`);
     if (s.rows[0]) {
-      trialDays = Number(s.rows[0].trial_days);
       syncConcurrency = Number(s.rows[0].sync_concurrency);
       portalTopNGate = Boolean(s.rows[0].portal_top_n_gate);
     }
   }
 
-  return { trialDays, syncConcurrency, portalTopNGate, plans };
+  return {
+    trialDays,
+    syncConcurrency,
+    portalTopNGate,
+    embedMonthlyListNet,
+    embedCampaignPct,
+    installModeLabel: getInstallCapability().label,
+    billingEnabled: isAppStoreBillingEnabled(),
+    plans,
+  };
 }
 
 export async function GET() {
@@ -79,6 +103,8 @@ type PatchBody = {
   trialDays?: number;
   syncConcurrency?: number;
   portalTopNGate?: boolean;
+  embedMonthlyListNet?: number;
+  embedCampaignPct?: number;
   plans?: Array<{
     plan?: string;
     partnerLimit?: number;
@@ -123,29 +149,68 @@ export async function PATCH(req: Request) {
       const trialDays = Math.min(90, Math.max(1, Number(body.trialDays) || TRIAL_DAYS_DEFAULT));
       const syncConcurrency = Math.min(50, Math.max(1, Number(body.syncConcurrency) || 10));
       const portalTopNGate = body.portalTopNGate !== false;
+      const embedMonthlyListNet = Math.max(
+        0,
+        Number(body.embedMonthlyListNet) || EMBED_MONTHLY_LIST_NET,
+      );
+      const embedCampaignPct = Math.min(
+        90,
+        Math.max(0, Number(body.embedCampaignPct) ?? EMBED_CAMPAIGN_PCT_DEFAULT),
+      );
       const hasSettings = await query<{ t: string | null }>(
         client,
         `select to_regclass('public.platform_settings')::text as t`,
       );
       if (hasSettings.rows[0]?.t) {
-        await query(
-          client,
-          `insert into platform_settings (id, trial_days, sync_concurrency, portal_top_n_gate, updated_at)
-           values (1, $1, $2, $3, now())
-           on conflict (id) do update set
-             trial_days = excluded.trial_days,
-             sync_concurrency = excluded.sync_concurrency,
-             portal_top_n_gate = excluded.portal_top_n_gate,
-             updated_at = now()`,
-          [trialDays, syncConcurrency, portalTopNGate],
-        );
+        try {
+          await query(
+            client,
+            `insert into platform_settings (
+               id, trial_days, sync_concurrency, portal_top_n_gate,
+               embed_monthly_list_net, embed_campaign_pct, updated_at
+             )
+             values (1, $1, $2, $3, $4, $5, now())
+             on conflict (id) do update set
+               trial_days = excluded.trial_days,
+               sync_concurrency = excluded.sync_concurrency,
+               portal_top_n_gate = excluded.portal_top_n_gate,
+               embed_monthly_list_net = excluded.embed_monthly_list_net,
+               embed_campaign_pct = excluded.embed_campaign_pct,
+               updated_at = now()`,
+            [
+              trialDays,
+              syncConcurrency,
+              portalTopNGate,
+              embedMonthlyListNet,
+              embedCampaignPct,
+            ],
+          );
+        } catch {
+          await query(
+            client,
+            `insert into platform_settings (id, trial_days, sync_concurrency, portal_top_n_gate, updated_at)
+             values (1, $1, $2, $3, now())
+             on conflict (id) do update set
+               trial_days = excluded.trial_days,
+               sync_concurrency = excluded.sync_concurrency,
+               portal_top_n_gate = excluded.portal_top_n_gate,
+               updated_at = now()`,
+            [trialDays, syncConcurrency, portalTopNGate],
+          );
+        }
       }
 
       await insertAudit(client, {
         organizationId: null,
         actorUserId: auth.userId,
         action: "platform.settings_updated",
-        meta: { trialDays, syncConcurrency, portalTopNGate },
+        meta: {
+          trialDays,
+          syncConcurrency,
+          portalTopNGate,
+          embedMonthlyListNet,
+          embedCampaignPct,
+        },
       });
 
       return loadSettings(client);
