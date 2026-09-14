@@ -1,5 +1,8 @@
-import { randomUUID } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
+
+function newSessionNonce(): string {
+  return globalThis.crypto.randomUUID()
+}
 
 export async function registerAppSession(
   supabase: SupabaseClient,
@@ -10,7 +13,7 @@ export async function registerAppSession(
     ip?: string | null
   }
 ): Promise<string> {
-  const sessionNonce = randomUUID()
+  const sessionNonce = newSessionNonce()
 
   const { error } = await supabase.from('app_user_sessions').upsert(
     {
