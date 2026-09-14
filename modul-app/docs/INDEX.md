@@ -23,5 +23,6 @@
 | [18-midday-visual-reference.md](18-midday-visual-reference.md) | **Vizuális north star** — Linear light + Midday ritmus, no AGPL copy |
 | [19-supabase-setup.md](19-supabase-setup.md) | **Supabase auth + tenancy** setup (env, SQL, seed) |
 | [20-partner-portal.md](20-partner-portal.md) | **Partner portal** — online asztalos, add-on, fázisok |
+| [21-platform-ops.md](21-platform-ops.md) | **Platform ops** — 1–2 fős üzem, P0 döntések, admin host |
 
-**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20`**.
+**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20`**. Platform ops: **`21`**.

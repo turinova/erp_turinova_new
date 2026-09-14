@@ -7,6 +7,13 @@ export type TenantStatus =
 
 export type TenantRole = 'owner' | 'admin' | 'member' | 'viewer'
 
+export type TenantBillingStatus =
+  | 'none'
+  | 'trial'
+  | 'active'
+  | 'past_due'
+  | 'canceled'
+
 export type Tenant = {
   id: string
   name: string
@@ -14,6 +21,13 @@ export type Tenant = {
   status: TenantStatus
   plan_id: string | null
   max_seats: number | null
+  billing_status: TenantBillingStatus
+  trial_ends_at: string | null
+  paid_through: string | null
+  billing_notes: string | null
+  internal_notes: string | null
+  contact_phone: string | null
+  contact_email: string | null
   created_at: string
   updated_at: string
 }

@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 
 import { requirePlatformAdmin } from '@/lib/platform/auth'
+import { writePlatformAudit } from '@/lib/platform/audit'
 import { slugifyTenantName } from '@/lib/platform/onboarding'
 import { seedOwnerPageAccess } from '@/lib/platform/queries'
 import type { TenantStatus } from '@/lib/supabase/database.types'
@@ -192,6 +193,13 @@ export async function updatePlatformTenantStatus(input: {
     return { ok: false, message: 'Nem sikerült frissíteni a státuszt.' }
   }
 
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: 'tenant.status',
+    details: { status: input.status }
+  })
+
   revalidatePath(PLATFORM_PATH)
   revalidatePath(TENANTS_PATH)
   revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
@@ -312,11 +320,17 @@ export async function resetTenantUserPassword(input: {
     return { ok: false, message: 'Nem sikerült a jelszó reset.' }
   }
 
-  // Új jelszó után minden app-session érvénytelen
   await ctx.admin
     .from('app_user_sessions')
     .delete()
     .eq('user_id', input.userId)
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: 'user.password_reset',
+    details: { userId: input.userId, email: updated.user.email ?? null }
+  })
 
   revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
   return {
@@ -371,7 +385,68 @@ export async function updateTenantMaxSeats(input: {
     return { ok: false, message: 'Nem sikerült menteni a limitt.' }
   }
 
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: 'tenant.max_seats',
+    details: { maxSeats: input.maxSeats }
+  })
+
   revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
   revalidatePath(TENANTS_PATH)
+  return { ok: true }
+}
+
+export async function updateTenantOpsFields(input: {
+  tenantId: string
+  billingStatus: string
+  trialEndsAt: string | null
+  paidThrough: string | null
+  billingNotes: string
+  internalNotes: string
+  contactPhone: string
+  contactEmail: string
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const allowed = ['none', 'trial', 'active', 'past_due', 'canceled']
+  if (!allowed.includes(input.billingStatus)) {
+    return { ok: false, message: 'Érvénytelen billing státusz.' }
+  }
+
+  const { error } = await ctx.admin
+    .from('tenants')
+    .update({
+      billing_status: input.billingStatus,
+      trial_ends_at: input.trialEndsAt,
+      paid_through: input.paidThrough,
+      billing_notes: input.billingNotes.trim() || null,
+      internal_notes: input.internalNotes.trim() || null,
+      contact_phone: input.contactPhone.trim() || null,
+      contact_email: input.contactEmail.trim() || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', input.tenantId)
+
+  if (error) {
+    console.error('updateTenantOpsFields', error.message)
+    return { ok: false, message: 'Nem sikerült menteni.' }
+  }
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: 'tenant.ops_fields',
+    details: {
+      billingStatus: input.billingStatus,
+      trialEndsAt: input.trialEndsAt,
+      paidThrough: input.paidThrough
+    }
+  })
+
+  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
+  revalidatePath(TENANTS_PATH)
+  revalidatePath(PLATFORM_PATH)
   return { ok: true }
 }

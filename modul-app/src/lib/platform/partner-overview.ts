@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
   lastSignInMap,
-  listAllAuthUsers
+  listAllAuthUsersCached
 } from '@/lib/platform/auth-users'
 
 export type PeriodStats = {
@@ -172,7 +172,7 @@ export async function getPlatformOverviewStats(
       .from('tenant_entitlements')
       .select('tenant_id')
       .eq('feature_key', 'partner_orders'),
-    listAllAuthUsers(admin)
+    listAllAuthUsersCached(admin)
   ])
 
   const activeIds = new Set((activeTenantRows ?? []).map((t) => t.id))

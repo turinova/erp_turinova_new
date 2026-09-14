@@ -7,6 +7,8 @@ import {
   APP_SESSION_NONCE_COOKIE,
   CURRENT_TENANT_COOKIE,
   DEV_SESSION_COOKIE,
+  IMPERSONATION_SESSION_COOKIE,
+  OPERATOR_REFRESH_COOKIE,
   isDevBypassEnabled,
   isSupabaseConfigured
 } from '@/lib/auth/config'
@@ -20,6 +22,7 @@ import {
   listMembershipsForUser,
   resolveCurrentTenant
 } from '@/lib/tenancy/memberships'
+import { resolveAuthSurface } from '@/lib/auth/surface'
 
 export type LoginState = {
   error?: string
@@ -95,6 +98,14 @@ export async function loginAction(
     const hdrs = await headers()
     const userAgent = hdrs.get('user-agent')
     const ip = parseForwardedIp(hdrs.get('x-forwarded-for'))
+    const surface = resolveAuthSurface(hdrs.get('host') ?? '')
+
+    const { data: platformRow } = await supabase
+      .from('platform_admins')
+      .select('user_id')
+      .eq('user_id', data.user.id)
+      .eq('active', true)
+      .maybeSingle()
 
     let sessionNonce: string
     try {
@@ -119,6 +130,19 @@ export async function loginAction(
       sessionCookieOptions()
     )
 
+    if (surface === 'platform') {
+      if (!platformRow) {
+        await supabase.auth.signOut()
+        cookieStore.delete(APP_SESSION_NONCE_COOKIE)
+        return {
+          error:
+            'Ez a belépés csak platform operátoroknak szól (admin.optinova.hu).'
+        }
+      }
+      cookieStore.delete(CURRENT_TENANT_COOKIE)
+      redirect('/')
+    }
+
     if (current) {
       cookieStore.set(CURRENT_TENANT_COOKIE, current.tenantId, {
         httpOnly: true,
@@ -126,7 +150,6 @@ export async function loginAction(
         path: '/',
         secure: process.env.NODE_ENV === 'production'
       })
-      // first_login flag: csak belépéskor, ne minden page GET-en
       try {
         const { ensureFirstLoginMarked } = await import(
           '@/lib/platform/onboarding-flags'
@@ -136,6 +159,18 @@ export async function loginAction(
         // ne blokkolja a belépést
       }
       redirect('/home')
+    }
+
+    if (platformRow) {
+      cookieStore.delete(CURRENT_TENANT_COOKIE)
+      const platformOrigin = process.env.NEXT_PUBLIC_PLATFORM_ORIGIN?.replace(
+        /\/$/,
+        ''
+      )
+      if (platformOrigin) {
+        redirect(`${platformOrigin}/`)
+      }
+      redirect('/platform')
     }
 
     cookieStore.delete(CURRENT_TENANT_COOKIE)
@@ -176,6 +211,8 @@ export async function logoutAction() {
   const cookieStore = await cookies()
   cookieStore.delete(CURRENT_TENANT_COOKIE)
   cookieStore.delete(APP_SESSION_NONCE_COOKIE)
+  cookieStore.delete(IMPERSONATION_SESSION_COOKIE)
+  cookieStore.delete(OPERATOR_REFRESH_COOKIE)
 
   if (isDevBypassEnabled()) {
     cookieStore.delete(DEV_SESSION_COOKIE)

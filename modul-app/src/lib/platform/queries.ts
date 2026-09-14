@@ -157,10 +157,10 @@ export async function listPlatformAttentionItems(
   const { data: memberships } = await admin
     .from('tenant_memberships')
     .select('tenant_id, user_id')
-  const { listAllAuthUsers, lastSignInMap } = await import(
+  const { listAllAuthUsersCached, lastSignInMap } = await import(
     '@/lib/platform/auth-users'
   )
-  const authUsers = await listAllAuthUsers(admin)
+  const authUsers = await listAllAuthUsersCached(admin)
   const lastSignInByUser = lastSignInMap(authUsers)
 
   const tenantNeverLogin = new Set<string>()
@@ -228,6 +228,51 @@ export async function listPlatformAttentionItems(
         href: `/platform/tenants/${t.id}`,
         kind: 'tenant'
       })
+    }
+  }
+
+  // Billing figyelem (manuális mezők)
+  const { data: billingTenants } = await admin
+    .from('tenants')
+    .select('id, name, status, billing_status, trial_ends_at, paid_through')
+    .neq('status', 'churned')
+    .limit(100)
+
+  for (const t of billingTenants ?? []) {
+    if (items.length >= 16) break
+    if (items.some((i) => i.id === t.id)) continue
+    if (t.billing_status === 'past_due') {
+      items.push({
+        id: t.id,
+        name: t.name,
+        status: t.status as TenantStatus,
+        reason: 'Billing: hátralék',
+        href: `/platform/tenants/${t.id}`,
+        kind: 'tenant'
+      })
+      continue
+    }
+    if (t.trial_ends_at) {
+      const end = new Date(t.trial_ends_at).getTime()
+      if (end < now) {
+        items.push({
+          id: t.id,
+          name: t.name,
+          status: t.status as TenantStatus,
+          reason: 'Trial lejárt',
+          href: `/platform/tenants/${t.id}`,
+          kind: 'tenant'
+        })
+      } else if (end - now < weekMs) {
+        items.push({
+          id: t.id,
+          name: t.name,
+          status: t.status as TenantStatus,
+          reason: 'Trial 7 napon belül lejár',
+          href: `/platform/tenants/${t.id}`,
+          kind: 'tenant'
+        })
+      }
     }
   }
 
@@ -417,6 +462,13 @@ export type PlatformTenantDetail = {
     status: TenantStatus
     created_at: string
     max_seats: number | null
+    billing_status: string
+    trial_ends_at: string | null
+    paid_through: string | null
+    billing_notes: string | null
+    internal_notes: string | null
+    contact_phone: string | null
+    contact_email: string | null
   }
   onboarding: OnboardingFlags | null
   kpis: PlatformTenantKpis
@@ -430,7 +482,9 @@ export async function getPlatformTenantDetail(
 ): Promise<PlatformTenantDetail | null> {
   const { data: tenant, error } = await admin
     .from('tenants')
-    .select('id, name, slug, status, created_at, max_seats')
+    .select(
+      'id, name, slug, status, created_at, max_seats, billing_status, trial_ends_at, paid_through, billing_notes, internal_notes, contact_phone, contact_email'
+    )
     .eq('id', tenantId)
     .maybeSingle()
 
@@ -523,18 +577,10 @@ export async function getPlatformTenantDetail(
       100
   )
 
-  const { listAllAuthUsers } = await import('@/lib/platform/auth-users')
-  const listedUsers = await listAllAuthUsers(admin)
-  const authById = new Map(
-    listedUsers.map((u) => [
-      u.id,
-      {
-        email: u.email ?? null,
-        lastSignInAt: u.last_sign_in_at ?? null,
-        emailConfirmed: Boolean(u.email_confirmed_at),
-        banned: Boolean(u.banned_until)
-      }
-    ])
+  const { getAuthUsersByIds } = await import('@/lib/platform/auth-users')
+  const authById = await getAuthUsersByIds(
+    admin,
+    (memberships ?? []).map((m) => m.user_id)
   )
 
   const { TENANT_ROLE_LABELS } = await import('@/lib/tenancy/memberships')
@@ -599,7 +645,14 @@ export async function getPlatformTenantDetail(
       max_seats:
         tenant.max_seats === null || tenant.max_seats === undefined
           ? null
-          : Number(tenant.max_seats)
+          : Number(tenant.max_seats),
+      billing_status: (tenant.billing_status as string) || 'none',
+      trial_ends_at: tenant.trial_ends_at ?? null,
+      paid_through: tenant.paid_through ?? null,
+      billing_notes: tenant.billing_notes ?? null,
+      internal_notes: tenant.internal_notes ?? null,
+      contact_phone: tenant.contact_phone ?? null,
+      contact_email: tenant.contact_email ?? null
     },
     onboarding: flags,
     kpis: {

@@ -1,9 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import {
-  lastSignInMap,
-  listAllAuthUsers
-} from '@/lib/platform/auth-users'
+import { getAuthUsersByIds } from '@/lib/platform/auth-users'
 
 export type PlatformPartnerListItem = {
   userId: string
@@ -135,8 +132,10 @@ export async function listPlatformPartners(
     }
   }
 
-  const authUsers = await listAllAuthUsers(admin)
-  const signIn = lastSignInMap(authUsers)
+  const authById = await getAuthUsersByIds(
+    admin,
+    rowsRaw.map((r) => r.user_id)
+  )
 
   const rows: PlatformPartnerListItem[] = rowsRaw.map((r) => ({
     userId: r.user_id,
@@ -148,7 +147,7 @@ export async function listPlatformPartners(
       ? (companyByTenant.get(r.selected_tenant_id) ?? null)
       : null,
     createdAt: r.created_at,
-    lastSignInAt: signIn.get(r.user_id) ?? null,
+    lastSignInAt: authById.get(r.user_id)?.lastSignInAt ?? null,
     submittedCount: submittedByPartner.get(r.user_id) ?? 0,
     draftCount: draftByPartner.get(r.user_id) ?? 0
   }))

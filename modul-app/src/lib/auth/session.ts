@@ -1,9 +1,10 @@
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
 
 import {
   CURRENT_TENANT_COOKIE,
   DEV_SESSION_COOKIE,
+  IMPERSONATION_SESSION_COOKIE,
   getDemoCompanyName,
   isDevBypassEnabled,
   isSupabaseConfigured
@@ -22,6 +23,16 @@ import {
   TENANT_ROLE_LABELS
 } from '@/lib/tenancy/memberships'
 
+export type ImpersonationInfo = {
+  sessionId: string
+  operatorUserId: string
+  operatorEmail: string | null
+  targetEmail: string
+  tenantId: string
+  tenantName: string
+  expiresAt: string
+}
+
 export type SessionUser = {
   id: string
   email: string
@@ -39,6 +50,7 @@ export type SessionUser = {
   allowedPages: string[]
   canManageUsers: boolean
   isPlatformAdmin: boolean
+  impersonation: ImpersonationInfo | null
 }
 
 /**
@@ -58,6 +70,42 @@ async function loadSessionUser(): Promise<SessionUser | null> {
     if (!user?.email) return null
 
     const cookieStore = await cookies()
+    const hdrs = await headers()
+    const surface = hdrs.get('x-modul-surface')
+    const pathname = hdrs.get('x-pathname') ?? ''
+    const leanPlatform =
+      surface === 'platform' ||
+      pathname === '/platform' ||
+      pathname.startsWith('/platform/')
+
+    // Platform konzol: csak platform_admins check — nincs membership / entitlements
+    if (leanPlatform) {
+      const { data: platformRow } = await supabase
+        .from('platform_admins')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .eq('active', true)
+        .maybeSingle()
+
+      return {
+        id: user.id,
+        email: user.email,
+        companyName: 'Platform',
+        tenantId: null,
+        tenantSlug: null,
+        membershipId: null,
+        role: null,
+        roleLabel: null,
+        hasMembership: false,
+        isDevSession: false,
+        entitledPages: ['/home'],
+        allowedPages: ['/home'],
+        canManageUsers: false,
+        isPlatformAdmin: Boolean(platformRow),
+        impersonation: null
+      }
+    }
+
     const preferredTenantId =
       cookieStore.get(CURRENT_TENANT_COOKIE)?.value ?? null
 
@@ -133,6 +181,61 @@ async function loadSessionUser(): Promise<SessionUser | null> {
     const canManageUsers =
       current?.role === 'owner' || current?.role === 'admin'
 
+    let impersonation: ImpersonationInfo | null = null
+    const impersonationId = cookieStore.get(IMPERSONATION_SESSION_COOKIE)?.value
+    if (impersonationId) {
+      const { data: imp } = await supabase
+        .from('platform_impersonation_sessions')
+        .select(
+          'id, operator_user_id, target_user_id, tenant_id, expires_at, ended_at, tenants(name)'
+        )
+        .eq('id', impersonationId)
+        .maybeSingle()
+
+      if (
+        imp &&
+        !imp.ended_at &&
+        imp.target_user_id === user.id &&
+        new Date(imp.expires_at).getTime() > Date.now()
+      ) {
+        const tenantJoin = Array.isArray(imp.tenants)
+          ? imp.tenants[0]
+          : imp.tenants
+        const tenantName =
+          (tenantJoin as { name?: string } | null)?.name ??
+          current?.tenantName ??
+          'Cég'
+
+        let operatorEmail: string | null = null
+        try {
+          const { createServiceClient } = await import(
+            '@/lib/supabase/service'
+          )
+          const admin = createServiceClient()
+          if (admin) {
+            const { data } = await admin.auth.admin.getUserById(
+              imp.operator_user_id
+            )
+            operatorEmail = data.user?.email ?? null
+          }
+        } catch {
+          operatorEmail = null
+        }
+
+        impersonation = {
+          sessionId: imp.id,
+          operatorUserId: imp.operator_user_id,
+          operatorEmail,
+          targetEmail: user.email,
+          tenantId: imp.tenant_id,
+          tenantName,
+          expiresAt: imp.expires_at
+        }
+        // Impersonation alatt a platform admin flag a cél usernél false marad
+        isPlatformAdmin = false
+      }
+    }
+
     return {
       id: user.id,
       email: user.email,
@@ -147,7 +250,8 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       entitledPages,
       allowedPages,
       canManageUsers,
-      isPlatformAdmin
+      isPlatformAdmin,
+      impersonation
     }
   }
 
@@ -170,7 +274,8 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       entitledPages: [...ALL_PAGE_KEYS],
       allowedPages: [...ALL_PAGE_KEYS],
       canManageUsers: true,
-      isPlatformAdmin: true
+      isPlatformAdmin: true,
+      impersonation: null
     }
   }
 

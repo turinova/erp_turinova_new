@@ -3,6 +3,7 @@ import Link from 'next/link'
 
 import { logoutAction } from '@/lib/auth/actions'
 import type { SessionUser } from '@/lib/auth/session'
+import { getPlatformPublicOrigin } from '@/lib/auth/surface'
 import { Button } from '@/components/ui/button'
 
 type AppTopbarProps = {
@@ -20,6 +21,8 @@ function initialsFromEmail(email: string) {
 
 export function AppTopbar({ user }: AppTopbarProps) {
   const showPlatform = user.isPlatformAdmin || user.isDevSession
+  const platformOrigin = getPlatformPublicOrigin()
+  const platformHref = platformOrigin ? `${platformOrigin}/` : '/platform'
 
   return (
     <header className="sticky top-0 z-30 flex h-topbar items-center justify-between gap-3 border-b border-border bg-surface px-4 md:px-5">
@@ -41,7 +44,7 @@ export function AppTopbar({ user }: AppTopbarProps) {
       <div className="flex items-center gap-2">
         {showPlatform ? (
           <Link
-            href="/platform"
+            href={platformHref}
             className="hidden rounded-md px-2 py-1 text-[12.5px] font-medium text-ink-secondary no-underline hover:bg-subtle hover:text-ink sm:inline"
           >
             Platform
@@ -72,7 +75,7 @@ export function AppTopbar({ user }: AppTopbarProps) {
             ) : null}
             {showPlatform ? (
               <Link
-                href="/platform"
+                href={platformHref}
                 className="block rounded-md px-2.5 py-1.5 text-[12.5px] text-ink no-underline hover:bg-subtle"
               >
                 Platform konzol

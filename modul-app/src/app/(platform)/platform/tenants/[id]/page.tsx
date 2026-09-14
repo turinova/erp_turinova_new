@@ -4,11 +4,13 @@ import { notFound } from 'next/navigation'
 
 import { TenantDetailClient } from '@/components/platform/tenant-detail-client'
 import { TenantEntitlementsPanel } from '@/components/platform/tenant-entitlements-panel'
+import { listTenantPlatformAudit } from '@/lib/platform/audit'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
 import {
   listProductPlans,
   getTenantEntitlementState
 } from '@/lib/platform/entitlement-queries'
+import { ph } from '@/lib/platform/platform-href-server'
 import { getPlatformTenantDetail } from '@/lib/platform/queries'
 
 type Params = Promise<{ id: string }>
@@ -35,15 +37,17 @@ export default async function PlatformTenantDetailPage({
   const detail = await getPlatformTenantDetail(ctx.admin, id)
   if (!detail) notFound()
 
-  const [entitlements, plans] = await Promise.all([
+  const [entitlements, plans, auditRows, tenantsHref] = await Promise.all([
     getTenantEntitlementState(ctx.admin, id),
-    listProductPlans(ctx.admin)
+    listProductPlans(ctx.admin),
+    listTenantPlatformAudit(ctx.admin, id),
+    ph('/tenants')
   ])
 
   return (
     <div className="space-y-3">
       <Link
-        href="/platform/tenants"
+        href={tenantsHref}
         className="text-hint text-ink-secondary no-underline hover:underline"
       >
         ← Cégek
@@ -54,6 +58,7 @@ export default async function PlatformTenantDetailPage({
         kpis={detail.kpis}
         members={detail.members}
         company={detail.company}
+        auditRows={auditRows}
         entitlementsSlot={
           <TenantEntitlementsPanel
             tenantId={id}

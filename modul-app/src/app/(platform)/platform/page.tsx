@@ -1,7 +1,12 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { Suspense } from 'react'
 
 import { StatusBadge } from '@/components/patterns/status-badge'
+import {
+  PlatformHealthCard,
+  PlatformHealthCardFallback
+} from '@/components/platform/platform-health-card'
 import { buttonVariants } from '@/components/ui/button'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
 import { tenantStatusTone } from '@/lib/platform/onboarding'
@@ -10,10 +15,7 @@ import {
   formatPlatformHuf,
   getPlatformOverviewStats
 } from '@/lib/platform/partner-overview'
-import {
-  listPlatformAttentionItems,
-  runPlatformHealthChecks
-} from '@/lib/platform/queries'
+import { listPlatformAttentionItems } from '@/lib/platform/queries'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = {
@@ -30,14 +32,10 @@ export default async function PlatformDashboardPage() {
     )
   }
 
-  const [stats, health, attention] = await Promise.all([
+  const [stats, attention] = await Promise.all([
     getPlatformOverviewStats(ctx.admin),
-    runPlatformHealthChecks(ctx.admin),
     listPlatformAttentionItems(ctx.admin)
   ])
-
-  const healthOk = health.every((h) => h.ok)
-  const failedHealth = health.filter((h) => !h.ok)
 
   const avgQuote7d =
     stats.quotes7d.total.count > 0
@@ -204,25 +202,9 @@ export default async function PlatformDashboardPage() {
             value={stats.tenantsWithPartnerOrders}
             hint="Active tenant entitlement"
           />
-          <div className="rounded-md border border-border bg-surface px-3 py-3">
-            <p className="text-hint text-ink-secondary">Health</p>
-            <div className="mt-1 flex items-center gap-2">
-              <StatusBadge tone={healthOk ? 'success' : 'danger'}>
-                {healthOk ? 'Rendben' : 'Figyelem'}
-              </StatusBadge>
-              {!healthOk ? (
-                <span className="text-hint text-ink-secondary">
-                  {failedHealth.map((h) => h.label).join(', ')}
-                </span>
-              ) : null}
-            </div>
-            <Link
-              href="/platform/health"
-              className="mt-2 inline-block text-hint text-ink underline-offset-2 hover:underline"
-            >
-              Részletek →
-            </Link>
-          </div>
+          <Suspense fallback={<PlatformHealthCardFallback />}>
+            <PlatformHealthCard />
+          </Suspense>
         </div>
       </section>
 

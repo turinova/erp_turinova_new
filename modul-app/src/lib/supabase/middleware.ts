@@ -5,17 +5,23 @@ import {
   APP_SESSION_NONCE_COOKIE,
   CURRENT_TENANT_COOKIE,
   DEV_SESSION_COOKIE,
+  IMPERSONATION_SESSION_COOKIE,
   isDevBypassEnabled,
   isSupabaseConfigured
 } from '@/lib/auth/config'
 import { isAppSessionValid } from '@/lib/auth/app-session'
 import {
+  getPlatformPublicOrigin,
   isPartnerContext,
   isPartnerPath,
+  isPlatformPath,
   isStaffOnlyPath,
+  isTenantAppPath,
   normalizeHostname,
   partnerCleanToInternal,
   partnerInternalToClean,
+  platformCleanToInternal,
+  platformInternalToClean,
   PARTNER_HOME_PATH,
   PARTNER_LOGIN_PATH,
   PARTNER_REGISTER_PATH,
@@ -25,14 +31,12 @@ import {
 function withSurfaceHeaders(
   request: NextRequest,
   pathname: string,
+  surfaceLabel: 'staff' | 'partner' | 'platform',
   init?: { rewriteUrl?: URL }
 ) {
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-pathname', pathname)
-  const partnerCtx =
-    resolveAuthSurface(request.headers.get('host') ?? '') === 'partner' ||
-    isPartnerContext(request.headers.get('host') ?? '', pathname)
-  requestHeaders.set('x-modul-surface', partnerCtx ? 'partner' : 'staff')
+  requestHeaders.set('x-modul-surface', surfaceLabel)
 
   if (init?.rewriteUrl) {
     return NextResponse.rewrite(init.rewriteUrl, {
@@ -52,13 +56,45 @@ function redirectTo(request: NextRequest, pathname: string, reason?: string) {
   return NextResponse.redirect(url)
 }
 
+function redirectExternal(origin: string, pathname: string) {
+  const url = new URL(pathname, origin)
+  return NextResponse.redirect(url)
+}
+
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const hostname = normalizeHostname(request.headers.get('host'))
   const surface = resolveAuthSurface(hostname)
 
-  // --- Partner host: clean URLs + block staff-only ---
   let rewriteTarget: string | null = null
+  let surfaceLabel: 'staff' | 'partner' | 'platform' =
+    surface === 'partner'
+      ? 'partner'
+      : surface === 'platform'
+        ? 'platform'
+        : 'staff'
+
+  // --- Platform host (admin.): clean URLs + block tenant app ---
+  if (surface === 'platform') {
+    if (isPlatformPath(pathname) && pathname !== '/platform') {
+      const clean = platformInternalToClean(pathname)
+      if (clean !== null) return redirectTo(request, clean === '' ? '/' : clean)
+    }
+    if (pathname === '/platform') {
+      return redirectTo(request, '/')
+    }
+    if (isTenantAppPath(pathname) && pathname !== '/login') {
+      return redirectTo(request, '/')
+    }
+    if (pathname !== '/login') {
+      rewriteTarget = platformCleanToInternal(pathname)
+      if (!rewriteTarget && !isPlatformPath(pathname)) {
+        return redirectTo(request, '/')
+      }
+    }
+  }
+
+  // --- Partner host: clean URLs + block staff-only ---
   if (surface === 'partner') {
     if (isPartnerPath(pathname)) {
       const clean = partnerInternalToClean(pathname)
@@ -73,15 +109,31 @@ export async function updateSession(request: NextRequest) {
     rewriteTarget = partnerCleanToInternal(pathname)
   }
 
-  const partnerCtx = surface === 'partner' || isPartnerContext(hostname, pathname)
+  // Staff host: optional redirect /platform → admin origin
+  if (surface === 'staff' && isPlatformPath(pathname)) {
+    const platformOrigin = getPlatformPublicOrigin()
+    if (platformOrigin) {
+      const clean = platformInternalToClean(pathname) ?? '/'
+      return redirectExternal(platformOrigin, clean === '' ? '/' : clean)
+    }
+  }
+
+  const partnerCtx =
+    surface === 'partner' || isPartnerContext(hostname, pathname)
+  if (partnerCtx) surfaceLabel = 'partner'
+  else if (surface === 'platform' || isPlatformPath(pathname)) {
+    surfaceLabel = 'platform'
+  }
 
   function buildResponse() {
     if (rewriteTarget) {
       const url = request.nextUrl.clone()
       url.pathname = rewriteTarget
-      return withSurfaceHeaders(request, pathname, { rewriteUrl: url })
+      return withSurfaceHeaders(request, pathname, surfaceLabel, {
+        rewriteUrl: url
+      })
     }
-    return withSurfaceHeaders(request, pathname)
+    return withSurfaceHeaders(request, pathname, surfaceLabel)
   }
 
   let supabaseResponse = buildResponse()
@@ -95,15 +147,19 @@ export async function updateSession(request: NextRequest) {
     pathname === '/api/partner/companies' ||
     pathname.startsWith('/api/partner/companies/')
 
+  const isPublicImpersonationHandoff =
+    pathname.startsWith('/api/platform/impersonation/complete')
+
   const isPublicAuth =
-    (surface === 'staff' && pathname === '/login') ||
+    ((surface === 'staff' || surface === 'platform') &&
+      pathname === '/login') ||
     (surface === 'partner' &&
       (pathname === PARTNER_LOGIN_PATH ||
         pathname === PARTNER_REGISTER_PATH)) ||
     (surface === 'staff' &&
       (pathname === '/partner/login' || pathname === '/partner/register'))
 
-  if (isPublicAsset || isPublicPartnerApi) {
+  if (isPublicAsset || isPublicPartnerApi || isPublicImpersonationHandoff) {
     return supabaseResponse
   }
 
@@ -161,33 +217,60 @@ export async function updateSession(request: NextRequest) {
           return redirectTo(request, PARTNER_LOGIN_PATH)
         }
       } else {
-        const nonce = request.cookies.get(APP_SESSION_NONCE_COOKIE)?.value
-        const valid = await isAppSessionValid(supabase, user.id, nonce)
+        const impersonationId = request.cookies.get(
+          IMPERSONATION_SESSION_COOKIE
+        )?.value
 
-        if (valid) {
-          isAuthenticated = true
-        } else if (isPartnerSharedApi) {
-          const { data: partnerRow } = await supabase
-            .from('partner_profiles')
-            .select('user_id')
-            .eq('user_id', user.id)
+        let impersonationOk = false
+        if (impersonationId) {
+          const { data: imp } = await supabase
+            .from('platform_impersonation_sessions')
+            .select('id, target_user_id, expires_at, ended_at')
+            .eq('id', impersonationId)
             .maybeSingle()
 
-          if (partnerRow) {
+          if (
+            imp &&
+            !imp.ended_at &&
+            imp.target_user_id === user.id &&
+            new Date(imp.expires_at).getTime() > Date.now()
+          ) {
+            impersonationOk = true
             isAuthenticated = true
+          }
+        }
+
+        if (!impersonationOk) {
+          const nonce = request.cookies.get(APP_SESSION_NONCE_COOKIE)?.value
+          const valid = await isAppSessionValid(supabase, user.id, nonce)
+
+          if (valid) {
+            isAuthenticated = true
+          } else if (isPartnerSharedApi) {
+            const { data: partnerRow } = await supabase
+              .from('partner_profiles')
+              .select('user_id')
+              .eq('user_id', user.id)
+              .maybeSingle()
+
+            if (partnerRow) {
+              isAuthenticated = true
+            } else {
+              await supabase.auth.signOut()
+              const response = redirectTo(request, '/login', 'session_replaced')
+              response.cookies.delete(APP_SESSION_NONCE_COOKIE)
+              response.cookies.delete(CURRENT_TENANT_COOKIE)
+              response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
+              return response
+            }
           } else {
             await supabase.auth.signOut()
             const response = redirectTo(request, '/login', 'session_replaced')
             response.cookies.delete(APP_SESSION_NONCE_COOKIE)
             response.cookies.delete(CURRENT_TENANT_COOKIE)
+            response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
             return response
           }
-        } else {
-          await supabase.auth.signOut()
-          const response = redirectTo(request, '/login', 'session_replaced')
-          response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-          response.cookies.delete(CURRENT_TENANT_COOKIE)
-          return response
         }
       }
     }
@@ -198,11 +281,18 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (!isAuthenticated && !isPublicAuth) {
-    return redirectTo(request, partnerCtx ? PARTNER_LOGIN_PATH : '/login')
+    return redirectTo(
+      request,
+      partnerCtx ? PARTNER_LOGIN_PATH : '/login'
+    )
   }
 
-  if (isAuthenticated && surface === 'staff' && pathname === '/login') {
-    return redirectTo(request, '/home')
+  if (
+    isAuthenticated &&
+    (surface === 'staff' || surface === 'platform') &&
+    pathname === '/login'
+  ) {
+    return redirectTo(request, surface === 'platform' ? '/' : '/home')
   }
 
   if (

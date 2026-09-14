@@ -2,6 +2,7 @@
 
 import { AppSidebar } from '@/components/shell/app-sidebar'
 import { AppTopbar } from '@/components/shell/app-topbar'
+import { ImpersonationBanner } from '@/components/shell/impersonation-banner'
 import { useSidebarCollapsed } from '@/components/shell/use-sidebar-collapsed'
 import type { SessionUser } from '@/lib/auth/session'
 import { cn } from '@/lib/utils'
@@ -29,6 +30,9 @@ export function AppShell({ user, children }: AppShellProps) {
             : 'md:ml-[var(--sidebar-width)]'
         )}
       >
+        {user.impersonation ? (
+          <ImpersonationBanner info={user.impersonation} />
+        ) : null}
         <AppTopbar user={user} />
         <main className="px-4 pb-6 pt-4 md:px-6">{children}</main>
       </div>
