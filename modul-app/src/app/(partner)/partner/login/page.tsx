@@ -17,6 +17,7 @@ export default async function PartnerLoginPage({
 }) {
   const params = await searchParams
   const accountDeleted = params.reason === 'account_deleted'
+  const disabled = params.reason === 'disabled'
 
   return (
     <PartnerAuthShell
@@ -29,6 +30,15 @@ export default async function PartnerLoginPage({
           role="status"
         >
           A fiókodat töröltük.
+        </p>
+      ) : null}
+      {disabled ? (
+        <p
+          className="mb-3 border border-danger/30 bg-danger-soft px-2.5 py-1.5 text-hint text-danger-ink"
+          role="alert"
+        >
+          A partner fiókod ki van kapcsolva. Ha szerinted ez hiba, írj a
+          szolgáltatóknak.
         </p>
       ) : null}
       <PartnerLoginForm />

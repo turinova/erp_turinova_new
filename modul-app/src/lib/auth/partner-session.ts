@@ -34,6 +34,7 @@ async function loadPartnerSession(): Promise<PartnerSession | null> {
   }
 
   if (!profile) return null
+  if (profile.status === 'disabled') return null
 
   return {
     id: user.id,

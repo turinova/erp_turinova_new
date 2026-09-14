@@ -170,8 +170,8 @@ Local (staff host, pl. `localhost:3010`):
 
 1. `/platform` — Aktivitás / GMV (HUF) / Partner sáv; 7 nap Δ
 2. Megrendelés KPI: `quotes.ordered_at` (migráció `20260404`)
-3. `/platform/partnerek` lista + detail (read-only)
-4. Attention: partner cég nélkül / sosem login
+3. `/platform/partnerek` lista + detail (disable / unlink / set tenant / impersonate)
+4. Attention / Teendők: partner cég nélkül / sosem login / kikapcsolva
 5. Tenant detail: GMV 30 nap, linked partners, portal beküldés 30 nap
 
 ---
@@ -186,4 +186,5 @@ Local (staff host, pl. `localhost:3010`):
 - Partneren gyártógép / vonalkód megjelenítés
 - Projekt név a PDF-en (V1)
 - Partner befizetés rögzítés / belső payment comment
-- Platform partner disable / unlink / impersonate (V1 read-only)
+- Auth ban partner disable-nél (csak app-szintű `status`)
+- Resend / saját mailer a reset/invite-hez (Supabase Auth email)

@@ -209,9 +209,7 @@ export default async function PlatformDashboardPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-body font-semibold text-ink">
-          Figyelmet igényel
-        </h2>
+        <h2 className="mb-2 text-body font-semibold text-ink">Teendők</h2>
         {attention.length === 0 ? (
           <p className="rounded-md border border-dashed border-border bg-subtle px-3 py-4 text-body text-ink-secondary">
             Nincs kiemelt tétel.

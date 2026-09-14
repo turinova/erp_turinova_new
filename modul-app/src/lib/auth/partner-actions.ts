@@ -87,6 +87,20 @@ export async function partnerLoginAction(
     }
   }
 
+  const { data: statusRow } = await supabase
+    .from('partner_profiles')
+    .select('status')
+    .eq('user_id', data.user.id)
+    .maybeSingle()
+
+  if (statusRow?.status === 'disabled') {
+    await supabase.auth.signOut()
+    return {
+      error:
+        'A partner fiókod ki van kapcsolva. Ha szerinted ez hiba, írj a szolgáltatóknak.'
+    }
+  }
+
   redirect(await partnerServerHref(PARTNER_HOME_PATH))
 }
 

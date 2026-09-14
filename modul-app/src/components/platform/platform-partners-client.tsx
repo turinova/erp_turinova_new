@@ -13,6 +13,7 @@ import {
   DataTableHeaderCell,
   DataTableRow
 } from '@/components/patterns/data-table'
+import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
@@ -79,7 +80,8 @@ export function PlatformPartnersClient({
         <div>
           <h1 className="text-h1 text-ink">Partnerek</h1>
           <p className="mt-1 text-body text-ink-secondary">
-            Online asztalosok — nem tenant seat. Csak olvasható.
+            Online asztalosok — nem tenant seat. Disable / unlink / impersonate
+            a partner részletezőn.
           </p>
         </div>
       </div>
@@ -128,6 +130,7 @@ export function PlatformPartnersClient({
             <DataTableHead>
               <DataTableRow>
                 <DataTableHeaderCell>Név</DataTableHeaderCell>
+                <DataTableHeaderCell>Státusz</DataTableHeaderCell>
                 <DataTableHeaderCell>Cég</DataTableHeaderCell>
                 <DataTableHeaderCell className="text-right">
                   Draft / Beküldés
@@ -149,6 +152,13 @@ export function PlatformPartnersClient({
                       {row.name}
                     </Link>
                     <p className="text-hint text-ink-secondary">{row.email}</p>
+                  </DataTableCell>
+                  <DataTableCell>
+                    <StatusBadge
+                      tone={row.status === 'disabled' ? 'danger' : 'success'}
+                    >
+                      {row.status === 'disabled' ? 'Kikapcsolva' : 'Aktív'}
+                    </StatusBadge>
                   </DataTableCell>
                   <DataTableCell className="text-ink">
                     {row.companyName ?? (

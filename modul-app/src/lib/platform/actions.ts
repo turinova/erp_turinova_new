@@ -10,7 +10,7 @@ import { seedOwnerPageAccess } from '@/lib/platform/queries'
 import type { TenantStatus } from '@/lib/supabase/database.types'
 
 export type PlatformActionResult =
-  | { ok: true; tenantId?: string }
+  | { ok: true; tenantId?: string; message?: string }
   | { ok: false; message: string }
 
 const PLATFORM_PATH = '/platform'
@@ -337,6 +337,182 @@ export async function resetTenantUserPassword(input: {
     ok: true,
     temporaryPassword,
     email: updated.user.email ?? ''
+  }
+}
+
+/**
+ * Supabase Auth email: recovery (jelszó reset) vagy invite újraküldés.
+ * generateLink a tokenhez; a kézbesítés Auth template-en megy.
+ */
+export async function sendTenantUserAuthEmail(input: {
+  tenantId: string
+  userId: string
+  mode?: 'auto' | 'recovery' | 'invite'
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data: membership, error: memError } = await ctx.admin
+    .from('tenant_memberships')
+    .select('id')
+    .eq('tenant_id', input.tenantId)
+    .eq('user_id', input.userId)
+    .maybeSingle()
+
+  if (memError || !membership) {
+    return { ok: false, message: 'A felhasználó nem tagja ennek a cégnek.' }
+  }
+
+  const {
+    data: { user },
+    error: userError
+  } = await ctx.admin.auth.admin.getUserById(input.userId)
+
+  if (userError || !user?.email) {
+    return { ok: false, message: 'Felhasználó nem található.' }
+  }
+
+  const redirectTo =
+    process.env.NEXT_PUBLIC_APP_ORIGIN?.replace(/\/$/, '') ||
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '')
+  const redirectLogin = redirectTo ? `${redirectTo}/login` : undefined
+
+  const mode =
+    input.mode === 'auto' || !input.mode
+      ? user.email_confirmed_at
+        ? 'recovery'
+        : 'invite'
+      : input.mode
+
+  if (mode === 'invite') {
+    const { error } = await ctx.admin.auth.admin.inviteUserByEmail(user.email, {
+      redirectTo: redirectLogin
+    })
+    if (error) {
+      // Already registered → try recovery instead
+      if (/already|registered|exists/i.test(error.message)) {
+        const { error: recError } = await ctx.admin.auth.resetPasswordForEmail(
+          user.email,
+          { redirectTo: redirectLogin }
+        )
+        if (recError) {
+          console.error('sendTenantUserAuthEmail invite→recovery', recError.message)
+          return { ok: false, message: 'Nem sikerült az Auth email küldése.' }
+        }
+      } else {
+        console.error('sendTenantUserAuthEmail invite', error.message)
+        return { ok: false, message: 'Nem sikerült az invite email.' }
+      }
+    }
+  } else {
+    const { error: sendError } = await ctx.admin.auth.resetPasswordForEmail(
+      user.email,
+      { redirectTo: redirectLogin }
+    )
+    if (sendError) {
+      console.error('sendTenantUserAuthEmail send', sendError.message)
+      return { ok: false, message: 'Nem sikerült a reset email küldése.' }
+    }
+  }
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action:
+      mode === 'invite' ? 'user.invite_email' : 'user.recovery_email',
+    details: { userId: input.userId, email: user.email, mode }
+  })
+
+  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
+  return {
+    ok: true,
+    message:
+      mode === 'invite'
+        ? 'Invite email elküldve (Supabase Auth).'
+        : 'Jelszó-reset email elküldve (Supabase Auth).'
+  }
+}
+
+export async function revokeUserSessions(input: {
+  tenantId: string
+  userId: string
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data: membership } = await ctx.admin
+    .from('tenant_memberships')
+    .select('id')
+    .eq('tenant_id', input.tenantId)
+    .eq('user_id', input.userId)
+    .maybeSingle()
+
+  if (!membership) {
+    return { ok: false, message: 'A felhasználó nem tagja ennek a cégnek.' }
+  }
+
+  const { error } = await ctx.admin
+    .from('app_user_sessions')
+    .delete()
+    .eq('user_id', input.userId)
+
+  if (error) {
+    console.error('revokeUserSessions', error.message)
+    return { ok: false, message: 'Nem sikerült a sessionök törlése.' }
+  }
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: 'user.sessions_revoke',
+    details: { userId: input.userId }
+  })
+
+  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
+  return { ok: true, message: 'Felhasználó sessionjei érvénytelenítve.' }
+}
+
+export async function revokeTenantSessions(input: {
+  tenantId: string
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data: members, error: memError } = await ctx.admin
+    .from('tenant_memberships')
+    .select('user_id')
+    .eq('tenant_id', input.tenantId)
+
+  if (memError) {
+    return { ok: false, message: 'Nem sikerült a tagok lekérése.' }
+  }
+
+  const userIds = [...new Set((members ?? []).map((m) => m.user_id))]
+  if (userIds.length === 0) {
+    return { ok: true, message: 'Nincs session törölni.' }
+  }
+
+  const { error } = await ctx.admin
+    .from('app_user_sessions')
+    .delete()
+    .in('user_id', userIds)
+
+  if (error) {
+    console.error('revokeTenantSessions', error.message)
+    return { ok: false, message: 'Nem sikerült a cég sessionjeinek törlése.' }
+  }
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: 'tenant.sessions_revoke',
+    details: { userCount: userIds.length }
+  })
+
+  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
+  return {
+    ok: true,
+    message: `Cég sessionjei érvénytelenítve (${userIds.length} user).`
   }
 }
 

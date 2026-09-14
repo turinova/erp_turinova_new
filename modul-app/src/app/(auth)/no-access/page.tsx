@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
 import { logoutAction } from '@/lib/auth/actions'
+import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { getSessionUser } from '@/lib/auth/session'
 import { PARTNER_HOME_PATH } from '@/lib/auth/surface'
@@ -14,7 +15,8 @@ export const metadata: Metadata = {
 export default async function NoAccessPage() {
   const partner = await getPartnerSession()
   if (partner) {
-    redirect(PARTNER_HOME_PATH)
+    // Path-módban /home = staff ERP — partnerServerHref → /partner/home
+    redirect(await partnerServerHref(PARTNER_HOME_PATH))
   }
 
   const user = await getSessionUser()

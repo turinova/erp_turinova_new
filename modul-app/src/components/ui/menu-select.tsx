@@ -4,6 +4,7 @@ import { Check, ChevronDown } from 'lucide-react'
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -34,9 +35,12 @@ type MenuSelectProps = {
   onChange: (value: string) => void
 }
 
+const MENU_MAX_HEIGHT_PX = 224 // max-h-56
+
 /**
  * Stylolt lista-select — Linear/Midday sűrűség:
  * egy sor, egy hangsúly; halk csoport; check csak selectednél.
+ * Viewport alján automatikusan felfelé nyílik.
  */
 export function MenuSelect({
   id,
@@ -53,6 +57,7 @@ export function MenuSelect({
   const rootRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
+  const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom')
 
   const flatItems = useMemo(() => {
     const items: Array<
@@ -73,6 +78,18 @@ export function MenuSelect({
   }, [options])
 
   const selected = options.find((o) => o.value === value) ?? null
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) return
+    const rect = rootRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const next =
+      spaceBelow < MENU_MAX_HEIGHT_PX && spaceAbove > spaceBelow
+        ? 'top'
+        : 'bottom'
+    setPlacement(next)
+  }, [open, options.length])
 
   useEffect(() => {
     if (!open) return
@@ -179,7 +196,12 @@ export function MenuSelect({
               : undefined
           }
           onKeyDown={onListKeyDown}
-          className="absolute z-40 mt-1 max-h-56 w-full min-w-[12rem] overflow-auto rounded-md border border-border bg-surface py-1 shadow-elev2"
+          className={cn(
+            'absolute z-50 max-h-56 w-full min-w-[12rem] overflow-auto rounded-md border border-border bg-surface py-1 shadow-elev2',
+            placement === 'top'
+              ? 'bottom-full mb-1'
+              : 'top-full mt-1'
+          )}
         >
           {allowEmpty ? (
             <button

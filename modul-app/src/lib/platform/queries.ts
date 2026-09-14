@@ -278,11 +278,22 @@ export async function listPlatformAttentionItems(
 
   const { data: partners } = await admin
     .from('partner_profiles')
-    .select('user_id, name, email, selected_tenant_id, created_at')
+    .select('user_id, name, email, selected_tenant_id, status, created_at')
     .order('created_at', { ascending: false })
     .limit(100)
 
   for (const p of partners ?? []) {
+    if (p.status === 'disabled') {
+      items.push({
+        id: p.user_id,
+        name: p.name || p.email,
+        status: 'active',
+        reason: 'Partner kikapcsolva',
+        href: `/platform/partnerek/${p.user_id}`,
+        kind: 'partner'
+      })
+      continue
+    }
     const last = lastSignInByUser.get(p.user_id) ?? null
     const age = now - new Date(p.created_at).getTime()
     if (!p.selected_tenant_id && age > threeDaysMs) {

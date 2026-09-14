@@ -16,7 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 const IMPERSONATION_TTL_MS = 60 * 60 * 1000
 
 export type ImpersonationResult =
-  | { ok: true }
+  | { ok: true; handoffUrl?: string }
   | { ok: false; message: string }
 
 function cookieOpts(maxAge = 60 * 60) {
@@ -37,6 +37,31 @@ function appOrigin(): string {
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
     ''
   )
+}
+
+function partnerOrigin(): string {
+  return (
+    process.env.NEXT_PUBLIC_PARTNER_ORIGIN?.replace(/\/$/, '') ||
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
+    ''
+  )
+}
+
+/**
+ * Absolute origin, or '' for same-host relative URL (local path-mode).
+ * Avoids cross-subdomain cookie loss when partner origin === app origin.
+ */
+function handoffOrigin(preferred: string): string {
+  const preferredNorm = preferred.replace(/\/$/, '')
+  const app = appOrigin()
+  if (!preferredNorm) return ''
+  if (app && preferredNorm === app) return ''
+  return preferredNorm
+}
+
+function buildHandoffUrl(completePath: string, preferredOrigin: string): string {
+  const origin = handoffOrigin(preferredOrigin)
+  return origin ? `${origin}${completePath}` : completePath
 }
 
 export async function startImpersonation(input: {
@@ -109,6 +134,7 @@ export async function startImpersonation(input: {
       operator_user_id: ctx.user.id,
       target_user_id: input.userId,
       tenant_id: input.tenantId,
+      subject_kind: 'staff',
       reason,
       handoff_token: handoffToken,
       magic_hash: hashedToken,
@@ -131,13 +157,123 @@ export async function startImpersonation(input: {
       targetUserId: input.userId,
       targetEmail: targetUser.email,
       sessionId: sessionRow.id,
+      subjectKind: 'staff',
       reason
     }
   })
 
-  const origin = appOrigin()
   const completePath = `/api/platform/impersonation/complete?sid=${sessionRow.id}&h=${handoffToken}`
-  redirect(origin ? `${origin}${completePath}` : completePath)
+  return {
+    ok: true,
+    handoffUrl: buildHandoffUrl(completePath, appOrigin())
+  }
+}
+
+/** Partner portál impersonation — handoff a partner host-ra (vagy local path-mód). */
+export async function startPartnerImpersonation(input: {
+  userId: string
+  reason?: string
+}): Promise<ImpersonationResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  if (ctx.user.isDevSession) {
+    return {
+      ok: false,
+      message: 'Dev bypass mellett az impersonation nem elérhető.'
+    }
+  }
+
+  const { data: partner, error: partnerError } = await ctx.admin
+    .from('partner_profiles')
+    .select('user_id, email, name, status, selected_tenant_id')
+    .eq('user_id', input.userId)
+    .maybeSingle()
+
+  if (partnerError || !partner) {
+    return { ok: false, message: 'Partner nem található.' }
+  }
+  if (partner.status === 'disabled') {
+    return { ok: false, message: 'Előbb kapcsold vissza a partnert.' }
+  }
+
+  const {
+    data: { user: targetUser },
+    error: userError
+  } = await ctx.admin.auth.admin.getUserById(input.userId)
+
+  if (userError || !targetUser?.email) {
+    return { ok: false, message: 'Cél felhasználó nem található.' }
+  }
+
+  const supabase = await createClient()
+  if (!supabase) {
+    return { ok: false, message: 'Nincs auth kliens.' }
+  }
+
+  const {
+    data: { session: operatorSession }
+  } = await supabase.auth.getSession()
+
+  if (!operatorSession?.refresh_token) {
+    return { ok: false, message: 'Nincs érvényes operator session.' }
+  }
+
+  const { data: linkData, error: linkError } =
+    await ctx.admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: targetUser.email
+    })
+
+  const hashedToken = linkData?.properties?.hashed_token
+  if (linkError || !hashedToken) {
+    console.error('startPartnerImpersonation generateLink', linkError?.message)
+    return { ok: false, message: 'Nem sikerült a cél session létrehozása.' }
+  }
+
+  const expiresAt = new Date(Date.now() + IMPERSONATION_TTL_MS).toISOString()
+  const reason = input.reason?.trim() || null
+  const handoffToken = randomBytes(24).toString('hex')
+
+  const { data: sessionRow, error: insertError } = await ctx.admin
+    .from('platform_impersonation_sessions')
+    .insert({
+      operator_user_id: ctx.user.id,
+      target_user_id: input.userId,
+      tenant_id: partner.selected_tenant_id,
+      subject_kind: 'partner',
+      reason,
+      handoff_token: handoffToken,
+      magic_hash: hashedToken,
+      operator_refresh_token: operatorSession.refresh_token,
+      expires_at: expiresAt
+    })
+    .select('id')
+    .single()
+
+  if (insertError || !sessionRow) {
+    console.error('startPartnerImpersonation insert', insertError?.message)
+    return { ok: false, message: 'Nem sikerült az impersonation session.' }
+  }
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: partner.selected_tenant_id,
+    actorUserId: ctx.user.id,
+    action: 'impersonation.start',
+    details: {
+      targetUserId: input.userId,
+      targetEmail: targetUser.email,
+      sessionId: sessionRow.id,
+      subjectKind: 'partner',
+      reason
+    }
+  })
+
+  const completePath = `/api/platform/impersonation/complete?sid=${sessionRow.id}&h=${handoffToken}`
+  return {
+    ok: true,
+    handoffUrl: buildHandoffUrl(completePath, partnerOrigin())
+  }
 }
 
 export async function stopImpersonation(): Promise<ImpersonationResult> {

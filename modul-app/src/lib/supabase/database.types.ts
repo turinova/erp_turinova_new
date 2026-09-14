@@ -157,6 +157,10 @@ export type PartnerProfile = {
   billing_tax_number: string | null
   billing_company_reg_number: string | null
   selected_tenant_id: string | null
+  status: 'active' | 'disabled'
+  disabled_at: string | null
+  disabled_reason: string | null
+  disabled_by: string | null
   created_at: string
   updated_at: string
 }
@@ -642,6 +646,10 @@ export type Database = {
           billing_tax_number?: string | null
           billing_company_reg_number?: string | null
           selected_tenant_id?: string | null
+          status?: 'active' | 'disabled'
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          disabled_by?: string | null
           created_at?: string
           updated_at?: string
         }

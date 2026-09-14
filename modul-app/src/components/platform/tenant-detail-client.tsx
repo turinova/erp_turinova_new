@@ -28,6 +28,9 @@ import { Input } from '@/components/ui/input'
 import {
   refreshTenantOnboardingFlags,
   resetTenantUserPassword,
+  revokeTenantSessions,
+  revokeUserSessions,
+  sendTenantUserAuthEmail,
   updatePlatformTenantStatus,
   updateTenantMaxSeats,
   updateTenantOpsFields
@@ -64,7 +67,11 @@ const AUDIT_LABELS: Record<string, string> = {
   'tenant.status': 'Cég státusz',
   'tenant.max_seats': 'Seat limit',
   'tenant.ops_fields': 'Billing / notes',
-  'user.password_reset': 'Jelszó reset'
+  'user.password_reset': 'Jelszó reset (ideiglenes)',
+  'user.recovery_email': 'Reset email',
+  'user.invite_email': 'Invite email',
+  'user.sessions_revoke': 'User session revoke',
+  'tenant.sessions_revoke': 'Cég session revoke'
 }
 
 type TabId = 'overview' | 'people' | 'billing' | 'audit'
@@ -112,6 +119,13 @@ export function TenantDetailClient({
   const [resetTarget, setResetTarget] =
     useState<PlatformTenantMember | null>(null)
   const [resetLoading, setResetLoading] = useState(false)
+  const [emailTarget, setEmailTarget] =
+    useState<PlatformTenantMember | null>(null)
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [revokeUserTarget, setRevokeUserTarget] =
+    useState<PlatformTenantMember | null>(null)
+  const [revokeTenantOpen, setRevokeTenantOpen] = useState(false)
+  const [revokeLoading, setRevokeLoading] = useState(false)
   const [impersonateTarget, setImpersonateTarget] =
     useState<PlatformTenantMember | null>(null)
   const [impersonateLoading, setImpersonateLoading] = useState(false)
@@ -252,6 +266,61 @@ export function TenantDetailClient({
     }
   }
 
+  async function handleConfirmAuthEmail() {
+    if (!emailTarget) return
+    setEmailLoading(true)
+    try {
+      const result = await sendTenantUserAuthEmail({
+        tenantId: tenant.id,
+        userId: emailTarget.userId,
+        mode: 'auto'
+      })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      setEmailTarget(null)
+      toast.success(result.message ?? 'Auth email elküldve.')
+      router.refresh()
+    } finally {
+      setEmailLoading(false)
+    }
+  }
+
+  async function handleConfirmRevokeUser() {
+    if (!revokeUserTarget) return
+    setRevokeLoading(true)
+    try {
+      const result = await revokeUserSessions({
+        tenantId: tenant.id,
+        userId: revokeUserTarget.userId
+      })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      setRevokeUserTarget(null)
+      toast.success(result.message ?? 'Sessionök törölve.')
+    } finally {
+      setRevokeLoading(false)
+    }
+  }
+
+  async function handleConfirmRevokeTenant() {
+    setRevokeLoading(true)
+    try {
+      const result = await revokeTenantSessions({ tenantId: tenant.id })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      setRevokeTenantOpen(false)
+      toast.success(result.message ?? 'Cég sessionök törölve.')
+    } finally {
+      setRevokeLoading(false)
+    }
+  }
+
   async function handleConfirmImpersonate() {
     if (!impersonateTarget) return
     setImpersonateLoading(true)
@@ -260,11 +329,15 @@ export function TenantDetailClient({
         tenantId: tenant.id,
         userId: impersonateTarget.userId
       })
-      if (result && !result.ok) {
+      if (!result.ok) {
         toast.error(result.message)
+        return
       }
-    } catch {
-      // redirect
+      if (result.handoffUrl) {
+        window.location.assign(result.handoffUrl)
+        return
+      }
+      toast.error('Hiányzó handoff URL.')
     } finally {
       setImpersonateLoading(false)
     }
@@ -317,6 +390,41 @@ export function TenantDetailClient({
 
       {tab === 'overview' ? (
         <>
+          {nextStep ? (
+            <section className="rounded-md border border-primary/20 bg-subtle px-3 py-3">
+              <p className="text-hint font-semibold uppercase tracking-wide text-ink-secondary">
+                Következő lépés
+              </p>
+              <p className="mt-1 text-body text-ink">{nextStep}</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setTab('people')}
+                >
+                  Emberek megnyitása
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  loading={pending}
+                  onClick={handleRefreshOnboarding}
+                >
+                  Onboarding frissítése
+                </Button>
+              </div>
+            </section>
+          ) : (
+            <p
+              className="rounded-md border border-success/30 bg-success-soft px-3 py-2 text-body text-success-ink"
+              role="status"
+            >
+              Onboarding kész — nincs kötelező következő lépés.
+            </p>
+          )}
+
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Kpi label="Tagok" value={String(kpis.memberCount)} />
             <Kpi
@@ -497,9 +605,20 @@ export function TenantDetailClient({
 
       {tab === 'people' ? (
         <section className="rounded-md border border-border bg-surface p-4">
-          <h2 className="mb-3 text-body font-semibold text-ink">
-            Felhasználók ({members.length})
-          </h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-body font-semibold text-ink">
+              Felhasználók ({members.length})
+            </h2>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={pending || revokeLoading || members.length === 0}
+              onClick={() => setRevokeTenantOpen(true)}
+            >
+              Összes session revoke
+            </Button>
+          </div>
           {members.length === 0 ? (
             <p className="text-body text-ink-secondary">Nincs tag.</p>
           ) : (
@@ -555,6 +674,7 @@ export function TenantDetailClient({
                           disabled={
                             pending ||
                             resetLoading ||
+                            emailLoading ||
                             impersonateLoading ||
                             m.banned
                           }
@@ -566,10 +686,28 @@ export function TenantDetailClient({
                           type="button"
                           variant="secondary"
                           size="sm"
+                          disabled={pending || emailLoading || m.banned}
+                          onClick={() => setEmailTarget(m)}
+                        >
+                          {m.emailConfirmed ? 'Reset email' : 'Invite email'}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
                           disabled={pending || resetLoading}
                           onClick={() => setResetTarget(m)}
                         >
-                          Jelszó reset
+                          Ideiglenes jelszó
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={pending || revokeLoading}
+                          onClick={() => setRevokeUserTarget(m)}
+                        >
+                          Session revoke
                         </Button>
                       </div>
                     </DataTableCell>
@@ -759,6 +897,58 @@ export function TenantDetailClient({
         variant="danger"
         loading={resetLoading}
         onConfirm={() => void handleConfirmReset()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(emailTarget)}
+        onOpenChange={(open) => {
+          if (!open) setEmailTarget(null)
+        }}
+        title={
+          emailTarget && !emailTarget.emailConfirmed
+            ? 'Invite email küldése?'
+            : 'Jelszó-reset email küldése?'
+        }
+        description={
+          emailTarget
+            ? `Supabase Auth emailt küld: ${emailTarget.email}. Nincs Resend — az Auth template megy.`
+            : ''
+        }
+        confirmLabel="Email küldése"
+        cancelLabel="Mégse"
+        variant="primary"
+        loading={emailLoading}
+        onConfirm={() => void handleConfirmAuthEmail()}
+      />
+
+      <ConfirmDialog
+        open={Boolean(revokeUserTarget)}
+        onOpenChange={(open) => {
+          if (!open) setRevokeUserTarget(null)
+        }}
+        title="Sessionök érvénytelenítése?"
+        description={
+          revokeUserTarget
+            ? `${revokeUserTarget.email} minden app sessionje lejár — újra be kell lépnie.`
+            : ''
+        }
+        confirmLabel="Revoke"
+        cancelLabel="Mégse"
+        variant="danger"
+        loading={revokeLoading}
+        onConfirm={() => void handleConfirmRevokeUser()}
+      />
+
+      <ConfirmDialog
+        open={revokeTenantOpen}
+        onOpenChange={setRevokeTenantOpen}
+        title="Teljes cég session revoke?"
+        description="Minden tag app sessionje érvénytelenítve lesz. Impersonation sessionök nem."
+        confirmLabel="Összes revoke"
+        cancelLabel="Mégse"
+        variant="danger"
+        loading={revokeLoading}
+        onConfirm={() => void handleConfirmRevokeTenant()}
       />
 
       <ConfirmDialog

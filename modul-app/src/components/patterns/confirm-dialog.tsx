@@ -22,6 +22,7 @@ type ConfirmDialogProps = {
   variant?: 'danger' | 'primary'
   loading?: boolean
   onConfirm: () => void
+  children?: React.ReactNode
 }
 
 export function ConfirmDialog({
@@ -33,7 +34,8 @@ export function ConfirmDialog({
   cancelLabel = 'Mégse',
   variant = 'danger',
   loading = false,
-  onConfirm
+  onConfirm,
+  children
 }: ConfirmDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
 
@@ -56,6 +58,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {children}
         <DialogFooter>
           <Button
             ref={cancelRef}

@@ -191,7 +191,7 @@ export function OptiCustomerStrip({
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border border-l-[3px] border-l-ink bg-surface">
+    <section className="overflow-visible rounded-lg border border-border border-l-[3px] border-l-ink bg-surface">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-subtle px-3 py-3">
         <div className="min-w-0 space-y-0.5">
           <h2 className="text-h3 text-ink">3. Megrendelő és mentés</h2>

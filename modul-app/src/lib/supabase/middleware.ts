@@ -23,6 +23,7 @@ import {
   platformCleanToInternal,
   platformInternalToClean,
   PARTNER_HOME_PATH,
+  PARTNER_INTERNAL_PREFIX,
   PARTNER_LOGIN_PATH,
   PARTNER_REGISTER_PATH,
   resolveAuthSurface
@@ -59,6 +60,15 @@ function redirectTo(request: NextRequest, pathname: string, reason?: string) {
 function redirectExternal(origin: string, pathname: string) {
   const url = new URL(pathname, origin)
   return NextResponse.redirect(url)
+}
+
+/** Partner home: clean /home on partner host; /partner/home on staff (path-mode). */
+function partnerHomePathname(
+  surface: ReturnType<typeof resolveAuthSurface>
+): string {
+  return surface === 'partner'
+    ? PARTNER_HOME_PATH
+    : `${PARTNER_INTERNAL_PREFIX}${PARTNER_HOME_PATH}`
 }
 
 export async function updateSession(request: NextRequest) {
@@ -164,6 +174,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   let isAuthenticated = false
+  let isPartnerUser = false
+  let hasStaffMembership = false
 
   if (isSupabaseConfigured()) {
     const supabase = createServerClient(
@@ -206,17 +218,41 @@ export async function updateSession(request: NextRequest) {
       if (partnerCtx) {
         const { data: partnerRow } = await supabase
           .from('partner_profiles')
-          .select('user_id')
+          .select('user_id, status')
           .eq('user_id', user.id)
           .maybeSingle()
 
+        if (partnerRow && partnerRow.status === 'disabled') {
+          await supabase.auth.signOut()
+          return redirectTo(request, PARTNER_LOGIN_PATH, 'disabled')
+        }
+
         if (partnerRow) {
           isAuthenticated = true
+          isPartnerUser = true
         } else if (!isPublicAuth) {
           await supabase.auth.signOut()
           return redirectTo(request, PARTNER_LOGIN_PATH)
         }
       } else {
+        const [{ data: partnerRow }, { data: memberships }] = await Promise.all([
+          supabase
+            .from('partner_profiles')
+            .select('user_id, status')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+          supabase
+            .from('tenant_memberships')
+            .select('id')
+            .eq('user_id', user.id)
+            .limit(1)
+        ])
+
+        if (partnerRow && partnerRow.status !== 'disabled') {
+          isPartnerUser = true
+        }
+        hasStaffMembership = (memberships?.length ?? 0) > 0
+
         const impersonationId = request.cookies.get(
           IMPERSONATION_SESSION_COOKIE
         )?.value
@@ -246,23 +282,18 @@ export async function updateSession(request: NextRequest) {
 
           if (valid) {
             isAuthenticated = true
+          } else if (isPartnerUser && !hasStaffMembership) {
+            // Partner-only session on staff host (path-mode / impersonation)
+            isAuthenticated = true
+          } else if (isPartnerSharedApi && isPartnerUser) {
+            isAuthenticated = true
           } else if (isPartnerSharedApi) {
-            const { data: partnerRow } = await supabase
-              .from('partner_profiles')
-              .select('user_id')
-              .eq('user_id', user.id)
-              .maybeSingle()
-
-            if (partnerRow) {
-              isAuthenticated = true
-            } else {
-              await supabase.auth.signOut()
-              const response = redirectTo(request, '/login', 'session_replaced')
-              response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-              response.cookies.delete(CURRENT_TENANT_COOKIE)
-              response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
-              return response
-            }
+            await supabase.auth.signOut()
+            const response = redirectTo(request, '/login', 'session_replaced')
+            response.cookies.delete(APP_SESSION_NONCE_COOKIE)
+            response.cookies.delete(CURRENT_TENANT_COOKIE)
+            response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
+            return response
           } else {
             await supabase.auth.signOut()
             const response = redirectTo(request, '/login', 'session_replaced')
@@ -287,12 +318,19 @@ export async function updateSession(request: NextRequest) {
     )
   }
 
+  const partnerHome = partnerHomePathname(surface)
+
+  // Partner-only: ne ragadjon staff /home ↔ /no-access loopba (path-mód)
   if (
     isAuthenticated &&
-    (surface === 'staff' || surface === 'platform') &&
-    pathname === '/login'
+    isPartnerUser &&
+    !hasStaffMembership &&
+    surface === 'staff' &&
+    (pathname === '/home' ||
+      pathname === '/no-access' ||
+      pathname === '/nincs-hozzaferes')
   ) {
-    return redirectTo(request, surface === 'platform' ? '/' : '/home')
+    return redirectTo(request, partnerHome)
   }
 
   if (
@@ -300,9 +338,21 @@ export async function updateSession(request: NextRequest) {
     (pathname === PARTNER_LOGIN_PATH ||
       pathname === PARTNER_REGISTER_PATH ||
       pathname === '/partner/login' ||
-      pathname === '/partner/register')
+      pathname === '/partner/register' ||
+      pathname === '/login')
   ) {
-    return redirectTo(request, PARTNER_HOME_PATH)
+    if (isPartnerUser && !hasStaffMembership) {
+      return redirectTo(request, partnerHome)
+    }
+    if (surface === 'partner' || partnerCtx) {
+      return redirectTo(request, partnerHome)
+    }
+    if (surface === 'platform') {
+      return redirectTo(request, '/')
+    }
+    if (surface === 'staff') {
+      return redirectTo(request, '/home')
+    }
   }
 
   return supabaseResponse

@@ -9,6 +9,7 @@ export type PlatformPartnerListItem = {
   mobile: string | null
   selectedTenantId: string | null
   companyName: string | null
+  status: 'active' | 'disabled'
   createdAt: string
   lastSignInAt: string | null
   submittedCount: number
@@ -28,6 +29,9 @@ export type PlatformPartnerDetail = {
     billingHouseNumber: string | null
     billingTaxNumber: string | null
     selectedTenantId: string | null
+    status: 'active' | 'disabled'
+    disabledAt: string | null
+    disabledReason: string | null
     createdAt: string
     updatedAt: string
   }
@@ -63,7 +67,7 @@ export async function listPlatformPartners(
   let query = admin
     .from('partner_profiles')
     .select(
-      'user_id, name, email, mobile, selected_tenant_id, created_at',
+      'user_id, name, email, mobile, selected_tenant_id, status, created_at',
       { count: 'exact' }
     )
 
@@ -146,6 +150,7 @@ export async function listPlatformPartners(
     companyName: r.selected_tenant_id
       ? (companyByTenant.get(r.selected_tenant_id) ?? null)
       : null,
+    status: (r.status as 'active' | 'disabled') ?? 'active',
     createdAt: r.created_at,
     lastSignInAt: authById.get(r.user_id)?.lastSignInAt ?? null,
     submittedCount: submittedByPartner.get(r.user_id) ?? 0,
@@ -174,6 +179,9 @@ export async function getPlatformPartnerDetail(
       billing_house_number,
       billing_tax_number,
       selected_tenant_id,
+      status,
+      disabled_at,
+      disabled_reason,
       created_at,
       updated_at
     `
@@ -240,6 +248,9 @@ export async function getPlatformPartnerDetail(
       billingHouseNumber: profile.billing_house_number,
       billingTaxNumber: profile.billing_tax_number,
       selectedTenantId: profile.selected_tenant_id,
+      status: (profile.status as 'active' | 'disabled') ?? 'active',
+      disabledAt: profile.disabled_at ?? null,
+      disabledReason: profile.disabled_reason ?? null,
       createdAt: profile.created_at,
       updatedAt: profile.updated_at
     },

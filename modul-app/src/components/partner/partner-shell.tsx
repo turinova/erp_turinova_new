@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
+import { ImpersonationBanner } from '@/components/shell/impersonation-banner'
 import { partnerLogoutAction } from '@/lib/auth/partner-actions'
+import type { ImpersonationInfo } from '@/lib/auth/session'
 import {
   PARTNER_HOME_PATH,
   partnerHref,
@@ -19,6 +21,7 @@ type PartnerShellProps = {
   email: string
   name: string
   companyLabel: string | null
+  impersonation?: ImpersonationInfo | null
   children: React.ReactNode
 }
 
@@ -26,6 +29,7 @@ export function PartnerShell({
   email,
   name,
   companyLabel,
+  impersonation = null,
   children
 }: PartnerShellProps) {
   const pathname = usePathname()
@@ -34,6 +38,7 @@ export function PartnerShell({
 
   return (
     <div className="relative min-h-screen bg-stone-50">
+      {impersonation ? <ImpersonationBanner info={impersonation} /> : null}
       <aside
         className="fixed inset-y-0 left-0 z-40 hidden w-sidebar flex-col border-r border-stone-200 bg-white md:flex"
         aria-label="Asztalos oldalsáv"
