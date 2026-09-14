@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
-import { Plus, Search, SquareStack } from 'lucide-react'
+import { useMemo, useRef, useState, useTransition } from 'react'
+import { Download, Plus, Search, SquareStack, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
@@ -18,9 +18,18 @@ import {
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { softDeleteEdgeMaterial } from '@/lib/edge-materials/actions'
+import type { EdgeImportPreviewResult } from '@/lib/edge-materials/import-plan'
 import {
   formatHuNumber,
   formatMoneyFt,
@@ -55,10 +64,137 @@ export function EdgeMaterialsListClient({
     null
   )
   const [pending, startTransition] = useTransition()
+  const [exportBusy, setExportBusy] = useState(false)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] =
+    useState<EdgeImportPreviewResult | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
   const to = Math.min(page * limit, total)
+
+  async function downloadExport(mode: 'template' | 'data') {
+    setExportBusy(true)
+    try {
+      const response = await fetch(`/api/edge-materials/export?mode=${mode}`)
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as {
+          error?: string
+        } | null
+        toast.error(data?.error || 'A letöltés sikertelen.')
+        return
+      }
+      const blob = await response.blob()
+      const disposition = response.headers.get('Content-Disposition')
+      const match = disposition?.match(/filename="([^"]+)"/)
+      const filename =
+        match?.[1] ??
+        (mode === 'template' ? 'elzarok_sablon.xlsx' : 'elzarok.xlsx')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast.success(
+        mode === 'template' ? 'Sablon letöltve.' : 'Export kész.'
+      )
+    } catch {
+      toast.error('A letöltés sikertelen.')
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
+  async function handleImportFileSelect(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const lower = file.name.toLowerCase()
+    if (!lower.endsWith('.xlsx') && !lower.endsWith('.xls')) {
+      toast.error('Csak .xlsx fájl tölthető fel.')
+      return
+    }
+
+    setImportBusy(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const response = await fetch('/api/edge-materials/import/preview', {
+        method: 'POST',
+        body: formData
+      })
+      const data = (await response.json()) as
+        | EdgeImportPreviewResult
+        | { error?: string }
+      if (!response.ok || !('stats' in data)) {
+        toast.error(
+          'error' in data && data.error
+            ? data.error
+            : 'Az előnézet betöltése sikertelen.'
+        )
+        return
+      }
+      setImportFile(file)
+      setImportPreview(data)
+    } catch {
+      toast.error('Az előnézet betöltése sikertelen.')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  async function handleImportConfirm() {
+    if (!importFile || !importPreview) return
+    if (importPreview.stats.create + importPreview.stats.update === 0) {
+      toast.error('Nincs importálható érvényes sor.')
+      return
+    }
+    setImportBusy(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+      const response = await fetch('/api/edge-materials/import', {
+        method: 'POST',
+        body: formData
+      })
+      const data = (await response.json()) as {
+        error?: string
+        results?: { created: number; updated: number; skippedErrors: number }
+      }
+      if (!response.ok || !data.results) {
+        toast.error(data.error || 'Az import sikertelen.')
+        return
+      }
+      const parts: string[] = []
+      if (data.results.created > 0) {
+        parts.push(`${data.results.created} új`)
+      }
+      if (data.results.updated > 0) {
+        parts.push(`${data.results.updated} frissítve`)
+      }
+      toast.success(`Import kész: ${parts.join(', ')}.`)
+      setImportFile(null)
+      setImportPreview(null)
+      router.refresh()
+    } catch {
+      toast.error('Az import sikertelen.')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  function closeImportDialog() {
+    if (importBusy) return
+    setImportFile(null)
+    setImportPreview(null)
+  }
 
   function pushParams(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams.toString())
@@ -102,17 +238,57 @@ export function EdgeMaterialsListClient({
         title="Élzárók"
         description="Élzáró anyagok a gyártáshoz és optimalizáláshoz."
         actions={
-          canWrite ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
               type="button"
-              onClick={() =>
-                router.push('/torzsadatok/alapanyagok/elzarok/uj')
-              }
+              variant="secondary"
+              loading={exportBusy}
+              disabled={exportBusy || importBusy}
+              onClick={() => downloadExport('data')}
             >
-              <Plus className="size-3.5" aria-hidden />
-              Új élzáró
+              <Download className="size-3.5" aria-hidden />
+              Export
             </Button>
-          ) : null
+            {canWrite ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={exportBusy}
+                  disabled={exportBusy || importBusy}
+                  onClick={() => downloadExport('template')}
+                >
+                  Sablon
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={importBusy}
+                  disabled={exportBusy || importBusy}
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  <Upload className="size-3.5" aria-hidden />
+                  Import
+                </Button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="sr-only"
+                  onChange={handleImportFileSelect}
+                />
+                <Button
+                  type="button"
+                  onClick={() =>
+                    router.push('/torzsadatok/alapanyagok/elzarok/uj')
+                  }
+                >
+                  <Plus className="size-3.5" aria-hidden />
+                  Új élzáró
+                </Button>
+              </>
+            ) : null}
+          </div>
         }
       />
 
@@ -290,6 +466,110 @@ export function EdgeMaterialsListClient({
         loading={pending}
         onConfirm={handleDelete}
       />
+
+      <Dialog
+        open={Boolean(importPreview)}
+        onOpenChange={(open) => {
+          if (!open) closeImportDialog()
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import előnézet</DialogTitle>
+            <DialogDescription>
+              Ellenőrizd a sorokat, majd indítsd az importot. A hibás sorok
+              kimaradnak.
+            </DialogDescription>
+          </DialogHeader>
+          {importPreview ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2 text-hint">
+                <StatusBadge tone="neutral">
+                  Összesen: {importPreview.stats.total}
+                </StatusBadge>
+                <StatusBadge tone="success">
+                  Új: {importPreview.stats.create}
+                </StatusBadge>
+                <StatusBadge tone="info">
+                  Frissül: {importPreview.stats.update}
+                </StatusBadge>
+                <StatusBadge
+                  tone={
+                    importPreview.stats.error > 0 ? 'danger' : 'neutral'
+                  }
+                >
+                  Hiba: {importPreview.stats.error}
+                </StatusBadge>
+              </div>
+              <div className="max-h-72 overflow-auto rounded-md border border-border">
+                <table className="w-full text-left text-hint">
+                  <thead className="sticky top-0 bg-subtle">
+                    <tr className="border-b border-border">
+                      <th className="px-2 py-1.5 font-medium">Sor</th>
+                      <th className="px-2 py-1.5 font-medium">Művelet</th>
+                      <th className="px-2 py-1.5 font-medium">Élzáró</th>
+                      <th className="px-2 py-1.5 font-medium">Megjegyzés</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.items.map((item) => (
+                      <tr
+                        key={`${item.rowNumber}-${item.name}`}
+                        className="border-b border-border last:border-0"
+                      >
+                        <td className="px-2 py-1.5 tabular-nums text-ink">
+                          {item.rowNumber}
+                        </td>
+                        <td className="px-2 py-1.5 text-ink">
+                          {item.action === 'create'
+                            ? 'Új'
+                            : item.action === 'update'
+                              ? 'Frissít'
+                              : 'Hiba'}
+                        </td>
+                        <td className="px-2 py-1.5 text-ink">
+                          <span className="font-medium">{item.name}</span>
+                          <span className="text-ink-secondary">
+                            {' '}
+                            · {item.manufacturerName} · {item.sizeLabel}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-danger-ink">
+                          {item.message ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={importBusy}
+              onClick={closeImportDialog}
+            >
+              Mégse
+            </Button>
+            <Button
+              type="button"
+              loading={importBusy}
+              disabled={
+                importBusy ||
+                !importPreview ||
+                importPreview.stats.create + importPreview.stats.update === 0
+              }
+              onClick={handleImportConfirm}
+            >
+              {importPreview
+                ? `${importPreview.stats.create + importPreview.stats.update} élzáró importálása`
+                : 'Importálás'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -307,7 +587,8 @@ function EmptyEdges({
       <div className="space-y-1">
         <p className="text-body font-medium text-ink">Még nincs élzáró</p>
         <p className="max-w-sm text-body text-ink-secondary">
-          Add hozzá az ABS / PVC élzárókat mérettel, árral és gépkóddal.
+          Add hozzá az ABS / PVC élzárókat mérettel, árral és gépkóddal — vagy
+          importáld Excelből.
         </p>
       </div>
       {canWrite ? (

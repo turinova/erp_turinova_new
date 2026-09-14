@@ -301,112 +301,137 @@ export function SheetMaterialForm({
       <div className="w-full max-w-6xl space-y-2.5">
         <FormSection
           title="Azonosítás"
-          description="Gyártó, név, méretek és kép."
+          description="Gyártó, név, méretek, kép és elérhetőség."
           columns={2}
         >
           <div className="col-span-full grid gap-3 lg:grid-cols-[minmax(0,1fr)_11rem] lg:items-start">
-            <div className="grid gap-x-3 gap-y-2.5 sm:grid-cols-3">
-              <FormField
-                label="Gyártó"
-                htmlFor="sheet-manufacturer"
-                required
-                error={fieldErrors.manufacturerId}
-              >
-                <Select
-                  id="sheet-manufacturer"
-                  value={manufacturerId}
-                  disabled={!canWrite}
-                  onChange={(e) => setManufacturerId(e.target.value)}
+            <div className="space-y-2.5">
+              <div className="grid gap-x-3 gap-y-2.5 sm:grid-cols-3">
+                <FormField
+                  label="Gyártó"
+                  htmlFor="sheet-manufacturer"
+                  required
+                  error={fieldErrors.manufacturerId}
                 >
-                  <option value="" disabled>
-                    Válassz…
-                  </option>
-                  {manufacturers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
+                  <Select
+                    id="sheet-manufacturer"
+                    value={manufacturerId}
+                    disabled={!canWrite}
+                    onChange={(e) => setManufacturerId(e.target.value)}
+                  >
+                    <option value="" disabled>
+                      Válassz…
                     </option>
-                  ))}
-                </Select>
-              </FormField>
+                    {manufacturers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </Select>
+                </FormField>
 
-              <FormField
-                label="Anyag neve"
-                htmlFor="sheet-name"
-                required
-                error={fieldErrors.name}
-                className="sm:col-span-2"
-              >
-                <Input
-                  id="sheet-name"
-                  value={name}
-                  disabled={!canWrite}
-                  onChange={(e) => setName(e.target.value)}
-                  autoComplete="off"
-                />
-              </FormField>
-
-              <FormField
-                label="Hossz"
-                htmlFor="sheet-length"
-                required
-                error={fieldErrors.lengthMm}
-              >
-                <div className="relative">
+                <FormField
+                  label="Anyag neve"
+                  htmlFor="sheet-name"
+                  required
+                  error={fieldErrors.name}
+                  className="sm:col-span-2"
+                >
                   <Input
-                    id="sheet-length"
-                    value={lengthRaw}
+                    id="sheet-name"
+                    value={name}
                     disabled={!canWrite}
-                    onChange={(e) => setLengthRaw(e.target.value)}
-                    inputMode="numeric"
-                    className="pr-10"
+                    onChange={(e) => setName(e.target.value)}
+                    autoComplete="off"
                   />
-                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
-                    mm
-                  </span>
-                </div>
-              </FormField>
+                </FormField>
 
-              <FormField
-                label="Szélesség"
-                htmlFor="sheet-width"
-                required
-                error={fieldErrors.widthMm}
-              >
-                <div className="relative">
-                  <Input
-                    id="sheet-width"
-                    value={widthRaw}
-                    disabled={!canWrite}
-                    onChange={(e) => setWidthRaw(e.target.value)}
-                    inputMode="numeric"
-                    className="pr-10"
-                  />
-                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
-                    mm
-                  </span>
-                </div>
-              </FormField>
+                <FormField
+                  label="Hossz"
+                  htmlFor="sheet-length"
+                  required
+                  error={fieldErrors.lengthMm}
+                >
+                  <div className="relative">
+                    <Input
+                      id="sheet-length"
+                      value={lengthRaw}
+                      disabled={!canWrite}
+                      onChange={(e) => setLengthRaw(e.target.value)}
+                      inputMode="numeric"
+                      className="pr-10"
+                    />
+                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
+                      mm
+                    </span>
+                  </div>
+                </FormField>
 
-              <FormField
-                label="Vastagság"
-                htmlFor="sheet-thickness"
-                required
-                error={fieldErrors.thicknessMm}
-              >
-                <div className="relative">
-                  <Input
-                    id="sheet-thickness"
-                    value={thicknessRaw}
+                <FormField
+                  label="Szélesség"
+                  htmlFor="sheet-width"
+                  required
+                  error={fieldErrors.widthMm}
+                >
+                  <div className="relative">
+                    <Input
+                      id="sheet-width"
+                      value={widthRaw}
+                      disabled={!canWrite}
+                      onChange={(e) => setWidthRaw(e.target.value)}
+                      inputMode="numeric"
+                      className="pr-10"
+                    />
+                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
+                      mm
+                    </span>
+                  </div>
+                </FormField>
+
+                <FormField
+                  label="Vastagság"
+                  htmlFor="sheet-thickness"
+                  required
+                  error={fieldErrors.thicknessMm}
+                >
+                  <div className="relative">
+                    <Input
+                      id="sheet-thickness"
+                      value={thicknessRaw}
+                      disabled={!canWrite}
+                      onChange={(e) => setThicknessRaw(e.target.value)}
+                      inputMode="decimal"
+                      className="pr-10"
+                    />
+                    <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
+                      mm
+                    </span>
+                  </div>
+                </FormField>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-md border border-border bg-app p-2.5">
+                  <Switch
+                    id="sheet-active"
+                    checked={active}
                     disabled={!canWrite}
-                    onChange={(e) => setThicknessRaw(e.target.value)}
-                    inputMode="decimal"
-                    className="pr-10"
+                    onCheckedChange={setActive}
+                    label="Aktív"
+                    description="Megjelenik a listában és az optimalizálásban."
                   />
-                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
-                    mm
-                  </span>
                 </div>
-              </FormField>
+                <div className="rounded-md border border-border bg-app p-2.5">
+                  <Switch
+                    id="sheet-on-stock"
+                    checked={onStock}
+                    disabled={!canWrite}
+                    onCheckedChange={setOnStock}
+                    label="Raktáron"
+                    description="Jelzi, hogy van belőle készleten (még nincs készletmozgás)."
+                  />
+                </div>
+              </div>
             </div>
 
             <FormField
@@ -421,6 +446,7 @@ export function SheetMaterialForm({
                 value={imageUrl}
                 onChange={setImageUrl}
                 disabled={!canWrite}
+                showGrainHint={grainDirection}
               />
             </FormField>
           </div>
@@ -519,33 +545,6 @@ export function SheetMaterialForm({
                 </p>
               </div>
             </div>
-          </div>
-        </FormSection>
-
-        <FormSection
-          title="Elérhetőség"
-          description="Megjelenés a listában / optiban, és raktár jelölés."
-          columns={2}
-        >
-          <div className="rounded-md border border-border bg-app p-2.5">
-            <Switch
-              id="sheet-active"
-              checked={active}
-              disabled={!canWrite}
-              onCheckedChange={setActive}
-              label="Aktív"
-              description="Megjelenik a listában és az optimalizálásban."
-            />
-          </div>
-          <div className="rounded-md border border-border bg-app p-2.5">
-            <Switch
-              id="sheet-on-stock"
-              checked={onStock}
-              disabled={!canWrite}
-              onCheckedChange={setOnStock}
-              label="Raktáron"
-              description="Jelzi, hogy van belőle készleten (még nincs készletmozgás)."
-            />
           </div>
         </FormSection>
 

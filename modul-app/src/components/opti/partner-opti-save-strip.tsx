@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -33,7 +33,10 @@ export function PartnerOptiSaveStrip({
   quote,
   sheetMaterials,
   quoteId,
-  initialProjectName
+  initialProjectName,
+  initialSessionProjectName,
+  onSessionProjectNameChange,
+  onSaveSuccess
 }: {
   customer: PartnerOptiCustomerSnapshot
   companyLabel: string | null
@@ -42,12 +45,27 @@ export function PartnerOptiSaveStrip({
   sheetMaterials: OptiSheetMaterialOption[]
   quoteId?: string | null
   initialProjectName?: string | null
+  initialSessionProjectName?: string | null
+  onSessionProjectNameChange?: (projectName: string) => void
+  onSaveSuccess?: () => void
 }) {
   const router = useRouter()
   const isEdit = Boolean(quoteId)
-  const [projectName, setProjectName] = useState(initialProjectName ?? '')
+  const [projectName, setProjectName] = useState(
+    () => initialProjectName ?? initialSessionProjectName ?? ''
+  )
   const [isPending, startTransition] = useTransition()
   const canSave = panels.length > 0
+  const sessionReady = useRef(false)
+
+  useEffect(() => {
+    sessionReady.current = true
+  }, [])
+
+  useEffect(() => {
+    if (!sessionReady.current || !onSessionProjectNameChange || isEdit) return
+    onSessionProjectNameChange(projectName)
+  }, [projectName, onSessionProjectNameChange, isEdit])
 
   function handleSaveClick() {
     startTransition(async () => {
@@ -69,6 +87,7 @@ export function PartnerOptiSaveStrip({
           ? `Ajánlat frissítve: ${result.quoteNumber}`
           : `Ajánlat mentve: ${result.quoteNumber} (még nem beküldve)`
       )
+      onSaveSuccess?.()
       router.push(`${PARTNER_QUOTES_PATH}/${result.id}`)
       router.refresh()
     })

@@ -1,11 +1,12 @@
 'use client'
 
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, PanelLeftClose, PanelLeft } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
+import { Button } from '@/components/ui/button'
 import { getNavAccentClasses } from '@/lib/nav-accent'
 import {
   isNavLink,
@@ -19,34 +20,67 @@ import {
 import { filterNavByAccess } from '@/lib/permissions/filter-nav'
 import { cn } from '@/lib/utils'
 
-export function AppSidebar({ allowedPages }: { allowedPages: string[] }) {
+type AppSidebarProps = {
+  allowedPages: string[]
+  collapsed: boolean
+  onCollapsedChange: (collapsed: boolean) => void
+}
+
+export function AppSidebar({
+  allowedPages,
+  collapsed,
+  onCollapsedChange
+}: AppSidebarProps) {
   const pathname = usePathname()
   const navItems = filterNavByAccess(mainNavItems, allowedPages)
 
   return (
     <aside
-      className="fixed inset-y-0 left-0 z-40 hidden w-sidebar flex-col border-r border-border bg-surface md:flex"
+      className={cn(
+        'fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-border bg-surface transition-[width] duration-fast ease-flat md:flex',
+        collapsed ? 'w-sidebar-collapsed' : 'w-sidebar'
+      )}
       aria-label="Oldalsáv"
+      data-collapsed={collapsed ? 'true' : 'false'}
     >
-      <div className="flex h-topbar shrink-0 items-center border-b border-border px-3">
+      <div
+        className={cn(
+          'flex h-topbar shrink-0 items-center border-b border-border',
+          collapsed ? 'justify-center px-1.5' : 'px-3'
+        )}
+      >
         <Link
           href="/home"
           className="flex items-center no-underline"
           aria-label="Optinova kezdőlap"
         >
-          <Image
-            src="/images/optinova-logo.png"
-            alt="Optinova"
-            width={140}
-            height={28}
-            className="h-7 w-auto"
-            priority
-          />
+          {collapsed ? (
+            <Image
+              src="/images/turinova-small-icon.png"
+              alt=""
+              width={32}
+              height={32}
+              className="size-8 object-contain"
+              priority
+            />
+          ) : (
+            <Image
+              src="/images/optinova-logo.png"
+              alt="Optinova"
+              width={140}
+              height={28}
+              className="h-7 w-auto"
+              priority
+            />
+          )}
         </Link>
       </div>
 
       <nav
-        className="mt-3 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4"
+        className={cn(
+          'mt-3 flex flex-1 flex-col gap-0.5 overflow-y-auto pb-2',
+          collapsed ? 'px-1.5' : 'px-2'
+        )}
         aria-label="Főmenü"
       >
         {navItems.map((node) => (
@@ -55,9 +89,38 @@ export function AppSidebar({ allowedPages }: { allowedPages: string[] }) {
             node={node}
             pathname={pathname}
             depth={0}
+            collapsed={collapsed}
+            onExpandSidebar={() => onCollapsedChange(false)}
           />
         ))}
       </nav>
+
+      <div
+        className={cn(
+          'shrink-0 border-t border-border p-2',
+          collapsed && 'flex justify-center'
+        )}
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={cn(collapsed ? 'size-8 p-0' : 'w-full justify-start')}
+          onClick={() => onCollapsedChange(!collapsed)}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? 'Oldalsáv kinyitása' : 'Oldalsáv összecsukása'}
+          title={collapsed ? 'Kinyitás' : 'Összecsukás'}
+        >
+          {collapsed ? (
+            <PanelLeft className="size-4" aria-hidden />
+          ) : (
+            <>
+              <PanelLeftClose className="size-4" aria-hidden />
+              <span>Összecsukás</span>
+            </>
+          )}
+        </Button>
+      </div>
     </aside>
   )
 }
@@ -74,46 +137,75 @@ function iconSize(depth: number) {
 function NavNodeItem({
   node,
   pathname,
-  depth
+  depth,
+  collapsed,
+  onExpandSidebar
 }: {
   node: NavNode
   pathname: string
   depth: number
+  collapsed: boolean
+  onExpandSidebar: () => void
 }) {
   if (isNavLink(node)) {
-    return <NavLinkItem item={node} pathname={pathname} depth={depth} />
+    return (
+      <NavLinkItem
+        item={node}
+        pathname={pathname}
+        depth={depth}
+        collapsed={collapsed}
+      />
+    )
   }
-  return <NavGroupItem group={node} pathname={pathname} depth={depth} />
+  return (
+    <NavGroupItem
+      group={node}
+      pathname={pathname}
+      depth={depth}
+      collapsed={collapsed}
+      onExpandSidebar={onExpandSidebar}
+    />
+  )
 }
 
 function NavLinkItem({
   item,
   pathname,
-  depth
+  depth,
+  collapsed
 }: {
   item: NavLink
   pathname: string
   depth: number
+  collapsed: boolean
 }) {
   const active = pathIsActive(pathname, item.href)
   const Icon = item.icon
   const accent = getNavAccentClasses(item.accent)
 
+  if (collapsed && depth > 0) return null
+
   return (
     <Link
       href={item.href}
+      title={collapsed ? item.label : undefined}
       className={cn(
-        'group relative flex h-8 items-center gap-2 rounded-md no-underline transition-colors duration-fast',
-        depth === 0 && 'px-2',
-        depth === 1 && 'pl-4 pr-2',
-        depth >= 2 && 'pl-7 pr-2',
+        'group relative flex h-8 items-center rounded-md no-underline transition-colors duration-fast',
+        collapsed
+          ? 'justify-center px-0'
+          : cn(
+              'gap-2',
+              depth === 0 && 'px-2',
+              depth === 1 && 'pl-4 pr-2',
+              depth >= 2 && 'pl-7 pr-2'
+            ),
         active
           ? cn(accent.soft, accent.ink)
           : 'text-ink-secondary hover:bg-subtle hover:text-ink'
       )}
       aria-current={active ? 'page' : undefined}
     >
-      {active ? (
+      {active && !collapsed ? (
         <span
           className={cn(
             'absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-sm',
@@ -131,7 +223,11 @@ function NavLinkItem({
         )}
         aria-hidden
       />
-      <span className="truncate text-[13px] font-medium">{item.label}</span>
+      {!collapsed ? (
+        <span className="truncate text-[13px] font-medium">{item.label}</span>
+      ) : (
+        <span className="sr-only">{item.label}</span>
+      )}
     </Link>
   )
 }
@@ -139,11 +235,15 @@ function NavLinkItem({
 function NavGroupItem({
   group,
   pathname,
-  depth
+  depth,
+  collapsed,
+  onExpandSidebar
 }: {
   group: NavGroup
   pathname: string
   depth: number
+  collapsed: boolean
+  onExpandSidebar: () => void
 }) {
   const inSection = pathMatchesPrefix(pathname, group.matchPrefix)
   const [open, setOpen] = useState(inSection)
@@ -153,6 +253,35 @@ function NavGroupItem({
   useEffect(() => {
     if (inSection) setOpen(true)
   }, [inSection])
+
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        title={group.label}
+        onClick={() => {
+          onExpandSidebar()
+          setOpen(true)
+        }}
+        className={cn(
+          'flex h-8 w-full items-center justify-center rounded-md transition-colors duration-fast',
+          inSection
+            ? cn(accent.soft, accent.ink)
+            : 'text-ink-secondary hover:bg-subtle hover:text-ink'
+        )}
+        aria-label={`${group.label} megnyitása`}
+      >
+        <Icon
+          className={cn(
+            'size-4 shrink-0',
+            inSection ? accent.icon : accent.iconMuted
+          )}
+          aria-hidden
+        />
+        <span className="sr-only">{group.label}</span>
+      </button>
+    )
+  }
 
   return (
     <div>
@@ -198,6 +327,8 @@ function NavGroupItem({
               node={child}
               pathname={pathname}
               depth={depth + 1}
+              collapsed={false}
+              onExpandSidebar={onExpandSidebar}
             />
           ))}
         </div>

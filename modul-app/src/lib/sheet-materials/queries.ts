@@ -291,3 +291,103 @@ export async function listTaxRateOptions(
     rate_percent: Number(row.rate_percent)
   }))
 }
+
+export type SheetMaterialExportItem = {
+  manufacturer_name: string
+  tax_rate_name: string
+  tax_rate_percent: number
+  equipment_name: string
+  name: string
+  length_mm: number
+  width_mm: number
+  thickness_mm: number
+  price_net: number
+  machine_code: string
+  on_stock: boolean
+  active: boolean
+  trim_top_mm: number
+  trim_right_mm: number
+  trim_bottom_mm: number
+  trim_left_mm: number
+  kerf_mm: number
+  waste_multi: number
+  usage_limit: number
+  grain_direction: boolean
+  rotatable: boolean
+}
+
+const EXPORT_SELECT = `
+  name,
+  length_mm,
+  width_mm,
+  thickness_mm,
+  price_net,
+  machine_code,
+  on_stock,
+  active,
+  trim_top_mm,
+  trim_right_mm,
+  trim_bottom_mm,
+  trim_left_mm,
+  kerf_mm,
+  waste_multi,
+  usage_limit,
+  grain_direction,
+  rotatable,
+  manufacturers ( name ),
+  tax_rates ( name, rate_percent ),
+  equipment ( name )
+`
+
+export async function listSheetMaterialsForExport(
+  supabase: SupabaseClient,
+  tenantId: string,
+  maxRows = 2000
+): Promise<SheetMaterialExportItem[]> {
+  const { data, error } = await supabase
+    .from('sheet_materials')
+    .select(EXPORT_SELECT)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+    .limit(maxRows)
+
+  if (error) {
+    console.error('listSheetMaterialsForExport', error.message)
+    throw new Error('Nem sikerült exportálni a táblás anyagokat.')
+  }
+
+  return (data ?? []).map((row) => {
+    const manufacturer = Array.isArray(row.manufacturers)
+      ? row.manufacturers[0]
+      : row.manufacturers
+    const tax = Array.isArray(row.tax_rates) ? row.tax_rates[0] : row.tax_rates
+    const equipment = Array.isArray(row.equipment)
+      ? row.equipment[0]
+      : row.equipment
+
+    return {
+      manufacturer_name: manufacturer?.name ?? '',
+      tax_rate_name: tax?.name ?? '',
+      tax_rate_percent: Number(tax?.rate_percent ?? 0),
+      equipment_name: equipment?.name ?? '',
+      name: row.name,
+      length_mm: Number(row.length_mm),
+      width_mm: Number(row.width_mm),
+      thickness_mm: Number(row.thickness_mm),
+      price_net: Number(row.price_net),
+      machine_code: row.machine_code,
+      on_stock: row.on_stock,
+      active: row.active,
+      trim_top_mm: Number(row.trim_top_mm),
+      trim_right_mm: Number(row.trim_right_mm),
+      trim_bottom_mm: Number(row.trim_bottom_mm),
+      trim_left_mm: Number(row.trim_left_mm),
+      kerf_mm: Number(row.kerf_mm),
+      waste_multi: Number(row.waste_multi),
+      usage_limit: Number(row.usage_limit),
+      grain_direction: row.grain_direction,
+      rotatable: row.rotatable
+    }
+  })
+}

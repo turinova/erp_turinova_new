@@ -1,0 +1,55 @@
+import { revalidatePath } from 'next/cache'
+import { NextRequest, NextResponse } from 'next/server'
+
+import { applySheetMaterialsImport } from '@/lib/sheet-materials/import-plan'
+import { requireWritableTenant } from '@/lib/tenancy/writable-context'
+
+export async function POST(request: NextRequest) {
+  try {
+    const ctx = await requireWritableTenant()
+    if (!ctx.ok) {
+      return NextResponse.json({ error: ctx.message }, { status: 403 })
+    }
+
+    const form = await request.formData()
+    const file = form.get('file')
+    if (!(file instanceof File)) {
+      return NextResponse.json(
+        { error: 'Hiányzik az Excel fájl.' },
+        { status: 400 }
+      )
+    }
+
+    const name = file.name.toLowerCase()
+    if (!name.endsWith('.xlsx') && !name.endsWith('.xls')) {
+      return NextResponse.json(
+        { error: 'Csak .xlsx fájl tölthető fel.' },
+        { status: 400 }
+      )
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const result = await applySheetMaterialsImport(
+      ctx.supabase,
+      ctx.user.tenantId!,
+      buffer
+    )
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.message }, { status: 400 })
+    }
+
+    revalidatePath('/torzsadatok/alapanyagok/tablas-anyagok')
+
+    return NextResponse.json({ results: result.results })
+  } catch (err) {
+    console.error('sheet-materials import', err)
+    return NextResponse.json(
+      {
+        error:
+          err instanceof Error ? err.message : 'Az import sikertelen.'
+      },
+      { status: 500 }
+    )
+  }
+}

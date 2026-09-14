@@ -129,6 +129,7 @@ const config: Config = {
       },
       spacing: {
         sidebar: 'var(--sidebar-width)',
+        'sidebar-collapsed': 'var(--sidebar-collapsed-width)',
         topbar: 'var(--topbar-height)'
       },
       minHeight: {

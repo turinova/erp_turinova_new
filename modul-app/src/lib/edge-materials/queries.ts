@@ -260,3 +260,83 @@ export async function listTaxRateOptions(
     rate_percent: Number(row.rate_percent)
   }))
 }
+
+export type EdgeMaterialExportItem = {
+  manufacturer_name: string
+  tax_rate_name: string
+  tax_rate_percent: number
+  equipment_name: string
+  type: string
+  decor: string
+  width_mm: number
+  thickness_mm: number
+  price_net: number
+  allowance_mm: number
+  favourite_priority: number | null
+  machine_code: string
+  active: boolean
+}
+
+const EXPORT_SELECT = `
+  type,
+  decor,
+  width_mm,
+  thickness_mm,
+  price_net,
+  allowance_mm,
+  favourite_priority,
+  machine_code,
+  active,
+  manufacturers ( name ),
+  tax_rates ( name, rate_percent ),
+  equipment ( name )
+`
+
+export async function listEdgeMaterialsForExport(
+  supabase: SupabaseClient,
+  tenantId: string,
+  maxRows = 2000
+): Promise<EdgeMaterialExportItem[]> {
+  const { data, error } = await supabase
+    .from('edge_materials')
+    .select(EXPORT_SELECT)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .order('decor', { ascending: true })
+    .order('type', { ascending: true })
+    .limit(maxRows)
+
+  if (error) {
+    console.error('listEdgeMaterialsForExport', error.message)
+    throw new Error('Nem sikerült exportálni az élzárókat.')
+  }
+
+  return (data ?? []).map((row) => {
+    const manufacturer = Array.isArray(row.manufacturers)
+      ? row.manufacturers[0]
+      : row.manufacturers
+    const tax = Array.isArray(row.tax_rates) ? row.tax_rates[0] : row.tax_rates
+    const equipment = Array.isArray(row.equipment)
+      ? row.equipment[0]
+      : row.equipment
+
+    return {
+      manufacturer_name: manufacturer?.name ?? '',
+      tax_rate_name: tax?.name ?? '',
+      tax_rate_percent: Number(tax?.rate_percent ?? 0),
+      equipment_name: equipment?.name ?? '',
+      type: row.type,
+      decor: row.decor,
+      width_mm: Number(row.width_mm),
+      thickness_mm: Number(row.thickness_mm),
+      price_net: Number(row.price_net),
+      allowance_mm: Number(row.allowance_mm),
+      favourite_priority:
+        row.favourite_priority === null || row.favourite_priority === undefined
+          ? null
+          : Number(row.favourite_priority),
+      machine_code: row.machine_code,
+      active: row.active
+    }
+  })
+}

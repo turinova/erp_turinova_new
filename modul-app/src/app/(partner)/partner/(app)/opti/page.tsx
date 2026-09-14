@@ -139,6 +139,7 @@ export default async function PartnerOptiPage({
   return (
     <OptiWorkspaceClient
       mode="partner"
+      tenantId={tenantId}
       sheetMaterials={sheetMaterials}
       edgeMaterials={edgeMaterials}
       cuttingFee={cuttingFee}

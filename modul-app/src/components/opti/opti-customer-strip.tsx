@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
@@ -70,7 +70,11 @@ export function OptiCustomerStrip({
   sheetMaterials,
   quoteId,
   initialCustomer,
-  initialProjectName
+  initialProjectName,
+  initialDraft,
+  initialSessionProjectName,
+  onSessionCustomerChange,
+  onSaveSuccess
 }: {
   customers: OptiCustomerOption[]
   panels: OptiPanelDraft[]
@@ -79,16 +83,40 @@ export function OptiCustomerStrip({
   quoteId?: string | null
   initialCustomer?: OptiCustomerOption | null
   initialProjectName?: string | null
+  /** Sessionből visszatöltött draft (új Opti). */
+  initialDraft?: OptiCustomerDraft | null
+  initialSessionProjectName?: string | null
+  onSessionCustomerChange?: (
+    draft: OptiCustomerDraft,
+    projectName: string
+  ) => void
+  onSaveSuccess?: () => void
 }) {
   const router = useRouter()
   const isEdit = Boolean(quoteId)
-  const [draft, setDraft] = useState<OptiCustomerDraft>(() =>
-    initialCustomer ? draftFromCustomer(initialCustomer) : EMPTY_DRAFT
+  const [draft, setDraft] = useState<OptiCustomerDraft>(() => {
+    if (initialCustomer) return draftFromCustomer(initialCustomer)
+    if (initialDraft?.name?.trim()) return initialDraft
+    return EMPTY_DRAFT
+  })
+  const [projectName, setProjectName] = useState(
+    () => initialProjectName ?? initialSessionProjectName ?? ''
   )
-  const [projectName, setProjectName] = useState(initialProjectName ?? '')
-  const [billingOpen, setBillingOpen] = useState(() => Boolean(initialCustomer))
+  const [billingOpen, setBillingOpen] = useState(
+    () => Boolean(initialCustomer || initialDraft?.name?.trim())
+  )
   const [nameError, setNameError] = useState<string | undefined>()
   const [isPending, startTransition] = useTransition()
+  const sessionReady = useRef(false)
+
+  useEffect(() => {
+    sessionReady.current = true
+  }, [])
+
+  useEffect(() => {
+    if (!sessionReady.current || !onSessionCustomerChange || isEdit) return
+    onSessionCustomerChange(draft, projectName)
+  }, [draft, projectName, onSessionCustomerChange, isEdit])
 
   const customerOptions = useMemo(
     () =>
@@ -157,6 +185,7 @@ export function OptiCustomerStrip({
           ? `Árajánlat frissítve: ${result.quoteNumber}`
           : `Árajánlat mentve: ${result.quoteNumber}`
       )
+      onSaveSuccess?.()
       router.push(`/ajanlatok/${result.id}`)
     })
   }

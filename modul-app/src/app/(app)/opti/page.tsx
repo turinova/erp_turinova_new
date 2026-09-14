@@ -121,6 +121,7 @@ export default async function OptiPage({
 
   return (
     <OptiWorkspaceClient
+      tenantId={user!.tenantId!}
       sheetMaterials={sheetMaterials}
       edgeMaterials={edgeMaterials}
       cuttingFee={cuttingFee}

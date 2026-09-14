@@ -116,13 +116,32 @@ export function MaterialPreviewColumn({
     (maxGrain !== selectedMaterial.length_mm ||
       maxCross !== selectedMaterial.width_mm)
 
+  const awaitingMaterial = !selectedMaterial
+  const highlightPicker = awaitingMaterial && !materialError
+
   return (
     <section
       className={cn(
-        'flex flex-col gap-2.5 rounded-md border border-border bg-surface p-3',
+        'flex flex-col gap-2.5 rounded-md border bg-surface p-3',
+        highlightPicker
+          ? 'border-ink ring-1 ring-ink/15'
+          : materialError
+            ? 'border-danger/40'
+            : 'border-border',
         className
       )}
     >
+      {awaitingMaterial ? (
+        <div className="rounded-md border border-border bg-subtle px-2.5 py-2">
+          <p className="text-body font-medium text-ink">
+            1. lépés — válassz táblás anyagot
+          </p>
+          <p className="mt-0.5 text-hint text-ink-secondary">
+            Anyag nélkül a méreteket nem tudod megadni.
+          </p>
+        </div>
+      ) : null}
+
       {showPicker ? (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <FormField
@@ -139,6 +158,11 @@ export function MaterialPreviewColumn({
               placeholder="Válassz anyagot…"
               allowEmpty={false}
               onChange={onChangeMaterialId}
+              className={
+                highlightPicker
+                  ? '[&>button]:border-ink [&>button]:ring-1 [&>button]:ring-ink/20'
+                  : undefined
+              }
             />
           </FormField>
           {changing && selectedMaterial ? (
@@ -191,16 +215,27 @@ export function MaterialPreviewColumn({
             backgroundPosition: 'center'
           }}
         >
-          {selectedMaterial?.grain_direction
-            ? Array.from({ length: 8 }, (_, i) => (
+          {selectedMaterial?.grain_direction ? (
+            <>
+              {selectedMaterial.image_url ? (
                 <span
-                  key={i}
-                  className="pointer-events-none absolute left-[5%] right-[5%] z-[1] h-px bg-ink/25"
-                  style={{ top: `${(i + 1) * 12.5}%` }}
+                  className="pointer-events-none absolute inset-0 z-[1] bg-ink/20"
                   aria-hidden
                 />
-              ))
-            : null}
+              ) : null}
+              {Array.from({ length: 8 }, (_, i) => (
+                <span
+                  key={i}
+                  className="pointer-events-none absolute left-[5%] right-[5%] z-[1] h-0.5 rounded-sm bg-white/85 shadow-[0_0_0_1px_rgba(0,0,0,0.55)]"
+                  style={{ top: `${(i + 1) * 11}%` }}
+                  aria-hidden
+                />
+              ))}
+              <span className="pointer-events-none absolute bottom-1.5 left-1/2 z-[2] -translate-x-1/2 rounded bg-surface/95 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-ink shadow-sm">
+                Szál →
+              </span>
+            </>
+          ) : null}
 
           <span className="relative z-[2] rounded bg-surface/90 px-1.5 py-0.5 text-body font-medium tabular-nums text-ink shadow-sm">
             {hasDims ? `${grainMm} × ${crossMm}` : 'X × Y'}
@@ -265,7 +300,7 @@ export function MaterialPreviewColumn({
             {selectedMaterial.on_stock ? 'Raktári' : 'Rendelős'}
           </StatusBadge>
           {selectedMaterial.grain_direction ? (
-            <StatusBadge tone="neutral">Szálirány</StatusBadge>
+            <StatusBadge tone="warning">Szálirány (vízszintes)</StatusBadge>
           ) : null}
           {showMaxChip ? (
             <StatusBadge tone="neutral">
@@ -275,7 +310,7 @@ export function MaterialPreviewColumn({
         </div>
       ) : (
         <p className="text-hint text-ink-secondary">
-          Válassz táblás anyagot — a panel kitöltése mutatja az anyagot.
+          A választás után itt jelenik meg az anyag előnézete.
         </p>
       )}
     </section>

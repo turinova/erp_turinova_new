@@ -2,10 +2,14 @@
 
 import { ScanSearch } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { MaterialPreviewColumn } from '@/components/opti/material-preview-column'
-import { OptiCustomerStrip } from '@/components/opti/opti-customer-strip'
+import {
+  OptiCustomerStrip,
+  type OptiCustomerDraft
+} from '@/components/opti/opti-customer-strip'
 import {
   PartnerOptiSaveStrip,
   type PartnerOptiCustomerSnapshot
@@ -27,6 +31,13 @@ import {
   summarizeOptimizeResults,
   type OptiRunResult
 } from '@/lib/opti/build-optimize-request'
+import {
+  clearOptiSession,
+  readOptiSession,
+  sanitizeOptiSessionPanels,
+  writeOptiSession,
+  type OptiSessionCustomer
+} from '@/lib/opti/opti-session'
 import { createPanelDraft, type OptiPanelDraft } from '@/lib/opti/panel-draft'
 import type { OptimizationResult } from '@/lib/opti/optimization-types'
 import {
@@ -39,6 +50,7 @@ import {
 import type { QuoteForOptiEdit } from '@/lib/quotes/opti-edit'
 
 type OptiWorkspaceClientProps = {
+  tenantId: string
   sheetMaterials: OptiSheetMaterialOption[]
   edgeMaterials: OptiEdgeMaterialOption[]
   cuttingFee: OptiCuttingFeeConfig | null
@@ -61,6 +73,7 @@ type FormErrors = {
 }
 
 export function OptiWorkspaceClient({
+  tenantId,
   sheetMaterials,
   edgeMaterials,
   cuttingFee,
@@ -73,10 +86,16 @@ export function OptiWorkspaceClient({
   description
 }: OptiWorkspaceClientProps) {
   const grainInputRef = useRef<HTMLInputElement>(null)
+  const resultsRef = useRef<HTMLDivElement>(null)
+  const shouldScrollToResultsRef = useRef(false)
+  const sessionHydratedRef = useRef(false)
+  const [sessionReady, setSessionReady] = useState(false)
   const isPartner = mode === 'partner'
+  const sessionMode = isPartner ? 'partner' : 'staff'
 
   const isEditMode = Boolean(initialEdit?.editable)
   const editingQuoteId = isEditMode ? initialEdit!.id : null
+  const persistSession = Boolean(tenantId) && !isEditMode
 
   const headerDescription =
     description ??
@@ -105,6 +124,91 @@ export function OptiWorkspaceClient({
   const [edgeDId, setEdgeDId] = useState('')
   const [edgeAroundId, setEdgeAroundId] = useState('')
   const [errors, setErrors] = useState<FormErrors>({})
+  const [sessionCustomer, setSessionCustomer] =
+    useState<OptiCustomerDraft | null>(null)
+  const [sessionProjectName, setSessionProjectName] = useState('')
+
+  useEffect(() => {
+    if (!persistSession) {
+      setSessionReady(true)
+      return
+    }
+    if (sessionHydratedRef.current) return
+    sessionHydratedRef.current = true
+
+    const saved = readOptiSession(tenantId, sessionMode)
+    if (saved) {
+      const { panels: validPanels, dropped } = sanitizeOptiSessionPanels(
+        saved.panels,
+        sheetMaterials,
+        edgeMaterials
+      )
+      if (validPanels.length > 0) setPanels(validPanels)
+      if (
+        saved.sheetMaterialId &&
+        sheetMaterials.some((m) => m.id === saved.sheetMaterialId)
+      ) {
+        setSheetMaterialId(saved.sheetMaterialId)
+      }
+      if (!isPartner && saved.customer?.name?.trim()) {
+        setSessionCustomer(saved.customer as OptiCustomerDraft)
+      }
+      if (saved.projectName.trim()) {
+        setSessionProjectName(saved.projectName)
+      }
+      if (dropped > 0) {
+        toast.message(
+          `${dropped} mentett panel kihagyva (törölt anyag vagy élzáró).`
+        )
+      }
+    }
+    setSessionReady(true)
+  }, [
+    persistSession,
+    tenantId,
+    sessionMode,
+    sheetMaterials,
+    edgeMaterials,
+    isPartner
+  ])
+
+  useEffect(() => {
+    if (!persistSession || !sessionReady) return
+    writeOptiSession(tenantId, sessionMode, {
+      v: 1,
+      panels,
+      sheetMaterialId,
+      customer: isPartner
+        ? null
+        : ((sessionCustomer as OptiSessionCustomer | null) ?? null),
+      projectName: sessionProjectName
+    })
+  }, [
+    persistSession,
+    sessionReady,
+    tenantId,
+    sessionMode,
+    panels,
+    sheetMaterialId,
+    sessionCustomer,
+    sessionProjectName,
+    isPartner
+  ])
+
+  function handleSessionClearedAfterSave() {
+    if (!tenantId) return
+    clearOptiSession(tenantId, sessionMode)
+    setSessionCustomer(null)
+    setSessionProjectName('')
+  }
+
+  const handleSessionCustomerChange = useCallback(
+    (draft: OptiCustomerDraft, projectName: string) => {
+      setSessionCustomer(draft)
+      setSessionProjectName(projectName)
+    },
+    []
+  )
 
   const selectedMaterial = useMemo(
     () => sheetMaterials.find((m) => m.id === sheetMaterialId) ?? null,
@@ -121,6 +225,18 @@ export function OptiWorkspaceClient({
       cuttingFee
     })
   }, [optiResult, panels, sheetMaterials, edgeMaterials, cuttingFee])
+
+  useEffect(() => {
+    if (!optiResult || !shouldScrollToResultsRef.current) return
+    shouldScrollToResultsRef.current = false
+    const reduceMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)'
+    ).matches
+    resultsRef.current?.scrollIntoView({
+      behavior: reduceMotion ? 'auto' : 'smooth',
+      block: 'start'
+    })
+  }, [optiResult])
 
   const sheetsByManufacturer = useMemo(() => {
     const map = new Map<string, OptiSheetMaterialOption[]>()
@@ -453,6 +569,7 @@ export function OptiWorkspaceClient({
         return
       }
 
+      shouldScrollToResultsRef.current = true
       setOptiResult(summarizeOptimizeResults(data))
     } catch {
       setOptiError('Nem sikerült elérni az optimalizálást. Próbáld újra.')
@@ -610,7 +727,9 @@ export function OptiWorkspaceClient({
             </div>
             {!entryEnabled ? (
               <p className="text-hint text-ink-secondary">
-                Válassz anyagot jobbra (mobilon felül).
+                Előbb válassz anyagot
+                <span className="hidden lg:inline"> jobbra</span>
+                <span className="lg:hidden"> felül</span>.
               </p>
             ) : null}
           </div>
@@ -832,7 +951,7 @@ export function OptiWorkspaceClient({
       ) : null}
 
       {optiResult ? (
-        <div className="space-y-4">
+        <div ref={resultsRef} className="space-y-4 scroll-mt-4">
           <OptiResultsStrip
             result={optiResult}
             sheetMaterials={sheetMaterials}
@@ -849,6 +968,15 @@ export function OptiWorkspaceClient({
               initialProjectName={
                 isEditMode ? initialEdit?.project_name ?? null : null
               }
+              initialSessionProjectName={
+                persistSession ? sessionProjectName : null
+              }
+              onSessionProjectNameChange={
+                persistSession ? setSessionProjectName : undefined
+              }
+              onSaveSuccess={
+                persistSession ? handleSessionClearedAfterSave : undefined
+              }
             />
           ) : null}
           {quoteResult && !isPartner ? (
@@ -861,6 +989,16 @@ export function OptiWorkspaceClient({
               initialCustomer={isEditMode ? initialEdit?.customer ?? null : null}
               initialProjectName={
                 isEditMode ? initialEdit?.project_name ?? null : null
+              }
+              initialDraft={persistSession ? sessionCustomer : null}
+              initialSessionProjectName={
+                persistSession ? sessionProjectName : null
+              }
+              onSessionCustomerChange={
+                persistSession ? handleSessionCustomerChange : undefined
+              }
+              onSaveSuccess={
+                persistSession ? handleSessionClearedAfterSave : undefined
               }
             />
           ) : null}

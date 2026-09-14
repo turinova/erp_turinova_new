@@ -105,8 +105,8 @@ export function BoardBlueprint({
               ? Array.from({ length: 8 }, (_, i) => (
                   <div
                     key={`grain-${placement.id}-${i}`}
-                    className="pointer-events-none absolute left-[5%] right-[5%] h-px bg-[#999] opacity-60"
-                    style={{ top: `${(i + 1) * 12.5}%` }}
+                    className="pointer-events-none absolute left-[5%] right-[5%] z-[1] h-0.5 rounded-sm bg-white/80 shadow-[0_0_0_1px_rgba(0,0,0,0.45)]"
+                    style={{ top: `${(i + 1) * 11}%` }}
                   />
                 ))
               : null}
