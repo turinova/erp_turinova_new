@@ -7,12 +7,6 @@ import {
   OPERATOR_REFRESH_COOKIE,
   isSupabaseConfigured
 } from '@/lib/auth/config'
-import {
-  normalizeHostname,
-  PARTNER_HOME_PATH,
-  PARTNER_INTERNAL_PREFIX,
-  resolveAuthSurface
-} from '@/lib/auth/surface'
 import { createServiceClient } from '@/lib/supabase/service'
 
 function cookieOpts(maxAge = 60 * 60) {
@@ -34,7 +28,7 @@ type CookieToSet = {
 }
 
 /**
- * App / partner host handoff: platform operátor → cél user session.
+ * Staff host handoff: platform operátor → cél tenant user session.
  * GET /api/platform/impersonation/complete?sid=&h=
  */
 export async function GET(request: NextRequest) {
@@ -57,7 +51,7 @@ export async function GET(request: NextRequest) {
   const { data: row } = await admin
     .from('platform_impersonation_sessions')
     .select(
-      'id, tenant_id, subject_kind, target_user_id, expires_at, ended_at, handoff_token, magic_hash, operator_refresh_token'
+      'id, tenant_id, target_user_id, expires_at, ended_at, handoff_token, magic_hash, operator_refresh_token'
     )
     .eq('id', sid)
     .maybeSingle()
@@ -67,6 +61,7 @@ export async function GET(request: NextRequest) {
     row.ended_at ||
     row.handoff_token !== handoff ||
     !row.magic_hash ||
+    !row.tenant_id ||
     new Date(row.expires_at).getTime() <= Date.now()
   ) {
     return NextResponse.redirect(
@@ -74,17 +69,7 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const isPartner = row.subject_kind === 'partner'
-  const host = normalizeHostname(request.headers.get('host'))
-  const surface = resolveAuthSurface(host)
-
-  // Partner: partner hoston tiszta /home; staff/platform hoston path-mód /partner/home
-  let homePath = '/home'
-  if (isPartner && surface !== 'partner') {
-    homePath = `${PARTNER_INTERNAL_PREFIX}${PARTNER_HOME_PATH}`
-  }
-
-  const redirectUrl = new URL(homePath, request.url)
+  const redirectUrl = new URL('/home', request.url)
   const pendingCookies: CookieToSet[] = []
 
   const supabase = createServerClient(
@@ -136,11 +121,6 @@ export async function GET(request: NextRequest) {
       cookieOpts()
     )
   }
-  // Partnernek ne állítsunk staff tenant cookie-t (téves ERP shell)
-  if (!isPartner && row.tenant_id) {
-    response.cookies.set(CURRENT_TENANT_COOKIE, row.tenant_id, cookieOpts())
-  } else {
-    response.cookies.set(CURRENT_TENANT_COOKIE, '', { ...cookieOpts(0), maxAge: 0 })
-  }
+  response.cookies.set(CURRENT_TENANT_COOKIE, row.tenant_id, cookieOpts())
   return response
 }

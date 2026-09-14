@@ -31,7 +31,6 @@ export type ImpersonationInfo = {
   tenantId: string | null
   tenantName: string
   expiresAt: string
-  subjectKind?: 'staff' | 'partner'
 }
 
 export type SessionUser = {
@@ -188,7 +187,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       const { data: imp } = await supabase
         .from('platform_impersonation_sessions')
         .select(
-          'id, operator_user_id, target_user_id, tenant_id, subject_kind, expires_at, ended_at, tenants(name)'
+          'id, operator_user_id, target_user_id, tenant_id, expires_at, ended_at, tenants(name)'
         )
         .eq('id', impersonationId)
         .maybeSingle()
@@ -199,19 +198,13 @@ async function loadSessionUser(): Promise<SessionUser | null> {
         imp.target_user_id === user.id &&
         new Date(imp.expires_at).getTime() > Date.now()
       ) {
-        const subjectKind =
-          (imp as { subject_kind?: string }).subject_kind === 'partner'
-            ? 'partner'
-            : 'staff'
         const tenantJoin = Array.isArray(imp.tenants)
           ? imp.tenants[0]
           : imp.tenants
         const tenantName =
-          subjectKind === 'partner'
-            ? 'Partner portál'
-            : ((tenantJoin as { name?: string } | null)?.name ??
-              current?.tenantName ??
-              'Cég')
+          (tenantJoin as { name?: string } | null)?.name ??
+          current?.tenantName ??
+          'Cég'
 
         let operatorEmail: string | null = null
         try {
@@ -236,8 +229,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
           targetEmail: user.email,
           tenantId: imp.tenant_id,
           tenantName,
-          expiresAt: imp.expires_at,
-          subjectKind
+          expiresAt: imp.expires_at
         }
         // Impersonation alatt a platform admin flag a cél usernél false marad
         isPlatformAdmin = false

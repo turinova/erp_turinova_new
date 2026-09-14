@@ -39,14 +39,6 @@ function appOrigin(): string {
   )
 }
 
-function partnerOrigin(): string {
-  return (
-    process.env.NEXT_PUBLIC_PARTNER_ORIGIN?.replace(/\/$/, '') ||
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
-    ''
-  )
-}
-
 /**
  * Prefer absolute handoff URL when origin is configured.
  * Relative URLs break on admin.optinova.hu (middleware sends unknown paths to /).
@@ -159,113 +151,6 @@ export async function startImpersonation(input: {
   return {
     ok: true,
     handoffUrl: buildHandoffUrl(completePath, appOrigin())
-  }
-}
-
-/** Partner portál impersonation — handoff a partner host-ra (vagy local path-mód). */
-export async function startPartnerImpersonation(input: {
-  userId: string
-  reason?: string
-}): Promise<ImpersonationResult> {
-  const ctx = await requirePlatformAdmin()
-  if (!ctx.ok) return { ok: false, message: ctx.message }
-
-  if (ctx.user.isDevSession) {
-    return {
-      ok: false,
-      message: 'Dev bypass mellett az impersonation nem elérhető.'
-    }
-  }
-
-  const { data: partner, error: partnerError } = await ctx.admin
-    .from('partner_profiles')
-    .select('user_id, email, name, status, selected_tenant_id')
-    .eq('user_id', input.userId)
-    .maybeSingle()
-
-  if (partnerError || !partner) {
-    return { ok: false, message: 'Partner nem található.' }
-  }
-  if (partner.status === 'disabled') {
-    return { ok: false, message: 'Előbb kapcsold vissza a partnert.' }
-  }
-
-  const {
-    data: { user: targetUser },
-    error: userError
-  } = await ctx.admin.auth.admin.getUserById(input.userId)
-
-  if (userError || !targetUser?.email) {
-    return { ok: false, message: 'Cél felhasználó nem található.' }
-  }
-
-  const supabase = await createClient()
-  if (!supabase) {
-    return { ok: false, message: 'Nincs auth kliens.' }
-  }
-
-  const {
-    data: { session: operatorSession }
-  } = await supabase.auth.getSession()
-
-  if (!operatorSession?.refresh_token) {
-    return { ok: false, message: 'Nincs érvényes operator session.' }
-  }
-
-  const { data: linkData, error: linkError } =
-    await ctx.admin.auth.admin.generateLink({
-      type: 'magiclink',
-      email: targetUser.email
-    })
-
-  const hashedToken = linkData?.properties?.hashed_token
-  if (linkError || !hashedToken) {
-    console.error('startPartnerImpersonation generateLink', linkError?.message)
-    return { ok: false, message: 'Nem sikerült a cél session létrehozása.' }
-  }
-
-  const expiresAt = new Date(Date.now() + IMPERSONATION_TTL_MS).toISOString()
-  const reason = input.reason?.trim() || null
-  const handoffToken = randomBytes(24).toString('hex')
-
-  const { data: sessionRow, error: insertError } = await ctx.admin
-    .from('platform_impersonation_sessions')
-    .insert({
-      operator_user_id: ctx.user.id,
-      target_user_id: input.userId,
-      tenant_id: partner.selected_tenant_id,
-      subject_kind: 'partner',
-      reason,
-      handoff_token: handoffToken,
-      magic_hash: hashedToken,
-      operator_refresh_token: operatorSession.refresh_token,
-      expires_at: expiresAt
-    })
-    .select('id')
-    .single()
-
-  if (insertError || !sessionRow) {
-    console.error('startPartnerImpersonation insert', insertError?.message)
-    return { ok: false, message: 'Nem sikerült az impersonation session.' }
-  }
-
-  await writePlatformAudit(ctx.admin, {
-    tenantId: partner.selected_tenant_id,
-    actorUserId: ctx.user.id,
-    action: 'impersonation.start',
-    details: {
-      targetUserId: input.userId,
-      targetEmail: targetUser.email,
-      sessionId: sessionRow.id,
-      subjectKind: 'partner',
-      reason
-    }
-  })
-
-  const completePath = `/api/platform/impersonation/complete?sid=${sessionRow.id}&h=${handoffToken}`
-  return {
-    ok: true,
-    handoffUrl: buildHandoffUrl(completePath, partnerOrigin())
   }
 }
 

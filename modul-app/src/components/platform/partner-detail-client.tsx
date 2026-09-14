@@ -15,7 +15,6 @@ import {
   setPartnerTenant,
   unlinkPartnerTenant
 } from '@/lib/platform/partner-actions'
-import { startPartnerImpersonation } from '@/lib/platform/impersonation'
 import { formatPlatformHuf } from '@/lib/platform/partner-overview'
 import type { PlatformPartnerDetail } from '@/lib/platform/partner-queries'
 import type { PartnerCompanyOption } from '@/lib/partner/companies'
@@ -43,7 +42,6 @@ export function PartnerDetailClient({ detail, companies }: Props) {
   const [pending, startTransition] = useTransition()
   const [disableOpen, setDisableOpen] = useState(false)
   const [unlinkOpen, setUnlinkOpen] = useState(false)
-  const [impersonateOpen, setImpersonateOpen] = useState(false)
   const [disableReason, setDisableReason] = useState('')
   const [tenantId, setTenantId] = useState(p.selectedTenantId ?? '')
   const [actionLoading, setActionLoading] = useState(false)
@@ -126,25 +124,6 @@ export function PartnerDetailClient({ detail, companies }: Props) {
     })
   }
 
-  async function handleImpersonate() {
-    setActionLoading(true)
-    try {
-      const result = await startPartnerImpersonation({ userId: p.userId })
-      if (!result.ok) {
-        toast.error(result.message)
-        return
-      }
-      if (result.handoffUrl) {
-        window.location.assign(result.handoffUrl)
-        return
-      }
-      toast.error('Hiányzó handoff URL.')
-    } finally {
-      setActionLoading(false)
-      setImpersonateOpen(false)
-    }
-  }
-
   const address = [
     p.billingPostalCode,
     p.billingCity,
@@ -181,19 +160,10 @@ export function PartnerDetailClient({ detail, companies }: Props) {
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            disabled={pending || actionLoading || isDisabled}
-            onClick={() => setImpersonateOpen(true)}
-          >
-            Belépés mint partner…
-          </Button>
           {isDisabled ? (
             <Button
               type="button"
-              variant="secondary"
+              variant="primary"
               size="sm"
               loading={pending}
               onClick={handleEnable}
@@ -351,17 +321,6 @@ export function PartnerDetailClient({ detail, companies }: Props) {
         cancelLabel="Mégse"
         loading={actionLoading}
         onConfirm={() => void handleUnlink()}
-      />
-
-      <ConfirmDialog
-        open={impersonateOpen}
-        onOpenChange={setImpersonateOpen}
-        title="Belépés mint ez a partner?"
-        description={`${p.email} nevében nyílik az asztalos portál (írható, 60 perc).`}
-        confirmLabel="Belépés mint…"
-        cancelLabel="Mégse"
-        loading={actionLoading}
-        onConfirm={() => void handleImpersonate()}
       />
     </div>
   )

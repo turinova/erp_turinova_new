@@ -28,7 +28,7 @@ Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-pa
 | 1 | Unlink után a **partner választhat újra** céget (nem csak platform) |
 | 2 | Partner **disable = app-szintű tiltás** (`partner_profiles.status`); **nincs** Auth ban |
 | 3 | Staff reset / invite: **Supabase Auth email** (`resetPasswordForEmail` / `inviteUserByEmail`); ideiglenes jelszó másodlagos |
-| 4 | Partner impersonation: handoff `NEXT_PUBLIC_PARTNER_ORIGIN`-re; `subject_kind=partner`; tenant lehet null |
+| 4 | **Nincs** partner impersonation — support: cég unlink/set, disable, jelszó reset (Auth) |
 
 ---
 
@@ -44,13 +44,15 @@ Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-pa
 
 ## 3. Impersonation szabályok
 
+Csak **tenant staff** felhasználóra (nem partner portál).
+
 - Operator session mentése → cél user session (RLS = cél user).
 - Írható (cél user jogai szerint).
-- Banner: kit / melyik cég (vagy „Partner portál”); **Kilépés a support módból**.
+- Banner: kit / melyik cég; **Kilépés a support módból**.
 - TTL: 60 perc.
 - Audit: `impersonation.start` / `impersonation.end`.
-- Staff: nem rúgja ki a cél user meglévő `app_user_sessions` sorát (middleware bypass).
-- Partner: nincs `app_user_sessions` — partner host middleware profile + status check.
+- Nem rúgja ki a cél user meglévő `app_user_sessions` sorát (middleware bypass).
+- Handoff: abszolút URL `NEXT_PUBLIC_APP_ORIGIN`-re (`/api/platform/impersonation/complete`).
 
 ---
 
@@ -60,7 +62,7 @@ Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-pa
 - Disable → login / middleware kiléptet; Auth user megmarad
 - Unlink → `selected_tenant_id = null`; partner Beállításokban újra választhat
 - Platform set tenant: support override (csak accepting cégek)
-- UI: `/platform/partnerek/[id]`
+- UI: `/platform/partnerek/[id]` — **nincs** „Belépés mint partner”
 
 ---
 
@@ -97,15 +99,15 @@ NEXT_PUBLIC_PARTNER_ORIGIN=https://optinova.hu
 COOKIE_DOMAIN=.optinova.hu
 ```
 
-**Local path-mód (impersonation teszt egy hoston):**
+**Local path-mód (staff impersonation teszt):**
 
 ```
 NEXT_PUBLIC_APP_ORIGIN=http://localhost:3010
-NEXT_PUBLIC_PARTNER_ORIGIN=http://localhost:3010
 # PLATFORM_ORIGIN / COOKIE_DOMAIN kikommentelve
 ```
 
-Handoff URL mindig abszolút, ha az origin be van állítva (admin hostról ne legyen relatív `/api/...`).
+Handoff URL mindig abszolút, ha az APP origin be van állítva (admin hostról ne legyen relatív `/api/...`).
+`subject_kind` / nullable `tenant_id` a DB-ben megmarad (legacy), de a kód csak staff impersonationt indít.
 Migráció: `20260407_partner_ops.sql` + `20260408_impersonation_subject_kind_grant.sql`.
 
 ## 9. Perf (platform navigáció)

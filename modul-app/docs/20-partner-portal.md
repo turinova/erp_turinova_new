@@ -170,7 +170,7 @@ Local (staff host, pl. `localhost:3010`):
 
 1. `/platform` — Aktivitás / GMV (HUF) / Partner sáv; 7 nap Δ
 2. Megrendelés KPI: `quotes.ordered_at` (migráció `20260404`)
-3. `/platform/partnerek` lista + detail (disable / unlink / set tenant / impersonate)
+3. `/platform/partnerek` lista + detail (disable / unlink / set tenant)
 4. Attention / Teendők: partner cég nélkül / sosem login / kikapcsolva
 5. Tenant detail: GMV 30 nap, linked partners, portal beküldés 30 nap
 
