@@ -30,7 +30,7 @@ export async function createPlatformTenant(input: {
     return { ok: false, message: 'A cégnév legalább 2 karakter legyen.' }
   }
 
-  let slug = (input.slug?.trim() || slugifyTenantName(name)).toLowerCase()
+  const slug = (input.slug?.trim() || slugifyTenantName(name)).toLowerCase()
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
     return {
       ok: false,

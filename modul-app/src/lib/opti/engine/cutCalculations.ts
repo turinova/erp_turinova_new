@@ -1,6 +1,13 @@
 // Cut Length Calculation Functions - TypeScript version of PHP cut calculation logic
 import type { Bin, Rectangle } from '@/lib/opti/optimization-types';
-import { BinClass } from './classes';
+
+type Strip = {
+  rectangles: Rectangle[]
+  height: number
+  stripHeight: number
+  remainingRectangles: Rectangle[]
+  bin: Bin
+}
 
 /**
  * Process a bin and calculate cut length - mirrors PHP processBin function
@@ -30,7 +37,7 @@ export function processBin(
       if (!strip) break;
       
       // Process strip with vertical cuts
-      const stripCuttingLength = processStripOptimized(strip, false, strip.stripHeight, trimLeft);
+      const stripCuttingLength = processStripOptimized(strip, false, trimLeft);
       cuttingLength += stripCuttingLength;
       
       currentY = strip.height;
@@ -71,7 +78,7 @@ export function calculateGuillotineWithTrim(
   rectangles.sort((a, b) => a.y - b.y);
   
   // Step 1: Create horizontal strips and make horizontal cuts
-  const strips: any[] = [];
+  const strips: Strip[] = [];
   let currentY = 0;
   let remainingRectangles = rectangles;
   let isFirstStrip = true;
@@ -153,10 +160,10 @@ export function calculateGuillotineWithTrim(
  * Get next strip - mirrors PHP getNextStrip function
  */
 export function getNextStrip(
-  rectangles: Rectangle[], 
-  bin: Bin, 
+  rectangles: Rectangle[],
+  bin: Bin,
   currentY: number
-): any {
+): Strip | null {
   if (rectangles.length === 0) return null;
   
   const stripRectangles: Rectangle[] = [];
@@ -201,9 +208,8 @@ export function getNextStrip(
  * Process strip optimized - mirrors PHP processStripOptimized function
  */
 export function processStripOptimized(
-  strip: any, 
-  hasTrim: boolean = false, 
-  originalBoardHeight: number = 0, 
+  strip: Strip,
+  hasTrim: boolean = false,
   trimLeft: number = 0
 ): number {
   let cuttingLength = 0;

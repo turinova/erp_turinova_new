@@ -57,7 +57,12 @@ export function calculateBoardsNeeded(
  * Mirrors the PHP logic for processing parts and handling quantities
  */
 export function processPanelsForMaterial(
-  parts: any[], 
+  parts: Array<{
+    w_mm: number
+    h_mm: number
+    qty?: number
+    allow_rot_90?: boolean
+  }>,
   grainDirection: boolean = false
 ): RectangleClass[] {
   const panels: RectangleClass[] = [];

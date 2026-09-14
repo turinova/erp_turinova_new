@@ -252,21 +252,13 @@ export default function generateQuotePdfHtml({
   })
   
   const edgeMaterialsArray = Array.from(edgeMaterialsMap.values())
-  const totalEdgeLength = edgeMaterialsArray.reduce((sum, item) => sum + item.total_length_m, 0)
   const barcodeValue = (quote.barcode || '').trim()
   const barcodeSafe = barcodeValue.replace(/[^\x20-\x7E]/g, '') || barcodeValue
   const barcodeSvgId = `barcode-${quote.id}`
-  
+
   // Build items array: materials + fees + services
-  // Track recalculated totals for item row display (unit price × quantity consistency)
-  // Note: Final summary uses database totals (passed as summary prop) to match order detail page
-  let recalculatedMaterialsGross = 0
-  let recalculatedMaterialsNet = 0
-  let recalculatedServicesGross = 0
-  let recalculatedServicesNet = 0
-  let recalculatedFeesGross = 0
-  let recalculatedFeesNet = 0
-  
+  // Item rows use recalculated unit×qty for display; final summary uses DB totals.
+
   // 1. Materials from pricing
   const materialRows = quote.pricing.map((pricing) => {
     const materialName = pricing.materials?.name || pricing.material_name
@@ -293,14 +285,7 @@ export default function generateQuotePdfHtml({
     
     // Recalculate total from rounded unit price (2 decimals) so math is consistent
     const recalculatedTotalGross = roundedUnitPriceGross * totalArea
-    const recalculatedTotalNet = pricing.material_gross > 0
-      ? pricing.material_net * (recalculatedTotalGross / pricing.material_gross)
-      : pricing.material_net
-    
-    // Track recalculated totals
-    recalculatedMaterialsGross += recalculatedTotalGross
-    recalculatedMaterialsNet += recalculatedTotalNet
-    
+
     const dimensions = `${pricing.board_length_mm}×${pricing.board_width_mm}×${pricing.thickness_mm} mm`
     
     return `
@@ -328,12 +313,10 @@ export default function generateQuotePdfHtml({
   // Aggregate cutting costs - use stored totals from pricing table
   let totalCuttingLength = 0
   let totalCuttingGross = 0
-  let totalCuttingNet = 0
   quote.pricing.forEach(p => {
     if (p.cutting_gross > 0) {
       totalCuttingLength += p.cutting_length_m || 0
       totalCuttingGross += p.cutting_gross  // Use stored total from pricing table
-      totalCuttingNet += p.cutting_net || 0
     }
   })
   
@@ -343,13 +326,7 @@ export default function generateQuotePdfHtml({
     const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
     // Recalculate total from rounded unit price (2 decimals) so math is consistent
     const recalculatedTotalGross = roundedUnitPriceGross * totalCuttingLength
-    const recalculatedTotalNet = totalCuttingGross > 0
-      ? totalCuttingNet * (recalculatedTotalGross / totalCuttingGross)
-      : totalCuttingNet
-    
-    recalculatedServicesGross += recalculatedTotalGross
-    recalculatedServicesNet += recalculatedTotalNet
-    
+
     serviceRows.push(`
       <tr>
         <td>
@@ -369,12 +346,10 @@ export default function generateQuotePdfHtml({
   // Aggregate edge materials for services section - use stored totals from pricing table
   let totalEdgeLengthForService = 0
   let totalEdgeGross = 0
-  let totalEdgeNet = 0
   quote.pricing.forEach(p => {
     // Use stored totals from pricing table (not breakdown)
     if (p.edge_materials_gross > 0) {
       totalEdgeGross += p.edge_materials_gross  // Use stored total from pricing table
-      totalEdgeNet += p.edge_materials_net || 0
       // Sum length from breakdown for display quantity only
       if (p.quote_edge_materials_breakdown) {
         p.quote_edge_materials_breakdown.forEach(edge => {
@@ -390,13 +365,7 @@ export default function generateQuotePdfHtml({
     const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
     // Recalculate total from rounded unit price (2 decimals) so math is consistent
     const recalculatedTotalGross = roundedUnitPriceGross * totalEdgeLengthForService
-    const recalculatedTotalNet = totalEdgeGross > 0
-      ? totalEdgeNet * (recalculatedTotalGross / totalEdgeGross)
-      : totalEdgeNet
-    
-    recalculatedServicesGross += recalculatedTotalGross
-    recalculatedServicesNet += recalculatedTotalNet
-    
+
     serviceRows.push(`
       <tr>
         <td>
@@ -440,13 +409,7 @@ export default function generateQuotePdfHtml({
     const unitPriceGross = data.quantity > 0 ? data.gross / data.quantity : 0
     const roundedUnitPriceGross = Math.round(unitPriceGross)
     const recalculatedTotalGross = roundedUnitPriceGross * data.quantity
-    const recalculatedTotalNet = data.gross > 0
-      ? data.net * (recalculatedTotalGross / data.gross)
-      : data.net
-    
-    recalculatedServicesGross += recalculatedTotalGross
-    recalculatedServicesNet += recalculatedTotalNet
-    
+
     serviceRows.push(`
       <tr>
         <td>
@@ -492,13 +455,7 @@ export default function generateQuotePdfHtml({
     const unitPriceGross = fee.quantity > 0 ? fee.gross_price / fee.quantity : 0
     const roundedUnitPriceGross = Math.round(unitPriceGross)
     const recalculatedTotalGross = roundedUnitPriceGross * fee.quantity
-    const recalculatedTotalNet = fee.gross_price > 0
-      ? fee.net_price * (recalculatedTotalGross / fee.gross_price)
-      : fee.net_price
-    
-    recalculatedFeesGross += recalculatedTotalGross
-    recalculatedFeesNet += recalculatedTotalNet
-    
+
     return `
       <tr>
         <td>
