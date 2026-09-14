@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 
 import {
   CURRENT_TENANT_COOKIE,
@@ -40,7 +41,12 @@ export type SessionUser = {
   isPlatformAdmin: boolean
 }
 
-export async function getSessionUser(): Promise<SessionUser | null> {
+/**
+ * Request-scoped session (React.cache).
+ * Layout + page ugyanabban a requestben csak egyszer fut.
+ * Onboarding first_login írása NEM itt — lásd loginAction.
+ */
+async function loadSessionUser(): Promise<SessionUser | null> {
   if (isSupabaseConfigured()) {
     const supabase = await createClient()
     if (!supabase) return null
@@ -85,11 +91,22 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
     let entitledPages: string[] = ['/home']
     let allowedPages: string[] = ['/home']
+    let isPlatformAdmin = false
+
     if (current) {
-      entitledPages = await listTenantEntitledPageKeys(
-        supabase,
-        current.tenantId
-      )
+      const [entitled, membershipPages, platformRow] = await Promise.all([
+        listTenantEntitledPageKeys(supabase, current.tenantId),
+        listAllowedPageKeys(supabase, current.membershipId, current.role),
+        supabase
+          .from('platform_admins')
+          .select('user_id')
+          .eq('user_id', user.id)
+          .eq('active', true)
+          .maybeSingle()
+          .then((r) => r.data)
+      ])
+
+      entitledPages = entitled
       // Ha még nincs materializálva (régi tenant migráció előtt), ne zárjuk ki.
       if (entitledPages.length <= 1) {
         const { count } = await supabase
@@ -101,47 +118,20 @@ export async function getSessionUser(): Promise<SessionUser | null> {
         }
       }
 
-      const membershipPages = await listAllowedPageKeys(
-        supabase,
-        current.membershipId,
-        current.role
-      )
       allowedPages = intersectPages(membershipPages, entitledPages)
+      isPlatformAdmin = Boolean(platformRow)
+    } else {
+      const { data: platformRow } = await supabase
+        .from('platform_admins')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .eq('active', true)
+        .maybeSingle()
+      isPlatformAdmin = Boolean(platformRow)
     }
 
     const canManageUsers =
       current?.role === 'owner' || current?.role === 'admin'
-
-    let isPlatformAdmin = false
-    const { data: platformRow } = await supabase
-      .from('platform_admins')
-      .select('user_id')
-      .eq('user_id', user.id)
-      .eq('active', true)
-      .maybeSingle()
-    isPlatformAdmin = Boolean(platformRow)
-
-    if (current?.tenantId) {
-      const { data: onboarding } = await supabase
-        .from('tenant_onboarding')
-        .select('first_login_at')
-        .eq('tenant_id', current.tenantId)
-        .maybeSingle()
-      if (onboarding && !onboarding.first_login_at) {
-        await supabase
-          .from('tenant_onboarding')
-          .update({
-            first_login_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('tenant_id', current.tenantId)
-      } else if (!onboarding) {
-        await supabase.from('tenant_onboarding').insert({
-          tenant_id: current.tenantId,
-          first_login_at: new Date().toISOString()
-        })
-      }
-    }
 
     return {
       id: user.id,
@@ -186,3 +176,5 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   return null
 }
+
+export const getSessionUser = cache(loadSessionUser)

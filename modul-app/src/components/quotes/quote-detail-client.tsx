@@ -53,6 +53,11 @@ import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import type { ProductionMachineOption } from '@/lib/production-machines/queries'
 import { updateQuoteComment, updateQuoteProjectName } from '@/lib/quotes/actions'
 import {
+  loadPaymentMethodsAction,
+  loadProductionMachinesAction,
+  loadQuoteExportTargetsAction
+} from '@/lib/quotes/detail-lazy-actions'
+import {
   softDeletePartnerQuote,
   submitPartnerQuote,
   updatePartnerQuoteComment,
@@ -87,9 +92,6 @@ type QuoteDetailClientProps = {
   quote: QuoteDetail
   company: TenantCompanyRow | null
   canWrite: boolean
-  exportTargets: QuoteExportTarget[]
-  paymentMethods: PaymentMethodOption[]
-  productionMachines: ProductionMachineOption[]
   /** Partner portal — ugyanaz a dokumentum layout, más műveletek */
   surface?: 'staff' | 'partner'
 }
@@ -122,9 +124,6 @@ export function QuoteDetailClient({
   quote,
   company,
   canWrite,
-  exportTargets,
-  paymentMethods,
-  productionMachines,
   surface = 'staff'
 }: QuoteDetailClientProps) {
   const router = useRouter()
@@ -157,12 +156,74 @@ export function QuoteDetailClient({
   const [submitOpen, setSubmitOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
+  const [exportTargets, setExportTargets] = useState<QuoteExportTarget[]>([])
+  const [exportTargetsLoaded, setExportTargetsLoaded] = useState(false)
+  const [exportTargetsLoading, setExportTargetsLoading] = useState(false)
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodOption[]>(
+    []
+  )
+  const [productionMachines, setProductionMachines] = useState<
+    ProductionMachineOption[]
+  >([])
+  const [dialogOptionsLoading, setDialogOptionsLoading] = useState(false)
+
   const aliveExportTargets = exportTargets.filter((t) => !t.isDeleted)
   const orphanExportTargets = exportTargets.filter((t) => t.isDeleted)
   const orphanPanelCount = orphanExportTargets.reduce(
     (sum, t) => sum + t.panelCount,
     0
   )
+
+  async function ensureExportTargets(): Promise<QuoteExportTarget[] | null> {
+    if (exportTargetsLoaded) return exportTargets
+    setExportTargetsLoading(true)
+    try {
+      const result = await loadQuoteExportTargetsAction(quote.id)
+      if (!result.ok) {
+        toast.error(result.message)
+        return null
+      }
+      setExportTargets(result.targets)
+      setExportTargetsLoaded(true)
+      return result.targets
+    } finally {
+      setExportTargetsLoading(false)
+    }
+  }
+
+  async function ensurePaymentMethods(): Promise<PaymentMethodOption[] | null> {
+    if (paymentMethods.length > 0) return paymentMethods
+    setDialogOptionsLoading(true)
+    try {
+      const result = await loadPaymentMethodsAction()
+      if (!result.ok) {
+        toast.error(result.message)
+        return null
+      }
+      setPaymentMethods(result.methods)
+      return result.methods
+    } finally {
+      setDialogOptionsLoading(false)
+    }
+  }
+
+  async function ensureProductionMachines(): Promise<
+    ProductionMachineOption[] | null
+  > {
+    if (productionMachines.length > 0) return productionMachines
+    setDialogOptionsLoading(true)
+    try {
+      const result = await loadProductionMachinesAction()
+      if (!result.ok) {
+        toast.error(result.message)
+        return null
+      }
+      setProductionMachines(result.machines)
+      return result.machines
+    } finally {
+      setDialogOptionsLoading(false)
+    }
+  }
 
   const canEditInOpti = isPartner
     ? isPartnerDraft
@@ -226,11 +287,18 @@ export function QuoteDetailClient({
     Boolean(quote.customer.billing_street) ||
     Boolean(quote.customer.billing_tax_number)
 
-  async function downloadExcel(equipmentId: string) {
-    const target = aliveExportTargets.find((t) => t.equipmentId === equipmentId)
+  async function downloadExcel(
+    equipmentId: string,
+    targetsOverride?: QuoteExportTarget[]
+  ) {
+    const pool = targetsOverride ?? exportTargets
+    const alive = pool.filter((t) => !t.isDeleted)
+    const orphans = pool.filter((t) => t.isDeleted)
+    const orphanCount = orphans.reduce((sum, t) => sum + t.panelCount, 0)
+    const target = alive.find((t) => t.equipmentId === equipmentId)
     if (!target) {
       toast.error(
-        orphanPanelCount > 0
+        orphanCount > 0
           ? 'A panelek törölt berendezéshez kötöttek — kösd át az anyagot élő gépre.'
           : 'Válassz berendezést az exporthoz.'
       )
@@ -282,14 +350,38 @@ export function QuoteDetailClient({
     }
   }
 
-  function handleExcelClick() {
-    if (aliveExportTargets.length === 0) return
-    if (aliveExportTargets.length === 1) {
-      void downloadExcel(aliveExportTargets[0].equipmentId)
+  async function handleExcelClick() {
+    const targets = await ensureExportTargets()
+    if (!targets) return
+    const alive = targets.filter((t) => !t.isDeleted)
+    if (alive.length === 0) {
+      toast.error('Nincs exportálható panel (vagy a berendezés törölve).')
       return
     }
-    setSelectedEquipmentId(aliveExportTargets[0]?.equipmentId ?? '')
+    if (alive.length === 1) {
+      void downloadExcel(alive[0].equipmentId, targets)
+      return
+    }
+    setSelectedEquipmentId(alive[0]?.equipmentId ?? '')
     setExcelPickerOpen(true)
+  }
+
+  async function openOrderDialog() {
+    const methods = await ensurePaymentMethods()
+    if (!methods) return
+    setOrderDialogOpen(true)
+  }
+
+  async function openPaymentDialog() {
+    const methods = await ensurePaymentMethods()
+    if (!methods) return
+    setAddPaymentOpen(true)
+  }
+
+  async function openProductionDialog() {
+    const machines = await ensureProductionMachines()
+    if (!machines) return
+    setProductionDialogOpen(true)
   }
 
   function handleSaveComment() {
@@ -407,7 +499,7 @@ export function QuoteDetailClient({
       <div className="grid gap-4 lg:grid-cols-12">
         {/* Left: document */}
         <div className="space-y-3 lg:col-span-9">
-          {orphanPanelCount > 0 && !isPartner ? (
+          {exportTargetsLoaded && orphanPanelCount > 0 && !isPartner ? (
             <p
               className="rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-body text-warning-ink"
               role="status"
@@ -1019,8 +1111,9 @@ export function QuoteDetailClient({
                             type="button"
                             variant="primary"
                             className="w-full justify-start"
-                            disabled={!canWrite}
-                            onClick={() => setOrderDialogOpen(true)}
+                            disabled={!canWrite || dialogOptionsLoading}
+                            loading={dialogOptionsLoading}
+                            onClick={() => void openOrderDialog()}
                           >
                             <ShoppingCart className="size-3.5" aria-hidden />
                             Megrendelés létrehozása
@@ -1030,7 +1123,9 @@ export function QuoteDetailClient({
                             type="button"
                             variant="primary"
                             className="w-full justify-start"
-                            onClick={() => setProductionDialogOpen(true)}
+                            disabled={dialogOptionsLoading}
+                            loading={dialogOptionsLoading}
+                            onClick={() => void openProductionDialog()}
                           >
                             <Factory className="size-3.5" aria-hidden />
                             Gyártásba adás
@@ -1040,7 +1135,9 @@ export function QuoteDetailClient({
                             type="button"
                             variant="primary"
                             className="w-full justify-start"
-                            onClick={() => setAddPaymentOpen(true)}
+                            disabled={dialogOptionsLoading}
+                            loading={dialogOptionsLoading}
+                            onClick={() => void openPaymentDialog()}
                           >
                             Befizetés rögzítése
                           </Button>
@@ -1057,7 +1154,9 @@ export function QuoteDetailClient({
                           type="button"
                           variant="secondary"
                           className="w-full justify-start"
-                          onClick={() => setProductionDialogOpen(true)}
+                          disabled={dialogOptionsLoading}
+                          loading={dialogOptionsLoading}
+                          onClick={() => void openProductionDialog()}
                         >
                           <Factory className="size-3.5" aria-hidden />
                           {quote.production_machine_id
@@ -1130,25 +1229,26 @@ export function QuoteDetailClient({
                         type="button"
                         variant="secondary"
                         className="w-full justify-start"
-                        disabled={
-                          aliveExportTargets.length === 0 || isExportingExcel
-                        }
-                        loading={isExportingExcel}
+                        disabled={isExportingExcel || exportTargetsLoading}
+                        loading={isExportingExcel || exportTargetsLoading}
                         title={
-                          aliveExportTargets.length === 0
-                            ? orphanPanelCount > 0
-                              ? 'A panelek törölt berendezéshez kötöttek — kösd át az anyagot.'
-                              : 'Nincs panel az exportáláshoz.'
-                            : aliveExportTargets.length === 1
-                              ? `${exportFormatLabel(aliveExportTargets[0].exportFormat)} — ${aliveExportTargets[0].equipmentName}`
-                              : 'Válaszd ki, melyik gépre készüljön az Excel.'
+                          !exportTargetsLoaded
+                            ? 'Excel export'
+                            : aliveExportTargets.length === 0
+                              ? orphanPanelCount > 0
+                                ? 'A panelek törölt berendezéshez kötöttek — kösd át az anyagot.'
+                                : 'Nincs panel az exportáláshoz.'
+                              : aliveExportTargets.length === 1
+                                ? `${exportFormatLabel(aliveExportTargets[0].exportFormat)} — ${aliveExportTargets[0].equipmentName}`
+                                : 'Válaszd ki, melyik gépre készüljön az Excel.'
                         }
-                        onClick={handleExcelClick}
+                        onClick={() => void handleExcelClick()}
                       >
                         <FileDown className="size-3.5" aria-hidden />
-                        {isExportingExcel
-                          ? 'Excel generálása…'
-                          : aliveExportTargets.length === 1
+                        {isExportingExcel || exportTargetsLoading
+                          ? 'Excel…'
+                          : exportTargetsLoaded &&
+                              aliveExportTargets.length === 1
                             ? `Export Excel — ${aliveExportTargets[0].equipmentName}`
                             : 'Export Excel…'}
                       </Button>

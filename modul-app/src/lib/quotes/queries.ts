@@ -167,7 +167,7 @@ export async function listQuotes(
       customers ( name, email, mobile ),
       quote_panels ( quantity )
     `,
-      { count: 'exact' }
+      { count: 'estimated' }
     )
     .eq('tenant_id', params.tenantId)
     .is('deleted_at', null)
@@ -408,7 +408,7 @@ export async function getQuoteDetail(
       )
     `
 
-  const { data: rawData, error } = await supabase
+  const quoteQuery = supabase
     .from('quotes')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .select(selectCols as any)
@@ -416,6 +416,21 @@ export async function getQuoteDetail(
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle()
+
+  const paymentsQuery = options?.skipPayments
+    ? Promise.resolve({ data: null as null, error: null })
+    : supabase
+        .from('quote_payments')
+        .select('id, amount, payment_method_name, comment, payment_date')
+        .eq('quote_id', id)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('payment_date', { ascending: true })
+
+  const [{ data: rawData, error }, paymentsResult] = await Promise.all([
+    quoteQuery,
+    paymentsQuery
+  ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = rawData as any
@@ -439,28 +454,26 @@ export async function getQuoteDetail(
   let total_paid = 0
 
   if (!options?.skipPayments) {
-    const { data: paymentRows, error: paymentsError } = await supabase
-      .from('quote_payments')
-      .select(
-        'id, amount, payment_method_name, comment, payment_date'
-      )
-      .eq('quote_id', id)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .order('payment_date', { ascending: true })
-
-    if (paymentsError) {
-      console.error('getQuoteDetail payments', paymentsError.message)
+    if (paymentsResult.error) {
+      console.error('getQuoteDetail payments', paymentsResult.error.message)
       throw new Error('Nem sikerült betölteni a befizetéseket.')
     }
 
-    payments = (paymentRows ?? []).map((p) => ({
-      id: p.id,
-      amount: Number(p.amount),
-      payment_method_name: p.payment_method_name,
-      comment: p.comment,
-      payment_date: p.payment_date
-    }))
+    payments = (paymentsResult.data ?? []).map(
+      (p: {
+        id: string
+        amount: number | string
+        payment_method_name: string
+        comment: string | null
+        payment_date: string
+      }) => ({
+        id: p.id,
+        amount: Number(p.amount),
+        payment_method_name: p.payment_method_name,
+        comment: p.comment,
+        payment_date: p.payment_date
+      })
+    )
     total_paid = payments.reduce((sum, p) => sum + p.amount, 0)
   }
 

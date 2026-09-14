@@ -1,9 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 
 import { isSupabaseConfigured } from '@/lib/auth/config'
 
-export async function createClient() {
+/** Request-scoped Supabase client — ne hozzunk létre újat layout + page között. */
+export const createClient = cache(async () => {
   if (!isSupabaseConfigured()) {
     return null
   }
@@ -36,4 +38,4 @@ export async function createClient() {
       }
     }
   )
-}
+})

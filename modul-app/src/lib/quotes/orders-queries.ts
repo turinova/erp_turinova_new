@@ -85,7 +85,7 @@ export async function listOrders(
       customers ( name, email, mobile ),
       production_machines ( name )
     `,
-      { count: 'exact' }
+      { count: 'estimated' }
     )
     .eq('tenant_id', params.tenantId)
     .is('deleted_at', null)

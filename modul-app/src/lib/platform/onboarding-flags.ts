@@ -37,3 +37,33 @@ export async function markOnboardingFlag(
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('tenant_id', tenantId)
 }
+
+/** Idempotens: csak ha még nincs first_login_at. */
+export async function ensureFirstLoginMarked(tenantId: string): Promise<void> {
+  const supabase = await createClient()
+  if (!supabase) return
+
+  const { data: row } = await supabase
+    .from('tenant_onboarding')
+    .select('tenant_id, first_login_at')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (row?.first_login_at) return
+
+  const now = new Date().toISOString()
+  if (!row) {
+    await supabase.from('tenant_onboarding').insert({
+      tenant_id: tenantId,
+      first_login_at: now,
+      updated_at: now
+    })
+    return
+  }
+
+  await supabase
+    .from('tenant_onboarding')
+    .update({ first_login_at: now, updated_at: now })
+    .eq('tenant_id', tenantId)
+    .is('first_login_at', null)
+}

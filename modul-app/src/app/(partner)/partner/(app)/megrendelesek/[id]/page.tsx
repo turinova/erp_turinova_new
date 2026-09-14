@@ -56,9 +56,6 @@ export default async function PartnerMegrendelesDetailPage({
       quote={loaded.quote}
       company={company}
       canWrite={false}
-      exportTargets={[]}
-      paymentMethods={[]}
-      productionMachines={[]}
     />
   )
 }

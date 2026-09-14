@@ -56,9 +56,6 @@ export default async function PartnerAjanlatDetailPage({
       quote={loaded.quote}
       company={company}
       canWrite
-      exportTargets={[]}
-      paymentMethods={[]}
-      productionMachines={[]}
     />
   )
 }

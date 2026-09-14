@@ -1,3 +1,5 @@
+import { cache } from 'react'
+
 import { createClient } from '@/lib/supabase/server'
 import type { PartnerProfile } from '@/lib/supabase/database.types'
 
@@ -10,7 +12,7 @@ export type PartnerSession = {
   profile: PartnerProfile
 }
 
-export async function getPartnerSession(): Promise<PartnerSession | null> {
+async function loadPartnerSession(): Promise<PartnerSession | null> {
   const supabase = await createClient()
   if (!supabase) return null
 
@@ -43,6 +45,8 @@ export async function getPartnerSession(): Promise<PartnerSession | null> {
   }
 }
 
+export const getPartnerSession = cache(loadPartnerSession)
+
 export async function userHasTenantMembership(
   userId: string
 ): Promise<boolean> {
@@ -67,7 +71,7 @@ export async function userHasPartnerProfile(userId: string): Promise<boolean> {
   const supabase = await createClient()
   if (!supabase) return false
 
-  const { data, error } = await supabase
+  const { data: profile, error } = await supabase
     .from('partner_profiles')
     .select('user_id')
     .eq('user_id', userId)
@@ -78,5 +82,5 @@ export async function userHasPartnerProfile(userId: string): Promise<boolean> {
     return false
   }
 
-  return Boolean(data)
+  return Boolean(profile)
 }

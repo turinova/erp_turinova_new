@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 
+import { ListPageSkeleton } from '@/components/patterns/list-page-skeleton'
 import { OrdersListClient } from '@/components/orders/orders-list-client'
 import { getSessionUser } from '@/lib/auth/session'
 import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
@@ -39,7 +40,19 @@ function parseStatus(raw: string | undefined): OrderListStatusFilter {
   return 'ordered'
 }
 
-export default async function MegrendelesekPage({
+export default function MegrendelesekPage({
+  searchParams
+}: {
+  searchParams: SearchParams
+}) {
+  return (
+    <Suspense fallback={<ListPageSkeleton title="Megrendelések betöltése" />}>
+      <OrdersListLoader searchParams={searchParams} />
+    </Suspense>
+  )
+}
+
+async function OrdersListLoader({
   searchParams
 }: {
   searchParams: SearchParams
@@ -114,27 +127,29 @@ export default async function MegrendelesekPage({
           <code className="text-hint">
             supabase/migrations/20260324_quote_production.sql
           </code>{' '}
-          migrációt is.
+          migrációt is. A lista indexhez:{' '}
+          <code className="text-hint">
+            20260405_quotes_orders_list_index.sql
+          </code>
+          .
         </p>
       </div>
     )
   }
 
   return (
-    <Suspense fallback={null}>
-      <OrdersListClient
-        rows={rows}
-        total={total}
-        page={page}
-        limit={limit}
-        canWrite={canWrite}
-        initialQ={q}
-        initialStatus={status}
-        initialMachineId={machineId}
-        initialProductionDate={productionDate}
-        machines={machines}
-        paymentMethods={paymentMethods}
-      />
-    </Suspense>
+    <OrdersListClient
+      rows={rows}
+      total={total}
+      page={page}
+      limit={limit}
+      canWrite={canWrite}
+      initialQ={q}
+      initialStatus={status}
+      initialMachineId={machineId}
+      initialProductionDate={productionDate}
+      machines={machines}
+      paymentMethods={paymentMethods}
+    />
   )
 }

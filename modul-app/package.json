@@ -9,6 +9,7 @@
     "start": "next start --port 3010",
     "lint": "next lint",
     "clean": "rm -rf .next var",
+    "speed-test": "node --env-file=.env.local scripts/speed-test.mjs",
     "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {

@@ -126,6 +126,15 @@ export async function loginAction(
         path: '/',
         secure: process.env.NODE_ENV === 'production'
       })
+      // first_login flag: csak belépéskor, ne minden page GET-en
+      try {
+        const { ensureFirstLoginMarked } = await import(
+          '@/lib/platform/onboarding-flags'
+        )
+        await ensureFirstLoginMarked(current.tenantId)
+      } catch {
+        // ne blokkolja a belépést
+      }
       redirect('/home')
     }
 
