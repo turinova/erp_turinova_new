@@ -48,19 +48,12 @@ function partnerOrigin(): string {
 }
 
 /**
- * Absolute origin, or '' for same-host relative URL (local path-mode).
- * Avoids cross-subdomain cookie loss when partner origin === app origin.
+ * Prefer absolute handoff URL when origin is configured.
+ * Relative URLs break on admin.optinova.hu (middleware sends unknown paths to /).
+ * Local path-mode: APP_ORIGIN=http://localhost:3010 → absolute same-host still OK.
  */
-function handoffOrigin(preferred: string): string {
-  const preferredNorm = preferred.replace(/\/$/, '')
-  const app = appOrigin()
-  if (!preferredNorm) return ''
-  if (app && preferredNorm === app) return ''
-  return preferredNorm
-}
-
 function buildHandoffUrl(completePath: string, preferredOrigin: string): string {
-  const origin = handoffOrigin(preferredOrigin)
+  const origin = preferredOrigin.replace(/\/$/, '')
   return origin ? `${origin}${completePath}` : completePath
 }
 

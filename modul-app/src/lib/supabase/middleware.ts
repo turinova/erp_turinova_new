@@ -86,37 +86,46 @@ export async function updateSession(request: NextRequest) {
 
   // --- Platform host (admin.): clean URLs + block tenant app ---
   if (surface === 'platform') {
-    if (isPlatformPath(pathname) && pathname !== '/platform') {
-      const clean = platformInternalToClean(pathname)
-      if (clean !== null) return redirectTo(request, clean === '' ? '/' : clean)
-    }
-    if (pathname === '/platform') {
-      return redirectTo(request, '/')
-    }
-    if (isTenantAppPath(pathname) && pathname !== '/login') {
-      return redirectTo(request, '/')
-    }
-    if (pathname !== '/login') {
-      rewriteTarget = platformCleanToInternal(pathname)
-      if (!rewriteTarget && !isPlatformPath(pathname)) {
+    // API routes (impersonation complete, etc.) must pass through
+    if (pathname.startsWith('/api/')) {
+      // fall through to auth / public handoff handling below
+    } else {
+      if (isPlatformPath(pathname) && pathname !== '/platform') {
+        const clean = platformInternalToClean(pathname)
+        if (clean !== null) return redirectTo(request, clean === '' ? '/' : clean)
+      }
+      if (pathname === '/platform') {
         return redirectTo(request, '/')
+      }
+      if (isTenantAppPath(pathname) && pathname !== '/login') {
+        return redirectTo(request, '/')
+      }
+      if (pathname !== '/login') {
+        rewriteTarget = platformCleanToInternal(pathname)
+        if (!rewriteTarget && !isPlatformPath(pathname)) {
+          return redirectTo(request, '/')
+        }
       }
     }
   }
 
   // --- Partner host: clean URLs + block staff-only ---
   if (surface === 'partner') {
-    if (isPartnerPath(pathname)) {
-      const clean = partnerInternalToClean(pathname)
-      if (clean) return redirectTo(request, clean)
+    if (pathname.startsWith('/api/')) {
+      // allow API (shared PDF/optimize + impersonation complete)
+    } else {
+      if (isPartnerPath(pathname)) {
+        const clean = partnerInternalToClean(pathname)
+        if (clean) return redirectTo(request, clean)
+      }
+      if (pathname === '/' || pathname === '') {
+        return redirectTo(request, PARTNER_HOME_PATH)
+      }
+      if (isStaffOnlyPath(pathname)) {
+        return redirectTo(request, PARTNER_LOGIN_PATH)
+      }
+      rewriteTarget = partnerCleanToInternal(pathname)
     }
-    if (pathname === '/' || pathname === '') {
-      return redirectTo(request, PARTNER_HOME_PATH)
-    }
-    if (isStaffOnlyPath(pathname)) {
-      return redirectTo(request, PARTNER_LOGIN_PATH)
-    }
-    rewriteTarget = partnerCleanToInternal(pathname)
   }
 
   // Staff host: optional redirect /platform → admin origin

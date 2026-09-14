@@ -105,7 +105,7 @@ NEXT_PUBLIC_PARTNER_ORIGIN=http://localhost:3010
 # PLATFORM_ORIGIN / COOKIE_DOMAIN kikommentelve
 ```
 
-Partner handoff: ha `PARTNER_ORIGIN` = `APP_ORIGIN` (vagy üres), relatív complete URL → `/partner/home`.
+Handoff URL mindig abszolút, ha az origin be van állítva (admin hostról ne legyen relatív `/api/...`).
 Migráció: `20260407_partner_ops.sql` + `20260408_impersonation_subject_kind_grant.sql`.
 
 ## 9. Perf (platform navigáció)
