@@ -1,0 +1,109 @@
+/**
+ * Flat 2.0 + Linear light sűrűség + Midday shell
+ * Primary: Midday charcoal (nem kék brand).
+ * Nav: monokróm slate. Státusz színek csak success/warning/danger.
+ */
+
+:root {
+  /* Neutral — Linear light hairline */
+  --bg-app: #fafafa;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f5f5f5;
+  --border: #e5e5e5;
+  --border-strong: #d4d4d4;
+  --text-primary: #0a0a0a;
+  --text-secondary: #525252;
+  --text-disabled: #a3a3a3;
+  --text-muted: #737373;
+
+  /* Midday charcoal primary — CTA / focus / kijelölés */
+  --primary: #18181b;
+  --primary-hover: #27272a;
+  --primary-soft: #f4f4f5;
+  --primary-ink: #18181b;
+
+  --success: #12a150;
+  --success-soft: #e7f7ee;
+  --success-ink: #0a6e36;
+
+  --warning: #e08600;
+  --warning-soft: #fff4e0;
+  --warning-ink: #8a5200;
+
+  --danger: #dc2626;
+  --danger-soft: #fdecec;
+  --danger-ink: #991b1b;
+
+  --info: #737373;
+  --info-soft: #f5f5f5;
+  --info-ink: #404040;
+
+  /* Nav — csak slate (monokróm); legacy aliasok → slate */
+  --nav-slate: #525252;
+  --nav-slate-soft: #f5f5f5;
+  --nav-slate-ink: #262626;
+
+  --nav-blue: var(--nav-slate);
+  --nav-blue-soft: var(--nav-slate-soft);
+  --nav-blue-ink: var(--nav-slate-ink);
+  --nav-teal: var(--nav-slate);
+  --nav-teal-soft: var(--nav-slate-soft);
+  --nav-teal-ink: var(--nav-slate-ink);
+  --nav-cyan: var(--nav-slate);
+  --nav-cyan-soft: var(--nav-slate-soft);
+  --nav-cyan-ink: var(--nav-slate-ink);
+  --nav-violet: var(--nav-slate);
+  --nav-violet-soft: var(--nav-slate-soft);
+  --nav-violet-ink: var(--nav-slate-ink);
+  --nav-amber: var(--nav-slate);
+  --nav-amber-soft: var(--nav-slate-soft);
+  --nav-amber-ink: var(--nav-slate-ink);
+  --nav-rose: var(--nav-slate);
+  --nav-rose-soft: var(--nav-slate-soft);
+  --nav-rose-ink: var(--nav-slate-ink);
+  --nav-emerald: var(--nav-slate);
+  --nav-emerald-soft: var(--nav-slate-soft);
+  --nav-emerald-ink: var(--nav-slate-ink);
+
+  --elev-0: none;
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --elev-2: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --elev-3: 0 8px 16px rgba(0, 0, 0, 0.08);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --control-sm: 28px;
+  --control-md: 32px;
+  --control-lg: 36px;
+  --row-comfortable: 40px;
+  --row-compact: 32px;
+  --nav-item-height: 32px;
+
+  --ease-in: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.4, 0, 1, 1);
+  --dur-fast: 120ms;
+  --dur-mid: 160ms;
+  --dur-slow: 220ms;
+
+  --sidebar-width: 220px;
+  --sidebar-collapsed-width: 64px;
+  --topbar-height: 52px;
+  --form-max-width: 640px;
+
+  --font-size-body: 14px;
+  --font-size-h1: 18px;
+  --font-size-h2: 15px;
+  --font-size-h3: 14px;
+  --font-size-label: 13px;
+  --font-size-hint: 12.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-mid: 0ms;
+    --dur-slow: 0ms;
+  }
+}
