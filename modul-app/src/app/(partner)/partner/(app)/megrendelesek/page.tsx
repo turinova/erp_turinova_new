@@ -3,12 +3,13 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 
 import { PartnerQuotesListClient } from '@/components/partner/partner-quotes-list-client'
+import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { PARTNER_SETTINGS_PATH } from '@/lib/auth/surface'
 import { listPartnerSubmittedQuotes } from '@/lib/partner/quotes-queries'
 import { createClient } from '@/lib/supabase/server'
 
-export const metadata: Metadata = { title: 'Megrendelések · Asztalos' }
+export const metadata: Metadata = { title: 'Beküldött rendeléseim · Asztalos' }
 
 type SearchParams = Promise<{
   q?: string
@@ -35,14 +36,15 @@ export default async function PartnerMegrendelesekPage({
   }
 
   if (!session.selectedTenantId) {
+    const settingsHref = await partnerServerHref(PARTNER_SETTINGS_PATH)
     return (
       <div className="space-y-3">
-        <h1 className="text-h1 text-ink">Megrendelések</h1>
+        <h1 className="text-h1 text-ink">Beküldött rendeléseim</h1>
         <p className="rounded-md border border-warning/30 bg-warning-soft p-3 text-body text-warning-ink">
           Nincs kapcsolt cég. Válassz céget a Beállításokban.
         </p>
         <Link
-          href={PARTNER_SETTINGS_PATH}
+          href={settingsHref}
           className="text-hint text-ink no-underline hover:underline"
         >
           Beállítások → Kapcsolt cég

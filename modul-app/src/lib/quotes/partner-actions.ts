@@ -8,6 +8,15 @@ import {
   PARTNER_ORDERS_PATH,
   PARTNER_QUOTES_PATH
 } from '@/lib/auth/surface'
+
+function revalidatePartnerPaths(...cleanPaths: string[]) {
+  for (const p of cleanPaths) {
+    revalidatePath(p)
+    if (!p.startsWith('/partner')) {
+      revalidatePath(`/partner${p}`)
+    }
+  }
+}
 import type { OptiPanelDraft } from '@/lib/opti/panel-draft'
 import type { QuoteResult } from '@/lib/opti/quote-calculations'
 import type { OptiSheetMaterialOption } from '@/lib/opti/queries'
@@ -246,9 +255,11 @@ export async function savePartnerOptiQuote(
     }
   }
 
-  revalidatePath(PARTNER_OPTI_PATH)
-  revalidatePath(PARTNER_QUOTES_PATH)
-  revalidatePath(PARTNER_ORDERS_PATH)
+  revalidatePartnerPaths(
+    PARTNER_OPTI_PATH,
+    PARTNER_QUOTES_PATH,
+    PARTNER_ORDERS_PATH
+  )
 
   return { ok: true, id: quoteId, quoteNumber }
 }
@@ -332,11 +343,12 @@ export async function submitPartnerQuote(
       return { ok: false, message: 'Nem sikerült beküldeni az ajánlatot.' }
     }
 
-    revalidatePath(PARTNER_QUOTES_PATH)
-    revalidatePath(PARTNER_ORDERS_PATH)
-    revalidatePath(PARTNER_OPTI_PATH)
-    revalidatePath('/ajanlatok')
-    revalidatePath(`/ajanlatok/${quoteId}`)
+    revalidatePartnerPaths(
+      PARTNER_QUOTES_PATH,
+      PARTNER_ORDERS_PATH,
+      PARTNER_OPTI_PATH,
+      `${PARTNER_QUOTES_PATH}/${quoteId}`
+    )
 
     return {
       ok: true,
@@ -401,9 +413,11 @@ export async function updatePartnerQuoteComment(
       }
     }
 
-    revalidatePath(PARTNER_QUOTES_PATH)
-    revalidatePath(`${PARTNER_QUOTES_PATH}/${quoteId}`)
-    revalidatePath(`${PARTNER_ORDERS_PATH}/${quoteId}`)
+    revalidatePartnerPaths(
+      PARTNER_QUOTES_PATH,
+      `${PARTNER_QUOTES_PATH}/${quoteId}`,
+      `${PARTNER_ORDERS_PATH}/${quoteId}`
+    )
     return { ok: true }
   } catch (err) {
     console.error('updatePartnerQuoteComment', err)
@@ -467,9 +481,11 @@ export async function updatePartnerQuoteProjectName(
       }
     }
 
-    revalidatePath(PARTNER_QUOTES_PATH)
-    revalidatePath(`${PARTNER_QUOTES_PATH}/${quoteId}`)
-    revalidatePath(`${PARTNER_ORDERS_PATH}/${quoteId}`)
+    revalidatePartnerPaths(
+      PARTNER_QUOTES_PATH,
+      `${PARTNER_QUOTES_PATH}/${quoteId}`,
+      `${PARTNER_ORDERS_PATH}/${quoteId}`
+    )
     return { ok: true }
   } catch (err) {
     console.error('updatePartnerQuoteProjectName', err)
@@ -520,8 +536,7 @@ export async function softDeletePartnerQuote(
       }
     }
 
-    revalidatePath(PARTNER_QUOTES_PATH)
-    revalidatePath(PARTNER_OPTI_PATH)
+    revalidatePartnerPaths(PARTNER_QUOTES_PATH, PARTNER_OPTI_PATH)
     return { ok: true, id: data.id }
   } catch (err) {
     console.error('softDeletePartnerQuote', err)

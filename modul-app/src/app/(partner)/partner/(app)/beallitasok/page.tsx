@@ -5,17 +5,18 @@ import { PartnerDeleteAccount } from '@/components/partner/partner-delete-accoun
 import { PartnerLinkedCompanyForm } from '@/components/partner/partner-linked-company-form'
 import { PartnerPasswordForm } from '@/components/partner/partner-password-form'
 import { PartnerSettingsProfileForm } from '@/components/partner/partner-settings-profile-form'
+import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
 
 export const metadata: Metadata = {
-  title: 'Beállítások · Asztalos'
+  title: 'Beállítások · Asztalos portál'
 }
 
 export default async function PartnerSettingsPage() {
   const session = await getPartnerSession()
   if (!session) {
-    redirect(PARTNER_LOGIN_PATH)
+    redirect(await partnerServerHref(PARTNER_LOGIN_PATH))
   }
 
   return (

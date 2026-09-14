@@ -85,7 +85,7 @@ export async function loginAction(
       await supabase.auth.signOut()
       return {
         error:
-          'Ez asztalos (partner) fiók. Lépj be az optinova.hu /partner/login felületen.'
+          'Ez asztalos (partner) fiók. Lépj be az optinova.hu címen (asztalos portál).'
       }
     }
 

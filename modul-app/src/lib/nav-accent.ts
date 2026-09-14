@@ -30,18 +30,27 @@ const SLATE: NavAccentClasses = {
   ring: 'border-border-strong'
 }
 
+/** Partner portál — meleg amber (nem staff charcoal klón). */
+const AMBER: NavAccentClasses = {
+  icon: 'text-amber-800',
+  iconMuted: 'text-stone-500',
+  soft: 'bg-amber-50',
+  ink: 'text-amber-950',
+  bar: 'bg-amber-700',
+  ring: 'border-amber-200'
+}
+
 export const NAV_ACCENT_CLASSES: Record<NavAccent, NavAccentClasses> = {
   blue: SLATE,
   teal: SLATE,
   cyan: SLATE,
   violet: SLATE,
-  amber: SLATE,
+  amber: AMBER,
   rose: SLATE,
   emerald: SLATE,
   slate: SLATE
 }
 
 export function getNavAccentClasses(accent: NavAccent = 'slate'): NavAccentClasses {
-  void accent
-  return SLATE
+  return NAV_ACCENT_CLASSES[accent] ?? SLATE
 }

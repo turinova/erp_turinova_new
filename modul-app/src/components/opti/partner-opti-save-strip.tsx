@@ -8,6 +8,7 @@ import { FormField } from '@/components/patterns/form-field'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PARTNER_QUOTES_PATH } from '@/lib/auth/surface'
+import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { OptiPanelDraft } from '@/lib/opti/panel-draft'
 import type { QuoteResult } from '@/lib/opti/quote-calculations'
 import type { OptiSheetMaterialOption } from '@/lib/opti/queries'
@@ -50,6 +51,7 @@ export function PartnerOptiSaveStrip({
   onSaveSuccess?: () => void
 }) {
   const router = useRouter()
+  const href = usePartnerHref()
   const isEdit = Boolean(quoteId)
   const [projectName, setProjectName] = useState(
     () => initialProjectName ?? initialSessionProjectName ?? ''
@@ -88,7 +90,7 @@ export function PartnerOptiSaveStrip({
           : `Ajánlat mentve: ${result.quoteNumber} (még nem beküldve)`
       )
       onSaveSuccess?.()
-      router.push(`${PARTNER_QUOTES_PATH}/${result.id}`)
+      router.push(`${href(PARTNER_QUOTES_PATH)}/${result.id}`)
       router.refresh()
     })
   }

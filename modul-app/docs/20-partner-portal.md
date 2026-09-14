@@ -15,13 +15,16 @@ Legacy ötletforrás (nem kód): `customer-portal` — regisztráció, cégvála
 
 ## 2. Host / szerep
 
-| Host | Ki | Auth |
-|------|-----|------|
-| `app.optinova.hu` | Tenant staff | `tenant_memberships` + seat/session |
-| `optinova.hu` | Partner (asztalos) | `partner_profiles` — **nem** membership, **nem** seat |
+| Host | Ki | Auth | Publikus URL |
+|------|-----|------|----------------|
+| `app.optinova.hu` | Tenant staff | `tenant_memberships` + seat/session | `/login`, `/home`, … |
+| `optinova.hu` | Partner (asztalos) | `partner_profiles` — **nem** membership, **nem** seat | `/login`, `/home`, `/opti`, … (tiszta; belső rewrite → `/partner/*`) |
 
 Egy Vercel deploy, middleware host alapján.  
-**V1:** ugyanaz az email **nem** lehet staff + partner egyszerre.
+**V1:** ugyanaz az email **nem** lehet staff + partner egyszerre.  
+**Nincs átlinkelés** a két login között — rossz fióktípusnál csak szöveges hiba a helyes domainnel.
+
+Local: `partner.localhost` vagy `MODUL_AUTH_SURFACE=partner` → clean URL-ek; staff hoston a `/partner/*` path-mode megmarad fejlesztéshez.
 
 ---
 

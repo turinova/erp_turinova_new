@@ -11,6 +11,7 @@ import {
   type PartnerAuthState
 } from '@/lib/auth/partner-actions'
 import { PARTNER_REGISTER_PATH } from '@/lib/auth/surface'
+import { usePartnerHref } from '@/lib/auth/use-partner-href'
 
 const initialState: PartnerAuthState = {}
 
@@ -19,6 +20,7 @@ export function PartnerLoginForm() {
     partnerLoginAction,
     initialState
   )
+  const href = usePartnerHref()
 
   return (
     <form action={formAction} className="flex w-full flex-col gap-3.5">
@@ -54,16 +56,16 @@ export function PartnerLoginForm() {
       ) : null}
 
       <Button type="submit" loading={pending} className="w-full" size="md">
-        Belépés
+        Belépés az asztalos portálra
       </Button>
 
       <p className="text-center text-hint text-ink-secondary">
         Nincs fiókod?{' '}
         <Link
-          href={PARTNER_REGISTER_PATH}
+          href={href(PARTNER_REGISTER_PATH)}
           className="font-medium text-ink no-underline hover:underline"
         >
-          Regisztráció
+          Asztalos regisztráció
         </Link>
       </p>
     </form>

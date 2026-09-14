@@ -2,9 +2,10 @@ import type { Metadata } from 'next'
 
 import { PartnerAuthShell } from '@/components/partner/partner-auth-shell'
 import { PartnerLoginForm } from '@/components/partner/partner-login-form'
+import { PARTNER_HOST_LABEL, STAFF_HOST_LABEL } from '@/lib/auth/surface'
 
 export const metadata: Metadata = {
-  title: 'Belépés · Asztalos'
+  title: 'Asztalos belépés'
 }
 
 type SearchParams = Promise<{ reason?: string }>
@@ -19,8 +20,8 @@ export default async function PartnerLoginPage({
 
   return (
     <PartnerAuthShell
-      title="Belépés"
-      description="Asztalos fiók — nem a céges admin felület."
+      title="Asztalos belépés"
+      description={`Partner portál · ${PARTNER_HOST_LABEL}. Nem a céges ERP (${STAFF_HOST_LABEL}).`}
     >
       {accountDeleted ? (
         <p

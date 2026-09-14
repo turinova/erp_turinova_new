@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
+import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { partnerTenantIsAccepting } from '@/lib/partner/companies'
 import {
   billingNameOrFallback,
@@ -93,6 +94,8 @@ export async function updatePartnerProfileAction(
 
   revalidatePath('/partner/beallitasok')
   revalidatePath('/partner/home')
+  revalidatePath('/beallitasok')
+  revalidatePath('/home')
   return { ok: true, message: 'Profil mentve.' }
 }
 
@@ -144,6 +147,8 @@ export async function updatePartnerLinkedCompanyAction(
 
   revalidatePath('/partner/beallitasok')
   revalidatePath('/partner/home')
+  revalidatePath('/beallitasok')
+  revalidatePath('/home')
   return { ok: true, message: 'Kapcsolt cég mentve.' }
 }
 
@@ -284,5 +289,5 @@ export async function deletePartnerAccountAction(
   }
 
   await supabase.auth.signOut()
-  redirect(`${PARTNER_LOGIN_PATH}?reason=account_deleted`)
+  redirect(`${await partnerServerHref(PARTNER_LOGIN_PATH)}?reason=account_deleted`)
 }

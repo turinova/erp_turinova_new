@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 
 import { QuoteDetailClient } from '@/components/quotes/quote-detail-client'
+import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import {
   PARTNER_LOGIN_PATH,
@@ -22,7 +23,7 @@ export async function generateMetadata({
   params: Params
 }): Promise<Metadata> {
   const { id } = await params
-  return { title: `Ajánlat · ${id.slice(0, 8)} · Asztalos` }
+  return { title: `Ajánlatom · ${id.slice(0, 8)}` }
 }
 
 export default async function PartnerAjanlatDetailPage({
@@ -32,7 +33,7 @@ export default async function PartnerAjanlatDetailPage({
 }) {
   const { id } = await params
   const session = await getPartnerSession()
-  if (!session) redirect(PARTNER_LOGIN_PATH)
+  if (!session) redirect(await partnerServerHref(PARTNER_LOGIN_PATH))
 
   const supabase = await createClient()
   if (!supabase) notFound()
@@ -43,7 +44,7 @@ export default async function PartnerAjanlatDetailPage({
   if (!loaded) notFound()
 
   if (!isPartnerQuoteDraft(loaded.quote)) {
-    redirect(`${PARTNER_ORDERS_PATH}/${id}`)
+    redirect(await partnerServerHref(`${PARTNER_ORDERS_PATH}/${id}`))
   }
 
   const company = await getTenantCompany(supabase, loaded.tenantId).catch(

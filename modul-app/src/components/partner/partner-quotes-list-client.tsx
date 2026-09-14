@@ -22,6 +22,7 @@ import {
   PARTNER_ORDERS_PATH,
   PARTNER_QUOTES_PATH
 } from '@/lib/auth/surface'
+import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PartnerQuoteListItem } from '@/lib/partner/quotes-queries'
 import {
@@ -74,6 +75,7 @@ export function PartnerQuotesListClient({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const href = usePartnerHref()
   const [qDraft, setQDraft] = useState(initialQ)
 
   const isDrafts = mode === 'drafts'
@@ -98,8 +100,8 @@ export function PartnerQuotesListClient({
 
   function detailHref(row: PartnerQuoteListItem) {
     return isDrafts
-      ? `${PARTNER_QUOTES_PATH}/${row.id}`
-      : `${PARTNER_ORDERS_PATH}/${row.id}`
+      ? `${href(PARTNER_QUOTES_PATH)}/${row.id}`
+      : `${href(PARTNER_ORDERS_PATH)}/${row.id}`
   }
 
   const emptySearch = useMemo(
@@ -119,7 +121,7 @@ export function PartnerQuotesListClient({
         icon={isDrafts ? FileText : ClipboardList}
         actions={
           isDrafts ? (
-            <Button type="button" onClick={() => router.push(PARTNER_OPTI_PATH)}>
+            <Button type="button" onClick={() => router.push(href(PARTNER_OPTI_PATH))}>
               <ScanSearch className="size-3.5" aria-hidden />
               Új Optiban
             </Button>
@@ -166,7 +168,7 @@ export function PartnerQuotesListClient({
             <Button
               type="button"
               className="mt-3"
-              onClick={() => router.push(PARTNER_OPTI_PATH)}
+              onClick={() => router.push(href(PARTNER_OPTI_PATH))}
             >
               Opti megnyitása
             </Button>
@@ -175,7 +177,7 @@ export function PartnerQuotesListClient({
               type="button"
               variant="secondary"
               className="mt-3"
-              onClick={() => router.push(PARTNER_QUOTES_PATH)}
+              onClick={() => router.push(href(PARTNER_QUOTES_PATH))}
             >
               Ajánlatok
             </Button>

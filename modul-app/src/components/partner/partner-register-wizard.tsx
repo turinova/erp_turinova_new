@@ -12,6 +12,7 @@ import {
   type PartnerAuthState
 } from '@/lib/auth/partner-actions'
 import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
+import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { PartnerCompanyOption } from '@/lib/partner/companies'
 import {
   formatCompanyRegNumber,
@@ -77,6 +78,7 @@ const STEP_META: Record<Step, { title: string; description: string }> = {
 }
 
 export function PartnerRegisterWizard() {
+  const href = usePartnerHref()
   const [step, setStep] = useState<Step>(1)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [localErrors, setLocalErrors] = useState<PartnerProfileFieldErrors>({})
@@ -541,7 +543,7 @@ export function PartnerRegisterWizard() {
             >
               {state.success}{' '}
               <Link
-                href={PARTNER_LOGIN_PATH}
+                href={href(PARTNER_LOGIN_PATH)}
                 className="font-medium text-ink underline"
               >
                 Belépés
@@ -574,7 +576,7 @@ export function PartnerRegisterWizard() {
       <p className="text-center text-hint text-ink-secondary">
         Van már fiókod?{' '}
         <Link
-          href={PARTNER_LOGIN_PATH}
+          href={href(PARTNER_LOGIN_PATH)}
           className="font-medium text-ink no-underline hover:underline"
         >
           Belépés

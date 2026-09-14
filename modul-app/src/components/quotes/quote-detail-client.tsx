@@ -45,6 +45,7 @@ import {
   PARTNER_ORDERS_PATH,
   PARTNER_QUOTES_PATH
 } from '@/lib/auth/surface'
+import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { TenantCompanyRow } from '@/lib/company/queries'
 import {
   formatQuotePrice
@@ -127,18 +128,19 @@ export function QuoteDetailClient({
   surface = 'staff'
 }: QuoteDetailClientProps) {
   const router = useRouter()
+  const partnerHref = usePartnerHref()
   const isPartner = surface === 'partner'
   const isPartnerDraft =
     isPartner && quote.source === 'portal' && quote.portal_submitted_at == null
   const isPartnerSubmitted =
     isPartner && quote.source === 'portal' && quote.portal_submitted_at != null
   const listHref = isPartner
-    ? isPartnerSubmitted
-      ? PARTNER_ORDERS_PATH
-      : PARTNER_QUOTES_PATH
+    ? partnerHref(
+        isPartnerSubmitted ? PARTNER_ORDERS_PATH : PARTNER_QUOTES_PATH
+      )
     : '/ajanlatok'
   const optiHref = isPartner
-    ? `${PARTNER_OPTI_PATH}?quote_id=${quote.id}`
+    ? `${partnerHref(PARTNER_OPTI_PATH)}?quote_id=${quote.id}`
     : `/opti?quote_id=${quote.id}`
 
   const [commentOpen, setCommentOpen] = useState(false)
@@ -423,7 +425,7 @@ export function QuoteDetailClient({
       }
       toast.success(`Beküldve: ${result.quoteNumber}`)
       setSubmitOpen(false)
-      router.push(`${PARTNER_ORDERS_PATH}/${quote.id}`)
+      router.push(`${partnerHref(PARTNER_ORDERS_PATH)}/${quote.id}`)
       router.refresh()
     })
   }
@@ -437,7 +439,7 @@ export function QuoteDetailClient({
       }
       toast.success('Ajánlat törölve.')
       setDeleteOpen(false)
-      router.push(PARTNER_QUOTES_PATH)
+      router.push(partnerHref(PARTNER_QUOTES_PATH))
       router.refresh()
     })
   }
@@ -477,6 +479,15 @@ export function QuoteDetailClient({
 
   return (
     <div className="space-y-4">
+      {isPartner ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-hint text-amber-950">
+          <span className="font-semibold">Asztalos portál</span>
+          {' · '}
+          {isPartnerDraft
+            ? 'Piszkozat — beküldésig csak te látod.'
+            : 'Beküldött rendelés a kapcsolt cégnél (olvasás).'}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Link
           href={listHref}
@@ -484,7 +495,13 @@ export function QuoteDetailClient({
         >
           ← Lista
         </Link>
-        <h1 className="text-h1 text-ink">Árajánlat: {quote.quote_number}</h1>
+        <h1 className="text-h1 text-ink">
+          {isPartner
+            ? isPartnerDraft
+              ? `Ajánlatom: ${quote.quote_number}`
+              : `Rendelésem: ${quote.order_number ?? quote.quote_number}`
+            : `Árajánlat: ${quote.quote_number}`}
+        </h1>
         <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
         {!isPartner &&
         quote.source === 'portal' &&

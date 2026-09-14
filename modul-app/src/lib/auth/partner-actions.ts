@@ -7,6 +7,7 @@ import {
   userHasPartnerProfile,
   userHasTenantMembership
 } from '@/lib/auth/partner-session'
+import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { PARTNER_HOME_PATH, PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
 import { partnerTenantIsAccepting } from '@/lib/partner/companies'
 import {
@@ -74,7 +75,7 @@ export async function partnerLoginAction(
     await supabase.auth.signOut()
     return {
       error:
-        'Ez a fiók céges (staff) hozzáférés. Lépj be az app.optinova.hu /login felületen.'
+        'Ez a fiók céges (staff) hozzáférés. Lépj be az app.optinova.hu címen (céges belépés).'
     }
   }
 
@@ -82,11 +83,11 @@ export async function partnerLoginAction(
     await supabase.auth.signOut()
     return {
       error:
-        'Nincs partner profil ehhez a fiókhoz. Regisztrálj asztalosként, vagy használd a céges belépést.'
+        'Nincs partner profil ehhez a fiókhoz. Regisztrálj asztalosként az optinova.hu-n.'
     }
   }
 
-  redirect(PARTNER_HOME_PATH)
+  redirect(await partnerServerHref(PARTNER_HOME_PATH))
 }
 
 type ProfileInsert = {
@@ -290,7 +291,7 @@ export async function partnerRegisterAction(
     }
   }
 
-  redirect(PARTNER_HOME_PATH)
+  redirect(await partnerServerHref(PARTNER_HOME_PATH))
 }
 
 export async function partnerLogoutAction() {
@@ -298,5 +299,5 @@ export async function partnerLogoutAction() {
   if (supabase) {
     await supabase.auth.signOut()
   }
-  redirect(PARTNER_LOGIN_PATH)
+  redirect(await partnerServerHref(PARTNER_LOGIN_PATH))
 }

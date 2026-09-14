@@ -14,32 +14,47 @@ import {
   PARTNER_ORDERS_PATH,
   PARTNER_QUOTES_PATH,
   PARTNER_SEARCH_PATH,
-  PARTNER_SETTINGS_PATH
+  PARTNER_SETTINGS_PATH,
+  partnerHref,
+  type partnerHrefModeFromPathname
 } from '@/lib/auth/surface'
 
 export type PartnerNavItem = {
+  /** Clean path (/home, /ajanlatok, …) */
   href: string
   label: string
   icon: LucideIcon
-  /** true = megjelenik, de még nem használható */
   comingSoon?: boolean
 }
 
 export const partnerNavItems: PartnerNavItem[] = [
   { href: PARTNER_HOME_PATH, label: 'Kezdőlap', icon: Home },
-  { href: PARTNER_SEARCH_PATH, label: 'Kereső', icon: Search },
-  { href: PARTNER_OPTI_PATH, label: 'Opti', icon: ScanSearch },
-  { href: PARTNER_QUOTES_PATH, label: 'Ajánlatok', icon: FileText },
+  { href: PARTNER_SEARCH_PATH, label: 'Anyagkereső', icon: Search },
+  { href: PARTNER_OPTI_PATH, label: 'Opti rendelés', icon: ScanSearch },
+  { href: PARTNER_QUOTES_PATH, label: 'Ajánlataim', icon: FileText },
   {
     href: PARTNER_ORDERS_PATH,
-    label: 'Megrendelések',
+    label: 'Beküldött rendeléseim',
     icon: ClipboardList
   },
   { href: PARTNER_SETTINGS_PATH, label: 'Beállítások', icon: Settings }
 ]
 
-export function partnerPathIsActive(pathname: string, href: string): boolean {
-  if (pathname === href) return true
-  if (href !== PARTNER_HOME_PATH && pathname.startsWith(`${href}/`)) return true
+export function partnerPathIsActive(
+  pathname: string,
+  cleanHref: string,
+  mode: ReturnType<typeof partnerHrefModeFromPathname>
+): boolean {
+  const href = partnerHref(cleanHref, mode)
+  if (pathname === href || pathname === cleanHref) return true
+  if (
+    cleanHref !== PARTNER_HOME_PATH &&
+    (pathname.startsWith(`${href}/`) || pathname.startsWith(`${cleanHref}/`))
+  ) {
+    return true
+  }
+  // Prefixed path while comparing clean (after rewrite browser may show clean)
+  const prefixed = partnerHref(cleanHref, 'prefixed')
+  if (pathname === prefixed || pathname.startsWith(`${prefixed}/`)) return true
   return false
 }
