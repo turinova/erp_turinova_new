@@ -18,6 +18,8 @@ export type SearchAccessoriesParams = {
   q: string
   page?: number
   limit?: number
+  /** Ha megadott: nincs külön manufacturers query. */
+  manufacturerIds?: string[]
 }
 
 export type SearchAccessoriesResult = {
@@ -46,15 +48,18 @@ export async function searchAccessories(
     return { rows: [], total: 0, page, limit }
   }
 
-  const { data: manufacturerMatches } = await supabase
-    .from('manufacturers')
-    .select('id')
-    .eq('tenant_id', params.tenantId)
-    .is('deleted_at', null)
-    .ilike('name', `%${safe}%`)
-    .limit(50)
+  let manufacturerIds = params.manufacturerIds
+  if (manufacturerIds === undefined) {
+    const { data: manufacturerMatches } = await supabase
+      .from('manufacturers')
+      .select('id')
+      .eq('tenant_id', params.tenantId)
+      .is('deleted_at', null)
+      .ilike('name', `%${safe}%`)
+      .limit(50)
+    manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
+  }
 
-  const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
   const orParts = [
     `name.ilike.%${safe}%`,
     `sku.ilike.%${safe}%`,
@@ -77,7 +82,7 @@ export async function searchAccessories(
       tax_rates ( rate_percent ),
       units ( shortform )
     `,
-      { count: 'exact' }
+      { count: 'estimated' }
     )
     .eq('tenant_id', params.tenantId)
     .eq('active', true)
@@ -124,5 +129,5 @@ export async function searchAccessories(
     }
   })
 
-  return { rows, total: count ?? 0, page, limit }
+  return { rows, total: count ?? rows.length, page, limit }
 }

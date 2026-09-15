@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import {
   setTenantAddon,
   setTenantFeatureOverrides,
@@ -123,19 +123,18 @@ export function TenantEntitlementsPanel({
           >
             Plan
           </label>
-          <Select
+          <MenuSelect
             id="tenant-plan"
             value={planId}
-            onChange={(e) => setPlanId(e.target.value)}
             disabled={pending}
-          >
-            {plans.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-                {p.is_default ? ' (default)' : ''}
-              </option>
-            ))}
-          </Select>
+            allowEmpty={false}
+            placeholder="Válassz…"
+            options={plans.map((p) => ({
+              value: p.id,
+              label: p.is_default ? `${p.name} (default)` : p.name
+            }))}
+            onChange={setPlanId}
+          />
         </div>
         <Button
           type="button"

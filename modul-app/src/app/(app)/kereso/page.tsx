@@ -38,8 +38,9 @@ export default async function KeresoPage({
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
-      try {
-        if (q) {
+      // Deep-link seed only — gépelés közben /api/kereso
+      if (q) {
+        try {
           const result = await searchMaterialsUnified(supabase, {
             tenantId: user.tenantId,
             q,
@@ -50,12 +51,12 @@ export default async function KeresoPage({
           rows = result.rows
           total = result.total
           limit = result.limit
+        } catch (err) {
+          loadError =
+            err instanceof Error
+              ? err.message
+              : 'Nem sikerült betölteni a keresést.'
         }
-      } catch (err) {
-        loadError =
-          err instanceof Error
-            ? err.message
-            : 'Nem sikerült betölteni a keresést.'
       }
     } else {
       loadError = 'Az adatbázis kapcsolat nem elérhető.'
@@ -86,10 +87,10 @@ export default async function KeresoPage({
   return (
     <Suspense fallback={null}>
       <KeresoClient
-        rows={rows}
-        total={total}
-        page={page}
-        limit={limit}
+        initialRows={rows}
+        initialTotal={total}
+        initialPage={page}
+        initialLimit={limit}
         initialQ={q}
         initialKind={kind}
       />

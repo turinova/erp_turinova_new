@@ -221,6 +221,8 @@ export async function updateSession(request: NextRequest) {
     const isPartnerSharedApi =
       pathname === '/api/optimize' ||
       pathname.startsWith('/api/optimize/') ||
+      pathname === '/api/kereso' ||
+      pathname.startsWith('/api/kereso/') ||
       /^\/api\/ajanlatok\/[^/]+\/pdf$/.test(pathname)
 
     if (user) {

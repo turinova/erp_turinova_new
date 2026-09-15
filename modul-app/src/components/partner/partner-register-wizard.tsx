@@ -6,7 +6,7 @@ import { useActionState, useEffect, useMemo, useState } from 'react'
 import { FormField } from '@/components/patterns/form-field'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import {
   partnerRegisterAction,
   type PartnerAuthState
@@ -479,6 +479,12 @@ export function PartnerRegisterWizard() {
             value={draft.billing_company_reg_number}
           />
 
+          <input
+            type="hidden"
+            name="selected_tenant_id"
+            value={draft.selected_tenant_id}
+          />
+
           <FormField
             label="Kapcsolt cég"
             htmlFor="selected_tenant_id"
@@ -490,28 +496,25 @@ export function PartnerRegisterWizard() {
             }
             error={mergedErrors.selected_tenant_id}
           >
-            <Select
+            <MenuSelect
               id="selected_tenant_id"
-              name="selected_tenant_id"
               value={draft.selected_tenant_id}
-              onChange={(e) => patch('selected_tenant_id', e.target.value)}
-              required
               disabled={companiesLoading || companies.length === 0}
-            >
-              <option value="">
-                {companiesLoading
+              allowEmpty={false}
+              placeholder={
+                companiesLoading
                   ? 'Betöltés…'
                   : companies.length === 0
                     ? 'Nincs választható cég'
-                    : 'Válassz céget…'}
-              </option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.city ? ` · ${c.city}` : ''}
-                </option>
-              ))}
-            </Select>
+                    : 'Válassz céget…'
+              }
+              options={companies.map((c) => ({
+                value: c.id,
+                label: c.name,
+                hint: c.city || undefined
+              }))}
+              onChange={(v) => patch('selected_tenant_id', v)}
+            />
           </FormField>
 
           {companiesError ? (

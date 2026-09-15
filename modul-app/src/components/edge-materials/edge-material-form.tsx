@@ -10,7 +10,7 @@ import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
 import {
   createEdgeMaterial,
@@ -258,21 +258,18 @@ export function EdgeMaterialForm({
             error={fieldErrors.manufacturerId}
             className="xl:col-span-1"
           >
-            <Select
+            <MenuSelect
               id="edge-manufacturer"
               value={manufacturerId}
               disabled={!canWrite}
-              onChange={(e) => setManufacturerId(e.target.value)}
-            >
-              <option value="" disabled>
-                Válassz…
-              </option>
-              {manufacturers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </Select>
+              allowEmpty={false}
+              placeholder="Válassz…"
+              options={manufacturers.map((m) => ({
+                value: m.id,
+                label: m.name
+              }))}
+              onChange={setManufacturerId}
+            />
           </FormField>
 
           <FormField
@@ -383,21 +380,18 @@ export function EdgeMaterialForm({
             required
             error={fieldErrors.taxRateId}
           >
-            <Select
+            <MenuSelect
               id="edge-tax"
               value={taxRateId}
               disabled={!canWrite}
-              onChange={(e) => setTaxRateId(e.target.value)}
-            >
-              <option value="" disabled>
-                Válassz…
-              </option>
-              {taxRates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({formatHuNumber(t.rate_percent)}%)
-                </option>
-              ))}
-            </Select>
+              allowEmpty={false}
+              placeholder="Válassz…"
+              options={taxRates.map((t) => ({
+                value: t.id,
+                label: `${t.name} (${formatHuNumber(t.rate_percent)}%)`
+              }))}
+              onChange={setTaxRateId}
+            />
           </FormField>
 
           <FormField
@@ -465,12 +459,18 @@ export function EdgeMaterialForm({
             error={fieldErrors.equipmentId}
             className="lg:col-span-2"
           >
-            <Select
+            <MenuSelect
               id="edge-equipment"
               value={equipmentId}
               disabled={!canWrite}
-              onChange={(e) => {
-                setEquipmentId(e.target.value)
+              allowEmpty={false}
+              placeholder="Válassz…"
+              options={equipment.map((eq) => ({
+                value: eq.id,
+                label: eq.name
+              }))}
+              onChange={(v) => {
+                setEquipmentId(v)
                 if (fieldErrors.equipmentId) {
                   setFieldErrors((prev) => {
                     const next = { ...prev }
@@ -479,16 +479,7 @@ export function EdgeMaterialForm({
                   })
                 }
               }}
-            >
-              <option value="" disabled>
-                Válassz…
-              </option>
-              {equipment.map((eq) => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.name}
-                </option>
-              ))}
-            </Select>
+            />
           </FormField>
 
           <FormField

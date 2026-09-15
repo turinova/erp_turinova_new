@@ -26,7 +26,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
 import type { FeeTypeListItem } from '@/lib/fee-types/queries'
 import {
@@ -281,15 +281,17 @@ export function QuoteFeesBlock({
 
           <div className="space-y-3">
             <FormField label="Sor típusa" htmlFor="quote-fee-kind" required>
-              <Select
+              <MenuSelect
                 id="quote-fee-kind"
                 value={kind}
                 disabled={pending}
-                onChange={(e) => setKind(e.target.value as QuoteFeeKind)}
-              >
-                <option value="fee">Díj</option>
-                <option value="credit">Jóváírás</option>
-              </Select>
+                allowEmpty={false}
+                options={[
+                  { value: 'fee', label: 'Díj' },
+                  { value: 'credit', label: 'Jóváírás' }
+                ]}
+                onChange={(v) => setKind(v as QuoteFeeKind)}
+              />
             </FormField>
 
             <FormField
@@ -298,21 +300,19 @@ export function QuoteFeesBlock({
               required
               error={fieldErrors.feeTypeId}
             >
-              <Select
+              <MenuSelect
                 id="quote-fee-type"
                 value={feeTypeId}
                 disabled={pending}
-                onChange={(e) => handleFeeTypeChange(e.target.value)}
-              >
-                <option value="" disabled>
-                  Válassz…
-                </option>
-                {feeTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} — {formatMoneyFt(t.price_gross)}/{t.unit_shortform}
-                  </option>
-                ))}
-              </Select>
+                allowEmpty={false}
+                placeholder="Válassz…"
+                options={feeTypes.map((t) => ({
+                  value: t.id,
+                  label: t.name,
+                  hint: `${formatMoneyFt(t.price_gross)}/${t.unit_shortform}`
+                }))}
+                onChange={handleFeeTypeChange}
+              />
             </FormField>
 
             <div className="grid grid-cols-2 gap-3">

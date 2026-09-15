@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import {
   setPartnerStatus,
   setPartnerTenant,
@@ -236,20 +236,18 @@ export function PartnerDetailClient({ detail, companies }: Props) {
               >
                 Cég (support)
               </label>
-              <Select
+              <MenuSelect
                 id="partner-tenant"
                 value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
                 disabled={pending || isDisabled}
-              >
-                <option value="">Válassz…</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.city ? ` · ${c.city}` : ''}
-                  </option>
-                ))}
-              </Select>
+                emptyLabel="Válassz…"
+                options={companies.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                  hint: c.city || undefined
+                }))}
+                onChange={setTenantId}
+              />
             </div>
             <Button
               type="button"

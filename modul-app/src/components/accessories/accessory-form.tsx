@@ -10,7 +10,7 @@ import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
 import {
   createAccessory,
@@ -234,21 +234,18 @@ export function AccessoryForm({
             required
             error={fieldErrors.manufacturerId}
           >
-            <Select
+            <MenuSelect
               id="accessory-manufacturer"
               value={manufacturerId}
               disabled={pending || !canWrite}
-              onChange={(e) => setManufacturerId(e.target.value)}
-            >
-              <option value="" disabled>
-                Válassz…
-              </option>
-              {manufacturers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </Select>
+              allowEmpty={false}
+              placeholder="Válassz…"
+              options={manufacturers.map((m) => ({
+                value: m.id,
+                label: m.name
+              }))}
+              onChange={setManufacturerId}
+            />
           </FormField>
 
           <FormField
@@ -311,21 +308,18 @@ export function AccessoryForm({
             required
             error={fieldErrors.unitId}
           >
-            <Select
+            <MenuSelect
               id="accessory-unit"
               value={unitId}
               disabled={pending || !canWrite}
-              onChange={(e) => setUnitId(e.target.value)}
-            >
-              <option value="" disabled>
-                Válassz…
-              </option>
-              {units.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.shortform})
-                </option>
-              ))}
-            </Select>
+              allowEmpty={false}
+              placeholder="Válassz…"
+              options={units.map((u) => ({
+                value: u.id,
+                label: `${u.name} (${u.shortform})`
+              }))}
+              onChange={setUnitId}
+            />
           </FormField>
 
           <FormField
@@ -356,21 +350,18 @@ export function AccessoryForm({
             required
             error={fieldErrors.taxRateId}
           >
-            <Select
+            <MenuSelect
               id="accessory-tax"
               value={taxRateId}
               disabled={pending || !canWrite}
-              onChange={(e) => setTaxRateId(e.target.value)}
-            >
-              <option value="" disabled>
-                Válassz…
-              </option>
-              {taxRates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({formatHuNumber(t.rate_percent)}%)
-                </option>
-              ))}
-            </Select>
+              allowEmpty={false}
+              placeholder="Válassz…"
+              options={taxRates.map((t) => ({
+                value: t.id,
+                label: `${t.name} (${formatHuNumber(t.rate_percent)}%)`
+              }))}
+              onChange={setTaxRateId}
+            />
           </FormField>
 
           <FormField label="Nettó" htmlFor="accessory-net" hint="Számított">

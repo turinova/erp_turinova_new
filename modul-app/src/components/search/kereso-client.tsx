@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { Search } from 'lucide-react'
 
 import {
@@ -28,11 +28,12 @@ import { cn } from '@/lib/utils'
 type KindFilter = UnifiedSearchKind | 'all'
 
 type KeresoClientProps = {
-  rows: UnifiedMaterialSearchItem[]
-  total: number
-  page: number
-  limit: number
-  initialQ: string
+  /** Opcionális SSR seed deep-linkhez; gépelés után az API veszi át. */
+  initialRows?: UnifiedMaterialSearchItem[]
+  initialTotal?: number
+  initialPage?: number
+  initialLimit?: number
+  initialQ?: string
   initialKind?: KindFilter
   /** Staff default; partnernél null = nincs törzsadat detail. */
   sheetDetailBase?: string | null
@@ -52,6 +53,8 @@ const KIND_CHIPS: { value: KindFilter; label: string }[] = [
   { value: 'accessory', label: 'Termék' }
 ]
 
+const DEBOUNCE_MS = 250
+
 function badgeTone(
   kind: UnifiedMaterialSearchItem['kind']
 ): 'info' | 'neutral' | 'success' {
@@ -60,12 +63,20 @@ function badgeTone(
   return 'neutral'
 }
 
+type SearchApiResponse = {
+  rows: UnifiedMaterialSearchItem[]
+  total: number
+  page: number
+  limit: number
+  error?: string
+}
+
 export function KeresoClient({
-  rows,
-  total,
-  page,
-  limit,
-  initialQ,
+  initialRows = [],
+  initialTotal = 0,
+  initialPage = 1,
+  initialLimit = 25,
+  initialQ = '',
   initialKind = 'all',
   sheetDetailBase = DEFAULT_SHEET_DETAIL,
   linearDetailBase = DEFAULT_LINEAR_DETAIL,
@@ -76,51 +87,133 @@ export function KeresoClient({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const inputRef = useRef<HTMLInputElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const requestIdRef = useRef(0)
+  const skipDebounceRef = useRef(true)
+  const kindRef = useRef<KindFilter>(initialKind)
+  const [, startUrlTransition] = useTransition()
+
   const [qDraft, setQDraft] = useState(initialQ)
+  const [activeQ, setActiveQ] = useState(initialQ.trim())
+  const [kind, setKind] = useState<KindFilter>(initialKind)
+  const [page, setPage] = useState(initialPage)
+  const [limit] = useState(initialLimit)
+  const [rows, setRows] = useState(initialRows)
+  const [total, setTotal] = useState(initialTotal)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  kindRef.current = kind
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
   const to = Math.min(page * limit, total)
-  const hasQuery = Boolean(initialQ.trim())
+  const hasQuery = Boolean(activeQ)
 
-  useEffect(() => {
-    setQDraft(initialQ)
-  }, [initialQ])
+  const syncUrl = useCallback(
+    (nextQ: string, nextKind: KindFilter, nextPage: number) => {
+      startUrlTransition(() => {
+        const next = new URLSearchParams()
+        if (nextQ) next.set('q', nextQ)
+        if (nextKind !== 'all') next.set('kind', nextKind)
+        if (nextPage > 1) next.set('page', String(nextPage))
+        const qs = next.toString()
+        const href = qs ? `${pathname}?${qs}` : pathname
+        if (qs === searchParams.toString()) return
+        router.replace(href, { scroll: false })
+      })
+    },
+    [pathname, router, searchParams]
+  )
+
+  const runSearch = useCallback(
+    async (q: string, nextKind: KindFilter, nextPage: number) => {
+      const trimmed = q.trim()
+      setActiveQ(trimmed)
+      setKind(nextKind)
+      setPage(nextPage)
+      syncUrl(trimmed, nextKind, nextPage)
+
+      if (!trimmed) {
+        abortRef.current?.abort()
+        setRows([])
+        setTotal(0)
+        setLoading(false)
+        setError(null)
+        return
+      }
+
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
+      const requestId = ++requestIdRef.current
+      setLoading(true)
+      setError(null)
+
+      try {
+        const params = new URLSearchParams({
+          q: trimmed,
+          page: String(nextPage),
+          limit: String(limit)
+        })
+        if (nextKind !== 'all') params.set('kind', nextKind)
+
+        const res = await fetch(`/api/kereso?${params.toString()}`, {
+          signal: controller.signal,
+          cache: 'no-store'
+        })
+        const data = (await res.json()) as SearchApiResponse
+        if (requestId !== requestIdRef.current) return
+        if (!res.ok) {
+          setError(data.error || 'Nem sikerült a keresés.')
+          setRows([])
+          setTotal(0)
+          return
+        }
+        setRows(data.rows ?? [])
+        setTotal(data.total ?? 0)
+        setPage(data.page ?? nextPage)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (requestId !== requestIdRef.current) return
+        setError('Nem sikerült a keresés. Próbáld újra.')
+        setRows([])
+        setTotal(0)
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setLoading(false)
+        }
+      }
+    },
+    [limit, syncUrl]
+  )
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
 
   useEffect(() => {
-    const trimmed = qDraft.trim()
-    if (trimmed === initialQ.trim()) return
-
-    const timeoutId = window.setTimeout(() => {
-      const next = new URLSearchParams(searchParams.toString())
-      if (trimmed) next.set('q', trimmed)
-      else next.delete('q')
-      next.delete('page')
-      const qs = next.toString()
-      router.push(qs ? `${pathname}?${qs}` : pathname)
-    }, 300)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [qDraft, initialQ, pathname, router, searchParams])
-
-  function pushParams(patch: Record<string, string | null>) {
-    const next = new URLSearchParams(searchParams.toString())
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === null || value === '') next.delete(key)
-      else next.set(key, value)
+    if (skipDebounceRef.current) {
+      skipDebounceRef.current = false
+      return
     }
-    const qs = next.toString()
-    router.push(qs ? `${pathname}?${qs}` : pathname)
-  }
+    const timeoutId = window.setTimeout(() => {
+      void runSearch(qDraft.trim(), kindRef.current, 1)
+    }, DEBOUNCE_MS)
+    return () => window.clearTimeout(timeoutId)
+  }, [qDraft, runSearch])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const trimmed = qDraft.trim()
-    pushParams({ q: trimmed || null, page: null })
+    void runSearch(qDraft, kind, 1)
+  }
+
+  function handleKindChange(next: KindFilter) {
+    void runSearch(qDraft, next, 1)
+  }
+
+  function handlePageChange(nextPage: number) {
+    void runSearch(activeQ || qDraft, kind, nextPage)
   }
 
   function detailHref(row: UnifiedMaterialSearchItem): string | null {
@@ -160,7 +253,13 @@ export function KeresoClient({
           placeholder="Név, gyártó, SKU, vonalkód vagy gépkód…"
           className="pl-8"
           autoComplete="off"
+          aria-busy={loading}
         />
+        {loading ? (
+          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-secondary">
+            Keresés…
+          </span>
+        ) : null}
       </form>
 
       <div
@@ -169,17 +268,12 @@ export function KeresoClient({
         aria-label="Típus szűrő"
       >
         {KIND_CHIPS.map((chip) => {
-          const active = initialKind === chip.value
+          const active = kind === chip.value
           return (
             <button
               key={chip.value}
               type="button"
-              onClick={() =>
-                pushParams({
-                  kind: chip.value === 'all' ? null : chip.value,
-                  page: null
-                })
-              }
+              onClick={() => handleKindChange(chip.value)}
               className={cn(
                 'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
                 active
@@ -193,21 +287,34 @@ export function KeresoClient({
         })}
       </div>
 
+      {error ? (
+        <p
+          className="mb-3 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-body text-danger-ink"
+          role="alert"
+        >
+          {error}
+        </p>
+      ) : null}
+
       {!hasQuery ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
           Kezdj el gépelni — táblás, szálas anyagok és termékek között keres
           (név, gyártó, SKU, vonalkód, gépkód). Szűrővel szűkítheted a típust.
         </p>
+      ) : loading && rows.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
+          Keresés…
+        </p>
       ) : total === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
-          Nincs találat: „{initialQ}”
-          {initialKind !== 'all'
-            ? ` (${KIND_CHIPS.find((c) => c.value === initialKind)?.label ?? ''})`
+          Nincs találat: „{activeQ}”
+          {kind !== 'all'
+            ? ` (${KIND_CHIPS.find((c) => c.value === kind)?.label ?? ''})`
             : ''}
         </p>
       ) : (
         <>
-          <DataTable>
+          <DataTable className={cn(loading && 'opacity-70')}>
             <DataTableHead>
               <DataTableRow>
                 <DataTableHeaderCell>Gyártó</DataTableHeaderCell>
@@ -309,8 +416,8 @@ export function KeresoClient({
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={page <= 1}
-                onClick={() => pushParams({ page: String(page - 1) })}
+                disabled={page <= 1 || loading}
+                onClick={() => handlePageChange(page - 1)}
               >
                 Előző
               </Button>
@@ -321,8 +428,8 @@ export function KeresoClient({
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={page >= totalPages}
-                onClick={() => pushParams({ page: String(page + 1) })}
+                disabled={page >= totalPages || loading}
+                onClick={() => handlePageChange(page + 1)}
               >
                 Következő
               </Button>

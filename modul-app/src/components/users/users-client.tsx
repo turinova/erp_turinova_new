@@ -26,7 +26,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import {
   APP_PAGES,
   PAGE_ACCESS_TEMPLATES,
@@ -301,36 +301,35 @@ function CreateUserDialog({
             />
           </FormField>
           <FormField label="Szerep" htmlFor="new-user-role">
-            <Select
+            <MenuSelect
               id="new-user-role"
               value={role}
-              onChange={(e) =>
-                setRole(e.target.value as 'admin' | 'member' | 'viewer')
+              allowEmpty={false}
+              options={[
+                { value: 'admin', label: 'Adminisztrátor' },
+                { value: 'member', label: 'Tag' },
+                { value: 'viewer', label: 'Csak megtekintés' }
+              ]}
+              onChange={(v) =>
+                setRole(v as 'admin' | 'member' | 'viewer')
               }
-            >
-              <option value="admin">Adminisztrátor</option>
-              <option value="member">Tag</option>
-              <option value="viewer">Csak megtekintés</option>
-            </Select>
+            />
           </FormField>
           <FormField label="Oldaljog sablon" htmlFor="new-user-template">
-            <Select
+            <MenuSelect
               id="new-user-template"
               value={template}
-              onChange={(e) =>
-                setTemplate(e.target.value as PageAccessTemplateId)
-              }
-            >
-              {(
+              allowEmpty={false}
+              options={(
                 Object.entries(PAGE_ACCESS_TEMPLATES) as Array<
                   [PageAccessTemplateId, { label: string }]
                 >
-              ).map(([id, meta]) => (
-                <option key={id} value={id}>
-                  {meta.label}
-                </option>
-              ))}
-            </Select>
+              ).map(([id, meta]) => ({
+                value: id,
+                label: meta.label
+              }))}
+              onChange={(v) => setTemplate(v as PageAccessTemplateId)}
+            />
           </FormField>
           {error ? (
             <p className="text-body text-danger-ink" role="alert">
@@ -480,18 +479,18 @@ function PermissionsDialog({
 
         {user.role !== 'owner' ? (
           <FormField label="Szerep" htmlFor="perm-role">
-            <Select
+            <MenuSelect
               id="perm-role"
               value={role === 'owner' ? 'admin' : role}
-              onChange={(e) =>
-                setRole(e.target.value as TenantRole)
-              }
               disabled={loading || fetching}
-            >
-              <option value="admin">Adminisztrátor</option>
-              <option value="member">Tag</option>
-              <option value="viewer">Csak megtekintés</option>
-            </Select>
+              allowEmpty={false}
+              options={[
+                { value: 'admin', label: 'Adminisztrátor' },
+                { value: 'member', label: 'Tag' },
+                { value: 'viewer', label: 'Csak megtekintés' }
+              ]}
+              onChange={(v) => setRole(v as TenantRole)}
+            />
           </FormField>
         ) : (
           <p className="text-hint text-ink-secondary">

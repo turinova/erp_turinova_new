@@ -26,6 +26,8 @@ export type SearchSheetMaterialsParams = {
   q: string
   page?: number
   limit?: number
+  /** Ha megadott: nincs külön manufacturers query. */
+  manufacturerIds?: string[]
 }
 
 export type SearchSheetMaterialsResult = {
@@ -70,19 +72,19 @@ export async function searchSheetMaterials(
     return { rows: [], total: 0, page, limit }
   }
 
-  const { data: manufacturerMatches } = await supabase
-    .from('manufacturers')
-    .select('id')
-    .eq('tenant_id', params.tenantId)
-    .is('deleted_at', null)
-    .ilike('name', `%${safe}%`)
-    .limit(50)
+  let manufacturerIds = params.manufacturerIds
+  if (manufacturerIds === undefined) {
+    const { data: manufacturerMatches } = await supabase
+      .from('manufacturers')
+      .select('id')
+      .eq('tenant_id', params.tenantId)
+      .is('deleted_at', null)
+      .ilike('name', `%${safe}%`)
+      .limit(50)
+    manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
+  }
 
-  const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
-  const orParts = [
-    `name.ilike.%${safe}%`,
-    `machine_code.ilike.%${safe}%`
-  ]
+  const orParts = [`name.ilike.%${safe}%`, `machine_code.ilike.%${safe}%`]
   if (manufacturerIds.length > 0) {
     orParts.push(`manufacturer_id.in.(${manufacturerIds.join(',')})`)
   }
@@ -101,7 +103,7 @@ export async function searchSheetMaterials(
       manufacturers ( name ),
       tax_rates ( rate_percent )
     `,
-      { count: 'exact' }
+      { count: 'estimated' }
     )
     .eq('tenant_id', params.tenantId)
     .eq('active', true)
@@ -152,5 +154,5 @@ export async function searchSheetMaterials(
     }
   })
 
-  return { rows, total: count ?? 0, page, limit }
+  return { rows, total: count ?? rows.length, page, limit }
 }

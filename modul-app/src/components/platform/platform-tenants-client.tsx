@@ -16,7 +16,7 @@ import {
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import {
   TENANT_STATUS_LABEL,
   tenantStatusTone
@@ -117,22 +117,21 @@ export function PlatformTenantsClient({
           >
             Státusz
           </label>
-          <Select
+          <MenuSelect
             id="platform-tenant-status"
             value={initialStatus}
-            onChange={(e) =>
+            allowEmpty={false}
+            options={STATUS_OPTIONS.map((s) => ({
+              value: s,
+              label: s === 'all' ? 'Összes' : TENANT_STATUS_LABEL[s]
+            }))}
+            onChange={(v) =>
               pushParams({
-                status: e.target.value === 'all' ? null : e.target.value,
+                status: v === 'all' ? null : v,
                 page: null
               })
             }
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s === 'all' ? 'Összes' : TENANT_STATUS_LABEL[s]}
-              </option>
-            ))}
-          </Select>
+          />
         </div>
       </div>
 

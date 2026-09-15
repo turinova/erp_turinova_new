@@ -25,7 +25,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
 import type { AccessoryListItem } from '@/lib/accessories/queries'
 import {
@@ -264,22 +264,19 @@ export function QuoteAccessoriesBlock({
               required
               error={fieldErrors.accessoryId}
             >
-              <Select
+              <MenuSelect
                 id="quote-accessory"
                 value={accessoryId}
                 disabled={pending}
-                onChange={(e) => handleAccessoryChange(e.target.value)}
-              >
-                <option value="" disabled>
-                  Válassz…
-                </option>
-                {accessoryOptions.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.sku}) — {formatMoneyFt(t.price_gross)}/
-                    {t.unit_shortform}
-                  </option>
-                ))}
-              </Select>
+                allowEmpty={false}
+                placeholder="Válassz…"
+                options={accessoryOptions.map((t) => ({
+                  value: t.id,
+                  label: t.name,
+                  hint: `${t.sku} · ${formatMoneyFt(t.price_gross)}/${t.unit_shortform}`
+                }))}
+                onChange={handleAccessoryChange}
+              />
             </FormField>
 
             <div className="grid grid-cols-2 gap-3">

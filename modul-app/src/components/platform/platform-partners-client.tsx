@@ -16,7 +16,7 @@ import {
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import type { PlatformPartnerListItem } from '@/lib/platform/partner-queries'
 
 type LinkFilter = 'all' | 'linked' | 'unlinked'
@@ -103,21 +103,27 @@ export function PlatformPartnersClient({
             className="pl-8"
           />
         </form>
-        <Select
-          value={initialLink}
-          onChange={(e) =>
-            pushParams({
-              link: e.target.value === 'all' ? null : e.target.value,
-              page: null
-            })
-          }
-          aria-label="Kapcsolat szűrő"
-          className="w-full sm:w-44"
-        >
-          <option value="all">Összes</option>
-          <option value="linked">Kapcsolt céggel</option>
-          <option value="unlinked">Cég nélkül</option>
-        </Select>
+        <div className="w-full sm:w-44">
+          <label className="sr-only" htmlFor="platform-partner-link-filter">
+            Kapcsolat szűrő
+          </label>
+          <MenuSelect
+            id="platform-partner-link-filter"
+            value={initialLink}
+            allowEmpty={false}
+            options={[
+              { value: 'all', label: 'Összes' },
+              { value: 'linked', label: 'Kapcsolt céggel' },
+              { value: 'unlinked', label: 'Cég nélkül' }
+            ]}
+            onChange={(v) =>
+              pushParams({
+                link: v === 'all' ? null : v,
+                page: null
+              })
+            }
+          />
+        </div>
       </div>
 
       {total === 0 ? (

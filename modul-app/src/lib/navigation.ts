@@ -12,6 +12,7 @@ import {
   Layers,
   Percent,
   Ruler,
+  ScanBarcode,
   ScanSearch,
   Search,
   Settings,
@@ -89,6 +90,13 @@ export const mainNavItems: NavNode[] = [
     label: 'Megrendelések',
     href: '/megrendelesek',
     icon: ClipboardList,
+    accent: 'slate'
+  },
+  {
+    type: 'link',
+    label: 'Scanner',
+    href: '/scanner',
+    icon: ScanBarcode,
     accent: 'slate'
   },
   {

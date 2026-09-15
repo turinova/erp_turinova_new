@@ -15,7 +15,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
@@ -187,18 +187,18 @@ export function AddPaymentDialog({
                 .
               </p>
             ) : (
-              <Select
+              <MenuSelect
                 id="add-payment-method"
                 value={paymentMethodId}
-                onChange={(e) => setPaymentMethodId(e.target.value)}
                 disabled={loading}
-              >
-                {paymentMethods.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </Select>
+                allowEmpty={false}
+                placeholder="Válassz fizetési módot…"
+                options={paymentMethods.map((m) => ({
+                  value: m.id,
+                  label: m.name
+                }))}
+                onChange={setPaymentMethodId}
+              />
             )}
           </FormField>
 

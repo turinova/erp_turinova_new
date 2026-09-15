@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Input } from '@/components/ui/input'
 import {
   refreshTenantOnboardingFlags,
@@ -467,20 +467,19 @@ export function TenantDetailClient({
                 >
                   Státusz
                 </label>
-                <Select
+                <MenuSelect
                   id="tenant-status"
                   value={status}
-                  onChange={(e) => setStatus(e.target.value as TenantStatus)}
                   disabled={pending}
-                >
-                  {(
+                  allowEmpty={false}
+                  options={(
                     Object.keys(TENANT_STATUS_LABEL) as TenantStatus[]
-                  ).map((key) => (
-                    <option key={key} value={key}>
-                      {TENANT_STATUS_LABEL[key]}
-                    </option>
-                  ))}
-                </Select>
+                  ).map((key) => ({
+                    value: key,
+                    label: TENANT_STATUS_LABEL[key]
+                  }))}
+                  onChange={(v) => setStatus(v as TenantStatus)}
+                />
               </div>
               <Button
                 type="button"
@@ -738,18 +737,17 @@ export function TenantDetailClient({
               >
                 Billing státusz
               </label>
-              <Select
+              <MenuSelect
                 id="billing-status"
                 value={billingStatus}
-                onChange={(e) => setBillingStatus(e.target.value)}
                 disabled={pending}
-              >
-                {Object.entries(BILLING_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
+                allowEmpty={false}
+                options={Object.entries(BILLING_LABELS).map(([k, label]) => ({
+                  value: k,
+                  label
+                }))}
+                onChange={setBillingStatus}
+              />
             </div>
             <div>
               <label

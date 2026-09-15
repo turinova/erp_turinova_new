@@ -20,7 +20,7 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import {
@@ -203,23 +203,21 @@ export function OrdersListClient({
             >
               Gyártógép
             </label>
-            <Select
+            <MenuSelect
               id="order-machine-filter"
               value={initialMachineId}
-              onChange={(e) =>
+              emptyLabel="Összes gép"
+              options={machines.map((m) => ({
+                value: m.id,
+                label: m.name
+              }))}
+              onChange={(v) =>
                 pushParams({
-                  machine: e.target.value || null,
+                  machine: v || null,
                   page: '1'
                 })
               }
-            >
-              <option value="">Összes gép</option>
-              {machines.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </Select>
+            />
           </div>
           <div className="min-w-[150px]">
             <label

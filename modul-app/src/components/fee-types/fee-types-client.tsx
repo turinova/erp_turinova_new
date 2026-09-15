@@ -27,7 +27,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
 import {
   createFeeType,
@@ -393,21 +393,18 @@ export function FeeTypesClient({
               required
               error={fieldErrors.unitId}
             >
-              <Select
+              <MenuSelect
                 id="fee-type-unit"
                 value={unitId}
                 disabled={pending}
-                onChange={(e) => setUnitId(e.target.value)}
-              >
-                <option value="" disabled>
-                  Válassz…
-                </option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} ({u.shortform})
-                  </option>
-                ))}
-              </Select>
+                allowEmpty={false}
+                placeholder="Válassz…"
+                options={units.map((u) => ({
+                  value: u.id,
+                  label: `${u.name} (${u.shortform})`
+                }))}
+                onChange={setUnitId}
+              />
             </FormField>
 
             <FormField
@@ -438,21 +435,18 @@ export function FeeTypesClient({
               required
               error={fieldErrors.taxRateId}
             >
-              <Select
+              <MenuSelect
                 id="fee-type-tax"
                 value={taxRateId}
                 disabled={pending}
-                onChange={(e) => setTaxRateId(e.target.value)}
-              >
-                <option value="" disabled>
-                  Válassz…
-                </option>
-                {taxRates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({formatHuNumber(t.rate_percent)}%)
-                  </option>
-                ))}
-              </Select>
+                allowEmpty={false}
+                placeholder="Válassz…"
+                options={taxRates.map((t) => ({
+                  value: t.id,
+                  label: `${t.name} (${formatHuNumber(t.rate_percent)}%)`
+                }))}
+                onChange={setTaxRateId}
+              />
             </FormField>
 
             <FormField label="Nettó" htmlFor="fee-type-net" hint="Számított">

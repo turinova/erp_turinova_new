@@ -11,7 +11,7 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { LinearMaterialImageField } from '@/components/linear-materials/linear-material-image-field'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
 import {
   createLinearMaterial,
@@ -212,21 +212,18 @@ export function LinearMaterialForm({
                   required
                   error={fieldErrors.manufacturerId}
                 >
-                  <Select
+                  <MenuSelect
                     id="linear-manufacturer"
                     value={manufacturerId}
                     disabled={!canWrite}
-                    onChange={(e) => setManufacturerId(e.target.value)}
-                  >
-                    <option value="" disabled>
-                      Válassz…
-                    </option>
-                    {manufacturers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </Select>
+                    allowEmpty={false}
+                    placeholder="Válassz…"
+                    options={manufacturers.map((m) => ({
+                      value: m.id,
+                      label: m.name
+                    }))}
+                    onChange={setManufacturerId}
+                  />
                 </FormField>
 
                 <FormField
@@ -235,20 +232,19 @@ export function LinearMaterialForm({
                   required
                   error={fieldErrors.materialType}
                 >
-                  <Select
+                  <MenuSelect
                     id="linear-type"
                     value={materialType}
                     disabled={!canWrite}
-                    onChange={(e) =>
-                      setMaterialType(e.target.value as LinearMaterialType)
+                    allowEmpty={false}
+                    options={LINEAR_MATERIAL_TYPES.map((t) => ({
+                      value: t,
+                      label: LINEAR_MATERIAL_TYPE_LABELS[t]
+                    }))}
+                    onChange={(v) =>
+                      setMaterialType(v as LinearMaterialType)
                     }
-                  >
-                    {LINEAR_MATERIAL_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {LINEAR_MATERIAL_TYPE_LABELS[t]}
-                      </option>
-                    ))}
-                  </Select>
+                  />
                 </FormField>
               </div>
 
@@ -384,21 +380,18 @@ export function LinearMaterialForm({
             required
             error={fieldErrors.taxRateId}
           >
-            <Select
+            <MenuSelect
               id="linear-tax"
               value={taxRateId}
               disabled={!canWrite}
-              onChange={(e) => setTaxRateId(e.target.value)}
-            >
-              <option value="" disabled>
-                Válassz…
-              </option>
-              {taxRates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({formatHuNumber(t.rate_percent)}%)
-                </option>
-              ))}
-            </Select>
+              allowEmpty={false}
+              placeholder="Válassz…"
+              options={taxRates.map((t) => ({
+                value: t.id,
+                label: `${t.name} (${formatHuNumber(t.rate_percent)}%)`
+              }))}
+              onChange={setTaxRateId}
+            />
           </FormField>
 
           <FormField

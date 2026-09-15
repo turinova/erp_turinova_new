@@ -31,6 +31,8 @@ export type SearchLinearMaterialsParams = {
   q: string
   page?: number
   limit?: number
+  /** Ha megadott: nincs külön manufacturers query. */
+  manufacturerIds?: string[]
 }
 
 export type SearchLinearMaterialsResult = {
@@ -83,15 +85,18 @@ export async function searchLinearMaterials(
     return { rows: [], total: 0, page, limit }
   }
 
-  const { data: manufacturerMatches } = await supabase
-    .from('manufacturers')
-    .select('id')
-    .eq('tenant_id', params.tenantId)
-    .is('deleted_at', null)
-    .ilike('name', `%${safe}%`)
-    .limit(50)
+  let manufacturerIds = params.manufacturerIds
+  if (manufacturerIds === undefined) {
+    const { data: manufacturerMatches } = await supabase
+      .from('manufacturers')
+      .select('id')
+      .eq('tenant_id', params.tenantId)
+      .is('deleted_at', null)
+      .ilike('name', `%${safe}%`)
+      .limit(50)
+    manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
+  }
 
-  const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
   const orParts = [`name.ilike.%${safe}%`]
 
   const typeFromLabel = parseLinearMaterialTypeLabel(safe)
@@ -120,7 +125,7 @@ export async function searchLinearMaterials(
       manufacturers ( name ),
       tax_rates ( rate_percent )
     `,
-      { count: 'exact' }
+      { count: 'estimated' }
     )
     .eq('tenant_id', params.tenantId)
     .eq('active', true)
@@ -171,5 +176,5 @@ export async function searchLinearMaterials(
     }
   })
 
-  return { rows, total: count ?? 0, page, limit }
+  return { rows, total: count ?? rows.length, page, limit }
 }

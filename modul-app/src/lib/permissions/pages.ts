@@ -20,6 +20,7 @@ export const APP_PAGES: AppPageDef[] = [
   { key: '/ugyfelek', label: 'Ügyfelek', category: 'Műhely' },
   { key: '/ajanlatok', label: 'Árajánlatok', category: 'Műhely' },
   { key: '/megrendelesek', label: 'Megrendelések', category: 'Műhely' },
+  { key: '/scanner', label: 'Scanner', category: 'Műhely' },
   {
     key: '/torzsadatok/alapanyagok/tablas-anyagok',
     label: 'Táblás anyagok',
@@ -129,7 +130,7 @@ export const PAGE_ACCESS_TEMPLATES: Record<
   },
   workshop: {
     label: 'Műhely',
-    keys: ['/home', '/kereso', '/megrendelesek', '/opti']
+    keys: ['/home', '/kereso', '/megrendelesek', '/scanner', '/opti']
   }
 }
 

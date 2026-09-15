@@ -106,10 +106,10 @@ export default async function PartnerKeresoPage({
   return (
     <Suspense fallback={null}>
       <KeresoClient
-        rows={rows}
-        total={total}
-        page={page}
-        limit={limit}
+        initialRows={rows}
+        initialTotal={total}
+        initialPage={page}
+        initialLimit={limit}
         initialQ={q}
         initialKind={kind}
         sheetDetailBase={null}

@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
 import { Button } from '@/components/ui/button'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import {
   updatePartnerLinkedCompanyAction,
   type PartnerSettingsState
@@ -77,31 +77,28 @@ export function PartnerLinkedCompanyForm({ selectedTenantId }: Props) {
         </Button>
       </div>
 
+      <input type="hidden" name="selected_tenant_id" value={value} />
+
       <FormField
         label="Kapcsolt cég"
         htmlFor="linked-tenant"
         required
         error={fe.selected_tenant_id}
       >
-        <Select
+        <MenuSelect
           id="linked-tenant"
-          name="selected_tenant_id"
-          required
           value={value}
-          onChange={(e) => setValue(e.target.value)}
           disabled={loadingCompanies}
+          allowEmpty={false}
+          placeholder={loadingCompanies ? 'Betöltés…' : 'Válassz céget…'}
           className="max-w-xl"
-        >
-          <option value="">
-            {loadingCompanies ? 'Betöltés…' : 'Válassz céget…'}
-          </option>
-          {companies.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-              {c.city ? ` · ${c.city}` : ''}
-            </option>
-          ))}
-        </Select>
+          options={companies.map((c) => ({
+            value: c.id,
+            label: c.name,
+            hint: c.city || undefined
+          }))}
+          onChange={setValue}
+        />
       </FormField>
 
       {!loadingCompanies && companies.length === 0 ? (

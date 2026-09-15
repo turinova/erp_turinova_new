@@ -56,8 +56,8 @@ export type SearchMaterialsUnifiedResult = {
   limit: number
 }
 
-/** Max találat forrásonként a merge előtt (main-app ~50; itt bővebb). */
-const SOURCE_FETCH_CAP = 100
+/** Max találat forrásonként a merge előtt — kicsi cap = gyorsabb PostgREST. */
+const SOURCE_FETCH_CAP = 40
 
 function mapSheet(row: SheetMaterialSearchItem): UnifiedMaterialSearchItem {
   return {
@@ -163,13 +163,29 @@ export async function searchMaterialsUnified(
   const wantLinear = kind === 'all' || kind === 'linear'
   const wantAccessory = kind === 'all' || kind === 'accessory'
 
+  const safe = q.replace(/[%_,]/g, '')
+  if (!safe) {
+    return { rows: [], total: 0, page, limit }
+  }
+
+  // Egy gyártó prequery — ne 3× párhuzamosan.
+  const { data: manufacturerMatches } = await supabase
+    .from('manufacturers')
+    .select('id')
+    .eq('tenant_id', params.tenantId)
+    .is('deleted_at', null)
+    .ilike('name', `%${safe}%`)
+    .limit(50)
+  const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
+
   const [sheets, linears, accessories] = await Promise.all([
     wantSheet
       ? searchSheetMaterials(supabase, {
           tenantId: params.tenantId,
           q,
           page: 1,
-          limit: SOURCE_FETCH_CAP
+          limit: SOURCE_FETCH_CAP,
+          manufacturerIds
         })
       : Promise.resolve({ rows: [], total: 0, page: 1, limit: SOURCE_FETCH_CAP }),
     wantLinear
@@ -177,7 +193,8 @@ export async function searchMaterialsUnified(
           tenantId: params.tenantId,
           q,
           page: 1,
-          limit: SOURCE_FETCH_CAP
+          limit: SOURCE_FETCH_CAP,
+          manufacturerIds
         })
       : Promise.resolve({ rows: [], total: 0, page: 1, limit: SOURCE_FETCH_CAP }),
     wantAccessory
@@ -185,7 +202,8 @@ export async function searchMaterialsUnified(
           tenantId: params.tenantId,
           q,
           page: 1,
-          limit: SOURCE_FETCH_CAP
+          limit: SOURCE_FETCH_CAP,
+          manufacturerIds
         })
       : Promise.resolve({ rows: [], total: 0, page: 1, limit: SOURCE_FETCH_CAP })
   ])

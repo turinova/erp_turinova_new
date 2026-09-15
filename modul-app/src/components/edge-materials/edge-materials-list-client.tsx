@@ -27,7 +27,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { softDeleteEdgeMaterial } from '@/lib/edge-materials/actions'
 import type { EdgeImportPreviewResult } from '@/lib/edge-materials/import-plan'
 import {
@@ -314,20 +314,22 @@ export function EdgeMaterialsListClient({
           <label className="sr-only" htmlFor="edge-active-filter">
             Állapot szűrő
           </label>
-          <Select
+          <MenuSelect
             id="edge-active-filter"
             value={initialActive}
-            onChange={(e) =>
+            allowEmpty={false}
+            options={[
+              { value: 'all', label: 'Összes állapot' },
+              { value: 'active', label: 'Csak aktív' },
+              { value: 'inactive', label: 'Csak inaktív' }
+            ]}
+            onChange={(v) =>
               pushParams({
-                active: e.target.value === 'all' ? null : e.target.value,
+                active: v === 'all' ? null : v,
                 page: '1'
               })
             }
-          >
-            <option value="all">Összes állapot</option>
-            <option value="active">Csak aktív</option>
-            <option value="inactive">Csak inaktív</option>
-          </Select>
+          />
         </div>
       </div>
 

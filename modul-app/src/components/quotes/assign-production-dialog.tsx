@@ -16,7 +16,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Select } from '@/components/ui/select'
+import { MenuSelect } from '@/components/ui/menu-select'
 import type { ProductionMachineOption } from '@/lib/production-machines/queries'
 import {
   assignQuoteProduction,
@@ -176,18 +176,18 @@ export function AssignProductionDialog({
                   .
                 </p>
               ) : (
-                <Select
+                <MenuSelect
                   id="assign-machine"
                   value={machineId}
-                  onChange={(e) => setMachineId(e.target.value)}
                   disabled={loading}
-                >
-                  {machines.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </Select>
+                  allowEmpty={false}
+                  placeholder="Válassz gépet…"
+                  options={machines.map((m) => ({
+                    value: m.id,
+                    label: m.name
+                  }))}
+                  onChange={setMachineId}
+                />
               )}
             </FormField>
 
