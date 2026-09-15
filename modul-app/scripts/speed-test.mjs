@@ -27,6 +27,7 @@ const TENANT_ID = process.env.SPEED_TEST_TENANT_ID || ''
 const TARGETS = {
   listOrdersWarmMs: 300,
   quoteDetailWarmMs: 400,
+  keresoRpcWarmMs: 120,
   httpOrdersWarmMs: 800,
   httpQuoteWarmMs: 900
 }
@@ -223,6 +224,75 @@ async function main() {
     )
   }
 
+  // --- kereső: legacy multi-query vs RPC ---
+  results.push(
+    await timed('DB kereső legacy-shaped (4 queries)', async () => {
+      const q = 'a'
+      const safe = q.replace(/[%_,]/g, '')
+      const { data: mfr } = await admin
+        .from('manufacturers')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .ilike('name', `%${safe}%`)
+        .limit(50)
+      const ids = (mfr ?? []).map((m) => m.id)
+      const orMfr =
+        ids.length > 0 ? `,manufacturer_id.in.(${ids.join(',')})` : ''
+      await Promise.all([
+        admin
+          .from('sheet_materials')
+          .select('id, name', { count: 'exact' })
+          .eq('tenant_id', tenantId)
+          .eq('active', true)
+          .is('deleted_at', null)
+          .or(`name.ilike.%${safe}%,machine_code.ilike.%${safe}%${orMfr}`)
+          .order('name')
+          .limit(40),
+        admin
+          .from('linear_materials')
+          .select('id, name', { count: 'exact' })
+          .eq('tenant_id', tenantId)
+          .eq('active', true)
+          .is('deleted_at', null)
+          .or(`name.ilike.%${safe}%${orMfr}`)
+          .order('name')
+          .limit(40),
+        admin
+          .from('accessories')
+          .select('id, name', { count: 'exact' })
+          .eq('tenant_id', tenantId)
+          .eq('active', true)
+          .is('deleted_at', null)
+          .or(
+            `name.ilike.%${safe}%,sku.ilike.%${safe}%,barcode.ilike.%${safe}%${orMfr}`
+          )
+          .order('name')
+          .limit(40)
+      ])
+    })
+  )
+
+  results.push(
+    await timed('DB search_materials_catalog RPC', async () => {
+      const { error } = await admin.rpc('search_materials_catalog', {
+        p_tenant_id: tenantId,
+        p_q: 'a',
+        p_kinds: ['sheet', 'linear', 'accessory'],
+        p_limit: 25,
+        p_offset: 0
+      })
+      if (error) throw error
+    }).catch((err) => ({
+      label: 'DB search_materials_catalog RPC',
+      coldMs: null,
+      warmMedianMs: null,
+      warmP95Ms: null,
+      samples: [],
+      note: `SKIP — apply migration 20260421 first (${err?.message || err})`
+    }))
+  )
+
   // --- optional HTTP TTFB ---
   if (BASE && EMAIL && PASSWORD && ANON) {
     const authClient = createClient(URL, ANON, {
@@ -316,19 +386,23 @@ async function main() {
     let target = null
     if (r.label.includes('listOrders')) target = TARGETS.listOrdersWarmMs
     if (r.label.includes('getQuoteDetail')) target = TARGETS.quoteDetailWarmMs
+    if (r.label.includes('search_materials_catalog'))
+      target = TARGETS.keresoRpcWarmMs
     if (r.label.includes('/megrendelesek')) target = TARGETS.httpOrdersWarmMs
     if (r.label.includes('/ajanlatok')) target = TARGETS.httpQuoteWarmMs
 
     const verdict =
-      target == null
-        ? { ok: null, text: 'info' }
-        : passFail(r.warmMedianMs, target)
+      r.warmMedianMs == null
+        ? { ok: null, text: 'skip' }
+        : target == null
+          ? { ok: null, text: 'info' }
+          : passFail(r.warmMedianMs, target)
 
     if (verdict.ok === false) failed += 1
 
     console.log(
       `${verdict.text.padEnd(4)} ${r.label}\n` +
-        `     cold=${r.coldMs}ms  warm_median=${r.warmMedianMs}ms  warm_p95=${r.warmP95Ms}ms` +
+        `     cold=${r.coldMs ?? 'n/a'}ms  warm_median=${r.warmMedianMs ?? 'n/a'}ms  warm_p95=${r.warmP95Ms ?? 'n/a'}ms` +
         (target != null ? `  target≤${target}ms` : '') +
         (r.note ? `\n     ${r.note}` : '')
     )

@@ -63,10 +63,26 @@ export function resolvePartnerSearchKind(
   return 'all'
 }
 
+const SETTINGS_TTL_MS = 60_000
+const settingsCache = new Map<
+  string,
+  { at: number; value: TenantPartnerSettings | null }
+>()
+
+export function invalidateTenantPartnerSettingsCache(tenantId?: string) {
+  if (tenantId) settingsCache.delete(tenantId)
+  else settingsCache.clear()
+}
+
 export async function getTenantPartnerSettings(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<TenantPartnerSettings | null> {
+  const cached = settingsCache.get(tenantId)
+  if (cached && Date.now() - cached.at < SETTINGS_TTL_MS) {
+    return cached.value
+  }
+
   const { data, error } = await supabase
     .from('tenant_partner_settings')
     .select(
@@ -80,12 +96,15 @@ export async function getTenantPartnerSettings(
     throw new Error('Nem sikerült betölteni a partner beállításokat.')
   }
 
-  if (!data) return null
+  const value = data
+    ? {
+        tenantId: data.tenant_id as string,
+        searchSheet: Boolean(data.search_sheet),
+        searchLinear: Boolean(data.search_linear),
+        searchAccessory: Boolean(data.search_accessory)
+      }
+    : null
 
-  return {
-    tenantId: data.tenant_id as string,
-    searchSheet: Boolean(data.search_sheet),
-    searchLinear: Boolean(data.search_linear),
-    searchAccessory: Boolean(data.search_accessory)
-  }
+  settingsCache.set(tenantId, { at: Date.now(), value })
+  return value
 }

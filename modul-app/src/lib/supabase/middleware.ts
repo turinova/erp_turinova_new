@@ -218,15 +218,21 @@ export async function updateSession(request: NextRequest) {
       data: { user }
     } = await supabase.auth.getUser()
 
+    const isKeresoApi =
+      pathname === '/api/kereso' || pathname.startsWith('/api/kereso/')
+
     const isPartnerSharedApi =
       pathname === '/api/optimize' ||
       pathname.startsWith('/api/optimize/') ||
-      pathname === '/api/kereso' ||
-      pathname.startsWith('/api/kereso/') ||
+      isKeresoApi ||
       /^\/api\/ajanlatok\/[^/]+\/pdf$/.test(pathname)
 
     if (user) {
-      if (partnerCtx) {
+      // Kereső keystroke: skip partner/membership/isAppSessionValid waterfall.
+      // Az API lean auth + RLS dönt.
+      if (isKeresoApi) {
+        isAuthenticated = true
+      } else if (partnerCtx) {
         const { data: partnerRow } = await supabase
           .from('partner_profiles')
           .select('user_id, status')

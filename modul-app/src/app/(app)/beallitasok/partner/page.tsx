@@ -5,6 +5,7 @@ import { PartnerSettingsForm } from '@/components/partner-settings/partner-setti
 import { getSessionUser } from '@/lib/auth/session'
 import {
   getTenantPartnerSettings,
+  invalidateTenantPartnerSettingsCache,
   partnerSearchKindsFromSettings
 } from '@/lib/partner-settings/queries'
 import { createClient } from '@/lib/supabase/server'
@@ -52,6 +53,7 @@ export default async function PartnerSettingsPage() {
               },
               { onConflict: 'tenant_id' }
             )
+            invalidateTenantPartnerSettingsCache(user.tenantId)
           }
         } catch (err) {
           loadError =

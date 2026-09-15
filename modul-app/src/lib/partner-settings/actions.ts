@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 
 import {
   defaultPartnerSearchKinds,
+  invalidateTenantPartnerSettingsCache,
   type PartnerSearchKinds
 } from '@/lib/partner-settings/queries'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
@@ -80,6 +81,7 @@ export async function updatePartnerSearchKinds(input: {
     return { ok: false, message: 'Nem sikerült menteni a beállításokat.' }
   }
 
+  invalidateTenantPartnerSettingsCache(tenantId)
   revalidatePath(SETTINGS_PATH)
   revalidatePath('/partner/kereso')
   return { ok: true }
@@ -115,5 +117,6 @@ export async function ensurePartnerSettingsRow(): Promise<PartnerSearchKinds> {
     },
     { onConflict: 'tenant_id' }
   )
+  invalidateTenantPartnerSettingsCache(tenantId)
   return defaults
 }

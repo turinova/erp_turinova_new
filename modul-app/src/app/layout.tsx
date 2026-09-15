@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from 'sonner'
 
+import { AppQueryProvider } from '@/components/providers/app-query-provider'
+
 import './globals.css'
 
 const inter = Inter({
@@ -41,8 +43,10 @@ export default function RootLayout({
   return (
     <html lang="hu">
       <body className={`${inter.variable} font-sans`}>
-        {children}
-        <Toaster position="bottom-right" richColors closeButton />
+        <AppQueryProvider>
+          {children}
+          <Toaster position="bottom-right" richColors closeButton />
+        </AppQueryProvider>
       </body>
     </html>
   )

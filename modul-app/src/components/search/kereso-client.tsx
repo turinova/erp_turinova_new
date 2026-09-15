@@ -2,6 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import {
+  keepPreviousData,
+  useQuery
+} from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { Search } from 'lucide-react'
 
@@ -58,7 +62,7 @@ const KIND_CHIPS: { value: KindFilter; label: string }[] = [
   { value: 'accessory', label: 'Termék' }
 ]
 
-const DEBOUNCE_MS = 250
+const DEBOUNCE_MS = 150
 
 function badgeTone(
   kind: UnifiedMaterialSearchItem['kind']
@@ -74,6 +78,31 @@ type SearchApiResponse = {
   page: number
   limit: number
   error?: string
+}
+
+async function fetchKereso(params: {
+  q: string
+  kind: KindFilter
+  page: number
+  limit: number
+  signal?: AbortSignal
+}): Promise<SearchApiResponse> {
+  const sp = new URLSearchParams({
+    q: params.q,
+    page: String(params.page),
+    limit: String(params.limit)
+  })
+  if (params.kind !== 'all') sp.set('kind', params.kind)
+
+  const res = await fetch(`/api/kereso?${sp.toString()}`, {
+    signal: params.signal,
+    cache: 'no-store'
+  })
+  const data = (await res.json()) as SearchApiResponse
+  if (!res.ok) {
+    throw new Error(data.error || 'Nem sikerült a keresés.')
+  }
+  return data
 }
 
 export function KeresoClient({
@@ -93,10 +122,8 @@ export function KeresoClient({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const inputRef = useRef<HTMLInputElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  const requestIdRef = useRef(0)
-  const skipDebounceRef = useRef(true)
   const kindRef = useRef<KindFilter>(initialKind)
+  const skipDebounceRef = useRef(true)
   const [, startUrlTransition] = useTransition()
 
   const visibleChips = (() => {
@@ -113,17 +140,8 @@ export function KeresoClient({
   const [kind, setKind] = useState<KindFilter>(initialKind)
   const [page, setPage] = useState(initialPage)
   const [limit] = useState(initialLimit)
-  const [rows, setRows] = useState(initialRows)
-  const [total, setTotal] = useState(initialTotal)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   kindRef.current = kind
-
-  const totalPages = Math.max(1, Math.ceil(total / limit))
-  const from = total === 0 ? 0 : (page - 1) * limit + 1
-  const to = Math.min(page * limit, total)
-  const hasQuery = Boolean(activeQ)
 
   const syncUrl = useCallback(
     (nextQ: string, nextKind: KindFilter, nextPage: number) => {
@@ -141,66 +159,15 @@ export function KeresoClient({
     [pathname, router, searchParams]
   )
 
-  const runSearch = useCallback(
-    async (q: string, nextKind: KindFilter, nextPage: number) => {
+  const commitSearch = useCallback(
+    (q: string, nextKind: KindFilter, nextPage: number) => {
       const trimmed = q.trim()
       setActiveQ(trimmed)
       setKind(nextKind)
       setPage(nextPage)
       syncUrl(trimmed, nextKind, nextPage)
-
-      if (!trimmed) {
-        abortRef.current?.abort()
-        setRows([])
-        setTotal(0)
-        setLoading(false)
-        setError(null)
-        return
-      }
-
-      abortRef.current?.abort()
-      const controller = new AbortController()
-      abortRef.current = controller
-      const requestId = ++requestIdRef.current
-      setLoading(true)
-      setError(null)
-
-      try {
-        const params = new URLSearchParams({
-          q: trimmed,
-          page: String(nextPage),
-          limit: String(limit)
-        })
-        if (nextKind !== 'all') params.set('kind', nextKind)
-
-        const res = await fetch(`/api/kereso?${params.toString()}`, {
-          signal: controller.signal,
-          cache: 'no-store'
-        })
-        const data = (await res.json()) as SearchApiResponse
-        if (requestId !== requestIdRef.current) return
-        if (!res.ok) {
-          setError(data.error || 'Nem sikerült a keresés.')
-          setRows([])
-          setTotal(0)
-          return
-        }
-        setRows(data.rows ?? [])
-        setTotal(data.total ?? 0)
-        setPage(data.page ?? nextPage)
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        if (requestId !== requestIdRef.current) return
-        setError('Nem sikerült a keresés. Próbáld újra.')
-        setRows([])
-        setTotal(0)
-      } finally {
-        if (requestId === requestIdRef.current) {
-          setLoading(false)
-        }
-      }
     },
-    [limit, syncUrl]
+    [syncUrl]
   )
 
   useEffect(() => {
@@ -213,22 +180,61 @@ export function KeresoClient({
       return
     }
     const timeoutId = window.setTimeout(() => {
-      void runSearch(qDraft.trim(), kindRef.current, 1)
+      commitSearch(qDraft.trim(), kindRef.current, 1)
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(timeoutId)
-  }, [qDraft, runSearch])
+  }, [qDraft, commitSearch])
+
+  const hasQuery = Boolean(activeQ)
+
+  const query = useQuery({
+    queryKey: ['kereso', activeQ, kind, page, limit],
+    queryFn: ({ signal }) =>
+      fetchKereso({ q: activeQ, kind, page, limit, signal }),
+    enabled: hasQuery,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+    initialData:
+      hasQuery &&
+      activeQ === initialQ.trim() &&
+      kind === initialKind &&
+      page === initialPage &&
+      initialRows.length > 0
+        ? {
+            rows: initialRows,
+            total: initialTotal,
+            page: initialPage,
+            limit: initialLimit
+          }
+        : undefined,
+    initialDataUpdatedAt:
+      hasQuery && initialRows.length > 0 ? Date.now() : undefined
+  })
+
+  const rows = query.data?.rows ?? (hasQuery ? initialRows : [])
+  const total = query.data?.total ?? (hasQuery ? initialTotal : 0)
+  const loading = query.isFetching
+  const error = query.error
+    ? query.error instanceof Error
+      ? query.error.message
+      : 'Nem sikerült a keresés. Próbáld újra.'
+    : null
+
+  const totalPages = Math.max(1, Math.ceil(total / limit))
+  const from = total === 0 ? 0 : (page - 1) * limit + 1
+  const to = Math.min(page * limit, total)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    void runSearch(qDraft, kind, 1)
+    commitSearch(qDraft, kind, 1)
   }
 
   function handleKindChange(next: KindFilter) {
-    void runSearch(qDraft, next, 1)
+    commitSearch(qDraft, next, 1)
   }
 
   function handlePageChange(nextPage: number) {
-    void runSearch(activeQ || qDraft, kind, nextPage)
+    commitSearch(activeQ || qDraft, kind, nextPage)
   }
 
   function detailHref(row: UnifiedMaterialSearchItem): string | null {
@@ -322,12 +328,16 @@ export function KeresoClient({
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
           Keresés…
         </p>
-      ) : total === 0 ? (
+      ) : total === 0 && !loading ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
           Nincs találat: „{activeQ}”
           {kind !== 'all'
             ? ` (${KIND_CHIPS.find((c) => c.value === kind)?.label ?? ''})`
             : ''}
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
+          Keresés…
         </p>
       ) : (
         <>

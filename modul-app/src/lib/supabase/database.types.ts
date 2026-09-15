@@ -924,6 +924,32 @@ export type Database = {
         Args: Record<string, never>
         Returns: boolean
       }
+      search_materials_catalog: {
+        Args: {
+          p_tenant_id: string
+          p_q: string
+          p_kinds?: string[]
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          kind: string
+          id: string
+          name: string
+          manufacturer_name: string
+          type_label: string
+          sku: string | null
+          length_mm: number | null
+          width_mm: number | null
+          thickness_mm: number | null
+          on_stock: boolean | null
+          price_gross_per_m: number | null
+          price_gross_sqm: number | null
+          price_gross_piece: number | null
+          unit_shortform: string | null
+          total_count: number
+        }[]
+      }
     }
   }
 }

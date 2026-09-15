@@ -61,8 +61,26 @@ export type SearchMaterialsUnifiedResult = {
   limit: number
 }
 
-/** Max találat forrásonként a merge előtt — kicsi cap = gyorsabb PostgREST. */
+/** Max találat forrásonként a merge előtt — legacy fallback. */
 const SOURCE_FETCH_CAP = 40
+
+type CatalogRpcRow = {
+  kind: string
+  id: string
+  name: string
+  manufacturer_name: string
+  type_label: string
+  sku: string | null
+  length_mm: number | null
+  width_mm: number | null
+  thickness_mm: number | null
+  on_stock: boolean | null
+  price_gross_per_m: number | null
+  price_gross_sqm: number | null
+  price_gross_piece: number | null
+  unit_shortform: string | null
+  total_count: number | string
+}
 
 function mapSheet(row: SheetMaterialSearchItem): UnifiedMaterialSearchItem {
   return {
@@ -121,6 +139,32 @@ function mapAccessory(row: AccessorySearchItem): UnifiedMaterialSearchItem {
   }
 }
 
+function mapRpcRow(row: CatalogRpcRow): UnifiedMaterialSearchItem | null {
+  if (
+    row.kind !== 'sheet' &&
+    row.kind !== 'linear' &&
+    row.kind !== 'accessory'
+  ) {
+    return null
+  }
+  return {
+    kind: row.kind,
+    id: row.id,
+    name: row.name,
+    manufacturer_name: row.manufacturer_name,
+    type_label: row.type_label,
+    sku: row.sku,
+    length_mm: row.length_mm,
+    width_mm: row.width_mm,
+    thickness_mm: row.thickness_mm,
+    on_stock: row.on_stock,
+    price_gross_per_m: row.price_gross_per_m,
+    price_gross_sqm: row.price_gross_sqm,
+    price_gross_piece: Number(row.price_gross_piece ?? 0),
+    unit_shortform: row.unit_shortform
+  }
+}
+
 function sortKey(row: UnifiedMaterialSearchItem): string {
   return `${row.name}\u0000${row.manufacturer_name}\u0000${row.kind}\u0000${row.id}`.toLocaleLowerCase('hu')
 }
@@ -147,40 +191,80 @@ export function formatUnifiedPrice(value: number | null): string {
   return formatMoneyFt(value)
 }
 
-/**
- * Táblás + szálas + termék párhuzamos keresés, közös ABC lista, lapozás a merge után.
- * `kind` szűrővel csak a releváns forrást kérdezi le.
- */
-export async function searchMaterialsUnified(
-  supabase: SupabaseClient,
-  params: SearchMaterialsUnifiedParams
-): Promise<SearchMaterialsUnifiedResult> {
-  const page = Math.max(1, params.page ?? 1)
-  const limit = Math.min(50, Math.max(1, params.limit ?? 25))
-  const q = params.q.trim()
-  const kind = params.kind ?? 'all'
-  const allowed = params.allowedKinds?.length
-    ? new Set(params.allowedKinds)
+function resolveWantedKinds(
+  kind: UnifiedSearchKind | 'all',
+  allowedKinds?: UnifiedSearchKind[]
+): UnifiedSearchKind[] {
+  const allowed = allowedKinds?.length
+    ? new Set(allowedKinds)
     : null
+  const candidates: UnifiedSearchKind[] =
+    kind === 'all' ? ['sheet', 'linear', 'accessory'] : [kind]
+  return candidates.filter((k) => !allowed || allowed.has(k))
+}
 
-  if (!q) {
+async function searchMaterialsViaRpc(
+  supabase: SupabaseClient,
+  params: SearchMaterialsUnifiedParams,
+  page: number,
+  limit: number,
+  kinds: UnifiedSearchKind[]
+): Promise<SearchMaterialsUnifiedResult | null> {
+  if (kinds.length === 0) {
     return { rows: [], total: 0, page, limit }
   }
 
-  const wantSheet =
-    (kind === 'all' || kind === 'sheet') && (!allowed || allowed.has('sheet'))
-  const wantLinear =
-    (kind === 'all' || kind === 'linear') && (!allowed || allowed.has('linear'))
-  const wantAccessory =
-    (kind === 'all' || kind === 'accessory') &&
-    (!allowed || allowed.has('accessory'))
+  const offset = (page - 1) * limit
+  const { data, error } = await supabase.rpc('search_materials_catalog', {
+    p_tenant_id: params.tenantId,
+    p_q: params.q.trim(),
+    p_kinds: kinds,
+    p_limit: limit,
+    p_offset: offset
+  })
+
+  if (error) {
+    // Migráció előtt / RPC hiány → legacy path
+    if (
+      error.code === 'PGRST202' ||
+      error.message?.includes('search_materials_catalog') ||
+      error.message?.includes('Could not find the function')
+    ) {
+      return null
+    }
+    throw new Error(error.message)
+  }
+
+  const rpcRows = (data ?? []) as CatalogRpcRow[]
+  const rows = rpcRows
+    .map(mapRpcRow)
+    .filter((r): r is UnifiedMaterialSearchItem => r != null)
+  const total =
+    rpcRows.length > 0 ? Number(rpcRows[0]!.total_count) || rows.length : 0
+
+  return { rows, total, page, limit }
+}
+
+/**
+ * Legacy: táblás + szálas + termék párhuzamos PostgREST, merge után lapozás.
+ */
+async function searchMaterialsLegacy(
+  supabase: SupabaseClient,
+  params: SearchMaterialsUnifiedParams,
+  page: number,
+  limit: number,
+  kinds: UnifiedSearchKind[]
+): Promise<SearchMaterialsUnifiedResult> {
+  const q = params.q.trim()
+  const wantSheet = kinds.includes('sheet')
+  const wantLinear = kinds.includes('linear')
+  const wantAccessory = kinds.includes('accessory')
 
   const safe = q.replace(/[%_,]/g, '')
   if (!safe) {
     return { rows: [], total: 0, page, limit }
   }
 
-  // Egy gyártó prequery — ne 3× párhuzamosan.
   const { data: manufacturerMatches } = await supabase
     .from('manufacturers')
     .select('id')
@@ -231,6 +315,39 @@ export async function searchMaterialsUnified(
   const rows = combined.slice(from, from + limit)
 
   return { rows, total, page, limit }
+}
+
+/**
+ * Táblás + szálas + termék keresés — preferáltan 1 RPC roundtrip.
+ */
+export async function searchMaterialsUnified(
+  supabase: SupabaseClient,
+  params: SearchMaterialsUnifiedParams
+): Promise<SearchMaterialsUnifiedResult> {
+  const page = Math.max(1, params.page ?? 1)
+  const limit = Math.min(50, Math.max(1, params.limit ?? 25))
+  const q = params.q.trim()
+  const kind = params.kind ?? 'all'
+
+  if (!q) {
+    return { rows: [], total: 0, page, limit }
+  }
+
+  const kinds = resolveWantedKinds(kind, params.allowedKinds)
+  if (kinds.length === 0) {
+    return { rows: [], total: 0, page, limit }
+  }
+
+  const viaRpc = await searchMaterialsViaRpc(
+    supabase,
+    params,
+    page,
+    limit,
+    kinds
+  )
+  if (viaRpc) return viaRpc
+
+  return searchMaterialsLegacy(supabase, params, page, limit, kinds)
 }
 
 export function parseSearchKindParam(
