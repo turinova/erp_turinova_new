@@ -4,6 +4,12 @@ import { NextResponse } from 'next/server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { getSessionUser } from '@/lib/auth/session'
 import {
+  allowedUnifiedKinds,
+  getTenantPartnerSettings,
+  partnerSearchKindsFromSettings,
+  resolvePartnerSearchKind
+} from '@/lib/partner-settings/queries'
+import {
   parseSearchKindParam,
   searchMaterialsUnified
 } from '@/lib/search/materials-search'
@@ -23,7 +29,7 @@ export async function GET(request: Request) {
     50,
     Math.max(1, Number(searchParams.get('limit')) || 25)
   )
-  const kind = parseSearchKindParam(searchParams.get('kind'))
+  const requestedKind = parseSearchKindParam(searchParams.get('kind'))
 
   if (!q) {
     return NextResponse.json({
@@ -31,7 +37,7 @@ export async function GET(request: Request) {
       total: 0,
       page,
       limit,
-      kind
+      kind: requestedKind
     })
   }
 
@@ -45,49 +51,60 @@ export async function GET(request: Request) {
 
   const hdrs = await headers()
   const surface = hdrs.get('x-modul-surface')
-  let tenantId: string | null = null
+  const referer = hdrs.get('referer') ?? ''
+  const fromPartnerUi =
+    surface === 'partner' || referer.includes('/partner/')
 
-  if (surface === 'partner') {
-    const partner = await getPartnerSession()
-    if (!partner?.selectedTenantId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+  const partner = await getPartnerSession()
+  const staff = await getSessionUser()
+
+  let tenantId: string | null = null
+  let isPartnerSearch = false
+
+  if (fromPartnerUi && partner?.selectedTenantId) {
     tenantId = partner.selectedTenantId
-  } else {
-    const staff = await getSessionUser()
-    if (!staff?.tenantId || staff.isDevSession) {
-      // Path-mode partner fallback (nincs surface header)
-      const partner = await getPartnerSession()
-      if (partner?.selectedTenantId) {
-        tenantId = partner.selectedTenantId
-      } else {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
-    } else {
-      if (!staff.allowedPages.includes('/kereso')) {
-        return NextResponse.json(
-          { error: 'Nincs jogosultság.' },
-          { status: 403 }
-        )
-      }
-      tenantId = staff.tenantId
+    isPartnerSearch = true
+  } else if (staff?.tenantId && !staff.isDevSession) {
+    if (!staff.allowedPages.includes('/kereso')) {
+      return NextResponse.json(
+        { error: 'Nincs jogosultság.' },
+        { status: 403 }
+      )
     }
+    tenantId = staff.tenantId
+  } else if (partner?.selectedTenantId) {
+    tenantId = partner.selectedTenantId
+    isPartnerSearch = true
+  } else {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
+    let kind = requestedKind
+    let allowedKinds: ReturnType<typeof allowedUnifiedKinds> | undefined
+
+    if (isPartnerSearch) {
+      const settings = await getTenantPartnerSettings(supabase, tenantId)
+      const kinds = partnerSearchKindsFromSettings(settings)
+      allowedKinds = allowedUnifiedKinds(kinds)
+      kind = resolvePartnerSearchKind(requestedKind, kinds)
+    }
+
     const result = await searchMaterialsUnified(supabase, {
       tenantId,
       q,
       page,
       limit,
-      kind
+      kind,
+      allowedKinds
     })
     return NextResponse.json({
       rows: result.rows,
       total: result.total,
       page: result.page,
       limit: result.limit,
-      kind
+      kind,
+      allowedKinds: isPartnerSearch ? allowedKinds : undefined
     })
   } catch (e) {
     console.error('api/kereso', e)

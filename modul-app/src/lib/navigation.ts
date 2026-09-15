@@ -8,6 +8,7 @@ import {
   Cog,
   Factory,
   FileText,
+  Handshake,
   Home,
   Layers,
   Percent,
@@ -222,6 +223,13 @@ export const mainNavItems: NavNode[] = [
         label: 'Opti beállítások',
         href: '/beallitasok/opti',
         icon: Settings2,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Online partner',
+        href: '/beallitasok/partner',
+        icon: Handshake,
         accent: 'slate'
       },
       {

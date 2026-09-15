@@ -35,6 +35,11 @@ type KeresoClientProps = {
   initialLimit?: number
   initialQ?: string
   initialKind?: KindFilter
+  /**
+   * Ha megadott (partner tenant beállítás), csak ezek a chippek jelennek meg.
+   * 1 elem → nincs chip-sor.
+   */
+  allowedKinds?: UnifiedSearchKind[]
   /** Staff default; partnernél null = nincs törzsadat detail. */
   sheetDetailBase?: string | null
   linearDetailBase?: string | null
@@ -78,6 +83,7 @@ export function KeresoClient({
   initialLimit = 25,
   initialQ = '',
   initialKind = 'all',
+  allowedKinds,
   sheetDetailBase = DEFAULT_SHEET_DETAIL,
   linearDetailBase = DEFAULT_LINEAR_DETAIL,
   accessoryDetailBase = DEFAULT_ACCESSORY_DETAIL,
@@ -92,6 +98,15 @@ export function KeresoClient({
   const skipDebounceRef = useRef(true)
   const kindRef = useRef<KindFilter>(initialKind)
   const [, startUrlTransition] = useTransition()
+
+  const visibleChips = (() => {
+    if (!allowedKinds || allowedKinds.length === 0) return KIND_CHIPS
+    if (allowedKinds.length === 1) return [] as typeof KIND_CHIPS
+    const allowed = new Set(allowedKinds)
+    return KIND_CHIPS.filter(
+      (c) => c.value === 'all' || allowed.has(c.value as UnifiedSearchKind)
+    )
+  })()
 
   const [qDraft, setQDraft] = useState(initialQ)
   const [activeQ, setActiveQ] = useState(initialQ.trim())
@@ -262,30 +277,32 @@ export function KeresoClient({
         ) : null}
       </form>
 
-      <div
-        className="mb-3 flex flex-wrap gap-1.5"
-        role="group"
-        aria-label="Típus szűrő"
-      >
-        {KIND_CHIPS.map((chip) => {
-          const active = kind === chip.value
-          return (
-            <button
-              key={chip.value}
-              type="button"
-              onClick={() => handleKindChange(chip.value)}
-              className={cn(
-                'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
-                active
-                  ? 'border-ink bg-ink text-white'
-                  : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
-              )}
-            >
-              {chip.label}
-            </button>
-          )
-        })}
-      </div>
+      {visibleChips.length > 0 ? (
+        <div
+          className="mb-3 flex flex-wrap gap-1.5"
+          role="group"
+          aria-label="Típus szűrő"
+        >
+          {visibleChips.map((chip) => {
+            const active = kind === chip.value
+            return (
+              <button
+                key={chip.value}
+                type="button"
+                onClick={() => handleKindChange(chip.value)}
+                className={cn(
+                  'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
+                  active
+                    ? 'border-ink bg-ink text-white'
+                    : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
+                )}
+              >
+                {chip.label}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
 
       {error ? (
         <p

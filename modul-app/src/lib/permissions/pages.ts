@@ -87,6 +87,11 @@ export const APP_PAGES: AppPageDef[] = [
     category: 'Beállítások'
   },
   {
+    key: '/beallitasok/partner',
+    label: 'Online partner',
+    category: 'Beállítások'
+  },
+  {
     key: '/beallitasok/felhasznalok',
     label: 'Felhasználók',
     category: 'Beállítások'
@@ -125,7 +130,8 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/ugyfelek',
       '/ajanlatok',
       '/megrendelesek',
-      '/beallitasok/cegadatok'
+      '/beallitasok/cegadatok',
+      '/beallitasok/partner'
     ]
   },
   workshop: {

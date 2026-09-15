@@ -7,6 +7,12 @@ import { getPartnerSession } from '@/lib/auth/partner-session'
 import { PARTNER_SETTINGS_PATH } from '@/lib/auth/surface'
 import { resolvePartnerCompanyLabel } from '@/lib/partner/company-label'
 import {
+  allowedUnifiedKinds,
+  getTenantPartnerSettings,
+  partnerSearchKindsFromSettings,
+  resolvePartnerSearchKind
+} from '@/lib/partner-settings/queries'
+import {
   parseSearchKindParam,
   searchMaterialsUnified
 } from '@/lib/search/materials-search'
@@ -31,7 +37,7 @@ export default async function PartnerKeresoPage({
   const session = await getPartnerSession()
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
-  const kind = parseSearchKindParam(params.kind)
+  const requestedKind = parseSearchKindParam(params.kind)
 
   if (!session) {
     return (
@@ -65,22 +71,32 @@ export default async function PartnerKeresoPage({
   let rows: Awaited<ReturnType<typeof searchMaterialsUnified>>['rows'] = []
   let total = 0
   let limit = 25
+  let kind = requestedKind
+  let allowedKinds = allowedUnifiedKinds(partnerSearchKindsFromSettings(null))
 
   const supabase = await createClient()
   if (!supabase) {
     loadError = 'Az adatbázis kapcsolat nem elérhető.'
-  } else if (q) {
+  } else {
     try {
-      const result = await searchMaterialsUnified(supabase, {
-        tenantId,
-        q,
-        page,
-        limit: 25,
-        kind
-      })
-      rows = result.rows
-      total = result.total
-      limit = result.limit
+      const settings = await getTenantPartnerSettings(supabase, tenantId)
+      const kinds = partnerSearchKindsFromSettings(settings)
+      allowedKinds = allowedUnifiedKinds(kinds)
+      kind = resolvePartnerSearchKind(requestedKind, kinds)
+
+      if (q) {
+        const result = await searchMaterialsUnified(supabase, {
+          tenantId,
+          q,
+          page,
+          limit: 25,
+          kind,
+          allowedKinds
+        })
+        rows = result.rows
+        total = result.total
+        limit = result.limit
+      }
     } catch (err) {
       loadError =
         err instanceof Error
@@ -112,6 +128,7 @@ export default async function PartnerKeresoPage({
         initialLimit={limit}
         initialQ={q}
         initialKind={kind}
+        allowedKinds={allowedKinds}
         sheetDetailBase={null}
         linearDetailBase={null}
         accessoryDetailBase={null}

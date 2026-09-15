@@ -47,6 +47,11 @@ export type SearchMaterialsUnifiedParams = {
   limit?: number
   /** all = mindhárom forrás; egyébként csak a választott. */
   kind?: UnifiedSearchKind | 'all'
+  /**
+   * További korlát (pl. partner tenant beállítás).
+   * Ha megadott, a kind/all csak ezek unióján belül keres.
+   */
+  allowedKinds?: UnifiedSearchKind[]
 }
 
 export type SearchMaterialsUnifiedResult = {
@@ -154,14 +159,21 @@ export async function searchMaterialsUnified(
   const limit = Math.min(50, Math.max(1, params.limit ?? 25))
   const q = params.q.trim()
   const kind = params.kind ?? 'all'
+  const allowed = params.allowedKinds?.length
+    ? new Set(params.allowedKinds)
+    : null
 
   if (!q) {
     return { rows: [], total: 0, page, limit }
   }
 
-  const wantSheet = kind === 'all' || kind === 'sheet'
-  const wantLinear = kind === 'all' || kind === 'linear'
-  const wantAccessory = kind === 'all' || kind === 'accessory'
+  const wantSheet =
+    (kind === 'all' || kind === 'sheet') && (!allowed || allowed.has('sheet'))
+  const wantLinear =
+    (kind === 'all' || kind === 'linear') && (!allowed || allowed.has('linear'))
+  const wantAccessory =
+    (kind === 'all' || kind === 'accessory') &&
+    (!allowed || allowed.has('accessory'))
 
   const safe = q.replace(/[%_,]/g, '')
   if (!safe) {
