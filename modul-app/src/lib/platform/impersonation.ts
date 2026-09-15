@@ -7,7 +7,8 @@ import { redirect } from 'next/navigation'
 import {
   CURRENT_TENANT_COOKIE,
   IMPERSONATION_SESSION_COOKIE,
-  OPERATOR_REFRESH_COOKIE
+  OPERATOR_REFRESH_COOKIE,
+  SESSION_SNAPSHOT_COOKIE
 } from '@/lib/auth/config'
 import { writePlatformAudit } from '@/lib/platform/audit'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
@@ -207,6 +208,7 @@ export async function stopImpersonation(): Promise<ImpersonationResult> {
 
   cookieStore.delete(IMPERSONATION_SESSION_COOKIE)
   cookieStore.delete(OPERATOR_REFRESH_COOKIE)
+  cookieStore.delete(SESSION_SNAPSHOT_COOKIE)
 
   if (operatorRefresh) {
     const { error: refreshError } = await supabase.auth.refreshSession({

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 
-import { getSessionUser } from '@/lib/auth/session'
+import { getSessionUser, clearSessionSnapshotCookie } from '@/lib/auth/session'
 import {
   ALL_PAGE_KEYS,
   ALWAYS_ALLOWED_PAGE_KEYS,
@@ -311,6 +311,11 @@ export async function updateMembershipPageAccess(input: {
     return { ok: false, message: 'Nem sikerült menteni az oldaljogokat.' }
   }
 
+  // Saját jogváltozás / admin session: snapshot invalid (TTL is véd)
+  if (membership.user_id === ctx.user.id) {
+    await clearSessionSnapshotCookie()
+  }
+
   revalidatePath(USERS_PATH)
   return { ok: true }
 }
@@ -358,6 +363,10 @@ export async function updateMembershipRole(input: {
   if (updateError) {
     console.error('updateMembershipRole', updateError.message)
     return { ok: false, message: 'Nem sikerült frissíteni a szerepet.' }
+  }
+
+  if (membership.user_id === ctx.user.id) {
+    await clearSessionSnapshotCookie()
   }
 
   revalidatePath(USERS_PATH)

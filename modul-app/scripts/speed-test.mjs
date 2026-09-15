@@ -28,6 +28,8 @@ const TARGETS = {
   listOrdersWarmMs: 300,
   quoteDetailWarmMs: 400,
   keresoRpcWarmMs: 120,
+  sessionBundleWarmMs: 200,
+  snapshotVerifyWarmMs: 5,
   httpOrdersWarmMs: 800,
   httpQuoteWarmMs: 900
 }
@@ -196,7 +198,7 @@ async function main() {
 
     // Session waterfall simulation (memberships + entitlements + page_access + platform)
     results.push(
-      await timed('DB session-parallel bundle', async () => {
+      await timed('DB session-parallel bundle (P2 miss path)', async () => {
         const { data: membership } = await admin
           .from('tenant_memberships')
           .select('id, role')
@@ -220,6 +222,39 @@ async function main() {
             .limit(1)
             .maybeSingle()
         ])
+      })
+    )
+
+    // P2 hit path: local HMAC verify (no DB) — mirrors session-snapshot.ts
+    results.push(
+      await timed('P2 session snapshot HMAC verify (local)', async () => {
+        const secret = process.env.SESSION_SNAPSHOT_SECRET || SERVICE
+        const payload = Buffer.from(
+          JSON.stringify({
+            v: 1,
+            sub: 'speed-test',
+            allowedPages: ['/home', '/kereso', '/megrendelesek'],
+            exp: Math.floor(Date.now() / 1000) + 900
+          })
+        ).toString('base64url')
+        const key = await crypto.subtle.importKey(
+          'raw',
+          new TextEncoder().encode(secret.slice(0, 64)),
+          { name: 'HMAC', hash: 'SHA-256' },
+          false,
+          ['sign', 'verify']
+        )
+        const sig = await crypto.subtle.sign(
+          'HMAC',
+          key,
+          new TextEncoder().encode(payload)
+        )
+        await crypto.subtle.verify(
+          'HMAC',
+          key,
+          sig,
+          new TextEncoder().encode(payload)
+        )
       })
     )
   }
@@ -273,25 +308,58 @@ async function main() {
     })
   )
 
-  results.push(
-    await timed('DB search_materials_catalog RPC', async () => {
-      const { error } = await admin.rpc('search_materials_catalog', {
-        p_tenant_id: tenantId,
-        p_q: 'a',
-        p_kinds: ['sheet', 'linear', 'accessory'],
-        p_limit: 25,
-        p_offset: 0
+  // RPC: auth once, then time only the catalog call
+  {
+    let rpcClient = null
+    try {
+      const { data: m } = await admin
+        .from('tenant_memberships')
+        .select('user_id, tenant_id')
+        .eq('tenant_id', tenantId)
+        .limit(1)
+        .maybeSingle()
+      if (!m) throw new Error('no membership for RPC auth')
+      const { data: uRes } = await admin.auth.admin.getUserById(m.user_id)
+      const email = uRes?.user?.email
+      if (!email) throw new Error('no email')
+      const { data: link, error: lErr } = await admin.auth.admin.generateLink({
+        type: 'magiclink',
+        email
       })
-      if (error) throw error
-    }).catch((err) => ({
-      label: 'DB search_materials_catalog RPC',
-      coldMs: null,
-      warmMedianMs: null,
-      warmP95Ms: null,
-      samples: [],
-      note: `SKIP — apply migration 20260421 first (${err?.message || err})`
-    }))
-  )
+      if (lErr) throw lErr
+      const tokenHash = link.properties?.hashed_token
+      rpcClient = createClient(URL, ANON, {
+        auth: { persistSession: false, autoRefreshToken: false }
+      })
+      const { error: oErr } = await rpcClient.auth.verifyOtp({
+        type: 'email',
+        token_hash: tokenHash
+      })
+      if (oErr) throw oErr
+
+      results.push(
+        await timed('DB search_materials_catalog RPC', async () => {
+          const { error } = await rpcClient.rpc('search_materials_catalog', {
+            p_tenant_id: tenantId,
+            p_q: 'a',
+            p_kinds: ['sheet', 'linear', 'accessory'],
+            p_limit: 25,
+            p_offset: 0
+          })
+          if (error) throw error
+        })
+      )
+    } catch (err) {
+      results.push({
+        label: 'DB search_materials_catalog RPC',
+        coldMs: null,
+        warmMedianMs: null,
+        warmP95Ms: null,
+        samples: [],
+        note: `SKIP — ${err?.message || err}`
+      })
+    }
+  }
 
   // --- optional HTTP TTFB ---
   if (BASE && EMAIL && PASSWORD && ANON) {
@@ -388,6 +456,10 @@ async function main() {
     if (r.label.includes('getQuoteDetail')) target = TARGETS.quoteDetailWarmMs
     if (r.label.includes('search_materials_catalog'))
       target = TARGETS.keresoRpcWarmMs
+    if (r.label.includes('session-parallel'))
+      target = TARGETS.sessionBundleWarmMs
+    if (r.label.includes('snapshot HMAC'))
+      target = TARGETS.snapshotVerifyWarmMs
     if (r.label.includes('/megrendelesek')) target = TARGETS.httpOrdersWarmMs
     if (r.label.includes('/ajanlatok')) target = TARGETS.httpQuoteWarmMs
 

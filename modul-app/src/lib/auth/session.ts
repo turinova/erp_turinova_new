@@ -2,13 +2,22 @@ import { cookies, headers } from 'next/headers'
 import { cache } from 'react'
 
 import {
+  APP_SESSION_NONCE_COOKIE,
   CURRENT_TENANT_COOKIE,
   DEV_SESSION_COOKIE,
   IMPERSONATION_SESSION_COOKIE,
+  SESSION_SNAPSHOT_COOKIE,
   getDemoCompanyName,
   isDevBypassEnabled,
   isSupabaseConfigured
 } from '@/lib/auth/config'
+import {
+  buildSessionSnapshot,
+  sessionSnapshotCookieOptions,
+  signSessionSnapshot,
+  verifySessionSnapshotToken,
+  type SessionSnapshot
+} from '@/lib/auth/session-snapshot'
 import { ALL_PAGE_KEYS } from '@/lib/permissions/pages'
 import { listAllowedPageKeys } from '@/lib/permissions/access'
 import {
@@ -51,12 +60,83 @@ export type SessionUser = {
   canManageUsers: boolean
   isPlatformAdmin: boolean
   impersonation: ImpersonationInfo | null
+  /** Diagnosztika: session forrás. */
+  sessionSource?: 'snapshot' | 'db' | 'dev'
+}
+
+export async function clearSessionSnapshotCookie(): Promise<void> {
+  try {
+    const cookieStore = await cookies()
+    cookieStore.delete(SESSION_SNAPSHOT_COOKIE)
+  } catch {
+    // ignore RSC
+  }
+}
+
+export async function setSessionSnapshotCookie(
+  snapshot: SessionSnapshot
+): Promise<void> {
+  try {
+    const token = await signSessionSnapshot(snapshot)
+    const cookieStore = await cookies()
+    cookieStore.set(
+      SESSION_SNAPSHOT_COOKIE,
+      token,
+      sessionSnapshotCookieOptions()
+    )
+  } catch {
+    // ignore RSC / size
+  }
+}
+
+function sessionUserFromSnapshot(snap: SessionSnapshot): SessionUser {
+  return {
+    id: snap.sub,
+    email: snap.email,
+    companyName: snap.tenantName || 'Nincs cég hozzárendelve',
+    tenantId: snap.tenantId,
+    tenantSlug: snap.tenantSlug,
+    membershipId: snap.membershipId,
+    role: snap.role,
+    roleLabel: snap.role ? TENANT_ROLE_LABELS[snap.role] : null,
+    hasMembership: snap.hasMembership,
+    isDevSession: false,
+    entitledPages: snap.entitledPages,
+    allowedPages: snap.allowedPages,
+    canManageUsers: snap.canManageUsers,
+    isPlatformAdmin: snap.isPlatformAdmin,
+    impersonation: null,
+    sessionSource: 'snapshot'
+  }
+}
+
+async function persistSnapshotFromUser(
+  user: SessionUser,
+  nonce: string
+): Promise<void> {
+  if (user.isDevSession || user.impersonation) return
+  if (!nonce) return
+  const snapshot = buildSessionSnapshot({
+    userId: user.id,
+    email: user.email,
+    tenantId: user.tenantId,
+    tenantSlug: user.tenantSlug,
+    tenantName: user.companyName,
+    membershipId: user.membershipId,
+    role: user.role,
+    allowedPages: user.allowedPages,
+    entitledPages: user.entitledPages,
+    canManageUsers: user.canManageUsers,
+    isPlatformAdmin: user.isPlatformAdmin,
+    hasMembership: user.hasMembership,
+    nonce
+  })
+  await setSessionSnapshotCookie(snapshot)
 }
 
 /**
  * Request-scoped session (React.cache).
- * Layout + page ugyanabban a requestben csak egyszer fut.
- * Onboarding first_login írása NEM itt — lásd loginAction.
+ * P2: aláírt snapshot cookie → 0 entitlement roundtrip meleg pathon.
  */
 async function loadSessionUser(): Promise<SessionUser | null> {
   if (isSupabaseConfigured()) {
@@ -70,6 +150,9 @@ async function loadSessionUser(): Promise<SessionUser | null> {
     if (!user?.email) return null
 
     const cookieStore = await cookies()
+    const nonce = cookieStore.get(APP_SESSION_NONCE_COOKIE)?.value ?? ''
+    const impersonationId = cookieStore.get(IMPERSONATION_SESSION_COOKIE)
+      ?.value
     const hdrs = await headers()
     const surface = hdrs.get('x-modul-surface')
     const pathname = hdrs.get('x-pathname') ?? ''
@@ -77,6 +160,37 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       surface === 'platform' ||
       pathname === '/platform' ||
       pathname.startsWith('/platform/')
+
+    // Impersonation: mindig DB (rövid életű, ne cache-eljük)
+    if (!impersonationId) {
+      const snap = await verifySessionSnapshotToken(
+        cookieStore.get(SESSION_SNAPSHOT_COOKIE)?.value
+      )
+      if (
+        snap &&
+        snap.sub === user.id &&
+        snap.nonce === nonce &&
+        Boolean(nonce)
+      ) {
+        // Platform surface: snapshot isPlatformAdmin elég
+        if (leanPlatform) {
+          return {
+            ...sessionUserFromSnapshot(snap),
+            companyName: 'Platform',
+            tenantId: null,
+            tenantSlug: null,
+            membershipId: null,
+            role: null,
+            roleLabel: null,
+            hasMembership: false,
+            entitledPages: ['/home'],
+            allowedPages: ['/home'],
+            canManageUsers: false
+          }
+        }
+        return sessionUserFromSnapshot(snap)
+      }
+    }
 
     // Platform konzol: csak platform_admins check — nincs membership / entitlements
     if (leanPlatform) {
@@ -87,7 +201,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
         .eq('active', true)
         .maybeSingle()
 
-      return {
+      const platformUser: SessionUser = {
         id: user.id,
         email: user.email,
         companyName: 'Platform',
@@ -102,8 +216,11 @@ async function loadSessionUser(): Promise<SessionUser | null> {
         allowedPages: ['/home'],
         canManageUsers: false,
         isPlatformAdmin: Boolean(platformRow),
-        impersonation: null
+        impersonation: null,
+        sessionSource: 'db'
       }
+      if (nonce) await persistSnapshotFromUser(platformUser, nonce)
+      return platformUser
     }
 
     const preferredTenantId =
@@ -155,7 +272,6 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       ])
 
       entitledPages = entitled
-      // Ha még nincs materializálva (régi tenant migráció előtt), ne zárjuk ki.
       if (entitledPages.length <= 1) {
         const { count } = await supabase
           .from('tenant_entitlements')
@@ -182,7 +298,6 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       current?.role === 'owner' || current?.role === 'admin'
 
     let impersonation: ImpersonationInfo | null = null
-    const impersonationId = cookieStore.get(IMPERSONATION_SESSION_COOKIE)?.value
     if (impersonationId) {
       const { data: imp } = await supabase
         .from('platform_impersonation_sessions')
@@ -231,12 +346,11 @@ async function loadSessionUser(): Promise<SessionUser | null> {
           tenantName,
           expiresAt: imp.expires_at
         }
-        // Impersonation alatt a platform admin flag a cél usernél false marad
         isPlatformAdmin = false
       }
     }
 
-    return {
+    const sessionUser: SessionUser = {
       id: user.id,
       email: user.email,
       companyName: current?.tenantName ?? 'Nincs cég hozzárendelve',
@@ -251,8 +365,15 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       allowedPages,
       canManageUsers,
       isPlatformAdmin,
-      impersonation
+      impersonation,
+      sessionSource: 'db'
     }
+
+    if (nonce && !impersonation) {
+      await persistSnapshotFromUser(sessionUser, nonce)
+    }
+
+    return sessionUser
   }
 
   if (isDevBypassEnabled()) {
@@ -275,7 +396,8 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       allowedPages: [...ALL_PAGE_KEYS],
       canManageUsers: true,
       isPlatformAdmin: true,
-      impersonation: null
+      impersonation: null,
+      sessionSource: 'dev'
     }
   }
 
@@ -283,3 +405,37 @@ async function loadSessionUser(): Promise<SessionUser | null> {
 }
 
 export const getSessionUser = cache(loadSessionUser)
+
+/** Login után: snapshot azonnal, hogy az első /home ne DB-bundle legyen. */
+export async function writeSessionSnapshotAfterLogin(input: {
+  userId: string
+  email: string
+  nonce: string
+  tenantId: string | null
+  tenantSlug: string | null
+  tenantName: string
+  membershipId: string | null
+  role: TenantRole | null
+  allowedPages: string[]
+  entitledPages: string[]
+  canManageUsers: boolean
+  isPlatformAdmin: boolean
+  hasMembership: boolean
+}): Promise<void> {
+  const snapshot = buildSessionSnapshot({
+    userId: input.userId,
+    email: input.email,
+    tenantId: input.tenantId,
+    tenantSlug: input.tenantSlug,
+    tenantName: input.tenantName,
+    membershipId: input.membershipId,
+    role: input.role,
+    allowedPages: input.allowedPages,
+    entitledPages: input.entitledPages,
+    canManageUsers: input.canManageUsers,
+    isPlatformAdmin: input.isPlatformAdmin,
+    hasMembership: input.hasMembership,
+    nonce: input.nonce
+  })
+  await setSessionSnapshotCookie(snapshot)
+}

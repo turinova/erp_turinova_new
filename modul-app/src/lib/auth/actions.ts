@@ -9,6 +9,7 @@ import {
   DEV_SESSION_COOKIE,
   IMPERSONATION_SESSION_COOKIE,
   OPERATOR_REFRESH_COOKIE,
+  SESSION_SNAPSHOT_COOKIE,
   isDevBypassEnabled,
   isSupabaseConfigured
 } from '@/lib/auth/config'
@@ -17,6 +18,16 @@ import {
   parseForwardedIp,
   registerAppSession
 } from '@/lib/auth/app-session'
+import {
+  clearSessionSnapshotCookie,
+  writeSessionSnapshotAfterLogin
+} from '@/lib/auth/session'
+import { ALL_PAGE_KEYS } from '@/lib/permissions/pages'
+import { listAllowedPageKeys } from '@/lib/permissions/access'
+import {
+  intersectPages,
+  listTenantEntitledPageKeys
+} from '@/lib/platform/entitlements'
 import { createClient } from '@/lib/supabase/server'
 import {
   listMembershipsForUser,
@@ -134,12 +145,28 @@ export async function loginAction(
       if (!platformRow) {
         await supabase.auth.signOut()
         cookieStore.delete(APP_SESSION_NONCE_COOKIE)
+        cookieStore.delete(SESSION_SNAPSHOT_COOKIE)
         return {
           error:
             'Ez a belépés csak platform operátoroknak szól (admin.optinova.hu).'
         }
       }
       cookieStore.delete(CURRENT_TENANT_COOKIE)
+      await writeSessionSnapshotAfterLogin({
+        userId: data.user.id,
+        email: data.user.email!,
+        nonce: sessionNonce,
+        tenantId: null,
+        tenantSlug: null,
+        tenantName: 'Platform',
+        membershipId: null,
+        role: null,
+        allowedPages: ['/home'],
+        entitledPages: ['/home'],
+        canManageUsers: false,
+        isPlatformAdmin: true,
+        hasMembership: false
+      })
       redirect('/')
     }
 
@@ -150,6 +177,42 @@ export async function loginAction(
         path: '/',
         secure: process.env.NODE_ENV === 'production'
       })
+
+      let entitledPages = await listTenantEntitledPageKeys(
+        supabase,
+        current.tenantId
+      )
+      if (entitledPages.length <= 1) {
+        const { count } = await supabase
+          .from('tenant_entitlements')
+          .select('feature_key', { count: 'exact', head: true })
+          .eq('tenant_id', current.tenantId)
+        if (!count) entitledPages = [...ALL_PAGE_KEYS]
+      }
+      const membershipPages = await listAllowedPageKeys(
+        supabase,
+        current.membershipId,
+        current.role
+      )
+      const allowedPages = intersectPages(membershipPages, entitledPages)
+
+      await writeSessionSnapshotAfterLogin({
+        userId: data.user.id,
+        email: data.user.email!,
+        nonce: sessionNonce,
+        tenantId: current.tenantId,
+        tenantSlug: current.tenantSlug,
+        tenantName: current.tenantName,
+        membershipId: current.membershipId,
+        role: current.role,
+        allowedPages,
+        entitledPages,
+        canManageUsers:
+          current.role === 'owner' || current.role === 'admin',
+        isPlatformAdmin: Boolean(platformRow),
+        hasMembership: true
+      })
+
       try {
         const { ensureFirstLoginMarked } = await import(
           '@/lib/platform/onboarding-flags'
@@ -163,6 +226,21 @@ export async function loginAction(
 
     if (platformRow) {
       cookieStore.delete(CURRENT_TENANT_COOKIE)
+      await writeSessionSnapshotAfterLogin({
+        userId: data.user.id,
+        email: data.user.email!,
+        nonce: sessionNonce,
+        tenantId: null,
+        tenantSlug: null,
+        tenantName: 'Platform',
+        membershipId: null,
+        role: null,
+        allowedPages: ['/home'],
+        entitledPages: ['/home'],
+        canManageUsers: false,
+        isPlatformAdmin: true,
+        hasMembership: false
+      })
       const platformOrigin = process.env.NEXT_PUBLIC_PLATFORM_ORIGIN?.replace(
         /\/$/,
         ''
@@ -174,6 +252,7 @@ export async function loginAction(
     }
 
     cookieStore.delete(CURRENT_TENANT_COOKIE)
+    await clearSessionSnapshotCookie()
     redirect('/no-access')
   }
 
@@ -211,6 +290,7 @@ export async function logoutAction() {
   const cookieStore = await cookies()
   cookieStore.delete(CURRENT_TENANT_COOKIE)
   cookieStore.delete(APP_SESSION_NONCE_COOKIE)
+  cookieStore.delete(SESSION_SNAPSHOT_COOKIE)
   cookieStore.delete(IMPERSONATION_SESSION_COOKIE)
   cookieStore.delete(OPERATOR_REFRESH_COOKIE)
 

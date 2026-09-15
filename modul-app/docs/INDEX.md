@@ -22,6 +22,7 @@
 | [17-saas-architecture.md](17-saas-architecture.md) | **Komplett SaaS struktúra** — deploy, tenancy, platform gerinc, DR |
 | [18-midday-visual-reference.md](18-midday-visual-reference.md) | **Vizuális north star** — Linear light + Midday ritmus, no AGPL copy |
 | [19-supabase-setup.md](19-supabase-setup.md) | **Supabase auth + tenancy** setup (env, SQL, seed) |
+| [20-session-snapshot.md](20-session-snapshot.md) | **P2 session snapshot** — aláírt cookie, lean middleware |
 | [20-partner-portal.md](20-partner-portal.md) | **Partner portal** — online asztalos, add-on, fázisok |
 | [21-platform-ops.md](21-platform-ops.md) | **Platform ops** — 1–2 fős üzem, P0 döntések, admin host |
 

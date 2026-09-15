@@ -5,6 +5,7 @@ import {
   CURRENT_TENANT_COOKIE,
   IMPERSONATION_SESSION_COOKIE,
   OPERATOR_REFRESH_COOKIE,
+  SESSION_SNAPSHOT_COOKIE,
   isSupabaseConfigured
 } from '@/lib/auth/config'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -122,5 +123,7 @@ export async function GET(request: NextRequest) {
     )
   }
   response.cookies.set(CURRENT_TENANT_COOKIE, row.tenant_id, cookieOpts())
+  // Impersonation: ne örököljük az operátor snapshotját
+  response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
   return response
 }

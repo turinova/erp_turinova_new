@@ -6,10 +6,12 @@ import {
   CURRENT_TENANT_COOKIE,
   DEV_SESSION_COOKIE,
   IMPERSONATION_SESSION_COOKIE,
+  SESSION_SNAPSHOT_COOKIE,
   isDevBypassEnabled,
   isSupabaseConfigured
 } from '@/lib/auth/config'
 import { isAppSessionValid } from '@/lib/auth/app-session'
+import { snapshotMatchesRequest } from '@/lib/auth/session-snapshot'
 import {
   getPlatformPublicOrigin,
   isPartnerContext,
@@ -252,72 +254,89 @@ export async function updateSession(request: NextRequest) {
           return redirectTo(request, PARTNER_LOGIN_PATH)
         }
       } else {
-        const [{ data: partnerRow }, { data: memberships }] = await Promise.all([
-          supabase
-            .from('partner_profiles')
-            .select('user_id, status')
-            .eq('user_id', user.id)
-            .maybeSingle(),
-          supabase
-            .from('tenant_memberships')
-            .select('id')
-            .eq('user_id', user.id)
-            .limit(1)
-        ])
+        const nonce = request.cookies.get(APP_SESSION_NONCE_COOKIE)?.value
+        const snapshotToken = request.cookies.get(SESSION_SNAPSHOT_COOKIE)
+          ?.value
+        const snap = await snapshotMatchesRequest({
+          token: snapshotToken,
+          userId: user.id,
+          nonce
+        })
 
-        if (partnerRow && partnerRow.status !== 'disabled') {
-          isPartnerUser = true
-        }
-        hasStaffMembership = (memberships?.length ?? 0) > 0
+        // P2 lean: érvényes snapshot → nincs isAppSessionValid / membership query
+        if (snap) {
+          isAuthenticated = true
+          hasStaffMembership = snap.hasMembership
+          isPartnerUser = false
+        } else {
+          const [{ data: partnerRow }, { data: memberships }] =
+            await Promise.all([
+              supabase
+                .from('partner_profiles')
+                .select('user_id, status')
+                .eq('user_id', user.id)
+                .maybeSingle(),
+              supabase
+                .from('tenant_memberships')
+                .select('id')
+                .eq('user_id', user.id)
+                .limit(1)
+            ])
 
-        const impersonationId = request.cookies.get(
-          IMPERSONATION_SESSION_COOKIE
-        )?.value
-
-        let impersonationOk = false
-        if (impersonationId) {
-          const { data: imp } = await supabase
-            .from('platform_impersonation_sessions')
-            .select('id, target_user_id, expires_at, ended_at')
-            .eq('id', impersonationId)
-            .maybeSingle()
-
-          if (
-            imp &&
-            !imp.ended_at &&
-            imp.target_user_id === user.id &&
-            new Date(imp.expires_at).getTime() > Date.now()
-          ) {
-            impersonationOk = true
-            isAuthenticated = true
+          if (partnerRow && partnerRow.status !== 'disabled') {
+            isPartnerUser = true
           }
-        }
+          hasStaffMembership = (memberships?.length ?? 0) > 0
 
-        if (!impersonationOk) {
-          const nonce = request.cookies.get(APP_SESSION_NONCE_COOKIE)?.value
-          const valid = await isAppSessionValid(supabase, user.id, nonce)
+          const impersonationId = request.cookies.get(
+            IMPERSONATION_SESSION_COOKIE
+          )?.value
 
-          if (valid) {
-            isAuthenticated = true
-          } else if (isPartnerUser && !hasStaffMembership) {
-            // Partner-only session on staff host (path-mode / impersonation)
-            isAuthenticated = true
-          } else if (isPartnerSharedApi && isPartnerUser) {
-            isAuthenticated = true
-          } else if (isPartnerSharedApi) {
-            await supabase.auth.signOut()
-            const response = redirectTo(request, '/login', 'session_replaced')
-            response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-            response.cookies.delete(CURRENT_TENANT_COOKIE)
-            response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
-            return response
-          } else {
-            await supabase.auth.signOut()
-            const response = redirectTo(request, '/login', 'session_replaced')
-            response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-            response.cookies.delete(CURRENT_TENANT_COOKIE)
-            response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
-            return response
+          let impersonationOk = false
+          if (impersonationId) {
+            const { data: imp } = await supabase
+              .from('platform_impersonation_sessions')
+              .select('id, target_user_id, expires_at, ended_at')
+              .eq('id', impersonationId)
+              .maybeSingle()
+
+            if (
+              imp &&
+              !imp.ended_at &&
+              imp.target_user_id === user.id &&
+              new Date(imp.expires_at).getTime() > Date.now()
+            ) {
+              impersonationOk = true
+              isAuthenticated = true
+            }
+          }
+
+          if (!impersonationOk) {
+            const valid = await isAppSessionValid(supabase, user.id, nonce)
+
+            if (valid) {
+              isAuthenticated = true
+            } else if (isPartnerUser && !hasStaffMembership) {
+              isAuthenticated = true
+            } else if (isPartnerSharedApi && isPartnerUser) {
+              isAuthenticated = true
+            } else if (isPartnerSharedApi) {
+              await supabase.auth.signOut()
+              const response = redirectTo(request, '/login', 'session_replaced')
+              response.cookies.delete(APP_SESSION_NONCE_COOKIE)
+              response.cookies.delete(CURRENT_TENANT_COOKIE)
+              response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
+              response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
+              return response
+            } else {
+              await supabase.auth.signOut()
+              const response = redirectTo(request, '/login', 'session_replaced')
+              response.cookies.delete(APP_SESSION_NONCE_COOKIE)
+              response.cookies.delete(CURRENT_TENANT_COOKIE)
+              response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
+              response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
+              return response
+            }
           }
         }
       }
