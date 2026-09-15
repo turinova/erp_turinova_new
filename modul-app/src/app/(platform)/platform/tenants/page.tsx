@@ -7,7 +7,7 @@ import { listPlatformTenants } from '@/lib/platform/queries'
 import type { TenantStatus } from '@/lib/supabase/database.types'
 
 export const metadata: Metadata = {
-  title: 'Cégek · Platform'
+  title: 'Cégek'
 }
 
 type SearchParams = Promise<{

@@ -10,7 +10,7 @@ import { getPartnerSession } from '@/lib/auth/partner-session'
 import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
 
 export const metadata: Metadata = {
-  title: 'Beállítások · Asztalos portál'
+  title: 'Beállítások'
 }
 
 export default async function PartnerSettingsPage() {

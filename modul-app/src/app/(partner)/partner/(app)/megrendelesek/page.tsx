@@ -9,7 +9,7 @@ import { PARTNER_SETTINGS_PATH } from '@/lib/auth/surface'
 import { listPartnerSubmittedQuotes } from '@/lib/partner/quotes-queries'
 import { createClient } from '@/lib/supabase/server'
 
-export const metadata: Metadata = { title: 'Beküldött rendeléseim · Asztalos' }
+export const metadata: Metadata = { title: 'Rendeléseim' }
 
 type SearchParams = Promise<{
   q?: string

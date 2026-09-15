@@ -8,7 +8,7 @@ import {
 } from '@/lib/platform/entitlement-queries'
 
 export const metadata: Metadata = {
-  title: 'Csomagok · Platform'
+  title: 'Csomagok'
 }
 
 export default async function PlatformPlansPage() {

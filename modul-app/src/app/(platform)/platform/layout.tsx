@@ -1,7 +1,15 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 
 import { PlatformShell } from '@/components/platform/platform-shell'
 import { getSessionUser } from '@/lib/auth/session'
+
+export const metadata: Metadata = {
+  title: {
+    default: 'Optinova Platform',
+    template: '%s · Optinova Platform'
+  }
+}
 
 export default async function PlatformLayout({
   children

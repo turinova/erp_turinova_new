@@ -6,7 +6,7 @@ import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
-  title: 'Scanner'
+  title: 'Vonalkód'
 }
 
 export default async function ScannerPage() {

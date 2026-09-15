@@ -11,7 +11,7 @@ import { searchPlatform } from '@/lib/platform/search'
 import { platformHref } from '@/lib/auth/surface'
 
 export const metadata: Metadata = {
-  title: 'Keresés · Platform'
+  title: 'Keresés'
 }
 
 type SearchParams = Promise<{ q?: string }>

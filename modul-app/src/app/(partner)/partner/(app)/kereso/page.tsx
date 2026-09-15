@@ -19,7 +19,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
-  title: 'Kereső · Asztalos'
+  title: 'Kereső'
 }
 
 type SearchParams = Promise<{

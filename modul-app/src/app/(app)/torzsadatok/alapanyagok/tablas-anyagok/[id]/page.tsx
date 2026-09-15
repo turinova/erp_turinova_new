@@ -9,6 +9,7 @@ import {
   listManufacturerOptions,
   listTaxRateOptions
 } from '@/lib/sheet-materials/queries'
+import { namedEntityTabTitle } from '@/lib/seo/tab-titles'
 import { createClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -19,7 +20,19 @@ export async function generateMetadata({
   params: Params
 }): Promise<Metadata> {
   const { id } = await params
-  return { title: `Táblás anyag · ${id.slice(0, 8)}` }
+  const user = await getSessionUser()
+  if (!user?.tenantId || user.isDevSession) {
+    return { title: 'Táblás anyag' }
+  }
+  const supabase = await createClient()
+  if (!supabase) return { title: 'Táblás anyag' }
+  const label = await namedEntityTabTitle(
+    supabase,
+    'sheet_materials',
+    user.tenantId,
+    id
+  )
+  return { title: label ?? 'Táblás anyag' }
 }
 
 export default async function EditTablasAnyagPage({

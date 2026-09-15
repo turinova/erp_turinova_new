@@ -269,6 +269,8 @@ export function QuoteAccessoriesBlock({
                 value={accessoryId}
                 disabled={pending}
                 allowEmpty={false}
+                searchable
+                searchPlaceholder="Termék vagy cikkszám…"
                 placeholder="Válassz…"
                 options={accessoryOptions.map((t) => ({
                   value: t.id,

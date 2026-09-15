@@ -14,7 +14,7 @@ import {
 import { resolvePartnerCompanyLabel } from '@/lib/partner/company-label'
 
 export const metadata: Metadata = {
-  title: 'Kezdőlap · Asztalos portál'
+  title: 'Kezdőlap'
 }
 
 export default async function PartnerHomePage() {

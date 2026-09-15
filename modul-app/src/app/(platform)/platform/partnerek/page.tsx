@@ -6,7 +6,7 @@ import { requirePlatformAdmin } from '@/lib/platform/auth'
 import { listPlatformPartners } from '@/lib/platform/partner-queries'
 
 export const metadata: Metadata = {
-  title: 'Partnerek · Platform'
+  title: 'Partnerek'
 }
 
 type SearchParams = Promise<{

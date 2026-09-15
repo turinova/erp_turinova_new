@@ -8,7 +8,7 @@ import { PARTNER_SETTINGS_PATH } from '@/lib/auth/surface'
 import { listPartnerDraftQuotes } from '@/lib/partner/quotes-queries'
 import { createClient } from '@/lib/supabase/server'
 
-export const metadata: Metadata = { title: 'Ajánlatok · Asztalos' }
+export const metadata: Metadata = { title: 'Ajánlataim' }
 
 type SearchParams = Promise<{
   q?: string

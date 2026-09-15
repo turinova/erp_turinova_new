@@ -19,7 +19,7 @@ import { listPlatformAttentionItems } from '@/lib/platform/queries'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = {
-  title: 'Platform'
+  title: 'Áttekintés'
 }
 
 export default async function PlatformDashboardPage() {

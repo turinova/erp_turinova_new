@@ -18,7 +18,7 @@ import { getQuoteForOptiEdit } from '@/lib/quotes/opti-edit'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
-  title: 'Opti · Asztalos'
+  title: 'Opti'
 }
 
 type SearchParams = Promise<{

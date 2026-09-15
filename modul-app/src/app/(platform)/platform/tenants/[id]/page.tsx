@@ -12,11 +12,20 @@ import {
 } from '@/lib/platform/entitlement-queries'
 import { ph } from '@/lib/platform/platform-href-server'
 import { getPlatformTenantDetail } from '@/lib/platform/queries'
+import { platformTenantTabTitle } from '@/lib/seo/tab-titles'
 
 type Params = Promise<{ id: string }>
 
-export async function generateMetadata(): Promise<Metadata> {
-  return { title: 'Cég · Platform' }
+export async function generateMetadata({
+  params
+}: {
+  params: Params
+}): Promise<Metadata> {
+  const { id } = await params
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { title: 'Cég' }
+  const label = await platformTenantTabTitle(ctx.admin, id)
+  return { title: label ?? 'Cég' }
 }
 
 export default async function PlatformTenantDetailPage({

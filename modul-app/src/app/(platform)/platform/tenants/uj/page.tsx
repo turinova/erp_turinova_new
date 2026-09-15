@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { CreateTenantForm } from '@/components/platform/create-tenant-form'
 
 export const metadata: Metadata = {
-  title: 'Új cég · Platform'
+  title: 'Új cég'
 }
 
 export default function PlatformNewTenantPage() {

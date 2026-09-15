@@ -9,6 +9,7 @@ import {
   listAccessoryTaxOptions,
   listAccessoryUnitOptions
 } from '@/lib/accessories/queries'
+import { namedEntityTabTitle } from '@/lib/seo/tab-titles'
 import { createClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -19,7 +20,19 @@ export async function generateMetadata({
   params: Params
 }): Promise<Metadata> {
   const { id } = await params
-  return { title: `Termék · ${id.slice(0, 8)}` }
+  const user = await getSessionUser()
+  if (!user?.tenantId || user.isDevSession) {
+    return { title: 'Termék' }
+  }
+  const supabase = await createClient()
+  if (!supabase) return { title: 'Termék' }
+  const label = await namedEntityTabTitle(
+    supabase,
+    'accessories',
+    user.tenantId,
+    id
+  )
+  return { title: label ?? 'Termék' }
 }
 
 export default async function EditTermekPage({

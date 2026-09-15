@@ -9,6 +9,7 @@ import { getTenantCompany } from '@/lib/company/queries'
 import { listActiveFeeTypeOptions } from '@/lib/fee-types/queries'
 import { listActiveAccessoryOptions } from '@/lib/accessories/queries'
 import { getQuoteDetail } from '@/lib/quotes/queries'
+import { quoteTabTitle } from '@/lib/seo/tab-titles'
 import { createClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -19,7 +20,14 @@ export async function generateMetadata({
   params: Params
 }): Promise<Metadata> {
   const { id } = await params
-  return { title: `Árajánlat · ${id.slice(0, 8)}` }
+  const user = await getSessionUser()
+  if (!user?.tenantId || user.isDevSession) {
+    return { title: 'Árajánlat' }
+  }
+  const supabase = await createClient()
+  if (!supabase) return { title: 'Árajánlat' }
+  const label = await quoteTabTitle(supabase, user.tenantId, id)
+  return { title: label ?? 'Árajánlat' }
 }
 
 export default function AjanlatDetailPage({

@@ -13,6 +13,7 @@ import {
   getPartnerQuoteDetail,
   isPartnerQuoteDraft
 } from '@/lib/partner/quote-detail'
+import { partnerQuoteTabTitle } from '@/lib/seo/tab-titles'
 import { createClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -23,7 +24,12 @@ export async function generateMetadata({
   params: Params
 }): Promise<Metadata> {
   const { id } = await params
-  return { title: `Beküldött rendelés · ${id.slice(0, 8)}` }
+  const session = await getPartnerSession()
+  if (!session) return { title: 'Rendelésem' }
+  const supabase = await createClient()
+  if (!supabase) return { title: 'Rendelésem' }
+  const label = await partnerQuoteTabTitle(supabase, session.id, id, 'order')
+  return { title: label ?? 'Rendelésem' }
 }
 
 export default async function PartnerMegrendelesDetailPage({

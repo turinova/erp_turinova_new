@@ -5,11 +5,20 @@ import { PartnerDetailClient } from '@/components/platform/partner-detail-client
 import { listPartnerAcceptingCompanies } from '@/lib/partner/companies'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
 import { getPlatformPartnerDetail } from '@/lib/platform/partner-queries'
+import { platformPartnerTabTitle } from '@/lib/seo/tab-titles'
 
 type Params = Promise<{ id: string }>
 
-export async function generateMetadata(): Promise<Metadata> {
-  return { title: 'Partner · Platform' }
+export async function generateMetadata({
+  params
+}: {
+  params: Params
+}): Promise<Metadata> {
+  const { id } = await params
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { title: 'Partner' }
+  const label = await platformPartnerTabTitle(ctx.admin, id)
+  return { title: label ?? 'Partner' }
 }
 
 export default async function PlatformPartnerDetailPage({

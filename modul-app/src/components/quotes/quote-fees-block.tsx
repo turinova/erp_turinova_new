@@ -305,6 +305,8 @@ export function QuoteFeesBlock({
                 value={feeTypeId}
                 disabled={pending}
                 allowEmpty={false}
+                searchable
+                searchPlaceholder="Díjtípus keresése…"
                 placeholder="Válassz…"
                 options={feeTypes.map((t) => ({
                   value: t.id,

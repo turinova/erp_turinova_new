@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { CustomerForm } from '@/components/customers/customer-form'
 import { getSessionUser } from '@/lib/auth/session'
 import { getCustomer } from '@/lib/customers/queries'
+import { customerTabTitle } from '@/lib/seo/tab-titles'
 import { createClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -14,7 +15,14 @@ export async function generateMetadata({
   params: Params
 }): Promise<Metadata> {
   const { id } = await params
-  return { title: `Ügyfél · ${id.slice(0, 8)}` }
+  const user = await getSessionUser()
+  if (!user?.tenantId || user.isDevSession) {
+    return { title: 'Ügyfél' }
+  }
+  const supabase = await createClient()
+  if (!supabase) return { title: 'Ügyfél' }
+  const label = await customerTabTitle(supabase, user.tenantId, id)
+  return { title: label ?? 'Ügyfél' }
 }
 
 export default async function EditUgyfelPage({

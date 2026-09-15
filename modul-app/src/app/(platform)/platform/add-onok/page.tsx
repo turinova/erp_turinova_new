@@ -8,7 +8,7 @@ import {
 } from '@/lib/platform/entitlement-queries'
 
 export const metadata: Metadata = {
-  title: 'Add-onok · Platform'
+  title: 'Add-onok'
 }
 
 export default async function PlatformAddonsPage() {
