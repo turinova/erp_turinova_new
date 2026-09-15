@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 
+import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
 import { normalizeBarcode } from '@/lib/quotes/production-utils'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
@@ -228,7 +229,7 @@ export async function finishQuoteHandover(input: {
 
   const { data: quote, error: quoteError } = await ctx.supabase
     .from('quotes')
-    .select('id, status, order_number, total_gross, payment_status')
+    .select('id, status, order_number, total_gross, final_total_gross, payment_status')
     .eq('id', input.quoteId)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -260,8 +261,9 @@ export async function finishQuoteHandover(input: {
     (sum, p) => sum + (Number(p.amount) || 0),
     0
   )
-  const totalGross = Number(quote.total_gross) || 0
-  const remaining = Math.round((totalGross - totalPaid) * 100) / 100
+  const totalGross =
+    Number(quote.final_total_gross ?? quote.total_gross) || 0
+  const remaining = quoteRemainingGross(totalGross, totalPaid)
   let paymentCreated = false
 
   if (input.settleRemaining && remaining > 0) {

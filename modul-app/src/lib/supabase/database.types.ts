@@ -64,6 +64,65 @@ export type Manufacturer = {
   deleted_at: string | null
 }
 
+export type Unit = {
+  id: string
+  tenant_id: string
+  name: string
+  shortform: string
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type FeeType = {
+  id: string
+  tenant_id: string
+  tax_rate_id: string
+  unit_id: string
+  name: string
+  price_net: number
+  active: boolean
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type Accessory = {
+  id: string
+  tenant_id: string
+  manufacturer_id: string
+  tax_rate_id: string
+  unit_id: string
+  name: string
+  sku: string
+  barcode: string | null
+  barcode_internal: string | null
+  price_net: number
+  active: boolean
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type LinearMaterial = {
+  id: string
+  tenant_id: string
+  manufacturer_id: string
+  tax_rate_id: string
+  name: string
+  material_type: 'hatfal' | 'munkalap' | 'asztalap'
+  length_mm: number
+  width_mm: number
+  thickness_mm: number
+  on_stock: boolean
+  active: boolean
+  image_url: string | null
+  price_net: number
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
 export type Equipment = {
   id: string
   tenant_id: string
@@ -198,6 +257,13 @@ export type Quote = {
   total_net: number
   total_vat: number
   total_gross: number
+  fees_total_net: number
+  fees_total_vat: number
+  fees_total_gross: number
+  accessories_total_net: number
+  accessories_total_vat: number
+  accessories_total_gross: number
+  final_total_gross: number
   comment: string | null
   project_name: string | null
   production_machine_id: string | null
@@ -210,6 +276,48 @@ export type Quote = {
   portal_submitted_at: string | null
   ordered_at: string | null
   created_by: string
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type QuoteFee = {
+  id: string
+  tenant_id: string
+  quote_id: string
+  fee_type_id: string | null
+  kind: 'fee' | 'credit'
+  fee_name: string
+  quantity: number
+  unit_id: string | null
+  unit_shortform: string
+  unit_price_net: number
+  tax_rate_percent: number
+  vat_amount: number
+  gross_price: number
+  comment: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type QuoteAccessory = {
+  id: string
+  tenant_id: string
+  quote_id: string
+  accessory_id: string | null
+  accessory_name: string
+  sku: string
+  barcode: string | null
+  barcode_internal: string | null
+  quantity: number
+  unit_id: string | null
+  unit_shortform: string
+  unit_price_net: number
+  tax_rate_percent: number
+  vat_amount: number
+  gross_price: number
+  comment: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -387,6 +495,77 @@ export type Database = {
         }
         Update: Partial<Manufacturer>
       }
+      units: {
+        Row: Unit
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          shortform: string
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<Unit>
+      }
+      fee_types: {
+        Row: FeeType
+        Insert: {
+          id?: string
+          tenant_id: string
+          tax_rate_id: string
+          unit_id: string
+          name: string
+          price_net: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<FeeType>
+      }
+      accessories: {
+        Row: Accessory
+        Insert: {
+          id?: string
+          tenant_id: string
+          manufacturer_id: string
+          tax_rate_id: string
+          unit_id: string
+          name: string
+          sku: string
+          barcode?: string | null
+          barcode_internal?: string | null
+          price_net: number
+          active?: boolean
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<Accessory>
+      }
+      linear_materials: {
+        Row: LinearMaterial
+        Insert: {
+          id?: string
+          tenant_id: string
+          manufacturer_id: string
+          tax_rate_id: string
+          name: string
+          material_type: 'hatfal' | 'munkalap' | 'asztalap'
+          length_mm: number
+          width_mm: number
+          thickness_mm: number
+          on_stock?: boolean
+          active?: boolean
+          image_url?: string | null
+          price_net: number
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<LinearMaterial>
+      }
       equipment: {
         Row: Equipment
         Insert: {
@@ -508,6 +687,13 @@ export type Database = {
           total_net: number
           total_vat: number
           total_gross: number
+          fees_total_net?: number
+          fees_total_vat?: number
+          fees_total_gross?: number
+          accessories_total_net?: number
+          accessories_total_vat?: number
+          accessories_total_gross?: number
+          final_total_gross?: number
           comment?: string | null
           project_name?: string | null
           partner_profile_id?: string | null
@@ -518,6 +704,54 @@ export type Database = {
           deleted_at?: string | null
         }
         Update: Partial<Quote>
+      }
+      quote_fees: {
+        Row: QuoteFee
+        Insert: {
+          id?: string
+          tenant_id: string
+          quote_id: string
+          fee_type_id?: string | null
+          kind?: QuoteFee['kind']
+          fee_name: string
+          quantity: number
+          unit_id?: string | null
+          unit_shortform?: string
+          unit_price_net: number
+          tax_rate_percent: number
+          vat_amount: number
+          gross_price: number
+          comment?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<QuoteFee>
+      }
+      quote_accessories: {
+        Row: QuoteAccessory
+        Insert: {
+          id?: string
+          tenant_id: string
+          quote_id: string
+          accessory_id?: string | null
+          accessory_name: string
+          sku: string
+          barcode?: string | null
+          barcode_internal?: string | null
+          quantity: number
+          unit_id?: string | null
+          unit_shortform?: string
+          unit_price_net: number
+          tax_rate_percent: number
+          vat_amount: number
+          gross_price: number
+          comment?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<QuoteAccessory>
       }
       quote_panels: {
         Row: QuotePanel

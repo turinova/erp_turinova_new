@@ -142,14 +142,30 @@ export async function GET(
       )
     }
 
-    // V1: no fees / accessories / discount — totals = quote row
+    // Végösszeg = lapszabászat + termékek + egyéb díjak / jóváírások
+    const feesNet = Math.round(quoteData.totals.fees_total_net ?? 0)
+    const feesVat = Math.round(quoteData.totals.fees_total_vat ?? 0)
+    const accessoriesNet = Math.round(
+      quoteData.totals.accessories_total_net ?? 0
+    )
+    const accessoriesVat = Math.round(
+      quoteData.totals.accessories_total_vat ?? 0
+    )
+    const finalGross = Math.round(
+      quoteData.totals.final_total_after_discount ??
+        quoteData.totals.total_gross
+    )
     const summary = {
-      totalNetBeforeDiscount: Math.round(quoteData.totals.total_net),
-      totalVatBeforeDiscount: Math.round(quoteData.totals.total_vat),
-      totalGrossBeforeDiscount: Math.round(quoteData.totals.total_gross),
-      totalNetAfterDiscount: Math.round(quoteData.totals.total_net),
-      totalVatAfterDiscount: Math.round(quoteData.totals.total_vat),
-      totalGrossAfterDiscount: Math.round(quoteData.totals.total_gross)
+      totalNetBeforeDiscount:
+        Math.round(quoteData.totals.total_net) + feesNet + accessoriesNet,
+      totalVatBeforeDiscount:
+        Math.round(quoteData.totals.total_vat) + feesVat + accessoriesVat,
+      totalGrossBeforeDiscount: finalGross,
+      totalNetAfterDiscount:
+        Math.round(quoteData.totals.total_net) + feesNet + accessoriesNet,
+      totalVatAfterDiscount:
+        Math.round(quoteData.totals.total_vat) + feesVat + accessoriesVat,
+      totalGrossAfterDiscount: finalGross
     }
 
     const [tenantCompanyLogoBase64, turinovaLogoBase64] = await Promise.all([

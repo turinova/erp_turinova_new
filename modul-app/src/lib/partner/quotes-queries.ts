@@ -42,6 +42,7 @@ const SELECT = `
   production_date,
   project_name,
   total_gross,
+  final_total_gross,
   currency,
   updated_at,
   portal_submitted_at,
@@ -58,6 +59,7 @@ type QuoteRow = {
   production_date: string | null
   project_name: string | null
   total_gross: number | string
+  final_total_gross?: number | string | null
   currency: string
   updated_at: string
   portal_submitted_at: string | null
@@ -82,7 +84,7 @@ function mapRow(
     payment_status: (row.payment_status ?? 'not_paid') as PaymentStatus,
     production_date: row.production_date ?? null,
     project_name: row.project_name ?? null,
-    total_gross: Number(row.total_gross),
+    total_gross: Number(row.final_total_gross ?? row.total_gross),
     currency: row.currency,
     updated_at: row.updated_at,
     portal_submitted_at: row.portal_submitted_at,

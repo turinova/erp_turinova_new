@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { PricingMode } from '@/lib/opti/quote-calculations'
+import { listQuoteFees, type QuoteFeeRow } from '@/lib/quotes/fee-totals'
+import {
+  listQuoteAccessories,
+  type QuoteAccessoryRow
+} from '@/lib/quotes/accessory-totals'
 import type { PaymentStatus } from '@/lib/quotes/payment-labels'
 
 export type QuoteStatus =
@@ -55,6 +60,13 @@ export type QuoteDetail = {
   total_net: number
   total_vat: number
   total_gross: number
+  fees_total_net: number
+  fees_total_vat: number
+  fees_total_gross: number
+  accessories_total_net: number
+  accessories_total_vat: number
+  accessories_total_gross: number
+  final_total_gross: number
   comment: string | null
   project_name: string | null
   created_at: string
@@ -62,6 +74,8 @@ export type QuoteDetail = {
   panel_quantity: number
   total_paid: number
   payments: QuotePaymentRow[]
+  fees: QuoteFeeRow[]
+  accessories: QuoteAccessoryRow[]
   production_machine_id: string | null
   production_date: string | null
   barcode: string | null
@@ -162,6 +176,7 @@ export async function listQuotes(
       portal_submitted_at,
       project_name,
       total_gross,
+      final_total_gross,
       currency,
       updated_at,
       customers ( name, email, mobile ),
@@ -234,7 +249,7 @@ export async function listQuotes(
       source: row.source ?? 'opti',
       portal_submitted_at: row.portal_submitted_at ?? null,
       project_name: (row.project_name as string | null) ?? null,
-      total_gross: Number(row.total_gross),
+      total_gross: Number(row.final_total_gross ?? row.total_gross),
       currency: row.currency,
       updated_at: row.updated_at,
       customer_name: customer?.name ?? '—',
@@ -272,6 +287,13 @@ export async function getQuoteDetail(
       total_net,
       total_vat,
       total_gross,
+      fees_total_net,
+      fees_total_vat,
+      fees_total_gross,
+      accessories_total_net,
+      accessories_total_vat,
+      accessories_total_gross,
+      final_total_gross,
       comment,
       project_name,
       created_at,
@@ -345,6 +367,13 @@ export async function getQuoteDetail(
       total_net,
       total_vat,
       total_gross,
+      fees_total_net,
+      fees_total_vat,
+      fees_total_gross,
+      accessories_total_net,
+      accessories_total_vat,
+      accessories_total_gross,
+      final_total_gross,
       comment,
       project_name,
       created_at,
@@ -427,10 +456,25 @@ export async function getQuoteDetail(
         .is('deleted_at', null)
         .order('payment_date', { ascending: true })
 
-  const [{ data: rawData, error }, paymentsResult] = await Promise.all([
-    quoteQuery,
-    paymentsQuery
-  ])
+  const feesQuery = listQuoteFees(supabase, tenantId, id).catch((err) => {
+    console.error('getQuoteDetail fees', err)
+    throw err
+  })
+
+  const accessoriesQuery = listQuoteAccessories(supabase, tenantId, id).catch(
+    (err) => {
+      console.error('getQuoteDetail accessories', err)
+      throw err
+    }
+  )
+
+  const [{ data: rawData, error }, paymentsResult, fees, accessories] =
+    await Promise.all([
+      quoteQuery,
+      paymentsQuery,
+      feesQuery,
+      accessoriesQuery
+    ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = rawData as any
@@ -631,6 +675,15 @@ export async function getQuoteDetail(
     total_net: Number(data.total_net),
     total_vat: Number(data.total_vat),
     total_gross: Number(data.total_gross),
+    fees_total_net: Number(data.fees_total_net ?? 0),
+    fees_total_vat: Number(data.fees_total_vat ?? 0),
+    fees_total_gross: Number(data.fees_total_gross ?? 0),
+    accessories_total_net: Number(data.accessories_total_net ?? 0),
+    accessories_total_vat: Number(data.accessories_total_vat ?? 0),
+    accessories_total_gross: Number(data.accessories_total_gross ?? 0),
+    final_total_gross: Number(
+      data.final_total_gross ?? data.total_gross ?? 0
+    ),
     comment: data.comment,
     project_name: (data.project_name as string | null) ?? null,
     created_at: data.created_at,
@@ -638,6 +691,8 @@ export async function getQuoteDetail(
     panel_quantity: panelQuantity,
     total_paid,
     payments,
+    fees,
+    accessories,
     production_machine_id: data.production_machine_id ?? null,
     production_date: data.production_date ?? null,
     barcode: data.barcode ?? null,

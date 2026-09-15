@@ -12,6 +12,11 @@ import {
   panelsToInserts,
   quotePricingMode
 } from '@/lib/quotes/snapshot'
+import { recalculateQuoteFeeTotals } from '@/lib/quotes/fee-totals'
+import {
+  PAYMENT_TOLERANCE_GROSS,
+  quoteRemainingGross
+} from '@/lib/quotes/payment-labels'
 import { normalizeProjectName } from '@/lib/quotes/project-name'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
@@ -264,6 +269,15 @@ export async function saveOptiQuote(
     }
   }
 
+  const feeTotals = await recalculateQuoteFeeTotals(
+    ctx.supabase,
+    tenantId,
+    quoteId
+  )
+  if (!feeTotals.ok) {
+    return { ok: false, message: feeTotals.message }
+  }
+
   revalidatePath(LIST_PATH)
   revalidatePath(`${LIST_PATH}/${quoteId}`)
   revalidatePath('/opti')
@@ -514,7 +528,7 @@ export async function addQuotePayment(input: {
 
   const { data: quote, error: quoteError } = await ctx.supabase
     .from('quotes')
-    .select('id, status, order_number, total_gross')
+    .select('id, status, order_number, total_gross, final_total_gross')
     .eq('id', input.quoteId)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -562,10 +576,11 @@ export async function addQuotePayment(input: {
     (sum, p) => sum + (Number(p.amount) || 0),
     0
   )
-  const totalGross = Number(quote.total_gross) || 0
-  const remaining = Math.round((totalGross - totalPaid) * 100) / 100
+  const totalGross =
+    Number(quote.final_total_gross ?? quote.total_gross) || 0
+  const remaining = quoteRemainingGross(totalGross, totalPaid)
 
-  if (amount > remaining + 1) {
+  if (amount > remaining + PAYMENT_TOLERANCE_GROSS) {
     return {
       ok: false,
       message: `Az összeg nem lehet nagyobb, mint a hátralék (${remaining.toLocaleString('hu-HU')} Ft).`

@@ -23,6 +23,8 @@ import { convertQuoteToOrder } from '@/lib/quotes/actions'
 import {
   parsePaymentAmount,
   PAYMENT_STATUS_LABEL,
+  PAYMENT_TOLERANCE_GROSS,
+  quoteRemainingGross,
   type PaymentStatus
 } from '@/lib/quotes/payment-labels'
 
@@ -41,10 +43,12 @@ function previewStatus(
   amount: number,
   totalGross: number
 ): { status: PaymentStatus; remaining: number } {
-  const remaining = Math.round((totalGross - amount) * 100) / 100
+  const remaining = quoteRemainingGross(totalGross, amount)
   if (amount <= 0) return { status: 'not_paid', remaining: totalGross }
-  if (amount >= totalGross - 1) return { status: 'paid', remaining: 0 }
-  return { status: 'partial', remaining: Math.max(0, remaining) }
+  if (amount >= totalGross - PAYMENT_TOLERANCE_GROSS) {
+    return { status: 'paid', remaining: 0 }
+  }
+  return { status: 'partial', remaining }
 }
 
 export function CreateOrderDialog({
@@ -85,7 +89,7 @@ export function CreateOrderDialog({
       setError('Érvényes összeget adj meg (0 vagy pozitív).')
       return
     }
-    if (amount > totalGross + 1) {
+    if (amount > totalGross + PAYMENT_TOLERANCE_GROSS) {
       setError(
         `A befizetett összeg nem lehet nagyobb, mint a végösszeg (${formatQuotePrice(totalGross, currency)}).`
       )

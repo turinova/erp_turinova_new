@@ -17,6 +17,8 @@ import {
   Settings,
   Settings2,
   SquareStack,
+  RectangleHorizontal,
+  Package,
   Users,
   Wallet,
   Wrench
@@ -112,9 +114,23 @@ export const mainNavItems: NavNode[] = [
           },
           {
             type: 'link',
+            label: 'Szálas anyagok',
+            href: '/torzsadatok/alapanyagok/szalas-anyagok',
+            icon: RectangleHorizontal,
+            accent: 'slate'
+          },
+          {
+            type: 'link',
             label: 'Élzárók',
             href: '/torzsadatok/alapanyagok/elzarok',
             icon: SquareStack,
+            accent: 'slate'
+          },
+          {
+            type: 'link',
+            label: 'Termékek',
+            href: '/torzsadatok/alapanyagok/termekek',
+            icon: Package,
             accent: 'slate'
           }
         ]

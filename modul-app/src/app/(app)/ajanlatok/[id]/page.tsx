@@ -6,6 +6,8 @@ import { QuoteDetailClient } from '@/components/quotes/quote-detail-client'
 import { QuoteDetailSkeleton } from '@/components/quotes/quote-detail-skeleton'
 import { getSessionUser } from '@/lib/auth/session'
 import { getTenantCompany } from '@/lib/company/queries'
+import { listActiveFeeTypeOptions } from '@/lib/fee-types/queries'
+import { listActiveAccessoryOptions } from '@/lib/accessories/queries'
 import { getQuoteDetail } from '@/lib/quotes/queries'
 import { createClient } from '@/lib/supabase/server'
 
@@ -43,9 +45,11 @@ async function QuoteDetailLoader({ params }: { params: Params }) {
 
   // Lean critical path: quote + company only.
   // Export / payment methods / machines → dialógus nyitáskor.
-  const [quote, company] = await Promise.all([
+  const [quote, company, feeTypes, accessoryOptions] = await Promise.all([
     getQuoteDetail(supabase, user.tenantId, id).catch(() => null),
-    getTenantCompany(supabase, user.tenantId).catch(() => null)
+    getTenantCompany(supabase, user.tenantId).catch(() => null),
+    listActiveFeeTypeOptions(supabase, user.tenantId).catch(() => []),
+    listActiveAccessoryOptions(supabase, user.tenantId).catch(() => [])
   ])
 
   if (!quote) notFound()
@@ -55,6 +59,8 @@ async function QuoteDetailLoader({ params }: { params: Params }) {
       quote={quote}
       company={company}
       canWrite={canWrite}
+      feeTypes={feeTypes}
+      accessoryOptions={accessoryOptions}
     />
   )
 }

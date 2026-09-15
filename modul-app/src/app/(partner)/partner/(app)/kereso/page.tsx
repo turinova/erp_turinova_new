@@ -6,7 +6,10 @@ import { KeresoClient } from '@/components/search/kereso-client'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { PARTNER_SETTINGS_PATH } from '@/lib/auth/surface'
 import { resolvePartnerCompanyLabel } from '@/lib/partner/company-label'
-import { searchSheetMaterials } from '@/lib/sheet-materials/search-queries'
+import {
+  parseSearchKindParam,
+  searchMaterialsUnified
+} from '@/lib/search/materials-search'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -16,6 +19,7 @@ export const metadata: Metadata = {
 type SearchParams = Promise<{
   q?: string
   page?: string
+  kind?: string
 }>
 
 export default async function PartnerKeresoPage({
@@ -27,6 +31,7 @@ export default async function PartnerKeresoPage({
   const session = await getPartnerSession()
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
+  const kind = parseSearchKindParam(params.kind)
 
   if (!session) {
     return (
@@ -57,7 +62,7 @@ export default async function PartnerKeresoPage({
 
   const companyLabel = await resolvePartnerCompanyLabel(tenantId)
   let loadError: string | null = null
-  let rows: Awaited<ReturnType<typeof searchSheetMaterials>>['rows'] = []
+  let rows: Awaited<ReturnType<typeof searchMaterialsUnified>>['rows'] = []
   let total = 0
   let limit = 25
 
@@ -66,11 +71,12 @@ export default async function PartnerKeresoPage({
     loadError = 'Az adatbázis kapcsolat nem elérhető.'
   } else if (q) {
     try {
-      const result = await searchSheetMaterials(supabase, {
+      const result = await searchMaterialsUnified(supabase, {
         tenantId,
         q,
         page,
-        limit: 25
+        limit: 25,
+        kind
       })
       rows = result.rows
       total = result.total
@@ -105,11 +111,14 @@ export default async function PartnerKeresoPage({
         page={page}
         limit={limit}
         initialQ={q}
-        detailBase={null}
+        initialKind={kind}
+        sheetDetailBase={null}
+        linearDetailBase={null}
+        accessoryDetailBase={null}
         description={
           companyLabel
-            ? `Árlekérdezés — ${companyLabel}. Bruttó nm és egész tábla ár (tájékoztató).`
-            : 'Táblás anyag árlekérdezés — bruttó nm és egész tábla ár (tájékoztató).'
+            ? `Árlekérdezés — ${companyLabel}. Táblás, szálas és termék (bruttó Ft/m, Ft/m², egységár; tájékoztató).`
+            : 'Táblás, szálas és termék árlekérdezés — bruttó Ft/m, Ft/m² és egységár (tájékoztató).'
         }
       />
     </Suspense>

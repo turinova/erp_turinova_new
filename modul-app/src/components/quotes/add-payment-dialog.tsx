@@ -20,7 +20,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { addQuotePayment } from '@/lib/quotes/actions'
-import { parsePaymentAmount } from '@/lib/quotes/payment-labels'
+import {
+  PAYMENT_TOLERANCE_GROSS,
+  parsePaymentAmount,
+  quoteRemainingGross
+} from '@/lib/quotes/payment-labels'
 
 type AddPaymentDialogProps = {
   open: boolean
@@ -52,8 +56,7 @@ export function AddPaymentDialog({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const remaining =
-    Math.round((totalGross - totalPaid) * 100) / 100
+  const remaining = quoteRemainingGross(totalGross, totalPaid)
 
   useEffect(() => {
     if (!open) return
@@ -72,7 +75,7 @@ export function AddPaymentDialog({
       setError('Adj meg pozitív összeget.')
       return
     }
-    if (amount > remaining + 1) {
+    if (amount > remaining + PAYMENT_TOLERANCE_GROSS) {
       setError(
         `Az összeg nem lehet nagyobb, mint a hátralék (${formatQuotePrice(remaining, currency)}).`
       )
@@ -147,7 +150,7 @@ export function AddPaymentDialog({
             <p className="mt-1 font-medium text-ink">
               Hátralék:{' '}
               <span className="tabular-nums">
-                {formatQuotePrice(Math.max(0, remaining), currency)}
+                {formatQuotePrice(remaining, currency)}
               </span>
             </p>
           </div>

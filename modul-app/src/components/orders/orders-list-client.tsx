@@ -25,7 +25,8 @@ import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import {
   PAYMENT_STATUS_LABEL,
-  paymentStatusTone
+  paymentStatusTone,
+  quoteRemainingGross
 } from '@/lib/quotes/payment-labels'
 import type {
   OrderListItem,
@@ -454,11 +455,9 @@ export function OrdersListClient({
           quoteId={handoverTarget.id}
           orderNumber={handoverTarget.order_number}
           customerName={handoverTarget.customer_name}
-          remaining={Math.max(
-            0,
-            Math.round(
-              (handoverTarget.total_gross - handoverTarget.total_paid) * 100
-            ) / 100
+          remaining={quoteRemainingGross(
+            handoverTarget.total_gross,
+            handoverTarget.total_paid
           )}
           currency={handoverTarget.currency}
           paymentMethods={paymentMethods}

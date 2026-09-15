@@ -11,7 +11,8 @@ import {
   MessageSquare,
   ScanSearch,
   Send,
-  ShoppingCart
+  ShoppingCart,
+  Wallet
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -19,6 +20,8 @@ import { AddPaymentDialog } from '@/components/quotes/add-payment-dialog'
 import { AssignProductionDialog } from '@/components/quotes/assign-production-dialog'
 import { CreateOrderDialog } from '@/components/quotes/create-order-dialog'
 import { QuoteBarcodeDisplay } from '@/components/quotes/quote-barcode-display'
+import { QuoteFeesBlock } from '@/components/quotes/quote-fees-block'
+import { QuoteAccessoriesBlock } from '@/components/quotes/quote-accessories-block'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
   DataTable,
@@ -73,7 +76,9 @@ import {
 } from '@/lib/quotes/export/types'
 import {
   PAYMENT_STATUS_LABEL,
-  paymentStatusTone
+  paymentStatusTone,
+  quoteOverpaidGross,
+  quoteRemainingGross
 } from '@/lib/quotes/payment-labels'
 import {
   partnerQuoteStatusLabel,
@@ -93,6 +98,10 @@ type QuoteDetailClientProps = {
   quote: QuoteDetail
   company: TenantCompanyRow | null
   canWrite: boolean
+  /** Staff: aktív díjtípusok a „Díj hozzáadása” dialógushoz. Partner: []. */
+  feeTypes?: import('@/lib/fee-types/queries').FeeTypeListItem[]
+  /** Staff: aktív termékek. Partner: []. */
+  accessoryOptions?: import('@/lib/accessories/queries').AccessoryListItem[]
   /** Partner portal — ugyanaz a dokumentum layout, más műveletek */
   surface?: 'staff' | 'partner'
 }
@@ -125,6 +134,8 @@ export function QuoteDetailClient({
   quote,
   company,
   canWrite,
+  feeTypes = [],
+  accessoryOptions = [],
   surface = 'staff'
 }: QuoteDetailClientProps) {
   const router = useRouter()
@@ -233,6 +244,14 @@ export function QuoteDetailClient({
 
   const canEditComment = isPartner ? isPartnerDraft : canWrite
   const canEditProjectName = canEditComment
+  const canEditFees =
+    !isPartner &&
+    canWrite &&
+    (quote.status === 'draft' || quote.status === 'ordered')
+  const amountDue = quote.final_total_gross
+  const remainingGross = quoteRemainingGross(amountDue, quote.total_paid)
+  const overpaidGross = quoteOverpaidGross(amountDue, quote.total_paid)
+  const hasRecordedPayments = quote.total_paid > 0
 
   const canAddPayment =
     !isPartner &&
@@ -837,7 +856,25 @@ export function QuoteDetailClient({
                 </DataTable>
               </div>
 
-              {/* 3) Összesítők — main: Lapszabászat + Részösszeg + Végösszeg (díj/termék/kedvezmény nélkül) */}
+              <QuoteAccessoriesBlock
+                quoteId={quote.id}
+                currency={quote.currency}
+                accessories={quote.accessories}
+                accessoryOptions={accessoryOptions}
+                canEdit={canEditFees}
+                hasRecordedPayments={hasRecordedPayments}
+              />
+
+              <QuoteFeesBlock
+                quoteId={quote.id}
+                currency={quote.currency}
+                fees={quote.fees}
+                feeTypes={feeTypes}
+                canEdit={canEditFees}
+                hasRecordedPayments={hasRecordedPayments}
+              />
+
+              {/* 3) Összesítők */}
               <div className="mb-2 space-y-1 rounded-md border border-border bg-subtle/60 px-3 py-2.5">
                 <div className="flex justify-between text-body font-semibold text-ink">
                   <span>Lapszabászat:</span>
@@ -845,20 +882,46 @@ export function QuoteDetailClient({
                     {formatQuotePrice(quote.total_gross, quote.currency)}
                   </span>
                 </div>
+                {quote.accessories_total_gross !== 0 ? (
+                  <div className="flex justify-between text-body font-semibold text-ink">
+                    <span>Termékek:</span>
+                    <span className="tabular-nums">
+                      {formatQuotePrice(
+                        Math.round(quote.accessories_total_gross),
+                        quote.currency
+                      )}
+                    </span>
+                  </div>
+                ) : null}
+                {quote.fees_total_gross !== 0 ? (
+                  <div className="flex justify-between text-body font-semibold text-ink">
+                    <span>
+                      {quote.fees_total_gross < 0
+                        ? 'Díjak / jóváírások:'
+                        : 'Egyéb díjak:'}
+                    </span>
+                    <span className="tabular-nums">
+                      {formatQuotePrice(
+                        Math.round(quote.fees_total_gross),
+                        quote.currency
+                      )}
+                    </span>
+                  </div>
+                ) : null}
               </div>
 
               <div className="space-y-2 rounded-md border border-border bg-subtle/40 px-3 py-2.5">
                 <div className="flex justify-between text-body font-bold text-ink">
                   <span>Részösszeg:</span>
                   <span className="tabular-nums">
-                    {formatQuotePrice(quote.total_gross, quote.currency)}
+                    {formatQuotePrice(amountDue, quote.currency)}
                   </span>
                 </div>
                 <div className="border-t border-border pt-2">
                   <div className="flex items-center justify-between rounded-md border border-border bg-subtle px-2.5 py-2 text-body font-bold text-ink">
                     <span>Végösszeg:</span>
                     <span className="tabular-nums">
-                      {formatQuotePrice(quote.total_gross, quote.currency)}
+                      {formatQuotePrice(amountDue, quote.currency)}
                     </span>
                   </div>
                 </div>
@@ -1156,9 +1219,29 @@ export function QuoteDetailClient({
                             loading={dialogOptionsLoading}
                             onClick={() => void openPaymentDialog()}
                           >
+                            <Wallet className="size-3.5" aria-hidden />
                             Befizetés rögzítése
                           </Button>
                         )}
+                      </div>
+                    ) : null}
+
+                    {canAddPayment && primaryAction !== 'payment' ? (
+                      <div className="space-y-1.5">
+                        <p className="text-label font-semibold text-ink-secondary">
+                          Fizetés
+                        </p>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="w-full justify-start"
+                          disabled={dialogOptionsLoading}
+                          loading={dialogOptionsLoading}
+                          onClick={() => void openPaymentDialog()}
+                        >
+                          <Wallet className="size-3.5" aria-hidden />
+                          Befizetés rögzítése
+                        </Button>
                       </div>
                     ) : null}
 
@@ -1374,7 +1457,7 @@ export function QuoteDetailClient({
                 <div>
                   <dt className="text-hint text-ink-secondary">Bruttó</dt>
                   <dd className="font-semibold tabular-nums text-ink">
-                    {formatQuotePrice(quote.total_gross, quote.currency)}
+                    {formatQuotePrice(amountDue, quote.currency)}
                   </dd>
                 </div>
                 {showPartnerPayment || showStaffPayment ? (
@@ -1382,13 +1465,15 @@ export function QuoteDetailClient({
                     <dt className="text-hint text-ink-secondary">Fizetve</dt>
                     <dd className="tabular-nums text-ink">
                       {formatQuotePrice(quote.total_paid, quote.currency)}
-                      {quote.total_paid < quote.total_gross ? (
+                      {remainingGross > 0 ? (
                         <span className="ml-1 text-hint text-ink-secondary">
                           / hátralék{' '}
-                          {formatQuotePrice(
-                            Math.max(0, quote.total_gross - quote.total_paid),
-                            quote.currency
-                          )}
+                          {formatQuotePrice(remainingGross, quote.currency)}
+                        </span>
+                      ) : overpaidGross > 0 ? (
+                        <span className="ml-1 text-hint text-warning-ink">
+                          / túlfizetés{' '}
+                          {formatQuotePrice(overpaidGross, quote.currency)}
                         </span>
                       ) : null}
                     </dd>
@@ -1405,35 +1490,62 @@ export function QuoteDetailClient({
                 </div>
               </dl>
 
-              {quote.payments.length > 0 ? (
+              {showStaffPayment || quote.payments.length > 0 ? (
                 <div className="mt-3 border-t border-border pt-2">
                   <h3 className="mb-1.5 text-label font-semibold text-ink">
                     Befizetések
                   </h3>
-                  <ul className="space-y-1.5">
-                    {quote.payments.map((p) => (
-                      <li
-                        key={p.id}
-                        className="rounded-md border border-border bg-subtle/40 px-2 py-1.5 text-hint"
-                      >
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="font-medium text-ink">
-                            {p.payment_method_name}
-                          </span>
-                          <span className="tabular-nums font-semibold text-ink">
-                            {formatQuotePrice(p.amount, quote.currency)}
-                          </span>
-                        </div>
-                        <p className="text-ink-secondary">
-                          {new Intl.DateTimeFormat('hu-HU', {
-                            dateStyle: 'short',
-                            timeStyle: 'short'
-                          }).format(new Date(p.payment_date))}
-                          {!isPartner && p.comment ? ` · ${p.comment}` : ''}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
+                  {quote.payments.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {quote.payments.map((p) => (
+                        <li
+                          key={p.id}
+                          className="rounded-md border border-border bg-subtle/40 px-2 py-1.5 text-hint"
+                        >
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="font-medium text-ink">
+                              {p.payment_method_name}
+                            </span>
+                            <span className="tabular-nums font-semibold text-ink">
+                              {formatQuotePrice(p.amount, quote.currency)}
+                            </span>
+                          </div>
+                          <p className="text-ink-secondary">
+                            {new Intl.DateTimeFormat('hu-HU', {
+                              dateStyle: 'short',
+                              timeStyle: 'short'
+                            }).format(new Date(p.payment_date))}
+                            {!isPartner && p.comment ? ` · ${p.comment}` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-body text-ink-secondary">
+                      Még nincs rögzített befizetés.
+                    </p>
+                  )}
+                  {overpaidGross > 0 ? (
+                    <p className="mt-1.5 text-hint text-warning-ink">
+                      Túlfizetés:{' '}
+                      {formatQuotePrice(overpaidGross, quote.currency)}. A
+                      státusz Kifizetve marad.
+                    </p>
+                  ) : null}
+                  {canAddPayment ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="mt-2 w-full justify-start"
+                      disabled={dialogOptionsLoading}
+                      loading={dialogOptionsLoading}
+                      onClick={() => void openPaymentDialog()}
+                    >
+                      <Wallet className="size-3.5" aria-hidden />
+                      Befizetés rögzítése
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </section>
@@ -1597,7 +1709,7 @@ export function QuoteDetailClient({
         onOpenChange={setOrderDialogOpen}
         quoteId={quote.id}
         quoteNumber={quote.quote_number}
-        totalGross={quote.total_gross}
+        totalGross={amountDue}
         currency={quote.currency}
         paymentMethods={paymentMethods}
         onSuccess={() => router.refresh()}
@@ -1625,7 +1737,7 @@ export function QuoteDetailClient({
           onOpenChange={setAddPaymentOpen}
           quoteId={quote.id}
           orderNumber={quote.order_number}
-          totalGross={quote.total_gross}
+          totalGross={amountDue}
           totalPaid={quote.total_paid}
           currency={quote.currency}
           paymentMethods={paymentMethods}

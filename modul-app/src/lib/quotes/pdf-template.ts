@@ -37,10 +37,12 @@ export type QuotePdfFee = {
   id: string
   fee_name: string
   quantity: number
+  unit_shortform?: string
   unit_price_net: number
   vat_rate: number
   net_price: number
   gross_price: number
+  kind?: 'fee' | 'credit'
 }
 
 export type QuotePdfAccessory = {
@@ -103,6 +105,8 @@ export type QuotePdfInput = {
     total_vat: number
     total_gross: number
     final_total_after_discount: number
+    fees_total_net: number
+    fees_total_vat: number
     fees_total_gross: number
     accessories_total_net?: number
     accessories_total_vat?: number
@@ -455,6 +459,8 @@ export default function generateQuotePdfHtml({
     const unitPriceGross = fee.quantity > 0 ? fee.gross_price / fee.quantity : 0
     const roundedUnitPriceGross = Math.round(unitPriceGross)
     const recalculatedTotalGross = roundedUnitPriceGross * fee.quantity
+    const chip =
+      fee.kind === 'credit' || fee.gross_price < 0 ? 'Jóváírás' : 'Díj'
 
     return `
       <tr>
@@ -463,10 +469,10 @@ export default function generateQuotePdfHtml({
         </td>
         <td></td>
         <td>
-          <span class="chip">Díj</span>
+          <span class="chip">${chip}</span>
         </td>
-        <td class="text-right nowrap">${fee.quantity} db</td>
-        <td class="text-right nowrap">${formatCurrencyPdf(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap">${fee.quantity} ${escapeHtml(fee.unit_shortform || 'db')}</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(Math.abs(roundedUnitPriceGross))} Ft</td>
         <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
       </tr>
     `

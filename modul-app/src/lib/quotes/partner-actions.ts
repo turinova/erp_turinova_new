@@ -27,6 +27,7 @@ import {
   panelsToInserts,
   quotePricingMode
 } from '@/lib/quotes/snapshot'
+import { recalculateQuoteFeeTotals } from '@/lib/quotes/fee-totals'
 import { allocatePartnerQuoteNumber } from '@/lib/quotes/partner-quote-number'
 import { normalizeProjectName } from '@/lib/quotes/project-name'
 import { createClient } from '@/lib/supabase/server'
@@ -253,6 +254,11 @@ export async function savePartnerOptiQuote(
         return { ok: false, message: 'Nem sikerült menteni az élzáró bontást.' }
       }
     }
+  }
+
+  const feeTotals = await recalculateQuoteFeeTotals(supabase, tenantId, quoteId)
+  if (!feeTotals.ok) {
+    return { ok: false, message: feeTotals.message }
   }
 
   revalidatePartnerPaths(

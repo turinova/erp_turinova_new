@@ -3,7 +3,10 @@ import { Suspense } from 'react'
 
 import { KeresoClient } from '@/components/search/kereso-client'
 import { getSessionUser } from '@/lib/auth/session'
-import { searchSheetMaterials } from '@/lib/sheet-materials/search-queries'
+import {
+  parseSearchKindParam,
+  searchMaterialsUnified
+} from '@/lib/search/materials-search'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -13,6 +16,7 @@ export const metadata: Metadata = {
 type SearchParams = Promise<{
   q?: string
   page?: string
+  kind?: string
 }>
 
 export default async function KeresoPage({
@@ -24,9 +28,10 @@ export default async function KeresoPage({
   const user = await getSessionUser()
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
+  const kind = parseSearchKindParam(params.kind)
 
   let loadError: string | null = null
-  let rows: Awaited<ReturnType<typeof searchSheetMaterials>>['rows'] = []
+  let rows: Awaited<ReturnType<typeof searchMaterialsUnified>>['rows'] = []
   let total = 0
   let limit = 25
 
@@ -35,11 +40,12 @@ export default async function KeresoPage({
     if (supabase) {
       try {
         if (q) {
-          const result = await searchSheetMaterials(supabase, {
+          const result = await searchMaterialsUnified(supabase, {
             tenantId: user.tenantId,
             q,
             page,
-            limit: 25
+            limit: 25,
+            kind
           })
           rows = result.rows
           total = result.total
@@ -85,6 +91,7 @@ export default async function KeresoPage({
         page={page}
         limit={limit}
         initialQ={q}
+        initialKind={kind}
       />
     </Suspense>
   )

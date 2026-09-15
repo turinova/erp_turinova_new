@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { TenantCompanyRow } from '@/lib/company/queries'
+import { listQuoteFees } from '@/lib/quotes/fee-totals'
+import { listQuoteAccessories } from '@/lib/quotes/accessory-totals'
 import type {
   QuotePdfInput,
   TenantCompanyPdf
@@ -45,6 +47,13 @@ export async function getQuoteForPdf(
       total_net,
       total_vat,
       total_gross,
+      fees_total_gross,
+      fees_total_net,
+      fees_total_vat,
+      accessories_total_gross,
+      accessories_total_net,
+      accessories_total_vat,
+      final_total_gross,
       customers (
         name,
         email,
@@ -242,6 +251,56 @@ export async function getQuoteForPdf(
   const totalNet = Number(data.total_net) || 0
   const totalVat = Number(data.total_vat) || 0
   const totalGross = Number(data.total_gross) || 0
+  const feesTotalNet = Number(
+    (data as { fees_total_net?: number }).fees_total_net ?? 0
+  )
+  const feesTotalVat = Number(
+    (data as { fees_total_vat?: number }).fees_total_vat ?? 0
+  )
+  const feesTotalGross = Number(data.fees_total_gross ?? 0)
+  const accessoriesTotalNet = Number(
+    (data as { accessories_total_net?: number }).accessories_total_net ?? 0
+  )
+  const accessoriesTotalVat = Number(
+    (data as { accessories_total_vat?: number }).accessories_total_vat ?? 0
+  )
+  const accessoriesTotalGross = Number(
+    (data as { accessories_total_gross?: number }).accessories_total_gross ?? 0
+  )
+  const finalTotal =
+    Number(
+      data.final_total_gross ??
+        totalGross + feesTotalGross + accessoriesTotalGross
+    ) || totalGross
+
+  const [feeRows, accessoryRows] = await Promise.all([
+    listQuoteFees(supabase, tenantId, quoteId),
+    listQuoteAccessories(supabase, tenantId, quoteId)
+  ])
+  const fees = feeRows.map((f) => ({
+    id: f.id,
+    fee_name: f.fee_name,
+    quantity: f.quantity,
+    unit_shortform: f.unit_shortform || 'db',
+    unit_price_net: f.unit_price_net,
+    vat_rate: f.tax_rate_percent / 100,
+    net_price: f.unit_price_net * f.quantity,
+    gross_price: f.gross_price,
+    kind: f.kind
+  }))
+  const accessories = accessoryRows.map((a) => ({
+    id: a.id,
+    accessory_name: a.accessory_name,
+    sku: a.sku,
+    quantity: a.quantity,
+    unit_price_net: a.unit_price_net,
+    vat_rate: a.tax_rate_percent / 100,
+    total_net: a.unit_price_net * a.quantity,
+    total_vat: a.vat_amount,
+    total_gross: a.gross_price,
+    unit_name: a.unit_shortform || 'db',
+    units: { shortform: a.unit_shortform || 'db' }
+  }))
 
   return {
     id: data.id,
@@ -263,18 +322,20 @@ export async function getQuoteForPdf(
     comment: data.comment,
     created_at: data.created_at,
     pricing,
-    fees: [],
-    accessories: [],
+    fees,
+    accessories,
     panels,
     totals: {
       total_net: totalNet,
       total_vat: totalVat,
       total_gross: totalGross,
-      final_total_after_discount: totalGross,
-      fees_total_gross: 0,
-      accessories_total_net: 0,
-      accessories_total_vat: 0,
-      accessories_total_gross: 0
+      final_total_after_discount: finalTotal,
+      fees_total_net: feesTotalNet,
+      fees_total_vat: feesTotalVat,
+      fees_total_gross: feesTotalGross,
+      accessories_total_net: accessoriesTotalNet,
+      accessories_total_vat: accessoriesTotalVat,
+      accessories_total_gross: accessoriesTotalGross
     }
   }
 }

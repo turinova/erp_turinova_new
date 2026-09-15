@@ -26,8 +26,18 @@ export const APP_PAGES: AppPageDef[] = [
     category: 'Törzsadatok'
   },
   {
+    key: '/torzsadatok/alapanyagok/szalas-anyagok',
+    label: 'Szálas anyagok',
+    category: 'Törzsadatok'
+  },
+  {
     key: '/torzsadatok/alapanyagok/elzarok',
     label: 'Élzárók',
+    category: 'Törzsadatok'
+  },
+  {
+    key: '/torzsadatok/alapanyagok/termekek',
+    label: 'Termékek',
     category: 'Törzsadatok'
   },
   {
