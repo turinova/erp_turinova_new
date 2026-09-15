@@ -1,0 +1,30 @@
+---
+description: modul-app SaaS UI — shadcn + Linear light + Midday ritmus + certainty (irányadó)
+alwaysApply: true
+---
+
+# modul-app irányelvek (kötelező)
+
+Az új Turinova SaaS UI forrásigazsága: **`modul-app/docs/`**.
+
+Mielőtt UI-t, komponenst, listát, űrlapot vagy stílust írsz / módosítasz **`modul-app/**`-ban** (külön alkalmazás — **nem** merge a main-app / customer-portal / b2b-portal-lal; onnan csak ötlet, nincs kódmegosztás):
+
+1. Olvasd el legalább: `modul-app/docs/00-overview.md` + a releváns docot (`02` stílus, `03` UX, `04` komponens, `05` perf, `06` copy, `09` adatbevitel, `10` tenancy UX, `13` számformátum, `17` SaaS architektúra, `18` vizuális north star, `22` teljesítmény playbook).
+2. PR előtt futtasd fejben: `modul-app/docs/07-checklist.md`.
+
+## Zárolt döntések
+
+- **Stack:** shadcn/ui + Tailwind + Lucide + TanStack Table/Query. **Nem** MUI, **nem** Ant Design új kódban.
+- **Stílus:** Linear **light** sűrűség + Midday shell-ritmus (`18`) + Flat színek (`02`) — primary Midday charcoal `#18181B`, monokróm nav, body ~13.5–14px, gomb default ~32px, topbar ~52px, sidebar ~220px mindig expanded.
+- **Licenc:** saját kód. **Tilos** Midday/Cal/Dub product UI forrás másolása (AGPL). Nincs Midday commercial license igény. Linearnak nincs publikus repo.
+- **UX:** certainty-first (`03`) — egy primary/képernyő, látható sorakciók, ige+tárgy gombok; sidebar mindig expanded.
+- **SaaS:** 1 Vercel + 1 Supabase + shared schema + RLS (`17`); DB-per-tenant csak whale/hybrid.
+- **Adat / sebesség:** lista default limit **25**; nincs `select('*')`; URL page/szűrő; kis First Load JS (`05`, `22`, `bench/RESULTS.md`). Session snapshot + lean kereső RPC — ne bontsd vissza (`22`).
+- **Döntések:** primary action jobbra; toast jobb alul; destruktív dialógus default fókusz `Mégse`.
+
+## Tilos
+
+- Gradiens/glow/glass gomb, uppercase gomb, placeholder-as-label, hover-only sorakció, szín-only státusz, végtelen scroll listákban, >1 primary gomb/képernyő.
+- „Linagyolt” UI: 44px default gomb, 24px H1, nagy kártya-padding listákon — ha nem indokolt.
+
+Konfliktus legacy mintával → **modul-app docs nyer**. Tilos import legacy app mappákból. Lásd `modul-app/docs/08-separation-boundaries.md`.

@@ -38,7 +38,8 @@ A tipikus user:
 Részletes határok: **[08-separation-boundaries.md](08-separation-boundaries.md)**.  
 Komplett SaaS struktúra (deploy, tenancy, platform gerinc, DR): **[17-saas-architecture.md](17-saas-architecture.md)**.  
 Supabase bekötés lépései: **[19-supabase-setup.md](19-supabase-setup.md)**.  
-Partner / online asztalos (add-on): **[20-partner-portal.md](20-partner-portal.md)**.
+Partner / online asztalos (add-on): **[20-partner-portal.md](20-partner-portal.md)**.  
+Teljesítmény / lightning-fast fenntartás: **[22-performance-playbook.md](22-performance-playbook.md)**.
 
 **Nem cél:** UI egységesítés közös package-ben, fájl-migráció, import a régi appokból.
 

@@ -25,5 +25,6 @@
 | [20-session-snapshot.md](20-session-snapshot.md) | **P2 session snapshot** — aláírt cookie, lean middleware |
 | [20-partner-portal.md](20-partner-portal.md) | **Partner portal** — online asztalos, add-on, fázisok |
 | [21-platform-ops.md](21-platform-ops.md) | **Platform ops** — 1–2 fős üzem, P0 döntések, admin host |
+| [22-performance-playbook.md](22-performance-playbook.md) | **Lightning-fast fenntartás** — P0–P2 döntések, mérés, regresszió |
 
-**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20`**. Platform ops: **`21`**.
+**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`).

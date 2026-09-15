@@ -2,6 +2,9 @@
 
 A UI lib csak ~15–25%-ot ad a listaérzethez. A többi **adatút**.
 
+**Teljesítmény playbook (P0–P2 döntések, mérés, regresszió):**  
+→ **[22-performance-playbook.md](22-performance-playbook.md)** — ezt olvasd, ha az app „megint lassú”, vagy PR előtt sebességet védessz.
+
 ## Célértékek (orientáció)
 
 | Művelet | Cél |

@@ -264,7 +264,7 @@ export function QuoteFeesBlock({
           if (!pending) setOpen(v)
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[560px] overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Díj / jóváírás hozzáadása</DialogTitle>
             <DialogDescription>
@@ -279,7 +279,7 @@ export function QuoteFeesBlock({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <FormField label="Sor típusa" htmlFor="quote-fee-kind" required>
               <MenuSelect
                 id="quote-fee-kind"
@@ -317,6 +317,7 @@ export function QuoteFeesBlock({
 
             <div className="grid grid-cols-2 gap-3">
               <FormField
+                className="min-w-0"
                 label="Mennyiség"
                 htmlFor="quote-fee-qty"
                 required
@@ -332,6 +333,7 @@ export function QuoteFeesBlock({
                 />
               </FormField>
               <FormField
+                className="min-w-0"
                 label="Bruttó egységár"
                 htmlFor="quote-fee-gross"
                 required

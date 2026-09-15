@@ -39,6 +39,7 @@ Minden `modul-app` fejlesztésnél ezek a dokumentumok az irányadók. Konfliktu
 | „Egyszerű user”, érthetőség | [docs/03-ux-certainty-first.md](docs/03-ux-certainty-first.md) |
 | Komponenst építesz | [docs/04-components.md](docs/04-components.md) |
 | Lista / nagy adat / Vercel+Supabase | [docs/05-data-performance.md](docs/05-data-performance.md) |
+| Lightning-fast fenntartás (P0–P2) | [docs/22-performance-playbook.md](docs/22-performance-playbook.md) |
 | Magyar feliratok, hibák | [docs/06-copy-hungarian.md](docs/06-copy-hungarian.md) |
 | Számok és mértékegységek | [docs/13-numbers-units-formats.md](docs/13-numbers-units-formats.md) |
 | Print / PDF | [docs/15-print-and-documents.md](docs/15-print-and-documents.md) |

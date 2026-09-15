@@ -79,7 +79,11 @@ Minden UI-s PR és minden új képernyő előtt. Ha bármelyik **nem**, javíts 
 - [ ] Nincs `select('*')` listán
 - [ ] Nincs 100+ sor default betöltés
 - [ ] Nincs új több ezer soros monolit Client fájl
+- [ ] Hot pathön nincs új full session/entitlements waterfall (`22-performance-playbook.md`)
+- [ ] Keresés / typeahead: RPC vagy max 1–2 query; ne 4× ILIKE index nélkül
+- [ ] Sebességet `next start` / preview alapján ítélted, nem csak `next dev` pollinggel
 
 ---
 
-**Dokumentumok:** [INDEX.md](INDEX.md) · ha a checklist és a részletes doc ütközik, a részletes nyer, majd frissítsd a checklistet.
+**Dokumentumok:** [INDEX.md](INDEX.md) · ha a checklist és a részletes doc ütközik, a részletes nyer, majd frissítsd a checklistet.  
+**Villámgyors fenntartás:** [22-performance-playbook.md](22-performance-playbook.md).

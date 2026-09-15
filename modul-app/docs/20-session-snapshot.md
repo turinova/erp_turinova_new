@@ -28,3 +28,6 @@ SESSION_SNAPSHOT_SECRET=<min 16 char random>
 ```
 
 Vercel region: `dub1` (`vercel.json`) — Supabase Modul West EU (Ireland).
+
+**Teljes playbook (kereső P0 + session P2 + mérés):**  
+[22-performance-playbook.md](22-performance-playbook.md).

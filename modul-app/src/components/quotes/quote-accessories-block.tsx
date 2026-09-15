@@ -248,7 +248,7 @@ export function QuoteAccessoriesBlock({
           if (!pending) setOpen(v)
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-[560px] overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Termék hozzáadása</DialogTitle>
             <DialogDescription>
@@ -257,7 +257,7 @@ export function QuoteAccessoriesBlock({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             <FormField
               label="Termék"
               htmlFor="quote-accessory"
@@ -281,6 +281,7 @@ export function QuoteAccessoriesBlock({
 
             <div className="grid grid-cols-2 gap-3">
               <FormField
+                className="min-w-0"
                 label="Mennyiség"
                 htmlFor="quote-accessory-qty"
                 required
@@ -296,6 +297,7 @@ export function QuoteAccessoriesBlock({
                 />
               </FormField>
               <FormField
+                className="min-w-0"
                 label="Bruttó egységár"
                 htmlFor="quote-accessory-gross"
                 required
