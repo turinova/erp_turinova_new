@@ -95,15 +95,9 @@ export async function listSmsSendEvents(
   const to = from + limit - 1
   const { start, end } = utcMonthBounds(ym.year, ym.month)
 
-  const base = () =>
+  const [{ data, error, count }, { count: billableCount }] = await Promise.all([
     supabase
       .from('sms_send_events')
-      .eq('tenant_id', params.tenantId)
-      .gte('created_at', start)
-      .lt('created_at', end)
-
-  const [{ data, error, count }, { count: billableCount }] = await Promise.all([
-    base()
       .select(
         `
         id,
@@ -117,10 +111,17 @@ export async function listSmsSendEvents(
       `,
         { count: 'exact' }
       )
+      .eq('tenant_id', params.tenantId)
+      .gte('created_at', start)
+      .lt('created_at', end)
       .order('created_at', { ascending: false })
       .range(from, to),
-    base()
+    supabase
+      .from('sms_send_events')
       .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', params.tenantId)
+      .gte('created_at', start)
+      .lt('created_at', end)
       .in('status', ['sent', 'delivered'])
   ])
 
@@ -129,26 +130,37 @@ export async function listSmsSendEvents(
     throw new Error('Nem sikerült betölteni az SMS naplót.')
   }
 
-  const rows: SmsLogListItem[] = (data ?? []).map((row) => {
-    const quotes = row.quotes as
-      | { order_number: string | null }
-      | { order_number: string | null }[]
-      | null
-    const quote = Array.isArray(quotes) ? quotes[0] : quotes
-    const status = row.status as SmsSendStatus
-    return {
-      id: row.id as string,
-      created_at: row.created_at as string,
-      status,
-      to_e164: (row.to_e164 as string | null) ?? null,
-      to_display: maskE164(row.to_e164 as string | null),
-      order_number: quote?.order_number ?? null,
-      quote_id: (row.quote_id as string | null) ?? null,
-      skip_reason: (row.skip_reason as SmsSkipReason | null) ?? null,
-      error_code: (row.error_code as string | null) ?? null,
-      billable: status === 'sent' || status === 'delivered'
+  const rows: SmsLogListItem[] = (data ?? []).map(
+    (row: {
+      id: string
+      created_at: string
+      status: string
+      to_e164: string | null
+      skip_reason: string | null
+      error_code: string | null
+      quote_id: string | null
+      quotes:
+        | { order_number: string | null }
+        | { order_number: string | null }[]
+        | null
+    }) => {
+      const quotes = row.quotes
+      const quote = Array.isArray(quotes) ? quotes[0] : quotes
+      const status = row.status as SmsSendStatus
+      return {
+        id: row.id,
+        created_at: row.created_at,
+        status,
+        to_e164: row.to_e164 ?? null,
+        to_display: maskE164(row.to_e164),
+        order_number: quote?.order_number ?? null,
+        quote_id: row.quote_id ?? null,
+        skip_reason: (row.skip_reason as SmsSkipReason | null) ?? null,
+        error_code: row.error_code ?? null,
+        billable: status === 'sent' || status === 'delivered'
+      }
     }
-  })
+  )
 
   return {
     rows,

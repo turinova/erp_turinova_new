@@ -45,7 +45,8 @@ export function QuoteReadySmsDialog({
 
   useEffect(() => {
     if (!open) return
-    setSelected(eligible.map((c) => c.quoteId))
+    const next = candidates.filter((c) => c.eligible).map((c) => c.quoteId)
+    setSelected(next)
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
   }, [open, candidates])
