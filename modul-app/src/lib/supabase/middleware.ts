@@ -123,7 +123,8 @@ export async function updateSession(request: NextRequest) {
         if (clean) return redirectTo(request, clean)
       }
       if (pathname === '/' || pathname === '') {
-        return redirectTo(request, PARTNER_HOME_PATH)
+        // Publikus marketing: coming soon — partner login továbbra is /login
+        return redirectTo(request, '/hamarosan')
       }
       if (isStaffOnlyPath(pathname)) {
         return redirectTo(request, PARTNER_LOGIN_PATH)
