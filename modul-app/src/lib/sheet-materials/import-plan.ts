@@ -1,12 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { mapFilenamesToPublicUrls } from '@/lib/media/queries'
+import { resolveSellNetFromPricing } from '@/lib/pricing/margin'
 import {
   coerceSheetExcelRow,
   parseSheetMaterialsWorkbook,
   type CoercedSheetRow
 } from '@/lib/sheet-materials/excel-workbook'
-import { netFromGross } from '@/lib/sheet-materials/parse'
 
 export type SheetImportAction = 'create' | 'update' | 'error'
 
@@ -157,6 +157,8 @@ type ResolvedRow = {
     grain_direction: boolean
     rotatable: boolean
     price_net: number
+    purchase_price_net: number | null
+    margin_factor: number | null
     machine_code: string
     image_url?: string | null
   }
@@ -227,7 +229,23 @@ function resolveRow(
     data.thicknessMm
   )
   const match = refs.existing.get(key)
-  const priceNet = netFromGross(data.priceGross, tax.ratePercent)
+  const priced = resolveSellNetFromPricing({
+    priceGross: data.priceGross,
+    purchasePriceNet: data.purchasePriceNet,
+    marginFactor: data.marginFactor,
+    vatPercent: tax.ratePercent
+  })
+  if (!priced.ok) {
+    return {
+      rowNumber: coerced.rowNumber,
+      action: 'error',
+      name: data.name,
+      manufacturerName: data.manufacturerName,
+      sizeLabel: `${data.lengthMm}×${data.widthMm}×${data.thicknessMm}`,
+      message: priced.message
+    }
+  }
+  const priceNet = priced.priceNet
 
   let setImage = false
   let imageUrl: string | null | undefined
@@ -272,6 +290,8 @@ function resolveRow(
       grain_direction: data.grainDirection,
       rotatable: data.rotatable,
       price_net: priceNet,
+      purchase_price_net: priced.purchasePriceNet,
+      margin_factor: priced.marginFactor,
       machine_code: data.machineCode,
       ...(setImage ? { image_url: imageUrl } : {})
     },

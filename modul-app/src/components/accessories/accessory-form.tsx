@@ -32,6 +32,10 @@ import type {
   AccessoryUnitOption
 } from '@/lib/accessories/queries'
 import type { ProductLabelPayload } from '@/lib/labels/types'
+import {
+  parseOptionalPurchaseMargin,
+  sellGrossFromPurchase
+} from '@/lib/pricing/margin'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
 
@@ -93,6 +97,14 @@ export function AccessoryForm({
   const [grossRaw, setGrossRaw] = useState(
     initial ? String(initial.price_gross) : ''
   )
+  const [purchaseRaw, setPurchaseRaw] = useState(
+    initial?.purchase_price_net != null
+      ? String(initial.purchase_price_net)
+      : ''
+  )
+  const [marginRaw, setMarginRaw] = useState(
+    initial?.margin_factor != null ? String(initial.margin_factor) : ''
+  )
   const [active, setActive] = useState(initial?.active ?? true)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
@@ -117,6 +129,13 @@ export function AccessoryForm({
       return
     }
 
+    const purchaseParsed = parseOptionalPurchaseMargin(purchaseRaw, marginRaw)
+    if (!purchaseParsed.ok) {
+      setFieldErrors(purchaseParsed.fieldErrors)
+      toast.error('Ellenőrizd a beszerzési árat / árrés szorzót.')
+      return
+    }
+
     startTransition(async () => {
       const payload = {
         name,
@@ -127,6 +146,8 @@ export function AccessoryForm({
         taxRateId,
         unitId,
         priceNet,
+        purchasePriceNet: purchaseParsed.purchasePriceNet,
+        marginFactor: purchaseParsed.marginFactor,
         imageUrl,
         active
       }
@@ -336,7 +357,7 @@ export function AccessoryForm({
 
         <FormSection
           title="Árazás"
-          description="Egység, bruttó ár és adónem. A nettó számított."
+          description="Egység, bruttó ár és adónem. Opcionálisan beszerzés × árrés szorzó."
           columns={4}
         >
           <FormField
@@ -358,6 +379,95 @@ export function AccessoryForm({
               onChange={setUnitId}
             />
           </FormField>
+
+          <div className="col-span-full grid grid-cols-1 items-end gap-x-3 gap-y-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:col-span-3">
+            <FormField
+              label="Beszerzési nettó"
+              htmlFor="accessory-purchase"
+              optionalLabel
+              error={fieldErrors.purchasePriceNet}
+            >
+              <div className="relative">
+                <Input
+                  id="accessory-purchase"
+                  value={purchaseRaw}
+                  onChange={(e) => setPurchaseRaw(e.target.value)}
+                  inputMode="numeric"
+                  disabled={pending || !canWrite}
+                  className="pr-10"
+                />
+                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
+                  Ft
+                </span>
+              </div>
+            </FormField>
+
+            <FormField
+              label="Árrés szorzó"
+              htmlFor="accessory-margin"
+              optionalLabel
+              error={fieldErrors.marginFactor}
+            >
+              <Input
+                id="accessory-margin"
+                value={marginRaw}
+                onChange={(e) => setMarginRaw(e.target.value)}
+                inputMode="decimal"
+                disabled={pending || !canWrite}
+              />
+            </FormField>
+
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="text-label select-none text-transparent"
+                aria-hidden
+              >
+                .
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending || !canWrite}
+                onClick={() => {
+                  const parsed = parseOptionalPurchaseMargin(
+                    purchaseRaw,
+                    marginRaw
+                  )
+                  if (!parsed.ok) {
+                    setFieldErrors(parsed.fieldErrors)
+                    toast.error('Ellenőrizd a beszerzési árat / szorzót.')
+                    return
+                  }
+                  if (
+                    parsed.purchasePriceNet == null ||
+                    parsed.marginFactor == null
+                  ) {
+                    toast.error('Add meg a beszerzési nettót és a szorzót.')
+                    return
+                  }
+                  setGrossRaw(
+                    String(
+                      sellGrossFromPurchase(
+                        parsed.purchasePriceNet,
+                        parsed.marginFactor,
+                        vatPercent
+                      )
+                    )
+                  )
+                  setFieldErrors((prev) => {
+                    const next = { ...prev }
+                    delete next.purchasePriceNet
+                    delete next.marginFactor
+                    delete next.priceNet
+                    return next
+                  })
+                  toast.success('Eladási bruttó kiszámolva.')
+                }}
+              >
+                Eladási ár számítása
+              </Button>
+            </div>
+          </div>
 
           <FormField
             label="Bruttó ár"

@@ -64,6 +64,8 @@ export type SheetFormInput = {
   grainDirection: boolean
   rotatable: boolean
   priceNet: number
+  purchasePriceNet: number | null
+  marginFactor: number | null
   machineCode: string
 }
 
@@ -93,6 +95,8 @@ function parseFormInput(input: SheetFormInput) {
     grainDirection: input.grainDirection,
     rotatable: input.rotatable,
     priceNet: input.priceNet,
+    purchasePriceNet: input.purchasePriceNet,
+    marginFactor: input.marginFactor,
     machineCode: input.machineCode
   })
 }
@@ -132,6 +136,8 @@ function rowFromParsed(data: SheetMaterialFormValues) {
     grain_direction: data.grainDirection,
     rotatable: data.rotatable,
     price_net: data.priceNet,
+    purchase_price_net: data.purchasePriceNet,
+    margin_factor: data.marginFactor,
     machine_code: data.machineCode
   }
 }

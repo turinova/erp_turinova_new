@@ -17,6 +17,8 @@ export type ProductPlan = {
   name: string
   description: string | null
   is_default: boolean
+  price_monthly_huf: number
+  currency: string
 }
 
 export type ProductAddon = {
@@ -25,6 +27,10 @@ export type ProductAddon = {
   name: string
   description: string | null
   active: boolean
+  price_monthly_huf: number
+  price_unit_huf: number | null
+  unit_key: string | null
+  currency: string
 }
 
 /** Effektív feature kulcsok a tenantnél (materializált). */

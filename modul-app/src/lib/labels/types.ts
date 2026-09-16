@@ -28,6 +28,7 @@ export function labelBarcodeValue(
   return b || null
 }
 
-export function labelSizeMm(_size: LabelSize = '33x25'): { w: number; h: number } {
+export function labelSizeMm(_size?: LabelSize): { w: number; h: number } {
+  void _size
   return { w: 33, h: 25 }
 }

@@ -85,6 +85,43 @@ export async function updatePlanFeatures(input: {
   }
 }
 
+export async function updatePlanPricing(input: {
+  planId: string
+  priceMonthlyHuf: number
+}): Promise<EntitlementActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const price = Math.round(Number(input.priceMonthlyHuf))
+  if (!Number.isFinite(price) || price < 0) {
+    return { ok: false, message: 'Érvénytelen havidíj.' }
+  }
+
+  const { error } = await ctx.admin
+    .from('product_plans')
+    .update({
+      price_monthly_huf: price,
+      currency: 'HUF',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', input.planId)
+
+  if (error) {
+    console.error('updatePlanPricing', error.message)
+    return { ok: false, message: 'Havidíj mentése sikertelen.' }
+  }
+
+  await writeEntitlementAudit(ctx.admin, {
+    actorUserId: ctx.user.id,
+    action: 'plan.pricing_updated',
+    details: { planId: input.planId, priceMonthlyHuf: price }
+  })
+
+  revalidatePath(PLANS)
+  revalidatePath(PLATFORM)
+  return { ok: true, message: 'Havidíj mentve.' }
+}
+
 export async function applyPlanToTenants(
   planId: string
 ): Promise<EntitlementActionResult> {
@@ -314,6 +351,9 @@ export async function createProductAddon(input: {
   key?: string
   description?: string
   featureKeys: string[]
+  priceMonthlyHuf?: number
+  priceUnitHuf?: number | null
+  unitKey?: string | null
 }): Promise<EntitlementActionResult> {
   const ctx = await requirePlatformAdmin()
   if (!ctx.ok) return { ok: false, message: ctx.message }
@@ -328,13 +368,32 @@ export async function createProductAddon(input: {
     return { ok: false, message: 'Érvényes kulcs kell.' }
   }
 
+  const priceMonthly = Math.round(Number(input.priceMonthlyHuf ?? 0))
+  if (!Number.isFinite(priceMonthly) || priceMonthly < 0) {
+    return { ok: false, message: 'Érvénytelen havidíj.' }
+  }
+
+  let priceUnit: number | null = null
+  let unitKey: string | null = null
+  if (input.unitKey === 'sms_sent') {
+    unitKey = 'sms_sent'
+    priceUnit = Math.round(Number(input.priceUnitHuf ?? 0))
+    if (!Number.isFinite(priceUnit) || priceUnit < 0) {
+      return { ok: false, message: 'Érvénytelen egységár.' }
+    }
+  }
+
   const { data: addon, error } = await ctx.admin
     .from('product_addons')
     .insert({
       key,
       name,
       description: input.description?.trim() || null,
-      active: true
+      active: true,
+      price_monthly_huf: priceMonthly,
+      price_unit_huf: priceUnit,
+      unit_key: unitKey,
+      currency: 'HUF'
     })
     .select('id')
     .single()
@@ -379,6 +438,9 @@ export async function updateProductAddon(input: {
   description?: string
   active: boolean
   featureKeys: string[]
+  priceMonthlyHuf: number
+  priceUnitHuf?: number | null
+  unitKey?: string | null
 }): Promise<EntitlementActionResult> {
   const ctx = await requirePlatformAdmin()
   if (!ctx.ok) return { ok: false, message: ctx.message }
@@ -388,12 +450,31 @@ export async function updateProductAddon(input: {
     return { ok: false, message: 'Az add-on neve legalább 2 karakter legyen.' }
   }
 
+  const priceMonthly = Math.round(Number(input.priceMonthlyHuf))
+  if (!Number.isFinite(priceMonthly) || priceMonthly < 0) {
+    return { ok: false, message: 'Érvénytelen havidíj.' }
+  }
+
+  let priceUnit: number | null = null
+  let unitKey: string | null = null
+  if (input.unitKey === 'sms_sent') {
+    unitKey = 'sms_sent'
+    priceUnit = Math.round(Number(input.priceUnitHuf ?? 0))
+    if (!Number.isFinite(priceUnit) || priceUnit < 0) {
+      return { ok: false, message: 'Érvénytelen egységár.' }
+    }
+  }
+
   const { error } = await ctx.admin
     .from('product_addons')
     .update({
       name,
       description: input.description?.trim() || null,
       active: input.active,
+      price_monthly_huf: priceMonthly,
+      price_unit_huf: priceUnit,
+      unit_key: unitKey,
+      currency: 'HUF',
       updated_at: new Date().toISOString()
     })
     .eq('id', input.addonId)

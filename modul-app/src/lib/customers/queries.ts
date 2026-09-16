@@ -14,6 +14,7 @@ export type CustomerDetail = {
   name: string
   email: string | null
   mobile: string | null
+  sms_notification: boolean
   billing_name: string | null
   billing_country: string
   billing_city: string | null
@@ -98,6 +99,7 @@ export async function getCustomer(
       name,
       email,
       mobile,
+      sms_notification,
       billing_name,
       billing_country,
       billing_city,
@@ -124,6 +126,7 @@ export async function getCustomer(
 
   return {
     ...data,
+    sms_notification: Boolean(data.sms_notification),
     billing_country: data.billing_country || 'Magyarország'
   }
 }

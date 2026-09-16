@@ -10,6 +10,7 @@ import {
   type OrderListStatusFilter
 } from '@/lib/quotes/orders-queries'
 import { listActiveProductionMachines } from '@/lib/production-machines/queries'
+import { tenantHasQuoteReadySms } from '@/lib/sms/entitlement'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -73,29 +74,33 @@ async function OrdersListLoader({
   let limit = 25
   let machines: Awaited<ReturnType<typeof listActiveProductionMachines>> = []
   let paymentMethods: Awaited<ReturnType<typeof listActivePaymentMethods>> = []
+  let hasSmsAddon = false
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        const [ordersResult, machineRows, methodRows] = await Promise.all([
-          listOrders(supabase, {
-            tenantId: user.tenantId,
-            status,
-            q: q || undefined,
-            machineId: machineId || undefined,
-            productionDate: productionDate || undefined,
-            page,
-            limit: 25
-          }),
-          listActiveProductionMachines(supabase, user.tenantId),
-          listActivePaymentMethods(supabase, user.tenantId)
-        ])
+        const [ordersResult, machineRows, methodRows, smsAddon] =
+          await Promise.all([
+            listOrders(supabase, {
+              tenantId: user.tenantId,
+              status,
+              q: q || undefined,
+              machineId: machineId || undefined,
+              productionDate: productionDate || undefined,
+              page,
+              limit: 25
+            }),
+            listActiveProductionMachines(supabase, user.tenantId),
+            listActivePaymentMethods(supabase, user.tenantId),
+            tenantHasQuoteReadySms(supabase, user.tenantId)
+          ])
         rows = ordersResult.rows
         total = ordersResult.total
         limit = ordersResult.limit
         machines = machineRows
         paymentMethods = methodRows
+        hasSmsAddon = smsAddon
       } catch (err) {
         loadError =
           err instanceof Error
@@ -144,6 +149,7 @@ async function OrdersListLoader({
       page={page}
       limit={limit}
       canWrite={canWrite}
+      hasSmsAddon={hasSmsAddon}
       initialQ={q}
       initialStatus={status}
       initialMachineId={machineId}

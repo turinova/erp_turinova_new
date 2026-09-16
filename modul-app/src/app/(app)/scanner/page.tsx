@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { ScannerClient } from '@/components/scanner/scanner-client'
 import { getSessionUser } from '@/lib/auth/session'
 import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
+import { tenantHasQuoteReadySms } from '@/lib/sms/entitlement'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -17,15 +18,18 @@ export default async function ScannerPage() {
   let paymentMethods: Awaited<
     ReturnType<typeof listActivePaymentMethods>
   > = []
+  let hasSmsAddon = false
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        paymentMethods = await listActivePaymentMethods(
-          supabase,
-          user.tenantId
-        )
+        const [methods, smsAddon] = await Promise.all([
+          listActivePaymentMethods(supabase, user.tenantId),
+          tenantHasQuoteReadySms(supabase, user.tenantId)
+        ])
+        paymentMethods = methods
+        hasSmsAddon = smsAddon
       } catch (err) {
         loadError =
           err instanceof Error
@@ -57,6 +61,10 @@ export default async function ScannerPage() {
   }
 
   return (
-    <ScannerClient canWrite={canWrite} paymentMethods={paymentMethods} />
+    <ScannerClient
+      canWrite={canWrite}
+      hasSmsAddon={hasSmsAddon}
+      paymentMethods={paymentMethods}
+    />
   )
 }

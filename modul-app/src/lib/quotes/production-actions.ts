@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 
 import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
 import { normalizeBarcode } from '@/lib/quotes/production-utils'
+import { sendQuoteReadySms } from '@/lib/sms/send-ready'
+import type { QuoteReadySmsResult } from '@/lib/sms/send-ready'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 const LIST_PATH = '/ajanlatok'
@@ -171,12 +173,19 @@ export async function clearQuoteProduction(
   return { ok: true }
 }
 
-/** Gyártásban → Kész (SMS nélkül). */
+export type MarkQuoteReadyResult =
+  | { ok: true; sms: QuoteReadySmsResult | null }
+  | { ok: false; message: string }
+
+/** Gyártásban → Kész. SMS opcionális; fail nem rollbackeli a ready státuszt. */
 export async function markQuoteReady(
-  quoteId: string
-): Promise<ProductionActionResult> {
+  quoteId: string,
+  options?: { sendSms?: boolean }
+): Promise<MarkQuoteReadyResult> {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
 
   const { data: updated, error } = await ctx.supabase
     .from('quotes')
@@ -186,7 +195,7 @@ export async function markQuoteReady(
       updated_at: new Date().toISOString()
     })
     .eq('id', quoteId)
-    .eq('tenant_id', ctx.user.tenantId!)
+    .eq('tenant_id', tenantId)
     .eq('status', 'in_production')
     .is('deleted_at', null)
     .select('id')
@@ -204,8 +213,28 @@ export async function markQuoteReady(
     }
   }
 
+  let sms: QuoteReadySmsResult | null = null
+  if (options && typeof options.sendSms === 'boolean') {
+    try {
+      sms = await sendQuoteReadySms({
+        supabase: ctx.supabase,
+        tenantId,
+        tenantName: ctx.user.companyName || 'Optinova',
+        quoteId,
+        userId: ctx.user.id,
+        sendSms: options.sendSms
+      })
+    } catch (err) {
+      console.error('markQuoteReady sms', err)
+      sms = {
+        status: 'failed',
+        error: err instanceof Error ? err.message : 'SMS hiba'
+      }
+    }
+  }
+
   revalidateOrderPaths(quoteId)
-  return { ok: true }
+  return { ok: true, sms }
 }
 
 export type FinishQuoteHandoverResult =

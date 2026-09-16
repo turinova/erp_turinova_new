@@ -18,6 +18,8 @@ export type AccessoryListItem = {
   unit_shortform: string
   price_net: number
   price_gross: number
+  purchase_price_net: number | null
+  margin_factor: number | null
   image_url: string | null
   active: boolean
   created_at: string
@@ -59,6 +61,8 @@ export async function listAccessories(
       tax_rate_id,
       unit_id,
       price_net,
+      purchase_price_net,
+      margin_factor,
       image_url,
       active,
       created_at,
@@ -101,6 +105,10 @@ export async function listAccessories(
       unit_shortform: unit?.shortform ?? 'db',
       price_net: priceNet,
       price_gross: grossFromNet(priceNet, taxPercent),
+      purchase_price_net:
+        row.purchase_price_net == null ? null : Number(row.purchase_price_net),
+      margin_factor:
+        row.margin_factor == null ? null : Number(row.margin_factor),
       image_url: row.image_url ?? null,
       active: row.active,
       created_at: row.created_at,
@@ -127,6 +135,8 @@ export async function getAccessory(
       tax_rate_id,
       unit_id,
       price_net,
+      purchase_price_net,
+      margin_factor,
       image_url,
       active,
       created_at,
@@ -171,6 +181,10 @@ export async function getAccessory(
     unit_shortform: unit?.shortform ?? 'db',
     price_net: priceNet,
     price_gross: grossFromNet(priceNet, taxPercent),
+    purchase_price_net:
+      data.purchase_price_net == null ? null : Number(data.purchase_price_net),
+    margin_factor:
+      data.margin_factor == null ? null : Number(data.margin_factor),
     image_url: data.image_url ?? null,
     active: data.active,
     created_at: data.created_at,

@@ -27,7 +27,9 @@ export async function listProductPlans(
 ): Promise<Array<ProductPlan & { featureKeys: string[]; tenantCount: number }>> {
   const { data: plans, error } = await admin
     .from('product_plans')
-    .select('id, key, name, description, is_default')
+    .select(
+      'id, key, name, description, is_default, price_monthly_huf, currency'
+    )
     .order('name', { ascending: true })
 
   if (error || !plans) {
@@ -49,6 +51,8 @@ export async function listProductPlans(
     ])
     result.push({
       ...(plan as ProductPlan),
+      price_monthly_huf: Number((plan as ProductPlan).price_monthly_huf) || 0,
+      currency: (plan as ProductPlan).currency || 'HUF',
       featureKeys: (features ?? []).map((f) => f.feature_key as string),
       tenantCount: count ?? 0
     })
@@ -62,7 +66,9 @@ export async function getProductPlanDetail(
 ): Promise<(ProductPlan & { featureKeys: string[] }) | null> {
   const { data: plan, error } = await admin
     .from('product_plans')
-    .select('id, key, name, description, is_default')
+    .select(
+      'id, key, name, description, is_default, price_monthly_huf, currency'
+    )
     .eq('id', planId)
     .maybeSingle()
 
@@ -84,7 +90,9 @@ export async function listProductAddons(
 ): Promise<Array<ProductAddon & { featureKeys: string[]; enabledCount: number }>> {
   const { data: addons, error } = await admin
     .from('product_addons')
-    .select('id, key, name, description, active')
+    .select(
+      'id, key, name, description, active, price_monthly_huf, price_unit_huf, unit_key, currency'
+    )
     .order('name', { ascending: true })
 
   if (error || !addons) {
@@ -106,6 +114,13 @@ export async function listProductAddons(
     ])
     result.push({
       ...(addon as ProductAddon),
+      price_monthly_huf: Number((addon as ProductAddon).price_monthly_huf) || 0,
+      price_unit_huf:
+        (addon as ProductAddon).price_unit_huf == null
+          ? null
+          : Number((addon as ProductAddon).price_unit_huf),
+      unit_key: (addon as ProductAddon).unit_key ?? null,
+      currency: (addon as ProductAddon).currency || 'HUF',
       featureKeys: (features ?? []).map((f) => f.feature_key as string),
       enabledCount: count ?? 0
     })
@@ -148,10 +163,18 @@ export async function getTenantEntitlementState(
   if (tenant?.plan_id) {
     const { data } = await admin
       .from('product_plans')
-      .select('id, key, name, description, is_default')
+      .select(
+        'id, key, name, description, is_default, price_monthly_huf, currency'
+      )
       .eq('id', tenant.plan_id)
       .maybeSingle()
-    plan = (data as ProductPlan) ?? null
+    if (data) {
+      plan = {
+        ...(data as ProductPlan),
+        price_monthly_huf: Number(data.price_monthly_huf) || 0,
+        currency: (data.currency as string) || 'HUF'
+      }
+    }
   }
 
   const [

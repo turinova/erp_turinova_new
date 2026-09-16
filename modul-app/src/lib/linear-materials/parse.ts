@@ -71,7 +71,16 @@ export const linearMaterialFormSchema = z.object({
   ]),
   priceNet: z
     .number({ invalid_type_error: 'Érvényes árat adj meg.' })
-    .min(0, 'Az ár nem lehet negatív.')
+    .min(0, 'Az ár nem lehet negatív.'),
+  purchasePriceNet: z
+    .number({ invalid_type_error: 'Érvényes beszerzési nettót adj meg.' })
+    .min(0, 'A beszerzési ár nem lehet negatív.')
+    .nullable(),
+  marginFactor: z
+    .number({ invalid_type_error: 'Érvényes árrés szorzót adj meg.' })
+    .gt(0, 'A szorzó legyen nagyobb mint 0.')
+    .max(100, 'A szorzó legfeljebb 100.')
+    .nullable()
 })
 
 export type LinearMaterialFormValues = z.infer<typeof linearMaterialFormSchema>

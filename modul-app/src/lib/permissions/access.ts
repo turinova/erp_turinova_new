@@ -22,7 +22,7 @@ export async function listAllowedPageKeys(
     console.error('listAllowedPageKeys', error.message)
     // Bootstrap: owner/admin full access if table missing / empty error
     if (role === 'owner' || role === 'admin') {
-      return [...ALL_PAGE_KEYS]
+      return filterOwnerOnlyPages([...ALL_PAGE_KEYS], role)
     }
     return [...ALWAYS_ALLOWED_PAGE_KEYS]
   }
@@ -30,10 +30,21 @@ export async function listAllowedPageKeys(
   const keys = (data ?? []).map((row) => row.page_key as string)
 
   if (keys.length === 0 && (role === 'owner' || role === 'admin')) {
-    return [...ALL_PAGE_KEYS]
+    return filterOwnerOnlyPages([...ALL_PAGE_KEYS], role)
   }
 
-  return mergeAlwaysAllowed(keys)
+  return filterOwnerOnlyPages(mergeAlwaysAllowed(keys), role)
+}
+
+/** Előfizetés csak tenant ownernek — admin/member page_access-ből is kivágjuk. */
+const OWNER_ONLY_PAGE_KEYS = new Set(['/beallitasok/elofizetes'])
+
+function filterOwnerOnlyPages(
+  keys: string[],
+  role: TenantRole | null
+): string[] {
+  if (role === 'owner') return keys
+  return keys.filter((k) => !OWNER_ONLY_PAGE_KEYS.has(k))
 }
 
 export async function listPageAccessMap(

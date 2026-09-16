@@ -408,9 +408,10 @@ function PermissionsDialog({
 
   const visiblePages = useMemo(
     () =>
-      APP_PAGES.filter(
-        (p) => Boolean(p.always) || entitledSet.has(p.key)
-      ),
+      APP_PAGES.filter((p) => {
+        if (p.key === '/beallitasok/elofizetes') return false
+        return Boolean(p.always) || entitledSet.has(p.key)
+      }),
     [entitledSet]
   )
 

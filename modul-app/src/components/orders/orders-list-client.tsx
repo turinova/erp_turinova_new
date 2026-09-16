@@ -32,12 +32,15 @@ import type {
   OrderListItem,
   OrderListStatusFilter
 } from '@/lib/quotes/orders-queries'
+import { QuoteReadySmsDialog } from '@/components/orders/quote-ready-sms-dialog'
 import { markQuoteReady } from '@/lib/quotes/production-actions'
 import {
   QUOTE_STATUS_LABEL,
   quoteStatusTone
 } from '@/lib/quotes/status-labels'
 import type { ProductionMachineOption } from '@/lib/production-machines/queries'
+import { previewQuoteReadySms } from '@/lib/scanner/actions'
+import type { QuoteReadySmsCandidate } from '@/lib/sms/types'
 import { cn } from '@/lib/utils'
 
 type OrdersListClientProps = {
@@ -46,6 +49,7 @@ type OrdersListClientProps = {
   page: number
   limit: number
   canWrite: boolean
+  hasSmsAddon: boolean
   initialQ: string
   initialStatus: OrderListStatusFilter
   initialMachineId: string
@@ -76,12 +80,34 @@ function formatDate(iso: string | null) {
   }
 }
 
+function toastAfterReady(
+  orderNumber: string,
+  sms: { status: string; error?: string } | null | undefined
+) {
+  if (!sms) {
+    toast.success(`${orderNumber} készre állítva.`)
+    return
+  }
+  if (sms.status === 'sent') {
+    toast.success(`${orderNumber} készre állítva + SMS elküldve.`)
+    return
+  }
+  if (sms.status === 'failed') {
+    toast.warning(
+      `${orderNumber} készre állítva, SMS sikertelen${sms.error ? `: ${sms.error}` : '.'}`
+    )
+    return
+  }
+  toast.success(`${orderNumber} készre állítva.`)
+}
+
 export function OrdersListClient({
   rows,
   total,
   page,
   limit,
   canWrite,
+  hasSmsAddon,
   initialQ,
   initialStatus,
   initialMachineId,
@@ -98,6 +124,11 @@ export function OrdersListClient({
   const [handoverTarget, setHandoverTarget] = useState<OrderListItem | null>(
     null
   )
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false)
+  const [smsCandidates, setSmsCandidates] = useState<QuoteReadySmsCandidate[]>(
+    []
+  )
+  const [smsTargetIds, setSmsTargetIds] = useState<string[]>([])
   const [pending, startTransition] = useTransition()
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -119,15 +150,45 @@ export function OrdersListClient({
     pushParams({ q: qDraft.trim() || null, page: '1' })
   }
 
-  function handleMarkReady(row: OrderListItem) {
+  function runMarkReady(quoteIds: string[], smsQuoteIds?: string[]) {
     startTransition(async () => {
-      const result = await markQuoteReady(row.id)
-      if (!result.ok) {
-        toast.error(result.message)
+      for (const id of quoteIds) {
+        const wantsSms =
+          smsQuoteIds !== undefined ? smsQuoteIds.includes(id) : undefined
+        const result = await markQuoteReady(
+          id,
+          wantsSms === undefined ? undefined : { sendSms: wantsSms }
+        )
+        if (!result.ok) {
+          toast.error(result.message)
+          continue
+        }
+        const row = rows.find((r) => r.id === id)
+        toastAfterReady(row?.order_number ?? id, result.sms)
+      }
+      setSmsDialogOpen(false)
+      router.refresh()
+    })
+  }
+
+  function handleMarkReady(row: OrderListItem) {
+    if (!hasSmsAddon) {
+      runMarkReady([row.id])
+      return
+    }
+    startTransition(async () => {
+      const preview = await previewQuoteReadySms([row.id])
+      if (!preview.ok) {
+        toast.error(preview.message)
         return
       }
-      toast.success(`${row.order_number} készre állítva.`)
-      router.refresh()
+      if (!preview.hasAddon) {
+        runMarkReady([row.id])
+        return
+      }
+      setSmsTargetIds([row.id])
+      setSmsCandidates(preview.candidates)
+      setSmsDialogOpen(true)
     })
   }
 
@@ -465,6 +526,14 @@ export function OrdersListClient({
           }}
         />
       ) : null}
+
+      <QuoteReadySmsDialog
+        open={smsDialogOpen}
+        onOpenChange={setSmsDialogOpen}
+        candidates={smsCandidates}
+        loading={pending}
+        onConfirm={(smsQuoteIds) => runMarkReady(smsTargetIds, smsQuoteIds)}
+      />
     </div>
   )
 }

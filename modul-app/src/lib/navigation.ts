@@ -12,6 +12,7 @@ import {
   Home,
   ImageIcon,
   Layers,
+  MessageSquare,
   Percent,
   Ruler,
   ScanBarcode,
@@ -238,6 +239,13 @@ export const mainNavItems: NavNode[] = [
         label: 'Online partner',
         href: '/beallitasok/partner',
         icon: Handshake,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'SMS sablon',
+        href: '/beallitasok/sms',
+        icon: MessageSquare,
         accent: 'slate'
       },
       {

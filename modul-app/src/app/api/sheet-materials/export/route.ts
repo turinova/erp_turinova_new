@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
       widthMm: r.width_mm,
       thicknessMm: r.thickness_mm,
       priceGross: grossFromNet(r.price_net, r.tax_rate_percent),
+      purchasePriceNet: r.purchase_price_net,
+      marginFactor: r.margin_factor,
       taxRateName: r.tax_rate_name,
       equipmentName: r.equipment_name,
       machineCode: r.machine_code,

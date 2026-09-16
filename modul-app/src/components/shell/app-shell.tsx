@@ -19,6 +19,7 @@ export function AppShell({ user, children }: AppShellProps) {
     <div className="relative min-h-screen bg-app">
       <AppSidebar
         allowedPages={user.allowedPages}
+        showSubscription={user.role === 'owner'}
         collapsed={collapsed}
         onCollapsedChange={setCollapsed}
       />

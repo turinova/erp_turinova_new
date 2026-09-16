@@ -1,11 +1,12 @@
 'use client'
 
-import { ChevronDown, PanelLeftClose, PanelLeft } from 'lucide-react'
+import { ChevronDown, CreditCard, PanelLeftClose, PanelLeft } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
+import { AppLegalLinks } from '@/components/shell/app-legal-links'
 import { Button } from '@/components/ui/button'
 import { getNavAccentClasses } from '@/lib/nav-accent'
 import {
@@ -22,17 +23,22 @@ import { cn } from '@/lib/utils'
 
 type AppSidebarProps = {
   allowedPages: string[]
+  /** Csak tenant owner látja az Előfizetés linket. */
+  showSubscription: boolean
   collapsed: boolean
   onCollapsedChange: (collapsed: boolean) => void
 }
 
 export function AppSidebar({
   allowedPages,
+  showSubscription,
   collapsed,
   onCollapsedChange
 }: AppSidebarProps) {
   const pathname = usePathname()
   const navItems = filterNavByAccess(mainNavItems, allowedPages)
+  const subscriptionActive = pathIsActive(pathname, '/beallitasok/elofizetes')
+  const subscriptionAccent = getNavAccentClasses('slate')
 
   return (
     <aside
@@ -78,7 +84,7 @@ export function AppSidebar({
 
       <nav
         className={cn(
-          'mt-3 flex flex-1 flex-col gap-0.5 overflow-y-auto pb-2',
+          'mt-3 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pb-2',
           collapsed ? 'px-1.5' : 'px-2'
         )}
         aria-label="Főmenü"
@@ -95,31 +101,97 @@ export function AppSidebar({
         ))}
       </nav>
 
-      <div
-        className={cn(
-          'shrink-0 border-t border-border p-2',
-          collapsed && 'flex justify-center'
-        )}
-      >
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(collapsed ? 'size-8 p-0' : 'w-full justify-start')}
-          onClick={() => onCollapsedChange(!collapsed)}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? 'Oldalsáv kinyitása' : 'Oldalsáv összecsukása'}
-          title={collapsed ? 'Kinyitás' : 'Összecsukás'}
-        >
-          {collapsed ? (
-            <PanelLeft className="size-4" aria-hidden />
-          ) : (
-            <>
-              <PanelLeftClose className="size-4" aria-hidden />
-              <span>Összecsukás</span>
-            </>
+      <div className="mt-auto shrink-0 border-t border-border">
+        {showSubscription && !collapsed ? (
+          <div className="px-2 pt-2.5">
+            <Link
+              href="/beallitasok/elofizetes"
+              className={cn(
+                'group relative flex h-8 items-center gap-2 rounded-md px-2 no-underline transition-colors duration-fast',
+                subscriptionActive
+                  ? cn(subscriptionAccent.soft, subscriptionAccent.ink)
+                  : 'text-ink-secondary hover:bg-subtle hover:text-ink'
+              )}
+              aria-current={subscriptionActive ? 'page' : undefined}
+            >
+              {subscriptionActive ? (
+                <span
+                  className={cn(
+                    'absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-sm',
+                    subscriptionAccent.bar
+                  )}
+                  aria-hidden
+                />
+              ) : null}
+              <CreditCard
+                className={cn(
+                  'size-4 shrink-0',
+                  subscriptionActive
+                    ? subscriptionAccent.icon
+                    : subscriptionAccent.iconMuted
+                )}
+                aria-hidden
+              />
+              <span className="truncate text-[13px] font-medium">
+                Előfizetés
+              </span>
+            </Link>
+          </div>
+        ) : null}
+
+        {showSubscription && collapsed ? (
+          <div className="flex justify-center px-1.5 pt-2">
+            <Link
+              href="/beallitasok/elofizetes"
+              title="Előfizetés"
+              className={cn(
+                'flex size-8 items-center justify-center rounded-md transition-colors duration-fast',
+                subscriptionActive
+                  ? cn(subscriptionAccent.soft, subscriptionAccent.ink)
+                  : 'text-ink-secondary hover:bg-subtle hover:text-ink'
+              )}
+              aria-label="Előfizetés"
+              aria-current={subscriptionActive ? 'page' : undefined}
+            >
+              <CreditCard className="size-4" aria-hidden />
+            </Link>
+          </div>
+        ) : null}
+
+        {!collapsed ? (
+          <div className="px-0 py-1.5">
+            <AppLegalLinks variant="sidebar" />
+          </div>
+        ) : null}
+
+        <div
+          className={cn(
+            'border-t border-border p-2',
+            collapsed && 'flex justify-center'
           )}
-        </Button>
+        >
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(collapsed ? 'size-8 p-0' : 'w-full justify-start')}
+            onClick={() => onCollapsedChange(!collapsed)}
+            aria-expanded={!collapsed}
+            aria-label={
+              collapsed ? 'Oldalsáv kinyitása' : 'Oldalsáv összecsukása'
+            }
+            title={collapsed ? 'Kinyitás' : 'Összecsukás'}
+          >
+            {collapsed ? (
+              <PanelLeft className="size-4" aria-hidden />
+            ) : (
+              <>
+                <PanelLeftClose className="size-4" aria-hidden />
+                <span>Összecsukás</span>
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </aside>
   )

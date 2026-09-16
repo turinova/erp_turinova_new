@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 
 import { TenantDetailClient } from '@/components/platform/tenant-detail-client'
 import { TenantEntitlementsPanel } from '@/components/platform/tenant-entitlements-panel'
+import { estimateTenantMonthlyBill } from '@/lib/billing/estimate'
 import { listTenantPlatformAudit } from '@/lib/platform/audit'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
 import {
@@ -46,12 +47,14 @@ export default async function PlatformTenantDetailPage({
   const detail = await getPlatformTenantDetail(ctx.admin, id)
   if (!detail) notFound()
 
-  const [entitlements, plans, auditRows, tenantsHref] = await Promise.all([
-    getTenantEntitlementState(ctx.admin, id),
-    listProductPlans(ctx.admin),
-    listTenantPlatformAudit(ctx.admin, id),
-    ph('/tenants')
-  ])
+  const [entitlements, plans, auditRows, tenantsHref, monthlyBill] =
+    await Promise.all([
+      getTenantEntitlementState(ctx.admin, id),
+      listProductPlans(ctx.admin),
+      listTenantPlatformAudit(ctx.admin, id),
+      ph('/tenants'),
+      estimateTenantMonthlyBill(ctx.admin, id)
+    ])
 
   return (
     <div className="space-y-3">
@@ -68,6 +71,7 @@ export default async function PlatformTenantDetailPage({
         members={detail.members}
         company={detail.company}
         auditRows={auditRows}
+        monthlyBill={monthlyBill}
         entitlementsSlot={
           <TenantEntitlementsPanel
             tenantId={id}

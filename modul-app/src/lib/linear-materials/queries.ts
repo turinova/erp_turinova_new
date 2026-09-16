@@ -36,6 +36,8 @@ export type LinearMaterialDetail = {
   active: boolean
   image_url: string | null
   price_net: number
+  purchase_price_net: number | null
+  margin_factor: number | null
   created_at: string
   updated_at: string
 }
@@ -190,6 +192,8 @@ export async function getLinearMaterial(
       active,
       image_url,
       price_net,
+      purchase_price_net,
+      margin_factor,
       created_at,
       updated_at
     `
@@ -213,6 +217,10 @@ export async function getLinearMaterial(
     width_mm: Number(data.width_mm),
     thickness_mm: Number(data.thickness_mm),
     price_net: Number(data.price_net),
+    purchase_price_net:
+      data.purchase_price_net == null ? null : Number(data.purchase_price_net),
+    margin_factor:
+      data.margin_factor == null ? null : Number(data.margin_factor),
     image_url: data.image_url ?? null
   }
 }
@@ -232,6 +240,8 @@ export type LinearMaterialExportItem = {
   width_mm: number
   thickness_mm: number
   price_net: number
+  purchase_price_net: number | null
+  margin_factor: number | null
   on_stock: boolean
   active: boolean
   image_url: string | null
@@ -244,6 +254,8 @@ const EXPORT_SELECT = `
   width_mm,
   thickness_mm,
   price_net,
+  purchase_price_net,
+  margin_factor,
   on_stock,
   active,
   image_url,
@@ -285,6 +297,10 @@ export async function listLinearMaterialsForExport(
       width_mm: Number(row.width_mm),
       thickness_mm: Number(row.thickness_mm),
       price_net: Number(row.price_net),
+      purchase_price_net:
+        row.purchase_price_net == null ? null : Number(row.purchase_price_net),
+      margin_factor:
+        row.margin_factor == null ? null : Number(row.margin_factor),
       on_stock: row.on_stock,
       active: row.active,
       image_url: row.image_url ?? null

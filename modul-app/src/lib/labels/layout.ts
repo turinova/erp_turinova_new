@@ -256,9 +256,9 @@ export function computeLabelLayout(input: {
   }
   const unitFontDes = 1.85
 
-  let nameMin = showName ? nameResolved.contentMin : 0
-  let skuMin = showSku ? Math.max(floor.sku, skuContentMm(skuFontDes)) : 0
-  let priceMin = showPrice
+  const nameMin = showName ? nameResolved.contentMin : 0
+  const skuMin = showSku ? Math.max(floor.sku, skuContentMm(skuFontDes)) : 0
+  const priceMin = showPrice
     ? Math.max(floor.price, priceContentMm(priceFontDes, unitFontDes))
     : 0
   const barcodeMin = showBarcode
@@ -434,10 +434,10 @@ export function computeLabelRowHeights(input: {
   }
 }
 
-export function nameFontMm(text: string, _size?: LabelSize): number {
+export function nameFontMm(text: string): number {
   return desiredNameFont(text)
 }
 
-export function priceAmountFontMm(price: number, _size?: LabelSize): number {
+export function priceAmountFontMm(price: number): number {
   return desiredPriceFont(price)
 }

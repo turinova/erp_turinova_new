@@ -5,6 +5,7 @@ import {
   LINEAR_EXCEL_GUIDE_LINES,
   LINEAR_EXCEL_GUIDE_NAME,
   LINEAR_EXCEL_HEADERS,
+  LINEAR_EXCEL_OPTIONAL_HEADERS,
   LINEAR_EXCEL_SHEET_NAME,
   LINEAR_IMPORT_MAX_ROWS,
   type LinearExcelHeader,
@@ -97,7 +98,9 @@ export async function buildLinearMaterialsExportBuffer(
     Hossz_mm: r.lengthMm,
     Szelesseg_mm: r.widthMm,
     Vastagsag_mm: r.thicknessMm,
-    Brutto_Ft_m: r.priceGross,
+    Brutto_Ft_m: r.priceGross ?? '',
+    Beszerzes_netto_Ft_m: r.purchasePriceNet ?? '',
+    Arres_szorzo: r.marginFactor ?? '',
     Adonem: r.taxRateName,
     Raktari: formatBoolHu(r.onStock),
     Aktiv: formatBoolHu(r.active),
@@ -136,7 +139,8 @@ export async function parseLinearMaterialsWorkbook(
   })
 
   const missing = LINEAR_EXCEL_HEADERS.filter(
-    (h) => h !== 'Kep_fajlnev' && !headerMap.has(h.toLowerCase())
+    (h) =>
+      !LINEAR_EXCEL_OPTIONAL_HEADERS.has(h) && !headerMap.has(h.toLowerCase())
   )
   if (missing.length > 0) {
     return {
@@ -206,7 +210,15 @@ export function coerceLinearExcelRow(
   const lengthMm = parseIntegerInput(v.Hossz_mm)
   const widthMm = parseIntegerInput(v.Szelesseg_mm)
   const thicknessMm = parseDecimalInput(v.Vastagsag_mm)
-  const priceGross = parseIntegerInput(v.Brutto_Ft_m)
+  const priceGrossRaw = v.Brutto_Ft_m.trim()
+  const priceGross = priceGrossRaw ? parseIntegerInput(v.Brutto_Ft_m) : null
+  const purchaseRaw = v.Beszerzes_netto_Ft_m.trim()
+  const purchasePriceNet = purchaseRaw
+    ? parseIntegerInput(v.Beszerzes_netto_Ft_m)
+    : null
+  const marginRaw = v.Arres_szorzo.trim()
+  const marginFactor = marginRaw ? parseDecimalInput(v.Arres_szorzo) : null
+
   if (lengthMm === null || lengthMm <= 0) {
     return { ok: false, rowNumber, message: 'Érvénytelen hossz (mm).' }
   }
@@ -216,8 +228,29 @@ export function coerceLinearExcelRow(
   if (thicknessMm === null || thicknessMm <= 0) {
     return { ok: false, rowNumber, message: 'Érvénytelen vastagság (mm).' }
   }
-  if (priceGross === null || priceGross < 0) {
+  if (priceGrossRaw && (priceGross === null || priceGross < 0)) {
     return { ok: false, rowNumber, message: 'Érvénytelen bruttó Ft/m.' }
+  }
+  if (purchaseRaw && (purchasePriceNet === null || purchasePriceNet < 0)) {
+    return {
+      ok: false,
+      rowNumber,
+      message: 'Érvénytelen beszerzési nettó Ft/m.'
+    }
+  }
+  if (
+    marginRaw &&
+    (marginFactor === null || marginFactor <= 0 || marginFactor > 100)
+  ) {
+    return { ok: false, rowNumber, message: 'Érvénytelen árrés szorzó.' }
+  }
+  if (priceGross == null && (purchasePriceNet == null || marginFactor == null)) {
+    return {
+      ok: false,
+      rowNumber,
+      message:
+        'Adj meg Brutto_Ft_m-t, vagy Beszerzes_netto_Ft_m + Arres_szorzo párost.'
+    }
   }
 
   if (!v.Adonem) {
@@ -245,6 +278,8 @@ export function coerceLinearExcelRow(
       widthMm,
       thicknessMm,
       priceGross,
+      purchasePriceNet,
+      marginFactor,
       taxRateName: v.Adonem,
       onStock,
       active,

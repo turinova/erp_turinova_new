@@ -82,6 +82,8 @@ export type AccessoryFormInput = {
   taxRateId: string
   unitId: string
   priceNet: number
+  purchasePriceNet: number | null
+  marginFactor: number | null
   active: boolean
 }
 
@@ -112,6 +114,8 @@ export async function createAccessory(
       tax_rate_id: parsed.data.taxRateId,
       unit_id: parsed.data.unitId,
       price_net: parsed.data.priceNet,
+      purchase_price_net: parsed.data.purchasePriceNet,
+      margin_factor: parsed.data.marginFactor,
       image_url: parsed.data.imageUrl ?? null,
       active: parsed.data.active
     })
@@ -158,6 +162,8 @@ export async function updateAccessory(
       tax_rate_id: parsed.data.taxRateId,
       unit_id: parsed.data.unitId,
       price_net: parsed.data.priceNet,
+      purchase_price_net: parsed.data.purchasePriceNet,
+      margin_factor: parsed.data.marginFactor,
       image_url: parsed.data.imageUrl ?? null,
       active: parsed.data.active,
       updated_at: new Date().toISOString()

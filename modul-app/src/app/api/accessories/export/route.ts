@@ -61,6 +61,8 @@ export async function GET(request: NextRequest) {
       barcode: r.barcode,
       barcodeInternal: r.barcode_internal,
       priceGross: r.price_gross,
+      purchasePriceNet: r.purchase_price_net,
+      marginFactor: r.margin_factor,
       taxRateName: r.tax_rate_name,
       unitLabel: r.unit_shortform,
       active: r.active,

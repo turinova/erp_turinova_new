@@ -66,7 +66,14 @@ export function AddonsClient({
                 <p className="font-medium text-ink">{addon.name}</p>
                 <p className="text-hint text-ink-secondary">
                   {addon.key} · {addon.featureKeys.length} feature ·{' '}
-                  {addon.enabledCount} cég
+                  {addon.enabledCount} cég ·{' '}
+                  {new Intl.NumberFormat('hu-HU').format(
+                    addon.price_monthly_huf
+                  )}{' '}
+                  Ft nettó/hó
+                  {addon.unit_key === 'sms_sent' && addon.price_unit_huf != null
+                    ? ` + ${addon.price_unit_huf} Ft nettó/db`
+                    : ''}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -137,6 +144,15 @@ function AddonFormDialog({
   const [key, setKey] = useState(initial?.key ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [active, setActive] = useState(initial?.active ?? true)
+  const [priceMonthly, setPriceMonthly] = useState(
+    String(initial?.price_monthly_huf ?? 0)
+  )
+  const [meteredSms, setMeteredSms] = useState(
+    initial?.unit_key === 'sms_sent'
+  )
+  const [priceUnit, setPriceUnit] = useState(
+    String(initial?.price_unit_huf ?? 95)
+  )
   const [keys, setKeys] = useState<Set<string>>(
     () => new Set(initial?.featureKeys ?? [])
   )
@@ -157,6 +173,9 @@ function AddonFormDialog({
     setKey(initial?.key ?? '')
     setDescription(initial?.description ?? '')
     setActive(initial?.active ?? true)
+    setPriceMonthly(String(initial?.price_monthly_huf ?? 0))
+    setMeteredSms(initial?.unit_key === 'sms_sent')
+    setPriceUnit(String(initial?.price_unit_huf ?? 95))
     setKeys(new Set(initial?.featureKeys ?? []))
     setError(null)
   }, [open, initial])
@@ -178,7 +197,10 @@ function AddonFormDialog({
           name,
           key: key || undefined,
           description,
-          featureKeys: [...keys]
+          featureKeys: [...keys],
+          priceMonthlyHuf: Number(priceMonthly),
+          priceUnitHuf: meteredSms ? Number(priceUnit) : null,
+          unitKey: meteredSms ? 'sms_sent' : null
         })
         if (!result.ok) {
           setError(result.message)
@@ -192,7 +214,10 @@ function AddonFormDialog({
           name,
           description,
           active,
-          featureKeys: [...keys]
+          featureKeys: [...keys],
+          priceMonthlyHuf: Number(priceMonthly),
+          priceUnitHuf: meteredSms ? Number(priceUnit) : null,
+          unitKey: meteredSms ? 'sms_sent' : null
         })
         if (!result.ok) {
           setError(result.message)
@@ -252,6 +277,48 @@ function AddonFormDialog({
             disabled={pending}
           />
         </FormField>
+
+        <FormField label="Havidíj (Ft nettó)" htmlFor="addon-price-monthly">
+          <Input
+            id="addon-price-monthly"
+            type="number"
+            min={0}
+            step={1}
+            value={priceMonthly}
+            onChange={(e) => setPriceMonthly(e.target.value)}
+            disabled={pending}
+            className="tabular-nums"
+          />
+        </FormField>
+
+        <label className="flex items-center gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            className="size-3.5 rounded border-border"
+            checked={meteredSms}
+            disabled={pending}
+            onChange={(e) => setMeteredSms(e.target.checked)}
+          />
+          SMS usage számlázás (Ft nettó / db)
+        </label>
+
+        {meteredSms ? (
+          <FormField
+            label="Egységár (Ft nettó / elküldött SMS)"
+            htmlFor="addon-unit"
+          >
+            <Input
+              id="addon-unit"
+              type="number"
+              min={0}
+              step={1}
+              value={priceUnit}
+              onChange={(e) => setPriceUnit(e.target.value)}
+              disabled={pending}
+              className="tabular-nums"
+            />
+          </FormField>
+        ) : null}
 
         {mode === 'edit' ? (
           <label className="flex items-center gap-2 text-body text-ink">

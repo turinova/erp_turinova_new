@@ -12,6 +12,8 @@ export const LINEAR_EXCEL_HEADERS = [
   'Szelesseg_mm',
   'Vastagsag_mm',
   'Brutto_Ft_m',
+  'Beszerzes_netto_Ft_m',
+  'Arres_szorzo',
   'Adonem',
   'Raktari',
   'Aktiv',
@@ -20,6 +22,9 @@ export const LINEAR_EXCEL_HEADERS = [
 
 export type LinearExcelHeader = (typeof LINEAR_EXCEL_HEADERS)[number]
 
+export const LINEAR_EXCEL_OPTIONAL_HEADERS: ReadonlySet<LinearExcelHeader> =
+  new Set(['Beszerzes_netto_Ft_m', 'Arres_szorzo', 'Kep_fajlnev'])
+
 export type LinearExcelRow = {
   manufacturerName: string
   materialTypeLabel: string
@@ -27,7 +32,9 @@ export type LinearExcelRow = {
   lengthMm: number
   widthMm: number
   thicknessMm: number
-  priceGross: number
+  priceGross: number | null
+  purchasePriceNet: number | null
+  marginFactor: number | null
   taxRateName: string
   onStock: boolean
   active: boolean
@@ -45,6 +52,8 @@ export const LINEAR_EXCEL_EXAMPLE_ROW: Record<
   Szelesseg_mm: 600,
   Vastagsag_mm: 36,
   Brutto_Ft_m: 12000,
+  Beszerzes_netto_Ft_m: 7500,
+  Arres_szorzo: 1.35,
   Adonem: 'ÁFA 27%',
   Raktari: 'igen',
   Aktiv: 'igen',
@@ -61,7 +70,10 @@ export const LINEAR_EXCEL_GUIDE_LINES = [
   'Azonosítás (új vs frissítés): Gyártó + Típus + Név + Hossz + Szélesség + Vastagság.',
   'Típus: Hátfal | Munkalap | Asztalap (vagy hatfal / munkalap / asztalap).',
   'Gyártó / Adónem: pontos név a törzsadatból (nem UUID).',
-  'Ár: Bruttó Ft/m. Az adónem ÁFA%-a alapján nettótá számoljuk.',
+  'Ár: Brutto_Ft_m = eladási bruttó. Ha kitöltött, ez az eladási ár forrása.',
+  'Opcionális: Beszerzes_netto_Ft_m + Arres_szorzo (pl. 1.35).',
+  'Ha a Bruttó üres, az eladási nettó = round(beszerzés × szorzó).',
+  'Ha mindhárom kitöltött: eladás a bruttóból; beszerzés+szorzó csak tárolódik.',
   'Igen/nem mezők: igen / nem (vagy true / false, 1 / 0).',
   'Kep_fajlnev: opcionális — Média könyvtár fájlnév. Üres frissítéskor nem törli a képet.',
   `Maximum ${LINEAR_IMPORT_MAX_ROWS} adatsor / fájl.`

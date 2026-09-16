@@ -11,6 +11,8 @@ export const SHEET_EXCEL_HEADERS = [
   'Szelesseg_mm',
   'Vastagsag_mm',
   'Brutto_Ft_m2',
+  'Beszerzes_netto_Ft_m2',
+  'Arres_szorzo',
   'Adonem',
   'Berendezes',
   'Gepkod',
@@ -30,13 +32,24 @@ export const SHEET_EXCEL_HEADERS = [
 
 export type SheetExcelHeader = (typeof SHEET_EXCEL_HEADERS)[number]
 
+/** Optional columns — missing in older files is OK. */
+export const SHEET_EXCEL_OPTIONAL_HEADERS: ReadonlySet<SheetExcelHeader> =
+  new Set([
+    'Beszerzes_netto_Ft_m2',
+    'Arres_szorzo',
+    'Kep_fajlnev'
+  ])
+
 export type SheetExcelRow = {
   manufacturerName: string
   name: string
   lengthMm: number
   widthMm: number
   thicknessMm: number
-  priceGross: number
+  /** null = derive from purchase × margin */
+  priceGross: number | null
+  purchasePriceNet: number | null
+  marginFactor: number | null
   taxRateName: string
   equipmentName: string
   machineCode: string
@@ -62,6 +75,8 @@ export const SHEET_EXCEL_EXAMPLE_ROW: Record<SheetExcelHeader, string | number> 
     Szelesseg_mm: 2070,
     Vastagsag_mm: 18,
     Brutto_Ft_m2: 4500,
+    Beszerzes_netto_Ft_m2: 2800,
+    Arres_szorzo: 1.35,
     Adonem: 'ÁFA 27%',
     Berendezes: 'Fő gép',
     Gepkod: 'MAT-001',
@@ -88,7 +103,10 @@ export const SHEET_EXCEL_GUIDE_LINES = [
   '',
   'Azonosítás (új vs frissítés): Gyártó + Név + Hossz + Szélesség + Vastagság.',
   'Gyártó / Adónem / Berendezés: pontos név a törzsadatból (nem UUID).',
-  'Ár: Bruttó Ft/m². Az adónem ÁFA%-a alapján nettótá számoljuk.',
+  'Ár: Brutto_Ft_m2 = eladási bruttó. Ha kitöltött, ez az eladási ár forrása.',
+  'Opcionális: Beszerzes_netto_Ft_m2 + Arres_szorzo (pl. 1.35).',
+  'Ha a Bruttó üres, az eladási nettó = round(beszerzés × szorzó).',
+  'Ha mindhárom kitöltött: eladás a bruttóból; beszerzés+szorzó csak tárolódik.',
   'Igen/nem mezők: igen / nem (vagy true / false, 1 / 0).',
   'Kihasználtság: százalék (pl. 65 = 65%).',
   'Kep_fajlnev: opcionális — Média könyvtár fájlnév. Üres frissítéskor nem törli a képet.',

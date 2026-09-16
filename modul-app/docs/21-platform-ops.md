@@ -30,6 +30,21 @@ Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-pa
 | 3 | Staff reset / invite: **Supabase Auth email** (`resetPasswordForEmail` / `inviteUserByEmail`); ideiglenes jelszó másodlagos |
 | 4 | **Nincs** partner impersonation — support: cég unlink/set, disable, jelszó reset (Auth) |
 
+### Manuális előfizetés (2026-09-16)
+
+| # | Döntés |
+|---|---|
+| 1 | Fizetés **manuális** (bank / külső számla) — **nincs** Stripe / checkout |
+| 2 | Plan, add-on, `paid_through`, státusz: **csak platform** |
+| 3 | Tenant oldalon **soha nincs self-serve** (nincs add-on switch, plan váltás, fizetés gomb) |
+| 4 | Listaárak a katalógusban (**nettó**): Alap **55 000**, címke **15 000**, partner **35 000**, SMS **7 500 + 95 Ft/db** |
+| 5 | Havi becslés = plan + enabled add-onok + SMS ledger (`sent`/`delivered`) — platform és tenant **ugyanaz** a lib |
+| 6 | Tenant UI: `/beallitasok/elofizetes` — **csak owner**; **nincs ár**; státusz + aktív / elérhető funkciók |
+| 7 | Staff sidebar alján: ÁSZF / Adatkezelés / Impresszum (`getLegalUrls`, mint partner) |
+| 8 | SMS napló: `/beallitasok/elofizetes/sms` (owner + SMS addon) |
+
+Migráció: `20260427_manual_subscription_pricing.sql`, `20260428_elofizetes_owner_only.sql`.
+
 ---
 
 ## 2. Hostok
@@ -87,6 +102,16 @@ Csak **tenant staff** felhasználóra (nem partner portál).
 - `trial_ends_at`, `paid_through`
 - `billing_notes`, `internal_notes`
 - `contact_phone`, `contact_email`
+
+### 7.1 Katalógus árak (nettó HUF)
+
+- `product_plans.price_monthly_huf` (+ `currency`) — **nettó** havidíj
+- `product_addons.price_monthly_huf`, opcionális `price_unit_huf` + `unit_key` (`sms_sent`) — **nettó**
+- Szerkesztés: `/platform/csomagok`, `/platform/add-onok`
+- Tenant detail → **Billing**: havi becslés (nettó) + manuális státusz / határidő
+- Tenant app → **Előfizetés**: csak olvasás; UI mindenütt jelzi: nettó
+
+**TILOS tenant oldalon:** add-on enable, plan váltás, fizetés / upgrade CTA.
 
 ---
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
+import { MonthlyBillSummary } from '@/components/billing/monthly-bill-summary'
 import {
   DataTable,
   DataTableBody,
@@ -50,6 +51,7 @@ import type {
   PlatformTenantKpis,
   PlatformTenantMember
 } from '@/lib/platform/queries'
+import type { MonthlyBillEstimate } from '@/lib/billing/estimate'
 import type { TenantStatus } from '@/lib/supabase/database.types'
 import { cn } from '@/lib/utils'
 
@@ -97,6 +99,7 @@ type Props = {
   members: PlatformTenantMember[]
   company: PlatformCompanySnapshot
   auditRows: PlatformAuditRow[]
+  monthlyBill?: MonthlyBillEstimate | null
   entitlementsSlot?: ReactNode
 }
 
@@ -107,6 +110,7 @@ export function TenantDetailClient({
   members,
   company,
   auditRows,
+  monthlyBill,
   entitlementsSlot
 }: Props) {
   const router = useRouter()
@@ -442,6 +446,10 @@ export function TenantDetailClient({
               label="Portal beküldés 30 nap"
               value={String(kpis.portalSubmits30d)}
             />
+            <Kpi
+              label="SMS (hó)"
+              value={String(kpis.smsSentThisMonth)}
+            />
             <Kpi label="Onboarding" value={`${progress.percent}%`} />
           </div>
 
@@ -725,10 +733,19 @@ export function TenantDetailClient({
               Manuális billing
             </h2>
             <p className="mt-1 text-hint text-ink-secondary">
-              A számlázás külön rendszerben történik — itt csak az állapotot
-              rögzíted.
+              Fizetés és add-on kapcsolás csak innen — a tenant oldalon nincs
+              self-serve. A számla kívül készül; itt az állapot és a becslés.
             </p>
           </div>
+
+          {monthlyBill ? (
+            <MonthlyBillSummary
+              estimate={monthlyBill}
+              variant="platform"
+              footnote="Fix = plan + aktív add-onok. Usage = sikeres SMS db × egységár. Minden összeg nettó. Árváltozás a katalógusban a következő becslésre érvényes."
+            />
+          ) : null}
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label

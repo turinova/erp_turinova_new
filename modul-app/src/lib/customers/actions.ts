@@ -48,6 +48,7 @@ function rowFromParsed(data: CustomerFormValues) {
     name: data.name,
     email: data.email,
     mobile: data.mobile,
+    sms_notification: data.smsNotification,
     billing_name: data.billingName,
     billing_country: data.billingCountry,
     billing_city: data.billingCity,
@@ -63,6 +64,7 @@ export type CustomerFormInput = {
   name: string
   email: string
   mobile: string
+  smsNotification: boolean
   billingName: string
   billingCountry: string
   billingCity: string

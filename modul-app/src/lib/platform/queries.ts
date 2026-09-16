@@ -452,6 +452,8 @@ export type PlatformTenantKpis = {
   linkedPartners: number
   /** Portal beküldés 30 nap */
   portalSubmits30d: number
+  /** Billable SMS ebben a naptári hónapban (UTC) */
+  smsSentThisMonth: number
 }
 
 export type PlatformCompanySnapshot = {
@@ -511,7 +513,8 @@ export async function getPlatformTenantDetail(
     { count: edgeCount },
     { data: quotes30d },
     { count: linkedPartners },
-    { count: portalSubmits30d }
+    { count: portalSubmits30d },
+    { count: smsSentThisMonth }
   ] = await Promise.all([
     admin
       .from('tenant_onboarding')
@@ -576,7 +579,23 @@ export async function getPlatformTenantDetail(
       .gte(
         'portal_submitted_at',
         new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-      )
+      ),
+    (() => {
+      const now = new Date()
+      const start = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+      ).toISOString()
+      const end = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)
+      ).toISOString()
+      return admin
+        .from('sms_send_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .in('status', ['sent', 'delivered'])
+        .gte('created_at', start)
+        .lt('created_at', end)
+    })()
   ])
 
   const gmvQuotes30d = Math.round(
@@ -678,7 +697,8 @@ export async function getPlatformTenantDetail(
       activeLogins30d,
       gmvQuotes30d,
       linkedPartners: linkedPartners ?? 0,
-      portalSubmits30d: portalSubmits30d ?? 0
+      portalSubmits30d: portalSubmits30d ?? 0,
+      smsSentThisMonth: smsSentThisMonth ?? 0
     },
     members,
     company: company

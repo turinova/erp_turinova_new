@@ -110,6 +110,7 @@ export const customerFormSchema = z.object({
       'Érvénytelen e-mail cím.'
     ),
   mobile: optionalHuPhone,
+  smsNotification: z.boolean(),
   billingName: z.string().trim().max(160).transform(emptyToNull),
   billingCountry: z
     .string()

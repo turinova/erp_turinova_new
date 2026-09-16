@@ -8,6 +8,7 @@ import {
   ScannerHandoverDialog,
   type ScannerHandoverItem
 } from '@/components/scanner/scanner-handover-dialog'
+import { QuoteReadySmsDialog } from '@/components/orders/quote-ready-sms-dialog'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,7 +23,11 @@ import {
   QUOTE_STATUS_LABEL,
   quoteStatusTone
 } from '@/lib/quotes/status-labels'
-import { markQuotesReadyBulk } from '@/lib/scanner/actions'
+import {
+  markQuotesReadyBulk,
+  previewQuoteReadySms
+} from '@/lib/scanner/actions'
+import type { QuoteReadySmsCandidate } from '@/lib/sms/types'
 import type { ScannerLookupOrder } from '@/lib/scanner/types'
 import { normalizeScannerBarcode } from '@/lib/scanner/normalize-wedge'
 import { cn } from '@/lib/utils'
@@ -33,6 +38,7 @@ type FeedbackTone = 'success' | 'warning' | 'danger' | 'info'
 
 type ScannerClientProps = {
   canWrite: boolean
+  hasSmsAddon: boolean
   paymentMethods: PaymentMethodOption[]
 }
 
@@ -43,6 +49,7 @@ const INPUT_DEBOUNCE_MS = 300
 
 export function ScannerClient({
   canWrite,
+  hasSmsAddon,
   paymentMethods
 }: ScannerClientProps) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -51,11 +58,13 @@ export function ScannerClient({
   const wedgeLastKeyAtRef = useRef(0)
   const scanningRef = useRef(false)
   const handoverOpenRef = useRef(false)
+  const smsDialogOpenRef = useRef(false)
   const bulkLoadingRef = useRef(false)
   const modeRef = useRef<ScanMode>('list')
   const instantActionRef = useRef<InstantAction>('ready')
   const rowsRef = useRef<ScannerLookupOrder[]>([])
   const canWriteRef = useRef(canWrite)
+  const hasSmsAddonRef = useRef(hasSmsAddon)
 
   const [barcodeInput, setBarcodeInput] = useState('')
   const [mode, setMode] = useState<ScanMode>('list')
@@ -66,6 +75,12 @@ export function ScannerClient({
   const [bulkLoading, setBulkLoading] = useState(false)
   const [handoverOpen, setHandoverOpen] = useState(false)
   const [handoverItems, setHandoverItems] = useState<ScannerHandoverItem[]>([])
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false)
+  const [smsCandidates, setSmsCandidates] = useState<QuoteReadySmsCandidate[]>(
+    []
+  )
+  const [smsTargetIds, setSmsTargetIds] = useState<string[]>([])
+  const [smsClearList, setSmsClearList] = useState(false)
   const [feedback, setFeedback] = useState<{
     tone: FeedbackTone
     message: string
@@ -74,6 +89,9 @@ export function ScannerClient({
   useEffect(() => {
     handoverOpenRef.current = handoverOpen
   }, [handoverOpen])
+  useEffect(() => {
+    smsDialogOpenRef.current = smsDialogOpen
+  }, [smsDialogOpen])
   useEffect(() => {
     bulkLoadingRef.current = bulkLoading
   }, [bulkLoading])
@@ -89,6 +107,9 @@ export function ScannerClient({
   useEffect(() => {
     canWriteRef.current = canWrite
   }, [canWrite])
+  useEffect(() => {
+    hasSmsAddonRef.current = hasSmsAddon
+  }, [hasSmsAddon])
 
   useEffect(() => {
     return () => {
@@ -146,6 +167,72 @@ export function ScannerClient({
     return true
   }
 
+  async function executeMarkReady(
+    quoteIds: string[],
+    smsQuoteIds?: string[],
+    opts?: { clearList?: boolean; label?: string }
+  ) {
+    const result = await markQuotesReadyBulk({
+      quoteIds,
+      smsQuoteIds
+    })
+    if (result.successCount === 0) {
+      showFeedback(
+        'danger',
+        result.results.find((r) => !r.ok)?.message ??
+          'Nem sikerült készre állítani.'
+      )
+      return
+    }
+
+    if (opts?.clearList) {
+      setRows([])
+      setSelectedIds([])
+    }
+
+    const parts = [
+      opts?.label ?? `${result.successCount} rendelés készre állítva.`
+    ]
+    if (result.smsSentCount > 0) {
+      parts.push(`${result.smsSentCount} SMS elküldve`)
+    }
+    if (result.smsFailedCount > 0) {
+      parts.push(`${result.smsFailedCount} SMS sikertelen`)
+    }
+
+    showFeedback(
+      result.smsFailedCount > 0 ? 'warning' : 'success',
+      parts.join(' · ')
+    )
+    setSmsDialogOpen(false)
+  }
+
+  async function beginMarkReady(quoteIds: string[], clearList: boolean) {
+    setBulkLoading(true)
+    try {
+      if (!hasSmsAddonRef.current) {
+        await executeMarkReady(quoteIds, undefined, { clearList })
+        return
+      }
+
+      const preview = await previewQuoteReadySms(quoteIds)
+      if (!preview.ok) {
+        showFeedback('danger', preview.message)
+        return
+      }
+      if (!preview.hasAddon) {
+        await executeMarkReady(quoteIds, undefined, { clearList })
+        return
+      }
+      setSmsTargetIds(quoteIds)
+      setSmsCandidates(preview.candidates)
+      setSmsClearList(clearList)
+      setSmsDialogOpen(true)
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   async function runInstant(
     order: ScannerLookupOrder,
     action: InstantAction
@@ -166,20 +253,7 @@ export function ScannerClient({
         )
         return
       }
-      setBulkLoading(true)
-      try {
-        const result = await markQuotesReadyBulk([order.id])
-        if (!result.ok) {
-          showFeedback(
-            'danger',
-            result.results[0]?.message ?? 'Nem sikerült készre állítani.'
-          )
-          return
-        }
-        showFeedback('success', `${order.order_number} készre állítva.`)
-      } finally {
-        setBulkLoading(false)
-      }
+      await beginMarkReady([order.id], false)
       return
     }
 
@@ -211,6 +285,10 @@ export function ScannerClient({
     if (scanningRef.current || bulkLoadingRef.current) return
     if (handoverOpenRef.current) {
       showFeedback('warning', 'Előbb zárd be az átadás ablakot.')
+      return
+    }
+    if (smsDialogOpenRef.current) {
+      showFeedback('warning', 'Előbb zárd be az SMS ablakot.')
       return
     }
 
@@ -370,40 +448,10 @@ export function ScannerClient({
       return
     }
 
-    setBulkLoading(true)
-    try {
-      const result = await markQuotesReadyBulk(
-        selectedInProduction.map((r) => r.id)
-      )
-      const skipped =
-        selectedRows.length - selectedInProduction.length + result.failCount
-
-      if (result.successCount === 0) {
-        showFeedback(
-          'danger',
-          result.results.find((r) => !r.ok)?.message ??
-            'Nem sikerült készre állítani.'
-        )
-        return
-      }
-
-      setRows([])
-      setSelectedIds([])
-
-      if (skipped > 0) {
-        showFeedback(
-          'warning',
-          `${result.successCount} / ${selectedRows.length} készre állítva. ${skipped} kihagyva.`
-        )
-      } else {
-        showFeedback(
-          'success',
-          `${result.successCount} rendelés készre állítva.`
-        )
-      }
-    } finally {
-      setBulkLoading(false)
-    }
+    await beginMarkReady(
+      selectedInProduction.map((r) => r.id),
+      true
+    )
   }
 
   function openHandoverForSelected() {
@@ -753,6 +801,25 @@ export function ScannerClient({
           if (summary) {
             showFeedback(summary.tone, summary.message)
           }
+        }}
+      />
+
+      <QuoteReadySmsDialog
+        open={smsDialogOpen}
+        onOpenChange={setSmsDialogOpen}
+        candidates={smsCandidates}
+        loading={bulkLoading}
+        onConfirm={(smsQuoteIds) => {
+          void (async () => {
+            setBulkLoading(true)
+            try {
+              await executeMarkReady(smsTargetIds, smsQuoteIds, {
+                clearList: smsClearList
+              })
+            } finally {
+              setBulkLoading(false)
+            }
+          })()
         }}
       />
     </div>

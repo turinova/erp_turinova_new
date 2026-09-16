@@ -9,6 +9,7 @@ import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import {
   createCustomer,
   updateCustomer
@@ -34,6 +35,9 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [email, setEmail] = useState(initial?.email ?? '')
   const [mobile, setMobile] = useState(initial?.mobile ?? '')
+  const [smsNotification, setSmsNotification] = useState(
+    Boolean(initial?.sms_notification)
+  )
   const [billingName, setBillingName] = useState(initial?.billing_name ?? '')
   const [billingCountry, setBillingCountry] = useState(
     initial?.billing_country ?? 'Magyarország'
@@ -63,6 +67,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
         name,
         email,
         mobile,
+        smsNotification,
         billingName,
         billingCountry,
         billingCity,
@@ -174,6 +179,17 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
               placeholder={HU_PHONE_EXAMPLE}
             />
           </FormField>
+
+          <div className="sm:col-span-2">
+            <Switch
+              id="customer-sms"
+              checked={smsNotification}
+              disabled={!canWrite}
+              onCheckedChange={setSmsNotification}
+              label="SMS értesítés"
+              description="Készre állításkor SMS küldhető, ha a cégnek van SMS add-onja."
+            />
+          </div>
         </FormSection>
 
         <FormSection

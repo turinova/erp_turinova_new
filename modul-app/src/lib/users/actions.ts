@@ -242,12 +242,17 @@ export async function createTenantUser(input: {
     (k) => entitled.has(k) || ALWAYS_ALLOWED_PAGE_KEYS.includes(k)
   )
 
-  const rows = ALL_PAGE_KEYS.map((page_key) => ({
-    tenant_id: tenantId,
-    membership_id: membership.id,
-    page_key,
-    can_access: keys.includes(page_key) && entitled.has(page_key)
-  }))
+  const rows = ALL_PAGE_KEYS.map((page_key) => {
+    let can = keys.includes(page_key) && entitled.has(page_key)
+    // Előfizetés soha nem megy nem-owner tagoknak (full template sem)
+    if (page_key === '/beallitasok/elofizetes') can = false
+    return {
+      tenant_id: tenantId,
+      membership_id: membership.id,
+      page_key,
+      can_access: can
+    }
+  })
 
   const { error: accessError } = await admin
     .from('tenant_membership_page_access')
@@ -291,8 +296,20 @@ export async function updateMembershipPageAccess(input: {
 
   const rows = ALL_PAGE_KEYS.map((page_key) => {
     const forced = ALWAYS_ALLOWED_PAGE_KEYS.includes(page_key)
-    const can =
+    let can =
       forced || (entitled.has(page_key) && Boolean(input.access[page_key]))
+    if (
+      page_key === '/beallitasok/elofizetes' &&
+      membership.role !== 'owner'
+    ) {
+      can = false
+    }
+    if (
+      page_key === '/beallitasok/elofizetes' &&
+      membership.role === 'owner'
+    ) {
+      can = true
+    }
     return {
       tenant_id: tenantId,
       membership_id: input.membershipId,

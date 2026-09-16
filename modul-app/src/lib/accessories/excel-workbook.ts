@@ -5,12 +5,13 @@ import {
   ACCESSORY_EXCEL_GUIDE_LINES,
   ACCESSORY_EXCEL_GUIDE_NAME,
   ACCESSORY_EXCEL_HEADERS,
+  ACCESSORY_EXCEL_OPTIONAL_HEADERS,
   ACCESSORY_EXCEL_SHEET_NAME,
   ACCESSORY_IMPORT_MAX_ROWS,
   type AccessoryExcelHeader,
   type AccessoryExcelRow
 } from '@/lib/accessories/excel-columns'
-import { parseIntegerInput } from '@/lib/accessories/parse'
+import { parseDecimalInput, parseIntegerInput } from '@/lib/accessories/parse'
 import {
   formatBoolHu,
   parseBoolHu
@@ -84,7 +85,9 @@ export async function buildAccessoriesExportBuffer(
     SKU: r.sku,
     Vonalkod: r.barcode ?? '',
     Belso_vonalkod: r.barcodeInternal ?? '',
-    Brutto_Ft: r.priceGross,
+    Brutto_Ft: r.priceGross ?? '',
+    Beszerzes_netto_Ft: r.purchasePriceNet ?? '',
+    Arres_szorzo: r.marginFactor ?? '',
     Adonem: r.taxRateName,
     Egyseg: r.unitLabel,
     Aktiv: formatBoolHu(r.active),
@@ -125,7 +128,9 @@ export async function parseAccessoriesWorkbook(
   })
 
   const missing = ACCESSORY_EXCEL_HEADERS.filter(
-    (h) => h !== 'Kep_fajlnev' && !headerMap.has(h.toLowerCase())
+    (h) =>
+      !ACCESSORY_EXCEL_OPTIONAL_HEADERS.has(h) &&
+      !headerMap.has(h.toLowerCase())
   )
   if (missing.length > 0) {
     return {
@@ -191,9 +196,38 @@ export function coerceAccessoryExcelRow(
     return { ok: false, rowNumber, message: 'A név legfeljebb 200 karakter.' }
   }
 
-  const priceGross = parseIntegerInput(v.Brutto_Ft)
-  if (priceGross === null || priceGross < 0) {
+  const priceGrossRaw = v.Brutto_Ft.trim()
+  const priceGross = priceGrossRaw ? parseIntegerInput(v.Brutto_Ft) : null
+  const purchaseRaw = v.Beszerzes_netto_Ft.trim()
+  const purchasePriceNet = purchaseRaw
+    ? parseIntegerInput(v.Beszerzes_netto_Ft)
+    : null
+  const marginRaw = v.Arres_szorzo.trim()
+  const marginFactor = marginRaw ? parseDecimalInput(v.Arres_szorzo) : null
+
+  if (priceGrossRaw && (priceGross === null || priceGross < 0)) {
     return { ok: false, rowNumber, message: 'Érvénytelen bruttó Ft.' }
+  }
+  if (purchaseRaw && (purchasePriceNet === null || purchasePriceNet < 0)) {
+    return {
+      ok: false,
+      rowNumber,
+      message: 'Érvénytelen beszerzési nettó Ft.'
+    }
+  }
+  if (
+    marginRaw &&
+    (marginFactor === null || marginFactor <= 0 || marginFactor > 100)
+  ) {
+    return { ok: false, rowNumber, message: 'Érvénytelen árrés szorzó.' }
+  }
+  if (priceGross == null && (purchasePriceNet == null || marginFactor == null)) {
+    return {
+      ok: false,
+      rowNumber,
+      message:
+        'Adj meg Brutto_Ft-t, vagy Beszerzes_netto_Ft + Arres_szorzo párost.'
+    }
   }
 
   if (!v.Adonem) {
@@ -235,6 +269,8 @@ export function coerceAccessoryExcelRow(
       barcode,
       barcodeInternal,
       priceGross,
+      purchasePriceNet,
+      marginFactor,
       taxRateName: v.Adonem,
       unitLabel: v.Egyseg.trim(),
       active,

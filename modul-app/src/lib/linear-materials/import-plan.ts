@@ -1,11 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { resolveSellNetFromPricing } from '@/lib/pricing/margin'
 import {
   coerceLinearExcelRow,
   parseLinearMaterialsWorkbook,
   type CoercedLinearRow
 } from '@/lib/linear-materials/excel-workbook'
-import { netFromGross, type LinearMaterialType } from '@/lib/linear-materials/parse'
+import { type LinearMaterialType } from '@/lib/linear-materials/parse'
 import { mapFilenamesToPublicUrls } from '@/lib/media/queries'
 
 export type LinearImportAction = 'create' | 'update' | 'error'
@@ -136,6 +137,8 @@ type ResolvedRow = {
     on_stock: boolean
     active: boolean
     price_net: number
+    purchase_price_net: number | null
+    margin_factor: number | null
     image_url?: string | null
   }
   label: {
@@ -183,7 +186,23 @@ function resolveRow(
     data.thicknessMm
   )
   const match = refs.existing.get(key)
-  const priceNet = netFromGross(data.priceGross, tax.ratePercent)
+  const priced = resolveSellNetFromPricing({
+    priceGross: data.priceGross,
+    purchasePriceNet: data.purchasePriceNet,
+    marginFactor: data.marginFactor,
+    vatPercent: tax.ratePercent
+  })
+  if (!priced.ok) {
+    return {
+      rowNumber: coerced.rowNumber,
+      action: 'error',
+      name: data.name,
+      manufacturerName: data.manufacturerName,
+      sizeLabel: `${data.lengthMm}×${data.widthMm}×${data.thicknessMm}`,
+      message: priced.message
+    }
+  }
+  const priceNet = priced.priceNet
 
   let setImage = false
   let imageUrl: string | null | undefined
@@ -219,6 +238,8 @@ function resolveRow(
       on_stock: data.onStock,
       active: data.active,
       price_net: priceNet,
+      purchase_price_net: priced.purchasePriceNet,
+      margin_factor: priced.marginFactor,
       ...(setImage ? { image_url: imageUrl } : {})
     },
     label: {

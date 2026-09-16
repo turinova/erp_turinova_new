@@ -14,6 +14,10 @@ import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
 import {
+  sellGrossFromPurchase,
+  parseOptionalPurchaseMargin
+} from '@/lib/pricing/margin'
+import {
   createSheetMaterial,
   updateSheetMaterial
 } from '@/lib/sheet-materials/actions'
@@ -152,6 +156,14 @@ export function SheetMaterialForm({
   const [grossRaw, setGrossRaw] = useState(
     initial ? String(initialGross) : ''
   )
+  const [purchaseRaw, setPurchaseRaw] = useState(
+    initial?.purchase_price_net != null
+      ? String(initial.purchase_price_net)
+      : ''
+  )
+  const [marginRaw, setMarginRaw] = useState(
+    initial?.margin_factor != null ? String(initial.margin_factor) : ''
+  )
 
   const priceNet = useMemo(() => {
     const gross = parseDecimalInput(grossRaw)
@@ -194,6 +206,13 @@ export function SheetMaterialForm({
         return
       }
 
+      const purchaseParsed = parseOptionalPurchaseMargin(purchaseRaw, marginRaw)
+      if (!purchaseParsed.ok) {
+        setFieldErrors(purchaseParsed.fieldErrors)
+        toast.error('Ellenőrizd a beszerzési árat / árrés szorzót.')
+        return
+      }
+
       const payload = {
         manufacturerId,
         taxRateId,
@@ -215,6 +234,8 @@ export function SheetMaterialForm({
         grainDirection,
         rotatable,
         priceNet,
+        purchasePriceNet: purchaseParsed.purchasePriceNet,
+        marginFactor: purchaseParsed.marginFactor,
         machineCode
       }
 
@@ -451,9 +472,95 @@ export function SheetMaterialForm({
 
         <FormSection
           title="Árazás"
-          description="Bruttó Ft/m²; a nettó és a tábla ár automatikusan számolódik."
+          description="Bruttó Ft/m²; opcionálisan beszerzés × árrés szorzó. A nettó és a tábla ár automatikusan számolódik."
           columns={4}
         >
+          <div className="col-span-full grid grid-cols-1 items-end gap-x-3 gap-y-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <FormField
+              label="Beszerzési nettó / m²"
+              htmlFor="sheet-purchase"
+              optionalLabel
+              error={fieldErrors.purchasePriceNet}
+            >
+              <div className="relative">
+                <Input
+                  id="sheet-purchase"
+                  value={purchaseRaw}
+                  disabled={!canWrite}
+                  onChange={(e) => setPurchaseRaw(e.target.value)}
+                  inputMode="decimal"
+                  className="pr-10"
+                />
+                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
+                  Ft
+                </span>
+              </div>
+            </FormField>
+
+            <FormField
+              label="Árrés szorzó"
+              htmlFor="sheet-margin"
+              optionalLabel
+              error={fieldErrors.marginFactor}
+            >
+              <Input
+                id="sheet-margin"
+                value={marginRaw}
+                disabled={!canWrite}
+                onChange={(e) => setMarginRaw(e.target.value)}
+                inputMode="decimal"
+              />
+            </FormField>
+
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="text-label select-none text-transparent"
+                aria-hidden
+              >
+                .
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!canWrite}
+                onClick={() => {
+                  const parsed = parseOptionalPurchaseMargin(
+                    purchaseRaw,
+                    marginRaw
+                  )
+                  if (!parsed.ok) {
+                    setFieldErrors(parsed.fieldErrors)
+                    toast.error('Ellenőrizd a beszerzési árat / szorzót.')
+                    return
+                  }
+                  if (
+                    parsed.purchasePriceNet == null ||
+                    parsed.marginFactor == null
+                  ) {
+                    toast.error('Add meg a beszerzési nettót és a szorzót.')
+                    return
+                  }
+                  const gross = sellGrossFromPurchase(
+                    parsed.purchasePriceNet,
+                    parsed.marginFactor,
+                    selectedVat
+                  )
+                  setGrossRaw(String(gross))
+                  setFieldErrors((prev) => {
+                    const next = { ...prev }
+                    delete next.purchasePriceNet
+                    delete next.marginFactor
+                    delete next.priceNet
+                    return next
+                  })
+                  toast.success('Eladási bruttó kiszámolva.')
+                }}
+              >
+                Eladási ár számítása
+              </Button>
+            </div>
+          </div>
+
           <FormField
             label="Bruttó ár / m²"
             htmlFor="sheet-gross"

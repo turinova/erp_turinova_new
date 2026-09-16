@@ -1,11 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { resolveSellNetFromPricing } from '@/lib/pricing/margin'
 import {
   coerceAccessoryExcelRow,
   parseAccessoriesWorkbook,
   type CoercedAccessoryRow
 } from '@/lib/accessories/excel-workbook'
-import { netFromGross } from '@/lib/accessories/parse'
 import { mapFilenamesToPublicUrls } from '@/lib/media/queries'
 
 export type AccessoryImportAction = 'create' | 'update' | 'error'
@@ -138,6 +138,8 @@ type ResolvedRow = {
     barcode: string | null
     barcode_internal: string | null
     price_net: number
+    purchase_price_net: number | null
+    margin_factor: number | null
     active: boolean
     image_url?: string | null
   }
@@ -221,7 +223,23 @@ function resolveRow(
     }
   }
 
-  const priceNet = netFromGross(data.priceGross, tax.ratePercent)
+  const priced = resolveSellNetFromPricing({
+    priceGross: data.priceGross,
+    purchasePriceNet: data.purchasePriceNet,
+    marginFactor: data.marginFactor,
+    vatPercent: tax.ratePercent
+  })
+  if (!priced.ok) {
+    return {
+      rowNumber: coerced.rowNumber,
+      action: 'error',
+      name: data.name,
+      sku: data.sku,
+      manufacturerName: data.manufacturerName,
+      message: priced.message
+    }
+  }
+  const priceNet = priced.priceNet
 
   let setImage = false
   let imageUrl: string | null | undefined
@@ -255,6 +273,8 @@ function resolveRow(
       barcode: data.barcode,
       barcode_internal: data.barcodeInternal,
       price_net: priceNet,
+      purchase_price_net: priced.purchasePriceNet,
+      margin_factor: priced.marginFactor,
       active: data.active,
       ...(setImage ? { image_url: imageUrl } : {})
     },

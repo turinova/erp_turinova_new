@@ -31,8 +31,9 @@ export default async function PlatformPlansPage() {
       <div>
         <h1 className="text-h1 text-ink">Csomagok</h1>
         <p className="mt-1 text-body text-ink-secondary">
-          Plan feature-ök szerkesztése. Mentés után az „Alkalmaz” gomb írja át a
-          meglévő cégeket.
+          Plan feature-ök és **nettó** havidíj. Mentés után az „Alkalmaz” gomb
+          írja át a meglévő cégeket (feature); az ár a következő becslésekre
+          érvényes.
         </p>
       </div>
       <PlansClient plans={plans} features={features} />

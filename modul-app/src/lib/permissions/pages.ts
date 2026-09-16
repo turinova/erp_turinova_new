@@ -86,6 +86,11 @@ export const APP_PAGES: AppPageDef[] = [
     category: 'Beállítások'
   },
   {
+    key: '/beallitasok/elofizetes',
+    label: 'Előfizetés',
+    category: 'Beállítások'
+  },
+  {
     key: '/beallitasok/opti',
     label: 'Opti beállítások',
     category: 'Beállítások'
@@ -93,6 +98,11 @@ export const APP_PAGES: AppPageDef[] = [
   {
     key: '/beallitasok/partner',
     label: 'Online partner',
+    category: 'Beállítások'
+  },
+  {
+    key: '/beallitasok/sms',
+    label: 'SMS sablon',
     category: 'Beállítások'
   },
   {

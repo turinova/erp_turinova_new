@@ -31,7 +31,8 @@ export default async function PlatformAddonsPage() {
       <div>
         <h1 className="text-h1 text-ink">Add-onok</h1>
         <p className="mt-1 text-body text-ink-secondary">
-          Extrák katalógusa — cégenként manuálisan kapcsolhatók.
+          Extrák katalógusa — cégenként manuálisan kapcsolhatók. Az árak nettó
+          forintban értendők.
         </p>
       </div>
       <AddonsClient addons={addons} features={features} />

@@ -98,6 +98,8 @@ export type Accessory = {
   barcode: string | null
   barcode_internal: string | null
   price_net: number
+  purchase_price_net: number | null
+  margin_factor: number | null
   image_url: string | null
   active: boolean
   created_at: string
@@ -119,6 +121,8 @@ export type LinearMaterial = {
   active: boolean
   image_url: string | null
   price_net: number
+  purchase_price_net: number | null
+  margin_factor: number | null
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -177,6 +181,8 @@ export type SheetMaterial = {
   grain_direction: boolean
   rotatable: boolean
   price_net: number
+  purchase_price_net: number | null
+  margin_factor: number | null
   machine_code: string
   created_at: string
   updated_at: string
@@ -577,6 +583,8 @@ export type Database = {
           barcode?: string | null
           barcode_internal?: string | null
           price_net: number
+          purchase_price_net?: number | null
+          margin_factor?: number | null
           image_url?: string | null
           active?: boolean
           created_at?: string
@@ -601,6 +609,8 @@ export type Database = {
           active?: boolean
           image_url?: string | null
           price_net: number
+          purchase_price_net?: number | null
+          margin_factor?: number | null
           created_at?: string
           updated_at?: string
           deleted_at?: string | null
@@ -668,6 +678,8 @@ export type Database = {
           grain_direction?: boolean
           rotatable?: boolean
           price_net: number
+          purchase_price_net?: number | null
+          margin_factor?: number | null
           machine_code: string
           created_at?: string
           updated_at?: string

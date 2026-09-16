@@ -11,6 +11,8 @@ export const ACCESSORY_EXCEL_HEADERS = [
   'Vonalkod',
   'Belso_vonalkod',
   'Brutto_Ft',
+  'Beszerzes_netto_Ft',
+  'Arres_szorzo',
   'Adonem',
   'Egyseg',
   'Aktiv',
@@ -19,13 +21,18 @@ export const ACCESSORY_EXCEL_HEADERS = [
 
 export type AccessoryExcelHeader = (typeof ACCESSORY_EXCEL_HEADERS)[number]
 
+export const ACCESSORY_EXCEL_OPTIONAL_HEADERS: ReadonlySet<AccessoryExcelHeader> =
+  new Set(['Beszerzes_netto_Ft', 'Arres_szorzo', 'Kep_fajlnev'])
+
 export type AccessoryExcelRow = {
   manufacturerName: string
   name: string
   sku: string
   barcode: string | null
   barcodeInternal: string | null
-  priceGross: number
+  priceGross: number | null
+  purchasePriceNet: number | null
+  marginFactor: number | null
   taxRateName: string
   unitLabel: string
   active: boolean
@@ -42,6 +49,8 @@ export const ACCESSORY_EXCEL_EXAMPLE_ROW: Record<
   Vonalkod: '',
   Belso_vonalkod: '',
   Brutto_Ft: 2490,
+  Beszerzes_netto_Ft: 1400,
+  Arres_szorzo: 1.4,
   Adonem: 'ÁFA 27%',
   Egyseg: 'db',
   Aktiv: 'igen',
@@ -58,7 +67,10 @@ export const ACCESSORY_EXCEL_GUIDE_LINES = [
   'Azonosítás (új vs frissítés): SKU (kis/nagybetű nem számít).',
   'Gyártó / Adónem: pontos név a törzsadatból.',
   'Egység: rövidítés (pl. db) vagy teljes név.',
-  'Ár: Bruttó Ft / egység. Az adónem ÁFA%-a alapján nettótá számoljuk.',
+  'Ár: Brutto_Ft = eladási bruttó / egység. Ha kitöltött, ez az eladási ár forrása.',
+  'Opcionális: Beszerzes_netto_Ft + Arres_szorzo (pl. 1.35).',
+  'Ha a Bruttó üres, az eladási nettó = round(beszerzés × szorzó).',
+  'Ha mindhárom kitöltött: eladás a bruttóból; beszerzés+szorzó csak tárolódik.',
   'Vonalkód / Belső vonalkód: opcionális; ha kitöltött, egyedinek kell lennie.',
   'Aktív: igen / nem.',
   'Kep_fajlnev: opcionális — a Média könyvtárban lévő fájlnév (pl. RIEX-EA60.jpg).',

@@ -50,6 +50,8 @@ export type LinearFormInput = {
   active: boolean
   imageUrl: string | null
   priceNet: number
+  purchasePriceNet: number | null
+  marginFactor: number | null
 }
 
 function parseFormInput(input: LinearFormInput) {
@@ -65,7 +67,9 @@ function parseFormInput(input: LinearFormInput) {
     onStock: input.onStock,
     active: input.active,
     imageUrl: imageRaw === '' ? null : imageRaw,
-    priceNet: input.priceNet
+    priceNet: input.priceNet,
+    purchasePriceNet: input.purchasePriceNet,
+    marginFactor: input.marginFactor
   })
 }
 
@@ -94,7 +98,9 @@ function rowFromParsed(data: LinearMaterialFormValues) {
     on_stock: data.onStock,
     active: data.active,
     image_url: data.imageUrl,
-    price_net: data.priceNet
+    price_net: data.priceNet,
+    purchase_price_net: data.purchasePriceNet,
+    margin_factor: data.marginFactor
   }
 }
 
