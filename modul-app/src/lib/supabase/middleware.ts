@@ -66,6 +66,15 @@ function redirectExternal(origin: string, pathname: string) {
   return NextResponse.redirect(url)
 }
 
+function isPublicMarketingPath(pathname: string) {
+  return (
+    pathname === '/hamarosan' ||
+    pathname === '/impresszum' ||
+    pathname === '/aszf' ||
+    pathname === '/adatkezelesi-tajekoztato'
+  )
+}
+
 /** Partner home: clean /home on partner host; /partner/home on staff (path-mode). */
 function partnerHomePathname(
   surface: ReturnType<typeof resolveAuthSurface>
@@ -104,7 +113,7 @@ export async function updateSession(request: NextRequest) {
       if (isTenantAppPath(pathname) && pathname !== '/login') {
         return redirectTo(request, '/')
       }
-      if (pathname !== '/login' && pathname !== '/hamarosan') {
+      if (pathname !== '/login' && !isPublicMarketingPath(pathname)) {
         rewriteTarget = platformCleanToInternal(pathname)
         if (!rewriteTarget && !isPlatformPath(pathname)) {
           return redirectTo(request, '/')
@@ -175,7 +184,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/api/platform/impersonation/complete')
 
   const isPublicAuth =
-    pathname === '/hamarosan' ||
+    isPublicMarketingPath(pathname) ||
     ((surface === 'staff' || surface === 'platform') &&
       pathname === '/login') ||
     pathname === '/auth/confirm' ||

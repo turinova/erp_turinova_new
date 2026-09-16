@@ -1,0 +1,20 @@
+import type { Metadata } from 'next'
+
+import {
+  LegalShell,
+  renderLegalMarkdown
+} from '@/components/legal/legal-shell'
+import { loadLegalMarkdown } from '@/lib/legal/load'
+
+export const metadata: Metadata = {
+  title: 'Általános szerződési feltételek',
+  description: 'Optinova Általános szerződési feltételek (ÁSZF).',
+  robots: { index: true, follow: true }
+}
+
+export default function AszfPage() {
+  const md = loadLegalMarkdown('aszf')
+  return (
+    <LegalShell activeHref="/aszf">{renderLegalMarkdown(md)}</LegalShell>
+  )
+}

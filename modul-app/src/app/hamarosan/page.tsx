@@ -66,6 +66,32 @@ export default function ComingSoonPage() {
             </a>
           </li>
         </ul>
+
+        <nav
+          className="mt-12 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[12px] text-white/45"
+          aria-label="Jogi dokumentumok"
+        >
+          <a
+            href="/aszf"
+            className="no-underline transition-colors hover:text-white/80 hover:underline"
+          >
+            ÁSZF
+          </a>
+          <span aria-hidden>·</span>
+          <a
+            href="/adatkezelesi-tajekoztato"
+            className="no-underline transition-colors hover:text-white/80 hover:underline"
+          >
+            Adatkezelés
+          </a>
+          <span aria-hidden>·</span>
+          <a
+            href="/impresszum"
+            className="no-underline transition-colors hover:text-white/80 hover:underline"
+          >
+            Impresszum
+          </a>
+        </nav>
       </div>
     </main>
   )
