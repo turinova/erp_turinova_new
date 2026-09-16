@@ -2,7 +2,11 @@ import type { Metadata } from 'next'
 
 import { AccessoriesClient } from '@/components/accessories/accessories-client'
 import { getSessionUser } from '@/lib/auth/session'
-import { listAccessories } from '@/lib/accessories/queries'
+import {
+  listAccessories,
+  listAccessoryUnitOptions
+} from '@/lib/accessories/queries'
+import { tenantHasProductLabels } from '@/lib/labels/entitlement'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -14,13 +18,22 @@ export default async function TermekekPage() {
   const canWrite = Boolean(user?.role && user.role !== 'viewer')
 
   let rows: Awaited<ReturnType<typeof listAccessories>> = []
+  let units: Awaited<ReturnType<typeof listAccessoryUnitOptions>> = []
+  let canPrintLabels = false
   let loadError: string | null = null
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        rows = await listAccessories(supabase, user.tenantId)
+        const [list, unitOpts, labelsOn] = await Promise.all([
+          listAccessories(supabase, user.tenantId),
+          listAccessoryUnitOptions(supabase, user.tenantId),
+          tenantHasProductLabels(supabase, user.tenantId)
+        ])
+        rows = list
+        units = unitOpts
+        canPrintLabels = labelsOn
       } catch (err) {
         loadError =
           err instanceof Error
@@ -56,5 +69,12 @@ export default async function TermekekPage() {
     )
   }
 
-  return <AccessoriesClient initialRows={rows} canWrite={canWrite} />
+  return (
+    <AccessoriesClient
+      initialRows={rows}
+      canWrite={canWrite}
+      canPrintLabels={canPrintLabels}
+      units={units}
+    />
+  )
 }

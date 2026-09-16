@@ -96,7 +96,7 @@ export const mainNavItems: NavNode[] = [
   },
   {
     type: 'link',
-    label: 'Vonalkód',
+    label: 'Scanner',
     href: '/scanner',
     icon: ScanBarcode,
     accent: 'slate'

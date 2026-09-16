@@ -6,7 +6,7 @@ import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
-  title: 'Vonalkód'
+  title: 'Scanner'
 }
 
 export default async function ScannerPage() {
@@ -45,7 +45,7 @@ export default async function ScannerPage() {
   if (loadError) {
     return (
       <div className="space-y-3">
-        <h1 className="text-h1 text-ink">Vonalkód</h1>
+        <h1 className="text-h1 text-ink">Scanner</h1>
         <p
           className="max-w-xl rounded-md border border-danger/30 bg-danger-soft p-3 text-body text-danger-ink"
           role="alert"

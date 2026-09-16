@@ -3,9 +3,17 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useRef, useState, useTransition } from 'react'
-import { Download, Package, Plus, Search, Upload } from 'lucide-react'
+import {
+  Download,
+  Package,
+  Plus,
+  Printer,
+  Search,
+  Upload
+} from 'lucide-react'
 import { toast } from 'sonner'
 
+import { ProductLabelPrintDialog } from '@/components/labels/product-label-print-dialog'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
   DataTable,
@@ -30,22 +38,45 @@ import { Input } from '@/components/ui/input'
 import { softDeleteAccessory } from '@/lib/accessories/actions'
 import type { AccessoryImportPreviewResult } from '@/lib/accessories/import-plan'
 import { formatMoneyFt } from '@/lib/accessories/parse'
-import type { AccessoryListItem } from '@/lib/accessories/queries'
+import type {
+  AccessoryListItem,
+  AccessoryUnitOption
+} from '@/lib/accessories/queries'
+import type { ProductLabelPayload } from '@/lib/labels/types'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
+
+function toLabelPayload(row: AccessoryListItem): ProductLabelPayload {
+  return {
+    id: row.id,
+    name: row.name,
+    sku: row.sku,
+    barcode: row.barcode,
+    barcodeInternal: row.barcode_internal,
+    priceGross: row.price_gross,
+    unitShortform: row.unit_shortform
+  }
+}
 
 type AccessoriesClientProps = {
   initialRows: AccessoryListItem[]
   canWrite: boolean
+  canPrintLabels?: boolean
+  units?: AccessoryUnitOption[]
 }
 
 export function AccessoriesClient({
   initialRows,
-  canWrite
+  canWrite,
+  canPrintLabels = false,
+  units = []
 }: AccessoriesClientProps) {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<AccessoryListItem | null>(
+    null
+  )
+  const [labelTarget, setLabelTarget] = useState<ProductLabelPayload | null>(
     null
   )
   const [pending, startTransition] = useTransition()
@@ -320,7 +351,7 @@ export function AccessoriesClient({
               <DataTableHeaderCell>Egység</DataTableHeaderCell>
               <DataTableHeaderCell>Állapot</DataTableHeaderCell>
               <DataTableHeaderCell className="text-right">
-                Műveletek
+                {canPrintLabels || canWrite ? 'Műveletek' : null}
               </DataTableHeaderCell>
             </DataTableRow>
           </DataTableHead>
@@ -354,14 +385,18 @@ export function AccessoriesClient({
                 </DataTableCell>
                 <DataTableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => router.push(`${LIST_PATH}/${row.id}`)}
-                    >
-                      {canWrite ? 'Szerkesztés' : 'Megnyitás'}
-                    </Button>
+                    {canPrintLabels ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Címke: ${row.name}`}
+                        title="Címke nyomtatása"
+                        onClick={() => setLabelTarget(toLabelPayload(row))}
+                      >
+                        <Printer className="size-3.5" aria-hidden />
+                      </Button>
+                    ) : null}
                     {canWrite ? (
                       <Button
                         type="button"
@@ -398,6 +433,15 @@ export function AccessoriesClient({
         loading={pending}
         onConfirm={handleDelete}
       />
+
+      {canPrintLabels ? (
+        <ProductLabelPrintDialog
+          open={Boolean(labelTarget)}
+          payload={labelTarget}
+          units={units}
+          onClose={() => setLabelTarget(null)}
+        />
+      ) : null}
 
       <Dialog
         open={Boolean(importPreview)}

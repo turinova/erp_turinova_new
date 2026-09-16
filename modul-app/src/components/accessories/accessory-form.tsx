@@ -3,8 +3,10 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
+import { Printer } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { ProductLabelPrintDialog } from '@/components/labels/product-label-print-dialog'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
@@ -29,6 +31,7 @@ import type {
   AccessoryTaxOption,
   AccessoryUnitOption
 } from '@/lib/accessories/queries'
+import type { ProductLabelPayload } from '@/lib/labels/types'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
 
@@ -40,6 +43,7 @@ type AccessoryFormProps = {
   units: AccessoryUnitOption[]
   canWrite: boolean
   tenantId: string
+  canPrintLabels?: boolean
 }
 
 function defaultUnitId(units: AccessoryUnitOption[]): string {
@@ -57,10 +61,12 @@ export function AccessoryForm({
   taxRates,
   units,
   canWrite,
-  tenantId
+  tenantId,
+  canPrintLabels = false
 }: AccessoryFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [labelOpen, setLabelOpen] = useState(false)
 
   const defaultTaxId =
     initial?.tax_rate_id ||
@@ -149,6 +155,20 @@ export function AccessoryForm({
         : 'Termék'
       : 'Új termék'
 
+  const labelPayload: ProductLabelPayload | null =
+    mode === 'edit' && initial
+      ? {
+          id: initial.id,
+          name: name || initial.name,
+          sku: sku || initial.sku,
+          barcode: barcode.trim() || null,
+          barcodeInternal: barcodeInternal.trim() || null,
+          priceGross:
+            parseIntegerInput(grossRaw) ?? initial.price_gross,
+          unitShortform: unitShort || initial.unit_shortform || 'db'
+        }
+      : null
+
   return (
     <div className="pb-14">
       <PageHeader
@@ -156,6 +176,16 @@ export function AccessoryForm({
         description="Törzsadatok → Alapanyagok → Termékek"
         actions={
           <div className="flex items-center gap-1.5">
+            {canPrintLabels && labelPayload ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setLabelOpen(true)}
+              >
+                <Printer className="size-3.5" aria-hidden />
+                Címke
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="secondary"
@@ -406,6 +436,15 @@ export function AccessoryForm({
           </FormField>
         </FormSection>
       </div>
+
+      {canPrintLabels ? (
+        <ProductLabelPrintDialog
+          open={labelOpen}
+          payload={labelPayload}
+          units={units}
+          onClose={() => setLabelOpen(false)}
+        />
+      ) : null}
     </div>
   )
 }

@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useActionState, useEffect, useMemo, useState } from 'react'
 
 import { FormField } from '@/components/patterns/form-field'
-import { PartnerLegalLinks } from '@/components/partner/partner-legal-links'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
@@ -636,7 +635,6 @@ export function PartnerRegisterWizard() {
           Belépés
         </Link>
       </p>
-      <PartnerLegalLinks className="mt-1" />
     </div>
   )
 }
