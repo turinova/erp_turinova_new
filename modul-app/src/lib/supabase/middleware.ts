@@ -104,7 +104,7 @@ export async function updateSession(request: NextRequest) {
       if (isTenantAppPath(pathname) && pathname !== '/login') {
         return redirectTo(request, '/')
       }
-      if (pathname !== '/login') {
+      if (pathname !== '/login' && pathname !== '/hamarosan') {
         rewriteTarget = platformCleanToInternal(pathname)
         if (!rewriteTarget && !isPlatformPath(pathname)) {
           return redirectTo(request, '/')
@@ -174,6 +174,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/api/platform/impersonation/complete')
 
   const isPublicAuth =
+    pathname === '/hamarosan' ||
     ((surface === 'staff' || surface === 'platform') &&
       pathname === '/login') ||
     pathname === '/auth/confirm' ||
