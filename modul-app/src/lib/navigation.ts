@@ -10,6 +10,7 @@ import {
   FileText,
   Handshake,
   Home,
+  ImageIcon,
   Layers,
   Percent,
   Ruler,
@@ -95,7 +96,7 @@ export const mainNavItems: NavNode[] = [
   },
   {
     type: 'link',
-    label: 'Scanner',
+    label: 'Vonalkód',
     href: '/scanner',
     icon: ScanBarcode,
     accent: 'slate'
@@ -198,6 +199,13 @@ export const mainNavItems: NavNode[] = [
             label: 'Gyártógépek',
             href: '/torzsadatok/rendszer/gyartogepek',
             icon: Cog,
+            accent: 'slate'
+          },
+          {
+            type: 'link',
+            label: 'Média',
+            href: '/torzsadatok/rendszer/media',
+            icon: ImageIcon,
             accent: 'slate'
           }
         ]

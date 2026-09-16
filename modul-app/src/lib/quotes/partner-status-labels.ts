@@ -11,21 +11,22 @@ export const PARTNER_QUOTE_STATUS_LABEL: Record<QuoteStatus, string> = {
 }
 
 /**
- * Partner badge tones — ready = success (átvehető),
- * ordered = info (elfogadva, még nem gyártásban).
+ * Partner badge tones — minden státusz külön szín:
+ * draft=info (kék), ordered=success, in_production=active (lila),
+ * ready=warning (átvehető figyelem), finished=neutral, cancelled=danger.
  */
 export function partnerQuoteStatusTone(
   status: QuoteStatus
-): 'neutral' | 'success' | 'warning' | 'info' | 'danger' {
+): 'neutral' | 'success' | 'warning' | 'info' | 'danger' | 'active' {
   switch (status) {
     case 'draft':
-      return 'warning'
-    case 'ordered':
       return 'info'
-    case 'in_production':
-      return 'warning'
-    case 'ready':
+    case 'ordered':
       return 'success'
+    case 'in_production':
+      return 'active'
+    case 'ready':
+      return 'warning'
     case 'finished':
       return 'neutral'
     case 'cancelled':

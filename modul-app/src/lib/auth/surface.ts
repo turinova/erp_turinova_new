@@ -82,6 +82,8 @@ export function isPlatformContext(
 /** Tiszta publikus pathok (optinova.hu címsáv). */
 export const PARTNER_LOGIN_PATH = '/login'
 export const PARTNER_REGISTER_PATH = '/register'
+export const PARTNER_FORGOT_PASSWORD_PATH = '/elfelejtett-jelszo'
+export const PARTNER_RESET_PASSWORD_PATH = '/uj-jelszo'
 export const PARTNER_HOME_PATH = '/home'
 export const PARTNER_SETTINGS_PATH = '/beallitasok'
 export const PARTNER_SEARCH_PATH = '/kereso'
@@ -96,6 +98,8 @@ export const PLATFORM_INTERNAL_PREFIX = '/platform'
 const CLEAN_TO_INTERNAL: Record<string, string> = {
   [PARTNER_LOGIN_PATH]: `${PARTNER_INTERNAL_PREFIX}/login`,
   [PARTNER_REGISTER_PATH]: `${PARTNER_INTERNAL_PREFIX}/register`,
+  [PARTNER_FORGOT_PASSWORD_PATH]: `${PARTNER_INTERNAL_PREFIX}/elfelejtett-jelszo`,
+  [PARTNER_RESET_PASSWORD_PATH]: `${PARTNER_INTERNAL_PREFIX}/uj-jelszo`,
   [PARTNER_HOME_PATH]: `${PARTNER_INTERNAL_PREFIX}/home`,
   [PARTNER_SETTINGS_PATH]: `${PARTNER_INTERNAL_PREFIX}/beallitasok`,
   [PARTNER_SEARCH_PATH]: `${PARTNER_INTERNAL_PREFIX}/kereso`,
@@ -120,7 +124,12 @@ export function partnerCleanToInternal(pathname: string): string | null {
   if (CLEAN_TO_INTERNAL[pathname]) return CLEAN_TO_INTERNAL[pathname]
 
   for (const [clean, internal] of Object.entries(CLEAN_TO_INTERNAL)) {
-    if (clean === PARTNER_LOGIN_PATH || clean === PARTNER_REGISTER_PATH) {
+    if (
+      clean === PARTNER_LOGIN_PATH ||
+      clean === PARTNER_REGISTER_PATH ||
+      clean === PARTNER_FORGOT_PASSWORD_PATH ||
+      clean === PARTNER_RESET_PASSWORD_PATH
+    ) {
       continue
     }
     if (pathname.startsWith(`${clean}/`)) {
@@ -204,8 +213,14 @@ export function isPartnerPublicPath(pathname: string): boolean {
   return (
     pathname === PARTNER_LOGIN_PATH ||
     pathname === PARTNER_REGISTER_PATH ||
+    pathname === PARTNER_FORGOT_PASSWORD_PATH ||
+    pathname === PARTNER_RESET_PASSWORD_PATH ||
     pathname === `${PARTNER_INTERNAL_PREFIX}/login` ||
-    pathname === `${PARTNER_INTERNAL_PREFIX}/register`
+    pathname === `${PARTNER_INTERNAL_PREFIX}/register` ||
+    pathname === `${PARTNER_INTERNAL_PREFIX}/elfelejtett-jelszo` ||
+    pathname === `${PARTNER_INTERNAL_PREFIX}/uj-jelszo` ||
+    pathname === '/auth/confirm' ||
+    pathname.startsWith('/auth/confirm/')
   )
 }
 

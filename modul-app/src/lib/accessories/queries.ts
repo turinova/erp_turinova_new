@@ -18,6 +18,7 @@ export type AccessoryListItem = {
   unit_shortform: string
   price_net: number
   price_gross: number
+  image_url: string | null
   active: boolean
   created_at: string
   updated_at: string
@@ -58,6 +59,7 @@ export async function listAccessories(
       tax_rate_id,
       unit_id,
       price_net,
+      image_url,
       active,
       created_at,
       updated_at,
@@ -99,6 +101,7 @@ export async function listAccessories(
       unit_shortform: unit?.shortform ?? 'db',
       price_net: priceNet,
       price_gross: grossFromNet(priceNet, taxPercent),
+      image_url: row.image_url ?? null,
       active: row.active,
       created_at: row.created_at,
       updated_at: row.updated_at
@@ -124,6 +127,7 @@ export async function getAccessory(
       tax_rate_id,
       unit_id,
       price_net,
+      image_url,
       active,
       created_at,
       updated_at,
@@ -167,6 +171,7 @@ export async function getAccessory(
     unit_shortform: unit?.shortform ?? 'db',
     price_net: priceNet,
     price_gross: grossFromNet(priceNet, taxPercent),
+    image_url: data.image_url ?? null,
     active: data.active,
     created_at: data.created_at,
     updated_at: data.updated_at

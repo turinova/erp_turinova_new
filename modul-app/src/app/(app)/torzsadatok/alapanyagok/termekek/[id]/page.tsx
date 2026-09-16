@@ -65,6 +65,7 @@ export default async function EditTermekPage({
       taxRates={taxRates}
       units={units}
       canWrite={canWrite}
+      tenantId={user.tenantId}
     />
   )
 }

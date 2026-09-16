@@ -100,7 +100,8 @@ export async function buildLinearMaterialsExportBuffer(
     Brutto_Ft_m: r.priceGross,
     Adonem: r.taxRateName,
     Raktari: formatBoolHu(r.onStock),
-    Aktiv: formatBoolHu(r.active)
+    Aktiv: formatBoolHu(r.active),
+    Kep_fajlnev: r.imageFilename ?? ''
   }))
   return buildWorkbook(dataRows, false)
 }
@@ -135,7 +136,7 @@ export async function parseLinearMaterialsWorkbook(
   })
 
   const missing = LINEAR_EXCEL_HEADERS.filter(
-    (h) => !headerMap.has(h.toLowerCase())
+    (h) => h !== 'Kep_fajlnev' && !headerMap.has(h.toLowerCase())
   )
   if (missing.length > 0) {
     return {
@@ -150,8 +151,8 @@ export async function parseLinearMaterialsWorkbook(
     const values = {} as Record<LinearExcelHeader, string>
     let any = false
     for (const header of LINEAR_EXCEL_HEADERS) {
-      const col = headerMap.get(header.toLowerCase())!
-      const text = cellText(row.getCell(col).value)
+      const col = headerMap.get(header.toLowerCase())
+      const text = col != null ? cellText(row.getCell(col).value) : ''
       values[header] = text
       if (text) any = true
     }
@@ -246,7 +247,8 @@ export function coerceLinearExcelRow(
       priceGross,
       taxRateName: v.Adonem,
       onStock,
-      active
+      active,
+      imageFilename: v.Kep_fajlnev.trim() || null
     }
   }
 }

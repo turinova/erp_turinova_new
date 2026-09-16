@@ -1,5 +1,6 @@
 import { AuthMosaicShell } from '@/components/auth/auth-mosaic-shell'
-import { PARTNER_HOST_LABEL, PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
+import { PartnerLegalLinks } from '@/components/partner/partner-legal-links'
+import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
 
 export function PartnerAuthShell({
   title,
@@ -8,7 +9,7 @@ export function PartnerAuthShell({
   wide = false
 }: {
   title: string
-  description: string
+  description?: string
   children: React.ReactNode
   wide?: boolean
 }) {
@@ -19,12 +20,8 @@ export function PartnerAuthShell({
       description={description}
       homeHref={PARTNER_LOGIN_PATH}
       wide={wide}
-      badge="ASZTALOS PORTÁL"
-      footer={
-        <p className="mt-4 text-center text-hint text-ink-muted">
-          {PARTNER_HOST_LABEL} · nem a céges ERP
-        </p>
-      }
+      badge="Optinova"
+      footer={<PartnerLegalLinks className="mt-4" />}
     >
       {children}
     </AuthMosaicShell>

@@ -464,9 +464,9 @@ export function ScannerClient({
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-h1 text-ink">Scanner</h1>
+        <h1 className="text-h1 text-ink">Vonalkód</h1>
         <p className="mt-1 text-body text-ink-secondary">
-          Olvasd be a rendelés vonalkódját — fókusz nélkül is működik.
+          Olvasd be a rendelés vonalkódját.
         </p>
       </div>
 
@@ -538,7 +538,7 @@ export function ScannerClient({
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}
-          placeholder="Scannelj vagy írd be…"
+          placeholder="Olvasd be vagy írd be…"
           className="h-10 font-mono text-[15px]"
           onChange={(e) => onInputChange(e.target.value)}
           onPaste={onInputPaste}

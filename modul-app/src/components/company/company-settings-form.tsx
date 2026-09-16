@@ -135,6 +135,9 @@ export function CompanySettingsForm({
           htmlFor="company-phone"
           optionalLabel
           error={fieldErrors.phoneNumber}
+          hint={
+            !fieldErrors.phoneNumber ? 'pl. +36 30 999 2800' : undefined
+          }
         >
           <Input
             id="company-phone"
@@ -142,6 +145,7 @@ export function CompanySettingsForm({
             disabled={!canWrite || pending}
             placeholder="+36 30 999 2800"
             autoComplete="tel"
+            inputMode="tel"
             onChange={(e) => setPhoneNumber(formatPhoneNumber(e.target.value))}
           />
         </FormField>

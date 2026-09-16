@@ -116,7 +116,7 @@ export function KeresoClient({
   sheetDetailBase = DEFAULT_SHEET_DETAIL,
   linearDetailBase = DEFAULT_LINEAR_DETAIL,
   accessoryDetailBase = DEFAULT_ACCESSORY_DETAIL,
-  description = 'Táblás, szálas és termék árlekérdezés — bruttó Ft/m, Ft/m² és egységár.'
+  description
 }: KeresoClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -271,7 +271,7 @@ export function KeresoClient({
           id="kereso-q"
           value={qDraft}
           onChange={(e) => setQDraft(e.target.value)}
-          placeholder="Név, gyártó, SKU, vonalkód vagy gépkód…"
+          placeholder="pl. Egger W1000"
           className="pl-8"
           autoComplete="off"
           aria-busy={loading}
@@ -321,8 +321,7 @@ export function KeresoClient({
 
       {!hasQuery ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
-          Kezdj el gépelni — táblás, szálas anyagok és termékek között keres
-          (név, gyártó, SKU, vonalkód, gépkód). Szűrővel szűkítheted a típust.
+          Írj be egy terméknevet, gyártót vagy kódot.
         </p>
       ) : loading && rows.length === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">

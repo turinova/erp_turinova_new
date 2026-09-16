@@ -43,6 +43,15 @@ export const accessoryFormSchema = z.object({
     .number({ invalid_type_error: 'Érvényes árat adj meg.' })
     .min(0, 'Az ár nem lehet negatív.')
     .int('Az ár egész forint legyen.'),
+  imageUrl: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => {
+      if (v == null) return null
+      const trimmed = v.trim()
+      return trimmed.length > 0 ? trimmed : null
+    }),
   active: z.boolean()
 })
 

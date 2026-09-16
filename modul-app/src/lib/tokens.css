@@ -34,9 +34,14 @@
   --danger-soft: #fdecec;
   --danger-ink: #991b1b;
 
-  --info: #737373;
-  --info-soft: #f5f5f5;
-  --info-ink: #404040;
+  /* Státusz info / folyamatban — soft chip (nem brand CTA) */
+  --info: #2563eb;
+  --info-soft: #eff6ff;
+  --info-ink: #1e40af;
+
+  --active: #7c3aed;
+  --active-soft: #f5f3ff;
+  --active-ink: #5b21b6;
 
   /* Nav — csak slate (monokróm); legacy aliasok → slate */
   --nav-slate: #525252;

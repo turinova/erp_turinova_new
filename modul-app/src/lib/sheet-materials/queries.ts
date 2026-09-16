@@ -314,6 +314,7 @@ export type SheetMaterialExportItem = {
   usage_limit: number
   grain_direction: boolean
   rotatable: boolean
+  image_url: string | null
 }
 
 const EXPORT_SELECT = `
@@ -334,6 +335,7 @@ const EXPORT_SELECT = `
   usage_limit,
   grain_direction,
   rotatable,
+  image_url,
   manufacturers ( name ),
   tax_rates ( name, rate_percent ),
   equipment ( name )
@@ -387,7 +389,8 @@ export async function listSheetMaterialsForExport(
       waste_multi: Number(row.waste_multi),
       usage_limit: Number(row.usage_limit),
       grain_direction: row.grain_direction,
-      rotatable: row.rotatable
+      rotatable: row.rotatable,
+      image_url: row.image_url ?? null
     }
   })
 }

@@ -24,7 +24,8 @@ export const SHEET_EXCEL_HEADERS = [
   'Hulladek_szorzo',
   'Kihasznaltsag_szazalek',
   'Szalirany',
-  'Forgathato'
+  'Forgathato',
+  'Kep_fajlnev'
 ] as const
 
 export type SheetExcelHeader = (typeof SHEET_EXCEL_HEADERS)[number]
@@ -50,6 +51,7 @@ export type SheetExcelRow = {
   usageLimitPercent: number
   grainDirection: boolean
   rotatable: boolean
+  imageFilename: string | null
 }
 
 export const SHEET_EXCEL_EXAMPLE_ROW: Record<SheetExcelHeader, string | number> =
@@ -73,7 +75,8 @@ export const SHEET_EXCEL_EXAMPLE_ROW: Record<SheetExcelHeader, string | number> 
     Hulladek_szorzo: 1.2,
     Kihasznaltsag_szazalek: 65,
     Szalirany: 'nem',
-    Forgathato: 'igen'
+    Forgathato: 'igen',
+    Kep_fajlnev: 'MAT-001.jpg'
   }
 
 export const SHEET_EXCEL_GUIDE_LINES = [
@@ -88,6 +91,6 @@ export const SHEET_EXCEL_GUIDE_LINES = [
   'Ár: Bruttó Ft/m². Az adónem ÁFA%-a alapján nettótá számoljuk.',
   'Igen/nem mezők: igen / nem (vagy true / false, 1 / 0).',
   'Kihasználtság: százalék (pl. 65 = 65%).',
-  `Maximum ${SHEET_IMPORT_MAX_ROWS} adatsor / fájl.`,
-  'Kép URL nincs az Excelben — képet a szerkesztőben tölts fel.'
+  'Kep_fajlnev: opcionális — Média könyvtár fájlnév. Üres frissítéskor nem törli a képet.',
+  `Maximum ${SHEET_IMPORT_MAX_ROWS} adatsor / fájl.`
 ]

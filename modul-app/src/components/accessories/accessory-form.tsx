@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import { EntityImageField } from '@/components/media/entity-image-field'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
@@ -38,6 +39,7 @@ type AccessoryFormProps = {
   taxRates: AccessoryTaxOption[]
   units: AccessoryUnitOption[]
   canWrite: boolean
+  tenantId: string
 }
 
 function defaultUnitId(units: AccessoryUnitOption[]): string {
@@ -54,7 +56,8 @@ export function AccessoryForm({
   manufacturers,
   taxRates,
   units,
-  canWrite
+  canWrite,
+  tenantId
 }: AccessoryFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -77,6 +80,9 @@ export function AccessoryForm({
   const [taxRateId, setTaxRateId] = useState(defaultTaxId)
   const [unitId, setUnitId] = useState(
     initial?.unit_id ?? defaultUnitId(units)
+  )
+  const [imageUrl, setImageUrl] = useState<string | null>(
+    initial?.image_url ?? null
   )
   const [grossRaw, setGrossRaw] = useState(
     initial ? String(initial.price_gross) : ''
@@ -115,6 +121,7 @@ export function AccessoryForm({
         taxRateId,
         unitId,
         priceNet,
+        imageUrl,
         active
       }
       const result =
@@ -384,6 +391,19 @@ export function AccessoryForm({
               description="Inaktív termék később nem választható az ajánlaton."
             />
           </div>
+        </FormSection>
+
+        <FormSection title="Kép" description="Opcionális termékfotó." columns={4}>
+          <FormField label="Kép" htmlFor="accessory-image" error={fieldErrors.imageUrl}>
+            <EntityImageField
+              tenantId={tenantId}
+              value={imageUrl}
+              onChange={setImageUrl}
+              disabled={pending || !canWrite}
+              uploadMode="media"
+              error={fieldErrors.imageUrl}
+            />
+          </FormField>
         </FormSection>
       </div>
     </div>

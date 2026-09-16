@@ -112,6 +112,7 @@ export async function createAccessory(
       tax_rate_id: parsed.data.taxRateId,
       unit_id: parsed.data.unitId,
       price_net: parsed.data.priceNet,
+      image_url: parsed.data.imageUrl ?? null,
       active: parsed.data.active
     })
     .select('id')
@@ -157,6 +158,7 @@ export async function updateAccessory(
       tax_rate_id: parsed.data.taxRateId,
       unit_id: parsed.data.unitId,
       price_net: parsed.data.priceNet,
+      image_url: parsed.data.imageUrl ?? null,
       active: parsed.data.active,
       updated_at: new Date().toISOString()
     })

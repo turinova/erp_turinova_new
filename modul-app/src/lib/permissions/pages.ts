@@ -20,7 +20,7 @@ export const APP_PAGES: AppPageDef[] = [
   { key: '/ugyfelek', label: 'Ügyfelek', category: 'Műhely' },
   { key: '/ajanlatok', label: 'Árajánlatok', category: 'Műhely' },
   { key: '/megrendelesek', label: 'Megrendelések', category: 'Műhely' },
-  { key: '/scanner', label: 'Scanner', category: 'Műhely' },
+  { key: '/scanner', label: 'Vonalkód', category: 'Műhely' },
   {
     key: '/torzsadatok/alapanyagok/tablas-anyagok',
     label: 'Táblás anyagok',
@@ -77,6 +77,10 @@ export const APP_PAGES: AppPageDef[] = [
     category: 'Törzsadatok'
   },
   {
+    key: '/torzsadatok/rendszer/media',
+    label: 'Média',
+    category: 'Törzsadatok'
+  },  {
     key: '/beallitasok/cegadatok',
     label: 'Cégadatok',
     category: 'Beállítások'

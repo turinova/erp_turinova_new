@@ -14,7 +14,8 @@ export const LINEAR_EXCEL_HEADERS = [
   'Brutto_Ft_m',
   'Adonem',
   'Raktari',
-  'Aktiv'
+  'Aktiv',
+  'Kep_fajlnev'
 ] as const
 
 export type LinearExcelHeader = (typeof LINEAR_EXCEL_HEADERS)[number]
@@ -30,6 +31,7 @@ export type LinearExcelRow = {
   taxRateName: string
   onStock: boolean
   active: boolean
+  imageFilename: string | null
 }
 
 export const LINEAR_EXCEL_EXAMPLE_ROW: Record<
@@ -45,7 +47,8 @@ export const LINEAR_EXCEL_EXAMPLE_ROW: Record<
   Brutto_Ft_m: 12000,
   Adonem: 'ÁFA 27%',
   Raktari: 'igen',
-  Aktiv: 'igen'
+  Aktiv: 'igen',
+  Kep_fajlnev: 'munkalap-w1000.jpg'
 }
 
 export const LINEAR_EXCEL_GUIDE_LINES = [
@@ -60,6 +63,6 @@ export const LINEAR_EXCEL_GUIDE_LINES = [
   'Gyártó / Adónem: pontos név a törzsadatból (nem UUID).',
   'Ár: Bruttó Ft/m. Az adónem ÁFA%-a alapján nettótá számoljuk.',
   'Igen/nem mezők: igen / nem (vagy true / false, 1 / 0).',
-  `Maximum ${LINEAR_IMPORT_MAX_ROWS} adatsor / fájl.`,
-  'Kép URL nincs az Excelben — képet a szerkesztőben tölts fel.'
+  'Kep_fajlnev: opcionális — Média könyvtár fájlnév. Üres frissítéskor nem törli a képet.',
+  `Maximum ${LINEAR_IMPORT_MAX_ROWS} adatsor / fájl.`
 ]

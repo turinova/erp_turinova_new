@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * Auth layout: széles mosaic bal + keskeny form sáv.
- * variant=partner: melegebb hangulat + „Asztalos” jelölés (nem staff klón).
+ * variant=partner: melegebb hangulat (megrendelői belépés).
  */
 export function AuthMosaicShell({
   title,
@@ -19,7 +19,7 @@ export function AuthMosaicShell({
   badge
 }: {
   title: string
-  description: string
+  description?: string
   children: React.ReactNode
   homeHref: string
   wide?: boolean
@@ -28,15 +28,18 @@ export function AuthMosaicShell({
   badge?: string
 }) {
   const isPartner = variant === 'partner'
-  const borderColor = isPartner ? '#a8a29e' : '#a1a1aa'
+  // Staff: main-app parity (#666); partner: melegebb kőszürke
+  const borderColor = isPartner ? '#a8a29e' : '#666666'
   const railClass = isPartner
     ? 'bg-stone-50 lg:border-stone-200'
     : 'bg-surface'
 
   return (
-    <div className={cn('relative flex min-h-screen', railClass)}>
-      <div className="relative hidden min-h-screen flex-1 overflow-hidden lg:block">
-        <SquaresMosaic squareSize={40} borderColor={borderColor} />
+    <div className={cn('relative flex min-h-dvh', railClass)}>
+      <div className="relative hidden min-h-dvh flex-1 overflow-hidden lg:block">
+        <div className="absolute inset-0">
+          <SquaresMosaic squareSize={40} borderColor={borderColor} />
+        </div>
         <div
           className="pointer-events-none absolute inset-0 z-[5]"
           style={{
@@ -46,9 +49,9 @@ export function AuthMosaicShell({
             backdropFilter: 'blur(15px)',
             WebkitBackdropFilter: 'blur(15px)',
             WebkitMaskImage:
-              'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)',
+              'radial-gradient(ellipse 60% 70% at center, black 15%, transparent 75%)',
             maskImage:
-              'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)'
+              'radial-gradient(ellipse 60% 70% at center, black 15%, transparent 75%)'
           }}
           aria-hidden
         />
@@ -63,7 +66,7 @@ export function AuthMosaicShell({
           />
           {isPartner ? (
             <span className="rounded-md border border-stone-300 bg-white/90 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-stone-700">
-              {badge ?? 'ASZTALOS PORTÁL'}
+              {badge ?? 'Optinova'}
             </span>
           ) : null}
         </div>
@@ -96,12 +99,14 @@ export function AuthMosaicShell({
               </Link>
               {isPartner ? (
                 <span className="rounded-md border border-stone-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-stone-700">
-                  {badge ?? 'ASZTALOS PORTÁL'}
+                  {badge ?? 'Optinova'}
                 </span>
               ) : null}
             </div>
             <h1 className="text-[18px] font-semibold text-ink">{title}</h1>
-            <p className="text-[13px] text-ink-secondary">{description}</p>
+            {description ? (
+              <p className="text-[13px] text-ink-secondary">{description}</p>
+            ) : null}
           </div>
           {children}
           {footer}

@@ -18,6 +18,7 @@ type AnimState = {
 /**
  * Monochrome BSP mosaic — legacy main-app Squares mintája (saját újraírás).
  * Idle: szomszédos csempék enyhe szürke fade; hover: sötétebb gray.
+ * prefers-reduced-motion: idle OFF, hover továbbra is frissül.
  */
 export function SquaresMosaic({
   squareSize = 40,
@@ -44,6 +45,8 @@ export function SquaresMosaic({
     let lastAnimAt = 0
     let reducedMotion = false
     let paused = false
+    let lastW = 0
+    let lastH = 0
 
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')
     const syncMotion = () => {
@@ -54,7 +57,7 @@ export function SquaresMosaic({
         drawGrid()
         cancelAnimationFrame(raf)
         raf = 0
-      } else if (wasReduced && !raf) {
+      } else if (wasReduced && !raf && !paused) {
         raf = requestAnimationFrame(tick)
       }
     }
@@ -127,6 +130,7 @@ export function SquaresMosaic({
 
     function drawGrid() {
       if (!ctx || !canvas) return
+      if (canvas.width < 2 || canvas.height < 2) return
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
       let hovered = -1
@@ -170,7 +174,6 @@ export function SquaresMosaic({
     function tick() {
       if (reducedMotion || paused) {
         raf = 0
-        if (reducedMotion) drawGrid()
         return
       }
       const now = Date.now()
@@ -212,10 +215,25 @@ export function SquaresMosaic({
 
     function resize() {
       if (!canvas) return
-      canvas.width = Math.max(1, canvas.offsetWidth)
-      canvas.height = Math.max(1, canvas.offsetHeight)
+      const parent = canvas.parentElement
+      const w = Math.floor(
+        parent?.clientWidth || canvas.offsetWidth || canvas.clientWidth
+      )
+      const h = Math.floor(
+        parent?.clientHeight || canvas.offsetHeight || canvas.clientHeight
+      )
+      // Flex layout még nem settle-elt — várjunk a következő RO / rAF-re.
+      if (w < 2 || h < 2) return
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      canvas.width = w
+      canvas.height = h
       generate()
       drawGrid()
+      if (!reducedMotion && !paused && !raf) {
+        raf = requestAnimationFrame(tick)
+      }
     }
 
     function onMove(e: MouseEvent) {
@@ -224,11 +242,14 @@ export function SquaresMosaic({
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
       }
+      // Reduced-motion: nincs idle loop → hoverhez azonnali redraw.
+      if (reducedMotion || !raf) drawGrid()
     }
 
     function onLeave() {
       mouseRef.current = null
       tileColors.clear()
+      if (reducedMotion || !raf) drawGrid()
     }
 
     function onVisibility() {
@@ -241,14 +262,27 @@ export function SquaresMosaic({
       }
     }
 
+    const ro = new ResizeObserver(() => resize())
+    const observeTarget = canvas.parentElement ?? canvas
+    ro.observe(observeTarget)
+
     window.addEventListener('resize', resize)
     document.addEventListener('visibilitychange', onVisibility)
     canvas.addEventListener('mousemove', onMove)
     canvas.addEventListener('mouseleave', onLeave)
+
     resize()
-    raf = requestAnimationFrame(tick)
+    // Flex / abszolút layout gyakran 1 frame késéssel ad méretet.
+    const settleRaf = requestAnimationFrame(() => {
+      resize()
+      if (!reducedMotion && !paused && !raf) {
+        raf = requestAnimationFrame(tick)
+      }
+    })
 
     return () => {
+      cancelAnimationFrame(settleRaf)
+      ro.disconnect()
       window.removeEventListener('resize', resize)
       document.removeEventListener('visibilitychange', onVisibility)
       media.removeEventListener('change', syncMotion)
@@ -261,7 +295,7 @@ export function SquaresMosaic({
   return (
     <canvas
       ref={canvasRef}
-      className="block size-full border-0"
+      className="absolute inset-0 block size-full border-0"
       aria-hidden
     />
   )

@@ -3,7 +3,9 @@ import { z } from 'zod'
 import {
   formatCompanyRegNumber,
   formatPhoneNumber,
-  formatTaxNumber
+  formatTaxNumber,
+  HU_PHONE_COMPLETE_RE,
+  HU_PHONE_EXAMPLE
 } from '@/lib/customers/parse'
 
 export { formatCompanyRegNumber, formatPhoneNumber, formatTaxNumber }
@@ -28,7 +30,15 @@ export const companyFormSchema = z.object({
       (v) => v === null || z.string().email().safeParse(v).success,
       'Érvénytelen e-mail cím.'
     ),
-  phoneNumber: z.string().trim().max(40).transform(emptyToNull),
+  phoneNumber: z
+    .string()
+    .trim()
+    .max(40)
+    .transform(emptyToNull)
+    .refine(
+      (v) => v === null || HU_PHONE_COMPLETE_RE.test(v),
+      `A telefonszám formátuma: ${HU_PHONE_EXAMPLE}`
+    ),
   website: z
     .string()
     .trim()

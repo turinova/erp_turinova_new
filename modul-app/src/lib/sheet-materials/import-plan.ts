@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { mapFilenamesToPublicUrls } from '@/lib/media/queries'
 import {
   coerceSheetExcelRow,
   parseSheetMaterialsWorkbook,
@@ -32,6 +33,7 @@ type RefMaps = {
     string,
     { id: string; manufacturerId: string }
   >
+  mediaByFilename: Map<string, string>
 }
 
 function normKey(value: string): string {
@@ -58,7 +60,7 @@ async function loadRefMaps(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<RefMaps | { error: string }> {
-  const [mfr, tax, eq, mats] = await Promise.all([
+  const [mfr, tax, eq, mats, mediaByFilename] = await Promise.all([
     supabase
       .from('manufacturers')
       .select('id, name')
@@ -80,7 +82,8 @@ async function loadRefMaps(
         'id, manufacturer_id, name, length_mm, width_mm, thickness_mm'
       )
       .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
+      .is('deleted_at', null),
+    mapFilenamesToPublicUrls(supabase, tenantId)
   ])
 
   if (mfr.error || tax.error || eq.error || mats.error) {
@@ -126,13 +129,14 @@ async function loadRefMaps(
     )
   }
 
-  return { manufacturers, taxRates, equipment, existing }
+  return { manufacturers, taxRates, equipment, existing, mediaByFilename }
 }
 
 type ResolvedRow = {
   rowNumber: number
   action: 'create' | 'update'
   existingId?: string
+  setImage: boolean
   payload: {
     manufacturer_id: string
     tax_rate_id: string
@@ -154,6 +158,7 @@ type ResolvedRow = {
     rotatable: boolean
     price_net: number
     machine_code: string
+    image_url?: string | null
   }
   label: {
     name: string
@@ -224,10 +229,29 @@ function resolveRow(
   const match = refs.existing.get(key)
   const priceNet = netFromGross(data.priceGross, tax.ratePercent)
 
+  let setImage = false
+  let imageUrl: string | null | undefined
+  if (data.imageFilename) {
+    const url = refs.mediaByFilename.get(data.imageFilename.toLowerCase())
+    if (!url) {
+      return {
+        rowNumber: coerced.rowNumber,
+        action: 'error',
+        name: data.name,
+        manufacturerName: data.manufacturerName,
+        sizeLabel: `${data.lengthMm}×${data.widthMm}×${data.thicknessMm}`,
+        message: `Ismeretlen kép fájlnév: „${data.imageFilename}”. Töltsd fel a Média oldalra.`
+      }
+    }
+    setImage = true
+    imageUrl = url
+  }
+
   return {
     rowNumber: coerced.rowNumber,
     action: match ? 'update' : 'create',
     existingId: match?.id,
+    setImage,
     payload: {
       manufacturer_id: manufacturerId,
       tax_rate_id: tax.id,
@@ -248,7 +272,8 @@ function resolveRow(
       grain_direction: data.grainDirection,
       rotatable: data.rotatable,
       price_net: priceNet,
-      machine_code: data.machineCode
+      machine_code: data.machineCode,
+      ...(setImage ? { image_url: imageUrl } : {})
     },
     label: {
       name: data.name,
@@ -393,7 +418,7 @@ export async function applySheetMaterialsImport(
       const { error } = await supabase.from('sheet_materials').insert({
         tenant_id: tenantId,
         ...row.payload,
-        image_url: null,
+        image_url: row.setImage ? (row.payload.image_url ?? null) : null,
         updated_at: now
       })
       if (error) {

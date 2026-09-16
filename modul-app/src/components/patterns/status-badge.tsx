@@ -7,11 +7,11 @@ type StatusBadgeProps = {
 }
 
 const toneClass: Record<NonNullable<StatusBadgeProps['tone']>, string> = {
-  active: 'bg-success-soft text-success-ink',
+  active: 'bg-active-soft text-active-ink',
   success: 'bg-success-soft text-success-ink',
   warning: 'bg-warning-soft text-warning-ink',
   danger: 'bg-danger-soft text-danger-ink',
-  info: 'bg-subtle text-ink-secondary',
+  info: 'bg-info-soft text-info-ink',
   neutral: 'bg-subtle text-ink-secondary'
 }
 

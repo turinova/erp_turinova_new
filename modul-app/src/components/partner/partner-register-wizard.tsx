@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useActionState, useEffect, useMemo, useState } from 'react'
 
 import { FormField } from '@/components/patterns/form-field'
+import { PartnerLegalLinks } from '@/components/partner/partner-legal-links'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
@@ -14,9 +15,12 @@ import {
 import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
 import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { PartnerCompanyOption } from '@/lib/partner/companies'
+import { getPartnerLegalUrls } from '@/lib/partner/legal-urls'
 import {
   formatCompanyRegNumber,
+  formatPhoneNumber,
   formatTaxNumber,
+  HU_PHONE_EXAMPLE,
   validatePartnerAccountStep,
   validatePartnerBillingStep,
   validatePartnerCompanyStep,
@@ -63,24 +67,25 @@ const emptyDraft: Draft = {
 const STEP_META: Record<Step, { title: string; description: string }> = {
   1: {
     title: 'Fiók',
-    description: 'Alapadatok a belépéshez és a kapcsolatfelvételhez.'
+    description: 'Neved, emailed és jelszavad.'
   },
   2: {
     title: 'Számlázás',
-    description:
-      'Ezek mennek át a lapszabászat ügyféltörzsébe. Később a Beállításokban módosíthatod.'
+    description: 'Számlázási adatok.'
   },
   3: {
-    title: 'Kapcsolt cég',
-    description:
-      'A Kereső és az Opti ettől a cégtől veszi az anyagokat és az árakat.'
+    title: 'Cég választása',
+    description: 'Melyik cégtől rendelsz?'
   }
 }
 
 export function PartnerRegisterWizard() {
   const href = usePartnerHref()
+  const legal = getPartnerLegalUrls()
   const [step, setStep] = useState<Step>(1)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [termsError, setTermsError] = useState<string | null>(null)
   const [localErrors, setLocalErrors] = useState<PartnerProfileFieldErrors>({})
   const [companies, setCompanies] = useState<PartnerCompanyOption[]>([])
   const [companiesLoading, setCompaniesLoading] = useState(true)
@@ -165,6 +170,12 @@ export function PartnerRegisterWizard() {
   function onSubmitStep3(e: React.FormEvent<HTMLFormElement>) {
     const errors = validatePartnerCompanyStep(draft)
     setLocalErrors(errors)
+    if (!acceptedTerms) {
+      setTermsError('Fogadd el az ÁSZF-et és az adatkezelési tájékoztatót.')
+      e.preventDefault()
+      return
+    }
+    setTermsError(null)
     if (Object.keys(errors).length) {
       e.preventDefault()
     }
@@ -188,11 +199,6 @@ export function PartnerRegisterWizard() {
                 label="Név"
                 htmlFor="partner-name"
                 required
-                hint={
-                  mergedErrors.name
-                    ? undefined
-                    : 'Így jelenik meg az ajánlatokon a kiválasztott cégnél.'
-                }
                 error={mergedErrors.name}
               >
                 <Input
@@ -210,9 +216,7 @@ export function PartnerRegisterWizard() {
                 htmlFor="partner-reg-email"
                 required
                 hint={
-                  mergedErrors.email
-                    ? undefined
-                    : 'Ezzel lépsz be. Céges (staff) email nem használható.'
+                  mergedErrors.email ? undefined : 'Ezzel lépsz be.'
                 }
                 error={mergedErrors.email}
               >
@@ -224,17 +228,17 @@ export function PartnerRegisterWizard() {
                   onChange={(e) => patch('email', e.target.value)}
                   autoComplete="email"
                   required
-                  placeholder="nev@muhely.hu"
+                  placeholder="nev@email.hu"
                 />
               </FormField>
               <FormField
-                label="Mobiltelefon"
+                label="Telefon"
                 htmlFor="partner-mobile"
                 required
                 hint={
                   mergedErrors.mobile
                     ? undefined
-                    : 'A lapszabászat ezen hívhat a rendelésről.'
+                    : `pl. ${HU_PHONE_EXAMPLE}`
                 }
                 error={mergedErrors.mobile}
               >
@@ -243,10 +247,13 @@ export function PartnerRegisterWizard() {
                   name="mobile"
                   type="tel"
                   value={draft.mobile}
-                  onChange={(e) => patch('mobile', e.target.value)}
+                  onChange={(e) =>
+                    patch('mobile', formatPhoneNumber(e.target.value))
+                  }
                   autoComplete="tel"
                   required
-                  placeholder="pl. +36 30 123 4567"
+                  inputMode="tel"
+                  placeholder={HU_PHONE_EXAMPLE}
                 />
               </FormField>
               <FormField
@@ -281,7 +288,7 @@ export function PartnerRegisterWizard() {
                 hint={
                   mergedErrors.billing_name
                     ? undefined
-                    : 'Üresen a fenti Név másolódik.'
+                    : 'Ha üres, a nevedet használjuk.'
                 }
                 error={mergedErrors.billing_name}
               >
@@ -291,7 +298,7 @@ export function PartnerRegisterWizard() {
                   value={draft.billing_name}
                   onChange={(e) => patch('billing_name', e.target.value)}
                   autoComplete="organization"
-                  placeholder="pl. Kovács Asztalos Bt."
+                  placeholder="pl. Kovács János"
                 />
               </FormField>
               <FormField label="Ország" htmlFor="billing_country">
@@ -486,7 +493,7 @@ export function PartnerRegisterWizard() {
           />
 
           <FormField
-            label="Kapcsolt cég"
+            label="Cég"
             htmlFor="selected_tenant_id"
             required
             hint={
@@ -525,10 +532,52 @@ export function PartnerRegisterWizard() {
 
           {!companiesLoading && companies.length === 0 && !companiesError ? (
             <p className="text-hint text-ink-secondary">
-              Most nincs választható cég. Kapcsold be egy tenanton a „Online
-              partner rendelés” add-ont, majd frissítsd az oldalt.
+              Most nincs választható cég. Próbáld később, vagy írj nekünk.
             </p>
           ) : null}
+
+          <div className="space-y-1.5">
+            <label className="flex items-start gap-2 text-body text-ink">
+              <input
+                type="checkbox"
+                name="accept_terms"
+                value="on"
+                className="mt-0.5 size-3.5 shrink-0 accent-primary"
+                checked={acceptedTerms}
+                onChange={(e) => {
+                  setAcceptedTerms(e.target.checked)
+                  if (e.target.checked) setTermsError(null)
+                }}
+                required
+              />
+              <span>
+                Elfogadom az{' '}
+                <a
+                  href={legal.aszf}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-ink underline underline-offset-2"
+                >
+                  Általános Szerződési Feltételeket
+                </a>{' '}
+                és az{' '}
+                <a
+                  href={legal.privacy}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-ink underline underline-offset-2"
+                >
+                  adatkezelési tájékoztatót
+                </a>
+                .
+              </span>
+            </label>
+            {termsError ? (
+              <p className="text-hint text-danger-ink" role="alert">
+                {termsError}
+              </p>
+            ) : null}
+          </div>
 
           {state.error ? (
             <p
@@ -568,7 +617,9 @@ export function PartnerRegisterWizard() {
               type="submit"
               size="md"
               loading={pending}
-              disabled={companiesLoading || companies.length === 0}
+              disabled={
+                companiesLoading || companies.length === 0 || !acceptedTerms
+              }
             >
               Regisztráció
             </Button>
@@ -585,6 +636,7 @@ export function PartnerRegisterWizard() {
           Belépés
         </Link>
       </p>
+      <PartnerLegalLinks className="mt-1" />
     </div>
   )
 }

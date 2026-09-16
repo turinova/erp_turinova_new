@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
+import { PartnerLegalLinks } from '@/components/partner/partner-legal-links'
 import { partnerLogoutAction } from '@/lib/auth/partner-actions'
 import {
   PARTNER_HOME_PATH,
@@ -36,7 +37,7 @@ export function PartnerShell({
     <div className="relative min-h-screen bg-stone-50">
       <aside
         className="fixed inset-y-0 left-0 z-40 hidden w-sidebar flex-col border-r border-stone-200 bg-white md:flex"
-        aria-label="Asztalos oldalsáv"
+        aria-label="Oldalsáv"
       >
         <div className="flex h-topbar shrink-0 flex-col justify-center gap-0.5 border-b border-stone-200 px-3">
           <Link
@@ -54,10 +55,10 @@ export function PartnerShell({
             />
           </Link>
           <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-            Asztalos portál
+            Optinova
           </span>
         </div>
-        <nav className="mt-3 flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">
+        <nav className="mt-3 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
           {partnerNavItems.map((item) => {
             const href = partnerHref(item.href, mode)
             const active = partnerPathIsActive(pathname, item.href, mode)
@@ -103,10 +104,8 @@ export function PartnerShell({
             )
           })}
         </nav>
-        <div className="border-t border-stone-200 px-3 py-2">
-          <p className="text-hint text-stone-500">
-            Nem céges ERP — csak asztalos rendelés
-          </p>
+        <div className="mt-auto shrink-0 border-t border-stone-200 py-2.5">
+          <PartnerLegalLinks variant="sidebar" />
         </div>
       </aside>
 
@@ -121,9 +120,6 @@ export function PartnerShell({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="hidden rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 lg:inline">
-              Partner
-            </span>
             <span className="hidden text-hint text-ink-secondary lg:inline">
               {email}
             </span>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getSessionUser } from '@/lib/auth/session'
+import { mapPublicUrlsToFilenames } from '@/lib/media/queries'
 import {
   buildSheetMaterialsExportBuffer,
   buildSheetMaterialsTemplateBuffer
@@ -50,7 +51,10 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const rows = await listSheetMaterialsForExport(supabase, user.tenantId)
+    const [rows, urlToName] = await Promise.all([
+      listSheetMaterialsForExport(supabase, user.tenantId),
+      mapPublicUrlsToFilenames(supabase, user.tenantId)
+    ])
     const exportRows = rows.map((r) => ({
       manufacturerName: r.manufacturer_name,
       name: r.name,
@@ -71,7 +75,10 @@ export async function GET(request: NextRequest) {
       wasteMulti: r.waste_multi,
       usageLimitPercent: Math.round(r.usage_limit * 1000) / 10,
       grainDirection: r.grain_direction,
-      rotatable: r.rotatable
+      rotatable: r.rotatable,
+      imageFilename: r.image_url
+        ? (urlToName.get(r.image_url.split('?')[0]) ?? null)
+        : null
     }))
 
     const buffer = await buildSheetMaterialsExportBuffer(exportRows)

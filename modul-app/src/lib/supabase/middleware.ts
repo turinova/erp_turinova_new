@@ -28,6 +28,8 @@ import {
   PARTNER_INTERNAL_PREFIX,
   PARTNER_LOGIN_PATH,
   PARTNER_REGISTER_PATH,
+  PARTNER_FORGOT_PASSWORD_PATH,
+  PARTNER_RESET_PASSWORD_PATH,
   resolveAuthSurface
 } from '@/lib/auth/surface'
 
@@ -174,11 +176,18 @@ export async function updateSession(request: NextRequest) {
   const isPublicAuth =
     ((surface === 'staff' || surface === 'platform') &&
       pathname === '/login') ||
+    pathname === '/auth/confirm' ||
+    pathname.startsWith('/auth/confirm/') ||
     (surface === 'partner' &&
       (pathname === PARTNER_LOGIN_PATH ||
-        pathname === PARTNER_REGISTER_PATH)) ||
+        pathname === PARTNER_REGISTER_PATH ||
+        pathname === PARTNER_FORGOT_PASSWORD_PATH ||
+        pathname === PARTNER_RESET_PASSWORD_PATH)) ||
     (surface === 'staff' &&
-      (pathname === '/partner/login' || pathname === '/partner/register'))
+      (pathname === '/partner/login' ||
+        pathname === '/partner/register' ||
+        pathname === '/partner/elfelejtett-jelszo' ||
+        pathname === '/partner/uj-jelszo'))
 
   if (isPublicAsset || isPublicPartnerApi || isPublicImpersonationHandoff) {
     return supabaseResponse
@@ -373,8 +382,10 @@ export async function updateSession(request: NextRequest) {
     isAuthenticated &&
     (pathname === PARTNER_LOGIN_PATH ||
       pathname === PARTNER_REGISTER_PATH ||
+      pathname === PARTNER_FORGOT_PASSWORD_PATH ||
       pathname === '/partner/login' ||
       pathname === '/partner/register' ||
+      pathname === '/partner/elfelejtett-jelszo' ||
       pathname === '/login')
   ) {
     if (isPartnerUser && !hasStaffMembership) {

@@ -23,12 +23,12 @@ export function AuthMosaicPanel({
   return (
     <div
       className={cn(
-        'relative hidden min-h-screen w-[42%] overflow-hidden border-r border-border bg-surface lg:block',
+        'relative hidden min-h-dvh w-[42%] overflow-hidden border-r border-border bg-surface lg:block',
         className
       )}
     >
       <div className="absolute inset-0">
-        <SquaresMosaic borderColor="#a1a1aa" squareSize={40} />
+        <SquaresMosaic borderColor="#666666" squareSize={40} />
       </div>
 
       <div
@@ -38,9 +38,9 @@ export function AuthMosaicPanel({
           backdropFilter: 'blur(15px)',
           WebkitBackdropFilter: 'blur(15px)',
           WebkitMaskImage:
-            'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)',
+            'radial-gradient(ellipse 60% 70% at center, black 15%, transparent 75%)',
           maskImage:
-            'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)'
+            'radial-gradient(ellipse 60% 70% at center, black 15%, transparent 75%)'
         }}
         aria-hidden
       />

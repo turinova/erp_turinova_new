@@ -10,6 +10,7 @@ import {
   grossFromNet
 } from '@/lib/linear-materials/parse'
 import { listLinearMaterialsForExport } from '@/lib/linear-materials/queries'
+import { mapPublicUrlsToFilenames } from '@/lib/media/queries'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
@@ -53,7 +54,10 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const rows = await listLinearMaterialsForExport(supabase, user.tenantId)
+    const [rows, urlToName] = await Promise.all([
+      listLinearMaterialsForExport(supabase, user.tenantId),
+      mapPublicUrlsToFilenames(supabase, user.tenantId)
+    ])
     const exportRows = rows.map((r) => ({
       manufacturerName: r.manufacturer_name,
       materialTypeLabel: LINEAR_MATERIAL_TYPE_LABELS[r.material_type],
@@ -64,7 +68,10 @@ export async function GET(request: NextRequest) {
       priceGross: grossFromNet(r.price_net, r.tax_rate_percent),
       taxRateName: r.tax_rate_name,
       onStock: r.on_stock,
-      active: r.active
+      active: r.active,
+      imageFilename: r.image_url
+        ? (urlToName.get(r.image_url.split('?')[0]) ?? null)
+        : null
     }))
 
     const buffer = await buildLinearMaterialsExportBuffer(exportRows)

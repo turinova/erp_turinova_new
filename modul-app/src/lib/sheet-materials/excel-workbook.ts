@@ -107,7 +107,8 @@ export async function buildSheetMaterialsExportBuffer(
     Hulladek_szorzo: r.wasteMulti,
     Kihasznaltsag_szazalek: r.usageLimitPercent,
     Szalirany: formatBoolHu(r.grainDirection),
-    Forgathato: formatBoolHu(r.rotatable)
+    Forgathato: formatBoolHu(r.rotatable),
+    Kep_fajlnev: r.imageFilename ?? ''
   }))
   return buildWorkbook(dataRows, false)
 }
@@ -142,7 +143,7 @@ export async function parseSheetMaterialsWorkbook(
   })
 
   const missing = SHEET_EXCEL_HEADERS.filter(
-    (h) => !headerMap.has(h.toLowerCase())
+    (h) => h !== 'Kep_fajlnev' && !headerMap.has(h.toLowerCase())
   )
   if (missing.length > 0) {
     return {
@@ -157,8 +158,8 @@ export async function parseSheetMaterialsWorkbook(
     const values = {} as Record<SheetExcelHeader, string>
     let any = false
     for (const header of SHEET_EXCEL_HEADERS) {
-      const col = headerMap.get(header.toLowerCase())!
-      const text = cellText(row.getCell(col).value)
+      const col = headerMap.get(header.toLowerCase())
+      const text = col != null ? cellText(row.getCell(col).value) : ''
       values[header] = text
       if (text) any = true
     }
@@ -303,7 +304,8 @@ export function coerceSheetExcelRow(
       wasteMulti,
       usageLimitPercent,
       grainDirection,
-      rotatable
+      rotatable,
+      imageFilename: v.Kep_fajlnev.trim() || null
     }
   }
 }

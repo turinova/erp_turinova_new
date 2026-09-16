@@ -98,6 +98,7 @@ export type Accessory = {
   barcode: string | null
   barcode_internal: string | null
   price_net: number
+  image_url: string | null
   active: boolean
   created_at: string
   updated_at: string
@@ -220,6 +221,7 @@ export type PartnerProfile = {
   disabled_at: string | null
   disabled_reason: string | null
   disabled_by: string | null
+  terms_accepted_at: string | null
   created_at: string
   updated_at: string
 }
@@ -524,6 +526,44 @@ export type Database = {
         }
         Update: Partial<FeeType>
       }
+      media_files: {
+        Row: {
+          id: string
+          tenant_id: string
+          original_filename: string
+          stored_filename: string
+          storage_path: string
+          public_url: string
+          size_bytes: number
+          mime_type: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          original_filename: string
+          stored_filename: string
+          storage_path: string
+          public_url: string
+          size_bytes: number
+          mime_type: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: Partial<{
+          id: string
+          tenant_id: string
+          original_filename: string
+          stored_filename: string
+          storage_path: string
+          public_url: string
+          size_bytes: number
+          mime_type: string
+          created_by: string | null
+          created_at: string
+        }>
+      }
       accessories: {
         Row: Accessory
         Insert: {
@@ -537,6 +577,7 @@ export type Database = {
           barcode?: string | null
           barcode_internal?: string | null
           price_net: number
+          image_url?: string | null
           active?: boolean
           created_at?: string
           updated_at?: string
@@ -884,6 +925,7 @@ export type Database = {
           disabled_at?: string | null
           disabled_reason?: string | null
           disabled_by?: string | null
+          terms_accepted_at?: string | null
           created_at?: string
           updated_at?: string
         }

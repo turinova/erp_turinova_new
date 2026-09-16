@@ -132,11 +132,7 @@ export default async function PartnerKeresoPage({
         sheetDetailBase={null}
         linearDetailBase={null}
         accessoryDetailBase={null}
-        description={
-          companyLabel
-            ? `Árlekérdezés — ${companyLabel}. Táblás, szálas és termék (bruttó Ft/m, Ft/m², egységár; tájékoztató).`
-            : 'Táblás, szálas és termék árlekérdezés — bruttó Ft/m, Ft/m² és egységár (tájékoztató).'
-        }
+        description={companyLabel || undefined}
       />
     </Suspense>
   )

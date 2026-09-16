@@ -234,6 +234,7 @@ export type LinearMaterialExportItem = {
   price_net: number
   on_stock: boolean
   active: boolean
+  image_url: string | null
 }
 
 const EXPORT_SELECT = `
@@ -245,6 +246,7 @@ const EXPORT_SELECT = `
   price_net,
   on_stock,
   active,
+  image_url,
   manufacturers ( name ),
   tax_rates ( name, rate_percent )
 `
@@ -284,7 +286,8 @@ export async function listLinearMaterialsForExport(
       thickness_mm: Number(row.thickness_mm),
       price_net: Number(row.price_net),
       on_stock: row.on_stock,
-      active: row.active
+      active: row.active,
+      image_url: row.image_url ?? null
     }
   })
 }

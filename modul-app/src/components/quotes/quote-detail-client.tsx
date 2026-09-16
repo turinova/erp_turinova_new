@@ -498,15 +498,6 @@ export function QuoteDetailClient({
 
   return (
     <div className="space-y-4">
-      {isPartner ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-hint text-amber-950">
-          <span className="font-semibold">Asztalos portál</span>
-          {' · '}
-          {isPartnerDraft
-            ? 'Piszkozat — beküldésig csak te látod.'
-            : 'Beküldött rendelés a kapcsolt cégnél (olvasás).'}
-        </div>
-      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Link
           href={listHref}
@@ -522,6 +513,11 @@ export function QuoteDetailClient({
             : `Árajánlat: ${quote.quote_number}`}
         </h1>
         <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
+        {showPartnerPayment || showStaffPayment ? (
+          <StatusBadge tone={paymentStatusTone(quote.payment_status)}>
+            {PAYMENT_STATUS_LABEL[quote.payment_status]}
+          </StatusBadge>
+        ) : null}
         {!isPartner &&
         quote.source === 'portal' &&
         quote.portal_submitted_at ? (

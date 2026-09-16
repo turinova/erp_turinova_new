@@ -12,7 +12,9 @@ import {
 } from '@/lib/auth/partner-settings-actions'
 import {
   formatCompanyRegNumber,
-  formatTaxNumber
+  formatPhoneNumber,
+  formatTaxNumber,
+  HU_PHONE_EXAMPLE
 } from '@/lib/partner/profile-fields'
 import type { PartnerProfile } from '@/lib/supabase/database.types'
 
@@ -26,6 +28,9 @@ type Props = {
 export function PartnerSettingsProfileForm({ profile, email }: Props) {
   const [tax, setTax] = useState(profile.billing_tax_number ?? '')
   const [reg, setReg] = useState(profile.billing_company_reg_number ?? '')
+  const [mobile, setMobile] = useState(
+    formatPhoneNumber(profile.mobile ?? '')
+  )
 
   const [state, formAction, pending] = useActionState(
     updatePartnerProfileAction,
@@ -87,9 +92,10 @@ export function PartnerSettingsProfileForm({ profile, email }: Props) {
         </FormField>
 
         <FormField
-          label="Mobil"
+          label="Telefon"
           htmlFor="settings-mobile"
           required
+          hint={!fe.mobile ? `pl. ${HU_PHONE_EXAMPLE}` : undefined}
           error={fe.mobile}
         >
           <Input
@@ -97,8 +103,11 @@ export function PartnerSettingsProfileForm({ profile, email }: Props) {
             name="mobile"
             type="tel"
             required
-            defaultValue={profile.mobile ?? ''}
-            placeholder="+36 30…"
+            value={mobile}
+            onChange={(e) => setMobile(formatPhoneNumber(e.target.value))}
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder={HU_PHONE_EXAMPLE}
           />
         </FormField>
 

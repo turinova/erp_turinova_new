@@ -1,27 +1,62 @@
 import { z } from 'zod'
 
-/** Telefonszám: +36 30 999 2800 mintájára. */
+/** Mobilkörzetek — helyi rész 7 jegy (3–4). Egyéb 2 jegyű: max 6 jegy (3–3). */
+const MOBILE_AREA_CODES = new Set([
+  '20',
+  '30',
+  '31',
+  '50',
+  '70'
+])
+
+export const HU_PHONE_EXAMPLE = '+36 30 999 2800'
+
+/** Teljes HU szám: +36 1 XXX XXXX | +36 XX XXX XXXX | +36 XX XXX XXX */
+export const HU_PHONE_COMPLETE_RE =
+  /^\+36 (1 \d{3} \d{4}|\d{2} \d{3} \d{4}|\d{2} \d{3} \d{3})$/
+
+/**
+ * Telefonszám élő formázás: mindig +36,
+ * Bp: +36 1 XXX XXXX,
+ * mobil: +36 XX XXX XXXX (3–4),
+ * egyéb körzet: +36 XX XXX XXX (3–3).
+ */
 export function formatPhoneNumber(value: string): string {
-  const digits = value.replace(/\D/g, '')
+  let digits = value.replace(/\D/g, '')
   if (!digits) return ''
 
-  let formatted = digits
-  if (!digits.startsWith('36') && digits.length > 0) {
-    formatted = `36${digits}`
+  if (digits.startsWith('00')) digits = digits.slice(2)
+  if (digits.startsWith('06')) digits = `36${digits.slice(2)}`
+  else if (digits.startsWith('0')) digits = digits.slice(1)
+
+  if (!digits.startsWith('36')) digits = `36${digits}`
+  // 36 + max 9 nemzeti jegy
+  digits = digits.slice(0, 11)
+
+  const national = digits.slice(2)
+  let result = '+36'
+  if (!national) return result
+
+  // Budapest: 1 + 7 jegy (3–4)
+  if (national.startsWith('1')) {
+    const local = national.slice(1, 8)
+    result += ' 1'
+    if (local.length === 0) return result
+    if (local.length <= 3) return `${result} ${local}`
+    return `${result} ${local.slice(0, 3)} ${local.slice(3)}`
   }
 
-  if (formatted.length < 2) return value
+  const area = national.slice(0, Math.min(2, national.length))
+  if (area.length < 2) return `${result} ${area}`
 
-  const countryCode = formatted.substring(0, 2)
-  const areaCode = formatted.substring(2, 4)
-  const firstPart = formatted.substring(4, 7)
-  const secondPart = formatted.substring(7, 11)
+  const isMobile = MOBILE_AREA_CODES.has(area)
+  const maxLocal = isMobile ? 7 : 6
+  const local = national.slice(2, 2 + maxLocal)
 
-  let result = `+${countryCode}`
-  if (areaCode) result += ` ${areaCode}`
-  if (firstPart) result += ` ${firstPart}`
-  if (secondPart) result += ` ${secondPart}`
-  return result
+  result += ` ${area}`
+  if (!local) return result
+  if (local.length <= 3) return `${result} ${local}`
+  return `${result} ${local.slice(0, 3)} ${local.slice(3)}`
 }
 
 /** Adószám: ########-#-## */
@@ -49,6 +84,16 @@ const emptyToNull = (v: string) => {
   return t === '' ? null : t
 }
 
+const optionalHuPhone = z
+  .string()
+  .trim()
+  .max(40)
+  .transform(emptyToNull)
+  .refine(
+    (v) => v === null || HU_PHONE_COMPLETE_RE.test(v),
+    `A telefonszám formátuma: ${HU_PHONE_EXAMPLE}`
+  )
+
 export const customerFormSchema = z.object({
   name: z
     .string()
@@ -64,11 +109,7 @@ export const customerFormSchema = z.object({
       (v) => v === null || z.string().email().safeParse(v).success,
       'Érvénytelen e-mail cím.'
     ),
-  mobile: z
-    .string()
-    .trim()
-    .max(40)
-    .transform(emptyToNull),
+  mobile: optionalHuPhone,
   billingName: z.string().trim().max(160).transform(emptyToNull),
   billingCountry: z
     .string()

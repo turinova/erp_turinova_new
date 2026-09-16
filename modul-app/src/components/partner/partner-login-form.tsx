@@ -10,7 +10,10 @@ import {
   partnerLoginAction,
   type PartnerAuthState
 } from '@/lib/auth/partner-actions'
-import { PARTNER_REGISTER_PATH } from '@/lib/auth/surface'
+import {
+  PARTNER_FORGOT_PASSWORD_PATH,
+  PARTNER_REGISTER_PATH
+} from '@/lib/auth/surface'
 import { usePartnerHref } from '@/lib/auth/use-partner-href'
 
 const initialState: PartnerAuthState = {}
@@ -46,6 +49,15 @@ export function PartnerLoginForm() {
         />
       </FormField>
 
+      <p className="text-right text-hint">
+        <Link
+          href={href(PARTNER_FORGOT_PASSWORD_PATH)}
+          className="font-medium text-ink no-underline hover:underline"
+        >
+          Elfelejtetted a jelszavad?
+        </Link>
+      </p>
+
       {state.error ? (
         <p
           className="border border-danger/30 bg-danger-soft px-2.5 py-1.5 text-hint text-danger-ink"
@@ -56,16 +68,16 @@ export function PartnerLoginForm() {
       ) : null}
 
       <Button type="submit" loading={pending} className="w-full" size="md">
-        Belépés az asztalos portálra
+        Belépés
       </Button>
 
       <p className="text-center text-hint text-ink-secondary">
-        Nincs fiókod?{' '}
+        Nincs még fiókod?{' '}
         <Link
           href={href(PARTNER_REGISTER_PATH)}
           className="font-medium text-ink no-underline hover:underline"
         >
-          Asztalos regisztráció
+          Regisztráció
         </Link>
       </p>
     </form>

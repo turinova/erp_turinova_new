@@ -39,6 +39,16 @@ const config: Config = {
           soft: 'var(--danger-soft)',
           ink: 'var(--danger-ink)'
         },
+        info: {
+          DEFAULT: 'var(--info)',
+          soft: 'var(--info-soft)',
+          ink: 'var(--info-ink)'
+        },
+        active: {
+          DEFAULT: 'var(--active)',
+          soft: 'var(--active-soft)',
+          ink: 'var(--active-ink)'
+        },
         nav: {
           blue: {
             DEFAULT: 'var(--nav-blue)',

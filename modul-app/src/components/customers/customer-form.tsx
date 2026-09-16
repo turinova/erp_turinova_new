@@ -16,7 +16,8 @@ import {
 import {
   formatCompanyRegNumber,
   formatPhoneNumber,
-  formatTaxNumber
+  formatTaxNumber,
+  HU_PHONE_EXAMPLE
 } from '@/lib/customers/parse'
 import type { CustomerDetail } from '@/lib/customers/queries'
 
@@ -161,7 +162,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
             htmlFor="customer-mobile"
             optionalLabel
             error={fieldErrors.mobile}
-            hint={!fieldErrors.mobile ? 'pl. +36 30 999 2800' : undefined}
+            hint={!fieldErrors.mobile ? `pl. ${HU_PHONE_EXAMPLE}` : undefined}
           >
             <Input
               id="customer-mobile"
@@ -170,6 +171,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
               onChange={(e) => setMobile(formatPhoneNumber(e.target.value))}
               inputMode="tel"
               autoComplete="tel"
+              placeholder={HU_PHONE_EXAMPLE}
             />
           </FormField>
         </FormSection>
@@ -281,6 +283,8 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
               onChange={(e) =>
                 setBillingTaxNumber(formatTaxNumber(e.target.value))
               }
+              inputMode="numeric"
+              placeholder="12345678-1-02"
             />
           </FormField>
 
@@ -305,6 +309,8 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
                   formatCompanyRegNumber(e.target.value)
                 )
               }
+              inputMode="numeric"
+              placeholder="01-09-123456"
             />
           </FormField>
         </FormSection>

@@ -1,5 +1,11 @@
 /** Partner profil mezők — regisztráció + Beállítások közös validáció. */
 
+import {
+  formatPhoneNumber,
+  HU_PHONE_COMPLETE_RE,
+  HU_PHONE_EXAMPLE
+} from '@/lib/customers/parse'
+
 export type PartnerProfileInput = {
   name: string
   email: string
@@ -22,6 +28,8 @@ export type PartnerProfileFieldErrors = Partial<
 
 const TAX_RE = /^\d{8}-\d-\d{2}$/
 const COMPANY_REG_RE = /^\d{2}-\d{2}-\d{6}$/
+
+export { formatPhoneNumber, HU_PHONE_EXAMPLE }
 
 export function formatTaxNumber(value: string): string {
   const digits = value.replace(/\D/g, '').slice(0, 11)
@@ -49,7 +57,7 @@ export function parsePartnerProfileFormData(
     email: String(formData.get('email') || '')
       .trim()
       .toLowerCase(),
-    mobile: String(formData.get('mobile') || '').trim(),
+    mobile: formatPhoneNumber(String(formData.get('mobile') || '')).trim(),
     password: String(formData.get('password') || ''),
     billing_name: String(formData.get('billing_name') || '').trim(),
     billing_country:
@@ -76,11 +84,15 @@ export function validatePartnerAccountStep(
 ): PartnerProfileFieldErrors {
   const errors: PartnerProfileFieldErrors = {}
   if (!input.name) errors.name = 'Add meg a neved.'
-  if (!input.email) errors.email = 'Add meg az email címet.'
+  if (!input.email) errors.email = 'Add meg az emailedet.'
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
     errors.email = 'Érvényes email címet adj meg.'
   }
-  if (!input.mobile) errors.mobile = 'Add meg a mobiltelefonszámot.'
+  if (!input.mobile) {
+    errors.mobile = 'Add meg a telefonszámot.'
+  } else if (!HU_PHONE_COMPLETE_RE.test(input.mobile)) {
+    errors.mobile = `Így add meg: ${HU_PHONE_EXAMPLE}`
+  }
   if (opts?.requirePassword !== false) {
     if (!input.password) errors.password = 'Add meg a jelszót.'
     else if (input.password.length < 8) {
@@ -138,7 +150,7 @@ export function validatePartnerCompanyStep(
 ): PartnerProfileFieldErrors {
   const errors: PartnerProfileFieldErrors = {}
   if (!input.selected_tenant_id) {
-    errors.selected_tenant_id = 'Válassz kapcsolt céget.'
+    errors.selected_tenant_id = 'Válassz céget.'
   }
   return errors
 }

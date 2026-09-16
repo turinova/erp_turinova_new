@@ -1,5 +1,6 @@
 'use server'
 
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { isSupabaseConfigured } from '@/lib/auth/config'
@@ -8,7 +9,7 @@ import {
   userHasTenantMembership
 } from '@/lib/auth/partner-session'
 import { partnerServerHref } from '@/lib/auth/partner-href-server'
-import { PARTNER_HOME_PATH, PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
+import { PARTNER_HOME_PATH, PARTNER_LOGIN_PATH, PARTNER_RESET_PASSWORD_PATH } from '@/lib/auth/surface'
 import { partnerTenantIsAccepting } from '@/lib/partner/companies'
 import {
   billingNameOrFallback,
@@ -33,19 +34,18 @@ export async function partnerLoginAction(
   const password = String(formData.get('password') || '')
 
   if (!email || !password) {
-    return { error: 'Add meg az email címet és a jelszót.' }
+    return { error: 'Add meg az emailedet és a jelszavadat.' }
   }
 
   if (!isSupabaseConfigured()) {
     return {
-      error:
-        'A partner belépéshez Supabase kell. Állítsd be a NEXT_PUBLIC_SUPABASE_* értékeket.'
+      error: 'A belépés most nem működik. Próbáld újra később.'
     }
   }
 
   const supabase = await createClient()
   if (!supabase) {
-    return { error: 'A bejelentkezés most nem elérhető. Próbáld újra később.' }
+    return { error: 'A belépés most nem elérhető. Próbáld újra később.' }
   }
 
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -58,16 +58,17 @@ export async function partnerLoginAction(
     if (msg.includes('email not confirmed')) {
       return {
         error:
-          'Az email még nincs megerősítve. Nézd meg a postaládád, vagy localhoz: Supabase → Authentication → Providers → Email → Confirm email = ki.'
+          'Előbb erősítsd meg az emailedet. Nézd meg a postaládádat (spam mappa is).'
       }
     }
     if (msg.includes('invalid login')) {
-      return { error: 'Hibás email vagy jelszó.' }
+      return {
+        error:
+          'Hibás email vagy jelszó. Próbáld újra, vagy kérj új jelszót.'
+      }
     }
     return {
-      error: error?.message
-        ? `Belépés sikertelen: ${error.message}`
-        : 'Hibás email vagy jelszó.'
+      error: 'Hibás email vagy jelszó. Próbáld újra, vagy kérj új jelszót.'
     }
   }
 
@@ -75,7 +76,7 @@ export async function partnerLoginAction(
     await supabase.auth.signOut()
     return {
       error:
-        'Ez a fiók céges (staff) hozzáférés. Lépj be az app.optinova.hu címen (céges belépés).'
+        'Ez a fiók a céges belépéshez való. Itt csak a rendelős fiókkal lehet belépni.'
     }
   }
 
@@ -83,7 +84,7 @@ export async function partnerLoginAction(
     await supabase.auth.signOut()
     return {
       error:
-        'Nincs partner profil ehhez a fiókhoz. Regisztrálj asztalosként az optinova.hu-n.'
+        'Ehhez az emailhez még nincs rendelős fiók. Előbb regisztrálj.'
     }
   }
 
@@ -96,8 +97,7 @@ export async function partnerLoginAction(
   if (statusRow?.status === 'disabled') {
     await supabase.auth.signOut()
     return {
-      error:
-        'A partner fiókod ki van kapcsolva. Ha szerinted ez hiba, írj a szolgáltatóknak.'
+      error: 'A fiókod ki van kapcsolva. Ha szerinted ez hiba, írj nekünk.'
     }
   }
 
@@ -118,6 +118,7 @@ type ProfileInsert = {
   billing_tax_number: string | null
   billing_company_reg_number: string | null
   selected_tenant_id: string
+  terms_accepted_at: string
 }
 
 async function insertPartnerProfile(
@@ -142,7 +143,8 @@ async function insertPartnerProfile(
     billing_house_number: input.billing_house_number,
     billing_tax_number: input.billing_tax_number,
     billing_company_reg_number: input.billing_company_reg_number,
-    selected_tenant_id: input.selected_tenant_id
+    selected_tenant_id: input.selected_tenant_id,
+    terms_accepted_at: input.terms_accepted_at
   })
 
   if (profileError) {
@@ -171,6 +173,17 @@ export async function partnerRegisterAction(
   _prev: PartnerAuthState,
   formData: FormData
 ): Promise<PartnerAuthState> {
+  const acceptedTerms =
+    formData.get('accept_terms') === 'on' ||
+    formData.get('accept_terms') === 'true' ||
+    formData.get('accept_terms') === '1'
+
+  if (!acceptedTerms) {
+    return {
+      error: 'Fogadd el az ÁSZF-et és az adatkezelési tájékoztatót.'
+    }
+  }
+
   const input = parsePartnerProfileFormData(formData)
   const fieldErrors = validatePartnerRegistration(input)
   const first = firstFieldError(fieldErrors)
@@ -291,7 +304,8 @@ export async function partnerRegisterAction(
     billing_house_number: input.billing_house_number || null,
     billing_tax_number: input.billing_tax_number || null,
     billing_company_reg_number: input.billing_company_reg_number || null,
-    selected_tenant_id: input.selected_tenant_id
+    selected_tenant_id: input.selected_tenant_id,
+    terms_accepted_at: new Date().toISOString()
   })
   if (profileResult.error) {
     if (data.session) await supabase.auth.signOut()
@@ -301,11 +315,101 @@ export async function partnerRegisterAction(
   if (!data.session) {
     return {
       success:
-        'A fiók létrejött. Erősítsd meg az emailed (ha kérte a rendszer), majd lépj be. Localhoz: Supabase → Authentication → Email → Confirm email kikapcsolása.'
+        'A fiókod kész. Ha kaptál megerősítő emailt, előbb azt nyisd meg, aztán lépj be.'
     }
   }
 
   redirect(await partnerServerHref(PARTNER_HOME_PATH))
+}
+
+export async function partnerForgotPasswordAction(
+  _prev: PartnerAuthState,
+  formData: FormData
+): Promise<PartnerAuthState> {
+  const email = String(formData.get('email') || '').trim().toLowerCase()
+  if (!email) {
+    return { error: 'Add meg az emailedet.' }
+  }
+
+  if (!isSupabaseConfigured()) {
+    return { error: 'Ez most nem működik. Próbáld újra később.' }
+  }
+
+  const supabase = await createClient()
+  if (!supabase) {
+    return { error: 'Ez most nem elérhető. Próbáld újra később.' }
+  }
+
+  const redirectTo = await buildPartnerPasswordResetRedirect()
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo
+  })
+
+  if (error) {
+    console.error('partnerForgotPasswordAction', error.message)
+    return {
+      error: 'Nem sikerült elküldeni az emailt. Próbáld újra később.'
+    }
+  }
+
+  // Mindig ugyanaz a szöveg (ne áruljuk el, létezik-e a fiók)
+  return {
+    success:
+      'Ha van fiók ezzel az emaillel, küldtünk egy linket. Nézd meg a postaládádat (spam mappa is).'
+  }
+}
+
+export async function partnerResetPasswordAction(
+  _prev: PartnerAuthState,
+  formData: FormData
+): Promise<PartnerAuthState> {
+  const password = String(formData.get('password') || '')
+  const confirm = String(formData.get('confirm_password') || '')
+
+  if (password.length < 8) {
+    return {
+      error: 'Az új jelszó legyen legalább 8 karakter.',
+      fieldErrors: { password: 'Legalább 8 karakter.' }
+    }
+  }
+  if (password !== confirm) {
+    return {
+      error: 'A két jelszó nem egyezik.',
+      fieldErrors: { confirm_password: 'Nem egyezik.' }
+    }
+  }
+
+  const supabase = await createClient()
+  if (!supabase) {
+    return { error: 'A jelszócsere most nem elérhető.' }
+  }
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return {
+      error:
+        'A link lejárt vagy már felhasználták. Kérj újat az „Elfelejtetted a jelszavad?” oldalon.'
+    }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) {
+    console.error('partnerResetPasswordAction', error.message)
+    return { error: 'Nem sikerült menteni az új jelszót. Próbáld újra.' }
+  }
+
+  redirect(await partnerServerHref(PARTNER_HOME_PATH))
+}
+
+async function buildPartnerPasswordResetRedirect(): Promise<string> {
+  const h = await headers()
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3010'
+  const proto = h.get('x-forwarded-proto') ?? 'http'
+  const origin = `${proto}://${host}`
+  const nextPath = await partnerServerHref(PARTNER_RESET_PASSWORD_PATH)
+  return `${origin}/auth/confirm?next=${encodeURIComponent(nextPath)}`
 }
 
 export async function partnerLogoutAction() {
