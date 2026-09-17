@@ -7,6 +7,7 @@ import { Printer } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ProductLabelPrintDialog } from '@/components/labels/product-label-print-dialog'
+import { AccessoryProcurementStockSection } from '@/components/accessories/accessory-procurement-stock-section'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
@@ -36,6 +37,7 @@ import {
   parseOptionalPurchaseMargin,
   sellGrossFromPurchase
 } from '@/lib/pricing/margin'
+import type { AccessoryProcurementStock } from '@/lib/stock/accessory-panel'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
 
@@ -48,6 +50,7 @@ type AccessoryFormProps = {
   canWrite: boolean
   tenantId: string
   canPrintLabels?: boolean
+  procurementStock?: AccessoryProcurementStock | null
 }
 
 function defaultUnitId(units: AccessoryUnitOption[]): string {
@@ -66,7 +69,8 @@ export function AccessoryForm({
   units,
   canWrite,
   tenantId,
-  canPrintLabels = false
+  canPrintLabels = false,
+  procurementStock = null
 }: AccessoryFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -545,6 +549,18 @@ export function AccessoryForm({
             />
           </FormField>
         </FormSection>
+
+        {mode === 'edit' && procurementStock && initial ? (
+          <AccessoryProcurementStockSection
+            stock={procurementStock}
+            accessoryId={initial.id}
+            unitShortform={
+              units.find((u) => u.id === unitId)?.shortform ??
+              initial?.unit_shortform ??
+              'db'
+            }
+          />
+        ) : null}
       </div>
 
       {canPrintLabels ? (

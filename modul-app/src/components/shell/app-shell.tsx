@@ -1,5 +1,7 @@
 'use client'
 
+import { usePathname } from 'next/navigation'
+
 import { AppSidebar } from '@/components/shell/app-sidebar'
 import { AppTopbar } from '@/components/shell/app-topbar'
 import { ImpersonationBanner } from '@/components/shell/impersonation-banner'
@@ -13,7 +15,20 @@ type AppShellProps = {
 }
 
 export function AppShell({ user, children }: AppShellProps) {
+  const pathname = usePathname()
   const { collapsed, setCollapsed } = useSidebarCollapsed()
+  const isPos = pathname === '/pos' || pathname.startsWith('/pos/')
+
+  if (isPos) {
+    return (
+      <div className="relative min-h-screen bg-app">
+        {user.impersonation ? (
+          <ImpersonationBanner info={user.impersonation} />
+        ) : null}
+        {children}
+      </div>
+    )
+  }
 
   return (
     <div className="relative min-h-screen bg-app">

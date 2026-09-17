@@ -18,3 +18,16 @@
     @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-surface;
   }
 }
+
+/* Linkify marketing port — mesh gradient blob */
+.linkify-root .lf-gradient {
+  background: conic-gradient(
+    from 230.29deg at 51.63% 52.16%,
+    rgb(248, 113, 113) 0deg,
+    rgb(251, 146, 60) 67.5deg,
+    rgb(239, 68, 68) 198.75deg,
+    rgb(244, 63, 94) 251.25deg,
+    rgb(252, 165, 165) 301.88deg,
+    rgb(248, 113, 113) 360deg
+  );
+}

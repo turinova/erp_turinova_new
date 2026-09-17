@@ -39,7 +39,13 @@ Részletes határok: **[08-separation-boundaries.md](08-separation-boundaries.md
 Komplett SaaS struktúra (deploy, tenancy, platform gerinc, DR): **[17-saas-architecture.md](17-saas-architecture.md)**.  
 Supabase bekötés lépései: **[19-supabase-setup.md](19-supabase-setup.md)**.  
 Partner / online asztalos (add-on): **[20-partner-portal.md](20-partner-portal.md)**.  
-Teljesítmény / lightning-fast fenntartás: **[22-performance-playbook.md](22-performance-playbook.md)**.
+Teljesítmény / lightning-fast fenntartás: **[22-performance-playbook.md](22-performance-playbook.md)**.  
+Beszerzés (beszállító / rendelés / beérkezés): **[24-beszerzes-workflow.md](24-beszerzes-workflow.md)**.  
+Raktárak: **[25-warehouses.md](25-warehouses.md)**.  
+Beérkezések + készlet: **[26-beerkezesek.md](26-beerkezesek.md)**.  
+Áttárolás + mozgások: **[27-keszlet-atadasok.md](27-keszlet-atadasok.md)**.  
+Értékesítés (sale / POS-ready): **[28-ertekesites-workflow.md](28-ertekesites-workflow.md)**.  
+POS pult: **[29-pos-workflow.md](29-pos-workflow.md)**.
 
 **Nem cél:** UI egységesítés közös package-ben, fájl-migráció, import a régi appokból.
 

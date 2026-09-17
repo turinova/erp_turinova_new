@@ -26,5 +26,12 @@
 | [20-partner-portal.md](20-partner-portal.md) | **Partner portal** — online asztalos, add-on, fázisok |
 | [21-platform-ops.md](21-platform-ops.md) | **Platform ops** — 1–2 fős üzem, P0 döntések, admin host |
 | [22-performance-playbook.md](22-performance-playbook.md) | **Lightning-fast fenntartás** — P0–P2 döntések, mérés, regresszió |
+| [23-lapszabaszat-addon.md](23-lapszabaszat-addon.md) | Lapszabászat add-on — entitlements, nav, deps |
+| [24-beszerzes-workflow.md](24-beszerzes-workflow.md) | **Beszerzés workflow** — beszállító → rendelés → beérkezés → készlet; edge case-ek |
+| [25-warehouses.md](25-warehouses.md) | Raktárak MVP |
+| [26-beerkezesek.md](26-beerkezesek.md) | Beérkezések + stock receive |
+| [27-keszlet-atadasok.md](27-keszlet-atadasok.md) | **Áttárolás + mozgások** — azonnali transfer, ledger lista |
+| [28-ertekesites-workflow.md](28-ertekesites-workflow.md) | **Értékesítés** — manuális sale, kedvezmény, fizetés, stock out; POS/webshop-ready |
+| [29-pos-workflow.md](29-pos-workflow.md) | **POS** — scanner-first till, channel=pos, P0+P1 |
 
-**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`).
+**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**.

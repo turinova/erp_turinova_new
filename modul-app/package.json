@@ -10,6 +10,7 @@
     "lint": "next lint",
     "clean": "rm -rf .next var",
     "speed-test": "node --env-file=.env.local scripts/speed-test.mjs",
+    "seed:footcounter": "node --env-file=.env.local scripts/seed-footcounter-2026.mjs",
     "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
+    "framer-motion": "^11.18.2",
     "jsbarcode": "^3.12.3",
     "lucide-react": "^0.511.0",
     "next": "^15.2.8",

@@ -64,6 +64,24 @@ export type Manufacturer = {
   deleted_at: string | null
 }
 
+export type Warehouse = {
+  id: string
+  tenant_id: string
+  name: string
+  code: string
+  is_default: boolean
+  is_active: boolean
+  country: string | null
+  postal_code: string | null
+  city: string | null
+  street: string | null
+  house_number: string | null
+  note: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
 export type Unit = {
   id: string
   tenant_id: string
@@ -206,6 +224,275 @@ export type Customer = {
   billing_company_reg_number: string | null
   created_at: string
   updated_at: string
+  deleted_at: string | null
+}
+
+export type SupplierStatus = 'active' | 'inactive'
+export type SupplierCurrency = 'HUF' | 'EUR' | 'USD'
+export type SupplierAddressType = 'billing' | 'shipping' | 'other'
+
+export type Supplier = {
+  id: string
+  tenant_id: string
+  name: string
+  email: string | null
+  phone: string | null
+  website: string | null
+  tax_number: string | null
+  eu_vat_number: string | null
+  company_reg_number: string | null
+  iban: string | null
+  bic: string | null
+  account_holder: string | null
+  notes: string | null
+  status: SupplierStatus
+  default_currency: SupplierCurrency
+  default_tax_rate_id: string | null
+  default_payment_method_id: string | null
+  default_payment_terms_days: number
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type SupplierAddress = {
+  id: string
+  tenant_id: string
+  supplier_id: string
+  label: string | null
+  address_type: SupplierAddressType
+  country: string
+  postal_code: string | null
+  city: string | null
+  street: string | null
+  house_number: string | null
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type SupplierContact = {
+  id: string
+  tenant_id: string
+  supplier_id: string
+  name: string
+  email: string | null
+  phone: string | null
+  is_primary: boolean
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type PurchaseOrderStatus =
+  | 'draft'
+  | 'ordered'
+  | 'partial'
+  | 'received'
+  | 'cancelled'
+
+export type PurchaseOrder = {
+  id: string
+  tenant_id: string
+  supplier_id: string
+  warehouse_id: string
+  po_number: string
+  status: PurchaseOrderStatus
+  expected_date: string | null
+  note: string | null
+  currency: string
+  email_sent: boolean
+  email_sent_at: string | null
+  ordered_at: string | null
+  cancelled_at: string | null
+  closed_incomplete_at: string | null
+  closed_incomplete_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type PurchaseOrderItem = {
+  id: string
+  tenant_id: string
+  purchase_order_id: string
+  accessory_id: string
+  name_snapshot: string
+  sku_snapshot: string
+  quantity: number
+  net_price: number
+  tax_rate_id: string
+  tax_rate_percent: number
+  unit_id: string
+  unit_shortform: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type GoodsReceiptStatus = 'checking' | 'received' | 'cancelled'
+
+export type GoodsReceipt = {
+  id: string
+  tenant_id: string
+  purchase_order_id: string
+  warehouse_id: string
+  receipt_number: string
+  status: GoodsReceiptStatus
+  note: string | null
+  received_at: string | null
+  received_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type GoodsReceiptItem = {
+  id: string
+  tenant_id: string
+  goods_receipt_id: string
+  purchase_order_item_id: string | null
+  accessory_id: string
+  name_snapshot: string
+  sku_snapshot: string
+  unit_shortform: string
+  target_quantity: number
+  quantity_received: number
+  is_extra: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type StockMovementType = 'in' | 'out'
+export type StockMovementSource =
+  | 'purchase_receipt'
+  | 'adjustment'
+  | 'sale'
+  | 'transfer'
+
+export type StockMovement = {
+  id: string
+  tenant_id: string
+  warehouse_id: string
+  product_type: 'accessory'
+  accessory_id: string
+  quantity: number
+  movement_type: StockMovementType
+  source_type: StockMovementSource
+  source_id: string | null
+  unit_cost_net: number | null
+  note: string | null
+  stock_movement_number: string
+  created_by: string | null
+  created_at: string
+}
+
+export type StockTransferStatus = 'completed' | 'cancelled'
+
+export type StockTransfer = {
+  id: string
+  tenant_id: string
+  from_warehouse_id: string
+  to_warehouse_id: string
+  transfer_number: string
+  status: StockTransferStatus
+  note: string | null
+  completed_at: string | null
+  completed_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type StockTransferItem = {
+  id: string
+  tenant_id: string
+  stock_transfer_id: string
+  accessory_id: string
+  name_snapshot: string
+  sku_snapshot: string
+  unit_shortform: string
+  quantity: number
+  sort_order: number
+  created_at: string
+  deleted_at: string | null
+}
+
+export type SaleChannel = 'manual' | 'pos' | 'webshop'
+export type SaleStatus =
+  | 'draft'
+  | 'confirmed'
+  | 'fulfilled'
+  | 'cancelled'
+  | 'returned'
+export type SalePaymentStatus = 'unpaid' | 'partial' | 'paid'
+
+export type SalesOrder = {
+  id: string
+  tenant_id: string
+  warehouse_id: string
+  customer_id: string | null
+  sale_number: string
+  channel: SaleChannel
+  external_ref: string | null
+  status: SaleStatus
+  payment_status: SalePaymentStatus
+  customer_name_snapshot: string | null
+  discount_percentage: number
+  discount_amount: number
+  subtotal_net: number
+  total_vat: number
+  total_gross: number
+  cash_rounding_amount: number
+  note: string | null
+  fulfilled_at: string | null
+  fulfilled_by: string | null
+  cancelled_at: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  deleted_at: string | null
+}
+
+export type SalesOrderItem = {
+  id: string
+  tenant_id: string
+  sales_order_id: string
+  item_kind: 'product' | 'fee'
+  accessory_id: string | null
+  fee_type_id: string | null
+  name_snapshot: string
+  sku_snapshot: string | null
+  unit_shortform: string
+  quantity: number
+  unit_price_net: number
+  unit_price_gross: number
+  tax_rate_percent: number
+  discount_percentage: number
+  discount_amount: number
+  total_net: number
+  total_vat: number
+  total_gross: number
+  sort_order: number
+  created_at: string
+  deleted_at: string | null
+}
+
+export type SalesPayment = {
+  id: string
+  tenant_id: string
+  sales_order_id: string
+  payment_method_id: string | null
+  payment_method_name: string
+  amount: number
+  status: 'completed' | 'voided'
+  provider_ref: string | null
+  paid_at: string
+  created_by: string | null
+  created_at: string
   deleted_at: string | null
 }
 
@@ -503,6 +790,27 @@ export type Database = {
         }
         Update: Partial<Manufacturer>
       }
+      warehouses: {
+        Row: Warehouse
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          code: string
+          is_default?: boolean
+          is_active?: boolean
+          country?: string | null
+          postal_code?: string | null
+          city?: string | null
+          street?: string | null
+          house_number?: string | null
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<Warehouse>
+      }
       units: {
         Row: Unit
         Insert: {
@@ -709,6 +1017,283 @@ export type Database = {
           deleted_at?: string | null
         }
         Update: Partial<Customer>
+      }
+      suppliers: {
+        Row: Supplier
+        Insert: {
+          id?: string
+          tenant_id: string
+          name: string
+          email?: string | null
+          phone?: string | null
+          website?: string | null
+          tax_number?: string | null
+          eu_vat_number?: string | null
+          company_reg_number?: string | null
+          iban?: string | null
+          bic?: string | null
+          account_holder?: string | null
+          notes?: string | null
+          status?: SupplierStatus
+          default_currency?: SupplierCurrency
+          default_tax_rate_id?: string | null
+          default_payment_method_id?: string | null
+          default_payment_terms_days?: number
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<Supplier>
+      }
+      supplier_addresses: {
+        Row: SupplierAddress
+        Insert: {
+          id?: string
+          tenant_id: string
+          supplier_id: string
+          label?: string | null
+          address_type?: SupplierAddressType
+          country?: string
+          postal_code?: string | null
+          city?: string | null
+          street?: string | null
+          house_number?: string | null
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<SupplierAddress>
+      }
+      supplier_contacts: {
+        Row: SupplierContact
+        Insert: {
+          id?: string
+          tenant_id: string
+          supplier_id: string
+          name: string
+          email?: string | null
+          phone?: string | null
+          is_primary?: boolean
+          note?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: Partial<SupplierContact>
+      }
+      purchase_orders: {
+        Row: PurchaseOrder
+        Insert: {
+          id?: string
+          tenant_id: string
+          supplier_id: string
+          warehouse_id: string
+          po_number: string
+          status?: PurchaseOrderStatus
+          expected_date?: string | null
+          note?: string | null
+          currency?: string
+          email_sent?: boolean
+          email_sent_at?: string | null
+          ordered_at?: string | null
+          cancelled_at?: string | null
+          closed_incomplete_at?: string | null
+          closed_incomplete_by?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<PurchaseOrder>
+      }
+      purchase_order_items: {
+        Row: PurchaseOrderItem
+        Insert: {
+          id?: string
+          tenant_id: string
+          purchase_order_id: string
+          accessory_id: string
+          name_snapshot: string
+          sku_snapshot: string
+          quantity: number
+          net_price: number
+          tax_rate_id: string
+          tax_rate_percent: number
+          unit_id: string
+          unit_shortform: string
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<PurchaseOrderItem>
+      }
+      goods_receipts: {
+        Row: GoodsReceipt
+        Insert: {
+          id?: string
+          tenant_id: string
+          purchase_order_id: string
+          warehouse_id: string
+          receipt_number: string
+          status?: GoodsReceiptStatus
+          note?: string | null
+          received_at?: string | null
+          received_by?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<GoodsReceipt>
+      }
+      goods_receipt_items: {
+        Row: GoodsReceiptItem
+        Insert: {
+          id?: string
+          tenant_id: string
+          goods_receipt_id: string
+          purchase_order_item_id?: string | null
+          accessory_id: string
+          name_snapshot: string
+          sku_snapshot: string
+          unit_shortform: string
+          target_quantity: number
+          quantity_received?: number
+          is_extra?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<GoodsReceiptItem>
+      }
+      stock_movements: {
+        Row: StockMovement
+        Insert: {
+          id?: string
+          tenant_id: string
+          warehouse_id: string
+          product_type?: 'accessory'
+          accessory_id: string
+          quantity: number
+          movement_type: StockMovementType
+          source_type: StockMovementSource
+          source_id?: string | null
+          unit_cost_net?: number | null
+          note?: string | null
+          stock_movement_number: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: Partial<StockMovement>
+      }
+      stock_transfers: {
+        Row: StockTransfer
+        Insert: {
+          id?: string
+          tenant_id: string
+          from_warehouse_id: string
+          to_warehouse_id: string
+          transfer_number: string
+          status?: StockTransferStatus
+          note?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<StockTransfer>
+      }
+      stock_transfer_items: {
+        Row: StockTransferItem
+        Insert: {
+          id?: string
+          tenant_id: string
+          stock_transfer_id: string
+          accessory_id: string
+          name_snapshot: string
+          sku_snapshot: string
+          unit_shortform: string
+          quantity: number
+          sort_order?: number
+          created_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<StockTransferItem>
+      }
+      sales_orders: {
+        Row: SalesOrder
+        Insert: {
+          id?: string
+          tenant_id: string
+          warehouse_id: string
+          customer_id?: string | null
+          sale_number: string
+          channel?: SaleChannel
+          external_ref?: string | null
+          status?: SaleStatus
+          payment_status?: SalePaymentStatus
+          customer_name_snapshot?: string | null
+          discount_percentage?: number
+          discount_amount?: number
+          subtotal_net?: number
+          total_vat?: number
+          total_gross?: number
+          cash_rounding_amount?: number
+          note?: string | null
+          fulfilled_at?: string | null
+          fulfilled_by?: string | null
+          cancelled_at?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<SalesOrder>
+      }
+      sales_order_items: {
+        Row: SalesOrderItem
+        Insert: {
+          id?: string
+          tenant_id: string
+          sales_order_id: string
+          item_kind?: 'product' | 'fee'
+          accessory_id?: string | null
+          fee_type_id?: string | null
+          name_snapshot: string
+          sku_snapshot?: string | null
+          unit_shortform?: string
+          quantity: number
+          unit_price_net?: number
+          unit_price_gross?: number
+          tax_rate_percent?: number
+          discount_percentage?: number
+          discount_amount?: number
+          total_net?: number
+          total_vat?: number
+          total_gross?: number
+          sort_order?: number
+          created_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<SalesOrderItem>
+      }
+      sales_payments: {
+        Row: SalesPayment
+        Insert: {
+          id?: string
+          tenant_id: string
+          sales_order_id: string
+          payment_method_id?: string | null
+          payment_method_name: string
+          amount: number
+          status?: 'completed' | 'voided'
+          provider_ref?: string | null
+          paid_at?: string
+          created_by?: string | null
+          created_at?: string
+          deleted_at?: string | null
+        }
+        Update: Partial<SalesPayment>
       }
       cutting_fees: {
         Row: CuttingFee
@@ -952,6 +1537,64 @@ export type Database = {
       generate_order_number: {
         Args: { p_tenant_id: string }
         Returns: string
+      }
+      generate_purchase_order_number: {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
+      generate_goods_receipt_number: {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
+      generate_stock_movement_number: {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
+      accessory_on_hand: {
+        Args: {
+          p_tenant_id: string
+          p_accessory_id: string
+          p_warehouse_id: string
+        }
+        Returns: number
+      }
+      generate_stock_transfer_number: {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
+      create_stock_transfer: {
+        Args: {
+          p_from_warehouse_id: string
+          p_to_warehouse_id: string
+          p_note: string | null
+          p_items: unknown
+        }
+        Returns: Record<string, unknown>
+      }
+      generate_sale_number: {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
+      hungarian_cash_round: {
+        Args: { p_amount: number }
+        Returns: number
+      }
+      create_sale: {
+        Args: {
+          p_warehouse_id: string
+          p_customer_id: string | null
+          p_channel: string
+          p_note: string | null
+          p_items: unknown
+          p_fees: unknown
+          p_discount: unknown
+          p_payments: unknown
+        }
+        Returns: Record<string, unknown>
+      }
+      receive_goods_receipt: {
+        Args: { p_receipt_id: string }
+        Returns: Record<string, unknown>
       }
       convert_quote_to_order: {
         Args: {

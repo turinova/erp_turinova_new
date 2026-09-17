@@ -151,6 +151,47 @@ const config: Config = {
       transitionDuration: {
         fast: 'var(--dur-fast)',
         mid: 'var(--dur-mid)'
+      },
+      backgroundImage: {
+        'gradient-conic':
+          'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))'
+      },
+      keyframes: {
+        'lf-border-beam': {
+          '100%': {
+            'offset-distance': '100%'
+          }
+        },
+        'lf-image-glow': {
+          '0%': {
+            opacity: '0',
+            'animation-timing-function': 'cubic-bezier(.74, .25, .76, 1)'
+          },
+          '10%': {
+            opacity: '0.5',
+            'animation-timing-function': 'cubic-bezier(.12, .01, .08, .99)'
+          },
+          '100%': {
+            opacity: '0.7'
+          }
+        },
+        'lf-flip': {
+          to: {
+            transform: 'rotate(360deg)'
+          }
+        },
+        'lf-rotate': {
+          to: {
+            transform: 'rotate(90deg)'
+          }
+        }
+      },
+      animation: {
+        'lf-border-beam':
+          'lf-border-beam calc(var(--duration)*1s) infinite linear',
+        'lf-image-glow': 'lf-image-glow 4s ease-out 0.6s forwards',
+        'lf-flip': 'lf-flip 6s infinite steps(2, end)',
+        'lf-rotate': 'lf-rotate 3s linear infinite both'
       }
     }
   },

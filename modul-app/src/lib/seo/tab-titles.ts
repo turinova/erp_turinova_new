@@ -83,6 +83,40 @@ export async function customerTabTitle(
   return truncateTabTitle(data.name)
 }
 
+export async function supplierTabTitle(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('name')
+    .eq('tenant_id', tenantId)
+    .eq('id', supplierId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error || !data?.name) return null
+  return truncateTabTitle(data.name)
+}
+
+export async function purchaseOrderTabTitle(
+  supabase: SupabaseClient,
+  tenantId: string,
+  poId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .select('po_number')
+    .eq('tenant_id', tenantId)
+    .eq('id', poId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error || !data?.po_number) return null
+  return truncateTabTitle(data.po_number)
+}
+
 export async function namedEntityTabTitle(
   supabase: SupabaseClient,
   table:

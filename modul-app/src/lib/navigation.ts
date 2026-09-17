@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import {
+  ArrowLeftRight,
   BookMarked,
   Boxes,
   Building2,
@@ -9,6 +10,7 @@ import {
   Factory,
   FileText,
   Handshake,
+  History,
   Home,
   ImageIcon,
   Layers,
@@ -20,11 +22,16 @@ import {
   Search,
   Settings,
   Settings2,
+  ShoppingCart,
   SquareStack,
   RectangleHorizontal,
   Package,
+  PackageCheck,
+  Truck,
   Users,
+  UsersRound,
   Wallet,
+  Warehouse,
   Wrench
 } from 'lucide-react'
 
@@ -83,24 +90,116 @@ export const mainNavItems: NavNode[] = [
   },
   {
     type: 'link',
-    label: 'Árajánlatok',
-    href: '/ajanlatok',
-    icon: FileText,
-    accent: 'slate'
-  },
-  {
-    type: 'link',
-    label: 'Megrendelések',
-    href: '/megrendelesek',
-    icon: ClipboardList,
-    accent: 'slate'
-  },
-  {
-    type: 'link',
     label: 'Scanner',
     href: '/scanner',
     icon: ScanBarcode,
     accent: 'slate'
+  },
+  {
+    type: 'link',
+    label: 'Belépők',
+    href: '/belepok',
+    icon: UsersRound,
+    accent: 'slate'
+  },
+  {
+    type: 'group',
+    label: 'Értékesítés',
+    icon: ShoppingCart,
+    accent: 'slate',
+    matchPrefix: '/ertekesitesek',
+    children: [
+      {
+        type: 'link',
+        label: 'Értékesítések',
+        href: '/ertekesitesek',
+        icon: ShoppingCart,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'POS',
+        href: '/pos',
+        icon: ScanBarcode,
+        accent: 'slate'
+      }
+    ]
+  },
+  {
+    type: 'group',
+    label: 'Beszerzés',
+    icon: Truck,
+    accent: 'slate',
+    matchPrefix: '/beszallitok',
+    children: [
+      {
+        type: 'link',
+        label: 'Beszállítók',
+        href: '/beszallitok',
+        icon: Building2,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Beszállítói rendelések',
+        href: '/beszallitoi-rendelesek',
+        icon: ClipboardList,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Beérkezések',
+        href: '/beerkezesek',
+        icon: PackageCheck,
+        accent: 'slate'
+      }
+    ]
+  },
+  {
+    type: 'group',
+    label: 'Készlet',
+    icon: Warehouse,
+    accent: 'slate',
+    matchPrefix: '/keszlet',
+    children: [
+      {
+        type: 'link',
+        label: 'Áttárolások',
+        href: '/keszlet/atadasok',
+        icon: ArrowLeftRight,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Mozgások',
+        href: '/keszlet/mozgasok',
+        icon: History,
+        accent: 'slate'
+      }
+    ]
+  },
+  {
+    type: 'group',
+    label: 'Lapszabászat',
+    icon: Factory,
+    accent: 'slate',
+    matchPrefix: '/ajanlatok',
+    children: [
+      {
+        type: 'link',
+        label: 'Árajánlatok',
+        href: '/ajanlatok',
+        icon: FileText,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Megrendelések',
+        href: '/megrendelesek',
+        icon: Package,
+        accent: 'slate'
+      }
+    ]
   },
   {
     type: 'group',
@@ -190,6 +289,13 @@ export const mainNavItems: NavNode[] = [
           },
           {
             type: 'link',
+            label: 'Raktárak',
+            href: '/torzsadatok/rendszer/raktarak',
+            icon: Warehouse,
+            accent: 'slate'
+          },
+          {
+            type: 'link',
             label: 'Berendezés',
             href: '/torzsadatok/rendszer/berendezes',
             icon: Wrench,
@@ -273,6 +379,16 @@ export function pathIsActive(pathname: string, href: string) {
 
 export function pathMatchesPrefix(pathname: string, prefix: string) {
   return pathname === prefix || pathname.startsWith(`${prefix}/`)
+}
+
+/** Csoport aktív, ha a prefix vagy bármely leszármazott link egyezik. */
+export function navGroupIsActive(group: NavGroup, pathname: string): boolean {
+  if (pathMatchesPrefix(pathname, group.matchPrefix)) return true
+  for (const child of group.children) {
+    if (isNavLink(child) && pathIsActive(pathname, child.href)) return true
+    if (isNavGroup(child) && navGroupIsActive(child, pathname)) return true
+  }
+  return false
 }
 
 /** Leghosszabb href-egyezés — detail route-okhoz is (pl. /elzarok/[id]). */

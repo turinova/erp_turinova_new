@@ -229,6 +229,12 @@ export function isStaffOnlyPath(pathname: string): boolean {
   return (
     pathname.startsWith('/platform') ||
     pathname.startsWith('/ugyfelek') ||
+    pathname.startsWith('/beszallitok') ||
+    pathname.startsWith('/beszallitoi-rendelesek') ||
+    pathname.startsWith('/beerkezesek') ||
+    pathname.startsWith('/keszlet') ||
+    pathname.startsWith('/ertekesitesek') ||
+    pathname.startsWith('/pos') ||
     pathname.startsWith('/torzsadatok') ||
     pathname === '/no-access' ||
     pathname === '/nincs-hozzaferes'
@@ -245,8 +251,16 @@ export function isTenantAppPath(pathname: string): boolean {
     pathname.startsWith('/kereso') ||
     pathname.startsWith('/opti') ||
     pathname.startsWith('/ugyfelek') ||
+    pathname.startsWith('/beszallitok') ||
+    pathname.startsWith('/beszallitoi-rendelesek') ||
+    pathname.startsWith('/beerkezesek') ||
+    pathname.startsWith('/keszlet') ||
+    pathname.startsWith('/ertekesitesek') ||
+    pathname.startsWith('/pos') ||
     pathname.startsWith('/ajanlatok') ||
     pathname.startsWith('/megrendelesek') ||
+    pathname.startsWith('/scanner') ||
+    pathname.startsWith('/belepok') ||
     pathname.startsWith('/torzsadatok') ||
     pathname.startsWith('/beallitasok') ||
     pathname.startsWith('/felhasznalok') ||

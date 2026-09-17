@@ -12,8 +12,8 @@ import { getNavAccentClasses } from '@/lib/nav-accent'
 import {
   isNavLink,
   mainNavItems,
+  navGroupIsActive,
   pathIsActive,
-  pathMatchesPrefix,
   type NavGroup,
   type NavLink,
   type NavNode
@@ -317,7 +317,7 @@ function NavGroupItem({
   collapsed: boolean
   onExpandSidebar: () => void
 }) {
-  const inSection = pathMatchesPrefix(pathname, group.matchPrefix)
+  const inSection = navGroupIsActive(group, pathname)
   const [open, setOpen] = useState(inSection)
   const Icon = group.icon
   const accent = getNavAccentClasses(group.accent)

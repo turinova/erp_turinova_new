@@ -68,7 +68,15 @@ function redirectExternal(origin: string, pathname: string) {
 
 function isPublicMarketingPath(pathname: string) {
   return (
+    pathname === '/' ||
     pathname === '/hamarosan' ||
+    pathname === '/arak' ||
+    pathname === '/kapcsolat' ||
+    pathname === '/hogyan-mukodik' ||
+    pathname === '/a-tortenetunk' ||
+    pathname === '/esettanulmany' ||
+    pathname.startsWith('/esettanulmany/') ||
+    pathname === '/ceges-belepes' ||
     pathname === '/impresszum' ||
     pathname === '/aszf' ||
     pathname === '/adatkezelesi-tajekoztato'
@@ -131,14 +139,16 @@ export async function updateSession(request: NextRequest) {
         const clean = partnerInternalToClean(pathname)
         if (clean) return redirectTo(request, clean)
       }
-      if (pathname === '/' || pathname === '') {
-        // Publikus marketing: coming soon — partner login továbbra is /login
-        return redirectTo(request, '/hamarosan')
+      if (pathname === '/hamarosan') {
+        return redirectTo(request, '/')
       }
-      if (isStaffOnlyPath(pathname)) {
-        return redirectTo(request, PARTNER_LOGIN_PATH)
+      // Staff-only paths: allow through; after auth we gate (staff session OK).
+      // Marketing pages stay at app routes (no /partner rewrite)
+      if (isPublicMarketingPath(pathname)) {
+        rewriteTarget = null
+      } else {
+        rewriteTarget = partnerCleanToInternal(pathname)
       }
-      rewriteTarget = partnerCleanToInternal(pathname)
     }
   }
 
@@ -183,6 +193,9 @@ export async function updateSession(request: NextRequest) {
   const isPublicImpersonationHandoff =
     pathname.startsWith('/api/platform/impersonation/complete')
 
+  /** Pi → cloud sync: Bearer / x-footcounter-secret, no user session. */
+  const isPublicFootcounterSync = pathname === '/api/footcounter/sync'
+
   const isPublicAuth =
     isPublicMarketingPath(pathname) ||
     ((surface === 'staff' || surface === 'platform') &&
@@ -200,7 +213,12 @@ export async function updateSession(request: NextRequest) {
         pathname === '/partner/elfelejtett-jelszo' ||
         pathname === '/partner/uj-jelszo'))
 
-  if (isPublicAsset || isPublicPartnerApi || isPublicImpersonationHandoff) {
+  if (
+    isPublicAsset ||
+    isPublicPartnerApi ||
+    isPublicImpersonationHandoff ||
+    isPublicFootcounterSync
+  ) {
     return supabaseResponse
   }
 
@@ -270,8 +288,38 @@ export async function updateSession(request: NextRequest) {
           isAuthenticated = true
           isPartnerUser = true
         } else if (!isPublicAuth) {
-          await supabase.auth.signOut()
-          return redirectTo(request, PARTNER_LOGIN_PATH)
+          // Céges belépés a partner marketing hoston (MODUL_AUTH_SURFACE=partner)
+          const nonce = request.cookies.get(APP_SESSION_NONCE_COOKIE)?.value
+          const snapshotToken = request.cookies.get(SESSION_SNAPSHOT_COOKIE)
+            ?.value
+          const snap = await snapshotMatchesRequest({
+            token: snapshotToken,
+            userId: user.id,
+            nonce
+          })
+
+          if (snap?.hasMembership) {
+            isAuthenticated = true
+            hasStaffMembership = true
+            isPartnerUser = false
+          } else {
+            const [{ data: memberships }, valid] = await Promise.all([
+              supabase
+                .from('tenant_memberships')
+                .select('id')
+                .eq('user_id', user.id)
+                .limit(1),
+              isAppSessionValid(supabase, user.id, nonce)
+            ])
+            hasStaffMembership = (memberships?.length ?? 0) > 0
+            if (hasStaffMembership && valid) {
+              isAuthenticated = true
+              isPartnerUser = false
+            } else {
+              await supabase.auth.signOut()
+              return redirectTo(request, '/ceges-belepes')
+            }
+          }
         }
       } else {
         const nonce = request.cookies.get(APP_SESSION_NONCE_COOKIE)?.value
@@ -365,16 +413,57 @@ export async function updateSession(request: NextRequest) {
     isAuthenticated = Boolean(
       request.cookies.get(DEV_SESSION_COOKIE)?.value
     )
+    if (isAuthenticated) {
+      hasStaffMembership = true
+    }
   }
 
   if (!isAuthenticated && !isPublicAuth) {
+    const loginPath =
+      partnerCtx && !isStaffOnlyPath(pathname)
+        ? PARTNER_LOGIN_PATH
+        : partnerCtx && isStaffOnlyPath(pathname)
+          ? '/ceges-belepes'
+          : '/login'
+    return redirectTo(request, loginPath)
+  }
+
+  // Staff session on partner marketing host → serve tenant app (no /partner rewrite)
+  if (
+    surface === 'partner' &&
+    isAuthenticated &&
+    hasStaffMembership &&
+    !isPartnerUser
+  ) {
+    rewriteTarget = null
+    surfaceLabel = 'staff'
+    const prevCookies = supabaseResponse.cookies.getAll()
+    supabaseResponse = buildResponse()
+    for (const cookie of prevCookies) {
+      supabaseResponse.cookies.set(cookie)
+    }
+  } else if (
+    surface === 'partner' &&
+    isStaffOnlyPath(pathname) &&
+    !(isAuthenticated && hasStaffMembership)
+  ) {
     return redirectTo(
       request,
-      partnerCtx ? PARTNER_LOGIN_PATH : '/login'
+      isAuthenticated && isPartnerUser ? PARTNER_HOME_PATH : '/ceges-belepes'
     )
   }
 
   const partnerHome = partnerHomePathname(surface)
+
+  // Bejelentkezett partner a marketing főoldalon → app home
+  if (
+    isAuthenticated &&
+    isPartnerUser &&
+    surface === 'partner' &&
+    (pathname === '/' || pathname === '')
+  ) {
+    return redirectTo(request, partnerHome)
+  }
 
   // Partner-only: ne ragadjon staff /home ↔ /no-access loopba (path-mód)
   if (
@@ -397,8 +486,12 @@ export async function updateSession(request: NextRequest) {
       pathname === '/partner/login' ||
       pathname === '/partner/register' ||
       pathname === '/partner/elfelejtett-jelszo' ||
-      pathname === '/login')
+      pathname === '/login' ||
+      pathname === '/ceges-belepes')
   ) {
+    if (hasStaffMembership && !isPartnerUser) {
+      return redirectTo(request, '/home')
+    }
     if (isPartnerUser && !hasStaffMembership) {
       return redirectTo(request, partnerHome)
     }

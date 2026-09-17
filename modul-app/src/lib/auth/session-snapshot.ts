@@ -4,9 +4,12 @@ import {
   SESSION_SNAPSHOT_TTL_SEC,
   getSessionSnapshotSecret
 } from '@/lib/auth/config'
+import { PAGE_CATALOG_VERSION } from '@/lib/permissions/pages'
 
 export type SessionSnapshot = {
   v: 1
+  /** APP_PAGES katalógus verzió — mismatch → snapshot érvénytelen. */
+  pagesV: number
   sub: string
   email: string
   tenantId: string | null
@@ -101,6 +104,7 @@ export function buildSessionSnapshot(input: {
   const ttl = input.ttlSec ?? SESSION_SNAPSHOT_TTL_SEC
   return {
     v: 1,
+    pagesV: PAGE_CATALOG_VERSION,
     sub: input.userId,
     email: input.email,
     tenantId: input.tenantId,
@@ -144,6 +148,7 @@ export async function verifySessionSnapshotToken(
     const json = utf8Decode(base64UrlDecode(payload))
     const data = JSON.parse(json) as SessionSnapshot
     if (data.v !== 1 || typeof data.sub !== 'string') return null
+    if (data.pagesV !== PAGE_CATALOG_VERSION) return null
     if (typeof data.exp !== 'number' || data.exp * 1000 < Date.now()) {
       return null
     }
