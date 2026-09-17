@@ -15,9 +15,7 @@ export default async function RootPage() {
     return <MarketingHomePage />
   }
 
-  if (surface === 'platform') {
-    redirect('/platform')
-  }
-
+  // Platform (admin.): middleware rewrites `/` → `/platform` — this page
+  // should not run there. Staff / localhost → tenant home.
   redirect('/home')
 }

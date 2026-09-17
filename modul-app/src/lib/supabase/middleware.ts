@@ -121,7 +121,12 @@ export async function updateSession(request: NextRequest) {
       if (isTenantAppPath(pathname) && pathname !== '/login') {
         return redirectTo(request, '/')
       }
-      if (pathname !== '/login' && !isPublicMarketingPath(pathname)) {
+      // `/` is marketing-public on partner only. On admin, rewrite `/` → `/platform`
+      // (never skip rewrite for `/` — that caused `/` ⇄ `/platform` redirect loops).
+      if (pathname !== '/login') {
+        if (isPublicMarketingPath(pathname) && pathname !== '/') {
+          return redirectTo(request, '/')
+        }
         rewriteTarget = platformCleanToInternal(pathname)
         if (!rewriteTarget && !isPlatformPath(pathname)) {
           return redirectTo(request, '/')
@@ -197,7 +202,7 @@ export async function updateSession(request: NextRequest) {
   const isPublicFootcounterSync = pathname === '/api/footcounter/sync'
 
   const isPublicAuth =
-    isPublicMarketingPath(pathname) ||
+    (surface !== 'platform' && isPublicMarketingPath(pathname)) ||
     ((surface === 'staff' || surface === 'platform') &&
       pathname === '/login') ||
     pathname === '/auth/confirm' ||
