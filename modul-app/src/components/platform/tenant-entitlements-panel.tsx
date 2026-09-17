@@ -14,6 +14,10 @@ import {
 } from '@/lib/platform/entitlement-actions'
 import type { ProductAddon, ProductPlan } from '@/lib/platform/entitlements'
 import type { TenantFeatureRow } from '@/lib/platform/entitlement-queries'
+import {
+  LAPSZABASZAT_ADDON_KEY,
+  LAPSZABASZAT_DEPENDENT_ADDON_KEYS
+} from '@/lib/lapszabaszat/types'
 
 type AddonRow = ProductAddon & {
   featureKeys: string[]
@@ -61,6 +65,12 @@ export function TenantEntitlementsPanel({
       items: features.filter((f) => f.category === category)
     }))
   }, [features])
+
+  const lapszabaszatOn = useMemo(
+    () =>
+      addons.some((a) => a.key === LAPSZABASZAT_ADDON_KEY && a.enabled),
+    [addons]
+  )
 
   function handlePlanSave() {
     if (!planId) return
@@ -159,36 +169,53 @@ export function TenantEntitlementsPanel({
           </p>
         ) : (
           <ul className="space-y-2">
-            {addons.map((addon) => (
-              <li
-                key={addon.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
-              >
-                <div>
-                  <p className="text-body font-medium text-ink">{addon.name}</p>
-                  <p className="text-hint text-ink-secondary">
-                    {addon.featureKeys.length} feature
-                    {addon.description ? ` · ${addon.description}` : ''}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge tone={addon.enabled ? 'success' : 'neutral'}>
-                    {addon.enabled ? 'Bekapcsolva' : 'Ki'}
-                  </StatusBadge>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() =>
-                      handleAddonToggle(addon.id, !addon.enabled)
-                    }
-                  >
-                    {addon.enabled ? 'Kikapcsolás' : 'Bekapcsolás'}
-                  </Button>
-                </div>
-              </li>
-            ))}
+            {addons.map((addon) => {
+              const needsLapszabaszat = (
+                LAPSZABASZAT_DEPENDENT_ADDON_KEYS as readonly string[]
+              ).includes(addon.key)
+              const blocked = needsLapszabaszat && !lapszabaszatOn && !addon.enabled
+
+              return (
+                <li
+                  key={addon.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                >
+                  <div>
+                    <p className="text-body font-medium text-ink">{addon.name}</p>
+                    <p className="text-hint text-ink-secondary">
+                      {addon.featureKeys.length} feature
+                      {addon.description ? ` · ${addon.description}` : ''}
+                    </p>
+                    {blocked ? (
+                      <p className="mt-0.5 text-[11px] text-warning-ink">
+                        Kell a Lapszabászat add-on.
+                      </p>
+                    ) : null}
+                    {addon.key === LAPSZABASZAT_ADDON_KEY && addon.enabled ? (
+                      <p className="mt-0.5 text-[11px] text-ink-muted">
+                        Kikapcsoláskor a Partner és SMS add-on is leáll.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <StatusBadge tone={addon.enabled ? 'success' : 'neutral'}>
+                      {addon.enabled ? 'Bekapcsolva' : 'Ki'}
+                    </StatusBadge>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={pending || blocked}
+                      onClick={() =>
+                        handleAddonToggle(addon.id, !addon.enabled)
+                      }
+                    >
+                      {addon.enabled ? 'Kikapcsolás' : 'Bekapcsolás'}
+                    </Button>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>

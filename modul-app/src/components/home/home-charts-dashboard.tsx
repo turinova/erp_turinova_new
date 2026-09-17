@@ -6,6 +6,7 @@ import { useCallback, useState, useTransition } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { BacklogMetersCard } from '@/components/home/backlog-meters-card'
+import { BelepokHomeCard } from '@/components/home/belepok-home-card'
 import {
   DataTable,
   DataTableBody,
@@ -23,6 +24,7 @@ import type {
   WeeklyEdgeData,
   YearlyMachineAvgData
 } from '@/lib/home/chart-queries'
+import type { FootcounterHomeSlim } from '@/lib/footcounter/types'
 import {
   QUOTE_STATUS_LABEL,
   quoteStatusTone
@@ -72,6 +74,10 @@ type Props = {
   initialEdge: WeeklyEdgeData
   yearlyAvg: YearlyMachineAvgData
   orders: HomeOrderRow[]
+  /** null = Belépők add-on nincs bekapcsolva → widget rejtve */
+  footcounter: FootcounterHomeSlim | null
+  /** Lapszabászat add-on — heti szabás / élzárás / backlog chartok */
+  showLapszabaszatCharts: boolean
 }
 
 function formatDate(ymd: string | null) {
@@ -107,7 +113,9 @@ export function HomeChartsDashboard({
   initialCutting,
   initialEdge,
   yearlyAvg,
-  orders
+  orders,
+  footcounter,
+  showLapszabaszatCharts
 }: Props) {
   const [weekOffset, setWeekOffset] = useState(0)
   const [cutting, setCutting] = useState(initialCutting)
@@ -139,151 +147,159 @@ export function HomeChartsDashboard({
 
   return (
     <div className="space-y-5">
-      <BacklogMetersCard cuttingM={backlog.cuttingM} edgeM={backlog.edgeM} />
+      {showLapszabaszatCharts ? (
+        <BacklogMetersCard cuttingM={backlog.cuttingM} edgeM={backlog.edgeM} />
+      ) : null}
 
-      <section className="rounded-md border border-border bg-surface p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-body font-semibold text-ink">
-              Heti szabás mennyiség
-            </h2>
-            <p className="text-hint text-ink-secondary">
-              {cutting.weekStart} – {cutting.weekEnd}
-              {pending ? ' · frissítés…' : ''}
-            </p>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={pending}
-              onClick={() => loadWeek(weekOffset - 1)}
-              aria-label="Előző hét"
-            >
-              <ChevronLeft className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={pending || weekOffset === 0}
-              onClick={() => loadWeek(0)}
-            >
-              Ma
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={pending}
-              onClick={() => loadWeek(weekOffset + 1)}
-              aria-label="Következő hét"
-            >
-              <ChevronRight className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-        {error ? (
-          <p className="mb-2 text-hint text-danger-ink">{error}</p>
-        ) : null}
-        <WeeklyCuttingChart data={cutting} />
-      </section>
+      {footcounter ? <BelepokHomeCard data={footcounter} /> : null}
 
-      <section className="rounded-md border border-border bg-surface p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-body font-semibold text-ink">
-              Heti élzárás mennyiség
-            </h2>
-            <p className="text-hint text-ink-secondary">
-              {edge.weekStart} – {edge.weekEnd} · kapacitás{' '}
-              {edge.capacityPerDayM} m/nap
-            </p>
-          </div>
-        </div>
-        <WeeklyEdgeChart data={edge} />
-      </section>
-
-      <section className="rounded-md border border-border bg-surface p-4">
-        <div className="mb-3">
-          <h2 className="text-body font-semibold text-ink">
-            Gépenkénti átlag szabás — {yearlyAvg.year}
-          </h2>
-          <p className="text-hint text-ink-secondary">
-            Kész (ready) napok átlaga, H–P, m/nap
-          </p>
-        </div>
-        <YearlyMachineAvgChart data={yearlyAvg} />
-      </section>
-
-      <section>
-        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-          <h2 className="text-body font-semibold text-ink">
-            Lapszabászati megrendelések
-          </h2>
-          <Link
-            href="/megrendelesek?status=all"
-            className="text-hint text-ink-secondary no-underline hover:underline"
-          >
-            Összes →
-          </Link>
-        </div>
-        {orders.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border bg-subtle px-3 py-4 text-body text-ink-secondary">
-            Nincs nyitott megrendelés.
-          </p>
-        ) : (
-          <DataTable>
-            <DataTableHead>
-              <DataTableRow>
-                <DataTableHeaderCell>Megrendelés</DataTableHeaderCell>
-                <DataTableHeaderCell>Ügyfél</DataTableHeaderCell>
-                <DataTableHeaderCell>Gép</DataTableHeaderCell>
-                <DataTableHeaderCell>Dátum</DataTableHeaderCell>
-                <DataTableHeaderCell>Státusz</DataTableHeaderCell>
-              </DataTableRow>
-            </DataTableHead>
-            <DataTableBody>
-              {orders.map((row) => (
-                <DataTableRow
-                  key={row.id}
-                  className={cn(
-                    'hover:bg-subtle',
-                    row.bucket === 'overdue' && 'bg-danger-soft/40'
-                  )}
+      {showLapszabaszatCharts ? (
+        <>
+          <section className="rounded-md border border-border bg-surface p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-body font-semibold text-ink">
+                  Heti szabás mennyiség
+                </h2>
+                <p className="text-hint text-ink-secondary">
+                  {cutting.weekStart} – {cutting.weekEnd}
+                  {pending ? ' · frissítés…' : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => loadWeek(weekOffset - 1)}
+                  aria-label="Előző hét"
                 >
-                  <DataTableCell>
-                    <Link
-                      href={`/ajanlatok/${row.id}`}
-                      className="font-medium text-ink no-underline hover:underline"
+                  <ChevronLeft className="size-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={pending || weekOffset === 0}
+                  onClick={() => loadWeek(0)}
+                >
+                  Ma
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => loadWeek(weekOffset + 1)}
+                  aria-label="Következő hét"
+                >
+                  <ChevronRight className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+            {error ? (
+              <p className="mb-2 text-hint text-danger-ink">{error}</p>
+            ) : null}
+            <WeeklyCuttingChart data={cutting} />
+          </section>
+
+          <section className="rounded-md border border-border bg-surface p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-body font-semibold text-ink">
+                  Heti élzárás mennyiség
+                </h2>
+                <p className="text-hint text-ink-secondary">
+                  {edge.weekStart} – {edge.weekEnd} · kapacitás{' '}
+                  {edge.capacityPerDayM} m/nap
+                </p>
+              </div>
+            </div>
+            <WeeklyEdgeChart data={edge} />
+          </section>
+
+          <section className="rounded-md border border-border bg-surface p-4">
+            <div className="mb-3">
+              <h2 className="text-body font-semibold text-ink">
+                Gépenkénti átlag szabás — {yearlyAvg.year}
+              </h2>
+              <p className="text-hint text-ink-secondary">
+                Kész (ready) napok átlaga, H–P, m/nap
+              </p>
+            </div>
+            <YearlyMachineAvgChart data={yearlyAvg} />
+          </section>
+
+          <section>
+            <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+              <h2 className="text-body font-semibold text-ink">
+                Lapszabászati megrendelések
+              </h2>
+              <Link
+                href="/megrendelesek?status=all"
+                className="text-hint text-ink-secondary no-underline hover:underline"
+              >
+                Összes →
+              </Link>
+            </div>
+            {orders.length === 0 ? (
+              <p className="rounded-md border border-dashed border-border bg-subtle px-3 py-4 text-body text-ink-secondary">
+                Nincs nyitott megrendelés.
+              </p>
+            ) : (
+              <DataTable>
+                <DataTableHead>
+                  <DataTableRow>
+                    <DataTableHeaderCell>Megrendelés</DataTableHeaderCell>
+                    <DataTableHeaderCell>Ügyfél</DataTableHeaderCell>
+                    <DataTableHeaderCell>Gép</DataTableHeaderCell>
+                    <DataTableHeaderCell>Dátum</DataTableHeaderCell>
+                    <DataTableHeaderCell>Státusz</DataTableHeaderCell>
+                  </DataTableRow>
+                </DataTableHead>
+                <DataTableBody>
+                  {orders.map((row) => (
+                    <DataTableRow
+                      key={row.id}
+                      className={cn(
+                        'hover:bg-subtle',
+                        row.bucket === 'overdue' && 'bg-danger-soft/40'
+                      )}
                     >
-                      {row.order_number}
-                    </Link>
-                    <div className="mt-0.5">
-                      <StatusBadge tone={bucketTone(row.bucket)}>
-                        {bucketLabel(row.bucket)}
-                      </StatusBadge>
-                    </div>
-                  </DataTableCell>
-                  <DataTableCell>{row.customer_name}</DataTableCell>
-                  <DataTableCell>
-                    {row.production_machine_name ?? '—'}
-                  </DataTableCell>
-                  <DataTableCell className="tabular-nums">
-                    {formatDate(row.production_date)}
-                  </DataTableCell>
-                  <DataTableCell>
-                    <StatusBadge tone={quoteStatusTone(row.status)}>
-                      {QUOTE_STATUS_LABEL[row.status]}
-                    </StatusBadge>
-                  </DataTableCell>
-                </DataTableRow>
-              ))}
-            </DataTableBody>
-          </DataTable>
-        )}
-      </section>
+                      <DataTableCell>
+                        <Link
+                          href={`/ajanlatok/${row.id}`}
+                          className="font-medium text-ink no-underline hover:underline"
+                        >
+                          {row.order_number}
+                        </Link>
+                        <div className="mt-0.5">
+                          <StatusBadge tone={bucketTone(row.bucket)}>
+                            {bucketLabel(row.bucket)}
+                          </StatusBadge>
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell>{row.customer_name}</DataTableCell>
+                      <DataTableCell>
+                        {row.production_machine_name ?? '—'}
+                      </DataTableCell>
+                      <DataTableCell className="tabular-nums">
+                        {formatDate(row.production_date)}
+                      </DataTableCell>
+                      <DataTableCell>
+                        <StatusBadge tone={quoteStatusTone(row.status)}>
+                          {QUOTE_STATUS_LABEL[row.status]}
+                        </StatusBadge>
+                      </DataTableCell>
+                    </DataTableRow>
+                  ))}
+                </DataTableBody>
+              </DataTable>
+            )}
+          </section>
+        </>
+      ) : null}
     </div>
   )
 }

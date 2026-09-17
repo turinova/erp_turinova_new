@@ -17,15 +17,38 @@ type AnimState = {
 
 /**
  * Monochrome BSP mosaic — legacy main-app Squares mintája (saját újraírás).
- * Idle: szomszédos csempék enyhe szürke fade; hover: sötétebb gray.
- * prefers-reduced-motion: idle OFF, hover továbbra is frissül.
+ * Idle: random csempék + szomszédok fade; hover opcionális.
+ * prefers-reduced-motion: idle OFF (unless respectReducedMotion=false).
  */
 export function SquaresMosaic({
   squareSize = 40,
-  borderColor = '#a1a1aa'
+  borderColor = '#a1a1aa',
+  enableHover = true,
+  /** Base wait between starting idle waves (ms). */
+  idleIntervalMs = 800,
+  /** Extra idle darkness (0–80). Login default 0. */
+  idleBrightnessBoost = 0,
+  /** Cap on idle darkness (higher = darker). Login default 220. */
+  idleMaxBrightness = 220,
+  /** Fade speed per frame (lower = slower). Login default 1.5. */
+  idleStep = 1.5,
+  /**
+   * Max tiles animating at once.
+   * `0` = login parity: next wave only when current wave finished.
+   */
+  maxAnimatingTiles = 0,
+  /** When false, idle keeps running even if OS asks for reduced motion. */
+  respectReducedMotion = true
 }: {
   squareSize?: number
   borderColor?: string
+  enableHover?: boolean
+  idleIntervalMs?: number
+  idleBrightnessBoost?: number
+  idleMaxBrightness?: number
+  idleStep?: number
+  maxAnimatingTiles?: number
+  respectReducedMotion?: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -51,7 +74,7 @@ export function SquaresMosaic({
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')
     const syncMotion = () => {
       const wasReduced = reducedMotion
-      reducedMotion = media.matches
+      reducedMotion = respectReducedMotion && media.matches
       if (reducedMotion) {
         animating.clear()
         drawGrid()
@@ -134,7 +157,7 @@ export function SquaresMosaic({
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
       let hovered = -1
-      if (mouseRef.current) {
+      if (enableHover && mouseRef.current) {
         const { x, y } = mouseRef.current
         for (let i = 0; i < rectanglesRef.current.length; i++) {
           const r = rectanglesRef.current[i]
@@ -177,11 +200,12 @@ export function SquaresMosaic({
         return
       }
       const now = Date.now()
-      if (
-        animating.size === 0 &&
-        now - lastAnimAt > 800 + Math.random() * 400 &&
-        rectanglesRef.current.length > 0
-      ) {
+      const gap = idleIntervalMs + Math.random() * idleIntervalMs * 0.5
+      const canStart =
+        maxAnimatingTiles <= 0
+          ? animating.size === 0
+          : animating.size < maxAnimatingTiles
+      if (canStart && now - lastAnimAt > gap && rectanglesRef.current.length > 0) {
         lastAnimAt = now
         const start = Math.floor(Math.random() * rectanglesRef.current.length)
         const set = new Set<number>([start])
@@ -190,10 +214,15 @@ export function SquaresMosaic({
         const shuffled = [...neighbors].sort(() => Math.random() - 0.5)
         for (let i = 0; i < n; i++) set.add(shuffled[i])
         set.forEach((index) => {
+          if (animating.has(index)) return
+          if (maxAnimatingTiles > 0 && animating.size >= maxAnimatingTiles) return
           animating.set(index, {
             brightness: 0,
             direction: 1,
-            targetBrightness: 80 + Math.random() * 100
+            targetBrightness: Math.min(
+              idleMaxBrightness,
+              80 + Math.random() * 100 + idleBrightnessBoost
+            )
           })
         })
       }
@@ -201,10 +230,10 @@ export function SquaresMosaic({
       const done: number[] = []
       animating.forEach((anim, index) => {
         if (anim.direction === 1) {
-          anim.brightness += 1.5
+          anim.brightness += idleStep
           if (anim.brightness >= anim.targetBrightness) anim.direction = -1
         } else {
-          anim.brightness -= 1.5
+          anim.brightness -= idleStep
           if (anim.brightness <= 0) done.push(index)
         }
       })
@@ -222,7 +251,6 @@ export function SquaresMosaic({
       const h = Math.floor(
         parent?.clientHeight || canvas.offsetHeight || canvas.clientHeight
       )
-      // Flex layout még nem settle-elt — várjunk a következő RO / rAF-re.
       if (w < 2 || h < 2) return
       if (w === lastW && h === lastH) return
       lastW = w
@@ -242,7 +270,6 @@ export function SquaresMosaic({
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
       }
-      // Reduced-motion: nincs idle loop → hoverhez azonnali redraw.
       if (reducedMotion || !raf) drawGrid()
     }
 
@@ -268,11 +295,12 @@ export function SquaresMosaic({
 
     window.addEventListener('resize', resize)
     document.addEventListener('visibilitychange', onVisibility)
-    canvas.addEventListener('mousemove', onMove)
-    canvas.addEventListener('mouseleave', onLeave)
+    if (enableHover) {
+      canvas.addEventListener('mousemove', onMove)
+      canvas.addEventListener('mouseleave', onLeave)
+    }
 
     resize()
-    // Flex / abszolút layout gyakran 1 frame késéssel ad méretet.
     const settleRaf = requestAnimationFrame(() => {
       resize()
       if (!reducedMotion && !paused && !raf) {
@@ -286,11 +314,23 @@ export function SquaresMosaic({
       window.removeEventListener('resize', resize)
       document.removeEventListener('visibilitychange', onVisibility)
       media.removeEventListener('change', syncMotion)
-      canvas.removeEventListener('mousemove', onMove)
-      canvas.removeEventListener('mouseleave', onLeave)
+      if (enableHover) {
+        canvas.removeEventListener('mousemove', onMove)
+        canvas.removeEventListener('mouseleave', onLeave)
+      }
       cancelAnimationFrame(raf)
     }
-  }, [borderColor, squareSize])
+  }, [
+    borderColor,
+    squareSize,
+    enableHover,
+    idleIntervalMs,
+    idleBrightnessBoost,
+    idleMaxBrightness,
+    idleStep,
+    maxAnimatingTiles,
+    respectReducedMotion
+  ])
 
   return (
     <canvas

@@ -3,6 +3,10 @@ import type { Metadata } from 'next'
 import { HomeChartsDashboard } from '@/components/home/home-charts-dashboard'
 import { PageHeader } from '@/components/patterns/page-header'
 import { getSessionUser } from '@/lib/auth/session'
+import { tenantHasFootcounter } from '@/lib/footcounter/entitlement'
+import { getFootcounterHomeSlim } from '@/lib/footcounter/queries'
+import type { FootcounterHomeSlim } from '@/lib/footcounter/types'
+import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import { getHomePageData } from '@/lib/home/chart-queries'
 import { findNavLinkByPath } from '@/lib/navigation'
 import { createClient } from '@/lib/supabase/server'
@@ -21,13 +25,25 @@ export default async function HomePage() {
   }).format(new Date())
 
   let data: Awaited<ReturnType<typeof getHomePageData>> | null = null
+  let footcounter: FootcounterHomeSlim | null = null
+  let showLapszabaszatCharts = false
   let loadError: string | null = null
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        data = await getHomePageData(supabase, user.tenantId, 0)
+        const [homeData, hasFootcounter, hasLapszabaszat] = await Promise.all([
+          getHomePageData(supabase, user.tenantId, 0),
+          tenantHasFootcounter(supabase, user.tenantId),
+          tenantHasLapszabaszat(supabase, user.tenantId)
+        ])
+        data = homeData
+        showLapszabaszatCharts = hasLapszabaszat
+
+        if (hasFootcounter) {
+          footcounter = await getFootcounterHomeSlim(supabase, user.tenantId)
+        }
       } catch (e) {
         loadError =
           e instanceof Error ? e.message : 'Nem sikerült betölteni az adatokat.'
@@ -63,6 +79,8 @@ export default async function HomePage() {
           initialEdge={data.weeklyEdge}
           yearlyAvg={data.yearlyAvg}
           orders={data.orders}
+          footcounter={footcounter}
+          showLapszabaszatCharts={showLapszabaszatCharts}
         />
       ) : null}
 

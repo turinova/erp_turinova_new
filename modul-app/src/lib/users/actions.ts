@@ -234,10 +234,10 @@ export async function createTenantUser(input: {
     input.pageKeys ??
     PAGE_ACCESS_TEMPLATES[input.template]?.keys ??
     PAGE_ACCESS_TEMPLATES.office.keys
-  const entitled =
-    ctx.user.entitledPages.length > 0
-      ? new Set(ctx.user.entitledPages)
-      : new Set(ALL_PAGE_KEYS)
+  const entitledList = await listTenantEntitledPageKeys(admin, tenantId)
+  const entitled = new Set(
+    entitledList.length > 0 ? entitledList : ALL_PAGE_KEYS
+  )
   const keys = mergeAlwaysAllowed(templateKeys).filter(
     (k) => entitled.has(k) || ALWAYS_ALLOWED_PAGE_KEYS.includes(k)
   )
@@ -290,8 +290,9 @@ export async function updateMembershipPageAccess(input: {
     return { ok: false, message: 'A felhasználó nem található.' }
   }
 
+  const entitledList = await listTenantEntitledPageKeys(ctx.supabase, tenantId)
   const entitled = new Set(
-    ctx.user.entitledPages.length > 0 ? ctx.user.entitledPages : ALL_PAGE_KEYS
+    entitledList.length > 0 ? entitledList : ALL_PAGE_KEYS
   )
 
   const rows = ALL_PAGE_KEYS.map((page_key) => {
@@ -328,10 +329,8 @@ export async function updateMembershipPageAccess(input: {
     return { ok: false, message: 'Nem sikerült menteni az oldaljogokat.' }
   }
 
-  // Saját jogváltozás / admin session: snapshot invalid (TTL is véd)
-  if (membership.user_id === ctx.user.id) {
-    await clearSessionSnapshotCookie()
-  }
+  // Jogváltozás: mindig invalidáld a mentő sessionjét is (entitlement stale fix)
+  await clearSessionSnapshotCookie()
 
   revalidatePath(USERS_PATH)
   return { ok: true }

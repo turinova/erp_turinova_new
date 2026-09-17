@@ -189,7 +189,44 @@ export async function setTenantAddon(input: {
   const ctx = await requirePlatformAdmin()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
+  const { data: addonRow } = await ctx.admin
+    .from('product_addons')
+    .select('id, key')
+    .eq('id', input.addonId)
+    .maybeSingle()
+
+  if (!addonRow?.key) {
+    return { ok: false, message: 'Add-on nem található.' }
+  }
+
+  const addonKey = addonRow.key as string
+
   if (input.enabled) {
+    const {
+      LAPSZABASZAT_ADDON_KEY,
+      LAPSZABASZAT_DEPENDENT_ADDON_KEYS,
+      tenantHasAddonKey
+    } = await import('@/lib/lapszabaszat/entitlement')
+
+    if (
+      (LAPSZABASZAT_DEPENDENT_ADDON_KEYS as readonly string[]).includes(
+        addonKey
+      )
+    ) {
+      const hasCore = await tenantHasAddonKey(
+        ctx.admin,
+        input.tenantId,
+        LAPSZABASZAT_ADDON_KEY
+      )
+      if (!hasCore) {
+        return {
+          ok: false,
+          message:
+            'Előbb kapcsold be a Lapszabászat add-ont — ez az add-on arra épül.'
+        }
+      }
+    }
+
     const { error } = await ctx.admin.from('tenant_addons').upsert(
       {
         tenant_id: input.tenantId,
@@ -204,6 +241,13 @@ export async function setTenantAddon(input: {
       return { ok: false, message: 'Add-on bekapcsolás sikertelen.' }
     }
   } else {
+    if (addonKey === 'lapszabaszat') {
+      const { disableLapszabaszatDependents } = await import(
+        '@/lib/lapszabaszat/entitlement'
+      )
+      await disableLapszabaszatDependents(ctx.admin, input.tenantId)
+    }
+
     const { error } = await ctx.admin
       .from('tenant_addons')
       .delete()
@@ -217,11 +261,26 @@ export async function setTenantAddon(input: {
   const mat = await materializeTenantEntitlements(ctx.admin, input.tenantId)
   if (!mat.ok) return mat
 
+  if (input.enabled) {
+    if (addonKey === 'footcounter') {
+      const { grantBelepokPageAccess } = await import(
+        '@/lib/footcounter/entitlement'
+      )
+      await grantBelepokPageAccess(ctx.admin, input.tenantId)
+    }
+    if (addonKey === 'lapszabaszat') {
+      const { grantLapszabaszatPageAccess } = await import(
+        '@/lib/lapszabaszat/entitlement'
+      )
+      await grantLapszabaszatPageAccess(ctx.admin, input.tenantId)
+    }
+  }
+
   await writeEntitlementAudit(ctx.admin, {
     tenantId: input.tenantId,
     actorUserId: ctx.user.id,
     action: input.enabled ? 'tenant.addon_enabled' : 'tenant.addon_disabled',
-    details: { addonId: input.addonId, keys: mat.keys }
+    details: { addonId: input.addonId, addonKey, keys: mat.keys }
   })
 
   revalidatePath(`${TENANTS}/${input.tenantId}`)
