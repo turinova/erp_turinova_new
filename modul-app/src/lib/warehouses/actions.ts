@@ -195,7 +195,7 @@ export async function updateWarehouse(
     return { ok: false, message: 'A raktár nem található.' }
   }
 
-  let isDefault = parsed.data.isDefault
+  const isDefault = parsed.data.isDefault
   let isActive = parsed.data.isActive
 
   if (current.is_default && !isDefault) {
