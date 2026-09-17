@@ -33,6 +33,8 @@ type Props = {
   payload: ProductLabelPayload | null
   units: UnitOption[]
   onClose: () => void
+  /** Default példányszám (pl. beérkezett qty). */
+  initialAmount?: number
 }
 
 const FIELD_CHIPS: Array<{ key: keyof LabelFields; label: string }> = [
@@ -46,7 +48,8 @@ export function ProductLabelPrintDialog({
   open,
   payload,
   units,
-  onClose
+  onClose,
+  initialAmount = 1
 }: Props) {
   const [name, setName] = useState('')
   const [price, setPrice] = useState(0)
@@ -72,10 +75,10 @@ export function ProductLabelPrintDialog({
     setName(payload.name)
     setPrice(Math.round(payload.priceGross))
     setUnit(payload.unitShortform || 'db')
-    setAmount(1)
+    setAmount(Math.max(1, Math.round(initialAmount) || 1))
     setTemplateId('full')
     setFields(LABEL_TEMPLATES[0].fields(bc))
-  }, [open, payload])
+  }, [open, payload, initialAmount])
 
   const unitOptions = useMemo(() => {
     const opts = units.map((u) => ({
