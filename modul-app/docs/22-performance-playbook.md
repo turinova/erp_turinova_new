@@ -152,7 +152,7 @@ Kereső API böngészőben: Network → `/api/kereso` → **Server-Timing**: `au
 | Tünet | Gyakori ok | Fix irány |
 |---|---|---|
 | Minden oldal 1–3 s | Snapshot cookie hiány / secret mismatch / TTL | Login újra; `SESSION_SNAPSHOT_SECRET` egyezzen |
-| `session_replaced` spam | Nonce DB ≠ cookie; 2 eszköz login | Várt single-login viselkedés |
+| `session_replaced` spam | Nonce DB ≠ cookie; 2 eszköz login | Várt single-login; staff kick → `staffLoginPath(surface)` (partner hoston `/ceges-belepes`, soha partner `/login`) |
 | Kereső 500 `id is ambiguous` | Régi RPC a DB-ben | Futtasd `20260421b_…fix.sql` |
 | Kereső lassú, de RPC OK | Újra full `getSessionUser` az API-n | Maradj `resolveKeresoAuth`-nál |
 | „Lassú app” csak laptopon | `next dev` + polling + hideg compile | `next start` |

@@ -20,6 +20,8 @@ Legacy ötletforrás (nem kód): `customer-portal` — regisztráció, cégvála
 | `app.optinova.hu` | Tenant staff | `tenant_memberships` + seat/session | `/login`, `/home`, … |
 | `optinova.hu` | Partner (asztalos) | `partner_profiles` — **nem** membership, **nem** seat | `/login`, `/home`, `/opti`, … (tiszta; belső rewrite → `/partner/*`) |
 
+Staff single-login kick / logout: `staffLoginPath(surface)` — partner hoston **`/ceges-belepes`**, soha partner `/login` (path-ambiguity).
+
 Egy Vercel deploy, middleware host alapján.  
 **V1:** ugyanaz az email **nem** lehet staff + partner egyszerre.  
 **Nincs átlinkelés** a két login között — rossz fióktípusnál csak szöveges hiba a helyes domainnel.

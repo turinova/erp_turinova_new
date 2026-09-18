@@ -30,7 +30,12 @@ import {
   PARTNER_REGISTER_PATH,
   PARTNER_FORGOT_PASSWORD_PATH,
   PARTNER_RESET_PASSWORD_PATH,
-  resolveAuthSurface
+  resolveAuthSurface,
+  staffLoginPath,
+  loginPathForKick,
+  STAFF_LOGIN_ON_PARTNER_HOST,
+  STAFF_LOGIN_PATH,
+  type AuthSurface
 } from '@/lib/auth/surface'
 
 function withSurfaceHeaders(
@@ -76,7 +81,7 @@ function isPublicMarketingPath(pathname: string) {
     pathname === '/a-tortenetunk' ||
     pathname === '/esettanulmany' ||
     pathname.startsWith('/esettanulmany/') ||
-    pathname === '/ceges-belepes' ||
+    pathname === STAFF_LOGIN_ON_PARTNER_HOST ||
     pathname === '/impresszum' ||
     pathname === '/aszf' ||
     pathname === '/adatkezelesi-tajekoztato'
@@ -90,6 +95,17 @@ function partnerHomePathname(
   return surface === 'partner'
     ? PARTNER_HOME_PATH
     : `${PARTNER_INTERNAL_PREFIX}${PARTNER_HOME_PATH}`
+}
+
+/** Staff session kick: clear nonce cookies + surface-aware tenant login. */
+function redirectStaffSessionReplaced(request: NextRequest, surface: AuthSurface) {
+  const path = loginPathForKick({ surface, kind: 'staff' })
+  const response = redirectTo(request, path, 'session_replaced')
+  response.cookies.delete(APP_SESSION_NONCE_COOKIE)
+  response.cookies.delete(CURRENT_TENANT_COOKIE)
+  response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
+  response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
+  return response
 }
 
 export async function updateSession(request: NextRequest) {
@@ -311,12 +327,7 @@ export async function updateSession(request: NextRequest) {
               isPartnerUser = false
             } else {
               await supabase.auth.signOut()
-              const response = redirectTo(request, '/ceges-belepes', 'session_replaced')
-              response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-              response.cookies.delete(CURRENT_TENANT_COOKIE)
-              response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
-              response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
-              return response
+              return redirectStaffSessionReplaced(request, surface)
             }
           } else {
             const [{ data: memberships }, valid] = await Promise.all([
@@ -334,7 +345,10 @@ export async function updateSession(request: NextRequest) {
               isPartnerUser = false
             } else {
               await supabase.auth.signOut()
-              return redirectTo(request, '/ceges-belepes')
+              return redirectTo(
+                request,
+                staffLoginPath(surface)
+              )
             }
           }
         }
@@ -357,12 +371,7 @@ export async function updateSession(request: NextRequest) {
             isPartnerUser = false
           } else {
             await supabase.auth.signOut()
-            const response = redirectTo(request, '/login', 'session_replaced')
-            response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-            response.cookies.delete(CURRENT_TENANT_COOKIE)
-            response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
-            response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
-            return response
+            return redirectStaffSessionReplaced(request, surface)
           }
         } else {
           const [{ data: partnerRow }, { data: memberships }] =
@@ -419,20 +428,10 @@ export async function updateSession(request: NextRequest) {
               isAuthenticated = true
             } else if (isPartnerSharedApi) {
               await supabase.auth.signOut()
-              const response = redirectTo(request, '/login', 'session_replaced')
-              response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-              response.cookies.delete(CURRENT_TENANT_COOKIE)
-              response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
-              response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
-              return response
+              return redirectStaffSessionReplaced(request, surface)
             } else {
               await supabase.auth.signOut()
-              const response = redirectTo(request, '/login', 'session_replaced')
-              response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-              response.cookies.delete(CURRENT_TENANT_COOKIE)
-              response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
-              response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
-              return response
+              return redirectStaffSessionReplaced(request, surface)
             }
           }
         }
@@ -450,10 +449,12 @@ export async function updateSession(request: NextRequest) {
   if (!isAuthenticated && !isPublicAuth) {
     const loginPath =
       partnerCtx && !isStaffOnlyPath(pathname)
-        ? PARTNER_LOGIN_PATH
+        ? loginPathForKick({ surface, kind: 'partner' })
         : partnerCtx && isStaffOnlyPath(pathname)
-          ? '/ceges-belepes'
-          : '/login'
+          ? staffLoginPath(surface)
+          : surface === 'platform'
+            ? loginPathForKick({ surface, kind: 'platform' })
+            : staffLoginPath(surface)
     return redirectTo(request, loginPath)
   }
 
@@ -478,7 +479,7 @@ export async function updateSession(request: NextRequest) {
   ) {
     return redirectTo(
       request,
-      isAuthenticated && isPartnerUser ? PARTNER_HOME_PATH : '/ceges-belepes'
+      isAuthenticated && isPartnerUser ? PARTNER_HOME_PATH : staffLoginPath(surface)
     )
   }
 
@@ -515,8 +516,8 @@ export async function updateSession(request: NextRequest) {
       pathname === '/partner/login' ||
       pathname === '/partner/register' ||
       pathname === '/partner/elfelejtett-jelszo' ||
-      pathname === '/login' ||
-      pathname === '/ceges-belepes')
+      pathname === STAFF_LOGIN_PATH ||
+      pathname === STAFF_LOGIN_ON_PARTNER_HOST)
   ) {
     if (hasStaffMembership && !isPartnerUser) {
       return redirectTo(request, '/home')

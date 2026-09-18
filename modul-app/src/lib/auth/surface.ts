@@ -91,6 +91,34 @@ export const PARTNER_OPTI_PATH = '/opti'
 export const PARTNER_QUOTES_PATH = '/ajanlatok'
 export const PARTNER_ORDERS_PATH = '/megrendelesek'
 
+/**
+ * Tenant (staff) login path.
+ * Partner hoston `/login` = partner login → staff ott `/ceges-belepes`.
+ * Staff / platform hoston `/login` a tenant (vagy platform) belépő.
+ */
+export const STAFF_LOGIN_PATH = '/login'
+export const STAFF_LOGIN_ON_PARTNER_HOST = '/ceges-belepes'
+
+/** Tenant staff login a jelenlegi surface szerint. */
+export function staffLoginPath(surface: AuthSurface): string {
+  return surface === 'partner'
+    ? STAFF_LOGIN_ON_PARTNER_HOST
+    : STAFF_LOGIN_PATH
+}
+
+/**
+ * Session kick / unauth redirect cél.
+ * Staff soha ne menjen partner loginra (path-ambiguity: PARTNER_LOGIN = `/login`).
+ */
+export function loginPathForKick(opts: {
+  surface: AuthSurface
+  kind: 'staff' | 'partner' | 'platform'
+}): string {
+  if (opts.kind === 'partner') return PARTNER_LOGIN_PATH
+  if (opts.kind === 'platform') return STAFF_LOGIN_PATH
+  return staffLoginPath(opts.surface)
+}
+
 /** Belső Next route-ok (app/(partner)/partner/…). */
 export const PARTNER_INTERNAL_PREFIX = '/partner'
 export const PLATFORM_INTERNAL_PREFIX = '/platform'

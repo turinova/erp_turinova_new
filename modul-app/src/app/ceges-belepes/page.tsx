@@ -32,7 +32,8 @@ export default async function TenantLoginPage({
           className="mb-3 border border-warning/30 bg-warning-soft px-2.5 py-1.5 text-hint text-warning-ink"
           role="status"
         >
-          Máshol beléptek ezzel a fiókkal. Lépj be újra.
+          Ezzel a fiókkal máshol beléptek. Egy fiók egyszerre csak egy gépen
+          lehet bejelentkezve. Lépj be újra.
         </p>
       ) : null}
       <LoginForm showDevHint={showDevHint} />

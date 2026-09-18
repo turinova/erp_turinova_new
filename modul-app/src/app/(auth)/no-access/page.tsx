@@ -1,11 +1,17 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { logoutAction } from '@/lib/auth/actions'
 import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { getSessionUser } from '@/lib/auth/session'
-import { PARTNER_HOME_PATH } from '@/lib/auth/surface'
+import {
+  normalizeHostname,
+  PARTNER_HOME_PATH,
+  resolveAuthSurface,
+  staffLoginPath
+} from '@/lib/auth/surface'
 import { Button } from '@/components/ui/button'
 
 export const metadata: Metadata = {
@@ -20,9 +26,13 @@ export default async function NoAccessPage() {
   }
 
   const user = await getSessionUser()
+  const headerStore = await headers()
+  const surface = resolveAuthSurface(
+    normalizeHostname(headerStore.get('host'))
+  )
 
   if (!user) {
-    redirect('/login')
+    redirect(staffLoginPath(surface))
   }
 
   if (user.hasMembership) {

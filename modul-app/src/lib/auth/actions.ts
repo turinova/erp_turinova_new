@@ -33,7 +33,7 @@ import {
   listMembershipsForUser,
   resolveCurrentTenant
 } from '@/lib/tenancy/memberships'
-import { resolveAuthSurface } from '@/lib/auth/surface'
+import { resolveAuthSurface, staffLoginPath } from '@/lib/auth/surface'
 
 export type LoginState = {
   error?: string
@@ -309,5 +309,7 @@ export async function logoutAction() {
     cookieStore.delete(DEV_SESSION_COOKIE)
   }
 
-  redirect('/login')
+  const hdrs = await headers()
+  const surface = resolveAuthSurface(hdrs.get('host') ?? '')
+  redirect(staffLoginPath(surface))
 }

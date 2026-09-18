@@ -53,7 +53,11 @@ export function LoginForm({ showDevHint = false }: LoginFormProps) {
         <p className="border border-border bg-subtle px-2.5 py-1.5 text-hint text-ink-secondary">
           Fejlesztői mód: bármilyen email + jelszó beléptet.
         </p>
-      ) : null}
+      ) : (
+        <p className="text-hint text-ink-muted">
+          Ha máshol is be vagy lépve, az ottani belépés megszűnik.
+        </p>
+      )}
 
       <Button type="submit" loading={pending} className="w-full" size="md">
         Belépés
