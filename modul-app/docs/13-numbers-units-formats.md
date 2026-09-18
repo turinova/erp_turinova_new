@@ -17,14 +17,26 @@ Ebben a domainben ez nem apróság, hanem üzleti konzisztencia.
 
 ## 3. Pénz
 
-- Listaoszlop fejlécében jelenjen meg a pénznem: `Nettó ár (Ft)`
-- Ne ismételd minden cellában a `Ft`-ot, ha az oszlop egységes
+- Listaoszlop fejlécében jelenjen meg a pénznem és a nettó/bruttó: pl. `Bruttó (Ft)`, `Bruttó egységár`
+- Ne ismételd minden cellában a `Ft`-ot, ha az oszlop egységes — kivéve ahol a certainty miatt kell
 - Nettó / bruttó alapnézet modulonként legyen rögzítve, ne esetleges
+
+### Értékesítés + POS (zárolt)
+
+- Ügyfél-facing számok = **bruttó** (ÁFA-val)
+- Címke-szótár:
+  - `Bruttó egységár` — 1 db ára
+  - `Bruttó összeg` — sor (qty × egység)
+  - `Bruttó tételek` / `Bruttó díjak` / `Bruttó részösszeg` — összesítő
+  - `Nettó összesen` / `ÁFA összesen`
+  - `Fizetendő (bruttó)` — amit az ügyfél fizet
+- Tilos: magában „Összeg”, „Egységár”, „Bruttó”, „Nettó” ha többféle értelmezés lehet
+- Hint az összesítőn: „Az árak bruttók (ÁFA-val).”
 
 ## 4. ÁFA
 
 - Az ÁFA ne csak százalék legyen, hanem emberileg érthető megnevezés is, ahol kell
-- Ha nettó és bruttó együtt látszik, a különbség legyen egyértelmű
+- Ha nettó és bruttó együtt látszik, a különbség legyen egyértelmű (`Nettó összesen` vs `Fizetendő (bruttó)`)
 
 ## 5. Mértékegységek
 

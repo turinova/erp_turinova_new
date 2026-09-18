@@ -49,6 +49,8 @@ type KeresoClientProps = {
   linearDetailBase?: string | null
   accessoryDetailBase?: string | null
   description?: string
+  /** Beszerzés addon: termék sorokon ledger készlet a Beszerzés oszlopban. */
+  showProcurementStock?: boolean
 }
 
 const DEFAULT_SHEET_DETAIL = '/torzsadatok/alapanyagok/tablas-anyagok'
@@ -77,7 +79,14 @@ type SearchApiResponse = {
   total: number
   page: number
   limit: number
+  showProcurementStock?: boolean
   error?: string
+}
+
+function formatStockQty(n: number) {
+  return new Intl.NumberFormat('hu-HU', {
+    maximumFractionDigits: 3
+  }).format(n)
 }
 
 async function fetchKereso(params: {
@@ -116,7 +125,8 @@ export function KeresoClient({
   sheetDetailBase = DEFAULT_SHEET_DETAIL,
   linearDetailBase = DEFAULT_LINEAR_DETAIL,
   accessoryDetailBase = DEFAULT_ACCESSORY_DETAIL,
-  description
+  description,
+  showProcurementStock: showProcurementStockProp = false
 }: KeresoClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -125,6 +135,9 @@ export function KeresoClient({
   const kindRef = useRef<KindFilter>(initialKind)
   const skipDebounceRef = useRef(true)
   const [, startUrlTransition] = useTransition()
+  const [showProcurementStock, setShowProcurementStock] = useState(
+    showProcurementStockProp
+  )
 
   const visibleChips = (() => {
     if (!allowedKinds || allowedKinds.length === 0) return KIND_CHIPS
@@ -219,6 +232,16 @@ export function KeresoClient({
       ? query.error.message
       : 'Nem sikerült a keresés. Próbáld újra.'
     : null
+
+  useEffect(() => {
+    if (typeof query.data?.showProcurementStock === 'boolean') {
+      setShowProcurementStock(query.data.showProcurementStock)
+    }
+  }, [query.data?.showProcurementStock])
+
+  useEffect(() => {
+    setShowProcurementStock(showProcurementStockProp)
+  }, [showProcurementStockProp])
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
@@ -356,7 +379,11 @@ export function KeresoClient({
                 <DataTableHeaderCell className="text-right">
                   Egész / egységár
                 </DataTableHeaderCell>
-                <DataTableHeaderCell>Beszerzés</DataTableHeaderCell>
+                <DataTableHeaderCell
+                  className={showProcurementStock ? 'text-right' : undefined}
+                >
+                  {showProcurementStock ? 'Készlet' : 'Beszerzés'}
+                </DataTableHeaderCell>
               </DataTableRow>
             </DataTableHead>
             <DataTableBody>
@@ -416,8 +443,32 @@ export function KeresoClient({
                     <DataTableCell className="text-right tabular-nums font-medium text-ink">
                       {formatUnifiedPrice(row.price_gross_piece)}
                     </DataTableCell>
-                    <DataTableCell>
-                      {row.on_stock == null ? (
+                    <DataTableCell
+                      className={
+                        showProcurementStock && isAccessory
+                          ? 'text-right'
+                          : undefined
+                      }
+                    >
+                      {showProcurementStock && isAccessory ? (
+                        row.stock_on_hand == null ? (
+                          <span className="text-hint text-ink-secondary">
+                            —
+                          </span>
+                        ) : (
+                          <span
+                            className={cn(
+                              'text-[15px] font-semibold tabular-nums',
+                              row.stock_on_hand > 0
+                                ? 'text-success-ink'
+                                : 'text-ink-muted'
+                            )}
+                          >
+                            {formatStockQty(row.stock_on_hand)}{' '}
+                            {row.unit_shortform || 'db'}
+                          </span>
+                        )
+                      ) : row.on_stock == null ? (
                         <span className="text-hint text-ink-secondary">—</span>
                       ) : (
                         <StatusBadge

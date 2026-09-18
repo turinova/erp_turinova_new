@@ -155,7 +155,7 @@ export function LegalShell({
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Link
-            href="/hamarosan"
+            href="/"
             className="inline-flex no-underline transition-opacity hover:opacity-80"
           >
             <Image

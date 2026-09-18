@@ -52,8 +52,16 @@ type FormFieldProps = {
 
 ## 4. `StatusBadge`
 
-`active | success | warning | danger | info` — soft háttér + ink szöveg + 4px radius.  
-Mindig van **szöveges** label (pl. „Aktív”, „Függőben”).
+`tone`: `active | success | warning | danger | info | neutral`  
+`variant`: `soft` (default) | `solid` | `outline`
+
+| Variáns | Mikor |
+|---|---|
+| `solid` | Fizetve / Fizetetlen / kritikus glance — max 1–2 / képernyő |
+| `soft` | Listasor státusz |
+| `outline` | Meta (raktár, SKU, csatorna, díj) — keret + sötét szöveg, nem pasztell |
+
+Mindig van **szöveges** label (pl. „Aktív”, „Függőben”). Tokenek: `src/lib/tokens.css`.
 
 ## 5. `DataTable`
 
@@ -108,7 +116,7 @@ Siker: 4–5 mp. Hiba: manuális zárás. Undo: 8 mp ahol releváns.
 | Select | natív viselkedés / Radix + keresés 10+ opciónál |
 | Dialog | elev-3, radius 8 |
 | Table | saját DataTable-re építünk, ne nyers shadcn table alone |
-| Badge | StatusBadge soft színek |
+| Badge | StatusBadge soft / solid / outline |
 | Checkbox | min 20×20, label kattintható |
 
 ## Ne találj ki újat

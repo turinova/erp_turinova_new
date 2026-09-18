@@ -6,6 +6,7 @@ import { getSessionUser } from '@/lib/auth/session'
 import { listCustomersForSelect } from '@/lib/customers/queries'
 import { listActiveFeeTypeOptions } from '@/lib/fee-types/queries'
 import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
+import { listPosRegisters } from '@/lib/pos/shifts'
 import { createClient } from '@/lib/supabase/server'
 import { listActiveWarehouses } from '@/lib/warehouses/queries'
 
@@ -19,16 +20,19 @@ export default async function PosPage() {
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const [warehouses, customers, paymentMethods, feeTypes] = await Promise.all([
-    listActiveWarehouses(supabase, user.tenantId),
-    listCustomersForSelect(supabase, user.tenantId),
-    listActivePaymentMethods(supabase, user.tenantId),
-    listActiveFeeTypeOptions(supabase, user.tenantId)
-  ])
+  const [warehouses, customers, paymentMethods, feeTypes, registers] =
+    await Promise.all([
+      listActiveWarehouses(supabase, user.tenantId),
+      listCustomersForSelect(supabase, user.tenantId),
+      listActivePaymentMethods(supabase, user.tenantId),
+      listActiveFeeTypeOptions(supabase, user.tenantId),
+      listPosRegisters(supabase, user.tenantId)
+    ])
 
   return (
     <PosClient
       warehouses={warehouses}
+      registers={registers}
       customers={customers}
       paymentMethods={paymentMethods}
       feeTypes={feeTypes}

@@ -20,13 +20,14 @@ export type PosFeeLine = {
 
 export type PosSessionState = {
   warehouseId: string
+  registerId: string
   customerId: string
   lines: PosCartLine[]
   fees: PosFeeLine[]
   globalDiscPct: number
 }
 
-const STORAGE_KEY = 'modul-pos-session-v1'
+const STORAGE_KEY = 'modul-pos-session-v2'
 
 export function loadPosSession(): PosSessionState | null {
   if (typeof window === 'undefined') return null
@@ -38,6 +39,7 @@ export function loadPosSession(): PosSessionState | null {
     if (!Array.isArray(parsed.lines)) return null
     return {
       warehouseId: parsed.warehouseId ?? '',
+      registerId: parsed.registerId ?? '',
       customerId: parsed.customerId ?? '',
       lines: parsed.lines,
       fees: Array.isArray(parsed.fees) ? parsed.fees : [],

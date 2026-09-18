@@ -139,3 +139,123 @@ export function computeSaleTotals(input: {
     due
   }
 }
+
+/** Visszáru előnézet — RPC pro-rata logikával egyező. */
+export type ReturnableLine = {
+  id: string
+  itemKind: 'product' | 'fee'
+  name: string
+  quantitySold: number
+  quantityReturned: number
+  totalGross: number
+  taxPercent: number
+}
+
+export type ReturnPreviewLineInput = {
+  itemId: string
+  quantity: number
+}
+
+export type ReturnPreviewResult = {
+  subtotalGross: number
+  totalNet: number
+  totalVat: number
+  cashRoundingAmount: number
+  refundDue: number
+  lines: {
+    itemId: string
+    quantity: number
+    totalGross: number
+    totalNet: number
+    totalVat: number
+  }[]
+}
+
+export function computeReturnPreview(input: {
+  saleTotalGross: number
+  saleCashRounding: number
+  itemsSumGross: number
+  returnable: ReturnableLine[]
+  selected: ReturnPreviewLineInput[]
+  /** Még nem volt visszáru + minden maradék megy vissza */
+  isFullFirstReturn: boolean
+  alreadyRefunded: number
+  paidSum: number
+  applyCashRound?: boolean
+}): ReturnPreviewResult {
+  const factor =
+    input.itemsSumGross > 0 ? input.saleTotalGross / input.itemsSumGross : 0
+
+  const byId = new Map(input.returnable.map((r) => [r.id, r]))
+  const lines: ReturnPreviewResult['lines'] = []
+  let subtotalGross = 0
+  let totalNet = 0
+  let totalVat = 0
+
+  for (const sel of input.selected) {
+    const src = byId.get(sel.itemId)
+    if (!src || sel.quantity <= 0) continue
+    const returnableQty = Math.max(0, src.quantitySold - src.quantityReturned)
+    const qty = Math.min(sel.quantity, returnableQty)
+    if (qty <= 0) continue
+
+    const lineEffective = Math.round(src.totalGross * factor)
+    // Already returned value approximated by qty share of full effective
+    const alreadyShare =
+      src.quantitySold > 0
+        ? Math.round(lineEffective * (src.quantityReturned / src.quantitySold))
+        : 0
+    const remainingValue = Math.max(0, lineEffective - alreadyShare)
+
+    let lineGross: number
+    if (qty >= returnableQty - 0.0001) {
+      lineGross = remainingValue
+    } else if (returnableQty <= 0) {
+      lineGross = 0
+    } else {
+      lineGross = Math.round(remainingValue * (qty / returnableQty))
+    }
+
+    const split = netVatFromGross(lineGross, src.taxPercent)
+    lines.push({
+      itemId: sel.itemId,
+      quantity: qty,
+      totalGross: lineGross,
+      totalNet: split.net,
+      totalVat: split.vat
+    })
+    subtotalGross += lineGross
+    totalNet += split.net
+    totalVat += split.vat
+  }
+
+  let refundDue = subtotalGross
+  let cashRoundingAmount = 0
+
+  if (input.isFullFirstReturn) {
+    refundDue = input.saleTotalGross + (input.saleCashRounding || 0)
+    cashRoundingAmount = input.saleCashRounding || 0
+  }
+
+  const netPaid = Math.max(0, input.paidSum - input.alreadyRefunded)
+  if (refundDue > netPaid) refundDue = netPaid
+
+  if (input.applyCashRound && !input.isFullFirstReturn && refundDue > 0) {
+    const rounded = hungarianCashRound(refundDue)
+    cashRoundingAmount = rounded - refundDue
+    refundDue = rounded
+    if (refundDue > netPaid) {
+      refundDue = netPaid
+      cashRoundingAmount = 0
+    }
+  }
+
+  return {
+    subtotalGross,
+    totalNet,
+    totalVat,
+    cashRoundingAmount,
+    refundDue,
+    lines
+  }
+}

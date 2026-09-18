@@ -15,6 +15,8 @@ export type RoiInputs = {
   smsAddon: boolean
   partnerAddon: boolean
   labelsAddon: boolean
+  posAddon: boolean
+  jelenletAddon: boolean
 }
 
 export type RoiBreakdown = {
@@ -42,7 +44,9 @@ export const ROI_DEFAULTS: RoiInputs = {
   hourlyWageHuf: 5_000,
   smsAddon: true,
   partnerAddon: false,
-  labelsAddon: false
+  labelsAddon: false,
+  posAddon: false,
+  jelenletAddon: false
 }
 
 /** Hírös Ablak esettanulmány — ugyanaz a képlet, publikált kalibráció. */
@@ -57,7 +61,9 @@ export const HIROS_ROI_INPUTS: RoiInputs = {
   hourlyWageHuf: 5_200,
   smsAddon: true,
   partnerAddon: true,
-  labelsAddon: true
+  labelsAddon: true,
+  posAddon: false,
+  jelenletAddon: false
 }
 
 const WEEKS_PER_MONTH = 4.3
@@ -81,6 +87,12 @@ export function computeSubscriptionMonthlyHuf(input: RoiInputs): {
   }
   if (input.labelsAddon) {
     fixed += MARKETING_PRICING.addons.product_labels.priceMonthlyHuf
+  }
+  if (input.posAddon) {
+    fixed += MARKETING_PRICING.addons.pos.priceMonthlyHuf
+  }
+  if (input.jelenletAddon) {
+    fixed += MARKETING_PRICING.addons.jelenlet.priceMonthlyHuf
   }
   const smsUsage =
     input.smsAddon
@@ -137,6 +149,8 @@ export function addonKeysFromInputs(input: RoiInputs): MarketingAddonKey[] {
   if (input.smsAddon) keys.push('quote_ready_sms')
   if (input.partnerAddon) keys.push('partner_orders')
   if (input.labelsAddon) keys.push('product_labels')
+  if (input.posAddon) keys.push('pos')
+  if (input.jelenletAddon) keys.push('jelenlet')
   return keys
 }
 

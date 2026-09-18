@@ -28,6 +28,7 @@ import {
   type PurchaseOrderStatus
 } from '@/lib/purchase-orders/parse'
 import type { PurchaseOrderListItem } from '@/lib/purchase-orders/queries'
+import { cn } from '@/lib/utils'
 
 type PurchaseOrdersListClientProps = {
   rows: PurchaseOrderListItem[]
@@ -40,34 +41,13 @@ type PurchaseOrdersListClientProps = {
   statusCounts: Record<PurchaseOrderStatus | 'all', number>
 }
 
-function EmptyOrders({
-  canWrite,
-  onCreate
-}: {
-  canWrite: boolean
-  onCreate: () => void
-}) {
-  return (
-    <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle p-6">
-      <div className="flex size-9 items-center justify-center rounded-md bg-surface text-ink-muted">
-        <ClipboardList className="size-4" aria-hidden />
-      </div>
-      <div>
-        <p className="text-body font-medium text-ink">
-          Még nincs beszállítói rendelés.
-        </p>
-        <p className="mt-0.5 text-hint text-ink-secondary">
-          Válassz beszállítót, add hozzá a termékeket, majd jelöld megrendelve.
-        </p>
-      </div>
-      {canWrite ? (
-        <Button type="button" onClick={onCreate}>
-          <Plus className="size-3.5" aria-hidden />
-          Új rendelés
-        </Button>
-      ) : null}
-    </div>
-  )
+function formatDate(iso: string | null) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleDateString('hu-HU')
+  } catch {
+    return '—'
+  }
 }
 
 export function PurchaseOrdersListClient({
@@ -103,11 +83,6 @@ export function PurchaseOrdersListClient({
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    pushParams({ q: qDraft.trim() || null, page: '1' })
-  }
-
   function handleDelete() {
     if (!deleteTarget) return
     startTransition(async () => {
@@ -132,7 +107,7 @@ export function PurchaseOrdersListClient({
   )
 
   const chips: { key: PurchaseOrderStatus | 'all'; label: string }[] = [
-    { key: 'all', label: `Összes (${statusCounts.all})` },
+    { key: 'all', label: `Mind (${statusCounts.all})` },
     ...PO_STATUSES.map((s) => ({
       key: s,
       label: `${PO_STATUS_LABEL[s]} (${statusCounts[s]})`
@@ -140,7 +115,7 @@ export function PurchaseOrdersListClient({
   ]
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Beszállítói rendelések"
         description="Termék rendelés beszállítótól — vázlat, megrendelés, beérkezés."
@@ -157,7 +132,35 @@ export function PurchaseOrdersListClient({
         }
       />
 
-      <div className="mb-3 flex flex-wrap gap-1.5">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          pushParams({ q: qDraft.trim() || null, page: '1' })
+        }}
+      >
+        <div className="relative min-w-[14rem] flex-1">
+          <label className="sr-only" htmlFor="po-search">
+            Keresés
+          </label>
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
+            aria-hidden
+          />
+          <Input
+            id="po-search"
+            value={qDraft}
+            onChange={(e) => setQDraft(e.target.value)}
+            placeholder="Szám / beszállító…"
+            className="pl-8"
+          />
+        </div>
+        <Button type="submit" variant="secondary">
+          Keresés
+        </Button>
+      </form>
+
+      <div className="flex flex-wrap gap-1.5">
         {chips.map((chip) => {
           const active = initialStatus === chip.key
           return (
@@ -170,11 +173,12 @@ export function PurchaseOrdersListClient({
                   page: '1'
                 })
               }
-              className={
+              className={cn(
+                'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
                 active
-                  ? 'rounded-md bg-ink px-2 py-1 text-label font-medium text-white'
-                  : 'rounded-md border border-border bg-surface px-2 py-1 text-label text-ink-secondary hover:border-border-strong'
-              }
+                  ? 'bg-ink text-surface'
+                  : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
+              )}
             >
               {chip.label}
             </button>
@@ -182,61 +186,67 @@ export function PurchaseOrdersListClient({
         })}
       </div>
 
-      <div className="mb-3">
-        <form onSubmit={handleSearchSubmit} className="relative max-w-sm">
-          <label className="sr-only" htmlFor="po-search">
-            Keresés
-          </label>
-          <Search
-            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
-            aria-hidden
-          />
-          <Input
-            id="po-search"
-            value={qDraft}
-            onChange={(e) => setQDraft(e.target.value)}
-            placeholder="Keresés szám vagy beszállító…"
-            className="pl-8"
-          />
-        </form>
-      </div>
-
       {total === 0 && !emptySearch ? (
-        <EmptyOrders
-          canWrite={canWrite}
-          onCreate={() => router.push('/beszallitoi-rendelesek/uj')}
-        />
+        <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-8">
+          <ClipboardList className="size-5 text-ink-muted" aria-hidden />
+          <div>
+            <p className="text-body font-medium text-ink">
+              Még nincs beszállítói rendelés
+            </p>
+            <p className="mt-1 text-body text-ink-secondary">
+              Válassz beszállítót, add hozzá a termékeket, majd jelöld
+              megrendelve.
+            </p>
+          </div>
+          {canWrite ? (
+            <Button
+              type="button"
+              onClick={() => router.push('/beszallitoi-rendelesek/uj')}
+            >
+              <Plus className="size-3.5" aria-hidden />
+              Új rendelés
+            </Button>
+          ) : null}
+        </div>
       ) : total === 0 ? (
-        <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
-          Nincs találat a megadott szűrésre.
+        <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-body text-ink-secondary">
+          Nincs találat a szűrőkkel.
         </p>
       ) : (
-        <>
-          <DataTable>
-            <DataTableHead>
-              <DataTableRow>
-                <DataTableHeaderCell>Szám</DataTableHeaderCell>
-                <DataTableHeaderCell>Beszállító</DataTableHeaderCell>
-                <DataTableHeaderCell>Státusz</DataTableHeaderCell>
-                <DataTableHeaderCell>Várható</DataTableHeaderCell>
-                <DataTableHeaderCell className="text-right">
-                  Tételek
-                </DataTableHeaderCell>
-                <DataTableHeaderCell className="text-right">
-                  Nettó
-                </DataTableHeaderCell>
+        <DataTable>
+          <DataTableHead>
+            <DataTableRow>
+              <DataTableHeaderCell>Szám</DataTableHeaderCell>
+              <DataTableHeaderCell>Beszállító</DataTableHeaderCell>
+              <DataTableHeaderCell>Státusz</DataTableHeaderCell>
+              <DataTableHeaderCell>Várható</DataTableHeaderCell>
+              <DataTableHeaderCell align="right">Tételek</DataTableHeaderCell>
+              <DataTableHeaderCell align="right">Nettó</DataTableHeaderCell>
+              {canWrite ? (
                 <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
                   Műveletek
                 </DataTableHeaderCell>
-              </DataTableRow>
-            </DataTableHead>
-            <DataTableBody>
-              {rows.map((row) => (
-                <DataTableRow key={row.id}>
+              ) : null}
+            </DataTableRow>
+          </DataTableHead>
+          <DataTableBody>
+            {rows.map((row) => {
+              const canCancel =
+                canWrite &&
+                (row.status === 'draft' || row.status === 'ordered')
+              return (
+                <DataTableRow
+                  key={row.id}
+                  className="cursor-pointer"
+                  onClick={() =>
+                    router.push(`/beszallitoi-rendelesek/${row.id}`)
+                  }
+                >
                   <DataTableCell>
                     <Link
                       href={`/beszallitoi-rendelesek/${row.id}`}
-                      className="font-medium text-ink no-underline hover:underline"
+                      className="font-medium text-ink underline-offset-2 hover:underline"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {row.po_number}
                     </Link>
@@ -249,86 +259,79 @@ export function PurchaseOrdersListClient({
                       {PO_STATUS_LABEL[row.status]}
                     </StatusBadge>
                   </DataTableCell>
-                  <DataTableCell className="text-ink-secondary">
-                    {row.expected_date
-                      ? new Date(row.expected_date).toLocaleDateString('hu-HU')
-                      : '—'}
+                  <DataTableCell className="tabular-nums text-ink-secondary">
+                    {formatDate(row.expected_date)}
                   </DataTableCell>
-                  <DataTableCell className="text-right text-ink-secondary">
-                    {row.items_count}
+                  <DataTableCell align="right">
+                    <span className="tabular-nums">{row.items_count}</span>
                   </DataTableCell>
-                  <DataTableCell className="text-right tabular-nums">
-                    {formatMoneyFt(row.net_total)}
+                  <DataTableCell align="right">
+                    <span className="tabular-nums font-medium">
+                      {formatMoneyFt(row.net_total)}
+                    </span>
                   </DataTableCell>
-                  <DataTableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          router.push(`/beszallitoi-rendelesek/${row.id}`)
-                        }
-                      >
-                        Megnyitás
-                      </Button>
-                      {canWrite &&
-                      (row.status === 'draft' || row.status === 'ordered') ? (
+                  {canWrite ? (
+                    <DataTableCell className="text-right">
+                      {canCancel ? (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="text-danger-ink hover:text-danger-ink"
-                          onClick={() => setDeleteTarget(row)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeleteTarget(row)
+                          }}
                         >
                           {row.status === 'draft' ? 'Törlés' : 'Visszavonás'}
                         </Button>
-                      ) : null}
-                    </div>
-                  </DataTableCell>
+                      ) : (
+                        <span className="text-hint text-ink-muted">—</span>
+                      )}
+                    </DataTableCell>
+                  ) : null}
                 </DataTableRow>
-              ))}
-            </DataTableBody>
-          </DataTable>
-
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-hint text-ink-secondary">
-              {from}–{to} / {total} elem
-            </p>
-            {totalPages > 1 ? (
-              <div className="flex items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() =>
-                    pushParams({ page: String(Math.max(1, page - 1)) })
-                  }
-                >
-                  Előző
-                </Button>
-                <span className="text-hint text-ink-secondary">
-                  {page} / {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() =>
-                    pushParams({
-                      page: String(Math.min(totalPages, page + 1))
-                    })
-                  }
-                >
-                  Következő
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </>
+              )
+            })}
+          </DataTableBody>
+        </DataTable>
       )}
+
+      {total > 0 ? (
+        <div className="flex items-center justify-between gap-2 text-body text-ink-secondary">
+          <span>
+            {from}–{to} / {total}
+          </span>
+          {totalPages > 1 ? (
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() =>
+                  pushParams({ page: String(Math.max(1, page - 1)) })
+                }
+              >
+                Előző
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={page >= totalPages}
+                onClick={() =>
+                  pushParams({
+                    page: String(Math.min(totalPages, page + 1))
+                  })
+                }
+              >
+                Következő
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

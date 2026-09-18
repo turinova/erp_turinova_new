@@ -1,20 +1,21 @@
 /**
  * Flat 2.0 + Linear light sűrűség + Midday shell
  * Primary: Midday charcoal (nem kék brand).
- * Nav: monokróm slate. Státusz színek csak success/warning/danger.
+ * Nav: monokróm slate.
+ * Státusz: erősebb chroma (glance) — soft / solid / outline chip variánsokkal.
  */
 
 :root {
-  /* Neutral — Linear light hairline */
-  --bg-app: #fafafa;
+  /* Neutral — kissé erősebb elválasztás a surface-től */
+  --bg-app: #f4f4f5;
   --bg-surface: #ffffff;
-  --bg-subtle: #f5f5f5;
-  --border: #e5e5e5;
-  --border-strong: #d4d4d4;
-  --text-primary: #0a0a0a;
-  --text-secondary: #525252;
-  --text-disabled: #a3a3a3;
-  --text-muted: #737373;
+  --bg-subtle: #eeeff2;
+  --border: #d4d4d8;
+  --border-strong: #a1a1aa;
+  --text-primary: #09090b;
+  --text-secondary: #3f3f46;
+  --text-disabled: #a1a1aa;
+  --text-muted: #71717a;
 
   /* Midday charcoal primary — CTA / focus / kijelölés */
   --primary: #18181b;
@@ -22,31 +23,31 @@
   --primary-soft: #f4f4f5;
   --primary-ink: #18181b;
 
-  --success: #12a150;
-  --success-soft: #e7f7ee;
-  --success-ink: #0a6e36;
+  /* Szemantikus — magasabb chroma a soft chiphez is */
+  --success: #16a34a;
+  --success-soft: #dcfce7;
+  --success-ink: #14532d;
 
-  --warning: #e08600;
-  --warning-soft: #fff4e0;
-  --warning-ink: #8a5200;
+  --warning: #ea580c;
+  --warning-soft: #ffedd5;
+  --warning-ink: #9a3412;
 
   --danger: #dc2626;
-  --danger-soft: #fdecec;
-  --danger-ink: #991b1b;
+  --danger-soft: #fee2e2;
+  --danger-ink: #7f1d1d;
 
-  /* Státusz info / folyamatban — soft chip (nem brand CTA) */
   --info: #2563eb;
-  --info-soft: #eff6ff;
-  --info-ink: #1e40af;
+  --info-soft: #dbeafe;
+  --info-ink: #1e3a8a;
 
   --active: #7c3aed;
-  --active-soft: #f5f3ff;
-  --active-ink: #5b21b6;
+  --active-soft: #ede9fe;
+  --active-ink: #4c1d95;
 
   /* Nav — csak slate (monokróm); legacy aliasok → slate */
   --nav-slate: #525252;
-  --nav-slate-soft: #f5f5f5;
-  --nav-slate-ink: #262626;
+  --nav-slate-soft: #f4f4f5;
+  --nav-slate-ink: #18181b;
 
   --nav-blue: var(--nav-slate);
   --nav-blue-soft: var(--nav-slate-soft);

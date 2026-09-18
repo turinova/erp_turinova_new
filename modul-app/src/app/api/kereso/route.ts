@@ -9,9 +9,11 @@ import {
 } from '@/lib/partner-settings/queries'
 import { resolveKeresoAuth } from '@/lib/search/kereso-auth'
 import {
+  enrichUnifiedRowsWithStockOnHand,
   parseSearchKindParam,
   searchMaterialsUnified
 } from '@/lib/search/materials-search'
+import { tenantHasBeszerzes } from '@/lib/beszerzes/entitlement'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -90,17 +92,31 @@ export async function GET(request: Request) {
       kind,
       allowedKinds
     })
+
+    const showProcurementStock =
+      !isPartnerSearch &&
+      (await tenantHasBeszerzes(supabase, tenantId))
+
+    const rows = showProcurementStock
+      ? await enrichUnifiedRowsWithStockOnHand(
+          supabase,
+          tenantId,
+          result.rows
+        )
+      : result.rows
+
     const searchMs = Math.round(performance.now() - searchStart)
     const totalMs = Math.round(performance.now() - totalStart)
 
     return NextResponse.json(
       {
-        rows: result.rows,
+        rows,
         total: result.total,
         page: result.page,
         limit: result.limit,
         kind,
-        allowedKinds: isPartnerSearch ? allowedKinds : undefined
+        allowedKinds: isPartnerSearch ? allowedKinds : undefined,
+        showProcurementStock
       },
       {
         headers: {

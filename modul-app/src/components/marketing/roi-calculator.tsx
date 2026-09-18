@@ -213,6 +213,20 @@ export function RoiCalculator({
             <p className="text-[13px] font-medium text-ink">Modulok a díjban</p>
             <div className="grid gap-2 sm:grid-cols-1">
               <AddonToggle
+                id="addon-pos"
+                label={MARKETING_PRICING.addons.pos.name}
+                price={`${formatHufPlain(MARKETING_PRICING.addons.pos.priceMonthlyHuf)}/hó`}
+                checked={input.posAddon}
+                onChange={(v) => patch({ posAddon: v })}
+              />
+              <AddonToggle
+                id="addon-jelenlet"
+                label={MARKETING_PRICING.addons.jelenlet.name}
+                price={`${formatHufPlain(MARKETING_PRICING.addons.jelenlet.priceMonthlyHuf)}/hó`}
+                checked={input.jelenletAddon}
+                onChange={(v) => patch({ jelenletAddon: v })}
+              />
+              <AddonToggle
                 id="addon-sms"
                 label={MARKETING_PRICING.addons.quote_ready_sms.name}
                 price={`${formatHufPlain(MARKETING_PRICING.addons.quote_ready_sms.priceMonthlyHuf)}/hó + ${MARKETING_PRICING.addons.quote_ready_sms.priceUnitHuf} Ft/db`}

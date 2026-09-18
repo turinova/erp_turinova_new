@@ -61,11 +61,6 @@ export function CustomersListClient({
     router.push(qs ? `${pathname}?${qs}` : pathname)
   }
 
-  function handleSearchSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    pushParams({ q: qDraft.trim() || null, page: '1' })
-  }
-
   function handleDelete() {
     if (!deleteTarget) return
     startTransition(async () => {
@@ -86,16 +81,13 @@ export function CustomersListClient({
   )
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Ügyfelek"
         description="Kapcsolattartók és számlázási adatok."
         actions={
           canWrite ? (
-            <Button
-              type="button"
-              onClick={() => router.push('/ugyfelek/uj')}
-            >
+            <Button type="button" onClick={() => router.push('/ugyfelek/uj')}>
               <Plus className="size-3.5" aria-hidden />
               Új ügyfél
             </Button>
@@ -103,8 +95,14 @@ export function CustomersListClient({
         }
       />
 
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <form onSubmit={handleSearchSubmit} className="relative max-w-sm flex-1">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          pushParams({ q: qDraft.trim() || null, page: '1' })
+        }}
+      >
+        <div className="relative min-w-[14rem] flex-1">
           <label className="sr-only" htmlFor="customer-search">
             Keresés
           </label>
@@ -116,88 +114,104 @@ export function CustomersListClient({
             id="customer-search"
             value={qDraft}
             onChange={(e) => setQDraft(e.target.value)}
-            placeholder="Keresés név, e-mail, telefon, város…"
+            placeholder="Név / e-mail / telefon / város…"
             className="pl-8"
           />
-        </form>
-      </div>
+        </div>
+        <Button type="submit" variant="secondary">
+          Keresés
+        </Button>
+      </form>
 
       {total === 0 && !emptySearch ? (
-        <EmptyCustomers
-          canWrite={canWrite}
-          onCreate={() => router.push('/ugyfelek/uj')}
-        />
+        <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-8">
+          <Users className="size-5 text-ink-muted" aria-hidden />
+          <div>
+            <p className="text-body font-medium text-ink">Még nincs ügyfél</p>
+            <p className="mt-1 text-body text-ink-secondary">
+              Add hozzá az első ügyfelet névvel és számlázási adatokkal.
+            </p>
+          </div>
+          {canWrite ? (
+            <Button type="button" onClick={() => router.push('/ugyfelek/uj')}>
+              <Plus className="size-3.5" aria-hidden />
+              Új ügyfél
+            </Button>
+          ) : null}
+        </div>
       ) : total === 0 ? (
-        <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
-          Nincs találat a megadott keresésre.
+        <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-body text-ink-secondary">
+          Nincs találat a keresésre.
         </p>
       ) : (
-        <>
-          <DataTable>
-            <DataTableHead>
-              <DataTableRow>
-                <DataTableHeaderCell>Név</DataTableHeaderCell>
-                <DataTableHeaderCell>Telefon</DataTableHeaderCell>
-                <DataTableHeaderCell>E-mail</DataTableHeaderCell>
-                <DataTableHeaderCell>Város</DataTableHeaderCell>
+        <DataTable>
+          <DataTableHead>
+            <DataTableRow>
+              <DataTableHeaderCell>Név</DataTableHeaderCell>
+              <DataTableHeaderCell>Telefon</DataTableHeaderCell>
+              <DataTableHeaderCell>E-mail</DataTableHeaderCell>
+              <DataTableHeaderCell>Város</DataTableHeaderCell>
+              {canWrite ? (
                 <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
                   Műveletek
                 </DataTableHeaderCell>
-              </DataTableRow>
-            </DataTableHead>
-            <DataTableBody>
-              {rows.map((row) => (
-                <DataTableRow key={row.id}>
-                  <DataTableCell>
-                    <Link
-                      href={`/ugyfelek/${row.id}`}
-                      className="font-medium text-ink no-underline hover:underline"
-                    >
-                      {row.name}
-                    </Link>
-                  </DataTableCell>
-                  <DataTableCell className="text-ink-secondary">
-                    {row.mobile || '—'}
-                  </DataTableCell>
-                  <DataTableCell className="text-ink-secondary">
-                    {row.email || '—'}
-                  </DataTableCell>
-                  <DataTableCell className="text-ink-secondary">
-                    {row.billing_city || '—'}
-                  </DataTableCell>
+              ) : null}
+            </DataTableRow>
+          </DataTableHead>
+          <DataTableBody>
+            {rows.map((row) => (
+              <DataTableRow
+                key={row.id}
+                className="cursor-pointer"
+                onClick={() => router.push(`/ugyfelek/${row.id}`)}
+              >
+                <DataTableCell>
+                  <Link
+                    href={`/ugyfelek/${row.id}`}
+                    className="font-medium text-ink underline-offset-2 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {row.name}
+                  </Link>
+                </DataTableCell>
+                <DataTableCell className="text-ink-secondary">
+                  {row.mobile || '—'}
+                </DataTableCell>
+                <DataTableCell className="text-ink-secondary">
+                  {row.email || '—'}
+                </DataTableCell>
+                <DataTableCell className="text-ink-secondary">
+                  {row.billing_city || '—'}
+                </DataTableCell>
+                {canWrite ? (
                   <DataTableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => router.push(`/ugyfelek/${row.id}`)}
-                      >
-                        Megnyitás
-                      </Button>
-                      {canWrite ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-danger-ink hover:text-danger-ink"
-                          onClick={() => setDeleteTarget(row)}
-                        >
-                          Törlés
-                        </Button>
-                      ) : null}
-                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-danger-ink hover:text-danger-ink"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setDeleteTarget(row)
+                      }}
+                    >
+                      Törlés
+                    </Button>
                   </DataTableCell>
-                </DataTableRow>
-              ))}
-            </DataTableBody>
-          </DataTable>
+                ) : null}
+              </DataTableRow>
+            ))}
+          </DataTableBody>
+        </DataTable>
+      )}
 
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-hint text-ink-secondary">
-              {from}–{to} / {total} elem
-            </p>
-            <div className="flex items-center gap-1.5">
+      {total > 0 ? (
+        <div className="flex items-center justify-between gap-2 text-body text-ink-secondary">
+          <span>
+            {from}–{to} / {total}
+          </span>
+          {totalPages > 1 ? (
+            <div className="flex gap-1">
               <Button
                 type="button"
                 variant="secondary"
@@ -207,9 +221,6 @@ export function CustomersListClient({
               >
                 Előző
               </Button>
-              <span className="px-2 text-hint text-ink-secondary">
-                {page} / {totalPages}
-              </span>
               <Button
                 type="button"
                 variant="secondary"
@@ -220,9 +231,9 @@ export function CustomersListClient({
                 Következő
               </Button>
             </div>
-          </div>
-        </>
-      )}
+          ) : null}
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
@@ -239,32 +250,6 @@ export function CustomersListClient({
         loading={pending}
         onConfirm={handleDelete}
       />
-    </div>
-  )
-}
-
-function EmptyCustomers({
-  canWrite,
-  onCreate
-}: {
-  canWrite: boolean
-  onCreate: () => void
-}) {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-10 text-center">
-      <Users className="size-8 text-ink-secondary" aria-hidden />
-      <div className="space-y-1">
-        <p className="text-body font-medium text-ink">Még nincs ügyfél</p>
-        <p className="max-w-sm text-body text-ink-secondary">
-          Add hozzá az első ügyfelet névvel és számlázási adatokkal.
-        </p>
-      </div>
-      {canWrite ? (
-        <Button type="button" onClick={onCreate}>
-          <Plus className="size-3.5" aria-hidden />
-          Új ügyfél
-        </Button>
-      ) : null}
     </div>
   )
 }

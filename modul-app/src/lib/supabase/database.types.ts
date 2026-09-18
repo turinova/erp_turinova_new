@@ -372,6 +372,7 @@ export type StockMovementSource =
   | 'adjustment'
   | 'sale'
   | 'transfer'
+  | 'sale_return'
 
 export type StockMovement = {
   id: string

@@ -113,10 +113,18 @@ export async function listStockMovements(
         .map((r) => r.source_id as string)
     )
   ]
+  const returnIds = [
+    ...new Set(
+      rowsRaw
+        .filter((r) => r.source_type === 'sale_return' && r.source_id)
+        .map((r) => r.source_id as string)
+    )
+  ]
 
   const receiptMeta = new Map<string, string>()
   const transferMeta = new Map<string, string>()
   const saleMeta = new Map<string, string>()
+  const returnMeta = new Map<string, { number: string; saleId: string }>()
 
   if (receiptIds.length > 0) {
     const { data: receipts } = await supabase
@@ -148,6 +156,20 @@ export async function listStockMovements(
       .in('id', saleIds)
     for (const s of sales ?? []) {
       saleMeta.set(s.id, s.sale_number)
+    }
+  }
+
+  if (returnIds.length > 0) {
+    const { data: returns } = await supabase
+      .from('sales_returns')
+      .select('id, return_number, sales_order_id')
+      .eq('tenant_id', params.tenantId)
+      .in('id', returnIds)
+    for (const r of returns ?? []) {
+      returnMeta.set(r.id, {
+        number: r.return_number,
+        saleId: r.sales_order_id
+      })
     }
   }
 
@@ -187,6 +209,12 @@ export async function listStockMovements(
       const num = saleMeta.get(row.source_id)
       source_label = num ? `Értékesítés ${num}` : 'Eladás'
       source_href = `/ertekesitesek/${row.source_id}`
+    } else if (row.source_type === 'sale_return' && row.source_id) {
+      const meta = returnMeta.get(row.source_id)
+      source_label = meta ? `Visszáru ${meta.number}` : 'Visszáru'
+      source_href = meta?.saleId
+        ? `/ertekesitesek/${meta.saleId}`
+        : null
     } else if (row.source_type === 'adjustment') {
       source_label = 'Korrekció'
     }

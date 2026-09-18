@@ -18,6 +18,8 @@ export type SaleListItem = {
   items_count: number
   fulfilled_at: string | null
   created_at: string
+  created_by_label: string | null
+  pos_shift_id: string | null
 }
 
 export type SaleItemRow = {
@@ -41,6 +43,42 @@ export type SalePaymentRow = {
   amount: number
   paid_at: string
   status: string
+  kind: 'payment' | 'refund'
+}
+
+export type SaleReturnItemRow = {
+  id: string
+  sales_order_item_id: string
+  item_kind: 'product' | 'fee'
+  name_snapshot: string
+  quantity: number
+  total_gross: number
+  restock: boolean
+}
+
+export type SaleReturnRow = {
+  id: string
+  return_number: string
+  total_gross: number
+  refund_amount: number
+  reason: string | null
+  note: string | null
+  created_at: string
+  items: SaleReturnItemRow[]
+}
+
+export type SaleCustomerSnapshot = {
+  id: string | null
+  name: string | null
+  email: string | null
+  mobile: string | null
+  billing_name: string | null
+  billing_country: string | null
+  billing_city: string | null
+  billing_postal_code: string | null
+  billing_street: string | null
+  billing_house_number: string | null
+  billing_tax_number: string | null
 }
 
 export type SaleDetail = {
@@ -53,6 +91,7 @@ export type SaleDetail = {
   warehouse_name: string
   customer_id: string | null
   customer_name: string | null
+  customer: SaleCustomerSnapshot
   discount_percentage: number
   discount_amount: number
   subtotal_net: number
@@ -62,8 +101,13 @@ export type SaleDetail = {
   note: string | null
   fulfilled_at: string | null
   created_at: string
+  created_by_label: string | null
+  pos_shift_id: string | null
   items: SaleItemRow[]
   payments: SalePaymentRow[]
+  returns: SaleReturnRow[]
+  /** Mennyi adható még vissza tételenként */
+  returnedQtyByItemId: Record<string, number>
 }
 
 export type SaleListParams = {
@@ -71,6 +115,7 @@ export type SaleListParams = {
   q?: string
   status?: SaleStatus | 'all'
   paymentStatus?: SalePaymentStatus | 'all'
+  posShiftId?: string
   page?: number
   limit?: number
 }
@@ -105,6 +150,8 @@ export async function listSales(
       total_gross,
       fulfilled_at,
       created_at,
+      created_by_label_snapshot,
+      pos_shift_id,
       warehouses ( name ),
       sales_order_items ( id, deleted_at )
     `,
@@ -125,6 +172,9 @@ export async function listSales(
   }
   if (params.paymentStatus && params.paymentStatus !== 'all') {
     query = query.eq('payment_status', params.paymentStatus)
+  }
+  if (params.posShiftId) {
+    query = query.eq('pos_shift_id', params.posShiftId)
   }
 
   const { data, error, count } = await query
@@ -154,7 +204,9 @@ export async function listSales(
       total_gross: Number(row.total_gross),
       items_count: items.filter((i) => !i.deleted_at).length,
       fulfilled_at: row.fulfilled_at,
-      created_at: row.created_at
+      created_at: row.created_at,
+      created_by_label: row.created_by_label_snapshot ?? null,
+      pos_shift_id: row.pos_shift_id ?? null
     }
   })
 
@@ -178,6 +230,15 @@ export async function getSale(
       warehouse_id,
       customer_id,
       customer_name_snapshot,
+      customer_email_snapshot,
+      customer_mobile_snapshot,
+      billing_name_snapshot,
+      billing_country_snapshot,
+      billing_city_snapshot,
+      billing_postal_code_snapshot,
+      billing_street_snapshot,
+      billing_house_number_snapshot,
+      billing_tax_number_snapshot,
       discount_percentage,
       discount_amount,
       subtotal_net,
@@ -187,6 +248,8 @@ export async function getSale(
       note,
       fulfilled_at,
       created_at,
+      created_by_label_snapshot,
+      pos_shift_id,
       warehouses ( name ),
       sales_order_items (
         id,
@@ -210,7 +273,28 @@ export async function getSale(
         amount,
         paid_at,
         status,
+        kind,
         deleted_at
+      ),
+      sales_returns (
+        id,
+        return_number,
+        total_gross,
+        refund_amount,
+        reason,
+        note,
+        created_at,
+        deleted_at,
+        sales_return_items (
+          id,
+          sales_order_item_id,
+          item_kind,
+          name_snapshot,
+          quantity,
+          total_gross,
+          restock,
+          deleted_at
+        )
       )
     `
     )
@@ -273,6 +357,7 @@ export async function getSale(
       amount: number
       paid_at: string
       status: string
+      kind?: string | null
       deleted_at: string | null
     }[]
   )
@@ -282,8 +367,148 @@ export async function getSale(
       payment_method_name: p.payment_method_name,
       amount: Number(p.amount),
       paid_at: p.paid_at,
-      status: p.status
+      status: p.status,
+      kind: (p.kind === 'refund' ? 'refund' : 'payment') as
+        | 'payment'
+        | 'refund'
     }))
+
+  const returns: SaleReturnRow[] = (
+    (data.sales_returns ?? []) as {
+      id: string
+      return_number: string
+      total_gross: number
+      refund_amount: number
+      reason: string | null
+      note: string | null
+      created_at: string
+      deleted_at: string | null
+      sales_return_items: {
+        id: string
+        sales_order_item_id: string
+        item_kind: 'product' | 'fee'
+        name_snapshot: string
+        quantity: number
+        total_gross: number
+        restock: boolean
+        deleted_at: string | null
+      }[]
+    }[]
+  )
+    .filter((r) => !r.deleted_at)
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+    .map((r) => ({
+      id: r.id,
+      return_number: r.return_number,
+      total_gross: Number(r.total_gross),
+      refund_amount: Number(r.refund_amount),
+      reason: r.reason,
+      note: r.note,
+      created_at: r.created_at,
+      items: (r.sales_return_items ?? [])
+        .filter((i) => !i.deleted_at)
+        .map((i) => ({
+          id: i.id,
+          sales_order_item_id: i.sales_order_item_id,
+          item_kind: i.item_kind,
+          name_snapshot: i.name_snapshot,
+          quantity: Number(i.quantity),
+          total_gross: Number(i.total_gross),
+          restock: Boolean(i.restock)
+        }))
+    }))
+
+  const returnedQtyByItemId: Record<string, number> = {}
+  for (const ret of returns) {
+    for (const it of ret.items) {
+      returnedQtyByItemId[it.sales_order_item_id] =
+        (returnedQtyByItemId[it.sales_order_item_id] ?? 0) + it.quantity
+    }
+  }
+
+  const row = data as typeof data & {
+    customer_email_snapshot?: string | null
+    customer_mobile_snapshot?: string | null
+    billing_name_snapshot?: string | null
+    billing_country_snapshot?: string | null
+    billing_city_snapshot?: string | null
+    billing_postal_code_snapshot?: string | null
+    billing_street_snapshot?: string | null
+    billing_house_number_snapshot?: string | null
+    billing_tax_number_snapshot?: string | null
+  }
+
+  let customer: SaleCustomerSnapshot = {
+    id: row.customer_id,
+    name: row.customer_name_snapshot,
+    email: row.customer_email_snapshot ?? null,
+    mobile: row.customer_mobile_snapshot ?? null,
+    billing_name: row.billing_name_snapshot ?? null,
+    billing_country: row.billing_country_snapshot ?? null,
+    billing_city: row.billing_city_snapshot ?? null,
+    billing_postal_code: row.billing_postal_code_snapshot ?? null,
+    billing_street: row.billing_street_snapshot ?? null,
+    billing_house_number: row.billing_house_number_snapshot ?? null,
+    billing_tax_number: row.billing_tax_number_snapshot ?? null
+  }
+
+  // Legacy / partial snapshot: fill nulls from live customer
+  const needsLive =
+    row.customer_id != null &&
+    (!customer.email ||
+      !customer.mobile ||
+      !customer.billing_name ||
+      !customer.billing_city ||
+      !customer.billing_tax_number ||
+      !customer.billing_street ||
+      !customer.name)
+
+  if (needsLive && row.customer_id) {
+    const { data: live } = await supabase
+      .from('customers')
+      .select(
+        `
+        name,
+        email,
+        mobile,
+        billing_name,
+        billing_country,
+        billing_city,
+        billing_postal_code,
+        billing_street,
+        billing_house_number,
+        billing_tax_number
+      `
+      )
+      .eq('id', row.customer_id)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (live) {
+      customer = {
+        id: row.customer_id,
+        name: customer.name ?? live.name,
+        email: customer.email ?? live.email,
+        mobile: customer.mobile ?? live.mobile,
+        billing_name: customer.billing_name ?? live.billing_name,
+        billing_country:
+          customer.billing_country ??
+          (live.billing_country || 'Magyarország'),
+        billing_city: customer.billing_city ?? live.billing_city,
+        billing_postal_code:
+          customer.billing_postal_code ?? live.billing_postal_code,
+        billing_street: customer.billing_street ?? live.billing_street,
+        billing_house_number:
+          customer.billing_house_number ?? live.billing_house_number,
+        billing_tax_number:
+          customer.billing_tax_number ?? live.billing_tax_number
+      }
+    }
+  }
 
   return {
     id: data.id,
@@ -294,7 +519,8 @@ export async function getSale(
     warehouse_id: data.warehouse_id,
     warehouse_name: whOne?.name ?? '—',
     customer_id: data.customer_id,
-    customer_name: data.customer_name_snapshot,
+    customer_name: customer.name,
+    customer,
     discount_percentage: Number(data.discount_percentage),
     discount_amount: Number(data.discount_amount),
     subtotal_net: Number(data.subtotal_net),
@@ -304,8 +530,15 @@ export async function getSale(
     note: data.note,
     fulfilled_at: data.fulfilled_at,
     created_at: data.created_at,
+    created_by_label:
+      (data as { created_by_label_snapshot?: string | null })
+        .created_by_label_snapshot ?? null,
+    pos_shift_id:
+      (data as { pos_shift_id?: string | null }).pos_shift_id ?? null,
     items,
-    payments
+    payments,
+    returns,
+    returnedQtyByItemId
   }
 }
 

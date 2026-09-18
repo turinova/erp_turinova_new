@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 
 import { SaleDetailClient } from '@/components/sales/sale-detail-client'
 import { getSessionUser } from '@/lib/auth/session'
+import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
 import { getSale } from '@/lib/sales/queries'
 import { createClient } from '@/lib/supabase/server'
 
@@ -31,11 +33,23 @@ export default async function ErtekesitesDetailPage({
   const user = await getSessionUser()
   if (!user?.tenantId || user.isDevSession) notFound()
 
+  const canWrite = Boolean(user.role && user.role !== 'viewer')
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const detail = await getSale(supabase, user.tenantId, id)
+  const [detail, paymentMethods] = await Promise.all([
+    getSale(supabase, user.tenantId, id),
+    listActivePaymentMethods(supabase, user.tenantId)
+  ])
   if (!detail) notFound()
 
-  return <SaleDetailClient detail={detail} />
+  return (
+    <Suspense fallback={null}>
+      <SaleDetailClient
+        detail={detail}
+        paymentMethods={paymentMethods}
+        canWrite={canWrite}
+      />
+    </Suspense>
+  )
 }

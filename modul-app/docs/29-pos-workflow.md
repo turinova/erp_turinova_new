@@ -1,8 +1,9 @@
 # 29 — POS workflow (`/pos`)
 
 **Státusz:** S2 P0+P1 implementálva (scanner-first till).  
-**Route:** `/pos`  
-**Kapcsolat:** [28-ertekesites-workflow.md](28-ertekesites-workflow.md)  
+**Route:** `/pos` · műszakok: `/ertekesitesek/muszakok`  
+**Add-on:** `pos` (**9 900 Ft** nettó/hó) — [33](33-packages-and-addons.md)  
+**Kapcsolat:** [28-ertekesites-workflow.md](28-ertekesites-workflow.md), [31-pos-muszakzaras.md](31-pos-muszakzaras.md)  
 **Legacy ötlet:** main-app `PosClient` (viselkedés, nem kód).
 
 ---
@@ -11,8 +12,10 @@
 
 > A POS = vonalkód-first pulti munkaasztal → ugyanaz a `sales_orders` mag (`channel=pos`) + azonnali fizetés + stock out.
 
-**Nem** a manuális `/ertekesitesek/uj` (az admin űrlap).  
+**Nem** a manuális `/ertekesitesek/uj` (az admin űrlap — **Alap plan**).  
 **Nem** unpaid/utalás (az később a manuális eladáson).
+
+Entitlement: capability `pos` + page `/pos` + `/ertekesitesek/muszakok` (migráció: `20260517_packages_beszerzes_alap_pos_addon.sql`; korábbi blanket `/pos` az Alapból kikerült).
 
 ---
 
@@ -20,14 +23,16 @@
 
 ```
 Fullscreen · 50/50
-Bal: kereső/scanner
+Bal: kereső/scanner (tábla: Termék | Készlet | Bruttó egységár)
 Jobb: táblás kosár + sticky footer
-  Nettó | Bruttó (nagy)
+  Nettó összesen | Fizetendő (bruttó) (nagy)
   chipek (kedv / kerekítés / készlethiány)
   [Díj] [Kedv.] · [Készpénz] [Kártya] (nagy; nincs egyéb fizetés)
 ```
 
-Kosár: tábla (név+chip | − qty + | **Bruttó** | ✕). Kedvezménynél áthúzott eredeti + új. Díj összeg a Bruttó oszlopban. Ár/sor-kedv expand. Készlethiány = warning soft + chip. Scan = success flash.
+Kosár: tábla (név+chip | − qty + | **Bruttó összeg** | ✕). Kedvezménynél áthúzott eredeti + új. Díj a Bruttó összeg oszlopban. Expand: Bruttó egységár + sor-kedv. Confirm: Bruttó részösszeg → Nettó/ÁFA → Fizetendő (bruttó). Készlethiány = warning soft + chip. Scan = success flash.
+
+**Visszáru (S5):** topbar **Visszáru** → eladás kereső → `/ertekesitesek/[id]?return=1`. Részletek: [30](30-visszaru-workflow.md).
 
 
 
@@ -56,6 +61,6 @@ Primary confirm: **Eladás rögzítése**.
 
 ## 4. Edge (rövid)
 
-Ismeretlen barcode → toast; soft stock warn; empty cart CTA disabled; RPC fail → kosár megmarad; success → clear + refocus.
+Ismeretlen barcode → inline hiba; soft stock warn; empty cart CTA disabled; RPC fail → kosár megmarad; success → clear + refocus.
 
-Migráció: `20260511_pos_page.sql` (`/pos` entitlement).
+Migráció: `20260517_packages_beszerzes_alap_pos_addon.sql` (`pos` add-on). Korábbi: `20260511_pos_page.sql`.

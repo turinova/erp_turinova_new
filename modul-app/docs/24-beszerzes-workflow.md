@@ -109,7 +109,7 @@ PO = ordered   ⟺ ordered státuszban volt ÉS received_qty mind 0
 2. Beszállító rendelések  
 3. Beérkezések  
 
-Addon / entitlement: **`beszerzes`** add-on feature (`20260507_beszerzes_addon.sql`) — termék detail készlet szekció csak ha entitled. Scanner entitlement: barcode a beérkezésen, ha van.
+Addon / entitlement: **`beszerzes`** feature az **Alap plan** része (`20260517_packages_beszerzes_alap_pos_addon.sql`; korábbi 0 Ft add-on kikapcsolva). Termék detail készlet szekció csak ha entitled. Scanner entitlement: barcode a beérkezésen, ha van.
 
 ### 4.1 Beszállítók
 

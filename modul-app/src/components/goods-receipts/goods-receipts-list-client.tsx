@@ -23,6 +23,7 @@ import {
   type GoodsReceiptStatus
 } from '@/lib/goods-receipts/parse'
 import type { GoodsReceiptListItem } from '@/lib/goods-receipts/queries'
+import { cn } from '@/lib/utils'
 
 type StatusFilter = GoodsReceiptStatus | 'all'
 
@@ -38,7 +39,7 @@ type GoodsReceiptsListClientProps = {
 }
 
 const STATUS_CHIPS: { value: StatusFilter; label: string }[] = [
-  { value: 'all', label: 'Összes' },
+  { value: 'all', label: 'Mind' },
   { value: 'checking', label: 'Ellenőrzés' },
   { value: 'received', label: 'Bevételezve' }
 ]
@@ -59,13 +60,14 @@ export function GoodsReceiptsListClient({
   limit,
   q: initialQ,
   status: initialStatus,
-  statusCounts,
-  canWrite
+  statusCounts
 }: GoodsReceiptsListClientProps) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
+  const from = total === 0 ? 0 : (page - 1) * limit + 1
+  const to = Math.min(page * limit, total)
 
   function pushParams(next: {
     q?: string
@@ -84,27 +86,24 @@ export function GoodsReceiptsListClient({
   }
 
   const emptyHint = useMemo(() => {
-    if (initialRows.length === 0 && !initialQ && initialStatus === 'all') {
-      return true
-    }
-    return false
+    return initialRows.length === 0 && !initialQ && initialStatus === 'all'
   }, [initialRows.length, initialQ, initialStatus])
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Beérkezések"
         description="Számold meg a megérkezett árut, majd vedd készletre."
       />
 
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <form
-          className="relative max-w-sm flex-1"
-          onSubmit={(e) => {
-            e.preventDefault()
-            pushParams({ q: search, page: 1 })
-          }}
-        >
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          pushParams({ q: search, page: 1 })
+        }}
+      >
+        <div className="relative min-w-[14rem] flex-1">
           <label className="sr-only" htmlFor="receipt-search">
             Keresés
           </label>
@@ -116,43 +115,50 @@ export function GoodsReceiptsListClient({
             id="receipt-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Keresés szám szerint…"
+            placeholder="Szám…"
             className="pl-8"
           />
-        </form>
-
-        <div className="flex flex-wrap gap-1.5">
-          {STATUS_CHIPS.map((chip) => {
-            const count = statusCounts[chip.value] ?? 0
-            const active = initialStatus === chip.value
-            return (
-              <Button
-                key={chip.value}
-                type="button"
-                size="sm"
-                variant={active ? 'primary' : 'secondary'}
-                onClick={() =>
-                  pushParams({
-                    status: chip.value,
-                    page: 1
-                  })
-                }
-              >
-                {chip.label} ({count})
-              </Button>
-            )
-          })}
         </div>
+        <Button type="submit" variant="secondary">
+          Keresés
+        </Button>
+      </form>
+
+      <div className="flex flex-wrap gap-1.5">
+        {STATUS_CHIPS.map((chip) => {
+          const count = statusCounts[chip.value] ?? 0
+          const active = initialStatus === chip.value
+          return (
+            <button
+              key={chip.value}
+              type="button"
+              onClick={() =>
+                pushParams({
+                  status: chip.value,
+                  page: 1
+                })
+              }
+              className={cn(
+                'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
+                active
+                  ? 'bg-ink text-surface'
+                  : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
+              )}
+            >
+              {chip.label} ({count})
+            </button>
+          )
+        })}
       </div>
 
       {emptyHint ? (
-        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-10 text-center">
-          <PackageCheck className="size-8 text-ink-secondary" aria-hidden />
-          <div className="space-y-1">
+        <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-8">
+          <PackageCheck className="size-5 text-ink-muted" aria-hidden />
+          <div>
             <p className="text-body font-medium text-ink">Még nincs beérkezés</p>
-            <p className="max-w-sm text-body text-ink-secondary">
-              Nyiss egy beszállítói rendelést, jelöld megrendelve, majd kattints
-              az <strong>Áru megérkezett</strong> gombra.
+            <p className="mt-1 text-body text-ink-secondary">
+              Nyiss egy beszállítói rendelést, jelöld megrendelve, majd az Áru
+              megérkezett gombbal indítsd.
             </p>
           </div>
           <Button
@@ -163,100 +169,95 @@ export function GoodsReceiptsListClient({
           </Button>
         </div>
       ) : initialRows.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
-          Nincs találat.
+        <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-body text-ink-secondary">
+          Nincs találat a szűrőkkel.
         </p>
       ) : (
-        <>
-          <DataTable>
-            <DataTableHead>
-              <DataTableRow>
-                <DataTableHeaderCell>Szám</DataTableHeaderCell>
-                <DataTableHeaderCell>Rendelés</DataTableHeaderCell>
-                <DataTableHeaderCell>Beszállító</DataTableHeaderCell>
-                <DataTableHeaderCell>Státusz</DataTableHeaderCell>
-                <DataTableHeaderCell>Dátum</DataTableHeaderCell>
-                <DataTableHeaderCell align="right">Tételek</DataTableHeaderCell>
-                <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
-                  Műveletek
-                </DataTableHeaderCell>
+        <DataTable>
+          <DataTableHead>
+            <DataTableRow>
+              <DataTableHeaderCell>Szám</DataTableHeaderCell>
+              <DataTableHeaderCell>Rendelés</DataTableHeaderCell>
+              <DataTableHeaderCell>Beszállító</DataTableHeaderCell>
+              <DataTableHeaderCell>Státusz</DataTableHeaderCell>
+              <DataTableHeaderCell align="right">Tételek</DataTableHeaderCell>
+              <DataTableHeaderCell>Dátum</DataTableHeaderCell>
+            </DataTableRow>
+          </DataTableHead>
+          <DataTableBody>
+            {initialRows.map((row) => (
+              <DataTableRow
+                key={row.id}
+                className="cursor-pointer"
+                onClick={() => router.push(`/beerkezesek/${row.id}`)}
+              >
+                <DataTableCell>
+                  <Link
+                    href={`/beerkezesek/${row.id}`}
+                    className="font-medium text-ink underline-offset-2 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {row.receipt_number}
+                  </Link>
+                </DataTableCell>
+                <DataTableCell>
+                  <Link
+                    href={`/beszallitoi-rendelesek/${row.purchase_order_id}`}
+                    className="text-ink-secondary underline-offset-2 hover:underline"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {row.po_number}
+                  </Link>
+                </DataTableCell>
+                <DataTableCell className="text-ink-secondary">
+                  {row.supplier_name}
+                </DataTableCell>
+                <DataTableCell>
+                  <StatusBadge tone={receiptStatusTone(row.status)}>
+                    {RECEIPT_STATUS_LABEL[row.status]}
+                  </StatusBadge>
+                </DataTableCell>
+                <DataTableCell align="right">
+                  <span className="tabular-nums">{row.items_count}</span>
+                </DataTableCell>
+                <DataTableCell className="tabular-nums text-ink-secondary">
+                  {formatDate(row.received_at ?? row.created_at)}
+                </DataTableCell>
               </DataTableRow>
-            </DataTableHead>
-            <DataTableBody>
-              {initialRows.map((row) => (
-                <DataTableRow key={row.id}>
-                  <DataTableCell>
-                    <Link
-                      href={`/beerkezesek/${row.id}`}
-                      className="font-medium text-ink underline-offset-2 hover:underline"
-                    >
-                      {row.receipt_number}
-                    </Link>
-                  </DataTableCell>
-                  <DataTableCell>
-                    <Link
-                      href={`/beszallitoi-rendelesek/${row.purchase_order_id}`}
-                      className="text-ink-secondary underline-offset-2 hover:underline"
-                    >
-                      {row.po_number}
-                    </Link>
-                  </DataTableCell>
-                  <DataTableCell>{row.supplier_name}</DataTableCell>
-                  <DataTableCell>
-                    <StatusBadge tone={receiptStatusTone(row.status)}>
-                      {RECEIPT_STATUS_LABEL[row.status]}
-                    </StatusBadge>
-                  </DataTableCell>
-                  <DataTableCell>
-                    {formatDate(row.received_at ?? row.created_at)}
-                  </DataTableCell>
-                  <DataTableCell align="right">{row.items_count}</DataTableCell>
-                  <DataTableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => router.push(`/beerkezesek/${row.id}`)}
-                    >
-                      {row.status === 'checking' && canWrite
-                        ? 'Folytatás'
-                        : 'Megnyitás'}
-                    </Button>
-                  </DataTableCell>
-                </DataTableRow>
-              ))}
-            </DataTableBody>
-          </DataTable>
+            ))}
+          </DataTableBody>
+        </DataTable>
+      )}
 
+      {total > 0 ? (
+        <div className="flex items-center justify-between gap-2 text-body text-ink-secondary">
+          <span>
+            {from}–{to} / {total}
+          </span>
           {totalPages > 1 ? (
-            <div className="mt-3 flex items-center justify-between text-body text-ink-secondary">
-              <span>
-                {total} beérkezés · oldal {page}/{totalPages}
-              </span>
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={page <= 1}
-                  onClick={() => pushParams({ page: page - 1 })}
-                >
-                  Előző
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={page >= totalPages}
-                  onClick={() => pushParams({ page: page + 1 })}
-                >
-                  Következő
-                </Button>
-              </div>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={page <= 1}
+                onClick={() => pushParams({ page: page - 1 })}
+              >
+                Előző
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={page >= totalPages}
+                onClick={() => pushParams({ page: page + 1 })}
+              >
+                Következő
+              </Button>
             </div>
           ) : null}
-        </>
-      )}
+        </div>
+      ) : null}
     </div>
   )
 }

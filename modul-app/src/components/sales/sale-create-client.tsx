@@ -9,6 +9,14 @@ import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import { FormField } from '@/components/patterns/form-field'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { SaleAddFeeDialog } from '@/components/sales/sale-add-fee-dialog'
+import {
+  billingFromCustomer,
+  billingHasAny,
+  billingToFormInput,
+  DocumentBillingFields,
+  EMPTY_DOCUMENT_BILLING,
+  type DocumentBillingState
+} from '@/components/sales/document-billing-fields'
 import { SaleQuickCustomerDialog } from '@/components/sales/sale-quick-customer-dialog'
 import { SaleTotalsBreakdown } from '@/components/sales/sale-totals-breakdown'
 import { Button } from '@/components/ui/button'
@@ -86,6 +94,9 @@ export function SaleCreateClient({
   const [warehouseId, setWarehouseId] = useState(defaultWh)
   const [customers, setCustomers] = useState(initialCustomers)
   const [customerId, setCustomerId] = useState('')
+  const [billing, setBilling] = useState<DocumentBillingState>(
+    EMPTY_DOCUMENT_BILLING
+  )
   const [customerOpen, setCustomerOpen] = useState(false)
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [feeDialogOpen, setFeeDialogOpen] = useState(false)
@@ -123,6 +134,18 @@ export function SaleCreateClient({
   )
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
+
+  function applyCustomer(id: string) {
+    setCustomerId(id)
+    const c = customers.find((x) => x.id === id)
+    if (c) setBilling(billingFromCustomer(c))
+    else setBilling(EMPTY_DOCUMENT_BILLING)
+  }
+
+  function clearCustomer() {
+    setCustomerId('')
+    setBilling(EMPTY_DOCUMENT_BILLING)
+  }
 
   const customerOptions = useMemo(
     () =>
@@ -324,6 +347,9 @@ export function SaleCreateClient({
         note: note.trim() || null,
         discountPercentage: globalDiscPct || 0,
         discountAmount: 0,
+        billing: billingHasAny(billing)
+          ? billingToFormInput(billing)
+          : undefined,
         items: lines.map((l) => ({
           accessoryId: l.accessoryId,
           quantity: l.quantity,
@@ -434,7 +460,7 @@ export function SaleCreateClient({
                 type="button"
                 className="rounded p-0.5 text-ink-muted hover:bg-subtle hover:text-ink"
                 aria-label="Ügyfél eltávolítása"
-                onClick={() => setCustomerId('')}
+                onClick={() => clearCustomer()}
               >
                 <X className="size-3.5" />
               </button>
@@ -461,7 +487,7 @@ export function SaleCreateClient({
                   id="sale-customer-pick"
                   value=""
                   onChange={(v) => {
-                    setCustomerId(v)
+                    applyCustomer(v)
                     setCustomerOpen(false)
                   }}
                   allowEmpty={false}
@@ -507,6 +533,21 @@ export function SaleCreateClient({
             maxLength={500}
           />
         </FormField>
+      ) : null}
+
+      {customerId ? (
+        <div className="max-w-xl rounded-md border border-border bg-surface p-3">
+          <h3 className="mb-2 text-body font-semibold text-ink">
+            Számlázási adatok
+          </h3>
+          <DocumentBillingFields
+            value={billing}
+            onChange={setBilling}
+            disabled={pending}
+            idPrefix="sale-bill"
+            hint="Csak ezen az eladáson érvényes. Az ügyféltörzset nem írja felül."
+          />
+        </div>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
@@ -603,10 +644,12 @@ export function SaleCreateClient({
                     </th>
                     <th className="px-2.5 py-2 font-medium text-right">Qty</th>
                     <th className="px-2.5 py-2 font-medium text-right">
-                      Bruttó
+                      Bruttó egységár
                     </th>
                     <th className="px-2.5 py-2 font-medium text-right">Kedv%</th>
-                    <th className="px-2.5 py-2 font-medium text-right">Összeg</th>
+                    <th className="px-2.5 py-2 font-medium text-right">
+                      Bruttó összeg
+                    </th>
                     <th className="w-10 px-2.5 py-2" />
                   </tr>
                 </thead>
@@ -974,26 +1017,25 @@ export function SaleCreateClient({
         open={quickCustomerOpen}
         onOpenChange={setQuickCustomerOpen}
         onCreated={(c) => {
+          const opt = {
+            id: c.id,
+            name: c.name,
+            mobile: c.mobile,
+            email: null as string | null,
+            billing_name: null as string | null,
+            billing_country: 'Magyarország',
+            billing_city: null as string | null,
+            billing_postal_code: null as string | null,
+            billing_street: null as string | null,
+            billing_house_number: null as string | null,
+            billing_tax_number: null as string | null
+          }
           setCustomers((prev) => {
             if (prev.some((x) => x.id === c.id)) return prev
-            return [
-              {
-                id: c.id,
-                name: c.name,
-                mobile: c.mobile,
-                email: null,
-                billing_name: null,
-                billing_country: 'Magyarország',
-                billing_city: null,
-                billing_postal_code: null,
-                billing_street: null,
-                billing_house_number: null,
-                billing_tax_number: null
-              },
-              ...prev
-            ]
+            return [opt, ...prev]
           })
           setCustomerId(c.id)
+          setBilling(billingFromCustomer({ name: c.name, ...opt }))
         }}
       />
 

@@ -3,6 +3,7 @@ export type AppPageCategory =
   | 'Műhely'
   | 'Értékesítés'
   | 'Beszerzés'
+  | 'Jelenlét'
   | 'Törzsadatok'
   | 'Beállítások'
 
@@ -18,7 +19,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 5
+export const PAGE_CATALOG_VERSION = 10
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -28,6 +29,23 @@ export const APP_PAGES: AppPageDef[] = [
   { key: '/ugyfelek', label: 'Ügyfelek', category: 'Műhely' },
   { key: '/ertekesitesek', label: 'Értékesítések', category: 'Értékesítés' },
   { key: '/pos', label: 'POS', category: 'Értékesítés' },
+  {
+    key: '/ertekesitesek/muszakok',
+    label: 'Műszakok',
+    category: 'Értékesítés'
+  },
+  { key: '/jelenlet', label: 'Jelenlét naptár', category: 'Jelenlét' },
+  {
+    key: '/jelenlet/naptar',
+    label: 'Munkarend / ünnepek',
+    category: 'Jelenlét'
+  },
+  { key: '/dolgozok', label: 'Dolgozók', category: 'Jelenlét' },
+  {
+    key: '/dolgozok/tipusok',
+    label: 'Dolgozó típusok',
+    category: 'Jelenlét'
+  },
   { key: '/beszallitok', label: 'Beszállítók', category: 'Beszerzés' },
   {
     key: '/beszallitoi-rendelesek',
@@ -37,7 +55,7 @@ export const APP_PAGES: AppPageDef[] = [
   { key: '/beerkezesek', label: 'Beérkezések', category: 'Beszerzés' },
   { key: '/keszlet/atadasok', label: 'Áttárolások', category: 'Beszerzés' },
   { key: '/keszlet/mozgasok', label: 'Készletmozgások', category: 'Beszerzés' },
-  { key: '/ajanlatok', label: 'Árajánlatok', category: 'Műhely' },
+  { key: '/ajanlatok', label: 'Lapszabászati ajánlatok', category: 'Műhely' },
   { key: '/megrendelesek', label: 'Megrendelések', category: 'Műhely' },
   { key: '/scanner', label: 'Scanner', category: 'Műhely' },
   { key: '/belepok', label: 'Belépők', category: 'Fő' },
@@ -169,6 +187,11 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/ugyfelek',
       '/ertekesitesek',
       '/pos',
+      '/ertekesitesek/muszakok',
+      '/jelenlet',
+      '/jelenlet/naptar',
+      '/dolgozok',
+      '/dolgozok/tipusok',
       '/beszallitok',
       '/beszallitoi-rendelesek',
       '/beerkezesek',

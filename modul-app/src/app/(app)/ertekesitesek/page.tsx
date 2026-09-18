@@ -18,9 +18,22 @@ export default async function ErtekesitesekPage({
   const q = typeof sp.q === 'string' ? sp.q : ''
   const pageRaw = typeof sp.page === 'string' ? Number(sp.page) : 1
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1
+  const statusRaw = typeof sp.status === 'string' ? sp.status : 'all'
+  const status =
+    statusRaw === 'fulfilled' ||
+    statusRaw === 'partially_returned' ||
+    statusRaw === 'returned' ||
+    statusRaw === 'cancelled' ||
+    statusRaw === 'draft' ||
+    statusRaw === 'confirmed'
+      ? statusRaw
+      : ('all' as const)
+  const shiftId =
+    typeof sp.shift === 'string' && sp.shift.length > 0 ? sp.shift : undefined
 
   const user = await getSessionUser()
   const canWrite = Boolean(user?.role && user.role !== 'viewer')
+  const canPos = Boolean(user?.allowedPages.includes('/pos'))
 
   let result: SaleListResult = { rows: [], total: 0, page: 1, limit: 25 }
   let loadError: string | null = null
@@ -32,8 +45,10 @@ export default async function ErtekesitesekPage({
         result = await listSales(supabase, {
           tenantId: user.tenantId,
           q,
+          status,
           page,
-          limit: 25
+          limit: 25,
+          posShiftId: shiftId
         })
       } catch (err) {
         loadError =
@@ -64,7 +79,8 @@ export default async function ErtekesitesekPage({
           <code className="text-hint">
             supabase/migrations/20260509_sales_orders.sql
           </code>{' '}
-          fájlt.
+          (+ visszáru:{' '}
+          <code className="text-hint">20260513_sale_returns.sql</code>) fájlt.
         </p>
       </div>
     )
@@ -77,7 +93,10 @@ export default async function ErtekesitesekPage({
       page={result.page}
       limit={result.limit}
       q={q}
+      status={status}
+      shiftId={shiftId}
       canWrite={canWrite}
+      canPos={canPos}
     />
   )
 }

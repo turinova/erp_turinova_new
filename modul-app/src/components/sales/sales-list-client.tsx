@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { Plus, ScanBarcode, Search, ShoppingCart } from 'lucide-react'
+import { FileText, History, Plus, ScanBarcode, Search, ShoppingCart } from 'lucide-react'
 
 import {
   DataTable,
@@ -28,6 +28,7 @@ import {
   type SaleStatus
 } from '@/lib/sales/parse'
 import type { SaleListItem } from '@/lib/sales/queries'
+import { cn } from '@/lib/utils'
 
 type Props = {
   initialRows: SaleListItem[]
@@ -35,7 +36,10 @@ type Props = {
   page: number
   limit: number
   q: string
+  status: SaleStatus | 'all'
+  shiftId?: string
   canWrite: boolean
+  canPos?: boolean
 }
 
 function formatDate(iso: string | null) {
@@ -47,23 +51,41 @@ function formatDate(iso: string | null) {
   }
 }
 
+const STATUS_FILTERS: { value: SaleStatus | 'all'; label: string }[] = [
+  { value: 'all', label: 'Mind' },
+  { value: 'fulfilled', label: 'Teljesítve' },
+  { value: 'partially_returned', label: 'Részben visszáru' },
+  { value: 'returned', label: 'Visszáru' }
+]
+
 export function SalesListClient({
   initialRows,
   total,
   page,
   limit,
   q: initialQ,
-  canWrite
+  status: initialStatus,
+  shiftId,
+  canWrite,
+  canPos = false
 }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
-  function pushParams(next: { q?: string; page?: number }) {
+  function pushParams(next: {
+    q?: string
+    page?: number
+    status?: SaleStatus | 'all'
+    clearShift?: boolean
+  }) {
     const params = new URLSearchParams()
     const q = next.q ?? search
     const p = next.page ?? 1
+    const status = next.status ?? initialStatus
     if (q.trim()) params.set('q', q.trim())
+    if (status && status !== 'all') params.set('status', status)
+    if (shiftId && !next.clearShift) params.set('shift', shiftId)
     if (p > 1) params.set('page', String(p))
     const qs = params.toString()
     router.push(qs ? `/ertekesitesek?${qs}` : '/ertekesitesek')
@@ -75,27 +97,72 @@ export function SalesListClient({
         title="Értékesítések"
         description="Termék eladás — pult, iroda vagy később webshop."
         actions={
-          canWrite ? (
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => router.push('/pos')}
+                onClick={() => router.push('/ertekesitesek/arajanlatok')}
               >
-                <ScanBarcode className="size-3.5" aria-hidden />
-                POS
+                <FileText className="size-3.5" aria-hidden />
+                Árajánlatok
               </Button>
+            {canPos ? (
               <Button
                 type="button"
-                onClick={() => router.push('/ertekesitesek/uj')}
+                variant="secondary"
+                onClick={() => router.push('/ertekesitesek/muszakok')}
               >
-                <Plus className="size-3.5" aria-hidden />
-                Új értékesítés
+                <History className="size-3.5" aria-hidden />
+                Műszakok
               </Button>
-            </div>
-          ) : null
+            ) : null}
+            {canWrite ? (
+              <>
+                {canPos ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => router.push('/pos')}
+                  >
+                    <ScanBarcode className="size-3.5" aria-hidden />
+                    POS
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  onClick={() => router.push('/ertekesitesek/uj')}
+                >
+                  <Plus className="size-3.5" aria-hidden />
+                  Új értékesítés
+                </Button>
+              </>
+            ) : null}
+          </div>
         }
       />
+
+      {shiftId ? (
+        <p
+          className="rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink-secondary"
+          role="status"
+        >
+          Szűrve egy műszakra.{' '}
+          <button
+            type="button"
+            className="font-medium text-ink underline-offset-2 hover:underline"
+            onClick={() => pushParams({ clearShift: true, page: 1 })}
+          >
+            Szűrő törlése
+          </button>
+          {' · '}
+          <Link
+            href={`/ertekesitesek/muszakok/${shiftId}`}
+            className="font-medium text-ink underline-offset-2 hover:underline"
+          >
+            Műszak megnyitása
+          </Link>
+        </p>
+      ) : null}
 
       <form
         className="flex flex-wrap items-end gap-2"
@@ -125,6 +192,27 @@ export function SalesListClient({
         </Button>
       </form>
 
+      <div className="flex flex-wrap gap-1.5">
+        {STATUS_FILTERS.map((f) => {
+          const active = initialStatus === f.value
+          return (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => pushParams({ status: f.value, page: 1 })}
+              className={cn(
+                'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
+                active
+                  ? 'bg-ink text-surface'
+                  : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
+              )}
+            >
+              {f.label}
+            </button>
+          )
+        })}
+      </div>
+
       {initialRows.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-8">
           <ShoppingCart className="size-5 text-ink-muted" aria-hidden />
@@ -149,8 +237,9 @@ export function SalesListClient({
             <DataTableRow>
               <DataTableHeaderCell>Szám</DataTableHeaderCell>
               <DataTableHeaderCell>Ügyfél</DataTableHeaderCell>
+              <DataTableHeaderCell>Eladó</DataTableHeaderCell>
               <DataTableHeaderCell>Csatorna</DataTableHeaderCell>
-              <DataTableHeaderCell align="right">Bruttó</DataTableHeaderCell>
+              <DataTableHeaderCell align="right">Bruttó (Ft)</DataTableHeaderCell>
               <DataTableHeaderCell>Fizetés</DataTableHeaderCell>
               <DataTableHeaderCell>Állapot</DataTableHeaderCell>
               <DataTableHeaderCell>Dátum</DataTableHeaderCell>
@@ -176,6 +265,9 @@ export function SalesListClient({
                   {row.customer_name ?? 'Vendég'}
                 </DataTableCell>
                 <DataTableCell className="text-ink-secondary">
+                  {row.created_by_label ?? '—'}
+                </DataTableCell>
+                <DataTableCell className="text-ink-secondary">
                   {SALE_CHANNEL_LABEL[row.channel] ?? row.channel}
                 </DataTableCell>
                 <DataTableCell align="right">
@@ -188,6 +280,7 @@ export function SalesListClient({
                     tone={salePaymentTone(
                       row.payment_status as SalePaymentStatus
                     )}
+                    variant="solid"
                   >
                     {SALE_PAYMENT_STATUS_LABEL[
                       row.payment_status as SalePaymentStatus
@@ -197,6 +290,7 @@ export function SalesListClient({
                 <DataTableCell>
                   <StatusBadge
                     tone={saleStatusTone(row.status as SaleStatus)}
+                    variant="soft"
                   >
                     {SALE_STATUS_LABEL[row.status as SaleStatus] ?? row.status}
                   </StatusBadge>
@@ -219,7 +313,6 @@ export function SalesListClient({
             <Button
               type="button"
               variant="secondary"
-              size="sm"
               disabled={page <= 1}
               onClick={() => pushParams({ page: page - 1 })}
             >
@@ -228,7 +321,6 @@ export function SalesListClient({
             <Button
               type="button"
               variant="secondary"
-              size="sm"
               disabled={page >= totalPages}
               onClick={() => pushParams({ page: page + 1 })}
             >

@@ -3,7 +3,9 @@ import { Suspense } from 'react'
 
 import { KeresoClient } from '@/components/search/kereso-client'
 import { getSessionUser } from '@/lib/auth/session'
+import { tenantHasBeszerzes } from '@/lib/beszerzes/entitlement'
 import {
+  enrichUnifiedRowsWithStockOnHand,
   parseSearchKindParam,
   searchMaterialsUnified
 } from '@/lib/search/materials-search'
@@ -34,10 +36,15 @@ export default async function KeresoPage({
   let rows: Awaited<ReturnType<typeof searchMaterialsUnified>>['rows'] = []
   let total = 0
   let limit = 25
+  let showProcurementStock = false
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
+      showProcurementStock = await tenantHasBeszerzes(
+        supabase,
+        user.tenantId
+      )
       // Deep-link seed only — gépelés közben /api/kereso
       if (q) {
         try {
@@ -48,7 +55,13 @@ export default async function KeresoPage({
             limit: 25,
             kind
           })
-          rows = result.rows
+          rows = showProcurementStock
+            ? await enrichUnifiedRowsWithStockOnHand(
+                supabase,
+                user.tenantId,
+                result.rows
+              )
+            : result.rows
           total = result.total
           limit = result.limit
         } catch (err) {
@@ -93,6 +106,7 @@ export default async function KeresoPage({
         initialLimit={limit}
         initialQ={q}
         initialKind={kind}
+        showProcurementStock={showProcurementStock}
       />
     </Suspense>
   )

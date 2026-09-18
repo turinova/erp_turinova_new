@@ -51,23 +51,28 @@ export function SaleTotalsBreakdown({
   return (
     <div className={cn('space-y-1.5', className)}>
       <p className="text-[12px] font-medium text-ink-secondary">Összesítés</p>
+      <p className="text-hint text-ink-muted">
+        Az árak bruttók (ÁFA-val). A nettó csak itt lent látszik.
+      </p>
 
       <Row
-        label="Tételek"
+        label="Bruttó tételek"
         value={`${formatMoneyFt(totals.itemsGross)} Ft`}
         muted
       />
       {showFees ? (
         <Row
-          label="Díjak"
+          label="Bruttó díjak"
           value={`${formatMoneyFt(totals.feesGross)} Ft`}
           muted
         />
       ) : null}
-      <Row
-        label="Részösszeg"
-        value={`${formatMoneyFt(totals.subtotalGross)} Ft`}
-      />
+      {showFees ? (
+        <Row
+          label="Bruttó részösszeg"
+          value={`${formatMoneyFt(totals.subtotalGross)} Ft`}
+        />
+      ) : null}
 
       {showDisc ? (
         <div className="flex items-baseline justify-between gap-3 text-body font-medium text-warning-ink">
@@ -75,7 +80,8 @@ export function SaleTotalsBreakdown({
             Kedvezmény
             {totals.globalDiscountPercent > 0
               ? ` ${totals.globalDiscountPercent}%`
-              : ''}
+              : ''}{' '}
+            (bruttóból)
           </span>
           <span className="tabular-nums">
             −{formatMoneyFt(totals.globalDiscountAmount)} Ft
@@ -86,11 +92,11 @@ export function SaleTotalsBreakdown({
       <div className="my-1 border-t border-border" />
 
       <Row
-        label="Nettó"
+        label="Nettó összesen"
         value={`${formatMoneyFt(totals.totalNet)} Ft`}
       />
       <Row
-        label="ÁFA"
+        label="ÁFA összesen"
         value={`${formatMoneyFt(totals.totalVat)} Ft`}
       />
 
@@ -98,7 +104,7 @@ export function SaleTotalsBreakdown({
 
       <div className="flex items-baseline justify-between gap-3 pt-0.5">
         <span className="text-[12px] font-medium text-ink-secondary">
-          Fizetendő
+          Fizetendő (bruttó)
         </span>
         <span
           className={cn(

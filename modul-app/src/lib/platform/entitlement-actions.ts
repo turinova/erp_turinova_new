@@ -268,6 +268,30 @@ export async function setTenantAddon(input: {
       )
       await grantBelepokPageAccess(ctx.admin, input.tenantId)
     }
+    if (addonKey === 'pos') {
+      const { grantPosPageAccess } = await import('@/lib/pos/entitlement')
+      await grantPosPageAccess(ctx.admin, input.tenantId)
+    }
+    if (addonKey === 'jelenlet') {
+      const { grantJelenletPageAccess } = await import(
+        '@/lib/jelenlet/entitlement'
+      )
+      await grantJelenletPageAccess(ctx.admin, input.tenantId)
+      try {
+        await ctx.admin.rpc('seed_hr_hu_holidays_for_tenant', {
+          p_tenant_id: input.tenantId
+        })
+      } catch (e) {
+        console.error('seed_hr_hu_holidays_for_tenant', e)
+      }
+      try {
+        await ctx.admin.rpc('seed_hr_employee_types_for_tenant', {
+          p_tenant_id: input.tenantId
+        })
+      } catch (e) {
+        console.error('seed_hr_employee_types_for_tenant', e)
+      }
+    }
     if (addonKey === 'lapszabaszat') {
       const { grantLapszabaszatPageAccess } = await import(
         '@/lib/lapszabaszat/entitlement'

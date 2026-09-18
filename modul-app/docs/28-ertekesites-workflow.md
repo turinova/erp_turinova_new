@@ -56,9 +56,10 @@ Kedvezmény sorrend: sor → díjak (nincs sor kedv.) → globál → cash round
 | status | S1 |
 |---|---|
 | `fulfilled` | Azonnali eladás (RPC) |
-| `cancelled` / `returned` / `draft` / `confirmed` | későbbi fázis |
+| `partially_returned` / `returned` | S5 visszáru — [30](30-visszaru-workflow.md) |
+| `cancelled` / `draft` / `confirmed` | későbbi fázis |
 
-`payment_status`: unpaid \| partial \| paid (Σ ≥ due − 1 Ft).
+`payment_status`: unpaid \| partial \| paid \| partially_refunded \| refunded.
 
 ---
 
@@ -70,11 +71,18 @@ Kedvezmény sorrend: sor → díjak (nincs sor kedv.) → globál → cash round
 | **S2** | POS UI (`/pos`) — **P0+P1 kész** ([29](29-pos-workflow.md)) |
 | **S3** | Számla provider + storno |
 | **S4** | Webshop ingest (`external_ref`) + channel WH map |
-| **S5** | Visszáru |
+| **S5** | Visszáru — **P0+P1** ([30](30-visszaru-workflow.md)) |
+| **S6** | POS műszak + pénztár — **P0** ([31](31-pos-muszakzaras.md)) |
+| **S7** | Termék árajánlat — **Q0** ([32](32-arajanlat-workflow.md)) — nem lapszabászat |
 
 ---
 
 ## 5. Migráció
 
 Futtasd: `20260509_sales_orders.sql`.  
-Ha a 20260509 már lefutott a régi hard stock blockkal: futtasd `20260510_sale_soft_stock_allow.sql`.
+Ha a 20260509 már lefutott a régi hard stock blockkal: futtasd `20260510_sale_soft_stock_allow.sql`.  
+Ügyfél/számlázás snapshot (detail kártyák): `20260512_sale_customer_billing_snapshots.sql`.  
+**Doksi billing override** (manuális create + POS „Számlát kér”): `createSaleAction` a törzs default után felülírja a `billing_*_snapshot` mezőket — törzset nem piszkál. Közös UI: `DocumentBillingFields`.  
+Visszáru (S5): `20260513_sale_returns.sql`.
+
+**Detail:** ügyfél + számlázás InfoCard (nem chip); név → `/ugyfelek/[id]`. Snapshot a rögzítéskor; régi soroknál live fill. **Visszáru indítása** secondary gomb — [30](30-visszaru-workflow.md).

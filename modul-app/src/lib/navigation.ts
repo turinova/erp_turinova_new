@@ -14,6 +14,8 @@ import {
   Home,
   ImageIcon,
   Layers,
+  CalendarDays,
+  CalendarRange,
   MessageSquare,
   Percent,
   Ruler,
@@ -27,6 +29,7 @@ import {
   RectangleHorizontal,
   Package,
   PackageCheck,
+  Tags,
   Truck,
   Users,
   UsersRound,
@@ -104,6 +107,43 @@ export const mainNavItems: NavNode[] = [
   },
   {
     type: 'group',
+    label: 'Jelenlét',
+    icon: CalendarDays,
+    accent: 'slate',
+    matchPrefix: '/jelenlet',
+    children: [
+      {
+        type: 'link',
+        label: 'Jelenlét',
+        href: '/jelenlet',
+        icon: CalendarDays,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Munkarend',
+        href: '/jelenlet/naptar',
+        icon: CalendarRange,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Dolgozók',
+        href: '/dolgozok',
+        icon: Users,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Dolgozó típusok',
+        href: '/dolgozok/tipusok',
+        icon: Tags,
+        accent: 'slate'
+      }
+    ]
+  },
+  {
+    type: 'group',
     label: 'Értékesítés',
     icon: ShoppingCart,
     accent: 'slate',
@@ -118,9 +158,23 @@ export const mainNavItems: NavNode[] = [
       },
       {
         type: 'link',
+        label: 'Árajánlatok',
+        href: '/ertekesitesek/arajanlatok',
+        icon: FileText,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
         label: 'POS',
         href: '/pos',
         icon: ScanBarcode,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Műszakok',
+        href: '/ertekesitesek/muszakok',
+        icon: History,
         accent: 'slate'
       }
     ]
@@ -187,7 +241,7 @@ export const mainNavItems: NavNode[] = [
     children: [
       {
         type: 'link',
-        label: 'Árajánlatok',
+        label: 'Lapszabászati ajánlatok',
         href: '/ajanlatok',
         icon: FileText,
         accent: 'slate'
@@ -373,7 +427,8 @@ export function isNavGroup(node: NavNode): node is NavGroup {
   return node.type === 'group'
 }
 
-export function pathIsActive(pathname: string, href: string) {
+/** Nyers prefix-egyezés (belső). */
+function pathMatchesHref(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
@@ -385,7 +440,7 @@ export function pathMatchesPrefix(pathname: string, prefix: string) {
 export function navGroupIsActive(group: NavGroup, pathname: string): boolean {
   if (pathMatchesPrefix(pathname, group.matchPrefix)) return true
   for (const child of group.children) {
-    if (isNavLink(child) && pathIsActive(pathname, child.href)) return true
+    if (isNavLink(child) && pathMatchesHref(pathname, child.href)) return true
     if (isNavGroup(child) && navGroupIsActive(child, pathname)) return true
   }
   return false
@@ -405,8 +460,17 @@ export function findNavLinkByPath(pathname: string): NavLink | null {
   walk(mainNavItems)
 
   const matches = links
-    .filter((link) => pathIsActive(pathname, link.href))
+    .filter((link) => pathMatchesHref(pathname, link.href))
     .sort((a, b) => b.href.length - a.href.length)
 
   return matches[0] ?? null
+}
+
+/**
+ * Link aktív, ha ez a leghosszabb nav-egyezés.
+ * Így /ertekesitesek/arajanlatok nem világítja az „Értékesítések” (/ertekesitesek) sort is.
+ */
+export function pathIsActive(pathname: string, href: string) {
+  const best = findNavLinkByPath(pathname)
+  return best?.href === href
 }

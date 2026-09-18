@@ -121,7 +121,7 @@ export function SaleAddFeeDialog({
               />
             </FormField>
             <FormField
-              label="Bruttó Ft"
+              label="Bruttó egységár (Ft)"
               htmlFor="sale-fee-gross"
               error={error && feeTypeId ? error : undefined}
             >

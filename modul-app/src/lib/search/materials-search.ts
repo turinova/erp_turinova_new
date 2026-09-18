@@ -15,6 +15,7 @@ import {
   searchSheetMaterials,
   type SheetMaterialSearchItem
 } from '@/lib/sheet-materials/search-queries'
+import { getAccessoriesOnHandMap } from '@/lib/stock/queries'
 
 export type UnifiedSearchKind = 'sheet' | 'linear' | 'accessory'
 
@@ -30,6 +31,11 @@ export type UnifiedMaterialSearchItem = {
   width_mm: number | null
   thickness_mm: number | null
   on_stock: boolean | null
+  /**
+   * Ledger készlet (db) — csak termék + beszerzés addon.
+   * null = nincs / nem számolt.
+   */
+  stock_on_hand: number | null
   /** Bruttó Ft/m — csak szálas. */
   price_gross_per_m: number | null
   /** Bruttó Ft/m² — csak táblás. */
@@ -94,6 +100,7 @@ function mapSheet(row: SheetMaterialSearchItem): UnifiedMaterialSearchItem {
     width_mm: row.width_mm,
     thickness_mm: row.thickness_mm,
     on_stock: row.on_stock,
+    stock_on_hand: null,
     price_gross_per_m: null,
     price_gross_sqm: row.price_gross_sqm,
     price_gross_piece: row.price_gross_sheet,
@@ -113,6 +120,7 @@ function mapLinear(row: LinearMaterialSearchItem): UnifiedMaterialSearchItem {
     width_mm: row.width_mm,
     thickness_mm: row.thickness_mm,
     on_stock: row.on_stock,
+    stock_on_hand: null,
     price_gross_per_m: row.price_gross_per_m,
     price_gross_sqm: null,
     price_gross_piece: row.price_gross_piece,
@@ -132,6 +140,7 @@ function mapAccessory(row: AccessorySearchItem): UnifiedMaterialSearchItem {
     width_mm: null,
     thickness_mm: null,
     on_stock: null,
+    stock_on_hand: null,
     price_gross_per_m: null,
     price_gross_sqm: null,
     price_gross_piece: row.price_gross,
@@ -158,6 +167,7 @@ function mapRpcRow(row: CatalogRpcRow): UnifiedMaterialSearchItem | null {
     width_mm: row.width_mm,
     thickness_mm: row.thickness_mm,
     on_stock: row.on_stock,
+    stock_on_hand: null,
     price_gross_per_m: row.price_gross_per_m,
     price_gross_sqm: row.price_gross_sqm,
     price_gross_piece: Number(row.price_gross_piece ?? 0),
@@ -357,4 +367,30 @@ export function parseSearchKindParam(
     return value
   }
   return 'all'
+}
+
+/** Termék sorokhoz ledger készlet (beszerzés addon). */
+export async function enrichUnifiedRowsWithStockOnHand(
+  supabase: SupabaseClient,
+  tenantId: string,
+  rows: UnifiedMaterialSearchItem[]
+): Promise<UnifiedMaterialSearchItem[]> {
+  const accessoryIds = rows
+    .filter((r) => r.kind === 'accessory')
+    .map((r) => r.id)
+  if (accessoryIds.length === 0) return rows
+
+  const map = await getAccessoriesOnHandMap(
+    supabase,
+    tenantId,
+    accessoryIds
+  )
+
+  return rows.map((row) => {
+    if (row.kind !== 'accessory') return row
+    return {
+      ...row,
+      stock_on_hand: map.get(row.id) ?? 0
+    }
+  })
 }

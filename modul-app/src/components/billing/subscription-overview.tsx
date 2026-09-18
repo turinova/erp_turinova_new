@@ -3,11 +3,13 @@ import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import {
   CheckCircle2,
+  CalendarDays,
   Mail,
   MessageSquare,
   Package,
   Phone,
   Printer,
+  ScanBarcode,
   Store
 } from 'lucide-react'
 
@@ -72,6 +74,10 @@ function statusMessage(input: {
 
 function addonIcon(key: string): LucideIcon {
   switch (key) {
+    case 'pos':
+      return ScanBarcode
+    case 'jelenlet':
+      return CalendarDays
     case 'partner_orders':
       return Store
     case 'product_labels':
@@ -84,6 +90,12 @@ function addonIcon(key: string): LucideIcon {
 }
 
 function shortDescription(addon: SubscriptionAddonRow): string | null {
+  if (addon.key === 'pos') {
+    return 'Pénztár terminál és műszakkezelés.'
+  }
+  if (addon.key === 'jelenlet') {
+    return 'Dolgozók és manuális jelenléti ív.'
+  }
   if (addon.key === 'partner_orders') {
     return 'Online partner rendelések fogadása.'
   }

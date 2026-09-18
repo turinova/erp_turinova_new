@@ -22,7 +22,8 @@ const SOURCE_TYPES = new Set<StockMovementSource>([
   'purchase_receipt',
   'adjustment',
   'sale',
-  'transfer'
+  'transfer',
+  'sale_return'
 ])
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>

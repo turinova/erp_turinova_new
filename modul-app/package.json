@@ -25,6 +25,7 @@
     "exceljs": "^4.4.0",
     "framer-motion": "^11.18.2",
     "jsbarcode": "^3.12.3",
+    "jszip": "^3.10.2",
     "lucide-react": "^0.511.0",
     "next": "^15.2.8",
     "puppeteer": "^24.43.1",

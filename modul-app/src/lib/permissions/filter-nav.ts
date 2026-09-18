@@ -3,17 +3,19 @@ import {
   type NavGroup,
   type NavNode
 } from '@/lib/navigation'
+import { pathIsAllowed } from '@/lib/permissions/pages'
 
 export function filterNavByAccess(
   nodes: NavNode[],
   allowedKeys: string[]
 ): NavNode[] {
-  const allowed = new Set(allowedKeys)
   const result: NavNode[] = []
 
   for (const node of nodes) {
     if (isNavLink(node)) {
-      if (allowed.has(node.href)) {
+      // Ugyanaz a szabály, mint a layout pathIsAllowed — child route
+      // (pl. /ertekesitesek/arajanlatok) látszik, ha a parent page_key engedélyezett.
+      if (pathIsAllowed(node.href, allowedKeys)) {
         result.push(node)
       }
       continue

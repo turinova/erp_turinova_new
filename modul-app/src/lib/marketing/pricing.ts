@@ -7,9 +7,22 @@ export const MARKETING_PRICING = {
     key: 'alap',
     name: 'Alap',
     priceMonthlyHuf: 22_000,
-    blurb: 'Ajánlat, törzsadat, műhelyfolyamat — a mindennapi munka gerince.'
+    blurb:
+      'Bolt mag: eladás, árajánlat, készlet, beszerzés, törzsadat — a mindennapi munka gerince.'
   },
   addons: {
+    pos: {
+      key: 'pos',
+      name: 'POS terminál',
+      priceMonthlyHuf: 9_900,
+      blurb: 'Pénztár UI, műszak nyitás/zárás — manuális eladás az Alapban marad.'
+    },
+    jelenlet: {
+      key: 'jelenlet',
+      name: 'Jelenlét',
+      priceMonthlyHuf: 9_900,
+      blurb: 'Dolgozók és manuális jelenléti ív — eszköz nélkül.'
+    },
     quote_ready_sms: {
       key: 'quote_ready_sms',
       name: 'SMS',

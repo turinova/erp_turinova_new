@@ -18,32 +18,42 @@ Ez a modul-app **vizuális forrásigazsága**. Amit itt nincs tokenként, azt **
 
 | Token | Érték | Használat |
 |---|---|---|
-| `--bg-app` | `#F5F6F8` – `#F7F8FA` | Alkalmazás háttér |
+| `--bg-app` | `#F4F4F5` | Alkalmazás háttér |
 | `--bg-surface` | `#FFFFFF` | Kártya, tábla, modal |
-| `--bg-subtle` | `#F0F1F3` | Fejléc, disabled, hover sor |
-| `--border` | `#E3E5E8` | Kártya / mező keret |
-| `--border-strong` | `#C9CDD2` | Input, hangsúlyos elválasztó |
-| `--text-primary` | `#1A1D21` | Fő szöveg (soha `#000`) |
-| `--text-secondary` | `#5C636B` | Segéd, oszlopfejléc |
-| `--text-disabled` | `#9AA0A6` | Inaktív |
+| `--bg-subtle` | `#EEEFF2` | Fejléc, disabled, hover sor |
+| `--border` | `#D4D4D8` | Kártya / mező keret |
+| `--border-strong` | `#A1A1AA` | Input, hangsúlyos elválasztó |
+| `--text-primary` | `#09090B` | Fő szöveg (soha `#000`) |
+| `--text-secondary` | `#3F3F46` | Segéd, oszlopfejléc |
+| `--text-disabled` | `#A1A1AA` | Inaktív |
+| `--text-muted` | `#71717A` | Hint |
 
-### Szemantikus (fő / háttér / szöveg)
+### Szemantikus (fő / soft háttér / ink)
 
-| Jelentés | Fő | Háttér | Szöveg |
+| Jelentés | Fő (solid) | Soft háttér | Ink |
 |---|---|---|---|
 | Primary (Midday charcoal) | `#18181B` | `#F4F4F5` | `#18181B` |
-| Success | `#12A150` | `#E7F7EE` | `#0A6E36` |
-| Warning | `#E08600` | `#FFF4E0` | `#8A5200` |
-| Danger | `#DC2626` | `#FDECEC` | `#991B1B` |
-| Info / neutral / meta chip | `#737373` | `#F5F5F5` | `#404040` |
+| Success | `#16A34A` | `#DCFCE7` | `#14532D` |
+| Warning | `#EA580C` | `#FFEDD5` | `#9A3412` |
+| Danger | `#DC2626` | `#FEE2E2` | `#7F1D1D` |
+| Info | `#2563EB` | `#DBEAFE` | `#1E3A8A` |
+| Neutral / meta | — | `#EEEFF2` / outline | `#09090B` |
+
+**Chip hierarchia (kötelező):**
+
+| Variáns | Használat |
+|---|---|
+| `solid` | Glance státusz: Fizetve / Fizetetlen / Élő / kritikus hiba — max 1–2 / képernyő |
+| `soft` | Listasor státusz, másodlagos |
+| `outline` | Meta: raktár, SKU, csatorna, díj, fizetési mód neve — **nem** soft pasztell |
 
 **Szabályok:**
 
 - Pontosan **egy** primary: **charcoal** (`#18181B`) — CTA, focus, kijelölés. **Nincs** kék brand.
 - Nav **monokróm** (slate) — tilos modulonkénti hue.
-- Chip: **meta = neutral**; státusz = success / warning / danger. Info tone = neutral soft.
+- Meta = **outline**, nem success/info színjáték.
 - Szín soha nem az egyetlen információhordozó.
-- Telített szín csak akcióra és státuszra. Nagy felületek nem színesek.
+- Telített (`solid`) szín csak státuszra. Nagy felületek nem színesek.
 - Sötét mód: opcionális, későbbi. Ha jön: külön tokenkészlet (ne invertálj).
 
 ## 3. Elevation
