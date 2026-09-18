@@ -27,6 +27,9 @@ import {
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Input } from '@/components/ui/input'
 import {
+  platformAddTenantMember,
+  platformRemoveTenantMember,
+  platformSetMembershipDisabled,
   refreshTenantOnboardingFlags,
   resetTenantUserPassword,
   revokeTenantSessions,
@@ -48,6 +51,7 @@ import {
 } from '@/lib/platform/onboarding'
 import type {
   PlatformCompanySnapshot,
+  PlatformLinkedPartner,
   PlatformTenantKpis,
   PlatformTenantMember
 } from '@/lib/platform/queries'
@@ -58,25 +62,29 @@ import { cn } from '@/lib/utils'
 const BILLING_LABELS: Record<string, string> = {
   none: 'Nincs',
   trial: 'Trial',
-  active: 'Aktív (fizet)',
-  past_due: 'Lejárt / hátralék',
+  active: 'Fizet',
+  past_due: 'Hátralék',
   canceled: 'Lemondva'
 }
 
 const AUDIT_LABELS: Record<string, string> = {
-  'impersonation.start': 'Impersonation indítva',
-  'impersonation.end': 'Impersonation vége',
+  'impersonation.start': 'Belépés mint user',
+  'impersonation.end': 'Support mód vége',
   'tenant.status': 'Cég státusz',
-  'tenant.max_seats': 'Seat limit',
-  'tenant.ops_fields': 'Billing / notes',
-  'user.password_reset': 'Jelszó reset (ideiglenes)',
-  'user.recovery_email': 'Reset email',
-  'user.invite_email': 'Invite email',
-  'user.sessions_revoke': 'User session revoke',
-  'tenant.sessions_revoke': 'Cég session revoke'
+  'tenant.max_seats': 'Helyek limit',
+  'tenant.ops_fields': 'Előfizetés / jegyzet',
+  'user.password_reset': 'Ideiglenes jelszó',
+  'user.recovery_email': 'Jelszó email',
+  'user.invite_email': 'Meghívó email',
+  'user.sessions_revoke': 'User kiléptetése',
+  'tenant.sessions_revoke': 'Mindenki kiléptetése',
+  'user.member_add': 'Tag hozzáadva',
+  'user.member_disable': 'Belépés kikapcsolva',
+  'user.member_enable': 'Belépés engedélyezve',
+  'user.member_remove': 'Tag eltávolítva'
 }
 
-type TabId = 'overview' | 'people' | 'billing' | 'audit'
+type TabId = 'overview' | 'people' | 'billing' | 'package' | 'audit'
 
 type Props = {
   tenant: {
@@ -97,9 +105,11 @@ type Props = {
   onboarding: OnboardingFlags | null
   kpis: PlatformTenantKpis
   members: PlatformTenantMember[]
+  linkedPartners: PlatformLinkedPartner[]
   company: PlatformCompanySnapshot
   auditRows: PlatformAuditRow[]
   monthlyBill?: MonthlyBillEstimate | null
+  planLabel?: string | null
   entitlementsSlot?: ReactNode
 }
 
@@ -108,9 +118,11 @@ export function TenantDetailClient({
   onboarding,
   kpis,
   members,
+  linkedPartners,
   company,
   auditRows,
   monthlyBill,
+  planLabel,
   entitlementsSlot
 }: Props) {
   const router = useRouter()
@@ -152,9 +164,54 @@ export function TenantDetailClient({
   const [contactPhone, setContactPhone] = useState(tenant.contact_phone ?? '')
   const [contactEmail, setContactEmail] = useState(tenant.contact_email ?? '')
 
+  const [addOpen, setAddOpen] = useState(false)
+  const [addName, setAddName] = useState('')
+  const [addEmail, setAddEmail] = useState('')
+  const [addPassword, setAddPassword] = useState('')
+  const [addRole, setAddRole] = useState<'admin' | 'member' | 'viewer'>('member')
+  const [addLoading, setAddLoading] = useState(false)
+  const [removeTarget, setRemoveTarget] =
+    useState<PlatformTenantMember | null>(null)
+
   const progress = onboardingProgress(onboarding)
   const nextStep = onboardingNextStep(onboarding)
   const stuck = progress.percent < 100 && kpis.daysSinceCreated >= 7
+
+  const primaryMember =
+    members.find((m) => m.roleKey === 'owner' && m.status === 'active' && !m.banned) ??
+    members.find((m) => m.roleKey === 'admin' && m.status === 'active' && !m.banned) ??
+    members.find((m) => m.status === 'active' && !m.banned) ??
+    null
+
+  const seatsLabel =
+    tenant.max_seats === null
+      ? `${members.filter((m) => m.status === 'active').length} ember`
+      : `${members.filter((m) => m.status === 'active').length} / ${tenant.max_seats} hely`
+
+  const trialSoon =
+    tenant.trial_ends_at &&
+    new Date(tenant.trial_ends_at).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000
+
+  const attention =
+    tenant.status === 'suspended'
+      ? { text: 'A cég fel van függesztve.', tab: 'overview' as TabId }
+      : tenant.billing_status === 'past_due'
+        ? { text: 'Hátralék van az előfizetésen.', tab: 'billing' as TabId }
+        : trialSoon
+          ? {
+              text: `Trial hamarosan lejár (${formatDate(tenant.trial_ends_at!)}).`,
+              tab: 'billing' as TabId
+            }
+          : stuck
+            ? {
+                text: `Onboarding ${progress.percent}% — ${kpis.daysSinceCreated} napja.`,
+                tab: 'overview' as TabId
+              }
+            : null
+
+  function personLabel(m: PlatformTenantMember) {
+    return m.displayName?.trim() || m.email
+  }
 
   useEffect(() => {
     setStatus(tenant.status)
@@ -347,32 +404,140 @@ export function TenantDetailClient({
     }
   }
 
+  async function handleAddMember() {
+    setAddLoading(true)
+    try {
+      const result = await platformAddTenantMember({
+        tenantId: tenant.id,
+        email: addEmail,
+        password: addPassword,
+        displayName: addName.trim() || undefined,
+        role: addRole
+      })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(result.message ?? 'Hozzáadva.')
+      setAddOpen(false)
+      setAddName('')
+      setAddEmail('')
+      setAddPassword('')
+      setAddRole('member')
+      router.refresh()
+    } finally {
+      setAddLoading(false)
+    }
+  }
+
+  function handleToggleDisabled(m: PlatformTenantMember) {
+    const disable = m.status === 'active'
+    startTransition(async () => {
+      const result = await platformSetMembershipDisabled({
+        tenantId: tenant.id,
+        membershipId: m.membershipId,
+        disabled: disable
+      })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(
+        disable ? 'Belépés kikapcsolva.' : 'Belépés újra engedélyezve.'
+      )
+      router.refresh()
+    })
+  }
+
+  async function handleConfirmRemove() {
+    if (!removeTarget) return
+    setAddLoading(true)
+    try {
+      const result = await platformRemoveTenantMember({
+        tenantId: tenant.id,
+        membershipId: removeTarget.membershipId
+      })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      setRemoveTarget(null)
+      toast.success(result.message ?? 'Eltávolítva.')
+      router.refresh()
+    } finally {
+      setAddLoading(false)
+    }
+  }
+
+  function memberInitials(m: PlatformTenantMember) {
+    const name = m.displayName?.trim()
+    if (name) {
+      const parts = name.split(/\s+/).filter(Boolean)
+      if (parts.length >= 2) {
+        return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase()
+      }
+      return name.slice(0, 2).toUpperCase()
+    }
+    const local = m.email.split('@')[0] || '?'
+    return local.slice(0, 2).toUpperCase()
+  }
+
   const tabs: Array<{ id: TabId; label: string }> = [
-    { id: 'overview', label: 'Áttekintés' },
+    { id: 'overview', label: 'Összegzés' },
     { id: 'people', label: 'Emberek' },
-    { id: 'billing', label: 'Billing / notes' },
-    { id: 'audit', label: 'Audit' }
+    { id: 'billing', label: 'Előfizetés' },
+    { id: 'package', label: 'Csomag' },
+    { id: 'audit', label: 'Napló' }
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-h1 text-ink">{tenant.name}</h1>
-          <p className="mt-1 font-mono text-hint text-ink-secondary">
-            {tenant.slug}
-          </p>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-h1 text-ink">{tenant.name}</h1>
+            <StatusBadge tone={tenantStatusTone(tenant.status)}>
+              {TENANT_STATUS_LABEL[tenant.status]}
+            </StatusBadge>
+          </div>
           <p className="mt-1 text-hint text-ink-secondary">
-            Létrehozva {formatDate(tenant.created_at)} ·{' '}
-            {kpis.daysSinceCreated} napos · Utolsó belépés:{' '}
-            {formatRelative(kpis.lastSignInAt)} · Billing:{' '}
+            <span className="font-mono">{tenant.slug}</span>
+            {' · '}
+            {kpis.daysSinceCreated} napos
+            {' · '}
+            Utoljára: {formatRelative(kpis.lastSignInAt)}
+            {' · '}
             {BILLING_LABELS[tenant.billing_status] ?? tenant.billing_status}
           </p>
         </div>
-        <StatusBadge tone={tenantStatusTone(tenant.status)}>
-          {TENANT_STATUS_LABEL[tenant.status]}
-        </StatusBadge>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setTab('people')}
+          >
+            Emberek
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={!primaryMember || impersonateLoading}
+            loading={impersonateLoading && impersonateTarget?.userId === primaryMember?.userId}
+            onClick={() => {
+              if (primaryMember) setImpersonateTarget(primaryMember)
+            }}
+          >
+            Belépés a cégbe
+          </Button>
+        </div>
       </div>
+
+      {!primaryMember ? (
+        <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-body text-warning-ink">
+          Nincs beléphető user — add hozzá az Emberek tabon, aztán lépj be mint
+          ő.
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap gap-1 border-b border-border pb-2">
         {tabs.map((t) => (
@@ -394,80 +559,102 @@ export function TenantDetailClient({
 
       {tab === 'overview' ? (
         <>
-          {nextStep ? (
-            <section className="rounded-md border border-primary/20 bg-subtle px-3 py-3">
-              <p className="text-hint font-semibold uppercase tracking-wide text-ink-secondary">
-                Következő lépés
-              </p>
-              <p className="mt-1 text-body text-ink">{nextStep}</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setTab('people')}
-                >
-                  Emberek megnyitása
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  loading={pending}
-                  onClick={handleRefreshOnboarding}
-                >
-                  Onboarding frissítése
-                </Button>
+          {attention ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/30 bg-warning-soft px-3 py-2.5">
+              <p className="text-body text-warning-ink">{attention.text}</p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setTab(attention.tab)}
+              >
+                Megnyitás
+              </Button>
+            </div>
+          ) : nextStep ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-subtle px-3 py-2.5">
+              <div>
+                <p className="text-hint font-medium text-ink-secondary">
+                  Következő
+                </p>
+                <p className="text-body text-ink">{nextStep}</p>
               </div>
-            </section>
-          ) : (
-            <p
-              className="rounded-md border border-success/30 bg-success-soft px-3 py-2 text-body text-success-ink"
-              role="status"
-            >
-              Onboarding kész — nincs kötelező következő lépés.
-            </p>
-          )}
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi label="Tagok" value={String(kpis.memberCount)} />
-            <Kpi
-              label="Aktív login 7 / 30 nap"
-              value={`${kpis.activeLogins7d} / ${kpis.activeLogins30d}`}
-            />
-            <Kpi label="Árajánlatok" value={String(kpis.quoteCount)} />
-            <Kpi label="Megrendelések" value={String(kpis.orderCount)} />
-            <Kpi
-              label="Ajánlat GMV 30 nap"
-              value={`${new Intl.NumberFormat('hu-HU', { maximumFractionDigits: 0 }).format(Math.round(kpis.gmvQuotes30d))} Ft`}
-            />
-            <Kpi label="Kapcsolt partner" value={String(kpis.linkedPartners)} />
-            <Kpi
-              label="Portal beküldés 30 nap"
-              value={String(kpis.portalSubmits30d)}
-            />
-            <Kpi
-              label="SMS (hó)"
-              value={String(kpis.smsSentThisMonth)}
-            />
-            <Kpi label="Onboarding" value={`${progress.percent}%`} />
-          </div>
-
-          {stuck ? (
-            <p
-              className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-body text-warning-ink"
-              role="status"
-            >
-              Stuck onboarding — {progress.percent}% {kpis.daysSinceCreated} nap
-              után.
-            </p>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                loading={pending}
+                onClick={handleRefreshOnboarding}
+              >
+                Frissítés
+              </Button>
+            </div>
           ) : null}
+
+          <section className="rounded-md border border-border bg-surface">
+            <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+              <h2 className="text-body font-semibold text-ink">Pillantás</h2>
+            </div>
+            <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-2 lg:grid-cols-4 lg:divide-y-0">
+              <button
+                type="button"
+                className="block min-w-0 px-3 py-3 text-left hover:bg-subtle"
+                onClick={() => setTab('people')}
+              >
+                <p className="truncate text-hint text-ink-secondary">Emberek</p>
+                <p className="mt-1 text-[1.5rem] font-semibold tabular-nums leading-none text-ink">
+                  {kpis.memberCount}
+                </p>
+                <p className="mt-1 truncate text-hint text-ink-muted">
+                  {seatsLabel}
+                </p>
+              </button>
+              <div className="min-w-0 px-3 py-3">
+                <p className="truncate text-hint text-ink-secondary">
+                  7 nap aktív
+                </p>
+                <p className="mt-1 text-[1.5rem] font-semibold tabular-nums leading-none text-ink">
+                  {kpis.activeLogins7d}
+                </p>
+                <p className="mt-1 truncate text-hint text-ink-muted">
+                  {kpis.activeLogins30d} / 30 nap
+                </p>
+              </div>
+              <div className="min-w-0 px-3 py-3">
+                <p className="truncate text-hint text-ink-secondary">
+                  Forgalom 30 nap
+                </p>
+                <p className="mt-1 text-[1.5rem] font-semibold tabular-nums leading-none text-ink">
+                  {new Intl.NumberFormat('hu-HU', {
+                    maximumFractionDigits: 0
+                  }).format(Math.round(kpis.gmvQuotes30d))}{' '}
+                  Ft
+                </p>
+                <p className="mt-1 truncate text-hint text-ink-muted">
+                  Ajánlat (nem előfizetés)
+                </p>
+              </div>
+              <button
+                type="button"
+                className="block min-w-0 px-3 py-3 text-left hover:bg-subtle"
+                onClick={() => setTab('package')}
+              >
+                <p className="truncate text-hint text-ink-secondary">Csomag</p>
+                <p className="mt-1 truncate text-[1.25rem] font-semibold leading-none text-ink">
+                  {planLabel?.trim() || '—'}
+                </p>
+                <p className="mt-1 truncate text-hint text-ink-muted">
+                  {kpis.linkedPartners} partner
+                </p>
+              </button>
+            </div>
+          </section>
 
           <section className="rounded-md border border-border bg-surface p-4">
             <h2 className="mb-3 text-body font-semibold text-ink">
-              Cég státusz
+              Cég és helyek
             </h2>
-            <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label
                   htmlFor="tenant-status"
@@ -499,24 +686,12 @@ export function TenantDetailClient({
               >
                 Státusz mentése
               </Button>
-            </div>
-          </section>
-
-          <section className="rounded-md border border-border bg-surface p-4">
-            <h2 className="mb-1 text-body font-semibold text-ink">
-              Felhasználói limit
-            </h2>
-            <p className="mb-3 text-hint text-ink-secondary">
-              Max tagság. Üres = korlátlan. Most: {members.length}
-              {tenant.max_seats !== null ? ` / ${tenant.max_seats}` : ''} tag.
-            </p>
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="w-32">
+              <div className="w-28">
                 <label
                   htmlFor="max-seats"
                   className="mb-1 block text-hint text-ink-secondary"
                 >
-                  Max seat
+                  Max hely
                 </label>
                 <Input
                   id="max-seats"
@@ -536,12 +711,10 @@ export function TenantDetailClient({
                 loading={pending}
                 onClick={handleMaxSeatsSave}
               >
-                Limit mentése
+                Helyek mentése
               </Button>
             </div>
           </section>
-
-          {entitlementsSlot}
 
           <section className="rounded-md border border-border bg-surface p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -550,9 +723,6 @@ export function TenantDetailClient({
                 <p className="text-hint text-ink-secondary">
                   {progress.done}/{progress.total} · {progress.percent}%
                 </p>
-                {nextStep ? (
-                  <p className="mt-1 text-hint text-ink-secondary">{nextStep}</p>
-                ) : null}
               </div>
               <Button
                 type="button"
@@ -564,24 +734,28 @@ export function TenantDetailClient({
                 Állapot frissítése
               </Button>
             </div>
-            <ul className="space-y-1.5">
-              {ONBOARDING_STEPS.map((step) => {
-                const raw = onboarding?.[step.key]
-                const done =
-                  step.key === 'first_login_at' ? Boolean(raw) : raw === true
-                return (
-                  <li
-                    key={step.key}
-                    className="flex items-center justify-between gap-2 text-body"
-                  >
-                    <span className="text-ink">{step.label}</span>
-                    <StatusBadge tone={done ? 'success' : 'neutral'}>
-                      {done ? 'Kész' : 'Hiányzik'}
-                    </StatusBadge>
-                  </li>
-                )
-              })}
-            </ul>
+            {progress.percent < 100 ? (
+              <ul className="space-y-1.5">
+                {ONBOARDING_STEPS.map((step) => {
+                  const raw = onboarding?.[step.key]
+                  const done =
+                    step.key === 'first_login_at' ? Boolean(raw) : raw === true
+                  return (
+                    <li
+                      key={step.key}
+                      className="flex items-center justify-between gap-2 text-body"
+                    >
+                      <span className="text-ink">{step.label}</span>
+                      <StatusBadge tone={done ? 'success' : 'neutral'}>
+                        {done ? 'Kész' : 'Hiányzik'}
+                      </StatusBadge>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="text-body text-success-ink">Onboarding kész.</p>
+            )}
           </section>
 
           <section className="rounded-md border border-border bg-surface p-4">
@@ -593,8 +767,22 @@ export function TenantDetailClient({
             ) : (
               <dl className="grid gap-2 text-body sm:grid-cols-2">
                 <SnapshotItem label="Név" value={company.name} />
-                <SnapshotItem label="Email" value={company.email} />
-                <SnapshotItem label="Telefon" value={company.phone_number} />
+                <SnapshotItem
+                  label="Email"
+                  value={company.email}
+                  href={
+                    company.email ? `mailto:${company.email}` : undefined
+                  }
+                />
+                <SnapshotItem
+                  label="Telefon"
+                  value={company.phone_number}
+                  href={
+                    company.phone_number
+                      ? `tel:${company.phone_number}`
+                      : undefined
+                  }
+                />
                 <SnapshotItem label="Adószám" value={company.tax_number} />
                 <SnapshotItem
                   label="Cím"
@@ -606,120 +794,239 @@ export function TenantDetailClient({
                 />
               </dl>
             )}
+            {(tenant.contact_phone || tenant.contact_email) && (
+              <dl className="mt-3 grid gap-2 border-t border-border pt-3 text-body sm:grid-cols-2">
+                <SnapshotItem
+                  label="Kapcsolat telefon"
+                  value={tenant.contact_phone}
+                  href={
+                    tenant.contact_phone
+                      ? `tel:${tenant.contact_phone}`
+                      : undefined
+                  }
+                />
+                <SnapshotItem
+                  label="Kapcsolat email"
+                  value={tenant.contact_email}
+                  href={
+                    tenant.contact_email
+                      ? `mailto:${tenant.contact_email}`
+                      : undefined
+                  }
+                />
+              </dl>
+            )}
           </section>
+
+          {linkedPartners.length > 0 ? (
+            <section className="rounded-md border border-border bg-surface p-4">
+              <h2 className="mb-3 text-body font-semibold text-ink">
+                Kapcsolt partnerek ({linkedPartners.length})
+              </h2>
+              <ul className="divide-y divide-border">
+                {linkedPartners.map((p) => (
+                  <li key={p.userId}>
+                    <a
+                      href={`/platform/partnerek/${p.userId}`}
+                      className="flex flex-wrap items-center justify-between gap-2 py-2 no-underline hover:bg-subtle"
+                    >
+                      <span className="font-medium text-ink">{p.name}</span>
+                      <span className="text-hint text-ink-secondary">
+                        {p.email}
+                        {p.status === 'disabled' ? ' · kikapcsolva' : ''}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
         </>
       ) : null}
 
       {tab === 'people' ? (
         <section className="rounded-md border border-border bg-surface p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-body font-semibold text-ink">
-              Felhasználók ({members.length})
-            </h2>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={pending || revokeLoading || members.length === 0}
-              onClick={() => setRevokeTenantOpen(true)}
-            >
-              Összes session revoke
-            </Button>
+            <div>
+              <h2 className="text-body font-semibold text-ink">
+                Emberek ({members.length})
+              </h2>
+              <p className="text-hint text-ink-secondary">{seatsLabel}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={pending || revokeLoading || members.length === 0}
+                onClick={() => setRevokeTenantOpen(true)}
+              >
+                Összes kiléptetése
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={pending || addLoading}
+                onClick={() => setAddOpen(true)}
+              >
+                Felhasználó hozzáadása
+              </Button>
+            </div>
           </div>
           {members.length === 0 ? (
-            <p className="text-body text-ink-secondary">Nincs tag.</p>
+            <div className="rounded-md border border-dashed border-border bg-subtle px-3 py-6 text-center">
+              <p className="text-body text-ink">Még nincs felhasználó.</p>
+              <p className="mt-1 text-hint text-ink-secondary">
+                Adj hozzá usert, aztán lépj be mint ő.
+              </p>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                className="mt-3"
+                onClick={() => setAddOpen(true)}
+              >
+                Felhasználó hozzáadása
+              </Button>
+            </div>
           ) : (
             <DataTable>
               <DataTableHead>
                 <DataTableRow>
-                  <DataTableHeaderCell>Email</DataTableHeaderCell>
+                  <DataTableHeaderCell>Felhasználó</DataTableHeaderCell>
                   <DataTableHeaderCell>Szerep</DataTableHeaderCell>
-                  <DataTableHeaderCell>Utolsó belépés</DataTableHeaderCell>
-                  <DataTableHeaderCell>Fiók</DataTableHeaderCell>
+                  <DataTableHeaderCell>Belépés</DataTableHeaderCell>
+                  <DataTableHeaderCell>Utoljára</DataTableHeaderCell>
                   <DataTableHeaderCell className="text-right">
                     Műveletek
                   </DataTableHeaderCell>
                 </DataTableRow>
               </DataTableHead>
               <DataTableBody>
-                {members.map((m) => (
-                  <DataTableRow key={m.membershipId}>
-                    <DataTableCell className="font-medium text-ink">
-                      {m.email}
-                    </DataTableCell>
-                    <DataTableCell>
-                      <StatusBadge
-                        tone={
-                          m.roleKey === 'owner'
-                            ? 'success'
-                            : m.roleKey === 'admin'
-                              ? 'info'
-                              : 'neutral'
-                        }
-                      >
-                        {m.role}
-                      </StatusBadge>
-                    </DataTableCell>
-                    <DataTableCell className="text-ink-secondary">
-                      {formatRelative(m.lastSignInAt)}
-                    </DataTableCell>
-                    <DataTableCell>
-                      {m.banned ? (
-                        <StatusBadge tone="danger">Tiltva</StatusBadge>
-                      ) : m.emailConfirmed ? (
-                        <StatusBadge tone="success">OK</StatusBadge>
-                      ) : (
-                        <StatusBadge tone="warning">Nem confirmed</StatusBadge>
-                      )}
-                    </DataTableCell>
-                    <DataTableCell className="text-right">
-                      <div className="flex flex-wrap justify-end gap-1.5">
-                        <Button
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          disabled={
-                            pending ||
-                            resetLoading ||
-                            emailLoading ||
-                            impersonateLoading ||
-                            m.banned
+                {members.map((m) => {
+                  const isDisabled = m.status === 'disabled'
+                  return (
+                    <DataTableRow key={m.membershipId}>
+                      <DataTableCell>
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <span
+                            className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-subtle text-[10px] font-semibold text-ink"
+                            aria-hidden
+                          >
+                            {memberInitials(m)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-ink">
+                              {personLabel(m)}
+                            </p>
+                            {m.displayName?.trim() ? (
+                              <p className="truncate text-hint text-ink-secondary">
+                                {m.email}
+                              </p>
+                            ) : (
+                              <p className="truncate text-hint text-ink-muted">
+                                Nincs megjelenített név
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell>
+                        <StatusBadge
+                          tone={
+                            m.roleKey === 'owner'
+                              ? 'success'
+                              : m.roleKey === 'admin'
+                                ? 'info'
+                                : 'neutral'
                           }
-                          onClick={() => setImpersonateTarget(m)}
                         >
-                          Belépés mint…
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          disabled={pending || emailLoading || m.banned}
-                          onClick={() => setEmailTarget(m)}
-                        >
-                          {m.emailConfirmed ? 'Reset email' : 'Invite email'}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={pending || resetLoading}
-                          onClick={() => setResetTarget(m)}
-                        >
-                          Ideiglenes jelszó
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={pending || revokeLoading}
-                          onClick={() => setRevokeUserTarget(m)}
-                        >
-                          Session revoke
-                        </Button>
-                      </div>
-                    </DataTableCell>
-                  </DataTableRow>
-                ))}
+                          {m.role}
+                        </StatusBadge>
+                      </DataTableCell>
+                      <DataTableCell>
+                        {m.banned ? (
+                          <StatusBadge tone="danger">Tiltva</StatusBadge>
+                        ) : isDisabled ? (
+                          <StatusBadge tone="warning">Kikapcsolva</StatusBadge>
+                        ) : m.emailConfirmed ? (
+                          <StatusBadge tone="success">Beléphet</StatusBadge>
+                        ) : (
+                          <StatusBadge tone="warning">Nincs confirm</StatusBadge>
+                        )}
+                      </DataTableCell>
+                      <DataTableCell className="text-ink-secondary">
+                        {formatRelative(m.lastSignInAt)}
+                      </DataTableCell>
+                      <DataTableCell className="text-right">
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            disabled={
+                              pending ||
+                              resetLoading ||
+                              emailLoading ||
+                              impersonateLoading ||
+                              m.banned ||
+                              isDisabled
+                            }
+                            onClick={() => setImpersonateTarget(m)}
+                          >
+                            Belépés mint…
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={pending || emailLoading || m.banned}
+                            onClick={() => setEmailTarget(m)}
+                          >
+                            Jelszó email
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending || resetLoading}
+                            onClick={() => setResetTarget(m)}
+                          >
+                            Ideiglenes jelszó
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending || revokeLoading}
+                            onClick={() => setRevokeUserTarget(m)}
+                          >
+                            Kiléptetés
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => handleToggleDisabled(m)}
+                          >
+                            {isDisabled ? 'Engedélyezés' : 'Kikapcsolás'}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending || addLoading}
+                            onClick={() => setRemoveTarget(m)}
+                          >
+                            Eltávolítás
+                          </Button>
+                        </div>
+                      </DataTableCell>
+                    </DataTableRow>
+                  )
+                })}
               </DataTableBody>
             </DataTable>
           )}
@@ -729,12 +1036,10 @@ export function TenantDetailClient({
       {tab === 'billing' ? (
         <section className="space-y-4 rounded-md border border-border bg-surface p-4">
           <div>
-            <h2 className="text-body font-semibold text-ink">
-              Manuális billing
-            </h2>
+            <h2 className="text-body font-semibold text-ink">Előfizetés</h2>
             <p className="mt-1 text-hint text-ink-secondary">
-              Fizetés és add-on kapcsolás csak innen — a tenant oldalon nincs
-              self-serve. A számla kívül készül; itt az állapot és a becslés.
+              Fizetés és állapot csak innen — a cég oldalon nincs self-serve.
+              A számla kívül készül; itt az állapot és a havi becslés.
             </p>
           </div>
 
@@ -752,7 +1057,7 @@ export function TenantDetailClient({
                 htmlFor="billing-status"
                 className="mb-1 block text-hint text-ink-secondary"
               >
-                Billing státusz
+                Fizetési státusz
               </label>
               <MenuSelect
                 id="billing-status"
@@ -830,7 +1135,7 @@ export function TenantDetailClient({
                 htmlFor="billing-notes"
                 className="mb-1 block text-hint text-ink-secondary"
               >
-                Billing megjegyzés
+                Előfizetés megjegyzés
               </label>
               <textarea
                 id="billing-notes"
@@ -871,6 +1176,25 @@ export function TenantDetailClient({
         </section>
       ) : null}
 
+      {tab === 'package' ? (
+        <section className="space-y-3">
+          <div className="rounded-md border border-border bg-surface p-4">
+            <h2 className="text-body font-semibold text-ink">Csomag</h2>
+            <p className="mt-1 text-hint text-ink-secondary">
+              Plan, add-onok és eszközök — ami a cégben megjelenik.
+              {planLabel?.trim()
+                ? ` Jelenlegi: ${planLabel.trim()}.`
+                : ' Még nincs plan.'}
+            </p>
+          </div>
+          {entitlementsSlot ?? (
+            <p className="text-body text-ink-secondary">
+              Nincs csomag panel.
+            </p>
+          )}
+        </section>
+      ) : null}
+
       {tab === 'audit' ? (
         <section className="rounded-md border border-border bg-surface p-4">
           <h2 className="mb-3 text-body font-semibold text-ink">
@@ -904,10 +1228,10 @@ export function TenantDetailClient({
         title="Ideiglenes jelszó beállítása?"
         description={
           resetTarget
-            ? `${resetTarget.email} jelszava azonnal megváltozik. Az új jelszót csak egyszer mutatjuk.`
+            ? `${personLabel(resetTarget)} jelszava azonnal megváltozik. Az új jelszót csak egyszer mutatjuk.`
             : ''
         }
-        confirmLabel="Reset"
+        confirmLabel="Beállítás"
         cancelLabel="Mégse"
         variant="danger"
         loading={resetLoading}
@@ -919,14 +1243,10 @@ export function TenantDetailClient({
         onOpenChange={(open) => {
           if (!open) setEmailTarget(null)
         }}
-        title={
-          emailTarget && !emailTarget.emailConfirmed
-            ? 'Invite email küldése?'
-            : 'Jelszó-reset email küldése?'
-        }
+        title="Jelszó-visszaállító email?"
         description={
           emailTarget
-            ? `Supabase Auth emailt küld: ${emailTarget.email}. Nincs Resend — az Auth template megy.`
+            ? `Auth emailt küldünk: ${emailTarget.email}.`
             : ''
         }
         confirmLabel="Email küldése"
@@ -941,13 +1261,13 @@ export function TenantDetailClient({
         onOpenChange={(open) => {
           if (!open) setRevokeUserTarget(null)
         }}
-        title="Sessionök érvénytelenítése?"
+        title="Kiléptetés?"
         description={
           revokeUserTarget
-            ? `${revokeUserTarget.email} minden app sessionje lejár — újra be kell lépnie.`
+            ? `${personLabel(revokeUserTarget)} minden app sessionje lejár — újra be kell lépnie.`
             : ''
         }
-        confirmLabel="Revoke"
+        confirmLabel="Kiléptetés"
         cancelLabel="Mégse"
         variant="danger"
         loading={revokeLoading}
@@ -957,9 +1277,9 @@ export function TenantDetailClient({
       <ConfirmDialog
         open={revokeTenantOpen}
         onOpenChange={setRevokeTenantOpen}
-        title="Teljes cég session revoke?"
-        description="Minden tag app sessionje érvénytelenítve lesz. Impersonation sessionök nem."
-        confirmLabel="Összes revoke"
+        title="Mindenkit kiléptetünk?"
+        description="Minden tag app sessionje érvénytelenítve lesz. A support belépések nem."
+        confirmLabel="Összes kiléptetése"
         cancelLabel="Mégse"
         variant="danger"
         loading={revokeLoading}
@@ -974,7 +1294,7 @@ export function TenantDetailClient({
         title="Belépés mint ez a felhasználó?"
         description={
           impersonateTarget
-            ? `${impersonateTarget.email} nevében nyílik az app (írható, 60 perc). Erős bannerrel kiléphetsz.`
+            ? `${personLabel(impersonateTarget)} nevében nyílik az app (írható, 60 perc). Erős bannerrel kiléphetsz.`
             : ''
         }
         confirmLabel="Belépés mint…"
@@ -982,6 +1302,131 @@ export function TenantDetailClient({
         loading={impersonateLoading}
         onConfirm={() => void handleConfirmImpersonate()}
       />
+
+      <ConfirmDialog
+        open={Boolean(removeTarget)}
+        onOpenChange={(open) => {
+          if (!open) setRemoveTarget(null)
+        }}
+        title="Felhasználó eltávolítása?"
+        description={
+          removeTarget
+            ? `${personLabel(removeTarget)} elveszíti a hozzáférést ehhez a céghez. A fiók maga megmarad.`
+            : ''
+        }
+        confirmLabel="Eltávolítás"
+        cancelLabel="Mégse"
+        variant="danger"
+        loading={addLoading}
+        onConfirm={() => void handleConfirmRemove()}
+      />
+
+      <Dialog
+        open={addOpen}
+        onOpenChange={(open) => {
+          if (!open && !addLoading) setAddOpen(false)
+          else setAddOpen(open)
+        }}
+      >
+        <DialogContent className="max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Felhasználó hozzáadása</DialogTitle>
+            <DialogDescription>
+              Manuális fiók — email + ideiglenes jelszó. Nincs meghívó email.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label
+                htmlFor="add-name"
+                className="mb-1 block text-hint text-ink-secondary"
+              >
+                Megjelenített név
+              </label>
+              <Input
+                id="add-name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                disabled={addLoading}
+                placeholder="Pl. Kovács Anna"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="add-email"
+                className="mb-1 block text-hint text-ink-secondary"
+              >
+                Email
+              </label>
+              <Input
+                id="add-email"
+                type="email"
+                value={addEmail}
+                onChange={(e) => setAddEmail(e.target.value)}
+                disabled={addLoading}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="add-password"
+                className="mb-1 block text-hint text-ink-secondary"
+              >
+                Ideiglenes jelszó
+              </label>
+              <Input
+                id="add-password"
+                type="text"
+                value={addPassword}
+                onChange={(e) => setAddPassword(e.target.value)}
+                disabled={addLoading}
+                autoComplete="new-password"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="add-role"
+                className="mb-1 block text-hint text-ink-secondary"
+              >
+                Szerep
+              </label>
+              <MenuSelect
+                id="add-role"
+                value={addRole}
+                disabled={addLoading}
+                allowEmpty={false}
+                options={[
+                  { value: 'admin', label: 'Admin' },
+                  { value: 'member', label: 'Tag' },
+                  { value: 'viewer', label: 'Megtekintő' }
+                ]}
+                onChange={(v) =>
+                  setAddRole(v as 'admin' | 'member' | 'viewer')
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={addLoading}
+              onClick={() => setAddOpen(false)}
+            >
+              Mégse
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              loading={addLoading}
+              disabled={!addEmail.trim() || addPassword.length < 8}
+              onClick={() => void handleAddMember()}
+            >
+              Hozzáadás
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(tempPassword)}
@@ -1034,28 +1479,28 @@ function toDateInput(iso: string | null): string {
   return d.toISOString().slice(0, 10)
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-surface px-3 py-2.5">
-      <p className="text-hint text-ink-secondary">{label}</p>
-      <p className="mt-0.5 text-body font-semibold tabular-nums text-ink">
-        {value}
-      </p>
-    </div>
-  )
-}
-
 function SnapshotItem({
   label,
-  value
+  value,
+  href
 }: {
   label: string
   value: string | null | undefined
+  href?: string
 }) {
+  const display = value?.trim() || '—'
   return (
     <div>
       <dt className="text-hint text-ink-secondary">{label}</dt>
-      <dd className="text-ink">{value?.trim() || '—'}</dd>
+      <dd className="text-ink">
+        {href && value?.trim() ? (
+          <a href={href} className="text-ink underline-offset-2 hover:underline">
+            {display}
+          </a>
+        ) : (
+          display
+        )}
+      </dd>
     </div>
   )
 }

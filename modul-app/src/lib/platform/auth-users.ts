@@ -138,3 +138,15 @@ function toLite(u: User): AuthUserLite {
     banned: Boolean(u.banned_until)
   }
 }
+
+/** Email → Auth user (kis tenantokhoz cache-elt listából). */
+export async function findAuthUserByEmail(
+  admin: SupabaseClient,
+  email: string
+): Promise<AuthUserLite | null> {
+  const normalized = email.trim().toLowerCase()
+  if (!normalized) return null
+  const users = await listAllAuthUsersCached(admin)
+  const hit = users.find((u) => u.email?.toLowerCase() === normalized)
+  return hit ? toLite(hit) : null
+}

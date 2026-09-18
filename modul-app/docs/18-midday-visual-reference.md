@@ -39,7 +39,7 @@
 | Sidebar | ~220–240px, mindig nyitva |
 | Nav sor | ~32–36px |
 | Oldal padding | `px-4` / `md:px-6`, szekció `p-4` |
-| Aktív nav | subtle háttér + charcoal/slate bal sáv (nem színes soft blokk) |
+| Aktív nav | **erősebb** soft (`--nav-slate-soft` ≈ zinc-200) + charcoal bal sáv (4px) + semibold label; monokróm, nem színes soft blokk |
 
 Tokenek: `src/lib/tokens.css`. Tipó override a Flat 2.0 „comfortable 15px” helyett: **ez a doc + token a sűrűség forrásigazsága**.
 

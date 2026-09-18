@@ -35,6 +35,7 @@ export default async function FelhasznalokPage() {
       serviceRoleMissing={!isServiceRoleConfigured()}
       entitledPages={user.entitledPages}
       seats={seats}
+      currentUserId={user.id}
     />
   )
 }

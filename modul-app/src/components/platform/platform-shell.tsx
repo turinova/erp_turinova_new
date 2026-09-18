@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   Package,
   Puzzle,
-  Search,
   type LucideIcon
 } from 'lucide-react'
 import Image from 'next/image'
@@ -20,7 +19,6 @@ import { cn } from '@/lib/utils'
 
 const NAV: Array<{ clean: string; label: string; icon: LucideIcon }> = [
   { clean: '/', label: 'Áttekintés', icon: LayoutDashboard },
-  { clean: '/kereses', label: 'Keresés', icon: Search },
   { clean: '/tenants', label: 'Cégek', icon: Building2 },
   { clean: '/partnerek', label: 'Partnerek', icon: Hammer },
   { clean: '/csomagok', label: 'Csomagok', icon: Package },

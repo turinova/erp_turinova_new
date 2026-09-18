@@ -1,6 +1,7 @@
 /**
- * Nav accent — monokróm (Midday/Linear mintázat).
- * A hue kulcsok megmaradnak API-kompatibilitásért, mind slate-re mapelődik.
+ * Nav accent — monokróm (Midday/Linear).
+ * Hue kulcsok API-kompatibilitás; staff nav mind slate.
+ * Aktív: erősebb soft háttér + charcoal ink/sáv (nem szivárvány).
  */
 export type NavAccent =
   | 'blue'
@@ -22,9 +23,9 @@ export type NavAccentClasses = {
 }
 
 const SLATE: NavAccentClasses = {
-  icon: 'text-nav-slate-ink',
+  icon: 'text-ink',
   iconMuted: 'text-ink-secondary',
-  soft: 'bg-subtle',
+  soft: 'bg-nav-slate-soft',
   ink: 'text-ink',
   bar: 'bg-primary',
   ring: 'border-border-strong'

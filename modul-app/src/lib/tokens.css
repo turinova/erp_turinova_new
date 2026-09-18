@@ -46,7 +46,8 @@
 
   /* Nav — csak slate (monokróm); legacy aliasok → slate */
   --nav-slate: #525252;
-  --nav-slate-soft: #f4f4f5;
+  /* Aktív nav háttér — erősebb mint surface, Midday charcoal calm */
+  --nav-slate-soft: #e4e4e7;
   --nav-slate-ink: #18181b;
 
   --nav-blue: var(--nav-slate);

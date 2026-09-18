@@ -36,9 +36,10 @@ export async function listMembershipsForUser(
   const { data, error } = await supabase
     .from('tenant_memberships')
     .select(
-      'id, tenant_id, user_id, role, created_at, tenants ( id, name, slug, status )'
+      'id, tenant_id, user_id, role, status, disabled_at, created_at, tenants ( id, name, slug, status )'
     )
     .eq('user_id', userId)
+    .eq('status', 'active')
     .order('created_at', { ascending: true })
 
   if (error) {
@@ -51,6 +52,8 @@ export async function listMembershipsForUser(
     tenant_id: string
     user_id: string
     role: TenantRole
+    status: 'active' | 'disabled'
+    disabled_at: string | null
     created_at: string
     tenants: TenantEmbed | TenantEmbed[] | null
   }>
@@ -60,6 +63,8 @@ export async function listMembershipsForUser(
     tenant_id: row.tenant_id,
     user_id: row.user_id,
     role: row.role,
+    status: row.status ?? 'active',
+    disabled_at: row.disabled_at ?? null,
     created_at: row.created_at,
     tenants: normalizeTenantEmbed(row.tenants)
   }))

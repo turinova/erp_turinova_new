@@ -19,16 +19,24 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 10
+export const PAGE_CATALOG_VERSION = 11
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
   { key: '/home', label: 'Kezdőlap', category: 'Fő', always: true },
+  {
+    key: '/beallitasok/profil',
+    label: 'Saját adatok',
+    category: 'Beállítások',
+    always: true
+  },
   { key: '/kereso', label: 'Kereső', category: 'Fő' },
   { key: '/opti', label: 'Opti', category: 'Műhely' },
-  { key: '/ugyfelek', label: 'Ügyfelek', category: 'Műhely' },
-  { key: '/ertekesitesek', label: 'Értékesítések', category: 'Értékesítés' },
+  { key: '/scanner', label: 'Scanner', category: 'Műhely' },
   { key: '/pos', label: 'POS', category: 'Értékesítés' },
+  { key: '/ugyfelek', label: 'Ügyfelek', category: 'Fő' },
+  { key: '/belepok', label: 'Belépők', category: 'Fő' },
+  { key: '/ertekesitesek', label: 'Értékesítések', category: 'Értékesítés' },
   {
     key: '/ertekesitesek/muszakok',
     label: 'Műszakok',
@@ -55,10 +63,8 @@ export const APP_PAGES: AppPageDef[] = [
   { key: '/beerkezesek', label: 'Beérkezések', category: 'Beszerzés' },
   { key: '/keszlet/atadasok', label: 'Áttárolások', category: 'Beszerzés' },
   { key: '/keszlet/mozgasok', label: 'Készletmozgások', category: 'Beszerzés' },
-  { key: '/ajanlatok', label: 'Lapszabászati ajánlatok', category: 'Műhely' },
   { key: '/megrendelesek', label: 'Megrendelések', category: 'Műhely' },
-  { key: '/scanner', label: 'Scanner', category: 'Műhely' },
-  { key: '/belepok', label: 'Belépők', category: 'Fő' },
+  { key: '/ajanlatok', label: 'Lapszabászati ajánlatok', category: 'Műhely' },
   {
     key: '/torzsadatok/alapanyagok/tablas-anyagok',
     label: 'Táblás anyagok',

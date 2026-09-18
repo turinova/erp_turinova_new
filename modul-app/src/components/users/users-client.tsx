@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Shield, Users } from 'lucide-react'
+import { Pencil, Plus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -38,6 +38,9 @@ import type { TenantSeatInfo } from '@/lib/tenancy/seats'
 import {
   createTenantUser,
   getMembershipPageAccess,
+  removeTenantMember,
+  setMembershipDisabled,
+  updateMemberDisplayName,
   updateMembershipPageAccess,
   updateMembershipRole,
   type TenantUserListItem
@@ -49,6 +52,7 @@ type UsersClientProps = {
   serviceRoleMissing: boolean
   entitledPages: string[]
   seats: TenantSeatInfo
+  currentUserId: string
 }
 
 const CATEGORIES: AppPageCategory[] = [
@@ -59,6 +63,12 @@ const CATEGORIES: AppPageCategory[] = [
   'Beállítások'
 ]
 
+const ROLE_HINTS: Record<Exclude<TenantRole, 'owner'>, string> = {
+  admin: 'Felhasználókat és beállításokat is kezelhet.',
+  member: 'Napi munka: ajánlat, raktár, értékesítés — a jogok szerint.',
+  viewer: 'Csak nézhet, nem módosíthat.'
+}
+
 function roleTone(role: TenantRole): 'success' | 'info' | 'neutral' | 'warning' {
   if (role === 'owner') return 'success'
   if (role === 'admin') return 'info'
@@ -66,29 +76,45 @@ function roleTone(role: TenantRole): 'success' | 'info' | 'neutral' | 'warning' 
   return 'neutral'
 }
 
+function initialsFromRow(row: TenantUserListItem) {
+  const name = row.displayName?.trim()
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) {
+      return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase()
+    }
+    return name.slice(0, 2).toUpperCase()
+  }
+  const local = row.email.split('@')[0] || '?'
+  return local.slice(0, 2).toUpperCase()
+}
+
+function personLabel(row: TenantUserListItem) {
+  return row.displayName?.trim() || row.email
+}
+
 export function UsersClient({
   rows,
   loadError,
   serviceRoleMissing,
   entitledPages,
-  seats
+  seats,
+  currentUserId
 }: UsersClientProps) {
   const router = useRouter()
   const [createOpen, setCreateOpen] = useState(false)
-  const [permsTarget, setPermsTarget] = useState<TenantUserListItem | null>(
-    null
-  )
+  const [editTarget, setEditTarget] = useState<TenantUserListItem | null>(null)
 
   const seatLabel =
     seats.maxSeats === null
-      ? `${seats.usedSeats} felhasználó`
-      : `${seats.usedSeats} / ${seats.maxSeats} felhasználó`
+      ? `${seats.usedSeats} hely foglalt`
+      : `${seats.usedSeats} / ${seats.maxSeats} hely`
 
   return (
     <div>
       <PageHeader
         title="Felhasználók"
-        description={`Cégtagok és oldaljogok — ${seatLabel}. Egy fiók egyszerre egy helyen lehet bejelentkezve.`}
+        description={`Akik beléphetnek a cégbe. ${seatLabel}.`}
         actions={
           <Button
             type="button"
@@ -97,7 +123,7 @@ export function UsersClient({
             disabled={serviceRoleMissing || seats.atLimit}
           >
             <Plus className="size-3.5" aria-hidden />
-            Új felhasználó
+            Felhasználó hozzáadása
           </Button>
         }
       />
@@ -107,8 +133,8 @@ export function UsersClient({
           className="mb-3 max-w-xl rounded-md border border-warning/30 bg-warning-soft p-3 text-body text-ink"
           role="status"
         >
-          Elérted a felhasználói limitt ({seats.usedSeats}/{seats.maxSeats}).
-          Bővítéshez keresd a platform operátort.
+          Nincs több hely ({seats.usedSeats}/{seats.maxSeats}). Bővítéshez
+          írj a supportnak.
         </p>
       ) : null}
 
@@ -117,9 +143,8 @@ export function UsersClient({
           className="mb-3 max-w-xl rounded-md border border-warning/30 bg-warning-soft p-3 text-body text-ink"
           role="status"
         >
-          A felhasználó létrehozáshoz add meg a{' '}
-          <code className="text-hint">SUPABASE_SERVICE_ROLE_KEY</code>{' '}
-          környezeti változót a szerveren.
+          Most nem lehet felhasználót felvenni vagy módosítani. Írj a
+          supportnak.
         </p>
       ) : null}
 
@@ -131,49 +156,85 @@ export function UsersClient({
           {loadError}
         </p>
       ) : rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-border bg-subtle px-4 py-10 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-10 text-center">
           <Users className="size-8 text-ink-secondary" aria-hidden />
-          <p className="text-body text-ink-secondary">Nincs felhasználó.</p>
+          <p className="text-body text-ink-secondary">
+            Még nincs felhasználó a cégben.
+          </p>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={serviceRoleMissing || seats.atLimit}
+            onClick={() => setCreateOpen(true)}
+          >
+            Felhasználó hozzáadása
+          </Button>
         </div>
       ) : (
         <DataTable>
           <DataTableHead>
             <DataTableRow>
-              <DataTableHeaderCell>Email</DataTableHeaderCell>
+              <DataTableHeaderCell>Felhasználó</DataTableHeaderCell>
               <DataTableHeaderCell>Szerep</DataTableHeaderCell>
-              <DataTableHeaderCell>Csatlakozott</DataTableHeaderCell>
+              <DataTableHeaderCell>Belépés</DataTableHeaderCell>
               <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
                 Műveletek
               </DataTableHeaderCell>
             </DataTableRow>
           </DataTableHead>
           <DataTableBody>
-            {rows.map((row) => (
-              <DataTableRow key={row.membershipId}>
-                <DataTableCell className="font-medium text-ink">
-                  {row.email}
-                </DataTableCell>
-                <DataTableCell>
-                  <StatusBadge tone={roleTone(row.role)}>
-                    {row.roleLabel}
-                  </StatusBadge>
-                </DataTableCell>
-                <DataTableCell className="tabular-nums text-ink-secondary">
-                  {formatDate(row.createdAt)}
-                </DataTableCell>
-                <DataTableCell className="text-right">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setPermsTarget(row)}
-                  >
-                    <Shield className="size-3.5" aria-hidden />
-                    Jogok
-                  </Button>
-                </DataTableCell>
-              </DataTableRow>
-            ))}
+            {rows.map((row) => {
+              const isDisabled = row.status === 'disabled'
+              return (
+                <DataTableRow key={row.membershipId}>
+                  <DataTableCell>
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span
+                        className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-subtle text-[10px] font-semibold text-ink"
+                        aria-hidden
+                      >
+                        {initialsFromRow(row)}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-ink">
+                          {personLabel(row)}
+                        </p>
+                        {row.displayName?.trim() ? (
+                          <p className="truncate text-hint text-ink-secondary">
+                            {row.email}
+                          </p>
+                        ) : (
+                          <p className="truncate text-hint text-ink-muted">
+                            Nincs megjelenített név
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </DataTableCell>
+                  <DataTableCell>
+                    <StatusBadge tone={roleTone(row.role)}>
+                      {row.roleLabel}
+                    </StatusBadge>
+                  </DataTableCell>
+                  <DataTableCell>
+                    <StatusBadge tone={isDisabled ? 'warning' : 'success'}>
+                      {isDisabled ? 'Kikapcsolva' : 'Beléphet'}
+                    </StatusBadge>
+                  </DataTableCell>
+                  <DataTableCell className="text-right">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setEditTarget(row)}
+                    >
+                      <Pencil className="size-3.5" aria-hidden />
+                      Szerkesztés
+                    </Button>
+                  </DataTableCell>
+                </DataTableRow>
+              )
+            })}
           </DataTableBody>
         </DataTable>
       )}
@@ -187,32 +248,24 @@ export function UsersClient({
         }}
       />
 
-      {permsTarget ? (
-        <PermissionsDialog
-          open={Boolean(permsTarget)}
-          user={permsTarget}
+      {editTarget ? (
+        <EditMemberDialog
+          open={Boolean(editTarget)}
+          user={editTarget}
+          currentUserId={currentUserId}
           entitledPages={entitledPages}
+          serviceRoleMissing={serviceRoleMissing}
           onOpenChange={(open) => {
-            if (!open) setPermsTarget(null)
+            if (!open) setEditTarget(null)
           }}
           onSuccess={() => {
-            setPermsTarget(null)
+            setEditTarget(null)
             router.refresh()
           }}
         />
       ) : null}
     </div>
   )
-}
-
-function formatDate(iso: string) {
-  try {
-    return new Intl.DateTimeFormat('hu-HU', { dateStyle: 'short' }).format(
-      new Date(iso)
-    )
-  } catch {
-    return iso
-  }
 }
 
 function CreateUserDialog({
@@ -226,6 +279,7 @@ function CreateUserDialog({
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [email, setEmail] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<'admin' | 'member' | 'viewer'>('member')
   const [template, setTemplate] = useState<PageAccessTemplateId>('office')
@@ -235,6 +289,7 @@ function CreateUserDialog({
   useEffect(() => {
     if (!open) return
     setEmail('')
+    setDisplayName('')
     setPassword('')
     setRole('member')
     setTemplate('office')
@@ -250,6 +305,7 @@ function CreateUserDialog({
       const result = await createTenantUser({
         email,
         password,
+        displayName: displayName.trim() || undefined,
         role,
         template
       })
@@ -257,7 +313,7 @@ function CreateUserDialog({
         setError(result.message)
         return
       }
-      toast.success('Felhasználó létrehozva.')
+      toast.success('Felhasználó hozzáadva.')
       onSuccess()
     } finally {
       setLoading(false)
@@ -274,14 +330,24 @@ function CreateUserDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Új felhasználó</DialogTitle>
+          <DialogTitle>Felhasználó hozzáadása</DialogTitle>
           <DialogDescription>
-            Email, jelszó, szerep és oldaljog-sablon. A jogosultságok később
-            finomhangolhatók.
+            Add meg a nevet és az emailt. Az ideiglenes jelszót add oda a
+            kollégának. Ha az email már létezik, csak a céghez kapcsoljuk.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
+          <FormField label="Név" htmlFor="new-user-name">
+            <Input
+              id="new-user-name"
+              type="text"
+              autoComplete="off"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Pl. Kovács Anna"
+            />
+          </FormField>
           <FormField label="Email" htmlFor="new-user-email">
             <Input
               id="new-user-email"
@@ -298,8 +364,11 @@ function CreateUserDialog({
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Legalább 8 karakter"
+              placeholder="Új fióknál legalább 8 karakter"
             />
+            <p className="mt-1 text-hint text-ink-muted">
+              Ezt add oda neki — meglévő fióknál üresen hagyhatod.
+            </p>
           </FormField>
           <FormField label="Szerep" htmlFor="new-user-role">
             <MenuSelect
@@ -315,22 +384,23 @@ function CreateUserDialog({
                 setRole(v as 'admin' | 'member' | 'viewer')
               }
             />
+            <p className="mt-1 text-hint text-ink-muted">{ROLE_HINTS[role]}</p>
           </FormField>
-          <FormField label="Oldaljog sablon" htmlFor="new-user-template">
+          <FormField label="Kezdő jogosultság" htmlFor="new-user-template">
             <MenuSelect
               id="new-user-template"
               value={template}
               allowEmpty={false}
-              options={(
-                Object.entries(PAGE_ACCESS_TEMPLATES) as Array<
-                  [PageAccessTemplateId, { label: string }]
-                >
-              ).map(([id, meta]) => ({
-                value: id,
-                label: meta.label
-              }))}
+              options={[
+                { value: 'full', label: 'Teljes' },
+                { value: 'office', label: 'Iroda' },
+                { value: 'workshop', label: 'Műhely' }
+              ]}
               onChange={(v) => setTemplate(v as PageAccessTemplateId)}
             />
+            <p className="mt-1 text-hint text-ink-muted">
+              Később a Szerkesztés alatt finomhangolható.
+            </p>
           </FormField>
           {error ? (
             <p className="text-body text-danger-ink" role="alert">
@@ -355,7 +425,7 @@ function CreateUserDialog({
             loading={loading}
             onClick={() => void handleCreate()}
           >
-            Létrehozás
+            Hozzáadás
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -363,31 +433,47 @@ function CreateUserDialog({
   )
 }
 
-function PermissionsDialog({
+function EditMemberDialog({
   open,
   user,
+  currentUserId,
   entitledPages,
+  serviceRoleMissing,
   onOpenChange,
   onSuccess
 }: {
   open: boolean
   user: TenantUserListItem
+  currentUserId: string
   entitledPages: string[]
+  serviceRoleMissing: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const [displayName, setDisplayName] = useState(user.displayName ?? '')
   const [access, setAccess] = useState<Record<string, boolean>>({})
   const [role, setRole] = useState(user.role)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
   const [entitled, setEntitled] = useState<string[]>(entitledPages)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [confirmDisable, setConfirmDisable] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+
+  const isSelf = user.userId === currentUserId
+  const isDisabled = user.status === 'disabled'
+  const isOwner = user.role === 'owner'
 
   useEffect(() => {
     if (!open) return
+    setDisplayName(user.displayName ?? '')
     setRole(user.role)
     setError(null)
+    setShowAdvanced(false)
+    setConfirmDisable(false)
+    setConfirmRemove(false)
     setFetching(true)
     void getMembershipPageAccess(user.membershipId).then((result) => {
       if (result.error) {
@@ -403,7 +489,7 @@ function PermissionsDialog({
     })
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
-  }, [open, user.membershipId, user.role])
+  }, [open, user.membershipId, user.role, user.displayName])
 
   const entitledSet = useMemo(() => new Set(entitled), [entitled])
 
@@ -411,6 +497,7 @@ function PermissionsDialog({
     () =>
       APP_PAGES.filter((p) => {
         if (p.key === '/beallitasok/elofizetes') return false
+        if (p.key === '/beallitasok/profil') return false
         return Boolean(p.always) || entitledSet.has(p.key)
       }),
     [entitledSet]
@@ -436,7 +523,16 @@ function PermissionsDialog({
     setLoading(true)
     setError(null)
     try {
-      if (user.role !== 'owner' && role !== user.role && role !== 'owner') {
+      const nameResult = await updateMemberDisplayName({
+        membershipId: user.membershipId,
+        displayName
+      })
+      if (!nameResult.ok) {
+        setError(nameResult.message)
+        return
+      }
+
+      if (!isOwner && role !== user.role && role !== 'owner') {
         const roleResult = await updateMembershipRole({
           membershipId: user.membershipId,
           role: role as Exclude<TenantRole, 'owner'>
@@ -455,117 +551,379 @@ function PermissionsDialog({
         setError(result.message)
         return
       }
-      toast.success('Jogok mentve.')
+      toast.success('Felhasználó mentve.')
       onSuccess()
     } finally {
       setLoading(false)
     }
   }
 
+  async function handleToggleAccess() {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await setMembershipDisabled({
+        membershipId: user.membershipId,
+        disabled: !isDisabled
+      })
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
+      toast.success(
+        isDisabled
+          ? 'Belépés újra engedélyezve.'
+          : 'Belépés kikapcsolva.'
+      )
+      onSuccess()
+    } finally {
+      setLoading(false)
+      setConfirmDisable(false)
+    }
+  }
+
+  async function handleRemove() {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await removeTenantMember({
+        membershipId: user.membershipId
+      })
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
+      toast.success('Felhasználó eltávolítva a cégből.')
+      onSuccess()
+    } finally {
+      setLoading(false)
+      setConfirmRemove(false)
+    }
+  }
+
+  if (confirmDisable) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          className="max-w-[420px]"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            cancelRef.current?.focus()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {isDisabled
+                ? 'Belépés engedélyezése'
+                : 'Belépés kikapcsolása'}
+            </DialogTitle>
+            <DialogDescription>
+              {isDisabled ? (
+                <>
+                  <strong className="font-medium text-ink">
+                    {personLabel(user)}
+                  </strong>{' '}
+                  újra beléphet a cégbe.
+                </>
+              ) : (
+                <>
+                  <strong className="font-medium text-ink">
+                    {personLabel(user)}
+                  </strong>{' '}
+                  nem fog tudni belépni. A fiók a listán marad — később
+                  visszakapcsolható.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {error ? (
+            <p className="text-body text-danger-ink" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              ref={cancelRef}
+              type="button"
+              variant="secondary"
+              disabled={loading}
+              onClick={() => setConfirmDisable(false)}
+            >
+              Mégse
+            </Button>
+            <Button
+              type="button"
+              variant={isDisabled ? 'primary' : 'danger'}
+              loading={loading}
+              onClick={() => void handleToggleAccess()}
+            >
+              {isDisabled ? 'Engedélyezés' : 'Kikapcsolás'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  if (confirmRemove) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          className="max-w-[420px]"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            cancelRef.current?.focus()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Eltávolítás a cégből</DialogTitle>
+            <DialogDescription>
+              <strong className="font-medium text-ink">
+                {personLabel(user)}
+              </strong>{' '}
+              azonnal elveszíti a belépést ehhez a céghez. A fiók és a korábbi
+              rögzítések megmaradnak. A hely felszabadul.
+            </DialogDescription>
+          </DialogHeader>
+          {error ? (
+            <p className="text-body text-danger-ink" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              ref={cancelRef}
+              type="button"
+              variant="secondary"
+              disabled={loading}
+              onClick={() => setConfirmRemove(false)}
+            >
+              Mégse
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              loading={loading}
+              onClick={() => void handleRemove()}
+            >
+              Eltávolítás a cégből
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90vh] max-w-[520px] overflow-y-auto"
+        className="max-h-[90vh] max-w-[480px] overflow-y-auto"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           cancelRef.current?.focus()
         }}
       >
         <DialogHeader>
-          <DialogTitle>Jogok — {user.email}</DialogTitle>
+          <DialogTitle>Felhasználó szerkesztése</DialogTitle>
           <DialogDescription>
-            Pipáld ki az oldalakat a cég csomagjából, amiket a felhasználó
-            láthat.
+            Név, szerep és belépés. A részletes oldaljogok alább
+            megnyithatók.
           </DialogDescription>
         </DialogHeader>
 
-        {user.role !== 'owner' ? (
-          <FormField label="Szerep" htmlFor="perm-role">
-            <MenuSelect
-              id="perm-role"
-              value={role === 'owner' ? 'admin' : role}
+        <div className="space-y-3">
+          <FormField label="Név" htmlFor="edit-user-name">
+            <Input
+              id="edit-user-name"
+              type="text"
+              autoComplete="off"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
               disabled={loading || fetching}
-              allowEmpty={false}
-              options={[
-                { value: 'admin', label: 'Adminisztrátor' },
-                { value: 'member', label: 'Tag' },
-                { value: 'viewer', label: 'Csak megtekintés' }
-              ]}
-              onChange={(v) => setRole(v as TenantRole)}
+              placeholder="Megjelenített név"
             />
           </FormField>
-        ) : (
-          <p className="text-hint text-ink-secondary">
-            Tulajdonos — a szerep nem módosítható.
-          </p>
-        )}
 
-        <div className="flex flex-wrap gap-1.5">
-          {(
-            Object.entries(PAGE_ACCESS_TEMPLATES) as Array<
-              [PageAccessTemplateId, { label: string }]
-            >
-          ).map(([id, meta]) => (
-            <Button
-              key={id}
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={loading || fetching}
-              onClick={() => applyTemplate(id)}
-            >
-              {meta.label}
-            </Button>
-          ))}
-        </div>
+          <FormField label="Email" htmlFor="edit-user-email">
+            <Input
+              id="edit-user-email"
+              type="email"
+              value={user.email}
+              disabled
+              readOnly
+            />
+          </FormField>
 
-        {fetching ? (
-          <p className="text-body text-ink-secondary">Betöltés…</p>
-        ) : (
-          <div className="space-y-4">
-            {byCategory.map((group) => (
-              <div key={group.category}>
-                <p className="mb-1.5 text-hint font-semibold text-ink-secondary">
-                  {group.category}
+          {isOwner ? (
+            <p className="text-hint text-ink-secondary">
+              Tulajdonos — a szerep nem módosítható.
+            </p>
+          ) : (
+            <FormField label="Szerep" htmlFor="edit-user-role">
+              <MenuSelect
+                id="edit-user-role"
+                value={role === 'owner' ? 'admin' : role}
+                disabled={loading || fetching || isSelf}
+                allowEmpty={false}
+                options={[
+                  { value: 'admin', label: 'Adminisztrátor' },
+                  { value: 'member', label: 'Tag' },
+                  { value: 'viewer', label: 'Csak megtekintés' }
+                ]}
+                onChange={(v) => setRole(v as TenantRole)}
+              />
+              {role !== 'owner' ? (
+                <p className="mt-1 text-hint text-ink-muted">
+                  {ROLE_HINTS[role as Exclude<TenantRole, 'owner'>]}
                 </p>
-                <ul className="space-y-1.5">
-                  {group.pages.map((page) => (
-                    <li key={page.key}>
-                      <label className="flex cursor-pointer items-center gap-2 text-body text-ink">
-                        <input
-                          type="checkbox"
-                          className="size-3.5 rounded border-border"
-                          checked={Boolean(access[page.key])}
-                          disabled={
-                            Boolean(page.always) || loading || fetching
-                          }
-                          onChange={(e) =>
-                            setAccess((prev) => ({
-                              ...prev,
-                              [page.key]: e.target.checked
-                            }))
-                          }
-                        />
-                        <span>{page.label}</span>
-                        {page.always ? (
-                          <span className="text-hint text-ink-muted">
-                            (kötelező)
-                          </span>
-                        ) : null}
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
+              ) : null}
+              {isSelf ? (
+                <p className="mt-1 text-hint text-ink-muted">
+                  A saját szerepedet nem módosíthatod.
+                </p>
+              ) : null}
+            </FormField>
+          )}
 
-        {error ? (
-          <p className="text-body text-danger-ink" role="alert">
-            {error}
-          </p>
-        ) : null}
+          <div className="rounded-md border border-border bg-subtle px-3 py-2.5">
+            <p className="text-hint font-medium text-ink">Belépés</p>
+            <p className="mt-0.5 text-hint text-ink-secondary">
+              {isDisabled
+                ? 'Jelenleg nem léphet be a cégbe.'
+                : 'Beléphet a cégbe.'}
+              {isSelf
+                ? ' (Saját magadnál ez nem állítható.)'
+                : null}
+            </p>
+            {!isSelf ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-2"
+                disabled={loading || serviceRoleMissing}
+                onClick={() => setConfirmDisable(true)}
+              >
+                {isDisabled
+                  ? 'Belépés engedélyezése'
+                  : 'Belépés kikapcsolása'}
+              </Button>
+            ) : null}
+          </div>
+
+          <div>
+            <button
+              type="button"
+              className="text-[12.5px] font-medium text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+              onClick={() => setShowAdvanced((v) => !v)}
+            >
+              {showAdvanced
+                ? 'Részletes oldaljogok elrejtése'
+                : 'Részletes oldaljogok…'}
+            </button>
+
+            {showAdvanced ? (
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      ['full', 'Teljes'],
+                      ['office', 'Iroda'],
+                      ['workshop', 'Műhely']
+                    ] as Array<[PageAccessTemplateId, string]>
+                  ).map(([id, label]) => (
+                    <Button
+                      key={id}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={loading || fetching}
+                      onClick={() => applyTemplate(id)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+
+                {fetching ? (
+                  <p className="text-body text-ink-secondary">Betöltés…</p>
+                ) : (
+                  <div className="space-y-4">
+                    {byCategory.map((group) => (
+                      <div key={group.category}>
+                        <p className="mb-1.5 text-hint font-semibold text-ink-secondary">
+                          {group.category}
+                        </p>
+                        <ul className="space-y-1.5">
+                          {group.pages.map((page) => (
+                            <li key={page.key}>
+                              <label className="flex cursor-pointer items-center gap-2 text-body text-ink">
+                                <input
+                                  type="checkbox"
+                                  className="size-3.5 rounded border-border"
+                                  checked={Boolean(access[page.key])}
+                                  disabled={
+                                    Boolean(page.always) ||
+                                    loading ||
+                                    fetching
+                                  }
+                                  onChange={(e) =>
+                                    setAccess((prev) => ({
+                                      ...prev,
+                                      [page.key]: e.target.checked
+                                    }))
+                                  }
+                                />
+                                <span>{page.label}</span>
+                                {page.always ? (
+                                  <span className="text-hint text-ink-muted">
+                                    (kötelező)
+                                  </span>
+                                ) : null}
+                              </label>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {!isSelf ? (
+            <div className="border-t border-border pt-3">
+              <p className="mb-2 text-hint text-ink-muted">
+                Csatlakozott:{' '}
+                <span className="tabular-nums text-ink-secondary">
+                  {formatDate(user.createdAt)}
+                </span>
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-danger-ink hover:bg-danger-soft"
+                disabled={loading || serviceRoleMissing}
+                onClick={() => setConfirmRemove(true)}
+              >
+                Eltávolítás a cégből
+              </Button>
+            </div>
+          ) : (
+            <p className="border-t border-border pt-3 text-hint text-ink-muted">
+              Csatlakozott:{' '}
+              <span className="tabular-nums">{formatDate(user.createdAt)}</span>
+            </p>
+          )}
+
+          {error ? (
+            <p className="text-body text-danger-ink" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
 
         <DialogFooter>
           <Button
@@ -590,4 +948,14 @@ function PermissionsDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+function formatDate(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('hu-HU', { dateStyle: 'short' }).format(
+      new Date(iso)
+    )
+  } catch {
+    return iso
+  }
 }

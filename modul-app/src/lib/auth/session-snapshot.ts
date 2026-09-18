@@ -12,6 +12,7 @@ export type SessionSnapshot = {
   pagesV: number
   sub: string
   email: string
+  displayName?: string | null
   tenantId: string | null
   tenantSlug: string | null
   tenantName: string
@@ -87,6 +88,7 @@ function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
 export function buildSessionSnapshot(input: {
   userId: string
   email: string
+  displayName?: string | null
   tenantId: string | null
   tenantSlug: string | null
   tenantName: string
@@ -107,6 +109,7 @@ export function buildSessionSnapshot(input: {
     pagesV: PAGE_CATALOG_VERSION,
     sub: input.userId,
     email: input.email,
+    displayName: input.displayName ?? null,
     tenantId: input.tenantId,
     tenantSlug: input.tenantSlug,
     tenantName: input.tenantName,

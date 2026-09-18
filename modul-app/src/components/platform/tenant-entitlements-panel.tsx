@@ -46,6 +46,8 @@ export function TenantEntitlementsPanel({
     Object.fromEntries(features.map((f) => [f.key, f.entitled]))
   )
 
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+
   useEffect(() => {
     setPlanId(currentPlanId ?? '')
   }, [currentPlanId])
@@ -118,9 +120,9 @@ export function TenantEntitlementsPanel({
     <section className="rounded-md border border-border bg-surface p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-body font-semibold text-ink">Csomag és add-onok</h2>
+          <h2 className="text-body font-semibold text-ink">Csomag</h2>
           <p className="text-hint text-ink-secondary">
-            Manuális kapcsolás · jelenleg {entitledCount} feature aktív
+            Plan és add-onok · jelenleg {entitledCount} funkció aktív
           </p>
         </div>
       </div>
@@ -221,74 +223,86 @@ export function TenantEntitlementsPanel({
       </div>
 
       <div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-hint font-semibold text-ink-secondary">
-              Feature-ök ennél a cégnél
-            </p>
-            <p className="text-hint text-ink-muted">
-              Kikapcsolhatsz plan-beli dolgokat is. „Override” = eltér az
-              alapoktól.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            loading={pending}
-            disabled={!dirty}
-            onClick={handleFeaturesSave}
-          >
-            Feature-ök mentése
-          </Button>
-        </div>
+        <button
+          type="button"
+          className="mb-2 flex w-full items-center justify-between gap-2 rounded-md border border-border bg-subtle px-3 py-2 text-left text-body font-medium text-ink hover:bg-subtle/80"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          aria-expanded={advancedOpen}
+        >
+          <span>Haladó: feature override</span>
+          <span className="text-hint text-ink-secondary">
+            {advancedOpen ? 'Elrejt' : 'Megnyit'}
+            {dirty ? ' · mentetlen' : ''}
+          </span>
+        </button>
 
-        <div className="grid gap-3 lg:grid-cols-2">
-          {byCategory.map((group) => (
-            <div
-              key={group.category}
-              className="rounded-md border border-border px-3 py-2"
-            >
-              <p className="mb-1.5 text-hint font-semibold text-ink-muted">
-                {group.category}
+        {advancedOpen ? (
+          <>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-hint text-ink-muted">
+                Kikapcsolhatsz plan-beli dolgokat is. „Override” = eltér az
+                alapoktól.
               </p>
-              <ul className="space-y-1.5">
-                {group.items.map((f) => {
-                  const locked = f.key === '/home'
-                  const willOverride =
-                    !locked && Boolean(draft[f.key]) !== f.inBase
-                  return (
-                    <li key={f.key}>
-                      <label className="flex cursor-pointer items-center gap-2 text-body text-ink">
-                        <input
-                          type="checkbox"
-                          className="size-3.5 rounded border-border"
-                          checked={Boolean(draft[f.key])}
-                          disabled={locked || pending}
-                          onChange={(e) =>
-                            setDraft((prev) => ({
-                              ...prev,
-                              [f.key]: e.target.checked
-                            }))
-                          }
-                        />
-                        <span className="min-w-0 flex-1">{f.label}</span>
-                        {locked ? (
-                          <span className="text-hint text-ink-muted">
-                            (kötelező)
-                          </span>
-                        ) : null}
-                        {willOverride || f.override !== null ? (
-                          <StatusBadge tone="warning">Override</StatusBadge>
-                        ) : null}
-                      </label>
-                    </li>
-                  )
-                })}
-              </ul>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                loading={pending}
+                disabled={!dirty}
+                onClick={handleFeaturesSave}
+              >
+                Feature-ök mentése
+              </Button>
             </div>
-          ))}
-        </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              {byCategory.map((group) => (
+                <div
+                  key={group.category}
+                  className="rounded-md border border-border px-3 py-2"
+                >
+                  <p className="mb-1.5 text-hint font-semibold text-ink-muted">
+                    {group.category}
+                  </p>
+                  <ul className="space-y-1.5">
+                    {group.items.map((f) => {
+                      const locked = f.key === '/home'
+                      const willOverride =
+                        !locked && Boolean(draft[f.key]) !== f.inBase
+                      return (
+                        <li key={f.key}>
+                          <label className="flex cursor-pointer items-center gap-2 text-body text-ink">
+                            <input
+                              type="checkbox"
+                              className="size-3.5 rounded border-border"
+                              checked={Boolean(draft[f.key])}
+                              disabled={locked || pending}
+                              onChange={(e) =>
+                                setDraft((prev) => ({
+                                  ...prev,
+                                  [f.key]: e.target.checked
+                                }))
+                              }
+                            />
+                            <span className="min-w-0 flex-1">{f.label}</span>
+                            {locked ? (
+                              <span className="text-hint text-ink-muted">
+                                (kötelező)
+                              </span>
+                            ) : null}
+                            {willOverride || f.override !== null ? (
+                              <StatusBadge tone="warning">Override</StatusBadge>
+                            ) : null}
+                          </label>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
     </section>
   )

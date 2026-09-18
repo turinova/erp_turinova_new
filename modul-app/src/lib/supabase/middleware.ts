@@ -304,15 +304,27 @@ export async function updateSession(request: NextRequest) {
           })
 
           if (snap?.hasMembership) {
-            isAuthenticated = true
-            hasStaffMembership = true
-            isPartnerUser = false
+            const valid = await isAppSessionValid(supabase, user.id, nonce)
+            if (valid) {
+              isAuthenticated = true
+              hasStaffMembership = true
+              isPartnerUser = false
+            } else {
+              await supabase.auth.signOut()
+              const response = redirectTo(request, '/ceges-belepes', 'session_replaced')
+              response.cookies.delete(APP_SESSION_NONCE_COOKIE)
+              response.cookies.delete(CURRENT_TENANT_COOKIE)
+              response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
+              response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
+              return response
+            }
           } else {
             const [{ data: memberships }, valid] = await Promise.all([
               supabase
                 .from('tenant_memberships')
                 .select('id')
                 .eq('user_id', user.id)
+                .eq('status', 'active')
                 .limit(1),
               isAppSessionValid(supabase, user.id, nonce)
             ])
@@ -336,11 +348,22 @@ export async function updateSession(request: NextRequest) {
           nonce
         })
 
-        // P2 lean: érvényes snapshot → nincs isAppSessionValid / membership query
+        // Snapshot + nonce↔DB: remove/disable azonnal érvényesüljön (ne 15 perc stale)
         if (snap) {
-          isAuthenticated = true
-          hasStaffMembership = snap.hasMembership
-          isPartnerUser = false
+          const valid = await isAppSessionValid(supabase, user.id, nonce)
+          if (valid) {
+            isAuthenticated = true
+            hasStaffMembership = snap.hasMembership
+            isPartnerUser = false
+          } else {
+            await supabase.auth.signOut()
+            const response = redirectTo(request, '/login', 'session_replaced')
+            response.cookies.delete(APP_SESSION_NONCE_COOKIE)
+            response.cookies.delete(CURRENT_TENANT_COOKIE)
+            response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
+            response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
+            return response
+          }
         } else {
           const [{ data: partnerRow }, { data: memberships }] =
             await Promise.all([
@@ -353,6 +376,7 @@ export async function updateSession(request: NextRequest) {
                 .from('tenant_memberships')
                 .select('id')
                 .eq('user_id', user.id)
+                .eq('status', 'active')
                 .limit(1)
             ])
 

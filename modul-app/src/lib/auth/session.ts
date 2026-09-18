@@ -45,6 +45,7 @@ export type ImpersonationInfo = {
 export type SessionUser = {
   id: string
   email: string
+  displayName: string | null
   companyName: string
   tenantId: string | null
   tenantSlug: string | null
@@ -93,6 +94,7 @@ function sessionUserFromSnapshot(snap: SessionSnapshot): SessionUser {
   return {
     id: snap.sub,
     email: snap.email,
+    displayName: snap.displayName ?? null,
     companyName: snap.tenantName || 'Nincs cég hozzárendelve',
     tenantId: snap.tenantId,
     tenantSlug: snap.tenantSlug,
@@ -119,6 +121,7 @@ async function persistSnapshotFromUser(
   const snapshot = buildSessionSnapshot({
     userId: user.id,
     email: user.email,
+    displayName: user.displayName,
     tenantId: user.tenantId,
     tenantSlug: user.tenantSlug,
     tenantName: user.companyName,
@@ -204,6 +207,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       const platformUser: SessionUser = {
         id: user.id,
         email: user.email,
+        displayName: null,
         companyName: 'Platform',
         tenantId: null,
         tenantSlug: null,
@@ -228,6 +232,20 @@ async function loadSessionUser(): Promise<SessionUser | null> {
 
     const memberships = await listMembershipsForUser(supabase, user.id)
     const current = resolveCurrentTenant(memberships, preferredTenantId)
+
+    let displayName: string | null = null
+    {
+      const { data: profileRow, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('display_name')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (profileError) {
+        console.error('user_profiles', profileError.message)
+      } else {
+        displayName = profileRow?.display_name?.trim() || null
+      }
+    }
 
     if (
       current &&
@@ -353,6 +371,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
     const sessionUser: SessionUser = {
       id: user.id,
       email: user.email,
+      displayName,
       companyName: current?.tenantName ?? 'Nincs cég hozzárendelve',
       tenantId: current?.tenantId ?? null,
       tenantSlug: current?.tenantSlug ?? null,
@@ -384,6 +403,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
     return {
       id: 'dev-user',
       email: decodeURIComponent(raw),
+      displayName: null,
       companyName: getDemoCompanyName(),
       tenantId: 'dev-tenant',
       tenantSlug: 'demo',
@@ -410,6 +430,7 @@ export const getSessionUser = cache(loadSessionUser)
 export async function writeSessionSnapshotAfterLogin(input: {
   userId: string
   email: string
+  displayName?: string | null
   nonce: string
   tenantId: string | null
   tenantSlug: string | null
@@ -425,6 +446,7 @@ export async function writeSessionSnapshotAfterLogin(input: {
   const snapshot = buildSessionSnapshot({
     userId: input.userId,
     email: input.email,
+    displayName: input.displayName ?? null,
     tenantId: input.tenantId,
     tenantSlug: input.tenantSlug,
     tenantName: input.tenantName,

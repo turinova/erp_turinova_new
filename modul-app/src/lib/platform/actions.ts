@@ -626,3 +626,241 @@ export async function updateTenantOpsFields(input: {
   revalidatePath(PLATFORM_PATH)
   return { ok: true }
 }
+
+/** Platform: új tag a céghez (manuális, mint tenant Felhasználók). */
+export async function platformAddTenantMember(input: {
+  tenantId: string
+  email: string
+  password: string
+  displayName?: string
+  role: 'admin' | 'member' | 'viewer'
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const email = input.email.trim().toLowerCase()
+  if (!email.includes('@')) {
+    return { ok: false, message: 'Érvényes email kell.' }
+  }
+  if (!['admin', 'member', 'viewer'].includes(input.role)) {
+    return { ok: false, message: 'Érvénytelen szerep.' }
+  }
+
+  const { findAuthUserByEmail, invalidateAuthUsersCache } = await import(
+    '@/lib/platform/auth-users'
+  )
+  const existing = await findAuthUserByEmail(ctx.admin, email)
+
+  if (existing) {
+    const { data: isPartner } = await ctx.admin
+      .from('partner_profiles')
+      .select('user_id')
+      .eq('user_id', existing.id)
+      .maybeSingle()
+    if (isPartner) {
+      return {
+        ok: false,
+        message: 'Ez az email partner fiók — céges tagnak nem vehető fel.'
+      }
+    }
+    const { data: mem } = await ctx.admin
+      .from('tenant_memberships')
+      .select('id, status')
+      .eq('tenant_id', input.tenantId)
+      .eq('user_id', existing.id)
+      .maybeSingle()
+    if (mem) {
+      return {
+        ok: false,
+        message:
+          mem.status === 'disabled'
+            ? 'Már tag, de ki van kapcsolva — aktiváld az Emberek tabon.'
+            : 'Már tagja a cégnek.'
+      }
+    }
+  } else if (input.password.length < 8) {
+    return { ok: false, message: 'Új fióknál a jelszó legalább 8 karakter.' }
+  }
+
+  let userId: string
+  if (existing) {
+    userId = existing.id
+    if (input.password.length >= 8) {
+      await ctx.admin.auth.admin.updateUserById(userId, {
+        password: input.password
+      })
+    }
+  } else {
+    const { data: created, error } = await ctx.admin.auth.admin.createUser({
+      email,
+      password: input.password,
+      email_confirm: true
+    })
+    if (error || !created.user) {
+      console.error('platformAddTenantMember', error?.message)
+      return { ok: false, message: 'Nem sikerült létrehozni a fiókot.' }
+    }
+    userId = created.user.id
+    invalidateAuthUsersCache()
+  }
+
+  const { data: membership, error: memError } = await ctx.admin
+    .from('tenant_memberships')
+    .insert({
+      tenant_id: input.tenantId,
+      user_id: userId,
+      role: input.role,
+      status: 'active'
+    })
+    .select('id')
+    .single()
+
+  if (memError || !membership) {
+    console.error('platformAddTenantMember mem', memError?.message)
+    return { ok: false, message: 'A tagság létrehozása sikertelen.' }
+  }
+
+  const name = input.displayName?.trim()
+  if (name) {
+    await ctx.admin.from('user_profiles').upsert(
+      {
+        user_id: userId,
+        display_name: name,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'user_id' }
+    )
+  }
+
+  try {
+    await seedOwnerPageAccess(ctx.admin, input.tenantId, membership.id)
+  } catch {
+    // soft — jogok később állíthatók
+  }
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: 'user.member_add',
+    details: { userId, email, role: input.role }
+  })
+
+  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
+  return { ok: true, message: 'Felhasználó hozzáadva.' }
+}
+
+export async function platformSetMembershipDisabled(input: {
+  tenantId: string
+  membershipId: string
+  disabled: boolean
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data: membership, error } = await ctx.admin
+    .from('tenant_memberships')
+    .select('id, user_id, role, status')
+    .eq('id', input.membershipId)
+    .eq('tenant_id', input.tenantId)
+    .maybeSingle()
+
+  if (error || !membership) {
+    return { ok: false, message: 'A felhasználó nem található.' }
+  }
+
+  if (input.disabled && membership.role === 'owner') {
+    const { count } = await ctx.admin
+      .from('tenant_memberships')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', input.tenantId)
+      .eq('role', 'owner')
+      .eq('status', 'active')
+    if ((count ?? 0) <= 1) {
+      return { ok: false, message: 'Az utolsó tulajdonos nem kapcsolható ki.' }
+    }
+  }
+
+  const { error: updateError } = await ctx.admin
+    .from('tenant_memberships')
+    .update({
+      status: input.disabled ? 'disabled' : 'active',
+      disabled_at: input.disabled ? new Date().toISOString() : null
+    })
+    .eq('id', membership.id)
+
+  if (updateError) {
+    return { ok: false, message: 'Nem sikerült frissíteni.' }
+  }
+
+  if (input.disabled) {
+    await ctx.admin
+      .from('app_user_sessions')
+      .delete()
+      .eq('user_id', membership.user_id)
+  }
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: input.disabled ? 'user.member_disable' : 'user.member_enable',
+    details: { membershipId: membership.id, userId: membership.user_id }
+  })
+
+  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
+  return { ok: true }
+}
+
+export async function platformRemoveTenantMember(input: {
+  tenantId: string
+  membershipId: string
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data: membership, error } = await ctx.admin
+    .from('tenant_memberships')
+    .select('id, user_id, role')
+    .eq('id', input.membershipId)
+    .eq('tenant_id', input.tenantId)
+    .maybeSingle()
+
+  if (error || !membership) {
+    return { ok: false, message: 'A felhasználó nem található.' }
+  }
+
+  if (membership.role === 'owner') {
+    const { count } = await ctx.admin
+      .from('tenant_memberships')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', input.tenantId)
+      .eq('role', 'owner')
+      .eq('status', 'active')
+    if ((count ?? 0) <= 1) {
+      return { ok: false, message: 'Az utolsó tulajdonos nem távolítható el.' }
+    }
+  }
+
+  const { error: deleteError } = await ctx.admin
+    .from('tenant_memberships')
+    .delete()
+    .eq('id', membership.id)
+
+  if (deleteError) {
+    return { ok: false, message: 'Nem sikerült eltávolítani.' }
+  }
+
+  await ctx.admin
+    .from('app_user_sessions')
+    .delete()
+    .eq('user_id', membership.user_id)
+
+  await writePlatformAudit(ctx.admin, {
+    tenantId: input.tenantId,
+    actorUserId: ctx.user.id,
+    action: 'user.member_remove',
+    details: { membershipId: membership.id, userId: membership.user_id }
+  })
+
+  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
+  return { ok: true }
+}

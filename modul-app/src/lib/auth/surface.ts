@@ -115,8 +115,7 @@ const PLATFORM_CLEAN_TO_INTERNAL: Record<string, string> = {
   '/partnerek': `${PLATFORM_INTERNAL_PREFIX}/partnerek`,
   '/csomagok': `${PLATFORM_INTERNAL_PREFIX}/csomagok`,
   '/add-onok': `${PLATFORM_INTERNAL_PREFIX}/add-onok`,
-  '/health': `${PLATFORM_INTERNAL_PREFIX}/health`,
-  '/kereses': `${PLATFORM_INTERNAL_PREFIX}/kereses`
+  '/health': `${PLATFORM_INTERNAL_PREFIX}/health`
 }
 
 /** Exact clean paths that rewrite to /partner/*. */

@@ -428,12 +428,21 @@ export type PlatformTenantMember = {
   membershipId: string
   userId: string
   email: string
+  displayName: string | null
   role: string
   roleKey: string
+  status: 'active' | 'disabled'
   createdAt: string
   lastSignInAt: string | null
   emailConfirmed: boolean
   banned: boolean
+}
+
+export type PlatformLinkedPartner = {
+  userId: string
+  name: string
+  email: string
+  status: string
 }
 
 export type PlatformTenantKpis = {
@@ -486,6 +495,7 @@ export type PlatformTenantDetail = {
   onboarding: OnboardingFlags | null
   kpis: PlatformTenantKpis
   members: PlatformTenantMember[]
+  linkedPartners: PlatformLinkedPartner[]
   company: PlatformCompanySnapshot
 }
 
@@ -514,7 +524,8 @@ export async function getPlatformTenantDetail(
     { data: quotes30d },
     { count: linkedPartners },
     { count: portalSubmits30d },
-    { count: smsSentThisMonth }
+    { count: smsSentThisMonth },
+    { data: partnerRows }
   ] = await Promise.all([
     admin
       .from('tenant_onboarding')
@@ -525,7 +536,7 @@ export async function getPlatformTenantDetail(
       .maybeSingle(),
     admin
       .from('tenant_memberships')
-      .select('id, user_id, role, created_at')
+      .select('id, user_id, role, status, created_at')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: true }),
     admin
@@ -595,7 +606,13 @@ export async function getPlatformTenantDetail(
         .in('status', ['sent', 'delivered'])
         .gte('created_at', start)
         .lt('created_at', end)
-    })()
+    })(),
+    admin
+      .from('partner_profiles')
+      .select('user_id, name, email, status')
+      .eq('selected_tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+      .limit(20)
   ])
 
   const gmvQuotes30d = Math.round(
@@ -608,10 +625,19 @@ export async function getPlatformTenantDetail(
   )
 
   const { getAuthUsersByIds } = await import('@/lib/platform/auth-users')
-  const authById = await getAuthUsersByIds(
-    admin,
-    (memberships ?? []).map((m) => m.user_id)
-  )
+  const memberIds = (memberships ?? []).map((m) => m.user_id)
+  const authById = await getAuthUsersByIds(admin, memberIds)
+
+  const nameById = new Map<string, string | null>()
+  if (memberIds.length > 0) {
+    const { data: profiles } = await admin
+      .from('user_profiles')
+      .select('user_id, display_name')
+      .in('user_id', memberIds)
+    for (const p of profiles ?? []) {
+      nameById.set(p.user_id, p.display_name)
+    }
+  }
 
   const { TENANT_ROLE_LABELS } = await import('@/lib/tenancy/memberships')
 
@@ -621,15 +647,26 @@ export async function getPlatformTenantDetail(
       membershipId: m.id,
       userId: m.user_id,
       email: auth?.email ?? m.user_id.slice(0, 8),
+      displayName: nameById.get(m.user_id) ?? null,
       role:
         TENANT_ROLE_LABELS[m.role as keyof typeof TENANT_ROLE_LABELS] ?? m.role,
       roleKey: m.role,
+      status: (m.status as 'active' | 'disabled') ?? 'active',
       createdAt: m.created_at,
       lastSignInAt: auth?.lastSignInAt ?? null,
       emailConfirmed: auth?.emailConfirmed ?? false,
       banned: auth?.banned ?? false
     }
   })
+
+  const linkedPartnersList: PlatformLinkedPartner[] = (partnerRows ?? []).map(
+    (p) => ({
+      userId: p.user_id,
+      name: p.name || p.email,
+      email: p.email,
+      status: p.status
+    })
+  )
 
   const now = Date.now()
   const day7 = now - 7 * 24 * 60 * 60 * 1000
@@ -701,6 +738,7 @@ export async function getPlatformTenantDetail(
       smsSentThisMonth: smsSentThisMonth ?? 0
     },
     members,
+    linkedPartners: linkedPartnersList,
     company: company
       ? {
           name: company.name,

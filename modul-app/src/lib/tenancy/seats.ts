@@ -16,6 +16,7 @@ export async function getTenantSeatInfo(
       .from('tenant_memberships')
       .select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenantId)
+      .eq('status', 'active')
   ])
 
   const maxSeats =

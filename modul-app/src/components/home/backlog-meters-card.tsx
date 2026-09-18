@@ -1,67 +1,47 @@
-import Link from 'next/link'
+import { MetricCell, MetricRow } from '@/components/home/home-metric-row'
 
-import { cn } from '@/lib/utils'
+function formatMeters(n: number) {
+  return `${n.toLocaleString('hu-HU', { maximumFractionDigits: 1 })} m`
+}
 
 export function BacklogMetersCard({
   cuttingM,
-  edgeM
+  edgeM,
+  overdueOrderCount = 0
 }: {
   cuttingM: number
   edgeM: number
+  /** Nyitott lapszabászat megrendelés tegnap előtti dátummal */
+  overdueOrderCount?: number
 }) {
-  const hot = cuttingM > 0 || edgeM > 0
-
   return (
-    <section
-      className={cn(
-        'rounded-md border bg-surface p-4',
-        hot ? 'border-danger/40' : 'border-border'
-      )}
+    <MetricRow
+      title="Elmaradás"
+      href="/megrendelesek?status=all"
+      hrefLabel="Megrendelések →"
+      cols={3}
     >
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-body font-semibold text-ink">
-            Elmaradás (múlt napok)
-          </h2>
-          <p className="text-hint text-ink-secondary">
-            Tegnap előtti gyártási dátumok. Kész / lezárva / törölve nem számít.
-          </p>
-        </div>
-        <Link
-          href="/megrendelesek?status=all"
-          className="text-hint text-ink-secondary no-underline hover:underline"
-        >
-          Megrendelések →
-        </Link>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div
-          className={cn(
-            'rounded-md border px-3 py-3',
-            cuttingM > 0
-              ? 'border-danger/30 bg-danger-soft/40'
-              : 'border-border bg-subtle'
-          )}
-        >
-          <p className="text-hint text-ink-secondary">Szabás elmaradás</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
-            {cuttingM.toLocaleString('hu-HU', { maximumFractionDigits: 1 })} m
-          </p>
-        </div>
-        <div
-          className={cn(
-            'rounded-md border px-3 py-3',
-            edgeM > 0
-              ? 'border-danger/30 bg-danger-soft/40'
-              : 'border-border bg-subtle'
-          )}
-        >
-          <p className="text-hint text-ink-secondary">Élzárás elmaradás</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-ink">
-            {edgeM.toLocaleString('hu-HU', { maximumFractionDigits: 1 })} m
-          </p>
-        </div>
-      </div>
-    </section>
+      <MetricCell
+        label="Szabás"
+        value={formatMeters(cuttingM)}
+        href="/megrendelesek?status=all"
+        hint="Múlt napok, kész nélkül"
+        emphasize={cuttingM > 0 ? 'danger' : null}
+      />
+      <MetricCell
+        label="Élzárás"
+        value={formatMeters(edgeM)}
+        href="/megrendelesek?status=all"
+        hint="Múlt napok, kész nélkül"
+        emphasize={edgeM > 0 ? 'danger' : null}
+      />
+      <MetricCell
+        label="Megrendelés"
+        value={String(overdueOrderCount)}
+        href="/megrendelesek?status=all"
+        hint={overdueOrderCount > 0 ? 'Lejárt gyártási dátum' : 'Nincs lejárat'}
+        emphasize={overdueOrderCount > 0 ? 'danger' : null}
+      />
+    </MetricRow>
   )
 }

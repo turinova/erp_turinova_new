@@ -1,84 +1,45 @@
 # 35 — Home KPI-k (jégelt)
 
-**Állapot:** 2026-09-18 — döntés rögzítve, UI implementáció még nincs.  
-**Persona:** átlagos kereskedő / bolt (Alap ERP SaaS). **Nem** műhelyvezető-first.  
-**Addonok** (POS, Jelenlét, Lapszabászat, Belépő) csak entitlement szerint jelennek meg.
-
-Kapcsolódó: [33-packages-and-addons.md](33-packages-and-addons.md), [03-ux-certainty-first.md](03-ux-certainty-first.md), [11-empty-tenant-and-onboarding.md](11-empty-tenant-and-onboarding.md).
+**Állapot:** 2026-09-18 — v3: Notion/Linear glance — egy soros metric row, roster nélkül.  
+**Persona:** ügyvezető / kereskedő — 5 mp scan.  
+**Addonok** entitlement szerint. User layout **nincs**.
 
 ---
 
-## Alapelv
+## Szemvezetés (Notion + Linear light)
 
-1. Home = kereskedő mag (forgalom, ajánlat, beszerzés, figyelendő).
-2. Extra modulok ne uralják a default home-ot.
-3. Sűrű, kis számok / listák — nincs brand banner, nincs műhely-dashboard alapból.
-4. Egy mondatos teszt: *„Tudja-e azonnal, mennyi ment el, kire kell visszahívni, mi csúszik a beszállításban?”*
-
----
-
-## Tartósan megjeleníthető KPI-k
-
-### Alap (kereskedő mag)
-
-| # | KPI |
-|---|---|
-| 1 | Mai forgalom (Ft) |
-| 2 | Mai eladások (db) |
-| 3 | Nyitott árajánlatok (db) |
-| 4 | Nyitott beszállítói rendelések (db) |
-| 5 | Késő beérkezések (db) |
-| 6 | Ma / holnap várható áru (db vagy lista) |
-| 7 | Figyelendő tételek (összesített db / lista) |
-
-### POS (addon `pos`)
-
-| # | KPI |
-|---|---|
-| 8 | Mai POS forgalom vs. napi cél (%) |
-| 9 | Nyitott műszak (van / nincs + kassza) |
-| 10 | Havi POS forgalom vs. havi cél (chip) |
-
-### Jelenlét (addon `jelenlet`)
-
-| # | KPI |
-|---|---|
-| 11 | Hiányzó jelenléti napok (db) |
-| 12 | Ma távol (db / nevek) |
-
-### Lapszabászat (addon `lapszabaszat`)
-
-| # | KPI |
-|---|---|
-| 13 | Nyitott szabás backlog (db / m) |
-| 14 | Mai / heti kész szabás |
-
-### Belépőszámláló (addon `footcounter`)
-
-| # | KPI |
-|---|---|
-| 15 | Most bent (élő IN) |
-| 16 | Mai belépők (db) |
+1. **Bal → jobb:** legfontosabb szám elöl (forgalom / bent).  
+2. **Egy sor, egyenlő cellák**, hairline `divide` — nem színes kártyaerdő.  
+3. **Hierarchia:** kis label (`text-hint`) → nagy tabular szám (~1.5rem/600) → opcionális hint.  
+4. **Szín csak kivételre** (hiányzik, lejár, beteg) — nem dekoráció.  
+5. **Lista / roster** a `/jelenlet` oldalon — home csak stats.
 
 ---
 
-## P0 default home
+## Elrendezés
 
-**Alap default:** 1, 3, 4, 5, 7.  
-A többi csak entitlement szerint; custom layout később (user ki/be).
+```
+Értékesítés  [ Mai forgalom+spark | Nyitott ajánlat | Lejáró | Beszerzés ]
+Jelenlét     [ Bent x/y | Nincs itt | Szabadság | Beteg | Hiányzó nap ]
+Belépők      [ Belépő | Kilépő | Csúcs | Nettó ] + heatmap  ← footcounter
+Elmaradás    [ Szabás m | Élzarás m | Megrendelés db ]   ← lapszabászat, heti szabás felett
+(+ heti chartok ugyanazzal a header+hairline kerettel)
+```
 
-**Kihagy P0:** konverzió %, havi chart, készletmozgás db, műhely backlog (ha nincs lapszabászat).
+Közös UI: `src/components/home/home-metric-row.tsx` (`MetricRow` / `MetricCell`).
 
 ---
 
-## Megjelenítési formák (későbbi UI)
+## Fájlok
 
-| Kód | Forma | Hol |
-|---|---|---|
-| A | Figyelmeztető / nagy szám | Alap KPI strip |
-| B | Cél / progress | POS |
-| C | Élő státusz | Műszak |
-| D | Névlista | Ma távol / várható |
-| E | Mini lista | Figyelendő |
-| F | Chart | P1 trend |
-| G | Chip (hónap) | POS P1 |
+| Réteg | Fájl |
+|---|---|
+| Query | `src/lib/home/kpi-queries.ts` |
+| Spark | `src/components/home/home-sales-spark-chart.tsx` |
+| UI | `src/components/home/home-kpi-strip.tsx` |
+| Seeder | `scripts/seed-home-kpis.mjs` |
+
+```bash
+cd modul-app
+node --env-file=.env.local scripts/seed-home-kpis.mjs --tenant-slug=demo --replace
+```

@@ -32,12 +32,22 @@ export type Tenant = {
   updated_at: string
 }
 
+export type MembershipStatus = 'active' | 'disabled'
+
 export type TenantMembership = {
   id: string
   tenant_id: string
   user_id: string
   role: TenantRole
+  status: MembershipStatus
+  disabled_at: string | null
   created_at: string
+}
+
+export type UserProfile = {
+  user_id: string
+  display_name: string | null
+  updated_at: string
 }
 
 export type MembershipWithTenant = TenantMembership & {
@@ -761,9 +771,20 @@ export type Database = {
           tenant_id: string
           user_id: string
           role?: TenantRole
+          status?: MembershipStatus
+          disabled_at?: string | null
           created_at?: string
         }
         Update: Partial<TenantMembership>
+      }
+      user_profiles: {
+        Row: UserProfile
+        Insert: {
+          user_id: string
+          display_name?: string | null
+          updated_at?: string
+        }
+        Update: Partial<UserProfile>
       }
       tax_rates: {
         Row: TaxRate

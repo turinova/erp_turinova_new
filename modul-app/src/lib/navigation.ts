@@ -62,6 +62,12 @@ export type NavGroup = {
 
 export type NavNode = NavLink | NavGroup
 
+/**
+ * Top-level IA (használat-first):
+ * 1) Linkek (egy katt) elöl — Home, Kereső, Opti, Scanner, POS, Ügyfelek, Belépők
+ * 2) Groupok utána — Értékesítés → … → Beállítások
+ * Addon nélkül a sorok entitlement filterrel eltűnnek; a mag sorrendje stabil.
+ */
 export const mainNavItems: NavNode[] = [
   {
     type: 'link',
@@ -86,16 +92,23 @@ export const mainNavItems: NavNode[] = [
   },
   {
     type: 'link',
-    label: 'Ügyfelek',
-    href: '/ugyfelek',
-    icon: Users,
+    label: 'Scanner',
+    href: '/scanner',
+    icon: ScanBarcode,
     accent: 'slate'
   },
   {
     type: 'link',
-    label: 'Scanner',
-    href: '/scanner',
+    label: 'POS',
+    href: '/pos',
     icon: ScanBarcode,
+    accent: 'slate'
+  },
+  {
+    type: 'link',
+    label: 'Ügyfelek',
+    href: '/ugyfelek',
+    icon: Users,
     accent: 'slate'
   },
   {
@@ -104,43 +117,6 @@ export const mainNavItems: NavNode[] = [
     href: '/belepok',
     icon: UsersRound,
     accent: 'slate'
-  },
-  {
-    type: 'group',
-    label: 'Jelenlét',
-    icon: CalendarDays,
-    accent: 'slate',
-    matchPrefix: '/jelenlet',
-    children: [
-      {
-        type: 'link',
-        label: 'Jelenlét',
-        href: '/jelenlet',
-        icon: CalendarDays,
-        accent: 'slate'
-      },
-      {
-        type: 'link',
-        label: 'Munkarend',
-        href: '/jelenlet/naptar',
-        icon: CalendarRange,
-        accent: 'slate'
-      },
-      {
-        type: 'link',
-        label: 'Dolgozók',
-        href: '/dolgozok',
-        icon: Users,
-        accent: 'slate'
-      },
-      {
-        type: 'link',
-        label: 'Dolgozó típusok',
-        href: '/dolgozok/tipusok',
-        icon: Tags,
-        accent: 'slate'
-      }
-    ]
   },
   {
     type: 'group',
@@ -165,13 +141,6 @@ export const mainNavItems: NavNode[] = [
       },
       {
         type: 'link',
-        label: 'POS',
-        href: '/pos',
-        icon: ScanBarcode,
-        accent: 'slate'
-      },
-      {
-        type: 'link',
         label: 'Műszakok',
         href: '/ertekesitesek/muszakok',
         icon: History,
@@ -184,15 +153,8 @@ export const mainNavItems: NavNode[] = [
     label: 'Beszerzés',
     icon: Truck,
     accent: 'slate',
-    matchPrefix: '/beszallitok',
+    matchPrefix: '/beszallitoi-rendelesek',
     children: [
-      {
-        type: 'link',
-        label: 'Beszállítók',
-        href: '/beszallitok',
-        icon: Building2,
-        accent: 'slate'
-      },
       {
         type: 'link',
         label: 'Beszállítói rendelések',
@@ -205,6 +167,13 @@ export const mainNavItems: NavNode[] = [
         label: 'Beérkezések',
         href: '/beerkezesek',
         icon: PackageCheck,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Beszállítók',
+        href: '/beszallitok',
+        icon: Building2,
         accent: 'slate'
       }
     ]
@@ -237,20 +206,57 @@ export const mainNavItems: NavNode[] = [
     label: 'Lapszabászat',
     icon: Factory,
     accent: 'slate',
-    matchPrefix: '/ajanlatok',
+    matchPrefix: '/megrendelesek',
     children: [
+      {
+        type: 'link',
+        label: 'Megrendelések',
+        href: '/megrendelesek',
+        icon: Package,
+        accent: 'slate'
+      },
       {
         type: 'link',
         label: 'Lapszabászati ajánlatok',
         href: '/ajanlatok',
         icon: FileText,
         accent: 'slate'
+      }
+    ]
+  },
+  {
+    type: 'group',
+    label: 'Jelenlét',
+    icon: CalendarDays,
+    accent: 'slate',
+    matchPrefix: '/jelenlet',
+    children: [
+      {
+        type: 'link',
+        label: 'Jelenlét',
+        href: '/jelenlet',
+        icon: CalendarDays,
+        accent: 'slate'
       },
       {
         type: 'link',
-        label: 'Megrendelések',
-        href: '/megrendelesek',
-        icon: Package,
+        label: 'Dolgozók',
+        href: '/dolgozok',
+        icon: Users,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Munkarend',
+        href: '/jelenlet/naptar',
+        icon: CalendarRange,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Dolgozó típusok',
+        href: '/dolgozok/tipusok',
+        icon: Tags,
         accent: 'slate'
       }
     ]

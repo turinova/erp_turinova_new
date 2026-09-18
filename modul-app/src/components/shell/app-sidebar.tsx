@@ -117,7 +117,7 @@ export function AppSidebar({
               {subscriptionActive ? (
                 <span
                   className={cn(
-                    'absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-sm',
+                    'absolute left-0 top-1 bottom-1 w-1 rounded-r-sm',
                     subscriptionAccent.bar
                   )}
                   aria-hidden
@@ -132,7 +132,12 @@ export function AppSidebar({
                 )}
                 aria-hidden
               />
-              <span className="truncate text-[13px] font-medium">
+              <span
+                className={cn(
+                  'truncate text-[13px]',
+                  subscriptionActive ? 'font-semibold' : 'font-medium'
+                )}
+              >
                 Előfizetés
               </span>
             </Link>
@@ -280,7 +285,7 @@ function NavLinkItem({
       {active && !collapsed ? (
         <span
           className={cn(
-            'absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-sm',
+            'absolute left-0 top-1 bottom-1 w-1 rounded-r-sm',
             accent.bar
           )}
           aria-hidden
@@ -290,13 +295,19 @@ function NavLinkItem({
         className={cn(
           'shrink-0',
           iconSize(depth),
-          active ? accent.icon : accent.iconMuted,
-          !active && 'group-hover:opacity-100'
+          active ? accent.icon : accent.iconMuted
         )}
         aria-hidden
       />
       {!collapsed ? (
-        <span className="truncate text-[13px] font-medium">{item.label}</span>
+        <span
+          className={cn(
+            'truncate text-[13px]',
+            active ? 'font-semibold' : 'font-medium'
+          )}
+        >
+          {item.label}
+        </span>
       ) : (
         <span className="sr-only">{item.label}</span>
       )}
@@ -322,9 +333,10 @@ function NavGroupItem({
   const Icon = group.icon
   const accent = getNavAccentClasses(group.accent)
 
+  // Accordion: aktív szekció nyitva; elnavigáláskor a többi becsukódik.
   useEffect(() => {
-    if (inSection) setOpen(true)
-  }, [inSection])
+    setOpen(inSection)
+  }, [inSection, pathname])
 
   if (collapsed) {
     return (
@@ -361,16 +373,25 @@ function NavGroupItem({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex h-8 w-full items-center gap-2 rounded-md text-left transition-colors duration-fast',
+          'relative flex h-8 w-full items-center gap-2 rounded-md text-left transition-colors duration-fast',
           depth === 0 && 'px-2',
           depth === 1 && 'pl-4 pr-2',
           depth >= 2 && 'pl-7 pr-2',
           inSection
-            ? 'text-ink'
+            ? cn(accent.soft, accent.ink)
             : 'text-ink-secondary hover:bg-subtle hover:text-ink'
         )}
         aria-expanded={open}
       >
+        {inSection ? (
+          <span
+            className={cn(
+              'absolute left-0 top-1 bottom-1 w-1 rounded-r-sm',
+              accent.bar
+            )}
+            aria-hidden
+          />
+        ) : null}
         <Icon
           className={cn(
             'shrink-0',
@@ -379,7 +400,12 @@ function NavGroupItem({
           )}
           aria-hidden
         />
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-[13px]',
+            inSection ? 'font-semibold' : 'font-medium'
+          )}
+        >
           {group.label}
         </span>
         <ChevronDown

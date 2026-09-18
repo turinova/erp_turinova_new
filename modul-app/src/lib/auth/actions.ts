@@ -196,9 +196,20 @@ export async function loginAction(
       )
       const allowedPages = intersectPages(membershipPages, entitledPages)
 
+      let displayName: string | null = null
+      {
+        const { data: profileRow } = await supabase
+          .from('user_profiles')
+          .select('display_name')
+          .eq('user_id', data.user.id)
+          .maybeSingle()
+        displayName = profileRow?.display_name?.trim() || null
+      }
+
       await writeSessionSnapshotAfterLogin({
         userId: data.user.id,
         email: data.user.email!,
+        displayName,
         nonce: sessionNonce,
         tenantId: current.tenantId,
         tenantSlug: current.tenantSlug,

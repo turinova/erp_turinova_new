@@ -77,9 +77,11 @@ export default async function PlatformTenantDetailPage({
         onboarding={detail.onboarding}
         kpis={detail.kpis}
         members={detail.members}
+        linkedPartners={detail.linkedPartners}
         company={detail.company}
         auditRows={auditRows}
         monthlyBill={monthlyBill}
+        planLabel={entitlements.plan?.name ?? null}
         entitlementsSlot={
           <div className="space-y-3">
             <TenantEntitlementsPanel

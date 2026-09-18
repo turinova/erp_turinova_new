@@ -82,6 +82,7 @@ export async function resolveKeresoAuth(
       .select('id')
       .eq('user_id', user.id)
       .eq('tenant_id', preferredTenantId)
+      .eq('status', 'active')
       .limit(1)
       .maybeSingle()
 
@@ -102,6 +103,7 @@ export async function resolveKeresoAuth(
     .from('tenant_memberships')
     .select('tenant_id')
     .eq('user_id', user.id)
+    .eq('status', 'active')
     .limit(1)
     .maybeSingle()
 

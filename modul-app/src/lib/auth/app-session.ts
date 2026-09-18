@@ -48,6 +48,18 @@ export async function clearAppSession(
   }
 }
 
+/** Más user sessionjének érvénytelenítése (remove / disable / jogváltozás). */
+export async function revokeAppSessionForUser(userId: string): Promise<void> {
+  try {
+    const { createServiceClient } = await import('@/lib/supabase/service')
+    const admin = createServiceClient()
+    if (!admin) return
+    await clearAppSession(admin, userId)
+  } catch (err) {
+    console.error('revokeAppSessionForUser', err)
+  }
+}
+
 /**
  * true = a cookie nonce egyezik az egyetlen aktív sessionnel.
  * Nincs DB sor → false (újra be kell lépni).

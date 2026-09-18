@@ -1,13 +1,16 @@
 import type { Metadata } from 'next'
 
 import { HomeChartsDashboard } from '@/components/home/home-charts-dashboard'
+import { HomeKpiStrip } from '@/components/home/home-kpi-strip'
 import { PageHeader } from '@/components/patterns/page-header'
 import { getSessionUser } from '@/lib/auth/session'
 import { tenantHasFootcounter } from '@/lib/footcounter/entitlement'
 import { getFootcounterHomeSlim } from '@/lib/footcounter/queries'
 import type { FootcounterHomeSlim } from '@/lib/footcounter/types'
-import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import { getHomePageData } from '@/lib/home/chart-queries'
+import { getHomeKpiBundle, type HomeKpiBundle } from '@/lib/home/kpi-queries'
+import { tenantHasJelenlet } from '@/lib/jelenlet/entitlement'
+import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import { findNavLinkByPath } from '@/lib/navigation'
 import { createClient } from '@/lib/supabase/server'
 
@@ -25,6 +28,7 @@ export default async function HomePage() {
   }).format(new Date())
 
   let data: Awaited<ReturnType<typeof getHomePageData>> | null = null
+  let kpis: HomeKpiBundle | null = null
   let footcounter: FootcounterHomeSlim | null = null
   let showLapszabaszatCharts = false
   let loadError: string | null = null
@@ -33,13 +37,23 @@ export default async function HomePage() {
     const supabase = await createClient()
     if (supabase) {
       try {
-        const [homeData, hasFootcounter, hasLapszabaszat] = await Promise.all([
-          getHomePageData(supabase, user.tenantId, 0),
-          tenantHasFootcounter(supabase, user.tenantId),
-          tenantHasLapszabaszat(supabase, user.tenantId)
-        ])
-        data = homeData
+        const [hasFootcounter, hasLapszabaszat, hasJelenlet] =
+          await Promise.all([
+            tenantHasFootcounter(supabase, user.tenantId),
+            tenantHasLapszabaszat(supabase, user.tenantId),
+            tenantHasJelenlet(supabase, user.tenantId)
+          ])
         showLapszabaszatCharts = hasLapszabaszat
+
+        kpis = await getHomeKpiBundle(supabase, user.tenantId, {
+          includeJelenlet: hasJelenlet
+        })
+
+        try {
+          data = await getHomePageData(supabase, user.tenantId, 0)
+        } catch (chartErr) {
+          console.error('home charts', chartErr)
+        }
 
         if (hasFootcounter) {
           footcounter = await getFootcounterHomeSlim(supabase, user.tenantId)
@@ -72,6 +86,8 @@ export default async function HomePage() {
         </p>
       ) : null}
 
+      {kpis ? <HomeKpiStrip data={kpis} /> : null}
+
       {data ? (
         <HomeChartsDashboard
           backlog={data.backlog}
@@ -84,7 +100,7 @@ export default async function HomePage() {
         />
       ) : null}
 
-      {!data && !loadError && !user?.isDevSession ? (
+      {!data && !kpis && !loadError && !user?.isDevSession ? (
         <p className="text-body text-ink-secondary">Nincs betölthető adat.</p>
       ) : null}
     </div>

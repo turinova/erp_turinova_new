@@ -147,19 +147,23 @@ export function HomeChartsDashboard({
 
   return (
     <div className="space-y-5">
-      {showLapszabaszatCharts ? (
-        <BacklogMetersCard cuttingM={backlog.cuttingM} edgeM={backlog.edgeM} />
-      ) : null}
-
       {footcounter ? <BelepokHomeCard data={footcounter} /> : null}
 
       {showLapszabaszatCharts ? (
+        <BacklogMetersCard
+          cuttingM={backlog.cuttingM}
+          edgeM={backlog.edgeM}
+          overdueOrderCount={orders.filter((o) => o.bucket === 'overdue').length}
+        />
+      ) : null}
+
+      {showLapszabaszatCharts ? (
         <>
-          <section className="rounded-md border border-border bg-surface p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <section className="rounded-md border border-border bg-surface">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
               <div>
                 <h2 className="text-body font-semibold text-ink">
-                  Heti szabás mennyiség
+                  Heti szabás
                 </h2>
                 <p className="text-hint text-ink-secondary">
                   {cutting.weekStart} – {cutting.weekEnd}
@@ -198,41 +202,43 @@ export function HomeChartsDashboard({
                 </Button>
               </div>
             </div>
-            {error ? (
-              <p className="mb-2 text-hint text-danger-ink">{error}</p>
-            ) : null}
-            <WeeklyCuttingChart data={cutting} />
-          </section>
-
-          <section className="rounded-md border border-border bg-surface p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-body font-semibold text-ink">
-                  Heti élzárás mennyiség
-                </h2>
-                <p className="text-hint text-ink-secondary">
-                  {edge.weekStart} – {edge.weekEnd} · kapacitás{' '}
-                  {edge.capacityPerDayM} m/nap
-                </p>
-              </div>
+            <div className="px-3 py-3">
+              {error ? (
+                <p className="mb-2 text-hint text-danger-ink">{error}</p>
+              ) : null}
+              <WeeklyCuttingChart data={cutting} />
             </div>
-            <WeeklyEdgeChart data={edge} />
           </section>
 
-          <section className="rounded-md border border-border bg-surface p-4">
-            <div className="mb-3">
-              <h2 className="text-body font-semibold text-ink">
-                Gépenkénti átlag szabás — {yearlyAvg.year}
-              </h2>
+          <section className="rounded-md border border-border bg-surface">
+            <div className="border-b border-border px-3 py-2">
+              <h2 className="text-body font-semibold text-ink">Heti élzárás</h2>
               <p className="text-hint text-ink-secondary">
-                Kész (ready) napok átlaga, H–P, m/nap
+                {edge.weekStart} – {edge.weekEnd} · kapacitás{' '}
+                {edge.capacityPerDayM} m/nap
               </p>
             </div>
-            <YearlyMachineAvgChart data={yearlyAvg} />
+            <div className="px-3 py-3">
+              <WeeklyEdgeChart data={edge} />
+            </div>
           </section>
 
-          <section>
-            <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <section className="rounded-md border border-border bg-surface">
+            <div className="border-b border-border px-3 py-2">
+              <h2 className="text-body font-semibold text-ink">
+                Gépenkénti átlag — {yearlyAvg.year}
+              </h2>
+              <p className="text-hint text-ink-secondary">
+                Kész napok átlaga, H–P, m/nap
+              </p>
+            </div>
+            <div className="px-3 py-3">
+              <YearlyMachineAvgChart data={yearlyAvg} />
+            </div>
+          </section>
+
+          <section className="rounded-md border border-border bg-surface">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
               <h2 className="text-body font-semibold text-ink">
                 Lapszabászati megrendelések
               </h2>
@@ -244,7 +250,7 @@ export function HomeChartsDashboard({
               </Link>
             </div>
             {orders.length === 0 ? (
-              <p className="rounded-md border border-dashed border-border bg-subtle px-3 py-4 text-body text-ink-secondary">
+              <p className="px-3 py-4 text-body text-ink-secondary">
                 Nincs nyitott megrendelés.
               </p>
             ) : (

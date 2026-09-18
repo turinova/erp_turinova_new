@@ -78,6 +78,25 @@ export function budapestYear(): number {
   )
 }
 
+/**
+ * Budapest naptári nap UTC tartománya [start, end).
+ * CET/CEST: az offsetet úgy választja, hogy a start a megadott YMD legyen BP-ben.
+ */
+export function budapestDayRangeIso(ymd: string): { startIso: string; endIso: string } {
+  const next = addDaysYmd(ymd, 1)
+  const pickMidnight = (day: string): Date => {
+    for (const offset of ['+01:00', '+02:00'] as const) {
+      const d = new Date(`${day}T00:00:00${offset}`)
+      if (toBudapestYmdFromIso(d.toISOString()) === day) return d
+    }
+    return new Date(`${day}T00:00:00Z`)
+  }
+  return {
+    startIso: pickMidnight(ymd).toISOString(),
+    endIso: pickMidnight(next).toISOString()
+  }
+}
+
 export const WEEKDAY_LABELS_HU = [
   'Hétfő',
   'Kedd',

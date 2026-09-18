@@ -377,3 +377,41 @@ export function deltaLabel(current: number, previous: number): string | null {
   if (pct === 0) return '±0%'
   return pct > 0 ? `+${pct}%` : `${pct}%`
 }
+
+export type PlatformBillingGlance = {
+  pastDue: number
+  trialSoon: number
+  billingActive: number
+}
+
+/** Előfizetés pillantás — manuális billing mezők. */
+export async function getPlatformBillingGlance(
+  admin: SupabaseClient
+): Promise<PlatformBillingGlance> {
+  const { data, error } = await admin
+    .from('tenants')
+    .select('id, billing_status, trial_ends_at, status')
+    .neq('status', 'churned')
+
+  if (error) {
+    console.error('getPlatformBillingGlance', error.message)
+    return { pastDue: 0, trialSoon: 0, billingActive: 0 }
+  }
+
+  const now = Date.now()
+  const weekMs = 7 * 24 * 60 * 60 * 1000
+  let pastDue = 0
+  let trialSoon = 0
+  let billingActive = 0
+
+  for (const t of data ?? []) {
+    if (t.billing_status === 'past_due') pastDue += 1
+    if (t.billing_status === 'active') billingActive += 1
+    if (t.trial_ends_at) {
+      const end = new Date(t.trial_ends_at).getTime()
+      if (end - now < weekMs) trialSoon += 1
+    }
+  }
+
+  return { pastDue, trialSoon, billingActive }
+}
