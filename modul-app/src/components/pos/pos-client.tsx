@@ -1622,7 +1622,7 @@ export function PosClient({
           })
           setCustomerId(c.id)
           if (wantInvoice) {
-            setBilling(billingFromCustomer({ name: c.name, ...opt }))
+            setBilling(billingFromCustomer(opt))
           }
         }}
       />
