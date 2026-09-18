@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 
 import {
   DocumentBillingFields,
-  EMPTY_DOCUMENT_BILLING,
   billingHasAny,
   type DocumentBillingState
 } from '@/components/sales/document-billing-fields'
