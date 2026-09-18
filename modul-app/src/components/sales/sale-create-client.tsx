@@ -1035,7 +1035,7 @@ export function SaleCreateClient({
             return [opt, ...prev]
           })
           setCustomerId(c.id)
-          setBilling(billingFromCustomer({ name: c.name, ...opt }))
+          setBilling(billingFromCustomer(opt))
         }}
       />
 
