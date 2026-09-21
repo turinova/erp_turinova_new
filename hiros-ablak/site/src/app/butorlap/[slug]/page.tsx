@@ -1,6 +1,5 @@
 import Image from "next/image"
 import Link from "next/link"
-import Script from "next/script"
 import { notFound, redirect } from "next/navigation"
 import {
   COMPANY,
@@ -295,17 +294,17 @@ export default async function ButorlapDetailPage({
 
   return (
     <div className="bg-stone-wash">
-      <Script
+      <script
         id="jsonld-breadcrumb-butorlap"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-product-butorlap"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-faq-butorlap"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}

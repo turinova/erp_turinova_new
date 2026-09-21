@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import Script from "next/script"
 import { COMPANY } from "@/lib/company"
 import { LINKS } from "@/lib/links"
 import { getSupabaseServerClient } from "@/lib/supabase"
@@ -239,7 +238,7 @@ export default async function ButorlapListingPage({
 
   return (
     <div className="bg-stone-wash">
-      <Script
+      <script
         id="jsonld-itemlist-butorlap"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

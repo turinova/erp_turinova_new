@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import Script from "next/script"
 import {
   pageMetadata,
   DEFAULT_OG_IMAGE_PATH,
@@ -33,14 +32,14 @@ export default function KarrierPage() {
 
   return (
     <>
-      <Script
+      <script
         id="jsonld-localbusiness-karrier"
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(buildLocalBusinessJsonLd()),
         }}
       />
-      <Script
+      <script
         id="jsonld-breadcrumb-karrier"
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -53,7 +52,7 @@ export default function KarrierPage() {
         }}
       />
       {jobSchemas.map((schema, i) => (
-        <Script
+        <script
           key={jobs[i].slug}
           id={`jsonld-job-${jobs[i].slug}`}
           type="application/ld+json"

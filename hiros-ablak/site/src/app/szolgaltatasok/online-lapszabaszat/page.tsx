@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import Script from "next/script"
 import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
@@ -121,7 +120,7 @@ export default function OnlineLapszabaszatPage() {
 
   return (
     <div className="relative">
-      <Script
+      <script
         id="jsonld-service-online-lapszabaszat"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}

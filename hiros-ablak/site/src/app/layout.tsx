@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next"
 import { Analytics } from "@vercel/analytics/next"
 import { Geist, Geist_Mono } from "next/font/google"
-import Script from "next/script"
 import { CookieConsentShell } from "@/components/site/CookieConsentShell"
 import { SiteFooter } from "@/components/site/SiteFooter"
 import { SiteHeader } from "@/components/site/SiteHeader"
@@ -64,14 +63,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Script
+        <script
           id="jsonld-organization"
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(buildOrganizationJsonLd()),
           }}
         />
-        <Script
+        <script
           id="jsonld-website"
           type="application/ld+json"
           dangerouslySetInnerHTML={{

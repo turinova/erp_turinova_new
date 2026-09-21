@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import Script from "next/script"
 import {
   buildBreadcrumbJsonLd,
   pageMetadata,
@@ -11,7 +10,7 @@ import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
 import { COMPANY } from "@/lib/company"
 import { LINKS } from "@/lib/links"
-import FaqAccordion from "@/components/szallitolada-keszites/FaqAccordion"
+import FaqAccordion from "@/components/site/FaqAccordion"
 import NettfrontInomatFormMockup from "@/components/nettfront/NettfrontInomatFormMockup"
 import {
   AI_ELEVATOR_PITCH,
@@ -218,13 +217,13 @@ export default function NettfrontPage() {
 
   return (
     <div className="relative">
-      <Script id="jsonld-service-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }} />
-      <Script id="jsonld-faq-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
-      <Script id="jsonld-howto-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(howToJsonLd) }} />
-      <Script id="jsonld-itemlist-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }} />
-      <Script id="jsonld-inomat-colors" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(inomatColorsJsonLd) }} />
-      <Script id="jsonld-breadcrumb-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
-      <Script id="jsonld-webpage-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageJsonLd) }} />
+      <script id="jsonld-service-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }} />
+      <script id="jsonld-faq-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
+      <script id="jsonld-howto-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(howToJsonLd) }} />
+      <script id="jsonld-itemlist-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }} />
+      <script id="jsonld-inomat-colors" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(inomatColorsJsonLd) }} />
+      <script id="jsonld-breadcrumb-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+      <script id="jsonld-webpage-nettfront" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageJsonLd) }} />
 
       <RevealOnLoad>
         {/* 1. HERO */}

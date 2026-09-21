@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import Script from "next/script"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
 import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
@@ -222,17 +221,17 @@ export default async function LapszabaszatEsElzarasPage() {
 
   return (
     <div className="relative bg-stone-wash">
-      <Script
+      <script
         id="jsonld-localbusiness"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-service-lapszabaszat"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-faq-lapszabaszat"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
@@ -854,6 +853,17 @@ export default async function LapszabaszatEsElzarasPage() {
                   megbízható lapszabászatot és élzárást, kecskeméti üzletünkben
                   személyesen szívesen fogadjuk, vagy rendelje meg online a
                   Turinova rendszerünkön keresztül.
+                </p>
+                <p className="mt-3 text-sm text-black/65">
+                  Kész bútorra van szüksége, nem szabott lapra? Budapesten, Pest
+                  megyében, Bács-Kiskunban és a Balaton környékén{" "}
+                  <Link
+                    href="/szolgaltatasok/egyedi-butorgyartas"
+                    className="font-medium text-[var(--color-brand)] underline decoration-[var(--color-brand)]/30 underline-offset-4 hover:decoration-[var(--color-brand)]"
+                  >
+                    egyedi konyhát, gardróbot és fürdőszoba bútort
+                  </Link>{" "}
+                  is gyártunk, díjmentes helyszíni felméréssel.
                 </p>
               </section>
             </RevealOnScroll>

@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import Script from "next/script"
 import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
@@ -10,7 +9,7 @@ import {
   buildLocalBusinessJsonLd,
   formatPhoneDisplay,
 } from "@/lib/company"
-import FaqAccordion from "@/components/szallitolada-keszites/FaqAccordion"
+import FaqAccordion from "@/components/site/FaqAccordion"
 import PartnerForm from "@/components/asztalos-partner/PartnerForm"
 
 export const metadata: Metadata = pageMetadata({
@@ -199,17 +198,17 @@ export default function AsztalosPartnerPage() {
 
   return (
     <div className="relative">
-      <Script
+      <script
         id="jsonld-localbusiness-asztalos-partner"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-service-asztalos-partner"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-faq-asztalos-partner"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
@@ -816,6 +815,31 @@ export default function AsztalosPartnerPage() {
                 </div>
               </div>
             </RevealOnScroll>
+          </div>
+        </section>
+
+        <section className="border-t border-black/8 bg-white">
+          <div className="mx-auto max-w-6xl px-4 py-10 md:py-12">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/45">
+              Kapcsolódó partner
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900 md:text-3xl">
+              Generálkivitelezési projektekhez
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-black/70 md:text-base">
+              Ha teljes építkezéshez vagy kulcsrakész átadáshoz keres partnert,
+              a BauGenerál Kft. generálkivitelező — az egyedi bútorokat pedig a
+              Hírös-Ablak gyártja. Külön jogi személyek, kapcsolódó tulajdonosi
+              kör.
+            </p>
+            <a
+              href="https://www.baugeneral.hu/szolgaltatasok/asztalos-munkak"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center justify-center rounded-full border border-black/15 bg-white px-5 py-2.5 text-sm font-semibold text-black/85 hover:border-[var(--color-brand)] hover:text-[var(--color-brand)] transition"
+            >
+              BauGenerál — asztalos munkák →
+            </a>
           </div>
         </section>
       </RevealOnLoad>

@@ -31,12 +31,12 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   },
   {
     source: "/egyedi-butorgyartas",
-    destination: "/szolgaltatasok/lapszabaszat-es-elzaras",
+    destination: "/szolgaltatasok/egyedi-butorgyartas",
     permanent: true,
   },
   {
     source: "/egyedi-butorgyartas-kecskemet",
-    destination: "/szolgaltatasok/lapszabaszat-es-elzaras",
+    destination: "/szolgaltatasok/egyedi-butorgyartas",
     permanent: true,
   },
   {
@@ -76,7 +76,7 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   },
   {
     source: "/blog/kesz-butor-vagy-egyedibutor",
-    destination: "/szolgaltatasok/lapszabaszat-es-elzaras",
+    destination: "/szolgaltatasok/egyedi-butorgyartas",
     permanent: true,
   },
   { source: "/blog", destination: "/", permanent: true },

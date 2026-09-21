@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import Script from "next/script"
 import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
@@ -12,7 +11,7 @@ import {
   googleMapsDirectionsUrl,
   googleMapsEmbedUrl,
 } from "@/lib/company"
-import FaqAccordion from "@/components/szallitolada-keszites/FaqAccordion"
+import FaqAccordion from "@/components/site/FaqAccordion"
 import { CatalogBrandPanel } from "@/components/site/CatalogBrandPanel"
 import { ShowroomBrandPanel } from "@/components/site/ShowroomBrandPanel"
 import {
@@ -809,17 +808,17 @@ export default function BarkacsaruhazKecskemetPage() {
 
   return (
     <div className="relative">
-      <Script
+      <script
         id="jsonld-localbusiness-barkacsaruhaz"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-hardwarestore-barkacsaruhaz"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(hardwareStoreJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-faq-barkacsaruhaz"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}

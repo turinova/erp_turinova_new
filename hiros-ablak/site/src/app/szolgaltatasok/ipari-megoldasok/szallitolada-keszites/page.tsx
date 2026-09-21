@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import Script from "next/script"
 import { DEFAULT_OG_IMAGE_PATH, pageMetadata } from "@/lib/seo"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
@@ -12,7 +11,7 @@ import {
 } from "@/lib/company"
 import CategoryCard from "@/components/szallitolada-keszites/CategoryCard"
 import MaterialCard from "@/components/szallitolada-keszites/MaterialCard"
-import FaqAccordion from "@/components/szallitolada-keszites/FaqAccordion"
+import FaqAccordion from "@/components/site/FaqAccordion"
 import QuoteForm from "@/components/szallitolada-keszites/QuoteForm"
 
 export const metadata: Metadata = pageMetadata({
@@ -148,17 +147,17 @@ export default function SzallitoladaKeszitesPage() {
 
   return (
     <div className="relative">
-      <Script
+      <script
         id="jsonld-localbusiness-szallitolada"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-service-szallitolada"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-faq-szallitolada"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}

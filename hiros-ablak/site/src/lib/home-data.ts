@@ -13,7 +13,7 @@
  *   - final CTA bg:      1920×600  WebP (optional)
  */
 
-import type { FaqItem } from "@/components/szallitolada-keszites/FaqAccordion"
+import type { FaqItem } from "@/components/site/FaqAccordion"
 
 // ────────────────────────────────────────────────────────────────────────────
 // HERO

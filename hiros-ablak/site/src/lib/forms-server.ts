@@ -2,7 +2,13 @@ import { sendFormEmail } from "@/lib/mail"
 import { COMPANY } from "@/lib/company"
 import { getJobBySlug } from "@/lib/jobs"
 
-export const FORM_TYPES = ["contact", "partner", "quote", "career"] as const
+export const FORM_TYPES = [
+  "contact",
+  "partner",
+  "quote",
+  "career",
+  "felmeres",
+] as const
 export type FormType = (typeof FORM_TYPES)[number]
 
 const CONTACT_TOPICS = new Set([
@@ -14,6 +20,8 @@ const CONTACT_TOPICS = new Set([
   "egyeb",
 ])
 
+const FELMERES_TYPES = new Set(["konyha", "gardrob", "furdo", "egyeb"])
+
 const TOPIC_LABELS: Record<string, string> = {
   lapszabaszat: "Lapszabászat",
   elzaras: "Élzárás",
@@ -24,11 +32,36 @@ const TOPIC_LABELS: Record<string, string> = {
   general: "Általános érdeklődés / nincs nyitott állás",
 }
 
+const FELMERES_LABELS: Record<string, string> = {
+  konyha: "Konyha",
+  gardrob: "Gardrób vagy beépített szekrény",
+  furdo: "Fürdőszoba bútor",
+  egyeb: "Más egyedi bútor",
+}
+
 const FORM_LABELS: Record<FormType, string> = {
   contact: "Kapcsolatfelvétel",
   partner: "Asztalos partner – visszahívás",
   quote: "Szállítóláda – árajánlat kérés",
   career: "Karrier – állásjelentkezés",
+  felmeres: "Egyedi bútor – helyszíni felmérés",
+}
+
+/** A felmérés mindig a központi MAIL_TO-ra és erre a címre is megy. */
+const FELMERES_CC = "mezo.david@baugeneral.hu"
+
+function recipientsFor(form: FormType): string | undefined {
+  if (form === "career") return COMPANY.emails.central
+  if (form !== "felmeres") return undefined
+
+  const set = new Set(
+    (process.env.MAIL_TO || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+  set.add(FELMERES_CC)
+  return [...set].join(", ")
 }
 
 const MAX = {
@@ -102,7 +135,12 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
     return { kind: "error", error: "Érvénytelen név.", status: 400 }
   }
 
-  if (!email || email.length > MAX.email || !isValidEmail(email)) {
+  // A felmérés űrlapon nincs e-mail mező: a visszajelzés telefonon történik.
+  if (form === "felmeres") {
+    if (email && (email.length > MAX.email || !isValidEmail(email))) {
+      return { kind: "error", error: "Érvénytelen e-mail cím.", status: 400 }
+    }
+  } else if (!email || email.length > MAX.email || !isValidEmail(email)) {
     return { kind: "error", error: "Érvénytelen e-mail cím.", status: 400 }
   }
 
@@ -171,12 +209,42 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
     }
   }
 
+  if (form === "felmeres") {
+    if (!phone || phone.replace(/\D/g, "").length < 9) {
+      return {
+        kind: "error",
+        error: "Adja meg a telefonszámát, hogy visszahívhassuk.",
+        status: 400,
+      }
+    }
+    if (!topic || !FELMERES_TYPES.has(topic)) {
+      return {
+        kind: "error",
+        error: "Válassza ki, mit tervez.",
+        status: 400,
+      }
+    }
+    // A cím a kvalifikáció alapja, ezért utca és házszám nélkül nem fogadjuk el.
+    if (company.length < 8 || !/\d/.test(company)) {
+      return {
+        kind: "error",
+        error: "Adja meg a felmérés helyszínét, utcával és házszámmal.",
+        status: 400,
+      }
+    }
+    if (message.length > MAX.message) {
+      return { kind: "error", error: "Az üzenet túl hosszú.", status: 400 }
+    }
+  }
+
   const topicLabel =
     form === "career"
       ? getJobBySlug(topic)?.title || TOPIC_LABELS[topic] || topic
-      : topic
-        ? TOPIC_LABELS[topic] || topic
-        : ""
+      : form === "felmeres"
+        ? FELMERES_LABELS[topic] || topic
+        : topic
+          ? TOPIC_LABELS[topic] || topic
+          : ""
 
   return {
     kind: "ok",
@@ -213,8 +281,22 @@ export async function deliverFormEmail(
   ]
   if (data.email) lines.push(`E-mail: ${data.email}`)
   if (data.phone) lines.push(`Telefon: ${data.phone}`)
-  if (data.company) lines.push(`Vállalkozás: ${data.company}`)
-  if (data.topicLabel) lines.push(`Pozíció / téma: ${data.topicLabel}`)
+  if (data.company) {
+    lines.push(
+      data.form === "felmeres"
+        ? `Felmérés helyszíne: ${data.company}`
+        : `Vállalkozás: ${data.company}`,
+    )
+  }
+  if (data.topicLabel) {
+    const topicKey =
+      data.form === "career"
+        ? "Pozíció"
+        : data.form === "felmeres"
+          ? "Bútortípus"
+          : "Téma"
+    lines.push(`${topicKey}: ${data.topicLabel}`)
+  }
   if (meta.attachment) lines.push(`Önéletrajz: ${meta.attachment.filename}`)
   if (data.message) {
     lines.push("", "Üzenet:", data.message)
@@ -227,9 +309,21 @@ export async function deliverFormEmail(
     ["Név", data.name],
     data.email ? ["E-mail", data.email] : null,
     data.phone ? ["Telefon", data.phone] : null,
-    data.company ? ["Vállalkozás", data.company] : null,
+    data.company
+      ? [
+          data.form === "felmeres" ? "Felmérés helyszíne" : "Vállalkozás",
+          data.company,
+        ]
+      : null,
     data.topicLabel
-      ? [data.form === "career" ? "Pozíció" : "Téma", data.topicLabel]
+      ? [
+          data.form === "career"
+            ? "Pozíció"
+            : data.form === "felmeres"
+              ? "Bútortípus"
+              : "Téma",
+          data.topicLabel,
+        ]
       : null,
     meta.attachment ? ["Önéletrajz", meta.attachment.filename] : null,
   ]
@@ -247,15 +341,21 @@ ${data.message ? `<p style="margin-top:16px;font-weight:600">Üzenet</p><p style
 ${meta.referer ? `<p style="margin-top:16px;font-size:12px;color:#666">Forrás: ${escapeHtml(meta.referer)}</p>` : ""}
 </body></html>`
 
-  const subjectParts = [FORM_LABELS[data.form], data.name]
-  if (data.topicLabel) subjectParts.splice(1, 0, data.topicLabel)
+  // A cím túl hosszú a tárgyhoz, ezért csak a levél törzsében szerepel.
+  const subjectParts =
+    data.form === "felmeres"
+      ? ["Felmérés", data.topicLabel, data.name].filter(Boolean)
+      : [FORM_LABELS[data.form], data.name]
+  if (data.form !== "felmeres" && data.topicLabel) {
+    subjectParts.splice(1, 0, data.topicLabel)
+  }
 
   await sendFormEmail({
     subject: `[Hírös-Ablak] ${subjectParts.join(" – ")}`,
     text,
     html,
     replyTo: data.email || undefined,
-    to: data.form === "career" ? COMPANY.emails.central : undefined,
+    to: recipientsFor(data.form),
     attachments: meta.attachment
       ? [
           {

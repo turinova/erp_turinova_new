@@ -36,12 +36,12 @@
     },
     {
       "source": "/egyedi-butorgyartas",
-      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/egyedi-butorgyartas",
       "permanent": true
     },
     {
       "source": "/egyedi-butorgyartas-kecskemet",
-      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/egyedi-butorgyartas",
       "permanent": true
     },
     {
@@ -96,7 +96,7 @@
     },
     {
       "source": "/blog/kesz-butor-vagy-egyedibutor",
-      "destination": "https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras",
+      "destination": "https://www.hirosablak.hu/szolgaltatasok/egyedi-butorgyartas",
       "permanent": true
     },
     {

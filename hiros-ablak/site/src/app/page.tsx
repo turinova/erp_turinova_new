@@ -1,12 +1,11 @@
 import Link from "next/link"
 import Image from "next/image"
-import Script from "next/script"
 import type { Metadata } from "next"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { RevealOnScroll } from "@/components/site/RevealOnScroll"
 import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
 import { TrustindexWidget } from "@/components/site/TrustindexWidget"
-import FaqAccordion from "@/components/szallitolada-keszites/FaqAccordion"
+import FaqAccordion from "@/components/site/FaqAccordion"
 import {
   COMPANY,
   buildLocalBusinessJsonLd,
@@ -201,47 +200,21 @@ function buildFaqJsonLd() {
   }
 }
 
-function buildWebSiteJsonLd() {
-  return {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "@id": `${COMPANY.website}/#website`,
-    name: COMPANY.brand,
-    url: COMPANY.website,
-    inLanguage: "hu-HU",
-    publisher: { "@id": `${COMPANY.website}/#organization` },
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: `${COMPANY.website}/butorlap?q={search_term_string}`,
-      },
-      "query-input": "required name=search_term_string",
-    },
-  }
-}
-
 export default async function HomePage() {
   const preview = await fetchCatalogPreview()
   const mapEmbed = googleMapsEmbedUrl()
   const phoneDisplay = formatPhoneDisplay(COMPANY.phones.primary)
   const faqJsonLd = buildFaqJsonLd()
-  const websiteJsonLd = buildWebSiteJsonLd()
   const localBusinessJsonLd = buildLocalBusinessJsonLd()
 
   return (
     <div className="relative bg-stone-wash">
-      <Script
+      <script
         id="jsonld-faq-home"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
-      <Script
-        id="jsonld-website-home"
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
-      />
-      <Script
+      <script
         id="jsonld-localbusiness-home"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }}

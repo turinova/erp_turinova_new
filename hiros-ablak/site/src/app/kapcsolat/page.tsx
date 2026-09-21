@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
-import Script from "next/script"
 import { getTodayDayIndexBudapest } from "@/lib/opening-hours"
 import { RevealOnLoad } from "@/components/site/RevealOnLoad"
 import { CopyToClipboardButton } from "@/components/site/CopyToClipboardButton"
@@ -58,12 +57,12 @@ export default function KapcsolatPage() {
 
   return (
     <div className="relative bg-stone-wash">
-      <Script
+      <script
         id="jsonld-breadcrumb-kapcsolat"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
-      <Script
+      <script
         id="jsonld-localbusiness"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

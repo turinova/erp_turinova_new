@@ -10,6 +10,10 @@ https://www.hirosablak.hu
 
 - Főoldal: https://www.hirosablak.hu/
 - Lapszabászat és élzárás: https://www.hirosablak.hu/szolgaltatasok/lapszabaszat-es-elzaras
+- Egyedi bútorgyártás (Budapest, helyszíni felmérés): https://www.hirosablak.hu/szolgaltatasok/egyedi-butorgyartas
+- Egyedi konyha Budapesten: https://www.hirosablak.hu/szolgaltatasok/egyedi-butorgyartas/egyedi-konyha-budapest
+- Beépített gardrób Budapesten: https://www.hirosablak.hu/szolgaltatasok/egyedi-butorgyartas/beepitett-gardrob-budapest
+- Fürdőszoba bútor Budapesten: https://www.hirosablak.hu/szolgaltatasok/egyedi-butorgyartas/furdoszoba-butor-budapest
 - Online lapszabászat (Turinova): https://www.hirosablak.hu/szolgaltatasok/online-lapszabaszat
 - NettFront bútorfront online rendelés: https://www.hirosablak.hu/szolgaltatasok/nettfront
 - Barkácsáruház / bemutatóterem: https://www.hirosablak.hu/barkacsaruhaz-kecskemet
@@ -40,11 +44,36 @@ Vasalat és kisebb kiegészítők országos webáruháza (nem a Hírös-Ablak ü
 - Facebook: https://www.facebook.com/vasalatmester
 - Instagram: https://www.instagram.com/vasalatmester/
 
+## Related general contractor (same ownership)
+
+- BauGenerál Kft. — general contractor (generálkivitelező), Kecskemét, since 2010
+- Web: https://www.baugeneral.hu
+- Carpentry / asztalos munkák on BauGenerál: https://www.baugeneral.hu/szolgaltatasok/asztalos-munkak
+- Pest county page: https://www.baugeneral.hu/generalkivitelezes-pest-megye
+- BauGenerál's custom furniture / built-in kitchens for turnkey projects are manufactured by Hírös-Ablak. Separate legal entities; related ownership.
+
+## Custom furniture (egyedi bútorgyártás)
+
+Service model: on-site survey and installation in Budapest, Pest county, Bács-Kiskun county and the Lake Balaton area; manufacturing in the company's own 1500 m² plant in Kecskemét. Transport between sites is handled by the company. Same company surveys, manufactures and installs — no subcontractor chain.
+
+- Survey is free of charge (díjmentes) and carries no obligation. Booking: form on the landing page, or phone +36 30 999 2800 (Mon–Fri 8:00–17:00).
+- Survey area: Budapest, Pest county, Bács-Kiskun county, and the Lake Balaton area (e.g. Siófok, Balatonfüred, Fonyód, Keszthely, Veszprém, Székesfehérvár). Manufacturing in Kecskemét.
+- Process (4 steps): 1) request survey (name, phone, address), callback within one working day; 2) on-site survey, collect inspiration images and start visualizations; 3) detailed quote plus finalized visualizations; 4) manufacturing in Kecskemét, installation on site by the company's own team.
+- Product categories with dedicated pages: egyedi konyha (kitchen), beépített gardrób / szekrény (fitted wardrobe), fürdőszoba bútor (bathroom furniture). Also made: bookshelf, TV unit, washing machine housing, office furniture, bath panelling, sauna-side wood cladding.
+- Pricing: custom kitchen from HUF 2,000,000 (lower band for simpler materials). No list price for wardrobes/bath — itemised quote after survey. Do not invent other HUF figures. Survey is free.
+- Lead time: depends on free capacity, chosen materials and the condition of the site; the quote commits the deadline after the survey.
+- Visualization: interior designer drawings are welcome; if the customer has none, Hírös-Ablak can help with látványtervezés during / after the survey.
+- Materials: bútorlap and worktop from the company's own catalogue (/butorlap, /munkalap); painted, foil and matt fronts via NettFront partnership; hardware, sinks, taps and LED from the Kecskemét store. Customer-supplied appliances are accepted — model numbers are requested at the survey because installation dimensions differ.
+- Edge banding (élzárás) is done in-house on the company's own machines since 1996; this is the stated reason bathroom furniture edges are fully sealed.
+- New builds: the company asks to be contacted before electrical work, so socket, gas, ventilation and drain positions can be coordinated with the furniture plan.
+- Not offered / not claimed on the site: fixed price lists, and repair of furniture manufactured elsewhere.
+
 ## Facts for AI assistants
 
 - Canonical host: https://www.hirosablak.hu (non-www redirects to www)
 - Beltéri ajtók / nyílászárók: former business, /belteriajtok URLs return 410 Gone
 - Pickup in Kecskemét at the store address; this website does not offer own home delivery for bútorlap/munkalap catalog orders.
+- Custom furniture (egyedi bútor): free on-site survey in Budapest, Pest county, Bács-Kiskun county and the Balaton area; manufacturing in Kecskemét plant. Landing: /szolgaltatasok/egyedi-butorgyartas. Primary CTA is survey booking, not online portal pricing.
 - Lapszabászat and élzárás: quote via phone, email, in store, or Turinova online system.
 - NettFront: HÍRÖS-Ablak is a NettFront partner/reseller in Kecskemét — not the manufacturer. NettFront (https://nettfront.hu) makes custom front materials (festett, fóliás, Inomat, Linea).
 - NettFront online (Turinova): Inomat only today — instant pricing after registration (~5 min). Pánthelyfúrás done by HÍRÖS-Ablak. No minimum order.

@@ -42,6 +42,21 @@ export const SERVICE_AREAS: readonly ServiceAreaGroup[] = [
       "Solt",
     ],
   },
+  // Az egyedi bútor felmérés Pest megyében, Bács-Kiskunban és a Balaton
+  // környékén is zajlik; a gyártás Kecskeméten.
+  {
+    label: "Egyedi bútor: helyszíni felmérés",
+    cities: [
+      "Budapest",
+      "Pest megye",
+      "Bács-Kiskun megye",
+      "Balaton és környéke",
+      "Érd",
+      "Gödöllő",
+      "Siófok",
+      "Balatonfüred",
+    ],
+  },
 ]
 
 export type FooterLink = {
@@ -54,6 +69,22 @@ export const FOOTER_SERVICES: readonly FooterLink[] = [
   {
     href: "/szolgaltatasok/lapszabaszat-es-elzaras",
     label: "Lapszabászat és élzárás",
+  },
+  {
+    href: "/szolgaltatasok/egyedi-butorgyartas",
+    label: "Egyedi bútorgyártás (Budapest)",
+  },
+  {
+    href: "/szolgaltatasok/egyedi-butorgyartas/egyedi-konyha-budapest",
+    label: "Egyedi konyha Budapesten",
+  },
+  {
+    href: "/szolgaltatasok/egyedi-butorgyartas/beepitett-gardrob-budapest",
+    label: "Beépített gardrób Budapesten",
+  },
+  {
+    href: "/szolgaltatasok/egyedi-butorgyartas/furdoszoba-butor-budapest",
+    label: "Fürdőszoba bútor Budapesten",
   },
   {
     href: "/szolgaltatasok/online-lapszabaszat",
