@@ -1,79 +1,109 @@
 import {
-  CalendarIcon,
-  Link2Icon,
-  SearchIcon,
-  WaypointsIcon
+  Banknote,
+  ClipboardList,
+  Factory,
+  MessageSquare,
+  Package,
+  Printer,
+  ShoppingCart,
+  Store,
+  Truck,
+  UsersRound
 } from 'lucide-react'
-import Image from 'next/image'
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 
-import { LINKIFY_ASSET } from '@/lib/marketing/linkify/paths'
 import { cn } from '@/lib/utils'
 
-export const CARDS = [
+export type ModuleCard = {
+  Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
+  name: string
+  description: string
+  href: string
+  cta: string
+}
+
+/** Optinova fő modulok — egyforma kártyák, vevői pipa-sorrend. */
+export const CARDS: ModuleCard[] = [
   {
-    Icon: Link2Icon,
-    name: 'Shorten links',
-    description: 'Create short links that are easy to remember and share.',
-    cta: 'Learn more',
-    className: 'col-span-3 lg:col-span-1',
-    background: (
-      <Image
-        src={LINKIFY_ASSET('shorten-links.svg')}
-        alt=""
-        width={480}
-        height={320}
-        className="absolute top-8 left-6 origin-top opacity-90 transition-all duration-300 ease-out [mask-image:linear-gradient(to_top,transparent_0%,#000_100%)] group-hover:scale-105"
-      />
-    )
+    Icon: Package,
+    name: 'Készletkezelés',
+    description:
+      'Raktárankénti nyilvántartás bevételezéssel, kiadással és átadással. Minden mozgás visszakereshető.',
+    href: '/hogyan-mukodik#keszlet',
+    cta: 'Részletek'
   },
   {
-    Icon: SearchIcon,
-    name: 'Search your links',
-    description: 'Quickly find the links you need with AI-powered search.',
-    cta: 'Learn more',
-    className: 'col-span-3 lg:col-span-2',
-    background: (
-      <Image
-        src={LINKIFY_ASSET('analytics.svg')}
-        alt=""
-        width={720}
-        height={400}
-        className="absolute right-6 top-8 w-[70%] origin-top opacity-90 transition-all duration-300 ease-out [mask-image:linear-gradient(to_top,transparent_40%,#000_100%)] group-hover:-translate-x-4"
-      />
-    )
+    Icon: Truck,
+    name: 'Beszerzés',
+    description:
+      'A beszállítói rendeléstől a beérkezésig egy folyamat, a megérkezett tétel rögtön növeli a készletet.',
+    href: '/hogyan-mukodik#beszerzes',
+    cta: 'Részletek'
   },
   {
-    Icon: WaypointsIcon,
-    name: 'Connect your apps',
-    description: 'Integrate with your favorite apps and services.',
-    cta: 'Learn more',
-    className: 'col-span-3 lg:col-span-2 max-w-full overflow-hidden',
-    background: (
-      <Image
-        src={LINKIFY_ASSET('feature-01.svg')}
-        alt=""
-        width={600}
-        height={300}
-        className="absolute right-2 top-4 h-[260px] w-[520px] border-none object-cover object-left transition-all duration-300 ease-out [mask-image:linear-gradient(to_top,transparent_10%,#000_100%)] group-hover:scale-105"
-      />
-    )
+    Icon: Store,
+    name: 'Online POS',
+    description:
+      'Pénztárfelület műszaknyitással és zárással. Az eladás azonnal lejön a raktári készletből.',
+    href: '/hogyan-mukodik#pos',
+    cta: 'Részletek'
   },
   {
-    Icon: CalendarIcon,
-    name: 'Calendar',
-    description: 'Keep track of your links with our calendar view.',
-    cta: 'Learn more',
-    className: 'col-span-3 lg:col-span-1',
-    background: (
-      <Image
-        src={LINKIFY_ASSET('feature-02.svg')}
-        alt=""
-        width={400}
-        height={320}
-        className="absolute top-10 left-8 opacity-90 transition-all duration-300 ease-out [mask-image:linear-gradient(to_top,transparent_0%,#000_100%)] group-hover:scale-105"
-      />
-    )
+    Icon: ClipboardList,
+    name: 'Jelenléti ív',
+    description:
+      'Munkanapok és távollétek vezetése dolgozónként, beléptető eszköz nélkül is.',
+    href: '/hogyan-mukodik#jelenlet',
+    cta: 'Részletek'
+  },
+  {
+    Icon: UsersRound,
+    name: 'Belépőszámláló',
+    description:
+      'Napi és óránkénti látogatószám a boltban. Látszik, mikor van valódi forgalom.',
+    href: '/hogyan-mukodik#belepo',
+    cta: 'Részletek'
+  },
+  {
+    Icon: Factory,
+    name: 'Lapszabászati gyártó',
+    description:
+      'Táblás és szálas anyag optimalizálása élzárással és szabásjegyzékkel. A méretek a megrendelésből jönnek.',
+    href: '/hogyan-mukodik#lapszabaszat',
+    cta: 'Részletek'
+  },
+  {
+    Icon: Banknote,
+    name: 'Számlázás',
+    description:
+      'Számla közvetlenül az eladásból, ismételt adatrögzítés nélkül.',
+    href: '/hogyan-mukodik#szamlazas',
+    cta: 'Részletek'
+  },
+  {
+    Icon: ShoppingCart,
+    name: 'Webshop kapcsolat',
+    description:
+      'A webáruház és a bolt ugyanazt a készletet használja, a webes rendelés is itt jelenik meg.',
+    href: '/hogyan-mukodik#webshop',
+    cta: 'Részletek'
+  },
+  {
+    Icon: MessageSquare,
+    name: 'SMS értesítések',
+    description:
+      'Automatikus üzenet az ügyfélnek, amint elkészült az ajánlata. Nem kell utána telefonálni.',
+    href: '/hogyan-mukodik#sms',
+    cta: 'Részletek'
+  },
+  {
+    Icon: Printer,
+    name: 'Bolti címkenyomtatás',
+    description:
+      'Polc- és termékcímke nyomtatása közvetlenül a törzsadatokból.',
+    href: '/hogyan-mukodik#cimke',
+    cta: 'Részletek'
   }
 ]
 
@@ -87,7 +117,7 @@ export function BentoGrid({
   return (
     <div
       className={cn(
-        'grid w-full auto-rows-[22rem] grid-cols-3 gap-4',
+        'grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5',
         className
       )}
     >
@@ -98,43 +128,33 @@ export function BentoGrid({
 
 export function BentoCard({
   name,
-  className,
-  background,
   Icon,
   description,
+  href,
   cta
-}: {
-  name: string
-  className: string
-  background: ReactNode
-  Icon: React.ComponentType<{ className?: string }>
-  description: string
-  cta: string
-}) {
+}: ModuleCard) {
   return (
-    <div
+    <Link
+      href={href}
       className={cn(
-        'group relative col-span-3 flex flex-col justify-between overflow-hidden rounded-xl border border-zinc-200',
-        'bg-zinc-50 [box-shadow:0_-20px_80px_-20px_#0000000a_inset]',
-        className
+        'group relative flex h-full min-h-[11rem] flex-col justify-between rounded-xl border border-zinc-200 bg-zinc-50 p-5 no-underline transition-colors',
+        'hover:border-zinc-300 hover:bg-white'
       )}
     >
-      <div>{background}</div>
-      <div className="pointer-events-none z-10 flex flex-col gap-1 p-6 transition-all duration-300 group-hover:-translate-y-10">
-        <Icon className="h-12 w-12 origin-left text-zinc-400 transition-all duration-300 ease-in-out group-hover:scale-75" />
-        <h3 className="text-xl font-semibold text-zinc-800">{name}</h3>
-        <p className="max-w-lg text-zinc-500">{description}</p>
+      <div className="z-10 flex flex-col gap-2">
+        <Icon
+          strokeWidth={1.5}
+          className="h-8 w-8 text-zinc-400 transition-colors group-hover:text-zinc-700"
+        />
+        <h3 className="text-base font-semibold text-zinc-900">{name}</h3>
+        <p className="text-sm leading-snug text-zinc-500">{description}</p>
       </div>
-      <div className="absolute bottom-0 flex w-full translate-y-10 flex-row items-center p-4 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-        <button
-          type="button"
-          className="inline-flex cursor-default items-center rounded-md px-3 py-1.5 text-[13px] font-medium text-zinc-700"
-        >
-          {cta}
-          <span className="ml-2">→</span>
-        </button>
-      </div>
-      <div className="pointer-events-none absolute inset-0 transition-all duration-300 group-hover:bg-black/[.02]" />
-    </div>
+      <span className="mt-4 inline-flex items-center text-[13px] font-medium text-zinc-700">
+        {cta}
+        <span className="ml-1.5 transition-transform group-hover:translate-x-0.5">
+          →
+        </span>
+      </span>
+    </Link>
   )
 }

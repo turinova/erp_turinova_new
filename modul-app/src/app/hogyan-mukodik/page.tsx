@@ -1,117 +1,94 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
+import {
+  HowItWorksJumpNav,
+  HowItWorksSections
+} from '@/components/marketing/how-it-works-sections'
 import { MarketingShell } from '@/components/marketing/marketing-shell'
 import { buttonVariants } from '@/components/ui/button'
-import { MARKETING_PRICING } from '@/lib/marketing/pricing'
+import { HOW_IT_WORKS_STEPS } from '@/lib/marketing/how-it-works'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = {
   title: 'Hogyan működik',
   description:
-    'Optinova funkciónként: ajánlat, SMS, partnerportál, termékcímke — rövid videókkal.'
+    'Optinova modulonként: készlet, beszerzés, POS, árajánlat, címke, lapszabászat, SMS, partnerportál és még több — rövid demóvideókkal.'
 }
-
-const STEPS = [
-  {
-    id: 'ajanlat',
-    title: 'Ajánlatkészítés',
-    body: 'Méret, anyag, ár — egy helyen. Az ajánlat percek alatt kész, nem táblázatból másolva.',
-    videoLabel: 'Videó: ajánlatkészítés'
-  },
-  {
-    id: 'sms',
-    title: MARKETING_PRICING.addons.quote_ready_sms.name,
-    body: MARKETING_PRICING.addons.quote_ready_sms.blurb,
-    videoLabel: 'Videó: SMS értesítés'
-  },
-  {
-    id: 'partner',
-    title: MARKETING_PRICING.addons.partner_orders.name,
-    body: MARKETING_PRICING.addons.partner_orders.blurb,
-    videoLabel: 'Videó: partnerportál'
-  },
-  {
-    id: 'cimke',
-    title: MARKETING_PRICING.addons.product_labels.name,
-    body: MARKETING_PRICING.addons.product_labels.blurb,
-    videoLabel: 'Videó: termékcímke'
-  }
-] as const
 
 export default function HowItWorksPage() {
   return (
     <MarketingShell activeHref="/hogyan-mukodik">
       <article>
-        <header className="border-b border-border bg-surface">
-          <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
-            <h1 className="text-[2rem] font-semibold tracking-tight text-ink">
-              Hogyan működik
+        <header className="relative overflow-hidden border-b border-orange-100 bg-gradient-to-b from-orange-50 via-amber-50/40 to-white">
+          <div
+            className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-orange-200/40 blur-3xl"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute -bottom-16 left-1/4 size-56 rounded-full bg-sky-200/30 blur-3xl"
+            aria-hidden
+          />
+          <div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+            <span className="inline-flex h-7 items-center rounded-full border border-orange-200 bg-orange-100/80 px-3 text-[12px] font-medium text-orange-900">
+              {HOW_IT_WORKS_STEPS.length} modul · demók
+            </span>
+            <h1 className="mt-4 max-w-2xl text-[2.25rem] font-semibold tracking-tight text-ink md:text-[2.75rem] md:leading-[1.1]">
+              Így megy a bolt a rendszerből
             </h1>
-            <p className="mt-4 text-[15px] leading-relaxed text-ink-secondary">
-              Minden fő funkció külön — rövid videóval. Nézd végig, majd kérj
-              ingyenes konzultációt, ha nálad is így menne a folyamat.
+            <p className="mt-4 max-w-xl text-[16px] leading-relaxed text-ink-secondary">
+              Készlettől a pénztárig, ajánlattól a partnerportálig. Válassz
+              modult a sávból, vagy görgess végig — utána beszéljük át, mi
+              illik hozzátok.
             </p>
-            <nav
-              className="mt-6 flex flex-wrap gap-2"
-              aria-label="Funkciók"
-            >
-              {STEPS.map((step) => (
-                <a
-                  key={step.id}
-                  href={`#${step.id}`}
-                  className="rounded-md border border-border bg-subtle px-2.5 py-1 text-[12px] font-medium text-ink-secondary no-underline hover:text-ink"
-                >
-                  {step.title}
-                </a>
-              ))}
-            </nav>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                href="/kapcsolat"
+                className={cn(
+                  buttonVariants({ variant: 'primary', size: 'md' }),
+                  'no-underline'
+                )}
+              >
+                Ingyenes konzultáció
+              </Link>
+              <Link
+                href="/arak"
+                className={cn(
+                  buttonVariants({ variant: 'secondary', size: 'md' }),
+                  'no-underline'
+                )}
+              >
+                Árak
+              </Link>
+            </div>
           </div>
         </header>
 
-        <div className="mx-auto max-w-3xl space-y-14 px-4 py-10 sm:px-6 sm:py-14">
-          {STEPS.map((step, i) => (
-            <section key={step.id} id={step.id} className="scroll-mt-20">
-              <p className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
-                {i + 1}. funkció
-              </p>
-              <h2 className="mt-1 text-[17px] font-semibold text-ink">
-                {step.title}
-              </h2>
-              <p className="mt-3 text-[14px] leading-relaxed text-ink-secondary">
-                {step.body}
-              </p>
-              <div
-                className="mt-5 flex aspect-video items-center justify-center rounded-lg border border-dashed border-border bg-subtle"
-                role="img"
-                aria-label={step.videoLabel}
-              >
-                <span className="text-[13px] text-ink-muted">
-                  {step.videoLabel} — hamarosan
-                </span>
-              </div>
-            </section>
-          ))}
+        <HowItWorksJumpNav />
+        <HowItWorksSections />
 
-          <div className="flex flex-wrap gap-3 border-t border-border pt-8">
-            <Link
-              href="/kapcsolat"
-              className={cn(
-                buttonVariants({ variant: 'primary', size: 'md' }),
-                'no-underline'
-              )}
-            >
-              Ingyenes konzultáció
-            </Link>
-            <Link
-              href="/arak"
-              className={cn(
-                buttonVariants({ variant: 'secondary', size: 'md' }),
-                'no-underline'
-              )}
-            >
-              Árak
-            </Link>
+        <div className="bg-white px-4 py-14 sm:px-6 sm:py-20">
+          <div className="mx-auto max-w-6xl overflow-hidden rounded-3xl bg-zinc-950 p-8 shadow-[0_24px_60px_-24px_rgba(24,24,27,0.45)] md:p-12">
+            <div className="flex flex-col items-start justify-between gap-8 md:flex-row md:items-center">
+              <div className="max-w-lg">
+                <span className="inline-flex h-7 items-center rounded-full border border-orange-500/30 bg-orange-500/10 px-3 text-xs font-medium uppercase tracking-wide text-orange-400">
+                  Ingyenes konzultáció
+                </span>
+                <h2 className="mt-4 text-2xl font-semibold tracking-tight text-white md:text-3xl">
+                  Megnéznéd élőben?
+                </h2>
+                <p className="mt-3 text-[15px] leading-relaxed text-zinc-400">
+                  Húsz perces hívás a ti folyamataitokról. Megmondjuk, melyik
+                  modul érdemes először.
+                </p>
+              </div>
+              <Link
+                href="/kapcsolat"
+                className="inline-flex h-12 shrink-0 items-center justify-center rounded-lg bg-orange-500 px-6 text-[15px] font-medium text-white no-underline transition-colors hover:bg-orange-600"
+              >
+                Kérem a visszahívást
+              </Link>
+            </div>
           </div>
         </div>
       </article>

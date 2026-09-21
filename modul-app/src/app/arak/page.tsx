@@ -1,149 +1,122 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
+import {
+  PricingAddonsTable,
+  PricingPlanCards
+} from '@/components/marketing/pricing-sections'
 import { MarketingShell } from '@/components/marketing/marketing-shell'
 import { RoiCalculator } from '@/components/marketing/roi-calculator'
 import { buttonVariants } from '@/components/ui/button'
 import {
   formatHufNet,
   formatHufPlain,
-  MARKETING_PRICING
+  MARKETING_PRICING,
+  planEffectiveMonthlyFromYearly
 } from '@/lib/marketing/pricing'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = {
   title: 'Árak',
   description:
-    'Optinova nettó listaárak: Alap, SMS, Online partner, Termék címke — megtérülés-kalkulátorral.'
+    'Optinova: 2 hónap automata próba, utána 39 990 Ft nettó/hó. Évesen 2 hónap ajándék. Add-on: lapszabászat, SMS, partner, jelenlét, belépőszámláló.'
 }
 
 const FAQ = [
   {
-    q: 'Nettó vagy bruttó az ár?',
-    a: 'Minden publikus listaár nettó HUF. A számlán a hatályos ÁFA szerint.'
+    q: 'Nettó vagy bruttó?',
+    a: 'Minden listaár nettó HUF. Az ÁFA a számlán jelenik meg.'
   },
   {
-    q: 'Van önkiszolgáló fizetés?',
-    a: 'Egyelőre manuális számlázás: demó után egyeztetünk, majd aktiváljuk a csomagot.'
+    q: 'Hogyan működik a próba?',
+    a: `Az Alap ${MARKETING_PRICING.trialMonths} hónapig automatikusan 0 Ft. Utána ${formatHufNet(MARKETING_PRICING.plan.priceMonthlyHuf)}/hó.`
+  },
+  {
+    q: 'Éves fizetés?',
+    a: `${formatHufNet(MARKETING_PRICING.plan.priceYearlyHuf)}/év (10× havi) — 2 hónap ajándék, effektív ${formatHufPlain(planEffectiveMonthlyFromYearly())}/hó.`
   },
   {
     q: 'Mi van az Alapban?',
-    a: 'Ajánlatkészítés, törzsadat, műhelyhez kapcsolódó alapfolyamat. Az SMS, partnerportál és címke külön add-on.'
+    a: 'Eladás, árajánlat, készlet, beszerzés, POS, címke, törzsadat.'
   },
   {
-    q: 'Hogyan számolódik az SMS?',
-    a: `Havi fix ${formatHufPlain(MARKETING_PRICING.addons.quote_ready_sms.priceMonthlyHuf)} + ${MARKETING_PRICING.addons.quote_ready_sms.priceUnitHuf} Ft/db a kiküldött üzenetekre.`
+    q: 'Belépőszámláló kamera?',
+    a: `Havidíj ${formatHufPlain(MARKETING_PRICING.addons.footcounter.priceMonthlyHuf)} Ft + saját gyártású AI kamera egyszeri díja (árajánlat).`
+  },
+  {
+    q: 'Jelenlét chipkártyával?',
+    a: 'Nem kötelező. Manuális ív hardver nélkül is megy; chipkártyás olvasó opcionális, egyszeri hardverdíj.'
+  },
+  {
+    q: 'SMS díjazás?',
+    a: `${formatHufPlain(MARKETING_PRICING.addons.quote_ready_sms.priceMonthlyHuf)} Ft/hó + ${MARKETING_PRICING.addons.quote_ready_sms.priceUnitHuf} Ft/db.`
+  },
+  {
+    q: 'Online fizetés?',
+    a: 'Egyelőre manuális számlázás — konzultáció után aktiváljuk a próbát.'
   }
 ] as const
 
 export default function PricingPage() {
-  const cards = [
-    {
-      name: MARKETING_PRICING.plan.name,
-      price: formatHufNet(MARKETING_PRICING.plan.priceMonthlyHuf),
-      detail: '/hó',
-      blurb: MARKETING_PRICING.plan.blurb,
-      featured: true
-    },
-    {
-      name: MARKETING_PRICING.addons.quote_ready_sms.name,
-      price: formatHufNet(
-        MARKETING_PRICING.addons.quote_ready_sms.priceMonthlyHuf
-      ),
-      detail: `/hó + ${MARKETING_PRICING.addons.quote_ready_sms.priceUnitHuf} Ft/db`,
-      blurb: MARKETING_PRICING.addons.quote_ready_sms.blurb,
-      featured: false
-    },
-    {
-      name: MARKETING_PRICING.addons.partner_orders.name,
-      price: formatHufNet(
-        MARKETING_PRICING.addons.partner_orders.priceMonthlyHuf
-      ),
-      detail: '/hó',
-      blurb: MARKETING_PRICING.addons.partner_orders.blurb,
-      featured: false
-    },
-    {
-      name: MARKETING_PRICING.addons.product_labels.name,
-      price: formatHufNet(
-        MARKETING_PRICING.addons.product_labels.priceMonthlyHuf
-      ),
-      detail: '/hó',
-      blurb: MARKETING_PRICING.addons.product_labels.blurb,
-      featured: false
-    }
-  ]
-
   return (
     <MarketingShell activeHref="/arak">
-      <section className="border-b border-border bg-surface">
-        <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-16">
-          <h1 className="text-[2rem] font-semibold tracking-tight text-ink">
-            Árak
-          </h1>
-          <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-ink-secondary">
-            Átlátható nettó listaárak. Nincs rejtett seat-díj a marketing
-            oldalon — a kalkulátorban azonnal látod a havi becslést.
-          </p>
-        </div>
-      </section>
+      <article className="bg-white">
+        {/* Hero — shadcn pricing: centered, short */}
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-3xl px-4 py-14 text-center sm:px-6 sm:py-16">
+            <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+              Árak
+            </h1>
+            <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-ink-secondary">
+              {MARKETING_PRICING.trialMonths} hónap próba, utána egy Alap ár.
+              Évesen 2 hónap ajándék. Add-on csak ha kell.
+            </p>
+          </div>
+        </section>
 
-      <section className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {cards.map((c) => (
-            <article
-              key={c.name}
-              className={cn(
-                'rounded-xl border bg-surface p-5',
-                c.featured ? 'border-border-strong' : 'border-border'
-              )}
-            >
-              <p className="text-[13px] font-medium text-ink-muted">{c.name}</p>
-              <p className="mt-2 text-[22px] font-semibold tabular-nums tracking-tight text-ink">
-                {c.price}
-                <span className="ml-1 text-[13px] font-normal text-ink-muted">
-                  {c.detail}
-                </span>
-              </p>
-              <p className="mt-3 text-[13px] leading-relaxed text-ink-secondary">
-                {c.blurb}
-              </p>
-            </article>
-          ))}
-        </div>
-        <p className="mt-4 text-[12px] text-ink-muted">
-          Manuális számlázás · demó után aktiválás · ÁFA a számlán
-        </p>
-      </section>
+        <section className="py-12 sm:py-16">
+          <PricingPlanCards />
+        </section>
 
-      <section className="mx-auto max-w-5xl px-4 pb-10 sm:px-6 sm:pb-14">
-        <RoiCalculator />
-      </section>
+        <section className="border-t border-border bg-subtle/40 py-12 sm:py-16">
+          <PricingAddonsTable />
+        </section>
 
-      <section className="border-t border-border bg-surface">
-        <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6">
-          <h2 className="text-[18px] font-semibold text-ink">Gyakori kérdések</h2>
-          <dl className="mt-6 space-y-5">
-            {FAQ.map((item) => (
-              <div key={item.q}>
-                <dt className="text-[14px] font-semibold text-ink">{item.q}</dt>
-                <dd className="mt-1 text-[14px] leading-relaxed text-ink-secondary">
-                  {item.a}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <Link
-            href="/kapcsolat"
-            className={cn(
-              buttonVariants({ variant: 'primary', size: 'md' }),
-              'mt-8 inline-flex no-underline'
-            )}
-          >
-            Ingyenes konzultáció
-          </Link>
-        </div>
-      </section>
+        <section className="border-t border-border py-12 sm:py-16">
+          <div className="mx-auto max-w-5xl px-4 sm:px-6">
+            <RoiCalculator id="kalkulator" />
+          </div>
+        </section>
+
+        <section className="border-t border-border bg-subtle/40 py-12 sm:py-16">
+          <div className="mx-auto max-w-3xl px-4 sm:px-6">
+            <h2 className="text-center text-2xl font-semibold tracking-tight text-ink">
+              Gyakori kérdések
+            </h2>
+            <dl className="mt-8 divide-y divide-border rounded-xl border border-border bg-white">
+              {FAQ.map((item) => (
+                <div key={item.q} className="px-5 py-4">
+                  <dt className="text-sm font-semibold text-ink">{item.q}</dt>
+                  <dd className="mt-1 text-sm leading-relaxed text-ink-secondary">
+                    {item.a}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <div className="mt-8 flex justify-center">
+              <Link
+                href="/kapcsolat"
+                className={cn(
+                  buttonVariants({ variant: 'primary', size: 'md' }),
+                  'no-underline'
+                )}
+              >
+                Ingyenes konzultáció
+              </Link>
+            </div>
+          </div>
+        </section>
+      </article>
     </MarketingShell>
   )
 }

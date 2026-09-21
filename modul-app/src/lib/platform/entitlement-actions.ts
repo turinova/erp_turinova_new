@@ -169,6 +169,11 @@ export async function setTenantPlan(input: {
   const mat = await materializeTenantEntitlements(ctx.admin, input.tenantId)
   if (!mat.ok) return mat
 
+  if (mat.keys.includes('/pos') || mat.keys.includes('pos')) {
+    const { grantPosPageAccess } = await import('@/lib/pos/entitlement')
+    await grantPosPageAccess(ctx.admin, input.tenantId)
+  }
+
   await writeEntitlementAudit(ctx.admin, {
     tenantId: input.tenantId,
     actorUserId: ctx.user.id,
@@ -633,6 +638,11 @@ export async function assignDefaultPlanAndMaterialize(
 
   const mat = await materializeTenantEntitlements(admin, tenantId)
   if (!mat.ok) return mat
+
+  if (mat.keys.includes('/pos') || mat.keys.includes('pos')) {
+    const { grantPosPageAccess } = await import('@/lib/pos/entitlement')
+    await grantPosPageAccess(admin, tenantId)
+  }
 
   await writeEntitlementAudit(admin, {
     tenantId,

@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowLeftRight,
+  Banknote,
   BookMarked,
   Boxes,
   Building2,
@@ -101,7 +102,7 @@ export const mainNavItems: NavNode[] = [
     type: 'link',
     label: 'POS',
     href: '/pos',
-    icon: ScanBarcode,
+    icon: Banknote,
     accent: 'slate'
   },
   {

@@ -2,195 +2,96 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import { MarketingShell } from '@/components/marketing/marketing-shell'
+import {
+  OurStoryJumpNav,
+  OurStorySections
+} from '@/components/marketing/our-story-sections'
 import { buttonVariants } from '@/components/ui/button'
-import {
-  formatHufNet,
-  formatHufPlain
-} from '@/lib/marketing/pricing'
-import {
-  computeRoi,
-  formatHoursHu,
-  formatMonthsHu,
-  HIROS_ROI_INPUTS
-} from '@/lib/marketing/roi'
+import { OUR_STORY_CHAPTERS } from '@/lib/marketing/our-story'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = {
   title: 'A történetünk',
   description:
-    'Hírös Ablak: hogyan lett az Optinova a mindennapi ajánlat és műhely része — számokkal.'
+    'Hírös Ablakból nőtt az Optinova: hogyan lett a saját gyártásból bolt-, műhely- és partnerfolyamat egy rendszerben.'
 }
 
 export default function OurStoryPage() {
-  const result = computeRoi(HIROS_ROI_INPUTS)
-
   return (
     <MarketingShell activeHref="/a-tortenetunk">
       <article>
-        <header className="border-b border-border bg-surface">
-          <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
-            <p className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
-              A történetünk
-            </p>
-            <h1 className="mt-2 text-[2rem] font-semibold tracking-tight text-ink">
-              Először magunknak építettük
+        <header className="relative overflow-hidden border-b border-orange-100 bg-gradient-to-b from-orange-50 via-amber-50/40 to-white">
+          <div
+            className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-orange-200/40 blur-3xl"
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none absolute -bottom-16 left-1/4 size-56 rounded-full bg-violet-200/25 blur-3xl"
+            aria-hidden
+          />
+          <div className="relative mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+            <span className="inline-flex h-7 items-center rounded-full border border-orange-200 bg-orange-100/80 px-3 text-[12px] font-medium text-orange-900">
+              Hírös Ablak → Optinova · {OUR_STORY_CHAPTERS.length} fejezet
+            </span>
+            <h1 className="mt-4 max-w-2xl text-[2.25rem] font-semibold tracking-tight text-ink md:text-[2.75rem] md:leading-[1.1]">
+              Nem szoftvercégként indultunk
             </h1>
-            <p className="mt-4 text-[15px] leading-relaxed text-ink-secondary">
-              Ablakos gyártóként indultunk — Hírös Ablak, Kecskemét. Az Optinova
-              nem demóprojekt: a napi ajánlat, gyártásszervezés és
-              ügyfélértesítés része. A számok ugyanabból a képletből jönnek, mint
-              a nyilvános megtérülés-kalkulátor.
+            <p className="mt-4 max-w-xl text-[16px] leading-relaxed text-ink-secondary">
+              Ablakos gyártóként naponta ütköztünk abba, hogy az ajánlat, a
+              készlet és a műhely három külön világ. Az Optinova abból nőtt ki,
+              amit magunknak kellett megoldani — utána más gyártóknak is.
             </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                href="/kapcsolat"
+                className={cn(
+                  buttonVariants({ variant: 'primary', size: 'md' }),
+                  'no-underline'
+                )}
+              >
+                Ingyenes konzultáció
+              </Link>
+              <Link
+                href="/hogyan-mukodik"
+                className={cn(
+                  buttonVariants({ variant: 'secondary', size: 'md' }),
+                  'no-underline'
+                )}
+              >
+                Hogyan működik
+              </Link>
+            </div>
           </div>
         </header>
 
-        <div className="mx-auto max-w-3xl space-y-10 px-4 py-10 sm:px-6 sm:py-14">
-          <section>
-            <h2 className="text-[17px] font-semibold text-ink">A helyzet</h2>
-            <p className="mt-3 text-[14px] leading-relaxed text-ink-secondary">
-              Havonta több tucat ajánlat, gyakori ár- és anyagváltozás, SMS és
-              partner-egyeztetés kézzel. Az idő nem „adminisztráció” — a műhely
-              és az ügyfél várakozása.
-            </p>
-          </section>
+        <OurStoryJumpNav />
+        <OurStorySections />
 
-          <section>
-            <h2 className="text-[17px] font-semibold text-ink">
-              Előtte / utána (modellinputok)
-            </h2>
-            <div className="mt-4 overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[320px] text-left text-[13px]">
-                <thead className="border-b border-border bg-subtle text-ink-muted">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Tétel</th>
-                    <th className="px-3 py-2 font-medium">Előtte</th>
-                    <th className="px-3 py-2 font-medium">Optinovával</th>
-                  </tr>
-                </thead>
-                <tbody className="text-ink">
-                  <tr className="border-b border-border">
-                    <td className="px-3 py-2">Ajánlat / hó</td>
-                    <td className="px-3 py-2 tabular-nums" colSpan={2}>
-                      {HIROS_ROI_INPUTS.quotesPerMonth}
-                    </td>
-                  </tr>
-                  <tr className="border-b border-border">
-                    <td className="px-3 py-2">Perc / ajánlat</td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {HIROS_ROI_INPUTS.minutesPerQuoteNow}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {HIROS_ROI_INPUTS.minutesPerQuoteWithOptinova}
-                    </td>
-                  </tr>
-                  <tr className="border-b border-border">
-                    <td className="px-3 py-2">Gyártás szervezés óra / hét</td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {HIROS_ROI_INPUTS.productionHoursPerWeekNow}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {HIROS_ROI_INPUTS.productionHoursPerWeekWithOptinova}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2">SMS / hó</td>
-                    <td className="px-3 py-2 tabular-nums" colSpan={2}>
-                      {HIROS_ROI_INPUTS.smsPerMonth} ·{' '}
-                      {HIROS_ROI_INPUTS.minutesPerSmsManual} perc/db kézzel
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+        <div className="bg-white px-4 py-14 sm:px-6 sm:py-20">
+          <div className="mx-auto max-w-6xl overflow-hidden rounded-3xl bg-zinc-950 p-8 shadow-[0_24px_60px_-24px_rgba(24,24,27,0.45)] md:p-12">
+            <div className="flex flex-col items-start justify-between gap-8 md:flex-row md:items-center">
+              <div className="max-w-lg">
+                <span className="inline-flex h-7 items-center rounded-full border border-orange-500/30 bg-orange-500/10 px-3 text-xs font-medium uppercase tracking-wide text-orange-400">
+                  Ingyenes konzultáció
+                </span>
+                <h2 className="mt-4 text-2xl font-semibold tracking-tight text-white md:text-3xl">
+                  Beszéljük át a ti folyamataitokat
+                </h2>
+                <p className="mt-3 text-[15px] leading-relaxed text-zinc-400">
+                  Ugyanabból a történetből indulunk: hol megy el az idő, és melyik
+                  modul váltja ki először.
+                </p>
+              </div>
+              <Link
+                href="/kapcsolat"
+                className="inline-flex h-12 shrink-0 items-center justify-center rounded-lg bg-orange-500 px-6 text-[15px] font-medium text-white no-underline transition-colors hover:bg-orange-600"
+              >
+                Kérem a visszahívást
+              </Link>
             </div>
-            <p className="mt-2 text-[12px] text-ink-muted">
-              Órabér a modellben:{' '}
-              {formatHufPlain(HIROS_ROI_INPUTS.hourlyWageHuf)}/óra (teljes
-              bérköltség). Modulok: Alap + SMS + Online partner + Címke.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-[17px] font-semibold text-ink">Eredmény</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <Stat
-                label="Megspórolt idő / hó"
-                value={formatHoursHu(result.hoursTotal)}
-              />
-              <Stat
-                label="Megspórolt érték / hó"
-                value={formatHufPlain(result.savingsMonthlyHuf)}
-              />
-              <Stat
-                label="Előfizetés (becslés)"
-                value={formatHufNet(result.subscriptionMonthlyHuf)}
-              />
-              <Stat
-                label="Nettó nyereség / hó"
-                value={formatHufPlain(result.netMonthlyHuf)}
-              />
-              <Stat
-                label="Megtérülés"
-                value={
-                  result.paybackMonths != null
-                    ? formatMonthsHu(result.paybackMonths)
-                    : '—'
-                }
-              />
-              <Stat
-                label="Éves spórolás (időérték)"
-                value={formatHufPlain(result.savingsYearlyHuf)}
-              />
-            </div>
-            <p className="mt-4 text-[13px] leading-relaxed text-ink-secondary">
-              Bontás: ajánlat {formatHoursHu(result.hoursQuotes)}, gyártás{' '}
-              {formatHoursHu(result.hoursProduction)}, SMS{' '}
-              {formatHoursHu(result.hoursSms)} havonta. Ez becslés a publikált
-              képlettel — nem szerződéses garancia.
-            </p>
-          </section>
-
-          <blockquote className="rounded-lg border border-border bg-subtle px-4 py-4 text-[14px] leading-relaxed text-ink">
-            „Nem az volt a cél, hogy „legyen szoftver”, hanem hogy az ajánlat és
-            a műhely ne vigyen el fél napot. A kalkulátor ugyanazt mutatja, amit
-            a mindennapokban érzünk.”
-            <footer className="mt-3 text-[12px] text-ink-muted">
-              — Hírös Ablak, üzemeltetés
-            </footer>
-          </blockquote>
-
-          <div className="flex flex-wrap gap-3 border-t border-border pt-8">
-            <Link
-              href="/kapcsolat"
-              className={cn(
-                buttonVariants({ variant: 'primary', size: 'md' }),
-                'no-underline'
-              )}
-            >
-              Ingyenes konzultáció
-            </Link>
-            <Link
-              href="/hogyan-mukodik"
-              className={cn(
-                buttonVariants({ variant: 'secondary', size: 'md' }),
-                'no-underline'
-              )}
-            >
-              Hogyan működik
-            </Link>
           </div>
         </div>
       </article>
     </MarketingShell>
-  )
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-3">
-      <p className="text-[12px] text-ink-muted">{label}</p>
-      <p className="mt-1 text-[16px] font-semibold tabular-nums text-ink">
-        {value}
-      </p>
-    </div>
   )
 }

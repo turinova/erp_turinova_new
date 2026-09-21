@@ -14,9 +14,9 @@ export type RoiInputs = {
   hourlyWageHuf: number
   smsAddon: boolean
   partnerAddon: boolean
-  labelsAddon: boolean
-  posAddon: boolean
   jelenletAddon: boolean
+  lapszabaszatAddon: boolean
+  footcounterAddon: boolean
 }
 
 export type RoiBreakdown = {
@@ -26,10 +26,14 @@ export type RoiBreakdown = {
   hoursTotal: number
   savingsMonthlyHuf: number
   savingsYearlyHuf: number
+  /** Teljes havi díj a próba után (Alap + add-onok + SMS usage). */
   subscriptionMonthlyHuf: number
   smsUsageMonthlyHuf: number
   netMonthlyHuf: number
   paybackMonths: number | null
+  trialMonths: number
+  /** Próba alatt az Alap 0 Ft — add-onok + SMS usage marad. */
+  subscriptionDuringTrialHuf: number
 }
 
 /** Konzervatív defaultok — Hírös-szerű KKV. */
@@ -44,9 +48,9 @@ export const ROI_DEFAULTS: RoiInputs = {
   hourlyWageHuf: 5_000,
   smsAddon: true,
   partnerAddon: false,
-  labelsAddon: false,
-  posAddon: false,
-  jelenletAddon: false
+  jelenletAddon: false,
+  lapszabaszatAddon: false,
+  footcounterAddon: false
 }
 
 /** Hírös Ablak esettanulmány — ugyanaz a képlet, publikált kalibráció. */
@@ -61,9 +65,9 @@ export const HIROS_ROI_INPUTS: RoiInputs = {
   hourlyWageHuf: 5_200,
   smsAddon: true,
   partnerAddon: true,
-  labelsAddon: true,
-  posAddon: false,
-  jelenletAddon: false
+  jelenletAddon: false,
+  lapszabaszatAddon: true,
+  footcounterAddon: false
 }
 
 const WEEKS_PER_MONTH = 4.3
@@ -77,29 +81,38 @@ export function computeSubscriptionMonthlyHuf(input: RoiInputs): {
   fixedHuf: number
   smsUsageHuf: number
   totalHuf: number
+  planHuf: number
+  addonsHuf: number
 } {
-  let fixed = MARKETING_PRICING.plan.priceMonthlyHuf
+  const planHuf = MARKETING_PRICING.plan.priceMonthlyHuf
+  let addonsHuf = 0
+  if (input.lapszabaszatAddon) {
+    addonsHuf += MARKETING_PRICING.addons.lapszabaszat.priceMonthlyHuf
+  }
   if (input.smsAddon) {
-    fixed += MARKETING_PRICING.addons.quote_ready_sms.priceMonthlyHuf
+    addonsHuf += MARKETING_PRICING.addons.quote_ready_sms.priceMonthlyHuf
   }
   if (input.partnerAddon) {
-    fixed += MARKETING_PRICING.addons.partner_orders.priceMonthlyHuf
-  }
-  if (input.labelsAddon) {
-    fixed += MARKETING_PRICING.addons.product_labels.priceMonthlyHuf
-  }
-  if (input.posAddon) {
-    fixed += MARKETING_PRICING.addons.pos.priceMonthlyHuf
+    addonsHuf += MARKETING_PRICING.addons.partner_orders.priceMonthlyHuf
   }
   if (input.jelenletAddon) {
-    fixed += MARKETING_PRICING.addons.jelenlet.priceMonthlyHuf
+    addonsHuf += MARKETING_PRICING.addons.jelenlet.priceMonthlyHuf
   }
-  const smsUsage =
-    input.smsAddon
-      ? clampNonNeg(input.smsPerMonth) *
-        MARKETING_PRICING.addons.quote_ready_sms.priceUnitHuf
-      : 0
-  return { fixedHuf: fixed, smsUsageHuf: smsUsage, totalHuf: fixed + smsUsage }
+  if (input.footcounterAddon) {
+    addonsHuf += MARKETING_PRICING.addons.footcounter.priceMonthlyHuf
+  }
+  const smsUsage = input.smsAddon
+    ? clampNonNeg(input.smsPerMonth) *
+      MARKETING_PRICING.addons.quote_ready_sms.priceUnitHuf
+    : 0
+  const fixedHuf = planHuf + addonsHuf
+  return {
+    planHuf,
+    addonsHuf,
+    fixedHuf,
+    smsUsageHuf: smsUsage,
+    totalHuf: fixedHuf + smsUsage
+  }
 }
 
 export function computeRoi(input: RoiInputs): RoiBreakdown {
@@ -111,8 +124,7 @@ export function computeRoi(input: RoiInputs): RoiBreakdown {
 
   const prodNow = clampNonNeg(input.productionHoursPerWeekNow)
   const prodOpti = clampNonNeg(input.productionHoursPerWeekWithOptinova)
-  const hoursProduction =
-    Math.max(0, prodNow - prodOpti) * WEEKS_PER_MONTH
+  const hoursProduction = Math.max(0, prodNow - prodOpti) * WEEKS_PER_MONTH
 
   const smsCount = input.smsAddon ? clampNonNeg(input.smsPerMonth) : 0
   const minSms = clampNonNeg(input.minutesPerSmsManual)
@@ -124,6 +136,8 @@ export function computeRoi(input: RoiInputs): RoiBreakdown {
   const savingsYearlyHuf = savingsMonthlyHuf * 12
 
   const sub = computeSubscriptionMonthlyHuf(input)
+  const trialMonths = MARKETING_PRICING.trialMonths
+  const subscriptionDuringTrialHuf = sub.addonsHuf + sub.smsUsageHuf
   const netMonthlyHuf = savingsMonthlyHuf - sub.totalHuf
   const paybackMonths =
     savingsMonthlyHuf > 0
@@ -140,17 +154,19 @@ export function computeRoi(input: RoiInputs): RoiBreakdown {
     subscriptionMonthlyHuf: sub.totalHuf,
     smsUsageMonthlyHuf: sub.smsUsageHuf,
     netMonthlyHuf,
-    paybackMonths
+    paybackMonths,
+    trialMonths,
+    subscriptionDuringTrialHuf
   }
 }
 
 export function addonKeysFromInputs(input: RoiInputs): MarketingAddonKey[] {
   const keys: MarketingAddonKey[] = []
+  if (input.lapszabaszatAddon) keys.push('lapszabaszat')
   if (input.smsAddon) keys.push('quote_ready_sms')
   if (input.partnerAddon) keys.push('partner_orders')
-  if (input.labelsAddon) keys.push('product_labels')
-  if (input.posAddon) keys.push('pos')
   if (input.jelenletAddon) keys.push('jelenlet')
+  if (input.footcounterAddon) keys.push('footcounter')
   return keys
 }
 

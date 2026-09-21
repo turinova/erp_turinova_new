@@ -2,7 +2,7 @@
 
 **Státusz:** S2 P0+P1 implementálva (scanner-first till).  
 **Route:** `/pos` · műszakok: `/ertekesitesek/muszakok`  
-**Add-on:** `pos` (**9 900 Ft** nettó/hó) — [33](33-packages-and-addons.md)  
+**Csomag:** **Alap plan** (39 990 Ft nettó/hó) — [33](33-packages-and-addons.md)  
 **Kapcsolat:** [28-ertekesites-workflow.md](28-ertekesites-workflow.md), [31-pos-muszakzaras.md](31-pos-muszakzaras.md)  
 **Legacy ötlet:** main-app `PosClient` (viselkedés, nem kód).
 
@@ -12,10 +12,10 @@
 
 > A POS = vonalkód-first pulti munkaasztal → ugyanaz a `sales_orders` mag (`channel=pos`) + azonnali fizetés + stock out.
 
-**Nem** a manuális `/ertekesitesek/uj` (az admin űrlap — **Alap plan**).  
+**Nem** a manuális `/ertekesitesek/uj` (az admin űrlap — szintén Alap).  
 **Nem** unpaid/utalás (az később a manuális eladáson).
 
-Entitlement: capability `pos` + page `/pos` + `/ertekesitesek/muszakok` (migráció: `20260517_packages_beszerzes_alap_pos_addon.sql`; korábbi blanket `/pos` az Alapból kikerült).
+Entitlement: capability `pos` + page `/pos` + `/ertekesitesek/muszakok` (migráció: `20260524_alap_includes_pos_labels.sql`; korábban külön add-on volt: `20260517`).
 
 ---
 
@@ -63,4 +63,4 @@ Primary confirm: **Eladás rögzítése**.
 
 Ismeretlen barcode → inline hiba; soft stock warn; empty cart CTA disabled; RPC fail → kosár megmarad; success → clear + refocus.
 
-Migráció: `20260517_packages_beszerzes_alap_pos_addon.sql` (`pos` add-on). Korábbi: `20260511_pos_page.sql`.
+Migráció: `20260524_alap_includes_pos_labels.sql` (Alap). Korábbi add-on: `20260517`; page: `20260511_pos_page.sql`.

@@ -37,7 +37,7 @@ Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-pa
 | 1 | Fizetés **manuális** (bank / külső számla) — **nincs** Stripe / checkout |
 | 2 | Plan, add-on, `paid_through`, státusz: **csak platform** |
 | 3 | Tenant oldalon **soha nincs self-serve** (nincs add-on switch, plan váltás, fizetés gomb) |
-| 4 | Listaárak a katalógusban (**nettó**): Alap **22 000** (eladás + készlet + **beszerzés**), POS **9 900**, Jelenlét **9 900**, címke **9 900**, partner **19 000**, SMS **4 900 + 89 Ft/db**. Részletek: [33](33-packages-and-addons.md). |
+| 4 | Listaárak (**nettó**): Alap **39 990**/hó (2 hónap automata próba; éves **399 900** = 2 hónap ajándék). Add-on: lapszabászat **10 000**, Jelenlét **9 900**, partner **19 000**, SMS **4 900 + 89 Ft/db**, belépőszámláló **5 000** + kamera egyszeri. Részletek: [33](33-packages-and-addons.md). |
 | 5 | Havi becslés = plan + enabled add-onok + SMS ledger (`sent`/`delivered`) — platform és tenant **ugyanaz** a lib |
 | 6 | Tenant UI: `/beallitasok/elofizetes` — **csak owner**; **nincs ár**; státusz + aktív / elérhető funkciók |
 | 7 | Staff sidebar alján: ÁSZF / Adatkezelés / Impresszum (`getLegalUrls`, mint partner) |

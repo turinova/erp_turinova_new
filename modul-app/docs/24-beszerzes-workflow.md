@@ -210,7 +210,7 @@ ELSE:
    - PO státusz újraszámolás (3.1)
    - opcionális: dolgozó(k) audit (`receipt_workers`) — MVP: aktuális user elég; multi-worker később
 3. Toast jobb alul: „Bevételezve. Rendelés: Részben beérkezett | Beérkezett.”
-4. Címke nyomtatás secondary (ha product_labels addon).
+4. Címke nyomtatás secondary (ha `product_labels` entitlement — Alap plan).
 
 ### 5.7 Termék „kész / elérhető”
 

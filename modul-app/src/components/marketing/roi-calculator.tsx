@@ -144,8 +144,9 @@ export function RoiCalculator({
           Számold ki, mennyi időt és forintot spórolhatsz
         </h2>
         <p className="mt-2 text-[14px] leading-relaxed text-ink-secondary">
-          Konzervatív becslés: saját számaiddal. Nem garancia — a feltételek
-          alul átlátszóak. Az előfizetés díja is beleszámít.
+          Konzervatív becslés a saját számaiddal. Az Alap első{' '}
+          {MARKETING_PRICING.trialMonths} hónapja 0 Ft; a kalkulátor mutatja a
+          próba alatti és a próba utáni díjat is. Nem garancia.
         </p>
       </div>
 
@@ -213,11 +214,11 @@ export function RoiCalculator({
             <p className="text-[13px] font-medium text-ink">Modulok a díjban</p>
             <div className="grid gap-2 sm:grid-cols-1">
               <AddonToggle
-                id="addon-pos"
-                label={MARKETING_PRICING.addons.pos.name}
-                price={`${formatHufPlain(MARKETING_PRICING.addons.pos.priceMonthlyHuf)}/hó`}
-                checked={input.posAddon}
-                onChange={(v) => patch({ posAddon: v })}
+                id="addon-lapszab"
+                label={MARKETING_PRICING.addons.lapszabaszat.name}
+                price={`${formatHufPlain(MARKETING_PRICING.addons.lapszabaszat.priceMonthlyHuf)}/hó`}
+                checked={input.lapszabaszatAddon}
+                onChange={(v) => patch({ lapszabaszatAddon: v })}
               />
               <AddonToggle
                 id="addon-jelenlet"
@@ -241,16 +242,16 @@ export function RoiCalculator({
                 onChange={(v) => patch({ partnerAddon: v })}
               />
               <AddonToggle
-                id="addon-labels"
-                label={MARKETING_PRICING.addons.product_labels.name}
-                price={`${formatHufPlain(MARKETING_PRICING.addons.product_labels.priceMonthlyHuf)}/hó`}
-                checked={input.labelsAddon}
-                onChange={(v) => patch({ labelsAddon: v })}
+                id="addon-foot"
+                label={MARKETING_PRICING.addons.footcounter.name}
+                price={`${formatHufPlain(MARKETING_PRICING.addons.footcounter.priceMonthlyHuf)}/hó + kamera egyszeri`}
+                checked={input.footcounterAddon}
+                onChange={(v) => patch({ footcounterAddon: v })}
               />
             </div>
             <p className="text-[12px] text-ink-muted">
-              Alap csomag mindig benne van:{' '}
-              {formatHufNet(MARKETING_PRICING.plan.priceMonthlyHuf)}/hó.
+              Alap: {formatHufNet(MARKETING_PRICING.plan.priceMonthlyHuf)}/hó ·
+              első {MARKETING_PRICING.trialMonths} hónap az Alapban 0 Ft.
             </p>
           </div>
         </div>
@@ -270,8 +271,16 @@ export function RoiCalculator({
                 {formatHufPlain(result.savingsMonthlyHuf)}
               </dd>
             </div>
+            <div className="flex items-baseline justify-between gap-3 rounded-md bg-orange-50 px-2 py-2">
+              <dt className="text-[13px] text-orange-950">
+                Első {result.trialMonths} hónap (Alap 0 Ft)
+              </dt>
+              <dd className="text-[13px] font-semibold tabular-nums text-orange-950">
+                {formatHufNet(result.subscriptionDuringTrialHuf)}
+              </dd>
+            </div>
             <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-ink-secondary">Előfizetés (becslés)</dt>
+              <dt className="text-ink-secondary">Előfizetés próba után</dt>
               <dd className="tabular-nums text-ink">
                 {formatHufNet(result.subscriptionMonthlyHuf)}
               </dd>

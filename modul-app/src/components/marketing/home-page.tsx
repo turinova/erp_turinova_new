@@ -1,4 +1,4 @@
-import { ArrowRightIcon, CreditCardIcon, StarIcon } from 'lucide-react'
+import { ArrowRightIcon } from 'lucide-react'
 import Image from 'next/image'
 
 import { AnimationContainer } from '@/components/marketing/linkify/animation-container'
@@ -9,18 +9,11 @@ import {
 } from '@/components/marketing/linkify/bento-grid'
 import { BorderBeam } from '@/components/marketing/linkify/border-beam'
 import { LinkifyFooter } from '@/components/marketing/linkify/footer'
-import { LampContainer } from '@/components/marketing/linkify/lamp'
 import { MagicBadge } from '@/components/marketing/linkify/magic-badge'
-import { MagicCard } from '@/components/marketing/linkify/magic-card'
 import { MaxWidthWrapper } from '@/components/marketing/linkify/max-width-wrapper'
 import { LinkifyNavbar } from '@/components/marketing/linkify/navbar'
-import { PricingCards } from '@/components/marketing/linkify/pricing-cards'
+import { HomeCtaForm } from '@/components/marketing/home-cta-form'
 import { MarketingMosaicBackdrop } from '@/components/marketing/marketing-mosaic-backdrop'
-import {
-  COMPANIES,
-  PROCESS,
-  REVIEWS
-} from '@/lib/marketing/linkify/content'
 import { LINKIFY_ASSET } from '@/lib/marketing/linkify/paths'
 
 /** Linkify marketing home — Optinova brand + login mosaic hero backdrop. */
@@ -62,7 +55,7 @@ export function MarketingHomePage() {
 
               <AnimationContainer
                 delay={0.2}
-                className="relative w-full bg-transparent px-2 pb-20 pt-20 md:py-32"
+                className="relative w-full bg-transparent px-2 pb-8 pt-20 md:pb-12 md:pt-32"
               >
                 <div className="lf-gradient absolute left-1/2 top-[10%] h-1/4 w-3/4 -translate-x-1/2 animate-lf-image-glow blur-[5rem] md:h-1/3" />
                 <div className="-m-2 rounded-xl bg-white/50 p-2 ring-1 ring-inset ring-zinc-900/10 backdrop-blur-3xl lg:-m-4 lg:rounded-2xl">
@@ -83,208 +76,62 @@ export function MarketingHomePage() {
             </div>
           </MaxWidthWrapper>
 
-          {/* Companies */}
-          <MaxWidthWrapper>
-            <AnimationContainer delay={0.4}>
-              <div className="py-14">
-                <div className="mx-auto px-4 md:px-8">
-                  <h2 className="text-center text-sm font-medium uppercase text-zinc-400">
-                    Trusted by the best in the industry
-                  </h2>
-                  <div className="mt-8">
-                    <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-6 md:gap-x-16">
-                      {COMPANIES.map((company) => (
-                        <li key={company.name}>
-                          <Image
-                            src={company.logo}
-                            alt={company.name}
-                            width={80}
-                            height={80}
-                            quality={100}
-                            className="h-auto w-28"
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </AnimationContainer>
-          </MaxWidthWrapper>
-
           {/* Features */}
-          <MaxWidthWrapper className="pt-10">
+          <MaxWidthWrapper>
             <AnimationContainer delay={0.1}>
-              <div className="flex w-full flex-col items-center justify-center py-8">
-                <MagicBadge title="Features" />
+              <div className="flex w-full flex-col items-center justify-center pb-6">
+                <MagicBadge title="Modulok" />
                 <h2 className="mt-6 text-center text-3xl font-medium !leading-[1.1] text-zinc-900 md:text-5xl">
-                  Manage Links Like a Pro
+                  A napi működés egy rendszerben
                 </h2>
-                <p className="mt-4 max-w-lg text-center text-lg text-zinc-500">
-                  Linkify is a powerful link management tool that helps you
-                  shorten, track, and organize all your links in one place.
+                <p className="mt-4 max-w-xl text-center text-lg text-zinc-500">
+                  Készlet, beszerzés, pénztár és gyártás ugyanazon az adaton
+                  dolgozik. Nincs külön program és nincs kétszer rögzített
+                  adat.
                 </p>
               </div>
             </AnimationContainer>
             <AnimationContainer delay={0.2}>
               <BentoGrid className="py-8">
-                {CARDS.map((feature, idx) => (
-                  <BentoCard key={idx} {...feature} />
+                {CARDS.map((feature) => (
+                  <BentoCard key={feature.name} {...feature} />
                 ))}
               </BentoGrid>
-            </AnimationContainer>
-          </MaxWidthWrapper>
-
-          {/* Process */}
-          <MaxWidthWrapper className="py-10">
-            <AnimationContainer delay={0.1}>
-              <div className="mx-auto flex w-full max-w-xl flex-col items-center justify-center py-8">
-                <MagicBadge title="The Process" />
-                <h2 className="mt-6 text-center text-3xl font-medium !leading-[1.1] text-zinc-900 md:text-5xl">
-                  Effortless link management in 3 steps
-                </h2>
-                <p className="mt-4 max-w-lg text-center text-lg text-zinc-500">
-                  Follow these simple steps to optimize, organize, and share
-                  your links with ease.
-                </p>
-              </div>
-            </AnimationContainer>
-            <div className="grid w-full grid-cols-1 gap-4 py-8 md:grid-cols-2 md:gap-8 lg:grid-cols-3">
-              {PROCESS.map((process, id) => (
-                <AnimationContainer delay={0.2 * id} key={process.title}>
-                  <MagicCard className="group md:py-8">
-                    <div className="flex w-full flex-col items-start justify-center">
-                      <process.icon
-                        strokeWidth={1.5}
-                        className="h-10 w-10 text-zinc-900"
-                      />
-                      <div className="relative flex flex-col items-start">
-                        <span className="absolute -top-6 right-0 flex h-12 w-12 items-center justify-center rounded-full border-2 border-zinc-200 pt-0.5 text-2xl font-medium text-zinc-900">
-                          {id + 1}
-                        </span>
-                        <h3 className="mt-6 text-base font-medium text-zinc-900">
-                          {process.title}
-                        </h3>
-                        <p className="mt-2 text-sm text-zinc-500">
-                          {process.description}
-                        </p>
-                      </div>
-                    </div>
-                  </MagicCard>
-                </AnimationContainer>
-              ))}
-            </div>
-          </MaxWidthWrapper>
-
-          {/* Pricing */}
-          <MaxWidthWrapper className="py-10">
-            <AnimationContainer delay={0.1}>
-              <div className="mx-auto flex w-full max-w-xl flex-col items-center justify-center py-8">
-                <MagicBadge title="Simple Pricing" />
-                <h2 className="mt-6 text-center text-3xl font-medium !leading-[1.1] text-zinc-900 md:text-5xl">
-                  Choose a plan that works for you
-                </h2>
-                <p className="mt-4 max-w-lg text-center text-lg text-zinc-500">
-                  Get started with Linkify today and enjoy more features with
-                  our pro plans.
-                </p>
-              </div>
-            </AnimationContainer>
-            <AnimationContainer delay={0.2}>
-              <PricingCards />
-            </AnimationContainer>
-            <AnimationContainer delay={0.3}>
-              <div className="mx-auto mt-12 flex w-full max-w-5xl flex-wrap items-center justify-center gap-6 lg:justify-evenly">
-                <div className="flex items-center gap-2">
-                  <CreditCardIcon className="h-5 w-5 text-zinc-900" />
-                  <span className="text-zinc-500">No credit card required</span>
-                </div>
-              </div>
-            </AnimationContainer>
-          </MaxWidthWrapper>
-
-          {/* Reviews */}
-          <MaxWidthWrapper className="py-10">
-            <AnimationContainer delay={0.1}>
-              <div className="mx-auto flex w-full max-w-xl flex-col items-center justify-center py-8">
-                <MagicBadge title="Our Customers" />
-                <h2 className="mt-6 text-center text-3xl font-medium !leading-[1.1] text-zinc-900 md:text-5xl">
-                  What our users are saying
-                </h2>
-                <p className="mt-4 max-w-lg text-center text-lg text-zinc-500">
-                  Here&apos;s what some of our users have to say about Linkify.
-                </p>
-              </div>
-            </AnimationContainer>
-            <div className="grid grid-cols-1 place-items-start gap-4 py-10 md:grid-cols-2 md:gap-8 lg:grid-cols-3">
-              {[
-                REVIEWS.slice(0, 3),
-                REVIEWS.slice(3, 6),
-                REVIEWS.slice(6, 9)
-              ].map((column, colIdx) => (
-                <div
-                  key={colIdx}
-                  className="flex h-min flex-col items-start gap-6"
+              <p className="pb-4 text-center text-sm text-zinc-500">
+                Ezek a leggyakrabban használt modulok. A rendszer ennél
+                lényegesen többet tud, az árajánlatoktól a partnerportálig.{' '}
+                <a
+                  href="/hogyan-mukodik"
+                  className="font-medium text-zinc-800 no-underline underline-offset-2 hover:underline"
                 >
-                  {column.map((review, index) => (
-                    <AnimationContainer
-                      delay={0.2 * index}
-                      key={review.username}
-                    >
-                      <MagicCard className="md:p-0">
-                        <div className="flex h-min w-full flex-col">
-                          <div className="px-4 pt-4">
-                            <p className="text-lg font-medium text-zinc-500">
-                              {review.name}
-                            </p>
-                            <p className="text-sm text-zinc-400">
-                              {review.username}
-                            </p>
-                          </div>
-                          <div className="space-y-4 px-4 py-4">
-                            <p className="text-zinc-500">{review.review}</p>
-                          </div>
-                          <div className="mt-auto flex space-x-1 px-4 pb-4">
-                            {Array.from({ length: review.rating }, (_, i) => (
-                              <StarIcon
-                                key={i}
-                                className="h-4 w-4 fill-yellow-500 text-yellow-500"
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </MagicCard>
-                    </AnimationContainer>
-                  ))}
-                </div>
-              ))}
-            </div>
+                  Nézd meg, hogyan működik
+                </a>
+                .
+              </p>
+            </AnimationContainer>
           </MaxWidthWrapper>
 
-          {/* CTA Lamp */}
-          <MaxWidthWrapper className="mt-20 max-w-[100vw] overflow-x-hidden">
+          {/* CTA — ingyenes konzultáció */}
+          <MaxWidthWrapper className="pb-16 pt-12 md:pb-24 md:pt-16">
             <AnimationContainer delay={0.1}>
-              <LampContainer>
-                <div className="relative flex w-full flex-col items-center justify-center text-center">
-                  <h2 className="mt-8 bg-gradient-to-b from-zinc-700 to-zinc-400 bg-clip-text py-4 text-center text-4xl font-medium !leading-[1.15] tracking-tight text-transparent md:text-7xl">
-                    Step into the future of link management
-                  </h2>
-                  <p className="mx-auto mt-6 max-w-md text-zinc-500">
-                    Experience the cutting-edge solution that transforms how you
-                    handle your links. Elevate your online presence with our
-                    next-gen platform.
-                  </p>
-                  <div className="mt-6">
-                    <button
-                      type="button"
-                      className="inline-flex cursor-default items-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-                    >
+              <div className="rounded-3xl bg-zinc-950 p-6 shadow-[0_24px_60px_-24px_rgba(24,24,27,0.45)] md:p-14">
+                <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+                  <div>
+                    <span className="inline-flex h-7 items-center rounded-full border border-orange-500/30 bg-orange-500/10 px-3 text-xs font-medium uppercase tracking-wide text-orange-400">
                       Ingyenes konzultáció
-                      <ArrowRightIcon className="ml-2 h-4 w-4" />
-                    </button>
+                    </span>
+                    <h2 className="mt-6 text-3xl font-medium !leading-[1.1] text-white md:text-5xl">
+                      Beszéljük át a folyamataitokat
+                    </h2>
+                    <p className="mt-5 max-w-md text-lg text-zinc-400">
+                      Átnézzük, hol megy el a legtöbb idő a napi működésben, és
+                      melyik modul váltja ki elsőként. Ehhez elég egy
+                      telefonszám.
+                    </p>
                   </div>
+                  <HomeCtaForm />
                 </div>
-              </LampContainer>
+              </div>
             </AnimationContainer>
           </MaxWidthWrapper>
         </div>

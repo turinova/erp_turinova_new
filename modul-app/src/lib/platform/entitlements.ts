@@ -205,6 +205,10 @@ export async function materializePlanTenants(
     if (!result.ok) {
       return { ok: false, message: result.message }
     }
+    if (result.keys.includes('/pos') || result.keys.includes('pos')) {
+      const { grantPosPageAccess } = await import('@/lib/pos/entitlement')
+      await grantPosPageAccess(admin, t.id)
+    }
     count += 1
   }
   return { ok: true, count }
