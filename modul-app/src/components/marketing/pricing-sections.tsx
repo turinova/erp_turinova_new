@@ -6,7 +6,6 @@ import { useState } from 'react'
 
 import { buttonVariants } from '@/components/ui/button'
 import {
-  formatHufNet,
   formatHufPlain,
   MARKETING_PRICING,
   planEffectiveMonthlyFromYearly
