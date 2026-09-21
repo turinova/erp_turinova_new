@@ -2,7 +2,7 @@
 
 **Státusz:** P0 implementálva.  
 **Route:** `/pos` (nyitás/zárás) · `/ertekesitesek/muszakok` (ügyvezető)  
-**Migráció:** `20260514_pos_shifts_and_registers.sql`  
+**Migráció:** `20260514_pos_shifts_and_registers.sql` (+ `20260523_warehouse_default_pos_register.sql`: új raktár → default Főpénztár + backfill)  
 **Kapcsolat:** [28](28-ertekesites-workflow.md), [29](29-pos-workflow.md)
 
 ---

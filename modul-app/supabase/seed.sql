@@ -324,3 +324,7 @@ where t.slug = 'demo'
 
 -- Platform admin: futtasd a 20260326_platform_admin.sql-t.
 -- A seed emailű user platform_admins-be kerül (admin@turinova.hu).
+
+-- Demó adatok (törzs + katalógus tábla/él/szálas/termék):
+--   platform UI → create checkbox / tenant detail gomb
+--   migráció: 20260522_seed_demo_master_data.sql + seedDemoCatalog (képek: public/images/demo-seed/)

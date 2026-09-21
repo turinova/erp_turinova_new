@@ -17,6 +17,7 @@ type AccessoryBarcodeRow = {
   price_net: number | string
   barcode: string | null
   barcode_internal: string | null
+  image_url: string | null
   tax_rates:
     | { rate_percent: number | string }
     | { rate_percent: number | string }[]
@@ -62,6 +63,7 @@ export async function lookupPosProductByBarcode(
         price_net,
         barcode,
         barcode_internal,
+        image_url,
         tax_rates ( rate_percent ),
         units ( shortform )
       `
@@ -126,7 +128,8 @@ export async function lookupPosProductByBarcode(
       price_net: Number(row.price_net) || 0,
       tax_rate_percent: Number(tax?.rate_percent ?? 0),
       unit_shortform: unit?.shortform ?? 'db',
-      on_hand: onHand
+      on_hand: onHand,
+      image_url: row.image_url ?? null
     }
   }
 }

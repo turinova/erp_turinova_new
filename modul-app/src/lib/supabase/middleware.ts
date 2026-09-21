@@ -311,44 +311,70 @@ export async function updateSession(request: NextRequest) {
         } else if (!isPublicAuth) {
           // Céges belépés a partner marketing hoston (MODUL_AUTH_SURFACE=partner)
           const nonce = request.cookies.get(APP_SESSION_NONCE_COOKIE)?.value
-          const snapshotToken = request.cookies.get(SESSION_SNAPSHOT_COOKIE)
-            ?.value
-          const snap = await snapshotMatchesRequest({
-            token: snapshotToken,
-            userId: user.id,
-            nonce
-          })
+          const impersonationId = request.cookies.get(
+            IMPERSONATION_SESSION_COOKIE
+          )?.value
 
-          if (snap?.hasMembership) {
-            const valid = await isAppSessionValid(supabase, user.id, nonce)
-            if (valid) {
+          // Support impersonation: nincs app-session nonce a handoff előtt/után —
+          // ugyanaz a bypass mint a staff ágon (különben → /ceges-belepes).
+          let impersonationOk = false
+          if (impersonationId) {
+            const { data: imp } = await supabase
+              .from('platform_impersonation_sessions')
+              .select('id, target_user_id, expires_at, ended_at')
+              .eq('id', impersonationId)
+              .maybeSingle()
+
+            if (
+              imp &&
+              !imp.ended_at &&
+              imp.target_user_id === user.id &&
+              new Date(imp.expires_at).getTime() > Date.now()
+            ) {
+              impersonationOk = true
               isAuthenticated = true
               hasStaffMembership = true
               isPartnerUser = false
-            } else {
-              await supabase.auth.signOut()
-              return redirectStaffSessionReplaced(request, surface)
             }
-          } else {
-            const [{ data: memberships }, valid] = await Promise.all([
-              supabase
-                .from('tenant_memberships')
-                .select('id')
-                .eq('user_id', user.id)
-                .eq('status', 'active')
-                .limit(1),
-              isAppSessionValid(supabase, user.id, nonce)
-            ])
-            hasStaffMembership = (memberships?.length ?? 0) > 0
-            if (hasStaffMembership && valid) {
-              isAuthenticated = true
-              isPartnerUser = false
+          }
+
+          if (!impersonationOk) {
+            const snapshotToken = request.cookies.get(SESSION_SNAPSHOT_COOKIE)
+              ?.value
+            const snap = await snapshotMatchesRequest({
+              token: snapshotToken,
+              userId: user.id,
+              nonce
+            })
+
+            if (snap?.hasMembership) {
+              const valid = await isAppSessionValid(supabase, user.id, nonce)
+              if (valid) {
+                isAuthenticated = true
+                hasStaffMembership = true
+                isPartnerUser = false
+              } else {
+                await supabase.auth.signOut()
+                return redirectStaffSessionReplaced(request, surface)
+              }
             } else {
-              await supabase.auth.signOut()
-              return redirectTo(
-                request,
-                staffLoginPath(surface)
-              )
+              const [{ data: memberships }, valid] = await Promise.all([
+                supabase
+                  .from('tenant_memberships')
+                  .select('id')
+                  .eq('user_id', user.id)
+                  .eq('status', 'active')
+                  .limit(1),
+                isAppSessionValid(supabase, user.id, nonce)
+              ])
+              hasStaffMembership = (memberships?.length ?? 0) > 0
+              if (hasStaffMembership && valid) {
+                isAuthenticated = true
+                isPartnerUser = false
+              } else {
+                await supabase.auth.signOut()
+                return redirectTo(request, staffLoginPath(surface))
+              }
             }
           }
         }

@@ -76,6 +76,9 @@ export function AccessoriesClient({
   const [deleteTarget, setDeleteTarget] = useState<AccessoryListItem | null>(
     null
   )
+  const [previewTarget, setPreviewTarget] = useState<AccessoryListItem | null>(
+    null
+  )
   const [labelTarget, setLabelTarget] = useState<ProductLabelPayload | null>(
     null
   )
@@ -342,6 +345,7 @@ export function AccessoriesClient({
         <DataTable>
           <DataTableHead>
             <DataTableRow>
+              <DataTableHeaderCell className="w-16">Kép</DataTableHeaderCell>
               <DataTableHeaderCell>Név</DataTableHeaderCell>
               <DataTableHeaderCell>SKU</DataTableHeaderCell>
               <DataTableHeaderCell>Gyártó</DataTableHeaderCell>
@@ -358,6 +362,30 @@ export function AccessoriesClient({
           <DataTableBody>
             {filtered.map((row) => (
               <DataTableRow key={row.id}>
+                <DataTableCell>
+                  {row.image_url ? (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTarget(row)}
+                      className="block rounded-md border border-border p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`${row.name} képének megnyitása`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={row.image_url}
+                        alt=""
+                        className="size-12 rounded-[5px] object-cover"
+                      />
+                    </button>
+                  ) : (
+                    <span
+                      className="flex size-12 items-center justify-center rounded-md border border-dashed border-border text-ink-muted"
+                      aria-hidden
+                    >
+                      <Package className="size-5" />
+                    </span>
+                  )}
+                </DataTableCell>
                 <DataTableCell className="font-medium text-ink">
                   <Link
                     href={`${LIST_PATH}/${row.id}`}
@@ -415,6 +443,55 @@ export function AccessoriesClient({
           </DataTableBody>
         </DataTable>
       )}
+
+      <Dialog
+        open={Boolean(previewTarget?.image_url)}
+        onOpenChange={(open) => {
+          if (!open) setPreviewTarget(null)
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{previewTarget?.name ?? 'Kép'}</DialogTitle>
+            <DialogDescription>
+              {previewTarget
+                ? `${previewTarget.manufacturer_name} · ${previewTarget.sku}`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          {previewTarget?.image_url ? (
+            <div className="overflow-hidden rounded-md border border-border bg-app">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={previewTarget.image_url}
+                alt={previewTarget.name}
+                className="mx-auto max-h-[60vh] w-full object-contain"
+              />
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setPreviewTarget(null)}
+            >
+              Bezárás
+            </Button>
+            {previewTarget ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  const id = previewTarget.id
+                  setPreviewTarget(null)
+                  router.push(`${LIST_PATH}/${id}`)
+                }}
+              >
+                Termék megnyitása
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

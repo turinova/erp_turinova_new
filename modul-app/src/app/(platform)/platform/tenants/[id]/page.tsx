@@ -8,6 +8,7 @@ import { TenantEntitlementsPanel } from '@/components/platform/tenant-entitlemen
 import { estimateTenantMonthlyBill } from '@/lib/billing/estimate'
 import { listTenantPlatformAudit } from '@/lib/platform/audit'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
+import { tenantHasDemoMasterData } from '@/lib/platform/demo-seed'
 import {
   listProductPlans,
   getTenantEntitlementState
@@ -50,14 +51,15 @@ export default async function PlatformTenantDetailPage({
   const detail = await getPlatformTenantDetail(ctx.admin, id)
   if (!detail) notFound()
 
-  const [entitlements, plans, auditRows, tenantsHref, monthlyBill, fcDevices] =
+  const [entitlements, plans, auditRows, tenantsHref, monthlyBill, fcDevices, hasDemoMaster] =
     await Promise.all([
       getTenantEntitlementState(ctx.admin, id),
       listProductPlans(ctx.admin),
       listTenantPlatformAudit(ctx.admin, id),
       ph('/tenants'),
       estimateTenantMonthlyBill(ctx.admin, id),
-      listFootcounterDevicesForTenant(ctx.admin, id)
+      listFootcounterDevicesForTenant(ctx.admin, id),
+      tenantHasDemoMasterData(ctx.admin, id)
     ])
 
   const footcounterEnabled = entitlements.entitledKeys.includes(
@@ -82,6 +84,7 @@ export default async function PlatformTenantDetailPage({
         auditRows={auditRows}
         monthlyBill={monthlyBill}
         planLabel={entitlements.plan?.name ?? null}
+        hasDemoMaster={hasDemoMaster}
         entitlementsSlot={
           <div className="space-y-3">
             <TenantEntitlementsPanel

@@ -19,6 +19,7 @@ export function CreateTenantForm() {
   const [ownerEmail, setOwnerEmail] = useState('')
   const [ownerPassword, setOwnerPassword] = useState('')
   const [seedTax, setSeedTax] = useState(true)
+  const [seedDemoMaster, setSeedDemoMaster] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -42,13 +43,14 @@ export function CreateTenantForm() {
         slug,
         ownerEmail,
         ownerPassword,
-        seedTaxRates: seedTax
+        seedTaxRates: seedTax,
+        seedDemoMaster
       })
       if (!result.ok) {
         setError(result.message)
         return
       }
-      toast.success('Cég létrehozva.')
+      toast.success(result.message ?? 'Cég létrehozva.')
       router.push(`/platform/tenants/${result.tenantId}`)
       router.refresh()
     } finally {
@@ -105,6 +107,21 @@ export function CreateTenantForm() {
           onChange={(e) => setSeedTax(e.target.checked)}
         />
         Alap ÁFA kulcsok seedelése
+      </label>
+      <label className="flex items-start gap-2 text-body text-ink">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-3.5"
+          checked={seedDemoMaster}
+          onChange={(e) => setSeedDemoMaster(e.target.checked)}
+        />
+        <span>
+          Demó adatok feltöltése
+          <span className="mt-0.5 block text-hint text-ink-secondary">
+            Cég (Kecskemét + Optinova logo), törzs, HR, tábla / él / szálas /
+            termék képekkel.
+          </span>
+        </span>
       </label>
 
       {error ? (

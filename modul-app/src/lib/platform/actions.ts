@@ -22,6 +22,8 @@ export async function createPlatformTenant(input: {
   ownerEmail: string
   ownerPassword: string
   seedTaxRates?: boolean
+  /** Demó törzs + logo + jelenlét addon */
+  seedDemoMaster?: boolean
 }): Promise<PlatformActionResult> {
   const ctx = await requirePlatformAdmin()
   if (!ctx.ok) return { ok: false, message: ctx.message }
@@ -157,9 +159,118 @@ export async function createPlatformTenant(input: {
     .update({ status: 'active', updated_at: new Date().toISOString() })
     .eq('id', tenantId)
 
+  let demoMessage: string | undefined
+  if (input.seedDemoMaster) {
+    const demo = await seedDemoMasterData({ tenantId })
+    if (!demo.ok) {
+      demoMessage = `Cég kész, demó törzs sikertelen: ${demo.message}`
+    } else {
+      demoMessage = demo.message
+    }
+  }
+
   revalidatePath(PLATFORM_PATH)
   revalidatePath(TENANTS_PATH)
-  return { ok: true, tenantId }
+  return {
+    ok: true,
+    tenantId,
+    message: demoMessage
+  }
+}
+
+/**
+ * Demó törzs feltöltés (15 éves admin gomb).
+ * Anyag / él / termék NINCS — külön seeder.
+ */
+export async function seedDemoMasterData(input: {
+  tenantId: string
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const admin = ctx.admin
+  const tenantId = input.tenantId
+
+  const { data: tenant } = await admin
+    .from('tenants')
+    .select('id, name')
+    .eq('id', tenantId)
+    .maybeSingle()
+
+  if (!tenant) {
+    return { ok: false, message: 'A cég nem található.' }
+  }
+
+  const {
+    uploadDemoCompanyLogo,
+    enableJelenletAddonForDemo,
+    seedDemoCatalog
+  } = await import('@/lib/platform/demo-seed')
+
+  await enableJelenletAddonForDemo(admin, tenantId, ctx.user.id)
+
+  const { data: rpcData, error: rpcError } = await admin.rpc(
+    'seed_demo_master_data',
+    { p_tenant_id: tenantId }
+  )
+
+  if (rpcError) {
+    console.error('seedDemoMasterData rpc', rpcError.message)
+    return {
+      ok: false,
+      message: 'A demó adatok feltöltése nem sikerült. Próbáld újra.'
+    }
+  }
+
+  const result = (rpcData ?? {}) as {
+    ok?: boolean
+    skipped?: boolean
+    message?: string
+  }
+
+  if (result.ok === false) {
+    return {
+      ok: false,
+      message: result.message ?? 'A demó adatok feltöltése sikertelen.'
+    }
+  }
+
+  if (!result.skipped) {
+    const logo = await uploadDemoCompanyLogo(admin, tenantId)
+    if (!logo.ok) {
+      console.error('seedDemoMasterData logo', logo.message)
+    }
+  }
+
+  const catalog = await seedDemoCatalog(admin, tenantId)
+  if (!catalog.ok) {
+    return {
+      ok: false,
+      message: result.skipped
+        ? catalog.message
+        : `Törzs kész, katalógus sikertelen: ${catalog.message}`
+    }
+  }
+
+  await writePlatformAudit(admin, {
+    tenantId,
+    actorUserId: ctx.user.id,
+    action: 'tenant.demo_seed',
+    details: {
+      masterSkipped: Boolean(result.skipped),
+      catalogSkipped: catalog.skipped,
+      message: catalog.message
+    }
+  })
+
+  revalidatePath(PLATFORM_PATH)
+  revalidatePath(`${TENANTS_PATH}/${tenantId}`)
+
+  if (result.skipped && catalog.skipped) {
+    return { ok: true, message: 'Már van demó adat.' }
+  }
+
+  return { ok: true, message: 'Demó adatok kész (törzs + katalógus).' }
 }
 
 export async function updatePlatformTenantStatus(input: {
@@ -204,6 +315,175 @@ export async function updatePlatformTenantStatus(input: {
   revalidatePath(TENANTS_PATH)
   revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
   return { ok: true }
+}
+
+/** Cég lezárása — churned, nincs normál belépés. Adat megmarad. */
+export async function closePlatformTenant(input: {
+  tenantId: string
+}): Promise<PlatformActionResult> {
+  return updatePlatformTenantStatus({
+    tenantId: input.tenantId,
+    status: 'churned'
+  })
+}
+
+const PURGE_STORAGE_BUCKETS = [
+  'tenant-company-logos',
+  'sheet-materials',
+  'linear-materials',
+  'tenant-media'
+] as const
+
+async function purgeTenantStoragePrefix(
+  admin: Parameters<typeof writePlatformAudit>[0],
+  tenantId: string
+): Promise<void> {
+  for (const bucket of PURGE_STORAGE_BUCKETS) {
+    try {
+      const { data: files, error } = await admin.storage
+        .from(bucket)
+        .list(tenantId, { limit: 1000 })
+      if (error) {
+        console.error('purgeTenantStorage list', bucket, error.message)
+        continue
+      }
+      const paths = (files ?? [])
+        .map((f) => f.name)
+        .filter(Boolean)
+        .map((name) => `${tenantId}/${name}`)
+      if (paths.length === 0) continue
+      const { error: rmError } = await admin.storage.from(bucket).remove(paths)
+      if (rmError) {
+        console.error('purgeTenantStorage remove', bucket, rmError.message)
+      }
+    } catch (err) {
+      console.error('purgeTenantStorage', bucket, err)
+    }
+  }
+}
+
+/**
+ * Végleges törlés — csak churned cég.
+ * Cascade tenant sor + orphan auth userek (ha nincs más tagság / partner / platform).
+ */
+export async function purgePlatformTenant(input: {
+  tenantId: string
+  confirmSlug: string
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const admin = ctx.admin
+  const { data: tenant } = await admin
+    .from('tenants')
+    .select('id, name, slug, status')
+    .eq('id', input.tenantId)
+    .maybeSingle()
+
+  if (!tenant) {
+    return { ok: false, message: 'A cég nem található.' }
+  }
+
+  if (tenant.status !== 'churned') {
+    return {
+      ok: false,
+      message: 'Előbb zárd le a céget (Lezárva), aztán törölheted végleg.'
+    }
+  }
+
+  const expected = String(tenant.slug).trim().toLowerCase()
+  const got = input.confirmSlug.trim().toLowerCase()
+  if (!got || got !== expected) {
+    return {
+      ok: false,
+      message: `A megerősítéshez írd be pontosan a slugot: ${tenant.slug}`
+    }
+  }
+
+  const { data: memberships } = await admin
+    .from('tenant_memberships')
+    .select('user_id')
+    .eq('tenant_id', input.tenantId)
+
+  const memberUserIds = [
+    ...new Set((memberships ?? []).map((m) => m.user_id as string))
+  ]
+
+  await admin
+    .from('partner_profiles')
+    .update({ selected_tenant_id: null })
+    .eq('selected_tenant_id', input.tenantId)
+
+  await admin
+    .from('platform_impersonation_sessions')
+    .update({
+      ended_at: new Date().toISOString(),
+      magic_hash: null,
+      handoff_token: null,
+      operator_refresh_token: null
+    })
+    .eq('tenant_id', input.tenantId)
+    .is('ended_at', null)
+
+  await writePlatformAudit(admin, {
+    tenantId: null,
+    actorUserId: ctx.user.id,
+    action: 'tenant.purge',
+    details: {
+      tenantId: tenant.id,
+      name: tenant.name,
+      slug: tenant.slug,
+      memberCount: memberUserIds.length
+    }
+  })
+
+  await purgeTenantStoragePrefix(admin, input.tenantId)
+
+  const { error: delError } = await admin
+    .from('tenants')
+    .delete()
+    .eq('id', input.tenantId)
+
+  if (delError) {
+    console.error('purgePlatformTenant delete', delError.message)
+    return {
+      ok: false,
+      message:
+        'A cég törlése sikertelen (adatbázis kötés). Próbáld újra, vagy nézd a logot.'
+    }
+  }
+
+  for (const userId of memberUserIds) {
+    const [{ count: otherMem }, { data: partner }, { data: platformAdmin }] =
+      await Promise.all([
+        admin
+          .from('tenant_memberships')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId),
+        admin
+          .from('partner_profiles')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle(),
+        admin
+          .from('platform_admins')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle()
+      ])
+
+    if ((otherMem ?? 0) > 0 || partner || platformAdmin) continue
+
+    await admin.from('app_user_sessions').delete().eq('user_id', userId)
+    const { error: authErr } = await admin.auth.admin.deleteUser(userId)
+    if (authErr) {
+      console.error('purgePlatformTenant auth delete', userId, authErr.message)
+    }
+  }
+
+  revalidatePath(PLATFORM_PATH)
+  revalidatePath(TENANTS_PATH)
+  return { ok: true, message: 'Cég végleg törölve.', tenantId: undefined }
 }
 
 export async function refreshTenantOnboardingFlags(

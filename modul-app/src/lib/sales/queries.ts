@@ -550,6 +550,7 @@ export type SaleProductSearchItem = {
   tax_rate_percent: number
   unit_shortform: string
   on_hand: number
+  image_url: string | null
 }
 
 /** Eladható termékek keresése + aktuális raktár készlet. */
@@ -574,6 +575,7 @@ export async function searchProductsForSale(
       price_net,
       tax_rate_id,
       unit_id,
+      image_url,
       tax_rates ( rate_percent ),
       units ( shortform )
     `
@@ -621,7 +623,8 @@ export async function searchProductsForSale(
       price_net: Number(row.price_net) || 0,
       tax_rate_percent: Number(tax?.rate_percent ?? 0),
       unit_shortform: unit?.shortform ?? 'db',
-      on_hand: onHandMap.get(row.id as string) ?? 0
+      on_hand: onHandMap.get(row.id as string) ?? 0,
+      image_url: (row.image_url as string | null) ?? null
     }
   })
 

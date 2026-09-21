@@ -15,6 +15,7 @@ import {
   FileText,
   LogOut,
   Minus,
+  Package,
   Percent,
   Plus,
   Search,
@@ -555,9 +556,8 @@ export function PosClient({
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <p className="max-w-md text-center text-body text-warning-ink">
-          Nincs pénztár. Futtasd a{' '}
-          <code className="text-hint">20260514_pos_shifts_and_registers.sql</code>{' '}
-          migrációt.
+          Nincs pénztár ehhez a céghez. Hozz létre raktárat (automatikus
+          Főpénztár), vagy kérj platform admin segítséget.
         </p>
       </div>
     )
@@ -966,9 +966,30 @@ export function PosClient({
                         }}
                       >
                         <td className="px-2.5 py-2">
-                          <div className="font-medium text-ink">{hit.name}</div>
-                          <div className="text-hint text-ink-secondary">
-                            {hit.sku}
+                          <div className="flex items-center gap-2.5">
+                            {hit.image_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={hit.image_url}
+                                alt=""
+                                className="size-12 shrink-0 rounded-[5px] border border-border object-cover"
+                              />
+                            ) : (
+                              <span
+                                className="flex size-12 shrink-0 items-center justify-center rounded-md border border-dashed border-border text-ink-muted"
+                                aria-hidden
+                              >
+                                <Package className="size-5" />
+                              </span>
+                            )}
+                            <div className="min-w-0">
+                              <div className="truncate font-medium text-ink">
+                                {hit.name}
+                              </div>
+                              <div className="text-hint text-ink-secondary">
+                                {hit.sku}
+                              </div>
+                            </div>
                           </div>
                         </td>
                         <td

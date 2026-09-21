@@ -1,11 +1,14 @@
 import { headers } from 'next/headers'
 import { NextResponse } from 'next/server'
 
+import { tenantHasBeszerzes } from '@/lib/beszerzes/entitlement'
+import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import {
   allowedUnifiedKinds,
   getTenantPartnerSettings,
   partnerSearchKindsFromSettings,
-  resolvePartnerSearchKind
+  resolvePartnerSearchKind,
+  type PartnerSearchKinds
 } from '@/lib/partner-settings/queries'
 import { resolveKeresoAuth } from '@/lib/search/kereso-auth'
 import {
@@ -13,10 +16,17 @@ import {
   parseSearchKindParam,
   searchMaterialsUnified
 } from '@/lib/search/materials-search'
-import { tenantHasBeszerzes } from '@/lib/beszerzes/entitlement'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
+
+function staffSearchKinds(hasLapszabaszat: boolean): PartnerSearchKinds {
+  return {
+    sheet: hasLapszabaszat,
+    linear: hasLapszabaszat,
+    accessory: true
+  }
+}
 
 /**
  * Gyors kereső API — staff + partner.
@@ -81,6 +91,13 @@ export async function GET(request: Request) {
       const kinds = partnerSearchKindsFromSettings(settings)
       allowedKinds = allowedUnifiedKinds(kinds)
       kind = resolvePartnerSearchKind(requestedKind, kinds)
+    } else {
+      const hasLapszabaszat = await tenantHasLapszabaszat(supabase, tenantId)
+      const kinds = staffSearchKinds(hasLapszabaszat)
+      if (!hasLapszabaszat) {
+        allowedKinds = allowedUnifiedKinds(kinds)
+      }
+      kind = resolvePartnerSearchKind(requestedKind, kinds)
     }
 
     const searchStart = performance.now()
@@ -115,7 +132,7 @@ export async function GET(request: Request) {
         page: result.page,
         limit: result.limit,
         kind,
-        allowedKinds: isPartnerSearch ? allowedKinds : undefined,
+        allowedKinds,
         showProcurementStock
       },
       {

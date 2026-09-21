@@ -196,7 +196,8 @@ async function loadSessionUser(): Promise<SessionUser | null> {
     }
 
     // Platform konzol: csak platform_admins check — nincs membership / entitlements
-    if (leanPlatform) {
+    // Impersonation alatt mindig a cél user tenant sessionje kell (ne platform lean).
+    if (leanPlatform && !impersonationId) {
       const { data: platformRow } = await supabase
         .from('platform_admins')
         .select('user_id')

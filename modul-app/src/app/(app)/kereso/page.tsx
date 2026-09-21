@@ -4,10 +4,17 @@ import { Suspense } from 'react'
 import { KeresoClient } from '@/components/search/kereso-client'
 import { getSessionUser } from '@/lib/auth/session'
 import { tenantHasBeszerzes } from '@/lib/beszerzes/entitlement'
+import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
+import {
+  allowedUnifiedKinds,
+  resolvePartnerSearchKind,
+  type PartnerSearchKinds
+} from '@/lib/partner-settings/queries'
 import {
   enrichUnifiedRowsWithStockOnHand,
   parseSearchKindParam,
-  searchMaterialsUnified
+  searchMaterialsUnified,
+  type UnifiedSearchKind
 } from '@/lib/search/materials-search'
 import { createClient } from '@/lib/supabase/server'
 
@@ -21,6 +28,14 @@ type SearchParams = Promise<{
   kind?: string
 }>
 
+function staffSearchKinds(hasLapszabaszat: boolean): PartnerSearchKinds {
+  return {
+    sheet: hasLapszabaszat,
+    linear: hasLapszabaszat,
+    accessory: true
+  }
+}
+
 export default async function KeresoPage({
   searchParams
 }: {
@@ -30,21 +45,30 @@ export default async function KeresoPage({
   const user = await getSessionUser()
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
-  const kind = parseSearchKindParam(params.kind)
+  const requestedKind = parseSearchKindParam(params.kind)
 
   let loadError: string | null = null
   let rows: Awaited<ReturnType<typeof searchMaterialsUnified>>['rows'] = []
   let total = 0
   let limit = 25
   let showProcurementStock = false
+  let allowedKinds: UnifiedSearchKind[] | undefined
+  let kind: ReturnType<typeof parseSearchKindParam> = requestedKind
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
-      showProcurementStock = await tenantHasBeszerzes(
-        supabase,
-        user.tenantId
-      )
+      const [hasBeszerzes, hasLapszabaszat] = await Promise.all([
+        tenantHasBeszerzes(supabase, user.tenantId),
+        tenantHasLapszabaszat(supabase, user.tenantId)
+      ])
+      showProcurementStock = hasBeszerzes
+      const kinds = staffSearchKinds(hasLapszabaszat)
+      allowedKinds = hasLapszabaszat
+        ? undefined
+        : allowedUnifiedKinds(kinds)
+      kind = resolvePartnerSearchKind(requestedKind, kinds)
+
       // Deep-link seed only — gépelés közben /api/kereso
       if (q) {
         try {
@@ -53,7 +77,8 @@ export default async function KeresoPage({
             q,
             page,
             limit: 25,
-            kind
+            kind,
+            allowedKinds
           })
           rows = showProcurementStock
             ? await enrichUnifiedRowsWithStockOnHand(
@@ -106,6 +131,7 @@ export default async function KeresoPage({
         initialLimit={limit}
         initialQ={q}
         initialKind={kind}
+        allowedKinds={allowedKinds}
         showProcurementStock={showProcurementStock}
       />
     </Suspense>

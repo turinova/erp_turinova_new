@@ -34,6 +34,9 @@ import {
   resetTenantUserPassword,
   revokeTenantSessions,
   revokeUserSessions,
+  closePlatformTenant,
+  purgePlatformTenant,
+  seedDemoMasterData,
   sendTenantUserAuthEmail,
   updatePlatformTenantStatus,
   updateTenantMaxSeats,
@@ -73,6 +76,8 @@ const AUDIT_LABELS: Record<string, string> = {
   'tenant.status': 'Cég státusz',
   'tenant.max_seats': 'Helyek limit',
   'tenant.ops_fields': 'Előfizetés / jegyzet',
+  'tenant.demo_seed': 'Demó törzs feltöltés',
+  'tenant.purge': 'Cég végleges törlés',
   'user.password_reset': 'Ideiglenes jelszó',
   'user.recovery_email': 'Jelszó email',
   'user.invite_email': 'Meghívó email',
@@ -111,6 +116,8 @@ type Props = {
   monthlyBill?: MonthlyBillEstimate | null
   planLabel?: string | null
   entitlementsSlot?: ReactNode
+  /** Van-e már demó törzs (units+payment+fee+manufacturer). */
+  hasDemoMaster?: boolean
 }
 
 export function TenantDetailClient({
@@ -123,7 +130,8 @@ export function TenantDetailClient({
   auditRows,
   monthlyBill,
   planLabel,
-  entitlementsSlot
+  entitlementsSlot,
+  hasDemoMaster = false
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<TabId>('overview')
@@ -145,6 +153,13 @@ export function TenantDetailClient({
   const [impersonateTarget, setImpersonateTarget] =
     useState<PlatformTenantMember | null>(null)
   const [impersonateLoading, setImpersonateLoading] = useState(false)
+  const [demoSeedOpen, setDemoSeedOpen] = useState(false)
+  const [demoSeedLoading, setDemoSeedLoading] = useState(false)
+  const [closeOpen, setCloseOpen] = useState(false)
+  const [closeLoading, setCloseLoading] = useState(false)
+  const [purgeOpen, setPurgeOpen] = useState(false)
+  const [purgeLoading, setPurgeLoading] = useState(false)
+  const [purgeSlug, setPurgeSlug] = useState('')
   const [tempPassword, setTempPassword] = useState<{
     email: string
     password: string
@@ -401,6 +416,59 @@ export function TenantDetailClient({
       toast.error('Hiányzó handoff URL.')
     } finally {
       setImpersonateLoading(false)
+    }
+  }
+
+  async function handleConfirmDemoSeed() {
+    setDemoSeedLoading(true)
+    try {
+      const result = await seedDemoMasterData({ tenantId: tenant.id })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(result.message ?? 'Demó törzs kész.')
+      setDemoSeedOpen(false)
+      router.refresh()
+    } finally {
+      setDemoSeedLoading(false)
+    }
+  }
+
+  async function handleConfirmClose() {
+    setCloseLoading(true)
+    try {
+      const result = await closePlatformTenant({ tenantId: tenant.id })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success('Cég lezárva.')
+      setCloseOpen(false)
+      setStatus('churned')
+      router.refresh()
+    } finally {
+      setCloseLoading(false)
+    }
+  }
+
+  async function handleConfirmPurge() {
+    setPurgeLoading(true)
+    try {
+      const result = await purgePlatformTenant({
+        tenantId: tenant.id,
+        confirmSlug: purgeSlug
+      })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(result.message ?? 'Cég törölve.')
+      setPurgeOpen(false)
+      router.push('/platform/tenants')
+      router.refresh()
+    } finally {
+      setPurgeLoading(false)
     }
   }
 
@@ -717,6 +785,28 @@ export function TenantDetailClient({
           </section>
 
           <section className="rounded-md border border-border bg-surface p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-body font-semibold text-ink">Demó adatok</h2>
+                <p className="mt-1 text-hint text-ink-secondary">
+                  {hasDemoMaster
+                    ? 'Törzs + katalógus már feltöltve.'
+                    : 'Feltölti a demó törzset és a katalógust (tábla, él, szálas, termék + képek).'}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={hasDemoMaster || demoSeedLoading}
+                onClick={() => setDemoSeedOpen(true)}
+              >
+                {hasDemoMaster ? 'Már feltöltve' : 'Demó adatok feltöltése'}
+              </Button>
+            </div>
+          </section>
+
+          <section className="rounded-md border border-border bg-surface p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-body font-semibold text-ink">Onboarding</h2>
@@ -756,6 +846,39 @@ export function TenantDetailClient({
             ) : (
               <p className="text-body text-success-ink">Onboarding kész.</p>
             )}
+          </section>
+
+          <section className="rounded-md border border-danger/30 bg-danger-soft/40 p-4">
+            <h2 className="text-body font-semibold text-danger-ink">
+              Veszélyzóna
+            </h2>
+            <p className="mt-1 text-hint text-ink-secondary">
+              Lezárás: nincs belépés, adat megmarad. Végleges törlés: minden adat
+              + orphan userek — csak lezárt cégnél.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={tenant.status === 'churned' || closeLoading}
+                onClick={() => setCloseOpen(true)}
+              >
+                {tenant.status === 'churned' ? 'Már lezárva' : 'Cég lezárása'}
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={tenant.status !== 'churned' || purgeLoading}
+                onClick={() => {
+                  setPurgeSlug('')
+                  setPurgeOpen(true)
+                }}
+              >
+                Végleges törlés
+              </Button>
+            </div>
           </section>
 
           <section className="rounded-md border border-border bg-surface p-4">
@@ -1302,6 +1425,55 @@ export function TenantDetailClient({
         loading={impersonateLoading}
         onConfirm={() => void handleConfirmImpersonate()}
       />
+
+      <ConfirmDialog
+        open={demoSeedOpen}
+        onOpenChange={setDemoSeedOpen}
+        title="Demó adatok feltöltése?"
+        description="Törzs (Kecskemét + logo, HR…) és katalógus (2 tábla, 2 él, 2 munkalap, 3 termék + képek). Ami már megvan, kihagyja."
+        confirmLabel="Feltöltés"
+        cancelLabel="Mégse"
+        variant="primary"
+        loading={demoSeedLoading}
+        onConfirm={() => void handleConfirmDemoSeed()}
+      />
+
+      <ConfirmDialog
+        open={closeOpen}
+        onOpenChange={setCloseOpen}
+        title="Cég lezárása?"
+        description={`${tenant.name} státusza „Lezárva” lesz. A tagok nem léphetnek be. Az adat megmarad — később újraaktiválhatod vagy végleg törölheted.`}
+        confirmLabel="Lezárás"
+        cancelLabel="Mégse"
+        variant="danger"
+        loading={closeLoading}
+        onConfirm={() => void handleConfirmClose()}
+      />
+
+      <ConfirmDialog
+        open={purgeOpen}
+        onOpenChange={(open) => {
+          setPurgeOpen(open)
+          if (!open) setPurgeSlug('')
+        }}
+        title="Végleges törlés?"
+        description={`Minden adat, storage és a csak ehhez a céghez tartozó userek törlődnek. Írd be a slugot a megerősítéshez: ${tenant.slug}`}
+        confirmLabel="Végleg törlés"
+        cancelLabel="Mégse"
+        variant="danger"
+        loading={purgeLoading}
+        onConfirm={() => void handleConfirmPurge()}
+      >
+        <Input
+          id="purge-slug"
+          value={purgeSlug}
+          onChange={(e) => setPurgeSlug(e.target.value)}
+          placeholder={tenant.slug}
+          autoComplete="off"
+          disabled={purgeLoading}
+          className="font-mono"
+        />
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={Boolean(removeTarget)}

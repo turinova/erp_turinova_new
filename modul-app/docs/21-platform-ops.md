@@ -142,3 +142,20 @@ Migráció: `20260407_partner_ops.sql` + `20260408_impersonation_subject_kind_gr
 - Áttekintő: health **Suspense** (nem a kritikus path)
 - Platform session: **lean** — nincs membership / entitlements fetch
 - `loading.tsx` skeleton azonnali visszajelzéshez
+
+## 10. Demó törzs seeder (platform)
+
+Migráció: `20260522_seed_demo_master_data.sql`.
+
+- RPC: `seed_demo_master_data(tenant_id)` + `demo_master_has_data(tenant_id)` — **service_role only**.
+- UI: cég létrehozás checkbox + tenant detail **Demó adatok feltöltése** (confirm).
+- Tartalom: ÁFA, cég (Kecskemét + Optinova logo storage), fizetési módok, egységek, díjtípusok, gyártók, gépek, raktár + pénztár, vágási díj, SMS, demo vevő/szállító, HR, Jelenlét addon + **katalógus** (2 tábla, 2 él, 2 munkalap, 3 termék + képek `public/images/demo-seed/`).
+- Egy gomb / create checkbox — `seed_demo_master_data` RPC + `seedDemoCatalog` TS.
+- Audit: `tenant.demo_seed`.
+- Idempotens: törzs + katalógus (SKU `ZSL-001`) külön skipelhető.
+## 11. Cég lezárás / végleges törlés
+
+- **Lezárás** (`closePlatformTenant`): `status = churned` — tagok nem kapnak tenant kontextust (`resolveCurrentTenant` kihagyja). Adat megmarad.
+- **Végleges törlés** (`purgePlatformTenant`): csak `churned` + slug megerősítés. Storage prefix törlés, `tenants` DELETE (cascade), orphan Auth userek törlése (ha nincs más membership / partner / platform admin).
+- Audit: `tenant.status` / `tenant.purge` (purge után `tenant_id` null, slug a details-ben).
+- UI: tenant detail → **Veszélyzóna**.

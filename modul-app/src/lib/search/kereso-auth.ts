@@ -43,33 +43,27 @@ export async function resolveKeresoAuth(
       .eq('user_id', user.id)
       .maybeSingle()
 
-    if (!profile || profile.status === 'disabled') {
+    if (profile && profile.status !== 'disabled') {
+      if (!profile.selected_tenant_id) {
+        return {
+          ok: false,
+          status: 403,
+          error: 'Nincs kiválasztott cég.',
+          authMs: Math.round(performance.now() - t0)
+        }
+      }
+
       return {
-        ok: false,
-        status: 401,
-        error: 'Unauthorized',
+        ok: true,
+        auth: {
+          tenantId: profile.selected_tenant_id as string,
+          isPartnerSearch: true,
+          userId: user.id
+        },
         authMs: Math.round(performance.now() - t0)
       }
     }
-
-    if (!profile.selected_tenant_id) {
-      return {
-        ok: false,
-        status: 403,
-        error: 'Nincs kiválasztott cég.',
-        authMs: Math.round(performance.now() - t0)
-      }
-    }
-
-    return {
-      ok: true,
-      auth: {
-        tenantId: profile.selected_tenant_id as string,
-        isPartnerSearch: true,
-        userId: user.id
-      },
-      authMs: Math.round(performance.now() - t0)
-    }
+    // Partner surface, de staff session (MODUL_AUTH_SURFACE=partner local) → membership
   }
 
   const cookieStore = await cookies()

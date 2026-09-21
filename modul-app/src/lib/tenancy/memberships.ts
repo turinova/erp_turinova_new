@@ -74,13 +74,17 @@ export function resolveCurrentTenant(
   memberships: MembershipWithTenant[],
   preferredTenantId?: string | null
 ): ResolvedTenant | null {
-  if (memberships.length === 0) return null
+  const usable = memberships.filter((m) => {
+    const s = m.tenants?.status
+    return s != null && s !== 'churned'
+  })
+  if (usable.length === 0) return null
 
   const preferred = preferredTenantId
-    ? memberships.find((m) => m.tenant_id === preferredTenantId)
+    ? usable.find((m) => m.tenant_id === preferredTenantId)
     : null
 
-  const chosen = preferred ?? memberships[0]
+  const chosen = preferred ?? usable[0]
   if (!chosen?.tenants) return null
 
   return {

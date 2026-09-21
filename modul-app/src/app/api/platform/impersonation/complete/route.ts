@@ -2,12 +2,14 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 import {
+  APP_SESSION_NONCE_COOKIE,
   CURRENT_TENANT_COOKIE,
   IMPERSONATION_SESSION_COOKIE,
   OPERATOR_REFRESH_COOKIE,
   SESSION_SNAPSHOT_COOKIE,
   isSupabaseConfigured
 } from '@/lib/auth/config'
+import { registerAppSession } from '@/lib/auth/app-session'
 import { createServiceClient } from '@/lib/supabase/service'
 
 function cookieOpts(maxAge = 60 * 60) {
@@ -108,6 +110,20 @@ export async function GET(request: NextRequest) {
     })
     .eq('id', sid)
 
+  // Single-session nonce — partner surface (MODUL_AUTH_SURFACE=partner) isAppSessionValid-et vár
+  let sessionNonce: string | null = null
+  try {
+    sessionNonce = await registerAppSession(admin, {
+      userId: row.target_user_id,
+      tenantId: row.tenant_id,
+      userAgent: request.headers.get('user-agent'),
+      ip:
+        request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
+    })
+  } catch (err) {
+    console.error('impersonation complete registerAppSession', err)
+  }
+
   const response = NextResponse.redirect(redirectUrl)
 
   for (const { name, value, options } of pendingCookies) {
@@ -123,6 +139,13 @@ export async function GET(request: NextRequest) {
     )
   }
   response.cookies.set(CURRENT_TENANT_COOKIE, row.tenant_id, cookieOpts())
+  if (sessionNonce) {
+    response.cookies.set(
+      APP_SESSION_NONCE_COOKIE,
+      sessionNonce,
+      cookieOpts(60 * 60 * 24 * 30)
+    )
+  }
   // Impersonation: ne örököljük az operátor snapshotját
   response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
   return response
