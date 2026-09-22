@@ -62,7 +62,7 @@ export const MARKETING_PRICING = {
       key: 'footcounter',
       name: 'Belépőszámláló',
       priceMonthlyHuf: 5_000,
-      blurb: 'Óránkénti forgalom a bejáraton, kamerával.',
+      blurb: 'Belépőszám óránként, időjárással együtt.',
       hardwareNote: 'A kamera egyszeri díjára külön ajánlatot adunk.',
       accent: 'indigo' as const
     }

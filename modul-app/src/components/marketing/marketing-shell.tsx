@@ -224,7 +224,9 @@ function UniqueModulesDesktop({ active }: { active: boolean }) {
         aria-expanded={open}
         aria-controls={menuId}
         aria-haspopup="menu"
-        onClick={() => setOpen((v) => !v)}
+        // Hoverre már nyílik — a kattintás csak nyisson, ne csukja vissza.
+        onClick={() => setOpen(true)}
+        onFocus={() => setOpen(true)}
         className={cn(
           'inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors',
           active || open

@@ -201,7 +201,7 @@ export function PricingAddonCards() {
       priceNote: '+ ÁFA / hó',
       bullets: [
         'Óránkénti belépőszám',
-        'Több bejárat',
+        'Időjárás-hatás a nyitvatartásra',
         'A kamera egyszeri díjára külön ajánlatot adunk'
       ],
       Icon: Camera,
