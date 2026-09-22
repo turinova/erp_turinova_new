@@ -1,16 +1,13 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Banknote,
-  ClipboardList,
-  Factory,
   FileText,
   MessageSquare,
   Package,
   Printer,
   ShoppingCart,
   Store,
-  Truck,
-  UsersRound
+  Truck
 } from 'lucide-react'
 
 /** Hogyan működik — modul szekciók (videó placeholder). */
@@ -34,6 +31,8 @@ export type HowItWorksStep = {
   Icon: LucideIcon
   /** YouTube videó ID — null = placeholder. */
   youtubeId: string | null
+  /** Opcionális mélyebb oldal (pl. dedikált modul landing). */
+  more?: { href: string; label: string }
 }
 
 /** Soft tint tokenek — marketing only, nem app-nav. */
@@ -215,21 +214,6 @@ export const HOW_IT_WORKS_STEPS: HowItWorksStep[] = [
     youtubeId: null
   },
   {
-    id: 'lapszabaszat',
-    title: 'Lapszabászati gyártó',
-    navLabel: 'Lapszabászat',
-    body: 'Táblás és szálas anyag optimalizálása élzárással és szabásjegyzékkel. A méretek a megrendelésből jönnek.',
-    bullets: [
-      'Opti szabás',
-      'Élzáró és anyaglista',
-      'Megrendelés → gyártás'
-    ],
-    package: 'addon',
-    accent: 'violet',
-    Icon: Factory,
-    youtubeId: null
-  },
-  {
     id: 'sms',
     title: 'SMS értesítések',
     navLabel: 'SMS',
@@ -260,36 +244,6 @@ export const HOW_IT_WORKS_STEPS: HowItWorksStep[] = [
     youtubeId: null
   },
   {
-    id: 'jelenlet',
-    title: 'Jelenléti ív',
-    navLabel: 'Jelenlét',
-    body: 'Munkanapok és távollétek vezetése dolgozónként, beléptető eszköz nélkül is.',
-    bullets: [
-      'Dolgozók és típusok',
-      'Manuális jelenléti ív',
-      'Munkarend naptár'
-    ],
-    package: 'addon',
-    accent: 'emerald',
-    Icon: ClipboardList,
-    youtubeId: null
-  },
-  {
-    id: 'belepo',
-    title: 'Belépőszámláló',
-    navLabel: 'Belépők',
-    body: 'Napi és óránkénti látogatószám a boltban. Látszik, mikor van valódi forgalom.',
-    bullets: [
-      'Óránkénti bontás',
-      'Több bejárat',
-      'Forgalmi trend'
-    ],
-    package: 'addon',
-    accent: 'emerald',
-    Icon: UsersRound,
-    youtubeId: null
-  },
-  {
     id: 'webshop',
     title: 'Webshop kapcsolat',
     navLabel: 'Webshop',
@@ -305,6 +259,12 @@ export const HOW_IT_WORKS_STEPS: HowItWorksStep[] = [
     youtubeId: null
   }
 ]
+
+/** A Funkciók oldalon megjelenő lépések — Alap + könnyű add-on + roadmap.
+ *  Lapszabászat / Jelenlét / Belépőszámláló: dedikált landingek. */
+export const FEATURE_PAGE_STEPS = HOW_IT_WORKS_STEPS.filter(
+  (s) => s.package === 'alap' || s.package === 'roadmap' || s.id === 'sms' || s.id === 'partner'
+)
 
 export const PACKAGE_LABEL: Record<HowItWorksStep['package'], string> = {
   alap: 'Alap',

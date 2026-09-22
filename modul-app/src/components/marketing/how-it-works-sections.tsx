@@ -1,21 +1,22 @@
 'use client'
 
-import { Check, Play } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowRight, Check, Play } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import {
   ACCENT_STYLES,
-  HOW_IT_WORKS_STEPS,
+  FEATURE_PAGE_STEPS,
   PACKAGE_LABEL,
   type HowItWorksStep
 } from '@/lib/marketing/how-it-works'
 import { cn } from '@/lib/utils'
 
 export function HowItWorksJumpNav() {
-  const [activeId, setActiveId] = useState(HOW_IT_WORKS_STEPS[0]?.id ?? '')
+  const [activeId, setActiveId] = useState(FEATURE_PAGE_STEPS[0]?.id ?? '')
 
   useEffect(() => {
-    const nodes = HOW_IT_WORKS_STEPS.map((s) =>
+    const nodes = FEATURE_PAGE_STEPS.map((s) =>
       document.getElementById(s.id)
     ).filter((el): el is HTMLElement => Boolean(el))
 
@@ -49,7 +50,7 @@ export function HowItWorksJumpNav() {
       aria-label="Modulok"
     >
       <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 py-3 sm:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {HOW_IT_WORKS_STEPS.map((step) => {
+        {FEATURE_PAGE_STEPS.map((step) => {
           const styles = ACCENT_STYLES[step.accent]
           const active = activeId === step.id
           const Icon = step.Icon
@@ -75,7 +76,7 @@ export function HowItWorksJumpNav() {
 export function HowItWorksSections() {
   return (
     <div>
-      {HOW_IT_WORKS_STEPS.map((step, index) => (
+      {FEATURE_PAGE_STEPS.map((step, index) => (
         <HowItWorksSection
           key={step.id}
           step={step}
@@ -128,7 +129,7 @@ function HowItWorksSection({
               {PACKAGE_LABEL[step.package]}
             </span>
             <span className="text-[12px] font-medium text-ink-muted">
-              {index + 1} / {HOW_IT_WORKS_STEPS.length}
+              {index + 1} / {FEATURE_PAGE_STEPS.length}
             </span>
           </div>
           <h2 className="mt-4 text-[1.75rem] font-semibold tracking-tight text-ink md:text-[2rem]">
@@ -155,6 +156,15 @@ function HowItWorksSection({
               </li>
             ))}
           </ul>
+          {step.more ? (
+            <Link
+              href={step.more.href}
+              className="mt-5 inline-flex items-center gap-1.5 text-[13.5px] font-medium text-ink no-underline underline-offset-4 hover:underline"
+            >
+              {step.more.label}
+              <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          ) : null}
         </div>
         <div className={cn(reverse && 'lg:order-1')}>
           <VideoPlaceholder step={step} />

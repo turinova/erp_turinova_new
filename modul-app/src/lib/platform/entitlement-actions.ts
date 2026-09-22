@@ -245,6 +245,51 @@ export async function setTenantAddon(input: {
       console.error('setTenantAddon enable', error.message)
       return { ok: false, message: 'Add-on bekapcsolás sikertelen.' }
     }
+
+    // A partnerfiók és az SMS a Lapszabászat része. Külön entitlementek
+    // maradnak, de a fő modul bekapcsolásakor automatikusan aktiváljuk őket.
+    if (addonKey === 'lapszabaszat') {
+      const { data: includedAddons, error: includedError } = await ctx.admin
+        .from('product_addons')
+        .select('id')
+        .in('key', ['partner_orders', 'quote_ready_sms'])
+
+      if (includedError) {
+        console.error(
+          'setTenantAddon included addons lookup',
+          includedError.message
+        )
+        return {
+          ok: false,
+          message: 'A kapcsolódó funkciók bekapcsolása sikertelen.'
+        }
+      }
+
+      if (includedAddons && includedAddons.length > 0) {
+        const { error: includedUpsertError } = await ctx.admin
+          .from('tenant_addons')
+          .upsert(
+            includedAddons.map((included) => ({
+              tenant_id: input.tenantId,
+              addon_id: included.id,
+              enabled_at: new Date().toISOString(),
+              enabled_by: ctx.user.id
+            })),
+            { onConflict: 'tenant_id,addon_id' }
+          )
+
+        if (includedUpsertError) {
+          console.error(
+            'setTenantAddon included addons enable',
+            includedUpsertError.message
+          )
+          return {
+            ok: false,
+            message: 'A kapcsolódó funkciók bekapcsolása sikertelen.'
+          }
+        }
+      }
+    }
   } else {
     if (addonKey === 'lapszabaszat') {
       const { disableLapszabaszatDependents } = await import(

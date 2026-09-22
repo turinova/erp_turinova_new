@@ -13,60 +13,57 @@ export const MARKETING_PRICING = {
     priceMonthlyHuf: 39_990,
     /** 10 × havi — 2 hónap ajándék. */
     priceYearlyHuf: 399_900,
-    blurb:
-      'Bolt mag: eladás, árajánlat, készlet, beszerzés, POS, címke, törzsadat — a mindennapi munka gerince.',
+    blurb: 'A bolt napi munkájához szükséges funkciók.',
     features: [
-      'Értékesítés és árajánlat',
-      'Készlet, raktár, átadás',
-      'Beszerzés és beérkezés',
-      'Online POS + műszakok',
-      'Bolti címkenyomtatás',
-      'Törzsadat és ügyfelek'
-    ]
+      'Ajánlatok és értékesítés',
+      'Készlet és raktárak',
+      'Beszerzések és beérkezések',
+      'Pénztár és műszakzárás',
+      'Polc- és termékcímkék',
+      'Ügyfelek és törzsadatok'
+    ],
+    /** A lista nem teljes — ez jelzi, hogy ennél sokkal több van benne. */
+    featuresNote: 'És az összes további funkció, amit a bolt működtetéséhez még használsz.'
   },
   addons: {
     lapszabaszat: {
       key: 'lapszabaszat',
       name: 'Lapszabászati modul',
-      priceMonthlyHuf: 10_000,
-      blurb:
-        'Opti szabás, megrendelés, táblás és szálas anyag, élzáró — a méretek a rendelésből jönnek.',
+      priceMonthlyHuf: 29_990,
+      blurb: 'Rendelés a partner saját fiókjából.',
       accent: 'violet' as const
     },
     quote_ready_sms: {
       key: 'quote_ready_sms',
       name: 'SMS értesítés',
-      priceMonthlyHuf: 4_900,
+      priceMonthlyHuf: 0,
       priceUnitHuf: 89,
       unitLabel: 'Ft/db',
-      blurb: 'Automatikus SMS az ügyfélnek, amikor az ajánlat kész.',
+      blurb: 'SMS az ügyfélnek, amikor elkészült a rendelése.',
       accent: 'rose' as const
     },
     partner_orders: {
       key: 'partner_orders',
       name: 'Online partner rendelés',
-      priceMonthlyHuf: 19_000,
-      blurb: 'Asztalos partnerek saját portálon rendelnek — te a rendszeredben látod.',
+      priceMonthlyHuf: 0,
+      blurb: 'A partner saját fiókból küldi be a rendelést.',
       accent: 'rose' as const
     },
     jelenlet: {
       key: 'jelenlet',
       name: 'Jelenléti ív',
       priceMonthlyHuf: 9_900,
-      blurb:
-        'Dolgozók és jelenléti ív eszköz nélkül. Opcionális: egyedi gyártású chipkártyás beléptető — egyszeri hardverdíj.',
+      blurb: 'Jelenlét és távollét egy naptárban.',
       hardwareNote:
-        'Hardver nélkül is működik. Chipkártyás beléptetéshez saját gyártású olvasó — egyszeri díj, árajánlat szerint.',
+        'Chipkártyás olvasó külön rendelhető.',
       accent: 'emerald' as const
     },
     footcounter: {
       key: 'footcounter',
       name: 'Belépőszámláló',
       priceMonthlyHuf: 5_000,
-      blurb:
-        'AI kamera a bejáraton: napi és óránkénti forgalom. Havidíj + saját gyártású kamera egyszeri díja.',
-      hardwareNote:
-        'Saját gyártású AI kamera — egyszeri hardverdíj, árajánlat szerint.',
+      blurb: 'Óránkénti forgalom a bejáraton, kamerával.',
+      hardwareNote: 'A kamera egyszeri díjára külön ajánlatot adunk.',
       accent: 'indigo' as const
     }
   }
@@ -79,16 +76,22 @@ export const SUPPORT_PHONE_E164 = '+36309992800'
 export const SUPPORT_EMAIL = 'info@turinova.hu'
 export const COMPANY_LINE = 'HÍRÖS-ABLAK Kft. · 6000 Kecskemét, Mindszenti krt. 10.'
 
+/**
+ * A hu-HU Intl locale csak 2+ jegyű bal oldali csoportnál rak ezres
+ * elválasztót (pl. 10 000, de 9900) — `useGrouping: 'always'` nélkül ez
+ * ugyanazon az oldalon egyszer szóközzel, egyszer szóköz nélkül jelenne meg.
+ */
+const HUF_FORMATTER = new Intl.NumberFormat('hu-HU', {
+  maximumFractionDigits: 0,
+  useGrouping: 'always'
+})
+
 export function formatHufNet(amount: number): string {
-  return `${new Intl.NumberFormat('hu-HU', {
-    maximumFractionDigits: 0
-  }).format(Math.round(amount))} Ft nettó`
+  return `${HUF_FORMATTER.format(Math.round(amount))} Ft nettó`
 }
 
 export function formatHufPlain(amount: number): string {
-  return `${new Intl.NumberFormat('hu-HU', {
-    maximumFractionDigits: 0
-  }).format(Math.round(amount))} Ft`
+  return `${HUF_FORMATTER.format(Math.round(amount))} Ft`
 }
 
 /** Éves csomag effektív havi díja (12 hónapra vetítve). */

@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 import { AnimationContainer } from '@/components/marketing/linkify/animation-container'
 import { MaxWidthWrapper } from '@/components/marketing/linkify/max-width-wrapper'
-import { MARKETING_NAV } from '@/lib/marketing/linkify/content'
+import { MARKETING_FOOTER_LINKS } from '@/lib/marketing/linkify/content'
 import {
   COMPANY_LINE,
   SUPPORT_EMAIL
@@ -42,7 +42,7 @@ export function LinkifyFooter() {
           <div>
             <h3 className="text-base font-medium text-zinc-900">Menü</h3>
             <ul className="mt-4 text-sm text-zinc-500">
-              {MARKETING_NAV.map((item) => (
+              {MARKETING_FOOTER_LINKS.map((item) => (
                 <li key={item.href} className="mt-2 first:mt-0">
                   <Link
                     href={item.href}

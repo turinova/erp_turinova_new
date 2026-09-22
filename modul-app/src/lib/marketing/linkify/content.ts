@@ -7,15 +7,14 @@ import {
 import { LINKIFY_ASSET } from '@/lib/marketing/linkify/paths'
 
 /** Partner marketing top nav — flat, certainty-first. */
-export const MARKETING_NAV = [
-  { title: 'Hogyan működik', href: '/hogyan-mukodik' },
-  { title: 'A történetünk', href: '/a-tortenetunk' },
-  { title: 'Árak', href: '/arak' },
-  { title: 'Kapcsolat', href: '/kapcsolat' }
-] as const
+export {
+  MARKETING_NAV_LINKS as MARKETING_NAV,
+  MARKETING_FOOTER_LINKS,
+  UNIQUE_MODULES
+} from '@/lib/marketing/nav'
 
 /** @deprecated alias — Linkify navbar */
-export const NAV_LINKS = MARKETING_NAV
+export { MARKETING_NAV_LINKS as NAV_LINKS } from '@/lib/marketing/nav'
 
 export const COMPANIES = [
   { name: 'Asana', logo: LINKIFY_ASSET('company-01.svg') },

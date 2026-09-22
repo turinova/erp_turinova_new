@@ -247,7 +247,11 @@ export function EmployeeFormClient({
         </div>
         {overtimeEnabled ? (
           <>
-            <FormField label="Grace (perc)" htmlFor="ot-grace">
+            <FormField
+              label="Türelmi idő (perc)"
+              htmlFor="ot-grace"
+              hint="Ennyi perc után indul a túlóra."
+            >
               <Input
                 id="ot-grace"
                 type="number"
@@ -257,7 +261,11 @@ export function EmployeeFormClient({
                 disabled={!canWrite}
               />
             </FormField>
-            <FormField label="Napi plafon (perc)" htmlFor="ot-cap">
+            <FormField
+              label="Napi maximum (perc)"
+              htmlFor="ot-cap"
+              hint="Ennél több túlórát egy napra nem számol."
+            >
               <Input
                 id="ot-cap"
                 type="number"

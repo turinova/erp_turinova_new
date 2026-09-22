@@ -78,6 +78,10 @@ function isPublicMarketingPath(pathname: string) {
     pathname === '/arak' ||
     pathname === '/kapcsolat' ||
     pathname === '/hogyan-mukodik' ||
+    pathname === '/lapszabaszat' ||
+    pathname === '/egyedi-modulok' ||
+    pathname === '/jelenleti-iv' ||
+    pathname === '/beleposzamlalo' ||
     pathname === '/a-tortenetunk' ||
     pathname === '/esettanulmany' ||
     pathname.startsWith('/esettanulmany/') ||

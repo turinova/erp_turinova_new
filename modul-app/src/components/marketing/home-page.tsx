@@ -104,7 +104,7 @@ export function MarketingHomePage() {
                   href="/hogyan-mukodik"
                   className="font-medium text-zinc-800 no-underline underline-offset-2 hover:underline"
                 >
-                  Nézd meg, hogyan működik
+                  Nézd meg a funkciókat
                 </a>
                 .
               </p>

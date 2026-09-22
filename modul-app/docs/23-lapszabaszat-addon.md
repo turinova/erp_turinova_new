@@ -6,7 +6,7 @@ Opti / ajánlat / megrendelés / anyag / gép stack — **nem** része az Alap p
 |---|---|
 | Key | `lapszabaszat` |
 | Ár | **10 000 Ft / hó** nettó |
-| Migration | `20260430_lapszabaszat_addon.sql` |
+| Migration | `20260430_lapszabaszat_addon.sql`, `20260922_lapszabaszat_includes_partner_sms.sql` |
 
 ## Mit nyit
 
@@ -17,14 +17,14 @@ Opti / ajánlat / megrendelés / anyag / gép stack — **nem** része az Alap p
 
 **Nem** része: ügyfelek, gyártók, termékek, média, Belépők.
 
-## Függő add-onok
+## A csomag részei
 
 | Add-on | Szabály |
 |---|---|
-| `partner_orders` | Csak ha Lapszabászat be van |
-| `quote_ready_sms` | Csak ha Lapszabászat be van |
+| `partner_orders` | A Lapszabászattal automatikusan bekapcsol; külön havidíja nincs |
+| `quote_ready_sms` | A Lapszabászattal automatikusan bekapcsol; 89 Ft nettó / kiküldött SMS |
 
-Lapszabászat kikapcsolás → ezek auto lekapcsolódnak.
+Lapszabászat kikapcsolásakor ezek is automatikusan kikapcsolódnak.
 
 ## Nav
 

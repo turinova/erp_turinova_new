@@ -54,7 +54,7 @@ export const CARDS: ModuleCard[] = [
     name: 'Jelenléti ív',
     description:
       'Munkanapok és távollétek vezetése dolgozónként, beléptető eszköz nélkül is.',
-    href: '/hogyan-mukodik#jelenlet',
+    href: '/jelenleti-iv',
     cta: 'Részletek'
   },
   {
@@ -62,7 +62,7 @@ export const CARDS: ModuleCard[] = [
     name: 'Belépőszámláló',
     description:
       'Napi és óránkénti látogatószám a boltban. Látszik, mikor van valódi forgalom.',
-    href: '/hogyan-mukodik#belepo',
+    href: '/beleposzamlalo',
     cta: 'Részletek'
   },
   {
@@ -70,7 +70,7 @@ export const CARDS: ModuleCard[] = [
     name: 'Lapszabászati gyártó',
     description:
       'Táblás és szálas anyag optimalizálása élzárással és szabásjegyzékkel. A méretek a megrendelésből jönnek.',
-    href: '/hogyan-mukodik#lapszabaszat',
+    href: '/lapszabaszat',
     cta: 'Részletek'
   },
   {

@@ -338,12 +338,6 @@ export function RoiCalculator({
           >
             Konzultáció ezekkel a számokkal
           </Link>
-          <Link
-            href="/a-tortenetunk"
-            className="mt-2 text-center text-[12px] text-ink-muted no-underline hover:text-ink hover:underline"
-          >
-            A történetünk — Hírös Ablak →
-          </Link>
         </div>
       </div>
     </section>

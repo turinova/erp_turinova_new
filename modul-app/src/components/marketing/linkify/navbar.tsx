@@ -41,6 +41,12 @@ export function LinkifyNavbar() {
                   {link.title}
                 </Link>
               ))}
+              <Link
+                href="/egyedi-modulok"
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 no-underline hover:text-zinc-900"
+              >
+                Egyedi modulok
+              </Link>
             </nav>
           </div>
 
@@ -85,6 +91,15 @@ export function LinkifyNavbar() {
                 </Link>
               </li>
             ))}
+            <li>
+              <Link
+                href="/egyedi-modulok"
+                className="block w-full rounded-md px-2 py-2 text-left text-sm font-medium text-zinc-700 no-underline"
+                onClick={() => setMobileOpen(false)}
+              >
+                Egyedi modulok
+              </Link>
+            </li>
             <li>
               <Link
                 href="/ceges-belepes"

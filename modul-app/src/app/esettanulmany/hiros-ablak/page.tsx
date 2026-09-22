@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 
-/** Régi URL — a tartalom most: /a-tortenetunk */
+/** Régi URL — a tartalom most: /lapszabaszat */
 export default function HirosCaseStudyRedirect() {
-  redirect('/a-tortenetunk')
+  redirect('/lapszabaszat')
 }
