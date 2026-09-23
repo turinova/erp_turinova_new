@@ -249,7 +249,7 @@ export async function computeFronttervezoButorlapQuote(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         materials: payload,
-        algorithm: 'multipanel',
+        algorithm: 'ensemble',
         sortStrategy: 'height'
       })
     })

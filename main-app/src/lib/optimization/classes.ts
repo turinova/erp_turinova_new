@@ -101,6 +101,50 @@ export class BinClass implements Bin {
     return true;
   }
 
+  /** Dry-run fit check without mutating free rectangles. */
+  public canInsert(rectangle: RectangleClass, kerf: number = 0): boolean {
+    for (const freeRect of this.freeRectangles) {
+      const requiresHorizontalKerf = freeRect.width > rectangle.width;
+      const requiresVerticalKerf = freeRect.height > rectangle.height;
+      if (
+        freeRect.width >= rectangle.width + (requiresHorizontalKerf ? kerf : 0) &&
+        freeRect.height >= rectangle.height + (requiresVerticalKerf ? kerf : 0)
+      ) {
+        return true;
+      }
+      if (rectangle.rotatable) {
+        const requiresHorizontalKerfRotated = freeRect.width > rectangle.height;
+        const requiresVerticalKerfRotated = freeRect.height > rectangle.width;
+        if (
+          freeRect.width >= rectangle.height + (requiresHorizontalKerfRotated ? kerf : 0) &&
+          freeRect.height >= rectangle.width + (requiresVerticalKerfRotated ? kerf : 0)
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Remaining free area after a hypothetical insert (approx.). */
+  public calculateWasteIfInserted(rectangle: RectangleClass): number {
+    const panelArea = rectangle.width * rectangle.height;
+    const usedArea = this.usedRectangles.reduce(
+      (sum, r) => sum + r.width * r.height,
+      0
+    );
+    return this.width * this.height - usedArea - panelArea;
+  }
+
+  public getUtilization(): number {
+    const usedArea = this.usedRectangles.reduce(
+      (sum, r) => sum + r.width * r.height,
+      0
+    );
+    const total = this.width * this.height;
+    return total > 0 ? usedArea / total : 0;
+  }
+
   private splitFreeSpaceHorizontalFirst(
     freeRect: RectangleClass, 
     placedRect: RectangleClass, 

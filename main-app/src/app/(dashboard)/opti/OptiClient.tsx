@@ -8,10 +8,6 @@ import {
   Typography,
   TextField,
   Button,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Grid,
   Chip,
   Table,
@@ -1241,7 +1237,7 @@ export default function OptiClient({
 
   // addedPanels already have the correct Panel structure
 
-  // Optimize with multiple materials using addedPanels
+  // Optimize with multiple materials using addedPanels (ensemble = éles default)
   const optimize = async () => {
     
     if (!customerData.name.trim()) {
@@ -1254,6 +1250,8 @@ export default function OptiClient({
       setError('Please add at least one panel to optimize')
       return
     }
+
+    const algorithm = 'ensemble' as const
 
     console.time('[OPTI] Total Optimization Time')
     setIsOptimizing(true)
@@ -1340,9 +1338,11 @@ export default function OptiClient({
 
       // Call multi-material optimization service
       const request = { materials: materialsForOptimization }
-      console.log(`[OPTI] Calling optimization API with ${materialsForOptimization.length} materials`)
+      console.log(
+        `[OPTI] Calling optimization API with ${materialsForOptimization.length} materials (${algorithm})`
+      )
         
-      console.time('[OPTI] API Call (Multi-Panel Look-Ahead Algorithm)')
+      console.time(`[OPTI] API Call (${algorithm})`)
       const response = await fetch('/api/optimize', {
           method: 'POST',
           headers: {
@@ -1350,8 +1350,8 @@ export default function OptiClient({
           },
           body: JSON.stringify({ 
             ...request, 
-            algorithm: 'multipanel',  // Use Multi-Panel Look-Ahead for best efficiency
-            sortStrategy: 'height'     // Hosszúság szerint (tallest first) - proven best for beam saws
+            algorithm,
+            sortStrategy: 'height'
           })
         })
 
@@ -1362,7 +1362,7 @@ export default function OptiClient({
         }
 
       const results = await response.json()
-      console.timeEnd('[OPTI] API Call (Multi-Panel Look-Ahead Algorithm)')
+      console.timeEnd(`[OPTI] API Call (${algorithm})`)
 
       console.time('[OPTI] Results Processing')
       // Calculate total metrics
@@ -2886,42 +2886,58 @@ export default function OptiClient({
             </TableContainer>
             
             {/* Optimalizálás and Save Quote Buttons */}
-            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 3, mb: 2 }}>
-              <Tooltip 
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 2,
+                mt: 3,
+                mb: 2
+              }}
+            >
+              <Tooltip
                 title={
-                  !customerData.name.trim() 
-                    ? 'Kérjük, töltse ki a megrendelő nevét!' 
-                    : addedPanels.length === 0 
-                      ? 'Adjon hozzá legalább egy panelt!' 
+                  !customerData.name.trim()
+                    ? 'Kérjük, töltse ki a megrendelő nevét!'
+                    : addedPanels.length === 0
+                      ? 'Adjon hozzá legalább egy panelt!'
                       : ''
                 }
                 arrow
               >
                 <span>
-              <Button
-                variant="contained"
-                color={optimizationResult && !isOptimizing ? "success" : "warning"}
-                size="large"
-                onClick={optimize}
-                    disabled={addedPanels.length === 0 || isOptimizing || !customerData.name.trim()}
-                sx={{ 
-                  minWidth: 200,
-                  py: 1.5,
-                  px: 4
-                }}
-              >
-                {isOptimizing ? (
-                  <>
-                    <CircularProgress size={20} sx={{ mr: 1 }} />
-                    Optimalizálás...
-                  </>
-                ) : (
-                  'Optimalizálás'
-                )}
-              </Button>
+                  <Button
+                    variant='contained'
+                    color={
+                      optimizationResult && !isOptimizing ? 'success' : 'warning'
+                    }
+                    size='large'
+                    onClick={optimize}
+                    disabled={
+                      addedPanels.length === 0 ||
+                      isOptimizing ||
+                      !customerData.name.trim()
+                    }
+                    sx={{
+                      minWidth: 200,
+                      py: 1.5,
+                      px: 4
+                    }}
+                  >
+                    {isOptimizing ? (
+                      <>
+                        <CircularProgress size={20} sx={{ mr: 1 }} />
+                        Optimalizálás...
+                      </>
+                    ) : (
+                      'Optimalizálás'
+                    )}
+                  </Button>
                 </span>
               </Tooltip>
-              
+
               {/* Save Quote Button - Only show after optimization */}
               {optimizationResult && quoteResult && (
                 <Tooltip 

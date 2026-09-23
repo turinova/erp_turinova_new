@@ -31,6 +31,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#8E44AD' // Purple for optimization tools
   },
   {
+    label: 'Opti Lab',
+    href: '/opti/lab',
+    icon: 'ri-flask-line',
+    iconColor: '#8E44AD'
+  },
+  {
     label: <span style={{ fontWeight: 700 }}>NETTFRONT</span>,
     href: '/fronttervezo',
     icon: 'ri-checkbox-blank-line',
