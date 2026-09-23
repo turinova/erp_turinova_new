@@ -7,6 +7,10 @@ import { toast } from 'sonner'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import {
+  DocumentBillingFields,
+  type DocumentBillingState
+} from '@/components/sales/document-billing-fields'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -28,6 +32,22 @@ type CustomerFormProps = {
   canWrite: boolean
 }
 
+function billingFromInitial(
+  initial?: CustomerDetail | null
+): DocumentBillingState {
+  return {
+    billingName: initial?.billing_name ?? '',
+    billingCountry: initial?.billing_country ?? 'Magyarország',
+    billingCity: initial?.billing_city ?? '',
+    billingPostalCode: initial?.billing_postal_code ?? '',
+    billingStreet: initial?.billing_street ?? '',
+    billingHouseNumber: initial?.billing_house_number ?? '',
+    billingTaxNumber: initial?.billing_tax_number
+      ? formatTaxNumber(initial.billing_tax_number)
+      : ''
+  }
+}
+
 export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -38,22 +58,8 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
   const [smsNotification, setSmsNotification] = useState(
     Boolean(initial?.sms_notification)
   )
-  const [billingName, setBillingName] = useState(initial?.billing_name ?? '')
-  const [billingCountry, setBillingCountry] = useState(
-    initial?.billing_country ?? 'Magyarország'
-  )
-  const [billingCity, setBillingCity] = useState(initial?.billing_city ?? '')
-  const [billingPostalCode, setBillingPostalCode] = useState(
-    initial?.billing_postal_code ?? ''
-  )
-  const [billingStreet, setBillingStreet] = useState(
-    initial?.billing_street ?? ''
-  )
-  const [billingHouseNumber, setBillingHouseNumber] = useState(
-    initial?.billing_house_number ?? ''
-  )
-  const [billingTaxNumber, setBillingTaxNumber] = useState(
-    initial?.billing_tax_number ?? ''
+  const [billing, setBilling] = useState<DocumentBillingState>(() =>
+    billingFromInitial(initial)
   )
   const [billingCompanyRegNumber, setBillingCompanyRegNumber] = useState(
     initial?.billing_company_reg_number ?? ''
@@ -68,13 +74,13 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
         email,
         mobile,
         smsNotification,
-        billingName,
-        billingCountry,
-        billingCity,
-        billingPostalCode,
-        billingStreet,
-        billingHouseNumber,
-        billingTaxNumber,
+        billingName: billing.billingName,
+        billingCountry: billing.billingCountry,
+        billingCity: billing.billingCity,
+        billingPostalCode: billing.billingPostalCode,
+        billingStreet: billing.billingStreet,
+        billingHouseNumber: billing.billingHouseNumber,
+        billingTaxNumber: billing.billingTaxNumber,
         billingCompanyRegNumber
       }
 
@@ -124,12 +130,8 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
         }
       />
 
-      <div className="w-full max-w-6xl space-y-2.5">
-        <FormSection
-          title="Kapcsolat"
-          description="Név és elérhetőségek."
-          columns={4}
-        >
+      <div className="mt-4 space-y-3">
+        <FormSection title="Alapadatok" columns={2}>
           <FormField
             label="Név"
             htmlFor="customer-name"
@@ -163,7 +165,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
           </FormField>
 
           <FormField
-            label="Telefonszám"
+            label="Mobil"
             htmlFor="customer-mobile"
             optionalLabel
             error={fieldErrors.mobile}
@@ -194,116 +196,26 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
 
         <FormSection
           title="Számlázás"
-          description="Számlázási cím és adóazonosítók."
-          columns={4}
+          description="Adószám kitöltése után automatikus cégadat (Számlázz / NAV)."
+          columns={1}
         >
-          <FormField
-            label="Számlázási név"
-            htmlFor="customer-billing-name"
-            optionalLabel
-            error={fieldErrors.billingName}
-            className="sm:col-span-2"
-          >
-            <Input
-              id="customer-billing-name"
-              value={billingName}
-              disabled={!canWrite}
-              onChange={(e) => setBillingName(e.target.value)}
-            />
-          </FormField>
-
-          <FormField
-            label="Ország"
-            htmlFor="customer-billing-country"
-            required
-            error={fieldErrors.billingCountry}
-          >
-            <Input
-              id="customer-billing-country"
-              value={billingCountry}
-              disabled={!canWrite}
-              onChange={(e) => setBillingCountry(e.target.value)}
-            />
-          </FormField>
-
-          <FormField
-            label="Város"
-            htmlFor="customer-billing-city"
-            optionalLabel
-            error={fieldErrors.billingCity}
-          >
-            <Input
-              id="customer-billing-city"
-              value={billingCity}
-              disabled={!canWrite}
-              onChange={(e) => setBillingCity(e.target.value)}
-            />
-          </FormField>
-
-          <FormField
-            label="Irányítószám"
-            htmlFor="customer-billing-zip"
-            optionalLabel
-            error={fieldErrors.billingPostalCode}
-          >
-            <Input
-              id="customer-billing-zip"
-              value={billingPostalCode}
-              disabled={!canWrite}
-              onChange={(e) => setBillingPostalCode(e.target.value)}
-            />
-          </FormField>
-
-          <FormField
-            label="Utca"
-            htmlFor="customer-billing-street"
-            optionalLabel
-            error={fieldErrors.billingStreet}
-            className="sm:col-span-2"
-          >
-            <Input
-              id="customer-billing-street"
-              value={billingStreet}
-              disabled={!canWrite}
-              onChange={(e) => setBillingStreet(e.target.value)}
-            />
-          </FormField>
-
-          <FormField
-            label="Házszám"
-            htmlFor="customer-billing-house"
-            optionalLabel
-            error={fieldErrors.billingHouseNumber}
-          >
-            <Input
-              id="customer-billing-house"
-              value={billingHouseNumber}
-              disabled={!canWrite}
-              onChange={(e) => setBillingHouseNumber(e.target.value)}
-            />
-          </FormField>
-
-          <FormField
-            label="Adószám"
-            htmlFor="customer-tax"
-            optionalLabel
-            error={fieldErrors.billingTaxNumber}
-            hint={
-              !fieldErrors.billingTaxNumber ? 'pl. 12345678-1-02' : undefined
-            }
-          >
-            <Input
-              id="customer-tax"
-              value={billingTaxNumber}
-              disabled={!canWrite}
-              onChange={(e) =>
-                setBillingTaxNumber(formatTaxNumber(e.target.value))
-              }
-              inputMode="numeric"
-              placeholder="12345678-1-02"
-            />
-          </FormField>
-
+          <DocumentBillingFields
+            value={billing}
+            onChange={setBilling}
+            disabled={!canWrite || pending}
+            idPrefix="customer-bill"
+            enableTaxpayerLookup={canWrite}
+            hint="Az ügyféltörzsben tárolódik. Adószám → automatikus név és cím."
+          />
+          {fieldErrors.billingName ||
+          fieldErrors.billingTaxNumber ||
+          fieldErrors.billingCountry ? (
+            <p className="text-hint text-danger-ink" role="alert">
+              {fieldErrors.billingName ||
+                fieldErrors.billingTaxNumber ||
+                fieldErrors.billingCountry}
+            </p>
+          ) : null}
           <FormField
             label="Cégjegyzékszám"
             htmlFor="customer-reg"
@@ -314,7 +226,6 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
                 ? 'pl. 01-09-123456'
                 : undefined
             }
-            className="sm:col-span-2"
           >
             <Input
               id="customer-reg"

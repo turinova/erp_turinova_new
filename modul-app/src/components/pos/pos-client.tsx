@@ -12,6 +12,8 @@ import {
 import {
   Banknote,
   ChevronDown,
+  Download,
+  ExternalLink,
   FileText,
   LogOut,
   Minus,
@@ -25,6 +27,7 @@ import {
   UserPlus,
   X
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { PosConfirmDialog } from '@/components/pos/pos-confirm-dialog'
@@ -62,6 +65,8 @@ import {
   createSaleAction,
   searchSaleProductsAction
 } from '@/lib/sales/actions'
+import { createSaleInvoiceAction } from '@/lib/invoicing/actions'
+import type { InvoicePaymentMethod } from '@/lib/invoicing/types'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import {
@@ -168,6 +173,15 @@ export function PosClient({
   const [editingField, setEditingField] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [flashError, setFlashError] = useState<string | null>(null)
+  const [flashSuccess, setFlashSuccess] = useState<{
+    saleId: string
+    saleNumber: string
+    invoiceNumber?: string
+    invoiceId?: string
+    invoiceFailed?: boolean
+    invoicePay?: InvoicePaymentMethod
+  } | null>(null)
+  const [invoiceRetryPending, startInvoiceRetry] = useTransition()
   const [pendingPayId, setPendingPayId] = useState('')
 
   const barcodeRef = useRef<HTMLInputElement>(null)
@@ -483,6 +497,16 @@ export function PosClient({
 
   function handleConfirm() {
     startTransition(async () => {
+      const issueInvoice = wantInvoice && billingHasAny(billing)
+      const payMethod = paymentMethods.find((m) => m.id === pendingPayId)
+      const payName = (payMethod?.name || '').toLowerCase()
+      const invoicePay: 'cash' | 'card' | 'bank_transfer' =
+        payName.includes('készpénz') || payName.includes('keszpenz')
+          ? 'cash'
+          : payName.includes('kártya') || payName.includes('kartya')
+            ? 'card'
+            : 'bank_transfer'
+
       const result = await createSaleAction({
         warehouseId,
         customerId: customerId || null,
@@ -491,10 +515,7 @@ export function PosClient({
         discountPercentage: globalDiscPct || 0,
         discountAmount: 0,
         posRegisterId: registerId,
-        billing:
-          wantInvoice && billingHasAny(billing)
-            ? billingToFormInput(billing)
-            : undefined,
+        billing: issueInvoice ? billingToFormInput(billing) : undefined,
         items: lines.map((l) => ({
           accessoryId: l.accessoryId,
           quantity: l.quantity,
@@ -518,6 +539,61 @@ export function PosClient({
         return
       }
 
+      if (issueInvoice && result.id) {
+        const today = new Date().toISOString().slice(0, 10)
+        const inv = await createSaleInvoiceAction({
+          saleId: result.id,
+          kind: 'normal',
+          paymentMethod: invoicePay,
+          dueDate: today,
+          fulfillmentDate: today,
+          sendEmail: false,
+          markAsPaid: true
+        })
+        if (!inv.ok) {
+          setFlashError(
+            `Eladás rögzítve (${result.saleNumber ?? ''}), számla hiba: ${inv.message}`
+          )
+          setFlashSuccess({
+            saleId: result.id,
+            saleNumber: result.saleNumber ?? result.id,
+            invoiceFailed: true,
+            invoicePay: invoicePay
+          })
+        } else {
+          setFlashError(null)
+          setFlashSuccess({
+            saleId: result.id,
+            saleNumber: result.saleNumber ?? result.id,
+            invoiceNumber: inv.providerNumber,
+            invoiceId: inv.invoiceId
+          })
+          toast.success(
+            inv.providerNumber
+              ? `Számla kész: ${inv.providerNumber}`
+              : 'Számla kiállítva.',
+            {
+              action: {
+                label: 'Eladás megnyitása',
+                onClick: () =>
+                  router.push(`/ertekesitesek/${result.id}`)
+              }
+            }
+          )
+        }
+      } else if (result.id) {
+        setFlashError(null)
+        setFlashSuccess({
+          saleId: result.id,
+          saleNumber: result.saleNumber ?? result.id
+        })
+        toast.success(
+          result.saleNumber
+            ? `Eladás: ${result.saleNumber}`
+            : 'Eladás rögzítve.'
+        )
+      }
+
       setLines([])
       setFees([])
       setGlobalDiscPct(0)
@@ -528,7 +604,6 @@ export function PosClient({
       setDiscOpen(false)
       setConfirmOpen(false)
       setPendingPayId('')
-      setFlashError(null)
       focusBarcode()
       router.refresh()
     })
@@ -768,7 +843,12 @@ export function PosClient({
                 onChange={(v) => {
                   setCustomerId(v)
                   const c = customers.find((x) => x.id === v)
-                  if (c) setBilling(billingFromCustomer(c))
+                  if (c) {
+                    setBilling(billingFromCustomer(c))
+                    if (wantInvoice) {
+                      toast.message('Számlázási adatok behúzva az ügyfélről.')
+                    }
+                  }
                   setCustomerOpen(false)
                   focusBarcode()
                 }}
@@ -783,25 +863,6 @@ export function PosClient({
 
         <Button
           type="button"
-          variant={wantInvoice ? 'secondary' : 'ghost'}
-          size="sm"
-          aria-pressed={wantInvoice}
-          onClick={() => {
-            if (!wantInvoice) {
-              const c = customers.find((x) => x.id === customerId)
-              if (c && !billingHasAny(billing)) {
-                setBilling(billingFromCustomer(c))
-              }
-            }
-            setInvoiceOpen(true)
-          }}
-        >
-          <FileText className="size-3.5" aria-hidden />
-          {wantInvoice ? 'Számla' : 'Számlát kér'}
-        </Button>
-
-        <Button
-          type="button"
           variant="secondary"
           size="sm"
           onClick={() => setQuickCustomerOpen(true)}
@@ -811,6 +872,26 @@ export function PosClient({
         </Button>
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Button
+            type="button"
+            variant="secondary"
+            aria-pressed={wantInvoice}
+            className={
+              wantInvoice
+                ? 'border-ink bg-ink text-surface hover:bg-ink/90'
+                : undefined
+            }
+            onClick={() => {
+              const c = customers.find((x) => x.id === customerId)
+              if (c) {
+                setBilling(billingFromCustomer(c))
+              }
+              setInvoiceOpen(true)
+            }}
+          >
+            <FileText className="size-3.5" aria-hidden />
+            {wantInvoice ? 'Számla · szerkeszt' : 'Számlát kér'}
+          </Button>
           <Button
             type="button"
             variant="secondary"
@@ -866,6 +947,102 @@ export function PosClient({
           >
             <X className="size-3.5" />
           </button>
+        </div>
+      ) : null}
+
+      {flashSuccess ? (
+        <div
+          className={cn(
+            'flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-3 py-2 text-body',
+            flashSuccess.invoiceFailed
+              ? 'border-warning/35 bg-warning-soft text-warning-ink'
+              : 'border-success/30 bg-success-soft text-success-ink'
+          )}
+        >
+          <p className="min-w-0 flex-1">
+            {flashSuccess.saleNumber}
+            {flashSuccess.invoiceFailed
+              ? ' · Eladás kész, számla sikertelen'
+              : flashSuccess.invoiceNumber
+                ? ` · Számla: ${flashSuccess.invoiceNumber}`
+                : ' · Eladás rögzítve'}
+          </p>
+          <div className="flex items-center gap-1.5">
+            {flashSuccess.invoiceFailed ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={invoiceRetryPending}
+                onClick={() => {
+                  const pay = flashSuccess.invoicePay ?? 'cash'
+                  const saleId = flashSuccess.saleId
+                  startInvoiceRetry(async () => {
+                    const today = new Date().toISOString().slice(0, 10)
+                    const inv = await createSaleInvoiceAction({
+                      saleId,
+                      kind: 'normal',
+                      paymentMethod: pay,
+                      dueDate: today,
+                      fulfillmentDate: today,
+                      sendEmail: false,
+                      markAsPaid: true
+                    })
+                    if (!inv.ok) {
+                      setFlashError(`Számla hiba: ${inv.message}`)
+                      toast.error(inv.message)
+                      return
+                    }
+                    setFlashError(null)
+                    setFlashSuccess({
+                      saleId,
+                      saleNumber: flashSuccess.saleNumber,
+                      invoiceNumber: inv.providerNumber,
+                      invoiceId: inv.invoiceId
+                    })
+                    toast.success(
+                      inv.providerNumber
+                        ? `Számla kész: ${inv.providerNumber}`
+                        : 'Számla kiállítva.'
+                    )
+                  })
+                }}
+              >
+                Számla újra
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                router.push(`/ertekesitesek/${flashSuccess.saleId}`)
+              }
+            >
+              <ExternalLink className="size-3.5" aria-hidden />
+              Eladás megnyitása
+            </Button>
+            {flashSuccess.invoiceId ? (
+              <a
+                href={`/api/invoices/${flashSuccess.invoiceId}/pdf`}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(
+                  'inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-hint font-medium text-ink no-underline hover:bg-subtle'
+                )}
+              >
+                <Download className="size-3.5" aria-hidden />
+                PDF
+              </a>
+            ) : null}
+            <button
+              type="button"
+              className="shrink-0 rounded p-0.5 hover:bg-black/5"
+              aria-label="Üzenet bezárása"
+              onClick={() => setFlashSuccess(null)}
+            >
+              <X className="size-3.5" />
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -1018,9 +1195,22 @@ export function PosClient({
         <aside className="flex min-h-0 flex-col bg-subtle/30">
           <div className="min-h-0 flex-1 overflow-auto p-2 sm:p-3">
             {lines.length === 0 && fees.length === 0 ? (
-              <p className="rounded-md border border-dashed border-border bg-surface p-6 text-center text-body text-ink-secondary">
-                A kosár üres. Scannelj terméket.
-              </p>
+              <div className="rounded-md border border-dashed border-border bg-surface p-6 text-center">
+                <p className="text-body text-ink-secondary">
+                  A kosár üres. Scannelj terméket.
+                </p>
+                <p className="mt-2 text-hint text-ink-muted">
+                  Utalásos / fizetetlen eladás az{' '}
+                  <button
+                    type="button"
+                    className="font-medium text-ink underline-offset-2 hover:underline"
+                    onClick={() => router.push('/ertekesitesek/uj')}
+                  >
+                    Értékesítések
+                  </button>{' '}
+                  menüben.
+                </p>
+              </div>
             ) : (
               <div className="overflow-hidden rounded-md border border-border bg-surface">
                 <table className="w-full border-collapse text-body">
@@ -1642,8 +1832,9 @@ export function PosClient({
             return [opt, ...prev]
           })
           setCustomerId(c.id)
+          setBilling(billingFromCustomer({ ...opt, name: c.name }))
           if (wantInvoice) {
-            setBilling(billingFromCustomer(opt))
+            toast.message('Új ügyfél — töltsd ki a számlázási adatokat.')
           }
         }}
       />

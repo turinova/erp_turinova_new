@@ -19,6 +19,7 @@ export const MARKETING_PRICING = {
       'Készlet és raktárak',
       'Beszerzések és beérkezések',
       'Pénztár és műszakzárás',
+      'Számlázás (Számlázz.hu)',
       'Polc- és termékcímkék',
       'Ügyfelek és törzsadatok'
     ],

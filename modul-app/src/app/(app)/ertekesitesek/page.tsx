@@ -2,6 +2,9 @@ import type { Metadata } from 'next'
 
 import { SalesListClient } from '@/components/sales/sales-list-client'
 import { getSessionUser } from '@/lib/auth/session'
+import { saleInvoiceListStatus } from '@/lib/invoicing/invoice-rules'
+import { listInvoicePeersForSources } from '@/lib/invoicing/queries'
+import type { InvoiceListItem } from '@/lib/invoicing/types'
 import { listSales, type SaleListResult } from '@/lib/sales/queries'
 import { createClient } from '@/lib/supabase/server'
 
@@ -50,6 +53,33 @@ export default async function ErtekesitesekPage({
           limit: 25,
           posShiftId: shiftId
         })
+
+        if (result.rows.length > 0) {
+          const peers = await listInvoicePeersForSources(
+            supabase,
+            user.tenantId,
+            result.rows.map((r) => ({ type: 'sale', id: r.id }))
+          )
+          const bySale = new Map<string, InvoiceListItem[]>()
+          for (const inv of peers) {
+            if (
+              inv.related_source_type !== 'sale' ||
+              !inv.related_source_id
+            ) {
+              continue
+            }
+            const arr = bySale.get(inv.related_source_id) ?? []
+            arr.push(inv)
+            bySale.set(inv.related_source_id, arr)
+          }
+          result = {
+            ...result,
+            rows: result.rows.map((row) => ({
+              ...row,
+              invoice_status: saleInvoiceListStatus(bySale.get(row.id) ?? [])
+            }))
+          }
+        }
       } catch (err) {
         loadError =
           err instanceof Error

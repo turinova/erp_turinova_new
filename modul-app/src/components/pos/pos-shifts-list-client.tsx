@@ -49,6 +49,14 @@ const STATUS_FILTERS: { value: 'all' | 'open' | 'closed'; label: string }[] = [
   { value: 'closed', label: 'Zárt' }
 ]
 
+const filterChipClass = (active: boolean) =>
+  cn(
+    'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
+    active
+      ? 'bg-ink text-surface'
+      : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
+  )
+
 export function PosShiftsListClient({
   initialRows,
   total,
@@ -59,6 +67,8 @@ export function PosShiftsListClient({
 }: Props) {
   const router = useRouter()
   const totalPages = Math.max(1, Math.ceil(total / limit))
+  const rangeStart = total === 0 ? 0 : (page - 1) * limit + 1
+  const rangeEnd = Math.min(page * limit, total)
 
   function pushParams(next: {
     page?: number
@@ -91,12 +101,7 @@ export function PosShiftsListClient({
               key={f.value}
               type="button"
               onClick={() => pushParams({ status: f.value, page: 1 })}
-              className={cn(
-                'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
-                active
-                  ? 'bg-ink text-surface'
-                  : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
-              )}
+              className={filterChipClass(active)}
             >
               {f.label}
             </button>
@@ -107,12 +112,7 @@ export function PosShiftsListClient({
           onClick={() =>
             pushParams({ diffOnly: !initialDiffOnly, page: 1 })
           }
-          className={cn(
-            'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
-            initialDiffOnly
-              ? 'bg-warning text-white'
-              : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
-          )}
+          className={filterChipClass(initialDiffOnly)}
         >
           Csak eltérés
         </button>
@@ -132,113 +132,134 @@ export function PosShiftsListClient({
           </Button>
         </div>
       ) : (
-        <DataTable>
-          <DataTableHead>
-            <DataTableRow>
-              <DataTableHeaderCell>Nyitás</DataTableHeaderCell>
-              <DataTableHeaderCell>Pénztár</DataTableHeaderCell>
-              <DataTableHeaderCell>Nyitó</DataTableHeaderCell>
-              <DataTableHeaderCell>Forgalom</DataTableHeaderCell>
-              <DataTableHeaderCell>Eltérés</DataTableHeaderCell>
-              <DataTableHeaderCell>Állapot</DataTableHeaderCell>
-            </DataTableRow>
-          </DataTableHead>
-          <DataTableBody>
-            {initialRows.map((row) => {
-              const diff = row.cash_difference
-              const diffTone =
-                diff == null
-                  ? 'neutral'
-                  : diff === 0
-                    ? 'success'
-                    : diff < 0
-                      ? 'danger'
-                      : 'warning'
-              return (
-                <DataTableRow
-                  key={row.id}
-                  className="cursor-pointer"
-                  onClick={() =>
-                    router.push(`/ertekesitesek/muszakok/${row.id}`)
-                  }
-                >
-                  <DataTableCell>
-                    <Link
-                      href={`/ertekesitesek/muszakok/${row.id}`}
-                      className="font-medium text-ink underline-offset-2 hover:underline"
-                      onClick={(e) => e.stopPropagation()}
+        <>
+          <DataTable>
+            <DataTableHead>
+              <DataTableRow>
+                <DataTableHeaderCell>Nyitás</DataTableHeaderCell>
+                <DataTableHeaderCell>Pénztár</DataTableHeaderCell>
+                <DataTableHeaderCell align="right">Nyitó</DataTableHeaderCell>
+                <DataTableHeaderCell align="right">
+                  Forgalom
+                </DataTableHeaderCell>
+                <DataTableHeaderCell>Eltérés</DataTableHeaderCell>
+                <DataTableHeaderCell>Állapot</DataTableHeaderCell>
+                <DataTableHeaderCell>
+                  <span className="sr-only">Művelet</span>
+                </DataTableHeaderCell>
+              </DataTableRow>
+            </DataTableHead>
+            <DataTableBody>
+              {initialRows.map((row) => {
+                const diff = row.cash_difference
+                const diffTone =
+                  diff == null
+                    ? 'neutral'
+                    : diff === 0
+                      ? 'success'
+                      : diff < 0
+                        ? 'danger'
+                        : 'warning'
+                const href = `/ertekesitesek/muszakok/${row.id}`
+                return (
+                  <DataTableRow
+                    key={row.id}
+                    className="cursor-pointer"
+                    onClick={() => router.push(href)}
+                  >
+                    <DataTableCell>
+                      <Link
+                        href={href}
+                        className="font-medium text-ink underline-offset-2 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {formatDateTime(row.opened_at)}
+                      </Link>
+                      <p className="text-hint text-ink-secondary">
+                        {row.opened_by_label ?? '—'}
+                      </p>
+                    </DataTableCell>
+                    <DataTableCell>
+                      <span className="text-ink">{row.register_name}</span>
+                      <p className="text-hint text-ink-secondary">
+                        {row.warehouse_name}
+                      </p>
+                    </DataTableCell>
+                    <DataTableCell
+                      align="right"
+                      className="tabular-nums"
                     >
-                      {formatDateTime(row.opened_at)}
-                    </Link>
-                    <p className="text-hint text-ink-secondary">
-                      {row.opened_by_label ?? '—'}
-                    </p>
-                  </DataTableCell>
-                  <DataTableCell>
-                    <span className="text-ink">{row.register_name}</span>
-                    <p className="text-hint text-ink-secondary">
-                      {row.warehouse_name}
-                    </p>
-                  </DataTableCell>
-                  <DataTableCell className="tabular-nums">
-                    {formatMoneyFt(row.opening_cash)} Ft
-                  </DataTableCell>
-                  <DataTableCell className="tabular-nums font-medium">
-                    {formatMoneyFt(row.sales_gross_sum)} Ft
-                  </DataTableCell>
-                  <DataTableCell>
-                    {diff == null ? (
-                      <span className="text-ink-muted">—</span>
-                    ) : (
-                      <StatusBadge tone={diffTone} variant="solid">
-                        {diff === 0
-                          ? 'OK'
-                          : `${diff > 0 ? '+' : ''}${formatMoneyFt(diff)} Ft`}
+                      {formatMoneyFt(row.opening_cash)} Ft
+                    </DataTableCell>
+                    <DataTableCell
+                      align="right"
+                      className="tabular-nums font-medium"
+                    >
+                      {formatMoneyFt(row.sales_gross_sum)} Ft
+                    </DataTableCell>
+                    <DataTableCell>
+                      {diff == null ? (
+                        <span className="text-ink-muted">—</span>
+                      ) : (
+                        <StatusBadge tone={diffTone} variant="solid">
+                          {diff === 0
+                            ? 'OK'
+                            : `${diff > 0 ? '+' : ''}${formatMoneyFt(diff)} Ft`}
+                        </StatusBadge>
+                      )}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <StatusBadge
+                        tone={row.status === 'open' ? 'active' : 'neutral'}
+                        variant="soft"
+                      >
+                        {row.status === 'open' ? 'Nyitott' : 'Zárt'}
                       </StatusBadge>
-                    )}
-                  </DataTableCell>
-                  <DataTableCell>
-                    <StatusBadge
-                      tone={row.status === 'open' ? 'active' : 'neutral'}
-                      variant="soft"
-                    >
-                      {row.status === 'open' ? 'Nyitott' : 'Zárt'}
-                    </StatusBadge>
-                  </DataTableCell>
-                </DataTableRow>
-              )
-            })}
-          </DataTableBody>
-        </DataTable>
-      )}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <Link
+                        href={href}
+                        className="inline-flex h-8 items-center rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Megnyitás
+                      </Link>
+                    </DataTableCell>
+                  </DataTableRow>
+                )
+              })}
+            </DataTableBody>
+          </DataTable>
 
-      {totalPages > 1 ? (
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-hint text-ink-secondary">
-            {total} műszak · {page}/{totalPages}
-          </p>
-          <div className="flex gap-1.5">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => pushParams({ page: page - 1 })}
-            >
-              Előző
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => pushParams({ page: page + 1 })}
-            >
-              Következő
-            </Button>
+          <div className="flex items-center justify-between gap-2 text-body text-ink-secondary">
+            <span>
+              {rangeStart}–{rangeEnd} / {total} elem
+            </span>
+            {totalPages > 1 ? (
+              <div className="flex gap-1.5">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => pushParams({ page: page - 1 })}
+                >
+                  Előző
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => pushParams({ page: page + 1 })}
+                >
+                  Következő
+                </Button>
+              </div>
+            ) : null}
           </div>
-        </div>
-      ) : null}
+        </>
+      )}
     </div>
   )
 }

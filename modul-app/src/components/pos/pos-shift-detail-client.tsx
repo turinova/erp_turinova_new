@@ -1,9 +1,8 @@
 'use client'
 
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { Banknote } from 'lucide-react'
 
-import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
-import { StatusBadge } from '@/components/patterns/status-badge'
 import {
   DataTable,
   DataTableBody,
@@ -12,8 +11,14 @@ import {
   DataTableHeaderCell,
   DataTableRow
 } from '@/components/patterns/data-table'
+import { FormField } from '@/components/patterns/form-field'
+import { FormSection } from '@/components/patterns/form-section'
+import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import { StatusBadge } from '@/components/patterns/status-badge'
+import { Button } from '@/components/ui/button'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { PosShiftDetail } from '@/lib/pos/shifts'
+import { cn } from '@/lib/utils'
 
 type Props = {
   detail: PosShiftDetail
@@ -47,100 +52,138 @@ function DiffBadge({ value }: { value: number | null }) {
   )
 }
 
+function moneyOrDash(n: number | null) {
+  return n == null ? '—' : `${formatMoneyFt(n)} Ft`
+}
+
 export function PosShiftDetailClient({ detail }: Props) {
+  const router = useRouter()
+  const hasCashDiff =
+    detail.cash_difference != null && detail.cash_difference !== 0
+
+  const descParts = [
+    detail.warehouse_name,
+    'belsős elszámolás',
+    detail.opened_by_label
+      ? `Nyitotta: ${detail.opened_by_label}`
+      : null,
+    detail.closed_at
+      ? `Zárta: ${detail.closed_by_label ?? '—'} · ${formatDateTime(detail.closed_at)}`
+      : null
+  ].filter(Boolean)
+
   return (
     <div className="space-y-4">
       <PageHeader
         title={`${detail.register_name} · ${formatDateTime(detail.opened_at)}`}
-        description={`${detail.warehouse_name} · belsős elszámolás`}
+        description={descParts.join(' · ')}
         actions={
-          <StatusBadge
-            tone={detail.status === 'open' ? 'active' : 'neutral'}
-            variant="soft"
-          >
-            {detail.status === 'open' ? 'Nyitott' : 'Zárt'}
-          </StatusBadge>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge
+              tone={detail.status === 'open' ? 'active' : 'neutral'}
+              variant="soft"
+            >
+              {detail.status === 'open' ? 'Nyitott' : 'Zárt'}
+            </StatusBadge>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                router.push(`/ertekesitesek?shift=${detail.id}`)
+              }
+            >
+              Eladások megnyitása
+            </Button>
+            {detail.status === 'open' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => router.push('/pos')}
+              >
+                POS megnyitása
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-md border border-border p-3">
-          <p className="text-[12px] font-medium text-ink-secondary">Nyitó</p>
-          <p className="mt-1 text-body font-semibold tabular-nums">
+      <FormSection
+        title="Összesítés"
+        description={`${detail.sales_count} eladás${
+          detail.returns_count > 0
+            ? ` · ${detail.returns_count} visszáru`
+            : ''
+        }`}
+        columns={4}
+      >
+        <FormField
+          label="Nyitó"
+          htmlFor="shift-opening"
+          hint={detail.opened_by_label ?? undefined}
+        >
+          <p
+            id="shift-opening"
+            className="text-body font-semibold tabular-nums text-ink"
+          >
             {formatMoneyFt(detail.opening_cash)} Ft
           </p>
-          <p className="mt-1 text-hint text-ink-secondary">
-            {detail.opened_by_label ?? '—'}
-          </p>
-        </div>
-        <div className="rounded-md border border-border p-3">
-          <p className="text-[12px] font-medium text-ink-secondary">Forgalom</p>
-          <p className="mt-1 text-body font-semibold tabular-nums">
+        </FormField>
+        <FormField label="Forgalom" htmlFor="shift-sales">
+          <p
+            id="shift-sales"
+            className="text-body font-semibold tabular-nums text-ink"
+          >
             {formatMoneyFt(detail.sales_gross_sum)} Ft
           </p>
-          <p className="mt-1 text-hint text-ink-secondary">
-            {detail.sales_count} eladás
-            {detail.returns_count > 0
-              ? ` · ${detail.returns_count} visszáru`
-              : ''}
-          </p>
-        </div>
-        <div className="rounded-md border border-border p-3">
-          <p className="text-[12px] font-medium text-ink-secondary">
-            KP elvárt / számolt
-          </p>
-          <p className="mt-1 text-body tabular-nums">
-            {detail.expected_cash == null
-              ? '—'
-              : `${formatMoneyFt(detail.expected_cash)} Ft`}
-            {' / '}
-            {detail.counted_cash == null
-              ? '—'
-              : `${formatMoneyFt(detail.counted_cash)} Ft`}
+        </FormField>
+        <FormField label="KP elvárt / számolt" htmlFor="shift-cash">
+          <p id="shift-cash" className="text-body tabular-nums text-ink">
+            {moneyOrDash(detail.expected_cash)} /{' '}
+            {moneyOrDash(detail.counted_cash)}
           </p>
           <div className="mt-1.5">
             <DiffBadge value={detail.cash_difference} />
           </div>
-        </div>
-        <div className="rounded-md border border-border p-3">
-          <p className="text-[12px] font-medium text-ink-secondary">
-            Kártya elvárt / számolt
-          </p>
-          <p className="mt-1 text-body tabular-nums">
-            {detail.expected_card == null
-              ? '—'
-              : `${formatMoneyFt(detail.expected_card)} Ft`}
-            {' / '}
-            {detail.counted_card == null
-              ? '—'
-              : `${formatMoneyFt(detail.counted_card)} Ft`}
+        </FormField>
+        <FormField label="Kártya elvárt / számolt" htmlFor="shift-card">
+          <p id="shift-card" className="text-body tabular-nums text-ink">
+            {moneyOrDash(detail.expected_card)} /{' '}
+            {moneyOrDash(detail.counted_card)}
           </p>
           <div className="mt-1.5">
             <DiffBadge value={detail.card_difference} />
           </div>
-        </div>
-      </div>
-
-      {detail.closed_at ? (
-        <p className="text-body text-ink-secondary">
-          Zárta: {detail.closed_by_label ?? '—'} ·{' '}
-          {formatDateTime(detail.closed_at)}
-        </p>
-      ) : null}
+        </FormField>
+      </FormSection>
 
       {detail.note ? (
-        <div className="rounded-md border border-warning/35 bg-warning-soft px-3 py-2.5 text-body text-warning-ink">
-          <span className="font-medium">Megjegyzés: </span>
+        <div
+          className={cn(
+            'rounded-md border px-3 py-2.5 text-body',
+            hasCashDiff
+              ? 'border-warning/35 bg-warning-soft text-warning-ink'
+              : 'border-border bg-surface text-ink-secondary'
+          )}
+        >
+          <span className="font-medium text-ink">Megjegyzés: </span>
           {detail.note}
         </div>
       ) : null}
 
-      <div>
-        <h2 className="mb-2 text-[13px] font-semibold text-ink">
-          KP mozgások
-        </h2>
+      <section className="rounded-md border border-border bg-surface p-3.5">
+        <div className="mb-2.5 space-y-0.5">
+          <h2 className="text-h3 text-ink">KP mozgások</h2>
+          <p className="text-hint text-ink-secondary">
+            Feladás és betét a műszak alatt.
+          </p>
+        </div>
         {detail.cash_moves.length === 0 ? (
-          <p className="text-body text-ink-secondary">Nincs feladás / betét.</p>
+          <div className="flex flex-col items-start gap-2 rounded-md border border-dashed border-border bg-subtle px-3 py-6">
+            <Banknote className="size-4 text-ink-muted" aria-hidden />
+            <p className="text-body text-ink-secondary">
+              Nincs feladás / betét.
+            </p>
+          </div>
         ) : (
           <DataTable>
             <DataTableHead>
@@ -176,17 +219,7 @@ export function PosShiftDetailClient({ detail }: Props) {
             </DataTableBody>
           </DataTable>
         )}
-      </div>
-
-      <p className="text-hint text-ink-secondary">
-        Eladások ehhez a műszakhoz:{' '}
-        <Link
-          href={`/ertekesitesek?shift=${detail.id}`}
-          className="font-medium underline-offset-2 hover:underline"
-        >
-          Értékesítések listája
-        </Link>
-      </p>
+      </section>
     </div>
   )
 }

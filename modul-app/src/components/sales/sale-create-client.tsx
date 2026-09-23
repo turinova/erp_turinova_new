@@ -2,11 +2,12 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { Minus, Plus, Search, Trash2, User, UserPlus, X } from 'lucide-react'
+import { Minus, Plus, Search, Trash2, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import { FormField } from '@/components/patterns/form-field'
+import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { SaleAddFeeDialog } from '@/components/sales/sale-add-fee-dialog'
 import {
@@ -30,6 +31,7 @@ import {
   createSaleAction,
   searchSaleProductsAction
 } from '@/lib/sales/actions'
+import { isDeferredPaymentMethodName } from '@/lib/sales/payment-kind'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import {
@@ -97,11 +99,9 @@ export function SaleCreateClient({
   const [billing, setBilling] = useState<DocumentBillingState>(
     EMPTY_DOCUMENT_BILLING
   )
-  const [customerOpen, setCustomerOpen] = useState(false)
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [feeDialogOpen, setFeeDialogOpen] = useState(false)
   const [note, setNote] = useState('')
-  const [noteOpen, setNoteOpen] = useState(false)
   const [lines, setLines] = useState<Line[]>([])
   const [fees, setFees] = useState<FeeLine[]>([])
   const [globalDiscPct, setGlobalDiscPct] = useState(0)
@@ -111,6 +111,10 @@ export function SaleCreateClient({
   const [splitPay, setSplitPay] = useState(false)
   const [pay2MethodId, setPay2MethodId] = useState('')
   const [pay2Amount, setPay2Amount] = useState(0)
+  /** Utalás: áru átadva most → fulfilled+stock; default false = függőben. */
+  const [fulfillNow, setFulfillNow] = useState(false)
+  /** Billing panel + detailen bizonylat dialógus (nincs auto Agent a create-en). */
+  const [wantBilling, setWantBilling] = useState(false)
 
   const [searchQ, setSearchQ] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -120,7 +124,6 @@ export function SaleCreateClient({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const searchWrapRef = useRef<HTMLDivElement>(null)
-  const customerWrapRef = useRef<HTMLDivElement>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const warehouseOptions = useMemo(
@@ -132,20 +135,6 @@ export function SaleCreateClient({
       })),
     [warehouses]
   )
-
-  const selectedCustomer = customers.find((c) => c.id === customerId)
-
-  function applyCustomer(id: string) {
-    setCustomerId(id)
-    const c = customers.find((x) => x.id === id)
-    if (c) setBilling(billingFromCustomer(c))
-    else setBilling(EMPTY_DOCUMENT_BILLING)
-  }
-
-  function clearCustomer() {
-    setCustomerId('')
-    setBilling(EMPTY_DOCUMENT_BILLING)
-  }
 
   const customerOptions = useMemo(
     () =>
@@ -168,8 +157,12 @@ export function SaleCreateClient({
 
   const pay1Name =
     paymentMethods.find((p) => p.id === paymentMethodId)?.name ?? ''
-  const applyCashRound =
-    !splitPay && isCashPaymentMethodName(pay1Name)
+  const pay2Name =
+    paymentMethods.find((p) => p.id === pay2MethodId)?.name ?? ''
+  const pay1Deferred = isDeferredPaymentMethodName(pay1Name)
+  const pay2Deferred = isDeferredPaymentMethodName(pay2Name)
+  const isDeferred = !splitPay && pay1Deferred
+  const applyCashRound = !splitPay && isCashPaymentMethodName(pay1Name)
 
   const totals = useMemo(
     () =>
@@ -199,12 +192,24 @@ export function SaleCreateClient({
   )
 
   useEffect(() => {
+    if (isDeferred) setSplitPay(false)
+  }, [isDeferred])
+
+  /** Utalás = számlázási szándék — panel + ügyfél billing behúzás. */
+  const wasDeferred = useRef(false)
+  useEffect(() => {
+    if (isDeferred && !wasDeferred.current) {
+      setWantBilling(true)
+      const c = customers.find((x) => x.id === customerId)
+      if (c) setBilling(billingFromCustomer(c))
+    }
+    wasDeferred.current = isDeferred
+  }, [isDeferred, customerId, customers])
+
+  useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!searchWrapRef.current?.contains(e.target as Node)) {
         setSearchOpen(false)
-      }
-      if (!customerWrapRef.current?.contains(e.target as Node)) {
-        setCustomerOpen(false)
       }
     }
     document.addEventListener('mousedown', onDocClick)
@@ -269,6 +274,13 @@ export function SaleCreateClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [warehouseId, lines.map((l) => l.accessoryId).join('|')])
 
+  function applyCustomer(id: string) {
+    setCustomerId(id)
+    const c = customers.find((x) => x.id === id)
+    if (c) setBilling(billingFromCustomer(c))
+    else setBilling(EMPTY_DOCUMENT_BILLING)
+  }
+
   function addProduct(hit: SaleProductSearchItem) {
     setLines((prev) => {
       if (prev.some((l) => l.accessoryId === hit.id)) {
@@ -312,11 +324,18 @@ export function SaleCreateClient({
       if (!(line.quantity > 0)) return `Adj meg mennyiséget: ${line.name}.`
     }
     if (splitPay) {
+      if (pay1Deferred || pay2Deferred) {
+        return 'Megosztott fizetésnél utalás most nem támogatott. Válassz készpénzt/kártyát, vagy rögzítsd utalással fizetetlenül.'
+      }
       if (!pay2MethodId) return 'Válaszd ki a második fizetési módot.'
       if (pay2Amount <= 0) return 'A második fizetés legyen pozitív.'
-      if (pay1Amount <= 0) return 'Az első fizetés összege nem lehet 0 vagy negatív.'
+      if (pay1Amount <= 0)
+        return 'Az első fizetés összege nem lehet 0 vagy negatív.'
     }
     if (totals.due <= 0) return 'A végösszeg legyen pozitív.'
+    if ((wantBilling || isDeferred) && !billingHasAny(billing)) {
+      return 'Számlázási adat hiányzik — töltsd ki (adószám / név / cím), vagy válassz ügyfelet számlázási adatokkal.'
+    }
     return null
   }
 
@@ -333,12 +352,17 @@ export function SaleCreateClient({
 
   function handleSubmit() {
     startTransition(async () => {
-      const payments = splitPay
-        ? [
-            { paymentMethodId, amount: pay1Amount },
-            { paymentMethodId: pay2MethodId, amount: Math.round(pay2Amount) }
-          ]
-        : [{ paymentMethodId, amount: totals.due }]
+      const payments = isDeferred
+        ? []
+        : splitPay
+          ? [
+              { paymentMethodId, amount: pay1Amount },
+              {
+                paymentMethodId: pay2MethodId,
+                amount: Math.round(pay2Amount)
+              }
+            ]
+          : [{ paymentMethodId, amount: totals.due }]
 
       const result = await createSaleAction({
         warehouseId,
@@ -347,9 +371,11 @@ export function SaleCreateClient({
         note: note.trim() || null,
         discountPercentage: globalDiscPct || 0,
         discountAmount: 0,
-        billing: billingHasAny(billing)
-          ? billingToFormInput(billing)
-          : undefined,
+        fulfillNow: isDeferred ? fulfillNow : false,
+        billing:
+          (isDeferred || wantBilling) && billingHasAny(billing)
+            ? billingToFormInput(billing)
+            : undefined,
         items: lines.map((l) => ({
           accessoryId: l.accessoryId,
           quantity: l.quantity,
@@ -373,12 +399,28 @@ export function SaleCreateClient({
         setConfirmOpen(false)
         return
       }
+
+      const deferredPending = isDeferred && !fulfillNow
       toast.success(
         result.saleNumber
-          ? `Eladás kész: ${result.saleNumber}`
-          : 'Eladás rögzítve.'
+          ? deferredPending
+            ? `Rendelés rögzítve: ${result.saleNumber} (átadásra vár)`
+            : `Eladás kész: ${result.saleNumber}${isDeferred ? ' (fizetetlen)' : ''}`
+          : deferredPending
+            ? 'Rendelés rögzítve (átadásra vár).'
+            : isDeferred
+              ? 'Eladás rögzítve (fizetetlen).'
+              : 'Eladás rögzítve.'
       )
-      router.push(`/ertekesitesek/${result.id}`)
+
+      // Utalás: mindig díjbekérő út (billing hiány → detail kitöltés). KP: csak ha kérték.
+      const issueQ = isDeferred
+        ? '?issue=proforma'
+        : wantBilling && billingHasAny(billing)
+          ? '?issue=normal'
+          : ''
+
+      router.push(`/ertekesitesek/${result.id}${issueQ}`)
       router.refresh()
     })
   }
@@ -403,23 +445,25 @@ export function SaleCreateClient({
     )
   }
 
-  const confirmDesc =
-    overstockLines.length > 0
-      ? `${lines.length} termék · ${formatMoneyFt(totals.due)} Ft. Figyelem: ${overstockLines.length} tétel készlethiányos — a készlet negatívba mehet. Ez nem vonható vissza.`
-      : `${lines.length} termék · ${formatMoneyFt(totals.due)} Ft. A készlet csökken. Ez nem vonható vissza.`
-
   const hasCart = lines.length > 0 || fees.length > 0
+
+  let confirmDesc = `${lines.length} termék · ${formatMoneyFt(totals.due)} Ft. A készlet azonnal csökken. Ez nem vonható vissza.`
+  if (isDeferred && !fulfillNow) {
+    confirmDesc = `${lines.length} termék · ${formatMoneyFt(totals.due)} Ft. Átadásra vár (utalás) — a készlet még NEM csökken. Rögzítés után díjbekérő következik.`
+  } else if (isDeferred && fulfillNow) {
+    confirmDesc = `${lines.length} termék · ${formatMoneyFt(totals.due)} Ft. Fizetetlen, de áru átadva — a készlet azonnal csökken. Rögzítés után díjbekérő.`
+  } else if (wantBilling && billingHasAny(billing)) {
+    confirmDesc = `${lines.length} termék · ${formatMoneyFt(totals.due)} Ft. A készlet csökken. Számlát a következő képernyőn állíthatod ki.`
+  }
+  if (overstockLines.length > 0 && (fulfillNow || !isDeferred)) {
+    confirmDesc += ` Figyelem: ${overstockLines.length} tétel készlethiányos — a készlet negatívba mehet.`
+  }
 
   return (
     <div className="space-y-3">
       <PageHeader
         title="Új értékesítés"
-        description="Kosár + fizetés. A készlet azonnal csökken."
-        actions={
-          <Button type="button" onClick={openConfirm} disabled={pending}>
-            Eladás rögzítése
-          </Button>
-        }
+        description="Kosár + fizetés. Számla / díjbekérő a rögzítés után, külön lépésben."
       />
 
       {formError ? (
@@ -431,298 +475,306 @@ export function SaleCreateClient({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {warehouses.length === 1 ? (
-          <span className="rounded-md border border-border bg-subtle px-2.5 py-1.5 text-body text-ink">
-            {warehouses[0]!.name}
-            <span className="ml-1.5 text-hint text-ink-muted">
-              {warehouses[0]!.code}
-            </span>
-          </span>
-        ) : (
-          <div className="w-[14rem]">
-            <MenuSelect
-              id="sale-wh"
-              value={warehouseId}
-              onChange={setWarehouseId}
-              allowEmpty={false}
-              options={warehouseOptions}
-            />
-          </div>
-        )}
-
-        <div ref={customerWrapRef} className="relative">
-          {selectedCustomer ? (
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-body text-ink">
-              <User className="size-3.5 text-ink-muted" aria-hidden />
-              {selectedCustomer.name}
-              <button
-                type="button"
-                className="rounded p-0.5 text-ink-muted hover:bg-subtle hover:text-ink"
-                aria-label="Ügyfél eltávolítása"
-                onClick={() => clearCustomer()}
-              >
-                <X className="size-3.5" />
-              </button>
-            </span>
-          ) : (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setCustomerOpen((o) => !o)}
-            >
-              <User className="size-3.5" aria-hidden />
-              Ügyfél
-            </Button>
-          )}
-          {customerOpen && !selectedCustomer ? (
-            <div className="absolute left-0 z-20 mt-1 w-[18rem] rounded-md border border-border bg-surface p-2 shadow-md">
-              {customers.length === 0 ? (
-                <p className="px-1 py-2 text-hint text-ink-secondary">
-                  Nincs ügyfél a törzsben.
-                </p>
-              ) : (
-                <MenuSelect
-                  id="sale-customer-pick"
-                  value=""
-                  onChange={(v) => {
-                    applyCustomer(v)
-                    setCustomerOpen(false)
-                  }}
-                  allowEmpty={false}
-                  searchable={customers.length > 8}
-                  options={customerOptions}
-                  placeholder="Ügyfél keresése…"
-                />
-              )}
-            </div>
-          ) : null}
-        </div>
-
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            setCustomerOpen(false)
-            setQuickCustomerOpen(true)
-          }}
-        >
-          <UserPlus className="size-3.5" aria-hidden />
-          Új ügyfél
-        </Button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setNoteOpen((o) => !o)}
-        >
-          {noteOpen || note ? 'Megjegyzés' : '+ Megjegyzés'}
-        </Button>
-      </div>
-
-      {noteOpen || note ? (
-        <FormField label="Megjegyzés" htmlFor="sale-note" className="max-w-xl">
-          <Textarea
-            id="sale-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            maxLength={500}
-          />
-        </FormField>
-      ) : null}
-
-      {customerId ? (
-        <div className="max-w-xl rounded-md border border-border bg-surface p-3">
-          <h3 className="mb-2 text-body font-semibold text-ink">
-            Számlázási adatok
-          </h3>
-          <DocumentBillingFields
-            value={billing}
-            onChange={setBilling}
-            disabled={pending}
-            idPrefix="sale-bill"
-            hint="Csak ezen az eladáson érvényes. Az ügyféltörzset nem írja felül."
-          />
-        </div>
-      ) : null}
-
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         <div className="space-y-3">
-          <div ref={searchWrapRef} className="relative">
-            <label className="sr-only" htmlFor="sale-product-search">
-              Termék keresése
-            </label>
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
-              aria-hidden
-            />
-            <Input
-              id="sale-product-search"
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              onFocus={() => {
-                if (searchHits.length > 0) setSearchOpen(true)
-              }}
-              placeholder="Termék (név, SKU, vonalkód)…"
-              className="pl-8"
-              autoComplete="off"
-              autoFocus
-            />
-            {searchOpen && (searchHits.length > 0 || searching) ? (
-              <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-surface shadow-md">
-                {searching && searchHits.length === 0 ? (
-                  <li className="px-2.5 py-2 text-hint text-ink-secondary">
-                    Keresés…
-                  </li>
-                ) : null}
-                {searchHits.map((hit) => {
-                  const zero = hit.on_hand <= 0
-                  return (
-                    <li key={hit.id}>
-                      <button
-                        type="button"
-                        className="flex w-full items-start justify-between gap-2 px-2.5 py-2 text-left hover:bg-subtle"
-                        onClick={() => addProduct(hit)}
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-body font-medium text-ink">
-                            {hit.name}
-                          </span>
-                          <span className="text-hint text-ink-secondary">
-                            {hit.sku} ·{' '}
-                            {formatMoneyFt(
-                              Math.round(
-                                hit.price_net *
-                                  (1 + hit.tax_rate_percent / 100)
-                              )
-                            )}{' '}
-                            Ft
-                          </span>
-                        </span>
-                        <span
-                          className={cn(
-                            'shrink-0 tabular-nums text-hint',
-                            zero ? 'text-warning-ink' : 'text-ink-secondary'
-                          )}
-                        >
-                          {formatOnHand(hit.on_hand)} {hit.unit_shortform}
-                        </span>
-                      </button>
+          <FormSection title="Fejléc" columns={3}>
+            <FormField label="Raktár" htmlFor="sale-wh" required>
+              {warehouses.length === 1 ? (
+                <Input
+                  id="sale-wh"
+                  value={`${warehouses[0]!.name} (${warehouses[0]!.code})`}
+                  disabled
+                  readOnly
+                />
+              ) : (
+                <MenuSelect
+                  id="sale-wh"
+                  value={warehouseId}
+                  onChange={setWarehouseId}
+                  allowEmpty={false}
+                  options={warehouseOptions}
+                />
+              )}
+            </FormField>
+            <FormField label="Ügyfél" htmlFor="sale-customer" optionalLabel>
+              <div className="flex gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <MenuSelect
+                    id="sale-customer"
+                    value={customerId}
+                    onChange={applyCustomer}
+                    allowEmpty
+                    emptyLabel="Vendég / nincs ügyfél"
+                    searchable={customers.length > 8}
+                    options={customerOptions}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  aria-label="Új ügyfél"
+                  onClick={() => setQuickCustomerOpen(true)}
+                >
+                  <UserPlus className="size-3.5" aria-hidden />
+                </Button>
+              </div>
+            </FormField>
+            <FormField label="Megjegyzés" htmlFor="sale-note" optionalLabel>
+              <Textarea
+                id="sale-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                maxLength={500}
+                placeholder="Opcionális…"
+              />
+            </FormField>
+          </FormSection>
+
+          {(wantBilling || isDeferred) ? (
+            <FormSection
+              title="Számlázás"
+              description={
+                isDeferred
+                  ? 'Utalásnál kötelező. Adószám → automatikus cégadat. Rögzítés után díjbekérő.'
+                  : 'Csak ezen az eladáson. Adószám → automatikus cégadat. A bizonylatot a rögzítés után állítod ki.'
+              }
+              columns={1}
+            >
+              <DocumentBillingFields
+                value={billing}
+                onChange={setBilling}
+                disabled={pending}
+                idPrefix="sale-bill"
+                enableTaxpayerLookup
+                hint="Kötelező díjbekérőhöz / számlához."
+              />
+            </FormSection>
+          ) : null}
+
+          <FormSection title="Tételek" columns={1}>
+            <div ref={searchWrapRef} className="relative sm:col-span-full">
+              <label className="sr-only" htmlFor="sale-product-search">
+                Termék keresése
+              </label>
+              <Search
+                className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
+                aria-hidden
+              />
+              <Input
+                id="sale-product-search"
+                value={searchQ}
+                onChange={(e) => setSearchQ(e.target.value)}
+                onFocus={() => {
+                  if (searchHits.length > 0) setSearchOpen(true)
+                }}
+                placeholder="Termék (név, SKU, vonalkód)…"
+                className="pl-8"
+                autoComplete="off"
+                autoFocus
+              />
+              {searchOpen && (searchHits.length > 0 || searching) ? (
+                <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-surface shadow-md">
+                  {searching && searchHits.length === 0 ? (
+                    <li className="px-2.5 py-2 text-hint text-ink-secondary">
+                      Keresés…
                     </li>
-                  )
-                })}
-              </ul>
-            ) : null}
-          </div>
-
-          <label className="flex items-center gap-2 text-hint text-ink-secondary">
-            <input
-              type="checkbox"
-              checked={inStockOnly}
-              onChange={(e) => setInStockOnly(e.target.checked)}
-              className="size-3.5"
-            />
-            Csak készleten
-          </label>
-
-          {!hasCart ? (
-            <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
-              Keress terméket, majd add a kosárhoz.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full min-w-[36rem] border-collapse text-body">
-                <thead>
-                  <tr className="border-b border-border bg-subtle text-left text-label text-ink-secondary">
-                    <th className="px-2.5 py-2 font-medium">Tétel</th>
-                    <th className="px-2.5 py-2 font-medium text-right">
-                      Készlet
-                    </th>
-                    <th className="px-2.5 py-2 font-medium text-right">Qty</th>
-                    <th className="px-2.5 py-2 font-medium text-right">
-                      Bruttó egységár
-                    </th>
-                    <th className="px-2.5 py-2 font-medium text-right">Kedv%</th>
-                    <th className="px-2.5 py-2 font-medium text-right">
-                      Bruttó összeg
-                    </th>
-                    <th className="w-10 px-2.5 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line) => {
-                    const over =
-                      line.onHand != null &&
-                      line.quantity > line.onHand + 0.0001
-                    const before = Math.round(
-                      line.quantity * line.unitPriceGross
-                    )
-                    const disc = Math.round(
-                      (before * (line.discountPercentage || 0)) / 100
-                    )
-                    const g = Math.max(0, before - disc)
+                  ) : null}
+                  {searchHits.map((hit) => {
+                    const zero = hit.on_hand <= 0
                     return (
-                      <tr
-                        key={line.accessoryId}
-                        className="border-b border-border last:border-0"
-                      >
-                        <td className="px-2.5 py-2">
-                          <div className="font-medium text-ink">{line.name}</div>
-                          <div className="text-hint text-ink-secondary">
-                            {line.sku}
-                          </div>
-                          {over ? (
-                            <div className="text-hint text-warning-ink">
-                              Készlethiány — eladás így is mehet
-                            </div>
-                          ) : null}
-                        </td>
-                        <td
-                          className={cn(
-                            'px-2.5 py-2 text-right tabular-nums',
-                            over ? 'text-warning-ink' : 'text-ink-secondary'
-                          )}
+                      <li key={hit.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-start justify-between gap-2 px-2.5 py-2 text-left hover:bg-subtle"
+                          onClick={() => addProduct(hit)}
                         >
-                          {line.onHand == null
-                            ? '…'
-                            : formatOnHand(line.onHand)}
-                        </td>
-                        <td className="px-2.5 py-2 text-right">
-                          <div className="ml-auto flex items-center justify-end gap-1">
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              aria-label="Mennyiség csökkentése"
-                              disabled={line.quantity <= 1}
-                              onClick={() =>
-                                setLines((prev) =>
-                                  prev.map((l) =>
-                                    l.accessoryId === line.accessoryId
-                                      ? {
-                                          ...l,
-                                          quantity: Math.max(1, l.quantity - 1)
-                                        }
-                                      : l
-                                  )
+                          <span className="min-w-0">
+                            <span className="block truncate text-body font-medium text-ink">
+                              {hit.name}
+                            </span>
+                            <span className="text-hint text-ink-secondary">
+                              {hit.sku} ·{' '}
+                              {formatMoneyFt(
+                                Math.round(
+                                  hit.price_net *
+                                    (1 + hit.tax_rate_percent / 100)
                                 )
-                              }
-                            >
-                              <Minus className="size-3.5" aria-hidden />
-                            </Button>
+                              )}{' '}
+                              Ft
+                            </span>
+                          </span>
+                          <span
+                            className={cn(
+                              'shrink-0 tabular-nums text-hint',
+                              zero ? 'text-warning-ink' : 'text-ink-secondary'
+                            )}
+                          >
+                            {formatOnHand(hit.on_hand)} {hit.unit_shortform}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : null}
+            </div>
+
+            <label className="flex items-center gap-2 text-hint text-ink-secondary sm:col-span-full">
+              <input
+                type="checkbox"
+                checked={inStockOnly}
+                onChange={(e) => setInStockOnly(e.target.checked)}
+                className="size-3.5"
+              />
+              Csak készleten
+            </label>
+
+            {!hasCart ? (
+              <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary sm:col-span-full">
+                Keress terméket, majd add a kosárhoz.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-md border border-border sm:col-span-full">
+                <table className="w-full min-w-[36rem] border-collapse text-body">
+                  <thead>
+                    <tr className="border-b border-border bg-subtle text-left text-label text-ink-secondary">
+                      <th className="px-2.5 py-2 font-medium">Tétel</th>
+                      <th className="px-2.5 py-2 font-medium text-right">
+                        Készlet
+                      </th>
+                      <th className="px-2.5 py-2 font-medium text-right">
+                        Qty
+                      </th>
+                      <th className="px-2.5 py-2 font-medium text-right">
+                        Bruttó egységár
+                      </th>
+                      <th className="px-2.5 py-2 font-medium text-right">
+                        Kedv%
+                      </th>
+                      <th className="px-2.5 py-2 font-medium text-right">
+                        Bruttó összeg
+                      </th>
+                      <th className="w-10 px-2.5 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((line) => {
+                      const over =
+                        line.onHand != null &&
+                        line.quantity > line.onHand + 0.0001
+                      const before = Math.round(
+                        line.quantity * line.unitPriceGross
+                      )
+                      const disc = Math.round(
+                        (before * (line.discountPercentage || 0)) / 100
+                      )
+                      const g = Math.max(0, before - disc)
+                      return (
+                        <tr
+                          key={line.accessoryId}
+                          className="border-b border-border last:border-0"
+                        >
+                          <td className="px-2.5 py-2">
+                            <div className="font-medium text-ink">
+                              {line.name}
+                            </div>
+                            <div className="text-hint text-ink-secondary">
+                              {line.sku}
+                            </div>
+                            {over ? (
+                              <div className="text-hint text-warning-ink">
+                                Készlethiány — eladás így is mehet
+                              </div>
+                            ) : null}
+                          </td>
+                          <td
+                            className={cn(
+                              'px-2.5 py-2 text-right tabular-nums',
+                              over ? 'text-warning-ink' : 'text-ink-secondary'
+                            )}
+                          >
+                            {line.onHand == null
+                              ? '…'
+                              : formatOnHand(line.onHand)}
+                          </td>
+                          <td className="px-2.5 py-2 text-right">
+                            <div className="ml-auto flex items-center justify-end gap-1">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                aria-label="Mennyiség csökkentése"
+                                disabled={line.quantity <= 1}
+                                onClick={() =>
+                                  setLines((prev) =>
+                                    prev.map((l) =>
+                                      l.accessoryId === line.accessoryId
+                                        ? {
+                                            ...l,
+                                            quantity: Math.max(
+                                              1,
+                                              l.quantity - 1
+                                            )
+                                          }
+                                        : l
+                                    )
+                                  )
+                                }
+                              >
+                                <Minus className="size-3.5" aria-hidden />
+                              </Button>
+                              <Input
+                                type="number"
+                                min={1}
+                                step="any"
+                                className={cn(
+                                  'w-14 text-center tabular-nums',
+                                  over && 'border-warning'
+                                )}
+                                value={line.quantity}
+                                onChange={(e) => {
+                                  const n = Number(e.target.value)
+                                  setLines((prev) =>
+                                    prev.map((l) =>
+                                      l.accessoryId === line.accessoryId
+                                        ? {
+                                            ...l,
+                                            quantity:
+                                              Number.isFinite(n) && n > 0
+                                                ? n
+                                                : 1
+                                          }
+                                        : l
+                                    )
+                                  )
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                aria-label="Mennyiség növelése"
+                                onClick={() =>
+                                  setLines((prev) =>
+                                    prev.map((l) =>
+                                      l.accessoryId === line.accessoryId
+                                        ? { ...l, quantity: l.quantity + 1 }
+                                        : l
+                                    )
+                                  )
+                                }
+                              >
+                                <Plus className="size-3.5" aria-hidden />
+                              </Button>
+                            </div>
+                          </td>
+                          <td className="px-2.5 py-2 text-right">
                             <Input
                               type="number"
-                              min={1}
-                              step="any"
-                              className={cn(
-                                'w-14 text-center tabular-nums',
-                                over && 'border-warning'
-                              )}
-                              value={line.quantity}
+                              min={0}
+                              className="ml-auto w-24 text-right tabular-nums"
+                              value={line.unitPriceGross}
                               onChange={(e) => {
                                 const n = Number(e.target.value)
                                 setLines((prev) =>
@@ -730,96 +782,115 @@ export function SaleCreateClient({
                                     l.accessoryId === line.accessoryId
                                       ? {
                                           ...l,
-                                          quantity:
-                                            Number.isFinite(n) && n > 0
-                                              ? n
-                                              : 1
+                                          unitPriceGross: Number.isFinite(n)
+                                            ? n
+                                            : 0
                                         }
                                       : l
                                   )
                                 )
                               }}
                             />
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              aria-label="Mennyiség növelése"
-                              onClick={() =>
+                          </td>
+                          <td className="px-2.5 py-2 text-right">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              className="ml-auto w-14 text-right tabular-nums"
+                              value={line.discountPercentage}
+                              onChange={(e) => {
+                                const n = Number(e.target.value)
                                 setLines((prev) =>
                                   prev.map((l) =>
                                     l.accessoryId === line.accessoryId
-                                      ? { ...l, quantity: l.quantity + 1 }
+                                      ? {
+                                          ...l,
+                                          discountPercentage: Number.isFinite(n)
+                                            ? Math.min(100, Math.max(0, n))
+                                            : 0
+                                        }
                                       : l
+                                  )
+                                )
+                              }}
+                            />
+                          </td>
+                          <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
+                            {formatMoneyFt(g)}
+                          </td>
+                          <td className="px-2.5 py-2 text-right">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label="Sor törlése"
+                              onClick={() =>
+                                setLines((prev) =>
+                                  prev.filter(
+                                    (l) => l.accessoryId !== line.accessoryId
                                   )
                                 )
                               }
                             >
-                              <Plus className="size-3.5" aria-hidden />
+                              <Trash2 className="size-3.5" />
                             </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {fees.map((fee) => (
+                      <tr
+                        key={fee.key}
+                        className="border-b border-border last:border-0 bg-subtle/40"
+                      >
+                        <td className="px-2.5 py-2" colSpan={2}>
+                          <div className="font-medium text-ink">{fee.name}</div>
+                          <div className="text-hint text-ink-secondary">
+                            Díj
                           </div>
+                        </td>
+                        <td className="px-2.5 py-2 text-right tabular-nums text-ink-secondary">
+                          1
                         </td>
                         <td className="px-2.5 py-2 text-right">
                           <Input
                             type="number"
                             min={0}
                             className="ml-auto w-24 text-right tabular-nums"
-                            value={line.unitPriceGross}
+                            value={fee.unitPriceGross}
                             onChange={(e) => {
                               const n = Number(e.target.value)
-                              setLines((prev) =>
-                                prev.map((l) =>
-                                  l.accessoryId === line.accessoryId
+                              setFees((prev) =>
+                                prev.map((f) =>
+                                  f.key === fee.key
                                     ? {
-                                        ...l,
+                                        ...f,
                                         unitPriceGross: Number.isFinite(n)
                                           ? n
                                           : 0
                                       }
-                                    : l
+                                    : f
                                 )
                               )
                             }}
                           />
                         </td>
-                        <td className="px-2.5 py-2 text-right">
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            className="ml-auto w-14 text-right tabular-nums"
-                            value={line.discountPercentage}
-                            onChange={(e) => {
-                              const n = Number(e.target.value)
-                              setLines((prev) =>
-                                prev.map((l) =>
-                                  l.accessoryId === line.accessoryId
-                                    ? {
-                                        ...l,
-                                        discountPercentage: Number.isFinite(n)
-                                          ? Math.min(100, Math.max(0, n))
-                                          : 0
-                                      }
-                                    : l
-                                )
-                              )
-                            }}
-                          />
+                        <td className="px-2.5 py-2 text-right text-ink-muted">
+                          —
                         </td>
                         <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
-                          {formatMoneyFt(g)}
+                          {formatMoneyFt(Math.round(fee.unitPriceGross))}
                         </td>
                         <td className="px-2.5 py-2 text-right">
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            aria-label="Sor törlése"
+                            aria-label="Díj törlése"
                             onClick={() =>
-                              setLines((prev) =>
-                                prev.filter(
-                                  (l) => l.accessoryId !== line.accessoryId
-                                )
+                              setFees((prev) =>
+                                prev.filter((f) => f.key !== fee.key)
                               )
                             }
                           >
@@ -827,89 +898,33 @@ export function SaleCreateClient({
                           </Button>
                         </td>
                       </tr>
-                    )
-                  })}
-                  {fees.map((fee) => (
-                    <tr
-                      key={fee.key}
-                      className="border-b border-border last:border-0 bg-subtle/40"
-                    >
-                      <td className="px-2.5 py-2" colSpan={2}>
-                        <div className="font-medium text-ink">{fee.name}</div>
-                        <div className="text-hint text-ink-secondary">Díj</div>
-                      </td>
-                      <td className="px-2.5 py-2 text-right tabular-nums text-ink-secondary">
-                        1
-                      </td>
-                      <td className="px-2.5 py-2 text-right">
-                        <Input
-                          type="number"
-                          min={0}
-                          className="ml-auto w-24 text-right tabular-nums"
-                          value={fee.unitPriceGross}
-                          onChange={(e) => {
-                            const n = Number(e.target.value)
-                            setFees((prev) =>
-                              prev.map((f) =>
-                                f.key === fee.key
-                                  ? {
-                                      ...f,
-                                      unitPriceGross: Number.isFinite(n)
-                                        ? n
-                                        : 0
-                                    }
-                                  : f
-                              )
-                            )
-                          }}
-                        />
-                      </td>
-                      <td className="px-2.5 py-2 text-right text-ink-muted">
-                        —
-                      </td>
-                      <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
-                        {formatMoneyFt(Math.round(fee.unitPriceGross))}
-                      </td>
-                      <td className="px-2.5 py-2 text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label="Díj törlése"
-                          onClick={() =>
-                            setFees((prev) =>
-                              prev.filter((f) => f.key !== fee.key)
-                            )
-                          }
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={feeTypes.length === 0}
-            onClick={() => setFeeDialogOpen(true)}
-          >
-            <Plus className="size-3.5" aria-hidden />
-            Díj
-          </Button>
-          {feeTypes.length === 0 ? (
-            <p className="text-hint text-ink-secondary">
-              Nincs aktív díjtípus — Törzsadatok → Díj típusok.
-            </p>
-          ) : null}
+            <div className="sm:col-span-full">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={feeTypes.length === 0}
+                onClick={() => setFeeDialogOpen(true)}
+              >
+                <Plus className="size-3.5" aria-hidden />
+                Díj
+              </Button>
+              {feeTypes.length === 0 ? (
+                <p className="mt-1 text-hint text-ink-secondary">
+                  Nincs aktív díjtípus — Törzsadatok → Díj típusok.
+                </p>
+              ) : null}
+            </div>
+          </FormSection>
         </div>
 
-        <aside className="space-y-3 rounded-md border border-border bg-subtle p-3 lg:sticky lg:top-3">
+        <aside className="space-y-3 rounded-md border border-border bg-surface p-3 lg:sticky lg:top-3">
           <SaleTotalsBreakdown
             totals={totals}
             footerHint={
@@ -946,17 +961,39 @@ export function SaleCreateClient({
             />
           </FormField>
 
-          <label className="flex items-center gap-2 text-body text-ink">
-            <input
-              type="checkbox"
-              checked={splitPay}
-              onChange={(e) => setSplitPay(e.target.checked)}
-              className="size-3.5"
-            />
-            Megosztott fizetés
-          </label>
+          {isDeferred ? (
+            <div className="space-y-2">
+              <p className="rounded-md border border-border bg-subtle px-2.5 py-2 text-hint text-ink-secondary">
+                Utalás: az eladás{' '}
+                <strong className="font-medium text-ink">fizetetlen</strong>{' '}
+                marad. A készlet csak átadáskor csökken
+                {fulfillNow ? ' (most átadod).' : '.'}
+              </p>
+              <label className="flex items-center gap-2 text-body text-ink">
+                <input
+                  type="checkbox"
+                  checked={fulfillNow}
+                  onChange={(e) => setFulfillNow(e.target.checked)}
+                  className="size-3.5"
+                />
+                Áru átadva most
+              </label>
+            </div>
+          ) : null}
 
-          {splitPay ? (
+          {!isDeferred ? (
+            <label className="flex items-center gap-2 text-body text-ink">
+              <input
+                type="checkbox"
+                checked={splitPay}
+                onChange={(e) => setSplitPay(e.target.checked)}
+                className="size-3.5"
+              />
+              Megosztott fizetés
+            </label>
+          ) : null}
+
+          {splitPay && !isDeferred ? (
             <div className="space-y-2">
               <FormField label="2. fizetési mód" htmlFor="sale-pay2">
                 <MenuSelect
@@ -987,13 +1024,32 @@ export function SaleCreateClient({
             </div>
           ) : null}
 
+          {isDeferred ? (
+            <p className="rounded-md border border-border bg-subtle px-2.5 py-2 text-center text-hint text-ink-secondary">
+              Utalás → számlázás kötelező · rögzítés után díjbekérő
+            </p>
+          ) : (
+            <Button
+              type="button"
+              variant={wantBilling ? 'secondary' : 'ghost'}
+              size="sm"
+              className="w-full"
+              aria-pressed={wantBilling}
+              onClick={() => setWantBilling((v) => !v)}
+            >
+              {wantBilling ? 'Számlát kér · szerkeszt' : 'Számlát kér'}
+            </Button>
+          )}
+
           <Button
             type="button"
             className="w-full"
             onClick={openConfirm}
             disabled={pending}
           >
-            Eladás rögzítése
+            {isDeferred && !fulfillNow
+              ? 'Rendelés rögzítése'
+              : 'Eladás rögzítése'}
           </Button>
         </aside>
       </div>
@@ -1034,8 +1090,8 @@ export function SaleCreateClient({
             if (prev.some((x) => x.id === c.id)) return prev
             return [opt, ...prev]
           })
-          setCustomerId(c.id)
-          setBilling(billingFromCustomer(opt))
+          applyCustomer(c.id)
+          setBilling(billingFromCustomer({ ...opt, name: c.name }))
         }}
       />
 
@@ -1044,9 +1100,17 @@ export function SaleCreateClient({
         onOpenChange={(open) => {
           if (!pending) setConfirmOpen(open)
         }}
-        title="Eladás rögzítése"
+        title={
+          isDeferred && !fulfillNow
+            ? 'Rendelés rögzítése'
+            : 'Eladás rögzítése'
+        }
         description={confirmDesc}
-        confirmLabel="Eladás rögzítése"
+        confirmLabel={
+          isDeferred && !fulfillNow
+            ? 'Rendelés rögzítése'
+            : 'Eladás rögzítése'
+        }
         variant="primary"
         loading={pending}
         onConfirm={handleSubmit}

@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const SALE_STATUS_LABEL = {
   draft: 'Vázlat',
-  confirmed: 'Rögzítve',
+  confirmed: 'Átadásra vár',
   fulfilled: 'Teljesítve',
   partially_returned: 'Részben visszáru',
   cancelled: 'Törölve',
@@ -33,7 +33,7 @@ export function saleStatusTone(
   status: SaleStatus
 ): 'success' | 'warning' | 'danger' | 'neutral' | 'info' {
   if (status === 'fulfilled') return 'success'
-  if (status === 'confirmed') return 'info'
+  if (status === 'confirmed') return 'warning'
   if (status === 'partially_returned') return 'warning'
   if (status === 'cancelled' || status === 'returned') return 'danger'
   return 'neutral'
@@ -89,13 +89,32 @@ export const saleFormSchema = z.object({
   discountAmount: z.number().min(0).optional(),
   items: z.array(saleLineSchema).min(1, 'Adj hozzá legalább egy terméket.'),
   fees: z.array(saleFeeSchema).optional(),
-  payments: z.array(salePaymentSchema).min(1, 'Adj meg legalább egy fizetést.'),
+  /** Üres = unpaid (utalás / későbbi settlement). */
+  payments: z.array(salePaymentSchema).default([]),
+  /**
+   * Unpaid (üres payments): true = azonnali áruátadás (fulfilled+stock),
+   * false/omit = függőben (confirmed, nincs stock). Paid esetén ignorált.
+   */
+  fulfillNow: z.boolean().optional(),
   posRegisterId: z.string().uuid().nullable().optional(),
   billing: saleBillingSchema.optional()
 })
 
 export type SaleFormInput = z.infer<typeof saleFormSchema>
 export type SaleBillingInput = z.infer<typeof saleBillingSchema>
+
+export const updateSaleBillingSchema = z.object({
+  salesOrderId: z.string().uuid(),
+  billing: saleBillingSchema.extend({
+    billingName: z
+      .string()
+      .trim()
+      .min(1, 'A számlázási név kötelező.')
+      .max(160)
+  })
+})
+
+export type UpdateSaleBillingInput = z.infer<typeof updateSaleBillingSchema>
 
 export const saleReturnLineSchema = z.object({
   salesOrderItemId: z.string().uuid(),
@@ -114,6 +133,14 @@ export const saleReturnFormSchema = z.object({
 })
 
 export type SaleReturnFormInput = z.infer<typeof saleReturnFormSchema>
+
+export const recordSalePaymentSchema = z.object({
+  salesOrderId: z.string().uuid(),
+  paymentMethodId: z.string().uuid('Válassz fizetési módot.'),
+  amount: z.number().positive('A fizetés legyen pozitív.')
+})
+
+export type RecordSalePaymentInput = z.infer<typeof recordSalePaymentSchema>
 
 export function formatMoneyFt(n: number) {
   return new Intl.NumberFormat('hu-HU', {

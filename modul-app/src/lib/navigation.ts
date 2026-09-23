@@ -30,6 +30,7 @@ import {
   RectangleHorizontal,
   Package,
   PackageCheck,
+  Receipt,
   Tags,
   Truck,
   Users,
@@ -145,6 +146,13 @@ export const mainNavItems: NavNode[] = [
         label: 'Műszakok',
         href: '/ertekesitesek/muszakok',
         icon: History,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Bizonylatok',
+        href: '/szamlak',
+        icon: Receipt,
         accent: 'slate'
       }
     ]
@@ -392,6 +400,13 @@ export const mainNavItems: NavNode[] = [
         label: 'Cégadatok',
         href: '/beallitasok/cegadatok',
         icon: Building2,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Számlázás',
+        href: '/beallitasok/szamlazas',
+        icon: CircleDollarSign,
         accent: 'slate'
       },
       {

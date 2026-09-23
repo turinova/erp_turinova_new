@@ -52,7 +52,8 @@ export function PosInvoiceBillingDialog({
         <DialogHeader className="border-b border-border px-4 py-3 pr-10">
           <DialogTitle>Számlázási adatok</DialogTitle>
           <p className="mt-1 text-hint text-ink-secondary">
-            Csak ezen az eladáson. Az ügyféltörzset nem írja felül.
+            Ha van kiválasztott ügyfél, az adatai automatikusan behúzódnak.
+            Adószám → Számlázz / NAV lekérdezés.
           </p>
         </DialogHeader>
 
@@ -61,7 +62,9 @@ export function PosInvoiceBillingDialog({
             value={draft}
             onChange={setDraft}
             idPrefix="pos-inv"
-            hint=""
+            hint="Csak ezen az eladáson. Az ügyféltörzset nem írja felül."
+            enableTaxpayerLookup
+            autoFocusTax
           />
           {error ? (
             <p className="text-hint text-danger-ink" role="alert">

@@ -1611,6 +1611,20 @@ export type Database = {
           p_fees: unknown
           p_discount: unknown
           p_payments: unknown
+          p_pos_register_id?: string | null
+          p_fulfill_now?: boolean
+        }
+        Returns: Record<string, unknown>
+      }
+      fulfill_sale: {
+        Args: { p_sales_order_id: string }
+        Returns: Record<string, unknown>
+      }
+      record_sale_payment: {
+        Args: {
+          p_sales_order_id: string
+          p_payment_method_id: string
+          p_amount: number
         }
         Returns: Record<string, unknown>
       }

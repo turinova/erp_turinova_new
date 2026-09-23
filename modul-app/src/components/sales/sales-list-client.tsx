@@ -18,6 +18,10 @@ import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  SALE_INVOICE_STATUS_LABEL,
+  saleInvoiceStatusTone
+} from '@/lib/invoicing/invoice-rules'
+import {
   formatMoneyFt,
   SALE_CHANNEL_LABEL,
   SALE_PAYMENT_STATUS_LABEL,
@@ -53,6 +57,7 @@ function formatDate(iso: string | null) {
 
 const STATUS_FILTERS: { value: SaleStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'Mind' },
+  { value: 'confirmed', label: 'Átadásra vár' },
   { value: 'fulfilled', label: 'Teljesítve' },
   { value: 'partially_returned', label: 'Részben visszáru' },
   { value: 'returned', label: 'Visszáru' }
@@ -192,7 +197,7 @@ export function SalesListClient({
         </Button>
       </form>
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         {STATUS_FILTERS.map((f) => {
           const active = initialStatus === f.value
           return (
@@ -211,6 +216,12 @@ export function SalesListClient({
             </button>
           )
         })}
+        <Link
+          href="/szamlak"
+          className="ml-auto h-7 rounded-md px-2.5 text-hint font-medium text-ink-secondary no-underline hover:bg-subtle hover:text-ink"
+        >
+          Fizetésre váró díjbekérők →
+        </Link>
       </div>
 
       {initialRows.length === 0 ? (
@@ -241,6 +252,7 @@ export function SalesListClient({
               <DataTableHeaderCell>Csatorna</DataTableHeaderCell>
               <DataTableHeaderCell align="right">Bruttó (Ft)</DataTableHeaderCell>
               <DataTableHeaderCell>Fizetés</DataTableHeaderCell>
+              <DataTableHeaderCell>Számlázás</DataTableHeaderCell>
               <DataTableHeaderCell>Állapot</DataTableHeaderCell>
               <DataTableHeaderCell>Dátum</DataTableHeaderCell>
             </DataTableRow>
@@ -285,6 +297,19 @@ export function SalesListClient({
                     {SALE_PAYMENT_STATUS_LABEL[
                       row.payment_status as SalePaymentStatus
                     ] ?? row.payment_status}
+                  </StatusBadge>
+                </DataTableCell>
+                <DataTableCell>
+                  <StatusBadge
+                    tone={saleInvoiceStatusTone(row.invoice_status)}
+                    variant={
+                      row.invoice_status === 'invoiced' ||
+                      row.invoice_status === 'proforma'
+                        ? 'solid'
+                        : 'soft'
+                    }
+                  >
+                    {SALE_INVOICE_STATUS_LABEL[row.invoice_status]}
                   </StatusBadge>
                 </DataTableCell>
                 <DataTableCell>

@@ -1,8 +1,9 @@
 import { cn } from '@/lib/utils'
 
-type FormSectionColumns = 2 | 3 | 4 | 5
+type FormSectionColumns = 1 | 2 | 3 | 4 | 5
 
 const columnsClass: Record<FormSectionColumns, string> = {
+  1: 'grid-cols-1',
   2: 'sm:grid-cols-2',
   3: 'sm:grid-cols-2 lg:grid-cols-3',
   4: 'sm:grid-cols-2 lg:grid-cols-4',

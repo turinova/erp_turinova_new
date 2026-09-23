@@ -1,5 +1,7 @@
 /** Eladás összesítő — UI előnézet, RPC-vel egyező sorrend. */
 
+export { isCashPaymentMethodName } from '@/lib/sales/payment-kind'
+
 export function hungarianCashRound(amount: number): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0
   const floor = Math.floor(amount)
@@ -7,15 +9,6 @@ export function hungarianCashRound(amount: number): number {
   if (last >= 0 && last <= 2) return floor - last
   if (last >= 3 && last <= 7) return floor - last + 5
   return floor - last + 10
-}
-
-export function isCashPaymentMethodName(name: string | null | undefined): boolean {
-  const n = (name ?? '').toLowerCase()
-  return (
-    n.includes('készpénz') ||
-    n.includes('keszpenz') ||
-    n === 'cash'
-  )
 }
 
 export function netVatFromGross(

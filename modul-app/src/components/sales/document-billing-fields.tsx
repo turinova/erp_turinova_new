@@ -1,8 +1,12 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
+
 import { FormField } from '@/components/patterns/form-field'
 import { Input } from '@/components/ui/input'
 import { formatTaxNumber } from '@/lib/customers/parse'
+import { queryTaxpayerAction } from '@/lib/invoicing/actions'
+import { HU_TAX_NUMBER_RE } from '@/lib/invoicing/taxpayer'
 
 /** Dokumentum számlázás (eladás / árajánlat / POS) — nem ügyféltörzs. */
 export type DocumentBillingState = {
@@ -78,6 +82,10 @@ type Props = {
   idPrefix?: string
   /** Hint a mezők felett */
   hint?: string
+  /** Adószám → Számlázz taxpayer autofill (POS / számla dialógus) */
+  enableTaxpayerLookup?: boolean
+  /** Adószám mező fókusz nyitáskor */
+  autoFocusTax?: boolean
 }
 
 export function DocumentBillingFields({
@@ -85,15 +93,120 @@ export function DocumentBillingFields({
   onChange,
   disabled,
   idPrefix = 'doc-bill',
-  hint = 'Csak ezen a dokumentumon érvényes. Az ügyféltörzset nem írja felül.'
+  hint = 'Csak ezen a dokumentumon érvényes. Az ügyféltörzset nem írja felül.',
+  enableTaxpayerLookup = false,
+  autoFocusTax = false
 }: Props) {
+  const taxRef = useRef<HTMLInputElement>(null)
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [lookupOk, setLookupOk] = useState(false)
+  const lastQueried = useRef<string>('')
+  const valueRef = useRef(value)
+  valueRef.current = value
+
   function patch(partial: Partial<DocumentBillingState>) {
     onChange({ ...value, ...partial })
   }
 
+  useEffect(() => {
+    if (!autoFocusTax) return
+    const id = window.setTimeout(() => taxRef.current?.focus(), 50)
+    return () => window.clearTimeout(id)
+  }, [autoFocusTax])
+
+  useEffect(() => {
+    if (!enableTaxpayerLookup || disabled) return
+    const tax = value.billingTaxNumber.trim()
+    if (!HU_TAX_NUMBER_RE.test(tax)) {
+      setLookupError(null)
+      setLookupOk(false)
+      return
+    }
+    if (tax === lastQueried.current) return
+
+    const handle = window.setTimeout(() => {
+      lastQueried.current = tax
+      setLookupLoading(true)
+      setLookupError(null)
+      setLookupOk(false)
+      void queryTaxpayerAction(tax).then((result) => {
+        setLookupLoading(false)
+        if (!result.ok) {
+          setLookupError(result.message)
+          return
+        }
+        const t = result.taxpayer
+        const cur = valueRef.current
+        // Csak üres mezőket tölt — kézzel írt adatot nem törli
+        onChange({
+          ...cur,
+          billingTaxNumber: tax,
+          billingName: cur.billingName.trim()
+            ? cur.billingName
+            : t.name || cur.billingName,
+          billingPostalCode: cur.billingPostalCode.trim()
+            ? cur.billingPostalCode
+            : t.postalCode || cur.billingPostalCode,
+          billingCity: cur.billingCity.trim()
+            ? cur.billingCity
+            : t.city || cur.billingCity,
+          billingStreet: cur.billingStreet.trim()
+            ? cur.billingStreet
+            : t.street || cur.billingStreet,
+          billingHouseNumber: cur.billingHouseNumber.trim()
+            ? cur.billingHouseNumber
+            : t.houseNumber || cur.billingHouseNumber,
+          billingCountry: cur.billingCountry || 'Magyarország'
+        })
+        setLookupOk(true)
+      })
+    }, 700)
+
+    return () => window.clearTimeout(handle)
+  }, [
+    value.billingTaxNumber,
+    enableTaxpayerLookup,
+    disabled,
+    onChange
+  ])
+
   return (
     <div className="space-y-2">
       {hint ? <p className="text-hint text-ink-muted">{hint}</p> : null}
+
+      <FormField
+        label="Adószám"
+        htmlFor={`${idPrefix}-tax`}
+        hint={
+          enableTaxpayerLookup
+            ? lookupLoading
+              ? 'Cégadatok lekérdezése…'
+              : lookupOk
+                ? 'Cégadatok kitöltve a Számlázz / NAV alapján.'
+                : 'Formátum: 12345678-1-02 — kitöltés után automatikus lekérdezés.'
+            : 'Formátum: 12345678-1-02'
+        }
+        error={lookupError ?? undefined}
+      >
+        <Input
+          ref={taxRef}
+          id={`${idPrefix}-tax`}
+          value={value.billingTaxNumber}
+          disabled={disabled || lookupLoading}
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="12345678-1-02"
+          maxLength={13}
+          onChange={(e) => {
+            lastQueried.current = ''
+            setLookupOk(false)
+            setLookupError(null)
+            patch({ billingTaxNumber: formatTaxNumber(e.target.value) })
+          }}
+        />
+      </FormField>
+
       <FormField label="Számlázási név" htmlFor={`${idPrefix}-name`}>
         <Input
           id={`${idPrefix}-name`}
@@ -138,34 +251,14 @@ export function DocumentBillingFields({
           />
         </FormField>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <FormField label="Ország" htmlFor={`${idPrefix}-country`}>
-          <Input
-            id={`${idPrefix}-country`}
-            value={value.billingCountry}
-            disabled={disabled}
-            onChange={(e) => patch({ billingCountry: e.target.value })}
-          />
-        </FormField>
-        <FormField
-          label="Adószám"
-          htmlFor={`${idPrefix}-tax`}
-          hint="Formátum: 12345678-1-02"
-        >
-          <Input
-            id={`${idPrefix}-tax`}
-            value={value.billingTaxNumber}
-            disabled={disabled}
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder="12345678-1-02"
-            maxLength={13}
-            onChange={(e) =>
-              patch({ billingTaxNumber: formatTaxNumber(e.target.value) })
-            }
-          />
-        </FormField>
-      </div>
+      <FormField label="Ország" htmlFor={`${idPrefix}-country`}>
+        <Input
+          id={`${idPrefix}-country`}
+          value={value.billingCountry}
+          disabled={disabled}
+          onChange={(e) => patch({ billingCountry: e.target.value })}
+        />
+      </FormField>
     </div>
   )
 }

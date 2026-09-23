@@ -8,10 +8,14 @@ import {
   type SaleProductSearchItem
 } from '@/lib/sales/queries'
 import {
+  recordSalePaymentSchema,
   saleFormSchema,
   saleReturnFormSchema,
+  updateSaleBillingSchema,
+  type RecordSalePaymentInput,
   type SaleFormInput,
-  type SaleReturnFormInput
+  type SaleReturnFormInput,
+  type UpdateSaleBillingInput
 } from '@/lib/sales/parse'
 import { createClient } from '@/lib/supabase/server'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
@@ -119,7 +123,8 @@ export async function createSaleAction(
       amount: d.discountAmount ?? 0
     },
     p_payments: payments,
-    p_pos_register_id: d.posRegisterId ?? null
+    p_pos_register_id: d.posRegisterId ?? null,
+    p_fulfill_now: payments.length === 0 ? Boolean(d.fulfillNow) : false
   })
 
   if (error) {
@@ -238,6 +243,173 @@ export async function createSaleReturnAction(
     id: result.id,
     returnNumber: result.return_number
   }
+}
+
+export async function recordSalePaymentAction(
+  input: RecordSalePaymentInput
+): Promise<SaleActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const parsed = recordSalePaymentSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? 'Hibás adatok.'
+    }
+  }
+
+  const d = parsed.data
+  const { data, error } = await ctx.supabase.rpc('record_sale_payment', {
+    p_sales_order_id: d.salesOrderId,
+    p_payment_method_id: d.paymentMethodId,
+    p_amount: d.amount
+  })
+
+  if (error) {
+    console.error('recordSalePaymentAction', error.message)
+    return { ok: false, message: 'Nem sikerült rögzíteni a fizetést.' }
+  }
+
+  const result = data as {
+    ok?: boolean
+    id?: string
+    payment_status?: string
+    message?: string
+  } | null
+
+  if (!result?.ok || !result.id) {
+    return {
+      ok: false,
+      message: result?.message ?? 'Nem sikerült rögzíteni a fizetést.'
+    }
+  }
+
+  revalidateSalePaths(result.id)
+  return { ok: true, id: result.id }
+}
+
+/** Confirmed → fulfilled + stock out (áru átadása). */
+export async function fulfillSaleAction(
+  salesOrderId: string
+): Promise<SaleActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  if (!salesOrderId) {
+    return { ok: false, message: 'Hiányzó eladás azonosító.' }
+  }
+
+  const { data, error } = await ctx.supabase.rpc('fulfill_sale', {
+    p_sales_order_id: salesOrderId
+  })
+
+  if (error) {
+    console.error('fulfillSaleAction', error.message)
+    return { ok: false, message: 'Nem sikerült teljesíteni az eladást.' }
+  }
+
+  const result = data as {
+    ok?: boolean
+    id?: string
+    sale_number?: string
+    message?: string
+  } | null
+
+  if (!result?.ok || !result.id) {
+    return {
+      ok: false,
+      message: result?.message ?? 'Nem sikerült teljesíteni az eladást.'
+    }
+  }
+
+  revalidateSalePaths(result.id)
+  return { ok: true, id: result.id, saleNumber: result.sale_number }
+}
+
+/** Detail: számlázási snapshot szerkesztés (amíg nincs aktív végszámla). */
+export async function updateSaleBillingAction(
+  input: UpdateSaleBillingInput
+): Promise<SaleActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const parsed = updateSaleBillingSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? 'Hibás adatok.'
+    }
+  }
+
+  const { salesOrderId, billing: b } = parsed.data
+  const tenantId = ctx.user.tenantId!
+
+  const { data: sale, error: saleErr } = await ctx.supabase
+    .from('sales_orders')
+    .select('id, status, deleted_at')
+    .eq('id', salesOrderId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (saleErr || !sale || sale.deleted_at) {
+    return { ok: false, message: 'Az eladás nem található.' }
+  }
+  if (sale.status === 'cancelled') {
+    return { ok: false, message: 'Törölt eladáson nem módosítható a számlázás.' }
+  }
+
+  const { data: invoices } = await ctx.supabase
+    .from('invoices')
+    .select('id, invoice_type, is_storno_of_invoice_id')
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', 'sale')
+    .eq('related_source_id', salesOrderId)
+    .is('deleted_at', null)
+
+  const rows = invoices ?? []
+  const stornoOf = new Set(
+    rows
+      .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
+      .map((r) => r.is_storno_of_invoice_id as string)
+  )
+  const hasActiveFinal = rows.some(
+    (r) =>
+      r.invoice_type === 'szamla' &&
+      !r.is_storno_of_invoice_id &&
+      !stornoOf.has(r.id)
+  )
+  if (hasActiveFinal) {
+    return {
+      ok: false,
+      message:
+        'Aktív számla mellett a számlázási adat nem módosítható. Előbb sztornózd a számlát.'
+    }
+  }
+
+  const { error } = await ctx.supabase
+    .from('sales_orders')
+    .update({
+      billing_name_snapshot: b.billingName.trim(),
+      billing_country_snapshot: b.billingCountry?.trim() || 'Magyarország',
+      billing_city_snapshot: b.billingCity?.trim() || null,
+      billing_postal_code_snapshot: b.billingPostalCode?.trim() || null,
+      billing_street_snapshot: b.billingStreet?.trim() || null,
+      billing_house_number_snapshot: b.billingHouseNumber?.trim() || null,
+      billing_tax_number_snapshot: b.billingTaxNumber?.trim() || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', salesOrderId)
+    .eq('tenant_id', tenantId)
+
+  if (error) {
+    console.error('updateSaleBillingAction', error.message)
+    return { ok: false, message: 'Nem sikerült menteni a számlázási adatokat.' }
+  }
+
+  revalidateSalePaths(salesOrderId)
+  revalidatePath('/szamlak')
+  return { ok: true, id: salesOrderId }
 }
 
 export type SaleReturnSearchHit = {

@@ -2,10 +2,11 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { Minus, Plus, Search, Trash2, UserPlus } from 'lucide-react'
+import { Plus, Search, Trash2, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
+import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { SaleAddFeeDialog } from '@/components/sales/sale-add-fee-dialog'
 import { SaleQuickCustomerDialog } from '@/components/sales/sale-quick-customer-dialog'
@@ -18,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { Textarea } from '@/components/ui/textarea'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { FeeTypeListItem } from '@/lib/fee-types/queries'
 import { searchSaleProductsAction } from '@/lib/sales/actions'
@@ -243,353 +245,378 @@ export function SalesQuoteCreateClient({
 
       <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <div className="w-[12rem]">
-              <FormField label="Raktár" htmlFor="sq-wh">
-                <MenuSelect
-                  id="sq-wh"
-                  value={warehouseId}
-                  onChange={setWarehouseId}
-                  allowEmpty={false}
-                  options={warehouses.map((w) => ({
-                    value: w.id,
-                    label: w.name,
-                    hint: w.code
-                  }))}
-                />
-              </FormField>
-            </div>
-            <div className="min-w-[14rem] flex-1">
-              <FormField label="Ügyfél *" htmlFor="sq-customer">
-                <div className="flex gap-1.5">
-                  <div className="flex-1">
-                    <MenuSelect
-                      id="sq-customer"
-                      value={customerId}
-                      onChange={onCustomerChange}
-                      allowEmpty
-                      emptyLabel="Válassz ügyfelet…"
-                      searchable={customers.length > 8}
-                      options={customers.map((c) => ({
-                        value: c.id,
-                        label: c.name,
-                        hint: c.mobile ?? c.email ?? undefined
-                      }))}
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setQuickCustomerOpen(true)}
-                  >
-                    <UserPlus className="size-3.5" aria-hidden />
-                  </Button>
+          <FormSection title="Fejléc" columns={3}>
+            <FormField label="Raktár" htmlFor="sq-wh">
+              <MenuSelect
+                id="sq-wh"
+                value={warehouseId}
+                onChange={setWarehouseId}
+                allowEmpty={false}
+                options={warehouses.map((w) => ({
+                  value: w.id,
+                  label: w.name,
+                  hint: w.code
+                }))}
+              />
+            </FormField>
+            <FormField label="Ügyfél" htmlFor="sq-customer" required>
+              <div className="flex gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <MenuSelect
+                    id="sq-customer"
+                    value={customerId}
+                    onChange={onCustomerChange}
+                    allowEmpty
+                    emptyLabel="Válassz ügyfelet…"
+                    searchable={customers.length > 8}
+                    options={customers.map((c) => ({
+                      value: c.id,
+                      label: c.name,
+                      hint: c.mobile ?? c.email ?? undefined
+                    }))}
+                  />
                 </div>
-              </FormField>
-            </div>
-            <div className="w-[11rem]">
-              <FormField label="Érvényes eddig" htmlFor="sq-valid">
-                <Input
-                  id="sq-valid"
-                  type="date"
-                  value={validUntil}
-                  onChange={(e) => setValidUntil(e.target.value)}
-                />
-              </FormField>
-            </div>
-          </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  aria-label="Új ügyfél"
+                  onClick={() => setQuickCustomerOpen(true)}
+                >
+                  <UserPlus className="size-3.5" aria-hidden />
+                </Button>
+              </div>
+            </FormField>
+            <FormField
+              label="Érvényes eddig"
+              htmlFor="sq-valid"
+              optionalLabel
+            >
+              <Input
+                id="sq-valid"
+                type="date"
+                value={validUntil}
+                onChange={(e) => setValidUntil(e.target.value)}
+              />
+            </FormField>
+          </FormSection>
 
           {customerId ? (
-            <div className="rounded-md border border-border bg-surface p-3">
-              <h3 className="mb-2 text-body font-semibold text-ink">
-                Számlázási adatok
-              </h3>
-              <QuoteBillingFields
-                value={billing}
-                onChange={setBilling}
-                disabled={pending}
-                idPrefix="sq-bill"
-              />
-            </div>
+            <FormSection title="Számlázási adatok" columns={2}>
+              <div className="col-span-full">
+                <QuoteBillingFields
+                  value={billing}
+                  onChange={setBilling}
+                  disabled={pending}
+                  idPrefix="sq-bill"
+                />
+              </div>
+            </FormSection>
           ) : null}
 
-          <div className="relative">
-            <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
-              aria-hidden
-            />
-            <Input
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="Termék keresése…"
-              className="pl-8"
-            />
-            {(searching || searchHits.length > 0) && searchQ.trim() ? (
-              <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-surface shadow-md">
-                {searchHits.length === 0 ? (
-                  <p className="p-3 text-hint text-ink-secondary">Keresés…</p>
-                ) : (
-                  searchHits.map((hit) => (
-                    <button
-                      key={hit.id}
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-body hover:bg-subtle"
-                      onClick={() => addHit(hit)}
-                    >
-                      <span>
-                        <span className="font-medium">{hit.name}</span>
-                        <span className="ml-2 text-hint text-ink-secondary">
-                          {hit.sku}
-                        </span>
-                      </span>
-                      <span className="tabular-nums text-ink-secondary">
-                        {formatMoneyFt(
-                          Math.round(
-                            hit.price_net * (1 + hit.tax_rate_percent / 100)
-                          )
-                        )}{' '}
-                        Ft
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="overflow-hidden rounded-md border border-border">
-            <table className="w-full border-collapse text-body">
-              <thead>
-                <tr className="border-b border-border bg-subtle text-left text-label text-ink-secondary">
-                  <th className="px-2.5 py-2 font-medium">Tétel</th>
-                  <th className="px-2.5 py-2 font-medium text-right">Qty</th>
-                  <th className="px-2.5 py-2 font-medium text-right">
-                    Bruttó egységár
-                  </th>
-                  <th className="px-2.5 py-2 font-medium text-right">Kedv%</th>
-                  <th className="px-2.5 py-2 font-medium text-right">
-                    Bruttó összeg
-                  </th>
-                  <th className="w-10 px-2.5 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {lines.length === 0 && fees.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-2.5 py-6 text-center text-ink-secondary"
-                    >
-                      Keress terméket, majd add a kosárhoz.
-                    </td>
-                  </tr>
+          <FormSection
+            title="Tételek"
+            description="Termék keresése név / SKU szerint. Nincs készletmozgás — csak papír."
+            columns={4}
+          >
+            <div className="col-span-full space-y-2.5">
+              <div className="relative max-w-xl">
+                <label className="sr-only" htmlFor="sq-product-search">
+                  Termék keresése
+                </label>
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
+                  aria-hidden
+                />
+                <Input
+                  id="sq-product-search"
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                  placeholder="Termék keresése (név, SKU)…"
+                  className="pl-8"
+                  autoComplete="off"
+                />
+                {(searching || searchHits.length > 0) && searchQ.trim() ? (
+                  <ul
+                    className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-surface shadow-md"
+                    role="listbox"
+                  >
+                    {searching && searchHits.length === 0 ? (
+                      <li className="px-2.5 py-2 text-hint text-ink-secondary">
+                        Keresés…
+                      </li>
+                    ) : null}
+                    {searchHits.map((hit) => (
+                      <li key={hit.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left hover:bg-subtle"
+                          onClick={() => addHit(hit)}
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-body font-medium text-ink">
+                              {hit.name}
+                            </span>
+                            <span className="text-hint text-ink-secondary">
+                              {hit.sku}
+                              {hit.unit_shortform
+                                ? ` · ${hit.unit_shortform}`
+                                : ''}
+                            </span>
+                          </span>
+                          <span className="shrink-0 tabular-nums text-hint text-ink-secondary">
+                            {formatMoneyFt(
+                              Math.round(
+                                hit.price_net *
+                                  (1 + hit.tax_rate_percent / 100)
+                              )
+                            )}{' '}
+                            Ft
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                    {!searching && searchHits.length === 0 ? (
+                      <li className="px-2.5 py-2 text-hint text-ink-secondary">
+                        Nincs találat.
+                      </li>
+                    ) : null}
+                  </ul>
                 ) : null}
-                {lines.map((l) => {
-                  const before = Math.round(l.quantity * l.unitPriceGross)
-                  const disc = Math.round(
-                    (before * (l.discountPercentage || 0)) / 100
-                  )
-                  const g = Math.max(0, before - disc)
-                  return (
-                  <tr key={l.accessoryId} className="border-b border-border">
-                    <td className="px-2.5 py-2">
-                      <div className="font-medium text-ink">{l.name}</div>
-                      <div className="text-hint text-ink-secondary">{l.sku}</div>
-                    </td>
-                    <td className="px-2.5 py-2">
-                      <div className="flex items-center justify-end gap-0.5">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="size-7 p-0"
-                          aria-label="Mennyiség csökkentése"
-                          onClick={() =>
-                            setLines((prev) =>
-                              prev
-                                .map((x) =>
-                                  x.accessoryId === l.accessoryId
-                                    ? {
-                                        ...x,
-                                        quantity: Math.max(0.001, x.quantity - 1)
-                                      }
-                                    : x
+              </div>
+
+              {lines.length === 0 && fees.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
+                  Adj hozzá terméket a keresővel.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-md border border-border">
+                  <table className="w-full min-w-[36rem] border-collapse text-body">
+                    <thead>
+                      <tr className="border-b border-border bg-subtle text-left text-label text-ink-secondary">
+                        <th className="px-2.5 py-2 font-medium">Termék</th>
+                        <th className="px-2.5 py-2 font-medium text-right">
+                          Mennyiség
+                        </th>
+                        <th className="px-2.5 py-2 font-medium text-right">
+                          Bruttó / eg.
+                        </th>
+                        <th className="px-2.5 py-2 font-medium text-right">
+                          Kedv. %
+                        </th>
+                        <th className="px-2.5 py-2 font-medium text-right">
+                          Összeg
+                        </th>
+                        <th className="w-[1%] px-2.5 py-2 font-medium" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((l) => {
+                        const before = Math.round(
+                          l.quantity * l.unitPriceGross
+                        )
+                        const disc = Math.round(
+                          (before * (l.discountPercentage || 0)) / 100
+                        )
+                        const g = Math.max(0, before - disc)
+                        return (
+                          <tr
+                            key={l.accessoryId}
+                            className="border-b border-border last:border-0"
+                          >
+                            <td className="px-2.5 py-2">
+                              <div className="font-medium text-ink">
+                                {l.name}
+                              </div>
+                              <div className="text-hint text-ink-secondary">
+                                {l.sku}
+                              </div>
+                            </td>
+                            <td className="px-2.5 py-2 text-right">
+                              <div className="inline-flex items-center justify-end gap-1">
+                                <Input
+                                  type="number"
+                                  min={0.001}
+                                  step="any"
+                                  className="h-8 w-20 text-right"
+                                  value={l.quantity}
+                                  onChange={(e) => {
+                                    const n = Number(e.target.value)
+                                    setLines((prev) =>
+                                      prev.map((x) =>
+                                        x.accessoryId === l.accessoryId
+                                          ? {
+                                              ...x,
+                                              quantity: Number.isFinite(n)
+                                                ? Math.max(0.001, n)
+                                                : 1
+                                            }
+                                          : x
+                                      )
+                                    )
+                                  }}
+                                />
+                                <span className="text-hint text-ink-muted">
+                                  {l.unitShortform}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-2.5 py-2 text-right tabular-nums">
+                              {formatMoneyFt(l.unitPriceGross)}
+                            </td>
+                            <td className="px-2.5 py-2 text-right">
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                className="ml-auto h-8 w-16 text-right"
+                                value={l.discountPercentage}
+                                onChange={(e) => {
+                                  const n = Number(e.target.value)
+                                  setLines((prev) =>
+                                    prev.map((x) =>
+                                      x.accessoryId === l.accessoryId
+                                        ? {
+                                            ...x,
+                                            discountPercentage: Number.isFinite(
+                                              n
+                                            )
+                                              ? Math.min(100, Math.max(0, n))
+                                              : 0
+                                          }
+                                        : x
+                                    )
+                                  )
+                                }}
+                              />
+                            </td>
+                            <td className="px-2.5 py-2 text-right font-medium tabular-nums">
+                              {formatMoneyFt(g)}
+                            </td>
+                            <td className="px-2.5 py-2 text-right">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="size-8 p-0 text-danger-ink"
+                                aria-label="Sor törlése"
+                                onClick={() =>
+                                  setLines((prev) =>
+                                    prev.filter(
+                                      (x) => x.accessoryId !== l.accessoryId
+                                    )
+                                  )
+                                }
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {fees.map((f) => (
+                        <tr
+                          key={f.key}
+                          className="border-b border-border last:border-0"
+                        >
+                          <td className="px-2.5 py-2">
+                            <div className="font-medium text-ink">{f.name}</div>
+                            <div className="text-hint text-ink-secondary">
+                              Díj
+                            </div>
+                          </td>
+                          <td className="px-2.5 py-2 text-right tabular-nums text-ink-secondary">
+                            1
+                          </td>
+                          <td className="px-2.5 py-2 text-right tabular-nums">
+                            {formatMoneyFt(f.unitPriceGross)}
+                          </td>
+                          <td className="px-2.5 py-2 text-right text-ink-secondary">
+                            —
+                          </td>
+                          <td className="px-2.5 py-2 text-right font-medium tabular-nums">
+                            {formatMoneyFt(f.unitPriceGross)}
+                          </td>
+                          <td className="px-2.5 py-2 text-right">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="size-8 p-0 text-danger-ink"
+                              aria-label="Sor törlése"
+                              onClick={() =>
+                                setFees((prev) =>
+                                  prev.filter((x) => x.key !== f.key)
                                 )
-                                .filter((x) => x.quantity > 0)
-                            )
-                          }
-                        >
-                          <Minus className="size-3" />
-                        </Button>
-                        <Input
-                          type="number"
-                          className="h-7 w-14 text-center"
-                          value={l.quantity}
-                          onChange={(e) => {
-                            const n = Number(e.target.value)
-                            setLines((prev) =>
-                              prev.map((x) =>
-                                x.accessoryId === l.accessoryId
-                                  ? {
-                                      ...x,
-                                      quantity: Number.isFinite(n)
-                                        ? Math.max(0.001, n)
-                                        : 1
-                                    }
-                                  : x
-                              )
-                            )
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="size-7 p-0"
-                          aria-label="Mennyiség növelése"
-                          onClick={() =>
-                            setLines((prev) =>
-                              prev.map((x) =>
-                                x.accessoryId === l.accessoryId
-                                  ? { ...x, quantity: x.quantity + 1 }
-                                  : x
-                              )
-                            )
-                          }
-                        >
-                          <Plus className="size-3" />
-                        </Button>
-                      </div>
-                    </td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
-                      {formatMoneyFt(l.unitPriceGross)}
-                    </td>
-                    <td className="px-2.5 py-2 text-right">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        className="ml-auto h-7 w-14 text-center"
-                        value={l.discountPercentage}
-                        onChange={(e) => {
-                          const n = Number(e.target.value)
-                          setLines((prev) =>
-                            prev.map((x) =>
-                              x.accessoryId === l.accessoryId
-                                ? {
-                                    ...x,
-                                    discountPercentage: Number.isFinite(n)
-                                      ? Math.min(100, Math.max(0, n))
-                                      : 0
-                                  }
-                                : x
-                            )
-                          )
-                        }}
-                      />
-                    </td>
-                    <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
-                      {formatMoneyFt(g)}
-                    </td>
-                    <td className="px-2.5 py-2 text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="size-7 p-0 text-danger-ink"
-                        aria-label="Sor törlése"
-                        onClick={() =>
-                          setLines((prev) =>
-                            prev.filter((x) => x.accessoryId !== l.accessoryId)
-                          )
-                        }
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </td>
-                  </tr>
-                  )
-                })}
-                {fees.map((f) => (
-                  <tr key={f.key} className="border-b border-border">
-                    <td className="px-2.5 py-2">
-                      <div className="font-medium text-ink">{f.name}</div>
-                      <div className="text-hint text-ink-secondary">Díj</div>
-                    </td>
-                    <td className="px-2.5 py-2 text-right text-ink-secondary">
-                      1
-                    </td>
-                    <td className="px-2.5 py-2 text-right tabular-nums">
-                      {formatMoneyFt(f.unitPriceGross)}
-                    </td>
-                    <td className="px-2.5 py-2 text-right text-ink-secondary">
-                      —
-                    </td>
-                    <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
-                      {formatMoneyFt(f.unitPriceGross)}
-                    </td>
-                    <td className="px-2.5 py-2 text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="size-7 p-0 text-danger-ink"
-                        aria-label="Sor törlése"
-                        onClick={() =>
-                          setFees((prev) => prev.filter((x) => x.key !== f.key))
-                        }
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                              }
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={feeTypes.length === 0}
-              onClick={() => setFeeOpen(true)}
-            >
-              <Plus className="size-3.5" aria-hidden />
-              Díj
-            </Button>
-            <div className="flex items-center gap-1.5">
-              <span className="text-hint text-ink-secondary">
-                Globál kedvezmény %
-              </span>
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                className="h-8 w-16"
-                value={globalDiscPct}
-                onChange={(e) => {
-                  const n = Number(e.target.value)
-                  setGlobalDiscPct(
-                    Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0
-                  )
-                }}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={feeTypes.length === 0}
+                  onClick={() => setFeeOpen(true)}
+                >
+                  <Plus className="size-3.5" aria-hidden />
+                  Díj hozzáadása
+                </Button>
+                <FormField
+                  label="Globál kedvezmény %"
+                  htmlFor="sq-global-disc"
+                  optionalLabel
+                  className="w-auto"
+                >
+                  <Input
+                    id="sq-global-disc"
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="h-8 w-16"
+                    value={globalDiscPct}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      setGlobalDiscPct(
+                        Number.isFinite(n)
+                          ? Math.min(100, Math.max(0, n))
+                          : 0
+                      )
+                    }}
+                  />
+                </FormField>
+              </div>
             </div>
-          </div>
+          </FormSection>
 
-          <FormField label="Megjegyzés" htmlFor="sq-note">
-            <Input
-              id="sq-note"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              maxLength={500}
-              placeholder="Feltételek, megjegyzés…"
-            />
-          </FormField>
+          <FormSection title="Megjegyzés" columns={2}>
+            <FormField
+              label="Megjegyzés"
+              htmlFor="sq-note"
+              optionalLabel
+              className="sm:col-span-2"
+            >
+              <Textarea
+                id="sq-note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={500}
+                placeholder="Feltételek, megjegyzés…"
+                className="min-h-[4rem]"
+              />
+            </FormField>
+          </FormSection>
         </div>
 
-        <aside className="h-fit space-y-3 rounded-md border border-border bg-surface p-3 lg:sticky lg:top-3">
+        <aside className="h-fit space-y-3 rounded-md border border-border bg-surface p-3.5 lg:sticky lg:top-3">
+          <h2 className="text-h3 text-ink">Összesítő</h2>
           <SaleTotalsBreakdown totals={totals} />
           <p className="text-hint text-ink-secondary">
             Nincs készletmozgás — csak papír.

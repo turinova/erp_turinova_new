@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import type { SaleInvoiceListStatus } from '@/lib/invoicing/invoice-rules'
 import type {
   SaleChannel,
   SalePaymentStatus,
@@ -20,6 +21,8 @@ export type SaleListItem = {
   created_at: string
   created_by_label: string | null
   pos_shift_id: string | null
+  /** Lista: számlázási állapot (peer bizonylatokból). */
+  invoice_status: SaleInvoiceListStatus
 }
 
 export type SaleItemRow = {
@@ -206,7 +209,8 @@ export async function listSales(
       fulfilled_at: row.fulfilled_at,
       created_at: row.created_at,
       created_by_label: row.created_by_label_snapshot ?? null,
-      pos_shift_id: row.pos_shift_id ?? null
+      pos_shift_id: row.pos_shift_id ?? null,
+      invoice_status: 'none'
     }
   })
 
