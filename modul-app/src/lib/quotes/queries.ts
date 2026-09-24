@@ -302,6 +302,13 @@ export async function getQuoteDetail(
       production_date,
       barcode,
       portal_submitted_at,
+      billing_name_snapshot,
+      billing_country_snapshot,
+      billing_city_snapshot,
+      billing_postal_code_snapshot,
+      billing_street_snapshot,
+      billing_house_number_snapshot,
+      billing_tax_number_snapshot,
       customers (
         id,
         name,
@@ -382,6 +389,13 @@ export async function getQuoteDetail(
       production_date,
       barcode,
       portal_submitted_at,
+      billing_name_snapshot,
+      billing_country_snapshot,
+      billing_city_snapshot,
+      billing_postal_code_snapshot,
+      billing_street_snapshot,
+      billing_house_number_snapshot,
+      billing_tax_number_snapshot,
       production_machines ( name ),
       customers (
         id,
@@ -710,13 +724,28 @@ export async function getQuoteDetail(
       name: customer.name,
       email: customer.email,
       mobile: customer.mobile,
-      billing_name: customer.billing_name,
-      billing_country: customer.billing_country || 'Magyarország',
-      billing_city: customer.billing_city,
-      billing_postal_code: customer.billing_postal_code,
-      billing_street: customer.billing_street,
-      billing_house_number: customer.billing_house_number,
-      billing_tax_number: customer.billing_tax_number,
+      billing_name:
+        (data.billing_name_snapshot as string | null) ??
+        customer.billing_name,
+      billing_country:
+        (data.billing_country_snapshot as string | null) ||
+        customer.billing_country ||
+        'Magyarország',
+      billing_city:
+        (data.billing_city_snapshot as string | null) ??
+        customer.billing_city,
+      billing_postal_code:
+        (data.billing_postal_code_snapshot as string | null) ??
+        customer.billing_postal_code,
+      billing_street:
+        (data.billing_street_snapshot as string | null) ??
+        customer.billing_street,
+      billing_house_number:
+        (data.billing_house_number_snapshot as string | null) ??
+        customer.billing_house_number,
+      billing_tax_number:
+        (data.billing_tax_number_snapshot as string | null) ??
+        customer.billing_tax_number,
       billing_company_reg_number: customer.billing_company_reg_number
     },
     panels,

@@ -230,6 +230,13 @@ export const mainNavItems: NavNode[] = [
         href: '/ajanlatok',
         icon: FileText,
         accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Bizonylatok',
+        href: '/ajanlatok/bizonylatok',
+        icon: Receipt,
+        accent: 'slate'
       }
     ]
   },

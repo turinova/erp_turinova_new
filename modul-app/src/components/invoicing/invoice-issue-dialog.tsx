@@ -22,6 +22,10 @@ import {
   activeDocs,
   resolveInvoiceKindOptions
 } from '@/lib/invoicing/invoice-rules'
+import {
+  defaultInvoicePaymentMethod,
+  invoicePaymentMethodHint
+} from '@/lib/invoicing/payment-method'
 import type {
   InvoiceIssueKind,
   InvoiceListItem,
@@ -49,11 +53,20 @@ function plusDaysIso(days: number) {
   return d.toISOString().slice(0, 10)
 }
 
-function detectPay(detail: SaleDetail): InvoicePaymentMethod {
-  const name = (detail.payments[0]?.payment_method_name || '').toLowerCase()
-  if (name.includes('készpénz') || name.includes('keszpenz')) return 'cash'
-  if (name.includes('kártya') || name.includes('kartya')) return 'card'
-  return 'bank_transfer'
+function lastPaymentName(detail: SaleDetail): string | null {
+  const list = detail.payments
+  if (!list.length) return null
+  return list[list.length - 1]?.payment_method_name ?? null
+}
+
+function defaultPay(
+  kind: InvoiceIssueKind,
+  detail: SaleDetail
+): InvoicePaymentMethod {
+  return defaultInvoicePaymentMethod(kind, {
+    lastPaymentMethodName: lastPaymentName(detail),
+    paymentStatus: detail.payment_status
+  })
 }
 
 function kindTitle(kind: InvoiceIssueKind, hasProforma: boolean): string {
@@ -131,7 +144,7 @@ export function InvoiceIssueDialog({
         : defaultKind
     if (options.length === 0) next = 'normal'
     setKind(next)
-    setPaymentMethod(detectPay(detail))
+    setPaymentMethod(defaultPay(next, detail))
     setDueDate(next === 'proforma' ? plusDaysIso(8) : todayIso())
     setFulfillmentDate(todayIso())
     setComment('')
@@ -145,6 +158,11 @@ export function InvoiceIssueDialog({
     setShowKindPicker(false)
     revokePreview()
   }, [open, detail, preferredKind, defaultKind, options])
+
+  const multiPaymentHint =
+    detail.payments.length > 1
+      ? 'Több befizetés van — ellenőrizd a fizetési módot.'
+      : null
 
   useEffect(() => {
     if (!open) {
@@ -301,8 +319,21 @@ export function InvoiceIssueDialog({
 
                 {kind === 'proforma' ? (
                   <p className="rounded-md border border-border bg-subtle px-2.5 py-2 text-hint text-ink-secondary">
-                    Ez még nem számla — a vevőnek fizetési felhívás. A végleges
-                    számla a fizetés és az áru átadása után jön.
+                    Díjbekérő = fizetési felhívás (még nem számla). A fizetési
+                    mód csak a papíron jelenik meg — nem rögzít ERP befizetést.
+                  </p>
+                ) : null}
+
+                {kind === 'advance' ? (
+                  <p className="rounded-md border border-border bg-subtle px-2.5 py-2 text-hint text-ink-secondary">
+                    Előlegszámla az előlegről. Válaszd, hogyan érkezett / érkezik
+                    az összeg.
+                  </p>
+                ) : null}
+
+                {multiPaymentHint ? (
+                  <p className="rounded-md border border-border bg-subtle px-2.5 py-2 text-hint text-ink-secondary">
+                    {multiPaymentHint}
                   </p>
                 ) : null}
 
@@ -334,6 +365,7 @@ export function InvoiceIssueDialog({
                         onChange={(e) => {
                           const v = e.target.value as InvoiceIssueKind
                           setKind(v)
+                          setPaymentMethod(defaultPay(v, detail))
                           if (v === 'proforma') setDueDate(plusDaysIso(8))
                           else setDueDate(todayIso())
                         }}
@@ -348,7 +380,11 @@ export function InvoiceIssueDialog({
                   ) : null
                 ) : null}
 
-                <FormField label="Fizetési mód" htmlFor="inv-pay">
+                <FormField
+                  label="Fizetési mód"
+                  htmlFor="inv-pay"
+                  hint={invoicePaymentMethodHint(kind)}
+                >
                   <select
                     id="inv-pay"
                     className="flex h-9 w-full rounded-md border border-border bg-surface px-2.5 text-body"
@@ -551,7 +587,8 @@ export function InvoiceIssueDialog({
                         kind === 'proforma' && proformaAmount.trim()
                           ? Number(proformaAmount.replace(/\s/g, ''))
                           : undefined,
-                      markAsPaid: detail.payment_status === 'paid'
+                      markAsPaid:
+                        kind === 'normal' && detail.payment_status === 'paid'
                     })
                     if (!result.ok) {
                       setError(result.message)

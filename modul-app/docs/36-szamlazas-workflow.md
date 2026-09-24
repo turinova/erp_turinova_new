@@ -1,9 +1,9 @@
 # 36 — Számlázás (Számlázz.hu) — Alap plan
 
 **Státusz:** P0–P2d + S1.5 (fulfill előtt végszámla tiltva).  
-**Route:** `/szamlak` · `/beallitasok/szamlazas` · sale detail · POS  
-**Migráció:** `20260526_szamlazas_alap.sql`  
-**Kapcsolat:** [28](28-ertekesites-workflow.md) S3, [29](29-pos-workflow.md)
+**Route:** `/szamlak` · `/ajanlatok/bizonylatok` · `/beallitasok/szamlazas` · sale detail · quote detail · POS  
+**Migráció:** `20260526_szamlazas_alap.sql`, `20260534_quote_billing_snapshots.sql`  
+**Kapcsolat:** [28](28-ertekesites-workflow.md) S3, [29](29-pos-workflow.md), [37](37-lapszabaszat-quote-workflow.md)
 
 ---
 
@@ -64,8 +64,11 @@ Helper: `invoice-rules.ts`. RPC: `fulfill_sale`.
 - **Issue dialógus:** PDF iframe; Kiállítás csak preview után; típus elrejtve ha a rendszer tudja  
 - **Fizetés** + confirmed → `?fulfill=1`; fulfill után `?issue=normal`  
 - **Sale detail:** egy next-step banner; aktív számla → PDF gomb  
-- **Lista `/szamlak`:** view chip (default **Fizetésre vár**); PDF / sor; kinnlevő glance; lejárt határidő warning.
+- **Lista `/szamlak`:** view chip (default **Fizetésre vár**); PDF / sor; kinnlevő glance; lejárt határidő warning. (eladás + lapszabászat)
+- **Lista `/ajanlatok/bizonylatok`:** ugyanaz az UI, csak `related_source_type = opti_order`
+- **Detail Bizonylatok:** közös `SourceInvoicesSection` (sale + quote) — PDF, sztornó, életút
 - **Szótár:** sale `confirmed` = **Átadásra vár**; lifecycle pending = **Fizetésre vár**
+- **Fizetési mód (dialógus):** mindhárom típusnál választható (KP / kártya / utalás). Default: utolsó ERP payment, különben átutalás. Nem rögzít ERP befizetést — az külön CTA.
 
 ---
 
@@ -78,5 +81,7 @@ Helper: `invoice-rules.ts`. RPC: `fulfill_sale`.
 | **Lista UX** | Kapcsolat + életút badge — **kész** |
 | **P3** | Split KP+utalás |
 | **P4** | Soft foglalás; `linked_proforma_invoice_id` schema |
+| **Opti order** | Lapszabászat `opti_order` — **kész** (nincs paid/státusz guard; kézi; snapshot) |
 
-DoD: utalás → Függőben + nincs stock → dijbekérő → fizetés → Áru átadása → stock → végszámla.
+DoD: utalás → Függőben + nincs stock → dijbekérő → fizetés → Áru átadása → stock → végszámla.  
+Lapszabászat: megrendelés → (kézi) díjbekérő/számla preview → `/szamlak` deep-link.

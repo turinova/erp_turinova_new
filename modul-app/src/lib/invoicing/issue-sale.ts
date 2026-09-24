@@ -489,14 +489,15 @@ export async function stornoInvoice(
   // Felhasznált dijbekérő / előleg: van aktív végszámla ugyanarra a forrásra
   if (
     (inv.invoice_type === 'dijbekero' || inv.invoice_type === 'elolegszamla') &&
-    inv.related_source_type === 'sale' &&
-    inv.related_source_id
+    inv.related_source_id &&
+    (inv.related_source_type === 'sale' ||
+      inv.related_source_type === 'opti_order')
   ) {
     const { data: related } = await supabase
       .from('invoices')
       .select('id, invoice_type, is_storno_of_invoice_id')
       .eq('tenant_id', tenantId)
-      .eq('related_source_type', 'sale')
+      .eq('related_source_type', inv.related_source_type)
       .eq('related_source_id', inv.related_source_id)
       .is('deleted_at', null)
     const rows = related ?? []

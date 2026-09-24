@@ -63,7 +63,8 @@ export const accessoryFormSchema = z.object({
       const trimmed = v.trim()
       return trimmed.length > 0 ? trimmed : null
     }),
-  active: z.boolean()
+  active: z.boolean(),
+  sellablePos: z.boolean().default(true)
 })
 
 export type AccessoryFormValues = z.infer<typeof accessoryFormSchema>

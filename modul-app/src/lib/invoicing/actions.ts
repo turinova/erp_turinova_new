@@ -9,6 +9,11 @@ import {
   previewSaleInvoice,
   stornoInvoice
 } from '@/lib/invoicing/issue-sale'
+import {
+  issueInvoiceFromQuote,
+  previewQuoteInvoice
+} from '@/lib/invoicing/issue-quote'
+import type { QuoteInvoiceDetailLevel } from '@/lib/invoicing/quote-invoice-lines'
 import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
 import { testSzamlazzAgentConnection } from '@/lib/invoicing/szamlazz-agent'
 import {
@@ -27,11 +32,18 @@ export type InvoiceActionResult =
   | { ok: true; invoiceId?: string; providerNumber?: string; message?: string }
   | { ok: false; message: string }
 
-function revalidateInvoicePaths(saleId?: string, invoiceId?: string) {
+function revalidateInvoicePaths(opts?: {
+  saleId?: string
+  quoteId?: string
+  invoiceId?: string
+}) {
   revalidatePath('/szamlak')
   revalidatePath('/beallitasok/szamlazas')
-  if (saleId) revalidatePath(`/ertekesitesek/${saleId}`)
-  if (invoiceId) revalidatePath(`/szamlak`)
+  if (opts?.saleId) revalidatePath(`/ertekesitesek/${opts.saleId}`)
+  if (opts?.quoteId) {
+    revalidatePath(`/ajanlatok/${opts.quoteId}`)
+    revalidatePath('/megrendelesek')
+  }
 }
 
 export async function saveInvoiceSettingsAction(input: {
@@ -117,7 +129,7 @@ export async function createSaleInvoiceAction(input: {
   )
   if (!result.ok) return result
 
-  revalidateInvoicePaths(input.saleId, result.invoiceId)
+  revalidateInvoicePaths({ saleId: input.saleId, invoiceId: result.invoiceId })
   return {
     ok: true,
     invoiceId: result.invoiceId,
@@ -149,6 +161,67 @@ export async function previewSaleInvoiceAction(input: {
   })
 }
 
+export async function createQuoteInvoiceAction(input: {
+  quoteId: string
+  kind: InvoiceIssueKind
+  paymentMethod: InvoicePaymentMethod
+  dueDate: string
+  fulfillmentDate: string
+  comment?: string
+  sendEmail?: boolean
+  markAsPaid?: boolean
+  advanceAmount?: number
+  proformaAmount?: number
+  customerEmail?: string
+  detailLevel?: QuoteInvoiceDetailLevel
+}): Promise<InvoiceActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const result = await issueInvoiceFromQuote(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    ctx.user.id ?? null,
+    input
+  )
+  if (!result.ok) return result
+
+  revalidateInvoicePaths({
+    quoteId: input.quoteId,
+    invoiceId: result.invoiceId
+  })
+  return {
+    ok: true,
+    invoiceId: result.invoiceId,
+    providerNumber: result.providerNumber,
+    message: `Kiállítva: ${result.providerNumber}`
+  }
+}
+
+export async function previewQuoteInvoiceAction(input: {
+  quoteId: string
+  kind: InvoiceIssueKind
+  paymentMethod: InvoicePaymentMethod
+  dueDate: string
+  fulfillmentDate: string
+  comment?: string
+  advanceAmount?: number
+  proformaAmount?: number
+  customerEmail?: string
+  detailLevel?: QuoteInvoiceDetailLevel
+}): Promise<
+  { ok: true; pdfBase64: string } | { ok: false; message: string }
+> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  return previewQuoteInvoice(ctx.supabase, ctx.user.tenantId!, {
+    ...input,
+    sendEmail: false,
+    markAsPaid: false
+  })
+}
+
 export async function stornoInvoiceAction(
   invoiceId: string
 ): Promise<InvoiceActionResult> {
@@ -174,7 +247,15 @@ export async function stornoInvoiceAction(
     before?.related_source_type === 'sale'
       ? (before.related_source_id ?? undefined)
       : undefined
-  revalidateInvoicePaths(saleId ?? undefined, result.invoiceId)
+  const quoteId =
+    before?.related_source_type === 'opti_order'
+      ? (before.related_source_id ?? undefined)
+      : undefined
+  revalidateInvoicePaths({
+    saleId,
+    quoteId,
+    invoiceId: result.invoiceId
+  })
   return {
     ok: true,
     invoiceId: result.invoiceId,

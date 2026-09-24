@@ -1,18 +1,16 @@
 import type { Metadata } from 'next'
 
-import {
-  BelepokMonthKpis,
-  BelepokTodayStrip
-} from '@/components/footcounter/belepok-hero'
+import { BelepokAnalysisTabs } from '@/components/footcounter/belepok-analysis-tabs'
 import { BelepokLiveIndicator } from '@/components/footcounter/belepok-live-indicator'
-import { BelepokMonthChart } from '@/components/footcounter/belepok-month-chart'
-import { BelepokMonthStepper } from '@/components/footcounter/belepok-month-stepper'
+import { BelepokTodayPanel } from '@/components/footcounter/belepok-today-panel'
+import { WeekHourHeatmap } from '@/components/footcounter/charts/week-hour-heatmap'
 import { getSessionUser } from '@/lib/auth/session'
+import { MONTH_SHORT_HU } from '@/lib/footcounter/chart-tokens'
 import { tenantHasFootcounter } from '@/lib/footcounter/entitlement'
 import {
+  getFootcounterDashboard,
   getFootcounterLiveStatus,
-  getFootcounterMonthIns,
-  getFootcounterTodayGlance
+  getFootcounterMonthIns
 } from '@/lib/footcounter/queries'
 import { buildMonthGlance } from '@/lib/footcounter/summary'
 import { FOOTCOUNTER_PAGE } from '@/lib/footcounter/types'
@@ -129,21 +127,22 @@ export default async function BelepokPage({
   }
 
   const prev = prevYearMonth(year, month)
-  const [monthRes, prevRes, today, live] = await Promise.all([
-    getFootcounterMonthIns(supabase, user.tenantId, year, month),
+  const [dashboard, prevRes, live] = await Promise.all([
+    getFootcounterDashboard(supabase, user.tenantId, year, month),
     prev.year >= 2026
       ? getFootcounterMonthIns(supabase, user.tenantId, prev.year, prev.month)
       : Promise.resolve(null),
-    getFootcounterTodayGlance(supabase, user.tenantId),
     getFootcounterLiveStatus(supabase, user.tenantId)
   ])
 
   const glance = buildMonthGlance(
-    monthRes.days,
+    dashboard.monthDays.map((d) => ({ day: d.day, count: d.inCount })),
     prevRes?.totalIn ?? null,
-    monthRes.peakHour,
-    monthRes.peakHourIn
+    dashboard.monthPeakHour,
+    dashboard.monthPeakHourIn
   )
+
+  const monthLabel = `${year}. ${MONTH_SHORT_HU[month - 1]}`
 
   return (
     <div className="space-y-3">
@@ -155,18 +154,28 @@ export default async function BelepokPage({
         />
       </div>
 
-      <BelepokTodayStrip today={today} />
+      <BelepokTodayPanel data={dashboard.today} />
+
+      <BelepokAnalysisTabs
+        year={year}
+        month={month}
+        monthLabel={monthLabel}
+        glance={glance}
+        monthDays={dashboard.monthDays}
+        weekdayProfile={dashboard.weekdayProfile}
+        season={dashboard.season}
+      />
 
       <section className="rounded-md border border-border bg-surface p-4">
         <div className="mb-3">
-          <BelepokMonthStepper year={year} month={month} />
+          <h2 className="text-body font-semibold text-ink">
+            Hét napja × óra
+          </h2>
+          <p className="text-hint text-ink-secondary">
+            Átlagos belépésszám óránként · {monthLabel}
+          </p>
         </div>
-        <BelepokMonthKpis glance={glance} />
-        <BelepokMonthChart
-          year={year}
-          month={month}
-          days={monthRes.days}
-        />
+        <WeekHourHeatmap rows={dashboard.heatmap} />
       </section>
     </div>
   )

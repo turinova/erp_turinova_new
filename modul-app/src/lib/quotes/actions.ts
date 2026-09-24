@@ -614,3 +614,107 @@ export async function addQuotePayment(input: {
   revalidatePath('/megrendelesek')
   return { ok: true }
 }
+
+export type UpdateQuoteBillingInput = {
+  quoteId: string
+  billing: {
+    billingName: string
+    billingCountry: string
+    billingCity: string | null
+    billingPostalCode: string | null
+    billingStreet: string | null
+    billingHouseNumber: string | null
+    billingTaxNumber: string | null
+  }
+}
+
+export type UpdateQuoteBillingResult =
+  | { ok: true }
+  | { ok: false; message: string }
+
+export async function updateQuoteBillingAction(
+  input: UpdateQuoteBillingInput
+): Promise<UpdateQuoteBillingResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const name = input.billing.billingName.trim()
+  if (!name) {
+    return { ok: false, message: 'A számlázási név kötelező.' }
+  }
+
+  const { data: quote, error: quoteErr } = await ctx.supabase
+    .from('quotes')
+    .select('id, status, order_number, deleted_at')
+    .eq('id', input.quoteId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (quoteErr || !quote || quote.deleted_at) {
+    return { ok: false, message: 'Az ajánlat nem található.' }
+  }
+  if (quote.status === 'cancelled') {
+    return { ok: false, message: 'Törölt ajánlaton nem módosítható a számlázás.' }
+  }
+  if (!quote.order_number) {
+    return {
+      ok: false,
+      message: 'Számlázási adatot megrendelés után lehet menteni.'
+    }
+  }
+
+  const { data: invoices } = await ctx.supabase
+    .from('invoices')
+    .select('id, invoice_type, is_storno_of_invoice_id')
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', 'opti_order')
+    .eq('related_source_id', input.quoteId)
+    .is('deleted_at', null)
+
+  const rows = invoices ?? []
+  const stornoOf = new Set(
+    rows
+      .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
+      .map((r) => r.is_storno_of_invoice_id as string)
+  )
+  const hasActiveFinal = rows.some(
+    (r) =>
+      r.invoice_type === 'szamla' &&
+      !r.is_storno_of_invoice_id &&
+      !stornoOf.has(r.id)
+  )
+  if (hasActiveFinal) {
+    return {
+      ok: false,
+      message:
+        'Aktív számla mellett a számlázási adat nem módosítható. Előbb sztornózd a számlát.'
+    }
+  }
+
+  const b = input.billing
+  const { error } = await ctx.supabase
+    .from('quotes')
+    .update({
+      billing_name_snapshot: name,
+      billing_country_snapshot: b.billingCountry.trim() || 'Magyarország',
+      billing_city_snapshot: b.billingCity?.trim() || null,
+      billing_postal_code_snapshot: b.billingPostalCode?.trim() || null,
+      billing_street_snapshot: b.billingStreet?.trim() || null,
+      billing_house_number_snapshot: b.billingHouseNumber?.trim() || null,
+      billing_tax_number_snapshot: b.billingTaxNumber?.trim() || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', input.quoteId)
+    .eq('tenant_id', tenantId)
+
+  if (error) {
+    console.error('updateQuoteBillingAction', error.message)
+    return { ok: false, message: 'Nem sikerült menteni a számlázási adatokat.' }
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath(`${LIST_PATH}/${input.quoteId}`)
+  revalidatePath('/szamlak')
+  return { ok: true }
+}

@@ -14,6 +14,8 @@ export type ListInvoicesParams = {
   status?: string
   from?: string
   to?: string
+  /** Szűrés forrásra: sale | opti_order | opti_quote */
+  sourceType?: InvoiceListItem['related_source_type']
 }
 
 export async function listInvoices(
@@ -41,6 +43,9 @@ export async function listInvoices(
 
   if (params.type && params.type !== 'all') {
     q = q.eq('invoice_type', params.type)
+  }
+  if (params.sourceType) {
+    q = q.eq('related_source_type', params.sourceType)
   }
   if (params.status && params.status !== 'all') {
     q = q.eq('payment_status', params.status)
@@ -187,6 +192,35 @@ export async function listInvoicesForSale(
 
   if (error) {
     console.error('listInvoicesForSale', error.message)
+    return []
+  }
+  return (data ?? []).map((r) => ({
+    ...r,
+    gross_total: r.gross_total != null ? Number(r.gross_total) : null
+  })) as InvoiceListItem[]
+}
+
+export async function listInvoicesForQuote(
+  supabase: SupabaseClient,
+  tenantId: string,
+  quoteId: string
+): Promise<InvoiceListItem[]> {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select(
+      `id, internal_number, provider_invoice_number, invoice_type,
+       related_source_type, related_source_id, related_source_number,
+       customer_name, gross_total, payment_status, payment_due_date, created_at,
+       is_storno_of_invoice_id`
+    )
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', 'opti_order')
+    .eq('related_source_id', quoteId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('listInvoicesForQuote', error.message)
     return []
   }
   return (data ?? []).map((r) => ({

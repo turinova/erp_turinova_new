@@ -1,11 +1,14 @@
 import { CloudRain, Wind } from 'lucide-react'
 
+import { SeasonChart as SharedSeasonChart } from '@/components/footcounter/charts/season-chart'
+import { TodayHourlyChart as SharedTodayHourlyChart } from '@/components/footcounter/charts/today-hourly-chart'
+import { WeekdayProfileChart as SharedWeekdayProfileChart } from '@/components/footcounter/charts/weekday-profile-chart'
+import { WeekHourHeatmap as SharedWeekHourHeatmap } from '@/components/footcounter/charts/week-hour-heatmap'
 import {
   DEMO_DAYS,
   DEMO_MONTH,
   formatCount,
   formatSignedPct,
-  HEATMAP_MAX,
   HEATMAP_PEAK,
   HEATMAP_ROWS,
   HOUR_LABELS,
@@ -18,26 +21,20 @@ import {
   PEAK_DAY,
   PREV_MONTH,
   SEASON_BEST,
-  SEASON_MAX,
   SEASON_MONTHS,
   SEASON_WORST,
-  TODAY_MAX_HOUR_IN,
   TODAY_PEAK_HOUR,
   TODAY_WEEKDAY_AVG,
   WEATHER_BUCKETS,
-  WEEKDAY_MAX_AVG,
   WEEKDAY_PROFILE,
   type TodayHour
 } from '@/lib/marketing/beleposzamlalo-demo-data'
 import { cn } from '@/lib/utils'
 
 /**
- * Belépőszámláló marketing chartok — saját SVG / CSS, chart-lib nélkül.
- * A vizuális nyelv a main-app /footcounter-live nézeteit követi, de flat
- * monokróm charcoal skálán (`docs/02`, `docs/18`), nem MUI + Apex stílusban.
- *
- * A kitöltések inline színek: a Tailwind opacity-módosító (`bg-ink/75`) a
- * CSS-változós tokeneken átlátszót ad, ezért adatvizualizációra nem használható.
+ * Belépőszámláló marketing chartok — shared footcounter chart primitives +
+ * demo adat. A szezon / hét / heatmap / mai órás chart a termék `/belepok`
+ * oldallal közös komponenst használ (vizuális 1:1).
  */
 const CHART = {
   /** Charcoal skála — `docs/02` semleges + primary tokenek. */
@@ -158,73 +155,13 @@ export function TodayHourlyChart({
   hourly: TodayHour[]
   className?: string
 }) {
-  const max = Math.max(TODAY_MAX_HOUR_IN, ...hourly.map((h) => h.inCount))
-
   return (
-    <div className={cn('min-w-0', className)}>
-      <div className="flex items-end gap-[3px] sm:gap-1.5">
-        {hourly.map((h) => {
-          const inPct = max > 0 ? (h.inCount / max) * 100 : 0
-          const outPct = max > 0 ? (h.outCount / max) * 100 : 0
-          return (
-            <div
-              key={h.hour}
-              className="flex min-w-0 flex-1 flex-col items-center gap-1"
-            >
-              <span
-                className={cn(
-                  'text-[10px] tabular-nums leading-none',
-                  h.pending
-                    ? 'text-transparent'
-                    : h.hour === TODAY_PEAK_HOUR.hour
-                      ? 'font-semibold text-ink'
-                      : 'text-ink-muted'
-                )}
-              >
-                {h.pending ? '0' : h.inCount}
-              </span>
-              <div className="flex h-[104px] w-full items-end justify-center gap-[2px] sm:h-[124px]">
-                {h.pending ? (
-                  <div className="h-3 w-full rounded-t-sm border border-dashed border-border" />
-                ) : (
-                  <>
-                    <div
-                      className={cn(
-                        'w-1/2 rounded-t-sm',
-                        h.running
-                          ? 'bg-[repeating-linear-gradient(135deg,#18181b_0_3px,#52525b_3px_6px)]'
-                          : 'bg-ink'
-                      )}
-                      style={{ height: `${Math.max(inPct, 2)}%` }}
-                    />
-                    <div
-                      className="w-1/2 rounded-t-sm bg-border"
-                      style={{ height: `${Math.max(outPct, 2)}%` }}
-                    />
-                  </>
-                )}
-              </div>
-              <span className="text-[10px] tabular-nums text-ink-muted">
-                {h.hour}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink-secondary">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-ink" aria-hidden />
-          Belépés
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="size-2.5 rounded-sm bg-border" aria-hidden />
-          Kilépő
-        </span>
-        <span className="text-ink-muted">Óra ·{' '}
-          {HOUR_LABELS[0]}–{HOUR_LABELS.at(-1)}
-        </span>
-      </div>
-    </div>
+    <SharedTodayHourlyChart
+      hourly={hourly}
+      peakHour={TODAY_PEAK_HOUR.hour}
+      hourLabels={HOUR_LABELS}
+      className={className}
+    />
   )
 }
 
@@ -390,96 +327,13 @@ export function FootcounterMonthChart({
 
 /* ------------------------------------------------------- hét × óra mátrix */
 
-function heatStyle(value: number, closed: boolean) {
-  if (closed) return undefined
-  if (value <= 0) return { backgroundColor: '#f4f4f5' }
-  const ratio = value / HEATMAP_MAX
-  return { backgroundColor: `rgba(24, 24, 27, ${0.08 + ratio * 0.84})` }
-}
-
 export function WeekHourHeatmap({ className }: { className?: string }) {
   return (
-    <div className={cn('min-w-0', className)}>
-      <div className="overflow-x-auto">
-        <div
-          className="min-w-[560px]"
-          role="img"
-          aria-label={`Hét napja és óra szerinti belépésszám. A legerősebb óra ${HEATMAP_PEAK.label} ${HEATMAP_PEAK.hour} óra, ${HEATMAP_PEAK.value} belépéssel. Csütörtökön a legmagasabb a napi átlag, vasárnap zárva.`}
-        >
-          <div className="flex items-center gap-1 pl-[68px] pr-[52px]">
-            {HOUR_LABELS.map((h) => (
-              <span
-                key={h}
-                className="flex-1 text-center text-[10.5px] tabular-nums text-ink-muted"
-              >
-                {h}
-              </span>
-            ))}
-          </div>
-
-          <div className="mt-1 space-y-1">
-            {HEATMAP_ROWS.map((row) => (
-              <div key={row.weekday} className="flex items-center gap-1">
-                <span
-                  className={cn(
-                    'w-[68px] shrink-0 pr-2 text-right text-[11.5px]',
-                    row.weekday === 3 || row.weekday === 5
-                      ? 'font-semibold text-ink'
-                      : 'text-ink-secondary'
-                  )}
-                >
-                  {row.label}
-                </span>
-
-                {row.cells.map((cell) => {
-                  const isPeak =
-                    row.weekday === HEATMAP_PEAK.weekday &&
-                    cell.hour === HEATMAP_PEAK.hour
-                  return (
-                    <span
-                      key={cell.hour}
-                      title={
-                        cell.closed
-                          ? `${row.label} ${cell.hour}:00 – zárva`
-                          : `${row.label} ${cell.hour}:00 – ${cell.value} belépés`
-                      }
-                      className={cn(
-                        'flex h-8 flex-1 items-center justify-center rounded-sm text-[10.5px] font-medium tabular-nums',
-                        cell.closed
-                          ? 'border border-dashed border-border text-ink-disabled'
-                          : cell.value / HEATMAP_MAX > 0.55
-                            ? 'text-white'
-                            : 'text-ink-secondary',
-                        isPeak && 'ring-2 ring-ink ring-offset-1'
-                      )}
-                      style={heatStyle(cell.value, cell.closed)}
-                    >
-                      {cell.closed ? '' : cell.value}
-                    </span>
-                  )
-                })}
-
-                <span
-                  className={cn(
-                    'w-[52px] shrink-0 pl-2 text-right text-[11.5px] tabular-nums',
-                    row.closed
-                      ? 'text-ink-disabled'
-                      : 'font-semibold text-ink'
-                  )}
-                >
-                  {row.closed ? 'Zárva' : row.total}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-1.5 flex items-center justify-between pl-[68px] pr-[52px] text-[10.5px] text-ink-muted">
-            <span>Óra (nyitvatartás)</span>
-            <span>Átlagos belépésszám óránként · napi összesítés jobbra</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <SharedWeekHourHeatmap
+      rows={HEATMAP_ROWS}
+      hourLabels={HOUR_LABELS}
+      className={className}
+    />
   )
 }
 
@@ -487,59 +341,11 @@ export function WeekHourHeatmap({ className }: { className?: string }) {
 
 export function WeekdayProfileChart({ className }: { className?: string }) {
   return (
-    <div
-      className={cn('min-w-0 space-y-1.5', className)}
-      role="img"
-      aria-label={`Hét napja szerinti átlagos belépésszám: ${WEEKDAY_PROFILE.filter(
-        (r) => !r.closed
-      )
-        .map((r) => `${r.label} ${r.avgIn}`)
-        .join(', ')}. Vasárnap zárva.`}
-    >
-      {WEEKDAY_PROFILE.map((row) => {
-        const pct = WEEKDAY_MAX_AVG > 0 ? (row.avgIn / WEEKDAY_MAX_AVG) * 100 : 0
-        const isTop = row.avgIn === WEEKDAY_MAX_AVG && !row.closed
-        return (
-          <div key={row.weekday} className="flex items-center gap-3">
-            <span
-              className={cn(
-                'w-[68px] shrink-0 text-right text-[12px]',
-                isTop ? 'font-semibold text-ink' : 'text-ink-secondary'
-              )}
-            >
-              {row.label}
-            </span>
-            <div className="h-6 min-w-0 flex-1 rounded-sm bg-subtle">
-              {row.closed ? null : (
-                <div
-                  className="h-full rounded-sm"
-                  style={{
-                    width: `${Math.max(pct, 3)}%`,
-                    backgroundColor: isTop ? CHART.strong : CHART.mid
-                  }}
-                />
-              )}
-            </div>
-            <span
-              className={cn(
-                'w-[86px] shrink-0 text-right text-[12px] tabular-nums',
-                row.closed
-                  ? 'text-ink-disabled'
-                  : isTop
-                    ? 'font-semibold text-ink'
-                    : 'text-ink-secondary'
-              )}
-            >
-              {row.closed ? 'Zárva' : `${row.avgIn} / nap`}
-            </span>
-          </div>
-        )
-      })}
-      <p className="pt-1 text-[11.5px] text-ink-muted">
-        Átlagos belépésszám naponta · {DEMO_MONTH.label} · a zárva tartó napok nem
-        számítanak bele az átlagba.
-      </p>
-    </div>
+    <SharedWeekdayProfileChart
+      rows={WEEKDAY_PROFILE}
+      caption={`Átlagos belépésszám naponta · ${DEMO_MONTH.label} · a zárva tartó napok nem számítanak bele az átlagba.`}
+      className={className}
+    />
   )
 }
 
@@ -547,58 +353,11 @@ export function WeekdayProfileChart({ className }: { className?: string }) {
 
 export function SeasonChart({ className }: { className?: string }) {
   return (
-    <div className={cn('min-w-0', className)}>
-      <div
-        className="flex h-[168px] items-end gap-1.5 sm:gap-2"
-        role="img"
-        aria-label={`Utolsó 12 hónap belépésszáma. A legerősebb hónap ${SEASON_BEST.label} ${SEASON_BEST.totalIn}, a leggyengébb ${SEASON_WORST.label} ${SEASON_WORST.totalIn} belépéssel.`}
-      >
-        {SEASON_MONTHS.map((m) => {
-          const pct = (m.totalIn / SEASON_MAX) * 100
-          return (
-            <div
-              key={m.key}
-              className="flex min-w-0 flex-1 flex-col items-center gap-1"
-            >
-              <span
-                className={cn(
-                  'text-[10px] tabular-nums leading-none',
-                  m.selected ? 'font-semibold text-ink' : 'text-ink-muted'
-                )}
-              >
-                {formatCount(m.totalIn)}
-              </span>
-              <div className="flex w-full flex-1 items-end">
-                <div
-                  className="w-full rounded-t-sm"
-                  style={{
-                    height: `${Math.max(pct, 4)}%`,
-                    backgroundColor: m.selected
-                      ? CHART.strong
-                      : m.key === SEASON_WORST.key
-                        ? CHART.soft
-                        : CHART.mid
-                  }}
-                />
-              </div>
-              <span
-                className={cn(
-                  'text-[10.5px]',
-                  m.selected ? 'font-semibold text-ink' : 'text-ink-muted'
-                )}
-              >
-                {m.label}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-      <p className="mt-3 text-[11.5px] text-ink-muted">
-        Belépésszám hónaponként · a kiemelt hónap a fenti nézetek alapja.
-        Legerősebb: {SEASON_BEST.label} {formatCount(SEASON_BEST.totalIn)} ·
-        leggyengébb: {SEASON_WORST.label} {formatCount(SEASON_WORST.totalIn)}
-      </p>
-    </div>
+    <SharedSeasonChart
+      months={SEASON_MONTHS}
+      caption={`Belépésszám hónaponként · a kiemelt hónap a fenti nézetek alapja. Legerősebb: ${SEASON_BEST.label} ${formatCount(SEASON_BEST.totalIn)} · leggyengébb: ${SEASON_WORST.label} ${formatCount(SEASON_WORST.totalIn)}`}
+      className={className}
+    />
   )
 }
 

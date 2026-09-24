@@ -34,6 +34,11 @@ export const APP_PAGES: AppPageDef[] = [
   { key: '/opti', label: 'Opti', category: 'Műhely' },
   { key: '/scanner', label: 'Scanner', category: 'Műhely' },
   { key: '/pos', label: 'POS', category: 'Értékesítés' },
+  {
+    key: '/pos/beallitasok',
+    label: 'POS beállítások',
+    category: 'Értékesítés'
+  },
   { key: '/ugyfelek', label: 'Ügyfelek', category: 'Fő' },
   { key: '/belepok', label: 'Belépők', category: 'Fő' },
   { key: '/ertekesitesek', label: 'Értékesítések', category: 'Értékesítés' },
@@ -199,6 +204,7 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/ugyfelek',
       '/ertekesitesek',
       '/pos',
+      '/pos/beallitasok',
       '/ertekesitesek/muszakok',
       '/szamlak',
       '/beallitasok/szamlazas',

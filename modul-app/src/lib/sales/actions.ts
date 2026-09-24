@@ -37,7 +37,9 @@ function revalidateSalePaths(id?: string) {
 export async function searchSaleProductsAction(
   q: string,
   warehouseId: string,
-  inStockOnly = false
+  opts?:
+    | boolean
+    | { inStockOnly?: boolean; stockFirst?: boolean; limit?: number }
 ): Promise<
   | { ok: true; rows: SaleProductSearchItem[] }
   | { ok: false; message: string }
@@ -51,13 +53,23 @@ export async function searchSaleProductsAction(
   if (!warehouseId) {
     return { ok: false, message: 'Válaszd ki a raktárat.' }
   }
+
+  const normalized =
+    typeof opts === 'boolean'
+      ? { inStockOnly: opts, stockFirst: true as const }
+      : {
+          inStockOnly: opts?.inStockOnly ?? false,
+          stockFirst: opts?.stockFirst !== false,
+          limit: opts?.limit
+        }
+
   try {
     const rows = await searchProductsForSale(
       supabase,
       user.tenantId,
       q,
       warehouseId,
-      { inStockOnly }
+      normalized
     )
     return { ok: true, rows }
   } catch (err) {

@@ -2,13 +2,17 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import {
+  CheckCircle2,
+  Download,
   Factory,
   FileDown,
   FileText,
   FolderKanban,
+  Handshake,
   MessageSquare,
+  Pencil,
   ScanSearch,
   Send,
   ShoppingCart,
@@ -16,12 +20,18 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { HandoverDialog } from '@/components/orders/handover-dialog'
+import { QuoteReadySmsDialog } from '@/components/orders/quote-ready-sms-dialog'
 import { AddPaymentDialog } from '@/components/quotes/add-payment-dialog'
 import { AssignProductionDialog } from '@/components/quotes/assign-production-dialog'
 import { CreateOrderDialog } from '@/components/quotes/create-order-dialog'
 import { QuoteBarcodeDisplay } from '@/components/quotes/quote-barcode-display'
+import { QuoteBillingEditDialog } from '@/components/quotes/quote-billing-edit-dialog'
 import { QuoteFeesBlock } from '@/components/quotes/quote-fees-block'
 import { QuoteAccessoriesBlock } from '@/components/quotes/quote-accessories-block'
+import { QuoteInvoiceIssueDialog } from '@/components/quotes/quote-invoice-issue-dialog'
+import { QuoteStatusStepper } from '@/components/quotes/quote-status-stepper'
+import { SourceInvoicesSection } from '@/components/invoicing/source-invoices-section'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
   DataTable,
@@ -84,6 +94,7 @@ import {
   partnerQuoteStatusLabel,
   partnerQuoteStatusTone
 } from '@/lib/quotes/partner-status-labels'
+import { markQuoteReady } from '@/lib/quotes/production-actions'
 import {
   QUOTE_STATUS_LABEL,
   quoteStatusTone
@@ -92,6 +103,14 @@ import {
   isQuoteEditableInOpti,
   type QuoteDetail
 } from '@/lib/quotes/queries'
+import { previewQuoteReadySms } from '@/lib/scanner/actions'
+import type { QuoteReadySmsCandidate } from '@/lib/sms/types'
+import {
+  activeDocs
+} from '@/lib/invoicing/invoice-rules'
+import { fetchInvoicePdfAction } from '@/lib/invoicing/actions'
+import { quoteHasBilling } from '@/lib/invoicing/quote-invoice-lines'
+import type { InvoiceIssueKind, InvoiceListItem } from '@/lib/invoicing/types'
 import { cn } from '@/lib/utils'
 
 type QuoteDetailClientProps = {
@@ -104,6 +123,32 @@ type QuoteDetailClientProps = {
   accessoryOptions?: import('@/lib/accessories/queries').AccessoryListItem[]
   /** Partner portal — ugyanaz a dokumentum layout, más műveletek */
   surface?: 'staff' | 'partner'
+  /** Staff: quote_ready_sms add-on — Kész dialógus */
+  hasSmsAddon?: boolean
+  /** Staff: meglévő bizonylatok */
+  invoices?: InvoiceListItem[]
+  hasAgentKey?: boolean
+}
+
+function toastAfterReady(
+  orderNumber: string,
+  sms: { status: string; error?: string } | null | undefined
+) {
+  if (!sms) {
+    toast.success(`${orderNumber} készre állítva.`)
+    return
+  }
+  if (sms.status === 'sent') {
+    toast.success(`${orderNumber} készre állítva + SMS elküldve.`)
+    return
+  }
+  if (sms.status === 'failed') {
+    toast.warning(
+      `${orderNumber} készre állítva, SMS sikertelen${sms.error ? `: ${sms.error}` : '.'}`
+    )
+    return
+  }
+  toast.success(`${orderNumber} készre állítva.`)
 }
 
 function InfoCard({
@@ -136,7 +181,10 @@ export function QuoteDetailClient({
   canWrite,
   feeTypes = [],
   accessoryOptions = [],
-  surface = 'staff'
+  surface = 'staff',
+  hasSmsAddon = false,
+  invoices = [],
+  hasAgentKey = false
 }: QuoteDetailClientProps) {
   const router = useRouter()
   const partnerHref = usePartnerHref()
@@ -165,6 +213,15 @@ export function QuoteDetailClient({
   const [orderDialogOpen, setOrderDialogOpen] = useState(false)
   const [addPaymentOpen, setAddPaymentOpen] = useState(false)
   const [productionDialogOpen, setProductionDialogOpen] = useState(false)
+  const [handoverOpen, setHandoverOpen] = useState(false)
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false)
+  const [smsCandidates, setSmsCandidates] = useState<QuoteReadySmsCandidate[]>(
+    []
+  )
+  const [billingOpen, setBillingOpen] = useState(false)
+  const [invoiceOpen, setInvoiceOpen] = useState(false)
+  const [invoicePreferredKind, setInvoicePreferredKind] =
+    useState<InvoiceIssueKind | null>(null)
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('')
   const [submitOpen, setSubmitOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -267,11 +324,36 @@ export function QuoteDetailClient({
     Boolean(quote.order_number) &&
     (quote.status === 'ordered' || quote.status === 'in_production')
 
+  const canMarkReady =
+    !isPartner && canWrite && quote.status === 'in_production'
+
+  const canHandover =
+    !isPartner &&
+    canWrite &&
+    quote.status === 'ready' &&
+    Boolean(quote.order_number)
+
+  const { hasFinal: hasFinalInvoice } = useMemo(
+    () => activeDocs(invoices),
+    [invoices]
+  )
+  const hasInvoiceBilling = quoteHasBilling(quote)
+  const canManageInvoicing =
+    !isPartner && canWrite && Boolean(quote.order_number)
+  const canEditBilling = canManageInvoicing && !hasFinalInvoice
+  const finalInvoiceForPdf = useMemo(() => {
+    const { stornoOf } = activeDocs(invoices)
+    return invoices.find(
+      (i) => i.invoice_type === 'szamla' && !stornoOf.has(i.id)
+    )
+  }, [invoices])
+
   /** Egy primary / képernyő — státusz szerinti fő következő lépés. */
   const primaryAction:
     | 'order'
     | 'production'
-    | 'payment'
+    | 'ready'
+    | 'handover'
     | 'opti'
     | 'submit'
     | 'pdf'
@@ -283,11 +365,22 @@ export function QuoteDetailClient({
       ? 'order'
       : canWrite && quote.status === 'ordered'
         ? 'production'
-        : canAddPayment
-          ? 'payment'
-          : canEditInOpti
-            ? 'opti'
-            : null
+        : canMarkReady
+          ? 'ready'
+          : canHandover
+            ? 'handover'
+            : canEditInOpti
+              ? 'opti'
+              : quote.status === 'finished'
+                ? 'pdf'
+                : null
+
+  const staffTitle = quote.order_number
+    ? `Megrendelés: ${quote.order_number}`
+    : `Árajánlat: ${quote.quote_number}`
+  const staffTitleHint = quote.order_number
+    ? `Árajánlat ${quote.quote_number}`
+    : null
 
   const statusLabel = isPartner
     ? isPartnerDraft
@@ -405,6 +498,51 @@ export function QuoteDetailClient({
     setProductionDialogOpen(true)
   }
 
+  async function openHandoverDialog() {
+    const methods = await ensurePaymentMethods()
+    if (!methods) return
+    setHandoverOpen(true)
+  }
+
+  function runMarkReady(sendSms?: boolean) {
+    startTransition(async () => {
+      const result = await markQuoteReady(
+        quote.id,
+        sendSms === undefined ? undefined : { sendSms }
+      )
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toastAfterReady(
+        quote.order_number ?? quote.quote_number,
+        result.sms
+      )
+      setSmsDialogOpen(false)
+      router.refresh()
+    })
+  }
+
+  function handleMarkReady() {
+    if (!hasSmsAddon) {
+      runMarkReady()
+      return
+    }
+    startTransition(async () => {
+      const preview = await previewQuoteReadySms([quote.id])
+      if (!preview.ok) {
+        toast.error(preview.message)
+        return
+      }
+      if (!preview.hasAddon) {
+        runMarkReady()
+        return
+      }
+      setSmsCandidates(preview.candidates)
+      setSmsDialogOpen(true)
+    })
+  }
+
   function handleSaveComment() {
     startTransition(async () => {
       const result = isPartner
@@ -498,35 +636,43 @@ export function QuoteDetailClient({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Link
-          href={listHref}
-          className="text-body text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
-        >
-          ← Lista
-        </Link>
-        <h1 className="text-h1 text-ink">
-          {isPartner
-            ? isPartnerDraft
-              ? `Ajánlatom: ${quote.quote_number}`
-              : `Rendelésem: ${quote.order_number ?? quote.quote_number}`
-            : `Árajánlat: ${quote.quote_number}`}
-        </h1>
-        <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
-        {showPartnerPayment || showStaffPayment ? (
-          <StatusBadge tone={paymentStatusTone(quote.payment_status)}>
-            {PAYMENT_STATUS_LABEL[quote.payment_status]}
-          </StatusBadge>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={listHref}
+            className="text-body text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+          >
+            ← Lista
+          </Link>
+          <h1 className="text-h1 text-ink">
+            {isPartner
+              ? isPartnerDraft
+                ? `Ajánlatom: ${quote.quote_number}`
+                : `Rendelésem: ${quote.order_number ?? quote.quote_number}`
+              : staffTitle}
+          </h1>
+          {staffTitleHint && !isPartner ? (
+            <span className="text-body text-ink-secondary">{staffTitleHint}</span>
+          ) : null}
+          <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
+          {showPartnerPayment || showStaffPayment ? (
+            <StatusBadge tone={paymentStatusTone(quote.payment_status)}>
+              {PAYMENT_STATUS_LABEL[quote.payment_status]}
+            </StatusBadge>
+          ) : null}
+          {!isPartner &&
+          quote.source === 'portal' &&
+          quote.portal_submitted_at ? (
+            <StatusBadge tone="warning">Online</StatusBadge>
+          ) : null}
+        </div>
+        {!isPartner ? (
+          <QuoteStatusStepper status={quote.status} />
         ) : null}
-        {!isPartner &&
-        quote.source === 'portal' &&
-        quote.portal_submitted_at ? (
-          <StatusBadge tone="warning">Online</StatusBadge>
+        {quote.project_name ? (
+          <p className="text-body text-ink-secondary">{quote.project_name}</p>
         ) : null}
       </div>
-      {quote.project_name ? (
-        <p className="-mt-2 text-body text-ink-secondary">{quote.project_name}</p>
-      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-12">
         {/* Left: document */}
@@ -1172,15 +1318,12 @@ export function QuoteDetailClient({
                 ) : (
                   <>
                     {primaryAction === 'order' ||
-                    primaryAction === 'payment' ||
-                    primaryAction === 'production' ? (
+                    primaryAction === 'production' ||
+                    primaryAction === 'ready' ||
+                    primaryAction === 'handover' ? (
                       <div className="space-y-1.5">
                         <p className="text-label font-semibold text-ink-secondary">
-                          {primaryAction === 'order'
-                            ? 'Megrendelés'
-                            : primaryAction === 'production'
-                              ? 'Gyártás'
-                              : 'Fizetés'}
+                          Következő lépés
                         </p>
                         {primaryAction === 'order' ? (
                           <Button
@@ -1206,10 +1349,45 @@ export function QuoteDetailClient({
                             <Factory className="size-3.5" aria-hidden />
                             Gyártásba adás
                           </Button>
+                        ) : primaryAction === 'ready' ? (
+                          <Button
+                            type="button"
+                            variant="primary"
+                            className="w-full justify-start"
+                            disabled={pending}
+                            loading={pending}
+                            onClick={handleMarkReady}
+                          >
+                            <CheckCircle2 className="size-3.5" aria-hidden />
+                            Készre jelöl
+                          </Button>
                         ) : (
                           <Button
                             type="button"
                             variant="primary"
+                            className="w-full justify-start"
+                            disabled={dialogOptionsLoading}
+                            loading={dialogOptionsLoading}
+                            onClick={() => void openHandoverDialog()}
+                          >
+                            <Handshake className="size-3.5" aria-hidden />
+                            Átadás
+                          </Button>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {canAddPayment ||
+                    hasRecordedPayments ||
+                    canManageInvoicing ? (
+                      <div className="space-y-1.5">
+                        <p className="text-label font-semibold text-ink-secondary">
+                          Pénzügy
+                        </p>
+                        {canAddPayment ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
                             className="w-full justify-start"
                             disabled={dialogOptionsLoading}
                             loading={dialogOptionsLoading}
@@ -1218,26 +1396,101 @@ export function QuoteDetailClient({
                             <Wallet className="size-3.5" aria-hidden />
                             Befizetés rögzítése
                           </Button>
-                        )}
-                      </div>
-                    ) : null}
+                        ) : null}
+                        {remainingGross > 0 ? (
+                          <p className="text-hint text-ink-secondary">
+                            Hátralék:{' '}
+                            <span className="font-medium tabular-nums text-ink">
+                              {formatQuotePrice(remainingGross, quote.currency)}
+                            </span>
+                          </p>
+                        ) : hasRecordedPayments ? (
+                          <p className="text-hint text-ink-secondary">
+                            Kifizetve
+                          </p>
+                        ) : null}
 
-                    {canAddPayment && primaryAction !== 'payment' ? (
-                      <div className="space-y-1.5">
-                        <p className="text-label font-semibold text-ink-secondary">
-                          Fizetés
-                        </p>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="w-full justify-start"
-                          disabled={dialogOptionsLoading}
-                          loading={dialogOptionsLoading}
-                          onClick={() => void openPaymentDialog()}
-                        >
-                          <Wallet className="size-3.5" aria-hidden />
-                          Befizetés rögzítése
-                        </Button>
+                        {canManageInvoicing ? (
+                          <>
+                            {canEditBilling ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="w-full justify-start"
+                                onClick={() => setBillingOpen(true)}
+                              >
+                                <Pencil className="size-3.5" aria-hidden />
+                                {hasInvoiceBilling
+                                  ? 'Számlázási adatok'
+                                  : 'Számlázás kitöltése'}
+                              </Button>
+                            ) : null}
+                            {hasFinalInvoice && finalInvoiceForPdf ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="w-full justify-start"
+                                onClick={() => {
+                                  void (async () => {
+                                    const result = await fetchInvoicePdfAction(
+                                      finalInvoiceForPdf.id
+                                    )
+                                    if (!result.ok) {
+                                      toast.error(result.message)
+                                      return
+                                    }
+                                    const bin = atob(result.base64)
+                                    const bytes = new Uint8Array(bin.length)
+                                    for (let i = 0; i < bin.length; i++) {
+                                      bytes[i] = bin.charCodeAt(i)
+                                    }
+                                    const blob = new Blob([bytes], {
+                                      type: 'application/pdf'
+                                    })
+                                    const url = URL.createObjectURL(blob)
+                                    const a = document.createElement('a')
+                                    a.href = url
+                                    a.download = result.filename
+                                    a.click()
+                                    URL.revokeObjectURL(url)
+                                  })()
+                                }}
+                              >
+                                <Download className="size-3.5" aria-hidden />
+                                Számla PDF
+                              </Button>
+                            ) : hasInvoiceBilling ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="w-full justify-start"
+                                disabled={!hasAgentKey}
+                                title={
+                                  !hasAgentKey
+                                    ? 'Nincs Számlázz Agent kulcs'
+                                    : undefined
+                                }
+                                onClick={() => {
+                                  setInvoicePreferredKind(
+                                    quote.payment_status === 'paid'
+                                      ? 'normal'
+                                      : 'proforma'
+                                  )
+                                  setInvoiceOpen(true)
+                                }}
+                              >
+                                <FileText className="size-3.5" aria-hidden />
+                                {quote.payment_status === 'paid'
+                                  ? 'Számla kiállítása'
+                                  : 'Díjbekérő / számla'}
+                              </Button>
+                            ) : (
+                              <p className="text-hint text-ink-secondary">
+                                Számlázáshoz töltsd ki a számlázási adatokat.
+                              </p>
+                            )}
+                          </>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -1261,6 +1514,54 @@ export function QuoteDetailClient({
                         </Button>
                       </div>
                     ) : null}
+
+                    <div className="space-y-1.5">
+                      <p className="text-label font-semibold text-ink-secondary">
+                        Dokumentumok
+                      </p>
+                      <Button
+                        type="button"
+                        variant={
+                          primaryAction === 'pdf' ? 'primary' : 'secondary'
+                        }
+                        className="w-full justify-start"
+                        disabled={isGeneratingPdf}
+                        loading={isGeneratingPdf}
+                        onClick={handleGeneratePdf}
+                      >
+                        <FileText className="size-3.5" aria-hidden />
+                        {isGeneratingPdf
+                          ? 'PDF generálása…'
+                          : 'PDF generálás'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="w-full justify-start"
+                        disabled={isExportingExcel || exportTargetsLoading}
+                        loading={isExportingExcel || exportTargetsLoading}
+                        title={
+                          !exportTargetsLoaded
+                            ? 'Excel export'
+                            : aliveExportTargets.length === 0
+                              ? orphanPanelCount > 0
+                                ? 'A panelek törölt berendezéshez kötöttek — kösd át az anyagot.'
+                                : 'Nincs panel az exportáláshoz.'
+                              : aliveExportTargets.length === 1
+                                ? `${exportFormatLabel(aliveExportTargets[0].exportFormat)} — ${aliveExportTargets[0].equipmentName}`
+                                : 'Válaszd ki, melyik gépre készüljön az Excel.'
+                        }
+                        onClick={() => void handleExcelClick()}
+                      >
+                        <FileDown className="size-3.5" aria-hidden />
+                        {isExportingExcel || exportTargetsLoading
+                          ? 'Excel…'
+                          : exportTargetsLoaded &&
+                              aliveExportTargets.length === 1
+                            ? `Export Excel — ${aliveExportTargets[0].equipmentName}`
+                            : 'Export Excel…'}
+                      </Button>
+                    </div>
 
                     <div className="space-y-1.5">
                       <p className="text-label font-semibold text-ink-secondary">
@@ -1317,52 +1618,6 @@ export function QuoteDetailClient({
                       </Button>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <p className="text-label font-semibold text-ink-secondary">
-                        Dokumentumok
-                      </p>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="w-full justify-start"
-                        disabled={isExportingExcel || exportTargetsLoading}
-                        loading={isExportingExcel || exportTargetsLoading}
-                        title={
-                          !exportTargetsLoaded
-                            ? 'Excel export'
-                            : aliveExportTargets.length === 0
-                              ? orphanPanelCount > 0
-                                ? 'A panelek törölt berendezéshez kötöttek — kösd át az anyagot.'
-                                : 'Nincs panel az exportáláshoz.'
-                              : aliveExportTargets.length === 1
-                                ? `${exportFormatLabel(aliveExportTargets[0].exportFormat)} — ${aliveExportTargets[0].equipmentName}`
-                                : 'Válaszd ki, melyik gépre készüljön az Excel.'
-                        }
-                        onClick={() => void handleExcelClick()}
-                      >
-                        <FileDown className="size-3.5" aria-hidden />
-                        {isExportingExcel || exportTargetsLoading
-                          ? 'Excel…'
-                          : exportTargetsLoaded &&
-                              aliveExportTargets.length === 1
-                            ? `Export Excel — ${aliveExportTargets[0].equipmentName}`
-                            : 'Export Excel…'}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="w-full justify-start"
-                        disabled={isGeneratingPdf}
-                        loading={isGeneratingPdf}
-                        onClick={handleGeneratePdf}
-                      >
-                        <FileText className="size-3.5" aria-hidden />
-                        {isGeneratingPdf
-                          ? 'PDF generálása…'
-                          : 'PDF generálás'}
-                      </Button>
-                    </div>
-
                     {primaryAction !== 'order' && quote.status === 'draft' ? (
                       <div className="space-y-1.5">
                         <p className="text-label font-semibold text-ink-secondary">
@@ -1386,7 +1641,9 @@ export function QuoteDetailClient({
             </section>
 
             <section className="rounded-lg border border-border bg-surface p-3">
-              <h2 className="mb-2 text-h3 text-ink">Árajánlat infó</h2>
+              <h2 className="mb-2 text-h3 text-ink">
+                {quote.order_number ? 'Megrendelés infó' : 'Árajánlat infó'}
+              </h2>
               <dl className="space-y-1.5 text-body">
                 <div>
                   <dt className="text-hint text-ink-secondary">Szám</dt>
@@ -1548,6 +1805,31 @@ export function QuoteDetailClient({
           </div>
         </aside>
       </div>
+
+      {!isPartner && quote.order_number ? (
+        <SourceInvoicesSection
+          invoices={invoices}
+          canWrite={canWrite}
+          hasAgentKey={hasAgentKey}
+          listHref="/ajanlatok/bizonylatok"
+          listLinkLabel="Lapszabászat bizonylatok"
+          hint="Díjbekérő, előleg, számla — ezen a megrendelésen"
+          showEmptyCta={
+            canManageInvoicing && hasInvoiceBilling && Boolean(hasAgentKey)
+          }
+          emptyCtaLabel={
+            quote.payment_status === 'paid'
+              ? 'Számla kiállítása'
+              : 'Díjbekérő / számla'
+          }
+          onEmptyCta={() => {
+            setInvoicePreferredKind(
+              quote.payment_status === 'paid' ? 'normal' : 'proforma'
+            )
+            setInvoiceOpen(true)
+          }}
+        />
+      ) : null}
 
       <Dialog open={commentOpen} onOpenChange={setCommentOpen}>
         <DialogContent className="max-w-md">
@@ -1739,6 +2021,48 @@ export function QuoteDetailClient({
           paymentMethods={paymentMethods}
           onSuccess={() => router.refresh()}
         />
+      ) : null}
+
+      {quote.order_number && canHandover ? (
+        <HandoverDialog
+          open={handoverOpen}
+          onOpenChange={setHandoverOpen}
+          quoteId={quote.id}
+          orderNumber={quote.order_number}
+          customerName={quote.customer.name}
+          remaining={remainingGross}
+          currency={quote.currency}
+          paymentMethods={paymentMethods}
+          onSuccess={() => router.refresh()}
+        />
+      ) : null}
+
+      <QuoteReadySmsDialog
+        open={smsDialogOpen}
+        onOpenChange={setSmsDialogOpen}
+        candidates={smsCandidates}
+        loading={pending}
+        onConfirm={(smsQuoteIds) =>
+          runMarkReady(smsQuoteIds.includes(quote.id))
+        }
+      />
+
+      {!isPartner && quote.order_number ? (
+        <>
+          <QuoteBillingEditDialog
+            open={billingOpen}
+            onOpenChange={setBillingOpen}
+            quote={quote}
+          />
+          <QuoteInvoiceIssueDialog
+            open={invoiceOpen}
+            onOpenChange={setInvoiceOpen}
+            quote={quote}
+            hasAgentKey={hasAgentKey}
+            invoices={invoices}
+            preferredKind={invoicePreferredKind}
+          />
+        </>
       ) : null}
 
       {isPartnerDraft ? (

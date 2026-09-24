@@ -22,6 +22,7 @@ export type AccessoryListItem = {
   margin_factor: number | null
   image_url: string | null
   active: boolean
+  sellable_pos: boolean
   created_at: string
   updated_at: string
 }
@@ -65,6 +66,7 @@ export async function listAccessories(
       margin_factor,
       image_url,
       active,
+      sellable_pos,
       created_at,
       updated_at,
       manufacturers ( name ),
@@ -111,6 +113,7 @@ export async function listAccessories(
         row.margin_factor == null ? null : Number(row.margin_factor),
       image_url: row.image_url ?? null,
       active: row.active,
+      sellable_pos: row.sellable_pos !== false,
       created_at: row.created_at,
       updated_at: row.updated_at
     }
@@ -139,6 +142,7 @@ export async function getAccessory(
       margin_factor,
       image_url,
       active,
+      sellable_pos,
       created_at,
       updated_at,
       manufacturers ( name ),
@@ -187,6 +191,7 @@ export async function getAccessory(
       data.margin_factor == null ? null : Number(data.margin_factor),
     image_url: data.image_url ?? null,
     active: data.active,
+    sellable_pos: data.sellable_pos !== false,
     created_at: data.created_at,
     updated_at: data.updated_at
   }

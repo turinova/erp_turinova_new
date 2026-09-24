@@ -69,7 +69,28 @@ export async function isAppSessionValid(
   userId: string,
   nonce: string | undefined | null
 ): Promise<boolean> {
-  if (!nonce) return false
+  const result = await checkAppSession(supabase, userId, nonce)
+  return result.ok
+}
+
+export type AppSessionCheck =
+  | { ok: true }
+  | {
+      ok: false
+      reason:
+        | 'nonce_missing'
+        | 'nonce_mismatch'
+        | 'session_row_missing'
+        | 'session_check_error'
+    }
+
+/** Részletes session check — middleware kick reason-höz. */
+export async function checkAppSession(
+  supabase: SupabaseClient,
+  userId: string,
+  nonce: string | undefined | null
+): Promise<AppSessionCheck> {
+  if (!nonce) return { ok: false, reason: 'nonce_missing' }
 
   const { data, error } = await supabase
     .from('app_user_sessions')
@@ -78,12 +99,15 @@ export async function isAppSessionValid(
     .maybeSingle()
 
   if (error) {
-    console.error('isAppSessionValid', error.message)
-    return false
+    console.error('checkAppSession', error.message)
+    return { ok: false, reason: 'session_check_error' }
   }
 
-  if (!data) return false
-  return data.session_nonce === nonce
+  if (!data) return { ok: false, reason: 'session_row_missing' }
+  if (data.session_nonce !== nonce) {
+    return { ok: false, reason: 'nonce_mismatch' }
+  }
+  return { ok: true }
 }
 
 export function parseForwardedIp(forwarded: string | null): string | null {

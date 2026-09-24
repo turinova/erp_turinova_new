@@ -407,9 +407,14 @@ export function AccessoriesClient({
                   {row.unit_shortform}
                 </DataTableCell>
                 <DataTableCell>
-                  <StatusBadge tone={row.active ? 'success' : 'neutral'}>
-                    {row.active ? 'Aktív' : 'Inaktív'}
-                  </StatusBadge>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <StatusBadge tone={row.active ? 'success' : 'neutral'}>
+                      {row.active ? 'Aktív' : 'Inaktív'}
+                    </StatusBadge>
+                    {row.active && row.sellable_pos === false ? (
+                      <StatusBadge tone="neutral">Nem POS</StatusBadge>
+                    ) : null}
+                  </div>
                 </DataTableCell>
                 <DataTableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">

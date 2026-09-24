@@ -4,6 +4,11 @@ import {
   SESSION_SNAPSHOT_TTL_SEC,
   getSessionSnapshotSecret
 } from '@/lib/auth/config'
+import {
+  SNAPSHOT_COOKIE_MAX_BYTES,
+  SNAPSHOT_COOKIE_WARN_BYTES,
+  sessionSnapshotCookieOptions
+} from '@/lib/auth/session-cookies'
 import { PAGE_CATALOG_VERSION } from '@/lib/permissions/pages'
 
 export type SessionSnapshot = {
@@ -175,14 +180,30 @@ export async function snapshotMatchesRequest(input: {
   return snap
 }
 
-export function sessionSnapshotCookieOptions(maxAgeSec = SESSION_SNAPSHOT_TTL_SEC) {
-  return {
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    path: '/',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: maxAgeSec
-  }
+export { SESSION_SNAPSHOT_COOKIE, sessionSnapshotCookieOptions }
+
+/** Byte length of signed token (UTF-8). */
+export function sessionSnapshotTokenBytes(token: string): number {
+  return new TextEncoder().encode(token).length
 }
 
-export { SESSION_SNAPSHOT_COOKIE }
+export function assertSnapshotTokenSize(token: string): {
+  ok: boolean
+  bytes: number
+} {
+  const bytes = sessionSnapshotTokenBytes(token)
+  if (bytes >= SNAPSHOT_COOKIE_WARN_BYTES) {
+    console.warn(
+      '[session-snapshot] cookie near Safari limit',
+      `${bytes}B (warn@${SNAPSHOT_COOKIE_WARN_BYTES})`
+    )
+  }
+  if (bytes > SNAPSHOT_COOKIE_MAX_BYTES) {
+    console.error(
+      '[session-snapshot] cookie too large — not setting',
+      `${bytes}B (max ${SNAPSHOT_COOKIE_MAX_BYTES})`
+    )
+    return { ok: false, bytes }
+  }
+  return { ok: true, bytes }
+}

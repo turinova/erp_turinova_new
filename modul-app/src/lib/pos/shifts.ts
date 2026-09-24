@@ -7,6 +7,8 @@ export type PosRegister = {
   code: string
   is_default: boolean
   is_active: boolean
+  teya_terminal_id: string | null
+  teya_epos_instance_id: string | null
 }
 
 export type PosShiftOpen = {
@@ -75,7 +77,9 @@ export async function listPosRegisters(
 ): Promise<PosRegister[]> {
   let q = supabase
     .from('pos_registers')
-    .select('id, warehouse_id, name, code, is_default, is_active')
+    .select(
+      'id, warehouse_id, name, code, is_default, is_active, teya_terminal_id, teya_epos_instance_id'
+    )
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .is('deleted_at', null)
@@ -87,12 +91,14 @@ export async function listPosRegisters(
     throw new Error('Nem sikerült betölteni a pénztárakat.')
   }
   return (data ?? []).map((r) => ({
-    id: r.id,
-    warehouse_id: r.warehouse_id,
-    name: r.name,
-    code: r.code,
+    id: r.id as string,
+    warehouse_id: r.warehouse_id as string,
+    name: r.name as string,
+    code: r.code as string,
     is_default: Boolean(r.is_default),
-    is_active: Boolean(r.is_active)
+    is_active: Boolean(r.is_active),
+    teya_terminal_id: (r.teya_terminal_id as string | null) ?? null,
+    teya_epos_instance_id: (r.teya_epos_instance_id as string | null) ?? null
   }))
 }
 

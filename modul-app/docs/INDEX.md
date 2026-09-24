@@ -32,11 +32,12 @@
 | [26-beerkezesek.md](26-beerkezesek.md) | Beérkezések + stock receive |
 | [27-keszlet-atadasok.md](27-keszlet-atadasok.md) | **Áttárolás + mozgások** — azonnali transfer, ledger lista |
 | [28-ertekesites-workflow.md](28-ertekesites-workflow.md) | **Értékesítés** — manuális sale, kedvezmény, fizetés, stock out; POS/webshop-ready |
-| [36-szamlazas-workflow.md](36-szamlazas-workflow.md) | **Számlázás** — Számlázz.hu Agent, `/szamlak` (Alap) |
 | [31-pos-muszakzaras.md](31-pos-muszakzaras.md) | **POS műszak** — pénztár, zárás, audit |
 | [32-arajanlat-workflow.md](32-arajanlat-workflow.md) | **Termék árajánlat** — papír → eladás; külön a lapszabászattól |
 | [33-packages-and-addons.md](33-packages-and-addons.md) | **Csomagok** — Alap vs add-onok (Lapszabászat, …) |
 | [34-jelenlet-addon.md](34-jelenlet-addon.md) | **Jelenlét** — dolgozók, naptár, távollét |
 | [35-home-kpis.md](35-home-kpis.md) | **Home KPI-k** — jégelt lista (kereskedő Alap + addonok) |
+| [36-szamlazas-workflow.md](36-szamlazas-workflow.md) | **Számlázás** — Számlázz.hu Agent, `/szamlak` (Alap) |
+| [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md) | **Lapszabászat ajánlat→gyártás** — státusz, detail CTA, hol mit |
 
-**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok: **`33`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**.
+**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok: **`33`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**.

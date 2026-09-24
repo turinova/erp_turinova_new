@@ -83,10 +83,11 @@ function buildLinesXml(input: SaleInvoiceXmlInput): string {
   for (const line of input.lines) {
     const qty = Number(line.quantity) || 0
     if (qty <= 0) continue
-    const vatRate = Math.round(line.vatPercent)
+    const vatRate = Math.round(Math.abs(line.vatPercent)) || 27
     const lineNet = Math.round(line.lineNet)
     const lineVat = Math.round(line.lineVat)
     const lineGross = Math.round(line.lineGross)
+    if (lineGross === 0) continue
     const unitNet =
       qty > 0 ? Math.round((lineNet / qty) * 1000) / 1000 : line.unitNet
     xml += `

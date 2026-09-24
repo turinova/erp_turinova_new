@@ -549,6 +549,8 @@ export async function getSale(
 export type SaleProductSearchItem = {
   id: string
   name: string
+  /** Pulton / gyors tile megjelenő név; hiányzik → name. */
+  display_name?: string
   sku: string
   price_net: number
   tax_rate_percent: number
@@ -557,25 +559,70 @@ export type SaleProductSearchItem = {
   image_url: string | null
 }
 
-/** Eladható termékek keresése + aktuális raktár készlet. */
+function normalizeSearchKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLocaleLowerCase('hu')
+}
+
+/** Match score: exact → prefix → contains (SKU/barcode > név). */
+function saleSearchMatchScore(
+  q: string,
+  row: {
+    name: string
+    sku: string
+    barcode: string | null
+    barcode_internal: string | null
+  }
+): number {
+  const nq = normalizeSearchKey(q)
+  if (!nq) return 0
+  const name = normalizeSearchKey(row.name)
+  const sku = normalizeSearchKey(row.sku)
+  const barcode = normalizeSearchKey(row.barcode ?? '')
+  const barcodeInt = normalizeSearchKey(row.barcode_internal ?? '')
+
+  if (sku === nq || barcode === nq || barcodeInt === nq) return 1000
+  if (name === nq) return 900
+  if (sku.startsWith(nq) || barcode.startsWith(nq) || barcodeInt.startsWith(nq))
+    return 700
+  if (name.startsWith(nq)) return 600
+  if (sku.includes(nq)) return 400
+  if (barcode.includes(nq) || barcodeInt.includes(nq)) return 350
+  if (name.includes(nq)) return 200
+  return 0
+}
+
+/** Eladható termékek keresése + aktuális raktár készlet + rangsor. */
 export async function searchProductsForSale(
   supabase: SupabaseClient,
   tenantId: string,
   q: string,
   warehouseId: string,
-  opts?: { inStockOnly?: boolean; limit?: number }
+  opts?: {
+    inStockOnly?: boolean
+    /** Készletes találatok előre (default true). */
+    stockFirst?: boolean
+    limit?: number
+  }
 ): Promise<SaleProductSearchItem[]> {
   const safe = q.trim().replace(/[%_,]/g, '')
   if (!safe || !warehouseId) return []
 
   const limit = opts?.limit ?? 15
-  const { data, error } = await supabase
+  const stockFirst = opts?.stockFirst !== false
+  const candidateLimit = Math.max(limit * 4, 48)
+
+  let query = supabase
     .from('accessories')
     .select(
       `
       id,
       name,
       sku,
+      barcode,
+      barcode_internal,
       price_net,
       tax_rate_id,
       unit_id,
@@ -586,19 +633,74 @@ export async function searchProductsForSale(
     )
     .eq('tenant_id', tenantId)
     .eq('active', true)
+    .eq('sellable_pos', true)
     .is('deleted_at', null)
     .or(
       `name.ilike.%${safe}%,sku.ilike.%${safe}%,barcode.ilike.%${safe}%,barcode_internal.ilike.%${safe}%`
     )
-    .order('name', { ascending: true })
-    .limit(opts?.inStockOnly ? Math.max(limit * 3, 30) : limit)
+    .limit(candidateLimit)
+
+  const { data, error } = await query
 
   if (error) {
+    // Régi DB: sellable_pos oszlop még nincs — fallback aktív termékekre.
+    if (error.message.includes('sellable_pos')) {
+      const fallback = await supabase
+        .from('accessories')
+        .select(
+          `
+          id,
+          name,
+          sku,
+          barcode,
+          barcode_internal,
+          price_net,
+          tax_rate_id,
+          unit_id,
+          image_url,
+          tax_rates ( rate_percent ),
+          units ( shortform )
+        `
+        )
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .is('deleted_at', null)
+        .or(
+          `name.ilike.%${safe}%,sku.ilike.%${safe}%,barcode.ilike.%${safe}%,barcode_internal.ilike.%${safe}%`
+        )
+        .limit(candidateLimit)
+      if (fallback.error) {
+        console.error('searchProductsForSale', fallback.error.message)
+        throw new Error('Nem sikerült keresni a termékek között.')
+      }
+      return rankSaleSearchRows(
+        fallback.data ?? [],
+        safe,
+        supabase,
+        tenantId,
+        warehouseId,
+        { inStockOnly: opts?.inStockOnly, stockFirst, limit }
+      )
+    }
     console.error('searchProductsForSale', error.message)
     throw new Error('Nem sikerült keresni a termékek között.')
   }
 
-  const rows = data ?? []
+  return rankSaleSearchRows(data ?? [], safe, supabase, tenantId, warehouseId, {
+    inStockOnly: opts?.inStockOnly,
+    stockFirst,
+    limit
+  })
+}
+
+async function rankSaleSearchRows(
+  rows: Array<Record<string, unknown>>,
+  safe: string,
+  supabase: SupabaseClient,
+  tenantId: string,
+  warehouseId: string,
+  opts: { inStockOnly?: boolean; stockFirst: boolean; limit: number }
+): Promise<SaleProductSearchItem[]> {
   if (rows.length === 0) return []
 
   const { getAccessoriesOnHandMap } = await import('@/lib/stock/queries')
@@ -609,7 +711,7 @@ export async function searchProductsForSale(
     warehouseId
   )
 
-  const mapped: SaleProductSearchItem[] = rows.map((row) => {
+  const mapped = rows.map((row) => {
     const taxRates = row.tax_rates as
       | { rate_percent: number | string }
       | { rate_percent: number | string }[]
@@ -620,21 +722,43 @@ export async function searchProductsForSale(
       | { shortform: string }[]
       | null
     const unit = Array.isArray(units) ? units[0] : units
+    const name = row.name as string
+    const sku = row.sku as string
+    const barcode = (row.barcode as string | null) ?? null
+    const barcodeInternal = (row.barcode_internal as string | null) ?? null
+    const score = saleSearchMatchScore(safe, {
+      name,
+      sku,
+      barcode,
+      barcode_internal: barcodeInternal
+    })
     return {
       id: row.id as string,
-      name: row.name as string,
-      sku: row.sku as string,
+      name,
+      sku,
       price_net: Number(row.price_net) || 0,
       tax_rate_percent: Number(tax?.rate_percent ?? 0),
       unit_shortform: unit?.shortform ?? 'db',
       on_hand: onHandMap.get(row.id as string) ?? 0,
-      image_url: (row.image_url as string | null) ?? null
+      image_url: (row.image_url as string | null) ?? null,
+      _score: score
     }
   })
 
-  const filtered = opts?.inStockOnly
+  mapped.sort((a, b) => {
+    if (b._score !== a._score) return b._score - a._score
+    if (opts.stockFirst) {
+      const aIn = a.on_hand > 0 ? 1 : 0
+      const bIn = b.on_hand > 0 ? 1 : 0
+      if (bIn !== aIn) return bIn - aIn
+      if (b.on_hand !== a.on_hand) return b.on_hand - a.on_hand
+    }
+    return a.name.localeCompare(b.name, 'hu')
+  })
+
+  const filtered = opts.inStockOnly
     ? mapped.filter((r) => r.on_hand > 0)
     : mapped
 
-  return filtered.slice(0, limit)
+  return filtered.slice(0, opts.limit).map(({ _score: _, ...rest }) => rest)
 }

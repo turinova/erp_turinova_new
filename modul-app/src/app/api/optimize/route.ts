@@ -9,6 +9,8 @@ import type { BinClass } from '@/lib/opti/engine/classes'
 import { processBin } from '@/lib/opti/engine/cutCalculations'
 import { guillotineCuttingWithLookAhead } from '@/lib/opti/engine/lookahead'
 import { guillotineCuttingWithMultiPanelLookAhead } from '@/lib/opti/engine/multiPanelLookAhead'
+import { guillotineCuttingEnhanced } from '@/lib/opti/engine/enhancedAlgorithms'
+import { guillotineCuttingWithEnsemble } from '@/lib/opti/engine/ensemble'
 import type { SortStrategy } from '@/lib/opti/engine/sorting'
 import type {
   OptimizationResult,
@@ -16,7 +18,12 @@ import type {
   UnplacedPart
 } from '@/lib/opti/optimization-types'
 
-type OptimizationAlgorithm = 'original' | 'lookahead' | 'multipanel'
+type OptimizationAlgorithm =
+  | 'original'
+  | 'lookahead'
+  | 'multipanel'
+  | 'enhanced'
+  | 'ensemble'
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +36,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const algorithm = (input.algorithm as OptimizationAlgorithm) || 'multipanel'
+    const algorithm = (input.algorithm as OptimizationAlgorithm) || 'ensemble'
     const sortStrategy = (input.sortStrategy as SortStrategy) || 'height'
 
     const results: OptimizationResult[] = []
@@ -84,6 +91,24 @@ export async function POST(request: NextRequest) {
 
       let bins: BinClass[]
       switch (algorithm) {
+        case 'ensemble':
+          bins = guillotineCuttingWithEnsemble(
+            panels,
+            usableWidth,
+            usableHeight,
+            kerfSize,
+            sortStrategy
+          )
+          break
+        case 'enhanced':
+          bins = guillotineCuttingEnhanced(
+            panels,
+            usableWidth,
+            usableHeight,
+            kerfSize,
+            sortStrategy
+          )
+          break
         case 'multipanel':
           bins = guillotineCuttingWithMultiPanelLookAhead(
             panels,

@@ -1,6 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
+  FOOTCOUNTER_OPEN_HOURS,
+  FOOTCOUNTER_SATURDAY_CLOSE_HOUR,
+  FOOTCOUNTER_WEEKDAY_LABELS,
+  MONTH_SHORT_HU
+} from '@/lib/footcounter/chart-tokens'
+import type {
+  FootcounterHeatmapRow,
+  FootcounterMonthDayBar,
+  FootcounterSeasonBar,
+  FootcounterTodayHourBar,
+  FootcounterTodayPanelData,
+  FootcounterWeekdayBar
+} from '@/lib/footcounter/chart-types'
+import {
   buildTodayMood,
   type FootcounterTodayGlance
 } from '@/lib/footcounter/summary'
@@ -61,6 +75,69 @@ function budapestHour(d: Date): number {
 
 function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+
+/** ISO hét napja: 0 = hétfő … 6 = vasárnap (Budapest naptári nap). */
+function isoWeekdayFromDayKey(dayKey: string): number {
+  const dow = new Date(`${dayKey}T12:00:00Z`).getUTCDay()
+  return (dow + 6) % 7
+}
+
+function monthRange(year: number, month: number): { start: Date; end: Date } {
+  return {
+    start: new Date(Date.UTC(year, month - 1, 1, -3, 0, 0)),
+    end: new Date(Date.UTC(year, month, 1, 3, 0, 0))
+  }
+}
+
+function hourClosed(weekday: number, hour: number): boolean {
+  if (weekday === 6) return true
+  if (weekday === 5 && hour >= FOOTCOUNTER_SATURDAY_CLOSE_HOUR) return true
+  if (
+    hour < FOOTCOUNTER_OPEN_HOURS.start ||
+    hour > FOOTCOUNTER_OPEN_HOURS.end
+  ) {
+    return true
+  }
+  return false
+}
+
+type CrossingStamp = { at: Date; direction: 'in' | 'out' }
+
+async function fetchCrossingsInRange(
+  supabase: SupabaseClient,
+  deviceIds: string[],
+  rangeStart: Date,
+  rangeEnd: Date
+): Promise<CrossingStamp[]> {
+  if (deviceIds.length === 0) return []
+  const out: CrossingStamp[] = []
+  const pageSize = 1000
+  let from = 0
+  for (;;) {
+    const { data: rows, error } = await supabase
+      .from('footcounter_crossings')
+      .select('occurred_at, direction')
+      .in('device_id', deviceIds)
+      .gte('occurred_at', rangeStart.toISOString())
+      .lt('occurred_at', rangeEnd.toISOString())
+      .order('occurred_at', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (error) {
+      console.error('fetchCrossingsInRange', error.message)
+      break
+    }
+    const batch = rows ?? []
+    for (const r of batch) {
+      const dir = r.direction as string
+      if (dir !== 'in' && dir !== 'out') continue
+      out.push({ at: new Date(r.occurred_at as string), direction: dir })
+    }
+    if (batch.length < pageSize) break
+    from += pageSize
+  }
+  return out
 }
 
 async function tenantDeviceIds(
@@ -440,4 +517,389 @@ export async function getFootcounterTodayStats(
   )
 
   return results
+}
+
+export type FootcounterDashboardBundle = {
+  today: FootcounterTodayPanelData
+  monthDays: FootcounterMonthDayBar[]
+  weekdayProfile: FootcounterWeekdayBar[]
+  season: FootcounterSeasonBar[]
+  heatmap: FootcounterHeatmapRow[]
+  monthPeakHour: number | null
+  monthPeakHourIn: number
+}
+
+/**
+ * Teljes /belepok dashboard adat: mai panel + havi chartok + heatmap.
+ * Egy hónap + 12 hó visszatekintés (szezon).
+ */
+export async function getFootcounterDashboard(
+  supabase: SupabaseClient,
+  tenantId: string,
+  year: number,
+  month: number
+): Promise<FootcounterDashboardBundle> {
+  const deviceIds = await tenantDeviceIds(supabase, tenantId)
+  const live = await getFootcounterLiveStatus(supabase, tenantId)
+
+  const emptyToday = buildEmptyTodayPanel(live.status === 'live')
+  const emptyDays: FootcounterMonthDayBar[] = Array.from(
+    { length: daysInMonth(year, month) },
+    (_, i) => {
+      const day = i + 1
+      const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      const wd = isoWeekdayFromDayKey(key)
+      return { day, inCount: 0, closed: wd === 6 }
+    }
+  )
+  const emptyWeekday: FootcounterWeekdayBar[] = FOOTCOUNTER_WEEKDAY_LABELS.map(
+    (label, weekday) => ({
+      weekday,
+      label,
+      avgIn: 0,
+      closed: weekday === 6
+    })
+  )
+  const emptySeason = buildEmptySeason(year, month)
+  const emptyHeatmap = buildEmptyHeatmap()
+
+  if (!deviceIds.length) {
+    return {
+      today: emptyToday,
+      monthDays: emptyDays,
+      weekdayProfile: emptyWeekday,
+      season: emptySeason,
+      heatmap: emptyHeatmap,
+      monthPeakHour: null,
+      monthPeakHourIn: 0
+    }
+  }
+
+  // Szezon: 12 hónap a kiválasztott hónapig bezárólag
+  const seasonStart = new Date(Date.UTC(year, month - 12, 1, -3, 0, 0))
+  const { end: monthEnd } = monthRange(year, month)
+  const todayLookback = new Date(Date.now() - 70 * 86400000)
+  const rangeStart =
+    seasonStart.getTime() < todayLookback.getTime()
+      ? seasonStart
+      : todayLookback
+  const rangeEnd = new Date(
+    Math.max(monthEnd.getTime(), Date.now() + 3600 * 1000)
+  )
+
+  const stamps = await fetchCrossingsInRange(
+    supabase,
+    deviceIds,
+    rangeStart,
+    rangeEnd
+  )
+
+  const todayKey = budapestDayKey(new Date())
+  const currentHour = budapestHour(new Date())
+  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
+
+  const todayHourlyIn = Array.from({ length: 24 }, () => 0)
+  const todayHourlyOut = Array.from({ length: 24 }, () => 0)
+  let todayIn = 0
+  let todayOut = 0
+
+  const monthDayCounts = new Map<number, number>()
+  const monthHourCounts = new Map<number, number>()
+  const weekdaySums = Array.from({ length: 7 }, () => 0)
+  const weekdaySamples = Array.from({ length: 7 }, () => 0)
+  const seasonTotals = new Map<string, number>()
+  /** weekday → hour → {sum, days} — naponta aggregálunk, majd átlag */
+  const heatDayHours = new Map<string, Map<number, number>>()
+
+  for (const { at, direction } of stamps) {
+    const key = budapestDayKey(at)
+    const hour = budapestHour(at)
+    const ym = key.slice(0, 7)
+
+    if (direction === 'in') {
+      seasonTotals.set(ym, (seasonTotals.get(ym) ?? 0) + 1)
+
+      if (key === todayKey) {
+        todayIn += 1
+        if (hour >= 0 && hour < 24) todayHourlyIn[hour] += 1
+      }
+
+      if (key.startsWith(monthPrefix)) {
+        const day = Number(key.slice(8, 10))
+        monthDayCounts.set(day, (monthDayCounts.get(day) ?? 0) + 1)
+        monthHourCounts.set(hour, (monthHourCounts.get(hour) ?? 0) + 1)
+        if (!heatDayHours.has(key)) heatDayHours.set(key, new Map())
+        const hm = heatDayHours.get(key)!
+        hm.set(hour, (hm.get(hour) ?? 0) + 1)
+      }
+    } else if (direction === 'out' && key === todayKey) {
+      todayOut += 1
+      if (hour >= 0 && hour < 24) todayHourlyOut[hour] += 1
+    }
+  }
+
+  // Weekday profile from month day totals
+  const dim = daysInMonth(year, month)
+  for (let day = 1; day <= dim; day++) {
+    const key = `${monthPrefix}-${String(day).padStart(2, '0')}`
+    const wd = isoWeekdayFromDayKey(key)
+    const count = monthDayCounts.get(day) ?? 0
+    if (count > 0) {
+      weekdaySums[wd] += count
+      weekdaySamples[wd] += 1
+    }
+  }
+
+  // Peak day for highlight
+  let peakDay = 0
+  let peakDayCount = 0
+  for (const [day, count] of monthDayCounts) {
+    if (count > peakDayCount) {
+      peakDayCount = count
+      peakDay = day
+    }
+  }
+
+  const monthDays: FootcounterMonthDayBar[] = Array.from(
+    { length: dim },
+    (_, i) => {
+      const day = i + 1
+      const key = `${monthPrefix}-${String(day).padStart(2, '0')}`
+      const wd = isoWeekdayFromDayKey(key)
+      const inCount = monthDayCounts.get(day) ?? 0
+      return {
+        day,
+        inCount,
+        closed: wd === 6 || inCount === 0,
+        highlight: day === peakDay && inCount > 0
+      }
+    }
+  )
+
+  const weekdayProfile: FootcounterWeekdayBar[] =
+    FOOTCOUNTER_WEEKDAY_LABELS.map((label, weekday) => {
+      const samples = weekdaySamples[weekday] ?? 0
+      const sum = weekdaySums[weekday] ?? 0
+      const closed = weekday === 6 || samples === 0
+      return {
+        weekday,
+        label,
+        avgIn: samples > 0 ? Math.round(sum / samples) : 0,
+        closed
+      }
+    })
+
+  const season = buildSeasonBars(year, month, seasonTotals)
+
+  // Heatmap: average per weekday×hour across days in month
+  const heatAccum: Array<Array<{ sum: number; n: number }>> = Array.from(
+    { length: 7 },
+    () =>
+      Array.from({ length: 24 }, () => ({
+        sum: 0,
+        n: 0
+      }))
+  )
+  for (const [dayKey, hours] of heatDayHours) {
+    const wd = isoWeekdayFromDayKey(dayKey)
+    for (let h = 0; h < 24; h++) {
+      const v = hours.get(h) ?? 0
+      heatAccum[wd]![h]!.sum += v
+      heatAccum[wd]![h]!.n += 1
+    }
+  }
+
+  const heatmap: FootcounterHeatmapRow[] = FOOTCOUNTER_WEEKDAY_LABELS.map(
+    (label, weekday) => {
+      const cells = []
+      for (
+        let hour = FOOTCOUNTER_OPEN_HOURS.start;
+        hour <= FOOTCOUNTER_OPEN_HOURS.end;
+        hour++
+      ) {
+        const closed = hourClosed(weekday, hour)
+        const cell = heatAccum[weekday]![hour]!
+        const value =
+          closed || cell.n === 0 ? 0 : Math.round(cell.sum / cell.n)
+        cells.push({ hour, value, closed })
+      }
+      const total = cells.reduce((s, c) => s + c.value, 0)
+      return {
+        weekday,
+        label,
+        cells,
+        total,
+        closed: weekday === 6 || total === 0
+      }
+    }
+  )
+
+  // Today hourly bars (open hours)
+  const hourly: FootcounterTodayHourBar[] = []
+  for (
+    let hour = FOOTCOUNTER_OPEN_HOURS.start;
+    hour <= FOOTCOUNTER_OPEN_HOURS.end;
+    hour++
+  ) {
+    const pending = hour > currentHour
+    const running = hour === currentHour
+    hourly.push({
+      hour,
+      inCount: pending ? 0 : (todayHourlyIn[hour] ?? 0),
+      outCount: pending ? 0 : (todayHourlyOut[hour] ?? 0),
+      pending,
+      running
+    })
+  }
+
+  let peakHour: number | null = null
+  let peakHourIn = 0
+  for (const h of hourly) {
+    if (!h.pending && h.inCount > peakHourIn) {
+      peakHourIn = h.inCount
+      peakHour = h.hour
+    }
+  }
+
+  const todayDow = isoWeekdayFromDayKey(todayKey)
+  // Same-weekday avg from lookback (reuse season stamps for days outside today)
+  const byDay = new Map<string, number>()
+  for (const { at, direction } of stamps) {
+    if (direction !== 'in') continue
+    const key = budapestDayKey(at)
+    byDay.set(key, (byDay.get(key) ?? 0) + 1)
+  }
+  const samples: number[] = []
+  for (const [key, count] of byDay) {
+    if (key === todayKey) continue
+    if (isoWeekdayFromDayKey(key) !== todayDow) continue
+    if (count <= 0) continue
+    samples.push(count)
+  }
+  const weekdayAvg =
+    samples.length > 0
+      ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length)
+      : null
+
+  const todayLabel = new Intl.DateTimeFormat('hu-HU', {
+    timeZone: 'Europe/Budapest',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long'
+  }).format(new Date())
+
+  const today: FootcounterTodayPanelData = {
+    label: todayLabel,
+    todayIn,
+    todayOut,
+    occupancy: Math.max(0, todayIn - todayOut),
+    peakHour,
+    peakHourIn,
+    weekdayAvg,
+    weekdayAvgLabel: `${FOOTCOUNTER_WEEKDAY_LABELS[todayDow] ?? 'Napi'} átlag`,
+    hourly,
+    live: live.status === 'live'
+  }
+
+  return {
+    today,
+    monthDays,
+    weekdayProfile,
+    season,
+    heatmap,
+    monthPeakHour: (() => {
+      let peakHour: number | null = null
+      let peakHourIn = 0
+      for (const [h, c] of monthHourCounts) {
+        if (c > peakHourIn) {
+          peakHourIn = c
+          peakHour = h
+        }
+      }
+      return peakHour
+    })(),
+    monthPeakHourIn: (() => {
+      let peakHourIn = 0
+      for (const c of monthHourCounts.values()) {
+        if (c > peakHourIn) peakHourIn = c
+      }
+      return peakHourIn
+    })()
+  }
+}
+
+function buildEmptyTodayPanel(live: boolean): FootcounterTodayPanelData {
+  const hourly: FootcounterTodayHourBar[] = []
+  for (
+    let hour = FOOTCOUNTER_OPEN_HOURS.start;
+    hour <= FOOTCOUNTER_OPEN_HOURS.end;
+    hour++
+  ) {
+    hourly.push({ hour, inCount: 0, outCount: 0, pending: false })
+  }
+  return {
+    label: 'Ma',
+    todayIn: 0,
+    todayOut: 0,
+    occupancy: 0,
+    peakHour: null,
+    peakHourIn: 0,
+    weekdayAvg: null,
+    weekdayAvgLabel: 'Napi átlag',
+    hourly,
+    live
+  }
+}
+
+function buildEmptySeason(year: number, month: number): FootcounterSeasonBar[] {
+  return buildSeasonBars(year, month, new Map())
+}
+
+function buildSeasonBars(
+  year: number,
+  month: number,
+  totals: Map<string, number>
+): FootcounterSeasonBar[] {
+  const out: FootcounterSeasonBar[] = []
+  for (let i = 11; i >= 0; i--) {
+    let y = year
+    let m = month - i
+    while (m <= 0) {
+      m += 12
+      y -= 1
+    }
+    const key = `${y}-${String(m).padStart(2, '0')}`
+    out.push({
+      key,
+      label: MONTH_SHORT_HU[m - 1] ?? key,
+      totalIn: totals.get(key) ?? 0,
+      selected: i === 0
+    })
+  }
+  return out
+}
+
+function buildEmptyHeatmap(): FootcounterHeatmapRow[] {
+  return FOOTCOUNTER_WEEKDAY_LABELS.map((label, weekday) => {
+    const cells = []
+    for (
+      let hour = FOOTCOUNTER_OPEN_HOURS.start;
+      hour <= FOOTCOUNTER_OPEN_HOURS.end;
+      hour++
+    ) {
+      cells.push({
+        hour,
+        value: 0,
+        closed: hourClosed(weekday, hour)
+      })
+    }
+    return {
+      weekday,
+      label,
+      cells,
+      total: 0,
+      closed: weekday === 6
+    }
+  })
 }

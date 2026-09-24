@@ -3,14 +3,18 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 import {
   APP_SESSION_NONCE_COOKIE,
-  CURRENT_TENANT_COOKIE,
   DEV_SESSION_COOKIE,
   IMPERSONATION_SESSION_COOKIE,
   SESSION_SNAPSHOT_COOKIE,
   isDevBypassEnabled,
   isSupabaseConfigured
 } from '@/lib/auth/config'
-import { isAppSessionValid } from '@/lib/auth/app-session'
+import { checkAppSession } from '@/lib/auth/app-session'
+import {
+  clearAppAuthCookies,
+  logSessionKick,
+  type SessionKickReason
+} from '@/lib/auth/session-cookies'
 import { snapshotMatchesRequest } from '@/lib/auth/session-snapshot'
 import {
   getPlatformPublicOrigin,
@@ -102,13 +106,21 @@ function partnerHomePathname(
 }
 
 /** Staff session kick: clear nonce cookies + surface-aware tenant login. */
-function redirectStaffSessionReplaced(request: NextRequest, surface: AuthSurface) {
+function redirectStaffSessionReplaced(
+  request: NextRequest,
+  surface: AuthSurface,
+  reason: SessionKickReason = 'session_replaced',
+  userId?: string | null
+) {
+  logSessionKick({
+    reason,
+    userId,
+    host: request.headers.get('host'),
+    ua: request.headers.get('user-agent')
+  })
   const path = loginPathForKick({ surface, kind: 'staff' })
-  const response = redirectTo(request, path, 'session_replaced')
-  response.cookies.delete(APP_SESSION_NONCE_COOKIE)
-  response.cookies.delete(CURRENT_TENANT_COOKIE)
-  response.cookies.delete(SESSION_SNAPSHOT_COOKIE)
-  response.cookies.delete(IMPERSONATION_SESSION_COOKIE)
+  const response = redirectTo(request, path, reason)
+  clearAppAuthCookies(response.cookies)
   return response
 }
 
@@ -227,6 +239,8 @@ export async function updateSession(request: NextRequest) {
       pathname === '/login') ||
     pathname === '/auth/confirm' ||
     pathname.startsWith('/auth/confirm/') ||
+    pathname === '/auth/session-bootstrap' ||
+    pathname.startsWith('/auth/session-bootstrap/') ||
     (surface === 'partner' &&
       (pathname === PARTNER_LOGIN_PATH ||
         pathname === PARTNER_REGISTER_PATH ||
@@ -352,27 +366,32 @@ export async function updateSession(request: NextRequest) {
             })
 
             if (snap?.hasMembership) {
-              const valid = await isAppSessionValid(supabase, user.id, nonce)
-              if (valid) {
+              const check = await checkAppSession(supabase, user.id, nonce)
+              if (check.ok) {
                 isAuthenticated = true
                 hasStaffMembership = true
                 isPartnerUser = false
               } else {
                 await supabase.auth.signOut()
-                return redirectStaffSessionReplaced(request, surface)
+                return redirectStaffSessionReplaced(
+                  request,
+                  surface,
+                  check.reason,
+                  user.id
+                )
               }
             } else {
-              const [{ data: memberships }, valid] = await Promise.all([
+              const [{ data: memberships }, check] = await Promise.all([
                 supabase
                   .from('tenant_memberships')
                   .select('id')
                   .eq('user_id', user.id)
                   .eq('status', 'active')
                   .limit(1),
-                isAppSessionValid(supabase, user.id, nonce)
+                checkAppSession(supabase, user.id, nonce)
               ])
               hasStaffMembership = (memberships?.length ?? 0) > 0
-              if (hasStaffMembership && valid) {
+              if (hasStaffMembership && check.ok) {
                 isAuthenticated = true
                 isPartnerUser = false
               } else {
@@ -394,14 +413,19 @@ export async function updateSession(request: NextRequest) {
 
         // Snapshot + nonce↔DB: remove/disable azonnal érvényesüljön (ne 15 perc stale)
         if (snap) {
-          const valid = await isAppSessionValid(supabase, user.id, nonce)
-          if (valid) {
+          const check = await checkAppSession(supabase, user.id, nonce)
+          if (check.ok) {
             isAuthenticated = true
             hasStaffMembership = snap.hasMembership
             isPartnerUser = false
           } else {
             await supabase.auth.signOut()
-            return redirectStaffSessionReplaced(request, surface)
+            return redirectStaffSessionReplaced(
+              request,
+              surface,
+              check.reason,
+              user.id
+            )
           }
         } else {
           const [{ data: partnerRow }, { data: memberships }] =
@@ -448,9 +472,9 @@ export async function updateSession(request: NextRequest) {
           }
 
           if (!impersonationOk) {
-            const valid = await isAppSessionValid(supabase, user.id, nonce)
+            const check = await checkAppSession(supabase, user.id, nonce)
 
-            if (valid) {
+            if (check.ok) {
               isAuthenticated = true
             } else if (isPartnerUser && !hasStaffMembership) {
               isAuthenticated = true
@@ -458,10 +482,20 @@ export async function updateSession(request: NextRequest) {
               isAuthenticated = true
             } else if (isPartnerSharedApi) {
               await supabase.auth.signOut()
-              return redirectStaffSessionReplaced(request, surface)
+              return redirectStaffSessionReplaced(
+                request,
+                surface,
+                check.reason,
+                user.id
+              )
             } else {
               await supabase.auth.signOut()
-              return redirectStaffSessionReplaced(request, surface)
+              return redirectStaffSessionReplaced(
+                request,
+                surface,
+                check.reason,
+                user.id
+              )
             }
           }
         }

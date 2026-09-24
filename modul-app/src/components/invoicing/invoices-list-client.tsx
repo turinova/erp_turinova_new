@@ -47,6 +47,15 @@ type Props = {
   canWrite: boolean
   awaitingCount?: number
   awaitingSumFt?: number
+  /** Lista base path (default /szamlak) */
+  basePath?: string
+  title?: string
+  description?: string
+  /** Üres lista CTA */
+  emptyCtaHref?: string
+  emptyCtaLabel?: string
+  /** Forrás oszlop fejléc */
+  sourceColumnLabel?: string
 }
 
 const VIEW_FILTERS: { value: InvoiceListView; label: string }[] = [
@@ -79,9 +88,13 @@ function displayNumber(row: InvoiceListItem) {
   return row.provider_invoice_number?.trim() || row.internal_number
 }
 
-function saleHref(row: InvoiceListItem): string | null {
-  if (row.related_source_type === 'sale' && row.related_source_id) {
+function sourceHref(row: InvoiceListItem): string | null {
+  if (!row.related_source_id) return null
+  if (row.related_source_type === 'sale') {
     return `/ertekesitesek/${row.related_source_id}`
+  }
+  if (row.related_source_type === 'opti_order') {
+    return `/ajanlatok/${row.related_source_id}`
   }
   return null
 }
@@ -97,7 +110,13 @@ export function InvoicesListClient({
   view,
   canWrite,
   awaitingCount,
-  awaitingSumFt
+  awaitingSumFt,
+  basePath = '/szamlak',
+  title = 'Bizonylatok',
+  description = 'Díjbekérő, számla, sztornó — eladás és lapszabászat megrendelés.',
+  emptyCtaHref = '/ertekesitesek',
+  emptyCtaLabel = 'Értékesítések',
+  sourceColumnLabel = 'Eladás'
 }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
@@ -149,14 +168,14 @@ export function InvoicesListClient({
     if (v && v !== 'awaiting') params.set('view', v)
     if (p > 1) params.set('page', String(p))
     const qs = params.toString()
-    router.push(qs ? `/szamlak?${qs}` : '/szamlak')
+    router.push(qs ? `${basePath}?${qs}` : basePath)
   }
 
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Bizonylatok"
-        description="Díjbekérő, számla, sztornó — az eladásokhoz."
+        title={title}
+        description={description}
         actions={
           <Button
             type="button"
@@ -249,15 +268,17 @@ export function InvoicesListClient({
             <p className="mt-1 text-body text-ink-secondary">
               {view === 'awaiting'
                 ? 'Nincs kinnlevő tétel.'
-                : 'Állíts ki bizonylatot egy értékesítésről.'}
+                : emptyCtaHref.includes('ajanlat')
+                  ? 'Állíts ki bizonylatot egy lapszabászati megrendelésről.'
+                  : 'Állíts ki bizonylatot egy értékesítésről.'}
             </p>
           </div>
           {view !== 'awaiting' && canWrite ? (
             <Button
               type="button"
-              onClick={() => router.push('/ertekesitesek')}
+              onClick={() => router.push(emptyCtaHref)}
             >
-              Értékesítések
+              {emptyCtaLabel}
             </Button>
           ) : null}
         </div>
@@ -267,7 +288,7 @@ export function InvoicesListClient({
             <DataTableRow>
               <DataTableHeaderCell>Szám</DataTableHeaderCell>
               <DataTableHeaderCell>Vevő</DataTableHeaderCell>
-              <DataTableHeaderCell>Eladás</DataTableHeaderCell>
+              <DataTableHeaderCell>{sourceColumnLabel}</DataTableHeaderCell>
               <DataTableHeaderCell>Típus</DataTableHeaderCell>
               <DataTableHeaderCell align="right">
                 Bruttó (Ft)
@@ -283,7 +304,7 @@ export function InvoicesListClient({
           </DataTableHead>
           <DataTableBody>
             {enriched.map(({ row, meta }) => {
-              const href = saleHref(row)
+              const href = sourceHref(row)
               const number = displayNumber(row)
               const dateIso =
                 view === 'awaiting'

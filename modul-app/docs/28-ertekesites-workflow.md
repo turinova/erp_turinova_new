@@ -41,4 +41,4 @@ Két badge: `status` × `payment_status`. CTA: Díjbekérő → Fizetés → Ár
 
 ## POS
 
-Ügyfél választás / „Számlát kér” → billing az ügyfélről. Sikeres számla: zöld sáv + **Eladás / PDF** gomb + toast.
+Ügyfél választás / „Számlát kér” → billing az ügyfélről. Sikeres számla: zöld sáv (összeg-first) + **PDF / Megnyitás** — **nincs** eladás-toast a pulton.

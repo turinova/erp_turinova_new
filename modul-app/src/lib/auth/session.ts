@@ -13,11 +13,13 @@ import {
 } from '@/lib/auth/config'
 import {
   buildSessionSnapshot,
+  assertSnapshotTokenSize,
   sessionSnapshotCookieOptions,
   signSessionSnapshot,
   verifySessionSnapshotToken,
   type SessionSnapshot
 } from '@/lib/auth/session-snapshot'
+import { expireCookieOptions } from '@/lib/auth/session-cookies'
 import { ALL_PAGE_KEYS } from '@/lib/permissions/pages'
 import { listAllowedPageKeys } from '@/lib/permissions/access'
 import {
@@ -68,7 +70,7 @@ export type SessionUser = {
 export async function clearSessionSnapshotCookie(): Promise<void> {
   try {
     const cookieStore = await cookies()
-    cookieStore.delete(SESSION_SNAPSHOT_COOKIE)
+    cookieStore.set(SESSION_SNAPSHOT_COOKIE, '', expireCookieOptions())
   } catch {
     // ignore RSC
   }
@@ -76,18 +78,65 @@ export async function clearSessionSnapshotCookie(): Promise<void> {
 
 export async function setSessionSnapshotCookie(
   snapshot: SessionSnapshot
-): Promise<void> {
+): Promise<boolean> {
   try {
     const token = await signSessionSnapshot(snapshot)
+    const size = assertSnapshotTokenSize(token)
+    if (!size.ok) return false
     const cookieStore = await cookies()
     cookieStore.set(
       SESSION_SNAPSHOT_COOKIE,
       token,
       sessionSnapshotCookieOptions()
     )
-  } catch {
-    // ignore RSC / size
+    return true
+  } catch (err) {
+    // RSC render: cookie set tilos — nem hiba a flowban (refresh SA / login).
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!msg.includes('Cookies can only be modified')) {
+      console.error('[session-snapshot] set failed', err)
+    }
+    return false
   }
+}
+
+/** Login bootstrap: aláírt snapshot token (cookie-ba a GET route teszi). */
+export async function signSessionSnapshotAfterLogin(input: {
+  userId: string
+  email: string
+  displayName?: string | null
+  nonce: string
+  tenantId: string | null
+  tenantSlug: string | null
+  tenantName: string
+  membershipId: string | null
+  role: TenantRole | null
+  allowedPages: string[]
+  entitledPages: string[]
+  canManageUsers: boolean
+  isPlatformAdmin: boolean
+  hasMembership: boolean
+}): Promise<string | null> {
+  const snapshot = buildSessionSnapshot({
+    userId: input.userId,
+    email: input.email,
+    displayName: input.displayName ?? null,
+    tenantId: input.tenantId,
+    tenantSlug: input.tenantSlug,
+    tenantName: input.tenantName,
+    membershipId: input.membershipId,
+    role: input.role,
+    allowedPages: input.allowedPages,
+    entitledPages: input.entitledPages,
+    canManageUsers: input.canManageUsers,
+    isPlatformAdmin: input.isPlatformAdmin,
+    hasMembership: input.hasMembership,
+    nonce: input.nonce
+  })
+  const token = await signSessionSnapshot(snapshot)
+  const size = assertSnapshotTokenSize(token)
+  if (!size.ok) return null
+  return token
 }
 
 function sessionUserFromSnapshot(snap: SessionSnapshot): SessionUser {
@@ -115,9 +164,9 @@ function sessionUserFromSnapshot(snap: SessionSnapshot): SessionUser {
 async function persistSnapshotFromUser(
   user: SessionUser,
   nonce: string
-): Promise<void> {
-  if (user.isDevSession || user.impersonation) return
-  if (!nonce) return
+): Promise<boolean> {
+  if (user.isDevSession || user.impersonation) return false
+  if (!nonce) return false
   const snapshot = buildSessionSnapshot({
     userId: user.id,
     email: user.email,
@@ -134,7 +183,18 @@ async function persistSnapshotFromUser(
     hasMembership: user.hasMembership,
     nonce
   })
-  await setSessionSnapshotCookie(snapshot)
+  return setSessionSnapshotCookie(snapshot)
+}
+
+/**
+ * Server Action / Route Handler: DB-ből épített session visszaírása cookie-ba.
+ * RSC layoutból NE hívd — Next nem engedi a cookie setet render közben.
+ */
+export async function persistSessionSnapshotFromUser(
+  user: SessionUser,
+  nonce: string
+): Promise<boolean> {
+  return persistSnapshotFromUser(user, nonce)
 }
 
 /**
@@ -224,7 +284,8 @@ async function loadSessionUser(): Promise<SessionUser | null> {
         impersonation: null,
         sessionSource: 'db'
       }
-      if (nonce) await persistSnapshotFromUser(platformUser, nonce)
+      // Cookie írása RSC layoutban tilos (Next.js) — TTL után
+      // SessionSnapshotRefresh (SA) írja vissza a snapshotot.
       return platformUser
     }
 
@@ -389,10 +450,7 @@ async function loadSessionUser(): Promise<SessionUser | null> {
       sessionSource: 'db'
     }
 
-    if (nonce && !impersonation) {
-      await persistSnapshotFromUser(sessionUser, nonce)
-    }
-
+    // Cookie írása RSC layoutban tilos — refresh Server Action végzi.
     return sessionUser
   }
 
@@ -444,21 +502,16 @@ export async function writeSessionSnapshotAfterLogin(input: {
   isPlatformAdmin: boolean
   hasMembership: boolean
 }): Promise<void> {
-  const snapshot = buildSessionSnapshot({
-    userId: input.userId,
-    email: input.email,
-    displayName: input.displayName ?? null,
-    tenantId: input.tenantId,
-    tenantSlug: input.tenantSlug,
-    tenantName: input.tenantName,
-    membershipId: input.membershipId,
-    role: input.role,
-    allowedPages: input.allowedPages,
-    entitledPages: input.entitledPages,
-    canManageUsers: input.canManageUsers,
-    isPlatformAdmin: input.isPlatformAdmin,
-    hasMembership: input.hasMembership,
-    nonce: input.nonce
-  })
-  await setSessionSnapshotCookie(snapshot)
+  const token = await signSessionSnapshotAfterLogin(input)
+  if (!token) return
+  try {
+    const cookieStore = await cookies()
+    cookieStore.set(
+      SESSION_SNAPSHOT_COOKIE,
+      token,
+      sessionSnapshotCookieOptions()
+    )
+  } catch (err) {
+    console.error('[session-snapshot] write after login failed', err)
+  }
 }

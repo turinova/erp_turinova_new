@@ -85,6 +85,7 @@ export type AccessoryFormInput = {
   purchasePriceNet: number | null
   marginFactor: number | null
   active: boolean
+  sellablePos: boolean
 }
 
 export async function createAccessory(
@@ -117,7 +118,8 @@ export async function createAccessory(
       purchase_price_net: parsed.data.purchasePriceNet,
       margin_factor: parsed.data.marginFactor,
       image_url: parsed.data.imageUrl ?? null,
-      active: parsed.data.active
+      active: parsed.data.active,
+      sellable_pos: parsed.data.sellablePos
     })
     .select('id')
     .single()
@@ -166,6 +168,7 @@ export async function updateAccessory(
       margin_factor: parsed.data.marginFactor,
       image_url: parsed.data.imageUrl ?? null,
       active: parsed.data.active,
+      sellable_pos: parsed.data.sellablePos,
       updated_at: new Date().toISOString()
     })
     .eq('id', input.id)

@@ -7,8 +7,6 @@ import {
   APP_SESSION_NONCE_COOKIE,
   CURRENT_TENANT_COOKIE,
   DEV_SESSION_COOKIE,
-  IMPERSONATION_SESSION_COOKIE,
-  OPERATOR_REFRESH_COOKIE,
   SESSION_SNAPSHOT_COOKIE,
   isDevBypassEnabled,
   isSupabaseConfigured
@@ -20,8 +18,19 @@ import {
 } from '@/lib/auth/app-session'
 import {
   clearSessionSnapshotCookie,
-  writeSessionSnapshotAfterLogin
+  signSessionSnapshotAfterLogin
 } from '@/lib/auth/session'
+import {
+  LOGIN_PENDING_NEXT_COOKIE,
+  LOGIN_PENDING_NONCE_COOKIE,
+  LOGIN_PENDING_SNAP_COOKIE,
+  LOGIN_PENDING_TENANT_COOKIE,
+  appSessionCookieOptions,
+  clearAppAuthCookies,
+  clearStaleSessionCookies,
+  loginPendingCookieOptions,
+  sessionSnapshotCookieOptions
+} from '@/lib/auth/session-cookies'
 import { ALL_PAGE_KEYS } from '@/lib/permissions/pages'
 import { listAllowedPageKeys } from '@/lib/permissions/access'
 import {
@@ -39,14 +48,54 @@ export type LoginState = {
   error?: string
 }
 
-function sessionCookieOptions() {
-  return {
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    path: '/',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 60 * 60 * 24 * 30
+function sanitizeNextPath(path: string): string {
+  if (!path.startsWith('/') || path.startsWith('//')) return '/home'
+  if (path.startsWith('/auth/')) return '/home'
+  return path.slice(0, 200)
+}
+
+async function stageLoginBootstrap(input: {
+  nonce: string
+  next: string
+  tenantId: string | null
+  snapshotToken: string | null
+}) {
+  const cookieStore = await cookies()
+  // Ne wipe-olj signIn után — elrontja a sb-* Set-Cookie jar-t.
+  // Stale wipe a loginAction elején (clearStaleSessionCookies).
+
+  const pending = loginPendingCookieOptions(120)
+  cookieStore.set(LOGIN_PENDING_NONCE_COOKIE, input.nonce, pending)
+  cookieStore.set(
+    LOGIN_PENDING_NEXT_COOKIE,
+    sanitizeNextPath(input.next),
+    pending
+  )
+  if (input.snapshotToken) {
+    cookieStore.set(LOGIN_PENDING_SNAP_COOKIE, input.snapshotToken, pending)
   }
+  if (input.tenantId) {
+    cookieStore.set(LOGIN_PENDING_TENANT_COOKIE, input.tenantId, pending)
+  }
+
+  // Belt+suspenders: hosszú életű nonce is (ha a SA cookie megmarad)
+  cookieStore.set(APP_SESSION_NONCE_COOKIE, input.nonce, appSessionCookieOptions())
+  if (input.snapshotToken) {
+    cookieStore.set(
+      SESSION_SNAPSHOT_COOKIE,
+      input.snapshotToken,
+      sessionSnapshotCookieOptions()
+    )
+  }
+  if (input.tenantId) {
+    cookieStore.set(
+      CURRENT_TENANT_COOKIE,
+      input.tenantId,
+      appSessionCookieOptions()
+    )
+  }
+
+  redirect('/auth/session-bootstrap')
 }
 
 export async function loginAction(
@@ -61,6 +110,12 @@ export async function loginAction(
   }
 
   if (isSupabaseConfigured()) {
+    // Stale wipe BEFORE signIn — ne a Set-Cookie jar után
+    {
+      const cookieStore = await cookies()
+      clearStaleSessionCookies(cookieStore)
+    }
+
     const supabase = await createClient()
     if (!supabase) {
       return { error: 'A bejelentkezés most nem elérhető. Próbáld újra később.' }
@@ -134,25 +189,15 @@ export async function loginAction(
       }
     }
 
-    const cookieStore = await cookies()
-    cookieStore.set(
-      APP_SESSION_NONCE_COOKIE,
-      sessionNonce,
-      sessionCookieOptions()
-    )
-
     if (surface === 'platform') {
       if (!platformRow) {
         await supabase.auth.signOut()
-        cookieStore.delete(APP_SESSION_NONCE_COOKIE)
-        cookieStore.delete(SESSION_SNAPSHOT_COOKIE)
         return {
           error:
             'Ez a belépés csak platform operátoroknak szól (admin.optinova.hu).'
         }
       }
-      cookieStore.delete(CURRENT_TENANT_COOKIE)
-      await writeSessionSnapshotAfterLogin({
+      const snap = await signSessionSnapshotAfterLogin({
         userId: data.user.id,
         email: data.user.email!,
         nonce: sessionNonce,
@@ -167,17 +212,15 @@ export async function loginAction(
         isPlatformAdmin: true,
         hasMembership: false
       })
-      redirect('/')
+      await stageLoginBootstrap({
+        nonce: sessionNonce,
+        next: '/',
+        tenantId: null,
+        snapshotToken: snap
+      })
     }
 
     if (current) {
-      cookieStore.set(CURRENT_TENANT_COOKIE, current.tenantId, {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production'
-      })
-
       let entitledPages = await listTenantEntitledPageKeys(
         supabase,
         current.tenantId
@@ -206,7 +249,7 @@ export async function loginAction(
         displayName = profileRow?.display_name?.trim() || null
       }
 
-      await writeSessionSnapshotAfterLogin({
+      const snap = await signSessionSnapshotAfterLogin({
         userId: data.user.id,
         email: data.user.email!,
         displayName,
@@ -232,12 +275,17 @@ export async function loginAction(
       } catch {
         // ne blokkolja a belépést
       }
-      redirect('/home')
+
+      await stageLoginBootstrap({
+        nonce: sessionNonce,
+        next: '/home',
+        tenantId: current.tenantId,
+        snapshotToken: snap
+      })
     }
 
     if (platformRow) {
-      cookieStore.delete(CURRENT_TENANT_COOKIE)
-      await writeSessionSnapshotAfterLogin({
+      const snap = await signSessionSnapshotAfterLogin({
         userId: data.user.id,
         email: data.user.email!,
         nonce: sessionNonce,
@@ -256,24 +304,30 @@ export async function loginAction(
         /\/$/,
         ''
       )
-      if (platformOrigin) {
-        redirect(`${platformOrigin}/`)
-      }
-      redirect('/platform')
+      const next = platformOrigin ? `${platformOrigin}/` : '/platform'
+      // Külső origin: cookie-t ezen a hoston állítjuk, majd külsőre megyünk
+      await stageLoginBootstrap({
+        nonce: sessionNonce,
+        next: next.startsWith('http') ? '/platform' : next,
+        tenantId: null,
+        snapshotToken: snap
+      })
     }
 
-    cookieStore.delete(CURRENT_TENANT_COOKIE)
     await clearSessionSnapshotCookie()
-    redirect('/no-access')
+    await stageLoginBootstrap({
+      nonce: sessionNonce,
+      next: '/no-access',
+      tenantId: null,
+      snapshotToken: null
+    })
   }
 
   if (isDevBypassEnabled()) {
     const cookieStore = await cookies()
+    clearAppAuthCookies(cookieStore)
     cookieStore.set(DEV_SESSION_COOKIE, encodeURIComponent(email), {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      secure: process.env.NODE_ENV === 'production'
+      ...appSessionCookieOptions()
     })
     redirect('/home')
   }
@@ -299,15 +353,7 @@ export async function logoutAction() {
   }
 
   const cookieStore = await cookies()
-  cookieStore.delete(CURRENT_TENANT_COOKIE)
-  cookieStore.delete(APP_SESSION_NONCE_COOKIE)
-  cookieStore.delete(SESSION_SNAPSHOT_COOKIE)
-  cookieStore.delete(IMPERSONATION_SESSION_COOKIE)
-  cookieStore.delete(OPERATOR_REFRESH_COOKIE)
-
-  if (isDevBypassEnabled()) {
-    cookieStore.delete(DEV_SESSION_COOKIE)
-  }
+  clearAppAuthCookies(cookieStore)
 
   const hdrs = await headers()
   const surface = resolveAuthSurface(hdrs.get('host') ?? '')

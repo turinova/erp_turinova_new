@@ -97,7 +97,8 @@ export function resolveInvoiceKindOptions(
     return {
       options: [
         { value: 'normal', label: 'Számla' },
-        { value: 'advance', label: 'Előlegszámla' }
+        { value: 'advance', label: 'Előlegszámla' },
+        { value: 'proforma', label: 'Díjbekérő' }
       ],
       defaultKind: 'normal'
     }
@@ -106,7 +107,67 @@ export function resolveInvoiceKindOptions(
   return {
     options: [
       { value: 'proforma', label: 'Díjbekérő' },
-      { value: 'advance', label: 'Előlegszámla' }
+      { value: 'advance', label: 'Előlegszámla' },
+      { value: 'normal', label: 'Számla' }
+    ],
+    defaultKind: 'proforma'
+  }
+}
+
+/**
+ * Lapszabászat: nincs paid/státusz korlát a végszámlán.
+ * Default javaslat: unpaid → díjbekérő, paid → számla.
+ */
+export function resolveQuoteInvoiceKindOptions(
+  paymentStatus: string,
+  invoices: InvoiceListItem[]
+): {
+  options: { value: InvoiceIssueKind; label: string }[]
+  defaultKind: InvoiceIssueKind
+} {
+  const { hasFinal, hasProforma } = activeDocs(invoices)
+  const paid = paymentStatus === 'paid'
+
+  if (hasFinal) {
+    return { options: [], defaultKind: 'normal' }
+  }
+
+  if (hasProforma && paid) {
+    return {
+      options: [
+        { value: 'normal', label: 'Végszámla' },
+        { value: 'advance', label: 'Előlegszámla' }
+      ],
+      defaultKind: 'normal'
+    }
+  }
+
+  if (hasProforma && !paid) {
+    return {
+      options: [
+        { value: 'normal', label: 'Végszámla' },
+        { value: 'advance', label: 'Előlegszámla' }
+      ],
+      defaultKind: 'normal'
+    }
+  }
+
+  if (paid) {
+    return {
+      options: [
+        { value: 'normal', label: 'Számla' },
+        { value: 'advance', label: 'Előlegszámla' },
+        { value: 'proforma', label: 'Díjbekérő' }
+      ],
+      defaultKind: 'normal'
+    }
+  }
+
+  return {
+    options: [
+      { value: 'proforma', label: 'Díjbekérő' },
+      { value: 'advance', label: 'Előlegszámla' },
+      { value: 'normal', label: 'Számla' }
     ],
     defaultKind: 'proforma'
   }

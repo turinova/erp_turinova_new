@@ -7,6 +7,7 @@ import { Banknote, Download, ExternalLink, FileText, PackageCheck, Pencil, Undo2
 import { toast } from 'sonner'
 
 import { InvoiceIssueDialog } from '@/components/invoicing/invoice-issue-dialog'
+import { SourceInvoicesSection } from '@/components/invoicing/source-invoices-section'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
   DataTable,
@@ -23,18 +24,10 @@ import { SaleRecordPaymentDialog } from '@/components/sales/sale-record-payment-
 import { SaleReturnDialog } from '@/components/sales/sale-return-dialog'
 import { SaleTotalsBreakdown } from '@/components/sales/sale-totals-breakdown'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { stornoInvoiceAction } from '@/lib/invoicing/actions'
+import { stornoTargetIds } from '@/lib/invoicing/invoice-rules'
 import {
-  canStornoInvoice,
-  isInvoiceConsumedByFinal,
-  stornoTargetIds
-} from '@/lib/invoicing/invoice-rules'
-import {
-  invoicePaymentStatusLabel,
-  invoiceTypeLabel,
   type InvoiceIssueKind,
-  type InvoiceListItem,
-  type InvoiceType
+  type InvoiceListItem
 } from '@/lib/invoicing/types'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { fulfillSaleAction } from '@/lib/sales/actions'
@@ -56,41 +49,6 @@ import type {
 } from '@/lib/sales/queries'
 import type { SaleTotalsResult } from '@/lib/sales/totals'
 import { cn } from '@/lib/utils'
-
-function formatDate(iso: string | null) {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleDateString('hu-HU')
-  } catch {
-    return '—'
-  }
-}
-
-function invoiceTypeTone(
-  t: InvoiceType | string
-): 'success' | 'warning' | 'info' | 'danger' | 'neutral' {
-  switch (t) {
-    case 'szamla':
-      return 'success'
-    case 'dijbekero':
-      return 'warning'
-    case 'elolegszamla':
-      return 'info'
-    case 'sztorno':
-      return 'danger'
-    default:
-      return 'neutral'
-  }
-}
-
-function invoicePayTone(
-  s: string
-): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (s === 'fizetve') return 'success'
-  if (s === 'pending') return 'warning'
-  if (s === 'nem_lesz_fizetve') return 'danger'
-  return 'neutral'
-}
 
 function formatQty(n: number) {
   if (Number.isInteger(n)) return String(n)
@@ -211,8 +169,6 @@ export function SaleDetailClient({
   const [preferredKind, setPreferredKind] = useState<InvoiceIssueKind | null>(
     null
   )
-  const [stornoId, setStornoId] = useState<string | null>(null)
-  const [stornoPending, startStorno] = useTransition()
   const [fulfillOpen, setFulfillOpen] = useState(false)
   const [fulfillPending, startFulfill] = useTransition()
   const [openInvoiceAfterFulfill, setOpenInvoiceAfterFulfill] = useState(false)
@@ -239,11 +195,6 @@ export function SaleDetailClient({
 
   const isConfirmed = detail.status === 'confirmed'
   const canFulfill = canWrite && isConfirmed
-
-  const stornoTarget = useMemo(
-    () => invoices.find((i) => i.id === stornoId) ?? null,
-    [invoices, stornoId]
-  )
 
   const isUnpaidLike =
     detail.payment_status === 'unpaid' || detail.payment_status === 'partial'
@@ -888,159 +839,25 @@ export function SaleDetailClient({
         </aside>
       </div>
 
-      <section className="rounded-md border border-border bg-surface p-3.5">
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <h2 className="text-h3 text-ink">Bizonylatok</h2>
-            <p className="text-hint text-ink-secondary">
-              Díjbekérő, előleg, számla — ezen az eladáson
-            </p>
-          </div>
-          <Link
-            href="/szamlak"
-            className="text-hint font-medium text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
-          >
-            Összes számla
-          </Link>
-        </div>
-
-        {invoices.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border bg-subtle/50 px-3 py-4 text-center">
-            <p className="text-body text-ink-secondary">
-              Még nincs kiállított bizonylat.
-            </p>
-            {canWrite && detail.status !== 'cancelled' ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-2"
-                onClick={() =>
-                  openInvoiceFlow(
-                    detail.payment_status === 'paid' ? 'normal' : 'proforma'
-                  )
-                }
-              >
-                <FileText className="size-3.5" aria-hidden />
-                {detail.payment_status === 'paid'
-                  ? 'Számla kiállítása'
-                  : 'Díjbekérő kiállítása'}
-              </Button>
-            ) : null}
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {invoices.map((inv) => {
-              const number =
-                inv.provider_invoice_number || inv.internal_number
-              const gross = inv.gross_total
-              const alreadyStornoed = stornoOfIds.has(inv.id)
-              const consumed = isInvoiceConsumedByFinal(inv, invoices)
-              const canStorno = canStornoInvoice(inv, invoices, {
-                canWrite,
-                hasAgentKey
-              })
-              return (
-                <li
-                  key={inv.id}
-                  className={cn(
-                    'rounded-md border border-border p-3',
-                    inv.invoice_type === 'sztorno' ||
-                      alreadyStornoed ||
-                      consumed
-                      ? 'bg-subtle/50 opacity-90'
-                      : 'bg-subtle/30'
-                  )}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <StatusBadge
-                          tone={invoiceTypeTone(inv.invoice_type)}
-                          variant="solid"
-                        >
-                          {invoiceTypeLabel(inv.invoice_type)}
-                        </StatusBadge>
-                        <StatusBadge
-                          tone={invoicePayTone(inv.payment_status)}
-                          variant="outline"
-                        >
-                          {invoicePaymentStatusLabel(inv.payment_status)}
-                        </StatusBadge>
-                        {alreadyStornoed ? (
-                          <StatusBadge tone="danger" variant="soft">
-                            Sztornózva
-                          </StatusBadge>
-                        ) : null}
-                        {consumed ? (
-                          <StatusBadge tone="info" variant="soft">
-                            Lezárva a számlával
-                          </StatusBadge>
-                        ) : null}
-                      </div>
-                      <p className="text-body font-semibold tabular-nums text-ink">
-                        {number}
-                      </p>
-                      {inv.customer_name ? (
-                        <p className="text-hint text-ink-secondary">
-                          Vevő: {inv.customer_name}
-                        </p>
-                      ) : null}
-                      <p className="text-hint text-ink-muted">
-                        Kiállítva: {formatDateTime(inv.created_at)}
-                        {inv.payment_due_date
-                          ? ` · Határidő: ${formatDate(inv.payment_due_date)}`
-                          : ''}
-                      </p>
-                    </div>
-
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      <p
-                        className={cn(
-                          'text-h3 font-semibold tabular-nums',
-                          inv.invoice_type === 'sztorno'
-                            ? 'text-danger-ink'
-                            : 'text-ink'
-                        )}
-                      >
-                        {gross != null
-                          ? `${inv.invoice_type === 'sztorno' && gross > 0 ? '−' : ''}${formatMoneyFt(Math.abs(gross))} Ft`
-                          : '—'}
-                      </p>
-                      <div className="flex flex-wrap justify-end gap-1.5">
-                        <a
-                          href={`/api/invoices/${inv.id}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={cn(
-                            buttonVariants({
-                              variant: 'secondary',
-                              size: 'sm'
-                            })
-                          )}
-                        >
-                          <Download className="size-3.5" aria-hidden />
-                          PDF letöltés
-                        </a>
-                        {canStorno ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => setStornoId(inv.id)}
-                          >
-                            Sztornó
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+      <SourceInvoicesSection
+        invoices={invoices}
+        canWrite={canWrite}
+        hasAgentKey={hasAgentKey}
+        listHref="/szamlak"
+        listLinkLabel="Összes számla"
+        hint="Díjbekérő, előleg, számla — ezen az eladáson"
+        showEmptyCta={canWrite && detail.status !== 'cancelled'}
+        emptyCtaLabel={
+          detail.payment_status === 'paid'
+            ? 'Számla kiállítása'
+            : 'Díjbekérő kiállítása'
+        }
+        onEmptyCta={() =>
+          openInvoiceFlow(
+            detail.payment_status === 'paid' ? 'normal' : 'proforma'
+          )
+        }
+      />
 
       <p className="text-hint text-ink-secondary">
         <Link
@@ -1144,39 +961,6 @@ export function SaleDetailClient({
         }}
       />
 
-      <ConfirmDialog
-        open={Boolean(stornoId)}
-        onOpenChange={(open) => {
-          if (!open && !stornoPending) setStornoId(null)
-        }}
-        title="Sztornó kiállítása"
-        description={
-          stornoTarget
-            ? `${invoiceTypeLabel(stornoTarget.invoice_type)} ${stornoTarget.provider_invoice_number || stornoTarget.internal_number} — ez a Számlázz.hu-n nem vonható vissza.`
-            : 'Sztornó bizonylat kiállítása.'
-        }
-        confirmLabel="Sztornó kiállítása"
-        cancelLabel="Mégse"
-        variant="danger"
-        loading={stornoPending}
-        onConfirm={() => {
-          if (!stornoId) return
-          startStorno(async () => {
-            const result = await stornoInvoiceAction(stornoId)
-            if (!result.ok) {
-              toast.error(result.message)
-              return
-            }
-            toast.success(
-              result.providerNumber
-                ? `Sztornó: ${result.providerNumber}`
-                : 'Sztornó kiállítva.'
-            )
-            setStornoId(null)
-            router.refresh()
-          })
-        }}
-      />
     </div>
   )
 }

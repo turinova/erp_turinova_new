@@ -110,6 +110,9 @@ export function AccessoryForm({
     initial?.margin_factor != null ? String(initial.margin_factor) : ''
   )
   const [active, setActive] = useState(initial?.active ?? true)
+  const [sellablePos, setSellablePos] = useState(
+    initial?.sellable_pos ?? true
+  )
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const vatPercent =
@@ -153,7 +156,8 @@ export function AccessoryForm({
         purchasePriceNet: purchaseParsed.purchasePriceNet,
         marginFactor: purchaseParsed.marginFactor,
         imageUrl,
-        active
+        active,
+        sellablePos
       }
       const result =
         mode === 'edit' && initial
@@ -525,7 +529,7 @@ export function AccessoryForm({
             />
           </FormField>
 
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 space-y-3">
             <Switch
               id="accessory-active"
               checked={active}
@@ -533,6 +537,14 @@ export function AccessoryForm({
               onCheckedChange={setActive}
               label="Aktív"
               description="Inaktív termék később nem választható az ajánlaton."
+            />
+            <Switch
+              id="accessory-sellable-pos"
+              checked={sellablePos}
+              disabled={pending || !canWrite}
+              onCheckedChange={setSellablePos}
+              label="Elérhető a POS-on"
+              description="Ha ki van kapcsolva, a pulti kereső nem listázza (katalógus / csak web)."
             />
           </div>
         </FormSection>

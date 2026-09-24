@@ -38,7 +38,7 @@ Body példa:
 
 ## Tenant UI
 
-`/belepok` — mai Be/Ki (Europe/Budapest). Részletes dashboard később.
+`/belepok` — mai Be/Ki óránkénti chart, havi / hét napja / szezon tabok, hét×óra heatmap. A vizuális nyelv a marketing `/beleposzamlalo` chartokkal közös (`components/footcounter/charts/`).
 
 ## Demo seed (Pi nélkül)
 
