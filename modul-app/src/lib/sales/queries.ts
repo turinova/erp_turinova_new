@@ -614,7 +614,7 @@ export async function searchProductsForSale(
   const stockFirst = opts?.stockFirst !== false
   const candidateLimit = Math.max(limit * 4, 48)
 
-  let query = supabase
+  const query = supabase
     .from('accessories')
     .select(
       `
@@ -760,5 +760,9 @@ async function rankSaleSearchRows(
     ? mapped.filter((r) => r.on_hand > 0)
     : mapped
 
-  return filtered.slice(0, opts.limit).map(({ _score: _, ...rest }) => rest)
+  return filtered.slice(0, opts.limit).map((row) => {
+    const { _score, ...rest } = row
+    void _score
+    return rest
+  })
 }

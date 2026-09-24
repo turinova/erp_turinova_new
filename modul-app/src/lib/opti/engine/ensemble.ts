@@ -48,8 +48,9 @@ export function guillotineCuttingWithEnsemble(
   binWidth: number,
   binHeight: number,
   kerf: number = 0,
-  _preferredSort: SortStrategy = 'height'
+  preferredSort: SortStrategy = 'height'
 ): BinClass[] {
+  void preferredSort
   if (rectangles.length === 0) return []
 
   const sorts: SortStrategy[] = ['height', 'area', 'perimeter', 'width']

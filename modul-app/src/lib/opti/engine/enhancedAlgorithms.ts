@@ -124,11 +124,12 @@ function guillotineCuttingWithStrategy(
   binHeight: number, 
   kerf: number,
   sortStrategy: SortStrategy,
-  splitStrategy: 'horizontal' | 'vertical' | 'shorter-axis' | 'longer-axis'
+  _splitStrategy: 'horizontal' | 'vertical' | 'shorter-axis' | 'longer-axis'
 ): BinClass[] {
   // Note: This is a simplified version
   // In full implementation, BinClass.insert would accept splitStrategy parameter
   // For now, we use the existing implementation which defaults to horizontal
+  void _splitStrategy
   return guillotineCutting(rectangles, binWidth, binHeight, kerf, sortStrategy);
 }
 
@@ -149,7 +150,7 @@ export function guillotineCuttingTwoPhase(
   console.log('[Two-Phase] Phase 1: Initial placement');
   
   // Phase 1: Initial greedy placement
-  let bins = guillotineCuttingBestFit(rectangles, binWidth, binHeight, kerf, sortStrategy);
+  const bins = guillotineCuttingBestFit(rectangles, binWidth, binHeight, kerf, sortStrategy);
   
   console.log('[Two-Phase] Phase 1 complete:', bins.length, 'boards');
   

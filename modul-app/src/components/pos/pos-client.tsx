@@ -518,7 +518,7 @@ export function PosClient({
           : l
       )
     )
-  }, [maxDisc]) // eslint-disable-line react-hooks/exhaustive-deps — only when policy changes
+  }, [maxDisc]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function onVis() {
