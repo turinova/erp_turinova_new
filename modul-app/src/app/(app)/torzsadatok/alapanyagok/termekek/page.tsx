@@ -8,6 +8,7 @@ import {
 } from '@/lib/accessories/queries'
 import { tenantHasProductLabels } from '@/lib/labels/entitlement'
 import { createClient } from '@/lib/supabase/server'
+import { tenantHasWebshop } from '@/lib/webshop/entitlement'
 
 export const metadata: Metadata = {
   title: 'Termékek'
@@ -20,20 +21,23 @@ export default async function TermekekPage() {
   let rows: Awaited<ReturnType<typeof listAccessories>> = []
   let units: Awaited<ReturnType<typeof listAccessoryUnitOptions>> = []
   let canPrintLabels = false
+  let hasWebshop = false
   let loadError: string | null = null
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        const [list, unitOpts, labelsOn] = await Promise.all([
+        const [list, unitOpts, labelsOn, webOn] = await Promise.all([
           listAccessories(supabase, user.tenantId),
           listAccessoryUnitOptions(supabase, user.tenantId),
-          tenantHasProductLabels(supabase, user.tenantId)
+          tenantHasProductLabels(supabase, user.tenantId),
+          tenantHasWebshop(supabase, user.tenantId)
         ])
         rows = list
         units = unitOpts
         canPrintLabels = labelsOn
+        hasWebshop = webOn
       } catch (err) {
         loadError =
           err instanceof Error
@@ -75,6 +79,7 @@ export default async function TermekekPage() {
       canWrite={canWrite}
       canPrintLabels={canPrintLabels}
       units={units}
+      hasWebshop={hasWebshop}
     />
   )
 }

@@ -245,15 +245,15 @@ export const HOW_IT_WORKS_STEPS: HowItWorksStep[] = [
   },
   {
     id: 'webshop',
-    title: 'Webshop kapcsolat',
+    title: 'Online bolt (Webshop)',
     navLabel: 'Webshop',
-    body: 'A webáruház és a bolt ugyanazt a készletet használja. A webes rendelés is itt jelenik meg.',
+    body: 'Ugyanazok a termékek jelenhetnek meg a weben. Kategória, szín/méret, shop-ready — később saját domain és fizetés.',
     bullets: [
-      'Közös készlet',
-      'Webes rendelés a rendszerben',
-      'Nincs kétszer vezetett stock'
+      'Közös készlet és ár',
+      'Bolt kategóriák és tulajdonságok',
+      'Shop-ready checklist'
     ],
-    package: 'roadmap',
+    package: 'addon',
     accent: 'indigo',
     Icon: ShoppingCart,
     youtubeId: null

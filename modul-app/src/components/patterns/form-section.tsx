@@ -15,13 +15,25 @@ export function FormSection({
   description,
   children,
   className,
-  columns = 2
+  columns = 2,
+  headerAside,
+  headerAction,
+  bodyHidden = false,
+  onTitleClick
 }: {
   title: string
   description?: string
   children: React.ReactNode
   className?: string
   columns?: FormSectionColumns
+  /** Extra tartalom a fejléc jobb oldalán (pl. badge). */
+  headerAside?: React.ReactNode
+  /** Fejléc bal oldali akció (pl. collapse gomb a cím előtt). */
+  headerAction?: React.ReactNode
+  /** Ha true, a mezőrács rejtve (összecsukva). */
+  bodyHidden?: boolean
+  /** Ha megadva, a cím kattintható. */
+  onTitleClick?: () => void
 }) {
   return (
     <section
@@ -30,15 +42,49 @@ export function FormSection({
         className
       )}
     >
-      <div className="mb-2.5 space-y-0.5">
-        <h2 className="text-h3 text-ink">{title}</h2>
-        {description ? (
-          <p className="text-hint text-ink-secondary">{description}</p>
+      <div
+        className={cn(
+          'flex items-start justify-between gap-2',
+          bodyHidden ? null : 'mb-2.5'
+        )}
+      >
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <div className="flex items-center gap-1.5">
+            {headerAction}
+            {onTitleClick ? (
+              <button
+                type="button"
+                className="text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={onTitleClick}
+              >
+                <h2 className="text-h3 text-ink">{title}</h2>
+              </button>
+            ) : (
+              <h2 className="text-h3 text-ink">{title}</h2>
+            )}
+          </div>
+          {description && !bodyHidden ? (
+            <p
+              className={cn(
+                'text-hint text-ink-secondary',
+                headerAction ? 'pl-5' : null
+              )}
+            >
+              {description}
+            </p>
+          ) : null}
+        </div>
+        {headerAside ? (
+          <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+            {headerAside}
+          </div>
         ) : null}
       </div>
-      <div className={cn('grid gap-x-3 gap-y-2.5', columnsClass[columns])}>
-        {children}
-      </div>
+      {bodyHidden ? null : (
+        <div className={cn('grid gap-x-3 gap-y-2.5', columnsClass[columns])}>
+          {children}
+        </div>
+      )}
     </section>
   )
 }

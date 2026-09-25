@@ -1,6 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { grossFromNet } from '@/lib/accessories/parse'
+import {
+  evaluateShopReady,
+  mapAccessoryWebFields,
+  type AccessoryWebFields,
+  type ShopReadyLevel,
+  WEB_SELECT_COLUMNS
+} from '@/lib/accessories/web-shop'
+import { listAccessoryAttributeInputs } from '@/lib/webshop/queries'
+import type { AttributeInput } from '@/lib/webshop/types'
 
 export type AccessoryListItem = {
   id: string
@@ -25,7 +34,14 @@ export type AccessoryListItem = {
   sellable_pos: boolean
   created_at: string
   updated_at: string
-}
+  web_category_id: string | null
+  attribute_value_ids: string[]
+  attribute_inputs: AttributeInput[]
+} & AccessoryWebFields & {
+    shop_ready_level: ShopReadyLevel
+    shop_ready_score: number
+    shop_ready_missing: string[]
+  }
 
 export type AccessoryTaxOption = {
   id: string
@@ -45,35 +61,99 @@ export type AccessoryManufacturerOption = {
   name: string
 }
 
+const ACCESSORY_SELECT = `
+  id,
+  name,
+  sku,
+  barcode,
+  barcode_internal,
+  manufacturer_id,
+  tax_rate_id,
+  unit_id,
+  price_net,
+  purchase_price_net,
+  margin_factor,
+  image_url,
+  active,
+  sellable_pos,
+  created_at,
+  updated_at,
+  web_category_id,
+  ${WEB_SELECT_COLUMNS},
+  manufacturers ( name ),
+  tax_rates ( name, rate_percent ),
+  units ( name, shortform )
+`
+
+function mapAccessoryRow(
+  row: Record<string, unknown>,
+  attributeValueIds: string[] = [],
+  attributeInputs: AttributeInput[] = []
+): AccessoryListItem {
+  const manufacturer = Array.isArray(row.manufacturers)
+    ? row.manufacturers[0]
+    : row.manufacturers
+  const tax = Array.isArray(row.tax_rates) ? row.tax_rates[0] : row.tax_rates
+  const unit = Array.isArray(row.units) ? row.units[0] : row.units
+  const priceNet = Number(row.price_net)
+  const taxPercent = Number(
+    (tax as { rate_percent?: number } | null)?.rate_percent ?? 0
+  )
+  const manufacturerName =
+    (manufacturer as { name?: string } | null)?.name ?? '—'
+  const web = mapAccessoryWebFields(row)
+  const ready = evaluateShopReady({
+    ...web,
+    name: String(row.name ?? ''),
+    image_url: (row.image_url as string | null) ?? null,
+    barcode: (row.barcode as string | null) ?? null,
+    manufacturer_name: manufacturerName === '—' ? null : manufacturerName,
+    price_net: priceNet,
+    active: row.active === true
+  })
+
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    sku: String(row.sku),
+    barcode: (row.barcode as string | null) ?? null,
+    barcode_internal: (row.barcode_internal as string | null) ?? null,
+    manufacturer_id: String(row.manufacturer_id),
+    manufacturer_name: manufacturerName,
+    tax_rate_id: String(row.tax_rate_id),
+    tax_rate_name: (tax as { name?: string } | null)?.name ?? '—',
+    tax_rate_percent: taxPercent,
+    unit_id: String(row.unit_id),
+    unit_name: (unit as { name?: string } | null)?.name ?? '—',
+    unit_shortform: (unit as { shortform?: string } | null)?.shortform ?? 'db',
+    price_net: priceNet,
+    price_gross: grossFromNet(priceNet, taxPercent),
+    purchase_price_net:
+      row.purchase_price_net == null ? null : Number(row.purchase_price_net),
+    margin_factor:
+      row.margin_factor == null ? null : Number(row.margin_factor),
+    image_url: (row.image_url as string | null) ?? null,
+    active: row.active === true,
+    sellable_pos: row.sellable_pos !== false,
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+    web_category_id: (row.web_category_id as string | null) ?? null,
+    attribute_value_ids: attributeValueIds,
+    attribute_inputs: attributeInputs,
+    ...web,
+    shop_ready_level: ready.level,
+    shop_ready_score: ready.score,
+    shop_ready_missing: ready.missing
+  }
+}
+
 export async function listAccessories(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<AccessoryListItem[]> {
   const { data, error } = await supabase
     .from('accessories')
-    .select(
-      `
-      id,
-      name,
-      sku,
-      barcode,
-      barcode_internal,
-      manufacturer_id,
-      tax_rate_id,
-      unit_id,
-      price_net,
-      purchase_price_net,
-      margin_factor,
-      image_url,
-      active,
-      sellable_pos,
-      created_at,
-      updated_at,
-      manufacturers ( name ),
-      tax_rates ( name, rate_percent ),
-      units ( name, shortform )
-    `
-    )
+    .select(ACCESSORY_SELECT)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .order('name', { ascending: true })
@@ -83,41 +163,9 @@ export async function listAccessories(
     throw new Error('Nem sikerült betölteni a termékeket.')
   }
 
-  return (data ?? []).map((row) => {
-    const manufacturer = Array.isArray(row.manufacturers)
-      ? row.manufacturers[0]
-      : row.manufacturers
-    const tax = Array.isArray(row.tax_rates) ? row.tax_rates[0] : row.tax_rates
-    const unit = Array.isArray(row.units) ? row.units[0] : row.units
-    const priceNet = Number(row.price_net)
-    const taxPercent = Number(tax?.rate_percent ?? 0)
-    return {
-      id: row.id,
-      name: row.name,
-      sku: row.sku,
-      barcode: row.barcode ?? null,
-      barcode_internal: row.barcode_internal ?? null,
-      manufacturer_id: row.manufacturer_id,
-      manufacturer_name: manufacturer?.name ?? '—',
-      tax_rate_id: row.tax_rate_id,
-      tax_rate_name: tax?.name ?? '—',
-      tax_rate_percent: taxPercent,
-      unit_id: row.unit_id,
-      unit_name: unit?.name ?? '—',
-      unit_shortform: unit?.shortform ?? 'db',
-      price_net: priceNet,
-      price_gross: grossFromNet(priceNet, taxPercent),
-      purchase_price_net:
-        row.purchase_price_net == null ? null : Number(row.purchase_price_net),
-      margin_factor:
-        row.margin_factor == null ? null : Number(row.margin_factor),
-      image_url: row.image_url ?? null,
-      active: row.active,
-      sellable_pos: row.sellable_pos !== false,
-      created_at: row.created_at,
-      updated_at: row.updated_at
-    }
-  })
+  return (data ?? []).map((row) =>
+    mapAccessoryRow(row as unknown as Record<string, unknown>)
+  )
 }
 
 export async function getAccessory(
@@ -127,29 +175,7 @@ export async function getAccessory(
 ): Promise<AccessoryListItem | null> {
   const { data, error } = await supabase
     .from('accessories')
-    .select(
-      `
-      id,
-      name,
-      sku,
-      barcode,
-      barcode_internal,
-      manufacturer_id,
-      tax_rate_id,
-      unit_id,
-      price_net,
-      purchase_price_net,
-      margin_factor,
-      image_url,
-      active,
-      sellable_pos,
-      created_at,
-      updated_at,
-      manufacturers ( name ),
-      tax_rates ( name, rate_percent ),
-      units ( name, shortform )
-    `
-    )
+    .select(ACCESSORY_SELECT)
     .eq('tenant_id', tenantId)
     .eq('id', id)
     .is('deleted_at', null)
@@ -161,40 +187,20 @@ export async function getAccessory(
   }
   if (!data) return null
 
-  const manufacturer = Array.isArray(data.manufacturers)
-    ? data.manufacturers[0]
-    : data.manufacturers
-  const tax = Array.isArray(data.tax_rates) ? data.tax_rates[0] : data.tax_rates
-  const unit = Array.isArray(data.units) ? data.units[0] : data.units
-  const priceNet = Number(data.price_net)
-  const taxPercent = Number(tax?.rate_percent ?? 0)
+  const [{ data: attrLinks }, attributeInputs] = await Promise.all([
+    supabase
+      .from('accessory_attribute_values')
+      .select('attribute_value_id')
+      .eq('tenant_id', tenantId)
+      .eq('accessory_id', id),
+    listAccessoryAttributeInputs(supabase, tenantId, id)
+  ])
 
-  return {
-    id: data.id,
-    name: data.name,
-    sku: data.sku,
-    barcode: data.barcode ?? null,
-    barcode_internal: data.barcode_internal ?? null,
-    manufacturer_id: data.manufacturer_id,
-    manufacturer_name: manufacturer?.name ?? '—',
-    tax_rate_id: data.tax_rate_id,
-    tax_rate_name: tax?.name ?? '—',
-    tax_rate_percent: taxPercent,
-    unit_id: data.unit_id,
-    unit_name: unit?.name ?? '—',
-    unit_shortform: unit?.shortform ?? 'db',
-    price_net: priceNet,
-    price_gross: grossFromNet(priceNet, taxPercent),
-    purchase_price_net:
-      data.purchase_price_net == null ? null : Number(data.purchase_price_net),
-    margin_factor:
-      data.margin_factor == null ? null : Number(data.margin_factor),
-    image_url: data.image_url ?? null,
-    active: data.active,
-    sellable_pos: data.sellable_pos !== false,
-    created_at: data.created_at,
-    updated_at: data.updated_at
-  }
+  return mapAccessoryRow(
+    data as unknown as Record<string, unknown>,
+    (attrLinks ?? []).map((r) => r.attribute_value_id as string),
+    attributeInputs
+  )
 }
 
 export async function listAccessoryTaxOptions(

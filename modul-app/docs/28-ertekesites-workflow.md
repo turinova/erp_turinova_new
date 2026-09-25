@@ -3,7 +3,7 @@
 **Státusz:** S1 + S1.5 + billing/díjbekérő UX.  
 **Route:** `/ertekesitesek`  
 **Migráció:** `20260509` … **`20260528_sale_confirmed_fulfill.sql`**  
-**Kapcsolat:** [36](36-szamlazas-workflow.md)
+**Kapcsolat:** [36](36-szamlazas-workflow.md), web B2C channel: [38](38-agent-commerce.md)
 
 ---
 

@@ -66,6 +66,13 @@ export const MARKETING_PRICING = {
       blurb: 'Belépőszám óránként, időjárással együtt.',
       hardwareNote: 'A kamera egyszeri díjára külön ajánlatot adunk.',
       accent: 'indigo' as const
+    },
+    webshop: {
+      key: 'webshop',
+      name: 'Webshop',
+      priceMonthlyHuf: 12_900,
+      blurb: 'Online bolt a meglévő termékekből — kategória, tulajdonság, shop-ready.',
+      accent: 'indigo' as const
     }
   }
 } as const

@@ -10,6 +10,7 @@ import {
   Cog,
   Factory,
   FileText,
+  Globe,
   Handshake,
   History,
   Home,
@@ -31,6 +32,7 @@ import {
   Package,
   PackageCheck,
   Receipt,
+  Store,
   Tags,
   Truck,
   Users,
@@ -153,6 +155,64 @@ export const mainNavItems: NavNode[] = [
         label: 'Bizonylatok',
         href: '/szamlak',
         icon: Receipt,
+        accent: 'slate'
+      }
+    ]
+  },
+  {
+    type: 'group',
+    label: 'Webshop',
+    icon: Store,
+    accent: 'slate',
+    matchPrefix: '/webshop',
+    children: [
+      {
+        type: 'link',
+        label: 'Áttekintés',
+        href: '/webshop',
+        icon: Store,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Bolt katalógus',
+        href: '/webshop/katalogus',
+        icon: Package,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Kategóriák',
+        href: '/webshop/kategoriak',
+        icon: Layers,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Jellemzők',
+        href: '/webshop/tulajdonsagok',
+        icon: Tags,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Értékelések',
+        href: '/webshop/ertekelesek',
+        icon: MessageSquare,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Csatornák',
+        href: '/webshop/csatornak',
+        icon: Globe,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Bolt beállítások',
+        href: '/webshop/beallitasok',
+        icon: Settings2,
         accent: 'slate'
       }
     ]

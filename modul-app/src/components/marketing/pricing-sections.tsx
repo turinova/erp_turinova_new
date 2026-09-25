@@ -5,7 +5,8 @@ import {
   Camera,
   Check,
   ClipboardList,
-  Factory
+  Factory,
+  Store
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -206,6 +207,21 @@ export function PricingAddonCards() {
       ],
       Icon: Camera,
       accent: a.footcounter.accent
+    },
+    {
+      name: a.webshop.name,
+      href: '/hogyan-mukodik#webshop',
+      linkLabel: 'Hogyan működik — webshop',
+      blurb: a.webshop.blurb,
+      price: formatHufPlain(a.webshop.priceMonthlyHuf),
+      priceNote: '+ ÁFA / hó',
+      bullets: [
+        'Kategória és tulajdonság törzs',
+        'Shop-ready checklist a termékeken',
+        'Egy termékigazság — nincs külön web-katalógus'
+      ],
+      Icon: Store,
+      accent: a.webshop.accent
     }
   ]
 
@@ -220,7 +236,7 @@ export function PricingAddonCards() {
         </p>
       </div>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => {
           const Icon = card.Icon
           return (

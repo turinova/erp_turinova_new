@@ -41,6 +41,8 @@ import {
   STAFF_LOGIN_PATH,
   type AuthSurface
 } from '@/lib/auth/surface'
+import { handleStorefrontRequest } from '@/lib/storefront/middleware'
+import { STOREFRONT_SITE_HEADER } from '@/lib/storefront/site'
 
 function withSurfaceHeaders(
   request: NextRequest,
@@ -49,6 +51,7 @@ function withSurfaceHeaders(
   init?: { rewriteUrl?: URL }
 ) {
   const requestHeaders = new Headers(request.headers)
+  requestHeaders.delete(STOREFRONT_SITE_HEADER)
   requestHeaders.set('x-pathname', pathname)
   requestHeaders.set('x-modul-surface', surfaceLabel)
 
@@ -127,6 +130,10 @@ function redirectStaffSessionReplaced(
 export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const hostname = normalizeHostname(request.headers.get('host'))
+
+  const storefront = await handleStorefrontRequest(request, hostname)
+  if (storefront) return storefront
+
   const surface = resolveAuthSurface(hostname)
 
   let rewriteTarget: string | null = null
@@ -233,6 +240,11 @@ export async function updateSession(request: NextRequest) {
   /** Pi → cloud sync: Bearer / x-footcounter-secret, no user session. */
   const isPublicFootcounterSync = pathname === '/api/footcounter/sync'
 
+  const isPublicStorefrontApi = pathname.startsWith('/api/storefront/')
+
+  /** Vercel Cron: Bearer CRON_SECRET, a route ellenőrzi. */
+  const isPublicCron = pathname.startsWith('/api/cron/')
+
   const isPublicAuth =
     (surface !== 'platform' && isPublicMarketingPath(pathname)) ||
     ((surface === 'staff' || surface === 'platform') &&
@@ -256,7 +268,9 @@ export async function updateSession(request: NextRequest) {
     isPublicAsset ||
     isPublicPartnerApi ||
     isPublicImpersonationHandoff ||
-    isPublicFootcounterSync
+    isPublicFootcounterSync ||
+    isPublicStorefrontApi ||
+    isPublicCron
   ) {
     return supabaseResponse
   }

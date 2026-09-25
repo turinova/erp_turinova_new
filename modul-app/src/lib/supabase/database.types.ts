@@ -69,6 +69,13 @@ export type Manufacturer = {
   id: string
   tenant_id: string
   name: string
+  legal_name: string | null
+  postal_address: string | null
+  email: string | null
+  website: string | null
+  eu_rep_name: string | null
+  eu_rep_address: string | null
+  eu_rep_email: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null

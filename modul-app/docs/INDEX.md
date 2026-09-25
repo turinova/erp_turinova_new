@@ -39,5 +39,8 @@
 | [35-home-kpis.md](35-home-kpis.md) | **Home KPI-k** — jégelt lista (kereskedő Alap + addonok) |
 | [36-szamlazas-workflow.md](36-szamlazas-workflow.md) | **Számlázás** — Számlázz.hu Agent, `/szamlak` (Alap) |
 | [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md) | **Lapszabászat ajánlat→gyártás** — státusz, detail CTA, hol mit |
+| [38-agent-commerce.md](38-agent-commerce.md) | **Agent-ready B2C bolt** — PDP + checkout, Stripe wallet, feed/LLM adat |
+| [39-webshop-addon.md](39-webshop-addon.md) | **Webshop add-on** — 12 900 Ft, kategória/attr törzs, shop-ready UI |
+| [40-storefront-catalog-ai.md](40-storefront-catalog-ai.md) | **Storefront katalógus + AI** — `/bolt`, kereső, szűrők, JSON-LD graph, feedek, AI-készség kapu |
 
-**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok: **`33`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**.
+**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok: **`33`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**. Agent commerce: **`38`**. Webshop add-on: **`39`**.

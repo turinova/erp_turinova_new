@@ -2,7 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 
-import { manufacturerFormSchema } from '@/lib/manufacturers/parse'
+import {
+  manufacturerFormSchema,
+  type ManufacturerFormInput,
+  type ManufacturerFormValues
+} from '@/lib/manufacturers/parse'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 export type ManufacturerActionResult =
@@ -21,31 +25,51 @@ function mapUniqueNameError(message: string): string | null {
   return null
 }
 
-export async function createManufacturer(input: {
-  name: string
-}): Promise<ManufacturerActionResult> {
+type ParseResult =
+  | { ok: true; data: ManufacturerFormValues }
+  | { ok: false; result: ManufacturerActionResult }
+
+function parseInput(input: ManufacturerFormInput): ParseResult {
+  const parsed = manufacturerFormSchema.safeParse(input)
+  if (parsed.success) return { ok: true, data: parsed.data }
+  const fieldErrors: Record<string, string> = {}
+  for (const issue of parsed.error.issues) {
+    const key = issue.path[0]
+    if (typeof key === 'string' && !fieldErrors[key]) {
+      fieldErrors[key] = issue.message
+    }
+  }
+  return {
+    ok: false,
+    result: { ok: false, message: 'Ellenőrizd a megadott adatokat.', fieldErrors }
+  }
+}
+
+function toRow(d: ManufacturerFormValues) {
+  return {
+    name: d.name,
+    legal_name: d.legalName,
+    postal_address: d.postalAddress,
+    email: d.email,
+    website: d.website,
+    eu_rep_name: d.euRepName,
+    eu_rep_address: d.euRepAddress,
+    eu_rep_email: d.euRepEmail
+  }
+}
+
+export async function createManufacturer(
+  input: ManufacturerFormInput
+): Promise<ManufacturerActionResult> {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
-  const parsed = manufacturerFormSchema.safeParse({ name: input.name })
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {}
-    for (const issue of parsed.error.issues) {
-      const key = issue.path[0]
-      if (typeof key === 'string' && !fieldErrors[key]) {
-        fieldErrors[key] = issue.message
-      }
-    }
-    return {
-      ok: false,
-      message: 'Ellenőrizd a megadott adatokat.',
-      fieldErrors
-    }
-  }
+  const parsed = parseInput(input)
+  if (!parsed.ok) return parsed.result
 
   const { error } = await ctx.supabase.from('manufacturers').insert({
     tenant_id: ctx.user.tenantId!,
-    name: parsed.data.name
+    ...toRow(parsed.data)
   })
 
   if (error) {
@@ -61,33 +85,19 @@ export async function createManufacturer(input: {
   return { ok: true }
 }
 
-export async function updateManufacturer(input: {
-  id: string
-  name: string
-}): Promise<ManufacturerActionResult> {
+export async function updateManufacturer(
+  input: ManufacturerFormInput & { id: string }
+): Promise<ManufacturerActionResult> {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
-  const parsed = manufacturerFormSchema.safeParse({ name: input.name })
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {}
-    for (const issue of parsed.error.issues) {
-      const key = issue.path[0]
-      if (typeof key === 'string' && !fieldErrors[key]) {
-        fieldErrors[key] = issue.message
-      }
-    }
-    return {
-      ok: false,
-      message: 'Ellenőrizd a megadott adatokat.',
-      fieldErrors
-    }
-  }
+  const parsed = parseInput(input)
+  if (!parsed.ok) return parsed.result
 
   const { data, error } = await ctx.supabase
     .from('manufacturers')
     .update({
-      name: parsed.data.name,
+      ...toRow(parsed.data),
       updated_at: new Date().toISOString()
     })
     .eq('id', input.id)

@@ -30,7 +30,10 @@ import {
   softDeleteManufacturer,
   updateManufacturer
 } from '@/lib/manufacturers/actions'
-import type { ManufacturerListItem } from '@/lib/manufacturers/queries'
+import {
+  hasGpsrContact,
+  type ManufacturerListItem
+} from '@/lib/manufacturers/queries'
 
 type ManufacturersClientProps = {
   initialRows: ManufacturerListItem[]
@@ -42,6 +45,60 @@ type EditorState =
   | { mode: 'create' }
   | { mode: 'edit'; row: ManufacturerListItem }
 
+type Draft = {
+  name: string
+  legalName: string
+  postalAddress: string
+  email: string
+  website: string
+  euRepName: string
+  euRepAddress: string
+  euRepEmail: string
+}
+
+const EMPTY_DRAFT: Draft = {
+  name: '',
+  legalName: '',
+  postalAddress: '',
+  email: '',
+  website: '',
+  euRepName: '',
+  euRepAddress: '',
+  euRepEmail: ''
+}
+
+function draftOf(row: ManufacturerListItem): Draft {
+  return {
+    name: row.name,
+    legalName: row.legal_name ?? '',
+    postalAddress: row.postal_address ?? '',
+    email: row.email ?? '',
+    website: row.website ?? '',
+    euRepName: row.eu_rep_name ?? '',
+    euRepAddress: row.eu_rep_address ?? '',
+    euRepEmail: row.eu_rep_email ?? ''
+  }
+}
+
+const GPSR_FIELDS: {
+  key: Exclude<keyof Draft, 'name'>
+  label: string
+  hint?: string
+  type?: string
+}[] = [
+  { key: 'legalName', label: 'Cégnév', hint: 'Ha eltér a megjelenő névtől' },
+  { key: 'postalAddress', label: 'Postai cím' },
+  { key: 'email', label: 'E-mail', type: 'email' },
+  { key: 'website', label: 'Weboldal / kapcsolati oldal' },
+  {
+    key: 'euRepName',
+    label: 'EU felelős személy neve',
+    hint: 'EU-n kívüli gyártónál kötelező (importőr / meghatalmazott)'
+  },
+  { key: 'euRepAddress', label: 'EU felelős személy címe' },
+  { key: 'euRepEmail', label: 'EU felelős személy e-mail', type: 'email' }
+]
+
 export function ManufacturersClient({
   initialRows,
   canWrite
@@ -50,7 +107,7 @@ export function ManufacturersClient({
   const [editor, setEditor] = useState<EditorState>({ mode: 'closed' })
   const [deleteTarget, setDeleteTarget] =
     useState<ManufacturerListItem | null>(null)
-  const [name, setName] = useState('')
+  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [pending, startTransition] = useTransition()
 
@@ -61,13 +118,13 @@ export function ManufacturersClient({
   }, [initialRows, search])
 
   function openCreate() {
-    setName('')
+    setDraft(EMPTY_DRAFT)
     setFieldErrors({})
     setEditor({ mode: 'create' })
   }
 
   function openEdit(row: ManufacturerListItem) {
-    setName(row.name)
+    setDraft(draftOf(row))
     setFieldErrors({})
     setEditor({ mode: 'edit', row })
   }
@@ -82,8 +139,8 @@ export function ManufacturersClient({
     startTransition(async () => {
       const result =
         editor.mode === 'edit'
-          ? await updateManufacturer({ id: editor.row.id, name })
-          : await createManufacturer({ name })
+          ? await updateManufacturer({ id: editor.row.id, ...draft })
+          : await createManufacturer(draft)
 
       if (!result.ok) {
         setFieldErrors(result.fieldErrors ?? {})
@@ -159,6 +216,7 @@ export function ManufacturersClient({
           <DataTableHead>
             <DataTableRow>
               <DataTableHeaderCell>Név</DataTableHeaderCell>
+              <DataTableHeaderCell>Termékbiztonsági adatok</DataTableHeaderCell>
               <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
                 Műveletek
               </DataTableHeaderCell>
@@ -169,6 +227,15 @@ export function ManufacturersClient({
               <DataTableRow key={row.id}>
                 <DataTableCell>
                   <span className="font-medium">{row.name}</span>
+                </DataTableCell>
+                <DataTableCell>
+                  {hasGpsrContact(row) ? (
+                    <span className="text-ink-secondary">Kitöltve</span>
+                  ) : (
+                    <span className="text-warning-ink">
+                      Hiányzik a cím vagy elérhetőség
+                    </span>
+                  )}
                 </DataTableCell>
                 <DataTableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
@@ -209,13 +276,14 @@ export function ManufacturersClient({
           if (!open) closeEditor()
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editor.mode === 'edit' ? 'Gyártó szerkesztése' : 'Új gyártó'}
             </DialogTitle>
             <DialogDescription>
-              Add meg a gyártó megjelenő nevét.
+              A név kötelező. A termékbiztonsági adatok a webshop termékoldalán
+              jelennek meg (GPSR).
             </DialogDescription>
           </DialogHeader>
 
@@ -235,12 +303,42 @@ export function ManufacturersClient({
             >
               <Input
                 id="manufacturer-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={draft.name}
+                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                 autoComplete="off"
                 autoFocus
               />
             </FormField>
+
+            <fieldset className="space-y-3 border-t border-border pt-3">
+              <legend className="text-body font-medium text-ink">
+                Termékbiztonsági adatok
+              </legend>
+              <p className="text-hint text-ink-secondary">
+                A gyártó postai címe és e-mail / weboldal elérhetősége. Webshopban
+                eladott terméknél kötelező.
+              </p>
+              {GPSR_FIELDS.map((f) => (
+                <FormField
+                  key={f.key}
+                  label={f.label}
+                  htmlFor={`manufacturer-${f.key}`}
+                  optionalLabel
+                  error={fieldErrors[f.key]}
+                  hint={!fieldErrors[f.key] ? f.hint : undefined}
+                >
+                  <Input
+                    id={`manufacturer-${f.key}`}
+                    type={f.type}
+                    value={draft[f.key]}
+                    onChange={(e) =>
+                      setDraft((d) => ({ ...d, [f.key]: e.target.value }))
+                    }
+                    autoComplete="off"
+                  />
+                </FormField>
+              ))}
+            </fieldset>
 
             <DialogFooter>
               <Button

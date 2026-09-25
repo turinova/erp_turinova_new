@@ -2,6 +2,7 @@ export type AppPageCategory =
   | 'Fő'
   | 'Műhely'
   | 'Értékesítés'
+  | 'Webshop'
   | 'Beszerzés'
   | 'Jelenlét'
   | 'Törzsadatok'
@@ -19,7 +20,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 12
+export const PAGE_CATALOG_VERSION = 13
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -48,6 +49,22 @@ export const APP_PAGES: AppPageDef[] = [
     category: 'Értékesítés'
   },
   { key: '/szamlak', label: 'Bizonylatok', category: 'Értékesítés' },
+  { key: '/webshop', label: 'Webshop áttekintés', category: 'Webshop' },
+  {
+    key: '/webshop/katalogus',
+    label: 'Bolt katalógus',
+    category: 'Webshop'
+  },
+  {
+    key: '/webshop/kategoriak',
+    label: 'Bolt kategóriák',
+    category: 'Webshop'
+  },
+  {
+    key: '/webshop/tulajdonsagok',
+    label: 'Jellemzők',
+    category: 'Webshop'
+  },
   { key: '/jelenlet', label: 'Jelenlét naptár', category: 'Jelenlét' },
   {
     key: '/jelenlet/naptar',
@@ -208,6 +225,10 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/ertekesitesek/muszakok',
       '/szamlak',
       '/beallitasok/szamlazas',
+      '/webshop',
+      '/webshop/katalogus',
+      '/webshop/kategoriak',
+      '/webshop/tulajdonsagok',
       '/jelenlet',
       '/jelenlet/naptar',
       '/dolgozok',

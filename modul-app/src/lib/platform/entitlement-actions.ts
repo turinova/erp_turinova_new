@@ -306,6 +306,13 @@ export async function setTenantAddon(input: {
     if (error) {
       return { ok: false, message: 'Add-on kikapcsolás sikertelen.' }
     }
+
+    if (addonKey === 'webshop') {
+      const { freezeWebshopPublish } = await import(
+        '@/lib/webshop/entitlement'
+      )
+      await freezeWebshopPublish(ctx.admin, input.tenantId)
+    }
   }
 
   const mat = await materializeTenantEntitlements(ctx.admin, input.tenantId)
@@ -340,6 +347,19 @@ export async function setTenantAddon(input: {
         })
       } catch (e) {
         console.error('seed_hr_employee_types_for_tenant', e)
+      }
+    }
+    if (addonKey === 'webshop') {
+      const { grantWebshopPageAccess } = await import(
+        '@/lib/webshop/entitlement'
+      )
+      await grantWebshopPageAccess(ctx.admin, input.tenantId)
+      try {
+        await ctx.admin.rpc('seed_webshop_defaults_for_tenant', {
+          p_tenant_id: input.tenantId
+        })
+      } catch (e) {
+        console.error('seed_webshop_defaults_for_tenant', e)
       }
     }
     if (addonKey === 'lapszabaszat') {

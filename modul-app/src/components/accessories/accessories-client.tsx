@@ -42,7 +42,13 @@ import type {
   AccessoryListItem,
   AccessoryUnitOption
 } from '@/lib/accessories/queries'
+import {
+  SHOP_READY_LABEL,
+  shopReadyTone
+} from '@/lib/accessories/web-shop'
 import type { ProductLabelPayload } from '@/lib/labels/types'
+
+type WebListFilter = 'all' | 'web' | 'blocked' | 'ready'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
 
@@ -63,16 +69,19 @@ type AccessoriesClientProps = {
   canWrite: boolean
   canPrintLabels?: boolean
   units?: AccessoryUnitOption[]
+  hasWebshop?: boolean
 }
 
 export function AccessoriesClient({
   initialRows,
   canWrite,
   canPrintLabels = false,
-  units = []
+  units = [],
+  hasWebshop = false
 }: AccessoriesClientProps) {
   const router = useRouter()
   const [search, setSearch] = useState('')
+  const [webFilter, setWebFilter] = useState<WebListFilter>('all')
   const [deleteTarget, setDeleteTarget] = useState<AccessoryListItem | null>(
     null
   )
@@ -92,16 +101,29 @@ export function AccessoriesClient({
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return initialRows
-    return initialRows.filter(
-      (row) =>
+    return initialRows.filter((row) => {
+      if (webFilter === 'web' && !row.sellable_web) return false
+      if (webFilter === 'blocked' && row.shop_ready_level !== 'blocked') {
+        return false
+      }
+      if (
+        webFilter === 'ready' &&
+        row.shop_ready_level !== 'competitive' &&
+        row.shop_ready_level !== 'agent_excellent'
+      ) {
+        return false
+      }
+      if (!term) return true
+      return (
         row.name.toLowerCase().includes(term) ||
         row.sku.toLowerCase().includes(term) ||
         row.manufacturer_name.toLowerCase().includes(term) ||
         (row.barcode ?? '').toLowerCase().includes(term) ||
-        (row.barcode_internal ?? '').toLowerCase().includes(term)
-    )
-  }, [initialRows, search])
+        (row.barcode_internal ?? '').toLowerCase().includes(term) ||
+        (row.web_slug ?? '').toLowerCase().includes(term)
+      )
+    })
+  }, [initialRows, search, webFilter])
 
   async function downloadExport(mode: 'template' | 'data') {
     setExportBusy(true)
@@ -296,10 +318,10 @@ export function AccessoriesClient({
         }
       />
 
-      <div className="mb-3">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <form
           onSubmit={(e) => e.preventDefault()}
-          className="relative max-w-sm"
+          className="relative max-w-sm flex-1"
         >
           <label className="sr-only" htmlFor="accessory-search">
             Keresés
@@ -312,10 +334,32 @@ export function AccessoriesClient({
             id="accessory-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Keresés név, SKU, vonalkód…"
+            placeholder="Keresés név, SKU, vonalkód, slug…"
             className="pl-8"
           />
         </form>
+        {hasWebshop ? (
+          <div className="flex flex-wrap gap-1">
+            {(
+              [
+                ['all', 'Összes'],
+                ['web', 'Online bolt'],
+                ['blocked', 'Majdnem kész'],
+                ['ready', 'Kész a boltra']
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={webFilter === value ? 'secondary' : 'ghost'}
+                onClick={() => setWebFilter(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {filtered.length === 0 ? (
@@ -413,6 +457,11 @@ export function AccessoriesClient({
                     </StatusBadge>
                     {row.active && row.sellable_pos === false ? (
                       <StatusBadge tone="neutral">Nem POS</StatusBadge>
+                    ) : null}
+                    {hasWebshop && row.sellable_web ? (
+                      <StatusBadge tone={shopReadyTone(row.shop_ready_level)}>
+                        {SHOP_READY_LABEL[row.shop_ready_level]}
+                      </StatusBadge>
                     ) : null}
                   </div>
                 </DataTableCell>
