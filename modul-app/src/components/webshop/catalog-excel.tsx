@@ -147,6 +147,15 @@ async function saveBlob(response: Response, fallback: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
+/** GET letöltés blob nélkül: a böngésző maga tölti le (Safari-biztos, nagy fájlnál is). */
+function startDownload(url: string) {
+  const a = document.createElement('a')
+  a.href = url
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
 async function errorOf(response: Response, fallback: string): Promise<string> {
   const data = (await response.json().catch(() => null)) as { error?: string } | null
   return data?.error || fallback
@@ -239,26 +248,22 @@ export function CatalogExcel({
     setExportSheets(DEFAULT_SHEETS[mode])
   }
 
-  async function download(mode: ExportMode | 'template') {
+  function download(mode: ExportMode | 'template') {
+    const sp = new URLSearchParams({ mode })
+    if (mode !== 'template') sp.set('sheets', exportSheets.join(','))
+    if (filter !== 'all') sp.set('filter', filter)
+    if (q.trim()) sp.set('q', q.trim())
     setExportBusy(true)
-    try {
-      const sp = new URLSearchParams({ mode })
-      if (mode !== 'template') sp.set('sheets', exportSheets.join(','))
-      if (filter !== 'all') sp.set('filter', filter)
-      if (q.trim()) sp.set('q', q.trim())
-      const response = await fetch(`/api/webshop/catalog/export?${sp.toString()}`)
-      if (!response.ok) {
-        toast.error(await errorOf(response, 'A letöltés nem sikerült.'))
-        return
-      }
-      await saveBlob(response, 'bolt.xlsx')
-      toast.success(mode === 'template' ? 'Üres sablon letöltve.' : 'Letöltve. Töltsd ki, majd töltsd fel.')
-      setExportOpen(false)
-    } catch {
-      toast.error('A letöltés nem sikerült.')
-    } finally {
+    startDownload(`/api/webshop/catalog/export?${sp.toString()}`)
+    toast.success(
+      mode === 'template'
+        ? 'A sablon letöltése elindult.'
+        : 'A fájl készül, a letöltés pár másodperc múlva magától elindul. Töltsd ki, majd töltsd fel.'
+    )
+    setTimeout(() => {
       setExportBusy(false)
-    }
+      setExportOpen(false)
+    }, 1500)
   }
 
   async function requestPreview(src: Extract<ShopXSource, { kind: 'storage' }>, d: ShopXDecisions) {

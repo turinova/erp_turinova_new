@@ -116,29 +116,29 @@ export function AccessoriesExcel({ canWrite }: { canWrite: boolean }) {
 
   const open = Boolean(preview || result)
 
-  async function download(mode: 'data' | 'template', after?: () => void) {
-    const response = await fetch(`/api/accessories/export?mode=${mode}`)
-    if (!response.ok) {
-      toast.error(await errorOf(response, 'A letöltés nem sikerült.'))
-      return false
-    }
-    await saveBlob(response, mode === 'template' ? 'termekek_sablon.xlsx' : 'termekek.xlsx')
+  function download(mode: 'data' | 'template', after?: () => void) {
+    // Blob nélkül: a böngésző maga tölti le (Safari-biztos).
+    const a = document.createElement('a')
+    a.href = `/api/accessories/export?mode=${mode}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
     after?.()
     return true
   }
 
-  async function runExport() {
+  function runExport() {
     setExportBusy(true)
-    try {
-      if (await download(exportMode)) {
-        toast.success(exportMode === 'template' ? 'Üres sablon letöltve.' : 'Letöltve. Írd át, majd töltsd fel.')
-        setExportOpen(false)
-      }
-    } catch {
-      toast.error('A letöltés nem sikerült.')
-    } finally {
+    download(exportMode)
+    toast.success(
+      exportMode === 'template'
+        ? 'A sablon letöltése elindult.'
+        : 'A fájl készül, a letöltés pár másodperc múlva magától elindul. Írd át, majd töltsd fel.'
+    )
+    setTimeout(() => {
       setExportBusy(false)
-    }
+      setExportOpen(false)
+    }, 1500)
   }
 
   async function requestPreview(f: File, d: AccessoryImportDecisions) {
@@ -216,18 +216,12 @@ export function AccessoriesExcel({ canWrite }: { canWrite: boolean }) {
     }
   }
 
-  async function downloadBackup() {
+  function downloadBackup() {
     setBusy('backup')
-    try {
-      if (await download('data')) {
-        setBackedUp(true)
-        toast.success('A mostani állapot letöltve. Ezt visszatöltve visszaállíthatod.')
-      }
-    } catch {
-      toast.error('A letöltés nem sikerült.')
-    } finally {
-      setBusy(null)
-    }
+    download('data')
+    setBackedUp(true)
+    toast.success('A mostani állapot letöltése elindult. Ezt visszatöltve visszaállíthatod.')
+    setTimeout(() => setBusy(null), 1500)
   }
 
   async function downloadProblems() {
