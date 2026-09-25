@@ -1,5 +1,5 @@
 /**
- * Kategóriánkénti kulcsadatok („Passzol-e?”) — tiszta függvények, kliens + szerver.
+ * Kategóriánkénti kulcsadatok — tiszta függvények, kliens + szerver.
  * Nincs zod / supabase import: a publikus PDP bundle-be is bekerülhet.
  */
 

@@ -1,17 +1,22 @@
 'use client'
 
-import { Bell, Check, Mail, Minus, Phone, Plus, ShoppingBag, Truck } from 'lucide-react'
+import { Bell, Check, Minus, Plus, ShoppingBag, Truck } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 
 import { StockNotifyDialog } from '@/components/storefront/stock-notify-dialog'
 import { STOREFRONT_FOOTER_ID } from '@/components/storefront/storefront-scroll'
 import { buttonVariants } from '@/components/ui/button'
+import { addToCart } from '@/lib/storefront/cart'
 import { formatFt as formatMoneyFt } from '@/lib/storefront/format'
 import type { PublicPdpPriceTier } from '@/lib/storefront/pdp'
+import { STOREFRONT_CART } from '@/lib/storefront/url'
 import { cn } from '@/lib/utils'
 
 type StorefrontPdpBuyBoxProps = {
   accessoryId: string
+  slug: string
   imageUrl: string | null
   unitGross: number
   priceTiers: PublicPdpPriceTier[]
@@ -28,8 +33,7 @@ type StorefrontPdpBuyBoxProps = {
 }
 
 type CtaAction =
-  | { kind: 'mailto'; href: string; label: string; icon: typeof Mail }
-  | { kind: 'tel'; href: string; label: string; icon: typeof Phone }
+  | { kind: 'cart'; label: string }
   | { kind: 'notify'; label: string }
   | { kind: 'none'; label: string }
 
@@ -60,6 +64,7 @@ function useVisible(ref: React.RefObject<Element | null>, fallback: boolean) {
 
 export function StorefrontPdpBuyBox({
   accessoryId,
+  slug,
   imageUrl,
   unitGross,
   priceTiers,
@@ -74,6 +79,7 @@ export function StorefrontPdpBuyBox({
   sellerPhone,
   privacyUrl
 }: StorefrontPdpBuyBoxProps) {
+  const router = useRouter()
   const [qty, setQty] = useState(1)
   const [notifyOpen, setNotifyOpen] = useState(false)
   const [notified, setNotified] = useState(false)
@@ -107,49 +113,38 @@ export function StorefrontPdpBuyBox({
     shippingHint = 'Ingyenes szállítás.'
   }
 
-  const itemLine = [productTitle, variantLabel].filter(Boolean).join(' · ')
   let cta: CtaAction
   if (!inStock) {
     cta = { kind: 'notify', label: notified ? 'Értesítést kértél' : 'Szólj, ha megérkezik' }
-  } else if (sellerEmail) {
-    const body = [
-      'Szeretném megrendelni:',
-      '',
-      itemLine,
-      `Cikkszám: ${sku}`,
-      `Mennyiség: ${qty} db`,
-      `Ár: ${formatMoneyFt(total)} (bruttó)`,
-      '',
-      'Név:',
-      'Szállítási cím vagy személyes átvétel:',
-      'Telefonszám:',
-      ''
-    ].join('\n')
-    cta = {
-      kind: 'mailto',
-      href: `mailto:${sellerEmail}?subject=${encodeURIComponent(`Rendelés: ${productTitle}`)}&body=${encodeURIComponent(body)}`,
-      label: 'Megrendelem',
-      icon: Mail
-    }
-  } else if (sellerPhone) {
-    cta = {
-      kind: 'tel',
-      href: `tel:${sellerPhone.replace(/\s/g, '')}`,
-      label: 'Megrendelem telefonon',
-      icon: Phone
-    }
+  } else if (sellerEmail || sellerPhone) {
+    cta = { kind: 'cart', label: 'Kosárba' }
   } else {
     cta = { kind: 'none', label: 'Kosárba' }
   }
 
   const footnote =
-    cta.kind === 'mailto'
-      ? 'Online fizetés még nincs: a gomb kitöltött rendelési e-mailt nyit, a rendelés a visszaigazolásunkkal végleges.'
-      : cta.kind === 'tel'
-        ? 'Online fizetés még nincs — telefonon veszünk fel rendelést.'
-        : cta.kind === 'none'
-          ? 'Az online rendelés hamarosan indul.'
-          : null
+    cta.kind === 'none' ? 'Az online rendelés hamarosan indul.' : null
+
+  function addCurrent() {
+    addToCart(
+      {
+        id: accessoryId,
+        slug,
+        title: productTitle,
+        variantLabel,
+        imageUrl,
+        sku,
+        unitGross,
+        tiers: priceTiers,
+        maxQty
+      },
+      qty
+    )
+    toast.success('Kosárba tettem', {
+      description: `${qty} db · ${[productTitle, variantLabel].filter(Boolean).join(' · ')}`,
+      action: { label: 'Kosár', onClick: () => router.push(STOREFRONT_CART) }
+    })
+  }
 
   function renderCta(className: string, withTotal: boolean, tabIndex?: number) {
     const cls = cn(
@@ -160,7 +155,7 @@ export function StorefrontPdpBuyBox({
     const text = (
       <span className="truncate">
         {cta.label}
-        {withTotal && cta.kind !== 'notify' && cta.kind !== 'tel'
+        {withTotal && cta.kind === 'cart'
           ? ` · ${formatMoneyFt(total)}`
           : ''}
       </span>
@@ -183,6 +178,19 @@ export function StorefrontPdpBuyBox({
         </button>
       )
     }
+    if (cta.kind === 'cart') {
+      return (
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          onClick={addCurrent}
+          className={cn(cls, 'cursor-pointer')}
+        >
+          <ShoppingBag className="size-4 shrink-0" aria-hidden />
+          {text}
+        </button>
+      )
+    }
     if (cta.kind === 'none') {
       return (
         <button
@@ -196,13 +204,7 @@ export function StorefrontPdpBuyBox({
         </button>
       )
     }
-    const Icon = cta.icon
-    return (
-      <a href={cta.href} tabIndex={tabIndex} className={cn(cls, 'cursor-pointer')}>
-        <Icon className="size-4 shrink-0" aria-hidden />
-        {text}
-      </a>
-    )
+    return null
   }
 
   return (

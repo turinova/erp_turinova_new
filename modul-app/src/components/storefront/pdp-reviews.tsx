@@ -254,6 +254,21 @@ export function StorefrontPdpReviews({
 
   if (!reviews.enabled) return null
 
+  if (reviews.count === 0 && !formOpen && !sent) {
+    return (
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] text-ink-secondary">
+        Vásároltál már ilyet?
+        <button
+          type="button"
+          onClick={() => setFormOpen(true)}
+          className="inline-flex min-h-11 cursor-pointer items-center font-medium text-ink underline underline-offset-2"
+        >
+          Írd meg a véleményed
+        </button>
+      </p>
+    )
+  }
+
   const max = Math.max(1, ...reviews.distribution)
 
   return (

@@ -2,17 +2,11 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useRef, useState, useTransition } from 'react'
-import {
-  Download,
-  Package,
-  Plus,
-  Printer,
-  Search,
-  Upload
-} from 'lucide-react'
+import { useEffect, useState, useTransition } from 'react'
+import { Package, Plus, Printer, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { AccessoriesExcel } from '@/components/accessories/accessories-excel'
 import { ProductLabelPrintDialog } from '@/components/labels/product-label-print-dialog'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
@@ -36,21 +30,33 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { softDeleteAccessory } from '@/lib/accessories/actions'
-import type { AccessoryImportPreviewResult } from '@/lib/accessories/import-plan'
 import { formatMoneyFt } from '@/lib/accessories/parse'
-import type {
-  AccessoryListItem,
-  AccessoryUnitOption
-} from '@/lib/accessories/queries'
 import {
-  SHOP_READY_LABEL,
-  shopReadyTone
-} from '@/lib/accessories/web-shop'
+  ACCESSORY_PAGE_SIZE,
+  type AccessoryListItem,
+  type AccessoryListPage,
+  type AccessoryUnitOption,
+  type AccessoryWebFilter
+} from '@/lib/accessories/queries'
 import type { ProductLabelPayload } from '@/lib/labels/types'
-
-type WebListFilter = 'all' | 'web' | 'blocked' | 'ready'
+import { cn } from '@/lib/utils'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
+
+const WEB_FILTER_LABEL: Record<AccessoryWebFilter, string> = {
+  all: 'Összes',
+  web: 'Kint van a boltban',
+  not_web: 'Nincs a boltban'
+}
+
+function listHref(q: string, web: AccessoryWebFilter, page: number): string {
+  const sp = new URLSearchParams()
+  if (q.trim()) sp.set('q', q.trim())
+  if (web !== 'all') sp.set('web', web)
+  if (page > 1) sp.set('page', String(page))
+  const qs = sp.toString()
+  return qs ? `${LIST_PATH}?${qs}` : LIST_PATH
+}
 
 function toLabelPayload(row: AccessoryListItem): ProductLabelPayload {
   return {
@@ -65,7 +71,9 @@ function toLabelPayload(row: AccessoryListItem): ProductLabelPayload {
 }
 
 type AccessoriesClientProps = {
-  initialRows: AccessoryListItem[]
+  data: AccessoryListPage
+  q: string
+  web: AccessoryWebFilter
   canWrite: boolean
   canPrintLabels?: boolean
   units?: AccessoryUnitOption[]
@@ -73,178 +81,26 @@ type AccessoriesClientProps = {
 }
 
 export function AccessoriesClient({
-  initialRows,
+  data,
+  q,
+  web,
   canWrite,
   canPrintLabels = false,
   units = [],
   hasWebshop = false
 }: AccessoriesClientProps) {
   const router = useRouter()
-  const [search, setSearch] = useState('')
-  const [webFilter, setWebFilter] = useState<WebListFilter>('all')
-  const [deleteTarget, setDeleteTarget] = useState<AccessoryListItem | null>(
-    null
-  )
-  const [previewTarget, setPreviewTarget] = useState<AccessoryListItem | null>(
-    null
-  )
-  const [labelTarget, setLabelTarget] = useState<ProductLabelPayload | null>(
-    null
-  )
+  const [search, setSearch] = useState(q)
+  const [deleteTarget, setDeleteTarget] = useState<AccessoryListItem | null>(null)
+  const [previewTarget, setPreviewTarget] = useState<AccessoryListItem | null>(null)
+  const [labelTarget, setLabelTarget] = useState<ProductLabelPayload | null>(null)
   const [pending, startTransition] = useTransition()
-  const [exportBusy, setExportBusy] = useState(false)
-  const [importBusy, setImportBusy] = useState(false)
-  const [importFile, setImportFile] = useState<File | null>(null)
-  const [importPreview, setImportPreview] =
-    useState<AccessoryImportPreviewResult | null>(null)
-  const importInputRef = useRef<HTMLInputElement>(null)
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    return initialRows.filter((row) => {
-      if (webFilter === 'web' && !row.sellable_web) return false
-      if (webFilter === 'blocked' && row.shop_ready_level !== 'blocked') {
-        return false
-      }
-      if (
-        webFilter === 'ready' &&
-        row.shop_ready_level !== 'competitive' &&
-        row.shop_ready_level !== 'agent_excellent'
-      ) {
-        return false
-      }
-      if (!term) return true
-      return (
-        row.name.toLowerCase().includes(term) ||
-        row.sku.toLowerCase().includes(term) ||
-        row.manufacturer_name.toLowerCase().includes(term) ||
-        (row.barcode ?? '').toLowerCase().includes(term) ||
-        (row.barcode_internal ?? '').toLowerCase().includes(term) ||
-        (row.web_slug ?? '').toLowerCase().includes(term)
-      )
-    })
-  }, [initialRows, search, webFilter])
-
-  async function downloadExport(mode: 'template' | 'data') {
-    setExportBusy(true)
-    try {
-      const response = await fetch(`/api/accessories/export?mode=${mode}`)
-      if (!response.ok) {
-        const data = (await response.json().catch(() => null)) as {
-          error?: string
-        } | null
-        toast.error(data?.error || 'A letöltés sikertelen.')
-        return
-      }
-      const blob = await response.blob()
-      const disposition = response.headers.get('Content-Disposition')
-      const match = disposition?.match(/filename="([^"]+)"/)
-      const filename =
-        match?.[1] ??
-        (mode === 'template' ? 'termekek_sablon.xlsx' : 'termekek.xlsx')
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-      toast.success(
-        mode === 'template' ? 'Sablon letöltve.' : 'Export kész.'
-      )
-    } catch {
-      toast.error('A letöltés sikertelen.')
-    } finally {
-      setExportBusy(false)
-    }
-  }
-
-  async function handleImportFileSelect(
-    event: React.ChangeEvent<HTMLInputElement>
-  ) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    const lower = file.name.toLowerCase()
-    if (!lower.endsWith('.xlsx') && !lower.endsWith('.xls')) {
-      toast.error('Csak .xlsx fájl tölthető fel.')
-      return
-    }
-
-    setImportBusy(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const response = await fetch('/api/accessories/import/preview', {
-        method: 'POST',
-        body: formData
-      })
-      const data = (await response.json()) as
-        | AccessoryImportPreviewResult
-        | { error?: string }
-      if (!response.ok || !('stats' in data)) {
-        toast.error(
-          'error' in data && data.error
-            ? data.error
-            : 'Az előnézet betöltése sikertelen.'
-        )
-        return
-      }
-      setImportFile(file)
-      setImportPreview(data)
-    } catch {
-      toast.error('Az előnézet betöltése sikertelen.')
-    } finally {
-      setImportBusy(false)
-    }
-  }
-
-  async function handleImportConfirm() {
-    if (!importFile || !importPreview) return
-    if (importPreview.stats.create + importPreview.stats.update === 0) {
-      toast.error('Nincs importálható érvényes sor.')
-      return
-    }
-    setImportBusy(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', importFile)
-      const response = await fetch('/api/accessories/import', {
-        method: 'POST',
-        body: formData
-      })
-      const data = (await response.json()) as {
-        error?: string
-        results?: { created: number; updated: number; skippedErrors: number }
-      }
-      if (!response.ok || !data.results) {
-        toast.error(data.error || 'Az import sikertelen.')
-        return
-      }
-      const parts: string[] = []
-      if (data.results.created > 0) {
-        parts.push(`${data.results.created} új`)
-      }
-      if (data.results.updated > 0) {
-        parts.push(`${data.results.updated} frissítve`)
-      }
-      toast.success(`Import kész: ${parts.join(', ')}.`)
-      setImportFile(null)
-      setImportPreview(null)
-      router.refresh()
-    } catch {
-      toast.error('Az import sikertelen.')
-    } finally {
-      setImportBusy(false)
-    }
-  }
-
-  function closeImportDialog() {
-    if (importBusy) return
-    setImportFile(null)
-    setImportPreview(null)
-  }
+  useEffect(() => {
+    if (search.trim() === q.trim()) return
+    const t = setTimeout(() => router.replace(listHref(search, web, 1)), 300)
+    return () => clearTimeout(t)
+  }, [search, q, web, router])
 
   function handleDelete() {
     if (!deleteTarget) return
@@ -260,6 +116,10 @@ export function AccessoriesClient({
     })
   }
 
+  const filtered = q.trim() !== '' || web !== 'all'
+  const from = data.total === 0 ? 0 : (data.page - 1) * ACCESSORY_PAGE_SIZE + 1
+  const to = Math.min(data.page * ACCESSORY_PAGE_SIZE, data.total)
+
   return (
     <div>
       <PageHeader
@@ -267,52 +127,12 @@ export function AccessoriesClient({
         description="Eladható termékek törzse."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              loading={exportBusy}
-              disabled={exportBusy || importBusy}
-              onClick={() => downloadExport('data')}
-            >
-              <Download className="size-3.5" aria-hidden />
-              Export
-            </Button>
+            <AccessoriesExcel canWrite={canWrite} />
             {canWrite ? (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={exportBusy}
-                  disabled={exportBusy || importBusy}
-                  onClick={() => downloadExport('template')}
-                >
-                  Sablon
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  loading={importBusy}
-                  disabled={exportBusy || importBusy}
-                  onClick={() => importInputRef.current?.click()}
-                >
-                  <Upload className="size-3.5" aria-hidden />
-                  Import
-                </Button>
-                <input
-                  ref={importInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  className="sr-only"
-                  onChange={handleImportFileSelect}
-                />
-                <Button
-                  type="button"
-                  onClick={() => router.push(`${LIST_PATH}/uj`)}
-                >
-                  <Plus className="size-3.5" aria-hidden />
-                  Új termék
-                </Button>
-              </>
+              <Button type="button" onClick={() => router.push(`${LIST_PATH}/uj`)}>
+                <Plus className="size-3.5" aria-hidden />
+                Új termék
+              </Button>
             ) : null}
           </div>
         }
@@ -320,8 +140,12 @@ export function AccessoriesClient({
 
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <form
-          onSubmit={(e) => e.preventDefault()}
+          onSubmit={(e) => {
+            e.preventDefault()
+            router.replace(listHref(search, web, 1))
+          }}
           className="relative max-w-sm flex-1"
+          role="search"
         >
           <label className="sr-only" htmlFor="accessory-search">
             Keresés
@@ -334,52 +158,46 @@ export function AccessoriesClient({
             id="accessory-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Keresés név, SKU, vonalkód, slug…"
+            placeholder="Keresés név, SKU, vonalkód, gyártó…"
             className="pl-8"
           />
         </form>
         {hasWebshop ? (
-          <div className="flex flex-wrap gap-1">
-            {(
-              [
-                ['all', 'Összes'],
-                ['web', 'Online bolt'],
-                ['blocked', 'Majdnem kész'],
-                ['ready', 'Kész a boltra']
-              ] as const
-            ).map(([value, label]) => (
-              <Button
+          <nav className="flex flex-wrap gap-1.5" aria-label="Szűrés">
+            {(Object.keys(WEB_FILTER_LABEL) as AccessoryWebFilter[]).map((value) => (
+              <Link
                 key={value}
-                type="button"
-                size="sm"
-                variant={webFilter === value ? 'secondary' : 'ghost'}
-                onClick={() => setWebFilter(value)}
+                href={listHref(q, value, 1)}
+                aria-current={web === value ? 'page' : undefined}
+                className={cn(
+                  'inline-flex h-7 items-center rounded-md border px-2.5 text-hint font-medium',
+                  web === value
+                    ? 'border-primary bg-primary text-white'
+                    : 'border-border bg-surface text-ink-secondary hover:bg-subtle'
+                )}
               >
-                {label}
-              </Button>
+                {WEB_FILTER_LABEL[value]}
+              </Link>
             ))}
-          </div>
+          </nav>
         ) : null}
       </div>
 
-      {filtered.length === 0 ? (
+      {data.rows.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-10 text-center">
           <Package className="size-8 text-ink-secondary" aria-hidden />
           <div className="space-y-1">
             <p className="text-body font-medium text-ink">
-              {initialRows.length === 0 ? 'Még nincs termék' : 'Nincs találat'}
+              {filtered || data.total > 0 ? 'Nincs találat' : 'Még nincs termék'}
             </p>
             <p className="max-w-sm text-body text-ink-secondary">
-              {initialRows.length === 0
-                ? 'Új termék vagy Excel import.'
-                : 'Próbálj másik keresőkifejezést.'}
+              {filtered || data.total > 0
+                ? 'Próbálj másik keresőkifejezést vagy szűrőt.'
+                : 'Adj hozzá egy terméket, vagy töltsd fel Excelből.'}
             </p>
           </div>
-          {canWrite && initialRows.length === 0 ? (
-            <Button
-              type="button"
-              onClick={() => router.push(`${LIST_PATH}/uj`)}
-            >
+          {canWrite && !filtered && data.total === 0 ? (
+            <Button type="button" onClick={() => router.push(`${LIST_PATH}/uj`)}>
               <Plus className="size-3.5" aria-hidden />
               Új termék
             </Button>
@@ -393,9 +211,7 @@ export function AccessoriesClient({
               <DataTableHeaderCell>Név</DataTableHeaderCell>
               <DataTableHeaderCell>SKU</DataTableHeaderCell>
               <DataTableHeaderCell>Gyártó</DataTableHeaderCell>
-              <DataTableHeaderCell className="text-right">
-                Bruttó
-              </DataTableHeaderCell>
+              <DataTableHeaderCell className="text-right">Bruttó</DataTableHeaderCell>
               <DataTableHeaderCell>Egység</DataTableHeaderCell>
               <DataTableHeaderCell>Állapot</DataTableHeaderCell>
               <DataTableHeaderCell className="text-right">
@@ -404,7 +220,7 @@ export function AccessoriesClient({
             </DataTableRow>
           </DataTableHead>
           <DataTableBody>
-            {filtered.map((row) => (
+            {data.rows.map((row) => (
               <DataTableRow key={row.id}>
                 <DataTableCell>
                   {row.image_url ? (
@@ -418,6 +234,7 @@ export function AccessoriesClient({
                       <img
                         src={row.image_url}
                         alt=""
+                        loading="lazy"
                         className="size-12 rounded-[5px] object-cover"
                       />
                     </button>
@@ -431,25 +248,16 @@ export function AccessoriesClient({
                   )}
                 </DataTableCell>
                 <DataTableCell className="font-medium text-ink">
-                  <Link
-                    href={`${LIST_PATH}/${row.id}`}
-                    className="underline-offset-2 hover:underline"
-                  >
+                  <Link href={`${LIST_PATH}/${row.id}`} className="underline-offset-2 hover:underline">
                     {row.name}
                   </Link>
                 </DataTableCell>
-                <DataTableCell className="tabular-nums text-ink-secondary">
-                  {row.sku}
-                </DataTableCell>
-                <DataTableCell className="text-ink-secondary">
-                  {row.manufacturer_name}
-                </DataTableCell>
+                <DataTableCell className="tabular-nums text-ink-secondary">{row.sku}</DataTableCell>
+                <DataTableCell className="text-ink-secondary">{row.manufacturer_name}</DataTableCell>
                 <DataTableCell className="text-right tabular-nums text-ink">
                   {formatMoneyFt(row.price_gross)}
                 </DataTableCell>
-                <DataTableCell className="text-ink-secondary">
-                  {row.unit_shortform}
-                </DataTableCell>
+                <DataTableCell className="text-ink-secondary">{row.unit_shortform}</DataTableCell>
                 <DataTableCell>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <StatusBadge tone={row.active ? 'success' : 'neutral'}>
@@ -458,11 +266,7 @@ export function AccessoriesClient({
                     {row.active && row.sellable_pos === false ? (
                       <StatusBadge tone="neutral">Nem POS</StatusBadge>
                     ) : null}
-                    {hasWebshop && row.sellable_web ? (
-                      <StatusBadge tone={shopReadyTone(row.shop_ready_level)}>
-                        {SHOP_READY_LABEL[row.shop_ready_level]}
-                      </StatusBadge>
-                    ) : null}
+                    {hasWebshop && row.in_shop ? <StatusBadge tone="info">Boltban</StatusBadge> : null}
                   </div>
                 </DataTableCell>
                 <DataTableCell className="text-right">
@@ -498,6 +302,32 @@ export function AccessoriesClient({
         </DataTable>
       )}
 
+      {data.total > 0 ? (
+        <nav className="mt-2.5 flex items-center justify-between gap-2" aria-label="Lapozás">
+          <span className="text-hint tabular-nums text-ink-secondary">
+            {from}–{to} / {data.total.toLocaleString('hu-HU')}
+          </span>
+          <div className="flex gap-1.5">
+            {data.page > 1 ? (
+              <Link
+                href={listHref(q, web, data.page - 1)}
+                className="inline-flex h-7 items-center rounded-md border border-border bg-surface px-2.5 text-hint font-medium text-ink hover:bg-subtle"
+              >
+                Előző
+              </Link>
+            ) : null}
+            {data.page < data.pageCount ? (
+              <Link
+                href={listHref(q, web, data.page + 1)}
+                className="inline-flex h-7 items-center rounded-md border border-border bg-surface px-2.5 text-hint font-medium text-ink hover:bg-subtle"
+              >
+                Következő
+              </Link>
+            ) : null}
+          </div>
+        </nav>
+      ) : null}
+
       <Dialog
         open={Boolean(previewTarget?.image_url)}
         onOpenChange={(open) => {
@@ -508,9 +338,7 @@ export function AccessoriesClient({
           <DialogHeader>
             <DialogTitle>{previewTarget?.name ?? 'Kép'}</DialogTitle>
             <DialogDescription>
-              {previewTarget
-                ? `${previewTarget.manufacturer_name} · ${previewTarget.sku}`
-                : null}
+              {previewTarget ? `${previewTarget.manufacturer_name} · ${previewTarget.sku}` : null}
             </DialogDescription>
           </DialogHeader>
           {previewTarget?.image_url ? (
@@ -524,11 +352,7 @@ export function AccessoriesClient({
             </div>
           ) : null}
           <DialogFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setPreviewTarget(null)}
-            >
+            <Button type="button" variant="secondary" onClick={() => setPreviewTarget(null)}>
               Bezárás
             </Button>
             {previewTarget ? (
@@ -573,110 +397,6 @@ export function AccessoriesClient({
           onClose={() => setLabelTarget(null)}
         />
       ) : null}
-
-      <Dialog
-        open={Boolean(importPreview)}
-        onOpenChange={(open) => {
-          if (!open) closeImportDialog()
-        }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Import előnézet</DialogTitle>
-            <DialogDescription>
-              Ellenőrizd a sorokat, majd indítsd az importot. A hibás sorok
-              kimaradnak.
-            </DialogDescription>
-          </DialogHeader>
-          {importPreview ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2 text-hint">
-                <StatusBadge tone="neutral">
-                  Összesen: {importPreview.stats.total}
-                </StatusBadge>
-                <StatusBadge tone="success">
-                  Új: {importPreview.stats.create}
-                </StatusBadge>
-                <StatusBadge tone="info">
-                  Frissül: {importPreview.stats.update}
-                </StatusBadge>
-                <StatusBadge
-                  tone={
-                    importPreview.stats.error > 0 ? 'danger' : 'neutral'
-                  }
-                >
-                  Hiba: {importPreview.stats.error}
-                </StatusBadge>
-              </div>
-              <div className="max-h-72 overflow-auto rounded-md border border-border">
-                <table className="w-full text-left text-hint">
-                  <thead className="sticky top-0 bg-subtle">
-                    <tr className="border-b border-border">
-                      <th className="px-2 py-1.5 font-medium">Sor</th>
-                      <th className="px-2 py-1.5 font-medium">Művelet</th>
-                      <th className="px-2 py-1.5 font-medium">Termék</th>
-                      <th className="px-2 py-1.5 font-medium">Megjegyzés</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {importPreview.items.map((item) => (
-                      <tr
-                        key={`${item.rowNumber}-${item.sku}`}
-                        className="border-b border-border last:border-0"
-                      >
-                        <td className="px-2 py-1.5 tabular-nums text-ink">
-                          {item.rowNumber}
-                        </td>
-                        <td className="px-2 py-1.5 text-ink">
-                          {item.action === 'create'
-                            ? 'Új'
-                            : item.action === 'update'
-                              ? 'Frissít'
-                              : 'Hiba'}
-                        </td>
-                        <td className="px-2 py-1.5 text-ink">
-                          <span className="font-medium">{item.name}</span>
-                          <span className="text-ink-secondary">
-                            {' '}
-                            · {item.sku} · {item.manufacturerName}
-                          </span>
-                        </td>
-                        <td className="px-2 py-1.5 text-danger-ink">
-                          {item.message ?? '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={importBusy}
-              onClick={closeImportDialog}
-            >
-              Mégse
-            </Button>
-            <Button
-              type="button"
-              loading={importBusy}
-              disabled={
-                importBusy ||
-                !importPreview ||
-                importPreview.stats.create + importPreview.stats.update === 0
-              }
-              onClick={handleImportConfirm}
-            >
-              {importPreview
-                ? `${importPreview.stats.create + importPreview.stats.update} termék importálása`
-                : 'Importálás'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

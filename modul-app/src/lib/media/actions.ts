@@ -3,7 +3,11 @@
 import { revalidatePath } from 'next/cache'
 
 import { mediaFilenameStem, TENANT_MEDIA_BUCKET } from '@/lib/media/types'
+import { fetchAllPages } from '@/lib/supabase/fetch-all'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
+
+const LINK_MAX_ROWS = 50000
+const LINK_CONCURRENCY = 10
 
 export type LinkProductsResult = {
   ok: boolean
@@ -30,17 +34,24 @@ export async function linkMediaToProducts(options?: {
   const { supabase, user } = ctx
   const tenantId = user.tenantId!
 
-  const { data: mediaRows, error: mediaErr } = await supabase
-    .from('media_files')
-    .select('id, original_filename, public_url')
-    .eq('tenant_id', tenantId)
+  const { data: mediaRows, error: mediaErr } = await fetchAllPages<MediaLite>(
+    (from, to) =>
+      supabase
+        .from('media_files')
+        .select('id, original_filename, public_url')
+        .eq('tenant_id', tenantId)
+        .like('mime_type', 'image/%')
+        .order('id', { ascending: true })
+        .range(from, to),
+    LINK_MAX_ROWS
+  )
 
   if (mediaErr) {
     return { ok: false, message: 'Nem sikerült betölteni a médiát.' }
   }
 
   const byStem = new Map<string, MediaLite[]>()
-  for (const row of (mediaRows ?? []) as MediaLite[]) {
+  for (const row of mediaRows) {
     const key = mediaFilenameStem(row.original_filename)
     if (!key) continue
     const list = byStem.get(key) ?? []
@@ -53,17 +64,30 @@ export async function linkMediaToProducts(options?: {
   let unmatched = 0
   let ambiguousSheets = 0
 
-  const { data: accessories, error: accErr } = await supabase
-    .from('accessories')
-    .select('id, sku, barcode, barcode_internal, image_url')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
+  const { data: accessories, error: accErr } = await fetchAllPages<{
+    id: string
+    sku: string
+    barcode: string | null
+    barcode_internal: string | null
+    image_url: string | null
+  }>(
+    (from, to) =>
+      supabase
+        .from('accessories')
+        .select('id, sku, barcode, barcode_internal, image_url')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('id', { ascending: true })
+        .range(from, to),
+    LINK_MAX_ROWS
+  )
 
   if (accErr) {
     return { ok: false, message: 'Nem sikerült betölteni a termékeket.' }
   }
 
-  for (const acc of accessories ?? []) {
+  const accessoryUpdates: { id: string; url: string }[] = []
+  for (const acc of accessories) {
     const candidates = [acc.sku, acc.barcode, acc.barcode_internal]
       .map((v) => (v ? String(v).trim().toLowerCase() : ''))
       .filter(Boolean)
@@ -85,18 +109,23 @@ export async function linkMediaToProducts(options?: {
       continue
     }
     if (acc.image_url === media.public_url) continue
+    accessoryUpdates.push({ id: acc.id, url: media.public_url })
+  }
 
-    const { error } = await supabase
-      .from('accessories')
-      .update({
-        image_url: media.public_url,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', acc.id)
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-
-    if (!error) linked += 1
+  // Több ezer terméknél egyesével túl lassú lenne: 10 párhuzamos frissítés.
+  const now = new Date().toISOString()
+  for (let i = 0; i < accessoryUpdates.length; i += LINK_CONCURRENCY) {
+    const results = await Promise.all(
+      accessoryUpdates.slice(i, i + LINK_CONCURRENCY).map((u) =>
+        supabase
+          .from('accessories')
+          .update({ image_url: u.url, updated_at: now })
+          .eq('id', u.id)
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+      )
+    )
+    linked += results.filter((r) => !r.error).length
   }
 
   const { data: sheets, error: sheetErr } = await supabase

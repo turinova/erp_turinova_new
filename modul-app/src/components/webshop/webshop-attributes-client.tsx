@@ -128,7 +128,7 @@ export function WebshopAttributesClient({ initialRows, canWrite }: Props) {
     <div>
       <PageHeader
         title="Jellemzők"
-        description="A terméken ezeket töltöd ki. Szám / tartomány típusnál rögzített mértékegység van (pl. mm). A kategóriánál választod ki, melyik a kulcsadat a „Passzol-e?” blokkba."
+        description="A terméken ezeket töltöd ki. Szám / tartomány típusnál rögzített mértékegység van (pl. mm). A kategóriánál választod ki, melyik a kulcsadat a termékoldal „Kulcsadatok” blokkjába."
         actions={
           canWrite ? (
             <Button type="button" onClick={openCreate}>
@@ -375,7 +375,7 @@ export function WebshopAttributesClient({ initialRows, canWrite }: Props) {
               label="Hogyan mérd le?"
               htmlFor="attr-hint"
               optionalLabel
-              hint="Egy mondat a vásárlónak — a „Passzol-e?” kártya alatt jelenik meg"
+              hint="Egy mondat a vásárlónak — a kulcsadat-kártya alatt jelenik meg"
             >
               <Input
                 id="attr-hint"

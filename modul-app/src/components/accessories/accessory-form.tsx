@@ -8,14 +8,8 @@ import { toast } from 'sonner'
 
 import { ProductLabelPrintDialog } from '@/components/labels/product-label-print-dialog'
 import { AccessoryProcurementStockSection } from '@/components/accessories/accessory-procurement-stock-section'
-import {
-  AccessoryWebshopSection,
-  webFormStateFromAccessory,
-  webFormToPayload,
-  webSpecInputErrors
-} from '@/components/accessories/accessory-webshop-section'
 import { AccessoryImagesField } from '@/components/accessories/accessory-images-field'
-import { AccessoryRequiredSection } from '@/components/accessories/accessory-required-section'
+import { AccessoryShopCard } from '@/components/accessories/accessory-shop-card'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
@@ -30,7 +24,6 @@ import {
 import {
   formatHuNumber,
   formatMoneyFt,
-  grossFromNet,
   netFromGross,
   parseIntegerInput
 } from '@/lib/accessories/parse'
@@ -46,11 +39,7 @@ import {
   sellGrossFromPurchase
 } from '@/lib/pricing/margin'
 import type { AccessoryProcurementStock } from '@/lib/stock/accessory-panel'
-import type {
-  ProductAttributeRow,
-  WebCategoryRow
-} from '@/lib/webshop/types'
-import type { WebshopShippingDefaults } from '@/lib/webshop/enrich'
+import type { ShopCardStatus } from '@/lib/webshop/product-queries'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
 
@@ -65,9 +54,7 @@ type AccessoryFormProps = {
   canPrintLabels?: boolean
   procurementStock?: AccessoryProcurementStock | null
   hasWebshop?: boolean
-  webCategories?: WebCategoryRow[]
-  webAttributes?: ProductAttributeRow[]
-  webshopShippingDefaults?: WebshopShippingDefaults | null
+  shopStatus?: ShopCardStatus | null
 }
 
 function defaultUnitId(units: AccessoryUnitOption[]): string {
@@ -89,9 +76,7 @@ export function AccessoryForm({
   canPrintLabels = false,
   procurementStock = null,
   hasWebshop = false,
-  webCategories = [],
-  webAttributes = [],
-  webshopShippingDefaults = null
+  shopStatus = null
 }: AccessoryFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -132,9 +117,6 @@ export function AccessoryForm({
     }
     return out
   })
-  const [imageAlts, setImageAlts] = useState<Record<string, string>>(
-    () => initial?.web_image_alts ?? {}
-  )
   const [grossRaw, setGrossRaw] = useState(
     initial ? String(initial.price_gross) : ''
   )
@@ -150,7 +132,6 @@ export function AccessoryForm({
   const [sellablePos, setSellablePos] = useState(
     initial?.sellable_pos ?? true
   )
-  const [web, setWeb] = useState(() => webFormStateFromAccessory(initial))
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const vatPercent =
@@ -181,16 +162,6 @@ export function AccessoryForm({
       return
     }
 
-    if (hasWebshop) {
-      const specErrors = webSpecInputErrors(web, webAttributes)
-      const first = Object.values(specErrors)[0]
-      if (first) {
-        setFieldErrors(specErrors)
-        toast.error(first)
-        return
-      }
-    }
-
     startTransition(async () => {
       const payload = {
         name,
@@ -206,31 +177,7 @@ export function AccessoryForm({
         imageUrl,
         active,
         sellablePos,
-        ...(() => {
-          const manufacturerName =
-            manufacturers.find((m) => m.id === manufacturerId)?.name ?? null
-          const webPayload = webFormToPayload(
-            hasWebshop ? web : { ...web, sellableWeb: false },
-            webAttributes,
-            {
-              productName: name,
-              manufacturerName,
-              barcode,
-              sku,
-              shippingDefaults: webshopShippingDefaults
-            }
-          )
-          const imageSet = new Set([imageUrl, ...galleryUrls].filter(Boolean))
-          return {
-            ...webPayload,
-            webGallery: galleryUrls,
-            webImageAlts: Object.fromEntries(
-              Object.entries(imageAlts)
-                .map(([u, a]) => [u, a.trim()] as const)
-                .filter(([u, a]) => a && imageSet.has(u))
-            )
-          }
-        })()
+        webGallery: galleryUrls
       }
       const result =
         mode === 'edit' && initial
@@ -626,7 +573,7 @@ export function AccessoryForm({
 
         <FormSection
           title="Képek"
-          description="Több fotó; jelöld ki a fő képet (lista, POS, webshop, feed)."
+          description="Több fotó; jelöld ki a fő képet. Ez látszik a listában, a pultnál és a boltban is."
           columns={4}
         >
           <AccessoryImagesField
@@ -638,8 +585,6 @@ export function AccessoryForm({
             }}
             disabled={pending || !canWrite}
             error={fieldErrors.imageUrl || fieldErrors.webGallery}
-            alts={hasWebshop && web.sellableWeb ? imageAlts : undefined}
-            onAltsChange={setImageAlts}
           />
         </FormSection>
 
@@ -656,37 +601,10 @@ export function AccessoryForm({
         ) : null}
 
         {hasWebshop ? (
-          <AccessoryWebshopSection
-            web={web}
-            onChange={setWeb}
-            productName={name}
-            manufacturerName={
-              manufacturers.find((m) => m.id === manufacturerId)?.name ?? null
-            }
-            barcode={barcode}
-            imageUrl={imageUrl}
-            galleryUrls={galleryUrls}
-            priceNet={priceNet}
-            priceGross={
-              priceNet !== null ? grossFromNet(priceNet, vatPercent) : null
-            }
-            active={active}
-            fieldErrors={fieldErrors}
-            disabled={pending || !canWrite}
-            categories={webCategories}
-            attributes={webAttributes}
-            sku={sku}
-            shippingDefaults={webshopShippingDefaults}
-            imageAltCount={
-              [imageUrl, ...galleryUrls].filter((u) => u && imageAlts[u]?.trim()).length
-            }
-          />
-        ) : null}
-
-        {hasWebshop && web.sellableWeb && mode === 'edit' && initial ? (
-          <AccessoryRequiredSection
-            accessoryId={initial.id}
-            disabled={pending || !canWrite}
+          <AccessoryShopCard
+            accessoryId={mode === 'edit' && initial ? initial.id : null}
+            status={shopStatus}
+            canWrite={canWrite}
           />
         ) : null}
       </div>

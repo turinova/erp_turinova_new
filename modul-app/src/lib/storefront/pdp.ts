@@ -1,7 +1,7 @@
 /**
  * Publikus PDP adat + JSON-LD (doc 38 fázis B).
  * Variant siblings: web_group_id — tengely = amiben a tagok eltérnek (pdp-specs).
- * Kulcsadatok: kategória sablon („Passzol-e?”).
+ * Kulcsadatok: kategória sablon.
  * Bizalom: tenant_webshop_settings, értékelés, valós eladás (RPC).
  */
 
@@ -27,7 +27,16 @@ import {
   type PublicPdpVariantAxis
 } from '@/lib/storefront/pdp-specs'
 import type { StorefrontTenant } from '@/lib/storefront/resolve-tenant'
+import {
+  baseQuantity,
+  netContentLabel,
+  netContentOf,
+  type NetContent
+} from '@/lib/storefront/unit-price'
+import { loadExpectedArrivals } from '@/lib/storefront/expected-arrival'
 import { buildSeller, type StorefrontSeller } from '@/lib/storefront/shell'
+import { loadVariantGroupPrefs } from '@/lib/storefront/variant-groups'
+import type { DocumentKind } from '@/lib/accessories/document-kinds'
 import {
   getStorefrontSettings,
   type StorefrontSettings
@@ -51,12 +60,18 @@ const PDP_SELECT = `
 
 const CARD_SELECT = `
   id,
+  sku,
+  barcode,
+  web_gtin,
   image_url,
   price_net,
   web_slug,
   web_color,
   web_size,
   web_title,
+  web_net_quantity,
+  web_net_unit,
+  web_multipack,
   name,
   tax_rates ( rate_percent )
 `
@@ -75,8 +90,11 @@ export type PublicPdpVariant = {
   imageUrl: string | null
   title: string
   priceGross: number
+  netContent: NetContent | null
   inStock: boolean
   current: boolean
+  sku: string
+  gtin: string | null
 }
 
 export type PublicPdpCard = {
@@ -136,7 +154,7 @@ export type PublicPdpProduct = {
   size: string | null
   material: string | null
   groupId: string | null
-  /** „Passzol-e?” kártyák — csak kitöltött kulcsadat. */
+  /** Kulcsadat-kártyák — csak kitöltött érték. */
   keySpecs: PublicPdpKeySpec[]
   specRows: PublicPdpSpecRow[]
   /** Termék méretrajza, vagy (ha van kulcsadat) a kategória mérési ábrája. */
@@ -167,6 +185,27 @@ export type PublicPdpProduct = {
   updatedAt: string | null
   manufacturer: PublicPdpManufacturer | null
   safetyInfo: string | null
+  netContent: NetContent | null
+  ingredients: string | null
+  usage: string | null
+  videoUrl: string | null
+  /** Legkorábbi nyitott beszállítói rendelés várható napja (YYYY-MM-DD), csak ha nincs készlet. */
+  expectedArrival: string | null
+  /** ISO 3166-1 alpha-2. */
+  countryOfOrigin: string | null
+  /** Egy vásárlási egységben lévő azonos darabok száma (≥2). */
+  multipack: number | null
+  isBundle: boolean
+  documents: PublicPdpDocument[]
+}
+
+export type PublicPdpDocument = {
+  id: string
+  kind: DocumentKind
+  title: string
+  language: string
+  url: string
+  sizeBytes: number
 }
 
 export type PublicPdpManufacturer = {
@@ -225,8 +264,11 @@ function toCard(row: Record<string, unknown>): PublicPdpCard | null {
 
 type SiblingRow = {
   card: PublicPdpCard
+  sku: string
+  gtin: string | null
   webColor: string | null
   webSize: string | null
+  netContent: NetContent | null
   inStock: boolean
 }
 
@@ -238,7 +280,7 @@ async function loadVariantSiblings(
   if (!groupId) return []
 
   const { data, error } = await admin
-    .from('accessories')
+    .from('storefront_products')
     .select(CARD_SELECT)
     .eq('tenant_id', tenantId)
     .eq('web_group_id', groupId)
@@ -271,8 +313,11 @@ async function loadVariantSiblings(
       if (!card) return null
       return {
         card,
+        sku: String(row.sku ?? ''),
+        gtin: trimOrNull(row.web_gtin) ?? trimOrNull(row.barcode),
         webColor: trimOrNull(row.web_color),
         webSize: trimOrNull(row.web_size),
+        netContent: netContentOf(row.web_net_quantity, row.web_net_unit, row.web_multipack),
         inStock: (stock.get(card.id) ?? 0) > 0
       } satisfies SiblingRow
     })
@@ -298,6 +343,44 @@ function dedupeVariants(
     }
   }
   return [...bySig.values()]
+}
+
+const DOCUMENTS_ON_PAGE = 20
+
+async function loadDocuments(
+  admin: SupabaseClient,
+  tenantId: string,
+  accessoryId: string
+): Promise<PublicPdpDocument[]> {
+  const { data, error } = await admin
+    .from('accessory_documents')
+    .select('id, kind, title, language, media_files ( public_url, size_bytes, mime_type )')
+    .eq('tenant_id', tenantId)
+    .eq('accessory_id', accessoryId)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+    .limit(DOCUMENTS_ON_PAGE)
+  if (error) {
+    // 20260547 előtt a tábla még nem létezik — a PDP ettől még működjön.
+    console.error('loadDocuments', error.message)
+    return []
+  }
+  const out: PublicPdpDocument[] = []
+  for (const r of (data ?? []) as Record<string, unknown>[]) {
+    const m = (Array.isArray(r.media_files) ? r.media_files[0] : r.media_files) as
+      | { public_url?: string; size_bytes?: number; mime_type?: string }
+      | null
+    if (!m?.public_url || m.mime_type !== 'application/pdf') continue
+    out.push({
+      id: String(r.id),
+      kind: r.kind as DocumentKind,
+      title: String(r.title ?? ''),
+      language: String(r.language ?? 'hu'),
+      url: m.public_url,
+      sizeBytes: Number(m.size_bytes ?? 0)
+    })
+  }
+  return out
 }
 
 async function loadSoldLast30(
@@ -371,7 +454,7 @@ async function loadBoughtTogether(
   if (ids.length === 0) return []
 
   const { data: rows, error: rowsError } = await admin
-    .from('accessories')
+    .from('storefront_products')
     .select(CARD_SELECT)
     .eq('tenant_id', tenantId)
     .in('id', ids)
@@ -481,7 +564,7 @@ export async function getPublicPdpBySlug(
   if (!normalized) return null
 
   const { data, error } = await admin
-    .from('accessories')
+    .from('storefront_products')
     .select(PDP_SELECT)
     .eq('tenant_id', tenant.id)
     .ilike('web_slug', normalized)
@@ -526,27 +609,37 @@ export async function getPublicPdpBySlug(
   const [
     stockMap,
     company,
-    siblings,
+    siblingData,
     soldLast30Days,
     reviews,
     boughtTogether,
-    referenceNet
+    referenceNet,
+    arrivals,
+    documents
   ] = await Promise.all([
       getAccessoriesOnHandMap(admin, tenant.id, [id]).catch((e) => {
         console.error('getPublicPdpBySlug stock', e)
         return new Map<string, number>()
       }),
       getTenantCompany(admin, tenant.id).catch(() => null),
-      loadVariantSiblings(admin, tenant.id, web.web_group_id),
+      loadVariantSiblings(admin, tenant.id, web.web_group_id).then(async (list) => ({
+        list,
+        prefs: list.length > 0 && web.web_group_id
+          ? (await loadVariantGroupPrefs(admin, tenant.id, [web.web_group_id])).get(web.web_group_id.trim().toLowerCase()) ?? null
+          : null
+      })),
       settings.showSoldCount
         ? loadSoldLast30(admin, tenant.id, id)
         : Promise.resolve(null),
       loadReviews(admin, tenant.id, id, settings.reviewsEnabled),
       loadBoughtTogether(admin, tenant.id, id),
-      loadReferencePriceNet(admin, tenant.id, id)
+      loadReferencePriceNet(admin, tenant.id, id),
+      loadExpectedArrivals(admin, tenant.id, [id]),
+      loadDocuments(admin, tenant.id, id)
     ])
 
   const onHand = stockMap.get(id) ?? 0
+  const { list: siblings, prefs: groupPrefs } = siblingData
 
   const members = siblings.some((s) => s.card.id === id)
     ? siblings
@@ -559,8 +652,11 @@ export async function getPublicPdpBySlug(
             imageUrl: primary,
             priceGross
           },
+          sku: String(row.sku ?? ''),
+          gtin: web.web_gtin || (row.barcode as string | null) || null,
           webColor: web.web_color,
           webSize: web.web_size,
+          netContent: netContentOf(web.web_net_quantity, web.web_net_unit, web.web_multipack),
           inStock: onHand > 0
         },
         ...siblings
@@ -583,11 +679,14 @@ export async function getPublicPdpBySlug(
   const axisSources = members.map((m) => ({
     id: m.card.id,
     webColor: m.webColor,
-    webSize: m.webSize
+    webSize: m.webSize,
+    pack: m.netContent
+      ? { label: netContentLabel(m.netContent), sort: baseQuantity(m.netContent) }
+      : null
   }))
   const { axes: variantAxes, valuesOf } =
     members.length > 1
-      ? computeVariantAxes(specCtx, axisSources)
+      ? computeVariantAxes(specCtx, axisSources, groupPrefs?.axes ?? [])
       : { axes: [] as PublicPdpVariantAxis[], valuesOf: () => ({}) }
 
   const variants =
@@ -600,8 +699,11 @@ export async function getPublicPdpBySlug(
             imageUrl: m.card.imageUrl,
             title: m.card.title,
             priceGross: m.card.priceGross,
+            netContent: m.netContent,
             inStock: m.card.id === id ? onHand > 0 : m.inStock,
-            current: m.card.id === id
+            current: m.card.id === id,
+            sku: m.sku,
+            gtin: m.gtin
           })),
           variantAxes
         )
@@ -688,7 +790,16 @@ export async function getPublicPdpBySlug(
       },
       updatedAt: (row.updated_at as string | null) ?? null,
       manufacturer: toManufacturer(row.manufacturers),
-      safetyInfo: web.web_safety_info
+      safetyInfo: web.web_safety_info,
+      netContent: netContentOf(web.web_net_quantity, web.web_net_unit, web.web_multipack),
+      ingredients: web.web_ingredients,
+      usage: web.web_usage,
+      videoUrl: web.web_video_url,
+      expectedArrival: onHand > 0 ? null : (arrivals.get(id) ?? null),
+      countryOfOrigin: web.web_country_of_origin,
+      multipack: web.web_multipack,
+      isBundle: web.web_is_bundle,
+      documents
     }
   }
 }

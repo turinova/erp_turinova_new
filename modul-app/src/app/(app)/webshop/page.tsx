@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
 
 import { WebshopOverviewClient } from '@/components/webshop/webshop-overview-client'
-import { listAccessories } from '@/lib/accessories/queries'
 import { getSessionUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { tenantHasWebshop } from '@/lib/webshop/entitlement'
+import { listShopReadyLevels } from '@/lib/webshop/product-queries'
 import {
   getWebshopOverviewStats,
   listOpenStockNotifyRequests
@@ -45,16 +45,9 @@ export default async function WebshopPage() {
     )
   }
 
-  const accessories = await listAccessories(supabase, user.tenantId)
+  const levels = await listShopReadyLevels(supabase, user.tenantId)
   const [stats, stockNotify] = await Promise.all([
-    getWebshopOverviewStats(
-      supabase,
-      user.tenantId,
-      accessories.map((a) => ({
-        sellable_web: a.sellable_web,
-        shop_ready_level: a.shop_ready_level
-      }))
-    ),
+    getWebshopOverviewStats(supabase, user.tenantId, levels),
     listOpenStockNotifyRequests(supabase, user.tenantId)
   ])
 

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { getAccessoriesOnHandMap } from '@/lib/stock/queries'
+import { fetchAllPages } from '@/lib/supabase/fetch-all'
 import type {
   AttributeInput,
   AttributeValueRow,
@@ -49,12 +50,18 @@ export async function listWebCategories(
 
   const [{ data: counts, error: countError }, { data: tpl, error: tplError }] =
     await Promise.all([
-      supabase
-        .from('accessories')
-        .select('web_category_id')
-        .eq('tenant_id', tenantId)
-        .is('deleted_at', null)
-        .not('web_category_id', 'is', null),
+      fetchAllPages<{ web_category_id: string }>(
+        (from, to) =>
+          supabase
+            .from('storefront_products')
+            .select('web_category_id')
+            .eq('tenant_id', tenantId)
+            .is('deleted_at', null)
+            .not('web_category_id', 'is', null)
+            .order('id', { ascending: true })
+            .range(from, to),
+        50000
+      ),
       supabase
         .from('web_category_attributes')
         .select('category_id, attribute_id, role, sort_order')
@@ -62,15 +69,15 @@ export async function listWebCategories(
     ])
 
   if (countError) {
-    console.error('listWebCategories counts', countError.message)
+    console.error('listWebCategories counts', countError)
   }
   if (tplError) {
     console.error('listWebCategories template', tplError.message)
   }
 
   const countMap = new Map<string, number>()
-  for (const row of counts ?? []) {
-    const id = row.web_category_id as string
+  for (const row of counts) {
+    const id = row.web_category_id
     countMap.set(id, (countMap.get(id) ?? 0) + 1)
   }
 

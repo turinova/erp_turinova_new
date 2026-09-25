@@ -1,3 +1,4 @@
+import { fetchAllPages } from '@/lib/supabase/fetch-all'
 import { getStorefrontShell } from '@/lib/storefront/shell'
 import { categoryPath, productPath, siteUrl, STOREFRONT_HOME } from '@/lib/storefront/url'
 
@@ -23,17 +24,22 @@ export async function GET(
     entries.push({ loc: siteUrl(tenant.base, categoryPath(c.slug)), changefreq: 'daily' })
   }
 
-  const { data, error } = await admin
-    .from('accessories')
-    .select('web_slug, updated_at')
-    .eq('tenant_id', tenant.id)
-    .eq('sellable_web', true)
-    .eq('active', true)
-    .is('deleted_at', null)
-    .not('web_slug', 'is', null)
-    .limit(45000)
-  if (error) console.error('storefront sitemap', error.message)
-  for (const r of (data ?? []) as { web_slug: string; updated_at: string | null }[]) {
+  const { data, error } = await fetchAllPages<{ web_slug: string; updated_at: string | null }>(
+    (from, to) =>
+      admin
+        .from('storefront_products')
+        .select('web_slug, updated_at')
+        .eq('tenant_id', tenant.id)
+        .eq('sellable_web', true)
+        .eq('active', true)
+        .is('deleted_at', null)
+        .not('web_slug', 'is', null)
+        .order('id', { ascending: true })
+        .range(from, to),
+    45000
+  )
+  if (error) console.error('storefront sitemap', error)
+  for (const r of data) {
     entries.push({
       loc: siteUrl(tenant.base, productPath(r.web_slug)),
       lastmod: r.updated_at ?? undefined

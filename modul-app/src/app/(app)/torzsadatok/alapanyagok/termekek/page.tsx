@@ -3,8 +3,11 @@ import type { Metadata } from 'next'
 import { AccessoriesClient } from '@/components/accessories/accessories-client'
 import { getSessionUser } from '@/lib/auth/session'
 import {
-  listAccessories,
-  listAccessoryUnitOptions
+  ACCESSORY_WEB_FILTERS,
+  listAccessoriesPage,
+  listAccessoryUnitOptions,
+  type AccessoryListPage,
+  type AccessoryWebFilter
 } from '@/lib/accessories/queries'
 import { tenantHasProductLabels } from '@/lib/labels/entitlement'
 import { createClient } from '@/lib/supabase/server'
@@ -14,11 +17,22 @@ export const metadata: Metadata = {
   title: 'Termékek'
 }
 
-export default async function TermekekPage() {
+type PageProps = {
+  searchParams: Promise<{ q?: string; page?: string; web?: string }>
+}
+
+export default async function TermekekPage({ searchParams }: PageProps) {
+  const sp = await searchParams
+  const q = (sp.q ?? '').slice(0, 80)
+  const pageNo = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1)
+  const web: AccessoryWebFilter = (ACCESSORY_WEB_FILTERS as readonly string[]).includes(sp.web ?? '')
+    ? (sp.web as AccessoryWebFilter)
+    : 'all'
+
   const user = await getSessionUser()
   const canWrite = Boolean(user?.role && user.role !== 'viewer')
 
-  let rows: Awaited<ReturnType<typeof listAccessories>> = []
+  let data: AccessoryListPage = { rows: [], total: 0, page: 1, pageCount: 1 }
   let units: Awaited<ReturnType<typeof listAccessoryUnitOptions>> = []
   let canPrintLabels = false
   let hasWebshop = false
@@ -28,16 +42,20 @@ export default async function TermekekPage() {
     const supabase = await createClient()
     if (supabase) {
       try {
-        const [list, unitOpts, labelsOn, webOn] = await Promise.all([
-          listAccessories(supabase, user.tenantId),
+        const [unitOpts, labelsOn, webOn] = await Promise.all([
           listAccessoryUnitOptions(supabase, user.tenantId),
           tenantHasProductLabels(supabase, user.tenantId),
           tenantHasWebshop(supabase, user.tenantId)
         ])
-        rows = list
         units = unitOpts
         canPrintLabels = labelsOn
         hasWebshop = webOn
+        data = await listAccessoriesPage(supabase, user.tenantId, {
+          q,
+          page: pageNo,
+          web,
+          hasWebshop: webOn
+        })
       } catch (err) {
         loadError =
           err instanceof Error
@@ -75,7 +93,9 @@ export default async function TermekekPage() {
 
   return (
     <AccessoriesClient
-      initialRows={rows}
+      data={data}
+      q={q}
+      web={hasWebshop ? web : 'all'}
       canWrite={canWrite}
       canPrintLabels={canPrintLabels}
       units={units}

@@ -3,9 +3,12 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { Pagination, ProductGrid } from '@/components/storefront/product-grid'
+import { LoadMore } from '@/components/storefront/load-more'
+import { ProductGrid } from '@/components/storefront/product-grid'
+import { RecordSearch } from '@/components/storefront/recently-viewed'
 import { StorefrontFrame } from '@/components/storefront/storefront-chrome'
-import { CATALOG_PAGE_SIZE, searchCatalog } from '@/lib/storefront/catalog'
+import { searchCatalog } from '@/lib/storefront/catalog'
+import { CATALOG_PAGE_SIZE, parsePageParam } from '@/lib/storefront/catalog-params'
 import { childCategories, getStorefrontShell } from '@/lib/storefront/shell'
 import { categoryPath, STOREFRONT_SEARCH } from '@/lib/storefront/url'
 
@@ -31,15 +34,15 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 export default async function StorefrontSearchPage({ params, searchParams }: PageProps) {
   const sp = await searchParams
   const q = first(sp.q).trim().slice(0, 120)
-  const page = Math.max(1, Number.parseInt(first(sp.page) || '1', 10) || 1)
+  const page = parsePageParam(first(sp.page))
   const shell = await getStorefrontShell((await params).site)
   if (!shell) notFound()
   const { admin, tenant, seller, settings, categories } = shell
 
   const { items, total } = q
     ? await searchCatalog(admin, tenant.id, q, {
-        limit: CATALOG_PAGE_SIZE,
-        offset: (page - 1) * CATALOG_PAGE_SIZE
+        limit: page * CATALOG_PAGE_SIZE,
+        offset: 0
       })
     : { items: [], total: 0 }
 
@@ -47,6 +50,7 @@ export default async function StorefrontSearchPage({ params, searchParams }: Pag
 
   return (
     <StorefrontFrame seller={seller} settings={settings} categories={categories}>
+      {q && total > 0 ? <RecordSearch term={q} /> : null}
       <main className="mx-auto max-w-[1200px] px-4 pb-16 pt-5 lg:px-8 lg:pt-8">
         <form
           action={STOREFRONT_SEARCH}
@@ -86,17 +90,16 @@ export default async function StorefrontSearchPage({ params, searchParams }: Pag
 
         {items.length > 0 ? (
           <div className="mt-5">
-            <ProductGrid items={items} eagerFirst />
-            <div className="mt-8">
-              <Pagination
-                page={page}
-                total={total}
-                pageSize={CATALOG_PAGE_SIZE}
-                hrefFor={(p) =>
-                  `${STOREFRONT_SEARCH}?q=${encodeURIComponent(q)}${p > 1 ? `&page=${p}` : ''}`
-                }
-              />
-            </div>
+            <ProductGrid items={items} settings={settings} eagerFirst />
+            <LoadMore
+              shown={items.length}
+              total={total}
+              nextHref={
+                items.length < total
+                  ? `${STOREFRONT_SEARCH}?q=${encodeURIComponent(q)}&page=${page + 1}`
+                  : null
+              }
+            />
           </div>
         ) : (
           <div className="mt-4 space-y-5 text-[14px] text-ink-secondary">

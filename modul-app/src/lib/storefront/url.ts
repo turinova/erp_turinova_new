@@ -1,5 +1,6 @@
 export const STOREFRONT_HOME = '/bolt'
 export const STOREFRONT_SEARCH = '/bolt/kereses'
+export const STOREFRONT_CART = '/bolt/kosar'
 
 /** A bolt kanonikus címe. hostMode: saját host (aldomain / saját domain), a kezdőlap `/`. */
 export type SiteBase = {

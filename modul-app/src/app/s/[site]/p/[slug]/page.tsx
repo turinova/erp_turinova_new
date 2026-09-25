@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
 import { StorefrontPdpView } from '@/components/storefront/pdp-view'
-import { loadRequiredCards, loadSimilarCards } from '@/lib/storefront/catalog'
+import { loadRelatedCards, loadSimilarCards } from '@/lib/storefront/catalog'
 import { getPublicPdpBySlugCached } from '@/lib/storefront/pdp'
 import { buildPdpJsonLd } from '@/lib/storefront/pdp-jsonld'
 import {
@@ -64,16 +64,22 @@ export default async function PublicPdpPage({ params }: PageProps) {
   const siblings = leaf ? childCategories(shell.categories, leaf.parentId) : []
   const primary = product.keySpecs[0] ?? null
 
-  const [required, similar] = await Promise.all([
-    loadRequiredCards(shell.admin, shell.tenant.id, product.id),
+  const [related, similarPool] = await Promise.all([
+    loadRelatedCards(shell.admin, shell.tenant.id, product.id),
     loadSimilarCards(shell.admin, shell.tenant.id, {
       categoryId: product.categoryId,
       excludeIds: [product.id, ...product.variants.map((v) => v.id)],
       primaryAttributeId: primary?.valueNum != null ? primary.attributeId : null,
       primaryValue: primary?.valueNum ?? null,
-      limit: 4
+      limit: 8
     })
   ])
+  const curated = new Set(
+    [...related.required, ...related.accessory, ...related.alternative, ...related.largerPack].map(
+      (c) => c.id
+    )
+  )
+  const similar = similarPool.filter((c) => !curated.has(c.id)).slice(0, 4)
 
   const pageUrl = siteUrl(shell.tenant.base, productPath(product.slug))
   const jsonLd = buildPdpJsonLd(payload, {
@@ -83,7 +89,7 @@ export default async function PublicPdpPage({ params }: PageProps) {
       ...categoryCrumbs(payload.seller.name, chain),
       { name: product.title, path: null }
     ],
-    required,
+    related,
     similar
   })
 
@@ -98,7 +104,7 @@ export default async function PublicPdpPage({ params }: PageProps) {
         categories={shell.categories}
         chain={chain}
         siblings={siblings}
-        required={required}
+        related={related}
         similar={similar}
         similarMore={
           leaf && leaf.productCount > similar.length + 1

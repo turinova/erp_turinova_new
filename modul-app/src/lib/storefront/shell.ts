@@ -81,16 +81,7 @@ async function loadCategories(
       .eq('active', true)
       .is('deleted_at', null)
       .limit(500),
-    admin
-      .from('accessories')
-      .select('web_category_id')
-      .eq('tenant_id', tenantId)
-      .eq('sellable_web', true)
-      .eq('active', true)
-      .is('deleted_at', null)
-      .not('web_slug', 'is', null)
-      .not('web_category_id', 'is', null)
-      .limit(10000)
+    admin.rpc('storefront_category_counts', { p_tenant: tenantId })
   ])
   if (catsRes.error) {
     console.error('loadCategories', catsRes.error.message)
@@ -101,8 +92,8 @@ async function loadCategories(
   const rows = (catsRes.data ?? []) as Record<string, unknown>[]
   const ids = new Set(rows.map((r) => String(r.id)))
   const own = new Map<string, number>()
-  for (const p of (prodRes.data ?? []) as { web_category_id: string }[]) {
-    own.set(p.web_category_id, (own.get(p.web_category_id) ?? 0) + 1)
+  for (const p of (prodRes.data ?? []) as { web_category_id: string; product_count: number }[]) {
+    own.set(p.web_category_id, Number(p.product_count))
   }
 
   const base = rows.map((r) => {

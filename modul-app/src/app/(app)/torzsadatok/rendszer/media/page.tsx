@@ -2,14 +2,25 @@ import type { Metadata } from 'next'
 
 import { MediaLibraryClient } from '@/components/media/media-library-client'
 import { getSessionUser } from '@/lib/auth/session'
-import { listMediaFiles } from '@/lib/media/queries'
+import { listMediaFiles, type MediaKindFilter } from '@/lib/media/queries'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
   title: 'Média'
 }
 
-export default async function MediaPage() {
+function kindFromParam(v: string | string[] | undefined): MediaKindFilter {
+  if (v === 'kep') return 'image'
+  if (v === 'dokumentum') return 'pdf'
+  return 'all'
+}
+
+export default async function MediaPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const kind = kindFromParam((await searchParams).tipus)
   const user = await getSessionUser()
   const canWrite = Boolean(user?.role && user.role !== 'viewer')
 
@@ -20,7 +31,7 @@ export default async function MediaPage() {
     const supabase = await createClient()
     if (supabase) {
       try {
-        rows = await listMediaFiles(supabase, user.tenantId)
+        rows = await listMediaFiles(supabase, user.tenantId, kind)
       } catch (err) {
         loadError =
           err instanceof Error
@@ -61,6 +72,7 @@ export default async function MediaPage() {
       tenantId={user.tenantId}
       initialRows={rows}
       canWrite={canWrite}
+      kind={kind}
     />
   )
 }

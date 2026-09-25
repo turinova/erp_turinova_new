@@ -7,8 +7,18 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { effectiveWebTitle } from '@/lib/accessories/web-shop'
 import { grossFromNet } from '@/lib/sheet-materials/parse'
+import {
+  CATALOG_PAGE_SIZE,
+  CATALOG_PARAM,
+  parseCatalogSort,
+  parsePriceParam,
+  type CatalogParams,
+  type CatalogSort
+} from '@/lib/storefront/catalog-params'
 import { descendantIds, type StorefrontCategory } from '@/lib/storefront/shell'
+import { netContentOf, unitPriceLabel } from '@/lib/storefront/unit-price'
 import { slugifyHu } from '@/lib/storefront/url'
+import { loadVariantGroupPrefs } from '@/lib/storefront/variant-groups'
 import { getAccessoriesOnHandMap } from '@/lib/stock/queries'
 import {
   formatSpecNumber,
@@ -17,8 +27,14 @@ import {
 } from '@/lib/webshop/key-specs'
 import type { CategoryTemplateItem } from '@/lib/webshop/types'
 
-export const CATALOG_PAGE_SIZE = 25
+export { CATALOG_PAGE_SIZE }
+
 const MAX_CATEGORY_SCAN = 1000
+const MAX_FACETS = 6
+const MAX_SPEC_LINE = 2
+const NEW_BADGE_DAYS = 30
+/** storefront_search RPC belső plafonja (20260543). */
+const SEARCH_RPC_MAX = 50
 
 export type StorefrontCard = {
   id: string
@@ -27,6 +43,16 @@ export type StorefrontCard = {
   imageUrl: string | null
   priceGross: number
   inStock: boolean
+  stockQty?: number
+  /** Kártyán: 1–2 kulcsadat, pl. „160 mm · matt fekete”. */
+  specLine?: string | null
+  /** Variánscsoport mérete (>1 → „4 szín”). */
+  variantLabel?: string | null
+  rating?: { average: number; count: number } | null
+  /** Legfeljebb egy, igaz címke (pl. „Új”). */
+  badge?: string | null
+  /** Kötelező egységár, pl. „3 725 Ft/l”. */
+  unitPrice?: string | null
 }
 
 export type CatalogFacetValue = {
@@ -49,12 +75,32 @@ const CARD_SELECT = `
   web_slug,
   image_url,
   price_net,
+  web_net_quantity,
+  web_net_unit,
+  web_multipack,
   tax_rates ( rate_percent )
 `
+
+function unitPriceOf(row: Record<string, unknown>, priceGross: number): string | null {
+  return unitPriceLabel(priceGross, netContentOf(row.web_net_quantity, row.web_net_unit, row.web_multipack))
+}
 
 function vatOf(row: Record<string, unknown>): number {
   const tax = Array.isArray(row.tax_rates) ? row.tax_rates[0] : row.tax_rates
   return Number((tax as { rate_percent?: number } | null)?.rate_percent ?? 0)
+}
+
+function imageOf(row: Record<string, unknown>): string | null {
+  return typeof row.image_url === 'string' && row.image_url.trim()
+    ? row.image_url.trim()
+    : null
+}
+
+function titleOf(row: Record<string, unknown>): string {
+  return effectiveWebTitle({
+    web_title: (row.web_title as string | null) ?? null,
+    name: String(row.name ?? '')
+  })
 }
 
 /** Sorrend megtartva; nem közzétett / törölt kimarad. */
@@ -67,7 +113,7 @@ export async function loadCards(
   if (unique.length === 0) return []
   const [{ data, error }, stock] = await Promise.all([
     admin
-      .from('accessories')
+      .from('storefront_products')
       .select(CARD_SELECT)
       .eq('tenant_id', tenantId)
       .in('id', unique)
@@ -87,19 +133,17 @@ export async function loadCards(
   const byId = new Map<string, StorefrontCard>()
   for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
     const id = String(row.id)
+    const qty = stock.get(id) ?? 0
+    const priceGross = grossFromNet(Number(row.price_net), vatOf(row))
     byId.set(id, {
       id,
       slug: String(row.web_slug).trim().toLowerCase(),
-      title: effectiveWebTitle({
-        web_title: (row.web_title as string | null) ?? null,
-        name: String(row.name ?? '')
-      }),
-      imageUrl:
-        typeof row.image_url === 'string' && row.image_url.trim()
-          ? row.image_url.trim()
-          : null,
-      priceGross: grossFromNet(Number(row.price_net), vatOf(row)),
-      inStock: (stock.get(id) ?? 0) > 0
+      title: titleOf(row),
+      imageUrl: imageOf(row),
+      priceGross,
+      inStock: qty > 0,
+      stockQty: qty,
+      unitPrice: unitPriceOf(row, priceGross)
     })
   }
   return unique.map((id) => byId.get(id)).filter((c): c is StorefrontCard => c != null)
@@ -117,17 +161,30 @@ export async function searchCatalog(
 ): Promise<{ items: StorefrontCard[]; total: number }> {
   const term = q.trim().slice(0, 120)
   if (!term) return { items: [], total: 0 }
-  const { data, error } = await admin.rpc('storefront_search', {
-    p_tenant_id: tenantId,
-    p_q: term,
-    p_limit: opts.limit ?? CATALOG_PAGE_SIZE,
-    p_offset: opts.offset ?? 0
-  })
-  if (error) {
-    console.error('searchCatalog', error.message)
+  const limit = opts.limit ?? CATALOG_PAGE_SIZE
+  const offset = opts.offset ?? 0
+  const chunks: { offset: number; limit: number }[] = []
+  for (let o = 0; o < limit; o += SEARCH_RPC_MAX) {
+    chunks.push({ offset: offset + o, limit: Math.min(SEARCH_RPC_MAX, limit - o) })
+  }
+  const results = await Promise.all(
+    chunks.map((c) =>
+      admin.rpc('storefront_search', {
+        p_tenant_id: tenantId,
+        p_q: term,
+        p_limit: c.limit,
+        p_offset: c.offset
+      })
+    )
+  )
+  const failed = results.find((r) => r.error)
+  if (failed?.error) {
+    console.error('searchCatalog', failed.error.message)
     return { items: [], total: 0 }
   }
-  const rows = (data ?? []) as { accessory_id: string; total_count: number }[]
+  const rows = results.flatMap(
+    (r) => (r.data ?? []) as { accessory_id: string; total_count: number }[]
+  )
   const items = await loadCards(
     admin,
     tenantId,
@@ -147,8 +204,6 @@ type AttrMeta = {
   valueType: string
   unit: string | null
 }
-
-type ProductFacetValues = Map<string, Set<string>>
 
 function facetParam(attr: AttrMeta): string {
   return slugifyHu(attr.code || attr.name) || attr.id.slice(0, 8)
@@ -223,18 +278,106 @@ async function loadTemplateAttrs(
   return { items: sortTemplate(resolved.items), attrs }
 }
 
+async function loadReviewStats(
+  admin: SupabaseClient,
+  tenantId: string,
+  ids: string[]
+): Promise<Map<string, { count: number; sum: number }>> {
+  const out = new Map<string, { count: number; sum: number }>()
+  if (ids.length === 0) return out
+  const { data, error } = await admin
+    .from('product_reviews')
+    .select('accessory_id, rating')
+    .eq('tenant_id', tenantId)
+    .eq('status', 'approved')
+    .is('deleted_at', null)
+    .in('accessory_id', ids)
+    .limit(10000)
+  if (error) {
+    console.error('listCategoryProducts reviews', error.message)
+    return out
+  }
+  for (const r of (data ?? []) as { accessory_id: string; rating: number }[]) {
+    const s = out.get(r.accessory_id) ?? { count: 0, sum: 0 }
+    s.count += 1
+    s.sum += Number(r.rating)
+    out.set(r.accessory_id, s)
+  }
+  return out
+}
+
+type Member = {
+  id: string
+  slug: string
+  title: string
+  imageUrl: string | null
+  priceGross: number
+  unitPrice: string | null
+  qty: number
+  createdAt: number
+  groupKey: string
+}
+
+type Filters = {
+  attrs: Map<string, string>
+  inStock: boolean
+  priceMin: number | null
+  priceMax: number | null
+}
+
+type Skip = { attr?: string; inStock?: boolean; price?: boolean }
+
+export type CatalogRelax = { label: string; count: number; patch: CatalogParams }
+
+export type CategoryListing = {
+  items: StorefrontCard[]
+  /** Szűrés utáni termékcsoportok száma. */
+  total: number
+  facets: CatalogFacet[]
+  sort: CatalogSort
+  sortOptions: CatalogSort[]
+  inStockOnly: boolean
+  priceMin: number | null
+  priceMax: number | null
+  priceBounds: { min: number; max: number } | null
+  activeCount: number
+  /** Üres találatnál: melyik szűrő elhagyása hoz a legtöbb terméket. */
+  relax: CatalogRelax[]
+}
+
+const EMPTY_LISTING: CategoryListing = {
+  items: [],
+  total: 0,
+  facets: [],
+  sort: 'ajanlott',
+  sortOptions: ['ajanlott'],
+  inStockOnly: false,
+  priceMin: null,
+  priceMax: null,
+  priceBounds: null,
+  activeCount: 0,
+  relax: []
+}
+
+/**
+ * Egy variánscsoport (web_group_id) = egy kártya; a képviselő a szűrőknek
+ * megfelelő, raktáron lévő, legolcsóbb tag. `page` kumulatív (első page×24).
+ */
 export async function listCategoryProducts(
   admin: SupabaseClient,
   tenantId: string,
   categories: StorefrontCategory[],
   category: StorefrontCategory,
-  params: Record<string, string | undefined>,
-  page: number
-): Promise<{ items: StorefrontCard[]; total: number; facets: CatalogFacet[] }> {
+  params: CatalogParams,
+  page: number,
+  opts: { reviewsEnabled: boolean }
+): Promise<CategoryListing> {
   const catIds = descendantIds(categories, category.id)
   const { data, error } = await admin
-    .from('accessories')
-    .select('id, name, web_title')
+    .from('storefront_products')
+    .select(
+      'id, name, web_title, web_slug, web_group_id, image_url, price_net, created_at, web_net_quantity, web_net_unit, web_multipack, tax_rates ( rate_percent )'
+    )
     .eq('tenant_id', tenantId)
     .in('web_category_id', catIds)
     .eq('sellable_web', true)
@@ -244,35 +387,56 @@ export async function listCategoryProducts(
     .limit(MAX_CATEGORY_SCAN)
   if (error) {
     console.error('listCategoryProducts', error.message)
-    return { items: [], total: 0, facets: [] }
+    return EMPTY_LISTING
   }
+  const rows = (data ?? []) as unknown as Record<string, unknown>[]
+  const ids = rows.map((r) => String(r.id))
 
-  const products = ((data ?? []) as Record<string, unknown>[])
-    .map((r) => ({
-      id: String(r.id),
-      title: effectiveWebTitle({
-        web_title: (r.web_title as string | null) ?? null,
-        name: String(r.name ?? '')
-      })
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title, 'hu'))
-  const ids = products.map((p) => p.id)
+  const groupCodes = rows
+    .map((r) => (typeof r.web_group_id === 'string' ? r.web_group_id : ''))
+    .filter(Boolean)
+  const [stock, { items: template, attrs }, reviews, groupPrefs] = await Promise.all([
+    getAccessoriesOnHandMap(admin, tenantId, ids).catch((e) => {
+      console.error('listCategoryProducts stock', e)
+      return new Map<string, number>()
+    }),
+    loadTemplateAttrs(admin, tenantId, categories, category.id),
+    opts.reviewsEnabled
+      ? loadReviewStats(admin, tenantId, ids)
+      : Promise.resolve(new Map<string, { count: number; sum: number }>()),
+    loadVariantGroupPrefs(admin, tenantId, groupCodes)
+  ])
 
-  const { items: template, attrs } = await loadTemplateAttrs(
-    admin,
-    tenantId,
-    categories,
-    category.id
-  )
+  const members: Member[] = rows.map((r) => {
+    const id = String(r.id)
+    const created = Date.parse(String(r.created_at ?? ''))
+    const priceGross = grossFromNet(Number(r.price_net), vatOf(r))
+    return {
+      id,
+      slug: String(r.web_slug).trim().toLowerCase(),
+      title: titleOf(r),
+      imageUrl: imageOf(r),
+      priceGross,
+      unitPrice: unitPriceOf(r, priceGross),
+      qty: stock.get(id) ?? 0,
+      createdAt: Number.isFinite(created) ? created : 0,
+      groupKey: typeof r.web_group_id === 'string' && r.web_group_id ? r.web_group_id : id
+    }
+  })
+
   const facetAttrs = template
     .map((t) => attrs.get(t.attributeId))
     .filter(
       (a): a is AttrMeta =>
         a != null && (a.valueType === 'number' || a.valueType === 'list')
     )
-    .slice(0, 6)
+    .slice(0, MAX_FACETS)
+  const facetIds = new Set(facetAttrs.map((a) => a.id))
+  const specAttrIds = template
+    .filter((t) => t.role === 'key' && facetIds.has(t.attributeId))
+    .map((t) => t.attributeId)
 
-  const values = new Map<string, ProductFacetValues>()
+  const values = new Map<string, Map<string, Set<string>>>()
   const labels = new Map<string, Map<string, { label: string; sort: number }>>()
   if (facetAttrs.length > 0 && ids.length > 0) {
     const attrIds = facetAttrs.map((a) => a.id)
@@ -320,7 +484,7 @@ export async function listCategoryProducts(
         deleted_at?: string | null
       } | null
       if (!av?.attribute_id || !av.label || av.deleted_at) continue
-      if (!attrIds.includes(av.attribute_id)) continue
+      if (!facetIds.has(av.attribute_id)) continue
       const key = slugifyHu(av.label)
       put(String(r.accessory_id), av.attribute_id, key)
       const lm = labels.get(av.attribute_id) ?? new Map()
@@ -329,40 +493,62 @@ export async function listCategoryProducts(
     }
   }
 
-  const selected = new Map<string, string>()
+  const filters: Filters = {
+    attrs: new Map(),
+    inStock: params[CATALOG_PARAM.inStock] === '1',
+    priceMin: parsePriceParam(params[CATALOG_PARAM.priceMin]),
+    priceMax: parsePriceParam(params[CATALOG_PARAM.priceMax])
+  }
   for (const a of facetAttrs) {
     const v = params[facetParam(a)]?.trim()
-    if (v) selected.set(a.id, v)
+    if (v) filters.attrs.set(a.id, v)
   }
 
-  const matches = (accId: string, skipAttr?: string) => {
-    for (const [attrId, want] of selected) {
-      if (attrId === skipAttr) continue
-      if (!values.get(accId)?.get(attrId)?.has(want)) return false
+  const memberOk = (m: Member, skip: Skip = {}) => {
+    if (filters.inStock && !skip.inStock && m.qty <= 0) return false
+    if (!skip.price) {
+      if (filters.priceMin != null && m.priceGross < filters.priceMin) return false
+      if (filters.priceMax != null && m.priceGross > filters.priceMax) return false
+    }
+    for (const [attrId, want] of filters.attrs) {
+      if (attrId === skip.attr) continue
+      if (!values.get(m.id)?.get(attrId)?.has(want)) return false
     }
     return true
   }
 
+  const groups = new Map<string, Member[]>()
+  for (const m of members) {
+    const list = groups.get(m.groupKey) ?? []
+    list.push(m)
+    groups.set(m.groupKey, list)
+  }
+  const groupList = [...groups.values()]
+  const countGroups = (skip: Skip) =>
+    groupList.reduce((n, g) => (g.some((m) => memberOk(m, skip)) ? n + 1 : n), 0)
+
   const facets: CatalogFacet[] = facetAttrs
     .map((a) => {
       const counts = new Map<string, number>()
-      for (const id of ids) {
-        if (!matches(id, a.id)) continue
-        for (const key of values.get(id)?.get(a.id) ?? []) {
-          counts.set(key, (counts.get(key) ?? 0) + 1)
+      for (const g of groupList) {
+        const keys = new Set<string>()
+        for (const m of g) {
+          if (!memberOk(m, { attr: a.id })) continue
+          for (const key of values.get(m.id)?.get(a.id) ?? []) keys.add(key)
         }
+        for (const key of keys) counts.set(key, (counts.get(key) ?? 0) + 1)
       }
-      const lm = labels.get(a.id) ?? new Map()
+      const lm = labels.get(a.id) ?? new Map<string, { label: string; sort: number }>()
       return {
         param: facetParam(a),
         name: a.name,
-        values: [...counts.entries()]
-          .map(([value, count]) => ({
+        values: [...lm.entries()]
+          .map(([value, meta]) => ({
             value,
-            label: lm.get(value)?.label ?? value,
-            count,
-            selected: selected.get(a.id) === value,
-            sort: lm.get(value)?.sort ?? 0
+            label: meta.label,
+            count: counts.get(value) ?? 0,
+            selected: filters.attrs.get(a.id) === value,
+            sort: meta.sort
           }))
           .sort((x, y) => x.sort - y.sort || x.label.localeCompare(y.label, 'hu'))
           .map(({ value, label, count, selected }) => ({ value, label, count, selected }))
@@ -370,41 +556,228 @@ export async function listCategoryProducts(
     })
     .filter((f) => f.values.length > 1 || f.values.some((v) => v.selected))
 
-  const filtered = ids.filter((id) => matches(id))
+  const ratingOf = (g: Member[]) => {
+    let count = 0
+    let sum = 0
+    for (const m of g) {
+      const s = reviews.get(m.id)
+      if (s) {
+        count += s.count
+        sum += s.sum
+      }
+    }
+    return count > 0 ? { average: sum / count, count } : null
+  }
+
+  const matched = groupList
+    .map((g) => {
+      const ok = g.filter((m) => memberOk(m))
+      if (ok.length === 0) return null
+      const mainId = groupPrefs.get(g[0]!.groupKey.toLowerCase())?.mainAccessoryId
+      const main = mainId ? ok.find((m) => m.id === mainId && m.qty > 0) : undefined
+      const rep = main ?? [...ok].sort(
+        (a, b) =>
+          Number(b.qty > 0) - Number(a.qty > 0) ||
+          a.priceGross - b.priceGross ||
+          a.title.localeCompare(b.title, 'hu')
+      )[0]!
+      return {
+        group: g,
+        rep,
+        newest: Math.max(...g.map((m) => m.createdAt)),
+        rating: ratingOf(g)
+      }
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null)
+
+  const hasReviews = matched.some((m) => m.rating != null)
+  const sortOptions: CatalogSort[] = ['ajanlott', 'ar-nov', 'ar-csokk', 'uj']
+  if (hasReviews) sortOptions.push('ertekeles')
+  const requested = parseCatalogSort(params[CATALOG_PARAM.sort])
+  const sort = sortOptions.includes(requested) ? requested : 'ajanlott'
+
+  const byTitle = (a: (typeof matched)[number], b: (typeof matched)[number]) =>
+    a.rep.title.localeCompare(b.rep.title, 'hu')
+  const inStockFirst = (a: (typeof matched)[number], b: (typeof matched)[number]) =>
+    Number(b.rep.qty > 0) - Number(a.rep.qty > 0)
+  matched.sort((a, b) => {
+    switch (sort) {
+      case 'ar-nov':
+        return a.rep.priceGross - b.rep.priceGross || byTitle(a, b)
+      case 'ar-csokk':
+        return b.rep.priceGross - a.rep.priceGross || byTitle(a, b)
+      case 'uj':
+        return b.newest - a.newest || byTitle(a, b)
+      case 'ertekeles':
+        return (
+          (b.rating?.average ?? 0) - (a.rating?.average ?? 0) ||
+          (b.rating?.count ?? 0) - (a.rating?.count ?? 0) ||
+          inStockFirst(a, b) ||
+          byTitle(a, b)
+        )
+      default:
+        return inStockFirst(a, b) || byTitle(a, b)
+    }
+  })
+
+  const specLineOf = (rep: Member, group: Member[]) => {
+    const parts: string[] = []
+    for (const attrId of specAttrIds) {
+      if (parts.length >= MAX_SPEC_LINE) break
+      const own = values.get(rep.id)?.get(attrId)
+      if (!own || own.size === 0) continue
+      const key = [...own][0]!
+      if (group.some((m) => !values.get(m.id)?.get(attrId)?.has(key))) continue
+      const label = labels.get(attrId)?.get(key)?.label
+      if (label) parts.push(label)
+    }
+    return parts.length > 0 ? parts.join(' · ') : null
+  }
+
+  const variantLabelOf = (group: Member[]) => {
+    if (group.length < 2) return null
+    const axes = facetAttrs.filter((a) => {
+      const seen = new Set(group.map((m) => [...(values.get(m.id)?.get(a.id) ?? [])].join('|')))
+      return seen.size > 1
+    })
+    const axis = axes.length === 1 ? axes[0]!.name.trim().toLowerCase() : ''
+    return axis && axis.length <= 12 ? `${group.length} ${axis}` : `${group.length} változat`
+  }
+
+  const newSince = Date.now() - NEW_BADGE_DAYS * 86_400_000
+  const newCount = matched.filter((m) => m.newest >= newSince).length
+  const showNew = newCount > 0 && newCount <= matched.length / 3
+
   const safePage = Math.max(1, page)
-  const pageIds = filtered.slice(
-    (safePage - 1) * CATALOG_PAGE_SIZE,
-    safePage * CATALOG_PAGE_SIZE
-  )
-  const items = await loadCards(admin, tenantId, pageIds)
-  return { items, total: filtered.length, facets }
+  const items: StorefrontCard[] = matched
+    .slice(0, safePage * CATALOG_PAGE_SIZE)
+    .map(({ rep, group, rating, newest }) => ({
+      id: rep.id,
+      slug: rep.slug,
+      title: rep.title,
+      imageUrl: rep.imageUrl,
+      priceGross: rep.priceGross,
+      inStock: rep.qty > 0,
+      stockQty: rep.qty,
+      specLine: specLineOf(rep, group),
+      variantLabel: variantLabelOf(group),
+      rating,
+      badge: showNew && newest >= newSince ? 'Új' : null,
+      unitPrice: rep.unitPrice
+    }))
+
+  const priced = members.filter((m) => memberOk(m, { price: true })).map((m) => m.priceGross)
+  const priceBounds =
+    priced.length > 0
+      ? { min: Math.floor(Math.min(...priced)), max: Math.ceil(Math.max(...priced)) }
+      : null
+
+  const facetById = new Map(facetAttrs.map((a) => [a.id, a]))
+  const relax: CatalogRelax[] = []
+  for (const [attrId, value] of filters.attrs) {
+    const a = facetById.get(attrId)
+    if (!a) continue
+    relax.push({
+      label: `${a.name}: ${labels.get(attrId)?.get(value)?.label ?? value}`,
+      count: countGroups({ attr: attrId }),
+      patch: { [facetParam(a)]: undefined }
+    })
+  }
+  if (filters.inStock) {
+    relax.push({
+      label: 'Csak raktáron',
+      count: countGroups({ inStock: true }),
+      patch: { [CATALOG_PARAM.inStock]: undefined }
+    })
+  }
+  if (filters.priceMin != null || filters.priceMax != null) {
+    relax.push({
+      label: 'Ár',
+      count: countGroups({ price: true }),
+      patch: { [CATALOG_PARAM.priceMin]: undefined, [CATALOG_PARAM.priceMax]: undefined }
+    })
+  }
+
+  return {
+    items,
+    total: matched.length,
+    facets,
+    sort,
+    sortOptions,
+    inStockOnly: filters.inStock,
+    priceMin: filters.priceMin,
+    priceMax: filters.priceMax,
+    priceBounds,
+    activeCount: relax.length,
+    relax: relax.filter((r) => r.count > 0).sort((a, b) => b.count - a.count)
+  }
 }
 
 // ---------------------------------------------------------------------------
-// PDP: „Kell hozzá” és „Hasonló”
+// PDP: kapcsolódó termékek és „Hasonló”
 // ---------------------------------------------------------------------------
 
-export async function loadRequiredCards(
+export type RelatedCards = {
+  required: StorefrontCard[]
+  accessory: StorefrontCard[]
+  alternative: StorefrontCard[]
+  largerPack: StorefrontCard[]
+  /** Fordított irány: termékek, amelyeknek ez tartozéka / kelléke. */
+  accessoryOf: StorefrontCard[]
+}
+
+export const EMPTY_RELATED_CARDS: RelatedCards = {
+  required: [],
+  accessory: [],
+  alternative: [],
+  largerPack: [],
+  accessoryOf: []
+}
+
+const RELATED_PER_KIND = 8
+
+export async function loadRelatedCards(
   admin: SupabaseClient,
   tenantId: string,
   accessoryId: string
-): Promise<StorefrontCard[]> {
-  const { data, error } = await admin
-    .from('accessory_related')
-    .select('related_id, sort_order')
-    .eq('tenant_id', tenantId)
-    .eq('accessory_id', accessoryId)
-    .order('sort_order', { ascending: true })
-    .limit(8)
-  if (error) {
-    console.error('loadRequiredCards', error.message)
-    return []
+): Promise<RelatedCards> {
+  const [out, inc] = await Promise.all([
+    admin
+      .from('accessory_related')
+      .select('related_id, kind, sort_order')
+      .eq('tenant_id', tenantId)
+      .eq('accessory_id', accessoryId)
+      .order('sort_order', { ascending: true })
+      .limit(RELATED_PER_KIND * 4),
+    admin
+      .from('accessory_related')
+      .select('accessory_id')
+      .eq('tenant_id', tenantId)
+      .eq('related_id', accessoryId)
+      .in('kind', ['accessory', 'required'])
+      .limit(RELATED_PER_KIND)
+  ])
+  if (out.error || inc.error) {
+    console.error('loadRelatedCards', out.error?.message ?? inc.error?.message)
+    return EMPTY_RELATED_CARDS
   }
-  return loadCards(
-    admin,
-    tenantId,
-    ((data ?? []) as { related_id: string }[]).map((r) => r.related_id)
-  )
+  const outRows = (out.data ?? []) as { related_id: string; kind: string }[]
+  const incIds = ((inc.data ?? []) as { accessory_id: string }[]).map((r) => r.accessory_id)
+  const cards = await loadCards(admin, tenantId, [...outRows.map((r) => r.related_id), ...incIds])
+  const byId = new Map(cards.map((c) => [c.id, c]))
+  const pick = (kind: string) =>
+    outRows
+      .filter((r) => r.kind === kind)
+      .map((r) => byId.get(r.related_id))
+      .filter((c): c is StorefrontCard => c != null)
+      .slice(0, RELATED_PER_KIND)
+  return {
+    required: pick('required'),
+    accessory: pick('accessory'),
+    alternative: pick('alternative'),
+    largerPack: pick('larger_pack'),
+    accessoryOf: incIds.map((id) => byId.get(id)).filter((c): c is StorefrontCard => c != null)
+  }
 }
 
 /** Azonos kategória; ha van fő kulcsadat (szám), a legközelebbi értékek elöl. */
@@ -421,7 +794,7 @@ export async function loadSimilarCards(
 ): Promise<StorefrontCard[]> {
   if (!opts.categoryId) return []
   const { data, error } = await admin
-    .from('accessories')
+    .from('storefront_products')
     .select('id, web_group_id')
     .eq('tenant_id', tenantId)
     .eq('web_category_id', opts.categoryId)

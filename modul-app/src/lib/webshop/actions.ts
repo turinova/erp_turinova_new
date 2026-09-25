@@ -223,7 +223,7 @@ export async function softDeleteWebCategory(
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
   const { count } = await ctx.supabase
-    .from('accessories')
+    .from('storefront_products')
     .select('id', { count: 'exact', head: true })
     .eq('tenant_id', ctx.user.tenantId!)
     .eq('web_category_id', id)

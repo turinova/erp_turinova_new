@@ -1,13 +1,17 @@
 'use client'
 
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { ArrowLeft, Search, X } from 'lucide-react'
+import { ArrowLeft, Clock, Search, X } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
 
 import type { StorefrontCard } from '@/lib/storefront/catalog'
 import { formatFt } from '@/lib/storefront/format'
-import { STOREFRONT_SEARCH } from '@/lib/storefront/url'
+import { clearRecentSearches, recordSearch, useRecentSearches } from '@/lib/storefront/recent'
+import { categoryPath, productPath, STOREFRONT_SEARCH } from '@/lib/storefront/url'
+
+export type SearchCategoryLink = { id: string; name: string; slug: string }
 
 type SearchState =
   | { status: 'idle' }
@@ -15,12 +19,17 @@ type SearchState =
   | { status: 'done'; items: StorefrontCard[]; total: number }
   | { status: 'error' }
 
-export function StorefrontSearchOverlay() {
+export function StorefrontSearchOverlay({
+  popular = []
+}: {
+  popular?: SearchCategoryLink[]
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const [state, setState] = useState<SearchState>({ status: 'idle' })
   const inputRef = useRef<HTMLInputElement>(null)
+  const recent = useRecentSearches()
 
   useEffect(() => {
     const term = q.trim()
@@ -51,6 +60,7 @@ export function StorefrontSearchOverlay() {
   function submit() {
     const term = q.trim()
     if (!term) return
+    recordSearch(term)
     setOpen(false)
     router.push(`${STOREFRONT_SEARCH}?q=${encodeURIComponent(term)}`)
   }
@@ -74,7 +84,7 @@ export function StorefrontSearchOverlay() {
         >
           <DialogPrimitive.Title className="sr-only">Keresés a boltban</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
-            Név, cikkszám vagy méret, pl. „fogantyú 160 mm fekete”.
+            Keress terméknévre, márkára vagy cikkszámra.
           </DialogPrimitive.Description>
           <form
             role="search"
@@ -99,7 +109,7 @@ export function StorefrontSearchOverlay() {
               type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Termék, cikkszám vagy méret"
+              placeholder="Mit keresel?"
               autoComplete="off"
               enterKeyHint="search"
               className="h-11 min-w-0 flex-1 bg-transparent px-2 text-[16px] text-ink outline-none placeholder:text-ink-muted"
@@ -121,9 +131,67 @@ export function StorefrontSearchOverlay() {
 
           <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite">
             {state.status === 'idle' ? (
-              <p className="px-4 py-6 text-[14px] text-ink-secondary">
-                Írj be legalább 2 karaktert. Méretre is kereshetsz, pl. „160 mm”.
-              </p>
+              <div className="space-y-5 px-4 py-4">
+                {recent.length > 0 ? (
+                  <section aria-labelledby="sf-recent">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 id="sf-recent" className="text-[13px] font-medium text-ink-secondary">
+                        Legutóbbi keresések
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={clearRecentSearches}
+                        className="inline-flex min-h-8 cursor-pointer items-center text-[13px] text-ink-secondary underline underline-offset-2 hover:text-ink"
+                      >
+                        Törlés
+                      </button>
+                    </div>
+                    <ul className="mt-1">
+                      {recent.map((r) => (
+                        <li key={r}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQ(r)
+                              inputRef.current?.focus()
+                            }}
+                            className="flex min-h-11 w-full cursor-pointer items-center gap-2.5 text-left text-[15px] text-ink hover:underline"
+                          >
+                            <Clock className="size-4 shrink-0 text-ink-muted" aria-hidden />
+                            <span className="truncate">{r}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+                {popular.length > 0 ? (
+                  <section aria-labelledby="sf-popular">
+                    <h2 id="sf-popular" className="text-[13px] font-medium text-ink-secondary">
+                      Népszerű kategóriák
+                    </h2>
+                    <ul className="mt-2 flex flex-wrap gap-1.5">
+                      {popular.map((c) => (
+                        <li key={c.id}>
+                          <DialogPrimitive.Close asChild>
+                            <Link
+                              href={categoryPath(c.slug)}
+                              className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-stone-200 px-3 text-[14px] text-ink hover:border-stone-400"
+                            >
+                              {c.name}
+                            </Link>
+                          </DialogPrimitive.Close>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+                {recent.length === 0 && popular.length === 0 ? (
+                  <p className="py-2 text-[14px] text-ink-secondary">
+                    Írj be legalább 2 karaktert.
+                  </p>
+                ) : null}
+              </div>
             ) : state.status === 'loading' ? (
               <p className="px-4 py-6 text-[14px] text-ink-secondary">Keresés…</p>
             ) : state.status === 'error' ? (
@@ -141,7 +209,8 @@ export function StorefrontSearchOverlay() {
                   {state.items.map((item) => (
                     <li key={item.id}>
                       <a
-                        href={`/p/${encodeURIComponent(item.slug)}`}
+                        href={productPath(item.slug)}
+                        onClick={() => recordSearch(q.trim())}
                         className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-stone-50"
                       >
                         <span className="size-12 shrink-0 overflow-hidden rounded bg-stone-100">
@@ -160,7 +229,8 @@ export function StorefrontSearchOverlay() {
                             {item.title}
                           </span>
                           <span className="text-[13px] tabular-nums text-ink-secondary">
-                            {formatFt(item.priceGross)} ·{' '}
+                            {formatFt(item.priceGross)}
+                            {item.unitPrice ? ` (${item.unitPrice})` : ''} ·{' '}
                             {item.inStock ? 'Raktáron' : 'Nincs készleten'}
                           </span>
                         </span>

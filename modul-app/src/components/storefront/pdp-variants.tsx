@@ -5,12 +5,15 @@ import type {
   PublicPdpVariant,
   PublicPdpVariantAxis
 } from '@/lib/storefront/pdp'
+import { formatFt } from '@/lib/storefront/format'
+import { unitPriceLabel } from '@/lib/storefront/unit-price'
+import { productPath } from '@/lib/storefront/url'
 import { cn } from '@/lib/utils'
 
 type StorefrontPdpVariantsProps = {
   axes: PublicPdpVariantAxis[]
   variants: PublicPdpVariant[]
-  /** „Passzol-e?” horgony — a méret-jellegű tengely mellett jelenik meg. */
+  /** „Kulcsadatok” horgony — a méret-jellegű tengely mellett jelenik meg. */
   fitAnchor?: string | null
 }
 
@@ -95,7 +98,7 @@ function FitLink({ anchor }: { anchor: string }) {
       className="inline-flex cursor-pointer items-center gap-1 text-[13px] font-medium text-ink underline underline-offset-2"
     >
       <Ruler className="size-3.5" aria-hidden />
-      Passzol-e?
+      Kulcsadatok
     </a>
   )
 }
@@ -116,6 +119,10 @@ export function StorefrontPdpVariants({
         const options = optionsFor(variants, axes, axis, current)
         if (options.length === 0) return null
         const currentLabel = current.values[axis.key]?.label
+        const showPrice = new Set(options.map((o) => o.target.priceGross)).size > 1
+        const showUnit =
+          axis.key === '__pack' ||
+          new Set(options.map((o) => o.target.netContent?.quantity ?? null)).size > 1
 
         return (
           <div key={axis.key} className="space-y-2">
@@ -132,19 +139,20 @@ export function StorefrontPdpVariants({
             {axis.kind === 'swatch' ? (
               <ul className="flex gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {options.map((o) => (
-                  <li key={o.label} className="shrink-0">
+                  <li key={o.label} className="w-14 shrink-0">
                     <Link
-                      href={`/p/${encodeURIComponent(o.target.slug)}`}
+                      href={productPath(o.target.slug)}
                       scroll={false}
-                      aria-label={`${o.label}${o.inStock ? '' : ' — nincs készleten'}`}
+                      aria-label={`${o.label}${showPrice ? `, ${formatFt(o.target.priceGross)}` : ''}${o.inStock ? '' : ' — elfogyott'}`}
                       aria-current={o.selected ? 'true' : undefined}
-                      className={cn(
-                        'relative block size-12 cursor-pointer overflow-hidden rounded-md border-2 bg-stone-100 transition-colors',
-                        o.selected
-                          ? 'border-ink'
-                          : 'border-transparent hover:border-stone-300'
-                      )}
+                      className="group block cursor-pointer"
                     >
+                      <span
+                        className={cn(
+                          'relative block size-14 overflow-hidden rounded-md border-2 bg-stone-100 transition-colors',
+                          o.selected ? 'border-ink' : 'border-transparent group-hover:border-stone-300'
+                        )}
+                      >
                       {o.target.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -156,42 +164,66 @@ export function StorefrontPdpVariants({
                           )}
                         />
                       ) : (
-                        <span className="flex size-full items-center justify-center px-1 text-center text-[10px] font-medium leading-tight text-ink-secondary">
+                        <span className="flex size-full items-center justify-center px-1 text-center text-[11px] font-medium leading-tight text-ink-secondary">
                           {o.label}
                         </span>
                       )}
+                      </span>
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'mt-1 block truncate text-center text-[12px] leading-tight',
+                          o.selected ? 'font-medium text-ink' : 'text-ink-secondary'
+                        )}
+                      >
+                        {o.label}
+                      </span>
                       {!o.inStock ? (
-                        <span
-                          className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top_right,transparent_calc(50%-1px),#a8a29e_50%,transparent_calc(50%+1px))]"
-                          aria-hidden
-                        />
+                        <span aria-hidden className="block text-center text-[11px] leading-tight text-ink-muted">
+                          elfogyott
+                        </span>
                       ) : null}
                     </Link>
                   </li>
                 ))}
               </ul>
             ) : (
-              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {options.map((o) => (
+              <ul className={cn('grid gap-2', showPrice || showUnit ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-3 sm:grid-cols-4')}>
+                {options.map((o) => {
+                  const unit = showUnit ? unitPriceLabel(o.target.priceGross, o.target.netContent) : null
+                  return (
                   <li key={o.label}>
                     <Link
-                      href={`/p/${encodeURIComponent(o.target.slug)}`}
+                      href={productPath(o.target.slug)}
                       scroll={false}
                       aria-current={o.selected ? 'true' : undefined}
-                      aria-label={`${axis.name}: ${o.label}${o.inStock ? '' : ' — nincs készleten'}`}
                       className={cn(
-                        'flex min-h-11 cursor-pointer items-center justify-center rounded-md border px-2 py-1.5 text-center text-[14px] font-medium leading-tight tabular-nums transition-colors',
+                        'flex min-h-11 cursor-pointer flex-col items-center justify-center rounded-md border px-2 py-1.5 text-center leading-tight tabular-nums transition-colors',
                         o.selected
                           ? 'border-ink bg-ink text-white'
                           : o.inStock
                             ? 'border-stone-300 bg-white text-ink hover:border-ink'
-                            : 'border-stone-200 bg-stone-50 text-ink-muted line-through decoration-1 hover:border-stone-400'
+                            : 'border-dashed border-stone-300 bg-stone-50 text-ink-secondary hover:border-stone-400'
                       )}
                     >
-                      {o.label}
+                      <span className="text-[14px] font-medium">{o.label}</span>
+                      {showPrice ? (
+                        <span className="text-[13px]">{formatFt(o.target.priceGross)}</span>
+                      ) : null}
+                      {unit ? (
+                        <span className={cn('text-[11px]', o.selected ? 'text-white/80' : 'text-ink-secondary')}>
+                          {unit}
+                        </span>
+                      ) : null}
+                      {!o.inStock ? (
+                        <span className={cn('text-[11px]', o.selected ? 'text-white/80' : 'text-ink-secondary')}>
+                          Elfogyott
+                        </span>
+                      ) : null}
                     </Link>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
 

@@ -3,7 +3,8 @@
  * Variánsoldalanként ugyanaz a ProductGroup ismétlődik (Google variáns irányelv).
  */
 
-import type { StorefrontCard } from '@/lib/storefront/catalog'
+import { DOCUMENT_KIND_LABEL } from '@/lib/accessories/document-kinds'
+import type { RelatedCards, StorefrontCard } from '@/lib/storefront/catalog'
 import type { PublicPdpPayload } from '@/lib/storefront/pdp'
 import {
   breadcrumbNode,
@@ -13,12 +14,32 @@ import {
   returnPolicyNode
 } from '@/lib/storefront/structured-data'
 import { productPath, siteUrl, type SiteBase } from '@/lib/storefront/url'
+import { NET_UNIT_LABEL, schemaReferenceQuantity, unCodeFor } from '@/lib/storefront/unit-price'
+import { youtubeIdOf, youtubeThumbnailUrl } from '@/lib/storefront/youtube'
 import { unitCodeFor } from '@/lib/webshop/key-specs'
 
 type Node = Record<string, unknown>
 
-function availability(inStock: boolean): string {
-  return inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'
+/** Szöveges PropertyValue-nál a hosszú mező (összetevők) ne fújja fel a HTML-t. */
+const TEXT_PROP_MAX = 1000
+
+function availability(inStock: boolean, expectedArrival?: string | null): string {
+  if (inStock) return 'https://schema.org/InStock'
+  return expectedArrival ? 'https://schema.org/BackOrder' : 'https://schema.org/OutOfStock'
+}
+
+function cardRef(base: SiteBase, c: StorefrontCard): Node {
+  return { '@type': 'Product', name: c.title, url: siteUrl(base, productPath(c.slug)) }
+}
+
+function textProp(name: string, value: string | null): Node | null {
+  const v = value?.trim()
+  if (!v) return null
+  return {
+    '@type': 'PropertyValue',
+    name,
+    value: v.length > TEXT_PROP_MAX ? `${v.slice(0, TEXT_PROP_MAX - 1)}…` : v
+  }
 }
 
 function quantity(value: number | null, unitCode: string): Node | null {
@@ -57,12 +78,14 @@ function shippingDetails(payload: PublicPdpPayload): Node | null {
 
 function mainOffer(payload: PublicPdpPayload, pageUrl: string, base: SiteBase): Node {
   const { product, settings } = payload
+  const referenceQuantity = schemaReferenceQuantity(product.netContent)
   const priceSpecification: Node[] = [
     {
       '@type': 'UnitPriceSpecification',
       price: product.priceGross,
       priceCurrency: 'HUF',
-      valueAddedTaxIncluded: true
+      valueAddedTaxIncluded: true,
+      ...(referenceQuantity ? { referenceQuantity } : {})
     }
   ]
   if (product.referencePriceGross != null) {
@@ -89,7 +112,10 @@ function mainOffer(payload: PublicPdpPayload, pageUrl: string, base: SiteBase): 
     price: product.priceGross,
     priceCurrency: 'HUF',
     priceSpecification,
-    availability: availability(product.inStock),
+    availability: availability(product.inStock, product.expectedArrival),
+    ...(!product.inStock && product.expectedArrival
+      ? { availabilityStarts: product.expectedArrival }
+      : {}),
     itemCondition: 'https://schema.org/NewCondition',
     seller: { '@id': orgId(base) },
     hasMerchantReturnPolicy: returnPolicyNode(settings)
@@ -105,7 +131,7 @@ function productNode(
   opts: {
     base: SiteBase
     groupId: string | null
-    required: StorefrontCard[]
+    related: RelatedCards
     similar: StorefrontCard[]
   }
 ): Node {
@@ -154,42 +180,93 @@ function productNode(
   if (height) node.height = height
   if (weight) node.weight = weight
 
-  const props = [...product.keySpecs, ...product.specRows].slice(0, 20)
-  if (props.length > 0) {
-    node.additionalProperty = props.map((p) => {
-      const unitCode = unitCodeFor(p.unit)
-      return {
-        '@type': 'PropertyValue',
-        name: p.name,
-        value: p.valueNum ?? p.value,
-        ...(p.valueNum != null && unitCode ? { unitCode } : {}),
-        ...(p.valueNum != null && p.unit ? { unitText: p.unit } : {})
-      }
+  if (product.countryOfOrigin) {
+    node.countryOfOrigin = { '@type': 'Country', name: product.countryOfOrigin }
+  }
+
+  const props: Node[] = [...product.keySpecs, ...product.specRows].slice(0, 20).map((p) => {
+    const unitCode = unitCodeFor(p.unit)
+    return {
+      '@type': 'PropertyValue',
+      name: p.name,
+      value: p.valueNum ?? p.value,
+      ...(p.valueNum != null && unitCode ? { unitCode } : {}),
+      ...(p.valueNum != null && p.unit ? { unitText: p.unit } : {})
+    }
+  })
+  if (product.netContent && product.netContent.unit !== 'db') {
+    props.push({
+      '@type': 'PropertyValue',
+      name: 'Nettó tartalom',
+      value: product.netContent.quantity,
+      unitCode: unCodeFor(product.netContent),
+      unitText: NET_UNIT_LABEL[product.netContent.unit]
     })
   }
+  if (product.multipack != null) {
+    props.push({
+      '@type': 'PropertyValue',
+      name: 'Kiszerelés',
+      value: product.multipack,
+      unitCode: 'C62',
+      unitText: 'db'
+    })
+  }
+  if (product.isBundle) {
+    props.push({ '@type': 'PropertyValue', name: 'Csomagajánlat', value: true })
+  }
+  for (const extra of [
+    textProp('Összetevők', product.ingredients),
+    textProp('Használat', product.usage),
+    textProp('Figyelmeztetés', product.safetyInfo)
+  ]) {
+    if (extra) props.push(extra)
+  }
+  if (props.length > 0) node.additionalProperty = props
 
+  const subjectOf: Node[] = []
   if (product.measureImageUrl) {
-    node.subjectOf = {
+    subjectOf.push({
       '@type': 'ImageObject',
       url: product.measureImageUrl,
-      caption: `${product.title} — hogyan mérd le`
-    }
+      caption: `${product.title} — méretek`
+    })
   }
+  const videoId = youtubeIdOf(product.videoUrl)
+  if (videoId) {
+    subjectOf.push({
+      '@type': 'VideoObject',
+      name: `${product.title} — videó`,
+      description: product.descriptionShort || product.title,
+      thumbnailUrl: youtubeThumbnailUrl(videoId),
+      embedUrl: `https://www.youtube.com/embed/${videoId}`
+    })
+  }
+  for (const d of product.documents) {
+    subjectOf.push({
+      '@type': 'DigitalDocument',
+      name: d.title,
+      url: d.url,
+      encodingFormat: 'application/pdf',
+      inLanguage: d.language,
+      additionalType: DOCUMENT_KIND_LABEL[d.kind]
+    })
+  }
+  if (subjectOf.length > 0) node.subjectOf = subjectOf.length === 1 ? subjectOf[0] : subjectOf
 
-  if (opts.required.length > 0) {
-    node.isRelatedTo = opts.required.map((c) => ({
-      '@type': 'Product',
-      name: c.title,
-      url: siteUrl(opts.base, productPath(c.slug))
-    }))
+  const { related } = opts
+  const relatedTo = [...related.required, ...related.accessory, ...related.largerPack]
+  if (relatedTo.length > 0) node.isRelatedTo = relatedTo.map((c) => cardRef(opts.base, c))
+  if (related.accessoryOf.length > 0) {
+    node.isAccessoryOrSparePartFor = related.accessoryOf.map((c) => cardRef(opts.base, c))
   }
-  if (opts.similar.length > 0) {
-    node.isSimilarTo = opts.similar.map((c) => ({
-      '@type': 'Product',
-      name: c.title,
-      url: siteUrl(opts.base, productPath(c.slug))
-    }))
-  }
+  const seen = new Set<string>()
+  const similarTo = [...related.alternative, ...opts.similar].filter((c) => {
+    if (seen.has(c.id)) return false
+    seen.add(c.id)
+    return true
+  })
+  if (similarTo.length > 0) node.isSimilarTo = similarTo.map((c) => cardRef(opts.base, c))
 
   if (opts.groupId) node.inProductGroupWithID = opts.groupId
 
@@ -210,6 +287,13 @@ function productNode(
   return node
 }
 
+const VARIES_PROP: Record<string, string> = {
+  'https://schema.org/color': 'color',
+  'https://schema.org/material': 'material',
+  'https://schema.org/pattern': 'pattern',
+  'https://schema.org/size': 'size'
+}
+
 function variesByFor(axis: { key: string; name: string }): string {
   const name = axis.name.toLowerCase()
   if (axis.key === '__color' || /sz[ií]n|colou?r/.test(name)) return 'https://schema.org/color'
@@ -224,7 +308,7 @@ export function buildPdpJsonLd(
     base: SiteBase
     pageUrl: string
     crumbs: { name: string; path: string | null }[]
-    required: StorefrontCard[]
+    related: RelatedCards
     similar: StorefrontCard[]
   }
 ): Node {
@@ -233,7 +317,7 @@ export function buildPdpJsonLd(
   const current = productNode(payload, opts.pageUrl, {
     base: opts.base,
     groupId: isGroup ? product.groupId : null,
-    required: opts.required,
+    related: opts.related,
     similar: opts.similar
   })
 
@@ -247,6 +331,18 @@ export function buildPdpJsonLd(
         product.variantAxes.map(variesByFor)
       )
     ]
+    const axisProps = (v: (typeof product.variants)[number]): Node => {
+      const out: Node = {}
+      for (const a of product.variantAxes) {
+        const prop = VARIES_PROP[variesByFor(a)]
+        const label = v.values[a.key]?.label
+        if (!prop || !label) continue
+        out[prop] = out[prop] ? `${String(out[prop])} / ${label}` : label
+      }
+      return out
+    }
+    const currentVariant = product.variants.find((v) => v.current)
+    if (currentVariant) Object.assign(current, axisProps(currentVariant))
     const siblings = product.variants
       .filter((v) => !v.current)
       .map((v) => {
@@ -256,6 +352,9 @@ export function buildPdpJsonLd(
           '@id': `${url}#product`,
           name: v.title,
           url,
+          ...(v.sku ? { sku: v.sku } : {}),
+          ...(v.gtin && /^\d{8,14}$/.test(v.gtin) ? { gtin: v.gtin } : {}),
+          ...axisProps(v),
           ...(v.imageUrl ? { image: v.imageUrl } : {}),
           inProductGroupWithID: product.groupId,
           offers: {
@@ -272,6 +371,8 @@ export function buildPdpJsonLd(
       '@type': 'ProductGroup',
       '@id': groupId,
       name: product.productType || product.title,
+      url: opts.pageUrl,
+      description: product.descriptionShort || product.descriptionLong || product.title,
       productGroupID: product.groupId,
       variesBy,
       ...(product.brand ? { brand: { '@type': 'Brand', name: product.brand } } : {}),

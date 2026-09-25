@@ -38,7 +38,7 @@ type Props = {
 }
 
 const ROLE_OPTIONS = [
-  { value: 'key', label: 'Kulcsadat (Passzol-e?)' },
+  { value: 'key', label: 'Kulcsadat' },
   { value: 'spec', label: 'Ajánlott adat' }
 ]
 
@@ -155,8 +155,8 @@ function Body({
 
       <div className="space-y-3">
         <p className="text-hint text-ink-secondary">
-          A kulcsadatok (legfeljebb {MAX_KEY_SPECS}) a termékoldal „Passzol-e?”
-          blokkjában jelennek meg — ezeket veti össze a vásárló a régi alkatrészével.
+          A kulcsadatok (legfeljebb {MAX_KEY_SPECS}) a termékoldal „Kulcsadatok”
+          blokkjában jelennek meg — ezek alapján dönti el a vásárló, hogy neki való-e.
           Az első a fő adat: ez a variánsváltó címkéje is, ha a család tagjai ebben
           térnek el.
         </p>

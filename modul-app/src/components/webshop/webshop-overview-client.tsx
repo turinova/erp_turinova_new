@@ -111,34 +111,27 @@ export function WebshopOverviewClient({ stats, stockNotify }: Props) {
     <div>
       <PageHeader
         title="Webshop"
-        description="Online bolt — kategóriák, tulajdonságok és shop-ready termékek."
+        description="Online bolt — termékek, kategóriák, jellemzők és beállítások."
       />
 
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-md border border-border bg-surface p-3">
-          <p className="text-hint text-ink-secondary">Boltban jelölt</p>
-          <p className="mt-1 text-h2 tabular-nums text-ink">
-            {stats.sellableWeb}
-          </p>
-        </div>
-        <div className="rounded-md border border-border bg-surface p-3">
-          <p className="text-hint text-ink-secondary">Majdnem kész</p>
-          <p className="mt-1 text-h2 tabular-nums text-warning-ink">
-            {stats.blocked}
-          </p>
-        </div>
-        <div className="rounded-md border border-border bg-surface p-3">
-          <p className="text-hint text-ink-secondary">Kész a boltra</p>
-          <p className="mt-1 text-h2 tabular-nums text-success-ink">
-            {stats.ready}
-          </p>
-        </div>
-        <div className="rounded-md border border-border bg-surface p-3">
-          <p className="text-hint text-ink-secondary">Szuper kitöltés</p>
-          <p className="mt-1 text-h2 tabular-nums text-info-ink">
-            {stats.excellent}
-          </p>
-        </div>
+        {(
+          [
+            ['Kint van a boltban', stats.sellableWeb, 'text-ink', 'in_shop'],
+            ['Hiányos', stats.sellableWeb - stats.ready, 'text-warning-ink', 'incomplete'],
+            ['Kész a boltra', stats.ready, 'text-success-ink', 'in_shop'],
+            ['Szuper kitöltés', stats.excellent, 'text-info-ink', 'in_shop']
+          ] as const
+        ).map(([label, value, tone, filter]) => (
+          <Link
+            key={label}
+            href={`/webshop/katalogus?filter=${filter}`}
+            className="rounded-md border border-border bg-surface p-3 hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <p className="text-hint text-ink-secondary">{label}</p>
+            <p className={`mt-1 text-h2 tabular-nums ${tone}`}>{value}</p>
+          </Link>
+        ))}
       </div>
 
       <div className="flex flex-wrap gap-1.5">
@@ -213,8 +206,8 @@ export function WebshopOverviewClient({ stats, stockNotify }: Props) {
           className="mt-4 max-w-xl rounded-md border border-border bg-subtle p-3 text-body text-ink-secondary"
           role="status"
         >
-          Még nincs termék a boltban. Nyiss egy terméket, kapcsold be az
-          „Elérhető az online boltban” kapcsolót, és válassz kategóriát.
+          Még nincs termék a boltban. Nyisd meg a Bolt katalógust, válassz egy
+          terméket, add meg a kategóriát és a leírást, majd kapcsold be.
         </p>
       ) : null}
     </div>

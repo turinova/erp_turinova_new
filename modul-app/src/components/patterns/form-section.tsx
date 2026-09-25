@@ -19,7 +19,8 @@ export function FormSection({
   headerAside,
   headerAction,
   bodyHidden = false,
-  onTitleClick
+  onTitleClick,
+  embedded = false
 }: {
   title: string
   description?: string
@@ -34,7 +35,28 @@ export function FormSection({
   bodyHidden?: boolean
   /** Ha megadva, a cím kattintható. */
   onTitleClick?: () => void
+  /** Szülő (pl. lenyíló csoport) adja a keretet és a címet — itt csak leírás + mezőrács. */
+  embedded?: boolean
 }) {
+  if (embedded) {
+    return (
+      <div className={cn('space-y-2.5', className)}>
+        {description || headerAside ? (
+          <div className="flex items-start justify-between gap-2">
+            {description ? (
+              <p className="text-hint text-ink-secondary">{description}</p>
+            ) : (
+              <span />
+            )}
+            {headerAside}
+          </div>
+        ) : null}
+        <div className={cn('grid gap-x-3 gap-y-2.5', columnsClass[columns])}>
+          {children}
+        </div>
+      </div>
+    )
+  }
   return (
     <section
       className={cn(

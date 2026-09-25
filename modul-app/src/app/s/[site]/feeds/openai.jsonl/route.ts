@@ -14,6 +14,7 @@ export async function GET(
 
   const lines = items.map((it) => {
     const ship = shippingFor(ctx, it.priceGross)
+    const backorder = !it.inStock && it.availabilityDate != null
     const variant: Record<string, string> = {}
     if (it.color) variant.color = it.color
     if (it.size) variant.size = it.size
@@ -26,14 +27,15 @@ export async function GET(
       seller_name: ctx.sellerName,
       seller_url: ctx.sellerUrl,
       image_url: it.imageUrl,
-      availability: it.inStock ? 'in_stock' : 'out_of_stock',
+      availability: it.inStock ? 'in_stock' : backorder ? 'backorder' : 'out_of_stock',
       price: `${it.priceGross} HUF`,
       condition: 'new',
-      enable_search: true,
-      enable_checkout: false,
+      is_eligible_search: true,
+      is_eligible_checkout: false,
       accepts_returns: true,
       return_deadline_in_days: ctx.returnDays
     }
+    if (backorder) rec.availability_date = it.availabilityDate
     if (it.additionalImageUrls.length) rec.additional_image_urls = it.additionalImageUrls
     if (it.gtin) rec.gtin = it.gtin
     if (it.mpn) rec.mpn = it.mpn
@@ -47,9 +49,16 @@ export async function GET(
     if (it.color) rec.color = it.color
     if (it.size) rec.size = it.size
     if (it.material) rec.material = it.material
-    if (it.dimensionsCm) rec.dimensions = { ...it.dimensionsCm, unit: 'cm' }
+    if (it.dimensionsCm) {
+      rec.dimensions = {
+        length: String(it.dimensionsCm.length),
+        width: String(it.dimensionsCm.width),
+        height: String(it.dimensionsCm.height),
+        unit: 'cm'
+      }
+    }
     if (it.weightKg) {
-      rec.weight = it.weightKg
+      rec.weight = String(it.weightKg)
       rec.item_weight_unit = 'kg'
     }
     if (ship != null) rec.shipping_price = `${ship} HUF`
@@ -60,7 +69,7 @@ export async function GET(
     if (ctx.privacyUrl) rec.seller_privacy_policy = ctx.privacyUrl
     if (it.reviewCount > 0 && it.starRating != null) {
       rec.review_count = it.reviewCount
-      rec.star_rating = it.starRating
+      rec.star_rating = it.starRating.toFixed(2)
     }
     return JSON.stringify(rec)
   })

@@ -45,6 +45,14 @@ export type AccessoryWebFields = {
   web_identifier_exists: boolean
   web_image_alts: Record<string, string>
   web_price_tiers: WebPriceTier[]
+  web_net_quantity: number | null
+  web_net_unit: string | null
+  web_ingredients: string | null
+  web_usage: string | null
+  web_video_url: string | null
+  web_country_of_origin: string | null
+  web_multipack: number | null
+  web_is_bundle: boolean
 }
 
 export type ShopReadyLevel =
@@ -323,7 +331,15 @@ export const emptyWebFields = (): AccessoryWebFields => ({
   web_safety_info: null,
   web_identifier_exists: true,
   web_image_alts: {},
-  web_price_tiers: []
+  web_price_tiers: [],
+  web_net_quantity: null,
+  web_net_unit: null,
+  web_ingredients: null,
+  web_usage: null,
+  web_video_url: null,
+  web_country_of_origin: null,
+  web_multipack: null,
+  web_is_bundle: false
 })
 
 /** Tiszta, növekvő min_qty-jű tier lista (duplikált min_qty: utolsó nyer). */
@@ -433,6 +449,10 @@ function asNullableNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function asTrimmedText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
 /** DB row → typed web fields (list + detail). */
 export function mapAccessoryWebFields(row: Record<string, unknown>): AccessoryWebFields {
   return {
@@ -491,7 +511,15 @@ export function mapAccessoryWebFields(row: Record<string, unknown>): AccessoryWe
         : null,
     web_identifier_exists: row.web_identifier_exists !== false,
     web_image_alts: asStringRecord(row.web_image_alts),
-    web_price_tiers: normalizePriceTiers(row.web_price_tiers)
+    web_price_tiers: normalizePriceTiers(row.web_price_tiers),
+    web_net_quantity: asNullableNumber(row.web_net_quantity),
+    web_net_unit: asTrimmedText(row.web_net_unit),
+    web_ingredients: asTrimmedText(row.web_ingredients),
+    web_usage: asTrimmedText(row.web_usage),
+    web_video_url: asTrimmedText(row.web_video_url),
+    web_country_of_origin: asTrimmedText(row.web_country_of_origin)?.toUpperCase() ?? null,
+    web_multipack: asNullableNumber(row.web_multipack),
+    web_is_bundle: row.web_is_bundle === true
   }
 }
 
@@ -532,5 +560,17 @@ export const WEB_SELECT_COLUMNS = `
   web_safety_info,
   web_identifier_exists,
   web_image_alts,
-  web_price_tiers
+  web_price_tiers,
+  web_net_quantity,
+  web_net_unit,
+  web_ingredients,
+  web_usage,
+  web_video_url,
+  web_country_of_origin,
+  web_multipack,
+  web_is_bundle
 ` as const
+
+/** Az `accessory_web` tábla oszlopai (a galéria az alap terméken marad). */
+export const ACCESSORY_WEB_COLUMNS = `${WEB_SELECT_COLUMNS.replace(/\n\s*web_gallery,/, '')},
+  web_category_id`

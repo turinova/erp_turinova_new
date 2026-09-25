@@ -15,11 +15,7 @@ import { namedEntityTabTitle } from '@/lib/seo/tab-titles'
 import { getAccessoryProcurementStock } from '@/lib/stock/accessory-panel'
 import { createClient } from '@/lib/supabase/server'
 import { tenantHasWebshop } from '@/lib/webshop/entitlement'
-import {
-  listProductAttributes,
-  listWebCategories
-} from '@/lib/webshop/queries'
-import { getTenantWebshopSettings } from '@/lib/webshop/settings'
+import { getShopCardStatus } from '@/lib/webshop/product-queries'
 
 type Params = Promise<{ id: string }>
 
@@ -70,13 +66,9 @@ export default async function EditTermekPage({
 
   if (!accessory) notFound()
 
-  const [webCategories, webAttributes, shippingDefaults] = hasWebshop
-    ? await Promise.all([
-        listWebCategories(supabase, user.tenantId),
-        listProductAttributes(supabase, user.tenantId),
-        getTenantWebshopSettings(supabase, user.tenantId)
-      ])
-    : [[], [], null]
+  const shopStatus = hasWebshop
+    ? await getShopCardStatus(supabase, user.tenantId, id)
+    : null
 
   let procurementStock = null
   if (hasBeszerzes) {
@@ -104,9 +96,7 @@ export default async function EditTermekPage({
       canPrintLabels={canPrintLabels}
       procurementStock={procurementStock}
       hasWebshop={hasWebshop}
-      webCategories={webCategories}
-      webAttributes={webAttributes}
-      webshopShippingDefaults={shippingDefaults}
+      shopStatus={shopStatus}
     />
   )
 }

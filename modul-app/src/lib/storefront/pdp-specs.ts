@@ -1,5 +1,5 @@
 /**
- * PDP műszaki adatok: kategória kulcsadatok („Passzol-e?”), egyesített spec lista,
+ * PDP műszaki adatok: kategória kulcsadatok, egyesített spec lista,
  * variáns-tengelyek a web_group_id családon belül.
  */
 
@@ -335,6 +335,8 @@ export type VariantAxisSource = {
   id: string
   webColor: string | null
   webSize: string | null
+  /** Kiszerelés (pl. „400 ml”) + rendezési kulcs alap-egységben. */
+  pack?: { label: string; sort: number } | null
 }
 
 const MAX_AXES = 3
@@ -346,7 +348,9 @@ const MAX_AXES = 3
  */
 export function computeVariantAxes(
   ctx: PdpSpecContext,
-  members: VariantAxisSource[]
+  members: VariantAxisSource[],
+  /** A csoportnál beállított tengelyek sorrendben (attribútum id / '__pack'). Üres = automatikus. */
+  preferred: string[] = []
 ): {
   axes: PublicPdpVariantAxis[]
   valuesOf: (memberId: string) => Record<string, { label: string; sort: number | null }>
@@ -383,11 +387,16 @@ export function computeVariantAxes(
       kind: a.code.toLowerCase() === 'color' ? 'swatch' : 'grid'
     })
   }
+  if (distinct((m) => m.pack?.label ?? null) >= 2) {
+    axes.push({ key: '__pack', name: 'Kiszerelés', kind: 'grid' })
+  }
   if (attrAxes.length === 0 && distinct((m) => m.webSize) >= 2) {
     axes.push({ key: '__size', name: 'Méret', kind: 'grid' })
   }
 
-  const limited = axes.slice(0, MAX_AXES)
+  const byKey = new Map(axes.map((a) => [a.key, a]))
+  const chosen = preferred.map((k) => byKey.get(k)).filter((a): a is PublicPdpVariantAxis => a != null)
+  const limited = (chosen.length > 0 ? chosen : axes).slice(0, MAX_AXES)
   const byId = new Map(members.map((m) => [m.id, m]))
 
   return {
@@ -398,6 +407,8 @@ export function computeVariantAxes(
       for (const axis of limited) {
         if (axis.key === '__color') {
           if (m?.webColor?.trim()) out[axis.key] = { label: m.webColor.trim(), sort: null }
+        } else if (axis.key === '__pack') {
+          if (m?.pack) out[axis.key] = { label: m.pack.label, sort: m.pack.sort }
         } else if (axis.key === '__size') {
           if (m?.webSize?.trim()) {
             const n = Number.parseFloat(m.webSize.replace(',', '.'))

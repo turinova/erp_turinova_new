@@ -1,5 +1,6 @@
 'use client'
 
+import { FileText } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -12,21 +13,26 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import type { MediaFileRow } from '@/lib/media/types'
+import { isPdfMime, type MediaFileRow } from '@/lib/media/types'
 import { createClient } from '@/lib/supabase/client'
 
 type MediaPickerDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   tenantId: string
-  onSelect: (publicUrl: string) => void
+  onSelect: (publicUrl: string, row: MediaFileRow) => void
+  /** Alapból kép; `pdf` = dokumentumválasztó. */
+  kind?: 'image' | 'pdf'
 }
+
+const PICKER_LIMIT = 200
 
 export function MediaPickerDialog({
   open,
   onOpenChange,
   tenantId,
-  onSelect
+  onSelect,
+  kind = 'image'
 }: MediaPickerDialogProps) {
   const [rows, setRows] = useState<MediaFileRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -34,12 +40,16 @@ export function MediaPickerDialog({
   const [query, setQuery] = useState('')
 
   useEffect(() => {
+    if (open) setQuery('')
+  }, [open])
+
+  useEffect(() => {
     if (!open) return
     let cancelled = false
+    const term = query.trim().replace(/[\\%_]/g, (c) => `\\${c}`)
     async function load() {
       setLoading(true)
       setError(null)
-      setQuery('')
       const supabase = createClient()
       if (!supabase) {
         if (!cancelled) {
@@ -48,13 +58,17 @@ export function MediaPickerDialog({
         }
         return
       }
-      const { data, error: err } = await supabase
+      let q = supabase
         .from('media_files')
         .select(
           'id, tenant_id, original_filename, stored_filename, storage_path, public_url, size_bytes, mime_type, created_at'
         )
         .eq('tenant_id', tenantId)
+        .like('mime_type', kind === 'pdf' ? 'application/pdf' : 'image/%')
         .order('created_at', { ascending: false })
+        .limit(PICKER_LIMIT)
+      if (term) q = q.ilike('original_filename', `%${term}%`)
+      const { data, error: err } = await q
       if (cancelled) return
       if (err) {
         console.error('MediaPickerDialog', err.message)
@@ -65,15 +79,14 @@ export function MediaPickerDialog({
       }
       setLoading(false)
     }
-    void load()
+    const t = setTimeout(() => void load(), term ? 250 : 0)
     return () => {
       cancelled = true
+      clearTimeout(t)
     }
-  }, [open, tenantId])
+  }, [open, tenantId, kind, query])
 
-  const filtered = rows.filter((r) =>
-    r.original_filename.toLowerCase().includes(query.trim().toLowerCase())
-  )
+  const filtered = rows
 
   function confirmSelect(row: MediaFileRow | null) {
     if (!row) return
@@ -84,7 +97,7 @@ export function MediaPickerDialog({
       )
       return
     }
-    onSelect(url)
+    onSelect(url, row)
     onOpenChange(false)
   }
 
@@ -92,9 +105,11 @@ export function MediaPickerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Kép a médiából</DialogTitle>
+          <DialogTitle>{kind === 'pdf' ? 'Dokumentum a médiából' : 'Kép a médiából'}</DialogTitle>
           <DialogDescription>
-            Kattints egy képre a kiválasztáshoz.
+            {kind === 'pdf'
+              ? 'Kattints egy PDF-re a kiválasztáshoz.'
+              : 'Kattints egy képre a kiválasztáshoz.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -128,12 +143,18 @@ export function MediaPickerDialog({
                     className="flex w-full items-center gap-2.5 px-2.5 py-2 text-left hover:bg-subtle"
                     onClick={() => confirmSelect(row)}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={row.public_url}
-                      alt=""
-                      className="pointer-events-none size-10 shrink-0 rounded border border-border object-cover"
-                    />
+                    {isPdfMime(row.mime_type) ? (
+                      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded border border-border bg-subtle text-ink-secondary">
+                        <FileText className="size-4" aria-hidden />
+                      </span>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={row.public_url}
+                        alt=""
+                        className="pointer-events-none size-10 shrink-0 rounded border border-border object-cover"
+                      />
+                    )}
                     <span className="min-w-0 truncate text-body text-ink">
                       {row.original_filename}
                     </span>

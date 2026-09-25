@@ -31,6 +31,10 @@ export type StorefrontSettings = {
   complaintInfo: string | null
   /** GPTBot / Google-Extended stb. taníthat-e a tartalomból (keresés ettől független). */
   allowAiTraining: boolean
+  /** Termékképek aránya a listákban és a galériában. */
+  imageAspect: 'square' | 'portrait'
+  /** B2B: nettó ár a bruttó alatt. */
+  showNetPrice: boolean
 }
 
 /** Fttv. / Ptk. — rövidebb elállási idő nem ígérhető. */
@@ -55,7 +59,9 @@ export const DEFAULT_STOREFRONT_SETTINGS: StorefrontSettings = {
   termsUrl: null,
   privacyUrl: null,
   complaintInfo: null,
-  allowAiTraining: false
+  allowAiTraining: false,
+  imageAspect: 'square',
+  showNetPrice: false
 }
 
 const LEGAL_COLUMNS = `
@@ -124,6 +130,7 @@ export async function getStorefrontSettings(
 ): Promise<StorefrontSettings> {
   // Régebbi sémán (migráció előtt) a hiányzó oszlopcsoport nélkül olvasunk.
   const selects = [
+    `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training, image_aspect, show_net_price`,
     `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training`,
     `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}`,
     STOREFRONT_COLUMNS
@@ -167,6 +174,8 @@ export async function getStorefrontSettings(
     termsUrl: textOrNull(row.terms_url),
     privacyUrl: textOrNull(row.privacy_url),
     complaintInfo: textOrNull(row.complaint_info),
-    allowAiTraining: row.allow_ai_training === true
+    allowAiTraining: row.allow_ai_training === true,
+    imageAspect: row.image_aspect === 'portrait' ? 'portrait' : 'square',
+    showNetPrice: row.show_net_price === true
   }
 }

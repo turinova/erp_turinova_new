@@ -50,6 +50,8 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
   const [showSold, setShowSold] = useState(initial.showSoldCount)
   const [reviewsEnabled, setReviewsEnabled] = useState(initial.reviewsEnabled)
   const [allowAiTraining, setAllowAiTraining] = useState(initial.allowAiTraining)
+  const [portraitImages, setPortraitImages] = useState(initial.imageAspect === 'portrait')
+  const [showNetPrice, setShowNetPrice] = useState(initial.showNetPrice)
   const [hostName, setHostName] = useState(initial.hostingProviderName ?? '')
   const [hostAddress, setHostAddress] = useState(
     initial.hostingProviderAddress ?? ''
@@ -97,7 +99,9 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
         termsUrl,
         privacyUrl,
         complaintInfo,
-        allowAiTraining
+        allowAiTraining,
+        imageAspect: portraitImages ? 'portrait' : 'square',
+        showNetPrice
       })
       if (!result.ok) {
         setErrors(result.fieldErrors ?? {})
@@ -318,6 +322,22 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
               onCheckedChange={setAllowAiTraining}
               label="AI modellek taníthatnak a bolt tartalmából"
               description="Kikapcsolva is megtalálnak és ajánlanak a ChatGPT, Perplexity és Google AI keresők — csak a modelltanítást (GPTBot, Google-Extended, CCBot) tiltjuk."
+            />
+            <Switch
+              id="sf-portrait"
+              checked={portraitImages}
+              disabled={disabled}
+              onCheckedChange={setPortraitImages}
+              label="Álló termékképek (4:5)"
+              description="Divat, kozmetikum, italok: a képek nem kerülnek négyzetbe. Kikapcsolva 1:1."
+            />
+            <Switch
+              id="sf-net-price"
+              checked={showNetPrice}
+              disabled={disabled}
+              onCheckedChange={setShowNetPrice}
+              label="Nettó ár mutatása"
+              description="Céges vevőknek: a bruttó ár alatt kisebb betűvel a nettó ár is látszik."
             />
           </div>
         </FormSection>

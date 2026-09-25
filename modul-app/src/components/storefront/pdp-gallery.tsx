@@ -11,6 +11,9 @@ type StorefrontPdpGalleryProps = {
   /** Kép URL → saját leírás. */
   alts?: Record<string, string>
   className?: string
+  aspect?: 'square' | 'portrait'
+  /** Mobilon a kép bal felső sarkába (pl. vissza-nyíl). */
+  overlay?: React.ReactNode
 }
 
 function altFor(
@@ -184,11 +187,18 @@ function Lightbox({
   )
 }
 
+const SLIDE = {
+  square: 'h-[min(80vw,40svh)] lg:aspect-square',
+  portrait: 'h-[min(100vw,46svh)] lg:aspect-[4/5]'
+} as const
+
 export function StorefrontPdpGallery({
   images,
   alt,
   alts,
-  className
+  className,
+  aspect = 'square',
+  overlay
 }: StorefrontPdpGalleryProps) {
   const count = images.length
   const { ref, index, goTo } = useSnapIndex(count)
@@ -198,7 +208,8 @@ export function StorefrontPdpGallery({
     return (
       <div
         className={cn(
-          'flex h-[min(88vw,48svh)] items-center justify-center bg-stone-100 text-ink-muted lg:aspect-square lg:h-auto',
+          'relative flex items-center justify-center bg-stone-100 text-ink-muted lg:h-auto',
+          SLIDE[aspect],
           className
         )}
       >
@@ -206,6 +217,7 @@ export function StorefrontPdpGallery({
           <ImageIcon className="size-10 opacity-40" aria-hidden />
           <p className="text-[14px] text-ink-secondary">Nincs kép</p>
         </div>
+        {overlay}
       </div>
     )
   }
@@ -225,7 +237,7 @@ export function StorefrontPdpGallery({
               key={url}
               type="button"
               onClick={() => setLightboxAt(i)}
-              className="relative h-[min(88vw,48svh)] w-full shrink-0 cursor-zoom-in snap-center lg:aspect-square lg:h-auto"
+              className={cn('relative w-full shrink-0 cursor-zoom-in snap-center lg:h-auto', SLIDE[aspect])}
               aria-label={`Kép ${i + 1} nagyítása`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -242,6 +254,7 @@ export function StorefrontPdpGallery({
           ))}
         </div>
 
+        {overlay}
         <span className="pointer-events-none absolute right-3 top-3 inline-flex size-8 items-center justify-center rounded-full bg-white/90 text-ink-secondary lg:size-auto lg:gap-1 lg:px-2 lg:py-1 lg:text-[11px] lg:font-medium">
           <ZoomIn className="size-4 lg:size-3.5" aria-hidden />
           <span className="sr-only lg:not-sr-only">Nagyítás</span>

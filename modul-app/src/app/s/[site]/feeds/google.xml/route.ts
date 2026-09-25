@@ -28,6 +28,8 @@ export async function GET(
 
   const entries = items.map((it) => {
     const ship = shippingFor(ctx, it.priceGross)
+    const backorder = !it.inStock && it.availabilityDate != null
+    const sd = it.shippingDimensionsCm
     return [
       '<item>',
       tag('id', it.id),
@@ -36,7 +38,8 @@ export async function GET(
       tag('link', it.url),
       tag('image_link', it.imageUrl),
       ...it.additionalImageUrls.map((u) => tag('additional_image_link', u)),
-      tag('availability', it.inStock ? 'in_stock' : 'out_of_stock'),
+      tag('availability', it.inStock ? 'in_stock' : backorder ? 'backorder' : 'out_of_stock'),
+      backorder ? tag('availability_date', `${it.availabilityDate}T12:00:00Z`) : '',
       tag('price', `${it.priceGross} HUF`),
       tag('condition', 'new'),
       tag('brand', it.brand),
@@ -54,6 +57,18 @@ export async function GET(
       it.dimensionsCm ? tag('product_height', `${it.dimensionsCm.height} cm`) : '',
       tag('product_weight', it.weightKg ? `${it.weightKg} kg` : null),
       tag('shipping_weight', it.shippingWeightKg ? `${it.shippingWeightKg} kg` : null),
+      sd ? tag('shipping_length', `${sd.length} cm`) : '',
+      sd ? tag('shipping_width', `${sd.width} cm`) : '',
+      sd ? tag('shipping_height', `${sd.height} cm`) : '',
+      tag('multipack', it.multipack),
+      it.isBundle ? tag('is_bundle', 'yes') : '',
+      ...it.highlights.map((h) => tag('product_highlight', h)),
+      ...it.details.map(
+        (d) =>
+          `<g:product_detail>${tag('section_name', d.section)}${tag('attribute_name', d.name)}${tag('attribute_value', d.value)}</g:product_detail>`
+      ),
+      tag('unit_pricing_measure', it.unitPricing?.measure ?? null),
+      tag('unit_pricing_base_measure', it.unitPricing?.base ?? null),
       ship != null
         ? `<g:shipping>${tag('country', 'HU')}${tag('price', `${ship} HUF`)}</g:shipping>`
         : '',

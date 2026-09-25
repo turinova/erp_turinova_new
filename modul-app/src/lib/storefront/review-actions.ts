@@ -81,7 +81,7 @@ export async function submitProductReview(
   }
 
   const { data: product } = await admin
-    .from('accessories')
+    .from('storefront_products')
     .select('id')
     .eq('tenant_id', tenant.id)
     .eq('id', parsed.data.accessoryId)

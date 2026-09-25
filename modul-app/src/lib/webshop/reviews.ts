@@ -29,7 +29,7 @@ export async function listAdminReviews(
   let query = supabase
     .from('product_reviews')
     .select(
-      'id, accessory_id, author_name, author_email, rating, title, body, variant_label, status, seller_reply, created_at, accessories ( name, web_slug )',
+      'id, accessory_id, author_name, author_email, rating, title, body, variant_label, status, seller_reply, created_at, accessories ( name, accessory_web ( web_slug ) )',
       { count: 'exact' }
     )
     .eq('tenant_id', tenantId)
@@ -57,12 +57,14 @@ export async function listAdminReviews(
   const rows = (data ?? []).map((r) => {
     const row = r as unknown as Record<string, unknown>
     const acc = Array.isArray(row.accessories) ? row.accessories[0] : row.accessories
-    const a = acc as { name?: string; web_slug?: string | null } | null
+    const a = acc as { name?: string; accessory_web?: unknown } | null
+    const webRaw = Array.isArray(a?.accessory_web) ? a.accessory_web[0] : a?.accessory_web
+    const web = webRaw as { web_slug?: string | null } | null | undefined
     return {
       id: String(row.id),
       accessoryId: String(row.accessory_id),
       productName: a?.name ?? '—',
-      productSlug: a?.web_slug ?? null,
+      productSlug: web?.web_slug ?? null,
       authorName: String(row.author_name ?? ''),
       authorEmail: (row.author_email as string | null) ?? null,
       rating: Number(row.rating),

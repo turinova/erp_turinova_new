@@ -1,15 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { grossFromNet } from '@/lib/accessories/parse'
-import {
-  evaluateShopReady,
-  mapAccessoryWebFields,
-  type AccessoryWebFields,
-  type ShopReadyLevel,
-  WEB_SELECT_COLUMNS
-} from '@/lib/accessories/web-shop'
-import { listAccessoryAttributeInputs } from '@/lib/webshop/queries'
-import type { AttributeInput } from '@/lib/webshop/types'
+import { fetchAllPages } from '@/lib/supabase/fetch-all'
 
 export type AccessoryListItem = {
   id: string
@@ -34,14 +26,9 @@ export type AccessoryListItem = {
   sellable_pos: boolean
   created_at: string
   updated_at: string
-  web_category_id: string | null
-  attribute_value_ids: string[]
-  attribute_inputs: AttributeInput[]
-} & AccessoryWebFields & {
-    shop_ready_level: ShopReadyLevel
-    shop_ready_score: number
-    shop_ready_missing: string[]
-  }
+  /** Képek kártya galériája (DB: web_gallery, történeti név). */
+  web_gallery: string[]
+}
 
 export type AccessoryTaxOption = {
   id: string
@@ -78,18 +65,13 @@ const ACCESSORY_SELECT = `
   sellable_pos,
   created_at,
   updated_at,
-  web_category_id,
-  ${WEB_SELECT_COLUMNS},
+  web_gallery,
   manufacturers ( name ),
   tax_rates ( name, rate_percent ),
   units ( name, shortform )
 `
 
-function mapAccessoryRow(
-  row: Record<string, unknown>,
-  attributeValueIds: string[] = [],
-  attributeInputs: AttributeInput[] = []
-): AccessoryListItem {
+function mapAccessoryRow(row: Record<string, unknown>): AccessoryListItem {
   const manufacturer = Array.isArray(row.manufacturers)
     ? row.manufacturers[0]
     : row.manufacturers
@@ -101,16 +83,6 @@ function mapAccessoryRow(
   )
   const manufacturerName =
     (manufacturer as { name?: string } | null)?.name ?? '—'
-  const web = mapAccessoryWebFields(row)
-  const ready = evaluateShopReady({
-    ...web,
-    name: String(row.name ?? ''),
-    image_url: (row.image_url as string | null) ?? null,
-    barcode: (row.barcode as string | null) ?? null,
-    manufacturer_name: manufacturerName === '—' ? null : manufacturerName,
-    price_net: priceNet,
-    active: row.active === true
-  })
 
   return {
     id: String(row.id),
@@ -137,35 +109,127 @@ function mapAccessoryRow(
     sellable_pos: row.sellable_pos !== false,
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
-    web_category_id: (row.web_category_id as string | null) ?? null,
-    attribute_value_ids: attributeValueIds,
-    attribute_inputs: attributeInputs,
-    ...web,
-    shop_ready_level: ready.level,
-    shop_ready_score: ready.score,
-    shop_ready_missing: ready.missing
+    web_gallery: Array.isArray(row.web_gallery)
+      ? (row.web_gallery as unknown[]).filter((u): u is string => typeof u === 'string')
+      : []
   }
 }
 
+const LIST_ALL_MAX = 50000
+
+/** Minden élő termék, lapozva (a PostgREST kérésenként max 1000 sort ad). Exporthoz. */
 export async function listAccessories(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<AccessoryListItem[]> {
-  const { data, error } = await supabase
-    .from('accessories')
-    .select(ACCESSORY_SELECT)
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .order('name', { ascending: true })
+  const { data, error } = await fetchAllPages<Record<string, unknown>>(
+    (from, to) =>
+      supabase
+        .from('accessories')
+        .select(ACCESSORY_SELECT)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{
+        data: Record<string, unknown>[] | null
+        error: { message: string } | null
+      }>,
+    LIST_ALL_MAX
+  )
 
   if (error) {
-    console.error('listAccessories', error.message)
+    console.error('listAccessories', error)
     throw new Error('Nem sikerült betölteni a termékeket.')
   }
 
-  return (data ?? []).map((row) =>
-    mapAccessoryRow(row as unknown as Record<string, unknown>)
-  )
+  return data.map((row) => mapAccessoryRow(row))
+}
+
+export const ACCESSORY_PAGE_SIZE = 25
+export const ACCESSORY_WEB_FILTERS = ['all', 'web', 'not_web'] as const
+export type AccessoryWebFilter = (typeof ACCESSORY_WEB_FILTERS)[number]
+
+export type AccessoryListPage = {
+  rows: (AccessoryListItem & { in_shop: boolean })[]
+  total: number
+  page: number
+  pageCount: number
+}
+
+/** A PostgREST `or()` szintaxisát megtörő karakterek nélkül. */
+function safeSearch(q: string): string {
+  return q.trim().replace(/[%_,()"\\*]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
+}
+
+export async function listAccessoriesPage(
+  supabase: SupabaseClient,
+  tenantId: string,
+  opts: { q: string; page: number; web: AccessoryWebFilter; hasWebshop: boolean }
+): Promise<AccessoryListPage> {
+  const page = Math.max(1, opts.page)
+  const from = (page - 1) * ACCESSORY_PAGE_SIZE
+  const web = opts.hasWebshop ? opts.web : 'all'
+  const embed = !opts.hasWebshop
+    ? ''
+    : web === 'web'
+      ? ', sw:accessory_web!inner ( sellable_web )'
+      : ', sw:accessory_web ( sellable_web )'
+
+  let query = supabase
+    .from('accessories')
+    .select(`${ACCESSORY_SELECT}${embed}`, { count: 'exact' })
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+
+  if (web === 'web') query = query.eq('sw.sellable_web', true)
+  if (web === 'not_web') query = query.eq('sw.sellable_web', true).is('sw', null)
+
+  const term = safeSearch(opts.q)
+  if (term) {
+    const { data: mfr } = await supabase
+      .from('manufacturers')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .ilike('name', `%${term}%`)
+      .limit(50)
+    const parts = [
+      `name.ilike.%${term}%`,
+      `sku.ilike.%${term}%`,
+      `barcode.ilike.%${term}%`,
+      `barcode_internal.ilike.%${term}%`
+    ]
+    const ids = (mfr ?? []).map((m) => m.id as string)
+    if (ids.length > 0) parts.push(`manufacturer_id.in.(${ids.join(',')})`)
+    query = query.or(parts.join(','))
+  }
+
+  const { data, error, count } = await query
+    .order('name', { ascending: true })
+    .order('id', { ascending: true })
+    .range(from, from + ACCESSORY_PAGE_SIZE - 1)
+
+  if (error) {
+    // Túllapozás (pl. törlés után az utolsó oldal kiürült): üres oldal, nem hiba.
+    if (error.code === 'PGRST103') {
+      return { rows: [], total: count ?? 0, page, pageCount: Math.max(1, Math.ceil((count ?? 0) / ACCESSORY_PAGE_SIZE)) }
+    }
+    console.error('listAccessoriesPage', error.message)
+    throw new Error('Nem sikerült betölteni a termékeket.')
+  }
+
+  const total = count ?? 0
+  return {
+    rows: (data ?? []).map((raw) => {
+      const row = raw as unknown as Record<string, unknown>
+      const sw = (Array.isArray(row.sw) ? row.sw[0] : row.sw) as { sellable_web?: boolean } | null | undefined
+      return { ...mapAccessoryRow(row), in_shop: sw?.sellable_web === true }
+    }),
+    total,
+    page,
+    pageCount: Math.max(1, Math.ceil(total / ACCESSORY_PAGE_SIZE))
+  }
 }
 
 export async function getAccessory(
@@ -186,21 +250,7 @@ export async function getAccessory(
     throw new Error('Nem sikerült betölteni a terméket.')
   }
   if (!data) return null
-
-  const [{ data: attrLinks }, attributeInputs] = await Promise.all([
-    supabase
-      .from('accessory_attribute_values')
-      .select('attribute_value_id')
-      .eq('tenant_id', tenantId)
-      .eq('accessory_id', id),
-    listAccessoryAttributeInputs(supabase, tenantId, id)
-  ])
-
-  return mapAccessoryRow(
-    data as unknown as Record<string, unknown>,
-    (attrLinks ?? []).map((r) => r.attribute_value_id as string),
-    attributeInputs
-  )
+  return mapAccessoryRow(data as unknown as Record<string, unknown>)
 }
 
 export async function listAccessoryTaxOptions(
@@ -254,19 +304,25 @@ export async function listAccessoryManufacturerOptions(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<AccessoryManufacturerOption[]> {
-  const { data, error } = await supabase
-    .from('manufacturers')
-    .select('id, name')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .order('name', { ascending: true })
+  const { data, error } = await fetchAllPages<AccessoryManufacturerOption>(
+    (from, to) =>
+      supabase
+        .from('manufacturers')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+    LIST_ALL_MAX
+  )
 
   if (error) {
-    console.error('listAccessoryManufacturerOptions', error.message)
+    console.error('listAccessoryManufacturerOptions', error)
     throw new Error('Nem sikerült betölteni a gyártókat.')
   }
 
-  return data ?? []
+  return data
 }
 
 export async function listActiveAccessoryOptions(

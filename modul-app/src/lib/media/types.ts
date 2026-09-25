@@ -1,13 +1,23 @@
 export const TENANT_MEDIA_BUCKET = 'tenant-media'
 
-export const MEDIA_ALLOWED_MIME = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif'
-])
+export const MEDIA_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+
+export const MEDIA_PDF_MIME = 'application/pdf'
+
+export const MEDIA_ALLOWED_MIME = new Set([...MEDIA_IMAGE_MIME, MEDIA_PDF_MIME])
 
 export const MEDIA_MAX_BYTES = 2 * 1024 * 1024
+
+/** A bucket limitje (20260547) is ennyi. */
+export const MEDIA_PDF_MAX_BYTES = 10 * 1024 * 1024
+
+export const MEDIA_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp,image/gif'
+
+export const MEDIA_ACCEPT = `${MEDIA_IMAGE_ACCEPT},application/pdf`
+
+export function isPdfMime(mime: string | null | undefined): boolean {
+  return mime === MEDIA_PDF_MIME
+}
 
 export type MediaFileRow = {
   id: string
@@ -36,5 +46,6 @@ export function extensionForMime(mime: string): string {
   if (mime === 'image/png') return 'png'
   if (mime === 'image/webp') return 'webp'
   if (mime === 'image/gif') return 'gif'
+  if (mime === MEDIA_PDF_MIME) return 'pdf'
   return 'jpg'
 }

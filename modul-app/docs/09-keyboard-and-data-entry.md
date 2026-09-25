@@ -77,6 +77,32 @@ ERP-ben ez alapigény.
 - Hibás sorokat külön jelöld, ne dobj el mindent.
 - Beillesztés után legyen preview, ha az akció kockázatos.
 
+### 6a. Termékek Excel import (`/torzsadatok/alapanyagok/termekek`)
+
+Referencia-implementáció a tömeges, fájlos adatbevitelhez (a bolt adatoké külön: `39` §4a).
+
+- **Méret:** legfeljebb 10 000 sor és 4 MB fájlonként (a Vercel kéréskorlátja 4,5 MB). Az előnézet és a mentés újraolvassa a fájlt és az adatbázist (`planUpload`), így a mentés mindig a friss állapotból tervez.
+- **Azonosítás:** a rejtett-szürke `Azonosito` oszlop elsőbbséget élvez, e nélkül a SKU (kis/nagybetű nem számít). Az azonosítóval a SKU átírható. Kétszer feltöltve sem lesz dupla termék.
+- **Üres cella = nem változik; `-` = törlés** (csak vonalkód, belső vonalkód, beszerzés, szorzó, kép, galéria). Hiányzó oszlop = nem változik. Új terméknél kötelező: gyártó, név, SKU, adónem, egység, ár.
+- **Képek:** `Kep_fajlnev` = fő kép, `Galeria` = további képek `|` jellel (max. 20, a meglévő galériát lecseréli). Médiafájlnév vagy teljes http(s) URL. Ismeretlen fájlnév = mezőhiba, ezért előbb a Média oldal, utána az Excel.
+- **Hibatűrés:** a hibás sor kimarad, a többi mentődik; meglévő terméknél csak a hibás mező marad ki. A „Hibás sorok letöltése” az eredeti cellákat és egy „Mi a baj?” oszlopot ad, és visszatölthető.
+- **Gyártó:** ismeretlen név → döntés az előnézetben (javaslat elírásra / létrehozás / kihagyás). Magunktól nem hozunk létre semmit.
+- **Vonalkód:** szöveg formátumú oszlop. Számként érkezett kódnál a levágott vezető 0-t a meglévő kódból visszaállítjuk; ha más termék kódja lehet, hiba. 15 jegy fölötti szám vagy tudományos alak: hiba.
+- **Írás:** 500-as csomagok (egy kérés = egy tranzakció), hibánál 50-es, majd soronkénti bontás. 240 mp után megáll, a maradékot „töltsd fel újra” üzenettel adja vissza (`maxDuration` 300).
+- **Olvasás:** minden termék- és törzsadat-lekérés `fetchAllPages`-szel lapoz (PostgREST `max_rows` 1000). A lista szerveroldalon lapoz (25/oldal, `?q=&web=&page=`).
+- **Mentés visszaállításhoz:** az előnézetben „Jelenlegi állapot letöltése”; 200 változás fölött külön figyelmeztetünk.
+
+### 6b. Nagy fájlos import minta (Bolt katalógus, `39` §4a)
+
+Ha egy import több ezer sort ír, ezt a mintát kövesd:
+
+- **Fájl Storage-ba, nem a kérésbe** (aláírt feltöltési URL) — a szerver onnan olvassa minden lépésben.
+- **Előnézet → döntések → mentés.** Az előnézet nem ír; darabszám szűrőnként, a teljes lista letölthető jelentésben.
+- **Mentés előtt visszaállító fájl + futás rekord**, utána állapotmentes lépések (minden lépés újratervez, a kész sorok változatlanok) → folytatható, nincs dupla írás, egyszerre egy futás.
+- **Folyamatjelző** szöveggel (`1200 / 8000 termék`), bezárás elleni figyelmeztetés, hálózati hibánál újrapróbálás.
+- **Visszavonás** a visszaállító fájl pontos módú betöltésével; ami létrejött (kategória, jellemző), marad.
+- **Dátum-csapda:** Excelben dátummá alakult cellát ne találgassuk vissza — hiba, „Szöveg formátum”.
+
 ## 7. Gyorsbillentyűk
 
 Ajánlott globális shortcutok:

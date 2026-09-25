@@ -1,14 +1,31 @@
 import type { Metadata } from 'next'
 
 import { WebshopCatalogClient } from '@/components/webshop/webshop-catalog-client'
-import { listAccessories } from '@/lib/accessories/queries'
 import { getSessionUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { tenantHasWebshop } from '@/lib/webshop/entitlement'
+import {
+  listShopCatalog,
+  SHOP_CATALOG_FILTERS,
+  type ShopCatalogFilter
+} from '@/lib/webshop/product-queries'
 
 export const metadata: Metadata = { title: 'Bolt katalógus' }
 
-export default async function WebshopKatalogusPage() {
+type PageProps = {
+  searchParams: Promise<{ filter?: string; q?: string; page?: string }>
+}
+
+export default async function WebshopKatalogusPage({ searchParams }: PageProps) {
+  const sp = await searchParams
+  const filter = (
+    SHOP_CATALOG_FILTERS as readonly string[]
+  ).includes(sp.filter ?? '')
+    ? (sp.filter as ShopCatalogFilter)
+    : 'all'
+  const q = (sp.q ?? '').slice(0, 80)
+  const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1)
+
   const user = await getSessionUser()
   if (!user?.tenantId || user.isDevSession) {
     return (
@@ -34,6 +51,13 @@ export default async function WebshopKatalogusPage() {
     )
   }
 
-  const rows = await listAccessories(supabase, user.tenantId)
-  return <WebshopCatalogClient initialRows={rows} />
+  const data = await listShopCatalog(supabase, user.tenantId, { filter, q, page })
+  return (
+    <WebshopCatalogClient
+      data={data}
+      filter={filter}
+      q={q}
+      canWrite={Boolean(user.role && user.role !== 'viewer')}
+    />
+  )
 }

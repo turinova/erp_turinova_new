@@ -63,13 +63,12 @@ export async function freezeWebshopPublish(
   tenantId: string
 ): Promise<void> {
   const { error } = await admin
-    .from('accessories')
+    .from('accessory_web')
     .update({
       sellable_web: false,
       updated_at: new Date().toISOString()
     })
     .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
     .eq('sellable_web', true)
 
   if (error) {

@@ -70,7 +70,9 @@ const settingsSchema = z
     termsUrl: optionalUrl('ÁSZF'),
     privacyUrl: optionalUrl('Adatkezelési tájékoztató'),
     complaintInfo: optionalText(1500),
-    allowAiTraining: z.boolean().default(false)
+    allowAiTraining: z.boolean().default(false),
+    imageAspect: z.enum(['square', 'portrait']).default('square'),
+    showNetPrice: z.boolean().default(false)
   })
   .superRefine((d, ctx) => {
     if (d.returnDays != null && d.returnDays < STATUTORY_RETURN_DAYS) {
@@ -146,6 +148,8 @@ export async function saveStorefrontSettings(
       privacy_url: d.privacyUrl,
       complaint_info: d.complaintInfo,
       allow_ai_training: d.allowAiTraining,
+      image_aspect: d.imageAspect,
+      show_net_price: d.showNetPrice,
       updated_at: new Date().toISOString()
     },
     { onConflict: 'tenant_id' }

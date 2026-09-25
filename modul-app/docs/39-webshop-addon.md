@@ -51,7 +51,7 @@ Disable → `sellable_web = false` minden alive terméken (adat megmarad); nav e
 | `web_categories` | Bolt kategória-fa |
 | `product_attributes` | Globális jellemző (`code`: color/size/material → Google feed) |
 | `attribute_values` | Controlled értéklista |
-| `accessories.web_category_id` | FK kategóriára |
+| `accessory_web` | Termék bolt adatai (1:1, PK = `accessory_id`), benne `web_category_id` — lásd §4 |
 | `accessory_attribute_values` | Termék ↔ érték M2M |
 | `image_url` + `web_gallery` | Fő + galéria — termék **Képek** szekció (nem web accordion) |
 
@@ -59,7 +59,7 @@ Disable → `sellable_web = false` minden alive terméken (adat megmarad); nav e
 
 **Műszaki adatok:** üres alap — a tenant maga veszi fel. Nincs seedelt Szín/Méret/Anyag. Opcionális `color`/`size`/`material` kód → Google feed denorm.  
 
-**Webshop űrlap (lean):** kapcsoló → kategória → egy leírás → (műszaki ha van) → „Még több”.  
+**Bolt szerkesztő:** `/webshop/katalogus/[id]` — lásd §4.  
 
 **PDP trust (migráció `20260540_storefront_pdp_trust.sql`):** `tenant_webshop_settings` + szállítás/átvétel/visszaküldés/garancia/`low_stock_threshold`/`show_sold_count`/`reviews_enabled`; `accessories.web_box_contents`, `web_dimension_image_url`, `web_price_tiers` (`[{min_qty, price_net}]`); `product_reviews` (moderált, RLS); RPC `storefront_sold_quantity`, `storefront_bought_together` (service_role). Termék űrlap „Még több” → „Termékoldal: méretek, passzol-e, csomag, mennyiségi ár”.
 
@@ -93,15 +93,42 @@ PDP „Műszaki adatok” = strukturált adatok + szabad `web_specs` + termék n
 
 ---
 
-## 4. Elválasztás az Alaptól
+## 4. Elválasztás az Alaptól (zárolt, migráció `20260548_accessory_web_split.sql`)
 
-| Alap | Webshop add-on |
+A webshop ki-be kapcsolható modul: az alap termék nem tud róla, csak egy kártyát mutat.
+
+| Alap (Törzsadatok → Termékek) | Webshop modul |
 |---|---|
-| Termékek, ár, stock, POS | Bolt menü + publish mezők UI |
-| `sellable_pos` | `sellable_web` + shop-ready |
-| — | Kategória / attr törzs |
+| `accessories`: név, gyártó, SKU, vonalkód, ár, adó, egység, aktív, `sellable_pos`, `image_url`, `web_gallery` (Képek kártya — a név történeti) | `accessory_web` (1:1): `sellable_web`, `web_slug`, kategória, leírások, kulcsadatok, méretek, kiszerelés, összetétel, videó, képleírások (`web_image_alts`), változatcsoport |
+| Űrlap: Azonosítás · Árazás · Képek · Készlet · **Online bolt kártya** (csak ha a modul be van kapcsolva) | `/webshop/katalogus` munkalista + `/webshop/katalogus/[id]` szerkesztő |
+| Mentés csak alap mezőket ír | Saját mentés (`saveShopProduct`), kiegészítés + attribútumok itt |
+| — | `accessory_attribute_values/inputs`, `accessory_related`, `accessory_documents` szerkesztése |
+
+- **Olvasás a boltban:** `storefront_products` nézet (`security_invoker`) = `accessories` alap oszlopai + `accessory_web` (inner join, csak akinek van bolt sora). A storefront, feed, sitemap, kereső és „Passzol-e?” mind ezt olvassa. Az `accessories.web_*` oszlopok elavultak (még nem törölve — takarító migráció később).
+- **Online bolt kártya:** kapcsoló (azonnal ment, `setShopAvailability`), szöveges állapot, „Bolt adatok szerkesztése” link. Új terméknél: „Mentés után kapcsolható be.” Ha hiányzik valami, a kártya felsorolja és a szerkesztőbe visz.
+- **Bekapcsolás feltétele** (`shopRequirementIssues`): fő kép, ár > 0, aktív, kategória, leírás ≥ 200 karakter (az eleje ≥ 80 → rövid szöveg). Hiányzó webcím automatikusan, egyedien képződik (`nev`, `nev-2`…).
+- **Szerkesztő:** fent alap összefoglaló (csak olvasható, link az alapadatokhoz) + kapcsoló + **Teendők** (max. 5, kötelező előbb; kattintásra lenyitja és odagörget; kép/ár/aktív → alapadatok). Pontszámok a „Részletek” alatt. 10 lenyíló csoport, mindegyik egysoros összefoglalóval és szöveges állapottal (Kész / n teendő / Nem kötelező / Azonnal mentődik): Alapok · Kulcsadatok és jellemzők · Amit a vásárló kérdez · Kiszerelés és mennyiségi ár · Méretek és szállítás · Összetétel, eredet, biztonság · Képleírás, videó, dokumentumok · Kapcsolódó termékek · Változatok · Haladó. Mélylink: `#csoport-<id>`. Mentés: egyetlen elsődleges gomb a ragadós alsó sávban (Elvetés csak változáskor), kilépéskor figyelmeztet.
+- **Beviteli elemek:** listák soronként (Enter = új sor, vessző az elem része marad), mennyiségi ár darabtól + ár párokban, méretrajz a médiatárból, változatcsoport testvér termék kereséssel. Szövegmezők legfeljebb 2 oszlopban.
+- **Munkalista:** URL szűrők `?filter=` `in_shop` · `incomplete` (kint van, de nem „Kész a boltra”) · `not_in_shop` · `no_category` · `no_description` · `no_image`, `?q=`, `?page=` (25/oldal), darabszám szűrőnként, soronként „Következő lépés” mélylinkkel, tömeges „Kiteszem a boltba” / „Leveszem a boltból” (max. 100; ami nem tehető ki, listázva). Az állapotot szerveroldalon számoljuk minden termékre (max. 20 000), a kliens csak az oldalt kapja.
+- **Kategória darabszám** a boltban: RPC `storefront_category_counts` (nem sorokból).
 
 Egy termékigazság: **nincs** második termék-CRUD.
+
+### 4a. Bolt import / export (Bolt katalógus, migráció `20260549_webshop_bulk_import.sql`)
+
+Két külön munkafüzet: a **Termékek** oldalé (név, ár, raktár, kép — változatlan) és a **Bolt katalógusé**. A bolt fájl **nem hoz létre terméket**, csak SKU alapján meglévőt egészít ki — kategóriát, jellemzőt, értéket, változatcsoportot viszont igen (döntés után). Kód: `src/lib/webshop/excel/*`, API: `/api/webshop/catalog/export` + `/api/webshop/catalog/import/{upload-url,preview,start,step,cancel,report,backup,runs,undo,problems}`. Terheléses teszt (DB nélkül): `npx tsx scripts/bench-shop-import.ts 10000`.
+
+- **Lapok:** Útmutató · Bolt · Jellemzők (SKU, Jellemző, Érték) · GYIK · Kapcsolatok (SKU, Típus, Kapcsolódó SKU; max. 8 / típus; az Alternatíva kölcsönös) · Dokumentumok (SKU, Fájlnév a Médiából, Típus, Cím, Nyelv; max. 20 / termék) · Változatcsoportok (kód, név, fő termék SKU, választók sorrendben, max. 3, `Kiszerelés` is lehet) · Kategóriák (útvonal, aktív, Google kategória, kulcsadatok) · Tulajdonságok (név, típus, egység, több érték, választó) · Jellemzők súgó · rejtett Listák / Adatok. Letöltéskor a lapok választhatók (Egyszerű / Teljes / üres sablon + jelölőnégyzetek); a letöltés a mostani szűrést követi.
+- **Méret:** 10 000 termék / 150 000 jellemzősor / 30 000 GYIK / 60 000 kapcsolat és dokumentum sor, 40 MB. A fájl a böngészőből **közvetlenül Storage-ba** megy (`tenant-imports`, aláírt feltöltési URL) — a Vercel 4,5 MB kéréskorlátja nem számít. Mért (10 000 termék, minden lap): export ~2,5 mp, olvasás ~1 mp, terv ~2 mp.
+- **Előnézet:** semmit nem ír. Darabszám szűrőnként (Mind / Változik / Kikerül / Nem kerül ki / Hibás / Változatlan); nagy fájlnál szűrőnként az első tételek látszanak, a teljes lista a „Teljes jelentés” xlsx-ben. Dátummá alakított cella (pl. `1/2`) → hiba: „állítsd a cellát Szöveg formátumra”.
+- **Döntések** (nem létező kategória / listaérték / jellemző): soronként választó — Kihagyom (alap) · Javaslat (legközelebbi elírás) · Meglévő választása (max. 8 hasonló) · Létrehozom újként; tömeges gombok. A döntéseket az „Ellenőrzés” újraszámolja, addig a mentés tiltva. Ismeretlen jellemző létrehozásakor a típust az értékekből következtetjük (szám + közös egység, igen/nem, lista; `|` → több érték). A választásokat megjegyezzük (`webshop_import_mappings`) — a következő fájlnál előre kitöltve („Megjegyzett”). **Magától semmit nem hozunk létre.**
+- **Mentés:** „N termék mentése” (egy elsődleges gomb). Előtte a rendszer elmenti a fájlban szereplő termékek mostani állapotát (visszaállító fájl), és felvesz egy futást (`webshop_import_runs`; egyszerre egy futhat, 10 perc tétlenség után feloldódik). Utána lépésekben ír (lépésenként ≤ 3000 termék / 200 mp, RPC `webshop_import_apply` 100-as csomagokban, hibánál soronként) — folyamatjelző, újrapróbálás hálózati hibánál, bezárás elleni figyelmeztetés. Megszakadt futás a következő megnyitáskor folytatható („Folytatom” / „Lezárom így”); a már megírt termékek változatlanként jönnek ki, nincs dupla írás.
+- **Visszavonás:** az eredmény nézetben és a „Korábbi mentések” listában (utolsó 8). A mentés előtti állapotot pontos módban (`Mód = pillanatkep`) tölti vissza: üres cella = törlés, a lapokon nem szereplő jellemző / GYIK / kapcsolat / dokumentum törlődik. A közben létrehozott kategóriák, jellemzők, értékek **megmaradnak** (máshol is használhatók); a visszavont futás „Visszavonva” lesz.
+- **Szabályok:** üres cella = nem változik; `-` = törlés; hiányzó oszlop = nem változik; lista `|` vagy cellán belüli sortörés; igen/nem/i/n/x. `Elérhető a boltban`: igen = kitesszük, ha `shopRequirementIssues` üres (különben az adat mentődik, a termék nem kerül ki), nem = levesszük, üres = marad. Mennyiségi ár **bruttóban**, listaár bruttó. Szám mértékegységgel akkor jó, ha az egység egyezik; nincs csendes átváltás.
+- **Hivatkozások:** kategória útvonallal (`Konyha > Zsanérok`) vagy egyedi névvel, ékezet/kisbetű nem számít; hiányzó szülők is létrejönnek (szintenként). Kapcsolt termék és dokumentum SKU / médiafájlnév alapján; ismeretlen → hiba az adott sorra.
+- **Változatok:** a Változatcsoport kód köti össze a termékeket; a Változatcsoportok lapon név, fő termék (tagnak kell lennie) és a választók sorrendje adható meg. A bolt ezt használja: a termékoldal választói ebben a sorrendben (ha nincs megadva: automatikus), a kategórialistán a csoport kártyája a fő termék, ha raktáron van. Figyelmeztetés: egyedül van, eltérő kategória, nem különböztethető meg, hiányzó választó érték — nem blokkol.
+- **Egyéb edge:** duplikált SKU a fájlban → mindkét sor kimarad; ismeretlen / törölt SKU → kimarad; a letöltés óta más módosította → figyelmeztetés; foglalt webcím → `-2` utótag; kint lévő termék webcím-váltása → „régi link megszűnik”; kint lévő termék, amit a változás hiányossá tenne → lekerül. Ugyanaz a termékpár csak egy kapcsolattípusban lehet (másik típusba átkerül, jelezzük). Régi `.xls` → „mentsd .xlsx-ként”; az alap Termékek fájlt felismeri és visszairányít. „Hibás sorok letöltése” = minden lap hibás sorai + „Mi a baj?” oszlop, visszatölthető.
+- **Nem része:** beszállítói feed (XML/CSV URL) import — külön funkció lesz.
 
 ---
 
