@@ -89,7 +89,8 @@ async function saveBlob(response: Response, fallback: string) {
   document.body.appendChild(a)
   a.click()
   a.remove()
-  URL.revokeObjectURL(url)
+  // Safari a letöltést aszinkron indítja: azonnali revoke → üres fájl (WebKitBlobResource error 1).
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 async function errorOf(response: Response, fallback: string): Promise<string> {
