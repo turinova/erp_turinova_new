@@ -1,24 +1,39 @@
-import { Search } from 'lucide-react'
+import { ArrowRight, FolderOpen, Search, SlidersHorizontal } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { after } from 'next/server'
 
 import { LoadMore } from '@/components/storefront/load-more'
 import { ProductGrid } from '@/components/storefront/product-grid'
 import { RecordSearch } from '@/components/storefront/recently-viewed'
+import { SearchClickTracker } from '@/components/storefront/search-click-tracker'
 import { StorefrontFrame } from '@/components/storefront/storefront-chrome'
-import { searchCatalog } from '@/lib/storefront/catalog'
 import { CATALOG_PAGE_SIZE, parsePageParam } from '@/lib/storefront/catalog-params'
+import { runSearch } from '@/lib/storefront/search/engine'
+import { logSearch } from '@/lib/storefront/search/log'
 import { childCategories, getStorefrontShell } from '@/lib/storefront/shell'
-import { categoryPath, STOREFRONT_SEARCH } from '@/lib/storefront/url'
+import { categoryPath, productPath, STOREFRONT_SEARCH } from '@/lib/storefront/url'
 
 type PageProps = {
   params: Promise<{ site: string }>
-  searchParams: Promise<{ q?: string | string[]; page?: string | string[] }>
+  searchParams: Promise<{
+    q?: string | string[]
+    page?: string | string[]
+    pontos?: string | string[]
+  }>
 }
+
+/** A kereső RPC ennyi találatot ad vissza egyszerre (storefront_search_v2). */
+const SEARCH_MAX_SHOWN = 192
 
 function first(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v) ?? ''
+}
+
+function searchHref(q: string, extra: Record<string, string> = {}): string {
+  const p = new URLSearchParams({ q, ...extra })
+  return `${STOREFRONT_SEARCH}?${p.toString()}`
 }
 
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
@@ -35,18 +50,38 @@ export default async function StorefrontSearchPage({ params, searchParams }: Pag
   const sp = await searchParams
   const q = first(sp.q).trim().slice(0, 120)
   const page = parsePageParam(first(sp.page))
+  const exact = first(sp.pontos) === '1'
   const shell = await getStorefrontShell((await params).site)
   if (!shell) notFound()
   const { admin, tenant, seller, settings, categories } = shell
 
-  const { items, total } = q
-    ? await searchCatalog(admin, tenant.id, q, {
-        limit: page * CATALOG_PAGE_SIZE,
-        offset: 0
+  const limit = Math.min(page * CATALOG_PAGE_SIZE, SEARCH_MAX_SHOWN)
+  const result = q
+    ? await runSearch(admin, tenant.id, categories, q, { limit, exact })
+    : null
+  const items = result?.items ?? []
+  const total = result?.total ?? 0
+
+  if (q && page === 1) {
+    after(() =>
+      logSearch(admin, tenant.id, {
+        q,
+        source: 'page',
+        results: total,
+        corrected: result?.corrected ?? null,
+        relaxed: result?.relaxed ?? false
       })
-    : { items: [], total: 0 }
+    )
+  }
+  if (result?.exactSlug && page === 1) redirect(productPath(result.exactSlug))
 
   const top = childCategories(categories, null)
+  const intent = result?.intent ?? null
+  const hitCategories = (result?.categories ?? []).filter((c) => c.id !== intent?.categoryId)
+  const nextHref =
+    items.length < total && items.length < SEARCH_MAX_SHOWN
+      ? searchHref(q, { page: String(page + 1), ...(exact ? { pontos: '1' } : {}) })
+      : null
 
   return (
     <StorefrontFrame seller={seller} settings={settings} categories={categories}>
@@ -67,7 +102,7 @@ export default async function StorefrontSearchPage({ params, searchParams }: Pag
             name="q"
             type="search"
             defaultValue={q}
-            placeholder="Termék, cikkszám vagy méret"
+            placeholder="Termék, méret, szín vagy cikkszám"
             autoComplete="off"
             enterKeyHint="search"
             className="h-full min-w-0 flex-1 bg-transparent text-[16px] text-ink outline-none placeholder:text-ink-muted"
@@ -82,24 +117,68 @@ export default async function StorefrontSearchPage({ params, searchParams }: Pag
 
         {q ? (
           <h1 className="mt-6 text-[18px] font-bold tracking-tight text-ink">
-            {total > 0 ? `${total} találat erre: „${q}”` : `Nincs találat erre: „${q}”`}
+            {total > 0
+              ? `${total} találat erre: „${result?.corrected ?? q}”`
+              : `Nincs találat erre: „${q}”`}
           </h1>
         ) : (
           <h1 className="mt-6 text-[18px] font-bold tracking-tight text-ink">Keresés</h1>
         )}
 
+        {result?.corrected && total > 0 ? (
+          <p className="mt-1 text-[14px] text-ink-secondary">
+            Elgépelést javítottunk. Inkább erre keresnél:{' '}
+            <Link
+              href={searchHref(q, { pontos: '1' })}
+              className="cursor-pointer font-medium text-ink underline underline-offset-2"
+            >
+              „{q}”
+            </Link>
+            ?
+          </p>
+        ) : null}
+
+        {result?.relaxed && total > 0 ? (
+          <p className="mt-1 text-[14px] text-ink-secondary">
+            Nem találtunk minden szóra egyező terméket — ezek állnak a legközelebb.
+          </p>
+        ) : null}
+
+        {intent || hitCategories.length > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {intent ? (
+              <Link
+                href={intent.href}
+                className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-stone-300 px-3 text-[14px] font-medium text-ink hover:border-ink"
+              >
+                {intent.facets.length > 0 ? (
+                  <SlidersHorizontal className="size-4" aria-hidden />
+                ) : (
+                  <FolderOpen className="size-4" aria-hidden />
+                )}
+                {intent.facets.length > 0 ? `Szűrve: ${intent.label}` : `Kategória: ${intent.label}`}
+                <ArrowRight className="size-4 text-ink-secondary" aria-hidden />
+              </Link>
+            ) : null}
+            {hitCategories.map((c) => (
+              <Link
+                key={c.id}
+                href={categoryPath(c.slug)}
+                className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-stone-300 px-3.5 text-[14px] text-ink hover:border-ink"
+              >
+                {c.name}
+                <span className="tabular-nums text-ink-secondary">{c.count}</span>
+              </Link>
+            ))}
+          </div>
+        ) : null}
+
         {items.length > 0 ? (
           <div className="mt-5">
-            <ProductGrid items={items} settings={settings} eagerFirst />
-            <LoadMore
-              shown={items.length}
-              total={total}
-              nextHref={
-                items.length < total
-                  ? `${STOREFRONT_SEARCH}?q=${encodeURIComponent(q)}&page=${page + 1}`
-                  : null
-              }
-            />
+            <SearchClickTracker q={q}>
+              <ProductGrid items={items} settings={settings} eagerFirst />
+            </SearchClickTracker>
+            <LoadMore shown={items.length} total={total} nextHref={nextHref} />
           </div>
         ) : (
           <div className="mt-4 space-y-5 text-[14px] text-ink-secondary">
