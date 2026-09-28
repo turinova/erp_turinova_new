@@ -12,15 +12,14 @@ import {
 import { registerAppSession } from '@/lib/auth/app-session'
 import { createServiceClient } from '@/lib/supabase/service'
 
+/** Host-only (nincs Domain): a domain-szintű példány a host-only párja mellett ragadt a Safariban. */
 function cookieOpts(maxAge = 60 * 60) {
-  const domain = process.env.COOKIE_DOMAIN?.trim() || undefined
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
     path: '/',
     secure: process.env.NODE_ENV === 'production',
-    maxAge,
-    ...(domain ? { domain } : {})
+    maxAge
   }
 }
 

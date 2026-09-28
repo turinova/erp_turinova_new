@@ -14,7 +14,8 @@ import {
   expireCookieOptions,
   sessionSnapshotCookieOptions
 } from '@/lib/auth/session-cookies'
-import { loginPathForKick, resolveAuthSurface } from '@/lib/auth/surface'
+import { expireSharedDomainCookies } from '@/lib/auth/shared-cookies'
+import { loginPathForKick, normalizeHostname, resolveAuthSurface } from '@/lib/auth/surface'
 
 /**
  * Safari-biztos session cookie set: GET válaszban állítjuk a hosszú életű
@@ -74,6 +75,10 @@ export async function GET(request: NextRequest) {
   response.cookies.set(LOGIN_PENDING_SNAP_COOKIE, '', expired)
   response.cookies.set(LOGIN_PENDING_NEXT_COOKIE, '', expired)
   response.cookies.set(LOGIN_PENDING_TENANT_COOKIE, '', expired)
+
+  // Friss belépés: a régi Domain=.optinova.hu példányok elnyomnák az új host-only értékeket.
+  expireSharedDomainCookies(response.headers, normalizeHostname(request.headers.get('host')))
+  response.headers.set('Cache-Control', 'no-store')
 
   return response
 }

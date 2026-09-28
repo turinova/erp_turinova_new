@@ -1,15 +1,17 @@
 'use server'
 
 import { randomBytes } from 'crypto'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import {
+  APP_SESSION_NONCE_COOKIE,
   CURRENT_TENANT_COOKIE,
   IMPERSONATION_SESSION_COOKIE,
   OPERATOR_REFRESH_COOKIE,
   SESSION_SNAPSHOT_COOKIE
 } from '@/lib/auth/config'
+import { normalizeHostname } from '@/lib/auth/surface'
 import { writePlatformAudit } from '@/lib/platform/audit'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
 import { createClient } from '@/lib/supabase/server'
@@ -20,15 +22,14 @@ export type ImpersonationResult =
   | { ok: true; handoffUrl?: string }
   | { ok: false; message: string }
 
+/** Host-only (nincs Domain): a domain-szintű példány a host-only párja mellett ragadt a Safariban. */
 function cookieOpts(maxAge = 60 * 60) {
-  const domain = process.env.COOKIE_DOMAIN?.trim() || undefined
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
     path: '/',
     secure: process.env.NODE_ENV === 'production',
-    maxAge,
-    ...(domain ? { domain } : {})
+    maxAge
   }
 }
 
@@ -210,6 +211,22 @@ export async function stopImpersonation(): Promise<ImpersonationResult> {
   cookieStore.delete(OPERATOR_REFRESH_COOKIE)
   cookieStore.delete(SESSION_SNAPSHOT_COOKIE)
 
+  const platformOrigin = process.env.NEXT_PUBLIC_PLATFORM_ORIGIN?.replace(
+    /\/$/,
+    ''
+  )
+  const platformHost = platformOrigin ? safeHostname(platformOrigin) : null
+  const host = normalizeHostname((await headers()).get('host'))
+  if (platformOrigin && platformHost && platformHost !== host) {
+    // Külön admin host: ott az operátor sütijei és DB nonce-a érintetlenek (az impersonation a
+    // cél user sorát írta) — csak a cél sessiont zárjuk le itt. Az operátor refresh tokenjét nem
+    // használjuk el, különben az admin hoston lévő példánya érvénytelen lenne.
+    await supabase.auth.signOut({ scope: 'local' })
+    cookieStore.delete(APP_SESSION_NONCE_COOKIE)
+    cookieStore.delete(CURRENT_TENANT_COOKIE)
+    redirect(`${platformOrigin}/`)
+  }
+
   if (operatorRefresh) {
     const { error: refreshError } = await supabase.auth.refreshSession({
       refresh_token: operatorRefresh
@@ -231,7 +248,6 @@ export async function stopImpersonation(): Promise<ImpersonationResult> {
   } = await supabase.auth.getUser()
   if (operator) {
     const { registerAppSession } = await import('@/lib/auth/app-session')
-    const { APP_SESSION_NONCE_COOKIE } = await import('@/lib/auth/config')
     const nonce = await registerAppSession(supabase, {
       userId: operator.id,
       tenantId: null
@@ -239,14 +255,18 @@ export async function stopImpersonation(): Promise<ImpersonationResult> {
     cookieStore.set(APP_SESSION_NONCE_COOKIE, nonce, cookieOpts(60 * 60 * 24 * 30))
   }
 
-  const platformOrigin = process.env.NEXT_PUBLIC_PLATFORM_ORIGIN?.replace(
-    /\/$/,
-    ''
-  )
   if (platformOrigin) {
     redirect(`${platformOrigin}/`)
   }
   redirect('/platform')
+}
+
+function safeHostname(origin: string): string | null {
+  try {
+    return new URL(origin).hostname.toLowerCase()
+  } catch {
+    return null
+  }
 }
 
 export { cookieOpts }

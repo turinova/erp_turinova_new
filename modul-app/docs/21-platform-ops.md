@@ -124,6 +124,13 @@ NEXT_PUBLIC_PARTNER_ORIGIN=https://optinova.hu
 COOKIE_DOMAIN=.optinova.hu
 ```
 
+**Cookie-k mindig host-only-k** (nincs `Domain`). A `COOKIE_DOMAIN` már csak takarításra kell: a korábban így írt
+`modul_*` példányokat a belépés (`/auth/session-bootstrap`) és a middleware (ha egy név kétszer érkezik) lejáratja
+(`src/lib/auth/shared-cookies.ts`). Ok: a domain példány a host-only párja mellett a Safariban győzött → `nonce_mismatch`.
+Impersonation vége külön admin hoston: csak a cél sessiont zárjuk le (`signOut` local), az operátor admin hostos
+sütijeihez és refresh tokenjéhez nem nyúlunk. Middleware kidobás: `signOut({ scope: 'local' })`, előtöltésre (`Next-Router-Prefetch`)
+204 kidobás nélkül, átirányítás `Cache-Control: no-store`.
+
 **Local path-mód (staff impersonation teszt):**
 
 ```

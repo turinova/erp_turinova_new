@@ -11,10 +11,16 @@ import {
 } from '@/lib/auth/config'
 import { checkAppSession } from '@/lib/auth/app-session'
 import {
+  appSessionCookieOptions,
   clearAppAuthCookies,
   logSessionKick,
   type SessionKickReason
 } from '@/lib/auth/session-cookies'
+import {
+  cookieValues,
+  duplicatedAppCookies,
+  expireSharedDomainCookies
+} from '@/lib/auth/shared-cookies'
 import { snapshotMatchesRequest } from '@/lib/auth/session-snapshot'
 import {
   getPlatformPublicOrigin,
@@ -70,12 +76,23 @@ function redirectTo(request: NextRequest, pathname: string, reason?: string) {
   url.pathname = pathname
   if (reason) url.searchParams.set('reason', reason)
   else url.searchParams.delete('reason')
-  return NextResponse.redirect(url)
+  return noStore(NextResponse.redirect(url))
 }
 
 function redirectExternal(origin: string, pathname: string) {
   const url = new URL(pathname, origin)
-  return NextResponse.redirect(url)
+  return noStore(NextResponse.redirect(url))
+}
+
+/** Safari különben a háttér (RSC) kérés átirányítását is eltárolja → nyers payload jelenik meg. */
+function noStore(response: NextResponse) {
+  response.headers.set('Cache-Control', 'no-store')
+  return response
+}
+
+/** Előtöltés: soha ne jelentkeztessünk ki miatta — a valódi kattintás úgyis átmegy a kapun. */
+function prefetchMiss() {
+  return new NextResponse(null, { status: 204, headers: { 'Cache-Control': 'no-store' } })
 }
 
 function isPublicMarketingPath(pathname: string) {
@@ -124,11 +141,31 @@ function redirectStaffSessionReplaced(
   const path = loginPathForKick({ surface, kind: 'staff' })
   const response = redirectTo(request, path, reason)
   clearAppAuthCookies(response.cookies)
+  expireSharedDomainCookies(response.headers, normalizeHostname(request.headers.get('host')))
   return response
 }
 
+/** Dupla nonce esetén a DB-vel egyező érték; host-only cookie-ként visszaírjuk. */
+const resolvedNonce = new WeakMap<NextRequest, string>()
+
 export async function updateSession(request: NextRequest) {
+  const rawCookies = request.headers.get('cookie')
+  const duplicated = duplicatedAppCookies(rawCookies)
+  const response = await handleSession(request)
+  if (duplicated.length === 0) return response
+
+  const nonce = resolvedNonce.get(request)
+  if (nonce && response.status < 300) {
+    response.cookies.set(APP_SESSION_NONCE_COOKIE, nonce, appSessionCookieOptions())
+  }
+  // A nyers Set-Cookie-kat a cookies.set után fűzzük hozzá (az újraírná a fejlécet).
+  expireSharedDomainCookies(response.headers, normalizeHostname(request.headers.get('host')), duplicated)
+  return response
+}
+
+async function handleSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
+  const isPrefetch = request.headers.has('next-router-prefetch')
   const hostname = normalizeHostname(request.headers.get('host'))
 
   const storefront = await handleStorefrontRequest(request, hostname)
@@ -311,6 +348,22 @@ export async function updateSession(request: NextRequest) {
       data: { user }
     } = await supabase.auth.getUser()
 
+    const nonceValues = cookieValues(request.headers.get('cookie'), APP_SESSION_NONCE_COOKIE)
+    if (user && nonceValues.length > 1) {
+      const { data: row } = await supabase
+        .from('app_user_sessions')
+        .select('session_nonce')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      const current =
+        nonceValues.find((v) => v === row?.session_nonce) ?? nonceValues[nonceValues.length - 1]!
+      resolvedNonce.set(request, current)
+      request.cookies.set(APP_SESSION_NONCE_COOKIE, current)
+      const prevCookies = supabaseResponse.cookies.getAll()
+      supabaseResponse = buildResponse()
+      for (const cookie of prevCookies) supabaseResponse.cookies.set(cookie)
+    }
+
     const isKeresoApi =
       pathname === '/api/kereso' || pathname.startsWith('/api/kereso/')
 
@@ -333,7 +386,8 @@ export async function updateSession(request: NextRequest) {
           .maybeSingle()
 
         if (partnerRow && partnerRow.status === 'disabled') {
-          await supabase.auth.signOut()
+          if (isPrefetch) return prefetchMiss()
+          await supabase.auth.signOut({ scope: 'local' })
           return redirectTo(request, PARTNER_LOGIN_PATH, 'disabled')
         }
 
@@ -386,7 +440,8 @@ export async function updateSession(request: NextRequest) {
                 hasStaffMembership = true
                 isPartnerUser = false
               } else {
-                await supabase.auth.signOut()
+                if (isPrefetch) return prefetchMiss()
+                await supabase.auth.signOut({ scope: 'local' })
                 return redirectStaffSessionReplaced(
                   request,
                   surface,
@@ -409,7 +464,8 @@ export async function updateSession(request: NextRequest) {
                 isAuthenticated = true
                 isPartnerUser = false
               } else {
-                await supabase.auth.signOut()
+                if (isPrefetch) return prefetchMiss()
+                await supabase.auth.signOut({ scope: 'local' })
                 return redirectTo(request, staffLoginPath(surface))
               }
             }
@@ -433,7 +489,8 @@ export async function updateSession(request: NextRequest) {
             hasStaffMembership = snap.hasMembership
             isPartnerUser = false
           } else {
-            await supabase.auth.signOut()
+            if (isPrefetch) return prefetchMiss()
+            await supabase.auth.signOut({ scope: 'local' })
             return redirectStaffSessionReplaced(
               request,
               surface,
@@ -495,7 +552,8 @@ export async function updateSession(request: NextRequest) {
             } else if (isPartnerSharedApi && isPartnerUser) {
               isAuthenticated = true
             } else if (isPartnerSharedApi) {
-              await supabase.auth.signOut()
+              if (isPrefetch) return prefetchMiss()
+              await supabase.auth.signOut({ scope: 'local' })
               return redirectStaffSessionReplaced(
                 request,
                 surface,
@@ -503,7 +561,8 @@ export async function updateSession(request: NextRequest) {
                 user.id
               )
             } else {
-              await supabase.auth.signOut()
+              if (isPrefetch) return prefetchMiss()
+              await supabase.auth.signOut({ scope: 'local' })
               return redirectStaffSessionReplaced(
                 request,
                 surface,
