@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { accessoryFormSchema } from '@/lib/accessories/parse'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
@@ -93,11 +94,7 @@ export type AccessoryFormInput = {
 }
 
 async function replaceAccessorySuppliers(
-  supabase: Awaited<
-    ReturnType<typeof requireWritableTenant>
-  > extends { ok: true; supabase: infer S }
-    ? S
-    : never,
+  supabase: SupabaseClient,
   tenantId: string,
   accessoryId: string,
   supplierIds: string[]
