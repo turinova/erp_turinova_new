@@ -9,6 +9,7 @@ import {
   materializeTenantEntitlements,
   writeEntitlementAudit
 } from '@/lib/platform/entitlements'
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 
 export type EntitlementActionResult =
   | { ok: true; message?: string; count?: number }
@@ -205,6 +206,10 @@ export async function setTenantAddon(input: {
   }
 
   const addonKey = addonRow.key as string
+
+  if (input.enabled && addonKey === 'webshop' && !WEBSHOP_ENABLED) {
+    return { ok: false, message: 'A Webshop modul jegelve van, nem kapcsolható be.' }
+  }
 
   if (input.enabled) {
     const {

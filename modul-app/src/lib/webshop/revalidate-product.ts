@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 
 import { revalidateStorefrontTenant } from '@/lib/storefront/revalidate'
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 
 /** Alap termék változásakor (név, ár, kép, törlés) a bolt oldalát is frissíteni kell — ha kint van. */
 export async function revalidateShopProduct(
@@ -9,6 +10,7 @@ export async function revalidateShopProduct(
   tenantId: string,
   accessoryId: string
 ): Promise<void> {
+  if (!WEBSHOP_ENABLED) return
   const { data } = await supabase
     .from('accessory_web')
     .select('web_slug, sellable_web')

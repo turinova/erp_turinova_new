@@ -10,6 +10,8 @@ import {
   Truck
 } from 'lucide-react'
 
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
+
 /** Hogyan működik — modul szekciók (videó placeholder). */
 
 export type HowItWorksAccent =
@@ -122,7 +124,7 @@ export const ACCENT_STYLES: Record<
   }
 }
 
-export const HOW_IT_WORKS_STEPS: HowItWorksStep[] = [
+const ALL_STEPS: HowItWorksStep[] = [
   {
     id: 'keszlet',
     title: 'Készletkezelés',
@@ -259,6 +261,10 @@ export const HOW_IT_WORKS_STEPS: HowItWorksStep[] = [
     youtubeId: null
   }
 ]
+
+export const HOW_IT_WORKS_STEPS: HowItWorksStep[] = ALL_STEPS.filter(
+  (s) => WEBSHOP_ENABLED || s.id !== 'webshop'
+)
 
 /** A Funkciók oldalon megjelenő lépések — Alap + könnyű add-on + roadmap.
  *  Lapszabászat / Jelenlét / Belépőszámláló: dedikált landingek. */

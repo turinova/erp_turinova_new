@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 import { checkAndStoreDomain, DOMAIN_SELECT, type DomainRow } from '@/lib/storefront/domains/service'
 import { createServiceClient } from '@/lib/supabase/service'
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest) {
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
+  if (!WEBSHOP_ENABLED) return NextResponse.json({ checked: 0, results: [], disabled: true })
   const admin = createServiceClient()
   if (!admin) return NextResponse.json({ error: 'no db' }, { status: 503 })
 

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 import {
   WEBSHOP_FEATURE,
   WEBSHOP_PAGE_KEYS
@@ -9,6 +10,7 @@ export async function tenantHasWebshop(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<boolean> {
+  if (!WEBSHOP_ENABLED) return false
   const { data, error } = await supabase
     .from('tenant_entitlements')
     .select('feature_key')

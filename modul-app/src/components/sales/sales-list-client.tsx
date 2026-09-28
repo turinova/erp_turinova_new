@@ -100,7 +100,7 @@ export function SalesListClient({
     <div className="space-y-4">
       <PageHeader
         title="Értékesítések"
-        description="Termék eladás — pult, iroda vagy később webshop."
+        description="Termék eladás — pult vagy iroda."
         actions={
           <div className="flex flex-wrap gap-2">
               <Button

@@ -1,3 +1,5 @@
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
+
 export type AppPageCategory =
   | 'Fő'
   | 'Műhely'
@@ -225,10 +227,9 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/ertekesitesek/muszakok',
       '/szamlak',
       '/beallitasok/szamlazas',
-      '/webshop',
-      '/webshop/katalogus',
-      '/webshop/kategoriak',
-      '/webshop/tulajdonsagok',
+      ...(WEBSHOP_ENABLED
+        ? ['/webshop', '/webshop/katalogus', '/webshop/kategoriak', '/webshop/tulajdonsagok']
+        : []),
       '/jelenlet',
       '/jelenlet/naptar',
       '/dolgozok',

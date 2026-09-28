@@ -282,8 +282,8 @@ export function ManufacturersClient({
               {editor.mode === 'edit' ? 'Gyártó szerkesztése' : 'Új gyártó'}
             </DialogTitle>
             <DialogDescription>
-              A név kötelező. A termékbiztonsági adatok a webshop termékoldalán
-              jelennek meg (GPSR).
+              A név kötelező. A termékbiztonsági adatok (GPSR) az online
+              értékesítéshez kellenek.
             </DialogDescription>
           </DialogHeader>
 
@@ -315,7 +315,7 @@ export function ManufacturersClient({
                 Termékbiztonsági adatok
               </legend>
               <p className="text-hint text-ink-secondary">
-                A gyártó postai címe és e-mail / weboldal elérhetősége. Webshopban
+                A gyártó postai címe és e-mail / weboldal elérhetősége. Online
                 eladott terméknél kötelező.
               </p>
               {GPSR_FIELDS.map((f) => (

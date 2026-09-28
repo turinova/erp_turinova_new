@@ -5,7 +5,6 @@ import {
   MessageSquare,
   Package,
   Printer,
-  ShoppingCart,
   Store,
   Truck,
   UsersRound
@@ -82,14 +81,6 @@ export const CARDS: ModuleCard[] = [
     cta: 'Részletek'
   },
   {
-    Icon: ShoppingCart,
-    name: 'Webshop kapcsolat',
-    description:
-      'A webáruház és a bolt ugyanazt a készletet használja, a webes rendelés is itt jelenik meg.',
-    href: '/hogyan-mukodik#webshop',
-    cta: 'Részletek'
-  },
-  {
     Icon: MessageSquare,
     name: 'SMS értesítések',
     description:
@@ -117,7 +108,7 @@ export function BentoGrid({
   return (
     <div
       className={cn(
-        'grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5',
+        'grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3',
         className
       )}
     >

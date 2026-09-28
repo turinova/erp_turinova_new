@@ -45,6 +45,7 @@ import {
 } from 'lucide-react'
 
 import type { NavAccent } from '@/lib/nav-accent'
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 
 export type { NavAccent }
 
@@ -74,7 +75,7 @@ export type NavNode = NavLink | NavGroup
  * 2) Groupok utána — Értékesítés → … → Beállítások
  * Addon nélkül a sorok entitlement filterrel eltűnnek; a mag sorrendje stabil.
  */
-export const mainNavItems: NavNode[] = [
+const allNavItems: NavNode[] = [
   {
     type: 'link',
     label: 'Kezdőlap',
@@ -523,6 +524,10 @@ export const mainNavItems: NavNode[] = [
     ]
   }
 ]
+
+export const mainNavItems: NavNode[] = allNavItems.filter(
+  (node) => WEBSHOP_ENABLED || !(node.type === 'group' && node.matchPrefix === '/webshop')
+)
 
 export function isNavLink(node: NavNode): node is NavLink {
   return node.type === 'link'

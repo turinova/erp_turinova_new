@@ -40,7 +40,7 @@
 | [36-szamlazas-workflow.md](36-szamlazas-workflow.md) | **Számlázás** — Számlázz.hu Agent, `/szamlak` (Alap) |
 | [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md) | **Lapszabászat ajánlat→gyártás** — státusz, detail CTA, hol mit |
 | [38-agent-commerce.md](38-agent-commerce.md) | **Agent-ready B2C bolt** — PDP + checkout, Stripe wallet, feed/LLM adat |
-| [39-webshop-addon.md](39-webshop-addon.md) | **Webshop add-on** — 12 900 Ft, kategória/attr törzs, shop-ready UI |
+| [39-webshop-addon.md](39-webshop-addon.md) | **Webshop add-on — JEGELVE 2026-09-28** (`WEBSHOP_ENABLED`, archív: `archive/webshop`) — 12 900 Ft, kategória/attr törzs, shop-ready UI |
 | [40-storefront-catalog-ai.md](40-storefront-catalog-ai.md) | **Storefront katalógus + AI** — `/bolt`, kereső, szűrők, JSON-LD graph, feedek, AI-készség kapu |
 | [41-webshop-legal.md](41-webshop-legal.md) | **Webshop jogi oldalak** — generált ÁSZF/adatkezelés/elállás…, online elállás, verziók, Webshop → Jogi oldalak / Elállások |
 

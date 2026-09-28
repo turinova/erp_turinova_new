@@ -1,5 +1,30 @@
 # 39 — Webshop add-on (B2C online bolt)
 
+> **JEGELVE — 2026-09-28.** A modul ki van kapcsolva: `WEBSHOP_ENABLED = false` (`src/lib/webshop/enabled.ts`).
+> A kód a `main`-en marad, az adatok a DB-ben; felhasználó nem lát belőle semmit, futás közben nem csinál semmit.
+>
+> **Archív állapot:** tag `webshop-archive-2026-09-28` és branch `archive/webshop`. A branch tartalmazza a befejezetlen kereső v2-t
+> (`20260552_storefront_search.sql`, `lib/storefront/search/`, `/webshop/kereses`), ami a `main`-en **nincs**.
+>
+> **Mit kapcsol ki a flag:**
+> - `tenantHasWebshop` → mindig `false` (termék törzs: nincs Bolt kártya / szűrő / „Boltban” jelvény).
+> - Middleware: nincs storefront host-feloldás (nincs RPC kérésenként); `/bolt`, `/p/`, `/info/`, feedek, `llms.txt`, `/api/storefront/*`, `/api/webshop/*`, `/s/*` → 404.
+> - `/webshop/*` admin oldalak → 404 (`app/(app)/webshop/layout.tsx`); Webshop menücsoport rejtve.
+> - Platform: a `webshop` add-on **bekapcsolása** tiltott (kikapcsolás + publish freeze működik).
+> - `revalidateShopProduct` no-op; `cron/storefront-domains` azonnal visszatér.
+> - Jogosultság: Irodai sablonban nincs `/webshop*`; a felhasználó-szerkesztő elrejti a Webshop kategóriát (a meglévő page_access sorok megmaradnak).
+> - Marketing: árlista add-on kártya, bento „Webshop kapcsolat”, hogyan-működik szekció rejtve.
+>
+> **Érintetlen (szándékosan):** tenant létrehozás (a webshop nem része az Alap plannak), `sales.channel = 'webshop'` enum, DB táblák és triggerek (`accessory_web_on_soft_delete`, `accessories_track_price`).
+>
+> **Jegelés alatt NE futtasd:** `20260550`, `20260551`, **különösen** `20260552` (ERP táblákra — `accessories`, `manufacturers`, attribútumok — tesz triggert).
+>
+> **Visszakapcsolás:**
+> 1. `WEBSHOP_ENABLED = true`, deploy.
+> 2. A kereső v2 kell? `git checkout archive/webshop -- <fájlok>` vagy merge; utána migrációk sorban (`20260550` → `20260552`).
+> 3. Vercel: `STOREFRONT_ROOT_DOMAIN` env vissza, `storefront-domains` cron vissza.
+> 4. Platform → tenant → Webshop add-on be (page access + `seed_webshop_defaults_for_tenant`).
+
 **Státusz:** P0 + PDP preview (fázis B); Stripe/checkout P1  
 **Key:** `webshop`  
 **Ár:** **12 900 Ft** nettó/hó  

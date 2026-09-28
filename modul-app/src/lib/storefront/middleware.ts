@@ -10,6 +10,7 @@ import {
   STOREFRONT_INTERNAL_PREFIX,
   STOREFRONT_SITE_HEADER
 } from '@/lib/storefront/site'
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 
 function withSite(request: NextRequest, site: string, rewritePath?: string) {
   const headers = new Headers(request.headers)
@@ -38,6 +39,17 @@ export async function handleStorefrontRequest(
 
   if (isInternalPath(pathname)) {
     return new NextResponse('Not found', { status: 404 })
+  }
+
+  if (!WEBSHOP_ENABLED) {
+    if (
+      isStorefrontPublicPath(pathname) ||
+      pathname.startsWith('/api/storefront/') ||
+      pathname.startsWith('/api/webshop/')
+    ) {
+      return new NextResponse('Not found', { status: 404 })
+    }
+    return null
   }
 
   const resolved = await resolveStorefrontHost(hostname)

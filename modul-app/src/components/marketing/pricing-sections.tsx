@@ -18,6 +18,7 @@ import {
   planEffectiveMonthlyFromYearly
 } from '@/lib/marketing/pricing'
 import { cn } from '@/lib/utils'
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 
 /** Alap kártya — a próba ára az elsődleges információ. */
 export function PricingPlanCards() {
@@ -208,21 +209,25 @@ export function PricingAddonCards() {
       Icon: Camera,
       accent: a.footcounter.accent
     },
-    {
-      name: a.webshop.name,
-      href: '/hogyan-mukodik#webshop',
-      linkLabel: 'Hogyan működik — webshop',
-      blurb: a.webshop.blurb,
-      price: formatHufPlain(a.webshop.priceMonthlyHuf),
-      priceNote: '+ ÁFA / hó',
-      bullets: [
-        'Kategória és tulajdonság törzs',
-        'Shop-ready checklist a termékeken',
-        'Egy termékigazság — nincs külön web-katalógus'
-      ],
-      Icon: Store,
-      accent: a.webshop.accent
-    }
+    ...(WEBSHOP_ENABLED
+      ? [
+          {
+            name: a.webshop.name,
+            href: '/hogyan-mukodik#webshop',
+            linkLabel: 'Hogyan működik — webshop',
+            blurb: a.webshop.blurb,
+            price: formatHufPlain(a.webshop.priceMonthlyHuf),
+            priceNote: '+ ÁFA / hó',
+            bullets: [
+              'Kategória és tulajdonság törzs',
+              'Shop-ready checklist a termékeken',
+              'Egy termékigazság — nincs külön web-katalógus'
+            ],
+            Icon: Store,
+            accent: a.webshop.accent
+          }
+        ]
+      : [])
   ]
 
   return (
@@ -236,7 +241,12 @@ export function PricingAddonCards() {
         </p>
       </div>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className={cn(
+          'mt-8 grid gap-4 sm:grid-cols-2',
+          cards.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
+        )}
+      >
         {cards.map((card) => {
           const Icon = card.Icon
           return (

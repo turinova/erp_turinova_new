@@ -35,6 +35,7 @@ import {
 } from '@/lib/permissions/pages'
 import type { TenantRole } from '@/lib/supabase/database.types'
 import type { TenantSeatInfo } from '@/lib/tenancy/seats'
+import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 import {
   createTenantUser,
   getMembershipPageAccess,
@@ -498,6 +499,7 @@ function EditMemberDialog({
       APP_PAGES.filter((p) => {
         if (p.key === '/beallitasok/elofizetes') return false
         if (p.key === '/beallitasok/profil') return false
+        if (!WEBSHOP_ENABLED && p.category === 'Webshop') return false
         return Boolean(p.always) || entitledSet.has(p.key)
       }),
     [entitledSet]
