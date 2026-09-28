@@ -59,6 +59,7 @@ export function isStorefrontPublicPath(pathname: string): boolean {
     pathname === '/bolt' ||
     pathname.startsWith('/bolt/') ||
     pathname.startsWith('/p/') ||
+    pathname.startsWith('/info/') ||
     pathname === '/feeds/google.xml' ||
     pathname === '/feeds/openai.jsonl' ||
     pathname === '/llms.txt'

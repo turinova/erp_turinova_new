@@ -4,6 +4,8 @@ import {
   DEFAULT_WEBSHOP_SHIPPING,
   type WebshopShippingDefaults
 } from '@/lib/webshop/enrich'
+import { CARRIERS, legalPath, PAYMENT_METHODS } from '@/lib/webshop/legal/constants'
+import type { CarrierCode, PaymentCode } from '@/lib/webshop/legal/types'
 
 export type TenantWebshopSettings = WebshopShippingDefaults & {
   tenantId: string
@@ -23,12 +25,14 @@ export type StorefrontSettings = {
   lowStockThreshold: number
   showSoldCount: boolean
   reviewsEnabled: boolean
-  hostingProviderName: string | null
-  hostingProviderAddress: string | null
-  hostingProviderEmail: string | null
-  termsUrl: string | null
-  privacyUrl: string | null
-  complaintInfo: string | null
+  /** Hatályos ÁSZF / adatkezelés link: a tenant külső címe, különben a generált oldal. */
+  termsUrl: string
+  privacyUrl: string
+  shippingCarriers: CarrierCode[]
+  paymentMethods: PaymentCode[]
+  bankAccount: string | null
+  transferHoldDays: number | null
+  returnShippingPaidBy: 'customer' | 'seller'
   /** GPTBot / Google-Extended stb. taníthat-e a tartalomból (keresés ettől független). */
   allowAiTraining: boolean
   /** Termékképek aránya a listákban és a galériában. */
@@ -53,25 +57,40 @@ export const DEFAULT_STOREFRONT_SETTINGS: StorefrontSettings = {
   lowStockThreshold: 10,
   showSoldCount: true,
   reviewsEnabled: true,
-  hostingProviderName: null,
-  hostingProviderAddress: null,
-  hostingProviderEmail: null,
-  termsUrl: null,
-  privacyUrl: null,
-  complaintInfo: null,
+  termsUrl: legalPath('aszf'),
+  privacyUrl: legalPath('adatkezeles'),
+  shippingCarriers: [],
+  paymentMethods: [],
+  bankAccount: null,
+  transferHoldDays: null,
+  returnShippingPaidBy: 'customer',
   allowAiTraining: false,
   imageAspect: 'square',
   showNetPrice: false
 }
 
 const LEGAL_COLUMNS = `
-  hosting_provider_name,
-  hosting_provider_address,
-  hosting_provider_email,
   terms_url,
-  privacy_url,
-  complaint_info
+  privacy_url
 `
+
+const COMMERCE_COLUMNS = `
+  shipping_carriers,
+  payment_methods,
+  bank_account,
+  transfer_hold_days,
+  return_shipping_paid_by
+`
+
+export function carrierCodes(v: unknown): CarrierCode[] {
+  if (!Array.isArray(v)) return []
+  return v.filter((c): c is CarrierCode => typeof c === 'string' && c in CARRIERS)
+}
+
+export function paymentCodes(v: unknown): PaymentCode[] {
+  if (!Array.isArray(v)) return []
+  return v.filter((c): c is PaymentCode => typeof c === 'string' && c in PAYMENT_METHODS)
+}
 
 const STOREFRONT_COLUMNS = `
   shipping_fee_gross,
@@ -130,6 +149,7 @@ export async function getStorefrontSettings(
 ): Promise<StorefrontSettings> {
   // Régebbi sémán (migráció előtt) a hiányzó oszlopcsoport nélkül olvasunk.
   const selects = [
+    `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training, image_aspect, show_net_price, ${COMMERCE_COLUMNS}`,
     `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training, image_aspect, show_net_price`,
     `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training`,
     `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}`,
@@ -168,12 +188,13 @@ export async function getStorefrontSettings(
     lowStockThreshold: threshold ?? DEFAULT_STOREFRONT_SETTINGS.lowStockThreshold,
     showSoldCount: row.show_sold_count !== false,
     reviewsEnabled: row.reviews_enabled !== false,
-    hostingProviderName: textOrNull(row.hosting_provider_name),
-    hostingProviderAddress: textOrNull(row.hosting_provider_address),
-    hostingProviderEmail: textOrNull(row.hosting_provider_email),
-    termsUrl: textOrNull(row.terms_url),
-    privacyUrl: textOrNull(row.privacy_url),
-    complaintInfo: textOrNull(row.complaint_info),
+    termsUrl: textOrNull(row.terms_url) ?? DEFAULT_STOREFRONT_SETTINGS.termsUrl,
+    privacyUrl: textOrNull(row.privacy_url) ?? DEFAULT_STOREFRONT_SETTINGS.privacyUrl,
+    shippingCarriers: carrierCodes(row.shipping_carriers),
+    paymentMethods: paymentCodes(row.payment_methods),
+    bankAccount: textOrNull(row.bank_account),
+    transferHoldDays: numOrNull(row.transfer_hold_days),
+    returnShippingPaidBy: row.return_shipping_paid_by === 'seller' ? 'seller' : 'customer',
     allowAiTraining: row.allow_ai_training === true,
     imageAspect: row.image_aspect === 'portrait' ? 'portrait' : 'square',
     showNetPrice: row.show_net_price === true

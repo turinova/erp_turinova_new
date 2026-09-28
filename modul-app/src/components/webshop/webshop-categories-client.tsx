@@ -27,6 +27,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import {
   createWebCategory,
   softDeleteWebCategory,
@@ -80,6 +81,8 @@ export function WebshopCategoriesClient({
   const [googleTaxonomyId, setGoogleTaxonomyId] = useState('')
   const [sortOrder, setSortOrder] = useState('100')
   const [active, setActive] = useState(true)
+  const [intro, setIntro] = useState('')
+  const [coverSku, setCoverSku] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [pending, startTransition] = useTransition()
 
@@ -99,6 +102,8 @@ export function WebshopCategoriesClient({
     setGoogleTaxonomyId('')
     setSortOrder('100')
     setActive(true)
+    setIntro('')
+    setCoverSku('')
     setFieldErrors({})
     setEditor({ mode: 'create' })
   }
@@ -109,6 +114,8 @@ export function WebshopCategoriesClient({
     setGoogleTaxonomyId(row.googleTaxonomyId ?? '')
     setSortOrder(String(row.sortOrder))
     setActive(row.active)
+    setIntro(row.intro ?? '')
+    setCoverSku(row.coverSku ?? '')
     setFieldErrors({})
     setEditor({ mode: 'edit', row })
   }
@@ -136,12 +143,17 @@ export function WebshopCategoriesClient({
     if (!canWrite) return
     startTransition(async () => {
       const sort = Number(sortOrder)
+      const prev = editor.mode === 'edit' ? editor.row : null
+      const changed = (next: string, before: string | null | undefined) =>
+        next.trim() !== (before ?? '').trim() ? next : undefined
       const payload = {
         name,
         parentId: parentId || null,
         googleTaxonomyId,
         sortOrder: Number.isFinite(sort) ? sort : 100,
-        active
+        active,
+        intro: changed(intro, prev?.intro),
+        coverSku: changed(coverSku, prev?.coverSku)
       }
       const result =
         editor.mode === 'edit'
@@ -342,6 +354,37 @@ export function WebshopCategoriesClient({
                 placeholder="Automatikus / válassz…"
                 options={taxonomyOptions}
                 onChange={setGoogleTaxonomyId}
+                disabled={pending}
+              />
+            </FormField>
+            <FormField
+              label="Bevezető"
+              htmlFor="cat-intro"
+              optionalLabel
+              error={fieldErrors.intro}
+              hint={`${intro.trim().length}/300 · üresen a bolt a termékadatokból ír összefoglalót`}
+            >
+              <Textarea
+                id="cat-intro"
+                value={intro}
+                onChange={(e) => setIntro(e.target.value)}
+                rows={3}
+                maxLength={300}
+                disabled={pending}
+              />
+            </FormField>
+            <FormField
+              label="Borítókép (termék SKU)"
+              htmlFor="cat-cover"
+              optionalLabel
+              error={fieldErrors.coverSku}
+              hint="Üresen a legtöbbet rendelt raktáron lévő termék képe"
+            >
+              <Input
+                id="cat-cover"
+                value={coverSku}
+                onChange={(e) => setCoverSku(e.target.value)}
+                autoComplete="off"
                 disabled={pending}
               />
             </FormField>

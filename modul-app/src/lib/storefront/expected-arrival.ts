@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** PostgREST URL-hossz miatt az `.in()` listát darabolni kell. */
-const CHUNK = 200
+const CHUNK = 100
 
 /**
  * Nyitott beszállítói rendelések legkorábbi várható napja (YYYY-MM-DD) termékenként.

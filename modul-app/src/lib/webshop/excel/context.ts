@@ -31,6 +31,8 @@ export type ShopXCategory = {
   active: boolean
   googleTaxonomyId: string | null
   measureImageUrl: string | null
+  intro: string | null
+  coverAccessoryId: string | null
   template: CategoryTemplateItem[]
   /** „Konyha > Zsanérok” */
   path: string
@@ -156,11 +158,15 @@ export async function loadShopXContext(
   tenantId: string
 ): Promise<ShopXContext> {
   const [cats, tpl, attrs, values, products, deleted, links, inputs, related, docs, media, groups, mappings] = await Promise.all([
-    supabase
-      .from('web_categories')
-      .select('id, name, parent_id, active, google_taxonomy_id, measure_image_url')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null),
+    (async () => {
+      const cols = 'id, name, parent_id, active, google_taxonomy_id, measure_image_url'
+      const q = (c: string) =>
+        supabase.from('web_categories').select(c).eq('tenant_id', tenantId).is('deleted_at', null)
+      const res = await q(`${cols}, intro, cover_accessory_id`)
+      // 20260550 előtt nincs intro / cover_accessory_id.
+      const out = res.error?.code === '42703' ? await q(cols) : res
+      return { data: out.data as unknown as Record<string, unknown>[] | null, error: out.error }
+    })(),
     supabase
       .from('web_category_attributes')
       .select('category_id, attribute_id, role, sort_order')
@@ -316,6 +322,8 @@ export async function loadShopXContext(
         active: c.active !== false,
         googleTaxonomyId: (c.google_taxonomy_id as string | null) ?? null,
         measureImageUrl: (c.measure_image_url as string | null) ?? null,
+        intro: (c.intro as string | null | undefined) ?? null,
+        coverAccessoryId: (c.cover_accessory_id as string | null | undefined) ?? null,
         template: tplByCat.get(c.id as string) ?? []
       }
     })

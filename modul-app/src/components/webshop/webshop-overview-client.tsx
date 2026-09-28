@@ -4,11 +4,14 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Check,
+  Circle,
+  CircleCheck,
   FolderTree,
   Mail,
   MessageSquare,
   Package,
   Globe,
+  Scale,
   Settings2,
   Tags
 } from 'lucide-react'
@@ -23,9 +26,70 @@ import { closeStockNotifyRequest } from '@/lib/webshop/storefront-actions'
 
 const PRODUCT_PATH = '/torzsadatok/alapanyagok/termekek'
 
+export type LaunchItem = {
+  label: string
+  /** Üres = kész. */
+  missing: string[]
+  href: string | null
+}
+
 type Props = {
   stats: WebshopOverviewStats
   stockNotify: { rows: StockNotifyRow[]; total: number }
+  launch: LaunchItem[]
+  openWithdrawals: number
+}
+
+function LaunchChecklist({ items }: { items: LaunchItem[] }) {
+  const done = items.filter((i) => i.missing.length === 0).length
+  return (
+    <section
+      className="mb-4 max-w-3xl rounded-md border border-border bg-surface p-3.5"
+      aria-labelledby="launch-title"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="launch-title" className="text-h3 text-ink">
+          Indítás előtt
+        </h2>
+        <StatusBadge tone={done === items.length ? 'success' : 'warning'}>
+          {done} / {items.length} kész
+        </StatusBadge>
+      </div>
+      <ul className="mt-2 space-y-1.5">
+        {items.map((item) => {
+          const ok = item.missing.length === 0
+          return (
+            <li key={item.label} className="flex items-start gap-2 text-body">
+              {ok ? (
+                <CircleCheck className="mt-0.5 size-4 shrink-0 text-success-ink" aria-hidden />
+              ) : (
+                <Circle className="mt-0.5 size-4 shrink-0 text-warning-ink" aria-hidden />
+              )}
+              <div className="min-w-0">
+                <p className={ok ? 'text-ink-secondary' : 'text-ink'}>
+                  {item.label}
+                  <span className="sr-only">{ok ? ' — kész' : ' — hiányzik'}</span>
+                </p>
+                {!ok ? (
+                  <p className="text-hint text-ink-secondary">
+                    {item.missing.join(', ')}
+                    {item.href ? (
+                      <>
+                        {' · '}
+                        <Link href={item.href} className="text-ink underline underline-offset-2">
+                          Pótolom
+                        </Link>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
 }
 
 function StockNotifyItem({ row }: { row: StockNotifyRow }) {
@@ -104,7 +168,7 @@ function StockNotifyList({ rows, total }: { rows: StockNotifyRow[]; total: numbe
   )
 }
 
-export function WebshopOverviewClient({ stats, stockNotify }: Props) {
+export function WebshopOverviewClient({ stats, stockNotify, launch, openWithdrawals }: Props) {
   const router = useRouter()
 
   return (
@@ -113,6 +177,17 @@ export function WebshopOverviewClient({ stats, stockNotify }: Props) {
         title="Webshop"
         description="Online bolt — termékek, kategóriák, jellemzők és beállítások."
       />
+
+      <LaunchChecklist items={launch} />
+
+      {openWithdrawals > 0 ? (
+        <p className="mb-4 max-w-3xl rounded-md border border-warning/45 bg-warning-soft p-3 text-body text-ink" role="status">
+          {openWithdrawals} elállás vár kezelésre.{' '}
+          <Link href="/webshop/elallasok" className="font-medium underline underline-offset-2">
+            Elállások megnyitása
+          </Link>
+        </p>
+      ) : null}
 
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {(
@@ -179,6 +254,15 @@ export function WebshopOverviewClient({ stats, stockNotify }: Props) {
         >
           <Settings2 className="size-3.5" aria-hidden />
           Bolt beállítások
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => router.push('/webshop/jogi')}
+        >
+          <Scale className="size-3.5" aria-hidden />
+          Jogi oldalak
         </Button>
         <Button
           type="button"

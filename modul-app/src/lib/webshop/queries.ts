@@ -30,26 +30,36 @@ export async function listWebCategories(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<WebCategoryRow[]> {
-  const { data, error } = await supabase
-    .from('web_categories')
-    .select(
-      'id, name, parent_id, google_taxonomy_id, sort_order, active, measure_image_url'
-    )
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .order('sort_order', { ascending: true })
-    .order('name', { ascending: true })
+  const baseCols = 'id, name, parent_id, google_taxonomy_id, sort_order, active, measure_image_url'
+  const query = (cols: string) =>
+    supabase
+      .from('web_categories')
+      .select(cols)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true })
+  let res = await query(`${baseCols}, intro, cover_accessory_id`)
+  // 20260550 migráció előtt még nincs intro / cover_accessory_id.
+  if (res.error?.code === '42703') res = await query(baseCols)
+  const { data, error } = res
 
   if (error) {
     console.error('listWebCategories', error.message)
     throw new Error('Nem sikerült betölteni a kategóriákat.')
   }
 
-  const rows = data ?? []
+  const rows = (data ?? []) as unknown as Record<string, unknown>[]
   const byId = new Map(rows.map((r) => [r.id as string, r]))
+  const coverIds = [
+    ...new Set(rows.map((r) => r.cover_accessory_id as string | null | undefined).filter(Boolean))
+  ] as string[]
 
-  const [{ data: counts, error: countError }, { data: tpl, error: tplError }] =
-    await Promise.all([
+  const [
+    { data: counts, error: countError },
+    { data: tpl, error: tplError },
+    { data: covers }
+  ] = await Promise.all([
       fetchAllPages<{ web_category_id: string }>(
         (from, to) =>
           supabase
@@ -65,8 +75,14 @@ export async function listWebCategories(
       supabase
         .from('web_category_attributes')
         .select('category_id, attribute_id, role, sort_order')
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', tenantId),
+      coverIds.length
+        ? supabase.from('accessories').select('id, sku').eq('tenant_id', tenantId).in('id', coverIds)
+        : Promise.resolve({ data: [] as { id: string; sku: string | null }[] })
     ])
+  const coverSku = new Map(
+    ((covers ?? []) as { id: string; sku: string | null }[]).map((c) => [c.id, c.sku])
+  )
 
   if (countError) {
     console.error('listWebCategories counts', countError)
@@ -114,6 +130,8 @@ export async function listWebCategories(
       productCount: countMap.get(r.id as string) ?? 0,
       childCount: childMap.get(r.id as string) ?? 0,
       measureImageUrl: (r.measure_image_url as string | null) ?? null,
+      intro: (r.intro as string | null | undefined) ?? null,
+      coverSku: r.cover_accessory_id ? (coverSku.get(r.cover_accessory_id as string) ?? null) : null,
       template: tplMap.get(r.id as string) ?? []
     }
   })

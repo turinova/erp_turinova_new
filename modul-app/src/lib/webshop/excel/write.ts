@@ -398,11 +398,13 @@ export async function buildShopWorkbook(
         c.measureImageUrl ? (ctx.mediaByUrl.get(c.measureImageUrl.split('?')[0])?.filename ?? null) : null,
         names(tpl.filter((t) => t.role === 'key').map((t) => t.attributeId)),
         names(tpl.filter((t) => t.role === 'spec').map((t) => t.attributeId)),
+        c.intro,
+        c.coverAccessoryId ? (ctx.byId.get(c.coverAccessoryId)?.sku ?? null) : null,
         counts.get(c.id) ?? 0
       ])
     }
     validate(categories, 2, ctx.categories.length + EXTRA_ROWS, listFormula('B', lists.B), false)
-    shadeInfo(categories, [7], ctx.categories.length)
+    shadeInfo(categories, [CATEGORY_COLUMNS.findIndex((c) => c.id === 'count') + 1], ctx.categories.length)
   }
 
   if (attributes) {

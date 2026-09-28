@@ -77,6 +77,7 @@ const DUMMY_UUID = '00000000-0000-4000-8000-000000000000'
 const MAX_LIST_ITEMS = 40
 const MAX_GROUP_CARDS = 50
 const MAX_KEY_ATTRS = 4
+const CATEGORY_INTRO_MAX = 300
 const MAX_GROUP_AXES = 3
 const MAX_CANDIDATES = 8
 /** Ennyi döntésnél számolunk jelölteket (a többi a javaslatot kapja). */
@@ -205,6 +206,8 @@ export type ShopXCategoryPatch = Partial<{
   active: boolean
   google_taxonomy_id: string | null
   measure_image_url: string | null
+  intro: string | null
+  cover_accessory_id: string | null
 }>
 
 export type ShopXCatalogOp =
@@ -902,6 +905,28 @@ export function buildShopImportPlan(ctx: ShopXContext, wb: ShopXWorkbook, decisi
         }
         if (!existing || existing.measureImageUrl !== m.url) patch.measure_image_url = m.url
       }
+    }
+    const introRaw = (r.cells.intro ?? '').replace(/\s+/g, ' ').trim()
+    if (introRaw) {
+      const intro = introRaw === CLEAR_MARK ? null : introRaw
+      if (intro && intro.length > CATEGORY_INTRO_MAX) {
+        catalogIssue('categories', n, 'error', `Bevezető: legfeljebb ${CATEGORY_INTRO_MAX} karakter (most ${intro.length}).`)
+        continue
+      }
+      if ((existing?.intro ?? null) !== intro) patch.intro = intro
+    }
+    const coverRaw = (r.cells.cover ?? '').trim()
+    if (coverRaw) {
+      let cover: string | null = null
+      if (coverRaw !== CLEAR_MARK) {
+        const p = ctx.bySku.get(foldKey(coverRaw))
+        if (!p) {
+          catalogIssue('categories', n, 'error', `Borítókép: nincs ilyen SKU-jú termék: „${coverRaw}”.`)
+          continue
+        }
+        cover = p.id
+      }
+      if ((existing?.coverAccessoryId ?? null) !== cover) patch.cover_accessory_id = cover
     }
     const tplCell = (id: 'keyAttrs' | 'specAttrs', label: string): string[] | undefined | 'bad' => {
       const raw = (r.cells[id] ?? '').trim()

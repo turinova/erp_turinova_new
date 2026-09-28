@@ -1,8 +1,8 @@
-import { ChevronRight, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { CategoryTiles } from '@/components/storefront/category-tiles'
 import { StorefrontFrame } from '@/components/storefront/storefront-chrome'
 import { childCategories, getStorefrontShell } from '@/lib/storefront/shell'
 import {
@@ -11,12 +11,7 @@ import {
   organizationNode,
   websiteNode
 } from '@/lib/storefront/structured-data'
-import {
-  categoryPath,
-  siteUrl,
-  STOREFRONT_HOME,
-  STOREFRONT_SEARCH
-} from '@/lib/storefront/url'
+import { siteUrl, STOREFRONT_HOME, STOREFRONT_SEARCH } from '@/lib/storefront/url'
 
 export const revalidate = 60
 
@@ -25,9 +20,9 @@ type PageProps = { params: Promise<{ site: string }> }
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const shell = await getStorefrontShell((await params).site)
   if (!shell) return { title: 'Bolt' }
-  const names = childCategories(shell.categories, null)
-    .slice(0, 6)
-    .map((c) => c.name)
+  const top = childCategories(shell.categories, null)
+  const names = top.slice(0, 6).map((c) => c.name)
+  const image = shell.seller.logoUrl ?? top.find((c) => c.cover)?.cover?.imageUrl
   const description = names.length
     ? `${shell.seller.name} webbolt: ${names.join(', ')}.`
     : `${shell.seller.name} webbolt.`
@@ -40,7 +35,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       url: siteUrl(shell.tenant.base, STOREFRONT_HOME),
       siteName: shell.seller.name,
       locale: 'hu_HU',
-      title: shell.seller.name
+      title: shell.seller.name,
+      ...(image ? { images: [{ url: image }] } : {})
     }
   }
 }
@@ -62,14 +58,14 @@ export default async function StorefrontHomePage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: jsonLdString(jsonLd) }}
       />
-      <main className="mx-auto max-w-[760px] px-4 pb-16 pt-8 lg:pt-12">
+      <main className="mx-auto max-w-[1200px] px-4 pb-16 pt-8 lg:px-8 lg:pt-12">
         <h1 className="text-[22px] font-bold tracking-tight text-ink">{seller.name}</h1>
 
         <form
           action={STOREFRONT_SEARCH}
           method="get"
           role="search"
-          className="mt-4 flex h-11 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 focus-within:border-ink"
+          className="mt-4 flex h-11 max-w-[640px] items-center gap-2 rounded-md border border-stone-300 bg-white px-3 focus-within:border-ink"
         >
           <Search className="size-4 shrink-0 text-ink-secondary" aria-hidden />
           <label htmlFor="bolt-q" className="sr-only">
@@ -101,34 +97,9 @@ export default async function StorefrontHomePage({ params }: PageProps) {
               Még nincs közzétett termék.
             </p>
           ) : (
-            <ul className="mt-2 divide-y divide-stone-200 border-y border-stone-200">
-              {top.map((c) => {
-                const subs = childCategories(categories, c.id)
-                return (
-                  <li key={c.id}>
-                    <Link
-                      href={categoryPath(c.slug)}
-                      className="flex min-h-14 cursor-pointer items-center gap-3 py-3 hover:bg-stone-50"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[15px] font-medium text-ink">
-                          {c.name}
-                        </span>
-                        {subs.length > 0 ? (
-                          <span className="block truncate text-[13px] text-ink-secondary">
-                            {subs.map((s) => s.name).join(' · ')}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="shrink-0 text-[13px] tabular-nums text-ink-secondary">
-                        {c.productCount} termék
-                      </span>
-                      <ChevronRight className="size-4 shrink-0 text-ink-muted" aria-hidden />
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
+            <div className="mt-3">
+              <CategoryTiles categories={top} size="lg" labelledBy="bolt-cats" />
+            </div>
           )}
         </section>
       </main>

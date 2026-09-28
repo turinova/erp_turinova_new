@@ -61,7 +61,7 @@ Forrás: Baymard 2026 PDP benchmark + „Vertically Collapsed Sections”, stick
 - **Tipográfia:** storefront törzs 15px / 400; egyetlen H2 méret (`SECTION_TITLE`, 17px/600); szekciócím 16px/600; ár 24px/700 `tabular-nums`.
 - **Ragadós sáv:** csak ha a fő gomb nincs a képen **és** a lábléc sem; kép + ár + ugyanaz a művelet. Soha két azonos gomb egyszerre.
 - **Elfogyott termék:** egy elsődleges „Szólj, ha megérkezik” (`storefront_stock_notify_requests`, admin: Webshop áttekintő lista, „Értesítettem” lezárás); raktáron lévő testvér-variánsra link.
-- **Lábléc (mobil):** „Segítünk választani” kapcsolatblokk → összecsukható Kategóriák / Vásárlói információk / Cégadatok → jogi sor. Desktopon 3 oszlop, nyitva.
+- **Lábléc (mobil):** „Segítünk választani” kapcsolatblokk → összecsukható Kategóriák / Vásárlói információk / Cégadatok → jogi sor. Desktopon 3 oszlop, nyitva. A Vásárlói információk a generált `/info/*` oldalakra mutat, mindig látható „Elállás a szerződéstől” gombbal és a tárhely-szolgáltatóval ([41](41-webshop-legal.md)).
 - **Képek:** fehér hátterű fotó `mix-blend-multiply` a `stone-100` felületen.
 
 ## 3c. Címek és csatornák (zárolt)
@@ -82,7 +82,7 @@ Forrás: Baymard PLP / mobile filtering, NN/g „Filters vs. facets”, Shopify 
 - **Első képernyő (390×844):** fejléc (52) → egy sor: `‹` (szülő, 44px) + H1 20px + „N termék” → **egyetlen** vízszintes chip-sor (40px, 16px oldalsó margó, jobb szélen elhalványítás): `Szűrés n` · `Rendezés ▾` (natív `<select>` a chip alatt) · aktív szűrők (sötét, ✓ + ✕, koppintásra levesz) · `Raktáron` · az első kulcsadat 4 értéke · alkategóriák. Az első termék ~170px-nél.
 - **Kártya:** 2 oszlop, ≤300px magas. Kép (négyzet) · max. 1 igaz címke („Új”: ≤30 nap, csak ha a kategória legfeljebb harmada új) · cím 2 sor · kulcsadat-sor (13px, 1–2 érték, ami a csoport minden tagjára igaz) + „N szín / N változat” · csillag csak valós értékelésnél · ár 16px/600 · **egy** elérhetőségi sor ikonnal (szállítási idő / „Utolsó N db” ≤5 / „Nincs készleten”). `prefetch={false}`; az első kép `fetchpriority="high"`, az első 2 eager.
 - **Variánscsoport = egy kártya** (`web_group_id`): a képviselő a szűrőknek megfelelő, raktáron lévő, legolcsóbb tag; a szűrő akkor talál, ha bármely tag megfelel. A darabszámok csoportot számolnak.
-- **Rendezés** (`rendezes`): Ajánlott (raktáron elöl, majd név) · Legolcsóbb · Legdrágább · Legújabb · Legjobbra értékelt (csak ha van értékelés). **Szűrők:** kulcsadatok (sablon, max. 6, értékenként 1), `raktaron=1`, `ar-tol` / `ar-ig` (bruttó Ft). Szűrt URL `noindex, follow`, a canonical a tiszta kategória.
+- **Rendezés** (`rendezes`): Ajánlott (raktáron elöl, majd a csoport 180 napos rendelésszáma, majd név — §3h) · Legolcsóbb · Legdrágább · Legújabb · Legjobbra értékelt (csak ha van értékelés). **Szűrők:** kulcsadatok (sablon, max. 6, értékenként 1), `raktaron=1`, `ar-tol` / `ar-ig` (bruttó Ft). Szűrt URL `noindex, follow`, a canonical a tiszta kategória — kivéve az egyértékű szűrőoldalt (§3h).
 - **Szűrő panel (mobil):** alsó sheet 92svh; nyitáskor history-bejegyzés → Android „vissza” bezárja. Rendezés rádiók → Csak raktáron kapcsoló → kulcsadat chipek darabszámmal (0 = halvány, tiltott) → ár (16px, `inputMode=numeric`). Rögzített lábléc: `Törlés` + fő gomb „N termék mutatása” élő darabszámmal (`/api/storefront/category-count`, 250 ms debounce, `aria-live`); 0 találatnál tiltott.
 - **Lebegő „Szűrés és rendezés” pill:** csak mobilon, ha a chip-sor kigördült **és** a lista vége / lábléc nem látszik; safe-area fölött. Soha nincs egyszerre két ragadós vezérlő.
 - **Lapozás:** „Továbbiak betöltése” (48px) + „24 / 132 termék” sáv; kumulatív `?page=N` (az első N×24, max. 20), görgetés nem ugrik, vissza gombbal ugyanott folytatódik. JS nélkül sima link (`rel=next`). **Nincs végtelen görgetés.**
@@ -120,6 +120,27 @@ Minden kategóriában használható mezők — kategóriaspecifikus adat a kulcs
 ## 3g. Modul-elválasztás (zárolt)
 
 A bolt adatai az `accessory_web` táblában, a storefront a `storefront_products` nézetet olvassa (részletek: [39 §4](39-webshop-addon.md)). Az alap termékoldalon csak az „Online bolt” kártya marad; minden itt leírt mező a `/webshop/katalogus/[id]` szerkesztőben van. Import/export: külön munkafüzet a Termékek oldalon (alap) és a Bolt katalógusban (bolt adatok) — [39 §4a](39-webshop-addon.md).
+
+## 3h. Kategória: képek, tények, keresőoldalak (zárolt)
+
+Forrás: Baymard (kategória-csempék, „Browse” vs. „Search” intent), Shopify Dawn collection list, Odoo eCommerce kategória-kép, r/SEO + r/ecommerce facet-indexelési szálak. Migráció: `20260550_storefront_category_covers.sql` (kézzel futtatandó; előtte a bolt kép és bevezető nélkül, hibamentesen működik).
+
+- **Kép a döntési ponton, nem hero:** kategória-csempe (bolt főoldal, hub-kategória alkategóriái), mobil menü (40px bélyeg), kereső „népszerű” chipek (28px), `og:image`. A kategóriaoldal tetején **nincs** nagy kép — ott a termékrács az első tartalom.
+- **Borítókép kiválasztása** (`storefront_category_covers`, 180 nap, minden csatorna): a kategória (és alkategóriái) publikált termékei közül raktáron lévő → nem alkatrész/tartozék → a variánscsoport **rendelésszáma** (különböző rendelések, nem darab — egy 500 db-os B2B tétel nem torzít) → csoportméret → fő termék → olcsóbb. Megtekintés nem számít. Szülő kategória a leszármazottak legjobbját kapja (testvérek egyezése elfogadott). Hidegindítás: rendelés nélkül is van kép (raktár + csoportméret). **Kézi felülírás:** `web_categories.cover_accessory_id` (admin „Borítókép (termék SKU)”, Excel „Borítókép (SKU)”, `-` = törlés) — csak a saját kategóriára hat.
+- **Csempe:** négyzetes kép `bg-stone-50` + `mix-blend-multiply`, alatta név (2 sor) + „N termék · X Ft-tól”; kép nélkül a név. Az első 4 kép eager. Hub = ≥2 alkategória és nincs szűrő: csempék, majd „Összes termék” rács; ilyenkor mobilon az alkategória-chipek elmaradnak.
+- **Tények az H1 alatt:** kézi bevezető (`web_categories.intro`, ≤300 kar., admin + Excel „Bevezető”), különben/alatta ténymondat a szűrt listából: „54 termék 2 490 Ft-tól, ebből 41 raktáron. Méret: 128–1120 mm (18 féle). Szín: …” Bizalmi sor: kiszállítás N munkanap · ingyenes szállítás X Ft felett · N nap elállás · átvétel. Mobilon egy soros útvonal a H1 fölött.
+- **Cím / leírás:** `{H1} {tartomány} – {N} termék · {bolt}`; a meta leírás a bevezető + ténymondat (≤160).
+- **Ajánlott sorrend:** raktáron elöl → a csoport 180 napos rendelésszáma (`storefront_order_counts`) → név. Csak a kategóriaoldal kéri le.
+- **Méret × szín mátrix** a rács alatt: az első két fő jellemző ≥2 értékkel (max. 24 × 8), cella = csoportszám, link a pontos párosra (`nofollow`); sor-/oszlopfej az egyértékű oldalra visz, ha az indexelhető. Ragadós első oszlop, vízszintes görgetés.
+- **GYIK (adatból):** „Milyen {jellemző} kapható?” (max. 2) · „Mennyibe kerülnek …?” · „Mi van raktáron?” · „Mikor kapom meg?” — csak valós adatból, csak az 1. oldalon; `FAQPage` JSON-LD.
+- **JSON-LD:** `CollectionPage` (+ `description`, `image` = borító) → `ItemList` teljes `Product` + `Offer` elemekkel (ár, HUF, készlet, kép, `@id` = PDP `#product`), `numberOfItems` = összes; `BreadcrumbList`; `FAQPage`.
+- **Egyértékű szűrőoldal** `/bolt/k/<kategória>/<érték>` (pl. `/profilfogantyuk/128-mm`): H1 „Kategória, 128 mm”; önmagára mutató canonical és indexelhető, ha ≥ **6** termékcsoport (`FACET_PAGE_MIN`) és nincs más paraméter; különben `noindex, follow`, canonical a kategória. `?meret=128-mm` egyedüli szűrőként 308-cal ide irányít. A chip / oldalsáv / mátrix linkjei ide mutatnak (follow), ha ez lenne az egyetlen szűrő; két szűrő együtt soha nem indexelhető. Sitemapba nem kerülnek (linkekből felfedezhetők).
+- **Kártya (variánscsoport):** cím = a tagok közös név-eleje vesszőig („RiexTouch XH35 fogantyú”); kulcsadat-sor = közös érték vagy a csoport kínálata („96 · 128 · 160 mm”, 4 felett tartomány); szín jellemzőnél színpöttyök (max. 5 + „+N”, csak ha minden szín felismert, `lib/storefront/color-swatch.ts`); eltérő áraknál „X Ft-tól” (JSON-LD `AggregateOffer`, közös `@id` nélkül). „N változat” csak ha más nem mutatja. Elfogyottnál, ha van nyitott beszállítói rendelés: „Érkezik: okt. 3.” (`BackOrder`).
+- **Címke:** „Népszerű” a 3 legtöbbet rendelt csoporton (≥2 rendelés, ≥8 csoportos lista, tartozék nem), különben „Új”. Soha kettő.
+- **Tartozékok hátra:** más termék „Tartozék / Kell hozzá” kapcsolata, vagy név szerint (sablon, rögzítő, végzáró, csavar …) — ez utóbbi csak ha a lista ≤25%-a. Az „Ajánlott” sorrendben a lista végén, a „-tól” árba nem számít.
+- **Darabszám egysége:** mindenhol kártya (variánscsoport) — H1, csempe, menü (`group_count`). A lista lapozva töltődik (max. 10 000 termék / kategória); a nagy `.in()` lekérdezések 100-as darabokban (`fetchByIds`).
+- **Mobil apróságok:** H1 legfeljebb 3 sor; útvonal-sor csak ha van szülő; alkategória-csempék vízszintes sávban; a gyors méret-chipeken hossz-sziluett (két furat, arányos távolság); a ténymondat csak ≥30% raktári aránynál említi a raktárat.
+- **Kapcsolódó kategóriák** (testvérek, max. 12) a lap alján. **llms.txt:** kategóriasor „N termék, X Ft-tól. {bevezető}”.
 
 ## 4. Nyitott (F4)
 

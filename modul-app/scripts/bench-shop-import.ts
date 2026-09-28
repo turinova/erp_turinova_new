@@ -35,6 +35,8 @@ function fakeContext(): ShopXContext {
       active: true,
       googleTaxonomyId: null,
       measureImageUrl: null,
+      intro: null,
+      coverAccessoryId: null,
       template: [],
       path: parent ? `${parent.name} > Kategória ${i}` : `Kategória ${i}`
     })

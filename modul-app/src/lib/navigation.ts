@@ -32,9 +32,11 @@ import {
   Package,
   PackageCheck,
   Receipt,
+  Scale,
   Store,
   Tags,
   Truck,
+  Undo2,
   Users,
   UsersRound,
   Wallet,
@@ -203,9 +205,23 @@ export const mainNavItems: NavNode[] = [
       },
       {
         type: 'link',
+        label: 'Elállások',
+        href: '/webshop/elallasok',
+        icon: Undo2,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
         label: 'Csatornák',
         href: '/webshop/csatornak',
         icon: Globe,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Jogi oldalak',
+        href: '/webshop/jogi',
+        icon: Scale,
         accent: 'slate'
       },
       {

@@ -34,3 +34,34 @@ export async function fetchAllPages<T>(
   }
   return { data: out, error: null }
 }
+
+/** ~100 uuid fér biztonságosan egy `.in()` URL-be (a hosszabb kérés 400 Bad Request). */
+const ID_CHUNK = 100
+const ID_CONCURRENCY = 6
+
+/**
+ * `.in(col, ids)` sok azonosítóra: darabolva (URL-hossz) és darabonként lapozva (`max_rows`).
+ * A `page` builderben stabil `order` kell.
+ */
+export async function fetchByIds<T>(
+  ids: string[],
+  page: (chunk: string[], from: number, to: number) => PromiseLike<PageResult<T>>,
+  maxPerChunk = 50000
+): Promise<{ data: T[]; error: string | null }> {
+  const unique = [...new Set(ids.filter(Boolean))]
+  const chunks: string[][] = []
+  for (let i = 0; i < unique.length; i += ID_CHUNK) chunks.push(unique.slice(i, i + ID_CHUNK))
+  const out: T[] = []
+  for (let i = 0; i < chunks.length; i += ID_CONCURRENCY) {
+    const results = await Promise.all(
+      chunks
+        .slice(i, i + ID_CONCURRENCY)
+        .map((c) => fetchAllPages<T>((from, to) => page(c, from, to), maxPerChunk))
+    )
+    for (const r of results) {
+      if (r.error) return { data: out, error: r.error }
+      out.push(...r.data)
+    }
+  }
+  return { data: out, error: null }
+}

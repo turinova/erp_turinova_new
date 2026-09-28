@@ -109,19 +109,65 @@ export function breadcrumbNode(
   }
 }
 
+/** Kategória lista: minden elem teljes Product + Offer (ár, készlet, kép), hogy a lista önmagában is idézhető legyen. */
 export function itemListNode(
   items: StorefrontCard[],
   base: SiteBase,
-  offset = 0
+  opts: { offset?: number; total?: number } = {}
 ): Record<string, unknown> {
+  const offset = opts.offset ?? 0
   return {
     '@type': 'ItemList',
-    numberOfItems: items.length,
-    itemListElement: items.map((c, i) => ({
-      '@type': 'ListItem',
-      position: offset + i + 1,
-      url: siteUrl(base, productPath(c.slug)),
-      name: c.title
+    numberOfItems: opts.total ?? items.length,
+    itemListElement: items.map((c, i) => {
+      const url = siteUrl(base, productPath(c.slug))
+      const availability = c.inStock
+        ? 'https://schema.org/InStock'
+        : c.arrival
+          ? 'https://schema.org/BackOrder'
+          : 'https://schema.org/OutOfStock'
+      return {
+        '@type': 'ListItem',
+        position: offset + i + 1,
+        item: {
+          '@type': 'Product',
+          // Árazott csoport (-tól): nem azonos a PDP változatával, ezért nincs közös @id.
+          ...(c.priceFrom ? {} : { '@id': `${url}#product` }),
+          url,
+          name: c.title,
+          ...(c.imageUrl ? { image: c.imageUrl } : {}),
+          offers: c.priceFrom
+            ? {
+                '@type': 'AggregateOffer',
+                url,
+                lowPrice: c.priceGross,
+                priceCurrency: 'HUF',
+                availability
+              }
+            : {
+                '@type': 'Offer',
+                url,
+                price: c.priceGross,
+                priceCurrency: 'HUF',
+                availability
+              }
+        }
+      }
+    })
+  }
+}
+
+export function faqNode(
+  id: string,
+  items: { question: string; answer: string }[]
+): Record<string, unknown> {
+  return {
+    '@type': 'FAQPage',
+    '@id': id,
+    mainEntity: items.map((f) => ({
+      '@type': 'Question',
+      name: f.question,
+      acceptedAnswer: { '@type': 'Answer', text: f.answer }
     }))
   }
 }

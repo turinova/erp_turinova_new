@@ -83,7 +83,7 @@ PDP „Műszaki adatok” = strukturált adatok + szabad `web_specs` + termék n
 
 | Elem | Szabály |
 |---|---|
-| `tenant_webshop_settings` | `hosting_provider_name/address/email`, `terms_url`, `privacy_url`, `complaint_info` — Bolt beállítások → „Jogi adatok (lábléc)”. Cégadat (székhely, adószám, cégjegyzékszám, e-mail, telefon) a Cégadatokból. |
+| `tenant_webshop_settings` | **Elavult (20260551 óta):** `hosting_provider_*` és `complaint_info` nem olvasott — a jogi oldalak generáltak, lásd [41-webshop-legal.md](41-webshop-legal.md). `terms_url` / `privacy_url` csak „saját dokumentum” felülírás a Webshop → Jogi oldalak „Haladó” részében. |
 | `manufacturers` | GPSR: `legal_name`, `postal_address`, `email`, `website`, `eu_rep_name/address/email`. Gyártók lista jelzi, ha hiányzik cím vagy elérhetőség. |
 | `accessories.web_safety_info` | Figyelmeztetés magyarul (≤2000) — termék űrlap „Még több”. |
 | `accessory_price_history` | Trigger `price_net` változásra; kiinduló sor = mai ár (nincs visszamenőleges akció). `storefront_reference_price` = az aktuális ár előtti 30 napban érvényes árak minimuma. |

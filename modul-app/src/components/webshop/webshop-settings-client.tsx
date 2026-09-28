@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -9,8 +10,17 @@ import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  CARRIER_CODES,
+  CARRIERS,
+  DEFAULT_TRANSFER_HOLD_DAYS,
+  PAYMENT_CODES,
+  PAYMENT_METHODS
+} from '@/lib/webshop/legal/constants'
+import type { CarrierCode, PaymentCode } from '@/lib/webshop/legal/types'
 import type { StorefrontSettings } from '@/lib/webshop/settings'
 import { saveStorefrontSettings } from '@/lib/webshop/storefront-actions'
 
@@ -52,14 +62,11 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
   const [allowAiTraining, setAllowAiTraining] = useState(initial.allowAiTraining)
   const [portraitImages, setPortraitImages] = useState(initial.imageAspect === 'portrait')
   const [showNetPrice, setShowNetPrice] = useState(initial.showNetPrice)
-  const [hostName, setHostName] = useState(initial.hostingProviderName ?? '')
-  const [hostAddress, setHostAddress] = useState(
-    initial.hostingProviderAddress ?? ''
-  )
-  const [hostEmail, setHostEmail] = useState(initial.hostingProviderEmail ?? '')
-  const [termsUrl, setTermsUrl] = useState(initial.termsUrl ?? '')
-  const [privacyUrl, setPrivacyUrl] = useState(initial.privacyUrl ?? '')
-  const [complaintInfo, setComplaintInfo] = useState(initial.complaintInfo ?? '')
+  const [carriers, setCarriers] = useState<CarrierCode[]>(initial.shippingCarriers)
+  const [payments, setPayments] = useState<PaymentCode[]>(initial.paymentMethods)
+  const [bankAccount, setBankAccount] = useState(initial.bankAccount ?? '')
+  const [holdDays, setHoldDays] = useState(toRaw(initial.transferHoldDays))
+  const [returnPaidBy, setReturnPaidBy] = useState(initial.returnShippingPaidBy)
 
   const disabled = !canWrite || pending
 
@@ -70,7 +77,8 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
       deliveryDaysMin: parseIntRaw(daysMin),
       deliveryDaysMax: parseIntRaw(daysMax),
       returnDays: parseIntRaw(returnDays),
-      warrantyMonths: parseIntRaw(warranty)
+      warrantyMonths: parseIntRaw(warranty),
+      transferHoldDays: parseIntRaw(holdDays)
     }
     const local: Record<string, string> = {}
     for (const [k, v] of Object.entries(numbers)) {
@@ -93,12 +101,10 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
         lowStockThreshold: low ?? 10,
         showSoldCount: showSold,
         reviewsEnabled,
-        hostingProviderName: hostName,
-        hostingProviderAddress: hostAddress,
-        hostingProviderEmail: hostEmail,
-        termsUrl,
-        privacyUrl,
-        complaintInfo,
+        shippingCarriers: carriers,
+        paymentMethods: payments,
+        bankAccount,
+        returnShippingPaidBy: returnPaidBy,
         allowAiTraining,
         imageAspect: portraitImages ? 'portrait' : 'square',
         showNetPrice
@@ -130,10 +136,25 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
 
       <div className="space-y-3">
         <FormSection
+          id="szallitas"
           title="Szállítás és átvétel"
-          description="A teljes költséget a vásárló már a termékoldalon látja."
+          description="A teljes költséget a vásárló már a termékoldalon látja. A választott futárszolgálatok a jogi oldalakon (ÁSZF, adatkezelés) is megjelennek."
           columns={4}
         >
+          <fieldset className="col-span-full" disabled={disabled}>
+            <legend className="mb-1.5 text-label text-ink">Szállítási módok</legend>
+            <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-4">
+              {CARRIER_CODES.map((code) => (
+                <CheckItem
+                  key={code}
+                  id={`sf-carrier-${code}`}
+                  label={CARRIERS[code].label}
+                  checked={carriers.includes(code)}
+                  onChange={(on) => setCarriers((list) => toggle(list, code, on, CARRIER_CODES))}
+                />
+              ))}
+            </div>
+          </fieldset>
           <FormField
             label="Szállítási díj (bruttó Ft)"
             htmlFor="sf-fee"
@@ -225,6 +246,66 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
         </FormSection>
 
         <FormSection
+          id="fizetes"
+          title="Fizetés"
+          description="A pénztárban választható módok. Az ÁSZF és a Szállítás és fizetés oldal ebből készül."
+          columns={4}
+        >
+          <fieldset className="col-span-full" disabled={disabled}>
+            <legend className="mb-1.5 text-label text-ink">Fizetési módok</legend>
+            <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-2">
+              {PAYMENT_CODES.map((code) => (
+                <CheckItem
+                  key={code}
+                  id={`sf-pay-${code}`}
+                  label={PAYMENT_METHODS[code].label}
+                  description={PAYMENT_METHODS[code].hint}
+                  checked={payments.includes(code)}
+                  onChange={(on) => setPayments((list) => toggle(list, code, on, PAYMENT_CODES))}
+                />
+              ))}
+            </div>
+          </fieldset>
+          {payments.includes('transfer') ? (
+            <>
+              <FormField
+                label="Bankszámlaszám"
+                htmlFor="sf-bank"
+                required
+                hint="A díjbekérőn és az ÁSZF-ben jelenik meg"
+                className="sm:col-span-2"
+                error={errors.bankAccount}
+              >
+                <Input
+                  id="sf-bank"
+                  value={bankAccount}
+                  onChange={(e) => setBankAccount(e.target.value)}
+                  maxLength={80}
+                  disabled={disabled}
+                  placeholder="12345678-12345678-12345678"
+                />
+              </FormField>
+              <FormField
+                label="Foglalás a jóváírásig (munkanap)"
+                htmlFor="sf-hold"
+                optionalLabel
+                hint={`Utána a rendelést töröljük. Alapérték: ${DEFAULT_TRANSFER_HOLD_DAYS}`}
+                error={errors.transferHoldDays}
+              >
+                <Input
+                  id="sf-hold"
+                  value={holdDays}
+                  onChange={(e) => setHoldDays(e.target.value)}
+                  inputMode="numeric"
+                  disabled={disabled}
+                  placeholder={String(DEFAULT_TRANSFER_HOLD_DAYS)}
+                />
+              </FormField>
+            </>
+          ) : null}
+        </FormSection>
+
+        <FormSection
           title="Csere, visszaküldés, garancia"
           description="Konkrét ígéret a gomb alatt — ez csökkenti a vásárló kockázatérzetét."
           columns={4}
@@ -246,9 +327,25 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
             />
           </FormField>
           <FormField
-            label="Garancia (hónap)"
+            label="Visszaküldés költsége"
+            htmlFor="sf-return-paid"
+            className="sm:col-span-2"
+          >
+            <Select
+              id="sf-return-paid"
+              value={returnPaidBy}
+              onChange={(e) => setReturnPaidBy(e.target.value === 'seller' ? 'seller' : 'customer')}
+              disabled={disabled}
+            >
+              <option value="customer">A vásárlót terheli</option>
+              <option value="seller">Mi álljuk</option>
+            </Select>
+          </FormField>
+          <FormField
+            label="Önkéntes jótállás (hónap)"
             htmlFor="sf-warranty"
             optionalLabel
+            hint={!errors.warrantyMonths ? 'A törvényes 2 év kellékszavatosságon felül' : undefined}
             error={errors.warrantyMonths}
           >
             <Input
@@ -342,109 +439,49 @@ export function WebshopSettingsClient({ initial, canWrite }: Props) {
           </div>
         </FormSection>
 
-        <FormSection
-          title="Jogi adatok (lábléc)"
-          description="A cégnév, székhely, adószám, cégjegyzékszám, e-mail és telefon a Beállítások → Cégadatok oldalról jön. Ezek nélkül a bolt nem felel meg az Ekertv. 4. §-nak."
-          columns={4}
-        >
-          <FormField
-            label="Tárhely-szolgáltató neve"
-            htmlFor="sf-host-name"
-            optionalLabel
-            hint="Pl. Vercel Inc."
-            className="sm:col-span-2"
-            error={errors.hostingProviderName}
-          >
-            <Input
-              id="sf-host-name"
-              value={hostName}
-              onChange={(e) => setHostName(e.target.value)}
-              maxLength={200}
-              disabled={disabled}
-            />
-          </FormField>
-          <FormField
-            label="Tárhely-szolgáltató e-mail címe"
-            htmlFor="sf-host-email"
-            optionalLabel
-            className="sm:col-span-2"
-            error={errors.hostingProviderEmail}
-          >
-            <Input
-              id="sf-host-email"
-              type="email"
-              value={hostEmail}
-              onChange={(e) => setHostEmail(e.target.value)}
-              maxLength={200}
-              disabled={disabled}
-            />
-          </FormField>
-          <FormField
-            label="Tárhely-szolgáltató postai címe"
-            htmlFor="sf-host-address"
-            optionalLabel
-            className="col-span-full"
-            error={errors.hostingProviderAddress}
-          >
-            <Input
-              id="sf-host-address"
-              value={hostAddress}
-              onChange={(e) => setHostAddress(e.target.value)}
-              maxLength={300}
-              disabled={disabled}
-            />
-          </FormField>
-          <FormField
-            label="ÁSZF címe"
-            htmlFor="sf-terms"
-            optionalLabel
-            hint="https://… vagy /aszf"
-            className="sm:col-span-2"
-            error={errors.termsUrl}
-          >
-            <Input
-              id="sf-terms"
-              value={termsUrl}
-              onChange={(e) => setTermsUrl(e.target.value)}
-              maxLength={500}
-              disabled={disabled}
-            />
-          </FormField>
-          <FormField
-            label="Adatkezelési tájékoztató címe"
-            htmlFor="sf-privacy"
-            optionalLabel
-            hint="Az értékelés űrlap is erre hivatkozik"
-            className="sm:col-span-2"
-            error={errors.privacyUrl}
-          >
-            <Input
-              id="sf-privacy"
-              value={privacyUrl}
-              onChange={(e) => setPrivacyUrl(e.target.value)}
-              maxLength={500}
-              disabled={disabled}
-            />
-          </FormField>
-          <FormField
-            label="Panaszkezelés és békéltető testület"
-            htmlFor="sf-complaint"
-            optionalLabel
-            hint="Hol és hogyan tehet panaszt a vásárló, melyik békéltető testülethez fordulhat (név, cím)"
-            className="col-span-full"
-            error={errors.complaintInfo}
-          >
-            <Textarea
-              id="sf-complaint"
-              value={complaintInfo}
-              onChange={(e) => setComplaintInfo(e.target.value)}
-              rows={3}
-              maxLength={1500}
-              disabled={disabled}
-            />
-          </FormField>
-        </FormSection>
+        <p className="text-hint text-ink-secondary">
+          Az eladó adatai, az ÁSZF, az adatkezelési tájékoztató és a többi kötelező oldal:{' '}
+          <Link href="/webshop/jogi" className="text-ink underline underline-offset-2">
+            Webshop → Jogi oldalak
+          </Link>
+          .
+        </p>
       </div>
+    </div>
+  )
+}
+
+function toggle<T extends string>(list: T[], code: T, on: boolean, order: readonly T[]): T[] {
+  const next = on ? [...new Set([...list, code])] : list.filter((c) => c !== code)
+  return order.filter((c) => next.includes(c))
+}
+
+function CheckItem({
+  id,
+  label,
+  description,
+  checked,
+  onChange
+}: {
+  id: string
+  label: string
+  description?: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[#18181B] disabled:cursor-not-allowed"
+      />
+      <label htmlFor={id} className="min-w-0 cursor-pointer text-body text-ink">
+        {label}
+        {description ? <span className="block text-hint text-ink-secondary">{description}</span> : null}
+      </label>
     </div>
   )
 }

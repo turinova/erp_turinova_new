@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 
-import { WebshopOverviewClient } from '@/components/webshop/webshop-overview-client'
+import { type LaunchItem, WebshopOverviewClient } from '@/components/webshop/webshop-overview-client'
 import { getSessionUser } from '@/lib/auth/session'
+import { emailConfigured } from '@/lib/email/send'
 import { createClient } from '@/lib/supabase/server'
 import { tenantHasWebshop } from '@/lib/webshop/entitlement'
+import { loadAdminLegal, openWithdrawalCount } from '@/lib/webshop/legal/admin'
 import { listShopReadyLevels } from '@/lib/webshop/product-queries'
 import {
   getWebshopOverviewStats,
@@ -46,10 +48,48 @@ export default async function WebshopPage() {
   }
 
   const levels = await listShopReadyLevels(supabase, user.tenantId)
-  const [stats, stockNotify] = await Promise.all([
+  const [stats, stockNotify, legal, openWithdrawals] = await Promise.all([
     getWebshopOverviewStats(supabase, user.tenantId, levels),
-    listOpenStockNotifyRequests(supabase, user.tenantId)
+    listOpenStockNotifyRequests(supabase, user.tenantId),
+    loadAdminLegal(supabase, user.tenantId),
+    openWithdrawalCount(supabase, user.tenantId)
   ])
 
-  return <WebshopOverviewClient stats={stats} stockNotify={stockNotify} />
+  const missingOn = (prefix: string) => legal.missing.filter((m) => m.href.startsWith(prefix))
+  const launch: LaunchItem[] = [
+    {
+      label: 'Eladó adatai (cégnév, székhely, adószám, elérhetőség)',
+      missing: missingOn('/webshop/jogi').map((m) => m.label),
+      href: '/webshop/jogi#elado'
+    },
+    {
+      label: 'Szállítási mód és díj',
+      missing: missingOn('/webshop/beallitasok#szallitas').map((m) => m.label),
+      href: '/webshop/beallitasok#szallitas'
+    },
+    {
+      label: 'Fizetési mód',
+      missing: missingOn('/webshop/beallitasok#fizetes').map((m) => m.label),
+      href: '/webshop/beallitasok#fizetes'
+    },
+    {
+      label: 'Legalább egy termék a boltban',
+      missing: stats.sellableWeb > 0 ? [] : ['Nincs még termék a boltban'],
+      href: '/webshop/katalogus'
+    },
+    {
+      label: 'Elállás-visszaigazoló e-mail',
+      missing: emailConfigured() ? [] : ['A platform e-mail küldése még nincs bekapcsolva — addig a vásárló a képernyőn kapja meg a visszaigazolást.'],
+      href: null
+    }
+  ]
+
+  return (
+    <WebshopOverviewClient
+      stats={stats}
+      stockNotify={stockNotify}
+      launch={launch}
+      openWithdrawals={openWithdrawals}
+    />
+  )
 }

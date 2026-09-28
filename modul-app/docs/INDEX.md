@@ -42,5 +42,6 @@
 | [38-agent-commerce.md](38-agent-commerce.md) | **Agent-ready B2C bolt** — PDP + checkout, Stripe wallet, feed/LLM adat |
 | [39-webshop-addon.md](39-webshop-addon.md) | **Webshop add-on** — 12 900 Ft, kategória/attr törzs, shop-ready UI |
 | [40-storefront-catalog-ai.md](40-storefront-catalog-ai.md) | **Storefront katalógus + AI** — `/bolt`, kereső, szűrők, JSON-LD graph, feedek, AI-készség kapu |
+| [41-webshop-legal.md](41-webshop-legal.md) | **Webshop jogi oldalak** — generált ÁSZF/adatkezelés/elállás…, online elállás, verziók, Webshop → Jogi oldalak / Elállások |
 
 **Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok: **`33`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**. Agent commerce: **`38`**. Webshop add-on: **`39`**.

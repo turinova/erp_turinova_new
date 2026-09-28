@@ -75,13 +75,64 @@ async function parentTaxonomyId(
   )
 }
 
+const CATEGORY_INTRO_MAX = 300
+
+type CategoryStorefrontInput = { intro?: string | null; coverSku?: string | null }
+
+/** Bevezető + kézi borító (SKU → termék). Csak a megadott mezők kerülnek a mentésbe. */
+async function categoryStorefrontPatch(
+  supabase: SupabaseClient,
+  tenantId: string,
+  input: CategoryStorefrontInput
+): Promise<
+  | { ok: true; patch: { intro?: string | null; cover_accessory_id?: string | null } }
+  | { ok: false; message: string; fieldErrors: Record<string, string> }
+> {
+  const patch: { intro?: string | null; cover_accessory_id?: string | null } = {}
+  if (input.intro !== undefined) {
+    const intro = emptyToNull(input.intro)?.replace(/\s+/g, ' ') ?? null
+    if (intro && intro.length > CATEGORY_INTRO_MAX) {
+      return {
+        ok: false,
+        message: 'Ellenőrizd a megadott adatokat.',
+        fieldErrors: { intro: `Legfeljebb ${CATEGORY_INTRO_MAX} karakter.` }
+      }
+    }
+    patch.intro = intro
+  }
+  if (input.coverSku !== undefined) {
+    const sku = emptyToNull(input.coverSku)
+    if (!sku) {
+      patch.cover_accessory_id = null
+    } else {
+      const { data } = await supabase
+        .from('accessories')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .ilike('sku', sku.replace(/[\\%_]/g, (m) => `\\${m}`))
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle()
+      if (!data) {
+        return {
+          ok: false,
+          message: 'Ellenőrizd a megadott adatokat.',
+          fieldErrors: { coverSku: 'Nincs ilyen SKU-jú termék.' }
+        }
+      }
+      patch.cover_accessory_id = data.id as string
+    }
+  }
+  return { ok: true, patch }
+}
+
 export async function createWebCategory(input: {
   name: string
   parentId?: string | null
   googleTaxonomyId?: string | null
   sortOrder?: number
   active?: boolean
-}): Promise<WebshopActionResult> {
+} & CategoryStorefrontInput): Promise<WebshopActionResult> {
   const ctx = await requireWebshopTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
@@ -93,6 +144,8 @@ export async function createWebCategory(input: {
       fieldErrors: { name: 'A név kötelező.' }
     }
   }
+  const extra = await categoryStorefrontPatch(ctx.supabase, ctx.user.tenantId!, input)
+  if (!extra.ok) return extra
 
   const parentId = input.parentId || null
   const parentTax = await parentTaxonomyId(
@@ -114,12 +167,16 @@ export async function createWebCategory(input: {
       parent_id: parentId,
       google_taxonomy_id: googleTaxonomyId,
       sort_order: input.sortOrder ?? 100,
-      active: input.active ?? true
+      active: input.active ?? true,
+      ...extra.patch
     })
     .select('id')
     .single()
 
   if (error) {
+    if (error.code === '42703') {
+      return { ok: false, message: 'A bevezető / borítókép mentéséhez futtasd le a 20260550 migrációt.' }
+    }
     return { ok: false, message: 'Nem sikerült létrehozni a kategóriát.' }
   }
 
@@ -135,7 +192,7 @@ export async function updateWebCategory(input: {
   googleTaxonomyId?: string | null
   sortOrder?: number
   active?: boolean
-}): Promise<WebshopActionResult> {
+} & CategoryStorefrontInput): Promise<WebshopActionResult> {
   const ctx = await requireWebshopTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
@@ -147,6 +204,8 @@ export async function updateWebCategory(input: {
       fieldErrors: { name: 'A név kötelező.' }
     }
   }
+  const extra = await categoryStorefrontPatch(ctx.supabase, ctx.user.tenantId!, input)
+  if (!extra.ok) return extra
 
   if (input.parentId && input.parentId === input.id) {
     return {
@@ -199,6 +258,7 @@ export async function updateWebCategory(input: {
       google_taxonomy_id: googleTaxonomyId,
       sort_order: input.sortOrder ?? 100,
       active: input.active ?? true,
+      ...extra.patch,
       updated_at: new Date().toISOString()
     })
     .eq('id', input.id)
@@ -208,6 +268,9 @@ export async function updateWebCategory(input: {
     .maybeSingle()
 
   if (error) {
+    if (error.code === '42703') {
+      return { ok: false, message: 'A bevezető / borítókép mentéséhez futtasd le a 20260550 migrációt.' }
+    }
     return { ok: false, message: 'Nem sikerült menteni a kategóriát.' }
   }
   if (!data) return { ok: false, message: 'A kategória nem található.' }

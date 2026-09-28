@@ -1,4 +1,4 @@
-import { Mail, Phone } from 'lucide-react'
+import { Mail, Phone, Undo2 } from 'lucide-react'
 import Link from 'next/link'
 
 import { CartButton, CategoryMenu, type MenuCategory } from '@/components/storefront/header-actions'
@@ -7,7 +7,24 @@ import { FooterGroup, HideOnScrollHeader, STOREFRONT_FOOTER_ID } from '@/compone
 import type { StorefrontCategory, StorefrontSeller } from '@/lib/storefront/shell'
 import { categoryPath, STOREFRONT_HOME } from '@/lib/storefront/url'
 import { cn } from '@/lib/utils'
+import {
+  HOSTING_PROVIDER,
+  LEGAL_DOCS,
+  legalPath,
+  WITHDRAWAL_ANCHOR,
+  WITHDRAWAL_LABEL
+} from '@/lib/webshop/legal/constants'
+import type { LegalDocKind } from '@/lib/webshop/legal/types'
 import type { StorefrontSettings } from '@/lib/webshop/settings'
+
+const FOOTER_DOCS: LegalDocKind[] = [
+  'szallitas-es-fizetes',
+  'elallas',
+  'panaszkezeles',
+  'impresszum',
+  'sutik',
+  'akadalymentesseg'
+]
 
 const iconBtn =
   'inline-flex size-11 cursor-pointer items-center justify-center rounded-full text-ink hover:bg-stone-100'
@@ -23,18 +40,19 @@ export function StorefrontHeader({
   seller: StorefrontSeller
   categories: StorefrontCategory[]
 }) {
-  const menu: MenuCategory[] = categories.map(({ id, name, slug, parentId, productCount }) => ({
+  const menu: MenuCategory[] = categories.map(({ id, name, slug, parentId, productCount, cover }) => ({
     id,
     name,
     slug,
     parentId,
-    productCount
+    productCount,
+    imageUrl: cover?.imageUrl ?? null
   }))
   const popular = categories
     .filter(c => c.parentId == null && c.productCount > 0)
     .sort((a, b) => b.productCount - a.productCount)
     .slice(0, POPULAR_MAX)
-    .map(({ id, name, slug }) => ({ id, name, slug }))
+    .map(({ id, name, slug, cover }) => ({ id, name, slug, imageUrl: cover?.imageUrl ?? null }))
 
   return (
     <HideOnScrollHeader>
@@ -84,14 +102,17 @@ export function StorefrontFooter({
   /** Mobil ragadós vásárlósáv alatti hely. */
   bottomBarSpace?: boolean
 }) {
-  const legalLinks = [
-    settings.termsUrl ? { href: settings.termsUrl, label: 'ÁSZF' } : null,
-    settings.privacyUrl ? { href: settings.privacyUrl, label: 'Adatkezelés' } : null
-  ].filter((l): l is { href: string; label: string } => l != null)
-
-  const host = [settings.hostingProviderName, settings.hostingProviderAddress, settings.hostingProviderEmail].filter(
-    Boolean
-  )
+  const infoLinks: { href: string; label: string }[] = [
+    { href: settings.termsUrl, label: LEGAL_DOCS.aszf.title },
+    { href: settings.privacyUrl, label: LEGAL_DOCS.adatkezeles.title },
+    ...FOOTER_DOCS.map(kind => ({ href: legalPath(kind), label: LEGAL_DOCS[kind].short }))
+  ]
+  const bottomLinks = [
+    { href: settings.termsUrl, label: LEGAL_DOCS.aszf.short },
+    { href: settings.privacyUrl, label: LEGAL_DOCS.adatkezeles.short },
+    { href: legalPath('impresszum'), label: LEGAL_DOCS.impresszum.short },
+    { href: legalPath('sutik'), label: LEGAL_DOCS.sutik.short }
+  ]
 
   const topCategories = categories.filter(c => c.parentId == null && c.productCount > 0).slice(0, 12)
 
@@ -103,7 +124,6 @@ export function StorefrontFooter({
   ].filter((l): l is string => Boolean(l))
 
   const hasContact = Boolean(seller.phone || seller.email)
-  const hasCustomerInfo = legalLinks.length > 0 || Boolean(settings.complaintInfo) || host.length > 0
 
   return (
     <footer
@@ -158,42 +178,30 @@ export function StorefrontFooter({
             </FooterGroup>
           ) : null}
 
-          {hasCustomerInfo ? (
-            <FooterGroup id='footer-info' title='Vásárlói információk'>
-              <div className='space-y-2'>
-                {legalLinks.length > 0 ? (
-                  <ul className='space-y-1.5 lg:space-y-1'>
-                    {settings.termsUrl ? (
-                      <li>
-                        <a href={settings.termsUrl} className={footerLink}>
-                          Általános Szerződési Feltételek
-                        </a>
-                      </li>
-                    ) : null}
-                    {settings.privacyUrl ? (
-                      <li>
-                        <a href={settings.privacyUrl} className={footerLink}>
-                          Adatkezelési tájékoztató
-                        </a>
-                      </li>
-                    ) : null}
-                  </ul>
-                ) : null}
-                {settings.complaintInfo ? (
-                  <p className='whitespace-pre-wrap'>
-                    <span className='font-medium text-ink'>Panaszkezelés. </span>
-                    {settings.complaintInfo}
-                  </p>
-                ) : null}
-                {host.length > 0 ? (
-                  <p>
-                    <span className='font-medium text-ink'>Tárhely-szolgáltató. </span>
-                    {host.join(', ')}
-                  </p>
-                ) : null}
-              </div>
-            </FooterGroup>
-          ) : null}
+          <FooterGroup id='footer-info' title='Vásárlói információk'>
+            <div className='space-y-3'>
+              <ul className='space-y-1.5 lg:space-y-1'>
+                {infoLinks.map(l => (
+                  <li key={l.href}>
+                    <a href={l.href} className={footerLink}>
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              <a
+                href={`${legalPath('elallas')}#${WITHDRAWAL_ANCHOR}`}
+                className='inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-[14px] font-medium text-ink hover:border-stone-500'
+              >
+                <Undo2 className='size-4' aria-hidden />
+                {WITHDRAWAL_LABEL}
+              </a>
+              <p>
+                <span className='font-medium text-ink'>Tárhely-szolgáltató. </span>
+                {[HOSTING_PROVIDER.name, HOSTING_PROVIDER.address, HOSTING_PROVIDER.email].filter(Boolean).join(', ')}
+              </p>
+            </div>
+          </FooterGroup>
 
           <FooterGroup id='footer-company' title='Cégadatok'>
             <div className='space-y-0.5'>
@@ -209,7 +217,7 @@ export function StorefrontFooter({
           <span>
             © {new Date().getFullYear()} {seller.name}
           </span>
-          {legalLinks.map(l => (
+          {bottomLinks.map(l => (
             <a key={l.href} href={l.href} className={footerLink}>
               {l.label}
             </a>

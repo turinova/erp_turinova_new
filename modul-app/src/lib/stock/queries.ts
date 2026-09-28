@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { fetchByIds } from '@/lib/supabase/fetch-all'
+
 /** Készlet egy termékre (összes raktár vagy egy). */
 export async function getAccessoryOnHand(
   supabase: SupabaseClient,
@@ -45,24 +47,26 @@ export async function getAccessoriesOnHandMap(
   for (const id of unique) map.set(id, 0)
   if (unique.length === 0) return map
 
-  let query = supabase
-    .from('stock_movements')
-    .select('accessory_id, quantity, movement_type')
-    .eq('tenant_id', tenantId)
-    .in('accessory_id', unique)
-
-  if (warehouseId) {
-    query = query.eq('warehouse_id', warehouseId)
-  }
-
-  const { data, error } = await query
+  const { data, error } = await fetchByIds<{
+    accessory_id: string
+    quantity: number | string
+    movement_type: string
+  }>(unique, (chunk, from, to) => {
+    let query = supabase
+      .from('stock_movements')
+      .select('accessory_id, quantity, movement_type')
+      .eq('tenant_id', tenantId)
+      .in('accessory_id', chunk)
+    if (warehouseId) query = query.eq('warehouse_id', warehouseId)
+    return query.order('id', { ascending: true }).range(from, to)
+  })
 
   if (error) {
-    console.error('getAccessoriesOnHandMap', error.message)
+    console.error('getAccessoriesOnHandMap', error)
     throw new Error('Nem sikerült lekérdezni a készletet.')
   }
 
-  for (const row of data ?? []) {
+  for (const row of data) {
     const id = row.accessory_id as string
     const qty = Number(row.quantity)
     const prev = map.get(id) ?? 0

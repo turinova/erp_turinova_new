@@ -1,6 +1,8 @@
 import { fetchAllPages } from '@/lib/supabase/fetch-all'
 import { getStorefrontShell } from '@/lib/storefront/shell'
 import { categoryPath, productPath, siteUrl, STOREFRONT_HOME } from '@/lib/storefront/url'
+import { legalPath } from '@/lib/webshop/legal/constants'
+import { LEGAL_DOC_KINDS } from '@/lib/webshop/legal/types'
 
 export const revalidate = 3600
 
@@ -22,6 +24,9 @@ export async function GET(
   for (const c of categories) {
     if (c.productCount === 0) continue
     entries.push({ loc: siteUrl(tenant.base, categoryPath(c.slug)), changefreq: 'daily' })
+  }
+  for (const kind of LEGAL_DOC_KINDS) {
+    entries.push({ loc: siteUrl(tenant.base, legalPath(kind)), changefreq: 'monthly' })
   }
 
   const { data, error } = await fetchAllPages<{ web_slug: string; updated_at: string | null }>(

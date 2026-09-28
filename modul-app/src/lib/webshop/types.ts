@@ -27,6 +27,10 @@ export type WebCategoryRow = {
   productCount: number
   childCount: number
   measureImageUrl: string | null
+  /** Rövid bevezető a kategóriaoldal tetején (≤300 karakter). */
+  intro: string | null
+  /** Kézi borítókép: termék SKU (üres = automatikus, legtöbbet rendelt). */
+  coverSku: string | null
   /** Saját sablon; üres = szülőtől örököl. */
   template: CategoryTemplateItem[]
 }

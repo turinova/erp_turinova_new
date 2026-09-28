@@ -11,6 +11,7 @@ const columnsClass: Record<FormSectionColumns, string> = {
 }
 
 export function FormSection({
+  id,
   title,
   description,
   children,
@@ -22,6 +23,8 @@ export function FormSection({
   onTitleClick,
   embedded = false
 }: {
+  /** Horgony (pl. /webshop/beallitasok#fizetes). */
+  id?: string
   title: string
   description?: string
   children: React.ReactNode
@@ -59,8 +62,9 @@ export function FormSection({
   }
   return (
     <section
+      id={id}
       className={cn(
-        'rounded-md border border-border bg-surface p-3.5',
+        'scroll-mt-16 rounded-md border border-border bg-surface p-3.5',
         className
       )}
     >

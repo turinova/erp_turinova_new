@@ -11,7 +11,7 @@ import { formatFt } from '@/lib/storefront/format'
 import { clearRecentSearches, recordSearch, useRecentSearches } from '@/lib/storefront/recent'
 import { categoryPath, productPath, STOREFRONT_SEARCH } from '@/lib/storefront/url'
 
-export type SearchCategoryLink = { id: string; name: string; slug: string }
+export type SearchCategoryLink = { id: string; name: string; slug: string; imageUrl?: string | null }
 
 type SearchState =
   | { status: 'idle' }
@@ -176,8 +176,19 @@ export function StorefrontSearchOverlay({
                           <DialogPrimitive.Close asChild>
                             <Link
                               href={categoryPath(c.slug)}
-                              className="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-stone-200 px-3 text-[14px] text-ink hover:border-stone-400"
+                              className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border border-stone-200 px-3 text-[14px] text-ink hover:border-stone-400 has-[img]:pl-1"
                             >
+                              {c.imageUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={c.imageUrl}
+                                  alt=""
+                                  width={28}
+                                  height={28}
+                                  loading="lazy"
+                                  className="size-7 rounded-full bg-stone-50 object-contain mix-blend-multiply"
+                                />
+                              ) : null}
                               {c.name}
                             </Link>
                           </DialogPrimitive.Close>

@@ -1,9 +1,12 @@
-import { childCategories, getStorefrontShell } from '@/lib/storefront/shell'
+import { formatFt } from '@/lib/storefront/format'
+import { childCategories, getStorefrontShell, type StorefrontCategory } from '@/lib/storefront/shell'
 import {
   categoryPath,
   siteUrl,
   STOREFRONT_HOME
 } from '@/lib/storefront/url'
+import { legalPath, LEGAL_DOCS } from '@/lib/webshop/legal/constants'
+import { LEGAL_DOC_KINDS } from '@/lib/webshop/legal/types'
 import { STATUTORY_RETURN_DAYS } from '@/lib/webshop/settings'
 
 export const revalidate = 3600
@@ -37,11 +40,13 @@ export async function GET(
     '## Kategóriák',
     ''
   ]
+  const line = (c: StorefrontCategory, indent: string) =>
+    `${indent}- [${c.name}](${absoluteUrl(categoryPath(c.slug))}): ${c.productCount} termék` +
+    (c.priceFrom != null ? `, ${formatFt(c.priceFrom)}-tól` : '') +
+    (c.intro ? `. ${c.intro}` : '')
   for (const top of childCategories(categories, null)) {
-    lines.push(`- [${top.name}](${absoluteUrl(categoryPath(top.slug))}): ${top.productCount} termék`)
-    for (const sub of childCategories(categories, top.id)) {
-      lines.push(`  - [${sub.name}](${absoluteUrl(categoryPath(sub.slug))}): ${sub.productCount} termék`)
-    }
+    lines.push(line(top, ''))
+    for (const sub of childCategories(categories, top.id)) lines.push(line(sub, '  '))
   }
   lines.push(
     '',
@@ -56,8 +61,15 @@ export async function GET(
   )
   if (seller.email) lines.push(`- E-mail: ${seller.email}`)
   if (seller.phone) lines.push(`- Telefon: ${seller.phone}`)
-  if (settings.termsUrl) lines.push(`- [ÁSZF](${settings.termsUrl})`)
-  lines.push(`- [Bolt](${absoluteUrl(STOREFRONT_HOME)})`, '')
+  lines.push(`- [Bolt](${absoluteUrl(STOREFRONT_HOME)})`, '', '## Vásárlói információk', '')
+  const docHref = (href: string) => (href.startsWith('/') ? absoluteUrl(href) : href)
+  lines.push(`- [${LEGAL_DOCS.aszf.title}](${docHref(settings.termsUrl)})`)
+  lines.push(`- [${LEGAL_DOCS.adatkezeles.title}](${docHref(settings.privacyUrl)})`)
+  for (const kind of LEGAL_DOC_KINDS) {
+    if (kind === 'aszf' || kind === 'adatkezeles') continue
+    lines.push(`- [${LEGAL_DOCS[kind].title}](${absoluteUrl(legalPath(kind))})`)
+  }
+  lines.push('')
 
   return new Response(lines.join('\n'), {
     headers: {

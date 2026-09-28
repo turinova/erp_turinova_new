@@ -306,7 +306,16 @@ export const GROUP_COLUMNS: SideColumn<GroupColumnId>[] = [
   { id: 'members', label: 'Tagok', info: true, width: 40, note: 'Csak tájékoztató.' }
 ]
 
-export type CategoryColumnId = 'path' | 'active' | 'google' | 'measureImage' | 'keyAttrs' | 'specAttrs' | 'count'
+export type CategoryColumnId =
+  | 'path'
+  | 'active'
+  | 'google'
+  | 'measureImage'
+  | 'keyAttrs'
+  | 'specAttrs'
+  | 'intro'
+  | 'cover'
+  | 'count'
 export const CATEGORY_COLUMNS: SideColumn<CategoryColumnId>[] = [
   {
     id: 'path',
@@ -326,6 +335,20 @@ export const CATEGORY_COLUMNS: SideColumn<CategoryColumnId>[] = [
     note: 'Legfeljebb 4 jellemző | jellel — a „Passzol-e?” kártyán látszanak. Törlés: -'
   },
   { id: 'specAttrs', label: 'További jellemzők', info: false, width: 30, note: 'Ajánlott jellemzők | jellel. Törlés: -' },
+  {
+    id: 'intro',
+    label: 'Bevezető',
+    info: false,
+    width: 40,
+    note: 'Legfeljebb 300 karakter a kategóriaoldal tetején. Üresen a bolt a termékadatokból ír összefoglalót. Törlés: -'
+  },
+  {
+    id: 'cover',
+    label: 'Borítókép (SKU)',
+    info: false,
+    width: 18,
+    note: 'Ennek a terméknek a képe lesz a kategória csempéjén. Üresen: a legtöbbet rendelt raktáron lévő termék. Törlés: -'
+  },
   { id: 'count', label: 'Termékek', info: true, width: 10, note: 'Csak tájékoztató.' }
 ]
 

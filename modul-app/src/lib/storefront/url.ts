@@ -22,6 +22,11 @@ export function categoryPath(slug: string): string {
   return `/bolt/k/${encodeURIComponent(slug)}`
 }
 
+/** Egyértékű szűrőoldal, pl. /bolt/k/profilfogantyuk/128-mm (doc 40 §3h). */
+export function categoryFacetPath(slug: string, value: string): string {
+  return `${categoryPath(slug)}/${encodeURIComponent(value)}`
+}
+
 export function siteUrl(base: SiteBase, path: string): string {
   if (base.hostMode && (path === STOREFRONT_HOME || path.startsWith(`${STOREFRONT_HOME}#`))) {
     return `${base.origin}/${path.slice(STOREFRONT_HOME.length)}`

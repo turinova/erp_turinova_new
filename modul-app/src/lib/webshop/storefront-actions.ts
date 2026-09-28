@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { revalidateStorefrontTenant } from '@/lib/storefront/revalidate'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 import { tenantHasWebshop } from '@/lib/webshop/entitlement'
+import { CARRIER_CODES, PAYMENT_CODES } from '@/lib/webshop/legal/constants'
+import { scheduleLegalSync } from '@/lib/webshop/legal/schedule'
 import { STATUTORY_RETURN_DAYS } from '@/lib/webshop/settings'
 
 export type StorefrontActionResult =
@@ -31,18 +33,6 @@ const optionalText = (max: number) =>
     })
     .refine((v) => v == null || v.length <= max, `Legfeljebb ${max} karakter.`)
 
-const optionalUrl = (label: string) =>
-  optionalText(500).refine(
-    (v) => v == null || /^(https?:\/\/|\/)\S+$/i.test(v),
-    `${label}: https://… vagy /… kezdetű cím legyen.`
-  )
-
-const optionalEmail = (label: string) =>
-  optionalText(200).refine(
-    (v) => v == null || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
-    `${label}: érvényes e-mail címet adj meg.`
-  )
-
 const settingsSchema = z
   .object({
     shippingFeeGross: optionalNonNegInt('Szállítási díj', 1_000_000),
@@ -64,12 +54,11 @@ const settingsSchema = z
       .max(1000),
     showSoldCount: z.boolean(),
     reviewsEnabled: z.boolean(),
-    hostingProviderName: optionalText(200),
-    hostingProviderAddress: optionalText(300),
-    hostingProviderEmail: optionalEmail('Tárhely-szolgáltató e-mail'),
-    termsUrl: optionalUrl('ÁSZF'),
-    privacyUrl: optionalUrl('Adatkezelési tájékoztató'),
-    complaintInfo: optionalText(1500),
+    shippingCarriers: z.array(z.enum(CARRIER_CODES)).max(20).default([]),
+    paymentMethods: z.array(z.enum(PAYMENT_CODES)).max(10).default([]),
+    bankAccount: optionalText(80),
+    transferHoldDays: optionalNonNegInt('Foglalási idő', 30),
+    returnShippingPaidBy: z.enum(['customer', 'seller']).default('customer'),
     allowAiTraining: z.boolean().default(false),
     imageAspect: z.enum(['square', 'portrait']).default('square'),
     showNetPrice: z.boolean().default(false)
@@ -91,6 +80,20 @@ const settingsSchema = z
         code: z.ZodIssueCode.custom,
         path: ['deliveryDaysMax'],
         message: 'A max nem lehet kisebb a minnél.'
+      })
+    }
+    if (d.paymentMethods.includes('transfer') && !d.bankAccount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['bankAccount'],
+        message: 'Átutaláshoz add meg a bankszámlaszámot.'
+      })
+    }
+    if (d.transferHoldDays === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['transferHoldDays'],
+        message: 'Legalább 1 munkanap.'
       })
     }
   })
@@ -141,12 +144,11 @@ export async function saveStorefrontSettings(
       low_stock_threshold: d.lowStockThreshold,
       show_sold_count: d.showSoldCount,
       reviews_enabled: d.reviewsEnabled,
-      hosting_provider_name: d.hostingProviderName,
-      hosting_provider_address: d.hostingProviderAddress,
-      hosting_provider_email: d.hostingProviderEmail,
-      terms_url: d.termsUrl,
-      privacy_url: d.privacyUrl,
-      complaint_info: d.complaintInfo,
+      shipping_carriers: d.shippingCarriers,
+      payment_methods: d.paymentMethods,
+      bank_account: d.bankAccount,
+      transfer_hold_days: d.transferHoldDays,
+      return_shipping_paid_by: d.returnShippingPaidBy,
       allow_ai_training: d.allowAiTraining,
       image_aspect: d.imageAspect,
       show_net_price: d.showNetPrice,
@@ -157,11 +159,16 @@ export async function saveStorefrontSettings(
 
   if (error) {
     console.error('saveStorefrontSettings', error.message)
+    if (error.code === '42703') {
+      return { ok: false, message: 'Hiányzik a 20260551 migráció (szállítási és fizetési módok). Futtasd, majd mentsd újra.' }
+    }
     return { ok: false, message: 'Nem sikerült menteni a beállításokat.' }
   }
 
   revalidatePath('/webshop/beallitasok')
+  revalidatePath('/webshop/jogi')
   await revalidateStorefrontTenant(ctx.user.tenantId!)
+  scheduleLegalSync(ctx.user.tenantId!)
   return { ok: true }
 }
 

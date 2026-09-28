@@ -18,11 +18,18 @@ const LOW_STOCK_CARD_MAX = 5
 type Availability = { text: string; tone: 'ok' | 'low' | 'none' }
 
 /** Kártyán egy sor: vagy szállítási idő, vagy „Utolsó N db”, vagy nincs készlet. */
+const arrivalFmt = new Intl.DateTimeFormat('hu-HU', { month: 'short', day: 'numeric' })
+
 function availabilityOf(
   c: StorefrontCard,
   settings: CardSettings
 ): Availability {
-  if (!c.inStock) return { text: 'Nincs készleten', tone: 'none' }
+  if (!c.inStock) {
+    const d = c.arrival ? new Date(`${c.arrival}T12:00:00`) : null
+    return d && !Number.isNaN(d.getTime())
+      ? { text: `Érkezik: ${arrivalFmt.format(d)}`, tone: 'low' }
+      : { text: 'Nincs készleten', tone: 'none' }
+  }
   const qty = c.stockQty ?? null
   if (qty != null && qty <= Math.min(settings.lowStockThreshold, LOW_STOCK_CARD_MAX)) {
     return { text: `Utolsó ${qty} db`, tone: 'low' }
@@ -87,7 +94,29 @@ export function ProductCard({
       <p className="line-clamp-2 min-h-[2.6em] text-[14px] leading-[1.3] text-ink group-hover:underline">
         {c.title}
       </p>
-      {meta ? <p className="truncate text-[13px] text-ink-secondary">{meta}</p> : null}
+      {c.swatches?.length ? (
+        <p className="flex items-center gap-1">
+          {c.swatches.map((s) => (
+            <span
+              key={s.label}
+              aria-hidden
+              title={s.label}
+              className="size-3.5 shrink-0 rounded-full border border-black/15"
+              style={{ backgroundColor: s.color }}
+            />
+          ))}
+          {c.swatchMore ? (
+            <span aria-hidden className="text-[12px] tabular-nums text-ink-secondary">
+              +{c.swatchMore}
+            </span>
+          ) : null}
+          <span className="sr-only">
+            Színek: {c.swatches.map((s) => s.label).join(', ')}
+            {c.swatchMore ? ` és még ${c.swatchMore}` : ''}
+          </span>
+        </p>
+      ) : null}
+      {meta ? <p className="truncate text-[13px] tabular-nums text-ink-secondary">{meta}</p> : null}
       {c.rating ? (
         <p className="flex items-center gap-1 text-[12px] text-ink-secondary">
           <Star className="size-3.5 fill-amber-400 text-amber-400" aria-hidden />
@@ -97,7 +126,10 @@ export function ProductCard({
         </p>
       ) : null}
       <p className="mt-auto flex flex-wrap items-baseline gap-x-1.5 pt-0.5">
-        <span className="text-[16px] font-semibold tabular-nums text-ink">{formatFt(c.priceGross)}</span>
+        <span className="text-[16px] font-semibold tabular-nums text-ink">
+          {formatFt(c.priceGross)}
+          {c.priceFrom ? <span className="text-[13px] font-normal text-ink-secondary">-tól</span> : null}
+        </span>
         {c.unitPrice ? (
           <span className="text-[12px] tabular-nums text-ink-secondary">{c.unitPrice}</span>
         ) : null}

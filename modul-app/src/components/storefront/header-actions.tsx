@@ -38,10 +38,22 @@ export type MenuCategory = {
   slug: string
   parentId: string | null
   productCount: number
+  imageUrl: string | null
 }
 
 const row =
   'flex min-h-12 w-full cursor-pointer items-center gap-3 px-4 text-left text-[15px] text-ink hover:bg-stone-50'
+
+function MenuThumb({ src }: { src: string | null }) {
+  return (
+    <span aria-hidden className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded bg-stone-50">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" width={40} height={40} loading="lazy" className="size-full object-contain p-0.5 mix-blend-multiply" />
+      ) : null}
+    </span>
+  )
+}
 
 export function CategoryMenu({ categories }: { categories: MenuCategory[] }) {
   const [open, setOpen] = useState(false)
@@ -51,6 +63,7 @@ export function CategoryMenu({ categories }: { categories: MenuCategory[] }) {
   const current = path[path.length - 1] ?? null
   const level = visible.filter((c) => c.parentId === (current?.id ?? null))
   const hasChildren = (id: string) => visible.some((c) => c.parentId === id)
+  const withThumbs = level.some((c) => c.imageUrl)
 
   if (visible.length === 0) return null
 
@@ -110,6 +123,7 @@ export function CategoryMenu({ categories }: { categories: MenuCategory[] }) {
               <li key={c.id}>
                 {hasChildren(c.id) ? (
                   <button type="button" onClick={() => setPath((p) => [...p, c])} className={row}>
+                    {withThumbs ? <MenuThumb src={c.imageUrl} /> : null}
                     <span className="flex-1">{c.name}</span>
                     <span className="text-[13px] tabular-nums text-ink-muted">{c.productCount}</span>
                     <ChevronRight className="size-4 shrink-0 text-ink-muted" aria-hidden />
@@ -117,6 +131,7 @@ export function CategoryMenu({ categories }: { categories: MenuCategory[] }) {
                 ) : (
                   <DialogPrimitive.Close asChild>
                     <Link href={categoryPath(c.slug)} className={row}>
+                      {withThumbs ? <MenuThumb src={c.imageUrl} /> : null}
                       <span className="flex-1">{c.name}</span>
                       <span className="text-[13px] tabular-nums text-ink-muted">{c.productCount}</span>
                     </Link>

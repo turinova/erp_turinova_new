@@ -16,6 +16,7 @@ import {
 } from '@/lib/accessories/web-shop'
 import { grossFromNet } from '@/lib/sheet-materials/parse'
 import { getTenantCompany } from '@/lib/company/queries'
+import { getWebshopLegalSettings } from '@/lib/webshop/legal/settings'
 import { getAccessoriesOnHandMap } from '@/lib/stock/queries'
 import {
   buildKeySpecs,
@@ -604,7 +605,10 @@ export async function getPublicPdpBySlug(
   const galleryExtra = asGallery(web.web_gallery).filter((u) => u !== primary)
   const gallery = primary ? [primary, ...galleryExtra] : galleryExtra
 
-  const settings = await getStorefrontSettings(admin, tenant.id)
+  const [settings, legal] = await Promise.all([
+    getStorefrontSettings(admin, tenant.id),
+    getWebshopLegalSettings(admin, tenant.id)
+  ])
 
   const [
     stockMap,
@@ -722,7 +726,7 @@ export async function getPublicPdpBySlug(
     web.web_dimension_image_url ||
     (keySpecs.length > 0 ? specCtx.template.measureImageUrl : null)
 
-  const seller = buildSeller(company, tenant)
+  const seller = buildSeller(company, tenant, legal)
 
   const referenceGross =
     referenceNet != null ? grossFromNet(referenceNet, vatPercent) : null
