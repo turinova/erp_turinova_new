@@ -27,7 +27,7 @@ import { closest, parseBool } from '@/lib/webshop/excel/format'
 export const NEW_MANUFACTURER_PREFIX = 'new:'
 
 export type AccessoryWriteRow = {
-  manufacturer_id: string
+  manufacturer_id: string | null
   tax_rate_id: string
   unit_id: string
   name: string
@@ -559,11 +559,11 @@ export function planAccessoryImport(
     const changes: string[] = []
     let write: PlannedWrite | null = null
 
-    if (s.fatal || (isCreate && hasError) || !tax || !manufacturerId || !unitId || priceNet == null) {
+    if (s.fatal || (isCreate && hasError) || !tax || !unitId || priceNet == null) {
       status = 'error'
     } else {
       const next: AccessoryWriteRow = {
-        manufacturer_id: manufacturerId,
+        manufacturer_id: manufacturerId || null,
         tax_rate_id: tax.id,
         unit_id: unitId,
         name,

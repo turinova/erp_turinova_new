@@ -5,6 +5,7 @@ import { AccessoryForm } from '@/components/accessories/accessory-form'
 import { getSessionUser } from '@/lib/auth/session'
 import {
   listAccessoryManufacturerOptions,
+  listAccessorySupplierOptions,
   listAccessoryTaxOptions,
   listAccessoryUnitOptions
 } from '@/lib/accessories/queries'
@@ -23,17 +24,20 @@ export default async function NewTermekPage() {
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const [manufacturers, taxRates, units, hasWebshop] = await Promise.all([
-    listAccessoryManufacturerOptions(supabase, user.tenantId),
-    listAccessoryTaxOptions(supabase, user.tenantId),
-    listAccessoryUnitOptions(supabase, user.tenantId),
-    tenantHasWebshop(supabase, user.tenantId)
-  ])
+  const [manufacturers, suppliers, taxRates, units, hasWebshop] =
+    await Promise.all([
+      listAccessoryManufacturerOptions(supabase, user.tenantId),
+      listAccessorySupplierOptions(supabase, user.tenantId),
+      listAccessoryTaxOptions(supabase, user.tenantId),
+      listAccessoryUnitOptions(supabase, user.tenantId),
+      tenantHasWebshop(supabase, user.tenantId)
+    ])
 
   return (
     <AccessoryForm
       mode="create"
       manufacturers={manufacturers}
+      suppliers={suppliers}
       taxRates={taxRates}
       units={units}
       canWrite={canWrite}

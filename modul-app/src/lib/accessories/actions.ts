@@ -76,7 +76,8 @@ function fieldErrorsFromZod(
 
 export type AccessoryFormInput = {
   name: string
-  manufacturerId: string
+  manufacturerId?: string | null
+  supplierIds?: string[]
   sku: string
   barcode?: string
   barcodeInternal?: string
@@ -89,6 +90,57 @@ export type AccessoryFormInput = {
   active: boolean
   sellablePos: boolean
   webGallery?: string[]
+}
+
+async function replaceAccessorySuppliers(
+  supabase: Awaited<
+    ReturnType<typeof requireWritableTenant>
+  > extends { ok: true; supabase: infer S }
+    ? S
+    : never,
+  tenantId: string,
+  accessoryId: string,
+  supplierIds: string[]
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { error: delError } = await supabase
+    .from('accessory_suppliers')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('accessory_id', accessoryId)
+
+  if (delError) {
+    console.error('replaceAccessorySuppliers delete', delError.message)
+    return { ok: false, message: 'Nem sikerült frissíteni a beszállítókat.' }
+  }
+
+  const unique = [...new Set(supplierIds)]
+  if (unique.length === 0) return { ok: true }
+
+  const rows = unique.map((supplierId, index) => ({
+    tenant_id: tenantId,
+    accessory_id: accessoryId,
+    supplier_id: supplierId,
+    is_primary: index === 0,
+    sort_order: index
+  }))
+
+  const { error: insError } = await supabase
+    .from('accessory_suppliers')
+    .insert(rows)
+
+  if (insError) {
+    console.error('replaceAccessorySuppliers insert', insError.message)
+    return {
+      ok: false,
+      message:
+        insError.message.includes('supplier_id') ||
+        insError.message.includes('foreign key')
+          ? 'Érvénytelen beszállító.'
+          : 'Nem sikerült menteni a beszállítókat.'
+    }
+  }
+
+  return { ok: true }
 }
 
 export async function createAccessory(

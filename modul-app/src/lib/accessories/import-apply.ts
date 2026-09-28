@@ -148,7 +148,7 @@ export async function applyAccessoryImport(
   const ready: PlannedWrite[] = []
   for (const w of plan.writes) {
     const mId = w.row.manufacturer_id
-    if (!mId.startsWith(NEW_MANUFACTURER_PREFIX)) {
+    if (!mId || !mId.startsWith(NEW_MANUFACTURER_PREFIX)) {
       ready.push(w)
       continue
     }

@@ -81,11 +81,9 @@ export default async function TermekekPage({ searchParams }: PageProps) {
           {loadError}
         </p>
         <p className="max-w-xl text-body text-ink-secondary">
-          Futtasd a{' '}
-          <code className="text-hint">
-            supabase/migrations/20260416_accessories.sql
-          </code>{' '}
-          fájlt a Supabase SQL Editorben, majd frissítsd az oldalt.
+          Ha a hiba tartós, ellenőrizd a kapcsolatot, vagy próbáld újra
+          keresővel / kisebb oldallal. Nagy katalógusnál az első betöltés
+          indexelés után gyorsul.
         </p>
       </div>
     )

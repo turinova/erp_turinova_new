@@ -29,7 +29,20 @@ export const accessoryFormSchema = z
       .trim()
       .min(1, 'A termék neve kötelező.')
       .max(200, 'A név legfeljebb 200 karakter.'),
-    manufacturerId: z.string().uuid('Válassz gyártót.'),
+    manufacturerId: z
+      .union([z.string(), z.null(), z.undefined()])
+      .transform((v) => {
+        if (v == null) return null
+        const t = String(v).trim()
+        return t === '' ? null : t
+      })
+      .refine((v) => v === null || z.string().uuid().safeParse(v).success, {
+        message: 'Érvénytelen gyártó.'
+      }),
+    supplierIds: z
+      .array(z.string().uuid('Érvénytelen beszállító.'))
+      .max(50)
+      .default([]),
     sku: z
       .string()
       .trim()

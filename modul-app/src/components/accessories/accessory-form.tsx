@@ -30,6 +30,7 @@ import {
 import type {
   AccessoryListItem,
   AccessoryManufacturerOption,
+  AccessorySupplierOption,
   AccessoryTaxOption,
   AccessoryUnitOption
 } from '@/lib/accessories/queries'
@@ -47,6 +48,7 @@ type AccessoryFormProps = {
   mode: 'create' | 'edit'
   initial?: AccessoryListItem | null
   manufacturers: AccessoryManufacturerOption[]
+  suppliers: AccessorySupplierOption[]
   taxRates: AccessoryTaxOption[]
   units: AccessoryUnitOption[]
   canWrite: boolean
@@ -69,6 +71,7 @@ export function AccessoryForm({
   mode,
   initial,
   manufacturers,
+  suppliers,
   taxRates,
   units,
   canWrite,
@@ -90,8 +93,12 @@ export function AccessoryForm({
 
   const [name, setName] = useState(initial?.name ?? '')
   const [manufacturerId, setManufacturerId] = useState(
-    initial?.manufacturer_id ?? manufacturers[0]?.id ?? ''
+    initial?.manufacturer_id ?? ''
   )
+  const [supplierIds, setSupplierIds] = useState<string[]>(
+    () => initial?.supplier_ids ?? []
+  )
+  const [addSupplierId, setAddSupplierId] = useState('')
   const [sku, setSku] = useState(initial?.sku ?? '')
   const [barcode, setBarcode] = useState(initial?.barcode ?? '')
   const [barcodeInternal, setBarcodeInternal] = useState(
@@ -144,8 +151,15 @@ export function AccessoryForm({
     return netFromGross(gross, vatPercent)
   }, [grossRaw, vatPercent])
 
-  const missingDeps =
-    manufacturers.length === 0 || taxRates.length === 0 || units.length === 0
+  const missingDeps = taxRates.length === 0 || units.length === 0
+  const supplierById = useMemo(() => {
+    const map = new Map(suppliers.map((s) => [s.id, s.name]))
+    return map
+  }, [suppliers])
+  const availableSuppliers = useMemo(
+    () => suppliers.filter((s) => !supplierIds.includes(s.id)),
+    [suppliers, supplierIds]
+  )
 
   function handleSave() {
     if (!canWrite) return
@@ -165,7 +179,8 @@ export function AccessoryForm({
     startTransition(async () => {
       const payload = {
         name,
-        manufacturerId,
+        manufacturerId: manufacturerId || null,
+        supplierIds,
         sku,
         barcode,
         barcodeInternal,
@@ -260,13 +275,6 @@ export function AccessoryForm({
         >
           Termék felviteléhez előbb kell legalább egy{' '}
           <Link
-            href="/torzsadatok/rendszer/gyartok"
-            className="underline underline-offset-2"
-          >
-            gyártó
-          </Link>
-          ,{' '}
-          <Link
             href="/torzsadatok/rendszer/adonem"
             className="underline underline-offset-2"
           >
@@ -295,7 +303,7 @@ export function AccessoryForm({
       <div className="w-full max-w-6xl space-y-2.5">
         <FormSection
           title="Azonosítás"
-          description="Név, gyártó, SKU és vonalkódok."
+          description="Név, opcionális gyártó, SKU és vonalkódok."
           columns={4}
         >
           <FormField
@@ -319,15 +327,15 @@ export function AccessoryForm({
           <FormField
             label="Gyártó"
             htmlFor="accessory-manufacturer"
-            required
+            optionalLabel
             error={fieldErrors.manufacturerId}
           >
             <MenuSelect
               id="accessory-manufacturer"
               value={manufacturerId}
               disabled={pending || !canWrite}
-              allowEmpty={false}
-              placeholder="Válassz…"
+              allowEmpty
+              placeholder="Nincs gyártó"
               options={manufacturers.map((m) => ({
                 value: m.id,
                 label: m.name
@@ -383,6 +391,100 @@ export function AccessoryForm({
               autoComplete="off"
             />
           </FormField>
+        </FormSection>
+
+        <FormSection
+          title="Beszállítók"
+          description="Több beszállító is megadható. Az első a fő beszállító."
+          columns={1}
+        >
+          {supplierIds.length > 0 ? (
+            <ul className="space-y-1.5 sm:col-span-full">
+              {supplierIds.map((id, index) => (
+                <li
+                  key={id}
+                  className="flex items-center gap-2 rounded-md border border-border bg-canvas px-2.5 py-1.5 text-body"
+                >
+                  <span className="min-w-0 flex-1 truncate text-ink">
+                    {supplierById.get(id) ?? id}
+                    {index === 0 ? (
+                      <span className="ml-1.5 text-caption text-ink-secondary">
+                        (fő)
+                      </span>
+                    ) : null}
+                  </span>
+                  {canWrite ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() =>
+                        setSupplierIds((prev) => prev.filter((x) => x !== id))
+                      }
+                    >
+                      Eltávolítás
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="sm:col-span-full text-body text-ink-secondary">
+              Nincs beszállító hozzárendelve.
+            </p>
+          )}
+
+          {canWrite && availableSuppliers.length > 0 ? (
+            <div className="flex flex-wrap items-end gap-2 sm:col-span-full">
+              <FormField
+                label="Beszállító hozzáadása"
+                htmlFor="accessory-add-supplier"
+                className="min-w-[14rem] flex-1"
+              >
+                <MenuSelect
+                  id="accessory-add-supplier"
+                  value={addSupplierId}
+                  disabled={pending}
+                  allowEmpty
+                  placeholder="Válassz…"
+                  options={availableSuppliers.map((s) => ({
+                    value: s.id,
+                    label: s.name
+                  }))}
+                  onChange={setAddSupplierId}
+                />
+              </FormField>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending || !addSupplierId}
+                onClick={() => {
+                  if (!addSupplierId) return
+                  setSupplierIds((prev) =>
+                    prev.includes(addSupplierId)
+                      ? prev
+                      : [...prev, addSupplierId]
+                  )
+                  setAddSupplierId('')
+                }}
+              >
+                Hozzáadás
+              </Button>
+            </div>
+          ) : null}
+
+          {canWrite && suppliers.length === 0 ? (
+            <p className="sm:col-span-full text-body text-ink-secondary">
+              Nincs aktív beszállító.{' '}
+              <Link
+                href="/beszallitok/uj"
+                className="underline underline-offset-2"
+              >
+                Új beszállító
+              </Link>
+            </p>
+          ) : null}
         </FormSection>
 
         <FormSection

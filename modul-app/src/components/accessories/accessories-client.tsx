@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Package, Plus, Printer, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -42,6 +43,7 @@ import type { ProductLabelPayload } from '@/lib/labels/types'
 import { cn } from '@/lib/utils'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
+const DEBOUNCE_MS = 150
 
 const WEB_FILTER_LABEL: Record<AccessoryWebFilter, string> = {
   all: 'Összes',
@@ -70,6 +72,32 @@ function toLabelPayload(row: AccessoryListItem): ProductLabelPayload {
   }
 }
 
+async function fetchTermekek(opts: {
+  q: string
+  web: AccessoryWebFilter
+  page: number
+  signal?: AbortSignal
+}): Promise<AccessoryListPage> {
+  const sp = new URLSearchParams()
+  if (opts.q.trim()) sp.set('q', opts.q.trim())
+  if (opts.web !== 'all') sp.set('web', opts.web)
+  if (opts.page > 1) sp.set('page', String(opts.page))
+  const res = await fetch(`/api/termekek?${sp.toString()}`, {
+    signal: opts.signal,
+    headers: { Accept: 'application/json' }
+  })
+  const body = (await res.json()) as AccessoryListPage & { error?: string }
+  if (!res.ok) {
+    throw new Error(body.error || 'Nem sikerült betölteni a termékeket.')
+  }
+  return {
+    rows: body.rows ?? [],
+    total: body.total ?? 0,
+    page: body.page ?? opts.page,
+    pageCount: body.pageCount ?? 1
+  }
+}
+
 type AccessoriesClientProps = {
   data: AccessoryListPage
   q: string
@@ -81,8 +109,8 @@ type AccessoriesClientProps = {
 }
 
 export function AccessoriesClient({
-  data,
-  q,
+  data: initialData,
+  q: initialQ,
   web,
   canWrite,
   canPrintLabels = false,
@@ -90,17 +118,48 @@ export function AccessoriesClient({
   hasWebshop = false
 }: AccessoriesClientProps) {
   const router = useRouter()
-  const [search, setSearch] = useState(q)
+  const [search, setSearch] = useState(initialQ)
+  const [activeQ, setActiveQ] = useState(initialQ.trim())
+  const [page, setPage] = useState(initialData.page)
   const [deleteTarget, setDeleteTarget] = useState<AccessoryListItem | null>(null)
   const [previewTarget, setPreviewTarget] = useState<AccessoryListItem | null>(null)
   const [labelTarget, setLabelTarget] = useState<ProductLabelPayload | null>(null)
   const [pending, startTransition] = useTransition()
 
   useEffect(() => {
-    if (search.trim() === q.trim()) return
-    const t = setTimeout(() => router.replace(listHref(search, web, 1)), 300)
-    return () => clearTimeout(t)
-  }, [search, q, web, router])
+    if (search.trim() === activeQ) return
+    const t = window.setTimeout(() => {
+      const next = search.trim()
+      setActiveQ(next)
+      setPage(1)
+      router.replace(listHref(next, web, 1), { scroll: false })
+    }, DEBOUNCE_MS)
+    return () => window.clearTimeout(t)
+  }, [search, activeQ, web, router])
+
+  const query = useQuery({
+    queryKey: ['termekek', activeQ, web, page],
+    queryFn: ({ signal }) =>
+      fetchTermekek({ q: activeQ, web, page, signal }),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+    initialData:
+      activeQ === initialQ.trim() && page === initialData.page
+        ? initialData
+        : undefined,
+    initialDataUpdatedAt:
+      activeQ === initialQ.trim() && page === initialData.page
+        ? Date.now()
+        : undefined
+  })
+
+  const data = query.data ?? initialData
+  const loading = query.isFetching
+
+  function goPage(next: number) {
+    setPage(next)
+    router.replace(listHref(activeQ, web, next), { scroll: false })
+  }
 
   function handleDelete() {
     if (!deleteTarget) return
@@ -112,11 +171,11 @@ export function AccessoriesClient({
       }
       toast.success(`„${deleteTarget.name}” törölve.`)
       setDeleteTarget(null)
-      router.refresh()
+      await query.refetch()
     })
   }
 
-  const filtered = q.trim() !== '' || web !== 'all'
+  const filtered = activeQ !== '' || web !== 'all'
   const from = data.total === 0 ? 0 : (data.page - 1) * ACCESSORY_PAGE_SIZE + 1
   const to = Math.min(data.page * ACCESSORY_PAGE_SIZE, data.total)
 
@@ -142,7 +201,10 @@ export function AccessoriesClient({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            router.replace(listHref(search, web, 1))
+            const next = search.trim()
+            setActiveQ(next)
+            setPage(1)
+            router.replace(listHref(next, web, 1), { scroll: false })
           }}
           className="relative max-w-sm flex-1"
           role="search"
@@ -160,6 +222,7 @@ export function AccessoriesClient({
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Keresés név, SKU, vonalkód, gyártó…"
             className="pl-8"
+            aria-busy={loading}
           />
         </form>
         {hasWebshop ? (
@@ -167,7 +230,7 @@ export function AccessoriesClient({
             {(Object.keys(WEB_FILTER_LABEL) as AccessoryWebFilter[]).map((value) => (
               <Link
                 key={value}
-                href={listHref(q, value, 1)}
+                href={listHref(activeQ, value, 1)}
                 aria-current={web === value ? 'page' : undefined}
                 className={cn(
                   'inline-flex h-7 items-center rounded-md border px-2.5 text-hint font-medium',
@@ -183,7 +246,18 @@ export function AccessoriesClient({
         ) : null}
       </div>
 
-      {data.rows.length === 0 ? (
+      {query.isError ? (
+        <p
+          className="mb-3 max-w-xl rounded-md border border-danger/30 bg-danger-soft p-3 text-body text-danger-ink"
+          role="alert"
+        >
+          {query.error instanceof Error
+            ? query.error.message
+            : 'Nem sikerült betölteni a termékeket.'}
+        </p>
+      ) : null}
+
+      {data.rows.length === 0 && !loading ? (
         <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-10 text-center">
           <Package className="size-8 text-ink-secondary" aria-hidden />
           <div className="space-y-1">
@@ -306,23 +380,30 @@ export function AccessoriesClient({
         <nav className="mt-2.5 flex items-center justify-between gap-2" aria-label="Lapozás">
           <span className="text-hint tabular-nums text-ink-secondary">
             {from}–{to} / {data.total.toLocaleString('hu-HU')}
+            {loading ? ' · …' : ''}
           </span>
           <div className="flex gap-1.5">
             {data.page > 1 ? (
-              <Link
-                href={listHref(q, web, data.page - 1)}
-                className="inline-flex h-7 items-center rounded-md border border-border bg-surface px-2.5 text-hint font-medium text-ink hover:bg-subtle"
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={loading}
+                onClick={() => goPage(data.page - 1)}
               >
                 Előző
-              </Link>
+              </Button>
             ) : null}
             {data.page < data.pageCount ? (
-              <Link
-                href={listHref(q, web, data.page + 1)}
-                className="inline-flex h-7 items-center rounded-md border border-border bg-surface px-2.5 text-hint font-medium text-ink hover:bg-subtle"
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={loading}
+                onClick={() => goPage(data.page + 1)}
               >
                 Következő
-              </Link>
+              </Button>
             ) : null}
           </div>
         </nav>
