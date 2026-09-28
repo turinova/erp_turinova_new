@@ -106,6 +106,8 @@ type AccessoriesClientProps = {
   canPrintLabels?: boolean
   units?: AccessoryUnitOption[]
   hasWebshop?: boolean
+  /** false: SSR lista fail/skip → azonnali /api/termekek fetch (ne empty initialData) */
+  serverSeeded?: boolean
 }
 
 export function AccessoriesClient({
@@ -115,7 +117,8 @@ export function AccessoriesClient({
   canWrite,
   canPrintLabels = false,
   units = [],
-  hasWebshop = false
+  hasWebshop = false,
+  serverSeeded = true
 }: AccessoriesClientProps) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
@@ -137,24 +140,32 @@ export function AccessoriesClient({
     return () => window.clearTimeout(t)
   }, [search, activeQ, web, router])
 
+  const canUseSeed =
+    serverSeeded &&
+    activeQ === initialQ.trim() &&
+    page === initialData.page
+
   const query = useQuery({
     queryKey: ['termekek', activeQ, web, page],
     queryFn: ({ signal }) =>
       fetchTermekek({ q: activeQ, web, page, signal }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
-    initialData:
-      activeQ === initialQ.trim() && page === initialData.page
-        ? initialData
-        : undefined,
-    initialDataUpdatedAt:
-      activeQ === initialQ.trim() && page === initialData.page
-        ? Date.now()
-        : undefined
+    initialData: canUseSeed ? initialData : undefined,
+    initialDataUpdatedAt: canUseSeed ? Date.now() : undefined
   })
 
   const data = query.data ?? initialData
-  const loading = query.isFetching
+  const loading = query.isFetching || query.isLoading
+
+  useEffect(() => {
+    if (!query.isError) return
+    toast.error(
+      query.error instanceof Error
+        ? query.error.message
+        : 'Nem sikerült betölteni a termékeket.'
+    )
+  }, [query.isError, query.error])
 
   function goPage(next: number) {
     setPage(next)

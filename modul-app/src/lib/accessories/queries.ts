@@ -216,8 +216,14 @@ export async function listAccessoriesPage(
     })
 
     if (error) {
-      console.error('listAccessoriesPage rpc', error.message)
-      throw new Error('Nem sikerült betölteni a termékeket.')
+      console.error('listAccessoriesPage rpc', error.message, error.code)
+      throw new Error(
+        /Could not find the function|PGRST202/i.test(error.message)
+          ? 'A terméklista kereső RPC nincs telepítve (search_accessories_page). Futtasd a 20260555 migrációt.'
+          : /timeout|canceling statement/i.test(error.message)
+            ? 'A terméklista lekérdezés időtúllépés miatt megszakadt. Próbáld újra.'
+            : 'Nem sikerült betölteni a termékeket.'
+      )
     }
 
     const rowsRaw = (data ?? []) as Record<string, unknown>[]
