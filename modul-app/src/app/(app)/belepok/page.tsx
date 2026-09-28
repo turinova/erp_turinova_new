@@ -9,8 +9,7 @@ import { MONTH_SHORT_HU } from '@/lib/footcounter/chart-tokens'
 import { tenantHasFootcounter } from '@/lib/footcounter/entitlement'
 import {
   getFootcounterDashboard,
-  getFootcounterLiveStatus,
-  getFootcounterMonthIns
+  getFootcounterLiveStatus
 } from '@/lib/footcounter/queries'
 import { buildMonthGlance } from '@/lib/footcounter/summary'
 import { FOOTCOUNTER_PAGE } from '@/lib/footcounter/types'
@@ -67,11 +66,6 @@ function parseMonthParams(
   return { year, month }
 }
 
-function prevYearMonth(year: number, month: number) {
-  if (month === 1) return { year: year - 1, month: 12 }
-  return { year, month: month - 1 }
-}
-
 export default async function BelepokPage({
   searchParams
 }: {
@@ -126,23 +120,30 @@ export default async function BelepokPage({
     )
   }
 
-  const prev = prevYearMonth(year, month)
-  const [dashboard, prevRes, live] = await Promise.all([
+  const [dashboard, live] = await Promise.all([
     getFootcounterDashboard(supabase, user.tenantId, year, month),
-    prev.year >= 2026
-      ? getFootcounterMonthIns(supabase, user.tenantId, prev.year, prev.month)
-      : Promise.resolve(null),
     getFootcounterLiveStatus(supabase, user.tenantId)
   ])
 
   const glance = buildMonthGlance(
     dashboard.monthDays.map((d) => ({ day: d.day, count: d.inCount })),
-    prevRes?.totalIn ?? null,
+    dashboard.prevMonthTotalIn > 0 ? dashboard.prevMonthTotalIn : null,
     dashboard.monthPeakHour,
     dashboard.monthPeakHourIn
   )
 
   const monthLabel = `${year}. ${MONTH_SHORT_HU[month - 1]}`
+
+  if (dashboard.loadError) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-h1 text-ink">Belépők</h1>
+        <p className="text-body text-danger-ink" role="alert">
+          {dashboard.loadError}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-3">

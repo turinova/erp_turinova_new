@@ -63,16 +63,6 @@ function budapestDayKey(d: Date): string {
   }).format(d)
 }
 
-function budapestHour(d: Date): number {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/Budapest',
-    hour: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(d)
-  const h = parts.find((p) => p.type === 'hour')?.value
-  return Number(h ?? 0)
-}
-
 function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate()
 }
@@ -81,13 +71,6 @@ function daysInMonth(year: number, month: number): number {
 function isoWeekdayFromDayKey(dayKey: string): number {
   const dow = new Date(`${dayKey}T12:00:00Z`).getUTCDay()
   return (dow + 6) % 7
-}
-
-function monthRange(year: number, month: number): { start: Date; end: Date } {
-  return {
-    start: new Date(Date.UTC(year, month - 1, 1, -3, 0, 0)),
-    end: new Date(Date.UTC(year, month, 1, 3, 0, 0))
-  }
 }
 
 function hourClosed(weekday: number, hour: number): boolean {
@@ -102,92 +85,46 @@ function hourClosed(weekday: number, hour: number): boolean {
   return false
 }
 
-type CrossingStamp = { at: Date; direction: 'in' | 'out' }
-
-async function fetchCrossingsInRange(
-  supabase: SupabaseClient,
-  deviceIds: string[],
-  rangeStart: Date,
-  rangeEnd: Date
-): Promise<CrossingStamp[]> {
-  if (deviceIds.length === 0) return []
-  const out: CrossingStamp[] = []
-  const pageSize = 1000
-  let from = 0
-  for (;;) {
-    const { data: rows, error } = await supabase
-      .from('footcounter_crossings')
-      .select('occurred_at, direction')
-      .in('device_id', deviceIds)
-      .gte('occurred_at', rangeStart.toISOString())
-      .lt('occurred_at', rangeEnd.toISOString())
-      .order('occurred_at', { ascending: true })
-      .range(from, from + pageSize - 1)
-
-    if (error) {
-      console.error('fetchCrossingsInRange', error.message)
-      break
-    }
-    const batch = rows ?? []
-    for (const r of batch) {
-      const dir = r.direction as string
-      if (dir !== 'in' && dir !== 'out') continue
-      out.push({ at: new Date(r.occurred_at as string), direction: dir })
-    }
-    if (batch.length < pageSize) break
-    from += pageSize
+function asIntArray(raw: unknown, len: number): number[] {
+  const out = Array.from({ length: len }, () => 0)
+  if (!Array.isArray(raw)) return out
+  for (let i = 0; i < len; i++) {
+    const v = Number(raw[i])
+    out[i] = Number.isFinite(v) ? v : 0
   }
   return out
 }
 
-async function tenantDeviceIds(
+type DashboardAgg = {
+  empty?: boolean
+  today_in_by_hour?: unknown
+  today_out_by_hour?: unknown
+  today_in?: number
+  today_out?: number
+  month_days?: Array<{ d?: number; c?: number }>
+  month_hours?: Array<{ h?: number; c?: number }>
+  season_months?: Array<{ ym?: string; c?: number }>
+  heat_days?: Array<{ day_key?: string; h?: number; c?: number }>
+  lookback_days?: Array<{ day_key?: string; c?: number }>
+  prev_month_total_in?: number
+}
+
+async function rpcDashboardAgg(
   supabase: SupabaseClient,
-  tenantId: string
-): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('footcounter_devices')
-    .select('id')
-    .eq('tenant_id', tenantId)
+  tenantId: string,
+  year: number,
+  month: number
+): Promise<DashboardAgg | null> {
+  const { data, error } = await supabase.rpc('footcounter_dashboard_agg', {
+    p_tenant_id: tenantId,
+    p_year: year,
+    p_month: month
+  })
   if (error) {
-    console.error('tenantDeviceIds', error.message)
-    return []
+    console.error('footcounter_dashboard_agg', error.message)
+    return null
   }
-  return (data ?? []).map((d) => d.id as string)
-}
-
-async function fetchInsInRange(
-  supabase: SupabaseClient,
-  deviceIds: string[],
-  rangeStart: Date,
-  rangeEnd: Date
-): Promise<Date[]> {
-  if (deviceIds.length === 0) return []
-  const out: Date[] = []
-  const pageSize = 1000
-  let from = 0
-  for (;;) {
-    const { data: rows, error } = await supabase
-      .from('footcounter_crossings')
-      .select('occurred_at')
-      .in('device_id', deviceIds)
-      .eq('direction', 'in')
-      .gte('occurred_at', rangeStart.toISOString())
-      .lt('occurred_at', rangeEnd.toISOString())
-      .order('occurred_at', { ascending: true })
-      .range(from, from + pageSize - 1)
-
-    if (error) {
-      console.error('fetchInsInRange', error.message)
-      break
-    }
-    const batch = rows ?? []
-    for (const r of batch) {
-      out.push(new Date(r.occurred_at as string))
-    }
-    if (batch.length < pageSize) break
-    from += pageSize
-  }
-  return out
+  return (data ?? null) as DashboardAgg | null
 }
 
 export type FootcounterMonthInsResult = {
@@ -198,7 +135,8 @@ export type FootcounterMonthInsResult = {
 }
 
 /**
- * Belépők (IN) naponta + havi csúcsóra — tenant összes eszköz.
+ * Belépők (IN) naponta + havi csúcsóra — a dashboard RPC month slice-ából
+ * (prev hónap MoM-hoz; ha nincs RPC, üres).
  */
 export async function getFootcounterMonthIns(
   supabase: SupabaseClient,
@@ -212,32 +150,18 @@ export async function getFootcounterMonthIns(
     count: 0
   }))
 
-  const deviceIds = await tenantDeviceIds(supabase, tenantId)
-  if (!deviceIds.length) {
+  const agg = await rpcDashboardAgg(supabase, tenantId, year, month)
+  if (!agg || agg.empty) {
     return { days: empty, peakHour: null, peakHourIn: 0, totalIn: 0 }
   }
 
-  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
-  const rangeStart = new Date(Date.UTC(year, month - 1, 1, -3, 0, 0))
-  const rangeEnd = new Date(Date.UTC(year, month, 1, 3, 0, 0))
-  const stamps = await fetchInsInRange(
-    supabase,
-    deviceIds,
-    rangeStart,
-    rangeEnd
-  )
-
   const counts = new Map<number, number>()
-  const hourCounts = new Map<number, number>()
-
-  for (const at of stamps) {
-    const key = budapestDayKey(at)
-    if (!key.startsWith(monthPrefix)) continue
-    const day = Number(key.slice(8, 10))
-    if (day < 1 || day > dim) continue
-    counts.set(day, (counts.get(day) ?? 0) + 1)
-    const hour = budapestHour(at)
-    hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1)
+  for (const row of agg.month_days ?? []) {
+    const d = Number(row.d)
+    const c = Number(row.c)
+    if (Number.isInteger(d) && d >= 1 && d <= dim) {
+      counts.set(d, Number.isFinite(c) ? c : 0)
+    }
   }
 
   const days = empty.map((row) => ({
@@ -248,7 +172,10 @@ export async function getFootcounterMonthIns(
 
   let peakHour: number | null = null
   let peakHourIn = 0
-  for (const [h, c] of hourCounts) {
+  for (const row of agg.month_hours ?? []) {
+    const h = Number(row.h)
+    const c = Number(row.c)
+    if (!Number.isInteger(h) || !Number.isFinite(c)) continue
     if (c > peakHourIn) {
       peakHourIn = c
       peakHour = h
@@ -258,7 +185,7 @@ export async function getFootcounterMonthIns(
   return { days, peakHour, peakHourIn, totalIn }
 }
 
-/** Mai belépők + hangulat + mai csúcsóra. */
+/** Mai belépők + hangulat + mai csúcsóra (dashboard lookback slice). */
 export async function getFootcounterTodayGlance(
   supabase: SupabaseClient,
   tenantId: string
@@ -272,48 +199,44 @@ export async function getFootcounterTodayGlance(
     peakHourIn: 0
   }
 
-  const deviceIds = await tenantDeviceIds(supabase, tenantId)
-  if (!deviceIds.length) return empty
-
-  const todayKey = budapestDayKey(new Date())
-  const lookbackStart = new Date(Date.now() - 70 * 86400000)
-  const stamps = await fetchInsInRange(
-    supabase,
-    deviceIds,
-    lookbackStart,
-    new Date(Date.now() + 3600000)
+  const now = new Date()
+  const year = Number(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Budapest',
+      year: 'numeric'
+    }).format(now)
+  )
+  const month = Number(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Budapest',
+      month: 'numeric'
+    }).format(now)
   )
 
-  const byDay = new Map<string, number>()
-  const todayHours = new Map<number, number>()
-  let todayIn = 0
+  const agg = await rpcDashboardAgg(supabase, tenantId, year, month)
+  if (!agg || agg.empty) return empty
 
-  for (const at of stamps) {
-    const key = budapestDayKey(at)
-    byDay.set(key, (byDay.get(key) ?? 0) + 1)
-    if (key === todayKey) {
-      todayIn += 1
-      const h = budapestHour(at)
-      todayHours.set(h, (todayHours.get(h) ?? 0) + 1)
-    }
-  }
+  const todayKey = budapestDayKey(now)
+  const todayIn = Number(agg.today_in) || 0
+  const todayHours = asIntArray(agg.today_in_by_hour, 24)
 
   let peakHour: number | null = null
   let peakHourIn = 0
-  for (const [h, c] of todayHours) {
+  for (let h = 0; h < 24; h++) {
+    const c = todayHours[h] ?? 0
     if (c > peakHourIn) {
       peakHourIn = c
       peakHour = h
     }
   }
 
-  const todayDow = new Date(`${todayKey}T12:00:00Z`).getUTCDay()
+  const todayDow = isoWeekdayFromDayKey(todayKey)
   const samples: number[] = []
-  for (const [key, count] of byDay) {
-    if (key === todayKey) continue
-    const dow = new Date(`${key}T12:00:00Z`).getUTCDay()
-    if (dow !== todayDow) continue
-    if (count <= 0) continue
+  for (const row of agg.lookback_days ?? []) {
+    const key = String(row.day_key ?? '')
+    const count = Number(row.c) || 0
+    if (!key || count <= 0) continue
+    if (isoWeekdayFromDayKey(key) !== todayDow) continue
     samples.push(count)
   }
   const sameWeekdayAvg =
@@ -396,62 +319,28 @@ export async function getFootcounterHomeSlim(
   }
 
   const live = await getFootcounterLiveStatus(supabase, tenantId)
-  const deviceIds = await tenantDeviceIds(supabase, tenantId)
-  if (!deviceIds.length) {
+
+  const { data, error } = await supabase.rpc('footcounter_today_slim_agg', {
+    p_tenant_id: tenantId
+  })
+
+  if (error) {
+    console.error('footcounter_today_slim_agg', error.message)
     return { ...empty, liveStatus: live.status, deviceLastSeen: live.lastSeenAt }
   }
 
-  const todayKey = budapestDayKey(new Date())
-  const rangeStart = new Date(Date.now() - 36 * 3600 * 1000)
-  const rangeEnd = new Date(Date.now() + 3600 * 1000)
-
-  const hourlyIn = Array.from({ length: 24 }, () => 0)
-  let todayIn = 0
-  let todayOut = 0
-  let lastEventAt: string | null = null
-
-  const pageSize = 1000
-  let from = 0
-  for (;;) {
-    const { data: rows, error } = await supabase
-      .from('footcounter_crossings')
-      .select('occurred_at, direction')
-      .in('device_id', deviceIds)
-      .gte('occurred_at', rangeStart.toISOString())
-      .lt('occurred_at', rangeEnd.toISOString())
-      .order('occurred_at', { ascending: true })
-      .range(from, from + pageSize - 1)
-
-    if (error) {
-      console.error('getFootcounterHomeSlim', error.message)
-      break
-    }
-
-    const batch = rows ?? []
-    for (const r of batch) {
-      const at = new Date(r.occurred_at as string)
-      if (budapestDayKey(at) !== todayKey) continue
-      const dir = r.direction as string
-      const iso = at.toISOString()
-      if (!lastEventAt || iso > lastEventAt) lastEventAt = iso
-      if (dir === 'in') {
-        todayIn += 1
-        const h = budapestHour(at)
-        if (h >= 0 && h < 24) hourlyIn[h] += 1
-      } else if (dir === 'out') {
-        todayOut += 1
-      }
-    }
-
-    if (batch.length < pageSize) break
-    from += pageSize
+  const row = (data ?? {}) as {
+    today_in?: number
+    today_out?: number
+    hourly_in?: unknown
+    last_event_at?: string | null
   }
 
   return {
-    todayIn,
-    todayOut,
-    hourlyIn,
-    lastEventAt,
+    todayIn: Number(row.today_in) || 0,
+    todayOut: Number(row.today_out) || 0,
+    hourlyIn: asIntArray(row.hourly_in, 24),
+    lastEventAt: row.last_event_at ?? null,
     deviceLastSeen: live.lastSeenAt,
     liveStatus: live.status
   }
@@ -470,53 +359,32 @@ export async function getFootcounterTodayStats(
     todayOut: number
   }>
 > {
-  const { data: devices, error: devErr } = await supabase
-    .from('footcounter_devices')
-    .select('id, slug, name, last_seen_at')
-    .eq('tenant_id', tenantId)
+  const { data, error } = await supabase.rpc('footcounter_today_by_device_agg', {
+    p_tenant_id: tenantId
+  })
 
-  if (devErr || !devices?.length) {
-    if (devErr) console.error('getFootcounterTodayStats devices', devErr.message)
+  if (error) {
+    console.error('footcounter_today_by_device_agg', error.message)
     return []
   }
 
-  const todayKey = budapestDayKey(new Date())
-  const lookback = new Date(Date.now() - 48 * 3600 * 1000).toISOString()
+  const rows = (Array.isArray(data) ? data : []) as Array<{
+    device_id?: string
+    slug?: string
+    name?: string
+    last_seen_at?: string | null
+    today_in?: number
+    today_out?: number
+  }>
 
-  const results = await Promise.all(
-    devices.map(async (d) => {
-      const deviceId = d.id as string
-      const { data: rows, error } = await supabase
-        .from('footcounter_crossings')
-        .select('direction, occurred_at')
-        .eq('device_id', deviceId)
-        .gte('occurred_at', lookback)
-
-      if (error) {
-        console.error('getFootcounterTodayStats crossings', error.message)
-      }
-
-      let todayIn = 0
-      let todayOut = 0
-      for (const r of rows ?? []) {
-        const at = r.occurred_at as string
-        if (budapestDayKey(new Date(at)) !== todayKey) continue
-        if (r.direction === 'in') todayIn += 1
-        else if (r.direction === 'out') todayOut += 1
-      }
-
-      return {
-        deviceId,
-        slug: d.slug as string,
-        name: ((d.name as string) || d.slug) as string,
-        lastSeenAt: (d.last_seen_at as string | null) ?? null,
-        todayIn,
-        todayOut
-      }
-    })
-  )
-
-  return results
+  return rows.map((d) => ({
+    deviceId: String(d.device_id ?? ''),
+    slug: String(d.slug ?? ''),
+    name: String(d.name ?? d.slug ?? ''),
+    lastSeenAt: d.last_seen_at ?? null,
+    todayIn: Number(d.today_in) || 0,
+    todayOut: Number(d.today_out) || 0
+  }))
 }
 
 export type FootcounterDashboardBundle = {
@@ -527,11 +395,14 @@ export type FootcounterDashboardBundle = {
   heatmap: FootcounterHeatmapRow[]
   monthPeakHour: number | null
   monthPeakHourIn: number
+  /** Előző naptári hónap összes IN — MoM glance. */
+  prevMonthTotalIn: number
+  /** RPC hiba (pl. migráció hiányzik). */
+  loadError?: string
 }
 
 /**
- * Teljes /belepok dashboard adat: mai panel + havi chartok + heatmap.
- * Egy hónap + 12 hó visszatekintés (szezon).
+ * Teljes /belepok dashboard adat — egy RPC aggregátum roundtrip.
  */
 export async function getFootcounterDashboard(
   supabase: SupabaseClient,
@@ -539,9 +410,10 @@ export async function getFootcounterDashboard(
   year: number,
   month: number
 ): Promise<FootcounterDashboardBundle> {
-  const deviceIds = await tenantDeviceIds(supabase, tenantId)
-  const live = await getFootcounterLiveStatus(supabase, tenantId)
-
+  const [live, agg] = await Promise.all([
+    getFootcounterLiveStatus(supabase, tenantId),
+    rpcDashboardAgg(supabase, tenantId, year, month)
+  ])
   const emptyToday = buildEmptyTodayPanel(live.status === 'live')
   const emptyDays: FootcounterMonthDayBar[] = Array.from(
     { length: daysInMonth(year, month) },
@@ -562,98 +434,88 @@ export async function getFootcounterDashboard(
   )
   const emptySeason = buildEmptySeason(year, month)
   const emptyHeatmap = buildEmptyHeatmap()
-
-  if (!deviceIds.length) {
-    return {
-      today: emptyToday,
-      monthDays: emptyDays,
-      weekdayProfile: emptyWeekday,
-      season: emptySeason,
-      heatmap: emptyHeatmap,
-      monthPeakHour: null,
-      monthPeakHourIn: 0
-    }
+  const emptyBundle: FootcounterDashboardBundle = {
+    today: emptyToday,
+    monthDays: emptyDays,
+    weekdayProfile: emptyWeekday,
+    season: emptySeason,
+    heatmap: emptyHeatmap,
+    monthPeakHour: null,
+    monthPeakHourIn: 0,
+    prevMonthTotalIn: 0
   }
 
-  // Szezon: 12 hónap a kiválasztott hónapig bezárólag
-  const seasonStart = new Date(Date.UTC(year, month - 12, 1, -3, 0, 0))
-  const { end: monthEnd } = monthRange(year, month)
-  const todayLookback = new Date(Date.now() - 70 * 86400000)
-  const rangeStart =
-    seasonStart.getTime() < todayLookback.getTime()
-      ? seasonStart
-      : todayLookback
-  const rangeEnd = new Date(
-    Math.max(monthEnd.getTime(), Date.now() + 3600 * 1000)
-  )
-
-  const stamps = await fetchCrossingsInRange(
-    supabase,
-    deviceIds,
-    rangeStart,
-    rangeEnd
-  )
+  if (!agg) {
+    return {
+      ...emptyBundle,
+      loadError:
+        'A Belépők összesítő RPC nem elérhető. Futtasd a 20260557_footcounter_dashboard_agg migrációt.'
+    }
+  }
+  if (agg.empty) return emptyBundle
 
   const todayKey = budapestDayKey(new Date())
-  const currentHour = budapestHour(new Date())
+  const currentHour = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Budapest',
+      hour: '2-digit',
+      hourCycle: 'h23'
+    })
+      .formatToParts(new Date())
+      .find((p) => p.type === 'hour')?.value ?? 0
+  )
+
+  const todayHourlyIn = asIntArray(agg.today_in_by_hour, 24)
+  const todayHourlyOut = asIntArray(agg.today_out_by_hour, 24)
+  const todayIn = Number(agg.today_in) || 0
+  const todayOut = Number(agg.today_out) || 0
+
   const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
-
-  const todayHourlyIn = Array.from({ length: 24 }, () => 0)
-  const todayHourlyOut = Array.from({ length: 24 }, () => 0)
-  let todayIn = 0
-  let todayOut = 0
-
   const monthDayCounts = new Map<number, number>()
-  const monthHourCounts = new Map<number, number>()
-  const weekdaySums = Array.from({ length: 7 }, () => 0)
-  const weekdaySamples = Array.from({ length: 7 }, () => 0)
-  const seasonTotals = new Map<string, number>()
-  /** weekday → hour → {sum, days} — naponta aggregálunk, majd átlag */
-  const heatDayHours = new Map<string, Map<number, number>>()
-
-  for (const { at, direction } of stamps) {
-    const key = budapestDayKey(at)
-    const hour = budapestHour(at)
-    const ym = key.slice(0, 7)
-
-    if (direction === 'in') {
-      seasonTotals.set(ym, (seasonTotals.get(ym) ?? 0) + 1)
-
-      if (key === todayKey) {
-        todayIn += 1
-        if (hour >= 0 && hour < 24) todayHourlyIn[hour] += 1
-      }
-
-      if (key.startsWith(monthPrefix)) {
-        const day = Number(key.slice(8, 10))
-        monthDayCounts.set(day, (monthDayCounts.get(day) ?? 0) + 1)
-        monthHourCounts.set(hour, (monthHourCounts.get(hour) ?? 0) + 1)
-        if (!heatDayHours.has(key)) heatDayHours.set(key, new Map())
-        const hm = heatDayHours.get(key)!
-        hm.set(hour, (hm.get(hour) ?? 0) + 1)
-      }
-    } else if (direction === 'out' && key === todayKey) {
-      todayOut += 1
-      if (hour >= 0 && hour < 24) todayHourlyOut[hour] += 1
-    }
+  for (const row of agg.month_days ?? []) {
+    const d = Number(row.d)
+    const c = Number(row.c)
+    if (Number.isInteger(d) && Number.isFinite(c)) monthDayCounts.set(d, c)
   }
 
-  // Weekday profile from month day totals
+  const monthHourCounts = new Map<number, number>()
+  for (const row of agg.month_hours ?? []) {
+    const h = Number(row.h)
+    const c = Number(row.c)
+    if (Number.isInteger(h) && Number.isFinite(c)) monthHourCounts.set(h, c)
+  }
+
+  const seasonTotals = new Map<string, number>()
+  for (const row of agg.season_months ?? []) {
+    const ym = String(row.ym ?? '')
+    const c = Number(row.c)
+    if (ym && Number.isFinite(c)) seasonTotals.set(ym, c)
+  }
+
+  const heatDayHours = new Map<string, Map<number, number>>()
+  for (const row of agg.heat_days ?? []) {
+    const key = String(row.day_key ?? '')
+    const h = Number(row.h)
+    const c = Number(row.c)
+    if (!key || !Number.isInteger(h) || !Number.isFinite(c)) continue
+    if (!heatDayHours.has(key)) heatDayHours.set(key, new Map())
+    heatDayHours.get(key)!.set(h, c)
+  }
+
+  const weekdaySums = Array.from({ length: 7 }, () => 0)
+  const weekdaySamples = Array.from({ length: 7 }, () => 0)
+
   const dim = daysInMonth(year, month)
+  let peakDay = 0
+  let peakDayCount = 0
   for (let day = 1; day <= dim; day++) {
     const key = `${monthPrefix}-${String(day).padStart(2, '0')}`
     const wd = isoWeekdayFromDayKey(key)
     const count = monthDayCounts.get(day) ?? 0
     if (count > 0) {
-      weekdaySums[wd] += count
-      weekdaySamples[wd] += 1
+      weekdaySums[wd]! += count
+      weekdaySamples[wd]! += 1
     }
-  }
-
-  // Peak day for highlight
-  let peakDay = 0
-  let peakDayCount = 0
-  for (const [day, count] of monthDayCounts) {
     if (count > peakDayCount) {
       peakDayCount = count
       peakDay = day
@@ -691,14 +553,9 @@ export async function getFootcounterDashboard(
 
   const season = buildSeasonBars(year, month, seasonTotals)
 
-  // Heatmap: average per weekday×hour across days in month
   const heatAccum: Array<Array<{ sum: number; n: number }>> = Array.from(
     { length: 7 },
-    () =>
-      Array.from({ length: 24 }, () => ({
-        sum: 0,
-        n: 0
-      }))
+    () => Array.from({ length: 24 }, () => ({ sum: 0, n: 0 }))
   )
   for (const [dayKey, hours] of heatDayHours) {
     const wd = isoWeekdayFromDayKey(dayKey)
@@ -734,7 +591,6 @@ export async function getFootcounterDashboard(
     }
   )
 
-  // Today hourly bars (open hours)
   const hourly: FootcounterTodayHourBar[] = []
   for (
     let hour = FOOTCOUNTER_OPEN_HOURS.start;
@@ -762,18 +618,12 @@ export async function getFootcounterDashboard(
   }
 
   const todayDow = isoWeekdayFromDayKey(todayKey)
-  // Same-weekday avg from lookback (reuse season stamps for days outside today)
-  const byDay = new Map<string, number>()
-  for (const { at, direction } of stamps) {
-    if (direction !== 'in') continue
-    const key = budapestDayKey(at)
-    byDay.set(key, (byDay.get(key) ?? 0) + 1)
-  }
   const samples: number[] = []
-  for (const [key, count] of byDay) {
-    if (key === todayKey) continue
+  for (const row of agg.lookback_days ?? []) {
+    const key = String(row.day_key ?? '')
+    const count = Number(row.c) || 0
+    if (!key || count <= 0) continue
     if (isoWeekdayFromDayKey(key) !== todayDow) continue
-    if (count <= 0) continue
     samples.push(count)
   }
   const weekdayAvg =
@@ -802,30 +652,24 @@ export async function getFootcounterDashboard(
     live: live.status === 'live'
   }
 
+  let monthPeakHour: number | null = null
+  let monthPeakHourIn = 0
+  for (const [h, c] of monthHourCounts) {
+    if (c > monthPeakHourIn) {
+      monthPeakHourIn = c
+      monthPeakHour = h
+    }
+  }
+
   return {
     today,
     monthDays,
     weekdayProfile,
     season,
     heatmap,
-    monthPeakHour: (() => {
-      let peakHour: number | null = null
-      let peakHourIn = 0
-      for (const [h, c] of monthHourCounts) {
-        if (c > peakHourIn) {
-          peakHourIn = c
-          peakHour = h
-        }
-      }
-      return peakHour
-    })(),
-    monthPeakHourIn: (() => {
-      let peakHourIn = 0
-      for (const c of monthHourCounts.values()) {
-        if (c > peakHourIn) peakHourIn = c
-      }
-      return peakHourIn
-    })()
+    monthPeakHour,
+    monthPeakHourIn,
+    prevMonthTotalIn: Number(agg.prev_month_total_in) || 0
   }
 }
 
