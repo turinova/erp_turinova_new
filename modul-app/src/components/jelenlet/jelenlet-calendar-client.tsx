@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition, type ReactNode } from 'react'
 import { ChevronLeft, ChevronRight, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -52,6 +52,11 @@ const MONTH_NAMES = [
   'December'
 ]
 
+/** Fix nap-oszlop — elég széles a HH:MM–HH:MM kiíráshoz. */
+const DAY_COL = 'w-[4.25rem] min-w-[4.25rem] max-w-[4.25rem]'
+const NAME_COL = 'w-44 min-w-44 max-w-44'
+const ROW_H = 'h-11'
+
 type DayMode = 'work' | 'vacation' | 'sick' | 'clear'
 
 type HoverTipState = {
@@ -68,6 +73,28 @@ function formatYmdHu(ymd: string): string {
   return `${y}. ${MONTH_NAMES[m - 1]} ${day}. · ${WEEKDAY_SHORT_HU[d.getDay()]}`
 }
 
+function dowOf(ymd: string): number {
+  return new Date(
+    Number(ymd.slice(0, 4)),
+    Number(ymd.slice(5, 7)) - 1,
+    Number(ymd.slice(8, 10))
+  ).getDay()
+}
+
+/** Oszlop-háttér: vasárnap erősebb, szombat gyengébb, ma enyhe primary. */
+function columnTintClass(opts: {
+  dow: number
+  isToday: boolean
+  isHoliday?: boolean
+}): string {
+  const { dow, isToday, isHoliday } = opts
+  if (isHoliday) return 'bg-subtle'
+  if (dow === 0) return isToday ? 'bg-zinc-200/90' : 'bg-zinc-100'
+  if (dow === 6) return isToday ? 'bg-zinc-100/90' : 'bg-zinc-50'
+  if (isToday) return 'bg-primary/[0.04]'
+  return 'bg-surface'
+}
+
 function isExpectedWorkDay(
   ymd: string,
   worksOnSaturday: boolean,
@@ -78,15 +105,24 @@ function isExpectedWorkDay(
     ymd,
     worksOnSaturday,
     isCalendarRest: cell?.kind === 'rest',
-    isRelocatedWork: Boolean(
-      cell?.kind === 'empty' && cell.calendarName
-    ),
+    isRelocatedWork: Boolean(cell?.kind === 'empty' && cell.calendarName),
     onlyPast: opts?.onlyPast ?? false,
     todayYmd: opts?.todayYmd
   })
 }
 
-/** Hover szöveg: státusz + dátum + dolgozó — native title helyett látható tip. */
+function sourceLabel(cell: CalendarCell | undefined): string | null {
+  if (!cell) return null
+  if (cell.kind === 'vacation' || cell.kind === 'sick' || cell.kind === 'other_absence') {
+    return null
+  }
+  if (cell.kind === 'empty' || cell.kind === 'rest') return null
+  if (cell.manuallyEdited || cell.source === 'manual') return 'Kézi bevitel'
+  if (cell.source === 'terminal') return 'Eszköz (RFID / PIN)'
+  if (cell.source === 'import') return 'Import'
+  return null
+}
+
 function cellHoverLines(
   empName: string,
   ymd: string,
@@ -114,6 +150,9 @@ function cellHoverLines(
     }
     return lines
   }
+
+  const src = sourceLabel(cell)
+  if (src) lines.push(src)
 
   switch (cell.kind) {
     case 'complete':
@@ -174,14 +213,9 @@ function headerHoverLines(
         : 'Ünnep / pihenőnap'
     )
   } else {
-    const d = new Date(
-      Number(ymd.slice(0, 4)),
-      Number(ymd.slice(5, 7)) - 1,
-      Number(ymd.slice(8, 10))
-    )
-    const dow = d.getDay()
+    const dow = dowOf(ymd)
     if (dow === 0 || dow === 6) {
-      lines.push(dow === 0 ? 'Vasárnap' : 'Szombat')
+      lines.push(dow === 0 ? 'Vasárnap — pihenő' : 'Szombat')
     } else {
       lines.push('Munkanap')
     }
@@ -196,8 +230,7 @@ function cellDisplay(cell: CalendarCell | undefined): {
   if (!cell || cell.kind === 'empty') {
     return {
       text: '',
-      className:
-        'bg-surface text-ink-muted hover:bg-subtle border border-transparent hover:border-warning/40'
+      className: 'text-ink-muted hover:bg-black/[0.03]'
     }
   }
   switch (cell.kind) {
@@ -207,37 +240,43 @@ function cellDisplay(cell: CalendarCell | undefined): {
           cell.arrival && cell.departure
             ? `${cell.arrival.slice(0, 5)}–${cell.departure.slice(0, 5)}`
             : '✓',
-        className: 'bg-surface text-ink hover:bg-subtle'
+        className:
+          'text-ink hover:bg-black/[0.03] text-[11px] font-medium leading-tight'
       }
     case 'incomplete':
       return {
-        text: cell.arrival || cell.departure || '!',
+        text: cell.arrival
+          ? cell.arrival.slice(0, 5)
+          : cell.departure
+            ? cell.departure.slice(0, 5)
+            : '!',
         className:
-          'bg-surface text-warning-ink ring-1 ring-inset ring-warning/50'
+          'bg-warning-soft/50 text-warning-ink ring-1 ring-inset ring-warning/45 text-[11px] font-medium'
       }
     case 'vacation':
       return {
-        text: 'Sz',
-        className: 'bg-surface text-info-ink ring-1 ring-inset ring-info/35'
+        text: 'SZ',
+        className:
+          'bg-success text-white text-[12px] font-semibold hover:bg-success/90'
       }
     case 'sick':
       return {
         text: 'B',
         className:
-          'bg-warning-soft/40 text-warning-ink ring-1 ring-inset ring-warning/40'
+          'bg-danger text-white text-[13px] font-semibold hover:bg-danger/90'
       }
     case 'other_absence':
       return {
         text: 'T',
-        className: 'bg-subtle text-ink-secondary'
+        className: 'bg-subtle text-ink-secondary text-[12px] font-medium'
       }
     case 'rest':
       return {
-        text: '·',
-        className: 'bg-subtle/70 text-ink-muted cursor-default'
+        text: '',
+        className: 'text-ink-muted cursor-default'
       }
     default:
-      return { text: '', className: 'bg-surface' }
+      return { text: '', className: '' }
   }
 }
 
@@ -268,7 +307,6 @@ function computeGlance(data: CalendarMonthData) {
         if (ymd === today) todayAway.push(emp.name)
       }
 
-      // Hiányzó/hiányos: csak eltelt nap; V soha; Szo csak ha dolgozik
       const expected = isExpectedWorkDay(ymd, emp.worksOnSaturday, cell, {
         onlyPast: true,
         todayYmd: today
@@ -285,6 +323,31 @@ function computeGlance(data: CalendarMonthData) {
   }
 
   return { empty, incomplete, vacation, sick, todayAway, today, rowAttention }
+}
+
+function LegendSwatch({
+  className,
+  label,
+  children
+}: {
+  className: string
+  label: string
+  children?: ReactNode
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] text-ink-secondary">
+      <span
+        className={cn(
+          'inline-flex size-4 items-center justify-center rounded-[3px] text-[9px] font-semibold',
+          className
+        )}
+        aria-hidden
+      >
+        {children}
+      </span>
+      {label}
+    </span>
+  )
 }
 
 export function JelenletCalendarClient({ data, canWrite }: Props) {
@@ -312,6 +375,11 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
     }
     return map
   }, [data.cells])
+
+  const openCellData = employeeId
+    ? data.cells[`${employeeId}|${workDate}`]
+    : undefined
+  const openSource = sourceLabel(openCellData)
 
   const empName =
     data.employees.find((e) => e.id === employeeId)?.name ?? 'Dolgozó'
@@ -384,7 +452,7 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex h-[calc(100dvh-6.5rem)] flex-col gap-3 print:h-auto">
       <PageHeader
         title="Jelenlét"
         description={`${MONTH_NAMES[data.month - 1]} ${data.year} — mi hiányzik, ki van távol.`}
@@ -426,13 +494,13 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
       />
 
       {data.employees.length > 0 ? (
-        <div className="flex flex-col gap-2 print:hidden">
+        <div className="flex shrink-0 flex-col gap-1.5 print:hidden">
           <div className="flex flex-wrap items-center gap-1.5">
             <StatusBadge
               tone={glance.empty > 0 ? 'warning' : 'neutral'}
               variant="soft"
             >
-              Hiányzó nap: {glance.empty}
+              Hiányzó: {glance.empty}
             </StatusBadge>
             <StatusBadge
               tone={glance.incomplete > 0 ? 'warning' : 'neutral'}
@@ -440,46 +508,53 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
             >
               Hiányos: {glance.incomplete}
             </StatusBadge>
-            <StatusBadge tone="info" variant="soft">
-              Szabadság: {glance.vacation}
-            </StatusBadge>
-            <StatusBadge
-              tone={glance.sick > 0 ? 'warning' : 'neutral'}
-              variant="soft"
-            >
-              Beteg: {glance.sick}
-            </StatusBadge>
+            {glance.todayAway.length > 0 ? (
+              <StatusBadge tone="info" variant="soft">
+                Ma távol: {glance.todayAway.length}
+              </StatusBadge>
+            ) : (
+              <span className="text-hint text-ink-muted">Ma senki nincs távol.</span>
+            )}
+            {glance.vacation > 0 || glance.sick > 0 ? (
+              <span className="text-hint text-ink-muted">
+                {glance.vacation > 0 ? `${glance.vacation} SZ` : null}
+                {glance.vacation > 0 && glance.sick > 0 ? ' · ' : null}
+                {glance.sick > 0 ? `${glance.sick} B` : null}
+              </span>
+            ) : null}
           </div>
           {glance.todayAway.length > 0 ? (
             <p className="text-hint text-ink-secondary">
-              Ma távol:{' '}
               <span className="font-medium text-ink">
                 {glance.todayAway.join(', ')}
               </span>
             </p>
-          ) : (
-            <p className="text-hint text-ink-muted">Ma senki nincs távolléten.</p>
-          )}
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="text-ink-muted">Jelkulcs:</span>
-            <StatusBadge tone="neutral" variant="outline">
-              08:00–16:00 kész
-            </StatusBadge>
-            <StatusBadge tone="warning" variant="outline">
-              ! hiányos
-            </StatusBadge>
-            <StatusBadge tone="neutral" variant="outline">
-              üres = nincs rögzítve
-            </StatusBadge>
-            <StatusBadge tone="info" variant="outline">
-              Sz szabadság
-            </StatusBadge>
-            <StatusBadge tone="warning" variant="outline">
-              B beteg
-            </StatusBadge>
-            <StatusBadge tone="neutral" variant="outline">
-              · ünnep / pihenő
-            </StatusBadge>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-[11px] text-ink-muted">Jelkulcs</span>
+            <LegendSwatch
+              className="border border-border bg-surface text-ink"
+              label="kész"
+            >
+              ·
+            </LegendSwatch>
+            <LegendSwatch
+              className="bg-warning-soft text-warning-ink ring-1 ring-warning/40"
+              label="hiányos"
+            >
+              !
+            </LegendSwatch>
+            <LegendSwatch
+              className="border border-dashed border-warning/50 bg-warning-soft/40"
+              label="üres"
+            />
+            <LegendSwatch className="bg-success text-white" label="szabadság">
+              SZ
+            </LegendSwatch>
+            <LegendSwatch className="bg-danger text-white" label="beteg">
+              B
+            </LegendSwatch>
+            <LegendSwatch className="bg-zinc-100 text-ink-muted" label="hétvége / ünnep" />
           </div>
         </div>
       ) : null}
@@ -500,32 +575,37 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
           ) : null}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border bg-surface print:border-0">
-          <table className="w-full min-w-[720px] border-collapse text-[11px]">
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border bg-surface print:max-h-none print:overflow-visible print:border-0">
+          <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
             <thead>
-              <tr className="bg-subtle">
-                <th className="sticky left-0 z-10 min-w-[9rem] border-b border-r border-border bg-subtle px-2 py-1.5 text-left font-medium text-ink">
+              <tr>
+                <th
+                  className={cn(
+                    NAME_COL,
+                    'sticky left-0 top-0 z-30 border-b border-r border-border bg-subtle px-2 py-2 text-left text-[13px] font-medium text-ink shadow-[2px_0_0_0_var(--border)]'
+                  )}
+                >
                   Dolgozó
                 </th>
                 {data.dates.map((ymd) => {
                   const day = Number(ymd.slice(8, 10))
-                  const d = new Date(
-                    Number(ymd.slice(0, 4)),
-                    Number(ymd.slice(5, 7)) - 1,
-                    day
-                  )
-                  const dow = d.getDay()
+                  const dow = dowOf(ymd)
                   const isToday = ymd === glance.today
                   const isHoliday = holidayByDate.has(ymd)
                   const holidayName = holidayByDate.get(ymd) ?? null
+                  const weekend = dow === 0 || dow === 6
                   return (
                     <th
                       key={ymd}
+                      data-weekend={dow === 0 ? 'sun' : dow === 6 ? 'sat' : undefined}
+                      data-today={isToday ? 'true' : undefined}
                       className={cn(
-                        'border-b border-border px-0.5 py-1 text-center font-medium text-ink-secondary',
-                        (dow === 0 || dow === 6) && 'bg-subtle/90',
-                        isToday && 'border-l-2 border-l-primary bg-subtle',
-                        isHoliday && 'text-info-ink'
+                        DAY_COL,
+                        'sticky top-0 z-20 border-b border-r border-border/70 px-0 py-1.5 text-center font-medium',
+                        columnTintClass({ dow, isToday, isHoliday }),
+                        isToday && 'border-l-2 border-l-primary',
+                        weekend ? 'text-ink-muted' : 'text-ink-secondary',
+                        isHoliday && 'text-ink-muted'
                       )}
                       onMouseEnter={(e) =>
                         showHoverTip(
@@ -536,11 +616,24 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                       onMouseLeave={hideHoverTip}
                     >
                       <div
-                        className={cn(isToday && 'font-semibold text-ink')}
+                        className={cn(
+                          'text-[13px] leading-tight',
+                          isToday && 'font-semibold text-ink'
+                        )}
                       >
                         {day}
+                        {isHoliday ? (
+                          <span className="ml-0.5 text-[11px] text-ink-muted">
+                            *
+                          </span>
+                        ) : null}
                       </div>
-                      <div className="text-[10px] font-normal">
+                      <div
+                        className={cn(
+                          'text-[11px] font-normal leading-tight',
+                          weekend && 'opacity-80'
+                        )}
+                      >
                         {WEEKDAY_SHORT_HU[dow]}
                       </div>
                     </th>
@@ -553,18 +646,25 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                 const att = glance.rowAttention[emp.id]
                 const miss = (att?.empty ?? 0) + (att?.incomplete ?? 0)
                 return (
-                  <tr key={emp.id} className="hover:bg-subtle/40">
-                    <td className="sticky left-0 z-10 border-b border-r border-border bg-surface px-2 py-1">
-                      <div className="flex flex-col gap-0.5">
+                  <tr key={emp.id} className="group">
+                    <td
+                      className={cn(
+                        NAME_COL,
+                        'sticky left-0 z-10 border-b border-r border-border bg-surface px-2 py-0 shadow-[2px_0_0_0_var(--border)] group-hover:bg-subtle'
+                      )}
+                    >
+                      <div className={cn('flex items-center gap-1.5', ROW_H)}>
                         <Link
                           href={`/dolgozok/${emp.id}`}
-                          className="font-medium text-ink hover:underline"
+                          className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink hover:underline"
+                          title={emp.name}
                         >
                           {emp.name}
                         </Link>
                         {miss > 0 ? (
-                          <StatusBadge tone="warning" variant="soft">
-                            {[
+                          <span
+                            className="inline-flex size-5 shrink-0 items-center justify-center rounded bg-warning-soft text-[11px] font-semibold text-warning-ink"
+                            title={[
                               att!.empty > 0 ? `${att!.empty} üres` : null,
                               att!.incomplete > 0
                                 ? `${att!.incomplete} hiányos`
@@ -572,23 +672,19 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                             ]
                               .filter(Boolean)
                               .join(' · ')}
-                          </StatusBadge>
-                        ) : (
-                          <span className="text-[10px] text-ink-muted">
-                            Rendben
+                          >
+                            {miss}
                           </span>
+                        ) : (
+                          <span className="size-5 shrink-0" aria-hidden />
                         )}
                       </div>
                     </td>
                     {data.dates.map((ymd) => {
                       const cell = data.cells[`${emp.id}|${ymd}`]
                       const isToday = ymd === glance.today
-                      const dow = new Date(
-                        Number(ymd.slice(0, 4)),
-                        Number(ymd.slice(5, 7)) - 1,
-                        Number(ymd.slice(8, 10))
-                      ).getDay()
-                      const weekend = dow === 0 || dow === 6
+                      const dow = dowOf(ymd)
+                      const isHoliday = holidayByDate.has(ymd)
                       const disp = cellDisplay(cell)
                       const isPast = ymd < glance.today
                       const scheduleExpected = isExpectedWorkDay(
@@ -597,7 +693,6 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                         cell,
                         { onlyPast: false, todayYmd: glance.today }
                       )
-                      // Figyelmeztető üres: csak eltelt elvárt munkanap
                       const emptyWork =
                         isPast &&
                         scheduleExpected &&
@@ -610,12 +705,25 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                         canWrite,
                         isPast
                       )
+                      const statusFill =
+                        cell?.kind === 'vacation' ||
+                        cell?.kind === 'sick' ||
+                        cell?.kind === 'other_absence' ||
+                        cell?.kind === 'incomplete'
 
                       return (
                         <td
                           key={ymd}
+                          data-weekend={
+                            dow === 0 ? 'sun' : dow === 6 ? 'sat' : undefined
+                          }
+                          data-today={isToday ? 'true' : undefined}
                           className={cn(
-                            'border-b border-border p-0',
+                            DAY_COL,
+                            'border-b border-r border-border/70 p-0',
+                            !statusFill &&
+                              columnTintClass({ dow, isToday, isHoliday }),
+                            statusFill && 'bg-surface',
                             isToday && 'border-l-2 border-l-primary'
                           )}
                         >
@@ -632,22 +740,19 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                               openCell(emp.id, ymd)
                             }}
                             className={cn(
-                              'flex h-10 w-full min-w-[2.5rem] items-center justify-center px-0.5 tabular-nums leading-tight',
+                              'flex w-full items-center justify-center px-0.5 tabular-nums',
+                              ROW_H,
                               disp.className,
-                              weekend &&
-                                cell?.kind !== 'complete' &&
-                                cell?.kind !== 'vacation' &&
-                                cell?.kind !== 'sick' &&
-                                'bg-subtle/50',
                               emptyWork &&
-                                'border border-dashed border-warning/35',
+                                !disp.text &&
+                                'bg-warning-soft/35 ring-1 ring-inset ring-dashed ring-warning/40',
                               canWrite &&
                                 cell?.kind !== 'rest' &&
                                 'cursor-pointer'
                             )}
                           >
                             {emptyWork && !disp.text ? (
-                              <span className="text-warning-ink/70">·</span>
+                              <span className="text-warning-ink/80">·</span>
                             ) : (
                               disp.text
                             )}
@@ -666,27 +771,61 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {empName} · {workDate}
+            <DialogTitle className="pr-6">
+              {empName}
+              <span className="mt-0.5 block text-[13px] font-normal text-ink-secondary">
+                {workDate ? formatYmdHu(workDate) : workDate}
+              </span>
             </DialogTitle>
           </DialogHeader>
+
+          {openSource ? (
+            <StatusBadge
+              tone={
+                openSource.startsWith('Eszköz')
+                  ? 'info'
+                  : openSource.startsWith('Kézi')
+                    ? 'neutral'
+                    : 'neutral'
+              }
+              variant="outline"
+            >
+              {openSource}
+              {openCellData?.manuallyEdited &&
+              openCellData.source === 'terminal'
+                ? ' · kézzel módosítva'
+                : null}
+            </StatusBadge>
+          ) : null}
 
           <div className="flex flex-wrap gap-1">
             {(
               [
-                { id: 'work' as const, label: 'Munka' },
-                { id: 'vacation' as const, label: 'Szabadság' },
-                { id: 'sick' as const, label: 'Betegszabadság' },
-                { id: 'clear' as const, label: 'Törlés nap' }
+                { id: 'work' as const, label: 'Munka', active: 'bg-ink text-white' },
+                {
+                  id: 'vacation' as const,
+                  label: 'Szabadság',
+                  active: 'bg-success text-white'
+                },
+                {
+                  id: 'sick' as const,
+                  label: 'Betegszabadság',
+                  active: 'bg-danger text-white'
+                },
+                {
+                  id: 'clear' as const,
+                  label: 'Törlés nap',
+                  active: 'bg-ink text-white'
+                }
               ] as const
             ).map((m) => (
               <button
                 key={m.id}
                 type="button"
                 className={cn(
-                  'rounded-md px-2.5 py-1.5 text-[13px]',
+                  'rounded-md px-2.5 py-1.5 text-[13px] font-medium',
                   mode === m.id
-                    ? 'bg-ink text-white'
+                    ? m.active
                     : 'bg-subtle text-ink-secondary hover:bg-border/60'
                 )}
                 onClick={() => setMode(m.id)}

@@ -86,6 +86,7 @@ export async function listEmployees(
     .from('hr_employees')
     .select(EMPLOYEE_SELECT, { count: 'exact' })
     .eq('tenant_id', input.tenantId)
+    .is('deleted_at', null)
     .order('name', { ascending: true })
     .range(from, from + limit - 1)
 
@@ -130,6 +131,7 @@ export async function getEmployee(
     .select(EMPLOYEE_SELECT)
     .eq('tenant_id', tenantId)
     .eq('id', id)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (error) throw new Error(error.message)
@@ -317,6 +319,9 @@ export type CalendarCell = {
   lunchEnd: string | null
   paidMinutes: number
   calendarName: string | null
+  /** hr_attendance_days.source — csak work celláknál */
+  source: 'manual' | 'import' | 'terminal' | null
+  manuallyEdited: boolean
 }
 
 export type CalendarMonthData = {
@@ -342,11 +347,12 @@ export async function getCalendarMonth(
         .select(EMPLOYEE_SELECT)
         .eq('tenant_id', input.tenantId)
         .eq('active', true)
+        .is('deleted_at', null)
         .order('name', { ascending: true }),
       supabase
         .from('hr_attendance_days')
         .select(
-          'employee_id, work_date, arrival_time, departure_time, lunch_start, lunch_end'
+          'employee_id, work_date, arrival_time, departure_time, lunch_start, lunch_end, source, manually_edited'
         )
         .eq('tenant_id', input.tenantId)
         .gte('work_date', start)
@@ -389,15 +395,26 @@ export async function getCalendarMonth(
       departure: string | null
       lunchStart: string | null
       lunchEnd: string | null
+      source: 'manual' | 'import' | 'terminal' | null
+      manuallyEdited: boolean
     }
   >()
   for (const row of att ?? []) {
     const key = `${row.employee_id}|${row.work_date}`
+    const rawSource = row.source as string | null
+    const source =
+      rawSource === 'manual' ||
+      rawSource === 'import' ||
+      rawSource === 'terminal'
+        ? rawSource
+        : null
     attMap.set(key, {
       arrival: normalizeTime(row.arrival_time as string | null),
       departure: normalizeTime(row.departure_time as string | null),
       lunchStart: normalizeTime(row.lunch_start as string | null),
-      lunchEnd: normalizeTime(row.lunch_end as string | null)
+      lunchEnd: normalizeTime(row.lunch_end as string | null),
+      source,
+      manuallyEdited: Boolean(row.manually_edited)
     })
   }
 
@@ -438,7 +455,9 @@ export async function getCalendarMonth(
             lunchStart: null,
             lunchEnd: null,
             paidMinutes: 0,
-            calendarName: calDay.name || null
+            calendarName: calDay.name || null,
+            source: null,
+            manuallyEdited: false
           }
           continue
         }
@@ -460,7 +479,9 @@ export async function getCalendarMonth(
           lunchStart: null,
           lunchEnd: null,
           paidMinutes: 0,
-          calendarName: null
+          calendarName: null,
+          source: null,
+          manuallyEdited: false
         }
         continue
       }
@@ -475,7 +496,9 @@ export async function getCalendarMonth(
           lunchStart: null,
           lunchEnd: null,
           paidMinutes: 0,
-          calendarName: calDay?.type === 'relocated_work' ? calDay.name : null
+          calendarName: calDay?.type === 'relocated_work' ? calDay.name : null,
+          source: null,
+          manuallyEdited: false
         }
         continue
       }
@@ -499,7 +522,9 @@ export async function getCalendarMonth(
         lunchStart: dayAtt.lunchStart,
         lunchEnd: dayAtt.lunchEnd,
         paidMinutes: paid,
-        calendarName: null
+        calendarName: null,
+        source: dayAtt.source,
+        manuallyEdited: dayAtt.manuallyEdited
       }
     }
   }

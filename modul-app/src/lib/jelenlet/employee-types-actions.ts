@@ -184,6 +184,7 @@ export async function softDeleteEmployeeType(input: {
     .select('id', { count: 'exact', head: true })
     .eq('tenant_id', tenantId)
     .eq('employee_type_id', input.id)
+    .is('deleted_at', null)
 
   if ((count ?? 0) > 0) {
     return {

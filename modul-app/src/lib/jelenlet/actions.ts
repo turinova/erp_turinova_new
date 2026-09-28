@@ -90,6 +90,7 @@ export async function upsertEmployeeAction(input: {
       .update(row)
       .eq('id', input.id)
       .eq('tenant_id', ctx.user.tenantId!)
+      .is('deleted_at', null)
     if (error) {
       if (error.message.includes('hr_employees_tenant_code')) {
         return { ok: false, message: 'Ez a dolgozói kód már foglalt.' }
@@ -114,6 +115,41 @@ export async function upsertEmployeeAction(input: {
   }
   revalidateHr(data.id as string)
   return { ok: true, id: data.id as string }
+}
+
+/** Soft delete — lista/naptár nem mutatja; RFID/PIN felszabadul (unique index). */
+export async function softDeleteEmployeeAction(input: {
+  id: string
+}): Promise<JelenletActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const { data: row } = await ctx.supabase
+    .from('hr_employees')
+    .select('id, name')
+    .eq('id', input.id)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (!row) return { ok: false, message: 'Dolgozó nem található.' }
+
+  const now = new Date().toISOString()
+  const { error } = await ctx.supabase
+    .from('hr_employees')
+    .update({
+      deleted_at: now,
+      active: false,
+      updated_at: now
+    })
+    .eq('id', input.id)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+
+  if (error) return { ok: false, message: error.message }
+  revalidateHr(input.id)
+  return { ok: true, id: input.id }
 }
 
 export async function createAbsenceAction(input: {

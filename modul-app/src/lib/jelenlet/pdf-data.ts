@@ -117,6 +117,7 @@ export async function buildOfficialAttendancePdfInput(
         .select(EMPLOYEE_SELECT)
         .eq('tenant_id', input.tenantId)
         .eq('id', input.employeeId)
+        .is('deleted_at', null)
         .maybeSingle(),
       supabase
         .from('hr_attendance_days')

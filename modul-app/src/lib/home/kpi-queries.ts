@@ -251,6 +251,7 @@ export async function getHomeJelenletKpis(
         )
         .eq('tenant_id', tenantId)
         .eq('active', true)
+        .is('deleted_at', null)
         .order('name', { ascending: true }),
       supabase
         .from('hr_attendance_days')

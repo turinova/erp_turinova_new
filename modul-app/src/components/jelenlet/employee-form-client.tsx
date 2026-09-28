@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
@@ -13,7 +14,10 @@ import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { upsertEmployeeAction } from '@/lib/jelenlet/actions'
+import {
+  softDeleteEmployeeAction,
+  upsertEmployeeAction
+} from '@/lib/jelenlet/actions'
 import type { HrEmployeeRow } from '@/lib/jelenlet/queries'
 
 type TypeOption = { id: string; name: string; isDefault: boolean }
@@ -64,6 +68,7 @@ export function EmployeeFormClient({
   )
   const [notes, setNotes] = useState(employee?.notes ?? '')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   function save() {
     if (!canWrite) return
@@ -99,6 +104,21 @@ export function EmployeeFormClient({
       } else {
         router.refresh()
       }
+    })
+  }
+
+  function confirmDelete() {
+    if (!canWrite || !employee?.id) return
+    startTransition(async () => {
+      const result = await softDeleteEmployeeAction({ id: employee.id })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      setDeleteOpen(false)
+      toast.success('Dolgozó törölve.')
+      router.push('/dolgozok')
+      router.refresh()
     })
   }
 
@@ -297,26 +317,65 @@ export function EmployeeFormClient({
       </FormSection>
 
       {canWrite ? (
-        <div className="sticky bottom-0 z-10 flex justify-end gap-1.5 border-t border-border bg-app/95 py-3 backdrop-blur-sm">
-          {!embedded ? (
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={pending}
-              onClick={() => router.push('/dolgozok')}
-            >
-              Mégse
+        <div className="sticky bottom-0 z-10 flex items-center justify-between gap-1.5 border-t border-border bg-app/95 py-3 backdrop-blur-sm">
+          <div>
+            {isEdit ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                className="text-danger-ink hover:bg-danger-soft"
+                onClick={() => setDeleteOpen(true)}
+              >
+                Dolgozó törlése
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex gap-1.5">
+            {!embedded ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                onClick={() => router.push('/dolgozok')}
+              >
+                Mégse
+              </Button>
+            ) : null}
+            <Button type="button" loading={pending} onClick={save}>
+              {isEdit ? 'Dolgozó mentése' : 'Dolgozó létrehozása'}
             </Button>
-          ) : null}
-          <Button type="button" loading={pending} onClick={save}>
-            {isEdit ? 'Dolgozó mentése' : 'Dolgozó létrehozása'}
-          </Button>
+          </div>
         </div>
       ) : null}
     </div>
   )
 
-  if (embedded) return formBody
+  const deleteDialog =
+    isEdit && canWrite ? (
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!open && !pending) setDeleteOpen(false)
+        }}
+        title="Dolgozó törlése"
+        description={`Biztosan törlöd „${employee?.name ?? 'ezt a dolgozót'}”? A listáról és a jelenléti naptárból eltűnik; a múltbeli jelenlét adatok megmaradnak.`}
+        confirmLabel="Törlés"
+        cancelLabel="Mégse"
+        variant="danger"
+        loading={pending}
+        onConfirm={confirmDelete}
+      />
+    ) : null
+
+  if (embedded) {
+    return (
+      <>
+        {formBody}
+        {deleteDialog}
+      </>
+    )
+  }
 
   return (
     <div className="pb-14">
@@ -332,6 +391,17 @@ export function EmployeeFormClient({
             >
               Vissza a listához
             </Button>
+            {isEdit && canWrite ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                className="text-danger-ink hover:bg-danger-soft"
+                onClick={() => setDeleteOpen(true)}
+              >
+                Törlés
+              </Button>
+            ) : null}
             {canWrite ? (
               <Button type="button" loading={pending} onClick={save}>
                 {isEdit ? 'Dolgozó mentése' : 'Dolgozó létrehozása'}
@@ -341,6 +411,7 @@ export function EmployeeFormClient({
         }
       />
       {formBody}
+      {deleteDialog}
     </div>
   )
 }
