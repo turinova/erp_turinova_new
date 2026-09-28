@@ -196,6 +196,16 @@ export async function createAccessory(
     }
   }
 
+  const suppliers = await replaceAccessorySuppliers(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    data.id,
+    values.supplierIds ?? []
+  )
+  if (!suppliers.ok) {
+    return { ok: false, message: suppliers.message }
+  }
+
   revalidatePath(LIST_PATH)
   return { ok: true, id: data.id }
 }
@@ -258,6 +268,16 @@ export async function updateAccessory(
 
   if (!data) {
     return { ok: false, message: 'A termék nem található.' }
+  }
+
+  const suppliers = await replaceAccessorySuppliers(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    data.id,
+    values.supplierIds ?? []
+  )
+  if (!suppliers.ok) {
+    return { ok: false, message: suppliers.message }
   }
 
   revalidatePath(LIST_PATH)
