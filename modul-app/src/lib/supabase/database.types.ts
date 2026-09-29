@@ -390,6 +390,7 @@ export type StockMovementSource =
   | 'sale'
   | 'transfer'
   | 'sale_return'
+  | 'customer_special_order'
 
 export type StockMovement = {
   id: string

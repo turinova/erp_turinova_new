@@ -113,6 +113,47 @@ export async function getReceivedQtyByPoItem(
   return map
 }
 
+export async function getReceivedQtyForPoItemIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  poItemIds: string[]
+): Promise<Map<string, number>> {
+  const unique = [...new Set(poItemIds.filter(Boolean))]
+  const map = new Map<string, number>()
+  if (unique.length === 0) return map
+
+  const { data, error } = await supabase
+    .from('goods_receipt_items')
+    .select(
+      `
+      purchase_order_item_id,
+      quantity_received,
+      goods_receipts!inner ( status, deleted_at )
+    `
+    )
+    .eq('tenant_id', tenantId)
+    .in('purchase_order_item_id', unique)
+    .is('deleted_at', null)
+
+  if (error) {
+    console.error('getReceivedQtyForPoItemIds', error.message)
+    return map
+  }
+
+  for (const row of data ?? []) {
+    const gr = row.goods_receipts as
+      | { status?: string; deleted_at?: string | null }
+      | { status?: string; deleted_at?: string | null }[]
+      | null
+    const receipt = Array.isArray(gr) ? gr[0] : gr
+    if (!receipt || receipt.deleted_at || receipt.status !== 'received') continue
+    const key = row.purchase_order_item_id as string | null
+    if (!key) continue
+    map.set(key, (map.get(key) ?? 0) + Number(row.quantity_received))
+  }
+  return map
+}
+
 /** Egy PO összes beérkezése (lookup a rendelés detailen). */
 export type GoodsReceiptForPoRow = {
   id: string

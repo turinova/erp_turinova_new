@@ -14,6 +14,9 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { prepareHandoverSlipPrint } from '@/lib/handover-slip/actions'
+import { printHandoverSlip } from '@/lib/handover-slip/print'
+import { requestUsbPrinter } from '@/lib/handover-slip/webusb'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { finishQuotesHandoverBulk } from '@/lib/scanner/actions'
@@ -80,6 +83,8 @@ export function ScannerHandoverDialog({
       setLoadingSkip(true)
     }
 
+    const usbDevice = await requestUsbPrinter()
+
     try {
       const result = await finishQuotesHandoverBulk({
         quoteIds: items.map((i) => i.id),
@@ -94,6 +99,23 @@ export function ScannerHandoverDialog({
         const firstFail = result.results.find((r) => !r.ok)
         setError(firstFail?.message ?? 'Nem sikerült az átadás.')
         return
+      }
+
+      for (const id of successIds) {
+        try {
+          const slip = await prepareHandoverSlipPrint(id)
+          if (slip.ok && slip.print) {
+            await printHandoverSlip({
+              data: slip.data,
+              settings: slip.settings,
+              copyTypes: slip.copyTypes,
+              usbDevice
+            })
+            await new Promise((r) => setTimeout(r, 350))
+          }
+        } catch (printErr) {
+          console.warn('scanner handover slip', id, printErr)
+        }
       }
 
       const summary =

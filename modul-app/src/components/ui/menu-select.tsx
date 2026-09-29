@@ -8,8 +8,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent
 } from 'react'
+import { createPortal } from 'react-dom'
 
 import { cn } from '@/lib/utils'
 
@@ -38,10 +40,15 @@ type MenuSelectProps = {
    */
   searchable?: boolean
   searchPlaceholder?: string
+  /** Hosszú kiválasztott érték tördelése levágás helyett (pl. beszállítónév tétellistában). */
+  wrap?: boolean
+  /** Trigger keret felülírás (pl. hiányjelzés). */
+  triggerClassName?: string
   onChange: (value: string) => void
 }
 
 const MENU_MAX_HEIGHT_PX = 224 // max-h-56
+const MENU_Z = 80
 
 function normalizeSearch(value: string): string {
   return value
@@ -51,9 +58,8 @@ function normalizeSearch(value: string): string {
 }
 
 /**
- * Stylolt lista-select — Linear/Midday sűrűség:
- * egy sor, egy hangsúly; halk csoport; check csak selectednél.
- * Viewport alján automatikusan felfelé nyílik.
+ * Stylolt lista-select — Linear/Midday sűrűség.
+ * Lista: portal + fixed — nem vágja le overflow (tábla, scroll).
  */
 export function MenuSelect({
   id,
@@ -66,15 +72,23 @@ export function MenuSelect({
   className,
   searchable = false,
   searchPlaceholder = 'Keresés…',
+  wrap = false,
+  triggerClassName,
   onChange
 }: MenuSelectProps) {
   const listId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
-  const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom')
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null)
   const [query, setQuery] = useState('')
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const filteredOptions = useMemo(() => {
     if (!searchable || !query.trim()) return options
@@ -107,25 +121,68 @@ export function MenuSelect({
 
   const selected = options.find((o) => o.value === value) ?? null
 
-  useLayoutEffect(() => {
-    if (!open || !rootRef.current) return
+  function updateMenuPosition() {
+    if (!rootRef.current) return
     const rect = rootRef.current.getBoundingClientRect()
+    const searchOffset = searchable ? 40 : 0
     const spaceBelow = window.innerHeight - rect.bottom
     const spaceAbove = rect.top
-    const next =
-      spaceBelow < MENU_MAX_HEIGHT_PX + (searchable ? 40 : 0) &&
-      spaceAbove > spaceBelow
-        ? 'top'
-        : 'bottom'
-    setPlacement(next)
+    const openUp =
+      spaceBelow < MENU_MAX_HEIGHT_PX + searchOffset && spaceAbove > spaceBelow
+    const width = Math.max(rect.width, 192)
+    const left = Math.min(
+      rect.left,
+      Math.max(8, window.innerWidth - width - 8)
+    )
+
+    if (openUp) {
+      setMenuStyle({
+        position: 'fixed',
+        left,
+        width,
+        bottom: window.innerHeight - rect.top + 4,
+        top: 'auto',
+        zIndex: MENU_Z
+      })
+    } else {
+      setMenuStyle({
+        position: 'fixed',
+        left,
+        width,
+        top: rect.bottom + 4,
+        bottom: 'auto',
+        zIndex: MENU_Z
+      })
+    }
+  }
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuStyle(null)
+      return
+    }
+    updateMenuPosition()
   }, [open, filteredOptions.length, searchable])
 
   useEffect(() => {
     if (!open) return
+    function onReposition() {
+      updateMenuPosition()
+    }
+    window.addEventListener('resize', onReposition)
+    window.addEventListener('scroll', onReposition, true)
+    return () => {
+      window.removeEventListener('resize', onReposition)
+      window.removeEventListener('scroll', onReposition, true)
+    }
+  }, [open, searchable])
+
+  useEffect(() => {
+    if (!open) return
     function onPointerDown(e: MouseEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      const t = e.target as Node
+      if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onPointerDown)
     return () => document.removeEventListener('mousedown', onPointerDown)
@@ -139,7 +196,6 @@ export function MenuSelect({
     const idx = filteredOptions.findIndex((o) => o.value === value)
     setHighlight(idx >= 0 ? idx : 0)
     if (searchable) {
-      // Nyitás után fókusz a keresőre — azonnali gépelés.
       requestAnimationFrame(() => searchRef.current?.focus())
     }
   }, [open, searchable]) // eslint-disable-line react-hooks/exhaustive-deps -- csak nyitáskor
@@ -193,6 +249,128 @@ export function MenuSelect({
       : selected.label
     : placeholder
 
+  const menu =
+    open && menuStyle && mounted
+      ? createPortal(
+          <div
+            ref={menuRef}
+            id={listId}
+            role="listbox"
+            tabIndex={searchable ? undefined : -1}
+            aria-activedescendant={
+              filteredOptions[highlight]
+                ? `${listId}-opt-${filteredOptions[highlight].value}`
+                : undefined
+            }
+            onKeyDown={searchable ? undefined : onListKeyDown}
+            style={menuStyle}
+            className="overflow-hidden rounded-md border border-border bg-surface shadow-elev2"
+          >
+            {searchable ? (
+              <div className="border-b border-border p-1.5">
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
+                    aria-hidden
+                  />
+                  <input
+                    ref={searchRef}
+                    type="search"
+                    value={query}
+                    placeholder={searchPlaceholder}
+                    aria-label={searchPlaceholder}
+                    autoComplete="off"
+                    className={cn(
+                      'flex h-8 w-full rounded-md border border-border bg-surface py-0 pl-7 pr-2.5 text-body text-ink',
+                      'placeholder:text-ink-disabled',
+                      'outline-none focus:border-border-strong focus:ring-1 focus:ring-primary/25'
+                    )}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={onListKeyDown}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            <div className="max-h-56 overflow-auto py-1">
+              {allowEmpty && !query.trim() ? (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={value === ''}
+                  className={cn(
+                    'flex min-h-8 w-full items-center px-2.5 text-left text-body font-normal text-ink-secondary',
+                    'hover:bg-subtle',
+                    value === '' && 'bg-subtle text-ink'
+                  )}
+                  onClick={() => selectValue('')}
+                >
+                  {emptyLabel}
+                </button>
+              ) : null}
+
+              {filteredOptions.length === 0 ? (
+                <p className="px-2.5 py-2 text-body text-ink-muted">
+                  Nincs találat
+                </p>
+              ) : (
+                flatItems.map((item, i) => {
+                  if (item.type === 'group') {
+                    return (
+                      <div
+                        key={`g-${item.label}-${i}`}
+                        className="px-2.5 pb-0.5 pt-2 text-hint font-normal text-ink-muted"
+                      >
+                        {item.label}
+                      </div>
+                    )
+                  }
+
+                  const { option, index } = item
+                  const isSelected = option.value === value
+                  const isHi = index === highlight
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      id={`${listId}-opt-${option.value}`}
+                      role="option"
+                      aria-selected={isSelected}
+                      className={cn(
+                        'flex min-h-8 w-full items-center gap-2 px-2.5 text-left text-body font-normal',
+                        'hover:bg-subtle',
+                        isHi && !isSelected && 'bg-subtle',
+                        isSelected && 'bg-subtle'
+                      )}
+                      onMouseEnter={() => setHighlight(index)}
+                      onClick={() => selectValue(option.value)}
+                    >
+                      <span className="min-w-0 flex-1 truncate text-ink">
+                        {option.label}
+                        {option.hint ? (
+                          <span className="text-ink-muted">
+                            {' '}
+                            · {option.hint}
+                          </span>
+                        ) : null}
+                      </span>
+                      {isSelected ? (
+                        <Check
+                          className="size-3.5 shrink-0 text-ink"
+                          aria-hidden
+                        />
+                      ) : null}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>,
+          document.body
+        )
+      : null
+
   return (
     <div ref={rootRef} className={cn('relative', className)}>
       <button
@@ -205,15 +383,18 @@ export function MenuSelect({
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onTriggerKeyDown}
         className={cn(
-          'flex h-8 w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-body text-ink transition-colors duration-fast',
+          'flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-body text-ink transition-colors duration-fast',
+          wrap ? 'min-h-8 py-1' : 'h-8',
           'hover:border-border-strong',
           'disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-disabled',
-          open && 'border-border-strong ring-1 ring-primary/25'
+          open && 'border-border-strong ring-1 ring-primary/25',
+          triggerClassName
         )}
       >
         <span
           className={cn(
-            'min-w-0 flex-1 truncate font-normal',
+            'min-w-0 flex-1 font-normal',
+            wrap ? 'whitespace-normal break-words leading-snug' : 'truncate',
             !selected && 'text-ink-muted'
           )}
         >
@@ -227,124 +408,7 @@ export function MenuSelect({
           aria-hidden
         />
       </button>
-
-      {open ? (
-        <div
-          id={listId}
-          role="listbox"
-          tabIndex={searchable ? undefined : -1}
-          aria-activedescendant={
-            filteredOptions[highlight]
-              ? `${listId}-opt-${filteredOptions[highlight].value}`
-              : undefined
-          }
-          onKeyDown={searchable ? undefined : onListKeyDown}
-          className={cn(
-            'absolute z-50 w-full min-w-[12rem] overflow-hidden rounded-md border border-border bg-surface shadow-elev2',
-            placement === 'top'
-              ? 'bottom-full mb-1'
-              : 'top-full mt-1'
-          )}
-        >
-          {searchable ? (
-            <div className="border-b border-border p-1.5">
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
-                  aria-hidden
-                />
-                <input
-                  ref={searchRef}
-                  type="search"
-                  value={query}
-                  placeholder={searchPlaceholder}
-                  aria-label={searchPlaceholder}
-                  autoComplete="off"
-                  className={cn(
-                    'flex h-8 w-full rounded-md border border-border bg-surface py-0 pl-7 pr-2.5 text-body text-ink',
-                    'placeholder:text-ink-disabled',
-                    'outline-none focus:border-border-strong focus:ring-1 focus:ring-primary/25'
-                  )}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={onListKeyDown}
-                />
-              </div>
-            </div>
-          ) : null}
-
-          <div className="max-h-56 overflow-auto py-1">
-            {allowEmpty && !query.trim() ? (
-              <button
-                type="button"
-                role="option"
-                aria-selected={value === ''}
-                className={cn(
-                  'flex min-h-8 w-full items-center px-2.5 text-left text-body font-normal text-ink-secondary',
-                  'hover:bg-subtle',
-                  value === '' && 'bg-subtle text-ink'
-                )}
-                onClick={() => selectValue('')}
-              >
-                {emptyLabel}
-              </button>
-            ) : null}
-
-            {filteredOptions.length === 0 ? (
-              <p className="px-2.5 py-2 text-body text-ink-muted">
-                Nincs találat
-              </p>
-            ) : (
-              flatItems.map((item, i) => {
-                if (item.type === 'group') {
-                  return (
-                    <div
-                      key={`g-${item.label}-${i}`}
-                      className="px-2.5 pb-0.5 pt-2 text-hint font-normal text-ink-muted"
-                    >
-                      {item.label}
-                    </div>
-                  )
-                }
-
-                const { option, index } = item
-                const isSelected = option.value === value
-                const isHi = index === highlight
-
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    id={`${listId}-opt-${option.value}`}
-                    role="option"
-                    aria-selected={isSelected}
-                    className={cn(
-                      'flex min-h-8 w-full items-center gap-2 px-2.5 text-left text-body font-normal',
-                      'hover:bg-subtle',
-                      isHi && !isSelected && 'bg-subtle',
-                      isSelected && 'bg-subtle'
-                    )}
-                    onMouseEnter={() => setHighlight(index)}
-                    onClick={() => selectValue(option.value)}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-ink">
-                      {option.label}
-                      {option.hint ? (
-                        <span className="text-ink-muted"> · {option.hint}</span>
-                      ) : null}
-                    </span>
-                    {isSelected ? (
-                      <Check
-                        className="size-3.5 shrink-0 text-ink"
-                        aria-hidden
-                      />
-                    ) : null}
-                  </button>
-                )
-              })
-            )}
-          </div>
-        </div>
-      ) : null}
+      {menu}
     </div>
   )
 }

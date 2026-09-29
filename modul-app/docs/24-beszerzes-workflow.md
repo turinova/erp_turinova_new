@@ -36,7 +36,7 @@ Három fogalom, négy PO-státusz, egy irreversible bevételezés. Minden edge c
 1. Beszállító kiválasztása / létrehozása
 2. Új rendelés → tételek (qty, nettó ár, egység)
 3. Mentés = Vázlat
-4. [Megrendelés jelölése]  ← telefon / webshop / e-mail után
+4. [Elküldtem a beszállítónak]  ← telefon / webshop / e-mail után
 5. (opcionális) [E-mail küldése] PDF-fel — esemény, nem státusz
 6. … várás …
 7. [Áru megérkezett] a rendelésről
@@ -53,7 +53,7 @@ Három fogalom, négy PO-státusz, egy irreversible bevételezés. Minden edge c
 |---|---|
 | Beszállítók lista | Új beszállító |
 | Rendelések lista | Új rendelés |
-| Rendelés (vázlat) | Megrendelés jelölése |
+| Rendelés (vázlat) | Elküldtem a beszállítónak |
 | Rendelés (megrendelve / részben) | **Áru megérkezett** |
 | Beérkezés (ellenőrzés) | **Bevételezés** |
 | Beérkezés (kész) | — (csak olvasás + címke) |
@@ -69,12 +69,12 @@ Három fogalom, négy PO-státusz, egy irreversible bevételezés. Minden edge c
 | Kulcs | Label | Szerkeszthető? | Következő |
 |---|---|---|---|
 | `draft` | Vázlat | Igen (header + tételek) | → `ordered`, → `cancelled` |
-| `ordered` | Megrendelve | Nem (csak note / expected_date?) | → beérkezés; → `partial` / `received`; → `cancelled` ha nincs bevételezett qty |
+| `ordered` | Elküldve | Nem (csak note / expected_date?) | → beérkezés; → `partial` / `received`; → `cancelled` ha nincs bevételezett qty |
 | `partial` | Részben beérkezett | Nem | → további beérkezés; → `received` |
 | `received` | Beérkezett | Nem | Végállapot (javítás = új korrekciós mozgás, későbbi fázis) |
 | `cancelled` | Törölve | Nem | Végállapot |
 
-**Átnevezés main-apphoz képest:** `confirmed` → **`ordered`** (UI: Megrendelve). A „confirmed” félrevezető (ki igazolta?).
+**Átnevezés main-apphoz képest:** `confirmed` → **`ordered`** (UI: Elküldve). A „confirmed” félrevezető (ki igazolta?).
 
 **Számított státusz (soha ne kézzel):**
 
@@ -126,7 +126,7 @@ Addon / entitlement: **`beszerzes`** feature az **Alap plan** része (`20260517_
 - **Implementálva (MVP):** `/beszallitoi-rendelesek` — lista + buying workspace (`20260502_purchase_orders.sql`).
 - Csak **Termékek** (`accessories`); duplikált tétel → qty összevonás.
 - Státusz: `draft → ordered` (partial/received a beérkezés fázisban).
-- Primary: Mentés / **Megrendelés jelölése**; Áru megérkezett → következő modul.
+- Primary: **Elküldtem a beszállítónak** (vázlaton); Mentés = secondary „Vázlat mentése”. Áru megérkezett → következő modul.
 - PO szám: `BR-YYYY-NNN`.
 - **Célraktár:** draft-on választható (≥2 aktív WH); 1 WH → rejtett, default. Ordered+ readonly. Beérkezés örökli; checking-en override (multi).
 - **PO detail (post-receive):** nem-draft tételeknél **Beérkezett / Hiányzik / Állapot** (Teljes · Részleges · Vár · Többlet); fejléc + lábléc `kapott / rendelt · %`; **Beérkezések** szekció linkekkel (`/beerkezesek/[id]`); checking gyorslink; hiányos lezárás jelzés.
@@ -155,13 +155,14 @@ Szűrők: státusz chip-ek + kereső (szám / beszállító). Default sort: `upd
 5. Üres tétel lista → Mentés tiltott.
 6. Mentés → `draft`, generált `po_number` (tenant-szekvencia).
 
-### 5.2 Megrendelés jelölése
+### 5.2 Elküldtem a beszállítónak (`draft` → `ordered`)
 
 - Csak `draft` + ≥1 tétel + qty > 0.
 - Confirm dialógus (destruktív nem, de irreverzibilis szerkesztéshez):  
-  „A rendelés ezután nem szerkeszthető. Megrendelted a beszállítónál?”  
-  Primary: **Megrendelés jelölése** · Default fókusz / Mégse: **Mégse**.
+  „Telefon / e-mail / webshop után jelöld elküldöttnek. Utána a tételek nem szerkeszthetők.”  
+  Primary: **Igen, elküldve** · Default fókusz / Mégse: **Mégse**.
 - Hatás: `ordered`; tételek lock; „úton” qty (ha van készlet UI).
+- UI státuszlabel: **Elküldve** (gomb: **Elküldtem a beszállítónak**; mentés secondary: **Vázlat mentése**).
 
 ### 5.3 E-mail (opcionális)
 
@@ -283,7 +284,7 @@ Jelölés: **MVP** = első release kezeli · **P2** = következő · **Később*
 | ID | Edge case | Döntés |
 |---|---|---|
 | D1 | E-mail sikertelen | Toast hiba; `ordered` marad; újrapróbál |
-| D2 | Webshop / telefon rendelés | Nincs integráció MVP — user jelöli Megrendelve |
+| D2 | Webshop / telefon rendelés | Nincs integráció MVP — user jelöli Elküldve |
 | D3 | Beszállító ASN / tracking szám | P2 mező a beérkezésen |
 | D4 | PDF nyomtatás offline | `15` print rules; helyi nyomtató |
 
@@ -302,7 +303,7 @@ Jelölés: **MVP** = első release kezeli · **P2** = következő · **Később*
 
 | ID | Edge case | Döntés |
 |---|---|---|
-| F1 | Véletlen Megrendelés jelölése | Confirm + ha 0 received → cancelled |
+| F1 | Véletlen „Elküldtem a beszállítónak” | Confirm + ha 0 received → cancelled |
 | F2 | Véletlen Bevételezés | Confirm szöveg qty összeggel; P2: 5 perces undo **nincs** (stock) — inkább erős confirm |
 | F3 | Barcode ismeretlen | Ha nincs törzsben: toast. Ha van: dialóg PO-n kívüli hozzáadáshoz |
 | F4 | Barcode más PO termékére | Dialóg → explicit Hozzáadás PO-n kívül (nem csendes) |
@@ -372,7 +373,7 @@ suppliers / partners (is_supplier)
 | Művelet | draft | ordered | partial | received | cancelled |
 |---|---|---|---|---|---|
 | Szerkesztés tételek | ✓ | — | — | — | — |
-| Megrendelés jelölése | ✓ | — | — | — | — |
+| Elküldtem a beszállítónak | ✓ | — | — | — | — |
 | E-mail | ✓/✓ | ✓ | ✓ | ✓ | — |
 | Áru megérkezett | — | ✓ | ✓ | — | — |
 | Cancel PO | ✓ | ✓* | —** | — | — |
@@ -395,13 +396,13 @@ suppliers / partners (is_supplier)
 | Kulcs | Label |
 |---|---|
 | draft | Vázlat |
-| ordered | Megrendelve |
+| ordered | Elküldve |
 | partial | Részben beérkezett |
 | received (PO) | Beérkezett |
 | cancelled | Törölve |
 | checking | Ellenőrzés |
 | received (shipment) | Bevételezve |
-| CTA mark ordered | Megrendelés jelölése |
+| CTA mark ordered | Elküldtem a beszállítónak |
 | CTA arrive | Áru megérkezett |
 | CTA receive | Bevételezés |
 | CTA new PO | Új rendelés |
@@ -417,7 +418,7 @@ Példa overage: „Több érkezett, mint a rendelés (12 / 10). Bevételezheted 
 ```mermaid
 stateDiagram-v2
   [*] --> draft: Új rendelés
-  draft --> ordered: Megrendelés jelölése
+  draft --> ordered: Elküldtem a beszállítónak
   draft --> cancelled: Törlés
   ordered --> checking: Áru megérkezett
   partial --> checking: Áru megérkezett
@@ -431,7 +432,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-  A[PO Megrendelve / Részben] --> B{Van checking beérkezés?}
+  A[PO Elküldve / Részben] --> B{Van checking beérkezés?}
   B -->|Igen| C[Nyisd meg]
   B -->|Nem| D[Új beérkezés remaining tételekkel]
   C --> E[Qty számolás]

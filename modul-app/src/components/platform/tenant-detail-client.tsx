@@ -663,7 +663,7 @@ export function TenantDetailClient({
             <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
               <h2 className="text-body font-semibold text-ink">Pillantás</h2>
             </div>
-            <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-2 lg:grid-cols-4 lg:divide-y-0">
+            <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3 lg:grid-cols-5 lg:divide-y-0">
               <button
                 type="button"
                 className="block min-w-0 px-3 py-3 text-left hover:bg-subtle"
@@ -702,6 +702,21 @@ export function TenantDetailClient({
                   Ajánlat (nem előfizetés)
                 </p>
               </div>
+              <button
+                type="button"
+                className="block min-w-0 px-3 py-3 text-left hover:bg-subtle"
+                onClick={() => setTab('billing')}
+              >
+                <p className="truncate text-hint text-ink-secondary">
+                  SMS (hó)
+                </p>
+                <p className="mt-1 text-[1.5rem] font-semibold tabular-nums leading-none text-ink">
+                  {kpis.smsSentThisMonth}
+                </p>
+                <p className="mt-1 truncate text-hint text-ink-muted">
+                  Elküldött · számlázható
+                </p>
+              </button>
               <button
                 type="button"
                 className="block min-w-0 px-3 py-3 text-left hover:bg-subtle"

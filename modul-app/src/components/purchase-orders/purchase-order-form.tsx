@@ -301,7 +301,7 @@ export function PurchaseOrderForm({
         toast.error(result.message)
         return
       }
-      toast.success('Rendelés megrendelve.')
+      toast.success('Elküldöttként megjelölve — a rendelés nem szerkeszthető.')
       setMarkOpen(false)
       router.refresh()
     })
@@ -341,8 +341,17 @@ export function PurchaseOrderForm({
               Vissza a listához
             </Button>
             {editable ? (
-              <Button type="button" loading={pending} onClick={handleSave}>
-                Rendelés mentése
+              <Button
+                type="button"
+                variant={
+                  mode === 'edit' && status === 'draft' ? 'secondary' : 'primary'
+                }
+                loading={pending}
+                onClick={handleSave}
+              >
+                {mode === 'edit' && status === 'draft'
+                  ? 'Vázlat mentése'
+                  : 'Rendelés mentése'}
               </Button>
             ) : null}
             {canWrite && status === 'draft' && mode === 'edit' && initial ? (
@@ -352,7 +361,7 @@ export function PurchaseOrderForm({
                 onClick={() => setMarkOpen(true)}
                 disabled={form.items.length === 0 || pending}
               >
-                Megrendelés jelölése
+                Elküldtem a beszállítónak
               </Button>
             ) : null}
             {canWrite &&
@@ -864,9 +873,9 @@ export function PurchaseOrderForm({
         onOpenChange={(open) => {
           if (!open && !pending) setMarkOpen(false)
         }}
-        title="Megrendelés jelölése"
-        description="A rendelés ezután nem szerkeszthető. Megrendelted a beszállítónál (telefon / webshop / e-mail)?"
-        confirmLabel="Megrendelés jelölése"
+        title="Elküldted a beszállítónak?"
+        description="Telefon / e-mail / webshop után jelöld elküldöttnek. Utána a tételek nem szerkeszthetők."
+        confirmLabel="Igen, elküldve"
         cancelLabel="Mégse"
         variant="primary"
         loading={pending}

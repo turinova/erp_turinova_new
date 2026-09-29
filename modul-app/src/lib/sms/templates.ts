@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
-  DEFAULT_QUOTE_READY_SMS_BODY,
   QUOTE_READY_TEMPLATE_KEY,
+  defaultSmsBody,
   type SmsSendStatus,
   type SmsSkipReason,
   type SmsTemplateKey
@@ -22,11 +22,11 @@ export async function getTenantSmsTemplate(
 
   if (error) {
     console.error('getTenantSmsTemplate', error.message)
-    return DEFAULT_QUOTE_READY_SMS_BODY
+    return defaultSmsBody(templateKey)
   }
 
   const body = data?.body?.trim()
-  return body || DEFAULT_QUOTE_READY_SMS_BODY
+  return body || defaultSmsBody(templateKey)
 }
 
 export async function upsertTenantSmsTemplate(
@@ -66,6 +66,7 @@ export async function upsertTenantSmsTemplate(
 export type SmsLedgerInsert = {
   tenantId: string
   quoteId?: string | null
+  customerSpecialOrderId?: string | null
   customerId?: string | null
   templateKey: SmsTemplateKey
   toE164?: string | null
@@ -85,6 +86,7 @@ export async function insertSmsSendEvent(
   const { error } = await supabase.from('sms_send_events').insert({
     tenant_id: row.tenantId,
     quote_id: row.quoteId ?? null,
+    customer_special_order_id: row.customerSpecialOrderId ?? null,
     customer_id: row.customerId ?? null,
     template_key: row.templateKey,
     to_e164: row.toE164 ?? null,

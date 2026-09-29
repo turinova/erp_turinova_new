@@ -38,10 +38,10 @@ Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-pa
 | 2 | Plan, add-on, `paid_through`, státusz: **csak platform** |
 | 3 | Tenant oldalon **soha nincs self-serve** (nincs add-on switch, plan váltás, fizetés gomb) |
 | 4 | Listaárak (**nettó**): Alap **39 990**/hó (2 hónap automata próba; éves **399 900** = 2 hónap ajándék). Add-on: lapszabászat **10 000**, Jelenlét **9 900**, partner **19 000**, SMS **4 900 + 89 Ft/db**, belépőszámláló **5 000** + kamera egyszeri. Részletek: [33](33-packages-and-addons.md). |
-| 5 | Havi becslés = plan + enabled add-onok + SMS ledger (`sent`/`delivered`) — platform és tenant **ugyanaz** a lib |
+| 5 | Havi becslés = plan + enabled add-onok + SMS ledger (`sent`/`delivered`, lapszabászat + ügyfélrendelés) — platform és tenant **ugyanaz** a lib |
 | 6 | Tenant UI: `/beallitasok/elofizetes` — **csak owner**; **nincs ár**; státusz + aktív / elérhető funkciók |
 | 7 | Staff sidebar alján: ÁSZF / Adatkezelés / Impresszum (`getLegalUrls`, mint partner) |
-| 8 | SMS napló: `/beallitasok/elofizetes/sms` (owner + SMS addon) |
+| 8 | SMS napló: `/beallitasok/elofizetes/sms` (owner + SMS addon vagy ügyfélrendelés); platform tenant: **SMS (hó)** KPI |
 
 Migráció: `20260427_manual_subscription_pricing.sql`, `20260428_elofizetes_owner_only.sql`.
 

@@ -210,7 +210,8 @@ export async function openOrCreateGoodsReceipt(
 
 export async function saveGoodsReceiptQuantities(
   receiptId: string,
-  input: ReceiptQuantitiesInput
+  input: ReceiptQuantitiesInput,
+  opts?: { revalidate?: boolean }
 ): Promise<GoodsReceiptActionResult> {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
@@ -259,7 +260,10 @@ export async function saveGoodsReceiptQuantities(
     }
   }
 
-  revalidateReceiptPaths(receiptId, receipt.purchase_order_id)
+  // Autosave: ne revalidálj — a kliens qty state-et felülírná / ugrálna.
+  if (opts?.revalidate !== false) {
+    revalidateReceiptPaths(receiptId, receipt.purchase_order_id)
+  }
   return { ok: true, id: receiptId }
 }
 
@@ -295,6 +299,22 @@ export async function receiveGoodsReceipt(
 
   revalidateReceiptPaths(receiptId, result.po_id)
 
+  let syncNote = ''
+  try {
+    const { syncSpecialOrdersAfterGoodsReceipt } = await import(
+      '@/lib/customer-orders/actions'
+    )
+    const sync = await syncSpecialOrdersAfterGoodsReceipt(receiptId)
+    if (sync.message) {
+      syncNote = ` ${sync.message}`
+    } else if (sync.updatedOrders > 0) {
+      syncNote = ` ${sync.updatedOrders} ügyfélrendelés: Itt van.`
+    }
+  } catch (e) {
+    console.error('syncSpecialOrdersAfterGoodsReceipt', e)
+    syncNote = ' Ügyfélrendelés státusz frissítése sikertelen — ellenőrizd a várólistát.'
+  }
+
   const statusLabel =
     result.po_status === 'received'
       ? 'Beérkezett'
@@ -307,8 +327,8 @@ export async function receiveGoodsReceipt(
     id: receiptId,
     poStatus: result.po_status,
     message: result.already_received
-      ? `Már bevételezve. Rendelés: ${statusLabel}.`
-      : `Bevételezve. Rendelés: ${statusLabel}.`
+      ? `Már bevételezve. Rendelés: ${statusLabel}.${syncNote}`
+      : `Bevételezve. Rendelés: ${statusLabel}.${syncNote}`
   }
 }
 

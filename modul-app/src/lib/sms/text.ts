@@ -77,3 +77,11 @@ export function joinMaterialNames(names: string[]): string {
   }
   return joined
 }
+
+/** SMS-barát Ft összeg (ASCII szóköz ezres tagoló). */
+export function formatSmsAmount(value: number): string {
+  const n = Math.round(Number(value) || 0)
+  const abs = Math.abs(n).toString()
+  const grouped = abs.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  return n < 0 ? `-${grouped}` : grouped
+}

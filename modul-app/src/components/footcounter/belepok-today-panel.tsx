@@ -89,7 +89,11 @@ export function BelepokTodayPanel({ data }: { data: FootcounterTodayPanelData })
       </div>
 
       <div className="mt-4">
-        <TodayHourlyChart hourly={data.hourly} peakHour={data.peakHour} />
+        <TodayHourlyChart
+          hourly={data.hourly}
+          peakHour={data.peakHour}
+          hourLabels={data.hourly.map((h) => String(h.hour))}
+        />
       </div>
     </section>
   )

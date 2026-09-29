@@ -124,8 +124,8 @@ export function SmsLogListClient({
               Még nincs SMS ebben a hónapban
             </p>
             <p className="max-w-sm text-body text-ink-secondary">
-              Ha készre állítasz egy rendelést és az ügyfél kér SMS-t, itt
-              megjelenik.
+              Lapszabászat készre állítás és ügyfélrendelés átvehető SMS-ek
+              itt jelennek meg.
             </p>
           </div>
           <Link
@@ -141,7 +141,8 @@ export function SmsLogListClient({
             <DataTableHead>
               <DataTableRow>
                 <DataTableHeaderCell>Időpont</DataTableHeaderCell>
-                <DataTableHeaderCell>Megrendelés</DataTableHeaderCell>
+                <DataTableHeaderCell>Típus</DataTableHeaderCell>
+                <DataTableHeaderCell>Rendelés</DataTableHeaderCell>
                 <DataTableHeaderCell>Telefonszám</DataTableHeaderCell>
                 <DataTableHeaderCell>Állapot</DataTableHeaderCell>
                 <DataTableHeaderCell>Megjegyzés</DataTableHeaderCell>
@@ -159,14 +160,21 @@ export function SmsLogListClient({
                     <DataTableCell className="whitespace-nowrap tabular-nums text-ink">
                       {formatDateTime(row.created_at)}
                     </DataTableCell>
+                    <DataTableCell className="text-hint text-ink-secondary">
+                      {row.template_label}
+                    </DataTableCell>
                     <DataTableCell>
-                      {row.quote_id && row.order_number ? (
+                      {row.href && row.order_number ? (
                         <Link
-                          href={`/ajanlatok/${row.quote_id}`}
+                          href={row.href}
                           className="font-medium text-ink no-underline hover:underline"
                         >
                           {row.order_number}
                         </Link>
+                      ) : row.order_number ? (
+                        <span className="font-medium text-ink">
+                          {row.order_number}
+                        </span>
                       ) : (
                         <span className="text-ink-secondary">—</span>
                       )}

@@ -21,6 +21,9 @@ export type AccessoryStockMovementRow = {
   po_number: string | null
   transfer_id: string | null
   transfer_number: string | null
+  /** Ügyfélrendelés fej — source_id a tétel id, ezért külön resolve. */
+  cso_id: string | null
+  cso_order_number: string | null
 }
 
 export type AccessoryRelatedPoRow = {
@@ -156,6 +159,15 @@ export async function getAccessoryProcurementStock(
         .map((m) => m.source_id as string)
     )
   ]
+  const csoItemIds = [
+    ...new Set(
+      recent
+        .filter(
+          (m) => m.source_type === 'customer_special_order' && m.source_id
+        )
+        .map((m) => m.source_id as string)
+    )
+  ]
 
   const receiptMeta = new Map<
     string,
@@ -166,6 +178,7 @@ export async function getAccessoryProcurementStock(
     }
   >()
   const transferMeta = new Map<string, string>()
+  const csoMeta = new Map<string, { order_id: string; order_number: string }>()
 
   if (receiptIds.length > 0) {
     const { data: receipts, error: recErr } = await supabase
@@ -214,6 +227,36 @@ export async function getAccessoryProcurementStock(
     }
   }
 
+  if (csoItemIds.length > 0) {
+    const { data: csoItems, error: csoErr } = await supabase
+      .from('customer_special_order_items')
+      .select(
+        `
+        id,
+        order_id,
+        customer_special_orders ( order_number )
+      `
+      )
+      .eq('tenant_id', tenantId)
+      .in('id', csoItemIds)
+    if (csoErr) {
+      console.error('getAccessoryProcurementStock cso', csoErr.message)
+    } else {
+      for (const item of csoItems ?? []) {
+        const orders = item.customer_special_orders as
+          | { order_number: string }
+          | { order_number: string }[]
+          | null
+        const order = Array.isArray(orders) ? orders[0] : orders
+        if (!item.order_id || !order?.order_number) continue
+        csoMeta.set(item.id, {
+          order_id: item.order_id as string,
+          order_number: order.order_number
+        })
+      }
+    }
+  }
+
   const movements: AccessoryStockMovementRow[] = recent.map((row) => {
     const whJoin = row.warehouses as
       | { name: string; code: string }
@@ -227,6 +270,10 @@ export async function getAccessoryProcurementStock(
     const transferNumber =
       row.source_type === 'transfer' && row.source_id
         ? transferMeta.get(row.source_id as string)
+        : undefined
+    const cso =
+      row.source_type === 'customer_special_order' && row.source_id
+        ? csoMeta.get(row.source_id as string)
         : undefined
 
     return {
@@ -242,7 +289,9 @@ export async function getAccessoryProcurementStock(
       po_id: meta?.po_id ?? null,
       po_number: meta?.po_number ?? null,
       transfer_id: transferNumber ? (row.source_id as string) : null,
-      transfer_number: transferNumber ?? null
+      transfer_number: transferNumber ?? null,
+      cso_id: cso?.order_id ?? null,
+      cso_order_number: cso?.order_number ?? null
     }
   })
 

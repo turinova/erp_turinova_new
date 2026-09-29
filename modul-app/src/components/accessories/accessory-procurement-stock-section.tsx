@@ -236,6 +236,16 @@ export function AccessoryProcurementStockSection({
                         >
                           Áttárolás {m.transfer_number}
                         </Link>
+                      ) : m.cso_id ? (
+                        <Link
+                          href={`/ugyfelrendelesek/${m.cso_id}`}
+                          className="font-medium text-ink underline-offset-2 hover:underline"
+                        >
+                          Ügyfélrendelés
+                          {m.cso_order_number
+                            ? ` ${m.cso_order_number}`
+                            : ''}
+                        </Link>
                       ) : (
                         <span className="text-body text-ink-secondary">
                           {m.source_type === 'adjustment'
@@ -244,7 +254,9 @@ export function AccessoryProcurementStockSection({
                               ? 'Áttárolás'
                               : m.source_type === 'sale'
                                 ? 'Eladás'
-                                : m.source_type}
+                                : m.source_type === 'customer_special_order'
+                                  ? 'Ügyfélrendelés'
+                                  : m.source_type}
                         </span>
                       )}
                     </DataTableCell>

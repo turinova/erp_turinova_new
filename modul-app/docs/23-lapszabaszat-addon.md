@@ -14,6 +14,7 @@ Opti / ajánlat / megrendelés / anyag / gép stack — **nem** része az Alap p
 - Táblás / szálas / élzárók
 - Gyártógépek, berendezés
 - Opti beállítások
+- **Átvételi blokk** (hőnyomtató elismervény — [43](43-atveteli-blokk.md))
 
 **Nem** része: ügyfelek, gyártók, termékek, média, Belépők.
 

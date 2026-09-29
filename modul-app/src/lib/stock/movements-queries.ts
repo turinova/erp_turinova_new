@@ -120,11 +120,21 @@ export async function listStockMovements(
         .map((r) => r.source_id as string)
     )
   ]
+  const csoItemIds = [
+    ...new Set(
+      rowsRaw
+        .filter(
+          (r) => r.source_type === 'customer_special_order' && r.source_id
+        )
+        .map((r) => r.source_id as string)
+    )
+  ]
 
   const receiptMeta = new Map<string, string>()
   const transferMeta = new Map<string, string>()
   const saleMeta = new Map<string, string>()
   const returnMeta = new Map<string, { number: string; saleId: string }>()
+  const csoMeta = new Map<string, { orderId: string; orderNumber: string }>()
 
   if (receiptIds.length > 0) {
     const { data: receipts } = await supabase
@@ -173,6 +183,32 @@ export async function listStockMovements(
     }
   }
 
+  if (csoItemIds.length > 0) {
+    const { data: csoItems } = await supabase
+      .from('customer_special_order_items')
+      .select(
+        `
+        id,
+        order_id,
+        customer_special_orders ( order_number )
+      `
+      )
+      .eq('tenant_id', params.tenantId)
+      .in('id', csoItemIds)
+    for (const item of csoItems ?? []) {
+      const orders = item.customer_special_orders as
+        | { order_number: string }
+        | { order_number: string }[]
+        | null
+      const order = Array.isArray(orders) ? orders[0] : orders
+      if (!item.order_id || !order?.order_number) continue
+      csoMeta.set(item.id, {
+        orderId: item.order_id as string,
+        orderNumber: order.order_number
+      })
+    }
+  }
+
   const rows: StockMovementListItem[] = rowsRaw.map((row) => {
     const whJoin = row.warehouses as
       | { name: string }
@@ -215,6 +251,12 @@ export async function listStockMovements(
       source_href = meta?.saleId
         ? `/ertekesitesek/${meta.saleId}`
         : null
+    } else if (row.source_type === 'customer_special_order' && row.source_id) {
+      const meta = csoMeta.get(row.source_id)
+      source_label = meta
+        ? `Ügyfélrendelés ${meta.orderNumber}`
+        : 'Ügyfélrendelés'
+      source_href = meta ? `/ugyfelrendelesek/${meta.orderId}` : null
     } else if (row.source_type === 'adjustment') {
       source_label = 'Korrekció'
     }

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   useCallback,
@@ -1578,6 +1579,18 @@ export function PosClient({
                               <div className="text-hint text-ink-secondary">
                                 {hit.sku}
                                 {zero ? ' · Nincs készleten' : ''}
+                                {zero ? (
+                                  <>
+                                    {' · '}
+                                    <Link
+                                      href={`/ugyfelrendelesek/uj?accessory=${hit.id}`}
+                                      className="font-medium text-ink underline-offset-2 hover:underline"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      Ügyfélrendelés
+                                    </Link>
+                                  </>
+                                ) : null}
                               </div>
                             </div>
                           </div>

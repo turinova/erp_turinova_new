@@ -1,8 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
-  FOOTCOUNTER_OPEN_HOURS,
-  FOOTCOUNTER_SATURDAY_CLOSE_HOUR,
   FOOTCOUNTER_WEEKDAY_LABELS,
   MONTH_SHORT_HU
 } from '@/lib/footcounter/chart-tokens'
@@ -14,6 +12,15 @@ import type {
   FootcounterTodayPanelData,
   FootcounterWeekdayBar
 } from '@/lib/footcounter/chart-types'
+import {
+  DEFAULT_FOOTCOUNTER_OPEN_HOURS,
+  isHourClosed,
+  peakHourInRange,
+  sumHourSlice,
+  todayDisplayRange,
+  type FootcounterOpenHours
+} from '@/lib/footcounter/open-hours'
+import { getFootcounterOpenHours } from '@/lib/footcounter/settings-queries'
 import {
   buildTodayMood,
   type FootcounterTodayGlance
@@ -73,16 +80,12 @@ function isoWeekdayFromDayKey(dayKey: string): number {
   return (dow + 6) % 7
 }
 
-function hourClosed(weekday: number, hour: number): boolean {
-  if (weekday === 6) return true
-  if (weekday === 5 && hour >= FOOTCOUNTER_SATURDAY_CLOSE_HOUR) return true
-  if (
-    hour < FOOTCOUNTER_OPEN_HOURS.start ||
-    hour > FOOTCOUNTER_OPEN_HOURS.end
-  ) {
-    return true
-  }
-  return false
+function hourClosed(
+  weekday: number,
+  hour: number,
+  hours: FootcounterOpenHours
+): boolean {
+  return isHourClosed(weekday, hour, hours)
 }
 
 function asIntArray(raw: unknown, len: number): number[] {
@@ -303,7 +306,7 @@ export async function getFootcounterLiveStatus(
 
 /**
  * Home widget adat: mai IN/OUT + órás IN (0–23) + élő státusz.
- * Csak akkor hívd, ha a tenantnak be van kapcsolva a Belépők add-on.
+ * KPI / chart a tenant nyitvatartására szűrve (display-only).
  */
 export async function getFootcounterHomeSlim(
   supabase: SupabaseClient,
@@ -313,36 +316,59 @@ export async function getFootcounterHomeSlim(
     todayIn: 0,
     todayOut: 0,
     hourlyIn: Array.from({ length: 24 }, () => 0),
+    hourlyOut: Array.from({ length: 24 }, () => 0),
     lastEventAt: null,
     deviceLastSeen: null,
-    liveStatus: 'none'
+    liveStatus: 'none',
+    openHours: { ...DEFAULT_FOOTCOUNTER_OPEN_HOURS }
   }
 
-  const live = await getFootcounterLiveStatus(supabase, tenantId)
+  const [live, openHours, slim] = await Promise.all([
+    getFootcounterLiveStatus(supabase, tenantId),
+    getFootcounterOpenHours(supabase, tenantId),
+    supabase.rpc('footcounter_today_slim_agg', { p_tenant_id: tenantId })
+  ])
 
-  const { data, error } = await supabase.rpc('footcounter_today_slim_agg', {
-    p_tenant_id: tenantId
-  })
-
-  if (error) {
-    console.error('footcounter_today_slim_agg', error.message)
-    return { ...empty, liveStatus: live.status, deviceLastSeen: live.lastSeenAt }
+  if (slim.error) {
+    console.error('footcounter_today_slim_agg', slim.error.message)
+    return {
+      ...empty,
+      liveStatus: live.status,
+      deviceLastSeen: live.lastSeenAt,
+      openHours
+    }
   }
 
-  const row = (data ?? {}) as {
+  const row = (slim.data ?? {}) as {
     today_in?: number
     today_out?: number
     hourly_in?: unknown
+    hourly_out?: unknown
     last_event_at?: string | null
   }
 
+  const hourlyIn = asIntArray(row.hourly_in, 24)
+  const hourlyOut = asIntArray(row.hourly_out, 24)
+  const todayKey = budapestDayKey(new Date())
+  const wd = isoWeekdayFromDayKey(todayKey)
+  const range = todayDisplayRange(openHours, wd)
+
+  const todayIn = range.closed
+    ? 0
+    : sumHourSlice(hourlyIn, range.open, range.close)
+  const todayOut = range.closed
+    ? 0
+    : sumHourSlice(hourlyOut, range.open, range.close)
+
   return {
-    todayIn: Number(row.today_in) || 0,
-    todayOut: Number(row.today_out) || 0,
-    hourlyIn: asIntArray(row.hourly_in, 24),
+    todayIn,
+    todayOut,
+    hourlyIn,
+    hourlyOut,
     lastEventAt: row.last_event_at ?? null,
     deviceLastSeen: live.lastSeenAt,
-    liveStatus: live.status
+    liveStatus: live.status,
+    openHours
   }
 }
 
@@ -397,6 +423,7 @@ export type FootcounterDashboardBundle = {
   monthPeakHourIn: number
   /** Előző naptári hónap összes IN — MoM glance. */
   prevMonthTotalIn: number
+  openHours: FootcounterOpenHours
   /** RPC hiba (pl. migráció hiányzik). */
   loadError?: string
 }
@@ -410,11 +437,12 @@ export async function getFootcounterDashboard(
   year: number,
   month: number
 ): Promise<FootcounterDashboardBundle> {
-  const [live, agg] = await Promise.all([
+  const [live, agg, openHours] = await Promise.all([
     getFootcounterLiveStatus(supabase, tenantId),
-    rpcDashboardAgg(supabase, tenantId, year, month)
+    rpcDashboardAgg(supabase, tenantId, year, month),
+    getFootcounterOpenHours(supabase, tenantId)
   ])
-  const emptyToday = buildEmptyTodayPanel(live.status === 'live')
+  const emptyToday = buildEmptyTodayPanel(live.status === 'live', openHours)
   const emptyDays: FootcounterMonthDayBar[] = Array.from(
     { length: daysInMonth(year, month) },
     (_, i) => {
@@ -433,7 +461,7 @@ export async function getFootcounterDashboard(
     })
   )
   const emptySeason = buildEmptySeason(year, month)
-  const emptyHeatmap = buildEmptyHeatmap()
+  const emptyHeatmap = buildEmptyHeatmap(openHours)
   const emptyBundle: FootcounterDashboardBundle = {
     today: emptyToday,
     monthDays: emptyDays,
@@ -442,7 +470,8 @@ export async function getFootcounterDashboard(
     heatmap: emptyHeatmap,
     monthPeakHour: null,
     monthPeakHourIn: 0,
-    prevMonthTotalIn: 0
+    prevMonthTotalIn: 0,
+    openHours
   }
 
   if (!agg) {
@@ -467,8 +496,14 @@ export async function getFootcounterDashboard(
 
   const todayHourlyIn = asIntArray(agg.today_in_by_hour, 24)
   const todayHourlyOut = asIntArray(agg.today_out_by_hour, 24)
-  const todayIn = Number(agg.today_in) || 0
-  const todayOut = Number(agg.today_out) || 0
+  const todayWd = isoWeekdayFromDayKey(todayKey)
+  const todayRange = todayDisplayRange(openHours, todayWd)
+  const todayIn = todayRange.closed
+    ? 0
+    : sumHourSlice(todayHourlyIn, todayRange.open, todayRange.close)
+  const todayOut = todayRange.closed
+    ? 0
+    : sumHourSlice(todayHourlyOut, todayRange.open, todayRange.close)
 
   const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
   const monthDayCounts = new Map<number, number>()
@@ -570,11 +605,11 @@ export async function getFootcounterDashboard(
     (label, weekday) => {
       const cells = []
       for (
-        let hour = FOOTCOUNTER_OPEN_HOURS.start;
-        hour <= FOOTCOUNTER_OPEN_HOURS.end;
+        let hour = openHours.weekdayOpen;
+        hour <= openHours.weekdayClose;
         hour++
       ) {
-        const closed = hourClosed(weekday, hour)
+        const closed = hourClosed(weekday, hour, openHours)
         const cell = heatAccum[weekday]![hour]!
         const value =
           closed || cell.n === 0 ? 0 : Math.round(cell.sum / cell.n)
@@ -591,14 +626,17 @@ export async function getFootcounterDashboard(
     }
   )
 
+  const chartOpen = todayRange.closed
+    ? openHours.weekdayOpen
+    : todayRange.open
+  const chartClose = todayRange.closed
+    ? openHours.weekdayClose
+    : todayRange.close
+
   const hourly: FootcounterTodayHourBar[] = []
-  for (
-    let hour = FOOTCOUNTER_OPEN_HOURS.start;
-    hour <= FOOTCOUNTER_OPEN_HOURS.end;
-    hour++
-  ) {
-    const pending = hour > currentHour
-    const running = hour === currentHour
+  for (let hour = chartOpen; hour <= chartClose; hour++) {
+    const pending = todayRange.closed || hour > currentHour
+    const running = !todayRange.closed && hour === currentHour
     hourly.push({
       hour,
       inCount: pending ? 0 : (todayHourlyIn[hour] ?? 0),
@@ -608,16 +646,11 @@ export async function getFootcounterDashboard(
     })
   }
 
-  let peakHour: number | null = null
-  let peakHourIn = 0
-  for (const h of hourly) {
-    if (!h.pending && h.inCount > peakHourIn) {
-      peakHourIn = h.inCount
-      peakHour = h.hour
-    }
-  }
+  const todayPeak = peakHourInRange(todayHourlyIn, chartOpen, chartClose)
+  const peakHour = todayRange.closed ? null : todayPeak.hour
+  const peakHourIn = todayRange.closed ? 0 : todayPeak.count
 
-  const todayDow = isoWeekdayFromDayKey(todayKey)
+  const todayDow = todayWd
   const samples: number[] = []
   for (const row of agg.lookback_days ?? []) {
     const key = String(row.day_key ?? '')
@@ -655,6 +688,7 @@ export async function getFootcounterDashboard(
   let monthPeakHour: number | null = null
   let monthPeakHourIn = 0
   for (const [h, c] of monthHourCounts) {
+    if (h < openHours.weekdayOpen || h > openHours.weekdayClose) continue
     if (c > monthPeakHourIn) {
       monthPeakHourIn = c
       monthPeakHour = h
@@ -669,17 +703,17 @@ export async function getFootcounterDashboard(
     heatmap,
     monthPeakHour,
     monthPeakHourIn,
-    prevMonthTotalIn: Number(agg.prev_month_total_in) || 0
+    prevMonthTotalIn: Number(agg.prev_month_total_in) || 0,
+    openHours
   }
 }
 
-function buildEmptyTodayPanel(live: boolean): FootcounterTodayPanelData {
+function buildEmptyTodayPanel(
+  live: boolean,
+  hours: FootcounterOpenHours = DEFAULT_FOOTCOUNTER_OPEN_HOURS
+): FootcounterTodayPanelData {
   const hourly: FootcounterTodayHourBar[] = []
-  for (
-    let hour = FOOTCOUNTER_OPEN_HOURS.start;
-    hour <= FOOTCOUNTER_OPEN_HOURS.end;
-    hour++
-  ) {
+  for (let hour = hours.weekdayOpen; hour <= hours.weekdayClose; hour++) {
     hourly.push({ hour, inCount: 0, outCount: 0, pending: false })
   }
   return {
@@ -724,18 +758,16 @@ function buildSeasonBars(
   return out
 }
 
-function buildEmptyHeatmap(): FootcounterHeatmapRow[] {
+function buildEmptyHeatmap(
+  hours: FootcounterOpenHours = DEFAULT_FOOTCOUNTER_OPEN_HOURS
+): FootcounterHeatmapRow[] {
   return FOOTCOUNTER_WEEKDAY_LABELS.map((label, weekday) => {
     const cells = []
-    for (
-      let hour = FOOTCOUNTER_OPEN_HOURS.start;
-      hour <= FOOTCOUNTER_OPEN_HOURS.end;
-      hour++
-    ) {
+    for (let hour = hours.weekdayOpen; hour <= hours.weekdayClose; hour++) {
       cells.push({
         hour,
         value: 0,
-        closed: hourClosed(weekday, hour)
+        closed: hourClosed(weekday, hour, hours)
       })
     }
     return {

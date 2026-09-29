@@ -52,8 +52,17 @@ async function SmsLogLoader({
     if (!supabase) {
       loadError = 'Az adatbázis kapcsolat nem elérhető.'
     } else {
-      const hasAddon = await tenantHasQuoteReadySms(supabase, user.tenantId)
-      if (!hasAddon) {
+      const [hasAddon, csoEnt] = await Promise.all([
+        tenantHasQuoteReadySms(supabase, user.tenantId),
+        supabase
+          .from('tenant_entitlements')
+          .select('feature_key')
+          .eq('tenant_id', user.tenantId)
+          .eq('feature_key', 'customer_special_orders')
+          .maybeSingle()
+      ])
+      const hasCso = Boolean(csoEnt.data)
+      if (!hasAddon && !hasCso) {
         missingAddon = true
       } else {
         try {
@@ -98,8 +107,8 @@ async function SmsLogLoader({
       <div className="space-y-3">
         <h1 className="text-h1 text-ink">SMS napló</h1>
         <p className="max-w-xl rounded-md border border-warning/30 bg-warning-soft p-3 text-body text-warning-ink">
-          A készre jelentés SMS nincs bekapcsolva ennél a cégnél. Ha szeretnéd,
-          hívd vagy írd meg az Optinovának.
+          A készre jelentés SMS add-on és az ügyfélrendelés sincs bekapcsolva
+          ennél a cégnél. Ha szeretnéd, hívd vagy írd meg az Optinovának.
         </p>
         <Link
           href="/beallitasok/elofizetes"

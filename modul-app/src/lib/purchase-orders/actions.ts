@@ -7,7 +7,8 @@ import {
   mergeItemsByAccessory,
   purchaseOrderFormSchema,
   type PurchaseOrderFormInput,
-  type PurchaseOrderFormValues
+  type PurchaseOrderFormValues,
+  type PurchaseOrderItemInput
 } from '@/lib/purchase-orders/parse'
 import { searchProductsForPurchaseOrder } from '@/lib/purchase-orders/queries'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
@@ -227,6 +228,138 @@ export async function createPurchaseOrder(
 
   revalidatePoPaths(po.id)
   return { ok: true, id: po.id }
+}
+
+/**
+ * Tételek hozzáadása meglévő draft PO-hoz.
+ * Azonos accessory → qty összeadás; új accessory → új sor.
+ */
+export async function appendItemsToDraftPurchaseOrder(input: {
+  purchaseOrderId: string
+  /** Ellenőrzés: a PO ehhez a beszállítóhoz tartozzon. */
+  supplierId: string
+  /** Ha megadott: a PO raktárának egyeznie kell. */
+  warehouseId?: string
+  items: PurchaseOrderItemInput[]
+}): Promise<PurchaseOrderActionResult & { poNumber?: string }> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const mergedItems = mergeItemsByAccessory(input.items)
+  if (!mergedItems.length) {
+    return { ok: false, message: 'Nincs hozzáadandó tétel.' }
+  }
+
+  const tenantId = ctx.user.tenantId!
+  const { data: po, error: loadErr } = await ctx.supabase
+    .from('purchase_orders')
+    .select('id, status, supplier_id, warehouse_id, po_number')
+    .eq('id', input.purchaseOrderId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (loadErr || !po) {
+    return { ok: false, message: 'A beszállítói rendelés nem található.' }
+  }
+  if (po.status !== 'draft') {
+    return {
+      ok: false,
+      message: 'Csak vázlat státuszú rendeléshez lehet tételt hozzáadni.'
+    }
+  }
+  if (po.supplier_id !== input.supplierId) {
+    return {
+      ok: false,
+      message: 'A vázlat más beszállítóhoz tartozik.'
+    }
+  }
+  if (input.warehouseId && po.warehouse_id !== input.warehouseId) {
+    return {
+      ok: false,
+      message: 'A vázlat más raktárhoz tartozik.'
+    }
+  }
+
+  const { data: existingItems, error: itemsErr } = await ctx.supabase
+    .from('purchase_order_items')
+    .select(
+      'id, accessory_id, quantity, sort_order, name_snapshot, sku_snapshot, net_price, tax_rate_id, tax_rate_percent, unit_id, unit_shortform'
+    )
+    .eq('purchase_order_id', po.id)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+
+  if (itemsErr) {
+    return { ok: false, message: 'Nem sikerült betölteni a vázlat tételeit.' }
+  }
+
+  const byAccessory = new Map(
+    (existingItems ?? []).map((row) => [row.accessory_id as string, row])
+  )
+  let maxSort = (existingItems ?? []).reduce(
+    (m, r) => Math.max(m, Number(r.sort_order ?? 0)),
+    -1
+  )
+
+  const toInsert: ReturnType<typeof itemRows> = []
+  for (const it of mergedItems) {
+    const prev = byAccessory.get(it.accessoryId)
+    if (prev) {
+      const nextQty = Number(prev.quantity) + it.quantity
+      const { error: updErr } = await ctx.supabase
+        .from('purchase_order_items')
+        .update({
+          quantity: nextQty,
+          // Újabb lead árja nyer, ha van értelmes ár
+          net_price: it.netPrice > 0 ? it.netPrice : prev.net_price,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', prev.id)
+        .eq('tenant_id', tenantId)
+      if (updErr) {
+        const mapped = mapDbError(updErr.message)
+        return {
+          ok: false,
+          message: mapped ?? 'Nem sikerült frissíteni a tételt.'
+        }
+      }
+      continue
+    }
+    maxSort += 1
+    toInsert.push(
+      ...itemRows(tenantId, po.id, [it]).map((row) => ({
+        ...row,
+        sort_order: maxSort
+      }))
+    )
+  }
+
+  if (toInsert.length) {
+    const { error: insErr } = await ctx.supabase
+      .from('purchase_order_items')
+      .insert(toInsert)
+    if (insErr) {
+      const mapped = mapDbError(insErr.message)
+      return {
+        ok: false,
+        message: mapped ?? 'Nem sikerült hozzáadni a tételeket.'
+      }
+    }
+  }
+
+  await ctx.supabase
+    .from('purchase_orders')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', po.id)
+    .eq('tenant_id', tenantId)
+
+  revalidatePoPaths(po.id)
+  return {
+    ok: true,
+    id: po.id,
+    poNumber: (po.po_number as string | undefined) ?? undefined
+  }
 }
 
 export async function updatePurchaseOrder(

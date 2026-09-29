@@ -309,6 +309,8 @@ export function GoodsReceiptDetailClient({
   const [labelTarget, setLabelTarget] = useState<LabelTarget | null>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const syncedIdRef = useRef(initial.id)
+  const syncedStatusRef = useRef(initial.status)
 
   const checking = initial.status === 'checking'
   const editable = canWrite && checking
@@ -319,9 +321,37 @@ export function GoodsReceiptDetailClient({
     warehouses.find((w) => w.id === warehouseId)?.name ??
     initial.warehouse_name
 
+  // Ne írd felül a helyi qty-t minden RSC refresh után (autosave race → ugrás).
+  // Teljes sync csak id/státusz váltáskor; új/eltűnt sorok merge.
   useEffect(() => {
-    setQtys(buildQtyMap(initial))
-    setWarehouseId(initial.warehouse_id)
+    const idChanged = syncedIdRef.current !== initial.id
+    const statusChanged = syncedStatusRef.current !== initial.status
+    if (idChanged || statusChanged) {
+      syncedIdRef.current = initial.id
+      syncedStatusRef.current = initial.status
+      setQtys(buildQtyMap(initial))
+      setWarehouseId(initial.warehouse_id)
+      return
+    }
+
+    setQtys((prev) => {
+      let changed = false
+      const next = { ...prev }
+      const alive = new Set(initial.items.map((it) => it.id))
+      for (const it of initial.items) {
+        if (!(it.id in next)) {
+          next[it.id] = it.quantity_received
+          changed = true
+        }
+      }
+      for (const id of Object.keys(next)) {
+        if (!alive.has(id)) {
+          delete next[id]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
   }, [initial])
 
   const linesWithQty = useMemo(
@@ -353,7 +383,7 @@ export function GoodsReceiptDetailClient({
       !deleteOpen &&
       !extraCandidate
     ) {
-      barcodeRef.current.focus()
+      barcodeRef.current.focus({ preventScroll: true })
     }
   }, [editable, receiveOpen, deleteOpen, extraCandidate])
 
@@ -361,12 +391,16 @@ export function GoodsReceiptDetailClient({
     if (!editable) return
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      void saveGoodsReceiptQuantities(initial.id, {
-        items: Object.entries(next).map(([id, quantityReceived]) => ({
-          id,
-          quantityReceived
-        }))
-      }).then((result) => {
+      void saveGoodsReceiptQuantities(
+        initial.id,
+        {
+          items: Object.entries(next).map(([id, quantityReceived]) => ({
+            id,
+            quantityReceived
+          }))
+        },
+        { revalidate: false }
+      ).then((result) => {
         if (!result.ok) toast.error(result.message)
       })
     }, 500)
@@ -441,12 +475,16 @@ export function GoodsReceiptDetailClient({
 
   function handleReceive() {
     startTransition(async () => {
-      const saved = await saveGoodsReceiptQuantities(initial.id, {
-        items: Object.entries(qtys).map(([id, quantityReceived]) => ({
-          id,
-          quantityReceived
-        }))
-      })
+      const saved = await saveGoodsReceiptQuantities(
+        initial.id,
+        {
+          items: Object.entries(qtys).map(([id, quantityReceived]) => ({
+            id,
+            quantityReceived
+          }))
+        },
+        { revalidate: false }
+      )
       if (!saved.ok) {
         toast.error(saved.message)
         setReceiveOpen(false)
@@ -594,7 +632,7 @@ export function GoodsReceiptDetailClient({
 
       <div
         className={cn(
-          'mb-3 flex gap-2.5 rounded-md border px-3 py-2.5',
+          'mb-3 flex min-h-[3.25rem] gap-2.5 rounded-md border px-3 py-2.5',
           outcomeShell[outcome.tone]
         )}
         role="status"

@@ -119,6 +119,29 @@ const allNavItems: NavNode[] = [
     accent: 'slate'
   },
   {
+    type: 'group',
+    label: 'Ügyfélrendelések',
+    icon: ClipboardList,
+    accent: 'slate',
+    matchPrefix: '/ugyfelrendelesek',
+    children: [
+      {
+        type: 'link',
+        label: 'Rendelések',
+        href: '/ugyfelrendelesek',
+        icon: ClipboardList,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Beszállítói várólista',
+        href: '/ugyfelrendelesek/varolista',
+        icon: Truck,
+        accent: 'slate'
+      }
+    ]
+  },
+  {
     type: 'link',
     label: 'Belépők',
     href: '/belepok',
@@ -502,6 +525,13 @@ const allNavItems: NavNode[] = [
       },
       {
         type: 'link',
+        label: 'Átvételi blokk',
+        href: '/beallitasok/atveteli-blokk',
+        icon: Settings2,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
         label: 'Online partner',
         href: '/beallitasok/partner',
         icon: Handshake,
@@ -509,7 +539,7 @@ const allNavItems: NavNode[] = [
       },
       {
         type: 'link',
-        label: 'SMS sablon',
+        label: 'SMS sablonok',
         href: '/beallitasok/sms',
         icon: MessageSquare,
         accent: 'slate'

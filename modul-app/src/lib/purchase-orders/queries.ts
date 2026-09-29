@@ -95,6 +95,8 @@ export type PurchaseProductSearchItem = {
   tax_rate_percent: number
   unit_id: string
   unit_shortform: string
+  /** Fő beszállító (accessory_suppliers.is_primary), ha van. */
+  primary_supplier_id: string | null
 }
 
 export async function listPurchaseOrders(
@@ -442,7 +444,26 @@ export async function searchProductsForPurchaseOrder(
     throw new Error('Nem sikerült keresni a termékek között.')
   }
 
-  return (data ?? []).map((row) => {
+  const rows = data ?? []
+  const ids = rows.map((r) => r.id as string)
+  const primaryByAccessory = new Map<string, string>()
+  if (ids.length > 0) {
+    const { data: links } = await supabase
+      .from('accessory_suppliers')
+      .select('accessory_id, supplier_id, is_primary, sort_order')
+      .eq('tenant_id', tenantId)
+      .in('accessory_id', ids)
+      .order('is_primary', { ascending: false })
+      .order('sort_order', { ascending: true })
+
+    for (const link of links ?? []) {
+      const aid = link.accessory_id as string
+      if (primaryByAccessory.has(aid)) continue
+      primaryByAccessory.set(aid, link.supplier_id as string)
+    }
+  }
+
+  return rows.map((row) => {
     const taxRates = row.tax_rates as
       | { rate_percent: number | string }
       | { rate_percent: number | string }[]
@@ -466,7 +487,8 @@ export async function searchProductsForPurchaseOrder(
       tax_rate_id: row.tax_rate_id,
       tax_rate_percent: Number(tax?.rate_percent ?? 0),
       unit_id: row.unit_id,
-      unit_shortform: unit?.shortform ?? 'db'
+      unit_shortform: unit?.shortform ?? 'db',
+      primary_supplier_id: primaryByAccessory.get(row.id as string) ?? null
     }
   })
 }

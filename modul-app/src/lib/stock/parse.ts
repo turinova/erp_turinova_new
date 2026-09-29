@@ -18,7 +18,8 @@ export const MOVEMENT_SOURCE_LABEL: Record<StockMovementSource, string> = {
   sale_return: 'Visszáru',
   sale: 'Eladás',
   transfer: 'Áttárolás',
-  adjustment: 'Korrekció'
+  adjustment: 'Korrekció',
+  customer_special_order: 'Ügyfélrendelés'
 }
 
 export function movementSourceTone(
@@ -32,6 +33,8 @@ export function movementSourceTone(
     case 'sale':
       return 'danger'
     case 'transfer':
+      return 'info'
+    case 'customer_special_order':
       return 'info'
     case 'adjustment':
       return 'neutral'

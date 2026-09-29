@@ -1,3 +1,5 @@
+import type { FootcounterOpenHours } from '@/lib/footcounter/open-hours'
+
 export const FOOTCOUNTER_FEATURE = 'footcounter' as const
 export const FOOTCOUNTER_ADDON_KEY = 'footcounter' as const
 export const FOOTCOUNTER_PAGE = '/belepok' as const
@@ -44,8 +46,9 @@ export type FootcounterHomeSlim = {
   todayOut: number
   /** length 24, index = Europe/Budapest hour */
   hourlyIn: number[]
+  hourlyOut: number[]
   lastEventAt: string | null
   deviceLastSeen: string | null
   liveStatus: 'live' | 'idle' | 'offline' | 'none'
+  openHours: FootcounterOpenHours
 }
-

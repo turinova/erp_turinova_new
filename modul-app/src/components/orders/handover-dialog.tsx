@@ -15,6 +15,9 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { prepareHandoverSlipPrint } from '@/lib/handover-slip/actions'
+import { printHandoverSlip } from '@/lib/handover-slip/print'
+import { requestUsbPrinter } from '@/lib/handover-slip/webusb'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { finishQuoteHandover } from '@/lib/quotes/production-actions'
@@ -75,6 +78,9 @@ export function HandoverDialog({
       setLoadingSkip(true)
     }
 
+    // WebUSB user gesture — Átadás gomb clickjén, a szerver hívás előtt
+    const usbDevice = await requestUsbPrinter()
+
     try {
       const result = await finishQuoteHandover({
         quoteId,
@@ -90,6 +96,29 @@ export function HandoverDialog({
           ? `${orderNumber} átadva, hátralék rögzítve.`
           : `${orderNumber} átadva a megrendelőnek.`
       )
+
+      try {
+        const slip = await prepareHandoverSlipPrint(quoteId)
+        if (slip.ok && slip.print) {
+          const printed = await printHandoverSlip({
+            data: slip.data,
+            settings: slip.settings,
+            copyTypes: slip.copyTypes,
+            usbDevice
+          })
+          if (printed.method === 'browser') {
+            toast.message('Átvételi blokk: böngészős nyomtatás.')
+          }
+        } else if (!slip.ok) {
+          toast.warning(slip.message)
+        }
+      } catch (printErr) {
+        console.warn('handover slip print', printErr)
+        toast.warning(
+          'Átadás kész, de az átvételi blokk nyomtatása nem sikerült.'
+        )
+      }
+
       onOpenChange(false)
       onSuccess()
     } finally {

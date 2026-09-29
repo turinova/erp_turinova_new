@@ -2,11 +2,16 @@ import type { Metadata } from 'next'
 
 import { BelepokAnalysisTabs } from '@/components/footcounter/belepok-analysis-tabs'
 import { BelepokLiveIndicator } from '@/components/footcounter/belepok-live-indicator'
+import { BelepokOpenHoursSettings } from '@/components/footcounter/belepok-open-hours-settings'
 import { BelepokTodayPanel } from '@/components/footcounter/belepok-today-panel'
 import { WeekHourHeatmap } from '@/components/footcounter/charts/week-hour-heatmap'
 import { getSessionUser } from '@/lib/auth/session'
-import { MONTH_SHORT_HU } from '@/lib/footcounter/chart-tokens'
+import {
+  FOOTCOUNTER_HOUR_LABELS,
+  MONTH_SHORT_HU
+} from '@/lib/footcounter/chart-tokens'
 import { tenantHasFootcounter } from '@/lib/footcounter/entitlement'
+import { hourLabelsForRange } from '@/lib/footcounter/open-hours'
 import {
   getFootcounterDashboard,
   getFootcounterLiveStatus
@@ -133,6 +138,10 @@ export default async function BelepokPage({
   )
 
   const monthLabel = `${year}. ${MONTH_SHORT_HU[month - 1]}`
+  const heatHourLabels = hourLabelsForRange(
+    dashboard.openHours.weekdayOpen,
+    dashboard.openHours.weekdayClose
+  )
 
   if (dashboard.loadError) {
     return (
@@ -155,6 +164,8 @@ export default async function BelepokPage({
         />
       </div>
 
+      <BelepokOpenHoursSettings initial={dashboard.openHours} />
+
       <BelepokTodayPanel data={dashboard.today} />
 
       <BelepokAnalysisTabs
@@ -173,10 +184,13 @@ export default async function BelepokPage({
             Hét napja × óra
           </h2>
           <p className="text-hint text-ink-secondary">
-            Átlagos belépésszám óránként · {monthLabel}
+            Átlagos belépésszám óránként · {monthLabel} ·{' '}
+            {heatHourLabels.length > 0
+              ? `${heatHourLabels[0]}–${heatHourLabels[heatHourLabels.length - 1]}`
+              : FOOTCOUNTER_HOUR_LABELS.join('–')}
           </p>
         </div>
-        <WeekHourHeatmap rows={dashboard.heatmap} />
+        <WeekHourHeatmap rows={dashboard.heatmap} hourLabels={heatHourLabels} />
       </section>
     </div>
   )

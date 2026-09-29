@@ -4,7 +4,11 @@ import {
   currentUtcYearMonth,
   formatHufAmount
 } from '@/lib/billing/estimate'
-import type { SmsSendStatus, SmsSkipReason } from '@/lib/sms/types'
+import type {
+  SmsSendStatus,
+  SmsSkipReason,
+  SmsTemplateKey
+} from '@/lib/sms/types'
 
 export type SmsLogListItem = {
   id: string
@@ -14,6 +18,10 @@ export type SmsLogListItem = {
   to_display: string
   order_number: string | null
   quote_id: string | null
+  customer_special_order_id: string | null
+  template_key: SmsTemplateKey | string
+  template_label: string
+  href: string | null
   skip_reason: SmsSkipReason | null
   error_code: string | null
   billable: boolean
@@ -43,7 +51,13 @@ const SKIP_LABEL: Record<SmsSkipReason, string> = {
   already_sent: 'Már elküldve',
   user_declined: 'Nem kérték a küldést',
   no_customer: 'Nincs ügyfél',
-  empty_body: 'Üres szöveg'
+  empty_body: 'Üres szöveg',
+  not_ready: 'Nincs átvehető tétel'
+}
+
+const TEMPLATE_LABEL: Record<string, string> = {
+  quote_ready: 'Lapszabászat',
+  cso_ready: 'Ügyfélrendelés'
 }
 
 export function smsStatusLabel(status: SmsSendStatus): string {
@@ -53,6 +67,11 @@ export function smsStatusLabel(status: SmsSendStatus): string {
 export function smsSkipReasonLabel(reason: SmsSkipReason | null): string | null {
   if (!reason) return null
   return SKIP_LABEL[reason] ?? reason
+}
+
+export function smsTemplateLabel(key: string | null | undefined): string {
+  if (!key) return '—'
+  return TEMPLATE_LABEL[key] ?? key
 }
 
 /** Audit: középső rész maszkolva. */
@@ -106,8 +125,11 @@ export async function listSmsSendEvents(
         to_e164,
         skip_reason,
         error_code,
+        template_key,
         quote_id,
-        quotes ( order_number )
+        customer_special_order_id,
+        quotes ( order_number ),
+        customer_special_orders ( order_number )
       `,
         { count: 'exact' }
       )
@@ -138,23 +160,43 @@ export async function listSmsSendEvents(
       to_e164: string | null
       skip_reason: string | null
       error_code: string | null
+      template_key: string | null
       quote_id: string | null
+      customer_special_order_id: string | null
       quotes:
+        | { order_number: string | null }
+        | { order_number: string | null }[]
+        | null
+      customer_special_orders:
         | { order_number: string | null }
         | { order_number: string | null }[]
         | null
     }) => {
       const quotes = row.quotes
       const quote = Array.isArray(quotes) ? quotes[0] : quotes
+      const csos = row.customer_special_orders
+      const cso = Array.isArray(csos) ? csos[0] : csos
       const status = row.status as SmsSendStatus
+      const templateKey = row.template_key || 'quote_ready'
+      const orderNumber =
+        quote?.order_number ?? cso?.order_number ?? null
+      const href = row.quote_id
+        ? `/ajanlatok/${row.quote_id}`
+        : row.customer_special_order_id
+          ? `/ugyfelrendelesek/${row.customer_special_order_id}`
+          : null
       return {
         id: row.id,
         created_at: row.created_at,
         status,
         to_e164: row.to_e164 ?? null,
         to_display: maskE164(row.to_e164),
-        order_number: quote?.order_number ?? null,
+        order_number: orderNumber,
         quote_id: row.quote_id ?? null,
+        customer_special_order_id: row.customer_special_order_id ?? null,
+        template_key: templateKey,
+        template_label: smsTemplateLabel(templateKey),
+        href,
         skip_reason: (row.skip_reason as SmsSkipReason | null) ?? null,
         error_code: row.error_code ?? null,
         billable: status === 'sent' || status === 'delivered'
@@ -173,7 +215,10 @@ export async function listSmsSendEvents(
   }
 }
 
-export function smsBillableHint(billableCount: number, unitPriceHuf: number) {
-  if (billableCount <= 0) return 'Ebben a hónapban még nincs számlázható SMS.'
-  return `${billableCount} db számlázható · ${formatHufAmount(billableCount * unitPriceHuf)} nettó`
+export function smsBillableHint(
+  billableCount: number,
+  unitPriceHuf: number
+): string {
+  const amount = billableCount * unitPriceHuf
+  return `${billableCount} számlázható · ${formatHufAmount(amount)} (becslés)`
 }

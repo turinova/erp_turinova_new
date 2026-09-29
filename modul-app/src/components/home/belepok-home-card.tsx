@@ -5,11 +5,12 @@ import { useMemo } from 'react'
 
 import { BelepokLiveIndicator } from '@/components/footcounter/belepok-live-indicator'
 import { MetricCell, MetricRow } from '@/components/home/home-metric-row'
+import {
+  formatHoursLabel,
+  todayDisplayRange
+} from '@/lib/footcounter/open-hours'
 import type { FootcounterHomeSlim } from '@/lib/footcounter/types'
 import { cn } from '@/lib/utils'
-
-const HOUR_START = 7
-const HOUR_END = 18
 
 function heatOpacity(value: number, max: number): number {
   if (max <= 0 || value <= 0) return 0.06
@@ -26,9 +27,25 @@ function budapestCurrentHour(): number {
   return Number(parts.find((p) => p.type === 'hour')?.value ?? 0)
 }
 
+function budapestWeekday(): number {
+  const key = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Budapest',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date())
+  const dow = new Date(`${key}T12:00:00Z`).getUTCDay()
+  return (dow + 6) % 7
+}
+
 export function BelepokHomeCard({ data }: { data: FootcounterHomeSlim }) {
-  const slice = data.hourlyIn.slice(HOUR_START, HOUR_END + 1)
-  const max = Math.max(1, ...slice)
+  const range = todayDisplayRange(data.openHours, budapestWeekday())
+  const hourStart = range.open
+  const hourEnd = range.close
+  const slice = range.closed
+    ? []
+    : data.hourlyIn.slice(hourStart, hourEnd + 1)
+  const max = Math.max(1, ...slice, 0)
   const hasData = slice.some((v) => v > 0)
   const currentHour = budapestCurrentHour()
 
@@ -41,10 +58,11 @@ export function BelepokHomeCard({ data }: { data: FootcounterHomeSlim }) {
         bestIdx = i
       }
     })
-    return { hour: HOUR_START + bestIdx, count: bestVal }
-  }, [slice])
+    return { hour: hourStart + bestIdx, count: bestVal }
+  }, [slice, hourStart])
 
   const netInside = Math.max(0, data.todayIn - data.todayOut)
+  const hoursLabel = formatHoursLabel(hourStart, hourEnd)
 
   return (
     <div className="space-y-2">
@@ -83,19 +101,25 @@ export function BelepokHomeCard({ data }: { data: FootcounterHomeSlim }) {
 
       <div className="rounded-md border border-border bg-surface px-3 py-2.5">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-hint text-ink-secondary">Napi eloszlás (7–18)</p>
+          <p className="text-hint text-ink-secondary">
+            Napi eloszlás ({hoursLabel})
+          </p>
           <BelepokLiveIndicator
             status={data.liveStatus}
             lastSeenAt={data.deviceLastSeen}
           />
         </div>
-        {!hasData && data.todayIn === 0 ? (
+        {range.closed ? (
+          <p className="py-2 text-body text-ink-secondary">
+            Ma zárva van a beállított nyitvatartás szerint.
+          </p>
+        ) : !hasData && data.todayIn === 0 ? (
           <p className="py-2 text-body text-ink-secondary">Ma még nincs belépő.</p>
         ) : (
           <>
             <div className="flex gap-0.5 overflow-hidden rounded-sm">
               {slice.map((v, i) => {
-                const hour = HOUR_START + i
+                const hour = hourStart + i
                 const isCurrent = hour === currentHour
                 return (
                   <div
@@ -114,9 +138,12 @@ export function BelepokHomeCard({ data }: { data: FootcounterHomeSlim }) {
             </div>
             <div className="mt-0.5 flex gap-0.5">
               {slice.map((_, i) => {
-                const hour = HOUR_START + i
+                const hour = hourStart + i
                 const show =
-                  hour === HOUR_START || hour === 12 || hour === HOUR_END
+                  hour === hourStart ||
+                  hour === 12 ||
+                  hour === hourEnd ||
+                  (hourStart < 12 && hourEnd > 12 && hour === 12)
                 return (
                   <div key={hour} className="flex-1 text-center">
                     {show ? (

@@ -22,7 +22,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 13
+export const PAGE_CATALOG_VERSION = 14
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -43,6 +43,11 @@ export const APP_PAGES: AppPageDef[] = [
     category: 'Értékesítés'
   },
   { key: '/ugyfelek', label: 'Ügyfelek', category: 'Fő' },
+  {
+    key: '/ugyfelrendelesek',
+    label: 'Ügyfélrendelések',
+    category: 'Fő'
+  },
   { key: '/belepok', label: 'Belépők', category: 'Fő' },
   { key: '/ertekesitesek', label: 'Értékesítések', category: 'Értékesítés' },
   {
@@ -175,6 +180,11 @@ export const APP_PAGES: AppPageDef[] = [
     category: 'Beállítások'
   },
   {
+    key: '/beallitasok/atveteli-blokk',
+    label: 'Átvételi blokk',
+    category: 'Beállítások'
+  },
+  {
     key: '/beallitasok/partner',
     label: 'Online partner',
     category: 'Beállítások'
@@ -221,6 +231,7 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/kereso',
       '/opti',
       '/ugyfelek',
+      '/ugyfelrendelesek',
       '/ertekesitesek',
       '/pos',
       '/pos/beallitasok',

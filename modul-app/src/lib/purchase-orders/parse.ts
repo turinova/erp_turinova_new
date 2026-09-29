@@ -11,7 +11,7 @@ export type PurchaseOrderStatus = (typeof PO_STATUSES)[number]
 
 export const PO_STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
   draft: 'Vázlat',
-  ordered: 'Megrendelve',
+  ordered: 'Elküldve',
   partial: 'Részben beérkezett',
   received: 'Beérkezett',
   cancelled: 'Törölve'

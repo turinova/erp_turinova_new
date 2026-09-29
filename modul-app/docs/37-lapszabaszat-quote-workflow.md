@@ -21,7 +21,7 @@
 | `ordered` | Megrendelve | Gyártásba adás | Detail / lista |
 | `in_production` | Gyártásban | Készre jelöl | **Detail** / lista / scanner |
 | `ready` | Kész | Átadás | **Detail** / lista / scanner |
-| `finished` | Lezárva | — | PDF |
+| `finished` | Lezárva | — | PDF; opcionális **átvételi blokk** nyomtatás átadáskor ([43](43-atveteli-blokk.md)) |
 | `cancelled` | Törölve | — | UI ritka; lista „törlés” = soft-delete |
 
 **Fizetés** külön tengely (`not_paid` / `partial` / `paid`) — nem váltja a gyártási státuszt. Detailen: **secondary** a Pénzügy csoportban.
