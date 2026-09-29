@@ -1,7 +1,8 @@
 # 36 — Számlázás (Számlázz.hu) — Alap plan
 
 **Státusz:** P0–P2d + S1.5 (fulfill előtt végszámla tiltva).  
-**Route:** `/szamlak` · `/ajanlatok/bizonylatok` · `/beallitasok/szamlazas` · sale detail · quote detail · POS  
+**Route:** `/szamlak` (Pénzügy → Bizonylatok; `?source=sale|opti_order`) · `/beallitasok/szamlazas` · sale detail · quote detail · POS  
+**Legacy:** `/ajanlatok/bizonylatok` → redirect `/szamlak?source=opti_order`  
 **Migráció:** `20260526_szamlazas_alap.sql`, `20260534_quote_billing_snapshots.sql`  
 **Kapcsolat:** [28](28-ertekesites-workflow.md) S3, [29](29-pos-workflow.md), [37](37-lapszabaszat-quote-workflow.md)
 
@@ -9,7 +10,7 @@
 
 ## 0. Egy mondat
 
-> Az ERP kiállítja a bizonylatot a **Számlázz.hu Agent**en. Manuális kiállítás előtt **PDF előnézet**. Végszámla: **fizetve + áru átadva** (`fulfilled`).
+> Az ERP kiállítja a bizonylatot a **Számlázz.hu Agent**en — értékesítésről, lapszabászatról **vagy manuálisan** (`/szamlak/uj`). Manuális kiállítás előtt **PDF előnézet**. Végszámla (sale): **fizetve + áru átadva** (`fulfilled`).
 
 ---
 
@@ -64,8 +65,9 @@ Helper: `invoice-rules.ts`. RPC: `fulfill_sale`.
 - **Issue dialógus:** PDF iframe; Kiállítás csak preview után; típus elrejtve ha a rendszer tudja  
 - **Fizetés** + confirmed → `?fulfill=1`; fulfill után `?issue=normal`  
 - **Sale detail:** egy next-step banner; aktív számla → PDF gomb  
-- **Lista `/szamlak`:** view chip (default **Fizetésre vár**); PDF / sor; kinnlevő glance; lejárt határidő warning. (eladás + lapszabászat)
-- **Lista `/ajanlatok/bizonylatok`:** ugyanaz az UI, csak `related_source_type = opti_order`
+- **Lista `/szamlak`:** forrás chip (Mind / Értékesítés / Lapszabászat / **Manuális**) + view chip (default **Fizetésre vár**); **Új számla** → `/szamlak/uj`; PDF / sor; kinnlevő glance; lejárt határidő warning.
+- **Manuális `/szamlak/uj`:** vevő + tételek + kötelező Agent PDF előnézet → Kiállítás; `related_source_type = manual` (nincs sale / opti_order).
+- Nav: **Pénzügy → Bizonylatok** (nem Értékesítés / Lapszabászat alatt).
 - **Detail Bizonylatok:** közös `SourceInvoicesSection` (sale + quote) — PDF, sztornó, életút
 - **Szótár:** sale `confirmed` = **Átadásra vár**; lifecycle pending = **Fizetésre vár**
 - **Fizetési mód (dialógus):** mindhárom típusnál választható (KP / kártya / utalás). Default: utolsó ERP payment, különben átutalás. Nem rögzít ERP befizetést — az külön CTA.

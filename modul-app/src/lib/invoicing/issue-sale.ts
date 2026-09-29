@@ -2,12 +2,18 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { getOrCreateTenantCompany } from '@/lib/company/queries'
 import {
+  insertInvoiceLines,
+  sumInvoiceLines
+} from '@/lib/finance/invoice-lines'
+import { isFinancePeriodLocked } from '@/lib/finance/period-lock'
+import {
   postSzamlazzXml,
   fetchSzamlazzPdf
 } from '@/lib/invoicing/szamlazz-agent'
 import {
   buildSaleInvoiceXml,
-  buildStornoXml
+  buildStornoXml,
+  type SaleInvoiceLine
 } from '@/lib/invoicing/szamlazz-xml'
 import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
 import {
@@ -102,6 +108,18 @@ export async function issueInvoiceFromSale(
       ok: false,
       message:
         'Hiányoznak a számlázási adatok (név / cím). Töltsd ki az eladáson.'
+    }
+  }
+
+  const lock = await isFinancePeriodLocked(
+    supabase,
+    tenantId,
+    input.fulfillmentDate
+  )
+  if (lock.locked) {
+    return {
+      ok: false,
+      message: `A ${lock.periodYm} időszak le van zárva. Feloldás: Pénzügy → Exportok.`
     }
   }
 
@@ -214,6 +232,30 @@ export async function issueInvoiceFromSale(
         ? Number(input.proformaAmount) || undefined
         : undefined
 
+  const invoiceId = crypto.randomUUID()
+  const snapshotLines: SaleInvoiceLine[] =
+    amountGross && amountGross > 0
+      ? (() => {
+          const vatRate = 27
+          const brutto = Math.round(amountGross)
+          const vat = Math.round((brutto / (100 + vatRate)) * vatRate)
+          const net = brutto - vat
+          return [
+            {
+              name: input.kind === 'advance' ? 'Előleg' : 'Díjbekérő',
+              quantity: 1,
+              unit: 'db',
+              unitNet: net,
+              vatPercent: vatRate,
+              lineNet: net,
+              lineVat: vat,
+              lineGross: brutto
+            }
+          ]
+        })()
+      : lines
+  const totals = sumInvoiceLines(snapshotLines)
+
   let xml: string
   try {
     xml = buildSaleInvoiceXml({
@@ -241,7 +283,8 @@ export async function issueInvoiceFromSale(
       lines,
       amountGross: amountGross && amountGross > 0 ? amountGross : null,
       existingAdvanceNumber: activeAdvance?.provider_invoice_number ?? null,
-      existingProformaNumber: activeProforma?.provider_invoice_number ?? null
+      existingProformaNumber: activeProforma?.provider_invoice_number ?? null,
+      externalId: invoiceId
     })
   } catch (err) {
     return {
@@ -260,12 +303,15 @@ export async function issueInvoiceFromSale(
   const storedType = issueKindToStoredType(input.kind)
   const gross =
     amountGross && amountGross > 0
-      ? amountGross
-      : detail.total_gross + detail.cash_rounding_amount
+      ? Math.round(amountGross)
+      : totals.gross || detail.total_gross + detail.cash_rounding_amount
+  const paidFully =
+    input.kind === 'normal' && detail.payment_status === 'paid'
 
   const { data: inserted, error: insertErr } = await supabase
     .from('invoices')
     .insert({
+      id: invoiceId,
       tenant_id: tenantId,
       provider: 'szamlazz_hu',
       provider_invoice_number: posted.invoiceNumber,
@@ -279,10 +325,11 @@ export async function issueInvoiceFromSale(
       payment_due_date: input.dueDate || null,
       fulfillment_date: input.fulfillmentDate || null,
       gross_total: gross,
-      payment_status:
-        input.kind === 'normal' && detail.payment_status === 'paid'
-          ? 'fizetve'
-          : 'pending',
+      net_total: totals.net,
+      vat_total: totals.vat,
+      external_id: invoiceId,
+      paid_amount: paidFully ? gross : 0,
+      payment_status: paidFully ? 'fizetve' : 'pending',
       note: input.comment || null,
       created_by: userId
     })
@@ -298,9 +345,11 @@ export async function issueInvoiceFromSale(
     }
   }
 
+  await insertInvoiceLines(supabase, tenantId, invoiceId, snapshotLines)
+
   return {
     ok: true,
-    invoiceId: inserted.id as string,
+    invoiceId,
     providerNumber: posted.invoiceNumber
   }
 }

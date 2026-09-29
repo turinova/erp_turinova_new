@@ -45,5 +45,6 @@
 | [41-webshop-legal.md](41-webshop-legal.md) | **Webshop jogi oldalak** — generált ÁSZF/adatkezelés/elállás…, online elállás, verziók, Webshop → Jogi oldalak / Elállások |
 | [42-ugyfelrendeles.md](42-ugyfelrendeles.md) | **Ügyfélrendelés** — special order, 4 státusz, PO + foglalás + SMS (Alap) |
 | [43-atveteli-blokk.md](43-atveteli-blokk.md) | **Átvételi blokk** — Opti hőnyomtató elismervény, Lapszabászat ajándék |
+| [44-penzugy-finance.md](44-penzugy-finance.md) | **Pénzügy** — AR, ÁFA, export, kifiz Agent, soft-lock |
 
 **Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok: **`33`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**. Agent commerce: **`38`**. Webshop add-on: **`39`**. Ügyfélrendelés: **`42`**. Átvételi blokk: **`43`**.

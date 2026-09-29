@@ -44,6 +44,8 @@ export type SaleInvoiceXmlInput = {
   existingAdvanceNumber?: string | null
   existingProformaNumber?: string | null
   preview?: boolean
+  /** Számlázz szamlaKulsoAzon = ERP invoice UUID */
+  externalId?: string | null
 }
 
 const PAYMENT_LABEL: Record<InvoicePaymentMethod, string> = {
@@ -133,6 +135,11 @@ export function buildSaleInvoiceXml(input: SaleInvoiceXmlInput): string {
     <szamlaLetoltes>true</szamlaLetoltes>
     <valaszVerzio>2</valaszVerzio>
     <aggregator></aggregator>
+    ${
+      input.externalId && !input.preview
+        ? `<szamlaKulsoAzon>${escapeXml(input.externalId)}</szamlaKulsoAzon>`
+        : ''
+    }
   </beallitasok>
   <fejlec>
     <keltDatum>${invoiceDate}</keltDatum>
@@ -215,3 +222,48 @@ export function buildStornoXml(opts: {
   </vevo>
 </xmlszamlast>`
 }
+
+/** Kiegyenlítés (befizetés) — action-szamla_agent_kifiz */
+export function buildKifizXml(opts: {
+  agentKey: string
+  invoiceNumber: string
+  paidAt: string
+  amount: number
+  /** készpénz | átutalás | bankkártya */
+  jogcim: string
+  additive?: boolean
+  note?: string
+}): string {
+  const desc = opts.note?.trim()
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<xmlszamlakifiz xmlns="http://www.szamlazz.hu/xmlszamlakifiz" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamlakifiz https://www.szamlazz.hu/szamla/docs/xsds/agentkifiz/xmlszamlakifiz.xsd">
+  <beallitasok>
+    <szamlaagentkulcs>${escapeXml(opts.agentKey)}</szamlaagentkulcs>
+    <szamlaszam>${escapeXml(opts.invoiceNumber)}</szamlaszam>
+    <additiv>${opts.additive === false ? 'false' : 'true'}</additiv>
+  </beallitasok>
+  <kifizetes>
+    <datum>${escapeXml(opts.paidAt)}</datum>
+    <jogcim>${escapeXml(opts.jogcim)}</jogcim>
+    <osszeg>${Math.round(opts.amount)}</osszeg>
+    ${desc ? `<leiras>${escapeXml(desc)}</leiras>` : ''}
+  </kifizetes>
+</xmlszamlakifiz>`
+}
+
+/** Díjbekérő törlés — action-szamla_agent_dijbekero_torlese */
+export function buildDijbekeroTorlesXml(opts: {
+  agentKey: string
+  invoiceNumber: string
+}): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<xmlszamladijbekerotorles xmlns="http://www.szamlazz.hu/xmlszamladijbekerotorles" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamladijbekerotorles https://www.szamlazz.hu/szamla/docs/xsds/dijbekerotorles/xmlszamladijbekerotorles.xsd">
+  <beallitasok>
+    <szamlaagentkulcs>${escapeXml(opts.agentKey)}</szamlaagentkulcs>
+  </beallitasok>
+  <fejlec>
+    <szamlaszam>${escapeXml(opts.invoiceNumber)}</szamlaszam>
+  </fejlec>
+</xmlszamladijbekerotorles>`
+}
+

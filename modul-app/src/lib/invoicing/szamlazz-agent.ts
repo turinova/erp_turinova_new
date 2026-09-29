@@ -327,3 +327,48 @@ function mapSzamlazzError(
   if (c) return `Számlázz.hu hiba (kód: ${c}).`
   return 'Ismeretlen Számlázz.hu hiba. Ellenőrizd a kulcsot és az adatokat.'
 }
+
+/** kifiz / díjbekérő törlés — nincs kötelező számlaszám a válaszban. */
+export async function postSzamlazzSimple(opts: {
+  agentKey: string
+  apiUrl?: string | null
+  xml: string
+  actionField: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const formData = new FormData()
+  formData.append(
+    opts.actionField,
+    new Blob([opts.xml], { type: 'application/xml; charset=utf-8' }),
+    'request.xml'
+  )
+  try {
+    const response = await fetch(normalizeSzamlazzApiUrl(opts.apiUrl), {
+      method: 'POST',
+      body: formData,
+      signal: AbortSignal.timeout(60000)
+    })
+    const errorCode = response.headers.get('szlahu_error_code')
+    const errorMessage = decodeSzamlazzHeader(response.headers.get('szlahu_error'))
+    if (errorCode || errorMessage) {
+      return { ok: false, error: mapSzamlazzError(errorCode, errorMessage) }
+    }
+    const text = await response.text()
+    if (text.includes('<hibakod>') || text.includes('<hibauzenet>')) {
+      const code = text.match(/<hibakod[^>]*>([^<]+)<\/hibakod>/i)?.[1]
+      const msg = text.match(/<hibauzenet[^>]*>([^<]+)<\/hibauzenet>/i)?.[1]
+      return { ok: false, error: mapSzamlazzError(code, msg) }
+    }
+    if (!response.ok) {
+      return { ok: false, error: `Számlázz.hu HTTP hiba: ${response.status}` }
+    }
+    return { ok: true }
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : 'Időtúllépés vagy hálózati hiba a Számlázz.hu felé.'
+    }
+  }
+}

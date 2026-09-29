@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { useState } from 'react'
 
 import { AppSidebar } from '@/components/shell/app-sidebar'
 import { AppTopbar } from '@/components/shell/app-topbar'
@@ -17,6 +18,7 @@ type AppShellProps = {
 export function AppShell({ user, children }: AppShellProps) {
   const pathname = usePathname()
   const { collapsed, setCollapsed } = useSidebarCollapsed()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const isPos = pathname === '/pos' || pathname.startsWith('/pos/')
 
   if (isPos) {
@@ -37,6 +39,8 @@ export function AppShell({ user, children }: AppShellProps) {
         showSubscription={user.role === 'owner'}
         collapsed={collapsed}
         onCollapsedChange={setCollapsed}
+        mobileOpen={mobileNavOpen}
+        onMobileOpenChange={setMobileNavOpen}
       />
       <div
         className={cn(
@@ -49,7 +53,10 @@ export function AppShell({ user, children }: AppShellProps) {
         {user.impersonation ? (
           <ImpersonationBanner info={user.impersonation} />
         ) : null}
-        <AppTopbar user={user} />
+        <AppTopbar
+          user={user}
+          onOpenMobileNav={() => setMobileNavOpen(true)}
+        />
         <main className="px-4 pb-6 pt-4 md:px-6">{children}</main>
       </div>
     </div>

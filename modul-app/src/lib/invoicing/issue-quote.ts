@@ -2,6 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { getOrCreateTenantCompany } from '@/lib/company/queries'
 import {
+  insertInvoiceLines,
+  sumInvoiceLines
+} from '@/lib/finance/invoice-lines'
+import { isFinancePeriodLocked } from '@/lib/finance/period-lock'
+import {
   mapQuoteInvoiceLines,
   quoteHasBilling,
   type QuoteInvoiceDetailLevel,
@@ -11,7 +16,10 @@ import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/setting
 import {
   postSzamlazzXml
 } from '@/lib/invoicing/szamlazz-agent'
-import { buildSaleInvoiceXml } from '@/lib/invoicing/szamlazz-xml'
+import {
+  buildSaleInvoiceXml,
+  type SaleInvoiceLine
+} from '@/lib/invoicing/szamlazz-xml'
 import {
   issueKindToStoredType,
   type InvoiceIssueKind,
@@ -145,7 +153,7 @@ async function buildXmlForQuote(
   tenantId: string,
   detail: QuoteDetail,
   input: IssueQuoteInvoiceInput,
-  opts: { preview: boolean }
+  opts: { preview: boolean; externalId?: string }
 ): Promise<
   | {
       ok: true
@@ -237,7 +245,8 @@ async function buildXmlForQuote(
       lines: mapped.lines,
       amountGross: amountGross && amountGross > 0 ? amountGross : null,
       existingAdvanceNumber: docs.activeAdvance?.provider_invoice_number ?? null,
-      existingProformaNumber: docs.activeProforma?.provider_invoice_number ?? null
+      existingProformaNumber: docs.activeProforma?.provider_invoice_number ?? null,
+      externalId: opts.externalId
     })
     return { ok: true, xml, settings, docs, lines: mapped.lines }
   } catch (err) {
@@ -257,8 +266,22 @@ export async function issueInvoiceFromQuote(
   const detail = await getQuoteDetail(supabase, tenantId, input.quoteId)
   if (!detail) return { ok: false, message: 'Az ajánlat nem található.' }
 
+  const lock = await isFinancePeriodLocked(
+    supabase,
+    tenantId,
+    input.fulfillmentDate
+  )
+  if (lock.locked) {
+    return {
+      ok: false,
+      message: `A ${lock.periodYm} időszak le van zárva. Feloldás: Pénzügy → Exportok.`
+    }
+  }
+
+  const invoiceId = crypto.randomUUID()
   const built = await buildXmlForQuote(supabase, tenantId, detail, input, {
-    preview: false
+    preview: false,
+    externalId: invoiceId
   })
   if (!built.ok) return built
 
@@ -281,12 +304,49 @@ export async function issueInvoiceFromQuote(
     detail.customer.name?.trim() ||
     'Vevő'
   const email = (input.customerEmail || detail.customer.email || '').trim()
+
+  const snapshotLines: SaleInvoiceLine[] =
+    amountGross && amountGross > 0
+      ? (() => {
+          const vatRate = 27
+          const brutto = Math.round(amountGross)
+          const vat = Math.round((brutto / (100 + vatRate)) * vatRate)
+          const net = brutto - vat
+          return [
+            {
+              name: input.kind === 'advance' ? 'Előleg' : 'Díjbekérő',
+              quantity: 1,
+              unit: 'db',
+              unitNet: net,
+              vatPercent: vatRate,
+              lineNet: net,
+              lineVat: vat,
+              lineGross: brutto
+            }
+          ]
+        })()
+      : built.lines.map((l) => ({
+          name: l.name,
+          quantity: l.quantity,
+          unit: l.unit,
+          unitNet: l.unitNet,
+          vatPercent: l.vatPercent,
+          lineNet: l.lineNet,
+          lineVat: l.lineVat,
+          lineGross: l.lineGross
+        }))
+  const totals = sumInvoiceLines(snapshotLines)
   const gross =
-    amountGross && amountGross > 0 ? amountGross : detail.final_total_gross
+    amountGross && amountGross > 0
+      ? Math.round(amountGross)
+      : totals.gross || detail.final_total_gross
+  const paidFully =
+    input.kind === 'normal' && detail.payment_status === 'paid'
 
   const { data: inserted, error: insertErr } = await supabase
     .from('invoices')
     .insert({
+      id: invoiceId,
       tenant_id: tenantId,
       provider: 'szamlazz_hu',
       provider_invoice_number: posted.invoiceNumber,
@@ -300,10 +360,11 @@ export async function issueInvoiceFromQuote(
       payment_due_date: input.dueDate || null,
       fulfillment_date: input.fulfillmentDate || null,
       gross_total: gross,
-      payment_status:
-        input.kind === 'normal' && detail.payment_status === 'paid'
-          ? 'fizetve'
-          : 'pending',
+      net_total: totals.net,
+      vat_total: totals.vat,
+      external_id: invoiceId,
+      paid_amount: paidFully ? gross : 0,
+      payment_status: paidFully ? 'fizetve' : 'pending',
       note: input.comment || null,
       created_by: userId
     })
@@ -318,9 +379,11 @@ export async function issueInvoiceFromQuote(
     }
   }
 
+  await insertInvoiceLines(supabase, tenantId, invoiceId, snapshotLines)
+
   return {
     ok: true,
-    invoiceId: inserted.id as string,
+    invoiceId,
     providerNumber: posted.invoiceNumber
   }
 }

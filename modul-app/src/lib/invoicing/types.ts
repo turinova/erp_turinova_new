@@ -2,7 +2,11 @@ export const SZAMLAZZ_DEFAULT_API_URL = 'https://www.szamlazz.hu/szamla/'
 
 export type InvoiceType = 'szamla' | 'elolegszamla' | 'dijbekero' | 'sztorno'
 export type InvoicePaymentStatus = 'pending' | 'fizetve' | 'nem_lesz_fizetve'
-export type InvoiceSourceType = 'sale' | 'opti_quote' | 'opti_order'
+export type InvoiceSourceType =
+  | 'sale'
+  | 'opti_quote'
+  | 'opti_order'
+  | 'manual'
 export type InvoiceIssueKind = 'normal' | 'advance' | 'proforma'
 export type InvoicePaymentMethod = 'cash' | 'bank_transfer' | 'card'
 

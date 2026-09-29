@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 
 import {
   InvoicesListClient,
-  type InvoiceListView
+  type InvoiceListView,
+  type InvoiceSourceFilter
 } from '@/components/invoicing/invoices-list-client'
 import { getSessionUser } from '@/lib/auth/session'
 import { enrichInvoiceRow } from '@/lib/invoicing/invoice-rules'
@@ -11,7 +12,11 @@ import {
   listInvoices,
   listInvoicesByIds
 } from '@/lib/invoicing/queries'
-import type { InvoiceListItem, InvoiceType } from '@/lib/invoicing/types'
+import type {
+  InvoiceListItem,
+  InvoiceSourceType,
+  InvoiceType
+} from '@/lib/invoicing/types'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -23,12 +28,14 @@ type SearchParams = Promise<{
   q?: string
   search?: string
   view?: string
+  source?: string
   /** legacy */
   type?: string
   lifecycle?: string
 }>
 
 const VIEWS = new Set(['awaiting', 'all', 'invoices', 'stornos'])
+const SOURCES = new Set(['all', 'sale', 'opti_order', 'manual'])
 
 function resolveView(sp: {
   view?: string
@@ -41,6 +48,20 @@ function resolveView(sp: {
   if (sp.type === 'sztorno') return 'stornos'
   if (sp.type === 'dijbekero') return 'awaiting'
   return 'awaiting'
+}
+
+function resolveSource(sp: { source?: string }): InvoiceSourceFilter {
+  if (sp.source && SOURCES.has(sp.source)) {
+    return sp.source as InvoiceSourceFilter
+  }
+  return 'all'
+}
+
+function sourceTypeParam(
+  source: InvoiceSourceFilter
+): InvoiceSourceType | undefined {
+  if (source === 'all') return undefined
+  return source
 }
 
 export default async function SzamlakPage({
@@ -62,6 +83,8 @@ export default async function SzamlakPage({
   const page = Math.max(1, Number(sp.page) || 1)
   const q = (sp.q ?? sp.search)?.trim() || ''
   const view = resolveView(sp)
+  const sourceFilter = resolveSource(sp)
+  const sourceType = sourceTypeParam(sourceFilter)
   const canWrite = Boolean(user.role && user.role !== 'viewer')
   const limit = 25
 
@@ -88,7 +111,8 @@ export default async function SzamlakPage({
         page: 1,
         limit: 200,
         search: q || undefined,
-        type: 'dijbekero'
+        type: 'dijbekero',
+        sourceType
       })
       const dijPeers = await listInvoicePeersForSources(
         supabase,
@@ -139,7 +163,8 @@ export default async function SzamlakPage({
         page,
         limit,
         search: q,
-        type: typeFilter
+        type: typeFilter,
+        sourceType
       })
       rows = result.rows
       total = result.total
@@ -185,9 +210,24 @@ export default async function SzamlakPage({
       limit={limit}
       q={q}
       view={view}
+      sourceFilter={sourceFilter}
       canWrite={canWrite}
       awaitingCount={awaitingCount}
       awaitingSumFt={awaitingSumFt}
+      emptyCtaHref={
+        sourceFilter === 'opti_order'
+          ? '/ajanlatok'
+          : sourceFilter === 'sale'
+            ? '/ertekesitesek'
+            : '/szamlak/uj'
+      }
+      emptyCtaLabel={
+        sourceFilter === 'opti_order'
+          ? 'Lapszabászati ajánlatok'
+          : sourceFilter === 'sale'
+            ? 'Értékesítések'
+            : 'Új számla'
+      }
     />
   )
 }

@@ -85,5 +85,5 @@ Preview kötelező → Kiállítás. Aktív végszámlánál billing zárolt.
 **Bizonylatok UX (sale parity):**
 - Detail alján **Bizonylatok** szekció (`SourceInvoicesSection`) — PDF / sztornó
 - Pénzügy rail: lean CTA (Befizetés + számlázás), nincs mini lista
-- Nav Lapszabászat → **Bizonylatok** → `/ajanlatok/bizonylatok` (`opti_order` only)
+- Nav Lapszabászat → Megrendelések / Ajánlatok. Bizonylatok: **Pénzügy → Bizonylatok** (`/szamlak?source=opti_order`).
 - Kiállítás dialógus: **Tételek** = Összesített (default) | Részletes (anyagonként); előleg / részösszegű díjbekérőnél rejtve

@@ -1,3 +1,5 @@
+'use client'
+
 import { ChevronDown } from 'lucide-react'
 import Link from 'next/link'
 
@@ -5,9 +7,11 @@ import { logoutAction } from '@/lib/auth/actions'
 import type { SessionUser } from '@/lib/auth/session'
 import { getPlatformPublicOrigin } from '@/lib/auth/surface'
 import { Button } from '@/components/ui/button'
+import { MobileNavMenuButton } from '@/components/shell/app-sidebar'
 
 type AppTopbarProps = {
   user: SessionUser
+  onOpenMobileNav?: () => void
 }
 
 function initialsFromLabel(label: string) {
@@ -23,27 +27,32 @@ function initialsFromLabel(label: string) {
   return local.slice(0, 2).toUpperCase()
 }
 
-export function AppTopbar({ user }: AppTopbarProps) {
+export function AppTopbar({ user, onOpenMobileNav }: AppTopbarProps) {
   const showPlatform = user.isPlatformAdmin || user.isDevSession
   const platformOrigin = getPlatformPublicOrigin()
   const platformHref = platformOrigin ? `${platformOrigin}/` : '/platform'
   const label = user.displayName?.trim() || user.email
 
   return (
-    <header className="sticky top-0 z-30 flex h-topbar items-center justify-between gap-3 border-b border-border bg-surface px-4 md:px-5">
-      <div className="min-w-0">
-        <p className="truncate text-[13px] font-medium text-ink">
-          {user.companyName}
-        </p>
-        <p className="truncate text-hint text-ink-secondary">
-          {user.isDevSession
-            ? 'Fejlesztői belépés'
-            : user.roleLabel
-              ? user.roleLabel
-              : user.tenantSlug
-                ? `/${user.tenantSlug}`
-                : null}
-        </p>
+    <header className="sticky top-0 z-30 flex h-topbar items-center justify-between gap-3 border-b border-border bg-surface px-3 md:px-5">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {onOpenMobileNav ? (
+          <MobileNavMenuButton onClick={onOpenMobileNav} />
+        ) : null}
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-medium text-ink">
+            {user.companyName}
+          </p>
+          <p className="truncate text-hint text-ink-secondary">
+            {user.isDevSession
+              ? 'Fejlesztői belépés'
+              : user.roleLabel
+                ? user.roleLabel
+                : user.tenantSlug
+                  ? `/${user.tenantSlug}`
+                  : null}
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">

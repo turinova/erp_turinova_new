@@ -4,6 +4,7 @@ export type AppPageCategory =
   | 'Fő'
   | 'Műhely'
   | 'Értékesítés'
+  | 'Pénzügy'
   | 'Webshop'
   | 'Beszerzés'
   | 'Jelenlét'
@@ -22,7 +23,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 14
+export const PAGE_CATALOG_VERSION = 17
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -55,7 +56,15 @@ export const APP_PAGES: AppPageDef[] = [
     label: 'Műszakok',
     category: 'Értékesítés'
   },
-  { key: '/szamlak', label: 'Bizonylatok', category: 'Értékesítés' },
+  { key: '/szamlak', label: 'Bizonylatok', category: 'Pénzügy' },
+  { key: '/penzugy', label: 'Pénzügy áttekintés', category: 'Pénzügy' },
+  {
+    key: '/penzugy/kintlevoseg',
+    label: 'Kintlévőség',
+    category: 'Pénzügy'
+  },
+  { key: '/penzugy/afa', label: 'ÁFA összesítő', category: 'Pénzügy' },
+  { key: '/penzugy/exportok', label: 'Pénzügy exportok', category: 'Pénzügy' },
   { key: '/webshop', label: 'Webshop áttekintés', category: 'Webshop' },
   {
     key: '/webshop/katalogus',
@@ -237,6 +246,10 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/pos/beallitasok',
       '/ertekesitesek/muszakok',
       '/szamlak',
+      '/penzugy',
+      '/penzugy/kintlevoseg',
+      '/penzugy/afa',
+      '/penzugy/exportok',
       '/beallitasok/szamlazas',
       ...(WEBSHOP_ENABLED
         ? ['/webshop', '/webshop/katalogus', '/webshop/kategoriak', '/webshop/tulajdonsagok']

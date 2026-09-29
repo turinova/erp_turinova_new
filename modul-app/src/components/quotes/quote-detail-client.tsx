@@ -1811,8 +1811,8 @@ export function QuoteDetailClient({
           invoices={invoices}
           canWrite={canWrite}
           hasAgentKey={hasAgentKey}
-          listHref="/ajanlatok/bizonylatok"
-          listLinkLabel="Lapszabászat bizonylatok"
+          listHref="/szamlak?source=opti_order"
+          listLinkLabel="Bizonylatok"
           hint="Díjbekérő, előleg, számla — ezen a megrendelésen"
           showEmptyCta={
             canManageInvoicing && hasInvoiceBilling && Boolean(hasAgentKey)

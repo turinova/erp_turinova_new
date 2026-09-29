@@ -1,7 +1,8 @@
 import {
   isNavLink,
   type NavGroup,
-  type NavNode
+  type NavNode,
+  type NavSection
 } from '@/lib/navigation'
 import { pathIsAllowed } from '@/lib/permissions/pages'
 
@@ -32,4 +33,17 @@ export function filterNavByAccess(
   }
 
   return result
+}
+
+/** Szekciók szűrése — üres szekció (minden item rejtve) kiesik a labellel együtt. */
+export function filterNavSectionsByAccess(
+  sections: NavSection[],
+  allowedKeys: string[]
+): NavSection[] {
+  return sections
+    .map((section) => ({
+      ...section,
+      items: filterNavByAccess(section.items, allowedKeys)
+    }))
+    .filter((section) => section.items.length > 0)
 }

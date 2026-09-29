@@ -59,7 +59,11 @@ type UsersClientProps = {
 const CATEGORIES: AppPageCategory[] = [
   'Fő',
   'Műhely',
+  'Értékesítés',
+  'Pénzügy',
+  'Webshop',
   'Beszerzés',
+  'Jelenlét',
   'Törzsadatok',
   'Beállítások'
 ]

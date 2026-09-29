@@ -13,6 +13,11 @@ import {
   issueInvoiceFromQuote,
   previewQuoteInvoice
 } from '@/lib/invoicing/issue-quote'
+import {
+  issueManualInvoice,
+  previewManualInvoice,
+  type IssueManualInvoiceInput
+} from '@/lib/invoicing/issue-manual'
 import type { QuoteInvoiceDetailLevel } from '@/lib/invoicing/quote-invoice-lines'
 import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
 import { testSzamlazzAgentConnection } from '@/lib/invoicing/szamlazz-agent'
@@ -38,11 +43,45 @@ function revalidateInvoicePaths(opts?: {
   invoiceId?: string
 }) {
   revalidatePath('/szamlak')
+  revalidatePath('/penzugy')
+  revalidatePath('/penzugy/kintlevoseg')
+  revalidatePath('/penzugy/afa')
   revalidatePath('/beallitasok/szamlazas')
   if (opts?.saleId) revalidatePath(`/ertekesitesek/${opts.saleId}`)
   if (opts?.quoteId) {
     revalidatePath(`/ajanlatok/${opts.quoteId}`)
     revalidatePath('/megrendelesek')
+  }
+}
+
+export async function previewManualInvoiceAction(
+  input: IssueManualInvoiceInput
+): Promise<{ ok: true; pdfBase64: string } | { ok: false; message: string }> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  return previewManualInvoice(ctx.supabase, ctx.user.tenantId!, input)
+}
+
+export async function createManualInvoiceAction(
+  input: IssueManualInvoiceInput
+): Promise<InvoiceActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const result = await issueManualInvoice(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    ctx.user.id ?? null,
+    input
+  )
+  if (!result.ok) return result
+
+  revalidateInvoicePaths({ invoiceId: result.invoiceId })
+  return {
+    ok: true,
+    invoiceId: result.invoiceId,
+    providerNumber: result.providerNumber,
+    message: `Kiállítva: ${result.providerNumber}`
   }
 }
 

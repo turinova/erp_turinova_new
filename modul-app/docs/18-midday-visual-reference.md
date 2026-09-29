@@ -6,7 +6,8 @@
 > **Sűrűség / tipó / „tool” hangulat:** Linear **light** mód.  
 > **Shell arányok:** Midday-szerű ritmus (minta, nem kód).  
 > **Primary:** Midday charcoal `#18181B` (nem kék). Light-first, magyar copy.  
-> **Nav:** monokróm slate — tilos szivárvány accent.  
+> **Nav IA:** feliratos szekciók (Pult / Ügyfél / Értékesítés / **Pénzügy** / Gyártás / Beszerzés & készlet / Csapat / Rendszer) — Linear-szerű chunking; üres szekció entitlementnél elrejtve. Pénzügy: Áttekintés, Bizonylatok, Kintlévőség, ÁFA, Exportok.  
+> **Nav szín:** domain accent — **minden top-level** tintelt ikon (hue); label neutrális idle-ben. Aktív = soft + ink + bal sáv. Child örököl. **Tilos** idle soft háttér és leaf-rainbow. Kezdőlap / Beállítások: slate.  
 > **Licenc:** nincs Midday commercial fee; **tilos** Midday/Cal/Dub product UI forráskód átvétele (AGPL kockázat). Linearnak nincs publikus repo — nem másolható kódból.
 
 ## Mit jelent rétegenként
@@ -15,7 +16,7 @@
 |---|---|---|
 | Sűrűség, tipó, hairline, kompakt kontroll | **Linear light** (megjelenés) | Primer vizuális cél |
 | Sidebar / topbar arány, nav aktív állapot | **Midday** ritmus (GitHub *olvasás*) | Minta → saját kód |
-| Primary, logo, certainty UX | Midday charcoal + `03` | Sidebar **mindig expanded**; monokróm nav |
+| Primary, logo, certainty UX | Midday charcoal + `03` | Sidebar **mindig expanded**; domain nav tint (lásd fent) |
 | Stack / sebesség | shadcn + `05` | Lightning fast, kis bundle |
 
 ## Licenc stratégia (kötelező)
@@ -39,7 +40,7 @@
 | Sidebar | ~220–240px, mindig nyitva |
 | Nav sor | ~32–36px |
 | Oldal padding | `px-4` / `md:px-6`, szekció `p-4` |
-| Aktív nav | **erősebb** soft (`--nav-slate-soft` ≈ zinc-200) + charcoal bal sáv (4px) + semibold label; monokróm, nem színes soft blokk |
+| Aktív nav | soft (`--nav-*-soft`) + hue bal sáv (4px) + semibold label + erősebb ikon; idle csak muted ikon tint, nem színes soft blokk |
 
 Tokenek: `src/lib/tokens.css`. Tipó override a Flat 2.0 „comfortable 15px” helyett: **ez a doc + token a sűrűség forrásigazsága**.
 

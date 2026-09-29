@@ -44,33 +44,38 @@
   --active-soft: #ede9fe;
   --active-ink: #4c1d95;
 
-  /* Nav — csak slate (monokróm); legacy aliasok → slate */
+  /* Nav domain accents — soft tint (idle ikon + aktív soft/bar); nem carnival */
   --nav-slate: #525252;
-  /* Aktív nav háttér — erősebb mint surface, Midday charcoal calm */
-  --nav-slate-soft: #e4e4e7;
+  --nav-slate-soft: #f4f4f5;
   --nav-slate-ink: #18181b;
 
-  --nav-blue: var(--nav-slate);
-  --nav-blue-soft: var(--nav-slate-soft);
-  --nav-blue-ink: var(--nav-slate-ink);
-  --nav-teal: var(--nav-slate);
-  --nav-teal-soft: var(--nav-slate-soft);
-  --nav-teal-ink: var(--nav-slate-ink);
-  --nav-cyan: var(--nav-slate);
-  --nav-cyan-soft: var(--nav-slate-soft);
-  --nav-cyan-ink: var(--nav-slate-ink);
-  --nav-violet: var(--nav-slate);
-  --nav-violet-soft: var(--nav-slate-soft);
-  --nav-violet-ink: var(--nav-slate-ink);
-  --nav-amber: var(--nav-slate);
-  --nav-amber-soft: var(--nav-slate-soft);
-  --nav-amber-ink: var(--nav-slate-ink);
-  --nav-rose: var(--nav-slate);
-  --nav-rose-soft: var(--nav-slate-soft);
-  --nav-rose-ink: var(--nav-slate-ink);
-  --nav-emerald: var(--nav-slate);
-  --nav-emerald-soft: var(--nav-slate-soft);
-  --nav-emerald-ink: var(--nav-slate-ink);
+  --nav-blue: #3b82f6;
+  --nav-blue-soft: #eff6ff;
+  --nav-blue-ink: #1e3a8a;
+
+  --nav-teal: #0d9488;
+  --nav-teal-soft: #f0fdfa;
+  --nav-teal-ink: #115e59;
+
+  --nav-cyan: #0891b2;
+  --nav-cyan-soft: #ecfeff;
+  --nav-cyan-ink: #155e75;
+
+  --nav-violet: #7c3aed;
+  --nav-violet-soft: #f5f3ff;
+  --nav-violet-ink: #4c1d95;
+
+  --nav-amber: #d97706;
+  --nav-amber-soft: #fffbeb;
+  --nav-amber-ink: #92400e;
+
+  --nav-rose: #e11d48;
+  --nav-rose-soft: #fff1f2;
+  --nav-rose-ink: #9f1239;
+
+  --nav-emerald: #059669;
+  --nav-emerald-soft: #ecfdf5;
+  --nav-emerald-ink: #065f46;
 
   --elev-0: none;
   --elev-1: 0 1px 2px rgba(0, 0, 0, 0.04);

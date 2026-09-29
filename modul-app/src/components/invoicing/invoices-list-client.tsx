@@ -35,6 +35,9 @@ export type InvoiceListView =
   | 'invoices'
   | 'stornos'
 
+/** Forrás szűrő — értékesítés / lapszabászat / manuális / mind */
+export type InvoiceSourceFilter = 'all' | 'sale' | 'opti_order' | 'manual'
+
 type Props = {
   initialRows: InvoiceListItem[]
   peers: InvoiceListItem[]
@@ -44,6 +47,7 @@ type Props = {
   limit: number
   q: string
   view: InvoiceListView
+  sourceFilter?: InvoiceSourceFilter
   canWrite: boolean
   awaitingCount?: number
   awaitingSumFt?: number
@@ -63,6 +67,13 @@ const VIEW_FILTERS: { value: InvoiceListView; label: string }[] = [
   { value: 'all', label: 'Mind' },
   { value: 'invoices', label: 'Számlák' },
   { value: 'stornos', label: 'Sztornók' }
+]
+
+const SOURCE_FILTERS: { value: InvoiceSourceFilter; label: string }[] = [
+  { value: 'all', label: 'Minden forrás' },
+  { value: 'sale', label: 'Értékesítés' },
+  { value: 'opti_order', label: 'Lapszabászat' },
+  { value: 'manual', label: 'Manuális' }
 ]
 
 function formatDate(iso: string | null) {
@@ -99,6 +110,13 @@ function sourceHref(row: InvoiceListItem): string | null {
   return null
 }
 
+function sourceKindLabel(row: InvoiceListItem): string {
+  if (row.related_source_type === 'sale') return 'Értékesítés'
+  if (row.related_source_type === 'opti_order') return 'Lapszabászat'
+  if (row.related_source_type === 'manual') return 'Manuális'
+  return '—'
+}
+
 export function InvoicesListClient({
   initialRows,
   peers,
@@ -108,15 +126,16 @@ export function InvoicesListClient({
   limit,
   q: initialQ,
   view,
+  sourceFilter = 'all',
   canWrite,
   awaitingCount,
   awaitingSumFt,
   basePath = '/szamlak',
   title = 'Bizonylatok',
-  description = 'Díjbekérő, számla, sztornó — eladás és lapszabászat megrendelés.',
-  emptyCtaHref = '/ertekesitesek',
-  emptyCtaLabel = 'Értékesítések',
-  sourceColumnLabel = 'Eladás'
+  description = 'Díjbekérő, számla, sztornó — értékesítés, lapszabászat és manuális.',
+  emptyCtaHref = '/szamlak/uj',
+  emptyCtaLabel = 'Új számla',
+  sourceColumnLabel = 'Forrás'
 }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
@@ -159,13 +178,16 @@ export function InvoicesListClient({
     q?: string
     page?: number
     view?: InvoiceListView
+    source?: InvoiceSourceFilter
   }) {
     const params = new URLSearchParams()
     const q = next.q ?? search
     const p = next.page ?? 1
     const v = next.view ?? view
+    const src = next.source ?? sourceFilter
     if (q.trim()) params.set('q', q.trim())
     if (v && v !== 'awaiting') params.set('view', v)
+    if (src && src !== 'all') params.set('source', src)
     if (p > 1) params.set('page', String(p))
     const qs = params.toString()
     router.push(qs ? `${basePath}?${qs}` : basePath)
@@ -177,14 +199,21 @@ export function InvoicesListClient({
         title={title}
         description={description}
         actions={
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push('/beallitasok/szamlazas')}
-          >
-            <Settings className="size-3.5" aria-hidden />
-            Beállítások
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {canWrite ? (
+              <Button type="button" onClick={() => router.push('/szamlak/uj')}>
+                Új számla
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => router.push('/beallitasok/szamlazas')}
+            >
+              <Settings className="size-3.5" aria-hidden />
+              Beállítások
+            </Button>
+          </div>
         }
       />
 
@@ -215,6 +244,27 @@ export function InvoicesListClient({
           Keresés
         </Button>
       </form>
+
+      <div className="flex flex-wrap gap-1.5">
+        {SOURCE_FILTERS.map((f) => {
+          const active = sourceFilter === f.value
+          return (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => pushParams({ source: f.value, page: 1 })}
+              className={cn(
+                'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
+                active
+                  ? 'bg-primary text-white'
+                  : 'border border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
+              )}
+            >
+              {f.label}
+            </button>
+          )
+        })}
+      </div>
 
       <div className="flex flex-wrap gap-1.5">
         {VIEW_FILTERS.map((f) => {
@@ -270,7 +320,9 @@ export function InvoicesListClient({
                 ? 'Nincs kinnlevő tétel.'
                 : emptyCtaHref.includes('ajanlat')
                   ? 'Állíts ki bizonylatot egy lapszabászati megrendelésről.'
-                  : 'Állíts ki bizonylatot egy értékesítésről.'}
+                  : emptyCtaHref.includes('/szamlak/uj')
+                    ? 'Állíts ki önálló számlát, vagy köss értékesítéshez / lapszabászathoz.'
+                    : 'Állíts ki bizonylatot egy értékesítésről.'}
             </p>
           </div>
           {view !== 'awaiting' && canWrite ? (
@@ -360,17 +412,22 @@ export function InvoicesListClient({
                     {row.customer_name || '—'}
                   </DataTableCell>
                   <DataTableCell className="text-ink-secondary">
-                    {href && row.related_source_number ? (
-                      <Link
-                        href={href}
-                        className="underline-offset-2 hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {row.related_source_number}
-                      </Link>
-                    ) : (
-                      row.related_source_number || '—'
-                    )}
+                    <span className="flex flex-col gap-0.5">
+                      <span className="text-hint text-ink-muted">
+                        {sourceKindLabel(row)}
+                      </span>
+                      {href && row.related_source_number ? (
+                        <Link
+                          href={href}
+                          className="underline-offset-2 hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {row.related_source_number}
+                        </Link>
+                      ) : (
+                        <span>{row.related_source_number || '—'}</span>
+                      )}
+                    </span>
                   </DataTableCell>
                   <DataTableCell>
                     <StatusBadge
