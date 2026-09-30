@@ -29,6 +29,7 @@ import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import {
   APP_PAGES,
+  APP_PAGE_CATEGORIES,
   PAGE_ACCESS_TEMPLATES,
   type AppPageCategory,
   type PageAccessTemplateId
@@ -55,18 +56,6 @@ type UsersClientProps = {
   seats: TenantSeatInfo
   currentUserId: string
 }
-
-const CATEGORIES: AppPageCategory[] = [
-  'Fő',
-  'Műhely',
-  'Értékesítés',
-  'Pénzügy',
-  'Webshop',
-  'Beszerzés',
-  'Jelenlét',
-  'Törzsadatok',
-  'Beállítások'
-]
 
 const ROLE_HINTS: Record<Exclude<TenantRole, 'owner'>, string> = {
   admin: 'Felhasználókat és beállításokat is kezelhet.',
@@ -510,11 +499,38 @@ function EditMemberDialog({
   )
 
   const byCategory = useMemo(() => {
-    return CATEGORIES.map((category) => ({
+    return APP_PAGE_CATEGORIES.map((category) => ({
       category,
       pages: visiblePages.filter((p) => p.category === category)
     })).filter((g) => g.pages.length > 0)
   }, [visiblePages])
+
+  function setCategoryAccess(category: AppPageCategory, enabled: boolean) {
+    const pages = visiblePages.filter((p) => p.category === category)
+    setAccess((prev) => {
+      const next = { ...prev }
+      for (const page of pages) {
+        if (page.always) continue
+        next[page.key] = enabled
+      }
+      return next
+    })
+  }
+
+  function categoryToggleState(category: AppPageCategory): {
+    checked: boolean
+    indeterminate: boolean
+  } {
+    const pages = visiblePages.filter(
+      (p) => p.category === category && !p.always
+    )
+    if (pages.length === 0) return { checked: true, indeterminate: false }
+    const on = pages.filter((p) => access[p.key]).length
+    return {
+      checked: on === pages.length,
+      indeterminate: on > 0 && on < pages.length
+    }
+  }
 
   function applyTemplate(id: PageAccessTemplateId) {
     const keys = new Set(PAGE_ACCESS_TEMPLATES[id].keys)
@@ -855,43 +871,66 @@ function EditMemberDialog({
                   <p className="text-body text-ink-secondary">Betöltés…</p>
                 ) : (
                   <div className="space-y-4">
-                    {byCategory.map((group) => (
-                      <div key={group.category}>
-                        <p className="mb-1.5 text-hint font-semibold text-ink-secondary">
-                          {group.category}
-                        </p>
-                        <ul className="space-y-1.5">
-                          {group.pages.map((page) => (
-                            <li key={page.key}>
-                              <label className="flex cursor-pointer items-center gap-2 text-body text-ink">
-                                <input
-                                  type="checkbox"
-                                  className="size-3.5 rounded border-border"
-                                  checked={Boolean(access[page.key])}
-                                  disabled={
-                                    Boolean(page.always) ||
-                                    loading ||
-                                    fetching
-                                  }
-                                  onChange={(e) =>
-                                    setAccess((prev) => ({
-                                      ...prev,
-                                      [page.key]: e.target.checked
-                                    }))
-                                  }
-                                />
-                                <span>{page.label}</span>
-                                {page.always ? (
-                                  <span className="text-hint text-ink-muted">
-                                    (kötelező)
-                                  </span>
-                                ) : null}
-                              </label>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ))}
+                    {byCategory.map((group) => {
+                      const toggle = categoryToggleState(group.category)
+                      const toggleable = group.pages.some((p) => !p.always)
+                      return (
+                        <div key={group.category}>
+                          <label className="mb-1.5 flex cursor-pointer items-center gap-2">
+                            <input
+                              type="checkbox"
+                              className="size-3.5 rounded border-border"
+                              checked={toggle.checked}
+                              ref={(el) => {
+                                if (el) el.indeterminate = toggle.indeterminate
+                              }}
+                              disabled={
+                                !toggleable || loading || fetching
+                              }
+                              onChange={(e) =>
+                                setCategoryAccess(
+                                  group.category,
+                                  e.target.checked
+                                )
+                              }
+                            />
+                            <span className="text-hint font-semibold text-ink-secondary">
+                              {group.category}
+                            </span>
+                          </label>
+                          <ul className="space-y-1.5 pl-5">
+                            {group.pages.map((page) => (
+                              <li key={page.key}>
+                                <label className="flex cursor-pointer items-center gap-2 text-body text-ink">
+                                  <input
+                                    type="checkbox"
+                                    className="size-3.5 rounded border-border"
+                                    checked={Boolean(access[page.key])}
+                                    disabled={
+                                      Boolean(page.always) ||
+                                      loading ||
+                                      fetching
+                                    }
+                                    onChange={(e) =>
+                                      setAccess((prev) => ({
+                                        ...prev,
+                                        [page.key]: e.target.checked
+                                      }))
+                                    }
+                                  />
+                                  <span>{page.label}</span>
+                                  {page.always ? (
+                                    <span className="text-hint text-ink-muted">
+                                      (kötelező)
+                                    </span>
+                                  ) : null}
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>

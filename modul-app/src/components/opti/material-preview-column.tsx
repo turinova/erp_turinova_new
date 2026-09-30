@@ -157,6 +157,8 @@ export function MaterialPreviewColumn({
               options={sheetOptions}
               placeholder="Válassz anyagot…"
               allowEmpty={false}
+              searchable
+              searchPlaceholder="Keresés név / gyártó…"
               onChange={onChangeMaterialId}
               className={
                 highlightPicker

@@ -18,26 +18,49 @@ import {
   partnerHref,
   type partnerHrefModeFromPathname
 } from '@/lib/auth/surface'
+import type { NavAccent } from '@/lib/nav-accent'
 
 export type PartnerNavItem = {
   /** Clean path (/home, /ajanlatok, …) */
   href: string
   label: string
   icon: LucideIcon
+  accent: NavAccent
   comingSoon?: boolean
 }
 
 export const partnerNavItems: PartnerNavItem[] = [
-  { href: PARTNER_HOME_PATH, label: 'Kezdőlap', icon: Home },
-  { href: PARTNER_SEARCH_PATH, label: 'Anyagkereső', icon: Search },
-  { href: PARTNER_OPTI_PATH, label: 'Opti rendelés', icon: ScanSearch },
-  { href: PARTNER_QUOTES_PATH, label: 'Ajánlataim', icon: FileText },
+  { href: PARTNER_HOME_PATH, label: 'Kezdőlap', icon: Home, accent: 'slate' },
+  {
+    href: PARTNER_SEARCH_PATH,
+    label: 'Anyagkereső',
+    icon: Search,
+    accent: 'teal'
+  },
+  {
+    href: PARTNER_OPTI_PATH,
+    label: 'Opti rendelés',
+    icon: ScanSearch,
+    accent: 'blue'
+  },
+  {
+    href: PARTNER_QUOTES_PATH,
+    label: 'Ajánlataim',
+    icon: FileText,
+    accent: 'violet'
+  },
   {
     href: PARTNER_ORDERS_PATH,
     label: 'Beküldött rendeléseim',
-    icon: ClipboardList
+    icon: ClipboardList,
+    accent: 'emerald'
   },
-  { href: PARTNER_SETTINGS_PATH, label: 'Beállítások', icon: Settings }
+  {
+    href: PARTNER_SETTINGS_PATH,
+    label: 'Beállítások',
+    icon: Settings,
+    accent: 'slate'
+  }
 ]
 
 export function partnerPathIsActive(

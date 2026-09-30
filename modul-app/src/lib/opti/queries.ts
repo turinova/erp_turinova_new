@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { fetchAllPages } from '@/lib/supabase/fetch-all'
+
 /** Opti form — aktív táblás anyag (nincs lapozás). */
 export type OptiSheetMaterialOption = {
   id: string
@@ -124,17 +126,22 @@ export async function listOptiSheetMaterials(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<OptiSheetMaterialOption[]> {
-  const { data, error } = await supabase
-    .from('sheet_materials')
-    .select(SHEET_SELECT)
-    .eq('tenant_id', tenantId)
-    .eq('active', true)
-    .is('deleted_at', null)
-    .order('name', { ascending: true })
-    .limit(500)
+  const { data, error } = await fetchAllPages(
+    (from, to) =>
+      supabase
+        .from('sheet_materials')
+        .select(SHEET_SELECT)
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .is('deleted_at', null)
+        .order('name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+    5000
+  )
 
   if (error) {
-    console.error('listOptiSheetMaterials', error.message)
+    console.error('listOptiSheetMaterials', error)
     throw new Error('Nem sikerült betölteni a táblás anyagokat.')
   }
 
@@ -198,17 +205,22 @@ export async function listOptiEdgeMaterials(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<OptiEdgeMaterialOption[]> {
-  const { data, error } = await supabase
-    .from('edge_materials')
-    .select(EDGE_SELECT)
-    .eq('tenant_id', tenantId)
-    .eq('active', true)
-    .is('deleted_at', null)
-    .order('type', { ascending: true })
-    .limit(500)
+  const { data, error } = await fetchAllPages(
+    (from, to) =>
+      supabase
+        .from('edge_materials')
+        .select(EDGE_SELECT)
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .is('deleted_at', null)
+        .order('type', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to),
+    5000
+  )
 
   if (error) {
-    console.error('listOptiEdgeMaterials', error.message)
+    console.error('listOptiEdgeMaterials', error)
     throw new Error('Nem sikerült betölteni az élzárókat.')
   }
 

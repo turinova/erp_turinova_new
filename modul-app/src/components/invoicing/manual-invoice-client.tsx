@@ -14,9 +14,9 @@ import {
   EMPTY_DOCUMENT_BILLING,
   type DocumentBillingState
 } from '@/components/sales/document-billing-fields'
+import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MenuSelect } from '@/components/ui/menu-select'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -132,16 +132,6 @@ export function ManualInvoiceClient({
   const [previewOk, setPreviewOk] = useState(false)
   const previewGen = useRef(0)
 
-  const customerOptions = useMemo(
-    () =>
-      customers.map((c) => ({
-        value: c.id,
-        label: c.name,
-        hint: c.billing_tax_number ?? c.email ?? undefined
-      })),
-    [customers]
-  )
-
   const totals = useMemo(() => {
     if (kind === 'advance') {
       const brutto = Number(advanceAmount.replace(/\s/g, '').replace(',', '.'))
@@ -170,13 +160,10 @@ export function ManualInvoiceClient({
     )
   }, [lines, kind, advanceAmount, proformaAmount])
 
-  function applyCustomer(id: string) {
+  function applyCustomer(id: string, c: OptiCustomerOption | null) {
     setCustomerId(id)
-    if (!id) return
-    const c = customers.find((x) => x.id === id)
-    if (!c) return
-    const next = billingFromCustomer(c)
-    setBilling(next)
+    if (!id || !c) return
+    setBilling(billingFromCustomer(c))
     if (c.email) {
       setEmail(c.email)
       setSendEmail(true)
@@ -513,14 +500,13 @@ export function ManualInvoiceClient({
 
           <FormSection title="Vevő" columns={1}>
             <FormField label="Ügyfél a törzsből" htmlFor="mi-customer" optionalLabel>
-              <MenuSelect
+              <CustomerMenuSelect
                 id="mi-customer"
                 value={customerId}
+                seed={customers}
                 onChange={applyCustomer}
                 allowEmpty
                 emptyLabel="Egyszeri / nincs törzsben"
-                searchable={customers.length > 8}
-                options={customerOptions}
               />
             </FormField>
             <DocumentBillingFields

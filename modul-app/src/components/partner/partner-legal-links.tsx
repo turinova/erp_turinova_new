@@ -35,7 +35,7 @@ export function PartnerLegalLinks({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ink-secondary transition-colors duration-fast hover:bg-stone-100 hover:text-ink"
+          className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ink-secondary transition-colors duration-fast hover:bg-subtle hover:text-ink"
           aria-expanded={open}
         >
           <Scale className="size-4 shrink-0 text-ink-muted" aria-hidden />
@@ -62,7 +62,7 @@ export function PartnerLegalLinks({
                 href={urls[item.key]}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-md py-1 pl-8 pr-2 text-[12px] text-ink-muted no-underline transition-colors duration-fast hover:bg-stone-100 hover:text-ink"
+                className="rounded-md py-1 pl-8 pr-2 text-[12px] text-ink-muted no-underline transition-colors duration-fast hover:bg-subtle hover:text-ink"
               >
                 {item.label}
               </a>

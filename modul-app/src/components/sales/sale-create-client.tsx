@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { Minus, Plus, Search, Trash2, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
@@ -136,16 +137,6 @@ export function SaleCreateClient({
     [warehouses]
   )
 
-  const customerOptions = useMemo(
-    () =>
-      customers.map((c) => ({
-        value: c.id,
-        label: c.name,
-        hint: c.mobile ?? c.email ?? undefined
-      })),
-    [customers]
-  )
-
   const paymentOptions = useMemo(
     () =>
       paymentMethods.map((p) => ({
@@ -274,11 +265,16 @@ export function SaleCreateClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [warehouseId, lines.map((l) => l.accessoryId).join('|')])
 
-  function applyCustomer(id: string) {
+  function applyCustomer(id: string, c: OptiCustomerOption | null) {
     setCustomerId(id)
-    const c = customers.find((x) => x.id === id)
-    if (c) setBilling(billingFromCustomer(c))
-    else setBilling(EMPTY_DOCUMENT_BILLING)
+    if (c) {
+      setCustomers((prev) =>
+        prev.some((x) => x.id === c.id) ? prev : [c, ...prev]
+      )
+      setBilling(billingFromCustomer(c))
+    } else {
+      setBilling(EMPTY_DOCUMENT_BILLING)
+    }
   }
 
   function addProduct(hit: SaleProductSearchItem) {
@@ -499,14 +495,13 @@ export function SaleCreateClient({
             <FormField label="Ügyfél" htmlFor="sale-customer" optionalLabel>
               <div className="flex gap-1.5">
                 <div className="min-w-0 flex-1">
-                  <MenuSelect
+                  <CustomerMenuSelect
                     id="sale-customer"
                     value={customerId}
+                    seed={customers}
                     onChange={applyCustomer}
                     allowEmpty
                     emptyLabel="Vendég / nincs ügyfél"
-                    searchable={customers.length > 8}
-                    options={customerOptions}
                   />
                 </div>
                 <Button
@@ -1086,12 +1081,7 @@ export function SaleCreateClient({
             billing_house_number: null as string | null,
             billing_tax_number: null as string | null
           }
-          setCustomers((prev) => {
-            if (prev.some((x) => x.id === c.id)) return prev
-            return [opt, ...prev]
-          })
-          applyCustomer(c.id)
-          setBilling(billingFromCustomer({ ...opt, name: c.name }))
+          applyCustomer(c.id, opt)
         }}
       />
 

@@ -36,10 +36,19 @@ type MenuSelectProps = {
   className?: string
   /**
    * Keresőmező a listában — nagy opcióhalmazhoz (termék, díjtípus).
-   * Szűr label + hint + group alapján.
+   * Szűr label + hint + group alapján (tokenes AND, ékezetfold).
    */
   searchable?: boolean
   searchPlaceholder?: string
+  /**
+   * false = a szülő async tölti az options-t (`onQueryChange`);
+   * a helyi includes-szűrés kikapcsolva.
+   */
+  filterLocally?: boolean
+  /** Async keresés közben. */
+  loading?: boolean
+  /** Nyitáskor és gépeléskor (debounce nélkül — a szülő debouncol). */
+  onQueryChange?: (query: string) => void
   /** Hosszú kiválasztott érték tördelése levágás helyett (pl. beszállítónév tétellistában). */
   wrap?: boolean
   /** Trigger keret felülírás (pl. hiányjelzés). */
@@ -50,11 +59,21 @@ type MenuSelectProps = {
 const MENU_MAX_HEIGHT_PX = 224 // max-h-56
 const MENU_Z = 80
 
-function normalizeSearch(value: string): string {
+export function normalizeMenuSearch(value: string): string {
   return value
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLocaleLowerCase('hu')
+}
+
+/** Minden szóközzel elválasztott token szerepeljen a haystackben (sorrend független). */
+export function menuSearchMatch(haystackRaw: string, queryRaw: string): boolean {
+  const haystack = normalizeMenuSearch(haystackRaw)
+  const tokens = normalizeMenuSearch(queryRaw)
+    .split(/\s+/)
+    .filter(Boolean)
+  if (tokens.length === 0) return true
+  return tokens.every((t) => haystack.includes(t))
 }
 
 /**
@@ -72,6 +91,9 @@ export function MenuSelect({
   className,
   searchable = false,
   searchPlaceholder = 'Keresés…',
+  filterLocally = true,
+  loading = false,
+  onQueryChange,
   wrap = false,
   triggerClassName,
   onChange
@@ -91,15 +113,19 @@ export function MenuSelect({
   }, [])
 
   const filteredOptions = useMemo(() => {
-    if (!searchable || !query.trim()) return options
-    const q = normalizeSearch(query.trim())
+    if (!searchable || !filterLocally || !query.trim()) return options
     return options.filter((option) => {
-      const haystack = normalizeSearch(
-        [option.label, option.hint, option.group].filter(Boolean).join(' ')
-      )
-      return haystack.includes(q)
+      const haystack = [option.label, option.hint, option.group]
+        .filter(Boolean)
+        .join(' ')
+      return menuSearchMatch(haystack, query)
     })
-  }, [options, query, searchable])
+  }, [options, query, searchable, filterLocally])
+
+  useEffect(() => {
+    if (!open || !onQueryChange) return
+    onQueryChange(query)
+  }, [open, query, onQueryChange])
 
   const flatItems = useMemo(() => {
     const items: Array<
@@ -311,7 +337,7 @@ export function MenuSelect({
 
               {filteredOptions.length === 0 ? (
                 <p className="px-2.5 py-2 text-body text-ink-muted">
-                  Nincs találat
+                  {loading ? 'Keresés…' : 'Nincs találat'}
                 </p>
               ) : (
                 flatItems.map((item, i) => {

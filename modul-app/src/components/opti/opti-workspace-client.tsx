@@ -888,6 +888,8 @@ export function OptiWorkspaceClient({
                   placeholder="Nincs"
                   emptyLabel="Nincs"
                   disabled={edgeMaterials.length === 0}
+                  searchable
+                  searchPlaceholder="Keresés élzáró…"
                   onChange={handleAroundChange}
                 />
               </FormField>
@@ -1047,6 +1049,8 @@ function EdgeSelect({
         placeholder="Nincs"
         emptyLabel="Nincs"
         disabled={disabled}
+        searchable
+        searchPlaceholder="Keresés élzáró…"
         onChange={onChange}
       />
     </FormField>

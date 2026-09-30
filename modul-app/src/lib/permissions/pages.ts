@@ -1,14 +1,20 @@
 import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
 
+/**
+ * Oldaljog UI csoportok — egyezzen a sidebar IA-val (`navigation.ts`).
+ * Certainty-first: ugyanaz a chunk a menüben és a jogosultságoknál.
+ */
 export type AppPageCategory =
-  | 'Fő'
-  | 'Műhely'
+  | 'Pult'
+  | 'Ügyfél'
   | 'Értékesítés'
-  | 'Pénzügy'
   | 'Webshop'
-  | 'Beszerzés'
-  | 'Jelenlét'
-  | 'Törzsadatok'
+  | 'Pénzügy'
+  | 'Gyártás'
+  | 'Beszerzés & készlet'
+  | 'Csapat'
+  | 'Törzs — alapanyagok'
+  | 'Törzs — rendszer'
   | 'Beállítások'
 
 export type AppPageDef = {
@@ -27,44 +33,35 @@ export const PAGE_CATALOG_VERSION = 17
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
-  { key: '/home', label: 'Kezdőlap', category: 'Fő', always: true },
+  { key: '/home', label: 'Kezdőlap', category: 'Pult', always: true },
   {
     key: '/beallitasok/profil',
     label: 'Saját adatok',
     category: 'Beállítások',
     always: true
   },
-  { key: '/kereso', label: 'Kereső', category: 'Fő' },
-  { key: '/opti', label: 'Opti', category: 'Műhely' },
-  { key: '/scanner', label: 'Scanner', category: 'Műhely' },
-  { key: '/pos', label: 'POS', category: 'Értékesítés' },
+  { key: '/kereso', label: 'Kereső', category: 'Pult' },
+  { key: '/opti', label: 'Opti', category: 'Pult' },
+  { key: '/scanner', label: 'Scanner', category: 'Pult' },
+  { key: '/pos', label: 'POS', category: 'Pult' },
   {
     key: '/pos/beallitasok',
     label: 'POS beállítások',
-    category: 'Értékesítés'
+    category: 'Pult'
   },
-  { key: '/ugyfelek', label: 'Ügyfelek', category: 'Fő' },
+  { key: '/belepok', label: 'Belépők', category: 'Pult' },
+  { key: '/ugyfelek', label: 'Ügyfelek', category: 'Ügyfél' },
   {
     key: '/ugyfelrendelesek',
     label: 'Ügyfélrendelések',
-    category: 'Fő'
+    category: 'Ügyfél'
   },
-  { key: '/belepok', label: 'Belépők', category: 'Fő' },
   { key: '/ertekesitesek', label: 'Értékesítések', category: 'Értékesítés' },
   {
     key: '/ertekesitesek/muszakok',
     label: 'Műszakok',
     category: 'Értékesítés'
   },
-  { key: '/szamlak', label: 'Bizonylatok', category: 'Pénzügy' },
-  { key: '/penzugy', label: 'Pénzügy áttekintés', category: 'Pénzügy' },
-  {
-    key: '/penzugy/kintlevoseg',
-    label: 'Kintlévőség',
-    category: 'Pénzügy'
-  },
-  { key: '/penzugy/afa', label: 'ÁFA összesítő', category: 'Pénzügy' },
-  { key: '/penzugy/exportok', label: 'Pénzügy exportok', category: 'Pénzügy' },
   { key: '/webshop', label: 'Webshop áttekintés', category: 'Webshop' },
   {
     key: '/webshop/katalogus',
@@ -81,94 +78,112 @@ export const APP_PAGES: AppPageDef[] = [
     label: 'Jellemzők',
     category: 'Webshop'
   },
-  { key: '/jelenlet', label: 'Jelenlét naptár', category: 'Jelenlét' },
+  { key: '/penzugy', label: 'Pénzügy áttekintés', category: 'Pénzügy' },
+  { key: '/szamlak', label: 'Bizonylatok', category: 'Pénzügy' },
   {
-    key: '/jelenlet/naptar',
-    label: 'Munkarend / ünnepek',
-    category: 'Jelenlét'
+    key: '/penzugy/kintlevoseg',
+    label: 'Kintlévőség',
+    category: 'Pénzügy'
   },
-  { key: '/dolgozok', label: 'Dolgozók', category: 'Jelenlét' },
-  {
-    key: '/dolgozok/tipusok',
-    label: 'Dolgozó típusok',
-    category: 'Jelenlét'
-  },
-  { key: '/beszallitok', label: 'Beszállítók', category: 'Beszerzés' },
+  { key: '/penzugy/afa', label: 'ÁFA összesítő', category: 'Pénzügy' },
+  { key: '/penzugy/exportok', label: 'Pénzügy exportok', category: 'Pénzügy' },
+  { key: '/megrendelesek', label: 'Megrendelések', category: 'Gyártás' },
+  { key: '/ajanlatok', label: 'Lapszabászati ajánlatok', category: 'Gyártás' },
+  { key: '/beszallitok', label: 'Beszállítók', category: 'Beszerzés & készlet' },
   {
     key: '/beszallitoi-rendelesek',
     label: 'Beszállítói rendelések',
-    category: 'Beszerzés'
+    category: 'Beszerzés & készlet'
   },
-  { key: '/beerkezesek', label: 'Beérkezések', category: 'Beszerzés' },
-  { key: '/keszlet/atadasok', label: 'Áttárolások', category: 'Beszerzés' },
-  { key: '/keszlet/mozgasok', label: 'Készletmozgások', category: 'Beszerzés' },
-  { key: '/megrendelesek', label: 'Megrendelések', category: 'Műhely' },
-  { key: '/ajanlatok', label: 'Lapszabászati ajánlatok', category: 'Műhely' },
+  { key: '/beerkezesek', label: 'Beérkezések', category: 'Beszerzés & készlet' },
+  {
+    key: '/keszlet/atadasok',
+    label: 'Áttárolások',
+    category: 'Beszerzés & készlet'
+  },
+  {
+    key: '/keszlet/mozgasok',
+    label: 'Készletmozgások',
+    category: 'Beszerzés & készlet'
+  },
+  { key: '/jelenlet', label: 'Jelenlét naptár', category: 'Csapat' },
+  {
+    key: '/jelenlet/naptar',
+    label: 'Munkarend / ünnepek',
+    category: 'Csapat'
+  },
+  { key: '/dolgozok', label: 'Dolgozók', category: 'Csapat' },
+  {
+    key: '/dolgozok/tipusok',
+    label: 'Dolgozó típusok',
+    category: 'Csapat'
+  },
   {
     key: '/torzsadatok/alapanyagok/tablas-anyagok',
     label: 'Táblás anyagok',
-    category: 'Törzsadatok'
+    category: 'Törzs — alapanyagok'
   },
   {
     key: '/torzsadatok/alapanyagok/szalas-anyagok',
     label: 'Szálas anyagok',
-    category: 'Törzsadatok'
+    category: 'Törzs — alapanyagok'
   },
   {
     key: '/torzsadatok/alapanyagok/elzarok',
     label: 'Élzárók',
-    category: 'Törzsadatok'
+    category: 'Törzs — alapanyagok'
   },
   {
     key: '/torzsadatok/alapanyagok/termekek',
     label: 'Termékek',
-    category: 'Törzsadatok'
+    category: 'Törzs — alapanyagok'
   },
   {
     key: '/torzsadatok/rendszer/adonem',
     label: 'Adónem',
-    category: 'Törzsadatok'
+    category: 'Törzs — rendszer'
   },
   {
     key: '/torzsadatok/rendszer/fizetesi-modok',
     label: 'Fizetési módok',
-    category: 'Törzsadatok'
+    category: 'Törzs — rendszer'
   },
   {
     key: '/torzsadatok/rendszer/egysegek',
     label: 'Egységek',
-    category: 'Törzsadatok'
+    category: 'Törzs — rendszer'
   },
   {
     key: '/torzsadatok/rendszer/dij-tipusok',
     label: 'Díj típusok',
-    category: 'Törzsadatok'
+    category: 'Törzs — rendszer'
   },
   {
     key: '/torzsadatok/rendszer/gyartok',
     label: 'Gyártók',
-    category: 'Törzsadatok'
+    category: 'Törzs — rendszer'
   },
   {
     key: '/torzsadatok/rendszer/raktarak',
     label: 'Raktárak',
-    category: 'Törzsadatok'
+    category: 'Törzs — rendszer'
   },
   {
     key: '/torzsadatok/rendszer/berendezes',
     label: 'Berendezés',
-    category: 'Törzsadatok'
+    category: 'Törzs — rendszer'
   },
   {
     key: '/torzsadatok/rendszer/gyartogepek',
     label: 'Gyártógépek',
-    category: 'Törzsadatok'
+    category: 'Törzs — rendszer'
   },
   {
     key: '/torzsadatok/rendszer/media',
     label: 'Média',
-    category: 'Törzsadatok'
-  },  {
+    category: 'Törzs — rendszer'
+  },
+  {
     key: '/beallitasok/cegadatok',
     label: 'Cégadatok',
     category: 'Beállítások'
@@ -216,6 +231,21 @@ export const ALWAYS_ALLOWED_PAGE_KEYS = APP_PAGES.filter((p) => p.always).map(
   (p) => p.key
 )
 
+/** Display order for page-access UI (sidebar IA). */
+export const APP_PAGE_CATEGORIES: AppPageCategory[] = [
+  'Pult',
+  'Ügyfél',
+  'Értékesítés',
+  'Webshop',
+  'Pénzügy',
+  'Gyártás',
+  'Beszerzés & készlet',
+  'Csapat',
+  'Törzs — alapanyagok',
+  'Törzs — rendszer',
+  'Beállítások'
+]
+
 /** Útvonalak, amikhez nem kell page_access (auth / hiba). */
 export const PUBLIC_APP_PATHS = new Set([
   '/nincs-hozzaferes',
@@ -252,7 +282,12 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/penzugy/exportok',
       '/beallitasok/szamlazas',
       ...(WEBSHOP_ENABLED
-        ? ['/webshop', '/webshop/katalogus', '/webshop/kategoriak', '/webshop/tulajdonsagok']
+        ? [
+            '/webshop',
+            '/webshop/katalogus',
+            '/webshop/kategoriak',
+            '/webshop/tulajdonsagok'
+          ]
         : []),
       '/jelenlet',
       '/jelenlet/naptar',
@@ -282,10 +317,7 @@ export function resolvePageKey(pathname: string): string | null {
 
   let best: string | null = null
   for (const page of APP_PAGES) {
-    if (
-      pathname === page.key ||
-      pathname.startsWith(`${page.key}/`)
-    ) {
+    if (pathname === page.key || pathname.startsWith(`${page.key}/`)) {
       if (!best || page.key.length > best.length) {
         best = page.key
       }

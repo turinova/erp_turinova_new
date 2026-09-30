@@ -55,6 +55,7 @@ import {
 } from '@/components/sales/document-billing-fields'
 import { PosInvoiceBillingDialog } from '@/components/pos/pos-invoice-billing-dialog'
 import { SaleQuickCustomerDialog } from '@/components/sales/sale-quick-customer-dialog'
+import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
@@ -297,16 +298,6 @@ export function PosClient({
 
   const selectedRegister = registersForWh.find((r) => r.id === registerId)
   const shiftLocked = Boolean(openShiftId)
-
-  const customerOptions = useMemo(
-    () =>
-      customers.map((c) => ({
-        value: c.id,
-        label: c.name,
-        hint: c.mobile ?? c.email ?? undefined
-      })),
-    [customers]
-  )
 
   // Hydrate session
   useEffect(() => {
@@ -1047,13 +1038,18 @@ export function PosClient({
           )}
           {customerOpen && !selectedCustomer ? (
             <div className="absolute left-0 z-30 mt-1 w-[18rem] rounded-md border border-border bg-surface p-2 shadow-md">
-              <MenuSelect
+              <CustomerMenuSelect
                 id="pos-customer"
                 value=""
-                onChange={(v) => {
-                  setCustomerId(v)
-                  const c = customers.find((x) => x.id === v)
+                seed={customers}
+                allowEmpty={false}
+                placeholder="Ügyfél keresése…"
+                onChange={(id, c) => {
+                  setCustomerId(id)
                   if (c) {
+                    setCustomers((prev) =>
+                      prev.some((x) => x.id === c.id) ? prev : [c, ...prev]
+                    )
                     setBilling(billingFromCustomer(c))
                     if (wantInvoice) {
                       toast.message('Számlázási adatok behúzva az ügyfélről.')
@@ -1062,10 +1058,6 @@ export function PosClient({
                   setCustomerOpen(false)
                   focusBarcode()
                 }}
-                allowEmpty={false}
-                searchable={customers.length > 8}
-                options={customerOptions}
-                placeholder="Ügyfél keresése…"
               />
             </div>
           ) : null}

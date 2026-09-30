@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { FormField } from '@/components/patterns/form-field'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MenuSelect } from '@/components/ui/menu-select'
+import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { OptiPanelDraft } from '@/lib/opti/panel-draft'
 import type { QuoteResult } from '@/lib/opti/quote-calculations'
@@ -118,29 +118,20 @@ export function OptiCustomerStrip({
     onSessionCustomerChange(draft, projectName)
   }, [draft, projectName, onSessionCustomerChange, isEdit])
 
-  const customerOptions = useMemo(
-    () =>
-      customers.map((c) => ({
-        value: c.id,
-        label: c.name,
-        hint: [c.email, c.mobile].filter(Boolean).join(' · ') || undefined
-      })),
-    [customers]
-  )
-
   const canSave = draft.name.trim().length > 0 && panels.length > 0
 
   function patch(partial: Partial<OptiCustomerDraft>) {
     setDraft((prev) => ({ ...prev, ...partial }))
   }
 
-  function selectExisting(customerId: string) {
-    if (!customerId) {
+  function selectExisting(
+    customerId: string,
+    row: OptiCustomerOption | null
+  ) {
+    if (!customerId || !row) {
       setDraft(EMPTY_DRAFT)
       return
     }
-    const row = customers.find((c) => c.id === customerId)
-    if (!row) return
     setNameError(undefined)
     setDraft(draftFromCustomer(row))
     setBillingOpen(true)
@@ -247,10 +238,10 @@ export function OptiCustomerStrip({
             optionalLabel
             hint="Válassz listából, vagy írd be új nevet jobbra."
           >
-            <MenuSelect
+            <CustomerMenuSelect
               id="opti-customer-pick"
               value={draft.customerId ?? ''}
-              options={customerOptions}
+              seed={customers}
               allowEmpty
               emptyLabel="Új / nincs kiválasztva"
               placeholder="Válassz ügyfelet…"

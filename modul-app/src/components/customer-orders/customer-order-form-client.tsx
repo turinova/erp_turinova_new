@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { PackageSearch, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import {
   CsoLineEditorRow,
   CsoLineListHeader,
@@ -19,7 +20,6 @@ import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
 import { grossFromNet } from '@/lib/accessories/parse'
 import { createCustomerSpecialOrderAction } from '@/lib/customer-orders/actions'
@@ -97,16 +97,6 @@ export function CustomerOrderFormClient({
   const searchWrapRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const customerOptions = useMemo(
-    () =>
-      customers.map((c) => ({
-        value: c.id,
-        label: c.name,
-        hint: c.mobile ?? c.email ?? undefined
-      })),
-    [customers]
-  )
 
   const supplierOptions = useMemo(
     () =>
@@ -202,11 +192,9 @@ export function CustomerOrderFormClient({
     }
   }, [searchQ, canWrite])
 
-  function applyCustomer(id: string) {
+  function applyCustomer(id: string, c: OptiCustomerOption | null) {
     setCustomerId(id)
-    if (!id) return
-    const c = customers.find((x) => x.id === id)
-    if (!c) return
+    if (!id || !c) return
     setCustomerName(c.name)
     setCustomerMobile(c.mobile ?? '')
   }
@@ -333,14 +321,13 @@ export function CustomerOrderFormClient({
           optionalLabel
           className="sm:col-span-2"
         >
-          <MenuSelect
+          <CustomerMenuSelect
             id="cso-customer"
             value={customerId}
+            seed={customers}
             onChange={applyCustomer}
             allowEmpty
             emptyLabel="Új / szabad szöveg"
-            searchable={customers.length > 8}
-            options={customerOptions}
             disabled={!canWrite}
           />
         </FormField>

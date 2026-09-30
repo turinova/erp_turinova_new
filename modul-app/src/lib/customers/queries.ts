@@ -146,7 +146,7 @@ export type OptiCustomerOption = {
   billing_tax_number: string | null
 }
 
-/** Opti / select — max 500 ügyfél, ABC + számlázás. */
+/** Opti / select seed — max 25 (typeahead: CustomerMenuSelect + RPC). */
 export async function listCustomersForSelect(
   supabase: SupabaseClient,
   tenantId: string
@@ -171,7 +171,7 @@ export async function listCustomersForSelect(
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .order('name', { ascending: true })
-    .limit(500)
+    .limit(25)
 
   if (error) {
     console.error('listCustomersForSelect', error.message)

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 
+import { PartnerHome } from '@/components/partner/partner-home'
 import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import {
@@ -10,7 +10,7 @@ import {
   PARTNER_SEARCH_PATH,
   PARTNER_SETTINGS_PATH
 } from '@/lib/auth/surface'
-import { resolvePartnerCompanyLabel } from '@/lib/partner/company-label'
+import { loadPartnerHomeData } from '@/lib/partner/home-queries'
 
 export const metadata: Metadata = {
   title: 'Kezdőlap'
@@ -18,17 +18,12 @@ export const metadata: Metadata = {
 
 export default async function PartnerHomePage() {
   const session = await getPartnerSession()
-  const companyLabel = await resolvePartnerCompanyLabel(
+  const home = await loadPartnerHomeData(
+    session?.id ?? '',
     session?.selectedTenantId ?? null
   )
 
-  const [
-    settingsHref,
-    searchHref,
-    optiHref,
-    quotesHref,
-    ordersHref
-  ] = await Promise.all([
+  const [settings, search, opti, quotes, orders] = await Promise.all([
     partnerServerHref(PARTNER_SETTINGS_PATH),
     partnerServerHref(PARTNER_SEARCH_PATH),
     partnerServerHref(PARTNER_OPTI_PATH),
@@ -37,72 +32,13 @@ export default async function PartnerHomePage() {
   ])
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <div>
-        <h1 className="text-h1 text-ink">Szia, {session?.name}!</h1>
-        <p className="mt-1 text-body text-ink-secondary">
-          Itt tudsz anyagot keresni és rendelést indítani.
-        </p>
-      </div>
-
-      <section className="rounded-md border border-amber-200/80 bg-white p-4">
-        <h2 className="text-body font-semibold text-ink">A cég, ahonnan rendelsz</h2>
-        <p className="mt-1 text-body text-ink">
-          {companyLabel ?? 'Még nincs kiválasztott cég.'}
-        </p>
-        <Link
-          href={settingsHref}
-          className="mt-2 inline-block text-hint text-ink-secondary no-underline hover:underline"
-        >
-          Cég vagy profil módosítása →
-        </Link>
-      </section>
-
-      <section className="rounded-md border border-dashed border-stone-300 bg-stone-50 p-4">
-        <h2 className="text-body font-semibold text-ink">Mit csinálhatsz?</h2>
-        <ul className="mt-2 list-inside list-disc space-y-1 text-body text-ink-secondary">
-          <li>
-            <Link
-              href={searchHref}
-              className="text-ink no-underline hover:underline"
-            >
-              Anyagkereső
-            </Link>
-          </li>
-          <li>
-            <Link
-              href={optiHref}
-              className="text-ink no-underline hover:underline"
-            >
-              Opti rendelés — draft mentés
-            </Link>
-          </li>
-          <li>
-            <Link
-              href={quotesHref}
-              className="text-ink no-underline hover:underline"
-            >
-              Ajánlataim — beküldés a cégnek
-            </Link>
-          </li>
-          <li>
-            <Link
-              href={ordersHref}
-              className="text-ink no-underline hover:underline"
-            >
-              Beküldött rendeléseim
-            </Link>
-          </li>
-          <li>
-            <Link
-              href={settingsHref}
-              className="text-ink no-underline hover:underline"
-            >
-              Beállítások
-            </Link>
-          </li>
-        </ul>
-      </section>
-    </div>
+    <PartnerHome
+      name={session?.name ?? 'Partner'}
+      companyLabel={home.companyLabel}
+      contact={home.contact}
+      draftCount={home.draftCount}
+      submittedCount={home.submittedCount}
+      hrefs={{ settings, search, opti, quotes, orders }}
+    />
   )
 }

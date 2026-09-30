@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import { Plus, Search, Trash2, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
@@ -104,8 +105,7 @@ export function SalesQuoteCreateClient({
   const [feeOpen, setFeeOpen] = useState(false)
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
 
-  function applyCustomerBilling(id: string) {
-    const c = customers.find((x) => x.id === id)
+  function applyCustomerBilling(c: OptiCustomerOption | null) {
     if (!c) {
       setBilling(EMPTY_QUOTE_BILLING)
       return
@@ -121,9 +121,14 @@ export function SalesQuoteCreateClient({
     })
   }
 
-  function onCustomerChange(id: string) {
+  function onCustomerChange(id: string, c: OptiCustomerOption | null) {
     setCustomerId(id)
-    applyCustomerBilling(id)
+    if (c) {
+      setCustomers((prev) =>
+        prev.some((x) => x.id === c.id) ? prev : [c, ...prev]
+      )
+    }
+    applyCustomerBilling(c)
   }
 
   const totals = useMemo(
@@ -262,18 +267,13 @@ export function SalesQuoteCreateClient({
             <FormField label="Ügyfél" htmlFor="sq-customer" required>
               <div className="flex gap-1.5">
                 <div className="min-w-0 flex-1">
-                  <MenuSelect
+                  <CustomerMenuSelect
                     id="sq-customer"
                     value={customerId}
+                    seed={customers}
                     onChange={onCustomerChange}
                     allowEmpty
                     emptyLabel="Válassz ügyfelet…"
-                    searchable={customers.length > 8}
-                    options={customers.map((c) => ({
-                      value: c.id,
-                      label: c.name,
-                      hint: c.mobile ?? c.email ?? undefined
-                    }))}
                   />
                 </div>
                 <Button
