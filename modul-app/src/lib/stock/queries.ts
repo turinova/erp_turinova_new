@@ -22,13 +22,11 @@ export async function getAccessoryOnHand(
     return Number(data) || 0
   }
 
-  let query = supabase
+  const { data, error } = await supabase
     .from('stock_movements')
     .select('quantity, movement_type')
     .eq('tenant_id', tenantId)
     .eq('accessory_id', accessoryId)
-
-  const { data, error } = await query
 
   if (error) {
     console.error('getAccessoryOnHand', error.message)
