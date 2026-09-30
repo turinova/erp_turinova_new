@@ -277,6 +277,10 @@ async function handleSession(request: NextRequest) {
   /** Pi → cloud sync: Bearer / x-footcounter-secret, no user session. */
   const isPublicFootcounterSync = pathname === '/api/footcounter/sync'
 
+  /** Pi → jelenlét terminál: Bearer / x-jelenlet-secret. */
+  const isPublicJelenletTerminalScan =
+    pathname === '/api/jelenlet/terminal/scan'
+
   const isPublicStorefrontApi = pathname.startsWith('/api/storefront/')
 
   /** Vercel Cron: Bearer CRON_SECRET, a route ellenőrzi. */
@@ -306,6 +310,7 @@ async function handleSession(request: NextRequest) {
     isPublicPartnerApi ||
     isPublicImpersonationHandoff ||
     isPublicFootcounterSync ||
+    isPublicJelenletTerminalScan ||
     isPublicStorefrontApi ||
     isPublicCron
   ) {

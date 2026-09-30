@@ -80,6 +80,8 @@ export async function upsertEmployeeAction(input: {
     overtime_enabled: d.overtimeEnabled,
     overtime_grace_minutes: d.overtimeGraceMinutes,
     overtime_daily_cap_minutes: d.overtimeDailyCapMinutes,
+    pin_code: d.pinCode,
+    rfid_card_id: d.rfidCardId,
     notes: d.notes || null,
     updated_at: new Date().toISOString()
   }
@@ -94,6 +96,20 @@ export async function upsertEmployeeAction(input: {
     if (error) {
       if (error.message.includes('hr_employees_tenant_code')) {
         return { ok: false, message: 'Ez a dolgozói kód már foglalt.' }
+      }
+      if (error.message.includes('hr_employees_tenant_pin')) {
+        return {
+          ok: false,
+          message: 'Ez a PIN már foglalt.',
+          fieldErrors: { pinCode: 'Ez a PIN már foglalt.' }
+        }
+      }
+      if (error.message.includes('hr_employees_tenant_rfid')) {
+        return {
+          ok: false,
+          message: 'Ez az RFID kártya már foglalt.',
+          fieldErrors: { rfidCardId: 'Ez az RFID kártya már foglalt.' }
+        }
       }
       return { ok: false, message: error.message }
     }
@@ -110,6 +126,20 @@ export async function upsertEmployeeAction(input: {
   if (error || !data) {
     if (error?.message.includes('hr_employees_tenant_code')) {
       return { ok: false, message: 'Ez a dolgozói kód már foglalt.' }
+    }
+    if (error?.message.includes('hr_employees_tenant_pin')) {
+      return {
+        ok: false,
+        message: 'Ez a PIN már foglalt.',
+        fieldErrors: { pinCode: 'Ez a PIN már foglalt.' }
+      }
+    }
+    if (error?.message.includes('hr_employees_tenant_rfid')) {
+      return {
+        ok: false,
+        message: 'Ez az RFID kártya már foglalt.',
+        fieldErrors: { rfidCardId: 'Ez az RFID kártya már foglalt.' }
+      }
     }
     return { ok: false, message: error?.message ?? 'Mentés sikertelen.' }
   }
@@ -141,6 +171,8 @@ export async function softDeleteEmployeeAction(input: {
     .update({
       deleted_at: now,
       active: false,
+      pin_code: null,
+      rfid_card_id: null,
       updated_at: now
     })
     .eq('id', input.id)

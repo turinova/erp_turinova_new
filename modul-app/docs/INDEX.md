@@ -35,7 +35,8 @@
 | [31-pos-muszakzaras.md](31-pos-muszakzaras.md) | **POS műszak** — pénztár, zárás, audit |
 | [32-arajanlat-workflow.md](32-arajanlat-workflow.md) | **Termék árajánlat** — papír → eladás; külön a lapszabászattól |
 | [33-packages-and-addons.md](33-packages-and-addons.md) | **Csomagok** — Alap vs add-onok (Lapszabászat, …) |
-| [34-jelenlet-addon.md](34-jelenlet-addon.md) | **Jelenlét** — dolgozók, naptár, távollét |
+| [34-jelenlet-addon.md](34-jelenlet-addon.md) | **Jelenlét** — dolgozók, naptár, távollét, Pi terminál |
+| [jelenlet-pi.md](jelenlet-pi.md) | Jelenlét terminál sync (platform-managed) |
 | [35-home-kpis.md](35-home-kpis.md) | **Home KPI-k** — jégelt lista (kereskedő Alap + addonok) |
 | [36-szamlazas-workflow.md](36-szamlazas-workflow.md) | **Számlázás** — Számlázz.hu Agent, `/szamlak` (Alap) |
 | [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md) | **Lapszabászat ajánlat→gyártás** — státusz, detail CTA, hol mit |

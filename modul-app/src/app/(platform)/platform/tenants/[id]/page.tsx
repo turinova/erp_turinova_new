@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { FootcounterDevicesPanel } from '@/components/platform/footcounter-devices-panel'
+import { PlatformJelenletDevicesPanel } from '@/components/platform/jelenlet-devices-panel'
 import { TenantDetailClient } from '@/components/platform/tenant-detail-client'
 import { TenantEntitlementsPanel } from '@/components/platform/tenant-entitlements-panel'
 import { estimateTenantMonthlyBill } from '@/lib/billing/estimate'
@@ -15,6 +16,8 @@ import {
 } from '@/lib/platform/entitlement-queries'
 import { listFootcounterDevicesForTenant } from '@/lib/footcounter/queries'
 import { FOOTCOUNTER_FEATURE } from '@/lib/footcounter/types'
+import { listJelenletDevicesForTenant } from '@/lib/jelenlet/device-queries'
+import { JELENLET_FEATURE } from '@/lib/jelenlet/types'
 import { ph } from '@/lib/platform/platform-href-server'
 import { getPlatformTenantDetail } from '@/lib/platform/queries'
 import { platformTenantTabTitle } from '@/lib/seo/tab-titles'
@@ -51,7 +54,7 @@ export default async function PlatformTenantDetailPage({
   const detail = await getPlatformTenantDetail(ctx.admin, id)
   if (!detail) notFound()
 
-  const [entitlements, plans, auditRows, tenantsHref, monthlyBill, fcDevices, hasDemoMaster] =
+  const [entitlements, plans, auditRows, tenantsHref, monthlyBill, fcDevices, jlDevices, hasDemoMaster] =
     await Promise.all([
       getTenantEntitlementState(ctx.admin, id),
       listProductPlans(ctx.admin),
@@ -59,12 +62,14 @@ export default async function PlatformTenantDetailPage({
       ph('/tenants'),
       estimateTenantMonthlyBill(ctx.admin, id),
       listFootcounterDevicesForTenant(ctx.admin, id),
+      listJelenletDevicesForTenant(ctx.admin, id),
       tenantHasDemoMasterData(ctx.admin, id)
     ])
 
   const footcounterEnabled = entitlements.entitledKeys.includes(
     FOOTCOUNTER_FEATURE
   )
+  const jelenletEnabled = entitlements.entitledKeys.includes(JELENLET_FEATURE)
 
   return (
     <div className="space-y-3">
@@ -99,6 +104,11 @@ export default async function PlatformTenantDetailPage({
               tenantId={id}
               devices={fcDevices}
               addonEnabled={footcounterEnabled}
+            />
+            <PlatformJelenletDevicesPanel
+              tenantId={id}
+              devices={jlDevices}
+              addonEnabled={jelenletEnabled}
             />
           </div>
         }

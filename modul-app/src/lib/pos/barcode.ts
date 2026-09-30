@@ -2,15 +2,21 @@ import { normalizeScannerBarcode } from '@/lib/scanner/normalize-wedge'
 
 export { normalizeScannerBarcode }
 
-/** Tipikus wedge barcode: rövid ASCII, kevés szóköz, nem mondat. */
+/**
+ * Wedge / Enter exact-scan heurisztika — NEM typeahead debounce-hoz.
+ * Szándék: `asztal`, `alma`, rövid név → false; EAN / SKU+szám → true.
+ */
 export function looksLikeBarcode(raw: string): boolean {
   const t = raw.trim()
-  if (t.length < 4 || t.length > 64) return false
-  if (/\s{2,}/.test(t)) return false
-  // Sok szóköz / hosszú szavak → inkább névkereső
-  if (t.includes(' ') && t.length > 20) return false
+  if (t.length < 6 || t.length > 64) return false
+  // Szóköz → név / mondat kereső
+  if (/\s/.test(t)) return false
   // Pre-normalize HU wedge chars (ö/ü) + ASCII
-  return /^[\x20-\x7EüöÜÖ]+$/.test(t)
+  if (!/^[\x21-\x7EüöÜÖ]+$/.test(t)) return false
+  // Csak betűk (ékezetes név) → soha ne legyen auto exact
+  if (/^[A-Za-züöÜÖáéíóúőűÁÉÍÓÚŐŰ]+$/u.test(t)) return false
+  // Legalább egy számjegy (EAN / belső kód / SKU)
+  return /\d/.test(t)
 }
 
 export function prepareBarcodeQuery(raw: string): {

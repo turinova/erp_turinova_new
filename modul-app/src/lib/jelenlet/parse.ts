@@ -9,6 +9,32 @@ const timeField = z
   .nullable()
   .transform((v) => normalizeTime(v ?? null))
 
+const pinCodeField = z
+  .string()
+  .trim()
+  .optional()
+  .nullable()
+  .transform((v) => {
+    const t = (v ?? '').trim()
+    return t === '' ? null : t
+  })
+  .refine((v) => v === null || /^\d{4}$/.test(v), {
+    message: 'A PIN pontosan 4 számjegy legyen.'
+  })
+
+const rfidCardField = z
+  .string()
+  .trim()
+  .optional()
+  .nullable()
+  .transform((v) => {
+    const t = (v ?? '').trim().toUpperCase()
+    return t === '' ? null : t
+  })
+  .refine((v) => v === null || (v.length >= 4 && v.length <= 64), {
+    message: 'Az RFID azonosító 4–64 karakter legyen.'
+  })
+
 export const employeeFormSchema = z.object({
   name: z.string().trim().min(1, 'Add meg a nevet.').max(120),
   code: z.string().trim().max(40).optional().default(''),
@@ -22,6 +48,8 @@ export const employeeFormSchema = z.object({
   overtimeEnabled: z.boolean(),
   overtimeGraceMinutes: z.coerce.number().int().min(0).max(240),
   overtimeDailyCapMinutes: z.coerce.number().int().min(0).max(720),
+  pinCode: pinCodeField,
+  rfidCardId: rfidCardField,
   notes: z.string().trim().max(2000).optional().nullable()
 })
 

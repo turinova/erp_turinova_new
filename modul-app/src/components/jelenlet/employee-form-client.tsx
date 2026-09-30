@@ -66,6 +66,8 @@ export function EmployeeFormClient({
   const [overtimeDailyCapMinutes, setOvertimeDailyCapMinutes] = useState(
     String(employee?.overtimeDailyCapMinutes ?? 180)
   )
+  const [pinCode, setPinCode] = useState(employee?.pinCode ?? '')
+  const [rfidCardId, setRfidCardId] = useState(employee?.rfidCardId ?? '')
   const [notes, setNotes] = useState(employee?.notes ?? '')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -88,6 +90,8 @@ export function EmployeeFormClient({
           overtimeEnabled,
           overtimeGraceMinutes: Number(overtimeGraceMinutes) || 0,
           overtimeDailyCapMinutes: Number(overtimeDailyCapMinutes) || 0,
+          pinCode: pinCode || null,
+          rfidCardId: rfidCardId || null,
           notes: notes || null
         }
       })
@@ -297,6 +301,50 @@ export function EmployeeFormClient({
             </FormField>
           </>
         ) : null}
+      </FormSection>
+
+      <FormSection
+        title="Terminál"
+        description="PIN és RFID a jelenlét terminálhoz."
+        columns={4}
+      >
+        <FormField
+          label="PIN"
+          htmlFor="emp-pin"
+          optionalLabel
+          error={fieldErrors.pinCode}
+          hint="Pontosan 4 számjegy."
+        >
+          <Input
+            id="emp-pin"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={4}
+            value={pinCode}
+            onChange={(e) =>
+              setPinCode(e.target.value.replace(/\D/g, '').slice(0, 4))
+            }
+            disabled={!canWrite}
+            placeholder="0000"
+          />
+        </FormField>
+        <FormField
+          label="RFID kártya"
+          htmlFor="emp-rfid"
+          optionalLabel
+          error={fieldErrors.rfidCardId}
+          hint="NFC/RFID UID (pl. 8C93E105)."
+          className="sm:col-span-2"
+        >
+          <Input
+            id="emp-rfid"
+            autoComplete="off"
+            value={rfidCardId}
+            onChange={(e) => setRfidCardId(e.target.value.toUpperCase())}
+            disabled={!canWrite}
+            placeholder="8C93E105"
+          />
+        </FormField>
       </FormSection>
 
       <FormSection title="Megjegyzés" columns={2}>

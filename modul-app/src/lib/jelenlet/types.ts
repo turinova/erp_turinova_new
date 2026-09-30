@@ -56,3 +56,14 @@ export type HrWorkCalendarRow = {
   dayType: WorkCalendarDayType
   name: string
 }
+
+export type JelenletDeviceRow = {
+  id: string
+  tenant_id: string
+  slug: string
+  name: string
+  last_seen_at: string | null
+  has_token: boolean
+  created_at: string
+  updated_at: string
+}

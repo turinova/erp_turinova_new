@@ -234,6 +234,7 @@ export function PosClient({
 
   const searchRef = useRef<HTMLInputElement>(null)
   const searchWrapRef = useRef<HTMLDivElement>(null)
+  const searchResultsRef = useRef<HTMLDivElement>(null)
   const customerWrapRef = useRef<HTMLDivElement>(null)
   const scanLock = useRef(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -522,7 +523,11 @@ export function PosClient({
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      if (!searchWrapRef.current?.contains(e.target as Node)) {
+      const t = e.target as Node
+      if (
+        !searchWrapRef.current?.contains(t) &&
+        !searchResultsRef.current?.contains(t)
+      ) {
         setSearchOpen(false)
       }
       if (!customerWrapRef.current?.contains(e.target as Node)) {
@@ -543,6 +548,7 @@ export function PosClient({
     if (raw === '1') setStockFirst(true)
   }, [])
 
+  // Gépelés = mindig typeahead. Exact barcode csak wedge / Enter (nem debounce).
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     const q = searchQ.trim()
@@ -550,21 +556,6 @@ export function PosClient({
       setSearchHits([])
       setSearching(false)
       return
-    }
-    // Vonalkód alak → exact scan, ne fuzzy typeahead
-    if (looksLikeBarcode(q)) {
-      setSearching(false)
-      setSearchHits([])
-      searchTimer.current = setTimeout(() => {
-        void runBarcodeScan(q).then(() => {
-          setSearchQ('')
-          setSearchOpen(false)
-          setEditingField(false)
-        })
-      }, 120)
-      return () => {
-        if (searchTimer.current) clearTimeout(searchTimer.current)
-      }
     }
     setSearching(true)
     searchTimer.current = setTimeout(() => {
@@ -626,20 +617,22 @@ export function PosClient({
     setTimeout(() => setHighlightId(null), 600)
   }
 
-  async function runBarcodeScan(raw: string) {
-    if (!warehouseId || scanLock.current) return
+  /** Exact barcode lookup. true = kosárba került; missnél a kézi query marad. */
+  async function runBarcodeScan(raw: string): Promise<boolean> {
+    if (!warehouseId || scanLock.current) return false
     const { normalized, raw: trimmed } = prepareBarcodeQuery(raw)
     const code = normalized || trimmed
-    if (!code) return
+    if (!code) return false
 
     scanLock.current = true
     try {
       const res = await fetchPosBarcodeLookup(code, warehouseId)
       if (!res.ok) {
         setFlash({ kind: 'error', message: res.message })
-        return
+        return false
       }
       addOrBump(res.product)
+      return true
     } finally {
       scanLock.current = false
     }
@@ -939,8 +932,14 @@ export function PosClient({
     <div className="flex h-[100dvh] flex-col bg-app">
       <BarcodeWedgeTrap
         enabled={trapEnabled && Boolean(warehouseId)}
+        minLength={6}
         onScan={async (normalized, raw) => {
-          await runBarcodeScan(normalized || raw)
+          const ok = await runBarcodeScan(normalized || raw)
+          if (ok) {
+            setSearchQ('')
+            setSearchHits([])
+            setSearchOpen(false)
+          }
         }}
       />
 
@@ -1314,8 +1313,14 @@ export function PosClient({
               autoComplete="off"
               onFocus={() => setEditingField(true)}
               onBlur={() => {
-                setEditingField(false)
-                setTimeout(focusBarcode, 100)
+                // Ne kapcsold be azonnal a wedge-et: találat kattintás / lista fókusz
+                window.setTimeout(() => {
+                  const el = document.activeElement
+                  if (searchWrapRef.current?.contains(el)) return
+                  if (searchResultsRef.current?.contains(el)) return
+                  if (isTypingTarget(el)) return
+                  setEditingField(false)
+                }, 120)
               }}
               onChange={(e) => setSearchQ(e.target.value)}
               onKeyDown={(e) => {
@@ -1338,12 +1343,24 @@ export function PosClient({
                     setSearchOpen(false)
                     setEditingField(false)
                     focusBarcode()
-                  } else if (looksLikeBarcode(searchQ)) {
-                    void runBarcodeScan(searchQ)
+                    return
+                  }
+                  if (!looksLikeBarcode(searchQ)) return
+                  void runBarcodeScan(searchQ).then((ok) => {
+                    if (!ok) return
                     setSearchQ('')
+                    setSearchHits([])
+                    setSearchOpen(false)
                     setEditingField(false)
                     focusBarcode()
-                  }
+                  })
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setSearchQ('')
+                  setSearchHits([])
+                  setSearchOpen(false)
+                  setEditingField(false)
+                  focusBarcode()
                 }
               }}
             />
@@ -1376,7 +1393,7 @@ export function PosClient({
             <span className="text-hint text-ink-secondary">
               {touch
                 ? 'Scannelj vagy koppints'
-                : 'Gépelés: név / cikkszám · scan: vonalkód'}
+                : 'Gépelés: lista · scanner: fókusz nélkül · Enter: exact ha nincs találat'}
             </span>
           </div>
 
@@ -1401,7 +1418,10 @@ export function PosClient({
             ))}
           </div>
 
-          <div className="mt-2 min-h-0 flex-1 overflow-auto rounded-md border border-border">
+          <div
+            ref={searchResultsRef}
+            className="mt-2 min-h-0 flex-1 overflow-auto rounded-md border border-border"
+          >
             {searching && searchHits.length === 0 ? (
               <p className="p-4 text-hint text-ink-secondary">Keresés…</p>
             ) : searchHits.length === 0 && searchQ.trim() ? (
@@ -1496,6 +1516,10 @@ export function PosClient({
                           zero && 'bg-warning-soft/50 opacity-90',
                           touch && '[&>td]:py-3'
                         )}
+                        onMouseDown={(e) => {
+                          // Blur előtt: ne veszítsük el a fókuszt a keresőről (trap race)
+                          e.preventDefault()
+                        }}
                         onClick={() => {
                           addOrBump(hit)
                           setSearchQ('')
@@ -1772,17 +1796,20 @@ export function PosClient({
               </div>
             ) : (
               <div className="overflow-hidden rounded-md border border-border bg-surface">
-                <table className="w-full border-collapse text-body">
+                <table className="w-full table-fixed border-collapse text-body">
                   <thead>
                     <tr className="border-b border-border bg-subtle text-left text-label text-ink-secondary">
-                      <th className="px-2.5 py-2 font-medium">Termék</th>
-                      <th className="w-[10rem] px-1 py-2 text-center font-medium">
+                      <th className="min-w-0 px-2 py-2 font-medium">Termék</th>
+                      <th className="w-[9.5rem] px-1 py-2 text-center font-medium">
                         Qty
                       </th>
-                      <th className="px-2.5 py-2 font-medium text-right">
-                        Bruttó összeg
+                      <th
+                        className="w-[6.75rem] px-1.5 py-2 text-right font-medium leading-tight"
+                        title="Bruttó összeg"
+                      >
+                        Összeg
                       </th>
-                      <th className="w-10 px-1 py-2" />
+                      <th className="w-10 px-0.5 py-2" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1812,10 +1839,10 @@ export function PosClient({
                               'bg-success-soft ring-2 ring-inset ring-success'
                           )}
                         >
-                          <td className="px-2.5 py-2 align-middle">
+                          <td className="min-w-0 px-2 py-2 align-middle">
                             <button
                               type="button"
-                              className="w-full text-left"
+                              className="w-full min-w-0 text-left"
                               onClick={() =>
                                 setExpandedIds((prev) => {
                                   const next = new Set(prev)
@@ -1828,20 +1855,23 @@ export function PosClient({
                                 })
                               }
                             >
-                              <div className="flex items-center gap-1 font-semibold text-ink">
+                              <div className="flex min-w-0 items-start gap-1 font-semibold text-ink">
                                 <ChevronDown
                                   className={cn(
-                                    'size-3.5 shrink-0 text-ink-muted transition-transform',
+                                    'mt-0.5 size-3.5 shrink-0 text-ink-muted transition-transform',
                                     expanded && 'rotate-180'
                                   )}
                                   aria-hidden
                                 />
-                                <span className="min-w-0 truncate">
+                                <span
+                                  className="min-w-0 flex-1 line-clamp-2 leading-snug"
+                                  title={line.name}
+                                >
                                   {line.name}
                                 </span>
                               </div>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-1 pl-4">
-                                <span className="text-hint text-ink-secondary">
+                              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1 pl-4">
+                                <span className="truncate text-hint text-ink-secondary">
                                   {line.sku}
                                 </span>
                                 {zeroStock ? (
@@ -1993,12 +2023,12 @@ export function PosClient({
                               </div>
                             ) : null}
                           </td>
-                          <td className="px-1 py-2 align-middle">
+                          <td className="px-0.5 py-2 align-middle">
                             <div className="flex items-center justify-center gap-0.5">
                               <Button
                                 type="button"
                                 variant="secondary"
-                                className="size-10 shrink-0 p-0"
+                                className="size-9 shrink-0 p-0 sm:size-10"
                                 aria-label="Csökkentés"
                                 disabled={line.quantity <= 1}
                                 onClick={() =>
@@ -2022,7 +2052,7 @@ export function PosClient({
                               <Input
                                 type="number"
                                 min={1}
-                                className="h-10 w-16 px-1 text-center tabular-nums [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                className="h-9 w-12 px-0.5 text-center tabular-nums sm:h-10 sm:w-14 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 value={line.quantity}
                                 onFocus={() => setEditingField(true)}
                                 onBlur={() => {
@@ -2049,7 +2079,7 @@ export function PosClient({
                               <Button
                                 type="button"
                                 variant="secondary"
-                                className="size-10 shrink-0 p-0"
+                                className="size-9 shrink-0 p-0 sm:size-10"
                                 aria-label="Növelés"
                                 onClick={() =>
                                   setLines((prev) =>
@@ -2065,27 +2095,27 @@ export function PosClient({
                               </Button>
                             </div>
                           </td>
-                          <td className="px-2 py-2 text-right align-middle tabular-nums text-ink">
+                          <td className="whitespace-nowrap px-1.5 py-2 text-right align-middle tabular-nums text-ink">
                             {line.discountPercentage > 0 ? (
                               <div className="flex flex-col items-end leading-tight">
-                                <span className="text-[12px] text-ink-muted line-through decoration-ink-muted">
+                                <span className="text-[11px] text-ink-muted line-through decoration-ink-muted">
                                   {formatMoneyFt(before)} Ft
                                 </span>
-                                <span className="text-[15px] font-semibold text-warning-ink">
+                                <span className="text-[14px] font-semibold text-warning-ink sm:text-[15px]">
                                   {formatMoneyFt(g)} Ft
                                 </span>
                               </div>
                             ) : (
-                              <span className="text-[15px] font-semibold">
+                              <span className="text-[14px] font-semibold sm:text-[15px]">
                                 {formatMoneyFt(g)} Ft
                               </span>
                             )}
                           </td>
-                          <td className="px-1 py-2 align-middle">
+                          <td className="px-0.5 py-2 align-middle">
                             <Button
                               type="button"
                               variant="ghost"
-                              className="size-10 p-0 text-danger-ink hover:bg-danger-soft"
+                              className="size-9 p-0 text-danger-ink hover:bg-danger-soft sm:size-10"
                               aria-label="Törlés"
                               onClick={() =>
                                 setLines((prev) =>
@@ -2106,9 +2136,9 @@ export function PosClient({
                         key={fee.key}
                         className="border-b border-border bg-subtle/50 last:border-0"
                       >
-                        <td className="px-2.5 py-2 align-middle">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-semibold text-ink">
+                        <td className="min-w-0 px-2 py-2 align-middle">
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                            <span className="min-w-0 line-clamp-2 font-semibold text-ink">
                               {fee.name}
                             </span>
                             <StatusBadge tone="neutral" variant="outline">
@@ -2119,11 +2149,11 @@ export function PosClient({
                         <td className="px-1 py-2 text-center align-middle text-ink-muted">
                           —
                         </td>
-                        <td className="px-2 py-2 text-right align-middle">
+                        <td className="px-1.5 py-2 text-right align-middle">
                           <Input
                             type="number"
                             min={0}
-                            className="ml-auto h-10 w-[5.5rem] text-right tabular-nums"
+                            className="ml-auto h-9 w-full max-w-[5.5rem] text-right tabular-nums sm:h-10"
                             value={fee.unitPriceGross}
                             aria-label="Díj bruttó egységár"
                             onFocus={() => setEditingField(true)}
@@ -2148,11 +2178,11 @@ export function PosClient({
                             }}
                           />
                         </td>
-                        <td className="px-1 py-2 align-middle">
+                        <td className="px-0.5 py-2 align-middle">
                           <Button
                             type="button"
                             variant="ghost"
-                            className="size-10 p-0 text-danger-ink hover:bg-danger-soft"
+                            className="size-9 p-0 text-danger-ink hover:bg-danger-soft sm:size-10"
                             aria-label="Díj törlése"
                             onClick={() =>
                               setFees((prev) =>

@@ -1,9 +1,20 @@
+import { createHash, randomBytes } from 'node:crypto'
+
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
   JELENLET_FEATURE,
   JELENLET_PAGE_KEYS
 } from '@/lib/jelenlet/types'
+
+export function hashJelenletToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex')
+}
+
+/** Opaque device token — show once in UI. */
+export function generateJelenletToken(): string {
+  return `jl_${randomBytes(24).toString('base64url')}`
+}
 
 export async function tenantHasJelenlet(
   supabase: SupabaseClient,

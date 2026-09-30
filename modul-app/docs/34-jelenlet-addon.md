@@ -1,25 +1,27 @@
 # 34 — Jelenlét add-on
 
-**Státusz:** P0 MVP  
-**Migráció:** `20260518_jelenlet_addon.sql`, `20260519_hr_employee_types.sql`, `20260520_hr_work_calendar_page.sql`  
+**Státusz:** P0 MVP (+ terminál, platform-managed)  
+**Migráció:** `20260518_jelenlet_addon.sql`, `20260519_hr_employee_types.sql`, `20260520_hr_work_calendar_page.sql`, `20260573_jelenlet_terminal.sql`, `20260574_jelenlet_terminal_platform_only.sql`  
 **Ár:** **9 900 Ft** nettó/hó  
 **Key:** `jelenlet`
 
-Kapcsolódó: [33-packages-and-addons.md](33-packages-and-addons.md)
+Kapcsolódó: [33-packages-and-addons.md](33-packages-and-addons.md), [jelenlet-pi.md](jelenlet-pi.md)
 
 ---
 
-## Mit nyit
+## Mit nyit (tenant)
 
 | Route | Job |
 |---|---|
 | `/jelenlet` | Csapat naptár — napi érkezés/távozás / szabadság / beteg |
 | `/jelenlet/naptar` | Globális munkarend: ünnep / céges szünnap / áthelyezett nap |
 | `/dolgozok` | Dolgozó lista + havi hiányzó/hiányos nap + hivatalos PDF |
-| `/dolgozok/uj`, `/dolgozok/[id]` | Alap adatok + műszak + távollét lista |
+| `/dolgozok/uj`, `/dolgozok/[id]` | Alap adatok + műszak + PIN/RFID + távollét lista |
 | `/dolgozok/tipusok` | Dolgozó típus törzs (Bolt / Műhely / …) |
 
-**Nem** része: RFID/terminál, bér, geo, approval workflow (P2).
+**Terminál eszközök:** csak **platform** Cég részletező — tenantnak nincs `/jelenlet/terminalok`. A tenant csak PIN/RFID-t kezel; a hardvert mi telepítjük.
+
+**Nem** része: bér, geo, approval workflow (P2).
 
 ---
 
@@ -27,7 +29,7 @@ Kapcsolódó: [33-packages-and-addons.md](33-packages-and-addons.md)
 
 1. **Naptár** = író felület (cell dialógus).  
 2. **Munkarend** = tenant-szintű `hr_work_calendar` (minden dolgozóra).  
-3. **Dolgozók** = törzs + távollét intervallumok.  
+3. **Dolgozók** = törzs + PIN/RFID + távollét intervallumok.  
 4. **Típusok** = szerkeszthető törzsadat (`hr_employee_types`).  
 5. **Hivatalos PDF** — `/dolgozok` kijelölés → ZIP/PDF.
 
@@ -42,9 +44,19 @@ Független a `footcounter` add-ontól.
 
 ---
 
+## Terminál (platform)
+
+API: `POST /api/jelenlet/terminal/scan` — Bearer / `x-jelenlet-secret`.  
+Eszköz + token: platform Cég detail. RLS: csak `is_platform_admin` (tenant tag nem olvas/ír).  
+Részletek: [jelenlet-pi.md](jelenlet-pi.md).
+
+Dolgozó: `pin_code` (4 digit), `rfid_card_id` — partial unique / tenant (soft-delete NULL-ra állít).
+
+---
+
 ## Táblák
 
-`hr_employees`, `hr_employee_types`, `hr_attendance_days`, `hr_absences`, `hr_work_calendar`
+`hr_employees`, `hr_employee_types`, `hr_attendance_days`, `hr_absences`, `hr_work_calendar`, `jelenlet_devices`
 
 ### Munkarend (`hr_work_calendar`)
 

@@ -27,6 +27,8 @@ export type HrEmployeeRow = {
   overtimeEnabled: boolean
   overtimeGraceMinutes: number
   overtimeDailyCapMinutes: number
+  pinCode: string | null
+  rfidCardId: string | null
   notes: string | null
 }
 
@@ -59,12 +61,14 @@ function mapEmployee(row: Record<string, unknown>): HrEmployeeRow {
     overtimeEnabled: Boolean(row.overtime_enabled),
     overtimeGraceMinutes: Number(row.overtime_grace_minutes) || 15,
     overtimeDailyCapMinutes: Number(row.overtime_daily_cap_minutes) || 180,
+    pinCode: (row.pin_code as string | null) || null,
+    rfidCardId: (row.rfid_card_id as string | null) || null,
     notes: (row.notes as string | null) ?? null
   }
 }
 
 const EMPLOYEE_SELECT =
-  'id, name, code, employee_type_id, active, shift_start, shift_end, lunch_start, lunch_end, works_on_saturday, overtime_enabled, overtime_grace_minutes, overtime_daily_cap_minutes, notes, hr_employee_types ( name )'
+  'id, name, code, employee_type_id, active, shift_start, shift_end, lunch_start, lunch_end, works_on_saturday, overtime_enabled, overtime_grace_minutes, overtime_daily_cap_minutes, pin_code, rfid_card_id, notes, hr_employee_types ( name )'
 
 export async function listEmployees(
   supabase: SupabaseClient,

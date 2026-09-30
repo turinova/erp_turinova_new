@@ -27,7 +27,7 @@ export type BarcodeWedgeTrapProps = {
    * `normalized` = HU wedge remap; `raw` = trimelt nyers.
    */
   onScan: (normalized: string, raw: string) => void | Promise<void>
-  /** Min. karakter idle timeout előtt (default 4) */
+  /** Min. karakter idle timeout előtt (default 6 — egyezik looksLikeBarcode-dal) */
   minLength?: number
   /** Idle ms Enter nélkül (default 100) — POS mintája */
   idleMs?: number
@@ -37,11 +37,12 @@ export type BarcodeWedgeTrapProps = {
  * Rejtett fókusz-trap USB wedge scannerhez.
  * Document capture + e.code map (HU layout Digit0→ö bypass).
  * BUTTON fókusz után soft reclaim (nem sticky).
+ * Exact scan: idle / Enter — NEM a látható kereső debounce.
  */
 export function BarcodeWedgeTrap({
   enabled = true,
   onScan,
-  minLength = 4,
+  minLength = 6,
   idleMs = 100
 }: BarcodeWedgeTrapProps) {
   const inputRef = useRef<HTMLInputElement>(null)

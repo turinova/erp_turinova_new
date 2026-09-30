@@ -44,7 +44,8 @@ Jobb: kosár + sticky footer
 - Match: exact → prefix → contains (név / SKU / barcode / belső barcode); limit ~15.
 - `accessories.sellable_pos = true` (default true; form: „Elérhető a POS-on”).
 - Soft stock: 0 készlet is listázható; **Elöl a készletes** chip rendez; OOS sor muted + „Nincs készleten”.
-- Scan (Enter) vs gépelés: ugyanaz a ranked lista; barcode exact nyer.
+- **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés.
+- **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha nincs kiválasztható találat); miss → flash, query marad.
 - **Qty-first:** előválasztott mennyiség a következő scan/tile/találat tapre (reset 1-re add után).
 
 **Gyors termékek (kurált rács, nem auto top-seller):**
