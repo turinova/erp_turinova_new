@@ -291,7 +291,8 @@ export function isTenantAppPath(pathname: string): boolean {
     pathname.startsWith('/torzsadatok') ||
     pathname.startsWith('/beallitasok') ||
     pathname.startsWith('/felhasznalok') ||
-    pathname.startsWith('/partner') ||
+    // isPartnerPath: ne ütközzön /partnerek-kel (startsWith('/partner') false positive)
+    isPartnerPath(pathname) ||
     pathname === '/no-access' ||
     pathname === '/nincs-hozzaferes'
   )
