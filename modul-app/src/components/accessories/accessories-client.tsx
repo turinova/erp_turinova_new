@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Package, Plus, Printer, Search } from 'lucide-react'
 import { toast } from 'sonner'
@@ -20,6 +20,10 @@ import {
 } from '@/components/patterns/data-table'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
+import {
+  BarcodeWedgeTrap,
+  fetchAccessoryBarcodeLookup
+} from '@/components/search/barcode-wedge-trap'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -40,6 +44,7 @@ import {
   type AccessoryWebFilter
 } from '@/lib/accessories/queries'
 import type { ProductLabelPayload } from '@/lib/labels/types'
+import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
 import { cn } from '@/lib/utils'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
@@ -128,17 +133,83 @@ export function AccessoriesClient({
   const [previewTarget, setPreviewTarget] = useState<AccessoryListItem | null>(null)
   const [labelTarget, setLabelTarget] = useState<ProductLabelPayload | null>(null)
   const [pending, startTransition] = useTransition()
+  const barcodeBusyRef = useRef(false)
+  const skipDebounceRef = useRef(true)
+  const skipNextDebounceRef = useRef(false)
+
+  const applyListSearch = useCallback(
+    (next: string, nextPage = 1) => {
+      const trimmed = next.trim()
+      skipNextDebounceRef.current = true
+      setSearch(trimmed)
+      setActiveQ(trimmed)
+      setPage(nextPage)
+      router.replace(listHref(trimmed, web, nextPage), { scroll: false })
+    },
+    [router, web]
+  )
+
+  const resolveBarcodeOrSearch = useCallback(
+    async (rawQ: string) => {
+      const trimmed = rawQ.trim()
+      if (!trimmed) {
+        applyListSearch('')
+        return
+      }
+
+      if (looksLikeBarcode(trimmed)) {
+        if (barcodeBusyRef.current) return
+        barcodeBusyRef.current = true
+        try {
+          const { normalized, raw } = prepareBarcodeQuery(trimmed)
+          const code = normalized || raw
+          const hit = await fetchAccessoryBarcodeLookup(code)
+          if (hit.ok) {
+            toast.success(hit.name)
+            router.push(`${LIST_PATH}/${hit.id}`)
+            return
+          }
+          applyListSearch(code)
+          if (hit.notFound) {
+            toast.message('Nincs exact egyezés — lista keresés', {
+              description: code
+            })
+          }
+          return
+        } finally {
+          barcodeBusyRef.current = false
+        }
+      }
+
+      applyListSearch(trimmed)
+    },
+    [applyListSearch, router]
+  )
+
+  const handleWedgeScan = useCallback(
+    async (normalized: string, raw: string) => {
+      await resolveBarcodeOrSearch(normalized || raw)
+    },
+    [resolveBarcodeOrSearch]
+  )
 
   useEffect(() => {
+    if (skipDebounceRef.current) {
+      skipDebounceRef.current = false
+      return
+    }
+    if (skipNextDebounceRef.current) {
+      skipNextDebounceRef.current = false
+      return
+    }
     if (search.trim() === activeQ) return
     const t = window.setTimeout(() => {
-      const next = search.trim()
-      setActiveQ(next)
-      setPage(1)
-      router.replace(listHref(next, web, 1), { scroll: false })
+      void resolveBarcodeOrSearch(search)
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(t)
-  }, [search, activeQ, web, router])
+  }, [search, activeQ, resolveBarcodeOrSearch])
+
+  const trapPaused = Boolean(deleteTarget || previewTarget || labelTarget)
 
   const canUseSeed =
     serverSeeded &&
@@ -192,9 +263,13 @@ export function AccessoriesClient({
 
   return (
     <div>
+      <BarcodeWedgeTrap
+        enabled={!trapPaused}
+        onScan={handleWedgeScan}
+      />
       <PageHeader
         title="Termékek"
-        description="Eladható termékek törzse."
+        description="Eladható termékek törzse — vonalkód / SKU szkenner fókusz nélkül is."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <AccessoriesExcel canWrite={canWrite} />
@@ -212,10 +287,7 @@ export function AccessoriesClient({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            const next = search.trim()
-            setActiveQ(next)
-            setPage(1)
-            router.replace(listHref(next, web, 1), { scroll: false })
+            void resolveBarcodeOrSearch(search)
           }}
           className="relative max-w-sm flex-1"
           role="search"
@@ -233,6 +305,7 @@ export function AccessoriesClient({
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Keresés név, SKU, vonalkód, gyártó…"
             className="pl-8"
+            autoComplete="off"
             aria-busy={loading}
           />
         </form>

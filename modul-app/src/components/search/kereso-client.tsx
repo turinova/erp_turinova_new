@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { Search } from 'lucide-react'
+import { toast } from 'sonner'
 
 import {
   DataTable,
@@ -19,8 +20,13 @@ import {
 } from '@/components/patterns/data-table'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
+import {
+  BarcodeWedgeTrap,
+  fetchAccessoryBarcodeLookup
+} from '@/components/search/barcode-wedge-trap'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
 import {
   formatUnifiedPrice,
   formatUnifiedSizeLabel,
@@ -134,6 +140,8 @@ export function KeresoClient({
   const inputRef = useRef<HTMLInputElement>(null)
   const kindRef = useRef<KindFilter>(initialKind)
   const skipDebounceRef = useRef(true)
+  const barcodeBusyRef = useRef(false)
+  const skipNextDebounceRef = useRef(false)
   const [, startUrlTransition] = useTransition()
   const [showProcurementStock, setShowProcurementStock] = useState(
     showProcurementStockProp
@@ -183,20 +191,66 @@ export function KeresoClient({
     [syncUrl]
   )
 
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+  const resolveBarcodeOrSearch = useCallback(
+    async (rawQ: string, nextKind: KindFilter, nextPage: number) => {
+      const trimmed = rawQ.trim()
+      if (!trimmed) {
+        commitSearch('', nextKind, nextPage)
+        return
+      }
+
+      if (looksLikeBarcode(trimmed) && accessoryDetailBase) {
+        if (barcodeBusyRef.current) return
+        barcodeBusyRef.current = true
+        try {
+          const { normalized, raw } = prepareBarcodeQuery(trimmed)
+          const code = normalized || raw
+          const hit = await fetchAccessoryBarcodeLookup(code)
+          if (hit.ok) {
+            toast.success(hit.name)
+            router.push(`${accessoryDetailBase}/${hit.id}`)
+            return
+          }
+          skipNextDebounceRef.current = true
+          setQDraft(code)
+          commitSearch(code, nextKind, 1)
+          if (hit.notFound) {
+            toast.message('Nincs exact egyezés — lista keresés', {
+              description: code
+            })
+          }
+          return
+        } finally {
+          barcodeBusyRef.current = false
+        }
+      }
+
+      commitSearch(trimmed, nextKind, nextPage)
+    },
+    [accessoryDetailBase, commitSearch, router]
+  )
+
+  const handleWedgeScan = useCallback(
+    async (normalized: string, raw: string) => {
+      await resolveBarcodeOrSearch(normalized || raw, kindRef.current, 1)
+    },
+    [resolveBarcodeOrSearch]
+  )
 
   useEffect(() => {
     if (skipDebounceRef.current) {
       skipDebounceRef.current = false
       return
     }
+    if (skipNextDebounceRef.current) {
+      skipNextDebounceRef.current = false
+      return
+    }
     const timeoutId = window.setTimeout(() => {
-      commitSearch(qDraft.trim(), kindRef.current, 1)
+      void resolveBarcodeOrSearch(qDraft.trim(), kindRef.current, 1)
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(timeoutId)
-  }, [qDraft, commitSearch])
+  }, [qDraft, resolveBarcodeOrSearch])
 
   const hasQuery = Boolean(activeQ)
 
@@ -249,11 +303,11 @@ export function KeresoClient({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    commitSearch(qDraft, kind, 1)
+    void resolveBarcodeOrSearch(qDraft, kind, 1)
   }
 
   function handleKindChange(next: KindFilter) {
-    commitSearch(qDraft, next, 1)
+    void resolveBarcodeOrSearch(qDraft, next, 1)
   }
 
   function handlePageChange(nextPage: number) {
@@ -279,7 +333,14 @@ export function KeresoClient({
 
   return (
     <div>
-      <PageHeader title="Kereső" description={description} />
+      <BarcodeWedgeTrap onScan={handleWedgeScan} />
+      <PageHeader
+        title="Kereső"
+        description={
+          description ??
+          'Név, gyártó, SKU vagy vonalkód — a szkenner fókusz nélkül is működik.'
+        }
+      />
 
       <form onSubmit={handleSubmit} className="relative mb-3 max-w-lg">
         <label className="sr-only" htmlFor="kereso-q">
@@ -294,7 +355,7 @@ export function KeresoClient({
           id="kereso-q"
           value={qDraft}
           onChange={(e) => setQDraft(e.target.value)}
-          placeholder="pl. Egger W1000"
+          placeholder="pl. Egger W1000 vagy vonalkód"
           className="pl-8"
           autoComplete="off"
           aria-busy={loading}
@@ -344,7 +405,8 @@ export function KeresoClient({
 
       {!hasQuery ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
-          Írj be egy terméknevet, gyártót vagy kódot.
+          Írj be egy terméknevet, gyártót vagy kódot — vagy olvasd be a
+          vonalkódot (belső / SIA / SKU).
         </p>
       ) : loading && rows.length === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-center text-body text-ink-secondary">
