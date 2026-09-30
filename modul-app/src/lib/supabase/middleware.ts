@@ -315,6 +315,7 @@ async function handleSession(request: NextRequest) {
   let isAuthenticated = false
   let isPartnerUser = false
   let hasStaffMembership = false
+  let isPlatformAdmin = false
 
   if (isSupabaseConfigured()) {
     const supabase = createServerClient(
@@ -438,6 +439,23 @@ async function handleSession(request: NextRequest) {
               if (check.ok) {
                 isAuthenticated = true
                 hasStaffMembership = true
+                isPlatformAdmin = snap.isPlatformAdmin
+                isPartnerUser = false
+              } else {
+                if (isPrefetch) return prefetchMiss()
+                await supabase.auth.signOut({ scope: 'local' })
+                return redirectStaffSessionReplaced(
+                  request,
+                  surface,
+                  check.reason,
+                  user.id
+                )
+              }
+            } else if (snap?.isPlatformAdmin && isPlatformPath(pathname)) {
+              const check = await checkAppSession(supabase, user.id, nonce)
+              if (check.ok) {
+                isAuthenticated = true
+                isPlatformAdmin = true
                 isPartnerUser = false
               } else {
                 if (isPrefetch) return prefetchMiss()
@@ -463,6 +481,26 @@ async function handleSession(request: NextRequest) {
               if (hasStaffMembership && check.ok) {
                 isAuthenticated = true
                 isPartnerUser = false
+              } else if (
+                isPlatformPath(pathname) &&
+                check.ok &&
+                !hasStaffMembership
+              ) {
+                const { data: platformRow } = await supabase
+                  .from('platform_admins')
+                  .select('user_id')
+                  .eq('user_id', user.id)
+                  .eq('active', true)
+                  .maybeSingle()
+                if (platformRow) {
+                  isAuthenticated = true
+                  isPlatformAdmin = true
+                  isPartnerUser = false
+                } else {
+                  if (isPrefetch) return prefetchMiss()
+                  await supabase.auth.signOut({ scope: 'local' })
+                  return redirectTo(request, staffLoginPath(surface))
+                }
               } else {
                 if (isPrefetch) return prefetchMiss()
                 await supabase.auth.signOut({ scope: 'local' })
@@ -487,6 +525,7 @@ async function handleSession(request: NextRequest) {
           if (check.ok) {
             isAuthenticated = true
             hasStaffMembership = snap.hasMembership
+            isPlatformAdmin = snap.isPlatformAdmin
             isPartnerUser = false
           } else {
             if (isPrefetch) return prefetchMiss()
@@ -518,6 +557,16 @@ async function handleSession(request: NextRequest) {
             isPartnerUser = true
           }
           hasStaffMembership = (memberships?.length ?? 0) > 0
+
+          if (isPlatformPath(pathname) && !hasStaffMembership) {
+            const { data: platformRow } = await supabase
+              .from('platform_admins')
+              .select('user_id')
+              .eq('user_id', user.id)
+              .eq('active', true)
+              .maybeSingle()
+            isPlatformAdmin = Boolean(platformRow)
+          }
 
           const impersonationId = request.cookies.get(
             IMPERSONATION_SESSION_COOKIE
@@ -595,15 +644,18 @@ async function handleSession(request: NextRequest) {
     return redirectTo(request, loginPath)
   }
 
-  // Staff session on partner marketing host → serve tenant app (no /partner rewrite)
+  const canAccessStaffOnly =
+    hasStaffMembership || (isPlatformAdmin && isPlatformPath(pathname))
+
+  // Staff / platform-admin session on partner marketing host → no /partner rewrite
   if (
     surface === 'partner' &&
     isAuthenticated &&
-    hasStaffMembership &&
+    canAccessStaffOnly &&
     !isPartnerUser
   ) {
     rewriteTarget = null
-    surfaceLabel = 'staff'
+    surfaceLabel = hasStaffMembership ? 'staff' : 'platform'
     const prevCookies = supabaseResponse.cookies.getAll()
     supabaseResponse = buildResponse()
     for (const cookie of prevCookies) {
@@ -612,7 +664,7 @@ async function handleSession(request: NextRequest) {
   } else if (
     surface === 'partner' &&
     isStaffOnlyPath(pathname) &&
-    !(isAuthenticated && hasStaffMembership)
+    !(isAuthenticated && canAccessStaffOnly)
   ) {
     return redirectTo(
       request,

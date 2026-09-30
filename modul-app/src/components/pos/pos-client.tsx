@@ -1701,7 +1701,7 @@ export function PosClient({
                           <Input
                             type="number"
                             min={1}
-                            className="h-11 w-14 text-center text-[16px] tabular-nums"
+                            className="h-11 w-16 px-1 text-center text-[16px] tabular-nums [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             value={line.quantity}
                             onFocus={() => setEditingField(true)}
                             onBlur={() => {
@@ -1784,7 +1784,7 @@ export function PosClient({
                   <thead>
                     <tr className="border-b border-border bg-subtle text-left text-label text-ink-secondary">
                       <th className="px-2.5 py-2 font-medium">Termék</th>
-                      <th className="w-[8.5rem] px-1 py-2 text-center font-medium">
+                      <th className="w-[10rem] px-1 py-2 text-center font-medium">
                         Qty
                       </th>
                       <th className="px-2.5 py-2 font-medium text-right">
@@ -2030,7 +2030,7 @@ export function PosClient({
                               <Input
                                 type="number"
                                 min={1}
-                                className="h-10 w-12 text-center tabular-nums"
+                                className="h-10 w-16 px-1 text-center tabular-nums [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                 value={line.quantity}
                                 onFocus={() => setEditingField(true)}
                                 onBlur={() => {

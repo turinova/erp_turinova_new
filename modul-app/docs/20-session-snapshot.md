@@ -13,10 +13,19 @@ A middleware **minden** staff requesten ellenőrzi a nonce ↔ DB egyezést
 
 | Név | Tartalom |
 |---|---|
-| `modul_session_v1` | HMAC-SHA256 aláírt JSON snapshot |
+| `modul_session_v1` | HMAC-SHA256 aláírt **wire v2** JSON (page bitset) |
 | `modul_session_nonce` | Single-login nonce (DB `app_user_sessions`) |
 | `modul_login_pending_*` | 120s — Safari bootstrap (GET `/auth/session-bootstrap`) |
 | Supabase auth | JWT / refresh (változatlan) |
+
+### Wire v2 (méret)
+
+A full-access `allowedPages` + `entitledPages` path-tömbök ~4KB környékére nőttek
+(Safari cookie limit) → a cookie **nem íródott**, navigáció `nonce_missing` / soft-nav
+„semmit nem csinál” tünetet adott (pl. `/platform/partnerek`).
+
+**v2:** `ap` / `ep` = `*` (teljes katalógus) vagy base64url bitset az `ALL_PAGE_KEYS`
+sorrendjében. Cél: tipikus token ≪ 2KB. Legacy v1 cookie még olvasható TTL-ig.
 
 ## Login flow (Safari-biztos)
 
@@ -45,6 +54,7 @@ nincs a következő GET-en; a régi kapu téves `session_replaced`-et okozott.
 - Impersonation start/end
 - TTL lejárat (15 perc) → következő request DB rebuild
 - Snapshot > ~3.9KB → nem állítjuk (log), nonce path marad
+  (v2 bitset után full-access tipikusan <2KB)
 
 ## Env
 

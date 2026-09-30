@@ -23,6 +23,7 @@ import {
 } from '@/lib/platform/onboarding'
 import type { PlatformTenantListItem } from '@/lib/platform/queries'
 import type { TenantStatus } from '@/lib/supabase/database.types'
+import { usePlatformHref } from '@/lib/platform/use-platform-href'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -54,6 +55,7 @@ export function PlatformTenantsClient({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const href = usePlatformHref()
   const [qDraft, setQDraft] = useState(initialQ)
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -85,7 +87,7 @@ export function PlatformTenantsClient({
           </p>
         </div>
         <Link
-          href="/platform/tenants/uj"
+          href={href('/tenants/uj')}
           className={cn(buttonVariants({ variant: 'primary' }))}
         >
           <Plus className="size-3.5" aria-hidden />
@@ -162,12 +164,12 @@ export function PlatformTenantsClient({
                   key={row.id}
                   className="cursor-pointer hover:bg-subtle"
                   onClick={() =>
-                    router.push(`/platform/tenants/${row.id}`)
+                    router.push(href(`/tenants/${row.id}`))
                   }
                 >
                   <DataTableCell>
                     <Link
-                      href={`/platform/tenants/${row.id}`}
+                      href={href(`/tenants/${row.id}`)}
                       className="font-medium text-ink no-underline hover:underline"
                       onClick={(e) => e.stopPropagation()}
                     >

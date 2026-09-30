@@ -44,7 +44,15 @@ export default async function PlatformPartnersPage({
   })
 
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div className="space-y-3" aria-busy="true" aria-label="Betöltés">
+          <div className="h-7 w-48 animate-pulse rounded bg-subtle" />
+          <div className="h-10 max-w-sm animate-pulse rounded-md bg-subtle" />
+          <div className="h-64 animate-pulse rounded-md border border-border bg-subtle" />
+        </div>
+      }
+    >
       <PlatformPartnersClient
         rows={result.rows}
         total={result.total}

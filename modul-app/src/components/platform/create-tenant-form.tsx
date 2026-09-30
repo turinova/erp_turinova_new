@@ -9,9 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createPlatformTenant } from '@/lib/platform/actions'
 import { slugifyTenantName } from '@/lib/platform/onboarding'
+import { usePlatformHref } from '@/lib/platform/use-platform-href'
 
 export function CreateTenantForm() {
   const router = useRouter()
+  const href = usePlatformHref()
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -51,7 +53,7 @@ export function CreateTenantForm() {
         return
       }
       toast.success(result.message ?? 'Cég létrehozva.')
-      router.push(`/platform/tenants/${result.tenantId}`)
+      router.push(href(`/tenants/${result.tenantId}`))
       router.refresh()
     } finally {
       setLoading(false)
@@ -136,7 +138,7 @@ export function CreateTenantForm() {
           type="button"
           variant="secondary"
           disabled={loading}
-          onClick={() => router.push('/platform/tenants')}
+          onClick={() => router.push(href('/tenants'))}
         >
           Mégse
         </Button>

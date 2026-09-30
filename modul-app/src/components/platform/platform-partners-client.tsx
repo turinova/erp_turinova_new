@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import type { PlatformPartnerListItem } from '@/lib/platform/partner-queries'
+import { usePlatformHref } from '@/lib/platform/use-platform-href'
 
 type LinkFilter = 'all' | 'linked' | 'unlinked'
 
@@ -53,6 +54,7 @@ export function PlatformPartnersClient({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const href = usePlatformHref()
   const [qDraft, setQDraft] = useState(initialQ)
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -152,7 +154,7 @@ export function PlatformPartnersClient({
                 <DataTableRow key={row.userId}>
                   <DataTableCell>
                     <Link
-                      href={`/platform/partnerek/${row.userId}`}
+                      href={href(`/partnerek/${row.userId}`)}
                       className="font-medium text-ink no-underline hover:underline"
                     >
                       {row.name}
@@ -183,7 +185,7 @@ export function PlatformPartnersClient({
                       variant="ghost"
                       size="sm"
                       onClick={() =>
-                        router.push(`/platform/partnerek/${row.userId}`)
+                        router.push(href(`/partnerek/${row.userId}`))
                       }
                     >
                       Megnyitás

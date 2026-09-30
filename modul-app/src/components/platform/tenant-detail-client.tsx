@@ -60,6 +60,7 @@ import type {
 } from '@/lib/platform/queries'
 import type { MonthlyBillEstimate } from '@/lib/billing/estimate'
 import type { TenantStatus } from '@/lib/supabase/database.types'
+import { usePlatformHref } from '@/lib/platform/use-platform-href'
 import { cn } from '@/lib/utils'
 
 const BILLING_LABELS: Record<string, string> = {
@@ -134,6 +135,7 @@ export function TenantDetailClient({
   hasDemoMaster = false
 }: Props) {
   const router = useRouter()
+  const href = usePlatformHref()
   const [tab, setTab] = useState<TabId>('overview')
   const [status, setStatus] = useState(tenant.status)
   const [maxSeatsInput, setMaxSeatsInput] = useState(
@@ -465,7 +467,7 @@ export function TenantDetailClient({
       }
       toast.success(result.message ?? 'Cég törölve.')
       setPurgeOpen(false)
-      router.push('/platform/tenants')
+      router.push(href('/tenants'))
       router.refresh()
     } finally {
       setPurgeLoading(false)
@@ -965,7 +967,7 @@ export function TenantDetailClient({
                 {linkedPartners.map((p) => (
                   <li key={p.userId}>
                     <a
-                      href={`/platform/partnerek/${p.userId}`}
+                      href={href(`/partnerek/${p.userId}`)}
                       className="flex flex-wrap items-center justify-between gap-2 py-2 no-underline hover:bg-subtle"
                     >
                       <span className="font-medium text-ink">{p.name}</span>

@@ -18,6 +18,7 @@ import {
 import { formatPlatformHuf } from '@/lib/platform/partner-overview'
 import type { PlatformPartnerDetail } from '@/lib/platform/partner-queries'
 import type { PartnerCompanyOption } from '@/lib/partner/companies'
+import { usePlatformHref } from '@/lib/platform/use-platform-href'
 
 type Props = {
   detail: PlatformPartnerDetail
@@ -38,6 +39,7 @@ function formatDate(iso: string | null) {
 
 export function PartnerDetailClient({ detail, companies }: Props) {
   const router = useRouter()
+  const href = usePlatformHref()
   const p = detail.profile
   const [pending, startTransition] = useTransition()
   const [disableOpen, setDisableOpen] = useState(false)
@@ -135,7 +137,7 @@ export function PartnerDetailClient({ detail, companies }: Props) {
   return (
     <div className="space-y-4">
       <Link
-        href="/platform/partnerek"
+        href={href('/partnerek')}
         className="text-hint text-ink-secondary no-underline hover:underline"
       >
         ← Partnerek
@@ -217,7 +219,7 @@ export function PartnerDetailClient({ detail, companies }: Props) {
           {p.selectedTenantId && detail.companyName ? (
             <p className="mb-3">
               <Link
-                href={`/platform/tenants/${p.selectedTenantId}`}
+                href={href(`/tenants/${p.selectedTenantId}`)}
                 className="font-medium text-ink underline-offset-2 hover:underline"
               >
                 {detail.companyName}
