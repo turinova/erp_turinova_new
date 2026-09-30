@@ -190,3 +190,40 @@ Local (staff host, pl. `localhost:3010`):
 - Partner befizetés rögzítés / belső payment comment
 - Auth ban partner disable-nél (csak app-szintű `status`)
 - Resend / saját mailer a reset/invite-hez (Supabase Auth email)
+
+---
+
+## 11. Legacy migráció (customer-portal → partner)
+
+**Cél:** a régi `portal_customers` fiókok előre létrejönnek a SaaS Auth + `partner_profiles` alatt; **nincs** tömeges „itt a jelszavad” email. Az első belépés = egyszeri jelszó-beállítás.
+
+| | |
+|---|---|
+| Forrás CSV | `scripts/data/portal_customers.csv` (PII — gitignore) |
+| Default tenant | Hírös-Ablak Kft. `45dd7c02-28e9-4f4a-b74c-704f63437927` |
+| Legacy company | `fa023793-d212-4a6c-9a2b-b3c1e9f94ea2` → fenti tenant |
+| Schema | `20260569_partner_must_set_password.sql` (`must_set_password`, `legacy_portal_customer_id`) |
+| Script | `scripts/migrate-portal-partners.mjs` |
+
+### Futtatás
+
+1. SQL: `20260569_partner_must_set_password.sql`
+2. Hírös: `partner_orders` entitlement + `tenant_accepts_partner_orders` = true
+3. Dry-run: `npm run migrate:portal-partners -- --dry-run`
+4. Smoke: `npm run migrate:portal-partners -- --apply --limit=5`
+5. Teljes: `npm run migrate:portal-partners -- --apply`
+
+Report: `scripts/import-reports/portal_partners_*.csv` (gitignore).
+
+### First-login UX
+
+1. Partner `/login`: ha az emailhez `must_set_password = true` (blur vagy hibás jelszó) → soft szöveg + **Jelszó beállítása** (Supabase recovery email).
+2. Link → `/partner/uj-jelszo` → új jelszó → `must_set_password = false` → home (Hírös már `selected_tenant_id`).
+3. Nincs „Hibás jelszó” elsődleges üzenet migrált fióknál.
+
+### Explicit NEM (P0)
+
+- Régi Auth jelszó-hash másolása (másik Supabase projekt)
+- NETTFRONT / portal quote történet
+- Workshop logo data URL
+- Tömeges jelszó-email

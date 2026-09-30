@@ -10,7 +10,9 @@
     "lint": "next lint",
     "clean": "rm -rf .next var",
     "speed-test": "node --env-file=.env.local scripts/speed-test.mjs",
+    "speed-test:pos-barcode": "node --env-file=.env.local scripts/speed-test-pos-barcode.mjs",
     "seed:footcounter": "node --env-file=.env.local scripts/seed-footcounter-2026.mjs",
+    "migrate:portal-partners": "node --env-file=.env.local scripts/migrate-portal-partners.mjs",
     "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {

@@ -8,7 +8,7 @@ import { loadLegalMarkdown } from '@/lib/legal/load'
 
 export const metadata: Metadata = {
   title: 'Impresszum',
-  description: 'Optinova impresszum — HÍRÖS-ABLAK Kft.',
+  description: 'Turinova impresszum — HÍRÖS-ABLAK Kft.',
   robots: { index: true, follow: true }
 }
 

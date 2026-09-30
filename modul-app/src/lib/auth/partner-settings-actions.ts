@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 
 import { getPartnerSession } from '@/lib/auth/partner-session'
+import { clearPartnerMustSetPassword } from '@/lib/auth/partner-actions'
 import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
 import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { partnerTenantIsAccepting } from '@/lib/partner/companies'
@@ -207,6 +208,8 @@ export async function changePartnerPasswordAction(
     console.error('changePartnerPasswordAction', updateError.message)
     return { message: 'A jelszó módosítása sikertelen. Próbáld újra.' }
   }
+
+  await clearPartnerMustSetPassword(session.id)
 
   return { ok: true, message: 'A jelszavad megváltozott.' }
 }

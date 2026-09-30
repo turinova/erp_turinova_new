@@ -534,6 +534,8 @@ export type PartnerProfile = {
   disabled_reason: string | null
   disabled_by: string | null
   terms_accepted_at: string | null
+  must_set_password: boolean
+  legacy_portal_customer_id: string | null
   created_at: string
   updated_at: string
 }
@@ -1553,6 +1555,8 @@ export type Database = {
           disabled_reason?: string | null
           disabled_by?: string | null
           terms_accepted_at?: string | null
+          must_set_password?: boolean
+          legacy_portal_customer_id?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -1587,6 +1591,36 @@ export type Database = {
           p_warehouse_id: string
         }
         Returns: number
+      }
+      lookup_pos_barcode: {
+        Args: {
+          p_tenant_id: string
+          p_code: string
+          p_warehouse_id: string
+        }
+        Returns: {
+          id: string
+          name: string
+          sku: string
+          price_net: number
+          barcode: string | null
+          barcode_internal: string | null
+          image_url: string | null
+          tax_rate_percent: number
+          unit_shortform: string
+          on_hand: number
+        }[]
+      }
+      accessories_on_hand: {
+        Args: {
+          p_tenant_id: string
+          p_warehouse_id: string
+          p_accessory_ids: string[]
+        }
+        Returns: {
+          accessory_id: string
+          on_hand: number
+        }[]
       }
       generate_stock_transfer_number: {
         Args: { p_tenant_id: string }

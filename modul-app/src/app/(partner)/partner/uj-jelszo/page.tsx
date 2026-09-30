@@ -18,7 +18,9 @@ export default async function PartnerResetPasswordPage() {
     <PartnerAuthShell
       title="Új jelszó"
       description={
-        user ? 'Írd be az új jelszavad kétszer.' : undefined
+        user
+          ? 'Írd be az új jelszavad kétszer. Utána belépsz a partner felületre.'
+          : undefined
       }
     >
       {user ? (

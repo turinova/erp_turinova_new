@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 export const metadata: Metadata = {
   title: 'Funkciók',
   description:
-    'Optinova Alap: készlet, beszerzés, POS, árajánlat, címke, számlázás — plusz SMS és partnerportál. Az egyedi modulok külön oldalon.'
+    'Turinova Alap: készlet, beszerzés, POS, árajánlat, címke, számlázás — plusz SMS és partnerportál. Az egyedi modulok külön oldalon.'
 }
 
 export default function FeaturesPage() {

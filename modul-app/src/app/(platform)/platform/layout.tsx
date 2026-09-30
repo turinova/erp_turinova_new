@@ -6,8 +6,8 @@ import { getSessionUser } from '@/lib/auth/session'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Optinova Platform',
-    template: '%s · Optinova Platform'
+    default: 'Turinova Platform',
+    template: '%s · Turinova Platform'
   }
 }
 

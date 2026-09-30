@@ -45,11 +45,11 @@ export function PlatformShell({
         <div className="flex h-topbar shrink-0 items-center border-b border-border px-3">
           <Link href={href('/')} className="flex items-center no-underline">
             <Image
-              src="/images/optinova-logo.png"
-              alt="Optinova"
-              width={120}
-              height={24}
-              className="h-6 w-auto"
+              src="/images/turinova-logo.png"
+              alt="Turinova"
+              width={140}
+              height={28}
+              className="h-7 w-auto"
               priority
             />
           </Link>
@@ -97,7 +97,7 @@ export function PlatformShell({
             }
             className="mt-1 text-hint text-ink underline-offset-2 hover:underline"
           >
-            ← Optinova app
+            ← Turinova app
           </a>
         </div>
       </aside>

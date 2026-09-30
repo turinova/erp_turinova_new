@@ -16,8 +16,8 @@ type AuthMosaicPanelProps = {
  * Mintázat: main-app / customer-portal login (saját újraírás).
  */
 export function AuthMosaicPanel({
-  logoSrc = '/images/optinova-logo.png',
-  logoAlt = 'Optinova',
+  logoSrc = '/images/turinova-logo.png',
+  logoAlt = 'Turinova',
   className
 }: AuthMosaicPanelProps) {
   return (
@@ -49,7 +49,7 @@ export function AuthMosaicPanel({
         <Image
           src={logoSrc}
           alt={logoAlt}
-          width={280}
+          width={576}
           height={112}
           className="h-[112px] w-auto object-contain"
           priority

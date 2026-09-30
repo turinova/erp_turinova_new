@@ -43,19 +43,19 @@ export function PartnerShell({
           <Link
             href={homeHref}
             className="flex items-center no-underline"
-            aria-label="Optinova Partner kezdőlap"
+            aria-label="Turinova Partner kezdőlap"
           >
             <Image
-              src="/images/optinova-logo.png"
-              alt="Optinova"
-              width={140}
-              height={28}
-              className="h-7 w-auto"
+              src="/images/turinova-logo.png"
+              alt="Turinova"
+              width={160}
+              height={32}
+              className="h-8 w-auto"
               priority
             />
           </Link>
           <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-            Optinova
+            Partner
           </span>
         </div>
         <nav className="mt-3 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">

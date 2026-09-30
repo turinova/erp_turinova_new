@@ -44,11 +44,11 @@ export function MarketingShell({
             className="inline-flex shrink-0 no-underline transition-opacity hover:opacity-80"
           >
             <Image
-              src="/images/optinova-logo.png"
-              alt="Optinova"
-              width={132}
-              height={28}
-              className="h-7 w-auto"
+              src="/images/turinova-logo.png"
+              alt="Turinova"
+              width={160}
+              height={32}
+              className="h-8 w-auto"
               priority
             />
           </Link>
@@ -106,11 +106,11 @@ export function MarketingShell({
         <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-10 sm:px-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
             <Image
-              src="/images/optinova-logo.png"
-              alt="Optinova"
-              width={120}
-              height={24}
-              className="h-6 w-auto"
+              src="/images/turinova-logo.png"
+              alt="Turinova"
+              width={140}
+              height={28}
+              className="h-7 w-auto"
             />
             <p className="max-w-xs text-[13px] leading-relaxed text-ink-secondary">
               Ajánlat, készlet és bolt egy helyen — magyar kereskedő-gyártóknak.

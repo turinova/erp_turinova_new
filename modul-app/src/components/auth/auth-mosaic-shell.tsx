@@ -57,16 +57,16 @@ export function AuthMosaicShell({
         />
         <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-3">
           <Image
-            src="/images/optinova-logo.png"
-            alt="Optinova"
-            width={280}
-            height={56}
+            src="/images/turinova-logo.png"
+            alt="Turinova"
+            width={576}
+            height={112}
             className="h-[112px] w-auto object-contain"
             priority
           />
           {isPartner ? (
             <span className="rounded-md border border-stone-300 bg-white/90 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-stone-700">
-              {badge ?? 'Optinova'}
+              {badge ?? 'Partner'}
             </span>
           ) : null}
         </div>
@@ -89,17 +89,17 @@ export function AuthMosaicShell({
             <div className="mb-4 flex flex-col items-center gap-2 lg:hidden">
               <Link href={homeHref} className="inline-flex no-underline">
                 <Image
-                  src="/images/optinova-logo.png"
-                  alt="Optinova"
-                  width={140}
-                  height={28}
-                  className="h-7 w-auto"
+                  src="/images/turinova-logo.png"
+                  alt="Turinova"
+                  width={200}
+                  height={40}
+                  className="h-10 w-auto"
                   priority
                 />
               </Link>
               {isPartner ? (
                 <span className="rounded-md border border-stone-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-stone-700">
-                  {badge ?? 'Optinova'}
+                  {badge ?? 'Partner'}
                 </span>
               ) : null}
             </div>

@@ -21,11 +21,11 @@ export function LinkifyNavbar() {
           <div className="flex items-center space-x-10">
             <Link href="/" className="inline-flex items-center no-underline">
               <Image
-                src="/images/optinova-logo.png"
-                alt="Optinova"
-                width={132}
-                height={28}
-                className="h-7 w-auto"
+                src="/images/turinova-logo.png"
+                alt="Turinova"
+                width={160}
+                height={32}
+                className="h-8 w-auto"
                 priority
               />
             </Link>

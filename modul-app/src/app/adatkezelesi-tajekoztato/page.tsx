@@ -8,7 +8,7 @@ import { loadLegalMarkdown } from '@/lib/legal/load'
 
 export const metadata: Metadata = {
   title: 'Adatkezelési tájékoztató',
-  description: 'Optinova adatkezelési tájékoztató.',
+  description: 'Turinova adatkezelési tájékoztató.',
   robots: { index: true, follow: true }
 }
 

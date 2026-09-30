@@ -2,7 +2,7 @@
 
 Hatályba lépés: 2026.09.16.
 
-Jelen dokumentum tartalmazza a HÍRÖS-ABLAK Kereskedelmi és Szolgáltató Korlátolt Felelősségű Társaság (röviden: HÍRÖS-ABLAK Kft., a továbbiakban: „Szolgáltató”) által üzemeltetett **Optinova** elnevezésű szoftverszolgáltatás (a továbbiakban: „Szoftver”) használatára vonatkozó általános szerződési feltételeket (a továbbiakban: „ÁSZF”).
+Jelen dokumentum tartalmazza a HÍRÖS-ABLAK Kereskedelmi és Szolgáltató Korlátolt Felelősségű Társaság (röviden: HÍRÖS-ABLAK Kft., a továbbiakban: „Szolgáltató”) által üzemeltetett **Turinova** elnevezésű szoftverszolgáltatás (a továbbiakban: „Szoftver”) használatára vonatkozó általános szerződési feltételeket (a továbbiakban: „ÁSZF”).
 
 A Szoftver használatához szükséges, jelen ÁSZF-ben nem részletezett technikai tájékoztatást a Szoftver elérhetőségét biztosító honlapokon és a Szoftveren belüli tájékoztatások nyújtják.
 
@@ -18,7 +18,7 @@ Szolgáltató adatai:
 
 ## 1. A szerződés tárgya
 
-Szolgáltató felhő alapú, SaaS (Software as a Service) típusú szolgáltatást nyújt **Optinova** néven, amely lapszabászatok, műhelyek és kapcsolódó vállalkozások számára biztosít vállalatirányítási és munkafolyamat-támogató funkciókat — így különösen ügyfél- és anyagtörzs, ajánlat- és rendeléskezelés, gyártástámogatás, kereső, valamint opcionális kiegészítőket (például online asztalos partnerportál, készre jelentés SMS, termékcímke-nyomtatás).
+Szolgáltató felhő alapú, SaaS (Software as a Service) típusú szolgáltatást nyújt **Turinova** néven, amely lapszabászatok, műhelyek és kapcsolódó vállalkozások számára biztosít vállalatirányítási és munkafolyamat-támogató funkciókat — így különösen ügyfél- és anyagtörzs, ajánlat- és rendeléskezelés, gyártástámogatás, kereső, valamint opcionális kiegészítőket (például online asztalos partnerportál, készre jelentés SMS, termékcímke-nyomtatás).
 
 A Szoftver fő elérési felületei:
 
@@ -106,7 +106,7 @@ A Szoftver egésze, grafikus elemei, szövegei és technikai megoldásai szerző
 
 Ügyfél és Felhasználói földrajzilag korlátlan, időben a díjfizetéshez kötött, a megrendelt csomagra / felhasználószámra korlátozott felhasználási jogot kapnak. A jog nem terjed ki a Szoftver módosítására, továbbértékesítésére, al-licencbe adására vagy a fiók megosztására jogosulatlan személlyel.
 
-Az „Optinova” név és arculat használata a Szolgáltató hozzájárulása nélkül tilos.
+Az „Turinova” név és arculat használata a Szolgáltató hozzájárulása nélkül tilos.
 
 ## 6. Szerződéskötés és fizetés
 

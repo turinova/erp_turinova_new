@@ -11,7 +11,7 @@ Székhely: 6000 Kecskemét, Mindszenti krt. 10.
 Cégjegyzékszám: 03-09-104700  
 Adószám: 11421386-2-03
 
-## Kapcsolat (Optinova)
+## Kapcsolat (Turinova)
 
 Kapcsolattartó: Mező Dávid  
 Telefon: +36 30 999 2800  
@@ -20,7 +20,7 @@ Web: https://optinova.hu
 
 ## Tárhely / üzemeltetés
 
-Az Optinova webes szolgáltatás (alkalmazás) üzemeltetése:  
+Az Turinova webes szolgáltatás (alkalmazás) üzemeltetése:  
 **Vercel Inc.** — https://vercel.com — adatvédelmi tájékoztató: https://vercel.com/legal/privacy-policy
 
 Adatbázis-szolgáltatás:  

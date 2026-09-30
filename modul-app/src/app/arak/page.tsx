@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 export const metadata: Metadata = {
   title: 'Árak',
   description:
-    'Optinova: két hónap próba 0 Ft-ért. Utána 39 990 Ft nettó havonta. Külön rendelhető lapszabászat, jelenléti ív és belépőszámláló.'
+    'Turinova: két hónap próba 0 Ft-ért. Utána 39 990 Ft nettó havonta. Külön rendelhető lapszabászat, jelenléti ív és belépőszámláló.'
 }
 
 const FAQ = [

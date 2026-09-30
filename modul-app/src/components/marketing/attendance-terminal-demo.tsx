@@ -140,12 +140,12 @@ export function AttendanceTerminalDemo({ className }: { className?: string }) {
                 aria-hidden
               />
               <Image
-                src="/images/optinova-logo-on-dark.png"
+                src="/images/turinova-logo.png"
                 alt=""
-                width={1024}
-                height={259}
+                width={3612}
+                height={703}
                 sizes="150px"
-                className="h-5 w-1/2 object-contain"
+                className="h-5 w-1/2 object-contain brightness-0 invert"
                 aria-hidden
               />
             </div>

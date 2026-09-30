@@ -20,7 +20,7 @@ export function PartnerAuthShell({
       description={description}
       homeHref={PARTNER_LOGIN_PATH}
       wide={wide}
-      badge="Optinova"
+      badge="Partner"
       footer={<PartnerLegalLinks className="mt-4" />}
     >
       {children}

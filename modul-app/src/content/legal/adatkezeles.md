@@ -6,11 +6,11 @@ Utolsó frissítés: 2026.09.16.
 
 ### Miért készítettük ezt a tájékoztatót?
 
-Az Optinova (https://optinova.hu, https://app.optinova.hu) több célból kezel személyes adatokat, és ezt az érintettek jogainak tiszteletben tartásával, valamint a vonatkozó jogszabályok — különösen a GDPR (2016/679 EU rendelet) és az Infotv. — teljesítésével kívánja tenni.
+Az Turinova (https://optinova.hu, https://app.optinova.hu) több célból kezel személyes adatokat, és ezt az érintettek jogainak tiszteletben tartásával, valamint a vonatkozó jogszabályok — különösen a GDPR (2016/679 EU rendelet) és az Infotv. — teljesítésével kívánja tenni.
 
 ### Ki kezeli a személyes adatokat?
 
-A személyes adatokat az Optinova szolgáltatás üzemeltetője kezeli:
+A személyes adatokat az Turinova szolgáltatás üzemeltetője kezeli:
 
 **HÍRÖS-ABLAK Kereskedelmi és Szolgáltató Korlátolt Felelősségű Társaság** (HÍRÖS-ABLAK Kft.)
 
@@ -56,7 +56,7 @@ Vállalkozás neve, e-mail, kapcsolattartó neve, telefonszám (ha megadja), jel
 
 ### Miért?
 
-Az Optinova SaaS szerződés megkötése és teljesítése: fiók, hozzáférés, csomag / kiegészítők, ügyfélszolgálat.
+Az Turinova SaaS szerződés megkötése és teljesítése: fiók, hozzáférés, csomag / kiegészítők, ügyfélszolgálat.
 
 ### Jogalap
 
@@ -82,7 +82,7 @@ A fenti szolgáltatók megfelelő garanciákat nyújtanak (ideértve az EU–USA
 
 ### Szerepek
 
-Az Ügyfél (lapszabászat / tenant) által a Szoftverbe rögzített ügyfelek, partnerek és kapcsolódó személyes adatok tekintetében **adatkezelő az Ügyfél**. A HÍRÖS-ABLAK Kft. (Optinova) **adatfeldolgozó**, az ÁSZF adatfeldolgozási fejezete szerint.
+Az Ügyfél (lapszabászat / tenant) által a Szoftverbe rögzített ügyfelek, partnerek és kapcsolódó személyes adatok tekintetében **adatkezelő az Ügyfél**. A HÍRÖS-ABLAK Kft. (Turinova) **adatfeldolgozó**, az ÁSZF adatfeldolgozási fejezete szerint.
 
 ### SMS (készre jelentés)
 

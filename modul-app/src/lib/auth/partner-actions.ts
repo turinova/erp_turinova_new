@@ -24,6 +24,49 @@ export type PartnerAuthState = {
   error?: string
   success?: string
   fieldErrors?: Record<string, string>
+  /** Migrált fiók — első belépéskor jelszó-beállítás kell */
+  needsPasswordSetup?: boolean
+}
+
+async function partnerEmailNeedsPasswordSetup(
+  email: string
+): Promise<boolean> {
+  const normalized = email.trim().toLowerCase()
+  if (!normalized) return false
+  const admin = createServiceClient()
+  if (!admin) return false
+  const { data } = await admin
+    .from('partner_profiles')
+    .select('must_set_password')
+    .ilike('email', normalized)
+    .eq('must_set_password', true)
+    .maybeSingle()
+  return Boolean(data?.must_set_password)
+}
+
+export async function clearPartnerMustSetPassword(
+  userId: string
+): Promise<void> {
+  const admin = createServiceClient()
+  const client = admin ?? (await createClient())
+  if (!client) return
+  await client
+    .from('partner_profiles')
+    .update({ must_set_password: false, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('must_set_password', true)
+}
+
+/** Email blur / login soft CTA: kell-e első jelszó-beállítás. */
+export async function checkPartnerMustSetPasswordAction(
+  email: string
+): Promise<{ needsPasswordSetup: boolean }> {
+  if (!isSupabaseConfigured()) {
+    return { needsPasswordSetup: false }
+  }
+  return {
+    needsPasswordSetup: await partnerEmailNeedsPasswordSetup(email)
+  }
 }
 
 export async function partnerLoginAction(
@@ -59,6 +102,13 @@ export async function partnerLoginAction(
       return {
         error:
           'Előbb erősítsd meg az emailedet. Nézd meg a postaládádat (spam mappa is).'
+      }
+    }
+    if (await partnerEmailNeedsPasswordSetup(email)) {
+      return {
+        needsPasswordSetup: true,
+        error:
+          'Egyszer be kell állítanod a jelszavad az új felülethez. Küldünk egy linket az emailedre.'
       }
     }
     if (msg.includes('invalid login')) {
@@ -399,6 +449,8 @@ export async function partnerResetPasswordAction(
     console.error('partnerResetPasswordAction', error.message)
     return { error: 'Nem sikerült menteni az új jelszót. Próbáld újra.' }
   }
+
+  await clearPartnerMustSetPassword(user.id)
 
   redirect(await partnerServerHref(PARTNER_HOME_PATH))
 }

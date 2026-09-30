@@ -42,3 +42,7 @@ next-env.d.ts
 
 # supabase cli
 supabase/.temp/
+
+# partner migration PII + reports
+scripts/data/portal_customers.csv
+scripts/import-reports/

@@ -9,7 +9,8 @@ export function looksLikeBarcode(raw: string): boolean {
   if (/\s{2,}/.test(t)) return false
   // Sok szóköz / hosszú szavak → inkább névkereső
   if (t.includes(' ') && t.length > 20) return false
-  return /^[\x20-\x7EüöÜÖY]+$/.test(t)
+  // Pre-normalize HU wedge chars (ö/ü) + ASCII
+  return /^[\x20-\x7EüöÜÖ]+$/.test(t)
 }
 
 export function prepareBarcodeQuery(raw: string): {

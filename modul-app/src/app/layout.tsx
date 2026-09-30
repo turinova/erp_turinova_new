@@ -15,10 +15,10 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Optinova',
-    template: '%s · Optinova'
+    default: 'Turinova',
+    template: '%s · Turinova'
   },
-  description: 'Optinova — lapszabászat és műhely',
+  description: 'Turinova — lapszabászat és műhely',
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },

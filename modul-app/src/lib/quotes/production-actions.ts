@@ -219,7 +219,7 @@ export async function markQuoteReady(
       sms = await sendQuoteReadySms({
         supabase: ctx.supabase,
         tenantId,
-        tenantName: ctx.user.companyName || 'Optinova',
+        tenantName: ctx.user.companyName || 'Turinova',
         quoteId,
         userId: ctx.user.id,
         sendSms: options.sendSms

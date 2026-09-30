@@ -16,7 +16,7 @@ import { HomeCtaForm } from '@/components/marketing/home-cta-form'
 import { MarketingMosaicBackdrop } from '@/components/marketing/marketing-mosaic-backdrop'
 import { LINKIFY_ASSET } from '@/lib/marketing/linkify/paths'
 
-/** Linkify marketing home — Optinova brand + login mosaic hero backdrop. */
+/** Linkify marketing home — Turinova brand + login mosaic hero backdrop. */
 export function MarketingHomePage() {
   return (
     <div className="linkify-root relative min-h-dvh bg-white text-zinc-900">

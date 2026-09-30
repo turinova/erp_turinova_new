@@ -50,7 +50,7 @@ async function buildWorkbook(
   includeExample: boolean
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
-  workbook.creator = 'Optinova'
+  workbook.creator = 'Turinova'
   workbook.created = new Date()
 
   const guide = workbook.addWorksheet(SHEET_EXCEL_GUIDE_NAME)

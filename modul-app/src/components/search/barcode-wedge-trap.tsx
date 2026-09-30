@@ -6,6 +6,7 @@ import {
   looksLikeBarcode,
   prepareBarcodeQuery
 } from '@/lib/pos/barcode'
+import { charFromWedgeKeyboardEvent } from '@/lib/scanner/normalize-wedge'
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false
@@ -34,7 +35,8 @@ export type BarcodeWedgeTrapProps = {
 
 /**
  * Rejtett fókusz-trap USB wedge scannerhez.
- * Ha a user nem gépel más mezőbe / dialógusba, visszaveszi a fókuszt.
+ * Document capture + e.code map (HU layout Digit0→ö bypass).
+ * BUTTON fókusz után soft reclaim (nem sticky).
  */
 export function BarcodeWedgeTrap({
   enabled = true,
@@ -43,6 +45,7 @@ export function BarcodeWedgeTrap({
   idleMs = 100
 }: BarcodeWedgeTrapProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const bufferRef = useRef('')
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lockRef = useRef(false)
   const onScanRef = useRef(onScan)
@@ -69,13 +72,15 @@ export function BarcodeWedgeTrap({
     return () => document.removeEventListener('visibilitychange', onVisibility)
   }, [enabled, focusTrap])
 
-  async function runScan(rawValue: string) {
+  const runScan = useCallback(async (rawValue: string) => {
     if (lockRef.current) return
     const { raw, normalized } = prepareBarcodeQuery(rawValue)
     const code = normalized || raw
     if (!code || !looksLikeBarcode(code)) return
 
     lockRef.current = true
+    bufferRef.current = ''
+    if (inputRef.current) inputRef.current.value = ''
     try {
       await onScanRef.current(normalized || raw, raw)
     } finally {
@@ -83,17 +88,59 @@ export function BarcodeWedgeTrap({
       if (inputRef.current) inputRef.current.value = ''
       focusTrap()
     }
-  }
+  }, [focusTrap])
 
-  function scheduleIdleScan(value: string) {
-    if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => {
-      const t = value.trim()
-      if (t.length >= minLength && looksLikeBarcode(t)) {
-        void runScan(t)
+  const scheduleIdleScan = useCallback(
+    (value: string) => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => {
+        const t = value.trim()
+        if (t.length >= minLength && looksLikeBarcode(t)) {
+          void runScan(t)
+        }
+      }, idleMs)
+    },
+    [idleMs, minLength, runScan]
+  )
+
+  // Document capture: működik gomb / body fókusznál is (nem kell INPUT)
+  useEffect(() => {
+    if (!enabled) return
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (lockRef.current) return
+      const active = document.activeElement
+      // Valódi gépelés más mezőben → ne lopjuk el
+      if (isTypingTarget(active) && active !== inputRef.current) return
+
+      if (e.key === 'Enter') {
+        const buf = bufferRef.current.trim()
+        if (!buf) return
+        e.preventDefault()
+        e.stopPropagation()
+        if (timerRef.current) clearTimeout(timerRef.current)
+        void runScan(buf)
+        return
       }
-    }, idleMs)
-  }
+
+      const ch = charFromWedgeKeyboardEvent(e)
+      if (!ch) return
+
+      // Ne kezdjünk scannel +/- / . / / egyedül (POS qty shortcutok)
+      const isDigitOrLetter =
+        e.code.startsWith('Digit') || e.code.startsWith('Key')
+      if (bufferRef.current.length === 0 && !isDigitOrLetter) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      bufferRef.current += ch
+      if (inputRef.current) inputRef.current.value = bufferRef.current
+      scheduleIdleScan(bufferRef.current)
+    }
+
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
+  }, [enabled, runScan, scheduleIdleScan])
 
   if (!enabled) return null
 
@@ -105,12 +152,19 @@ export function BarcodeWedgeTrap({
       className="pointer-events-none fixed left-[-9999px] h-px w-px opacity-0"
       autoComplete="off"
       tabIndex={-1}
-      onChange={(e) => scheduleIdleScan(e.target.value)}
+      onChange={(e) => {
+        // Paste / fallback path (ha a capture nem futott)
+        bufferRef.current = e.target.value
+        scheduleIdleScan(e.target.value)
+      }}
       onKeyDown={(e) => {
+        // Enter a trap inputon (capture mellett is)
         if (e.key === 'Enter') {
           e.preventDefault()
           if (timerRef.current) clearTimeout(timerRef.current)
-          const v = (e.target as HTMLInputElement).value.trim()
+          const v =
+            bufferRef.current.trim() ||
+            (e.target as HTMLInputElement).value.trim()
           if (v) void runScan(v)
         }
       }}
@@ -160,4 +214,40 @@ export async function fetchAccessoryBarcodeLookup(
     name: data.product.name,
     sku: data.product.sku
   }
+}
+
+export async function fetchPosBarcodeLookup(
+  code: string,
+  warehouseId: string
+): Promise<
+  | {
+      ok: true
+      product: import('@/lib/sales/queries').SaleProductSearchItem
+    }
+  | { ok: false; message: string; notFound?: boolean }
+> {
+  const sp = new URLSearchParams({ q: code, warehouseId })
+  const res = await fetch(`/api/pos/barcode-lookup?${sp.toString()}`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' }
+  })
+  const data = (await res.json()) as
+    | {
+        ok: true
+        product: import('@/lib/sales/queries').SaleProductSearchItem
+      }
+    | { ok: false; message: string; notFound?: boolean }
+
+  if (!res.ok || !data.ok) {
+    if ('ok' in data && data.ok === false) {
+      return {
+        ok: false,
+        message: data.message || 'Vonalkód nem található.',
+        notFound: data.notFound ?? res.status === 404
+      }
+    }
+    return { ok: false, message: 'Vonalkód keresés sikertelen.' }
+  }
+
+  return { ok: true, product: data.product }
 }

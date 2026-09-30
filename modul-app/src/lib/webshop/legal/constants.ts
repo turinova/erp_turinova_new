@@ -48,7 +48,7 @@ export const HOSTING_PROVIDER: LegalParty = {
 }
 
 export const PLATFORM_OPERATOR: LegalParty = {
-  name: 'HÍRÖS-ABLAK Kft. (Optinova)',
+  name: 'HÍRÖS-ABLAK Kft. (Turinova)',
   address: '6000 Kecskemét, Mindszenti krt. 10.',
   email: 'info@turinova.hu',
   website: 'https://optinova.hu'

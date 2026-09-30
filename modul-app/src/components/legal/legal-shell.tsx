@@ -159,11 +159,11 @@ export function LegalShell({
             className="inline-flex no-underline transition-opacity hover:opacity-80"
           >
             <Image
-              src="/images/optinova-logo.png"
-              alt="Optinova"
-              width={140}
-              height={28}
-              className="h-7 w-auto"
+              src="/images/turinova-logo.png"
+              alt="Turinova"
+              width={160}
+              height={32}
+              className="h-8 w-auto"
               priority
             />
           </Link>

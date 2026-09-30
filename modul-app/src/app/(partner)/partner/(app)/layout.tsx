@@ -9,8 +9,8 @@ import { resolvePartnerCompanyLabel } from '@/lib/partner/company-label'
 
 export const metadata: Metadata = {
   title: {
-    default: 'Optinova',
-    template: '%s · Optinova'
+    default: 'Turinova',
+    template: '%s · Turinova'
   }
 }
 

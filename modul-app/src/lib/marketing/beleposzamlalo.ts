@@ -236,7 +236,7 @@ export const BELEPOSZAMLALO_STORE_NOTE: {
   body: string
   Icon: LucideIcon
 } = {
-  title: 'Mit rögzít az Optinova?',
+  title: 'Mit rögzít a Turinova?',
   body: 'A rendszer minden eseménynél az áthaladás irányát, időpontját és a számláló eszköz azonosítóját rögzíti.',
   Icon: Store
 }

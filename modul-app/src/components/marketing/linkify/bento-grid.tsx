@@ -22,7 +22,7 @@ export type ModuleCard = {
   cta: string
 }
 
-/** Optinova fő modulok — egyforma kártyák, vevői pipa-sorrend. */
+/** Turinova fő modulok — egyforma kártyák, vevői pipa-sorrend. */
 export const CARDS: ModuleCard[] = [
   {
     Icon: Package,

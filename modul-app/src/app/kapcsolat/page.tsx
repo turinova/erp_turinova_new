@@ -8,7 +8,7 @@ import { COMPANY_LEGAL, SALES_CONTACT } from '@/lib/marketing/contact'
 export const metadata: Metadata = {
   title: 'Kapcsolat',
   description:
-    'Optinova elérhetőségek és visszahívás kérése. HÍRÖS-ABLAK Kft., Kecskemét.'
+    'Turinova elérhetőségek és visszahívás kérése. HÍRÖS-ABLAK Kft., Kecskemét.'
 }
 
 export default function ContactPage() {

@@ -113,15 +113,15 @@ export function AppSidebar({
               <Link
                 href="/home"
                 className="flex items-center no-underline"
-                aria-label="Optinova kezdőlap"
+                aria-label="Turinova kezdőlap"
                 onClick={() => onMobileOpenChange(false)}
               >
                 <Image
-                  src="/images/optinova-logo.png"
-                  alt="Optinova"
-                  width={140}
-                  height={28}
-                  className="h-7 w-auto"
+                  src="/images/turinova-logo.png"
+                  alt="Turinova"
+                  width={160}
+                  height={32}
+                  className="h-8 w-auto"
                   priority
                 />
               </Link>
@@ -191,12 +191,12 @@ function SidebarChrome({
           <Link
             href="/home"
             className="flex items-center no-underline"
-            aria-label="Optinova kezdőlap"
+            aria-label="Turinova kezdőlap"
           >
             {collapsed ? (
               <Image
                 src="/images/turinova-small-icon.png"
-                alt=""
+                alt="Turinova"
                 width={32}
                 height={32}
                 className="size-8 object-contain"
@@ -204,11 +204,11 @@ function SidebarChrome({
               />
             ) : (
               <Image
-                src="/images/optinova-logo.png"
-                alt="Optinova"
-                width={140}
-                height={28}
-                className="h-7 w-auto"
+                src="/images/turinova-logo.png"
+                alt="Turinova"
+                width={160}
+                height={32}
+                className="h-8 w-auto"
                 priority
               />
             )}

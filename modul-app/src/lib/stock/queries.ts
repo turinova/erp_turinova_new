@@ -2,22 +2,31 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { fetchByIds } from '@/lib/supabase/fetch-all'
 
-/** Készlet egy termékre (összes raktár vagy egy). */
+/** Készlet egy termékre (összes raktár vagy egy). WH esetén SQL RPC. */
 export async function getAccessoryOnHand(
   supabase: SupabaseClient,
   tenantId: string,
   accessoryId: string,
   warehouseId?: string
 ): Promise<number> {
+  if (warehouseId) {
+    const { data, error } = await supabase.rpc('accessory_on_hand', {
+      p_tenant_id: tenantId,
+      p_accessory_id: accessoryId,
+      p_warehouse_id: warehouseId
+    })
+    if (error) {
+      console.error('getAccessoryOnHand rpc', error.message)
+      throw new Error('Nem sikerült lekérdezni a készletet.')
+    }
+    return Number(data) || 0
+  }
+
   let query = supabase
     .from('stock_movements')
     .select('quantity, movement_type')
     .eq('tenant_id', tenantId)
     .eq('accessory_id', accessoryId)
-
-  if (warehouseId) {
-    query = query.eq('warehouse_id', warehouseId)
-  }
 
   const { data, error } = await query
 
@@ -46,6 +55,26 @@ export async function getAccessoriesOnHandMap(
   const unique = [...new Set(accessoryIds.filter(Boolean))]
   for (const id of unique) map.set(id, 0)
   if (unique.length === 0) return map
+
+  if (warehouseId) {
+    const { data, error } = await supabase.rpc('accessories_on_hand', {
+      p_tenant_id: tenantId,
+      p_warehouse_id: warehouseId,
+      p_accessory_ids: unique
+    })
+    if (error) {
+      // Fallback ha migráció még nincs lefuttatva
+      console.warn('accessories_on_hand rpc', error.message)
+    } else {
+      for (const row of (data ?? []) as Array<{
+        accessory_id: string
+        on_hand: number | string
+      }>) {
+        map.set(row.accessory_id, Number(row.on_hand) || 0)
+      }
+      return map
+    }
+  }
 
   const { data, error } = await fetchByIds<{
     accessory_id: string

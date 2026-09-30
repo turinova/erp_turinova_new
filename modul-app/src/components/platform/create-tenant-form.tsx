@@ -118,7 +118,7 @@ export function CreateTenantForm() {
         <span>
           Demó adatok feltöltése
           <span className="mt-0.5 block text-hint text-ink-secondary">
-            Cég (Kecskemét + Optinova logo), törzs, HR, tábla / él / szálas /
+            Cég (Kecskemét + Turinova logo), törzs, HR, tábla / él / szálas /
             termék képekkel.
           </span>
         </span>

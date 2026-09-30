@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -63,7 +62,10 @@ import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { FeeTypeListItem } from '@/lib/fee-types/queries'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
-import { lookupPosProductByBarcode } from '@/lib/pos/actions'
+import {
+  BarcodeWedgeTrap,
+  fetchPosBarcodeLookup
+} from '@/components/search/barcode-wedge-trap'
 import {
   loadPosSession,
   savePosSession,
@@ -229,12 +231,10 @@ export function PosClient({
   const [invoiceRetryPending, startInvoiceRetry] = useTransition()
   const [pendingPayMode, setPendingPayMode] = useState<PosPayMode | null>(null)
 
-  const barcodeRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const searchWrapRef = useRef<HTMLDivElement>(null)
   const customerWrapRef = useRef<HTMLDivElement>(null)
   const scanLock = useRef(false)
-  const scanTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const cashMethod = paymentMethods.find((p) =>
@@ -422,14 +422,21 @@ export function PosClient({
     setRegisterId(next)
   }
 
-  const focusBarcode = useCallback(() => {
-    if (editingField) return
-    barcodeRef.current?.focus()
-  }, [editingField])
+  const trapEnabled =
+    !editingField &&
+    !confirmOpen &&
+    !returnSearchOpen &&
+    !feeDialogOpen &&
+    !invoiceOpen &&
+    !quickCustomerOpen &&
+    !cashMoveOpen &&
+    !closeOpen &&
+    !settingsOpen
 
-  useEffect(() => {
-    focusBarcode()
-  }, [focusBarcode, lines.length, fees.length])
+  /** Trap soft-reclaim; no-op placeholder a meglévő blur/close hívásokhoz. */
+  function focusBarcode() {
+    setEditingField(false)
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -440,7 +447,8 @@ export function PosClient({
         invoiceOpen ||
         quickCustomerOpen ||
         cashMoveOpen ||
-        closeOpen
+        closeOpen ||
+        settingsOpen
       ) {
         return
       }
@@ -450,13 +458,13 @@ export function PosClient({
         return
       }
       if (e.key === 'F4') {
-        if (isTypingTarget(e.target) && e.target !== barcodeRef.current) return
+        if (isTypingTarget(e.target)) return
         e.preventDefault()
         if (allowCashPay) openPay('cash')
         return
       }
       if (e.key === 'F5') {
-        if (isTypingTarget(e.target) && e.target !== barcodeRef.current) return
+        if (isTypingTarget(e.target)) return
         e.preventDefault()
         if (allowCardPay) openPay('card')
         return
@@ -483,7 +491,6 @@ export function PosClient({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-    // openPay closes over current cart/shift — rebind when those change
   }, [
     confirmOpen,
     returnSearchOpen,
@@ -492,6 +499,7 @@ export function PosClient({
     quickCustomerOpen,
     cashMoveOpen,
     closeOpen,
+    settingsOpen,
     lines,
     canWrite,
     openShiftId,
@@ -520,14 +528,6 @@ export function PosClient({
       )
     )
   }, [maxDisc]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    function onVis() {
-      if (document.visibilityState === 'visible') focusBarcode()
-    }
-    document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
-  }, [focusBarcode])
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -559,6 +559,21 @@ export function PosClient({
       setSearchHits([])
       setSearching(false)
       return
+    }
+    // Vonalkód alak → exact scan, ne fuzzy typeahead
+    if (looksLikeBarcode(q)) {
+      setSearching(false)
+      setSearchHits([])
+      searchTimer.current = setTimeout(() => {
+        void runBarcodeScan(q).then(() => {
+          setSearchQ('')
+          setSearchOpen(false)
+          setEditingField(false)
+        })
+      }, 120)
+      return () => {
+        if (searchTimer.current) clearTimeout(searchTimer.current)
+      }
     }
     setSearching(true)
     searchTimer.current = setTimeout(() => {
@@ -623,14 +638,12 @@ export function PosClient({
   async function runBarcodeScan(raw: string) {
     if (!warehouseId || scanLock.current) return
     const { normalized, raw: trimmed } = prepareBarcodeQuery(raw)
-    if (!normalized && !trimmed) return
+    const code = normalized || trimmed
+    if (!code) return
 
     scanLock.current = true
     try {
-      const res = await lookupPosProductByBarcode(
-        normalized || trimmed,
-        warehouseId
-      )
+      const res = await fetchPosBarcodeLookup(code, warehouseId)
       if (!res.ok) {
         setFlash({ kind: 'error', message: res.message })
         return
@@ -638,20 +651,7 @@ export function PosClient({
       addOrBump(res.product)
     } finally {
       scanLock.current = false
-      focusBarcode()
     }
-  }
-
-  function onBarcodeChange(value: string) {
-    if (editingField) return
-    if (scanTimer.current) clearTimeout(scanTimer.current)
-    scanTimer.current = setTimeout(() => {
-      const t = value.trim()
-      if (t.length >= 4) {
-        void runBarcodeScan(t)
-        if (barcodeRef.current) barcodeRef.current.value = ''
-      }
-    }, 100)
   }
 
   function openPay(mode: PosPayMode) {
@@ -946,45 +946,10 @@ export function PosClient({
 
   return (
     <div className="flex h-[100dvh] flex-col bg-app">
-      {/* Hidden barcode trap */}
-      <input
-        ref={barcodeRef}
-        type="text"
-        aria-label="Vonalkód olvasó"
-        className="pointer-events-none fixed left-[-9999px] h-px w-px opacity-0"
-        autoComplete="off"
-        disabled={editingField}
-        onChange={(e) => onBarcodeChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (editingField) {
-            e.preventDefault()
-            return
-          }
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            if (scanTimer.current) clearTimeout(scanTimer.current)
-            const v = (e.target as HTMLInputElement).value.trim()
-            if (v) {
-              void runBarcodeScan(v)
-              ;(e.target as HTMLInputElement).value = ''
-            }
-          }
-        }}
-        onBlur={() => {
-          setTimeout(() => {
-            const el = document.activeElement
-            const tag = el?.tagName
-            if (
-              tag === 'INPUT' ||
-              tag === 'TEXTAREA' ||
-              tag === 'BUTTON' ||
-              el?.closest('[role="listbox"]') ||
-              el?.closest('[role="dialog"]')
-            ) {
-              return
-            }
-            focusBarcode()
-          }, 120)
+      <BarcodeWedgeTrap
+        enabled={trapEnabled && Boolean(warehouseId)}
+        onScan={async (normalized, raw) => {
+          await runBarcodeScan(normalized || raw)
         }}
       />
 

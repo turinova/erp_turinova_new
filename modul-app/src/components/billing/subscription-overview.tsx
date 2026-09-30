@@ -411,7 +411,7 @@ export function SubscriptionOverview({
           </li>
           <li>
             <a
-              href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Előfizetés / kiegészítő — Optinova')}`}
+              href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Előfizetés / kiegészítő — Turinova')}`}
               className="inline-flex items-center gap-2 text-body font-medium text-ink no-underline hover:underline"
             >
               <Mail

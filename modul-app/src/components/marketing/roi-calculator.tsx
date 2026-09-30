@@ -175,7 +175,7 @@ export function RoiCalculator({
             />
             <NumberField
               id="min-opti"
-              label="Perc / ajánlat Optinovával"
+              label="Perc / ajánlat Turinovával"
               value={input.minutesPerQuoteWithOptinova}
               onChange={(n) => patch({ minutesPerQuoteWithOptinova: n })}
             />
@@ -188,7 +188,7 @@ export function RoiCalculator({
             />
             <NumberField
               id="prod-opti"
-              label="Gyártás szervezés óra / hét Optinovával"
+              label="Gyártás szervezés óra / hét Turinovával"
               value={input.productionHoursPerWeekWithOptinova}
               onChange={(n) =>
                 patch({ productionHoursPerWeekWithOptinova: n })

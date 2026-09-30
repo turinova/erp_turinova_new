@@ -93,7 +93,7 @@ async function lookupIds(admin: SupabaseClient, tenantId: string) {
   }
 }
 
-/** Optinova logo → tenant company logo (demó). */
+/** Turinova logo → tenant company logo (demó placeholder). */
 export async function uploadDemoCompanyLogo(
   admin: SupabaseClient,
   tenantId: string
@@ -101,7 +101,7 @@ export async function uploadDemoCompanyLogo(
   try {
     const logoPath = path.join(
       process.cwd(),
-      'public/images/optinova-logo.png'
+      'public/images/turinova-logo.png'
     )
     const buffer = await readFile(logoPath)
     const storagePath = `${tenantId}/logo.png`

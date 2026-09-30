@@ -24,11 +24,11 @@ export function LinkifyFooter() {
         <AnimationContainer delay={0.1}>
           <div className="flex flex-col items-start justify-start md:max-w-[240px]">
             <Image
-              src="/images/optinova-logo.png"
-              alt="Optinova"
-              width={120}
-              height={24}
-              className="h-6 w-auto"
+                src="/images/turinova-logo.png"
+                alt="Turinova"
+              width={140}
+              height={28}
+              className="h-7 w-auto"
             />
             <p className="mt-4 text-start text-sm text-zinc-500">
               Ajánlat, gyártás és partnerfolyamat egy helyen — magyar
@@ -93,7 +93,7 @@ export function LinkifyFooter() {
 
       <MaxWidthWrapper className="mt-12 border-t border-zinc-200 py-6">
         <p className="text-center text-sm text-zinc-400">
-          © {new Date().getFullYear()} Optinova. Minden jog fenntartva.
+          © {new Date().getFullYear()} Turinova. Minden jog fenntartva.
         </p>
       </MaxWidthWrapper>
     </footer>
