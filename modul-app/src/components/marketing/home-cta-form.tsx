@@ -22,9 +22,9 @@ export function HomeCtaForm() {
   if (done) {
     return (
       <div className="w-full rounded-2xl bg-white p-8 text-center">
-        <p className="text-lg font-medium text-zinc-900">Megvan, felírtuk</p>
+        <p className="text-lg font-medium text-zinc-900">Felkerültél</p>
         <p className="mt-2 text-sm text-zinc-500">
-          Visszahívunk a megadott számon. Ha addig kérdésed van:{' '}
+          Szólunk Q2-ben. Kérdés:{' '}
           <a
             href={`tel:${SUPPORT_PHONE_E164}`}
             className="font-medium text-zinc-900 no-underline hover:underline"
@@ -48,7 +48,8 @@ export function HomeCtaForm() {
             firstName: name,
             email,
             phone,
-            company
+            company,
+            source: 'optinova-varolista'
           })
           if (!res.ok) {
             setFormError(res.message)
@@ -127,10 +128,10 @@ export function HomeCtaForm() {
         disabled={pending}
         className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-lg bg-orange-500 px-5 text-base font-medium text-white transition-colors hover:bg-orange-600 disabled:opacity-60"
       >
-        {pending ? 'Küldés…' : 'Kérem a visszahívást'}
+        {pending ? 'Küldés…' : 'Feliratkozom a várólistára'}
       </button>
       <p className="mt-3 text-center text-xs text-zinc-500">
-        Hétköznap jellemzően még aznap visszahívunk.
+        Indulás 2027 Q2.
       </p>
     </form>
   )

@@ -7,7 +7,6 @@ export const revalidate = 3600
 /** App/marketing host. A boltok sitemapje a saját hostjukon: /sitemap.xml → /s/[site]/sitemap.xml. */
 const MARKETING_PATHS = [
   '/',
-  '/arak',
   '/hogyan-mukodik',
   '/lapszabaszat',
   '/egyedi-modulok',

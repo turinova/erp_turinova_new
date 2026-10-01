@@ -1,139 +1,131 @@
-import type { LucideIcon } from 'lucide-react'
-import {
-  BadgeCheck,
-  Clock,
-  FileWarning,
-  Hammer,
-  MessageSquare,
-  PackageCheck,
-  Phone,
-  Printer,
-  ScanLine,
-  Store,
-  UserPlus,
-  Wrench
-} from 'lucide-react'
-
-/** Lapszabászati modul landing — shell copy, szekciónként finomítjuk. */
+/** Lapszabászati landing — ügyvezető fájdalom → megoldás. Emberi, konkrét magyar. */
 
 export const LAPSZABASZAT_HERO = {
-  eyebrow: 'Iparági szinten egyedülálló',
-  title: 'Lapszabászati gyártásmodul — a megrendeléstől az átvételig',
-  body: 'A megrendelő saját fiókból, optimalizálva adja le az igényt; a műhely egy kattintással veszi át; a scan és az SMS zárja a kört. Nálunk a Hírös-Ablaknál 2025 márciusa óta ez fut élesben.',
-  mediaLabel: 'Fő videó: 60–90 mp — partnerportál, Opti, gyártás, scan'
+  title: 'Lapszabászati ajánlat 10 perc alatt, nem két hét alatt.',
+  body:
+    'Az asztalos a saját fiókjában adja meg a méreteket és az élzárást, és a ti áraitokkal azonnal látja a végösszeget. Hozzátok kész szabásjegyzék érkezik, és amikor elkészül a rendelés, a partner automatikusan SMS-t kap. Ma több mint 500 asztalos rendel így.',
+  primaryCta: 'Jelentkezem a várólistára',
+  secondaryCta: 'Így működik'
 } as const
 
+export const LAPSZABASZAT_SCENE_TITLE = 'Miért építettük meg'
+
+export const LAPSZABASZAT_SCENE =
+  'Egy péntek délelőtt háromszor hívtak fel ugyanazzal a kérdéssel: „Kész van már a konyha?” A pultnál senki nem tudta megmondani. Ma a partner a fiókjában látja, hol tart a rendelése, és SMS-t kap, amikor elkészült. A telefon azóta jóval ritkábban csörög.'
+
 export type LapszabaszatPain = {
-  title: string
-  body: string
-  Icon: LucideIcon
+  before: string
+  after: string
 }
 
 export const LAPSZABASZAT_PAINS: LapszabaszatPain[] = [
   {
-    title: 'Az ajánlat 1–2 hét volt',
-    body: 'A leterheltségtől függően ennyi kellett, amíg a műszaki előkészítő végigszámolta a megrendelést.',
-    Icon: Clock
+    before:
+      'Egy ajánlat 1–2 hétig készül. Egy műszaki kolléga egész nap ajánlatokat számol, a többi rendelés addig vár.',
+    after:
+      'A partner azonnal látja a nettó árat. Egy ajánlat összeállítása kb. 10 perc.'
   },
   {
-    title: 'Kézi átvitel, kézi hibák',
-    body: 'A méretek e-mailből, papírról kerültek át — minden lépésnél egy újabb hibalehetőség.',
-    Icon: FileWarning
-  },
-  {
-    title: 'A vevő telefonált',
-    body: '„Megvan már?” — a státuszt csak úgy tudta meg, ha felhívott valakit.',
-    Icon: Phone
+    before:
+      'A méretek e-mailben vagy papíron érkeznek. Ti begépelitek, aztán a műhely még egyszer.',
+    after:
+      'A méreteket egyszer, a partner rögzíti, és változatlanul jutnak el a gyártásig. Nincs újragépelés, nincs vita a ráhagyásról.'
   }
 ]
 
 export type LapszabaszatStep = {
   title: string
   body: string
-  Icon: LucideIcon
-  mediaLabel: string
 }
 
-export const LAPSZABASZAT_LOOP: LapszabaszatStep[] = [
+export const LAPSZABASZAT_FLOW_TITLE = 'A megrendeléstől az átadásig'
+export const LAPSZABASZAT_FLOW_INTRO =
+  'A partner és a műhely ugyanazt az adatot látja. Nincs külön Excel-táblázat.'
+
+export const LAPSZABASZAT_STEPS: LapszabaszatStep[] = [
   {
-    title: 'Partner leadja a megrendelést',
-    body: 'A megrendelő saját fiókban, optimalizálva állítja össze a lapszabászati megrendelést — a hét minden napján, 0–24, a ti áraitokkal. Azonnal árat kap, az anyag pontossága a vevő felelőssége.',
-    Icon: UserPlus,
-    mediaLabel: 'Videó/kép: partnerportál — Opti form kitöltése'
+    title: 'A partner leadja a rendelést',
+    body:
+      'Megadja a méreteket és az élzárást, és azonnal látja a bruttó árat. Akár éjjel is leadhatja.'
   },
   {
-    title: 'Egy kattintás a gyártásba',
-    body: 'A gyártás-előkészítő egyből átemeli a megrendelést táblafelosztó formátumba, és a megrendelés dátuma alapján ütemezi, mikor kerül gyártásba.',
-    Icon: Wrench,
-    mediaLabel: 'Kép: táblafelosztás / szabásjegyzék'
+    title: 'Gyártásba adás egy lépésben',
+    body:
+      'Beérkezik a rendelés: kiválasztjátok a gépet és a gyártási napot, megadjátok a vonalkódot, és már gyártásban is van. A méreteket senki nem gépeli újra.'
   },
   {
-    title: 'Gyártás és státusz',
-    body: 'A megrendelő követi, mikor került gyártásba a rendelése — nem kell telefonálnia.',
-    Icon: Hammer,
-    mediaLabel: 'Kép: műhely, gyártási lap'
-  },
-  {
-    title: 'Scan → SMS',
-    body: 'Amikor elkészült, a kollégánk lescanneli a gyártási lapon lévő vonalkódot, és a megrendelő automatikusan SMS-t kap az elkészülésről.',
-    Icon: ScanLine,
-    mediaLabel: 'Videó/kép: vonalkód scan + SMS a telefonon'
-  },
-  {
-    title: 'Átvétel és két bizonylat',
-    body: 'Áruátvételnél újabb scan: a megrendelés átvett státuszba kerül, és két bizonylat nyomtatódik — egy a vevőnek, egy az árukiadónak, aki pontosan tudja, mit kell átadnia. Így záródik a kör.',
-    Icon: PackageCheck,
-    mediaLabel: 'Kép: áruátadás, bizonylat nyomtatás'
+    title: 'Készre jelölés és SMS',
+    body:
+      'Beolvassátok a vonalkódot, a rendelés készre vált, a partner pedig automatikusan SMS-t kap.'
   }
 ]
 
-export type LapszabaszatFeature = {
-  title: string
-  body: string
-  Icon: LucideIcon
-}
-
-export const LAPSZABASZAT_PORTAL: LapszabaszatFeature[] = [
-  {
-    title: 'Saját fiók a megrendelőknek',
-    body: 'Regisztráció után a partner a saját megrendeléseit és ajánlatait látja.',
-    Icon: Store
-  },
-  {
-    title: 'Azonnali ár a ti áraitokkal',
-    body: 'Nem nektek kell módosítani és visszaárazni — a partner egyből árat kap.',
-    Icon: BadgeCheck
-  },
-  {
-    title: 'Automatikus értesítés',
-    body: 'SMS az elkészülésről, naplózott kiküldéssel.',
-    Icon: MessageSquare
-  },
-  {
-    title: 'Bizonylat és vonalkód',
-    body: 'Gyártási lap vonalkóddal, átvételi bizonylat két példányban.',
-    Icon: Printer
-  }
-]
+export const LAPSZABASZAT_STATS_TITLE = 'Számok éles használatból'
+export const LAPSZABASZAT_STATS_INTRO =
+  'Valós rendelések, nem bemutató adat.'
 
 export const LAPSZABASZAT_STATS = [
-  { value: '5000+', label: 'Ajánlat a rendszerben', hint: 'Nem demóadat' },
-  { value: '500+', label: 'Regisztrált megrendelő', hint: 'Saját fiókkal' },
   {
-    value: '~10 perc',
-    label: 'Ajánlatadás',
-    hint: 'Korábban 1–2 hét'
+    value: '5000+',
+    label: 'elkészült ajánlat',
+    hint: 'valós rendelésekből'
   },
   {
-    value: '~210 óra / hó',
-    label: 'Becsült megtakarítás',
-    hint: '~500 rendelés/hó · ~15+10 perc/rendelés'
+    value: '500+',
+    label: 'regisztrált partner',
+    hint: 'asztalosok, akik így rendelnek'
+  },
+  {
+    value: 'kb. 10 perc',
+    label: 'egy ajánlat elkészítése',
+    hint: 'korábban 1–2 hét'
+  },
+  {
+    value: 'kb. 210 óra/hó',
+    label: 'becsült megtakarított munkaidő',
+    hint: 'a mi forgalmunk alapján, nálatok eltérhet'
   }
 ] as const
 
-export const LAPSZABASZAT_AUDIENCE = [
-  'Lapszabászattal dolgozó bútorgyártó',
-  'Asztalos partnereket kiszolgáló anyagkereskedő',
-  'Bútorlap- és élzáró forgalmazó',
-  'Saját műhelyt és boltot is üzemeltető cég'
-] as const
+export type LapszabaszatAudience = {
+  title: string
+  body: string
+}
+
+export const LAPSZABASZAT_AUDIENCE_TITLE = 'Ha ez ismerős'
+
+export const LAPSZABASZAT_AUDIENCE: LapszabaszatAudience[] = [
+  {
+    title: 'Lapszabászatot működtettek, és asztalosok rendelnek tőletek',
+    body:
+      'Ők napokig várnak az ajánlatra, ti pedig minden méretet kétszer gépeltek be.'
+  },
+  {
+    title: 'Egy cégen belül működik a bolt és a műhely',
+    body:
+      'A pultnál felveszik a rendelést, a műhelyben vágnak. Ami eddig a kettő között elveszett, az most egy helyen marad.'
+  }
+]
+
+/** Adatelkülönítés – versenytárs-félelem kezelése. */
+export const LAPSZABASZAT_PRIVACY = {
+  title: 'A ti adataitok a tiétek.',
+  body:
+    'A partnereitek, áraitok és rendeléseitek csak nálatok látszanak. Mi nem férünk hozzájuk, és nem adjuk tovább őket.'
+} as const
+
+export const LAPSZABASZAT_HANDOVER = {
+  title: 'Átadás a pultnál',
+  body:
+    'Átvételi elismervény, aláírás, és kész. Senkinek nem kell fejben tartania, ki mit vihet el.'
+} as const
+
+export const LAPSZABASZAT_CTA = {
+  title: 'Várólista · Indulás 2027 második negyedévében',
+  body:
+    'Add meg a neved és a telefonszámod. Az indulás előtt személyesen felhívunk. Reklámot nem küldünk.',
+  button: 'Jelentkezem'
+} as const
+
+export const LAPSZABASZAT_FOOTER_BLURB =
+  'Ajánlat, gyártás és bolt egy rendszerben. Magyar lapszabászatoknak és kereskedőknek.'

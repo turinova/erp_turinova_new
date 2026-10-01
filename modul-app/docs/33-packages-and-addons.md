@@ -1,6 +1,6 @@
 # 33 — Csomagok és add-onok
 
-**Állapot:** 2026-09-29 — Alap 39 990, 2 hónap próba, éves 399 900; belépő 5 000; ügyfélrendelés Alapban.  
+**Állapot:** 2026-10-01 — listaárak **belső**; publikus `/arak` jegelve 2027 Q2-ig (várólista a főoldalon). Alap 39 990, 2 hónap próba, éves 399 900; belépő 5 000; ügyfélrendelés Alapban.  
 **Migráció:** `20260524_alap_includes_pos_labels.sql`, `20260525_footcounter_price_5000.sql`, `20260526_szamlazas_alap.sql`, `20260922_lapszabaszat_includes_partner_sms.sql`, `20260559_customer_special_orders.sql`
 
 Kapcsolódó: [21-platform-ops.md](21-platform-ops.md), [23-lapszabaszat-addon.md](23-lapszabaszat-addon.md), [24-beszerzes-workflow.md](24-beszerzes-workflow.md), [29-pos-workflow.md](29-pos-workflow.md), [36-szamlazas-workflow.md](36-szamlazas-workflow.md), [39-webshop-addon.md](39-webshop-addon.md), [42-ugyfelrendeles.md](42-ugyfelrendeles.md).

@@ -21,7 +21,8 @@ const leadSchema = z.object({
     .trim()
     .min(8, 'Telefonszám nélkül nem tudunk visszahívni.')
     .max(40),
-  problem: z.string().trim().max(2000).optional()
+  problem: z.string().trim().max(2000).optional(),
+  source: z.string().trim().max(80).optional()
 })
 
 export type ContactLeadInput = z.infer<typeof leadSchema>
@@ -51,9 +52,12 @@ export async function submitContactLeadAction(
 
   const lead = parsed.data
   const payload = {
-    source: 'optinova-kapcsolat',
+    source: lead.source || 'optinova-kapcsolat',
     receivedAt: new Date().toISOString(),
-    ...lead,
+    firstName: lead.firstName,
+    email: lead.email,
+    company: lead.company,
+    phone: lead.phone,
     problem: lead.problem || null,
     notifyEmail: SUPPORT_EMAIL
   }

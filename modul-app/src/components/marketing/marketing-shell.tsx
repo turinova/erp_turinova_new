@@ -10,7 +10,8 @@ import {
   isUniqueModulePath,
   MARKETING_FOOTER_LINKS,
   MARKETING_NAV_LINKS,
-  UNIQUE_MODULES
+  UNIQUE_MODULES,
+  WAITLIST_HREF
 } from '@/lib/marketing/nav'
 import {
   COMPANY_LINE,
@@ -28,10 +29,13 @@ const LEGAL = [
 
 export function MarketingShell({
   children,
-  activeHref
+  activeHref,
+  footerBlurb = 'Ajánlat, gyártás és bolt egy rendszerben. Magyar kereskedőknek és gyártóknak.'
 }: {
   children: ReactNode
   activeHref?: string
+  /** Opcionális lábléc-szöveg (modul-landingekhez). */
+  footerBlurb?: string
 }) {
   const uniqueActive = isUniqueModulePath(activeHref)
 
@@ -64,11 +68,6 @@ export function MarketingShell({
             />
             <UniqueModulesDesktop active={uniqueActive} />
             <NavLink
-              href="/arak"
-              label="Árak"
-              active={activeHref === '/arak'}
-            />
-            <NavLink
               href="/kapcsolat"
               label="Kapcsolat"
               active={activeHref === '/kapcsolat'}
@@ -86,13 +85,13 @@ export function MarketingShell({
               Belépés
             </Link>
             <Link
-              href="/kapcsolat"
+              href={WAITLIST_HREF}
               className={cn(
                 buttonVariants({ variant: 'primary', size: 'md' }),
                 'no-underline'
               )}
             >
-              Ingyenes konzultáció
+              Várólista
             </Link>
           </div>
         </div>
@@ -113,7 +112,7 @@ export function MarketingShell({
               className="h-7 w-auto"
             />
             <p className="max-w-xs text-[13px] leading-relaxed text-ink-secondary">
-              Ajánlat, készlet és bolt egy helyen — magyar kereskedő-gyártóknak.
+              {footerBlurb}
             </p>
             <p className="text-[12px] text-ink-muted">{COMPANY_LINE}</p>
           </div>

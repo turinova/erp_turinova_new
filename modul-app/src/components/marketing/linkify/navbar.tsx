@@ -8,7 +8,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { AnimationContainer } from '@/components/marketing/linkify/animation-container'
 import { MaxWidthWrapper } from '@/components/marketing/linkify/max-width-wrapper'
 import { MARKETING_NAV } from '@/lib/marketing/linkify/content'
-import { UNIQUE_MODULES } from '@/lib/marketing/nav'
+import { UNIQUE_MODULES, WAITLIST_HREF } from '@/lib/marketing/nav'
 
 export function LinkifyNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -58,10 +58,10 @@ export function LinkifyNavbar() {
               Belépés
             </Link>
             <Link
-              href="/kapcsolat"
+              href={WAITLIST_HREF}
               className="inline-flex items-center rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white no-underline"
             >
-              Ingyenes konzultáció
+              Várólista
               <PhoneIcon className="ml-1.5 size-3.5 fill-orange-500 text-orange-500" />
             </Link>
           </div>
@@ -142,11 +142,11 @@ export function LinkifyNavbar() {
             </li>
             <li>
               <Link
-                href="/kapcsolat"
+                href={WAITLIST_HREF}
                 className="block w-full rounded-md bg-zinc-900 px-2 py-2 text-left text-sm font-medium text-white no-underline"
                 onClick={() => setMobileOpen(false)}
               >
-                Ingyenes konzultáció
+                Várólista
               </Link>
             </li>
           </ul>

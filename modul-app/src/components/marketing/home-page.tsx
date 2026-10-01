@@ -43,13 +43,13 @@ export function MarketingHomePage() {
                 </p>
 
                 <div className="z-50 flex items-center justify-center gap-4 whitespace-nowrap">
-                  <button
-                    type="button"
-                    className="inline-flex cursor-default items-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
+                  <a
+                    href="#varolista"
+                    className="inline-flex items-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white no-underline"
                   >
-                    Átlátható céget szeretnék
+                    Várólista
                     <ArrowRightIcon className="ml-2 h-4 w-4" />
-                  </button>
+                  </a>
                 </div>
               </AnimationContainer>
 
@@ -111,22 +111,23 @@ export function MarketingHomePage() {
             </AnimationContainer>
           </MaxWidthWrapper>
 
-          {/* CTA — ingyenes konzultáció */}
+          {/* CTA — várólista 2027 Q2 */}
           <MaxWidthWrapper className="pb-16 pt-12 md:pb-24 md:pt-16">
             <AnimationContainer delay={0.1}>
-              <div className="rounded-3xl bg-zinc-950 p-6 shadow-[0_24px_60px_-24px_rgba(24,24,27,0.45)] md:p-14">
+              <div
+                id="varolista"
+                className="scroll-mt-20 rounded-3xl bg-zinc-950 p-6 shadow-[0_24px_60px_-24px_rgba(24,24,27,0.45)] md:p-14"
+              >
                 <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
                   <div>
                     <span className="inline-flex h-7 items-center rounded-full border border-orange-500/30 bg-orange-500/10 px-3 text-xs font-medium uppercase tracking-wide text-orange-400">
-                      Ingyenes konzultáció
+                      Várólista
                     </span>
                     <h2 className="mt-6 text-3xl font-medium !leading-[1.1] text-white md:text-5xl">
-                      Beszéljük át a folyamataitokat
+                      Várólista
                     </h2>
                     <p className="mt-5 max-w-md text-lg text-zinc-400">
-                      Átnézzük, hol megy el a legtöbb idő a napi működésben, és
-                      melyik modul váltja ki elsőként. Ehhez elég egy
-                      telefonszám.
+                      Előfizetés 2027 Q2-től. Írd be a neved és a telefonszámod.
                     </p>
                   </div>
                   <HomeCtaForm />

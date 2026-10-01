@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { AnimationContainer } from '@/components/marketing/linkify/animation-container'
 import { MaxWidthWrapper } from '@/components/marketing/linkify/max-width-wrapper'
 import { MARKETING_FOOTER_LINKS } from '@/lib/marketing/linkify/content'
+import { WAITLIST_HREF } from '@/lib/marketing/nav'
 import {
   COMPANY_LINE,
   SUPPORT_EMAIL
@@ -54,10 +55,10 @@ export function LinkifyFooter() {
               ))}
               <li className="mt-2">
                 <Link
-                  href="/kapcsolat"
+                  href={WAITLIST_HREF}
                   className="no-underline transition-colors hover:text-zinc-900"
                 >
-                  Ingyenes konzultáció
+                  Várólista
                 </Link>
               </li>
             </ul>

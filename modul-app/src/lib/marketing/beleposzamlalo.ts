@@ -245,8 +245,8 @@ export const BELEPOSZAMLALO_CTA = {
   title: 'Nézd meg, mit mutatna a saját üzleted látogatottsága',
   body: 'Egy rövid bemutatón végigvesszük a napi és havi nézeteket, az időjárási bontást és a kamera telepítésének feltételeit.',
   reassurance: [
-    '2 hónap ingyenes próba',
-    '5 000 Ft + ÁFA havonta',
+    'Saját üzemben fut most',
+    'Nyílt előfizetés 2027 Q2',
     'A kamera árára külön ajánlat'
   ]
 } as const

@@ -25,7 +25,7 @@ import {
   BELEPOSZAMLALO_STORE_NOTE,
   BELEPOSZAMLALO_WEATHER
 } from '@/lib/marketing/beleposzamlalo'
-import { formatHufPlain, MARKETING_PRICING } from '@/lib/marketing/pricing'
+import { WAITLIST_HREF } from '@/lib/marketing/nav'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = {
@@ -34,7 +34,6 @@ export const metadata: Metadata = {
     'AI-alapú belépőszámláló üzleteknek. Óránkénti látogatottság, napi és havi összehasonlítás, valamint időjárási bontás egy helyen.'
 }
 
-const ADDON = MARKETING_PRICING.addons.footcounter
 const StoreIcon = BELEPOSZAMLALO_STORE_NOTE.Icon
 
 export default function BeleposzamlaloPage() {
@@ -64,19 +63,14 @@ export default function BeleposzamlaloPage() {
                 Bemutatót kérek
               </Link>
               <Link
-                href="/arak"
+                href={WAITLIST_HREF}
                 className={cn(
                   buttonVariants({ variant: 'secondary', size: 'lg' }),
                   'h-11 no-underline'
                 )}
               >
-                Árak
+                Várólista
               </Link>
-              <span className="text-[13px] text-ink-muted">
-                {formatHufPlain(ADDON.priceMonthlyHuf)} + ÁFA havonta az Alap
-                csomag mellé.
-                {ADDON.hardwareNote ? ` · ${ADDON.hardwareNote}` : null}
-              </span>
             </div>
 
             <div className="mt-10 grid items-start gap-5 lg:grid-cols-12">

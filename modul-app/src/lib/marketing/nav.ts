@@ -15,10 +15,12 @@ export type UniqueModule = {
   Icon: LucideIcon
 }
 
+/** Várólista a főoldalon — publikus listaár jegelve 2027 Q2-ig. */
+export const WAITLIST_HREF = '/#varolista'
+
 /** Top-level flat nav (Egyedi modulok külön kezelve a shellben). */
 export const MARKETING_NAV_LINKS: MarketingNavLink[] = [
   { title: 'Funkciók', href: '/hogyan-mukodik' },
-  { title: 'Árak', href: '/arak' },
   { title: 'Kapcsolat', href: '/kapcsolat' }
 ]
 
@@ -44,11 +46,10 @@ export const UNIQUE_MODULES: UniqueModule[] = [
   }
 ]
 
-/** Footer: story nélkül — funkciók, egyedi modulok, árak, kapcsolat. */
+/** Footer: story nélkül — funkciók, egyedi modulok, kapcsolat. */
 export const MARKETING_FOOTER_LINKS: MarketingNavLink[] = [
   { title: 'Funkciók', href: '/hogyan-mukodik' },
   { title: 'Egyedi modulok', href: '/egyedi-modulok' },
-  { title: 'Árak', href: '/arak' },
   { title: 'Kapcsolat', href: '/kapcsolat' }
 ]
 
