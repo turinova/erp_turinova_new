@@ -20,6 +20,8 @@ export function AppShell({ user, children }: AppShellProps) {
   const { collapsed, setCollapsed } = useSidebarCollapsed()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const isPos = pathname === '/pos' || pathname.startsWith('/pos/')
+  /** PDA fill: no main pad so client can use 100dvh − topbar. */
+  const isOpeningStock = pathname === '/keszlet/nyito'
 
   if (isPos) {
     return (
@@ -57,7 +59,15 @@ export function AppShell({ user, children }: AppShellProps) {
           user={user}
           onOpenMobileNav={() => setMobileNavOpen(true)}
         />
-        <main className="px-4 pb-6 pt-4 md:px-6">{children}</main>
+        <main
+          className={cn(
+            isOpeningStock
+              ? 'overflow-hidden px-0 pb-0 pt-0'
+              : 'px-4 pb-6 pt-4 md:px-6'
+          )}
+        >
+          {children}
+        </main>
       </div>
     </div>
   )

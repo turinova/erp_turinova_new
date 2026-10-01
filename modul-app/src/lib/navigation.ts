@@ -385,6 +385,13 @@ const allNavSections: NavSection[] = [
           children: [
             {
               type: 'link',
+              label: 'Nyitó készlet',
+              href: '/keszlet/nyito',
+              icon: PackageCheck,
+              accent: 'slate'
+            },
+            {
+              type: 'link',
               label: 'Áttárolások',
               href: '/keszlet/atadasok',
               icon: ArrowLeftRight,

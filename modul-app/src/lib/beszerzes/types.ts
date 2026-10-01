@@ -6,6 +6,7 @@ export const BESZERZES_PAGE_KEYS = [
   '/beszallitok',
   '/beszallitoi-rendelesek',
   '/beerkezesek',
+  '/keszlet/nyito',
   '/keszlet/atadasok',
   '/keszlet/mozgasok',
   '/torzsadatok/rendszer/raktarak'
