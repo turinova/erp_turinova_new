@@ -99,13 +99,13 @@ function fmtQty(q: number) {
   return q.toLocaleString('hu-HU', { maximumFractionDigits: 3 })
 }
 
-/** Miért nem rendelhető meg egy Felvéve tétel (null = megrendelhető). */
+/** Miért nem tehető listára egy Felvéve tétel (null = listázható). */
 function leadBlocker(item: CustomerSpecialOrderItemRow): string | null {
   if (item.status !== 'felveve') return null
   if (!item.accessoryId) {
-    return 'Szabad tétel — megrendeléshez rendelj hozzá katalógus terméket.'
+    return 'Szabad tétel — listára helyezéshez rendelj hozzá katalógus terméket.'
   }
-  if (!item.supplierId) return 'Válassz beszállítót a megrendeléshez.'
+  if (!item.supplierId) return 'Válassz beszállítót a listára helyezéshez.'
   return null
 }
 
@@ -329,7 +329,7 @@ export function CustomerOrderDetailClient({
                 loading={pending}
                 onClick={() => openLead(leadIds)}
               >
-                Beszállítótól megrendel ({leadIds.length})
+                Beszállítói listára ({leadIds.length})
               </Button>
             ) : null}
           </div>
@@ -368,7 +368,7 @@ export function CustomerOrderDetailClient({
                 disabled={pending}
                 onClick={() => openLead(leadIds)}
               >
-                Beszállítótól megrendel
+                Beszállítói listára
               </Button>
             ) : null}
             {nextStep.kind === 'handover' && handoverIds.length > 0 ? (
@@ -553,7 +553,7 @@ export function CustomerOrderDetailClient({
               disabled={pending}
               onClick={() => openLead(leadIds)}
             >
-              Beszállítótól megrendel ({leadIds.length})
+              Beszállítói listára ({leadIds.length})
             </Button>
           ) : null}
           {arriveCandidates.length > 0 ? (

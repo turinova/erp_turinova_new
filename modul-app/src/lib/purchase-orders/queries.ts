@@ -4,6 +4,8 @@ import { getReceivedQtyByPoItem } from '@/lib/goods-receipts/queries'
 import {
   lineAmounts,
   sumOrderAmounts,
+  type PurchaseOrderKind,
+  type PurchaseOrderLineKind,
   type PurchaseOrderStatus
 } from '@/lib/purchase-orders/parse'
 
@@ -11,6 +13,7 @@ export type PurchaseOrderListItem = {
   id: string
   po_number: string
   status: PurchaseOrderStatus
+  order_kind: PurchaseOrderKind
   supplier_id: string
   supplier_name: string
   expected_date: string | null
@@ -22,7 +25,10 @@ export type PurchaseOrderListItem = {
 
 export type PurchaseOrderItemRow = {
   id: string
-  accessory_id: string
+  line_kind: PurchaseOrderLineKind
+  accessory_id: string | null
+  sheet_material_id: string | null
+  linear_material_id: string | null
   name_snapshot: string
   sku_snapshot: string
   quantity: number
@@ -30,8 +36,10 @@ export type PurchaseOrderItemRow = {
   net_price: number
   tax_rate_id: string
   tax_rate_percent: number
-  unit_id: string
+  unit_id: string | null
   unit_shortform: string
+  price_per_area_net: number | null
+  area_or_length_factor: number | null
   sort_order: number
   line_net: number
   line_vat: number
@@ -49,6 +57,7 @@ export type PurchaseOrderDetail = {
   id: string
   po_number: string
   status: PurchaseOrderStatus
+  order_kind: PurchaseOrderKind
   supplier_id: string
   supplier_name: string
   warehouse_id: string
@@ -73,6 +82,7 @@ export type PurchaseOrderListParams = {
   tenantId: string
   q?: string
   status?: PurchaseOrderStatus | 'all'
+  orderKind?: PurchaseOrderKind | 'all'
   page?: number
   limit?: number
 }
@@ -99,6 +109,35 @@ export type PurchaseProductSearchItem = {
   primary_supplier_id: string | null
 }
 
+export type PurchaseSheetSearchItem = {
+  id: string
+  name: string
+  length_mm: number
+  width_mm: number
+  thickness_mm: number
+  machine_code: string
+  purchase_price_net: number | null
+  price_net: number
+  tax_rate_id: string
+  tax_rate_percent: number
+  manufacturer_name: string
+}
+
+export type PurchaseLinearSearchItem = {
+  id: string
+  name: string
+  material_type: string
+  length_mm: number
+  width_mm: number
+  thickness_mm: number
+  stock_unit: 'db' | 'fm'
+  purchase_price_net: number | null
+  price_net: number
+  tax_rate_id: string
+  tax_rate_percent: number
+  manufacturer_name: string
+}
+
 export async function listPurchaseOrders(
   supabase: SupabaseClient,
   params: PurchaseOrderListParams
@@ -115,6 +154,7 @@ export async function listPurchaseOrders(
       id,
       po_number,
       status,
+      order_kind,
       supplier_id,
       expected_date,
       updated_at,
@@ -134,6 +174,9 @@ export async function listPurchaseOrders(
 
   if (params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
+  }
+  if (params.orderKind && params.orderKind !== 'all') {
+    query = query.eq('order_kind', params.orderKind)
   }
 
   const q = params.q?.trim()
@@ -194,6 +237,7 @@ export async function listPurchaseOrders(
       id: row.id,
       po_number: row.po_number,
       status: row.status as PurchaseOrderStatus,
+      order_kind: (row.order_kind as PurchaseOrderKind) || 'product',
       supplier_id: row.supplier_id,
       supplier_name: supplier?.name ?? '—',
       expected_date: row.expected_date,
@@ -262,6 +306,7 @@ export async function getPurchaseOrder(
       id,
       po_number,
       status,
+      order_kind,
       supplier_id,
       warehouse_id,
       expected_date,
@@ -278,7 +323,10 @@ export async function getPurchaseOrder(
       warehouses ( name, code ),
       purchase_order_items (
         id,
+        line_kind,
         accessory_id,
+        sheet_material_id,
+        linear_material_id,
         name_snapshot,
         sku_snapshot,
         quantity,
@@ -287,6 +335,8 @@ export async function getPurchaseOrder(
         tax_rate_percent,
         unit_id,
         unit_shortform,
+        price_per_area_net,
+        area_or_length_factor,
         sort_order,
         deleted_at
       )
@@ -319,15 +369,20 @@ export async function getPurchaseOrder(
   const rawItems = (
     (data.purchase_order_items ?? []) as {
       id: string
-      accessory_id: string
+      line_kind: string | null
+      accessory_id: string | null
+      sheet_material_id: string | null
+      linear_material_id: string | null
       name_snapshot: string
       sku_snapshot: string
       quantity: number
       net_price: number
       tax_rate_id: string
       tax_rate_percent: number
-      unit_id: string
+      unit_id: string | null
       unit_shortform: string
+      price_per_area_net: number | null
+      area_or_length_factor: number | null
       sort_order: number
       deleted_at: string | null
     }[]
@@ -342,9 +397,13 @@ export async function getPurchaseOrder(
     const netPrice = Number(it.net_price)
     const taxPct = Number(it.tax_rate_percent)
     const line = lineAmounts(qty, netPrice, taxPct)
+    const lineKind = (it.line_kind as PurchaseOrderLineKind) || 'accessory'
     return {
       id: it.id,
+      line_kind: lineKind,
       accessory_id: it.accessory_id,
+      sheet_material_id: it.sheet_material_id,
+      linear_material_id: it.linear_material_id,
       name_snapshot: it.name_snapshot,
       sku_snapshot: it.sku_snapshot,
       quantity: qty,
@@ -354,6 +413,12 @@ export async function getPurchaseOrder(
       tax_rate_percent: taxPct,
       unit_id: it.unit_id,
       unit_shortform: it.unit_shortform,
+      price_per_area_net:
+        it.price_per_area_net == null ? null : Number(it.price_per_area_net),
+      area_or_length_factor:
+        it.area_or_length_factor == null
+          ? null
+          : Number(it.area_or_length_factor),
       sort_order: it.sort_order,
       line_net: line.net,
       line_vat: line.vat,
@@ -379,6 +444,7 @@ export async function getPurchaseOrder(
     id: data.id,
     po_number: data.po_number,
     status: data.status as PurchaseOrderStatus,
+    order_kind: (data.order_kind as PurchaseOrderKind) || 'product',
     supplier_id: data.supplier_id,
     supplier_name: supplier?.name ?? '—',
     warehouse_id: data.warehouse_id as string,
@@ -489,6 +555,149 @@ export async function searchProductsForPurchaseOrder(
       unit_id: row.unit_id,
       unit_shortform: unit?.shortform ?? 'db',
       primary_supplier_id: primaryByAccessory.get(row.id as string) ?? null
+    }
+  })
+}
+
+/** Aktív táblás anyagok keresése anyag-PO-hoz. */
+export async function searchSheetsForPurchaseOrder(
+  supabase: SupabaseClient,
+  tenantId: string,
+  q: string,
+  limit = 15
+): Promise<PurchaseSheetSearchItem[]> {
+  const safe = q.trim().replace(/[%_,]/g, '')
+  if (!safe) return []
+
+  const { data, error } = await supabase
+    .from('sheet_materials')
+    .select(
+      `
+      id,
+      name,
+      length_mm,
+      width_mm,
+      thickness_mm,
+      machine_code,
+      price_net,
+      purchase_price_net,
+      tax_rate_id,
+      tax_rates ( rate_percent ),
+      manufacturers ( name )
+    `
+    )
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .or(`name.ilike.%${safe}%,machine_code.ilike.%${safe}%`)
+    .order('name', { ascending: true })
+    .limit(limit)
+
+  if (error) {
+    console.error('searchSheetsForPurchaseOrder', error.message)
+    throw new Error('Nem sikerült keresni a táblás anyagok között.')
+  }
+
+  return (data ?? []).map((row) => {
+    const taxRates = row.tax_rates as
+      | { rate_percent: number | string }
+      | { rate_percent: number | string }[]
+      | null
+    const tax = Array.isArray(taxRates) ? taxRates[0] : taxRates
+    const mfrs = row.manufacturers as
+      | { name: string }
+      | { name: string }[]
+      | null
+    const mfr = Array.isArray(mfrs) ? mfrs[0] : mfrs
+
+    return {
+      id: row.id,
+      name: row.name,
+      length_mm: Number(row.length_mm),
+      width_mm: Number(row.width_mm),
+      thickness_mm: Number(row.thickness_mm),
+      machine_code: row.machine_code,
+      purchase_price_net:
+        row.purchase_price_net == null
+          ? null
+          : Number(row.purchase_price_net),
+      price_net: Number(row.price_net) || 0,
+      tax_rate_id: row.tax_rate_id,
+      tax_rate_percent: Number(tax?.rate_percent ?? 0),
+      manufacturer_name: mfr?.name ?? '—'
+    }
+  })
+}
+
+/** Aktív szálas/munkalap anyagok keresése anyag-PO-hoz. */
+export async function searchLinearsForPurchaseOrder(
+  supabase: SupabaseClient,
+  tenantId: string,
+  q: string,
+  limit = 15
+): Promise<PurchaseLinearSearchItem[]> {
+  const safe = q.trim().replace(/[%_,]/g, '')
+  if (!safe) return []
+
+  const { data, error } = await supabase
+    .from('linear_materials')
+    .select(
+      `
+      id,
+      name,
+      material_type,
+      length_mm,
+      width_mm,
+      thickness_mm,
+      stock_unit,
+      price_net,
+      purchase_price_net,
+      tax_rate_id,
+      tax_rates ( rate_percent ),
+      manufacturers ( name )
+    `
+    )
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .ilike('name', `%${safe}%`)
+    .order('name', { ascending: true })
+    .limit(limit)
+
+  if (error) {
+    console.error('searchLinearsForPurchaseOrder', error.message)
+    throw new Error('Nem sikerült keresni a szálas anyagok között.')
+  }
+
+  return (data ?? []).map((row) => {
+    const taxRates = row.tax_rates as
+      | { rate_percent: number | string }
+      | { rate_percent: number | string }[]
+      | null
+    const tax = Array.isArray(taxRates) ? taxRates[0] : taxRates
+    const mfrs = row.manufacturers as
+      | { name: string }
+      | { name: string }[]
+      | null
+    const mfr = Array.isArray(mfrs) ? mfrs[0] : mfrs
+    const stockUnit = row.stock_unit === 'fm' ? 'fm' : 'db'
+
+    return {
+      id: row.id,
+      name: row.name,
+      material_type: row.material_type,
+      length_mm: Number(row.length_mm),
+      width_mm: Number(row.width_mm),
+      thickness_mm: Number(row.thickness_mm),
+      stock_unit: stockUnit,
+      purchase_price_net:
+        row.purchase_price_net == null
+          ? null
+          : Number(row.purchase_price_net),
+      price_net: Number(row.price_net) || 0,
+      tax_rate_id: row.tax_rate_id,
+      tax_rate_percent: Number(tax?.rate_percent ?? 0),
+      manufacturer_name: mfr?.name ?? '—'
     }
   })
 }

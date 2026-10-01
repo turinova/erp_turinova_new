@@ -3,12 +3,14 @@ import { notFound } from 'next/navigation'
 
 import { LinearMaterialForm } from '@/components/linear-materials/linear-material-form'
 import { getSessionUser } from '@/lib/auth/session'
+import { tenantHasBeszerzes } from '@/lib/beszerzes/entitlement'
 import {
   getLinearMaterial,
   listManufacturerOptions,
   listTaxRateOptions
 } from '@/lib/linear-materials/queries'
 import { namedEntityTabTitle } from '@/lib/seo/tab-titles'
+import { getLinearProcurementStock } from '@/lib/stock/material-panel'
 import { createClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -47,13 +49,27 @@ export default async function EditSzalasAnyagPage({
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const [row, manufacturers, taxRates] = await Promise.all([
+  const [row, manufacturers, taxRates, hasBeszerzes] = await Promise.all([
     getLinearMaterial(supabase, user.tenantId, id),
     listManufacturerOptions(supabase, user.tenantId),
-    listTaxRateOptions(supabase, user.tenantId)
+    listTaxRateOptions(supabase, user.tenantId),
+    tenantHasBeszerzes(supabase, user.tenantId)
   ])
 
   if (!row) notFound()
+
+  let procurementStock = null
+  if (hasBeszerzes) {
+    try {
+      procurementStock = await getLinearProcurementStock(
+        supabase,
+        user.tenantId,
+        id
+      )
+    } catch (err) {
+      console.error('linear procurement stock', err)
+    }
+  }
 
   return (
     <LinearMaterialForm
@@ -63,6 +79,7 @@ export default async function EditSzalasAnyagPage({
       manufacturers={manufacturers}
       taxRates={taxRates}
       canWrite={canWrite}
+      procurementStock={procurementStock}
     />
   )
 }

@@ -24,6 +24,11 @@ import { Textarea } from '@/components/ui/textarea'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { FeeTypeListItem } from '@/lib/fee-types/queries'
 import { searchSaleProductsAction } from '@/lib/sales/actions'
+import {
+  isMaterialSaleKind,
+  saleLineCartKey,
+  saleUnitLabel
+} from '@/lib/sales/material-qty'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import { computeSaleTotals } from '@/lib/sales/totals'
 import { createSalesQuoteAction } from '@/lib/sales-quotes/actions'
@@ -37,7 +42,10 @@ type WarehouseOption = {
 }
 
 type Line = {
-  accessoryId: string
+  kind: 'product' | 'sheet_material' | 'linear_material'
+  accessoryId: string | null
+  sheetMaterialId: string | null
+  linearMaterialId: string | null
   name: string
   sku: string
   unitShortform: string
@@ -61,17 +69,22 @@ type Props = {
   customers: OptiCustomerOption[]
   feeTypes: FeeTypeListItem[]
   canWrite: boolean
+  hasLapszabaszat?: boolean
 }
 
-function productToLine(hit: SaleProductSearchItem): Line {
+function catalogToLine(hit: SaleProductSearchItem): Line {
+  const kind = hit.kind ?? 'product'
   const taxPct = Number(hit.tax_rate_percent ?? 0)
   const net = Number(hit.price_net ?? 0)
   return {
-    accessoryId: hit.id,
+    kind,
+    accessoryId: kind === 'product' ? hit.id : null,
+    sheetMaterialId: kind === 'sheet_material' ? hit.id : null,
+    linearMaterialId: kind === 'linear_material' ? hit.id : null,
     name: hit.name,
     sku: hit.sku,
     unitShortform: hit.unit_shortform,
-    quantity: 1,
+    quantity: isMaterialSaleKind(kind) ? 1 : 1,
     unitPriceGross: Math.round(net * (1 + taxPct / 100)),
     taxPercent: taxPct,
     discountPercentage: 0,
@@ -83,7 +96,8 @@ export function SalesQuoteCreateClient({
   warehouses,
   customers: initialCustomers,
   feeTypes,
-  canWrite
+  canWrite,
+  hasLapszabaszat = false
 }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -158,7 +172,7 @@ export function SalesQuoteCreateClient({
     }
     setSearching(true)
     const t = setTimeout(() => {
-      void searchSaleProductsAction(q, warehouseId, false).then((res) => {
+      void searchSaleProductsAction(q, warehouseId, { includeMaterials: hasLapszabaszat }).then((res) => {
         setSearching(false)
         setSearchHits(res.ok ? res.rows : [])
       })
@@ -176,7 +190,7 @@ export function SalesQuoteCreateClient({
             : l
         )
       }
-      return [...prev, productToLine(hit)]
+      return [...prev, catalogToLine(hit)]
     })
     setSearchQ('')
     setSearchHits([])
@@ -208,12 +222,39 @@ export function SalesQuoteCreateClient({
           billingHouseNumber: billing.billingHouseNumber || null,
           billingTaxNumber: billing.billingTaxNumber || null
         },
-        items: lines.map((l) => ({
-          accessoryId: l.accessoryId,
-          quantity: l.quantity,
-          unitPriceGross: l.unitPriceGross,
-          discountPercentage: l.discountPercentage || 0
-        })),
+        items: lines.map((l) => {
+          if (l.kind === 'sheet_material') {
+            return {
+              kind: 'sheet_material' as const,
+              accessoryId: null,
+              sheetMaterialId: l.sheetMaterialId!,
+              linearMaterialId: null,
+              quantity: l.quantity,
+              unitPriceGross: l.unitPriceGross,
+              discountPercentage: l.discountPercentage || 0
+            }
+          }
+          if (l.kind === 'linear_material') {
+            return {
+              kind: 'linear_material' as const,
+              accessoryId: null,
+              sheetMaterialId: null,
+              linearMaterialId: l.linearMaterialId!,
+              quantity: l.quantity,
+              unitPriceGross: l.unitPriceGross,
+              discountPercentage: l.discountPercentage || 0
+            }
+          }
+          return {
+            kind: 'product' as const,
+            accessoryId: l.accessoryId!,
+            sheetMaterialId: null,
+            linearMaterialId: null,
+            quantity: l.quantity,
+            unitPriceGross: l.unitPriceGross,
+            discountPercentage: l.discountPercentage || 0
+          }
+        }),
         fees: fees.map((f) => ({
           feeTypeId: f.feeTypeId,
           name: f.name,

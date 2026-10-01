@@ -41,6 +41,7 @@ import {
 } from '@/components/pos/pos-feedback-bar'
 import { PosReturnSearchDialog } from '@/components/pos/pos-return-search-dialog'
 import { PosSettingsDialog } from '@/components/pos/pos-settings-dialog'
+import { PosMaterialQtyDialog } from '@/components/pos/pos-material-qty-dialog'
 import { PosQuickTile } from '@/components/pos/pos-quick-tile'
 import { PosShiftCashMoveDialog } from '@/components/pos/pos-shift-cash-move-dialog'
 import { PosShiftCloseDialog } from '@/components/pos/pos-shift-close-dialog'
@@ -86,6 +87,12 @@ import {
 import { createSaleInvoiceAction } from '@/lib/invoicing/actions'
 import type { InvoicePaymentMethod } from '@/lib/invoicing/types'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
+import {
+  formatSaleQty,
+  isMaterialSaleKind,
+  saleLineCartKey,
+  saleUnitLabel
+} from '@/lib/sales/material-qty'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import { toInvoicePaymentMethod, isCashPaymentMethodName } from '@/lib/sales/payment-kind'
 import { computeSaleTotals } from '@/lib/sales/totals'
@@ -106,6 +113,7 @@ type Props = {
   feeTypes: FeeTypeListItem[]
   canWrite: boolean
   posConfig: PosTerminalPublicConfig
+  hasLapszabaszat?: boolean
 }
 
 function isCardPaymentMethodName(name: string) {
@@ -131,23 +139,42 @@ function formatOnHand(n: number) {
   return n.toLocaleString('hu-HU', { maximumFractionDigits: 3 })
 }
 
-function productToLine(
+function cartKeyFromHit(hit: SaleProductSearchItem) {
+  return saleLineCartKey({
+    kind: hit.kind ?? 'product',
+    accessoryId: hit.kind === 'product' || !hit.kind ? hit.id : null,
+    sheetMaterialId: hit.kind === 'sheet_material' ? hit.id : null,
+    linearMaterialId: hit.kind === 'linear_material' ? hit.id : null,
+    id: hit.id
+  })
+}
+
+function catalogToLine(
   hit: SaleProductSearchItem,
   quantity = 1
 ): PosCartLine {
+  const kind = hit.kind ?? 'product'
   const taxPct = Number(hit.tax_rate_percent ?? 0)
   const net = Number(hit.price_net ?? 0)
   const gross = Math.round(net * (1 + taxPct / 100))
+  const qty = isMaterialSaleKind(kind)
+    ? Math.max(0.1, Math.round(quantity * 10) / 10)
+    : Math.max(1, quantity)
   return {
-    accessoryId: hit.id,
+    kind,
+    accessoryId: kind === 'product' ? hit.id : null,
+    sheetMaterialId: kind === 'sheet_material' ? hit.id : null,
+    linearMaterialId: kind === 'linear_material' ? hit.id : null,
     name: hit.name,
     sku: hit.sku,
     unitShortform: hit.unit_shortform,
-    quantity: Math.max(1, quantity),
+    quantity: qty,
     unitPriceGross: gross,
     taxPercent: taxPct,
     discountPercentage: 0,
-    onHand: hit.on_hand
+    onHand: hit.on_hand,
+    areaOrLengthFactor: hit.area_or_length_factor ?? null,
+    stockUnit: hit.stock_unit ?? null
   }
 }
 
@@ -158,7 +185,8 @@ export function PosClient({
   paymentMethods,
   feeTypes,
   canWrite,
-  posConfig: initialPosConfig
+  posConfig: initialPosConfig,
+  hasLapszabaszat = false
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -212,6 +240,11 @@ export function PosClient({
   const [searchHits, setSearchHits] = useState<SaleProductSearchItem[]>([])
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(0)
   const [stockFirst, setStockFirst] = useState(true)
+  const [searchKind, setSearchKind] = useState<
+    'all' | 'product' | 'sheet_material' | 'linear_material'
+  >('all')
+  const [qtyDialogHit, setQtyDialogHit] =
+    useState<SaleProductSearchItem | null>(null)
   const [quickHits, setQuickHits] = useState<SaleProductSearchItem[]>([])
   const [quickLoading, setQuickLoading] = useState(false)
   const [quickReloadKey, setQuickReloadKey] = useState(0)
@@ -467,14 +500,21 @@ export function PosClient({
         lines.length > 0
       ) {
         e.preventDefault()
-        const lastId = lines[lines.length - 1]?.accessoryId
-        if (!lastId) return
-        const delta = e.key === '+' ? 1 : -1
+        const last = lines[lines.length - 1]
+        if (!last) return
+        const lastKey = saleLineCartKey(last)
+        const step = isMaterialSaleKind(last.kind) ? 0.1 : 1
+        const delta = e.key === '+' ? step : -step
         setLines((prev) =>
           prev
             .map((l) =>
-              l.accessoryId === lastId
-                ? { ...l, quantity: Math.max(0, l.quantity + delta) }
+              saleLineCartKey(l) === lastKey
+                ? {
+                    ...l,
+                    quantity: isMaterialSaleKind(l.kind)
+                      ? Math.round(Math.max(0, l.quantity + delta) * 10) / 10
+                      : Math.max(0, l.quantity + delta)
+                  }
                 : l
             )
             .filter((l) => l.quantity > 0)
@@ -561,7 +601,9 @@ export function PosClient({
     searchTimer.current = setTimeout(() => {
       void searchSaleProductsAction(q, warehouseId, {
         inStockOnly: false,
-        stockFirst
+        stockFirst,
+        kind: searchKind,
+        includeMaterials: hasLapszabaszat
       }).then((res) => {
         setSearching(false)
         if (res.ok) {
@@ -574,7 +616,7 @@ export function PosClient({
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current)
     }
-  }, [searchQ, warehouseId, stockFirst])
+  }, [searchQ, warehouseId, stockFirst, searchKind, hasLapszabaszat])
 
   useEffect(() => {
     if (!warehouseId) {
@@ -594,26 +636,46 @@ export function PosClient({
     }
   }, [warehouseId, quickReloadKey])
 
-  function addOrBump(hit: SaleProductSearchItem) {
-    const addQty = Math.max(1, qtyPreset)
+  function addOrBump(hit: SaleProductSearchItem, quantity?: number) {
+    const kind = hit.kind ?? 'product'
+    if (isMaterialSaleKind(kind) && quantity == null) {
+      if (!(hit.price_net > 0)) {
+        setFlash({ kind: 'error', message: 'Nincs eladási ár ehhez az anyaghoz.' })
+        return
+      }
+      setQtyDialogHit(hit)
+      setSearchOpen(false)
+      return
+    }
+
+    const addQty =
+      quantity != null
+        ? quantity
+        : isMaterialSaleKind(kind)
+          ? 0.1
+          : Math.max(1, qtyPreset)
+    const key = cartKeyFromHit(hit)
+
     setLines((prev) => {
-      const existing = prev.find((l) => l.accessoryId === hit.id)
+      const existing = prev.find((l) => saleLineCartKey(l) === key)
       if (existing) {
         return prev.map((l) =>
-          l.accessoryId === hit.id
+          saleLineCartKey(l) === key
             ? {
                 ...l,
-                quantity: l.quantity + addQty,
+                quantity: isMaterialSaleKind(kind)
+                  ? Math.round((l.quantity + addQty) * 10) / 10
+                  : l.quantity + addQty,
                 onHand: hit.on_hand
               }
             : l
         )
       }
-      return [...prev, productToLine(hit, addQty)]
+      return [...prev, catalogToLine(hit, addQty)]
     })
     setQtyPreset(1)
     setFlash(null)
-    setHighlightId(hit.id)
+    setHighlightId(key)
     setTimeout(() => setHighlightId(null), 600)
   }
 
@@ -645,8 +707,15 @@ export function PosClient({
       setFlash({ kind: 'error', message: 'Előbb nyiss műszakot.' })
       return
     }
+    if (lines.length === 0 && fees.length === 0) {
+      setFlash({ kind: 'error', message: 'Adj hozzá legalább egy terméket vagy díjat.' })
+      return
+    }
     if (lines.length === 0) {
-      setFlash({ kind: 'error', message: 'Adj hozzá legalább egy terméket.' })
+      setFlash({
+        kind: 'error',
+        message: 'Díjhoz adj hozzá legalább egy terméket is.'
+      })
       return
     }
     if (mode === 'cash' && !allowCashPay) {
@@ -725,13 +794,42 @@ export function PosClient({
         discountAmount: 0,
         posRegisterId: registerId,
         billing: issueInvoice ? billingToFormInput(billing) : undefined,
-        items: lines.map((l) => ({
-          accessoryId: l.accessoryId,
-          quantity: l.quantity,
-          unitPriceGross: l.unitPriceGross,
-          discountPercentage: l.discountPercentage || 0,
-          discountAmount: 0
-        })),
+        items: lines.map((l) => {
+          if (l.kind === 'sheet_material') {
+            return {
+              kind: 'sheet_material' as const,
+              accessoryId: null,
+              sheetMaterialId: l.sheetMaterialId!,
+              linearMaterialId: null,
+              quantity: l.quantity,
+              unitPriceGross: l.unitPriceGross,
+              discountPercentage: l.discountPercentage || 0,
+              discountAmount: 0
+            }
+          }
+          if (l.kind === 'linear_material') {
+            return {
+              kind: 'linear_material' as const,
+              accessoryId: null,
+              sheetMaterialId: null,
+              linearMaterialId: l.linearMaterialId!,
+              quantity: l.quantity,
+              unitPriceGross: l.unitPriceGross,
+              discountPercentage: l.discountPercentage || 0,
+              discountAmount: 0
+            }
+          }
+          return {
+            kind: 'product' as const,
+            accessoryId: l.accessoryId!,
+            sheetMaterialId: null,
+            linearMaterialId: null,
+            quantity: l.quantity,
+            unitPriceGross: l.unitPriceGross,
+            discountPercentage: l.discountPercentage || 0,
+            discountAmount: 0
+          }
+        }),
         fees: fees.map((f) => ({
           feeTypeId: f.feeTypeId,
           name: f.name,
@@ -1390,6 +1488,34 @@ export function PosClient({
             >
               Elöl a készletes
             </button>
+            {hasLapszabaszat ? (
+              <>
+                {(
+                  [
+                    ['all', 'Mind'],
+                    ['product', 'Termék'],
+                    ['sheet_material', 'Tábla'],
+                    ['linear_material', 'Munkalap']
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={searchKind === value}
+                    className={cn(
+                      'rounded-md border text-hint',
+                      touch ? 'min-h-11 px-3 py-2' : 'px-2.5 py-1',
+                      searchKind === value
+                        ? 'border-ink bg-ink text-surface'
+                        : 'border-border bg-surface text-ink-secondary hover:bg-subtle'
+                    )}
+                    onClick={() => setSearchKind(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </>
+            ) : null}
             <span className="text-hint text-ink-secondary">
               {touch
                 ? 'Scannelj vagy koppints'
@@ -1509,7 +1635,7 @@ export function PosClient({
                     const zero = hit.on_hand <= 0
                     return (
                       <tr
-                        key={hit.id}
+                        key={cartKeyFromHit(hit)}
                         className={cn(
                           'cursor-pointer border-b border-border last:border-0 hover:bg-subtle active:bg-subtle',
                           index === selectedSearchIndex && 'bg-subtle',
@@ -1559,8 +1685,13 @@ export function PosClient({
                               </div>
                               <div className="text-hint text-ink-secondary">
                                 {hit.sku}
+                                {hit.kind === 'sheet_material'
+                                  ? ' · Tábla'
+                                  : hit.kind === 'linear_material'
+                                    ? ' · Munkalap'
+                                    : ''}
                                 {zero ? ' · Nincs készleten' : ''}
-                                {zero ? (
+                                {zero && (hit.kind ?? 'product') === 'product' ? (
                                   <>
                                     {' · '}
                                     <Link
@@ -1582,10 +1713,16 @@ export function PosClient({
                             zero ? 'text-warning-ink' : 'text-ink-secondary'
                           )}
                         >
-                          {formatOnHand(hit.on_hand)} {hit.unit_shortform}
+                          {formatOnHand(hit.on_hand)}{' '}
+                          {saleUnitLabel(hit.kind ?? 'product', hit.unit_shortform)}
                         </td>
                         <td className="px-2.5 py-2 text-right font-semibold tabular-nums">
                           {formatMoneyFt(gross)}
+                          {hit.kind === 'sheet_material'
+                            ? ' / m²'
+                            : hit.kind === 'linear_material'
+                              ? ' / m'
+                              : ''}
                         </td>
                       </tr>
                     )
@@ -1609,7 +1746,7 @@ export function PosClient({
             {lines.length === 0 && fees.length === 0 ? (
               <div className="rounded-md border border-dashed border-border bg-surface p-6 text-center">
                 <p className="text-body text-ink-secondary">
-                  A kosár üres. Scannelj terméket.
+                  A kosár üres. Scannelj terméket, vagy adj hozzá díjat.
                 </p>
                 {!wide ? (
                   <Button
@@ -1650,11 +1787,11 @@ export function PosClient({
                   const g = Math.max(0, before - disc)
                   return (
                     <div
-                      key={line.accessoryId}
+                      key={saleLineCartKey(line)}
                       className={cn(
                         'rounded-md border border-border bg-surface p-3',
                         (over || zeroStock) && 'border-warning bg-warning-soft/80',
-                        highlightId === line.accessoryId &&
+                        highlightId === saleLineCartKey(line) &&
                           'ring-2 ring-success'
                       )}
                     >
@@ -1683,7 +1820,7 @@ export function PosClient({
                           onClick={() =>
                             setLines((prev) =>
                               prev.filter(
-                                (l) => l.accessoryId !== line.accessoryId
+                                (l) => saleLineCartKey(l) !== saleLineCartKey(line)
                               )
                             )
                           }
@@ -1698,14 +1835,16 @@ export function PosClient({
                             variant="secondary"
                             className="size-11 shrink-0 p-0"
                             aria-label="Csökkentés"
-                            disabled={line.quantity <= 1}
+                            disabled={line.quantity <= (isMaterialSaleKind(line.kind) ? 0.1 : 1)}
                             onClick={() =>
                               setLines((prev) =>
                                 prev.map((l) =>
-                                  l.accessoryId === line.accessoryId
+                                  saleLineCartKey(l) === saleLineCartKey(line)
                                     ? {
                                         ...l,
-                                        quantity: Math.max(1, l.quantity - 1)
+                                        quantity: isMaterialSaleKind(l.kind)
+                                          ? Math.round(Math.max(0.1, l.quantity - 0.1) * 10) / 10
+                                          : Math.max(1, l.quantity - 1)
                                       }
                                     : l
                                 )
@@ -1728,7 +1867,7 @@ export function PosClient({
                               const n = Number(e.target.value)
                               setLines((prev) =>
                                 prev.map((l) =>
-                                  l.accessoryId === line.accessoryId
+                                  saleLineCartKey(l) === saleLineCartKey(line)
                                     ? {
                                         ...l,
                                         quantity:
@@ -1747,8 +1886,10 @@ export function PosClient({
                             onClick={() =>
                               setLines((prev) =>
                                 prev.map((l) =>
-                                  l.accessoryId === line.accessoryId
-                                    ? { ...l, quantity: l.quantity + 1 }
+                                  saleLineCartKey(l) === saleLineCartKey(line)
+                                    ? { ...l, quantity: isMaterialSaleKind(l.kind)
+                                          ? Math.round((l.quantity + 0.1) * 10) / 10
+                                          : l.quantity + 1 }
                                     : l
                                 )
                               )
@@ -1767,7 +1908,10 @@ export function PosClient({
                 {fees.map((fee) => (
                   <div
                     key={fee.key}
-                    className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface p-3"
+                    className={cn(
+                      'flex items-center justify-between gap-2 rounded-md border border-border bg-surface p-3',
+                      highlightId === fee.key && 'ring-2 ring-success'
+                    )}
                   >
                     <div className="min-w-0">
                       <p className="font-semibold text-ink">{fee.name}</p>
@@ -1826,16 +1970,16 @@ export function PosClient({
                         (before * (line.discountPercentage || 0)) / 100
                       )
                       const g = Math.max(0, before - disc)
-                      const expanded = expandedIds.has(line.accessoryId)
+                      const expanded = expandedIds.has(saleLineCartKey(line))
                       return (
                         <tr
-                          key={line.accessoryId}
+                          key={saleLineCartKey(line)}
                           className={cn(
                             'border-b border-border last:border-0',
                             over || zeroStock
                               ? 'bg-warning-soft/80'
                               : undefined,
-                            highlightId === line.accessoryId &&
+                            highlightId === saleLineCartKey(line) &&
                               'bg-success-soft ring-2 ring-inset ring-success'
                           )}
                         >
@@ -1846,10 +1990,10 @@ export function PosClient({
                               onClick={() =>
                                 setExpandedIds((prev) => {
                                   const next = new Set(prev)
-                                  if (next.has(line.accessoryId)) {
-                                    next.delete(line.accessoryId)
+                                  if (next.has(saleLineCartKey(line))) {
+                                    next.delete(saleLineCartKey(line))
                                   } else {
-                                    next.add(line.accessoryId)
+                                    next.add(saleLineCartKey(line))
                                   }
                                   return next
                                 })
@@ -1885,7 +2029,7 @@ export function PosClient({
                                 ) : line.onHand != null ? (
                                   <span className="text-hint text-ink-muted">
                                     {formatOnHand(line.onHand)}{' '}
-                                    {line.unitShortform}
+                                    {saleUnitLabel(line.kind, line.unitShortform)}
                                   </span>
                                 ) : null}
                                 {line.discountPercentage > 0 ? (
@@ -1915,7 +2059,7 @@ export function PosClient({
                                       const n = Number(e.target.value)
                                       setLines((prev) =>
                                         prev.map((l) =>
-                                          l.accessoryId === line.accessoryId
+                                          saleLineCartKey(l) === saleLineCartKey(line)
                                             ? {
                                                 ...l,
                                                 unitPriceGross:
@@ -1944,7 +2088,7 @@ export function PosClient({
                                       onClick={() =>
                                         setLines((prev) =>
                                           prev.map((l) =>
-                                            l.accessoryId === line.accessoryId
+                                            saleLineCartKey(l) === saleLineCartKey(line)
                                               ? {
                                                   ...l,
                                                   discountPercentage: Math.max(
@@ -1975,7 +2119,7 @@ export function PosClient({
                                         const n = Number(e.target.value)
                                         setLines((prev) =>
                                           prev.map((l) =>
-                                            l.accessoryId === line.accessoryId
+                                            saleLineCartKey(l) === saleLineCartKey(line)
                                               ? {
                                                   ...l,
                                                   discountPercentage:
@@ -2003,7 +2147,7 @@ export function PosClient({
                                       onClick={() =>
                                         setLines((prev) =>
                                           prev.map((l) =>
-                                            l.accessoryId === line.accessoryId
+                                            saleLineCartKey(l) === saleLineCartKey(line)
                                               ? {
                                                   ...l,
                                                   discountPercentage: Math.min(
@@ -2030,17 +2174,19 @@ export function PosClient({
                                 variant="secondary"
                                 className="size-9 shrink-0 p-0 sm:size-10"
                                 aria-label="Csökkentés"
-                                disabled={line.quantity <= 1}
+                                disabled={line.quantity <= (isMaterialSaleKind(line.kind) ? 0.1 : 1)}
                                 onClick={() =>
                                   setLines((prev) =>
                                     prev.map((l) =>
-                                      l.accessoryId === line.accessoryId
+                                      saleLineCartKey(l) === saleLineCartKey(line)
                                         ? {
                                             ...l,
-                                            quantity: Math.max(
-                                              1,
-                                              l.quantity - 1
-                                            )
+                                            quantity: isMaterialSaleKind(l.kind)
+                                              ? Math.round(
+                                                  Math.max(0.1, l.quantity - 0.1) *
+                                                    10
+                                                ) / 10
+                                              : Math.max(1, l.quantity - 1)
                                           }
                                         : l
                                     )
@@ -2063,7 +2209,7 @@ export function PosClient({
                                   const n = Number(e.target.value)
                                   setLines((prev) =>
                                     prev.map((l) =>
-                                      l.accessoryId === line.accessoryId
+                                      saleLineCartKey(l) === saleLineCartKey(line)
                                         ? {
                                             ...l,
                                             quantity:
@@ -2084,8 +2230,10 @@ export function PosClient({
                                 onClick={() =>
                                   setLines((prev) =>
                                     prev.map((l) =>
-                                      l.accessoryId === line.accessoryId
-                                        ? { ...l, quantity: l.quantity + 1 }
+                                      saleLineCartKey(l) === saleLineCartKey(line)
+                                        ? { ...l, quantity: isMaterialSaleKind(l.kind)
+                                          ? Math.round((l.quantity + 0.1) * 10) / 10
+                                          : l.quantity + 1 }
                                         : l
                                     )
                                   )
@@ -2120,7 +2268,7 @@ export function PosClient({
                               onClick={() =>
                                 setLines((prev) =>
                                   prev.filter(
-                                    (l) => l.accessoryId !== line.accessoryId
+                                    (l) => saleLineCartKey(l) !== saleLineCartKey(line)
                                   )
                                 )
                               }
@@ -2134,7 +2282,10 @@ export function PosClient({
                     {fees.map((fee) => (
                       <tr
                         key={fee.key}
-                        className="border-b border-border bg-subtle/50 last:border-0"
+                        className={cn(
+                          'border-b border-border bg-subtle/50 last:border-0',
+                          highlightId === fee.key && 'ring-2 ring-inset ring-success'
+                        )}
                       >
                         <td className="min-w-0 px-2 py-2 align-middle">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -2467,15 +2618,19 @@ export function PosClient({
         open={feeDialogOpen}
         onOpenChange={(o) => {
           setFeeDialogOpen(o)
-          if (!o) setTimeout(focusBarcode, 100)
+          if (!o) setTimeout(focusBarcode, 180)
         }}
         feeTypes={feeTypes}
-        onAdd={(fee) =>
-          setFees((prev) => [
-            ...prev,
-            { key: `fee-${Date.now()}`, ...fee }
-          ])
-        }
+        onAdd={(fee) => {
+          const key = `fee-${Date.now()}`
+          setFees((prev) => [...prev, { key, ...fee }])
+          if (!wide) setPane('cart')
+          setHighlightId(key)
+          setTimeout(() => setHighlightId(null), 900)
+          toast.success(
+            `Díj: ${fee.name} · ${formatMoneyFt(fee.unitPriceGross)} Ft`
+          )
+        }}
       />
 
       <SaleQuickCustomerDialog
@@ -2525,6 +2680,24 @@ export function PosClient({
         onClear={() => {
           setWantInvoice(false)
           setBilling(EMPTY_DOCUMENT_BILLING)
+        }}
+      />
+
+      <PosMaterialQtyDialog
+        open={qtyDialogHit != null}
+        hit={qtyDialogHit}
+        onOpenChange={(open) => {
+          if (!open) {
+            setQtyDialogHit(null)
+            setTimeout(focusBarcode, 100)
+          }
+        }}
+        onConfirm={(quantity) => {
+          if (qtyDialogHit) addOrBump(qtyDialogHit, quantity)
+          setQtyDialogHit(null)
+          setSearchQ('')
+          setSearchHits([])
+          setTimeout(focusBarcode, 100)
         }}
       />
 

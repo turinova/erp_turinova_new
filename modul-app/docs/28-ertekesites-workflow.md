@@ -22,6 +22,11 @@
 | Utalás + áru most | `fulfilled` + unpaid + stock → díjbekérő |
 | Fizetés + dijbekérő + confirmed | Áru átadása → végszámla |
 | POS + Számlát kér + ügyfél | Billing behúzás → auto számla + „Eladás / PDF” visszajelzés |
+| Tábla / munkalap (lapszab) | Eladási qty **m² / m** (1 tizedes); stock out fulfillkor tábla db / szál db\|fm |
+
+**Egység szabály:** eladás / POS / árajánlat → primary m²|m; törzs Készlet kimutatás → primary m²|m + ≈ tábla|db; beszerzés → primary tábla|db (+ ≈ m²|m). Ledger nem változik.
+
+**Migráció anyag:** `20260577_sale_material_lines.sql` (+ `20260575` stock).
 
 ---
 

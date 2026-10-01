@@ -20,6 +20,7 @@ import {
 import {
   emptyAddressInput,
   emptyContactInput,
+  emptyOrderChannelInput,
   formatCompanyRegNumber,
   formatPhoneNumber,
   formatTaxNumber,
@@ -30,6 +31,10 @@ import {
   type SupplierFormInput,
   type SupplierStatus
 } from '@/lib/suppliers/parse'
+import {
+  ORDER_CHANNEL_TYPE_LABEL,
+  type OrderChannelType
+} from '@/lib/suppliers/order-channels'
 import type { SupplierDetail } from '@/lib/suppliers/queries'
 import type { TaxRateListItem } from '@/lib/tax-rates/queries'
 
@@ -60,8 +65,10 @@ function detailToForm(initial?: SupplierDetail | null): SupplierFormInput {
       defaultTaxRateId: '',
       defaultPaymentMethodId: '',
       defaultPaymentTermsDays: 30,
+      emailPoIntroHtml: '',
       addresses: [emptyAddressInput(true)],
-      contacts: []
+      contacts: [],
+      orderChannels: []
     }
   }
 
@@ -82,6 +89,7 @@ function detailToForm(initial?: SupplierDetail | null): SupplierFormInput {
     defaultTaxRateId: initial.default_tax_rate_id ?? '',
     defaultPaymentMethodId: initial.default_payment_method_id ?? '',
     defaultPaymentTermsDays: initial.default_payment_terms_days,
+    emailPoIntroHtml: initial.email_po_intro_html ?? '',
     addresses:
       initial.addresses.length > 0
         ? initial.addresses.map((a) => ({
@@ -101,6 +109,13 @@ function detailToForm(initial?: SupplierDetail | null): SupplierFormInput {
       phone: c.phone ?? '',
       isPrimary: c.is_primary,
       note: c.note ?? ''
+    })),
+    orderChannels: (initial.order_channels ?? []).map((c) => ({
+      channelType: c.channel_type,
+      name: c.name ?? '',
+      urlTemplate: c.url_template ?? '',
+      description: c.description ?? '',
+      isDefault: c.is_default
     }))
   }
 }
@@ -119,6 +134,14 @@ function updateContact(
   patch: Partial<SupplierFormInput['contacts'][number]>
 ): SupplierFormInput['contacts'] {
   return form.contacts.map((c, i) => (i === index ? { ...c, ...patch } : c))
+}
+
+function updateChannel(
+  form: SupplierFormInput,
+  index: number,
+  patch: Partial<SupplierFormInput['orderChannels'][number]>
+): SupplierFormInput['orderChannels'] {
+  return form.orderChannels.map((c, i) => (i === index ? { ...c, ...patch } : c))
 }
 
 export function SupplierForm({
@@ -846,6 +869,201 @@ export function SupplierForm({
               </Button>
             ) : null}
           </div>
+        </FormSection>
+
+        <FormSection
+          title="Rendelési csatornák"
+          description="Webshop URL sablon (terméknév katt a PO-n) és e-mail bevezető szöveg."
+          columns={1}
+        >
+          <FormField
+            label="E-mail bevezető"
+            htmlFor="supplier-email-intro"
+            optionalLabel
+            error={fieldErrors.emailPoIntroHtml}
+            hint="Ez kerül a tétellista elé, ha e-mailt készítesz a rendelésről."
+            className="sm:col-span-full"
+          >
+            <Textarea
+              id="supplier-email-intro"
+              value={form.emailPoIntroHtml}
+              disabled={!canWrite}
+              rows={3}
+              onChange={(e) => patch({ emailPoIntroHtml: e.target.value })}
+              placeholder="Tisztelt Partner! Az alábbi termékeket szeretnénk megrendelni:"
+            />
+          </FormField>
+
+          {form.orderChannels.length === 0 ? (
+            <p className="text-body text-ink-secondary sm:col-span-full">
+              Nincs csatorna. Adj hozzá webshopot, ha a terméknevet a
+              beszállító boltjában akarod megnyitni.
+            </p>
+          ) : (
+            <ul className="space-y-3 sm:col-span-full">
+              {form.orderChannels.map((ch, index) => (
+                <li
+                  key={index}
+                  className="space-y-2 rounded-md border border-border p-3"
+                >
+                  <div className="flex flex-wrap items-end gap-2">
+                    <FormField
+                      label="Típus"
+                      htmlFor={`ch-type-${index}`}
+                      className="min-w-[9rem]"
+                    >
+                      <MenuSelect
+                        id={`ch-type-${index}`}
+                        value={ch.channelType}
+                        disabled={!canWrite}
+                        allowEmpty={false}
+                        options={(
+                          Object.keys(
+                            ORDER_CHANNEL_TYPE_LABEL
+                          ) as OrderChannelType[]
+                        ).map((key) => ({
+                          value: key,
+                          label: ORDER_CHANNEL_TYPE_LABEL[key]
+                        }))}
+                        onChange={(v) =>
+                          patch({
+                            orderChannels: updateChannel(form, index, {
+                              channelType: v as OrderChannelType,
+                              urlTemplate:
+                                v === 'internet' ? ch.urlTemplate : ''
+                            })
+                          })
+                        }
+                      />
+                    </FormField>
+                    <FormField
+                      label="Megnevezés"
+                      htmlFor={`ch-name-${index}`}
+                      optionalLabel
+                      className="min-w-[10rem] flex-1"
+                    >
+                      <Input
+                        id={`ch-name-${index}`}
+                        value={ch.name}
+                        disabled={!canWrite}
+                        onChange={(e) =>
+                          patch({
+                            orderChannels: updateChannel(form, index, {
+                              name: e.target.value
+                            })
+                          })
+                        }
+                        placeholder="pl. Zár-Vas webshop"
+                      />
+                    </FormField>
+                    {canWrite ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          patch({
+                            orderChannels: form.orderChannels.filter(
+                              (_, i) => i !== index
+                            )
+                          })
+                        }
+                      >
+                        <Trash2 className="size-3.5" aria-hidden />
+                        Törlés
+                      </Button>
+                    ) : null}
+                  </div>
+                  {ch.channelType === 'internet' ? (
+                    <FormField
+                      label="URL sablon"
+                      htmlFor={`ch-url-${index}`}
+                      required
+                      error={
+                        fieldErrors[`orderChannels.${index}.urlTemplate`] ??
+                        fieldErrors.orderChannels
+                      }
+                      hint="Helyőrzők: {{sku}}, {{supplier_sku}}, {{name}}, {{ean}}"
+                    >
+                      <Input
+                        id={`ch-url-${index}`}
+                        value={ch.urlTemplate}
+                        disabled={!canWrite}
+                        onChange={(e) =>
+                          patch({
+                            orderChannels: updateChannel(form, index, {
+                              urlTemplate: e.target.value
+                            })
+                          })
+                        }
+                        placeholder="https://pelda.hu/search?q={{sku}}"
+                      />
+                    </FormField>
+                  ) : null}
+                  <label className="flex items-center gap-2 text-body text-ink">
+                    <input
+                      type="checkbox"
+                      className="size-3.5 rounded border-border"
+                      checked={ch.isDefault}
+                      disabled={!canWrite}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        patch({
+                          orderChannels: form.orderChannels.map((c, i) => ({
+                            ...c,
+                            isDefault:
+                              i === index
+                                ? checked
+                                : c.channelType === ch.channelType
+                                  ? false
+                                  : c.isDefault
+                          }))
+                        })
+                      }}
+                    />
+                    Alapértelmezett {ORDER_CHANNEL_TYPE_LABEL[ch.channelType]}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {canWrite ? (
+            <div className="flex flex-wrap gap-2 sm:col-span-full">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  patch({
+                    orderChannels: [
+                      ...form.orderChannels,
+                      emptyOrderChannelInput('internet')
+                    ]
+                  })
+                }
+              >
+                <Plus className="size-3.5" aria-hidden />
+                Webshop csatorna
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  patch({
+                    orderChannels: [
+                      ...form.orderChannels,
+                      emptyOrderChannelInput('email')
+                    ]
+                  })
+                }
+              >
+                <Plus className="size-3.5" aria-hidden />
+                E-mail csatorna
+              </Button>
+            </div>
+          ) : null}
         </FormSection>
 
         <FormSection title="Megjegyzés" columns={4}>

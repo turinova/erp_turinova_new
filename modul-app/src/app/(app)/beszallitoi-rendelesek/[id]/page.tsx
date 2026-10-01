@@ -4,8 +4,13 @@ import { notFound } from 'next/navigation'
 import { PurchaseOrderForm } from '@/components/purchase-orders/purchase-order-form'
 import { getSessionUser } from '@/lib/auth/session'
 import { listGoodsReceiptsForPo } from '@/lib/goods-receipts/queries'
+import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import { purchaseOrderTabTitle } from '@/lib/seo/tab-titles'
 import { getPurchaseOrder } from '@/lib/purchase-orders/queries'
+import {
+  getSupplierProcurementAids,
+  mapAccessorySupplierSkus
+} from '@/lib/suppliers/queries'
 import { listActiveSuppliersForSelect } from '@/lib/suppliers/queries'
 import { listActiveWarehouses } from '@/lib/warehouses/queries'
 import { createClient } from '@/lib/supabase/server'
@@ -41,14 +46,29 @@ export default async function EditBeszallitoiRendelesPage({
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const [order, suppliers, warehouses, receipts] = await Promise.all([
-    getPurchaseOrder(supabase, user.tenantId, id),
-    listActiveSuppliersForSelect(supabase, user.tenantId),
-    listActiveWarehouses(supabase, user.tenantId),
-    listGoodsReceiptsForPo(supabase, user.tenantId, id)
-  ])
+  const [order, suppliers, warehouses, receipts, canOrderMaterial] =
+    await Promise.all([
+      getPurchaseOrder(supabase, user.tenantId, id),
+      listActiveSuppliersForSelect(supabase, user.tenantId),
+      listActiveWarehouses(supabase, user.tenantId),
+      listGoodsReceiptsForPo(supabase, user.tenantId, id),
+      tenantHasLapszabaszat(supabase, user.tenantId)
+    ])
 
   if (!order) notFound()
+
+  const accessoryIds = order.items
+    .filter((it) => it.line_kind === 'accessory' && it.accessory_id)
+    .map((it) => it.accessory_id!)
+  const [procurementAids, supplierSkus] = await Promise.all([
+    getSupplierProcurementAids(supabase, user.tenantId, order.supplier_id),
+    mapAccessorySupplierSkus(
+      supabase,
+      user.tenantId,
+      order.supplier_id,
+      accessoryIds
+    )
+  ])
 
   // Include current supplier even if inactive (so MenuSelect shows name)
   const supplierOptions = [...suppliers]
@@ -84,9 +104,12 @@ export default async function EditBeszallitoiRendelesPage({
       mode="edit"
       initial={order}
       canWrite={canWrite}
+      canOrderMaterial={canOrderMaterial}
       suppliers={supplierOptions}
       warehouses={warehouseOptions}
       receipts={receipts}
+      initialProcurementAids={procurementAids}
+      initialSupplierSkus={supplierSkus}
     />
   )
 }

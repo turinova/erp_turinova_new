@@ -35,6 +35,10 @@ import {
   type PosPayMode,
   type PosTenderLine
 } from '@/lib/pos/tender'
+import {
+  saleLineCartKey,
+  saleUnitLabel
+} from '@/lib/sales/material-qty'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import {
   computeSaleTotals,
@@ -450,7 +454,7 @@ export function PosConfirmDialog({
                       line.quantity > line.onHand + 0.0001
                     return (
                       <tr
-                        key={line.accessoryId}
+                        key={saleLineCartKey(line)}
                         className={cn(
                           'border-b border-border last:border-0',
                           over && 'bg-warning-soft/60'
@@ -465,7 +469,8 @@ export function PosConfirmDialog({
                           </div>
                         </td>
                         <td className="py-2 text-center tabular-nums text-ink">
-                          {line.quantity} {line.unitShortform}
+                          {line.quantity}{' '}
+                          {saleUnitLabel(line.kind, line.unitShortform)}
                         </td>
                         <td className="py-2 text-right tabular-nums">
                           {hasDisc ? (

@@ -77,7 +77,7 @@ type GoodsReceiptDetailClientProps = {
 
 function toLabelPayload(it: GoodsReceiptItemRow): ProductLabelPayload {
   return {
-    id: it.accessory_id,
+    id: it.accessory_id ?? it.sheet_material_id ?? it.linear_material_id ?? it.id,
     name: it.name_snapshot,
     sku: it.sku_snapshot,
     barcode: it.barcode,
@@ -109,6 +109,20 @@ function buildQtyMap(detail: GoodsReceiptDetail): QtyMap {
 function formatQty(n: number) {
   if (Number.isInteger(n)) return String(n)
   return n.toLocaleString('hu-HU', { maximumFractionDigits: 3 })
+}
+
+function formatAreaSecondary(
+  qty: number,
+  it: GoodsReceiptItemRow
+): string | null {
+  if (it.line_kind === 'accessory') return null
+  if (it.unit_shortform === 'fm') return null
+  const factor = it.area_or_length_factor
+  if (factor == null || !(factor > 0) || !(qty > 0)) return null
+  const label = it.line_kind === 'sheet_material' ? 'm²' : 'm'
+  return `≈ ${(qty * factor).toLocaleString('hu-HU', {
+    maximumFractionDigits: 1
+  })} ${label}`
 }
 
 function varianceMeta(
@@ -692,8 +706,11 @@ export function GoodsReceiptDetailClient({
           {initial.items.map((it) => {
             const qty = qtys[it.id] ?? 0
             const meta = varianceMeta(qty, it.target_quantity, it.is_extra)
-            const onHand = onHandByAccessory[it.accessory_id]
-            const canPrintLine = showLabelPrint && qty > 0
+            const onHand = it.accessory_id
+              ? onHandByAccessory[it.accessory_id]
+              : undefined
+            const canPrintLine =
+              showLabelPrint && qty > 0 && it.line_kind === 'accessory'
             return (
               <DataTableRow
                 key={it.id}
@@ -711,6 +728,14 @@ export function GoodsReceiptDetailClient({
                   <div className="text-hint text-ink-secondary">
                     {it.sku_snapshot}
                     {it.unit_shortform ? ` · ${it.unit_shortform}` : ''}
+                    {it.area_or_length_factor != null &&
+                    it.area_or_length_factor > 0 &&
+                    it.line_kind !== 'accessory' &&
+                    it.unit_shortform !== 'fm'
+                      ? ` · ${it.area_or_length_factor.toLocaleString('hu-HU', {
+                          maximumFractionDigits: 2
+                        })} ${it.line_kind === 'sheet_material' ? 'm²/tábla' : 'm/db'}`
+                      : ''}
                   </div>
                 </DataTableCell>
                 <DataTableCell align="right">
@@ -719,56 +744,83 @@ export function GoodsReceiptDetailClient({
                   </span>
                 </DataTableCell>
                 <DataTableCell align="right">
-                  <span className="tabular-nums">
+                  <div className="tabular-nums">
                     {it.is_extra ? '—' : formatQty(it.target_quantity)}
-                  </span>
+                  </div>
+                  {!it.is_extra
+                    ? (() => {
+                        const sec = formatAreaSecondary(
+                          it.target_quantity,
+                          it
+                        )
+                        return sec ? (
+                          <p className="text-hint text-ink-muted">{sec}</p>
+                        ) : null
+                      })()
+                    : null}
                 </DataTableCell>
                 <DataTableCell>
                   {editable ? (
-                    <div className="flex items-center justify-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Csökkent"
-                        disabled={qty <= 0 || pending}
-                        onClick={() => bump(it.id, -1)}
-                      >
-                        <Minus className="size-3.5" />
-                      </Button>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="any"
-                        className={cn(
-                          'w-16 text-center font-semibold tabular-nums',
-                          meta.qtyClass
-                        )}
-                        value={qty}
-                        onChange={(e) => {
-                          const n = Number(e.target.value)
-                          setQty(it.id, Number.isFinite(n) ? n : 0)
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        aria-label="Növel"
-                        disabled={pending}
-                        onClick={() => bump(it.id, 1)}
-                      >
-                        <Plus className="size-3.5" />
-                      </Button>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Csökkent"
+                          disabled={qty <= 0 || pending}
+                          onClick={() => bump(it.id, -1)}
+                        >
+                          <Minus className="size-3.5" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="any"
+                          className={cn(
+                            'w-16 text-center font-semibold tabular-nums',
+                            meta.qtyClass
+                          )}
+                          value={qty}
+                          onChange={(e) => {
+                            const n = Number(e.target.value)
+                            setQty(it.id, Number.isFinite(n) ? n : 0)
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label="Növel"
+                          disabled={pending}
+                          onClick={() => bump(it.id, 1)}
+                        >
+                          <Plus className="size-3.5" />
+                        </Button>
+                      </div>
+                      {(() => {
+                        const sec = formatAreaSecondary(qty, it)
+                        return sec ? (
+                          <p className="text-hint text-ink-muted">{sec}</p>
+                        ) : null
+                      })()}
                     </div>
                   ) : (
-                    <div
-                      className={cn(
-                        'text-center text-body font-semibold tabular-nums',
-                        meta.qtyClass
-                      )}
-                    >
-                      {formatQty(qty)}
+                    <div className="text-center">
+                      <div
+                        className={cn(
+                          'text-body font-semibold tabular-nums',
+                          meta.qtyClass
+                        )}
+                      >
+                        {formatQty(qty)}
+                      </div>
+                      {(() => {
+                        const sec = formatAreaSecondary(qty, it)
+                        return sec ? (
+                          <p className="text-hint text-ink-muted">{sec}</p>
+                        ) : null
+                      })()}
                     </div>
                   )}
                 </DataTableCell>

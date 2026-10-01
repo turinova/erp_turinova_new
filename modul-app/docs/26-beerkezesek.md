@@ -9,7 +9,7 @@
 
 ## 0. Egy mondat
 
-> **Áru megérkezett** → számolás → **Bevételezés** → készlet nő; részszállítás = több beérkezés; váratlan áru = PO-n kívüli tétel; hiány = lezárás gomb.
+> **Áru megérkezett** → számolás → **Bevételezés** → készlet nő (termék / tábla / szálas ledger); részszállítás = több beérkezés; váratlan áru = PO-n kívüli tétel (MVP: termék); hiány = lezárás gomb.
 
 ---
 
@@ -26,6 +26,7 @@
 9. **Beérkezés detail outcome:** színes összefoglaló sáv (pontos / részleges / eltérés) + sor tint + StatusBadge — certainty-first, nem plain tábla.
 10. **Célraktár:** PO-ról öröklődik; checking + ≥2 WH → MenuSelect override receive előtt.
 11. **Termék detail:** „Készlet és beszerzés” szekció csak `beszerzes` entitlement mellett (`20260507`).
+12. **Anyag qty UI:** beérkezésen primary ledger (tábla/db|fm) + secondary ≈ m²/m; törzs Készlet fordítva (lásd [24](24-beszerzes-workflow.md)).
 
 ---
 

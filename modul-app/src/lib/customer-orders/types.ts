@@ -251,13 +251,13 @@ export type CsoWaitingListItem = {
   poQtyReceived: number | null
   note: string | null
   createdAt: string
-  /** Megrendelés-blocker üzenetek (Teendő nézet). */
+  /** Listára-helyezés blocker üzenetek (Teendő nézet). */
   leadBlockers: string[]
 }
 
 export type CsoWaitingCounts = Record<CsoWaitingView, number>
 
-/** Megrendelhető-e a tétel (katalógus + beszállító). */
+/** Listára tehető-e a tétel (katalógus + beszállító). */
 export function csoItemLeadBlockers(item: {
   accessoryId: string | null
   supplierId: string | null
@@ -397,8 +397,8 @@ export function csoComputeNextStep(input: {
   if (leadable.length > 0) {
     return {
       kind: 'lead',
-      title: 'Következő: beszállítótól megrendel',
-      body: `${leadable.length} tétel megrendelhető. Egy gombbal felkerül a beszállítói listára.`
+      title: 'Következő: tedd beszállítói listára',
+      body: `${leadable.length} tétel felvehető. Egy gombbal PO vázlatra kerül — a beszállítónak még nem megy el.`
     }
   }
   const blocked = active.filter((i) => i.status === 'felveve')
@@ -406,7 +406,7 @@ export function csoComputeNextStep(input: {
     return {
       kind: 'blocked',
       title: 'Hiányzik a termék vagy a beszállító',
-      body: 'Nyisd meg a tételt, rendelj hozzá katalógus terméket és beszállítót — utána megrendelhető.'
+      body: 'Nyisd meg a tételt, rendelj hozzá katalógus terméket és beszállítót — utána listára tehető.'
     }
   }
   return null

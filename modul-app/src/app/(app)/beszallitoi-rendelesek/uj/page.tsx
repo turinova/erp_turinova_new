@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 
 import { PurchaseOrderForm } from '@/components/purchase-orders/purchase-order-form'
 import { getSessionUser } from '@/lib/auth/session'
+import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import { listActiveSuppliersForSelect } from '@/lib/suppliers/queries'
 import {
   ensureDefaultWarehouse,
@@ -28,15 +29,16 @@ export default async function UjBeszallitoiRendelesPage() {
     warehouses = await listActiveWarehouses(supabase, user.tenantId)
   }
 
-  const suppliers = await listActiveSuppliersForSelect(
-    supabase,
-    user.tenantId
-  )
+  const [suppliers, canOrderMaterial] = await Promise.all([
+    listActiveSuppliersForSelect(supabase, user.tenantId),
+    tenantHasLapszabaszat(supabase, user.tenantId)
+  ])
 
   return (
     <PurchaseOrderForm
       mode="create"
       canWrite={canWrite}
+      canOrderMaterial={canOrderMaterial}
       suppliers={suppliers}
       warehouses={warehouses}
     />

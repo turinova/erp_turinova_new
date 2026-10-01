@@ -1,24 +1,56 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import type {
-  ProcurementRelatedPoRow,
-  ProcurementStockMovementRow,
-  ProcurementStockPanel,
-  ProcurementWarehouseStock
-} from '@/lib/stock/material-panel'
+/** Közös készlet-panel adat (termék / táblás / szálas detail). */
+export type ProcurementWarehouseStock = {
+  warehouse_id: string
+  warehouse_name: string
+  warehouse_code: string
+  on_hand: number
+}
 
-export type AccessoryWarehouseStock = ProcurementWarehouseStock
-export type AccessoryStockMovementRow = ProcurementStockMovementRow
-export type AccessoryRelatedPoRow = ProcurementRelatedPoRow
-export type AccessoryProcurementStock = ProcurementStockPanel
+export type ProcurementStockMovementRow = {
+  id: string
+  created_at: string
+  movement_type: 'in' | 'out'
+  quantity: number
+  warehouse_name: string
+  warehouse_code: string
+  source_type: string
+  receipt_id: string | null
+  receipt_number: string | null
+  po_id: string | null
+  po_number: string | null
+  transfer_id: string | null
+  transfer_number: string | null
+  cso_id: string | null
+  cso_order_number: string | null
+  sale_id: string | null
+  sale_number: string | null
+}
 
-/** Termék detail: készlet / mozgások / nyitott PO (beszerzés addon). */
-export async function getAccessoryProcurementStock(
-  supabase: SupabaseClient,
-  tenantId: string,
-  accessoryId: string
-): Promise<AccessoryProcurementStock> {
-  const empty: AccessoryProcurementStock = {
+export type ProcurementRelatedPoRow = {
+  id: string
+  po_number: string
+  status: string
+  supplier_name: string
+  ordered_qty: number
+  received_qty: number
+  remaining_qty: number
+}
+
+export type ProcurementStockPanel = {
+  total_on_hand: number
+  by_warehouse: ProcurementWarehouseStock[]
+  on_order_qty: number
+  open_po_count: number
+  movements: ProcurementStockMovementRow[]
+  related_orders: ProcurementRelatedPoRow[]
+}
+
+type MaterialKind = 'sheet' | 'linear'
+
+function emptyPanel(): ProcurementStockPanel {
+  return {
     total_on_hand: 0,
     by_warehouse: [],
     on_order_qty: 0,
@@ -26,25 +58,42 @@ export async function getAccessoryProcurementStock(
     movements: [],
     related_orders: []
   }
+}
 
-  const [{ data: balanceRows, error: balanceErr }, { data: recentMoves, error: recentErr }] =
-    await Promise.all([
-      supabase
-        .from('stock_movements')
-        .select(
-          `
+async function getMaterialProcurementStock(
+  supabase: SupabaseClient,
+  tenantId: string,
+  kind: MaterialKind,
+  materialId: string
+): Promise<ProcurementStockPanel> {
+  const empty = emptyPanel()
+  const movementsTable =
+    kind === 'sheet' ? 'sheet_stock_movements' : 'linear_stock_movements'
+  const materialCol =
+    kind === 'sheet' ? 'sheet_material_id' : 'linear_material_id'
+  const poItemCol =
+    kind === 'sheet' ? 'sheet_material_id' : 'linear_material_id'
+
+  const [
+    { data: balanceRows, error: balanceErr },
+    { data: recentMoves, error: recentErr }
+  ] = await Promise.all([
+    supabase
+      .from(movementsTable)
+      .select(
+        `
           quantity,
           movement_type,
           warehouse_id,
           warehouses ( name, code )
         `
-        )
-        .eq('tenant_id', tenantId)
-        .eq('accessory_id', accessoryId),
-      supabase
-        .from('stock_movements')
-        .select(
-          `
+      )
+      .eq('tenant_id', tenantId)
+      .eq(materialCol, materialId),
+    supabase
+      .from(movementsTable)
+      .select(
+        `
           id,
           created_at,
           movement_type,
@@ -54,26 +103,23 @@ export async function getAccessoryProcurementStock(
           warehouse_id,
           warehouses ( name, code )
         `
-        )
-        .eq('tenant_id', tenantId)
-        .eq('accessory_id', accessoryId)
-        .order('created_at', { ascending: false })
-        .limit(10)
-    ])
+      )
+      .eq('tenant_id', tenantId)
+      .eq(materialCol, materialId)
+      .order('created_at', { ascending: false })
+      .limit(10)
+  ])
 
   if (balanceErr) {
-    console.error('getAccessoryProcurementStock balance', balanceErr.message)
+    console.error('getMaterialProcurementStock balance', balanceErr.message)
     throw new Error('Nem sikerült lekérdezni a készletet.')
   }
   if (recentErr) {
-    console.error('getAccessoryProcurementStock recent', recentErr.message)
+    console.error('getMaterialProcurementStock recent', recentErr.message)
     throw new Error('Nem sikerült lekérdezni a készletmozgásokat.')
   }
 
-  const byWh = new Map<
-    string,
-    { name: string; code: string; onHand: number }
-  >()
+  const byWh = new Map<string, { name: string; code: string; onHand: number }>()
   let total = 0
 
   for (const row of balanceRows ?? []) {
@@ -101,7 +147,7 @@ export async function getAccessoryProcurementStock(
     byWh.set(whId, prev)
   }
 
-  const by_warehouse: AccessoryWarehouseStock[] = [...byWh.entries()]
+  const by_warehouse: ProcurementWarehouseStock[] = [...byWh.entries()]
     .map(([warehouse_id, v]) => ({
       warehouse_id,
       warehouse_name: v.name,
@@ -116,22 +162,6 @@ export async function getAccessoryProcurementStock(
     ...new Set(
       recent
         .filter((m) => m.source_type === 'purchase_receipt' && m.source_id)
-        .map((m) => m.source_id as string)
-    )
-  ]
-  const transferIds = [
-    ...new Set(
-      recent
-        .filter((m) => m.source_type === 'transfer' && m.source_id)
-        .map((m) => m.source_id as string)
-    )
-  ]
-  const csoItemIds = [
-    ...new Set(
-      recent
-        .filter(
-          (m) => m.source_type === 'customer_special_order' && m.source_id
-        )
         .map((m) => m.source_id as string)
     )
   ]
@@ -151,8 +181,6 @@ export async function getAccessoryProcurementStock(
       po_number: string | null
     }
   >()
-  const transferMeta = new Map<string, string>()
-  const csoMeta = new Map<string, { order_id: string; order_number: string }>()
   const saleMeta = new Map<string, string>()
 
   if (receiptIds.length > 0) {
@@ -170,7 +198,7 @@ export async function getAccessoryProcurementStock(
       .in('id', receiptIds)
 
     if (recErr) {
-      console.error('getAccessoryProcurementStock receipts', recErr.message)
+      console.error('getMaterialProcurementStock receipts', recErr.message)
     } else {
       for (const r of receipts ?? []) {
         const pos = r.purchase_orders as
@@ -187,51 +215,6 @@ export async function getAccessoryProcurementStock(
     }
   }
 
-  if (transferIds.length > 0) {
-    const { data: transfers, error: trErr } = await supabase
-      .from('stock_transfers')
-      .select('id, transfer_number')
-      .eq('tenant_id', tenantId)
-      .in('id', transferIds)
-    if (trErr) {
-      console.error('getAccessoryProcurementStock transfers', trErr.message)
-    } else {
-      for (const t of transfers ?? []) {
-        transferMeta.set(t.id, t.transfer_number)
-      }
-    }
-  }
-
-  if (csoItemIds.length > 0) {
-    const { data: csoItems, error: csoErr } = await supabase
-      .from('customer_special_order_items')
-      .select(
-        `
-        id,
-        order_id,
-        customer_special_orders ( order_number )
-      `
-      )
-      .eq('tenant_id', tenantId)
-      .in('id', csoItemIds)
-    if (csoErr) {
-      console.error('getAccessoryProcurementStock cso', csoErr.message)
-    } else {
-      for (const item of csoItems ?? []) {
-        const orders = item.customer_special_orders as
-          | { order_number: string }
-          | { order_number: string }[]
-          | null
-        const order = Array.isArray(orders) ? orders[0] : orders
-        if (!item.order_id || !order?.order_number) continue
-        csoMeta.set(item.id, {
-          order_id: item.order_id as string,
-          order_number: order.order_number
-        })
-      }
-    }
-  }
-
   if (saleIds.length > 0) {
     const { data: sales, error: saleErr } = await supabase
       .from('sales_orders')
@@ -239,7 +222,7 @@ export async function getAccessoryProcurementStock(
       .eq('tenant_id', tenantId)
       .in('id', saleIds)
     if (saleErr) {
-      console.error('getAccessoryProcurementStock sales', saleErr.message)
+      console.error('getMaterialProcurementStock sales', saleErr.message)
     } else {
       for (const s of sales ?? []) {
         saleMeta.set(s.id, s.sale_number)
@@ -247,7 +230,7 @@ export async function getAccessoryProcurementStock(
     }
   }
 
-  const movements: AccessoryStockMovementRow[] = recent.map((row) => {
+  const movements: ProcurementStockMovementRow[] = recent.map((row) => {
     const whJoin = row.warehouses as
       | { name: string; code: string }
       | { name: string; code: string }[]
@@ -256,14 +239,6 @@ export async function getAccessoryProcurementStock(
     const meta =
       row.source_type === 'purchase_receipt' && row.source_id
         ? receiptMeta.get(row.source_id as string)
-        : undefined
-    const transferNumber =
-      row.source_type === 'transfer' && row.source_id
-        ? transferMeta.get(row.source_id as string)
-        : undefined
-    const cso =
-      row.source_type === 'customer_special_order' && row.source_id
-        ? csoMeta.get(row.source_id as string)
         : undefined
     const saleNumber =
       row.source_type === 'sale' && row.source_id
@@ -282,10 +257,10 @@ export async function getAccessoryProcurementStock(
       receipt_number: meta?.receipt_number ?? null,
       po_id: meta?.po_id ?? null,
       po_number: meta?.po_number ?? null,
-      transfer_id: transferNumber ? (row.source_id as string) : null,
-      transfer_number: transferNumber ?? null,
-      cso_id: cso?.order_id ?? null,
-      cso_order_number: cso?.order_number ?? null,
+      transfer_id: null,
+      transfer_number: null,
+      cso_id: null,
+      cso_order_number: null,
       sale_id: saleNumber ? (row.source_id as string) : null,
       sale_number: saleNumber ?? null
     }
@@ -308,12 +283,12 @@ export async function getAccessoryProcurementStock(
     `
     )
     .eq('tenant_id', tenantId)
-    .eq('accessory_id', accessoryId)
+    .eq(poItemCol, materialId)
     .is('deleted_at', null)
     .limit(80)
 
   if (poErr) {
-    console.error('getAccessoryProcurementStock poItems', poErr.message)
+    console.error('getMaterialProcurementStock poItems', poErr.message)
     return {
       ...empty,
       total_on_hand: total,
@@ -380,7 +355,7 @@ export async function getAccessoryProcurementStock(
       .is('deleted_at', null)
 
     if (griErr) {
-      console.error('getAccessoryProcurementStock gri', griErr.message)
+      console.error('getMaterialProcurementStock gri', griErr.message)
     } else {
       for (const row of gri ?? []) {
         const gr = row.goods_receipts as
@@ -402,7 +377,7 @@ export async function getAccessoryProcurementStock(
   }
 
   let on_order_qty = 0
-  const related_orders: AccessoryRelatedPoRow[] = []
+  const related_orders: ProcurementRelatedPoRow[] = []
 
   for (const [poId, agg] of poAgg) {
     let received = 0
@@ -443,4 +418,30 @@ export async function getAccessoryProcurementStock(
     movements,
     related_orders: related_orders.slice(0, 5)
   }
+}
+
+export async function getSheetProcurementStock(
+  supabase: SupabaseClient,
+  tenantId: string,
+  sheetMaterialId: string
+): Promise<ProcurementStockPanel> {
+  return getMaterialProcurementStock(
+    supabase,
+    tenantId,
+    'sheet',
+    sheetMaterialId
+  )
+}
+
+export async function getLinearProcurementStock(
+  supabase: SupabaseClient,
+  tenantId: string,
+  linearMaterialId: string
+): Promise<ProcurementStockPanel> {
+  return getMaterialProcurementStock(
+    supabase,
+    tenantId,
+    'linear',
+    linearMaterialId
+  )
 }

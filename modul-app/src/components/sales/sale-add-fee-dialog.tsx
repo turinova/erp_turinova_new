@@ -91,7 +91,7 @@ export function SaleAddFeeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md overflow-visible">
         <DialogHeader>
           <DialogTitle>Díj hozzáadása</DialogTitle>
           <DialogDescription>
@@ -117,6 +117,7 @@ export function SaleAddFeeDialog({
                 onChange={handleTypeChange}
                 allowEmpty={false}
                 searchable={feeTypes.length > 6}
+                portal={false}
                 options={options}
               />
             </FormField>

@@ -102,3 +102,87 @@ export async function getAccessoriesOnHandMap(
   }
   return map
 }
+
+/** Táblás anyag készlet (tábla db) raktáranként. */
+export async function getSheetsOnHandMap(
+  supabase: SupabaseClient,
+  tenantId: string,
+  sheetMaterialIds: string[],
+  warehouseId: string
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  const unique = [...new Set(sheetMaterialIds.filter(Boolean))]
+  for (const id of unique) map.set(id, 0)
+  if (unique.length === 0 || !warehouseId) return map
+
+  const { data, error } = await fetchByIds<{
+    sheet_material_id: string
+    quantity: number | string
+    movement_type: string
+  }>(unique, (chunk, from, to) =>
+    supabase
+      .from('sheet_stock_movements')
+      .select('sheet_material_id, quantity, movement_type')
+      .eq('tenant_id', tenantId)
+      .eq('warehouse_id', warehouseId)
+      .in('sheet_material_id', chunk)
+      .order('id', { ascending: true })
+      .range(from, to)
+  )
+
+  if (error) {
+    console.error('getSheetsOnHandMap', error)
+    throw new Error('Nem sikerült lekérdezni a táblás készletet.')
+  }
+
+  for (const row of data) {
+    const id = row.sheet_material_id
+    const qty = Number(row.quantity)
+    const prev = map.get(id) ?? 0
+    if (row.movement_type === 'in') map.set(id, prev + qty)
+    else if (row.movement_type === 'out') map.set(id, prev - qty)
+  }
+  return map
+}
+
+/** Szálas anyag készlet (db | fm) raktáranként. */
+export async function getLinearsOnHandMap(
+  supabase: SupabaseClient,
+  tenantId: string,
+  linearMaterialIds: string[],
+  warehouseId: string
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  const unique = [...new Set(linearMaterialIds.filter(Boolean))]
+  for (const id of unique) map.set(id, 0)
+  if (unique.length === 0 || !warehouseId) return map
+
+  const { data, error } = await fetchByIds<{
+    linear_material_id: string
+    quantity: number | string
+    movement_type: string
+  }>(unique, (chunk, from, to) =>
+    supabase
+      .from('linear_stock_movements')
+      .select('linear_material_id, quantity, movement_type')
+      .eq('tenant_id', tenantId)
+      .eq('warehouse_id', warehouseId)
+      .in('linear_material_id', chunk)
+      .order('id', { ascending: true })
+      .range(from, to)
+  )
+
+  if (error) {
+    console.error('getLinearsOnHandMap', error)
+    throw new Error('Nem sikerült lekérdezni a szálas készletet.')
+  }
+
+  for (const row of data) {
+    const id = row.linear_material_id
+    const qty = Number(row.quantity)
+    const prev = map.get(id) ?? 0
+    if (row.movement_type === 'in') map.set(id, prev + qty)
+    else if (row.movement_type === 'out') map.set(id, prev - qty)
+  }
+  return map
+}

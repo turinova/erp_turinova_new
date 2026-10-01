@@ -10,6 +10,7 @@ import {
   findCheckingReceiptForPo,
   getReceivedQtyByPoItem
 } from '@/lib/goods-receipts/queries'
+import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 export type GoodsReceiptActionResult =
@@ -45,9 +46,13 @@ export async function openOrCreateGoodsReceipt(
       id,
       status,
       warehouse_id,
+      order_kind,
       purchase_order_items (
         id,
+        line_kind,
         accessory_id,
+        sheet_material_id,
+        linear_material_id,
         name_snapshot,
         sku_snapshot,
         unit_shortform,
@@ -64,6 +69,16 @@ export async function openOrCreateGoodsReceipt(
 
   if (poErr || !po) {
     return { ok: false, message: 'A rendelés nem található.' }
+  }
+
+  if ((po.order_kind as string | null) === 'material') {
+    const hasLapszab = await tenantHasLapszabaszat(ctx.supabase, tenantId)
+    if (!hasLapszab) {
+      return {
+        ok: false,
+        message: 'Anyag beérkezéshez Lapszabászat add-on kell.'
+      }
+    }
   }
 
   if (po.status !== 'ordered' && po.status !== 'partial') {
@@ -103,7 +118,10 @@ export async function openOrCreateGoodsReceipt(
   const poItems = (
     (po.purchase_order_items ?? []) as {
       id: string
-      accessory_id: string
+      line_kind: string | null
+      accessory_id: string | null
+      sheet_material_id: string | null
+      linear_material_id: string | null
       name_snapshot: string
       sku_snapshot: string
       unit_shortform: string
@@ -177,18 +195,27 @@ export async function openOrCreateGoodsReceipt(
   const { error: itemsErr } = await ctx.supabase
     .from('goods_receipt_items')
     .insert(
-      remainingItems.map((it, index) => ({
-        tenant_id: tenantId,
-        goods_receipt_id: receipt.id,
-        purchase_order_item_id: it.id,
-        accessory_id: it.accessory_id,
-        name_snapshot: it.name_snapshot,
-        sku_snapshot: it.sku_snapshot,
-        unit_shortform: it.unit_shortform,
-        target_quantity: it.remaining,
-        quantity_received: 0,
-        sort_order: index
-      }))
+      remainingItems.map((it, index) => {
+        const lineKind = (it.line_kind as string) || 'accessory'
+        return {
+          tenant_id: tenantId,
+          goods_receipt_id: receipt.id,
+          purchase_order_item_id: it.id,
+          line_kind: lineKind,
+          accessory_id:
+            lineKind === 'accessory' ? it.accessory_id : null,
+          sheet_material_id:
+            lineKind === 'sheet_material' ? it.sheet_material_id : null,
+          linear_material_id:
+            lineKind === 'linear_material' ? it.linear_material_id : null,
+          name_snapshot: it.name_snapshot,
+          sku_snapshot: it.sku_snapshot,
+          unit_shortform: it.unit_shortform,
+          target_quantity: it.remaining,
+          quantity_received: 0,
+          sort_order: index
+        }
+      })
     )
 
   if (itemsErr) {

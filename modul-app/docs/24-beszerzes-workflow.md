@@ -123,13 +123,24 @@ Addon / entitlement: **`beszerzes`** feature az **Alap plan** része (`20260517_
 
 ### 4.2 Beszállító rendelések
 
-- **Implementálva (MVP):** `/beszallitoi-rendelesek` — lista + buying workspace (`20260502_purchase_orders.sql`).
-- Csak **Termékek** (`accessories`); duplikált tétel → qty összevonás.
-- Státusz: `draft → ordered` (partial/received a beérkezés fázisban).
-- Primary: **Elküldtem a beszállítónak** (vázlaton); Mentés = secondary „Vázlat mentése”. Áru megérkezett → következő modul.
-- PO szám: `BR-YYYY-NNN`.
-- **Célraktár:** draft-on választható (≥2 aktív WH); 1 WH → rejtett, default. Ordered+ readonly. Beérkezés örökli; checking-en override (multi).
-- **PO detail (post-receive):** nem-draft tételeknél **Beérkezett / Hiányzik / Állapot** (Teljes · Részleges · Vár · Többlet); fejléc + lábléc `kapott / rendelt · %`; **Beérkezések** szekció linkekkel (`/beerkezesek/[id]`); checking gyorslink; hiányos lezárás jelzés.
+- **Implementálva (MVP+anyag):** `/beszallitoi-rendelesek` — lista + buying workspace (`20260502` + `20260575`).
+- **Rendelés típus (`order_kind`):** `product` | `material` — létrehozáskor kötelező.
+  - **Termék:** csak `accessories`.
+  - **Anyag:** `sheet_materials` + `linear_materials` **együtt** (tábla + munkalap).
+  - **Entitlement:** anyag PO / kereső / megrendelés / beérkezés **csak** ha a tenantnek van **`lapszabaszat`** feature (`tenantHasLapszabaszat`). Nincs add-on → UI-n nincs „Anyagok” választó; server action elutasít.
+- **Rendelési gyorsítás (`20260576`):** beszállítón **csatornák** (`supplier_order_channels`) + `email_po_intro_html`.
+  - **Webshop:** `internet` + `url_template` (`{{sku}}`, `{{supplier_sku}}`, `{{name}}`, `{{ean}}`) → PO tételnév katt → beszállító bolt új tabban.
+  - **E-mail:** PO **E-mail szöveg** → bevezető + tétellista; **Másolás** / **mailto** (SMTP később). „Elküldve jelölés” → `email_sent` (státusz **nem** `ordered`).
+  - Opcionális `accessory_suppliers.supplier_sku` a `{{supplier_sku}}` helyőrzőhöz.
+- Vizuál: badge (`Termék` / `Anyag`) + bal accent anyag rendelésen — **nem** teljes kártya háttérszín.
+- Táblás qty = **tábla db**; m² csak segédsor + Ft/tábla kalkuláció.
+- Szálas: `stock_unit` = `db` | `fm` (törzs).
+- **Dual egység (certainty):** ledger mindig tábla/db|fm.
+  - **Beszerzés / beérkezés:** primary tábla (vagy db/fm); secondary `≈ m²` / `≈ m`.
+  - **Törzs Készlet + raktár kimutatás:** primary **m²** / **m**; secondary `≈ tábla` / `≈ db`.
+  - **Eladás / POS:** primary m² / m (lásd [28](28-ertekesites-workflow.md)).
+- Készlet: termék → `stock_movements`; tábla → `sheet_stock_movements`; szálas → `linear_stock_movements`.
+- Detail: táblás/szálas anyag kártyán ugyanaz a készlet + mozgás + úton panel, mint a termékeken (anyagoknál dual qty).
 
 Lista oszlopok (sűrű, Midday): szám, beszállító, státusz (szín+szöveg), várható érkezés, tételek db, nettó.
 

@@ -39,7 +39,13 @@ export async function searchSaleProductsAction(
   warehouseId: string,
   opts?:
     | boolean
-    | { inStockOnly?: boolean; stockFirst?: boolean; limit?: number }
+    | {
+        inStockOnly?: boolean
+        stockFirst?: boolean
+        limit?: number
+        kind?: 'all' | 'product' | 'sheet_material' | 'linear_material'
+        includeMaterials?: boolean
+      }
 ): Promise<
   | { ok: true; rows: SaleProductSearchItem[] }
   | { ok: false; message: string }
@@ -60,8 +66,25 @@ export async function searchSaleProductsAction(
       : {
           inStockOnly: opts?.inStockOnly ?? false,
           stockFirst: opts?.stockFirst !== false,
-          limit: opts?.limit
+          limit: opts?.limit,
+          kind: opts?.kind,
+          includeMaterials: opts?.includeMaterials
         }
+
+  let includeMaterials = normalized.includeMaterials === true
+  if (includeMaterials || normalized.kind === 'sheet_material' || normalized.kind === 'linear_material') {
+    const { tenantHasLapszabaszat } = await import(
+      '@/lib/lapszabaszat/entitlement'
+    )
+    includeMaterials = await tenantHasLapszabaszat(supabase, user.tenantId)
+    if (
+      !includeMaterials &&
+      (normalized.kind === 'sheet_material' ||
+        normalized.kind === 'linear_material')
+    ) {
+      return { ok: true, rows: [] }
+    }
+  }
 
   try {
     const rows = await searchProductsForSale(
@@ -69,7 +92,7 @@ export async function searchSaleProductsAction(
       user.tenantId,
       q,
       warehouseId,
-      normalized
+      { ...normalized, includeMaterials }
     )
     return { ok: true, rows }
   } catch (err) {
@@ -102,13 +125,37 @@ export async function createSaleAction(
   }
 
   const d = parsed.data
-  const items = d.items.map((it) => ({
-    accessory_id: it.accessoryId,
-    quantity: it.quantity,
-    unit_price_gross: it.unitPriceGross,
-    discount_percentage: it.discountPercentage ?? 0,
-    discount_amount: it.discountAmount ?? 0
-  }))
+  const items = d.items.map((it) => {
+    const kind = it.kind ?? 'product'
+    if (kind === 'sheet_material') {
+      return {
+        line_kind: 'sheet_material',
+        sheet_material_id: it.sheetMaterialId,
+        quantity: it.quantity,
+        unit_price_gross: it.unitPriceGross,
+        discount_percentage: it.discountPercentage ?? 0,
+        discount_amount: it.discountAmount ?? 0
+      }
+    }
+    if (kind === 'linear_material') {
+      return {
+        line_kind: 'linear_material',
+        linear_material_id: it.linearMaterialId,
+        quantity: it.quantity,
+        unit_price_gross: it.unitPriceGross,
+        discount_percentage: it.discountPercentage ?? 0,
+        discount_amount: it.discountAmount ?? 0
+      }
+    }
+    return {
+      line_kind: 'product',
+      accessory_id: it.accessoryId,
+      quantity: it.quantity,
+      unit_price_gross: it.unitPriceGross,
+      discount_percentage: it.discountPercentage ?? 0,
+      discount_amount: it.discountAmount ?? 0
+    }
+  })
 
   const fees = (d.fees ?? []).map((f) => ({
     fee_type_id: f.feeTypeId ?? null,
@@ -190,7 +237,17 @@ export async function createSaleAction(
 
   revalidateSalePaths(result.id)
   for (const it of d.items) {
-    revalidatePath(`/torzsadatok/alapanyagok/termekek/${it.accessoryId}`)
+    if (it.kind === 'product' && it.accessoryId) {
+      revalidatePath(`/torzsadatok/alapanyagok/termekek/${it.accessoryId}`)
+    } else if (it.kind === 'sheet_material' && it.sheetMaterialId) {
+      revalidatePath(
+        `/torzsadatok/alapanyagok/tablas-anyagok/${it.sheetMaterialId}`
+      )
+    } else if (it.kind === 'linear_material' && it.linearMaterialId) {
+      revalidatePath(
+        `/torzsadatok/alapanyagok/szalas-anyagok/${it.linearMaterialId}`
+      )
+    }
   }
 
   return {

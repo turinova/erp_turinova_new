@@ -68,6 +68,7 @@ function headerFromParsed(data: SupplierFormValues) {
     bic: data.bic,
     account_holder: data.accountHolder,
     notes: data.notes,
+    email_po_intro_html: data.emailPoIntroHtml,
     status: data.status,
     default_currency: data.defaultCurrency,
     default_tax_rate_id: data.defaultTaxRateId,
@@ -122,6 +123,27 @@ async function replaceChildren(
         phone: c.phone,
         is_primary: c.isPrimary,
         note: c.note
+      }))
+    )
+    if (error) return error.message
+  }
+
+  const { error: chDelErr } = await supabase
+    .from('supplier_order_channels')
+    .delete()
+    .eq('supplier_id', supplierId)
+  if (chDelErr) return chDelErr.message
+
+  if (data.orderChannels.length > 0) {
+    const { error } = await supabase.from('supplier_order_channels').insert(
+      data.orderChannels.map((c) => ({
+        tenant_id: tenantId,
+        supplier_id: supplierId,
+        channel_type: c.channelType,
+        name: c.name,
+        url_template: c.urlTemplate,
+        description: c.description,
+        is_default: c.isDefault
       }))
     )
     if (error) return error.message

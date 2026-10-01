@@ -7,6 +7,11 @@ import {
   HU_PHONE_EXAMPLE,
   HU_PHONE_COMPLETE_RE
 } from '@/lib/customers/parse'
+import {
+  emptyOrderChannelInput,
+  supplierOrderChannelSchema,
+  type SupplierOrderChannelInput
+} from '@/lib/suppliers/order-channels'
 
 export {
   formatCompanyRegNumber,
@@ -176,8 +181,13 @@ export const supplierFormSchema = z
       .int('Egész nap legyen.')
       .min(0, 'Nem lehet negatív.')
       .max(365, 'Legfeljebb 365 nap.'),
+    emailPoIntroHtml: z.string().trim().max(4000).transform((v) => {
+      const t = v.trim()
+      return t === '' ? null : t
+    }),
     addresses: z.array(supplierAddressSchema).max(10),
-    contacts: z.array(supplierContactSchema).max(20)
+    contacts: z.array(supplierContactSchema).max(20),
+    orderChannels: z.array(supplierOrderChannelSchema).max(10)
   })
   .superRefine((data, ctx) => {
     const defaults = data.addresses.filter((a) => a.isDefault)
@@ -203,6 +213,16 @@ export const supplierFormSchema = z
         path: ['contacts']
       })
     }
+    const internetDefaults = data.orderChannels.filter(
+      (c) => c.channelType === 'internet' && c.isDefault
+    )
+    if (internetDefaults.length > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Csak egy alapértelmezett webshop csatorna lehet.',
+        path: ['orderChannels']
+      })
+    }
   })
 
 export type SupplierFormValues = z.infer<typeof supplierFormSchema>
@@ -224,6 +244,7 @@ export type SupplierFormInput = {
   defaultTaxRateId: string
   defaultPaymentMethodId: string
   defaultPaymentTermsDays: number
+  emailPoIntroHtml: string
   addresses: {
     label: string
     addressType: SupplierAddressType
@@ -241,7 +262,11 @@ export type SupplierFormInput = {
     isPrimary: boolean
     note: string
   }[]
+  orderChannels: SupplierOrderChannelInput[]
 }
+
+export { emptyOrderChannelInput }
+export type { SupplierOrderChannelInput }
 
 export function emptyAddressInput(isDefault = true): SupplierFormInput['addresses'][number] {
   return {

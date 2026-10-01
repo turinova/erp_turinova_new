@@ -556,8 +556,8 @@ export function CsoItemEditDialog({
             </FormField>
             {!rules.supplier ? (
               <LockedHint>
-                Megrendelés után a beszállító nem cserélhető — mondd le és vedd fel
-                újra, ha kell.
+                Listára helyezés után a beszállító nem cserélhető — mondd le és
+                vedd fel újra, ha kell.
               </LockedHint>
             ) : null}
 

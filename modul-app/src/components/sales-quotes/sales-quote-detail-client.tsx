@@ -81,7 +81,7 @@ function lineBeforeGross(it: SalesQuoteItemRow) {
 
 function totalsFromDetail(detail: SalesQuoteDetail): SaleTotalsResult {
   const itemsGross = detail.items
-    .filter((i) => i.item_kind === 'product')
+    .filter((i) => i.item_kind === 'product' || i.item_kind === 'sheet_material' || i.item_kind === 'linear_material')
     .reduce((s, i) => s + i.total_gross, 0)
   const feesGross = detail.items
     .filter((i) => i.item_kind === 'fee')

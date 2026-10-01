@@ -58,15 +58,17 @@ export function SaleReturnDialog({
 
   const returnableLines: ReturnableLine[] = useMemo(
     () =>
-      detail.items.map((it) => ({
-        id: it.id,
-        itemKind: it.item_kind,
-        name: it.name_snapshot,
-        quantitySold: it.quantity,
-        quantityReturned: detail.returnedQtyByItemId[it.id] ?? 0,
-        totalGross: it.total_gross,
-        taxPercent: it.tax_rate_percent
-      })),
+      detail.items
+        .filter((it) => it.item_kind === 'product' || it.item_kind === 'fee')
+        .map((it) => ({
+          id: it.id,
+          itemKind: it.item_kind as 'product' | 'fee',
+          name: it.name_snapshot,
+          quantitySold: it.quantity,
+          quantityReturned: detail.returnedQtyByItemId[it.id] ?? 0,
+          totalGross: it.total_gross,
+          taxPercent: it.tax_rate_percent
+        })),
     [detail]
   )
 
@@ -331,6 +333,7 @@ export function SaleReturnDialog({
                 <MenuSelect
                   value={paymentMethodId}
                   onChange={setPaymentMethodId}
+                  portal={false}
                   options={paymentMethods.map((p) => ({
                     value: p.id,
                     label: p.name

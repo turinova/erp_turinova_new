@@ -621,7 +621,7 @@ export async function attachAccessoryToSpecialOrderItemAction(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Beszállítótól megrendel (PO vázlat)
+// Beszállítói listára (PO vázlat)
 // ---------------------------------------------------------------------------
 
 type LeadItemRow = {
@@ -706,7 +706,7 @@ export async function previewSpecialOrderLeadDraftsAction(input: {
     if (it.status !== 'felveve') {
       return {
         ok: false,
-        message: 'Csak „Felvéve” státuszú tételt lehet megrendelni.'
+        message: 'Csak „Felvéve” státuszú tétel tehető beszállítói listára.'
       }
     }
     if (!it.accessory_id) {
@@ -795,7 +795,7 @@ export async function previewSpecialOrderLeadDraftsAction(input: {
   return { ok: true, warehouseId, suppliers }
 }
 
-/** Beszállítótól megrendel — több UR; beszállítónként új vázlat vagy meglévő draft. */
+/** Beszállítói listára — több UR; beszállítónként új vázlat vagy meglévő draft. */
 export async function leadSpecialOrderItemsToSupplierAction(input: {
   /** Részletről opcionális (revalidate); várólistáról elhagyható. */
   orderId?: string
@@ -838,7 +838,7 @@ export async function leadSpecialOrderItemsToSupplierAction(input: {
   const rows = items as LeadItemRow[]
   for (const it of rows) {
     if (it.status !== 'felveve') {
-      return { ok: false, message: 'Csak „Felvéve” státuszú tételt lehet megrendelni.' }
+      return { ok: false, message: 'Csak „Felvéve” státuszú tétel tehető beszállítói listára.' }
     }
     if (!it.accessory_id) {
       return {
@@ -860,7 +860,7 @@ export async function leadSpecialOrderItemsToSupplierAction(input: {
     }
   }
 
-  // Claim: előbb lefoglaljuk a tételeket (felveve → rendelve), hogy dupla megrendelés ne legyen.
+  // Claim: előbb lefoglaljuk a tételeket (felveve → rendelve), hogy dupla listázás ne legyen.
   const { data: claimed, error: claimErr } = await ctx.supabase
     .from('customer_special_order_items')
     .update({ status: 'rendelve', updated_at: nowIso() })
@@ -874,7 +874,7 @@ export async function leadSpecialOrderItemsToSupplierAction(input: {
 
   if (claimErr) {
     console.error('lead claim', claimErr.message)
-    return { ok: false, message: 'Nem sikerült megrendelni a tételeket.' }
+    return { ok: false, message: 'Nem sikerült a tételeket beszállítói listára tenni.' }
   }
   const claimedIds = new Set((claimed ?? []).map((c) => c.id as string))
   if (claimedIds.size !== rows.length) {
@@ -911,6 +911,7 @@ export async function leadSpecialOrderItemsToSupplierAction(input: {
       const cost = Number(acc.purchase_price_net ?? 0)
       if (!(cost > 0)) missingCost += 1
       return {
+        lineKind: 'accessory' as const,
         accessoryId: acc.id,
         nameSnapshot: acc.name || it.name,
         skuSnapshot: acc.sku || '—',
@@ -949,10 +950,11 @@ export async function leadSpecialOrderItemsToSupplierAction(input: {
       label = `${poNumber} (hozzáadva)`
     } else {
       const poRes = await createPurchaseOrder({
+        orderKind: 'product',
         supplierId,
         warehouseId,
         expectedDate: '',
-        note: 'Ügyfélrendelés — beszállítótól megrendelés',
+        note: 'Ügyfélrendelés — beszállítói lista (vázlat)',
         currency: 'HUF',
         items: poItems
       })
@@ -1048,7 +1050,7 @@ export async function leadSpecialOrderItemsToSupplierAction(input: {
   }
 
   const parts = [
-    `Beszállítói rendelés: ${results.join(', ')}. Ha még vázlat, küldd el a Beszállítói rendelések oldalon.`
+    `Beszállítói lista: ${results.join(', ')}. Ha még vázlat, a Beszállítói rendelések oldalon küldd el / e-mailezd.`
   ]
   if (missingCost) {
     parts.push(

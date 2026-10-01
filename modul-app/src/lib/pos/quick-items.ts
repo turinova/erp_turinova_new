@@ -331,6 +331,7 @@ export async function listPosQuickProductsForSale(
     const posLabel =
       typeof row.pos_label === 'string' ? row.pos_label : null
     return {
+      kind: 'product' as const,
       id: acc.id,
       name: acc.name,
       display_name: resolvePosDisplayName(acc.name, posLabel),

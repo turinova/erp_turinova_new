@@ -52,11 +52,11 @@ Fej státusz = leghátrább élő tétel (DB trigger). Részleges átadás OK.
 
 Szerveroldali lapozás (limit 25). Nincs szabad státuszflip — csak státuszgép szerinti tömeges műveletek.
 
-**Megrendelés:** több UR tétele is mehet egyszerre. Dialógus: ha a beszállítónak van **ugyanarra a raktárra** nyitott (`draft`) PO-ja → választás *Hozzáadás a meglévőhöz* (alap, ha 1 db) vagy *Új vázlat*. `ordered` PO-hoz nem append.
+**Beszállítói listára:** több UR tétele is mehet egyszerre. Dialógus: ha a beszállítónak van **ugyanarra a raktárra** nyitott (`draft`) PO-ja → választás *Hozzáadás a meglévőhöz* (alap, ha 1 db) vagy *Új vázlat*. `ordered` PO-hoz nem append. A beszállítónak küldés külön lépés a PO oldalon.
 
 ## Integráció
 
-1. **Beszállítótól megrendel** — lead → draft/új PO; kötelező PO-link.
+1. **Beszállítói listára** — lead → draft/új PO vázlat; kötelező PO-link. A beszállítónak még nem megy el (az a Beszállítói rendelések oldalon).
 2. **Beérkezés** — sync → `itt_van` + foglalás. SMS **nem** auto.
 3. **Kézi „Megérkezett”** — kivétel (polc / nincs PO).
 4. **Átadás** — `itt_van` → `atadva` + stock out; fizetés checklist UI.

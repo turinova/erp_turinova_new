@@ -65,6 +65,7 @@ export async function lookupPosBarcodeProduct(
     return {
       ok: true,
       product: {
+        kind: 'product',
         id: row.id,
         name: row.name,
         sku: row.sku,
@@ -171,6 +172,7 @@ async function lookupPosBarcodeHybrid(
   return {
     ok: true,
     product: {
+      kind: 'product',
       id: exact.id,
       name: exact.name,
       sku: exact.sku,

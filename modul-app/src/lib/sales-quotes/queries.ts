@@ -16,8 +16,10 @@ export type SalesQuoteListItem = {
 
 export type SalesQuoteItemRow = {
   id: string
-  item_kind: 'product' | 'fee'
+  item_kind: 'product' | 'fee' | 'sheet_material' | 'linear_material'
   accessory_id: string | null
+  sheet_material_id: string | null
+  linear_material_id: string | null
   name_snapshot: string
   sku_snapshot: string | null
   unit_shortform: string
@@ -150,7 +152,8 @@ export async function getSalesQuote(
       created_by_label_snapshot,
       warehouses ( name ),
       sales_quote_items (
-        id, item_kind, accessory_id, name_snapshot, sku_snapshot,
+        id, item_kind, accessory_id, sheet_material_id, linear_material_id,
+        name_snapshot, sku_snapshot,
         unit_shortform, quantity, unit_price_gross, discount_percentage,
         discount_amount, total_gross, tax_rate_percent, sort_order, deleted_at
       )
@@ -172,8 +175,10 @@ export async function getSalesQuote(
   const items = (
     (data.sales_quote_items ?? []) as {
       id: string
-      item_kind: 'product' | 'fee'
+      item_kind: 'product' | 'fee' | 'sheet_material' | 'linear_material'
       accessory_id: string | null
+      sheet_material_id: string | null
+      linear_material_id: string | null
       name_snapshot: string
       sku_snapshot: string | null
       unit_shortform: string
@@ -193,6 +198,8 @@ export async function getSalesQuote(
       id: i.id,
       item_kind: i.item_kind,
       accessory_id: i.accessory_id,
+      sheet_material_id: i.sheet_material_id ?? null,
+      linear_material_id: i.linear_material_id ?? null,
       name_snapshot: i.name_snapshot,
       sku_snapshot: i.sku_snapshot,
       unit_shortform: i.unit_shortform,

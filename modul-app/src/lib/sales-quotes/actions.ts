@@ -63,12 +63,34 @@ export async function createSalesQuoteAction(
     p_customer_id: d.customerId,
     p_note: d.note ?? null,
     p_valid_until: d.validUntil || null,
-    p_items: d.items.map((it) => ({
-      accessory_id: it.accessoryId,
-      quantity: it.quantity,
-      unit_price_gross: it.unitPriceGross,
-      discount_percentage: it.discountPercentage ?? 0
-    })),
+    p_items: d.items.map((it) => {
+      const kind = it.kind ?? 'product'
+      if (kind === 'sheet_material') {
+        return {
+          line_kind: 'sheet_material',
+          sheet_material_id: it.sheetMaterialId,
+          quantity: it.quantity,
+          unit_price_gross: it.unitPriceGross,
+          discount_percentage: it.discountPercentage ?? 0
+        }
+      }
+      if (kind === 'linear_material') {
+        return {
+          line_kind: 'linear_material',
+          linear_material_id: it.linearMaterialId,
+          quantity: it.quantity,
+          unit_price_gross: it.unitPriceGross,
+          discount_percentage: it.discountPercentage ?? 0
+        }
+      }
+      return {
+        line_kind: 'product',
+        accessory_id: it.accessoryId,
+        quantity: it.quantity,
+        unit_price_gross: it.unitPriceGross,
+        discount_percentage: it.discountPercentage ?? 0
+      }
+    }),
     p_fees: (d.fees ?? []).map((f) => ({
       fee_type_id: f.feeTypeId ?? null,
       name: f.name,
@@ -255,10 +277,15 @@ export async function convertSalesQuoteToSaleAction(input: {
     }
   }
 
-  const products = detail.items.filter((i) => i.item_kind === 'product')
+  const products = detail.items.filter(
+    (i) =>
+      i.item_kind === 'product' ||
+      i.item_kind === 'sheet_material' ||
+      i.item_kind === 'linear_material'
+  )
   const fees = detail.items.filter((i) => i.item_kind === 'fee')
   if (products.length === 0) {
-    return { ok: false, message: 'Nincs termék az ajánlaton.' }
+    return { ok: false, message: 'Nincs tétel az ajánlaton.' }
   }
 
   const saleResult = await createSaleAction({
@@ -270,13 +297,42 @@ export async function convertSalesQuoteToSaleAction(input: {
       : `Árajánlat ${detail.quote_number}`,
     discountPercentage: detail.discount_percentage,
     discountAmount: 0,
-    items: products.map((p) => ({
-      accessoryId: p.accessory_id!,
-      quantity: p.quantity,
-      unitPriceGross: p.unit_price_gross,
-      discountPercentage: p.discount_percentage,
-      discountAmount: 0
-    })),
+    items: products.map((p) => {
+      if (p.item_kind === 'sheet_material') {
+        return {
+          kind: 'sheet_material' as const,
+          accessoryId: null,
+          sheetMaterialId: p.sheet_material_id!,
+          linearMaterialId: null,
+          quantity: p.quantity,
+          unitPriceGross: p.unit_price_gross,
+          discountPercentage: p.discount_percentage,
+          discountAmount: 0
+        }
+      }
+      if (p.item_kind === 'linear_material') {
+        return {
+          kind: 'linear_material' as const,
+          accessoryId: null,
+          sheetMaterialId: null,
+          linearMaterialId: p.linear_material_id!,
+          quantity: p.quantity,
+          unitPriceGross: p.unit_price_gross,
+          discountPercentage: p.discount_percentage,
+          discountAmount: 0
+        }
+      }
+      return {
+        kind: 'product' as const,
+        accessoryId: p.accessory_id!,
+        sheetMaterialId: null,
+        linearMaterialId: null,
+        quantity: p.quantity,
+        unitPriceGross: p.unit_price_gross,
+        discountPercentage: p.discount_percentage,
+        discountAmount: 0
+      }
+    }),
     fees: fees.map((f) => ({
       feeTypeId: null,
       name: f.name_snapshot,
@@ -356,7 +412,12 @@ export async function cloneSalesQuoteAction(
   const detail = await getSalesQuote(supabase, user.tenantId, quoteId)
   if (!detail) return { ok: false, message: 'Ajánlat nem található.' }
 
-  const products = detail.items.filter((i) => i.item_kind === 'product')
+  const products = detail.items.filter(
+    (i) =>
+      i.item_kind === 'product' ||
+      i.item_kind === 'sheet_material' ||
+      i.item_kind === 'linear_material'
+  )
   const fees = detail.items.filter((i) => i.item_kind === 'fee')
 
   return createSalesQuoteAction({
@@ -375,14 +436,39 @@ export async function cloneSalesQuoteAction(
       billingHouseNumber: detail.billing_house_number,
       billingTaxNumber: detail.billing_tax_number
     },
-    items: products
-      .filter((p) => p.accessory_id)
-      .map((p) => ({
+    items: products.map((p) => {
+      if (p.item_kind === 'sheet_material') {
+        return {
+          kind: 'sheet_material' as const,
+          accessoryId: null,
+          sheetMaterialId: p.sheet_material_id!,
+          linearMaterialId: null,
+          quantity: p.quantity,
+          unitPriceGross: p.unit_price_gross,
+          discountPercentage: p.discount_percentage
+        }
+      }
+      if (p.item_kind === 'linear_material') {
+        return {
+          kind: 'linear_material' as const,
+          accessoryId: null,
+          sheetMaterialId: null,
+          linearMaterialId: p.linear_material_id!,
+          quantity: p.quantity,
+          unitPriceGross: p.unit_price_gross,
+          discountPercentage: p.discount_percentage
+        }
+      }
+      return {
+        kind: 'product' as const,
         accessoryId: p.accessory_id!,
+        sheetMaterialId: null,
+        linearMaterialId: null,
         quantity: p.quantity,
         unitPriceGross: p.unit_price_gross,
         discountPercentage: p.discount_percentage
-      })),
+      }
+    }),
     fees: fees.map((f) => ({
       feeTypeId: null,
       name: f.name_snapshot,

@@ -22,7 +22,10 @@ export type GoodsReceiptListItem = {
 export type GoodsReceiptItemRow = {
   id: string
   purchase_order_item_id: string | null
-  accessory_id: string
+  line_kind: 'accessory' | 'sheet_material' | 'linear_material'
+  accessory_id: string | null
+  sheet_material_id: string | null
+  linear_material_id: string | null
   name_snapshot: string
   sku_snapshot: string
   unit_shortform: string
@@ -33,6 +36,8 @@ export type GoodsReceiptItemRow = {
   barcode: string | null
   barcode_internal: string | null
   price_gross: number
+  /** Tábla m² / szál m — PO snapshot vagy törzs méret. */
+  area_or_length_factor: number | null
   on_hand?: number
 }
 
@@ -371,7 +376,10 @@ export async function getGoodsReceipt(
       goods_receipt_items (
         id,
         purchase_order_item_id,
+        line_kind,
         accessory_id,
+        sheet_material_id,
+        linear_material_id,
         name_snapshot,
         sku_snapshot,
         unit_shortform,
@@ -427,7 +435,10 @@ export async function getGoodsReceipt(
     (data.goods_receipt_items ?? []) as {
       id: string
       purchase_order_item_id: string | null
-      accessory_id: string
+      line_kind: string | null
+      accessory_id: string | null
+      sheet_material_id: string | null
+      linear_material_id: string | null
       name_snapshot: string
       sku_snapshot: string
       unit_shortform: string
@@ -469,10 +480,15 @@ export async function getGoodsReceipt(
     const tax = Array.isArray(taxJoin) ? taxJoin[0] : taxJoin
     const priceNet = Number(acc?.price_net ?? 0)
     const taxPct = Number(tax?.rate_percent ?? 0)
+    const lineKind =
+      (it.line_kind as GoodsReceiptItemRow['line_kind']) || 'accessory'
     return {
       id: it.id,
       purchase_order_item_id: it.purchase_order_item_id,
+      line_kind: lineKind,
       accessory_id: it.accessory_id,
+      sheet_material_id: it.sheet_material_id,
+      linear_material_id: it.linear_material_id,
       name_snapshot: it.name_snapshot,
       sku_snapshot: it.sku_snapshot,
       unit_shortform: it.unit_shortform,
@@ -482,9 +498,106 @@ export async function getGoodsReceipt(
       sort_order: it.sort_order,
       barcode: acc?.barcode ?? null,
       barcode_internal: acc?.barcode_internal ?? null,
-      price_gross: grossFromNet(priceNet, taxPct)
+      price_gross: grossFromNet(priceNet, taxPct),
+      area_or_length_factor: null
     }
   })
+
+  const poItemIds = [
+    ...new Set(
+      items
+        .map((it) => it.purchase_order_item_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  ]
+  const factorByPoItem = new Map<string, number>()
+  if (poItemIds.length > 0) {
+    const { data: poItems, error: poFactorErr } = await supabase
+      .from('purchase_order_items')
+      .select('id, area_or_length_factor')
+      .eq('tenant_id', tenantId)
+      .in('id', poItemIds)
+    if (poFactorErr) {
+      console.error('getGoodsReceipt po factors', poFactorErr.message)
+    } else {
+      for (const row of poItems ?? []) {
+        if (row.area_or_length_factor == null) continue
+        const f = Number(row.area_or_length_factor)
+        if (f > 0) factorByPoItem.set(row.id, f)
+      }
+    }
+  }
+
+  const sheetIds = [
+    ...new Set(
+      items
+        .filter(
+          (it) =>
+            it.line_kind === 'sheet_material' &&
+            it.sheet_material_id &&
+            !(
+              it.purchase_order_item_id &&
+              factorByPoItem.has(it.purchase_order_item_id)
+            )
+        )
+        .map((it) => it.sheet_material_id as string)
+    )
+  ]
+  const linearIds = [
+    ...new Set(
+      items
+        .filter(
+          (it) =>
+            it.line_kind === 'linear_material' &&
+            it.linear_material_id &&
+            !(
+              it.purchase_order_item_id &&
+              factorByPoItem.has(it.purchase_order_item_id)
+            )
+        )
+        .map((it) => it.linear_material_id as string)
+    )
+  ]
+  const sheetFactor = new Map<string, number>()
+  const linearFactor = new Map<string, number>()
+  if (sheetIds.length > 0) {
+    const { data: sheets } = await supabase
+      .from('sheet_materials')
+      .select('id, length_mm, width_mm')
+      .eq('tenant_id', tenantId)
+      .in('id', sheetIds)
+    for (const s of sheets ?? []) {
+      const area =
+        (Number(s.length_mm) * Number(s.width_mm)) / 1_000_000
+      if (area > 0) sheetFactor.set(s.id, area)
+    }
+  }
+  if (linearIds.length > 0) {
+    const { data: linears } = await supabase
+      .from('linear_materials')
+      .select('id, length_mm')
+      .eq('tenant_id', tenantId)
+      .in('id', linearIds)
+    for (const l of linears ?? []) {
+      const meters = Number(l.length_mm) / 1000
+      if (meters > 0) linearFactor.set(l.id, meters)
+    }
+  }
+
+  for (const it of items) {
+    if (it.purchase_order_item_id) {
+      const f = factorByPoItem.get(it.purchase_order_item_id)
+      if (f != null) {
+        it.area_or_length_factor = f
+        continue
+      }
+    }
+    if (it.line_kind === 'sheet_material' && it.sheet_material_id) {
+      it.area_or_length_factor = sheetFactor.get(it.sheet_material_id) ?? null
+    } else if (it.line_kind === 'linear_material' && it.linear_material_id) {
+      it.area_or_length_factor = linearFactor.get(it.linear_material_id) ?? null
+    }
+  }
 
   return {
     id: data.id,

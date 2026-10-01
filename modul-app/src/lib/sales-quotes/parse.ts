@@ -35,12 +35,59 @@ export function salesQuoteStatusTone(
   }
 }
 
-export const salesQuoteLineSchema = z.object({
-  accessoryId: z.string().uuid(),
-  quantity: z.number().positive('Adj meg pozitív mennyiséget.'),
-  unitPriceGross: z.number().min(0).optional(),
-  discountPercentage: z.number().min(0).max(100).optional()
-})
+export const salesQuoteLineSchema = z
+  .object({
+    kind: z
+      .enum(['product', 'sheet_material', 'linear_material'])
+      .default('product'),
+    accessoryId: z.string().uuid().nullable().optional(),
+    sheetMaterialId: z.string().uuid().nullable().optional(),
+    linearMaterialId: z.string().uuid().nullable().optional(),
+    quantity: z.number().positive('Adj meg pozitív mennyiséget.'),
+    unitPriceGross: z.number().min(0).optional(),
+    discountPercentage: z.number().min(0).max(100).optional()
+  })
+  .superRefine((val, ctx) => {
+    const kind = val.kind ?? 'product'
+    if (kind === 'product' && !val.accessoryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Hiányzó termék.',
+        path: ['accessoryId']
+      })
+    }
+    if (kind === 'sheet_material' && !val.sheetMaterialId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Hiányzó táblás anyag.',
+        path: ['sheetMaterialId']
+      })
+    }
+    if (kind === 'linear_material' && !val.linearMaterialId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Hiányzó szálas anyag.',
+        path: ['linearMaterialId']
+      })
+    }
+  })
+  .transform((val) => {
+    const kind = val.kind ?? 'product'
+    const quantity =
+      kind === 'sheet_material' || kind === 'linear_material'
+        ? Math.round(val.quantity * 10) / 10
+        : val.quantity
+    return {
+      ...val,
+      kind,
+      quantity,
+      accessoryId: kind === 'product' ? val.accessoryId ?? null : null,
+      sheetMaterialId:
+        kind === 'sheet_material' ? val.sheetMaterialId ?? null : null,
+      linearMaterialId:
+        kind === 'linear_material' ? val.linearMaterialId ?? null : null
+    }
+  })
 
 export const salesQuoteFeeSchema = z.object({
   feeTypeId: z.string().uuid().nullable().optional(),

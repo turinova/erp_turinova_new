@@ -34,6 +34,11 @@ import {
 } from '@/lib/sales/actions'
 import { isDeferredPaymentMethodName } from '@/lib/sales/payment-kind'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
+import {
+  isMaterialSaleKind,
+  saleLineCartKey,
+  saleUnitLabel
+} from '@/lib/sales/material-qty'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import {
   computeSaleTotals,
@@ -49,7 +54,10 @@ type WarehouseOption = {
 }
 
 type Line = {
-  accessoryId: string
+  kind: 'product' | 'sheet_material' | 'linear_material'
+  accessoryId: string | null
+  sheetMaterialId: string | null
+  linearMaterialId: string | null
   name: string
   sku: string
   unitShortform: string
@@ -74,6 +82,7 @@ type Props = {
   paymentMethods: PaymentMethodOption[]
   feeTypes: FeeTypeListItem[]
   canWrite: boolean
+  hasLapszabaszat?: boolean
 }
 
 function formatOnHand(n: number) {
@@ -81,12 +90,37 @@ function formatOnHand(n: number) {
   return n.toLocaleString('hu-HU', { maximumFractionDigits: 3 })
 }
 
+function catalogToLine(hit: SaleProductSearchItem, quantity = 1): Line {
+  const kind = hit.kind ?? 'product'
+  const taxPct = Number(hit.tax_rate_percent ?? 0)
+  const net = Number(hit.price_net ?? 0)
+  const gross = Math.round(net * (1 + taxPct / 100))
+  const qty = isMaterialSaleKind(kind)
+    ? Math.max(0.1, Math.round(quantity * 10) / 10)
+    : Math.max(1, quantity)
+  return {
+    kind,
+    accessoryId: kind === 'product' ? hit.id : null,
+    sheetMaterialId: kind === 'sheet_material' ? hit.id : null,
+    linearMaterialId: kind === 'linear_material' ? hit.id : null,
+    name: hit.name,
+    sku: hit.sku,
+    unitShortform: hit.unit_shortform,
+    quantity: qty,
+    unitPriceGross: gross,
+    taxPercent: taxPct,
+    discountPercentage: 0,
+    onHand: hit.on_hand
+  }
+}
+
 export function SaleCreateClient({
   warehouses,
   customers: initialCustomers,
   paymentMethods,
   feeTypes,
-  canWrite
+  canWrite,
+  hasLapszabaszat = false
 }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -217,7 +251,10 @@ export function SaleCreateClient({
     }
     setSearching(true)
     searchTimer.current = setTimeout(() => {
-      void searchSaleProductsAction(q, warehouseId, inStockOnly).then((res) => {
+      void searchSaleProductsAction(q, warehouseId, {
+        inStockOnly,
+        includeMaterials: hasLapszabaszat
+      }).then((res) => {
         setSearching(false)
         if (res.ok) {
           setSearchHits(res.rows)
@@ -228,42 +265,43 @@ export function SaleCreateClient({
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current)
     }
-  }, [searchQ, warehouseId, inStockOnly])
+  }, [searchQ, warehouseId, inStockOnly, hasLapszabaszat])
 
   useEffect(() => {
     if (!warehouseId || lines.length === 0) return
     let cancelled = false
-    const accessoryIds = lines.map((l) => l.accessoryId)
+    const productLines = lines.filter((l) => l.kind === 'product' && l.accessoryId)
+    if (productLines.length === 0) return
+    const accessoryIds = productLines.map((l) => l.accessoryId!).join('|')
     void (async () => {
       const { getTransferOnHandAction } = await import(
         '@/lib/stock-transfers/actions'
       )
-      const next = await Promise.all(
-        lines.map(async (line) => {
+      const onHandById = new Map<string, number | null>()
+      await Promise.all(
+        productLines.map(async (line) => {
           const res = await getTransferOnHandAction(
-            line.accessoryId,
+            line.accessoryId!,
             warehouseId
           )
-          return { ...line, onHand: res.ok ? res.onHand : null }
+          onHandById.set(line.accessoryId!, res.ok ? res.onHand : null)
         })
       )
       if (!cancelled) {
-        setLines((prev) => {
-          if (prev.map((p) => p.accessoryId).join() !== accessoryIds.join()) {
-            return prev
-          }
-          return next.map((n, i) => ({
-            ...prev[i]!,
-            onHand: n.onHand
-          }))
-        })
+        setLines((prev) =>
+          prev.map((l) =>
+            l.kind === 'product' && l.accessoryId && onHandById.has(l.accessoryId)
+              ? { ...l, onHand: onHandById.get(l.accessoryId) ?? null }
+              : l
+          )
+        )
       }
     })()
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [warehouseId, lines.map((l) => l.accessoryId).join('|')])
+  }, [warehouseId, lines.filter((l) => l.kind === 'product').map((l) => l.accessoryId).join('|')])
 
   function applyCustomer(id: string, c: OptiCustomerOption | null) {
     setCustomerId(id)
@@ -278,31 +316,27 @@ export function SaleCreateClient({
   }
 
   function addProduct(hit: SaleProductSearchItem) {
+    const kind = hit.kind ?? 'product'
+    if (isMaterialSaleKind(kind) && !(hit.price_net > 0)) {
+      toast.error('Nincs eladási ár ehhez az anyaghoz.')
+      return
+    }
     setLines((prev) => {
-      if (prev.some((l) => l.accessoryId === hit.id)) {
-        toast.message('Ez a termék már a listán van.')
+      const key = saleLineCartKey({
+        kind,
+        accessoryId: kind === 'product' ? hit.id : null,
+        sheetMaterialId: kind === 'sheet_material' ? hit.id : null,
+        linearMaterialId: kind === 'linear_material' ? hit.id : null,
+        id: hit.id
+      })
+      if (prev.some((l) => saleLineCartKey(l) === key)) {
+        toast.message('Ez a tétel már a listán van.')
         return prev
       }
-      const taxPct = Number(hit.tax_rate_percent ?? 0)
-      const net = Number(hit.price_net ?? 0)
-      const gross = Math.round(net * (1 + taxPct / 100))
       if (hit.on_hand <= 0) {
         toast.message('Nincs készleten — az eladás így is rögzíthető.')
       }
-      return [
-        ...prev,
-        {
-          accessoryId: hit.id,
-          name: hit.name,
-          sku: hit.sku,
-          unitShortform: hit.unit_shortform,
-          quantity: 1,
-          unitPriceGross: gross,
-          taxPercent: taxPct,
-          discountPercentage: 0,
-          onHand: hit.on_hand
-        }
-      ]
+      return [...prev, catalogToLine(hit, isMaterialSaleKind(kind) ? 1 : 1)]
     })
     setSearchQ('')
     setSearchOpen(false)
@@ -372,13 +406,42 @@ export function SaleCreateClient({
           (isDeferred || wantBilling) && billingHasAny(billing)
             ? billingToFormInput(billing)
             : undefined,
-        items: lines.map((l) => ({
-          accessoryId: l.accessoryId,
-          quantity: l.quantity,
-          unitPriceGross: l.unitPriceGross,
-          discountPercentage: l.discountPercentage || 0,
-          discountAmount: 0
-        })),
+        items: lines.map((l) => {
+          if (l.kind === 'sheet_material') {
+            return {
+              kind: 'sheet_material' as const,
+              accessoryId: null,
+              sheetMaterialId: l.sheetMaterialId!,
+              linearMaterialId: null,
+              quantity: l.quantity,
+              unitPriceGross: l.unitPriceGross,
+              discountPercentage: l.discountPercentage || 0,
+              discountAmount: 0
+            }
+          }
+          if (l.kind === 'linear_material') {
+            return {
+              kind: 'linear_material' as const,
+              accessoryId: null,
+              sheetMaterialId: null,
+              linearMaterialId: l.linearMaterialId!,
+              quantity: l.quantity,
+              unitPriceGross: l.unitPriceGross,
+              discountPercentage: l.discountPercentage || 0,
+              discountAmount: 0
+            }
+          }
+          return {
+            kind: 'product' as const,
+            accessoryId: l.accessoryId!,
+            sheetMaterialId: null,
+            linearMaterialId: null,
+            quantity: l.quantity,
+            unitPriceGross: l.unitPriceGross,
+            discountPercentage: l.discountPercentage || 0,
+            discountAmount: 0
+          }
+        }),
         fees: fees.map((f) => ({
           feeTypeId: f.feeTypeId,
           name: f.name.trim(),
@@ -667,7 +730,7 @@ export function SaleCreateClient({
                       const g = Math.max(0, before - disc)
                       return (
                         <tr
-                          key={line.accessoryId}
+                          key={saleLineCartKey(line)}
                           className="border-b border-border last:border-0"
                         >
                           <td className="px-2.5 py-2">
@@ -691,7 +754,7 @@ export function SaleCreateClient({
                           >
                             {line.onHand == null
                               ? '…'
-                              : formatOnHand(line.onHand)}
+                              : `${formatOnHand(line.onHand)} ${saleUnitLabel(line.kind, line.unitShortform)}`}
                           </td>
                           <td className="px-2.5 py-2 text-right">
                             <div className="ml-auto flex items-center justify-end gap-1">
@@ -700,17 +763,22 @@ export function SaleCreateClient({
                                 variant="secondary"
                                 size="sm"
                                 aria-label="Mennyiség csökkentése"
-                                disabled={line.quantity <= 1}
+                                disabled={
+                                  line.quantity <=
+                                  (isMaterialSaleKind(line.kind) ? 0.1 : 1)
+                                }
                                 onClick={() =>
                                   setLines((prev) =>
                                     prev.map((l) =>
-                                      l.accessoryId === line.accessoryId
+                                      saleLineCartKey(l) === saleLineCartKey(line)
                                         ? {
                                             ...l,
-                                            quantity: Math.max(
-                                              1,
-                                              l.quantity - 1
-                                            )
+                                            quantity: isMaterialSaleKind(l.kind)
+                                              ? Math.round(
+                                                  Math.max(0.1, l.quantity - 0.1) *
+                                                    10
+                                                ) / 10
+                                              : Math.max(1, l.quantity - 1)
                                           }
                                         : l
                                     )
@@ -721,8 +789,8 @@ export function SaleCreateClient({
                               </Button>
                               <Input
                                 type="number"
-                                min={1}
-                                step="any"
+                                min={isMaterialSaleKind(line.kind) ? 0.1 : 1}
+                                step={isMaterialSaleKind(line.kind) ? 0.1 : 1}
                                 className={cn(
                                   'w-14 text-center tabular-nums',
                                   over && 'border-warning'
@@ -732,13 +800,17 @@ export function SaleCreateClient({
                                   const n = Number(e.target.value)
                                   setLines((prev) =>
                                     prev.map((l) =>
-                                      l.accessoryId === line.accessoryId
+                                      saleLineCartKey(l) === saleLineCartKey(line)
                                         ? {
                                             ...l,
                                             quantity:
                                               Number.isFinite(n) && n > 0
-                                                ? n
-                                                : 1
+                                                ? isMaterialSaleKind(l.kind)
+                                                  ? Math.round(n * 10) / 10
+                                                  : n
+                                                : isMaterialSaleKind(l.kind)
+                                                  ? 0.1
+                                                  : 1
                                           }
                                         : l
                                     )
@@ -753,8 +825,14 @@ export function SaleCreateClient({
                                 onClick={() =>
                                   setLines((prev) =>
                                     prev.map((l) =>
-                                      l.accessoryId === line.accessoryId
-                                        ? { ...l, quantity: l.quantity + 1 }
+                                      saleLineCartKey(l) === saleLineCartKey(line)
+                                        ? {
+                                            ...l,
+                                            quantity: isMaterialSaleKind(l.kind)
+                                              ? Math.round((l.quantity + 0.1) * 10) /
+                                                10
+                                              : l.quantity + 1
+                                          }
                                         : l
                                     )
                                   )
@@ -774,7 +852,7 @@ export function SaleCreateClient({
                                 const n = Number(e.target.value)
                                 setLines((prev) =>
                                   prev.map((l) =>
-                                    l.accessoryId === line.accessoryId
+                                    saleLineCartKey(l) === saleLineCartKey(line)
                                       ? {
                                           ...l,
                                           unitPriceGross: Number.isFinite(n)
@@ -798,7 +876,7 @@ export function SaleCreateClient({
                                 const n = Number(e.target.value)
                                 setLines((prev) =>
                                   prev.map((l) =>
-                                    l.accessoryId === line.accessoryId
+                                    saleLineCartKey(l) === saleLineCartKey(line)
                                       ? {
                                           ...l,
                                           discountPercentage: Number.isFinite(n)
@@ -823,7 +901,7 @@ export function SaleCreateClient({
                               onClick={() =>
                                 setLines((prev) =>
                                   prev.filter(
-                                    (l) => l.accessoryId !== line.accessoryId
+                                    (l) => saleLineCartKey(l) !== saleLineCartKey(line)
                                   )
                                 )
                               }

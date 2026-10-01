@@ -150,11 +150,11 @@ export function CsoLeadOrderDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>Beszállítótól megrendel</DialogTitle>
+          <DialogTitle>Beszállítói listára</DialogTitle>
           <DialogDescription>
             {needsChoice
-              ? 'Ha van nyitott vázlat ugyanennél a beszállítónál, ide teheted — vagy újat nyitsz.'
-              : 'Beszállítónként új beszállítói rendelés vázlat készül (beszerzési áron).'}
+              ? 'Ha van nyitott vázlat ugyanennél a beszállítónál, ide teheted — vagy újat nyitsz. A beszállítónak még nem megy el.'
+              : 'Beszállítónként új beszállítói rendelés vázlat készül (beszerzési áron). A beszállítónak még nem megy el.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -252,7 +252,7 @@ export function CsoLeadOrderDialog({
             className={cn(!canConfirm && 'opacity-60')}
             onClick={confirm}
           >
-            Megrendelés
+            Listára
           </Button>
         </DialogFooter>
       </DialogContent>

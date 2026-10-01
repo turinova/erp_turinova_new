@@ -279,7 +279,7 @@ export function CsoWaitingListClient({
     <div className="space-y-4">
       <PageHeader
         title="Beszállítói várólista"
-        description="Tételszintű teendők: megrendelés, beszerzés, átvétel — beszállító szerint csoportosítva."
+        description="Tételszintű teendők: beszállítói lista, beszerzés, átvétel — beszállító szerint csoportosítva."
         actions={
           <Link
             href="/ugyfelrendelesek"
@@ -431,7 +431,7 @@ export function CsoWaitingListClient({
                 onClick={() => setLeadOpen(true)}
               >
                 <Truck className="size-3.5" aria-hidden />
-                Beszállítótól megrendel ({selectedItems.length})
+                Beszállítói listára ({selectedItems.length})
               </Button>
             ) : null}
             {!allLeadable && blockerCount > 0 ? (

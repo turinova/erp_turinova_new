@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
+import { AccessoryProcurementStockSection } from '@/components/accessories/accessory-procurement-stock-section'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
@@ -31,7 +32,9 @@ import {
   parseDecimalInput,
   type LinearMaterialType
 } from '@/lib/linear-materials/parse'
+import { linearDualQtyOpts } from '@/lib/sales/material-qty'
 import type { LinearMaterialDetail } from '@/lib/linear-materials/queries'
+import type { ProcurementStockPanel } from '@/lib/stock/material-panel'
 
 type Option = { id: string; name: string }
 type OptionTaxRate = {
@@ -48,6 +51,7 @@ type LinearMaterialFormProps = {
   manufacturers: Option[]
   taxRates: OptionTaxRate[]
   canWrite: boolean
+  procurementStock?: ProcurementStockPanel | null
 }
 
 export function LinearMaterialForm({
@@ -56,7 +60,8 @@ export function LinearMaterialForm({
   tenantId,
   manufacturers,
   taxRates,
-  canWrite
+  canWrite,
+  procurementStock = null
 }: LinearMaterialFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -519,6 +524,19 @@ export function LinearMaterialForm({
             />
           </FormField>
         </FormSection>
+
+        {mode === 'edit' && procurementStock ? (
+          <AccessoryProcurementStockSection
+            stock={procurementStock}
+            unitShortform={initial?.stock_unit === 'fm' ? 'fm' : 'db'}
+            dualUnit={linearDualQtyOpts(
+              Number.parseInt(lengthRaw, 10) || 0,
+              initial?.stock_unit === 'fm' ? 'fm' : 'db',
+              'display'
+            )}
+            emptyHint="Még nincs belőle raktáron. Anyag-beszerzés bevételezése után itt jelenik meg."
+          />
+        ) : null}
 
         {canWrite && !missingDeps ? (
           <div className="sticky bottom-0 z-10 flex justify-end gap-1.5 border-t border-border bg-app/95 py-3 backdrop-blur-sm">

@@ -63,10 +63,13 @@ export default async function BeerkezesDetailPage({
 
   let onHandByAccessory: Record<string, number> = {}
   try {
+    const accessoryIds = receipt.items
+      .map((it) => it.accessory_id)
+      .filter((id): id is string => Boolean(id))
     const map = await getAccessoriesOnHandMap(
       supabase,
       user.tenantId,
-      receipt.items.map((it) => it.accessory_id),
+      accessoryIds,
       receipt.warehouse_id
     )
     onHandByAccessory = Object.fromEntries(map.entries())

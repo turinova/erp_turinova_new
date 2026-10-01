@@ -22,8 +22,10 @@ import { Input } from '@/components/ui/input'
 import { formatMoneyFt } from '@/lib/accessories/parse'
 import { cancelPurchaseOrder } from '@/lib/purchase-orders/actions'
 import {
+  PO_ORDER_KIND_LABEL,
   PO_STATUS_LABEL,
   PO_STATUSES,
+  poOrderKindTone,
   poStatusTone,
   type PurchaseOrderStatus
 } from '@/lib/purchase-orders/parse'
@@ -118,7 +120,7 @@ export function PurchaseOrdersListClient({
     <div className="space-y-4">
       <PageHeader
         title="Beszállítói rendelések"
-        description="Termék rendelés beszállítótól — vázlat, megrendelés, beérkezés."
+        description="Termék vagy anyag (tábla + munkalap) rendelés beszállítótól."
         actions={
           canWrite ? (
             <Button
@@ -237,19 +239,27 @@ export function PurchaseOrdersListClient({
               return (
                 <DataTableRow
                   key={row.id}
-                  className="cursor-pointer"
+                  className={cn(
+                    'cursor-pointer',
+                    row.order_kind === 'material' && 'border-l-[3px] border-l-info'
+                  )}
                   onClick={() =>
                     router.push(`/beszallitoi-rendelesek/${row.id}`)
                   }
                 >
                   <DataTableCell>
-                    <Link
-                      href={`/beszallitoi-rendelesek/${row.id}`}
-                      className="font-medium text-ink underline-offset-2 hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {row.po_number}
-                    </Link>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Link
+                        href={`/beszallitoi-rendelesek/${row.id}`}
+                        className="font-medium text-ink underline-offset-2 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {row.po_number}
+                      </Link>
+                      <StatusBadge tone={poOrderKindTone(row.order_kind)}>
+                        {PO_ORDER_KIND_LABEL[row.order_kind]}
+                      </StatusBadge>
+                    </div>
                   </DataTableCell>
                   <DataTableCell className="text-ink-secondary">
                     {row.supplier_name}

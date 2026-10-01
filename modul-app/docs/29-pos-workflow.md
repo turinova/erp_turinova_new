@@ -47,6 +47,7 @@ Jobb: kosár + sticky footer
 - **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés.
 - **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha nincs kiválasztható találat); miss → flash, query marad.
 - **Qty-first:** előválasztott mennyiség a következő scan/tile/találat tapre (reset 1-re add után).
+- **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Munkalap; tábla → qty dialógus **m²** (1 tizedes), munkalap → **m**; kosár lépés 0,1; stock out fulfillkor (`20260577`).
 
 **Gyors termékek (kurált rács, nem auto top-seller):**
 - Tábla: `pos_quick_items` + `pos_label` (rövid pult-felirat, max 32); migráció `20260533`.

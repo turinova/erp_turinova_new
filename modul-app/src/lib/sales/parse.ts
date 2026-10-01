@@ -48,13 +48,80 @@ export function salePaymentTone(
   return 'danger'
 }
 
-export const saleLineSchema = z.object({
-  accessoryId: z.string().uuid(),
-  quantity: z.number().positive('Adj meg pozitív mennyiséget.'),
-  unitPriceGross: z.number().min(0).optional(),
-  discountPercentage: z.number().min(0).max(100).optional(),
-  discountAmount: z.number().min(0).optional()
-})
+export const saleLineSchema = z
+  .object({
+    kind: z
+      .enum(['product', 'sheet_material', 'linear_material'])
+      .default('product'),
+    accessoryId: z.string().uuid().nullable().optional(),
+    sheetMaterialId: z.string().uuid().nullable().optional(),
+    linearMaterialId: z.string().uuid().nullable().optional(),
+    quantity: z.number().positive('Adj meg pozitív mennyiséget.'),
+    unitPriceGross: z.number().min(0).optional(),
+    discountPercentage: z.number().min(0).max(100).optional(),
+    discountAmount: z.number().min(0).optional()
+  })
+  .superRefine((val, ctx) => {
+    const kind = val.kind ?? 'product'
+    if (kind === 'product') {
+      if (!val.accessoryId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Hiányzó termék.',
+          path: ['accessoryId']
+        })
+      }
+    } else if (kind === 'sheet_material') {
+      if (!val.sheetMaterialId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Hiányzó táblás anyag.',
+          path: ['sheetMaterialId']
+        })
+      }
+      const q = Math.round(val.quantity * 10) / 10
+      if (q < 0.1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Anyag mennyiség legyen legalább 0,1 m².',
+          path: ['quantity']
+        })
+      }
+    } else if (kind === 'linear_material') {
+      if (!val.linearMaterialId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Hiányzó szálas anyag.',
+          path: ['linearMaterialId']
+        })
+      }
+      const q = Math.round(val.quantity * 10) / 10
+      if (q < 0.1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Anyag mennyiség legyen legalább 0,1 m.',
+          path: ['quantity']
+        })
+      }
+    }
+  })
+  .transform((val) => {
+    const kind = val.kind ?? 'product'
+    const quantity =
+      kind === 'sheet_material' || kind === 'linear_material'
+        ? Math.round(val.quantity * 10) / 10
+        : val.quantity
+    return {
+      ...val,
+      kind,
+      quantity,
+      accessoryId: kind === 'product' ? val.accessoryId ?? null : null,
+      sheetMaterialId:
+        kind === 'sheet_material' ? val.sheetMaterialId ?? null : null,
+      linearMaterialId:
+        kind === 'linear_material' ? val.linearMaterialId ?? null : null
+    }
+  })
 
 export const saleFeeSchema = z.object({
   feeTypeId: z.string().uuid().nullable().optional(),

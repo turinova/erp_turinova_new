@@ -27,8 +27,10 @@ export type SaleListItem = {
 
 export type SaleItemRow = {
   id: string
-  item_kind: 'product' | 'fee'
+  item_kind: 'product' | 'fee' | 'sheet_material' | 'linear_material'
   accessory_id: string | null
+  sheet_material_id: string | null
+  linear_material_id: string | null
   name_snapshot: string
   sku_snapshot: string | null
   unit_shortform: string
@@ -259,6 +261,8 @@ export async function getSale(
         id,
         item_kind,
         accessory_id,
+        sheet_material_id,
+        linear_material_id,
         name_snapshot,
         sku_snapshot,
         unit_shortform,
@@ -322,8 +326,10 @@ export async function getSale(
   const items = (
     (data.sales_order_items ?? []) as {
       id: string
-      item_kind: 'product' | 'fee'
+      item_kind: 'product' | 'fee' | 'sheet_material' | 'linear_material'
       accessory_id: string | null
+      sheet_material_id: string | null
+      linear_material_id: string | null
       name_snapshot: string
       sku_snapshot: string | null
       unit_shortform: string
@@ -343,6 +349,8 @@ export async function getSale(
       id: i.id,
       item_kind: i.item_kind,
       accessory_id: i.accessory_id,
+      sheet_material_id: i.sheet_material_id ?? null,
+      linear_material_id: i.linear_material_id ?? null,
       name_snapshot: i.name_snapshot,
       sku_snapshot: i.sku_snapshot,
       unit_shortform: i.unit_shortform,
@@ -547,6 +555,7 @@ export async function getSale(
 }
 
 export type SaleProductSearchItem = {
+  kind: 'product' | 'sheet_material' | 'linear_material'
   id: string
   name: string
   /** Pulton / gyors tile megjelenő név; hiányzik → name. */
@@ -554,9 +563,17 @@ export type SaleProductSearchItem = {
   sku: string
   price_net: number
   tax_rate_percent: number
+  /** DB shortform: db / m2 / m */
   unit_shortform: string
+  /** Eladási egységben (termék: db; tábla: m²; szálas: m). */
   on_hand: number
+  /** Készlet egységben (tábla db / szál db|fm); csak anyagnál. */
+  on_hand_stock?: number
+  /** Tábla m² / szál hossz m (db stock) vagy 1 (fm). */
+  area_or_length_factor?: number
+  stock_unit?: 'db' | 'fm'
   image_url: string | null
+  size_label?: string
 }
 
 function normalizeSearchKey(value: string): string {
@@ -594,7 +611,15 @@ function saleSearchMatchScore(
   return 0
 }
 
-/** Eladható termékek keresése + aktuális raktár készlet + rangsor. */
+export type SaleSearchKindFilter =
+  | 'all'
+  | 'product'
+  | 'sheet_material'
+  | 'linear_material'
+
+type ScoredSaleHit = SaleProductSearchItem & { _score: number }
+
+/** Eladható termékek + (lapszab) anyagok keresése + raktár készlet. */
 export async function searchProductsForSale(
   supabase: SupabaseClient,
   tenantId: string,
@@ -605,6 +630,8 @@ export async function searchProductsForSale(
     /** Készletes találatok előre (default true). */
     stockFirst?: boolean
     limit?: number
+    kind?: SaleSearchKindFilter
+    includeMaterials?: boolean
   }
 ): Promise<SaleProductSearchItem[]> {
   const safe = q.trim().replace(/[%_,]/g, '')
@@ -612,8 +639,72 @@ export async function searchProductsForSale(
 
   const limit = opts?.limit ?? 15
   const stockFirst = opts?.stockFirst !== false
-  const candidateLimit = Math.max(limit * 4, 48)
+  const kind = opts?.kind ?? 'all'
+  const includeMaterials = opts?.includeMaterials === true
 
+  const wantProduct = kind === 'all' || kind === 'product'
+  const wantSheet =
+    includeMaterials && (kind === 'all' || kind === 'sheet_material')
+  const wantLinear =
+    includeMaterials && (kind === 'all' || kind === 'linear_material')
+
+  const perSource = Math.max(limit * 2, 24)
+  const parts: Promise<ScoredSaleHit[]>[] = []
+
+  if (wantProduct) {
+    parts.push(
+      searchAccessoriesForSale(
+        supabase,
+        tenantId,
+        safe,
+        warehouseId,
+        perSource
+      )
+    )
+  }
+  if (wantSheet) {
+    parts.push(
+      searchSheetsForSale(supabase, tenantId, safe, warehouseId, perSource)
+    )
+  }
+  if (wantLinear) {
+    parts.push(
+      searchLinearsForSale(supabase, tenantId, safe, warehouseId, perSource)
+    )
+  }
+
+  const batches = await Promise.all(parts)
+  const mapped = batches.flat()
+
+  mapped.sort((a, b) => {
+    if (b._score !== a._score) return b._score - a._score
+    if (stockFirst) {
+      const aIn = a.on_hand > 0 ? 1 : 0
+      const bIn = b.on_hand > 0 ? 1 : 0
+      if (bIn !== aIn) return bIn - aIn
+      if (b.on_hand !== a.on_hand) return b.on_hand - a.on_hand
+    }
+    return a.name.localeCompare(b.name, 'hu')
+  })
+
+  const filtered = opts?.inStockOnly
+    ? mapped.filter((r) => r.on_hand > 0)
+    : mapped
+
+  return filtered.slice(0, limit).map((row) => {
+    const { _score, ...rest } = row
+    void _score
+    return rest
+  })
+}
+
+async function searchAccessoriesForSale(
+  supabase: SupabaseClient,
+  tenantId: string,
+  safe: string,
+  warehouseId: string,
+  candidateLimit: number
+): Promise<ScoredSaleHit[]> {
   const query = supabase
     .from('accessories')
     .select(
@@ -642,8 +733,8 @@ export async function searchProductsForSale(
 
   const { data, error } = await query
 
+  let rows = data ?? []
   if (error) {
-    // Régi DB: sellable_pos oszlop még nincs — fallback aktív termékekre.
     if (error.message.includes('sellable_pos')) {
       const fallback = await supabase
         .from('accessories')
@@ -673,34 +764,13 @@ export async function searchProductsForSale(
         console.error('searchProductsForSale', fallback.error.message)
         throw new Error('Nem sikerült keresni a termékek között.')
       }
-      return rankSaleSearchRows(
-        fallback.data ?? [],
-        safe,
-        supabase,
-        tenantId,
-        warehouseId,
-        { inStockOnly: opts?.inStockOnly, stockFirst, limit }
-      )
+      rows = fallback.data ?? []
+    } else {
+      console.error('searchProductsForSale', error.message)
+      throw new Error('Nem sikerült keresni a termékek között.')
     }
-    console.error('searchProductsForSale', error.message)
-    throw new Error('Nem sikerült keresni a termékek között.')
   }
 
-  return rankSaleSearchRows(data ?? [], safe, supabase, tenantId, warehouseId, {
-    inStockOnly: opts?.inStockOnly,
-    stockFirst,
-    limit
-  })
-}
-
-async function rankSaleSearchRows(
-  rows: Array<Record<string, unknown>>,
-  safe: string,
-  supabase: SupabaseClient,
-  tenantId: string,
-  warehouseId: string,
-  opts: { inStockOnly?: boolean; stockFirst: boolean; limit: number }
-): Promise<SaleProductSearchItem[]> {
   if (rows.length === 0) return []
 
   const { getAccessoriesOnHandMap } = await import('@/lib/stock/queries')
@@ -711,7 +781,7 @@ async function rankSaleSearchRows(
     warehouseId
   )
 
-  const mapped = rows.map((row) => {
+  return rows.map((row) => {
     const taxRates = row.tax_rates as
       | { rate_percent: number | string }
       | { rate_percent: number | string }[]
@@ -726,13 +796,8 @@ async function rankSaleSearchRows(
     const sku = row.sku as string
     const barcode = (row.barcode as string | null) ?? null
     const barcodeInternal = (row.barcode_internal as string | null) ?? null
-    const score = saleSearchMatchScore(safe, {
-      name,
-      sku,
-      barcode,
-      barcode_internal: barcodeInternal
-    })
     return {
+      kind: 'product' as const,
       id: row.id as string,
       name,
       sku,
@@ -741,28 +806,218 @@ async function rankSaleSearchRows(
       unit_shortform: unit?.shortform ?? 'db',
       on_hand: onHandMap.get(row.id as string) ?? 0,
       image_url: (row.image_url as string | null) ?? null,
-      _score: score
+      _score: saleSearchMatchScore(safe, {
+        name,
+        sku,
+        barcode,
+        barcode_internal: barcodeInternal
+      })
     }
   })
+}
 
-  mapped.sort((a, b) => {
-    if (b._score !== a._score) return b._score - a._score
-    if (opts.stockFirst) {
-      const aIn = a.on_hand > 0 ? 1 : 0
-      const bIn = b.on_hand > 0 ? 1 : 0
-      if (bIn !== aIn) return bIn - aIn
-      if (b.on_hand !== a.on_hand) return b.on_hand - a.on_hand
+async function searchSheetsForSale(
+  supabase: SupabaseClient,
+  tenantId: string,
+  safe: string,
+  warehouseId: string,
+  candidateLimit: number
+): Promise<ScoredSaleHit[]> {
+  const { data: manufacturerMatches } = await supabase
+    .from('manufacturers')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .ilike('name', `%${safe}%`)
+    .limit(30)
+  const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
+  const orParts = [`name.ilike.%${safe}%`, `machine_code.ilike.%${safe}%`]
+  if (manufacturerIds.length > 0) {
+    orParts.push(`manufacturer_id.in.(${manufacturerIds.join(',')})`)
+  }
+
+  const { data, error } = await supabase
+    .from('sheet_materials')
+    .select(
+      `
+      id,
+      name,
+      length_mm,
+      width_mm,
+      thickness_mm,
+      price_net,
+      image_url,
+      tax_rates ( rate_percent )
+    `
+    )
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .or(orParts.join(','))
+    .limit(candidateLimit)
+
+  if (error) {
+    console.error('searchSheetsForSale', error.message)
+    return []
+  }
+  if (!data?.length) return []
+
+  const { getSheetsOnHandMap } = await import('@/lib/stock/queries')
+  const {
+    sheetAreaM2,
+    materialSizeLabel,
+    sellableFromStock
+  } = await import('@/lib/sales/material-qty')
+  const onHandMap = await getSheetsOnHandMap(
+    supabase,
+    tenantId,
+    data.map((r) => r.id),
+    warehouseId
+  )
+
+  const out: ScoredSaleHit[] = []
+  for (const row of data) {
+    const taxRates = row.tax_rates as
+      | { rate_percent: number | string }
+      | { rate_percent: number | string }[]
+      | null
+    const tax = Array.isArray(taxRates) ? taxRates[0] : taxRates
+    const lengthMm = Number(row.length_mm)
+    const widthMm = Number(row.width_mm)
+    const thicknessMm = Number(row.thickness_mm)
+    const area = sheetAreaM2(lengthMm, widthMm)
+    if (area <= 0) continue
+    const priceNet = Number(row.price_net) || 0
+    if (priceNet <= 0) continue
+    const stock = onHandMap.get(row.id) ?? 0
+    const size = materialSizeLabel(lengthMm, widthMm, thicknessMm)
+    out.push({
+      kind: 'sheet_material',
+      id: row.id,
+      name: row.name,
+      sku: size,
+      price_net: priceNet,
+      tax_rate_percent: Number(tax?.rate_percent ?? 0),
+      unit_shortform: 'm2',
+      on_hand: sellableFromStock(stock, 'sheet_material', area),
+      on_hand_stock: stock,
+      area_or_length_factor: area,
+      image_url: (row.image_url as string | null) ?? null,
+      size_label: size,
+      _score: saleSearchMatchScore(safe, {
+        name: row.name,
+        sku: size,
+        barcode: null,
+        barcode_internal: null
+      })
+    })
+  }
+  return out
+}
+
+async function searchLinearsForSale(
+  supabase: SupabaseClient,
+  tenantId: string,
+  safe: string,
+  warehouseId: string,
+  candidateLimit: number
+): Promise<ScoredSaleHit[]> {
+  const { data: manufacturerMatches } = await supabase
+    .from('manufacturers')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .ilike('name', `%${safe}%`)
+    .limit(30)
+  const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
+  const orParts = [`name.ilike.%${safe}%`]
+  if (manufacturerIds.length > 0) {
+    orParts.push(`manufacturer_id.in.(${manufacturerIds.join(',')})`)
+  }
+
+  const { data, error } = await supabase
+    .from('linear_materials')
+    .select(
+      `
+      id,
+      name,
+      length_mm,
+      width_mm,
+      thickness_mm,
+      price_net,
+      stock_unit,
+      image_url,
+      tax_rates ( rate_percent )
+    `
+    )
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .or(orParts.join(','))
+    .limit(candidateLimit)
+
+  if (error) {
+    if (error.message.includes('stock_unit')) {
+      console.warn('searchLinearsForSale stock_unit missing', error.message)
+    } else {
+      console.error('searchLinearsForSale', error.message)
     }
-    return a.name.localeCompare(b.name, 'hu')
-  })
+    return []
+  }
+  if (!data?.length) return []
 
-  const filtered = opts.inStockOnly
-    ? mapped.filter((r) => r.on_hand > 0)
-    : mapped
+  const { getLinearsOnHandMap } = await import('@/lib/stock/queries')
+  const {
+    linearLengthM,
+    materialSizeLabel,
+    sellableFromStock
+  } = await import('@/lib/sales/material-qty')
+  const onHandMap = await getLinearsOnHandMap(
+    supabase,
+    tenantId,
+    data.map((r) => r.id),
+    warehouseId
+  )
 
-  return filtered.slice(0, opts.limit).map((row) => {
-    const { _score, ...rest } = row
-    void _score
-    return rest
-  })
+  const out: ScoredSaleHit[] = []
+  for (const row of data) {
+    const taxRates = row.tax_rates as
+      | { rate_percent: number | string }
+      | { rate_percent: number | string }[]
+      | null
+    const tax = Array.isArray(taxRates) ? taxRates[0] : taxRates
+    const lengthMm = Number(row.length_mm)
+    const widthMm = Number(row.width_mm)
+    const thicknessMm = Number(row.thickness_mm)
+    const pieceM = linearLengthM(lengthMm)
+    if (pieceM <= 0) continue
+    const priceNet = Number(row.price_net) || 0
+    if (priceNet <= 0) continue
+    const stockUnit = row.stock_unit === 'fm' ? 'fm' : 'db'
+    const stock = onHandMap.get(row.id) ?? 0
+    const factor = stockUnit === 'fm' ? 1 : pieceM
+    const size = materialSizeLabel(lengthMm, widthMm, thicknessMm)
+    out.push({
+      kind: 'linear_material',
+      id: row.id,
+      name: row.name,
+      sku: size,
+      price_net: priceNet,
+      tax_rate_percent: Number(tax?.rate_percent ?? 0),
+      unit_shortform: 'm',
+      on_hand: sellableFromStock(stock, 'linear_material', factor),
+      on_hand_stock: stock,
+      area_or_length_factor: factor,
+      stock_unit: stockUnit,
+      image_url: (row.image_url as string | null) ?? null,
+      size_label: size,
+      _score: saleSearchMatchScore(safe, {
+        name: row.name,
+        sku: size,
+        barcode: null,
+        barcode_internal: null
+      })
+    })
+  }
+  return out
 }

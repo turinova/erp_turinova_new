@@ -5,6 +5,7 @@ import type {
   SupplierCurrency,
   SupplierStatus
 } from '@/lib/suppliers/parse'
+import type { OrderChannelType } from '@/lib/suppliers/order-channels'
 
 export type SupplierListItem = {
   id: string
@@ -38,6 +39,15 @@ export type SupplierContact = {
   note: string | null
 }
 
+export type SupplierOrderChannel = {
+  id: string
+  channel_type: OrderChannelType
+  name: string | null
+  url_template: string | null
+  description: string | null
+  is_default: boolean
+}
+
 export type SupplierDetail = {
   id: string
   name: string
@@ -51,6 +61,7 @@ export type SupplierDetail = {
   bic: string | null
   account_holder: string | null
   notes: string | null
+  email_po_intro_html: string | null
   status: SupplierStatus
   default_currency: SupplierCurrency
   default_tax_rate_id: string | null
@@ -60,6 +71,17 @@ export type SupplierDetail = {
   updated_at: string
   addresses: SupplierAddress[]
   contacts: SupplierContact[]
+  order_channels: SupplierOrderChannel[]
+}
+
+/** PO gyorsítás: e-mail + webshop sablon a kiválasztott beszállítóhoz. */
+export type SupplierProcurementAids = {
+  supplierId: string
+  name: string
+  email: string | null
+  emailPoIntroHtml: string | null
+  internetUrlTemplate: string | null
+  hasEmailChannel: boolean
 }
 
 export type SupplierListParams = {
@@ -189,6 +211,7 @@ export async function getSupplier(
       default_tax_rate_id,
       default_payment_method_id,
       default_payment_terms_days,
+      email_po_intro_html,
       created_at,
       updated_at,
       supplier_addresses (
@@ -209,6 +232,15 @@ export async function getSupplier(
         phone,
         is_primary,
         note
+      ),
+      supplier_order_channels (
+        id,
+        channel_type,
+        name,
+        url_template,
+        description,
+        is_default,
+        deleted_at
       )
     `
     )
@@ -232,6 +264,22 @@ export async function getSupplier(
     (data.supplier_contacts ?? []) as SupplierContact[]
   ).slice().sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
 
+  const orderChannels = (
+    (data.supplier_order_channels ?? []) as (SupplierOrderChannel & {
+      deleted_at: string | null
+    })[]
+  )
+    .filter((c) => !c.deleted_at)
+    .map((c) => ({
+      id: c.id,
+      channel_type: c.channel_type,
+      name: c.name,
+      url_template: c.url_template,
+      description: c.description,
+      is_default: c.is_default
+    }))
+    .sort((a, b) => Number(b.is_default) - Number(a.is_default))
+
   return {
     id: data.id,
     name: data.name,
@@ -245,6 +293,7 @@ export async function getSupplier(
     bic: data.bic,
     account_holder: data.account_holder,
     notes: data.notes,
+    email_po_intro_html: data.email_po_intro_html ?? null,
     status: data.status as SupplierStatus,
     default_currency: data.default_currency as SupplierCurrency,
     default_tax_rate_id: data.default_tax_rate_id,
@@ -253,8 +302,96 @@ export async function getSupplier(
     created_at: data.created_at,
     updated_at: data.updated_at,
     addresses,
-    contacts
+    contacts,
+    order_channels: orderChannels
   }
+}
+
+export async function getSupplierProcurementAids(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string
+): Promise<SupplierProcurementAids | null> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select(
+      `
+      id,
+      name,
+      email,
+      email_po_intro_html,
+      supplier_order_channels (
+        channel_type,
+        url_template,
+        is_default,
+        deleted_at
+      )
+    `
+    )
+    .eq('tenant_id', tenantId)
+    .eq('id', supplierId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error) {
+    console.error('getSupplierProcurementAids', error.message)
+    return null
+  }
+  if (!data) return null
+
+  const channels = (
+    (data.supplier_order_channels ?? []) as {
+      channel_type: string
+      url_template: string | null
+      is_default: boolean
+      deleted_at: string | null
+    }[]
+  ).filter((c) => !c.deleted_at)
+
+  const internet = channels
+    .filter((c) => c.channel_type === 'internet' && c.url_template)
+    .sort((a, b) => Number(b.is_default) - Number(a.is_default))[0]
+
+  const hasEmailChannel = channels.some((c) => c.channel_type === 'email')
+
+  return {
+    supplierId: data.id,
+    name: data.name,
+    email: data.email,
+    emailPoIntroHtml: data.email_po_intro_html ?? null,
+    internetUrlTemplate: internet?.url_template ?? null,
+    hasEmailChannel: hasEmailChannel || Boolean(data.email)
+  }
+}
+
+/** Beszállítói cikkszámok a PO tételekhez (accessory_id → sku). */
+export async function mapAccessorySupplierSkus(
+  supabase: SupabaseClient,
+  tenantId: string,
+  supplierId: string,
+  accessoryIds: string[]
+): Promise<Record<string, string>> {
+  const ids = [...new Set(accessoryIds.filter(Boolean))]
+  if (ids.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('accessory_suppliers')
+    .select('accessory_id, supplier_sku')
+    .eq('tenant_id', tenantId)
+    .eq('supplier_id', supplierId)
+    .in('accessory_id', ids)
+
+  if (error) {
+    console.error('mapAccessorySupplierSkus', error.message)
+    return {}
+  }
+
+  const out: Record<string, string> = {}
+  for (const row of data ?? []) {
+    const sku = (row.supplier_sku as string | null)?.trim()
+    if (sku) out[row.accessory_id as string] = sku
+  }
+  return out
 }
 
 /** Aktív beszállítók PO selecthez. */

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
+import { AccessoryProcurementStockSection } from '@/components/accessories/accessory-procurement-stock-section'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
@@ -31,7 +32,9 @@ import {
   parseIntegerInput,
   squareMeters
 } from '@/lib/sheet-materials/parse'
+import { sheetDualQtyOpts } from '@/lib/sales/material-qty'
 import type { SheetMaterialDetail } from '@/lib/sheet-materials/queries'
+import type { ProcurementStockPanel } from '@/lib/stock/material-panel'
 import {
   ORPHAN_EQUIPMENT_MESSAGE,
   resolveAliveEquipmentId
@@ -53,6 +56,7 @@ type SheetMaterialFormProps = {
   equipment: Option[]
   taxRates: OptionTaxRate[]
   canWrite: boolean
+  procurementStock?: ProcurementStockPanel | null
 }
 
 export function SheetMaterialForm({
@@ -62,7 +66,8 @@ export function SheetMaterialForm({
   manufacturers,
   equipment,
   taxRates,
-  canWrite
+  canWrite,
+  procurementStock = null
 }: SheetMaterialFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -875,6 +880,19 @@ export function SheetMaterialForm({
             />
           </div>
         </FormSection>
+
+        {mode === 'edit' && procurementStock ? (
+          <AccessoryProcurementStockSection
+            stock={procurementStock}
+            unitShortform="tábla"
+            dualUnit={sheetDualQtyOpts(
+              lengthMm ?? 0,
+              widthMm ?? 0,
+              'display'
+            )}
+            emptyHint="Még nincs belőle raktáron. Anyag-beszerzés bevételezése után itt jelenik meg."
+          />
+        ) : null}
 
         {canWrite && !missingDeps ? (
           <div className="sticky bottom-0 z-10 flex justify-end gap-1.5 border-t border-border bg-app/95 py-3 backdrop-blur-sm">

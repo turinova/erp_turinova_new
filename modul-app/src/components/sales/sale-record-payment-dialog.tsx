@@ -164,6 +164,7 @@ export function SaleRecordPaymentDialog({
               value={paymentMethodId}
               onChange={setPaymentMethodId}
               allowEmpty={false}
+              portal={false}
               options={options}
             />
           </FormField>

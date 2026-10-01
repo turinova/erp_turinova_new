@@ -3,16 +3,42 @@
 import { revalidatePath } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { getSessionUser } from '@/lib/auth/session'
+import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import {
-  mergeItemsByAccessory,
+  mergePurchaseOrderItems,
   purchaseOrderFormSchema,
   type PurchaseOrderFormInput,
   type PurchaseOrderFormValues,
-  type PurchaseOrderItemInput
+  type PurchaseOrderItemInput,
+  type PurchaseOrderKind
 } from '@/lib/purchase-orders/parse'
-import { searchProductsForPurchaseOrder } from '@/lib/purchase-orders/queries'
+import {
+  searchLinearsForPurchaseOrder,
+  searchProductsForPurchaseOrder,
+  searchSheetsForPurchaseOrder
+} from '@/lib/purchase-orders/queries'
+import { createClient } from '@/lib/supabase/server'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
+import {
+  getSupplierProcurementAids,
+  mapAccessorySupplierSkus,
+  type SupplierProcurementAids
+} from '@/lib/suppliers/queries'
 import { ensureDefaultWarehouse } from '@/lib/warehouses/queries'
+
+const MATERIAL_PROCUREMENT_DENIED =
+  'Anyag beszerzéshez Lapszabászat add-on kell.'
+
+async function assertMaterialProcurementAllowed(
+  supabase: SupabaseClient,
+  tenantId: string,
+  orderKind: PurchaseOrderKind
+): Promise<string | null> {
+  if (orderKind !== 'material') return null
+  const ok = await tenantHasLapszabaszat(supabase, tenantId)
+  return ok ? null : MATERIAL_PROCUREMENT_DENIED
+}
 
 export type PurchaseOrderActionResult =
   | { ok: true; id: string }
@@ -35,6 +61,15 @@ function mapDbError(message: string): string | null {
   }
   if (message.includes('purchase_order_items_po_accessory')) {
     return 'Ugyanaz a termék kétszer szerepel — egyesítsd a mennyiségeket.'
+  }
+  if (
+    message.includes('purchase_order_items_po_sheet') ||
+    message.includes('purchase_order_items_po_linear')
+  ) {
+    return 'Ugyanaz az anyag kétszer szerepel — egyesítsd a mennyiségeket.'
+  }
+  if (message.includes('purchase_order_items_line_fk')) {
+    return 'Érvénytelen tétel típus — ellenőrizd a termék/anyag sort.'
   }
   if (message.includes('suppliers') && message.includes('foreign')) {
     return 'A beszállító nem található vagy inaktív.'
@@ -120,20 +155,49 @@ function itemRows(
   poId: string,
   items: PurchaseOrderFormValues['items']
 ) {
-  return items.map((it, index) => ({
-    tenant_id: tenantId,
-    purchase_order_id: poId,
-    accessory_id: it.accessoryId,
-    name_snapshot: it.nameSnapshot,
-    sku_snapshot: it.skuSnapshot,
-    quantity: it.quantity,
-    net_price: it.netPrice,
-    tax_rate_id: it.taxRateId,
-    tax_rate_percent: it.taxRatePercent,
-    unit_id: it.unitId,
-    unit_shortform: it.unitShortform,
-    sort_order: index
-  }))
+  return items.map((it, index) => {
+    const base = {
+      tenant_id: tenantId,
+      purchase_order_id: poId,
+      line_kind: it.lineKind,
+      name_snapshot: it.nameSnapshot,
+      sku_snapshot: it.skuSnapshot,
+      quantity: it.quantity,
+      net_price: it.netPrice,
+      tax_rate_id: it.taxRateId,
+      tax_rate_percent: it.taxRatePercent,
+      unit_shortform: it.unitShortform,
+      sort_order: index,
+      price_per_area_net: it.pricePerAreaNet ?? null,
+      area_or_length_factor: it.areaOrLengthFactor ?? null
+    }
+
+    if (it.lineKind === 'accessory') {
+      return {
+        ...base,
+        accessory_id: it.accessoryId,
+        sheet_material_id: null,
+        linear_material_id: null,
+        unit_id: it.unitId
+      }
+    }
+    if (it.lineKind === 'sheet_material') {
+      return {
+        ...base,
+        accessory_id: null,
+        sheet_material_id: it.sheetMaterialId,
+        linear_material_id: null,
+        unit_id: null
+      }
+    }
+    return {
+      ...base,
+      accessory_id: null,
+      sheet_material_id: null,
+      linear_material_id: it.linearMaterialId,
+      unit_id: null
+    }
+  })
 }
 
 export async function createPurchaseOrder(
@@ -144,7 +208,7 @@ export async function createPurchaseOrder(
 
   const merged = {
     ...input,
-    items: mergeItemsByAccessory(input.items)
+    items: mergePurchaseOrderItems(input.items)
   }
   const parsed = purchaseOrderFormSchema.safeParse(merged)
   if (!parsed.success) {
@@ -156,6 +220,19 @@ export async function createPurchaseOrder(
   }
 
   const tenantId = ctx.user.tenantId!
+  const materialGate = await assertMaterialProcurementAllowed(
+    ctx.supabase,
+    tenantId,
+    parsed.data.orderKind
+  )
+  if (materialGate) {
+    return {
+      ok: false,
+      message: materialGate,
+      fieldErrors: { orderKind: materialGate }
+    }
+  }
+
   const supplierErr = await assertActiveSupplier(
     ctx.supabase,
     tenantId,
@@ -198,6 +275,7 @@ export async function createPurchaseOrder(
       warehouse_id: warehouseId,
       po_number: poNumber as string,
       status: 'draft',
+      order_kind: parsed.data.orderKind,
       expected_date: parsed.data.expectedDate,
       note: parsed.data.note,
       currency: parsed.data.currency
@@ -245,15 +323,24 @@ export async function appendItemsToDraftPurchaseOrder(input: {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
-  const mergedItems = mergeItemsByAccessory(input.items)
+  const mergedItems = mergePurchaseOrderItems(input.items)
   if (!mergedItems.length) {
     return { ok: false, message: 'Nincs hozzáadandó tétel.' }
+  }
+
+  for (const it of mergedItems) {
+    if (it.lineKind !== 'accessory') {
+      return {
+        ok: false,
+        message: 'Vázlathoz csak termék tételek adhatók hozzá ezzel a funkcióval.'
+      }
+    }
   }
 
   const tenantId = ctx.user.tenantId!
   const { data: po, error: loadErr } = await ctx.supabase
     .from('purchase_orders')
-    .select('id, status, supplier_id, warehouse_id, po_number')
+    .select('id, status, supplier_id, warehouse_id, po_number, order_kind')
     .eq('id', input.purchaseOrderId)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -266,6 +353,12 @@ export async function appendItemsToDraftPurchaseOrder(input: {
     return {
       ok: false,
       message: 'Csak vázlat státuszú rendeléshez lehet tételt hozzáadni.'
+    }
+  }
+  if ((po.order_kind as string | null) === 'material') {
+    return {
+      ok: false,
+      message: 'Anyag rendeléshez nem adható termék tétel.'
     }
   }
   if (po.supplier_id !== input.supplierId) {
@@ -295,7 +388,9 @@ export async function appendItemsToDraftPurchaseOrder(input: {
   }
 
   const byAccessory = new Map(
-    (existingItems ?? []).map((row) => [row.accessory_id as string, row])
+    (existingItems ?? [])
+      .filter((row) => row.accessory_id)
+      .map((row) => [row.accessory_id as string, row])
   )
   let maxSort = (existingItems ?? []).reduce(
     (m, r) => Math.max(m, Number(r.sort_order ?? 0)),
@@ -304,6 +399,7 @@ export async function appendItemsToDraftPurchaseOrder(input: {
 
   const toInsert: ReturnType<typeof itemRows> = []
   for (const it of mergedItems) {
+    if (it.lineKind !== 'accessory') continue
     const prev = byAccessory.get(it.accessoryId)
     if (prev) {
       const nextQty = Number(prev.quantity) + it.quantity
@@ -311,7 +407,6 @@ export async function appendItemsToDraftPurchaseOrder(input: {
         .from('purchase_order_items')
         .update({
           quantity: nextQty,
-          // Újabb lead árja nyer, ha van értelmes ár
           net_price: it.netPrice > 0 ? it.netPrice : prev.net_price,
           updated_at: new Date().toISOString()
         })
@@ -370,7 +465,7 @@ export async function updatePurchaseOrder(
 
   const merged = {
     ...input,
-    items: mergeItemsByAccessory(input.items)
+    items: mergePurchaseOrderItems(input.items)
   }
   const parsed = purchaseOrderFormSchema.safeParse(merged)
   if (!parsed.success) {
@@ -385,7 +480,7 @@ export async function updatePurchaseOrder(
 
   const { data: existing, error: loadErr } = await ctx.supabase
     .from('purchase_orders')
-    .select('id, status')
+    .select('id, status, order_kind')
     .eq('id', input.id)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -398,6 +493,28 @@ export async function updatePurchaseOrder(
     return {
       ok: false,
       message: 'Csak vázlat státuszú rendelés szerkeszthető.'
+    }
+  }
+  if (
+    existing.order_kind &&
+    existing.order_kind !== parsed.data.orderKind
+  ) {
+    return {
+      ok: false,
+      message: 'A rendelés típusa nem változtatható. Nyiss új rendelést.'
+    }
+  }
+
+  const materialGate = await assertMaterialProcurementAllowed(
+    ctx.supabase,
+    tenantId,
+    parsed.data.orderKind
+  )
+  if (materialGate) {
+    return {
+      ok: false,
+      message: materialGate,
+      fieldErrors: { orderKind: materialGate }
     }
   }
 
@@ -470,7 +587,7 @@ export async function markPurchaseOrderOrdered(
   const tenantId = ctx.user.tenantId!
   const { data: existing, error: loadErr } = await ctx.supabase
     .from('purchase_orders')
-    .select('id, status')
+    .select('id, status, order_kind')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -488,6 +605,15 @@ export async function markPurchaseOrderOrdered(
       ok: false,
       message: 'Csak vázlat rendelés jelölhető megrendelve.'
     }
+  }
+
+  const materialGate = await assertMaterialProcurementAllowed(
+    ctx.supabase,
+    tenantId,
+    ((existing.order_kind as PurchaseOrderKind | null) || 'product') as PurchaseOrderKind
+  )
+  if (materialGate) {
+    return { ok: false, message: materialGate }
   }
 
   const { count, error: countErr } = await ctx.supabase
@@ -650,6 +776,95 @@ export async function closePurchaseOrderIncomplete(
   return { ok: true, id }
 }
 
+export async function markPurchaseOrderEmailPrepared(
+  id: string
+): Promise<PurchaseOrderActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const { data: existing, error: loadErr } = await ctx.supabase
+    .from('purchase_orders')
+    .select('id, status, email_sent')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (loadErr || !existing) {
+    return { ok: false, message: 'A rendelés nem található.' }
+  }
+  if (existing.status === 'cancelled') {
+    return { ok: false, message: 'Visszavont rendeléshez nem jelölhető e-mail.' }
+  }
+
+  const { error } = await ctx.supabase
+    .from('purchase_orders')
+    .update({
+      email_sent: true,
+      email_sent_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+
+  if (error) {
+    return { ok: false, message: 'Nem sikerült az e-mail jelölést menteni.' }
+  }
+
+  revalidatePoPaths(id)
+  return { ok: true, id }
+}
+
+export async function fetchSupplierProcurementAidsAction(
+  supplierId: string
+): Promise<
+  | { ok: true; aids: SupplierProcurementAids; supplierSkus: Record<string, string> }
+  | { ok: false; message: string }
+> {
+  const user = await getSessionUser()
+  if (!user?.tenantId || user.isDevSession) {
+    return { ok: false, message: 'Nincs jogosultság.' }
+  }
+  const supabase = await createClient()
+  if (!supabase) return { ok: false, message: 'Adatbázis nem elérhető.' }
+
+  const aids = await getSupplierProcurementAids(
+    supabase,
+    user.tenantId,
+    supplierId
+  )
+  if (!aids) {
+    return { ok: false, message: 'A beszállító nem található.' }
+  }
+
+  return { ok: true, aids, supplierSkus: {} }
+}
+
+/** Beszállítói cikkszámok a megadott termékekhez. */
+export async function fetchAccessorySupplierSkusAction(
+  supplierId: string,
+  accessoryIds: string[]
+): Promise<
+  | { ok: true; map: Record<string, string> }
+  | { ok: false; message: string }
+> {
+  const user = await getSessionUser()
+  if (!user?.tenantId || user.isDevSession) {
+    return { ok: false, message: 'Nincs jogosultság.' }
+  }
+  const supabase = await createClient()
+  if (!supabase) return { ok: false, message: 'Adatbázis nem elérhető.' }
+
+  const map = await mapAccessorySupplierSkus(
+    supabase,
+    user.tenantId,
+    supplierId,
+    accessoryIds
+  )
+  return { ok: true, map }
+}
+
 export async function searchPurchaseProductsAction(
   q: string
 ): Promise<
@@ -674,6 +889,76 @@ export async function searchPurchaseProductsAction(
         err instanceof Error
           ? err.message
           : 'Nem sikerült keresni a termékek között.'
+    }
+  }
+}
+
+export async function searchPurchaseSheetsAction(
+  q: string
+): Promise<
+  | { ok: true; rows: Awaited<ReturnType<typeof searchSheetsForPurchaseOrder>> }
+  | { ok: false; message: string }
+> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const materialGate = await assertMaterialProcurementAllowed(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    'material'
+  )
+  if (materialGate) return { ok: false, message: materialGate }
+
+  try {
+    const rows = await searchSheetsForPurchaseOrder(
+      ctx.supabase,
+      ctx.user.tenantId!,
+      q,
+      15
+    )
+    return { ok: true, rows }
+  } catch (err) {
+    return {
+      ok: false,
+      message:
+        err instanceof Error
+          ? err.message
+          : 'Nem sikerült keresni a táblás anyagok között.'
+    }
+  }
+}
+
+export async function searchPurchaseLinearsAction(
+  q: string
+): Promise<
+  | { ok: true; rows: Awaited<ReturnType<typeof searchLinearsForPurchaseOrder>> }
+  | { ok: false; message: string }
+> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const materialGate = await assertMaterialProcurementAllowed(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    'material'
+  )
+  if (materialGate) return { ok: false, message: materialGate }
+
+  try {
+    const rows = await searchLinearsForPurchaseOrder(
+      ctx.supabase,
+      ctx.user.tenantId!,
+      q,
+      15
+    )
+    return { ok: true, rows }
+  } catch (err) {
+    return {
+      ok: false,
+      message:
+        err instanceof Error
+          ? err.message
+          : 'Nem sikerült keresni a szálas anyagok között.'
     }
   }
 }

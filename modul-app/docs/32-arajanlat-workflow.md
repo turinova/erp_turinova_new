@@ -2,14 +2,14 @@
 
 **Státusz:** Q0 + Q1 (billing snapshot).  
 **Route:** `/ertekesitesek/arajanlatok`  
-**Migráció:** `20260515_sales_quotes.sql`, `20260516_sales_quote_billing_snapshots.sql`  
+**Migráció:** `20260515_sales_quotes.sql`, `20260516_sales_quote_billing_snapshots.sql`, `20260577_sale_material_lines.sql`
 **Kapcsolat:** [28](28-ertekesites-workflow.md) — **nem** a lapszabászat [23](23-lapszabaszat-addon.md) / `/ajanlatok`
 
 ---
 
 ## 0. Egy mondat
 
-> Termék árajánlat = papír az ügyfélnek (nincs készletmozgás). Számlázás = **dokumentum-snapshot**. Elfogadás után **Eladás** lesz belőle (`create_sale`), a billing az ajánlatból megy át.
+> Termék árajánlat = papír az ügyfélnek (nincs készletmozgás). Számlázás = **dokumentum-snapshot**. Elfogadás után **Eladás** lesz belőle (`create_sale`), a billing az ajánlatból megy át. Lapszab add-onnal **tábla (m²)** és **munkalap (m)** tétel is mehet (ugyanaz a polimorf sor, mint az eladáson).
 
 **Teljesen külön** a lapszabászati `/ajanlatok` + `/megrendelesek` pipeline-tól.
 

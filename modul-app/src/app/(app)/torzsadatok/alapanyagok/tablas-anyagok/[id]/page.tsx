@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 
 import { SheetMaterialForm } from '@/components/sheet-materials/sheet-material-form'
 import { getSessionUser } from '@/lib/auth/session'
+import { tenantHasBeszerzes } from '@/lib/beszerzes/entitlement'
 import {
   getSheetMaterial,
   listEquipmentOptions,
@@ -10,6 +11,7 @@ import {
   listTaxRateOptions
 } from '@/lib/sheet-materials/queries'
 import { namedEntityTabTitle } from '@/lib/seo/tab-titles'
+import { getSheetProcurementStock } from '@/lib/stock/material-panel'
 import { createClient } from '@/lib/supabase/server'
 
 type Params = Promise<{ id: string }>
@@ -48,14 +50,29 @@ export default async function EditTablasAnyagPage({
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const [sheet, manufacturers, taxRates, equipment] = await Promise.all([
-    getSheetMaterial(supabase, user.tenantId, id),
-    listManufacturerOptions(supabase, user.tenantId),
-    listTaxRateOptions(supabase, user.tenantId),
-    listEquipmentOptions(supabase, user.tenantId)
-  ])
+  const [sheet, manufacturers, taxRates, equipment, hasBeszerzes] =
+    await Promise.all([
+      getSheetMaterial(supabase, user.tenantId, id),
+      listManufacturerOptions(supabase, user.tenantId),
+      listTaxRateOptions(supabase, user.tenantId),
+      listEquipmentOptions(supabase, user.tenantId),
+      tenantHasBeszerzes(supabase, user.tenantId)
+    ])
 
   if (!sheet) notFound()
+
+  let procurementStock = null
+  if (hasBeszerzes) {
+    try {
+      procurementStock = await getSheetProcurementStock(
+        supabase,
+        user.tenantId,
+        id
+      )
+    } catch (err) {
+      console.error('sheet procurement stock', err)
+    }
+  }
 
   return (
     <SheetMaterialForm
@@ -66,6 +83,7 @@ export default async function EditTablasAnyagPage({
       taxRates={taxRates}
       equipment={equipment}
       canWrite={canWrite}
+      procurementStock={procurementStock}
     />
   )
 }
