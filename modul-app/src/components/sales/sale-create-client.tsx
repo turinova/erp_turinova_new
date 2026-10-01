@@ -272,7 +272,6 @@ export function SaleCreateClient({
     let cancelled = false
     const productLines = lines.filter((l) => l.kind === 'product' && l.accessoryId)
     if (productLines.length === 0) return
-    const accessoryIds = productLines.map((l) => l.accessoryId!).join('|')
     void (async () => {
       const { getTransferOnHandAction } = await import(
         '@/lib/stock-transfers/actions'

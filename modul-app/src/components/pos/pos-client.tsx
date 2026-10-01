@@ -88,7 +88,6 @@ import { createSaleInvoiceAction } from '@/lib/invoicing/actions'
 import type { InvoicePaymentMethod } from '@/lib/invoicing/types'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import {
-  formatSaleQty,
   isMaterialSaleKind,
   saleLineCartKey,
   saleUnitLabel

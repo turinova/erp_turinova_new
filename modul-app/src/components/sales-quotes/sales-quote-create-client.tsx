@@ -24,11 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { FeeTypeListItem } from '@/lib/fee-types/queries'
 import { searchSaleProductsAction } from '@/lib/sales/actions'
-import {
-  isMaterialSaleKind,
-  saleLineCartKey,
-  saleUnitLabel
-} from '@/lib/sales/material-qty'
+import { isMaterialSaleKind } from '@/lib/sales/material-qty'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import { computeSaleTotals } from '@/lib/sales/totals'
 import { createSalesQuoteAction } from '@/lib/sales-quotes/actions'
