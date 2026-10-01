@@ -2,6 +2,7 @@
  * Nyitott állások — Karrier oldal.
  * Fizetés nem jelenik meg a UI-n (üzleti döntés).
  * Szövegezés igazítva a Facebook / nyomtatott hirdetéshez.
+ * Meta-biztos: munkáról beszélünk, nem védett tulajdonságokról.
  */
 
 import { COMPANY } from "@/lib/company"
@@ -18,6 +19,7 @@ export type Job = {
   experience: "betanitott" | "tapasztalt"
   workStyle: "gepes" | "emberi" | "vegyes"
   tasks: readonly string[]
+  perks: readonly string[]
   requirements: readonly string[]
   datePosted: string
   active: boolean
@@ -28,22 +30,27 @@ export const JOBS: readonly Job[] = [
     slug: "elzarogep-kezelo",
     title: "Élzárógép-kezelő",
     short:
-      "Kecskeméti gyártóüzemünkbe keresünk élzárógép-kezelő munkatársat teljes munkaidőbe. H–P, 1 műszak.",
-    location: "Kecskemét",
+      "Kecskeméti gyártóüzemünkbe keresünk élzárógép-kezelő munkatársat. Hétfő–péntek, 8–17, 1 műszak. Mindszenti krt. 10.",
+    location: "Kecskemét, Mindszenti krt. 10.",
     employmentType: "FULL_TIME",
-    employmentLabel: "Teljes munkaidő · H–P, 1 műszak",
+    employmentLabel: "Teljes munkaidő · H–P 8–17 · 1 műszak",
     area: "uzem",
     experience: "tapasztalt",
     workStyle: "gepes",
     tasks: [
-      "Stabil, hosszú távú munka",
-      "Segítőkész, összetartó csapat",
-      "Modern géppark, családias légkör",
+      "Bútorlap élzárása gépen",
+      "Gép kezelése, alap beállítás",
+      "Minőség figyelése, rend a munkahelyen",
+    ],
+    perks: [
+      "Egy műszak, hétköznap 8–17 (nincs éjszaka)",
+      "Stabil, hosszú távú munka, betanítás",
+      "Modern géppark, családias üzem",
     ],
     requirements: [
-      "Faipari tapasztalat vagy termelőgép-kezelés",
-      "Precíz, rendezett munkavégzés",
-      "Hétfőtől péntekig, 1 műszakos beosztás",
+      "Hétfő–péntek, 8–17",
+      "Precíz, megbízható munkavégzés",
+      "Faipari vagy gépkezelői tapasztalat előny — nem kötelező",
     ],
     datePosted: "2026-07-27",
     active: true,
@@ -90,8 +97,11 @@ export function buildJobPostingJsonLd(job: Job) {
     description: [
       job.short,
       "",
-      "Amit kínálunk:",
+      "Feladatok:",
       ...job.tasks.map((t) => `• ${t}`),
+      "",
+      "Amit kínálunk:",
+      ...job.perks.map((p) => `• ${p}`),
       "",
       "Elvárások:",
       ...job.requirements.map((r) => `• ${r}`),

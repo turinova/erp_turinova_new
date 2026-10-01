@@ -71,7 +71,25 @@ const MAX = {
   company: 160,
   topic: 64,
   message: 4000,
+  lastJob: 160,
 } as const
+
+const CAREER_SCHEDULE = new Set(["yes", "no"])
+const CAREER_EXPERIENCE = new Set(["elzaro", "other", "none"])
+const CAREER_START = new Set(["immediate", "2weeks", "1month", "later"])
+
+const CAREER_EXPERIENCE_LABELS: Record<string, string> = {
+  elzaro: "Igen, élzáró / faipari gép",
+  other: "Igen, más gyártógép",
+  none: "Még nincs, betanulnék",
+}
+
+const CAREER_START_LABELS: Record<string, string> = {
+  immediate: "Azonnal",
+  "2weeks": "2 héten belül",
+  "1month": "1 hónapon belül",
+  later: "Később",
+}
 
 export type RawFormBody = {
   form?: string
@@ -83,6 +101,11 @@ export type RawFormBody = {
   message?: string
   consent?: boolean
   website?: string
+  /** Karrier szűrés — Meta-biztos, munkáról */
+  scheduleOk?: string
+  experience?: string
+  startWhen?: string
+  lastJob?: string
 }
 
 function isValidEmail(email: string) {
@@ -97,6 +120,16 @@ function escapeHtml(s: string) {
     .replaceAll('"', "&quot;")
 }
 
+export type CareerScreening = {
+  scheduleOk: string
+  scheduleLabel: string
+  experience: string
+  experienceLabel: string
+  startWhen: string
+  startLabel: string
+  lastJob: string
+}
+
 export type ParsedSubmission = {
   form: FormType
   name: string
@@ -106,6 +139,7 @@ export type ParsedSubmission = {
   topic: string
   topicLabel: string
   message: string
+  career?: CareerScreening
 }
 
 export type ParseFormResult =
@@ -130,13 +164,17 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
   const topic = (body.topic || "").trim()
   const message = (body.message || "").trim()
   const consent = body.consent === true
+  const scheduleOk = (body.scheduleOk || "").trim()
+  const experience = (body.experience || "").trim()
+  const startWhen = (body.startWhen || "").trim()
+  const lastJob = (body.lastJob || "").trim()
 
   if (!name || name.length > MAX.name) {
     return { kind: "error", error: "Érvénytelen név.", status: 400 }
   }
 
-  // A felmérés űrlapon nincs e-mail mező: a visszajelzés telefonon történik.
-  if (form === "felmeres") {
+  // Felmérés és karrier: e-mail opcionális (telefon az elsődleges).
+  if (form === "felmeres" || form === "career") {
     if (email && (email.length > MAX.email || !isValidEmail(email))) {
       return { kind: "error", error: "Érvénytelen e-mail cím.", status: 400 }
     }
@@ -193,6 +231,8 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
     }
   }
 
+  let career: CareerScreening | undefined
+
   if (form === "career") {
     if (!phone) {
       return { kind: "error", error: "A telefonszám megadása kötelező.", status: 400 }
@@ -204,8 +244,42 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
     if (!job && topic !== "general") {
       return { kind: "error", error: "Érvénytelen pozíció.", status: 400 }
     }
+    if (!CAREER_SCHEDULE.has(scheduleOk)) {
+      return {
+        kind: "error",
+        error: "Jelöld, neked jó-e a munkaidő (H–P 8–17, Kecskemét).",
+        status: 400,
+      }
+    }
+    if (!CAREER_EXPERIENCE.has(experience)) {
+      return {
+        kind: "error",
+        error: "Válaszd ki a tapasztalatot.",
+        status: 400,
+      }
+    }
+    if (!CAREER_START.has(startWhen)) {
+      return {
+        kind: "error",
+        error: "Válaszd ki, mikor tudnál kezdeni.",
+        status: 400,
+      }
+    }
+    if (lastJob.length > MAX.lastJob) {
+      return { kind: "error", error: "Az előző munkahely mező túl hosszú.", status: 400 }
+    }
     if (message.length > MAX.message) {
       return { kind: "error", error: "Az üzenet túl hosszú.", status: 400 }
+    }
+
+    career = {
+      scheduleOk,
+      scheduleLabel: scheduleOk === "yes" ? "Igen" : "Nem",
+      experience,
+      experienceLabel: CAREER_EXPERIENCE_LABELS[experience] || experience,
+      startWhen,
+      startLabel: CAREER_START_LABELS[startWhen] || startWhen,
+      lastJob,
     }
   }
 
@@ -257,6 +331,7 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
       topic,
       topicLabel,
       message,
+      career,
     },
   }
 }
@@ -297,6 +372,18 @@ export async function deliverFormEmail(
           : "Téma"
     lines.push(`${topicKey}: ${data.topicLabel}`)
   }
+  if (data.career) {
+    lines.push(
+      "",
+      "Szűrés:",
+      `Munkaidő H–P 8–17, Kecskemét: ${data.career.scheduleLabel}`,
+      `Tapasztalat: ${data.career.experienceLabel}`,
+      `Kezdés: ${data.career.startLabel}`,
+    )
+    if (data.career.lastJob) {
+      lines.push(`Előző munkahely: ${data.career.lastJob}`)
+    }
+  }
   if (meta.attachment) lines.push(`Önéletrajz: ${meta.attachment.filename}`)
   if (data.message) {
     lines.push("", "Üzenet:", data.message)
@@ -324,6 +411,14 @@ export async function deliverFormEmail(
               : "Téma",
           data.topicLabel,
         ]
+      : null,
+    data.career
+      ? ["Munkaidő H–P 8–17, Kecskemét", data.career.scheduleLabel]
+      : null,
+    data.career ? ["Tapasztalat", data.career.experienceLabel] : null,
+    data.career ? ["Kezdés", data.career.startLabel] : null,
+    data.career?.lastJob
+      ? ["Előző munkahely", data.career.lastJob]
       : null,
     meta.attachment ? ["Önéletrajz", meta.attachment.filename] : null,
   ]

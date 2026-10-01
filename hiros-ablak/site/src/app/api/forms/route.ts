@@ -52,6 +52,10 @@ async function parseBody(req: Request): Promise<{
       message: String(fd.get("message") || ""),
       consent: consentRaw === "true" || consentRaw === "on",
       website: String(fd.get("website") || ""),
+      scheduleOk: String(fd.get("scheduleOk") || ""),
+      experience: String(fd.get("experience") || ""),
+      startWhen: String(fd.get("startWhen") || ""),
+      lastJob: String(fd.get("lastJob") || ""),
     }
 
     const cv = fd.get("cv")

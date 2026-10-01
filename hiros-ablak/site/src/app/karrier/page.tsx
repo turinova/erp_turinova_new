@@ -19,7 +19,7 @@ const phoneDisplay = formatPhoneDisplay(COMPANY.phones.primary)
 export const metadata: Metadata = pageMetadata({
   title: "Élzárógép-kezelő állás Kecskemét",
   description:
-    "Élzárógép-kezelőt keresünk Kecskeméten, teljes munkaidőbe. Stabil munka, modern géppark. Jelentkezz: www.hirosablak.hu/karrier vagy személyesen a Mindszenti krt. 10-ben.",
+    "Élzárógép-kezelőt keresünk Kecskeméten, Mindszenti krt. 10. Hétfő–péntek 8–17, 1 műszak. Jelentkezz: www.hirosablak.hu/karrier vagy személyesen.",
   canonical: "/karrier",
   ogImage: DEFAULT_OG_IMAGE_PATH,
 })
@@ -71,7 +71,7 @@ export default function KarrierPage() {
             </h1>
             <p className="mt-3 text-lg leading-relaxed text-black/70 sm:text-xl">
               {job
-                ? "Kecskeméti gyártóüzemünkbe, teljes munkaidőbe. Jelentkezz az űrlapon, vagy gyere be személyesen."
+                ? "Kecskemét, Mindszenti krt. 10 · hétfő–péntek 8–17 · 1 műszak. Jelentkezz az űrlapon, vagy gyere be személyesen."
                 : "Most nincs nyitott állás — hagyd meg a számod, szólunk ha lesz."}
             </p>
           </header>
@@ -89,7 +89,11 @@ export default function KarrierPage() {
                   <p className="mt-2 text-sm text-black/55 sm:text-base">
                     {job.location} · {job.employmentLabel}
                   </p>
-                  <ul className="mt-4 grid gap-2.5">
+
+                  <h3 className="mt-5 text-base font-semibold text-black/85">
+                    Mit csinálsz
+                  </h3>
+                  <ul className="mt-2 grid gap-2.5">
                     {job.tasks.map((t) => (
                       <li
                         key={t}
@@ -102,10 +106,37 @@ export default function KarrierPage() {
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-5 rounded-xl bg-black/[0.03] px-4 py-3 text-base leading-snug text-black/75">
-                    Faipari tapasztalat vagy termelőgép-kezelés előny — precíz,
-                    rendezett munkavégzés.
-                  </p>
+
+                  <h3 className="mt-5 text-base font-semibold text-black/85">
+                    Amit kínálunk
+                  </h3>
+                  <ul className="mt-2 grid gap-2.5">
+                    {job.perks.map((p) => (
+                      <li
+                        key={p}
+                        className="flex gap-2 text-base text-black/75 sm:text-[17px]"
+                      >
+                        <span className="text-[var(--color-brand)]" aria-hidden>
+                          •
+                        </span>
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="mt-5 rounded-xl bg-black/[0.03] px-4 py-3 text-base leading-snug text-black/75">
+                    <p className="font-medium text-black/85">Elvárás</p>
+                    <ul className="mt-2 grid gap-1.5">
+                      {job.requirements.map((r) => (
+                        <li key={r} className="flex gap-2">
+                          <span className="text-black/40" aria-hidden>
+                            •
+                          </span>
+                          {r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </section>
               )}
 
@@ -151,7 +182,7 @@ export default function KarrierPage() {
                 Jelentkezz online
               </h2>
               <p className="mt-2 text-base text-black/70">
-                Név, telefon, e-mail. Önéletrajz nem kötelező.
+                Név, telefon, pár kattintás. Önéletrajz nem kell.
               </p>
               <div className="mt-5">
                 <CareerForm
