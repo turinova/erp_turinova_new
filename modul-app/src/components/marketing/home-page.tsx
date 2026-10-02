@@ -1,5 +1,4 @@
 import { ArrowRightIcon } from 'lucide-react'
-import Image from 'next/image'
 
 import { AnimationContainer } from '@/components/marketing/linkify/animation-container'
 import {
@@ -13,8 +12,8 @@ import { MagicBadge } from '@/components/marketing/linkify/magic-badge'
 import { MaxWidthWrapper } from '@/components/marketing/linkify/max-width-wrapper'
 import { LinkifyNavbar } from '@/components/marketing/linkify/navbar'
 import { HomeCtaForm } from '@/components/marketing/home-cta-form'
+import { HomeDashboardMockup } from '@/components/marketing/home-dashboard-mockup'
 import { MarketingMosaicBackdrop } from '@/components/marketing/marketing-mosaic-backdrop'
-import { LINKIFY_ASSET } from '@/lib/marketing/linkify/paths'
 
 /** Linkify marketing home — Turinova brand + login mosaic hero backdrop. */
 export function MarketingHomePage() {
@@ -58,19 +57,13 @@ export function MarketingHomePage() {
                 className="relative w-full bg-transparent px-2 pb-8 pt-20 md:pb-12 md:pt-32"
               >
                 <div className="lf-gradient absolute left-1/2 top-[10%] h-1/4 w-3/4 -translate-x-1/2 animate-lf-image-glow blur-[5rem] md:h-1/3" />
-                <div className="-m-2 rounded-xl bg-white/50 p-2 ring-1 ring-inset ring-zinc-900/10 backdrop-blur-3xl lg:-m-4 lg:rounded-2xl">
+                <div className="relative -m-2 rounded-xl bg-white/50 p-2 ring-1 ring-inset ring-zinc-900/10 backdrop-blur-3xl lg:-m-4 lg:rounded-2xl">
                   <BorderBeam size={250} duration={12} delay={9} />
-                  <Image
-                    src={LINKIFY_ASSET('dashboard.svg')}
-                    alt="Dashboard"
-                    width={1200}
-                    height={1200}
-                    quality={100}
-                    className="rounded-md bg-zinc-100 ring-1 ring-zinc-200 lg:rounded-xl"
-                    priority
-                  />
-                  <div className="absolute inset-x-0 -bottom-4 z-40 h-1/2 w-full bg-gradient-to-t from-white" />
-                  <div className="absolute inset-x-0 bottom-0 z-50 h-1/4 w-full bg-gradient-to-t from-white md:-bottom-8" />
+                  <div className="overflow-hidden rounded-md ring-1 ring-zinc-200 lg:rounded-xl">
+                    <HomeDashboardMockup className="rounded-md border-0 shadow-none lg:rounded-xl" />
+                  </div>
+                  <div className="pointer-events-none absolute inset-x-0 -bottom-4 z-40 h-1/2 w-full bg-gradient-to-t from-white" />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 z-50 h-1/4 w-full bg-gradient-to-t from-white md:-bottom-8" />
                 </div>
               </AnimationContainer>
             </div>

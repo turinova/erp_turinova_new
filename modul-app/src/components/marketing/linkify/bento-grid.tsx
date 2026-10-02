@@ -74,10 +74,10 @@ export const CARDS: ModuleCard[] = [
   },
   {
     Icon: Banknote,
-    name: 'Számlázás',
+    name: 'Pénzügy',
     description:
-      'Számla közvetlenül az eladásból, ismételt adatrögzítés nélkül.',
-    href: '/hogyan-mukodik#szamlazas',
+      'Számla az eladásból, kintlévőség és ÁFA egy helyen — export a könyveléshez.',
+    href: '/hogyan-mukodik#penzugy',
     cta: 'Részletek'
   },
   {

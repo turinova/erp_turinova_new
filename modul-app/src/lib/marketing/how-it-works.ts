@@ -1,13 +1,15 @@
 import type { LucideIcon } from 'lucide-react'
 import {
-  Banknote,
+  CircleDollarSign,
   FileText,
   MessageSquare,
   Package,
   Printer,
   ShoppingCart,
   Store,
-  Truck
+  Truck,
+  Users,
+  Wallet
 } from 'lucide-react'
 
 import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
@@ -156,6 +158,36 @@ const ALL_STEPS: HowItWorksStep[] = [
     youtubeId: null
   },
   {
+    id: 'ugyfelek',
+    title: 'Ügyfelek',
+    navLabel: 'Ügyfelek',
+    body: 'Minden eladás és ajánlat ügyfélhez kötődik. Egy törzs, kereshető történet — nem külön Excel-lista.',
+    bullets: [
+      'Ügyféltörzs egy helyen',
+      'Gyors keresés név / adószám szerint',
+      'Eladási és ajánlat-előzmény'
+    ],
+    package: 'alap',
+    accent: 'violet',
+    Icon: Users,
+    youtubeId: null
+  },
+  {
+    id: 'ertekesitesek',
+    title: 'Értékesítések',
+    navLabel: 'Értékesítések',
+    body: 'A napi forgalom naplója a pulton túl is: visszakereshető eladások, visszáru, ajánlatból indított tranzakció.',
+    bullets: [
+      'Eladási napló szűrőkkel',
+      'Visszáru ugyanabból a sorból',
+      'Ajánlatból egy kattintással eladás'
+    ],
+    package: 'alap',
+    accent: 'amber',
+    Icon: CircleDollarSign,
+    youtubeId: null
+  },
+  {
     id: 'pos',
     title: 'Online POS',
     navLabel: 'POS',
@@ -201,18 +233,18 @@ const ALL_STEPS: HowItWorksStep[] = [
     youtubeId: null
   },
   {
-    id: 'szamlazas',
-    title: 'Számlázás',
-    navLabel: 'Számlázás',
-    body: 'Számla közvetlenül az eladásból, ismételt adatrögzítés nélkül. Az ügyfél- és tételadatok már megvannak.',
+    id: 'penzugy',
+    title: 'Pénzügy',
+    navLabel: 'Pénzügy',
+    body: 'Számla az eladásból, kintlévőség és ÁFA egy helyen. A könyvelőnek export, neked áttekintés — ismételt adatrögzítés nélkül.',
     bullets: [
       'Eladásból indított számla',
-      'Nincs kétszer rögzített sor',
-      'Visszakereshető bizonylat'
+      'Kintlévőség és ÁFA összesítő',
+      'Export a könyveléshez'
     ],
     package: 'alap',
-    accent: 'amber',
-    Icon: Banknote,
+    accent: 'emerald',
+    Icon: Wallet,
     youtubeId: null
   },
   {
@@ -228,21 +260,6 @@ const ALL_STEPS: HowItWorksStep[] = [
     package: 'addon',
     accent: 'rose',
     Icon: MessageSquare,
-    youtubeId: null
-  },
-  {
-    id: 'partner',
-    title: 'Partner portál',
-    navLabel: 'Partner',
-    body: 'Asztalos partnerek saját portálon rendelnek. Te a saját rendszeredben látod a beérkező igényeket.',
-    bullets: [
-      'Partner saját belépővel',
-      'Rendelés online',
-      'Nincs e-mailes káosz'
-    ],
-    package: 'addon',
-    accent: 'rose',
-    Icon: Store,
     youtubeId: null
   },
   {
@@ -269,7 +286,7 @@ export const HOW_IT_WORKS_STEPS: HowItWorksStep[] = ALL_STEPS.filter(
 /** A Funkciók oldalon megjelenő lépések — Alap + könnyű add-on + roadmap.
  *  Lapszabászat / Jelenlét / Belépőszámláló: dedikált landingek. */
 export const FEATURE_PAGE_STEPS = HOW_IT_WORKS_STEPS.filter(
-  (s) => s.package === 'alap' || s.package === 'roadmap' || s.id === 'sms' || s.id === 'partner'
+  (s) => s.package === 'alap' || s.package === 'roadmap' || s.id === 'sms'
 )
 
 export const PACKAGE_LABEL: Record<HowItWorksStep['package'], string> = {

@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 export const metadata: Metadata = {
   title: 'Funkciók',
   description:
-    'Turinova Alap: készlet, beszerzés, POS, árajánlat, címke, számlázás — plusz SMS és partnerportál. Az egyedi modulok külön oldalon.'
+    'Turinova Alap: készlet, beszerzés, ügyfelek, értékesítés, POS, árajánlat, címke, pénzügy — plusz SMS. Az egyedi modulok külön oldalon.'
 }
 
 export default function FeaturesPage() {
@@ -31,9 +31,9 @@ export default function FeaturesPage() {
               A bolt mindennapi funkciói egy rendszerben
             </h1>
             <p className="mt-4 max-w-xl text-[16px] leading-relaxed text-ink-secondary">
-              Készlet, beszerzés, POS, ajánlat, címke, számlázás — ami minden
-              kereskedő-gyártónak kell. A lapszabászat, a jelenlét és a
-              belépőszámláló külön, egyedi modulként érhető el.
+              Készlet, beszerzés, ügyfelek, értékesítés, POS, ajánlat, címke,
+              pénzügy — ami minden kereskedő-gyártónak kell. A lapszabászat, a
+              jelenlét és a belépőszámláló külön, egyedi modulként érhető el.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link

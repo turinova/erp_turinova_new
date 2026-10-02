@@ -4,6 +4,15 @@ import Link from 'next/link'
 import { ArrowRight, Check, Play } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { ArajanlatListaMockup } from '@/components/marketing/arajanlat-mockups'
+import { BeszerzesRendelesekMockup } from '@/components/marketing/beszerzes-mockups'
+import { CimkeNyomtatasMockup } from '@/components/marketing/cimke-mockups'
+import { ErtekesitesekListaMockup } from '@/components/marketing/ertekesitesek-mockups'
+import { KeszletMozgasokMockup } from '@/components/marketing/keszlet-mockups'
+import { PenzugySzamlaMockup } from '@/components/marketing/penzugy-mockups'
+import { PosTerminalMockup } from '@/components/marketing/pos-mockups'
+import { SmsErtesitesMockup } from '@/components/marketing/sms-mockups'
+import { UgyfelekListaMockup } from '@/components/marketing/ugyfelek-mockups'
 import {
   ACCENT_STYLES,
   FEATURE_PAGE_STEPS,
@@ -167,7 +176,27 @@ function HowItWorksSection({
           ) : null}
         </div>
         <div className={cn(reverse && 'lg:order-1')}>
-          <VideoPlaceholder step={step} />
+          {step.id === 'keszlet' ? (
+            <KeszletMozgasokMockup />
+          ) : step.id === 'beszerzes' ? (
+            <BeszerzesRendelesekMockup />
+          ) : step.id === 'ugyfelek' ? (
+            <UgyfelekListaMockup />
+          ) : step.id === 'ertekesitesek' ? (
+            <ErtekesitesekListaMockup />
+          ) : step.id === 'pos' ? (
+            <PosTerminalMockup />
+          ) : step.id === 'arajanlat' ? (
+            <ArajanlatListaMockup />
+          ) : step.id === 'cimke' ? (
+            <CimkeNyomtatasMockup />
+          ) : step.id === 'penzugy' ? (
+            <PenzugySzamlaMockup />
+          ) : step.id === 'sms' ? (
+            <SmsErtesitesMockup />
+          ) : (
+            <VideoPlaceholder step={step} />
+          )}
         </div>
       </div>
     </section>
