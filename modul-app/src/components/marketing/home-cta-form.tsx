@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
 
 import { submitContactLeadAction } from '@/lib/marketing/contact-actions'
+import { formatPhoneInput } from '@/lib/marketing/phone'
 import {
   SUPPORT_PHONE_DISPLAY,
   SUPPORT_PHONE_E164
@@ -108,7 +109,7 @@ export function HomeCtaForm() {
             required
             placeholder="+36 30 123 4567"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
             className={inputClass}
             aria-invalid={Boolean(fieldErrors.phone)}
           />

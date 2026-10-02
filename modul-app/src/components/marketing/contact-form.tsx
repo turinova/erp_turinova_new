@@ -6,6 +6,7 @@ import { CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { submitContactLeadAction } from '@/lib/marketing/contact-actions'
+import { formatPhoneInput } from '@/lib/marketing/phone'
 import {
   SUPPORT_PHONE_DISPLAY,
   SUPPORT_PHONE_E164
@@ -129,7 +130,7 @@ export function ContactForm() {
           required
           placeholder="+36 30 123 4567"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
           aria-invalid={Boolean(fieldErrors.phone)}
           aria-describedby={
             fieldErrors.phone ? 'phone-error' : 'phone-hint'

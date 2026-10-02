@@ -59,3 +59,58 @@ export function formatPhoneDisplay(e164: string): string {
   }
   return e164
 }
+
+function formatHuE164Display(digitsWith36: string): string {
+  const national = digitsWith36.slice(2, 11) // max 9 nemzeti
+  if (!national) return '+36'
+  const parts = ['+36']
+  parts.push(national.slice(0, Math.min(2, national.length)))
+  if (national.length > 2) {
+    parts.push(national.slice(2, Math.min(5, national.length)))
+  }
+  if (national.length > 5) {
+    parts.push(national.slice(5, Math.min(9, national.length)))
+  }
+  return parts.join(' ')
+}
+
+/**
+ * Élő maszkolás gépelés / beillesztés közben.
+ * HU mobil (20/30/50/70) vagy 06… → `+36 XX XXX XXXX`.
+ * Más `+` országkód érintetlen marad.
+ */
+export function formatPhoneInput(raw: string): string {
+  const trimmed = raw.trimStart()
+  if (!trimmed) return ''
+
+  const wantsPlus = trimmed.startsWith('+')
+  let digits = digitsOnly(trimmed)
+  if (!digits) return wantsPlus ? '+' : ''
+
+  if (digits.startsWith('00')) digits = digits.slice(2)
+
+  // +36 felé gépelés: csak „+3”
+  if (wantsPlus && digits === '3') return '+3'
+
+  // Explicit külföld: +… és nem 36 / nem 06 (pl. +49, +30, +39)
+  if (
+    wantsPlus &&
+    !digits.startsWith('36') &&
+    !digits.startsWith('06') &&
+    digits !== '3'
+  ) {
+    return `+${digits.slice(0, 15)}`
+  }
+
+  if (digits.startsWith('06')) digits = `36${digits.slice(2)}`
+
+  // Bare HU national: 20/30/50/70…
+  if (!digits.startsWith('36') && /^[2357]0/.test(digits)) {
+    digits = `36${digits}`
+  }
+
+  if (digits.startsWith('36')) return formatHuE164Display(digits)
+
+  // Még nem egyértelmű (pl. „1”, „5”) — nyers számjegyek
+  return wantsPlus ? `+${digits}` : digits
+}
