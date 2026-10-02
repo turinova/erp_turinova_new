@@ -120,7 +120,8 @@ export function MarketingHomePage() {
                       Várólista
                     </h2>
                     <p className="mt-5 max-w-md text-lg text-zinc-400">
-                      Előfizetés 2027 Q2-től. Írd be a neved és a telefonszámod.
+                      Az előfizetés 2027 második negyedévétől indul. Hagyd itt az
+                      elérhetőségeidet, és az induláskor értesítünk.
                     </p>
                   </div>
                   <HomeCtaForm />

@@ -4,27 +4,36 @@ import { z } from 'zod'
 
 import { escapeHtml } from '@/lib/email/send'
 import { sendSmtpEmail, smtpConfigured } from '@/lib/email/smtp'
+import {
+  formatPhoneDisplay,
+  normalizePhoneE164
+} from '@/lib/marketing/phone'
 import { SUPPORT_EMAIL } from '@/lib/marketing/pricing'
 
 const leadSchema = z.object({
-  firstName: z
+  fullName: z
     .string()
     .trim()
-    .min(2, 'A keresztnév legalább 2 karakter.')
-    .max(80),
+    .min(2, 'A név legalább 2 karakter.')
+    .max(120),
   email: z
     .string()
     .trim()
     .email('Az e-mail cím formátuma: nev@ceg.hu')
-    .max(160),
-  company: z.string().trim().min(2, 'Írd be a cég nevét.').max(160),
-  phone: z
+    .max(160)
+    .transform((v) => v.toLowerCase()),
+  company: z
     .string()
     .trim()
-    .min(8, 'Telefonszám nélkül nem tudunk visszahívni.')
-    .max(40),
+    .min(2, 'Írd be a cég nevét (egyéni vállalkozó vagy magánszemély is megadható).')
+    .max(160),
+  phone: z.string().trim().min(1, 'Telefonszám nélkül nem tudunk visszahívni.'),
   problem: z.string().trim().max(2000).optional(),
-  source: z.string().trim().max(80).optional()
+  source: z.string().trim().max(80).optional(),
+  /** Honeypot — embereknek üresen kell maradnia. */
+  website: z.string().max(200).optional(),
+  /** Ügyfél oldali űrlap-nyitás időbélyeg (ms). */
+  formOpenedAt: z.number().int().positive().optional()
 })
 
 export type ContactLeadInput = z.infer<typeof leadSchema>
@@ -37,6 +46,16 @@ function sourceLabel(source: string): string {
   if (source.includes('varolista')) return 'Várólista'
   if (source.includes('kapcsolat')) return 'Kapcsolat'
   return source
+}
+
+/** Soft dedupe — ugyanaz a lead 60 mp-en belül ne menjen ki kétszer. */
+const recentLeads = new Map<string, number>()
+const DEDUPE_MS = 60_000
+
+function pruneDedupe(now: number) {
+  for (const [k, t] of recentLeads) {
+    if (now - t > DEDUPE_MS) recentLeads.delete(k)
+  }
 }
 
 export async function submitContactLeadAction(
@@ -59,19 +78,58 @@ export async function submitContactLeadAction(
   }
 
   const lead = parsed.data
+
+  // Bot honeypot — silent success
+  if (lead.website?.trim()) {
+    console.info('[contact-lead] honeypot trip')
+    return { ok: true }
+  }
+
+  // Túl gyors submit (bot)
+  if (
+    lead.formOpenedAt &&
+    Date.now() - lead.formOpenedAt < 1500
+  ) {
+    console.info('[contact-lead] too-fast submit')
+    return { ok: true }
+  }
+
+  const phoneE164 = normalizePhoneE164(lead.phone)
+  if (!phoneE164) {
+    return {
+      ok: false,
+      message: 'Nézd át a jelölt mezőket, aztán küldd újra.',
+      fieldErrors: {
+        phone:
+          'Érvényes telefonszám kell (pl. +36 30 123 4567 vagy 06 30 123 4567).'
+      }
+    }
+  }
+
   const source = lead.source || 'optinova-kapcsolat'
   const notifyTo =
     process.env.CONTACT_NOTIFY_TO?.trim() || SUPPORT_EMAIL
   const kind = sourceLabel(source)
   const receivedAt = new Date().toISOString()
+  const phoneDisplay = formatPhoneDisplay(phoneE164)
+
+  const dedupeKey = `${lead.email}|${phoneE164}|${source}`
+  const now = Date.now()
+  pruneDedupe(now)
+  if (recentLeads.has(dedupeKey)) {
+    console.info('[contact-lead] dedupe', dedupeKey)
+    return { ok: true }
+  }
+  recentLeads.set(dedupeKey, now)
 
   const payload = {
     source,
     receivedAt,
-    firstName: lead.firstName,
+    fullName: lead.fullName,
     email: lead.email,
     company: lead.company,
-    phone: lead.phone,
+    phone: phoneE164,
+    phoneDisplay,
     problem: lead.problem || null,
     notifyEmail: notifyTo
   }
@@ -82,10 +140,10 @@ export async function submitContactLeadAction(
     `Forrás: ${kind} (${source})`,
     `Időpont: ${receivedAt}`,
     '',
-    `Név: ${lead.firstName}`,
+    `Név: ${lead.fullName}`,
     `Cég: ${lead.company}`,
     `E-mail: ${lead.email}`,
-    `Telefon: ${lead.phone}`,
+    `Telefon: ${phoneDisplay} (${phoneE164})`,
     lead.problem ? `Üzenet:\n${lead.problem}` : null,
     '',
     '— Turinova marketing űrlap'
@@ -96,10 +154,10 @@ export async function submitContactLeadAction(
     <p><strong>${escapeHtml(kind)}</strong> · ${escapeHtml(source)}</p>
     <p style="color:#71717a;font-size:13px">${escapeHtml(receivedAt)}</p>
     <table style="border-collapse:collapse;font-size:14px">
-      <tr><td style="padding:4px 12px 4px 0;color:#71717a">Név</td><td>${escapeHtml(lead.firstName)}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#71717a">Név</td><td>${escapeHtml(lead.fullName)}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#71717a">Cég</td><td>${escapeHtml(lead.company)}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#71717a">E-mail</td><td><a href="mailto:${escapeHtml(lead.email)}">${escapeHtml(lead.email)}</a></td></tr>
-      <tr><td style="padding:4px 12px 4px 0;color:#71717a">Telefon</td><td>${escapeHtml(lead.phone)}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#71717a">Telefon</td><td><a href="tel:${escapeHtml(phoneE164)}">${escapeHtml(phoneDisplay)}</a></td></tr>
       ${
         lead.problem
           ? `<tr><td style="padding:4px 12px 4px 0;color:#71717a;vertical-align:top">Üzenet</td><td>${escapeHtml(lead.problem).replace(/\n/g, '<br/>')}</td></tr>`
@@ -111,7 +169,7 @@ export async function submitContactLeadAction(
   if (smtpConfigured()) {
     const sent = await sendSmtpEmail({
       to: notifyTo,
-      subject: `[Turinova] ${kind}: ${lead.firstName} · ${lead.company}`,
+      subject: `[Turinova] ${kind}: ${lead.fullName} · ${lead.company}`,
       text,
       html,
       replyTo: lead.email,
@@ -119,11 +177,20 @@ export async function submitContactLeadAction(
     })
     if (!sent.ok) {
       console.error('[contact-lead] smtp failed', sent.error)
+      recentLeads.delete(dedupeKey)
       return {
         ok: false,
         message:
           'Az űrlap elküldése sikertelen. Próbáld újra, vagy írj az info@turinova.hu-ra.'
       }
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    console.error('[contact-lead] SMTP missing in production')
+    recentLeads.delete(dedupeKey)
+    return {
+      ok: false,
+      message:
+        'Az űrlap elküldése sikertelen. Próbáld újra, vagy írj az info@turinova.hu-ra.'
     }
   } else {
     console.warn(
