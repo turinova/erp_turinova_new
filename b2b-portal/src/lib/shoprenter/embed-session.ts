@@ -6,7 +6,14 @@ import {
   isEmbedDevBypassAllowed,
 } from "@/lib/shoprenter/embed-hmac";
 
+import {
+  EMBED_SESSION_HEADER,
+  EMBED_SESSION_QUERY,
+  withEmbedToken,
+} from "@/lib/shoprenter/embed-token";
+
 export const EMBED_SESSION_COOKIE = "progate_sr_embed";
+export { EMBED_SESSION_HEADER, EMBED_SESSION_QUERY, withEmbedToken };
 
 export type EmbedSession = {
   shopId: string;
@@ -63,7 +70,9 @@ export function encodeEmbedSession(
 export function decodeEmbedSession(token: string): EmbedSession | null {
   const secret = signingSecret();
   if (!secret) return null;
-  const parts = token.split(".");
+  const raw = token.trim();
+  if (!raw) return null;
+  const parts = raw.split(".");
   if (parts.length !== 2) return null;
   const [payloadB64, sig] = parts;
   const expected = sign(payloadB64, secret);
@@ -102,7 +111,6 @@ export function embedSessionCookieOptions(expiresAt: Date) {
   return {
     httpOnly: true,
     secure,
-    // Cross-site iframe needs None+Secure; Partitioned helps Chrome 3P cookie phaseout.
     sameSite: (secure ? "none" : "lax") as "none" | "lax",
     path: "/",
     expires: expiresAt,
@@ -110,23 +118,30 @@ export function embedSessionCookieOptions(expiresAt: Date) {
   };
 }
 
-/**
- * Attach embed session to a Route Handler response (required for 307 redirect
- * Set-Cookie in cross-site iframes — cookies().set() alone often drops).
- */
-export function applyEmbedSessionCookie(
+/** Best-effort Set-Cookie from an already-encoded token. */
+export function setEmbedSessionCookieOnResponse(
   res: NextResponse,
-  session: Omit<EmbedSession, "exp">,
-): boolean {
-  const token = encodeEmbedSession(session);
-  if (!token) return false;
+  token: string,
+): void {
   const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
   res.cookies.set(
     EMBED_SESSION_COOKIE,
     token,
     embedSessionCookieOptions(expiresAt),
   );
-  return true;
+}
+
+/**
+ * Encode session, Set-Cookie on response, return token for `?e=` redirect.
+ */
+export function applyEmbedSessionCookie(
+  res: NextResponse,
+  session: Omit<EmbedSession, "exp">,
+): string | null {
+  const token = encodeEmbedSession(session);
+  if (!token) return null;
+  setEmbedSessionCookieOnResponse(res, token);
+  return token;
 }
 
 /** @deprecated Prefer applyEmbedSessionCookie on the redirect response. */
@@ -154,4 +169,47 @@ export async function getEmbedSessionFromCookies(): Promise<EmbedSession | null>
   const raw = jar.get(EMBED_SESSION_COOKIE)?.value;
   if (!raw) return null;
   return decodeEmbedSession(raw);
+}
+
+/**
+ * Session from URL `e=` (preferred in iframe) or cookie.
+ */
+export async function resolveEmbedSession(
+  tokenFromQuery?: string | null,
+): Promise<{ session: EmbedSession; token: string } | null> {
+  const q = (tokenFromQuery || "").trim();
+  if (q) {
+    const session = decodeEmbedSession(q);
+    if (session) return { session, token: q };
+  }
+  const jar = await cookies();
+  const raw = jar.get(EMBED_SESSION_COOKIE)?.value;
+  if (!raw) return null;
+  const session = decodeEmbedSession(raw);
+  if (!session) return null;
+  return { session, token: raw };
+}
+
+/**
+ * API auth: header → query `e` → cookie.
+ */
+export async function resolveEmbedSessionFromRequest(
+  req: Request,
+): Promise<EmbedSession | null> {
+  const header = req.headers.get(EMBED_SESSION_HEADER)?.trim();
+  if (header) {
+    const s = decodeEmbedSession(header);
+    if (s) return s;
+  }
+  try {
+    const url = new URL(req.url);
+    const q = url.searchParams.get(EMBED_SESSION_QUERY)?.trim();
+    if (q) {
+      const s = decodeEmbedSession(q);
+      if (s) return s;
+    }
+  } catch {
+    /* ignore */
+  }
+  return getEmbedSessionFromCookies();
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withTenant } from "@/lib/db";
-import { getEmbedSessionFromCookies } from "@/lib/shoprenter/embed-session";
+import { resolveEmbedSessionFromRequest } from "@/lib/shoprenter/embed-session";
 import { findEmbedShopById } from "@/lib/shoprenter/embed-shop";
 import {
   loadMerchantWidget,
@@ -11,8 +11,8 @@ import {
   type WidgetSettingsPayload,
 } from "@/lib/widget/presets";
 
-async function requireEmbed() {
-  const session = await getEmbedSessionFromCookies();
+async function requireEmbed(req: Request) {
+  const session = await resolveEmbedSessionFromRequest(req);
   if (!session) {
     return {
       error: NextResponse.json(
@@ -33,8 +33,8 @@ async function requireEmbed() {
   return { session, shop } as const;
 }
 
-export async function GET() {
-  const auth = await requireEmbed();
+export async function GET(req: Request) {
+  const auth = await requireEmbed(req);
   if ("error" in auth) return auth.error;
 
   try {
@@ -76,7 +76,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const auth = await requireEmbed();
+  const auth = await requireEmbed(req);
   if ("error" in auth) return auth.error;
 
   let body: Record<string, unknown>;

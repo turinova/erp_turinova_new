@@ -1,7 +1,10 @@
 import { EmbedErrorState } from "@/components/sr-embed/EmbedErrorState";
 import { EmbedWidgetEditor } from "@/components/sr-embed/EmbedWidgetEditor";
 import { withTenant } from "@/lib/db";
-import { getEmbedSessionFromCookies } from "@/lib/shoprenter/embed-session";
+import {
+  EMBED_SESSION_QUERY,
+  resolveEmbedSession,
+} from "@/lib/shoprenter/embed-session";
 import { findEmbedShopById } from "@/lib/shoprenter/embed-shop";
 import { loadMerchantWidget } from "@/lib/widget/settings";
 
@@ -20,9 +23,10 @@ export default async function SrEmbedWidgetPage({
   const sp = await searchParams;
   const tabRaw = one(sp.tab);
   const initialTab = tabRaw === "extra" ? "extra" : "button";
+  const embedTokenParam = one(sp[EMBED_SESSION_QUERY]);
 
-  const session = await getEmbedSessionFromCookies();
-  if (!session) {
+  const resolved = await resolveEmbedSession(embedTokenParam);
+  if (!resolved) {
     return (
       <EmbedErrorState
         title="Nyisd meg a Shoprenterből"
@@ -30,6 +34,7 @@ export default async function SrEmbedWidgetPage({
       />
     );
   }
+  const { session, token: embedToken } = resolved;
 
   const shop = await findEmbedShopById(session.shopId);
   if (!shop) {
@@ -68,6 +73,7 @@ export default async function SrEmbedWidgetPage({
       storeUrl={shop.storeUrl}
       catalogStatus={shop.catalogStatus}
       initialTab={initialTab}
+      embedToken={embedToken}
     />
   );
 }

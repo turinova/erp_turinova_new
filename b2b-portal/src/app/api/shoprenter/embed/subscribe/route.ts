@@ -11,7 +11,7 @@ import { trialDaysLeft } from "@/lib/orgs/health";
 import { query, withPlatformAdmin } from "@/lib/db";
 import { publicAppUrl } from "@/lib/public-app-url";
 import { createRecurringCharge } from "@/lib/shoprenter/billing/recurring";
-import { getEmbedSessionFromCookies } from "@/lib/shoprenter/embed-session";
+import { resolveEmbedSessionFromRequest } from "@/lib/shoprenter/embed-session";
 import { findEmbedShopById } from "@/lib/shoprenter/embed-shop";
 import { loadShopConfigByShopId } from "@/lib/shoprenter/install/shop-script-state";
 import { headers } from "next/headers";
@@ -22,7 +22,7 @@ import { headers } from "next/headers";
  * Creates Shoprenter recurring charge when SR_BILLING_ENABLED=1, else mailto hint.
  */
 export async function POST(req: Request) {
-  const session = await getEmbedSessionFromCookies();
+  const session = await resolveEmbedSessionFromRequest(req);
   if (!session) {
     return NextResponse.json({ error: "Nincs session" }, { status: 401 });
   }

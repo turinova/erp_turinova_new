@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { embedFetch } from "@/lib/shoprenter/embed-fetch";
+import { withEmbedToken } from "@/lib/shoprenter/embed-token";
 import type { InstallCapability } from "@/lib/shoprenter/install/types";
 import type { ScriptInstallState } from "@/lib/shoprenter/install/types";
 
@@ -23,6 +25,7 @@ type Props = {
   capability: InstallCapability;
   script: ScriptInstallState;
   snippets: { loader: string; legacy: string };
+  embedToken?: string | null;
 };
 
 type Phase = "A" | "B" | "C" | "D" | "E";
@@ -97,6 +100,7 @@ export function EmbedHomeClient({
   capability,
   script: scriptInitial,
   snippets,
+  embedToken,
 }: Props) {
   const [shop, setShop] = useState(initial);
   const [script, setScript] = useState(scriptInitial);
@@ -175,11 +179,14 @@ export function EmbedHomeClient({
     setMessage(null);
     setError(null);
     try {
-      const res = await fetch("/api/shoprenter/embed/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "install", enableWidget: true }),
-      });
+      const res = await embedFetch(
+        "/api/shoprenter/embed/install",
+        {
+          method: "POST",
+          body: JSON.stringify({ action: "install", enableWidget: true }),
+        },
+        embedToken,
+      );
       const data = await res.json();
       if (data.script) setScript(data.script);
       if (data.snippets?.loader) {
@@ -206,11 +213,17 @@ export function EmbedHomeClient({
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/shoprenter/embed/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "confirm_manual", enableWidget: true }),
-      });
+      const res = await embedFetch(
+        "/api/shoprenter/embed/install",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "confirm_manual",
+            enableWidget: true,
+          }),
+        },
+        embedToken,
+      );
       const data = await res.json();
       if (data.script) setScript(data.script);
       if (data.result?.ok) {
@@ -232,11 +245,14 @@ export function EmbedHomeClient({
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/shoprenter/embed/widget", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ widgetEnabled: true }),
-      });
+      const res = await embedFetch(
+        "/api/shoprenter/embed/widget",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ widgetEnabled: true }),
+        },
+        embedToken,
+      );
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Bekapcsolás sikertelen");
@@ -256,11 +272,14 @@ export function EmbedHomeClient({
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/shoprenter/embed/widget", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ widgetEnabled: next }),
-      });
+      const res = await embedFetch(
+        "/api/shoprenter/embed/widget",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ widgetEnabled: next }),
+        },
+        embedToken,
+      );
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Mentés sikertelen");
@@ -341,7 +360,10 @@ export function EmbedHomeClient({
                   Megnézem a boltom
                 </a>
               ) : null}
-              <Link href="/sr-embed/widget" className={secondaryBtn}>
+              <Link
+                href={withEmbedToken("/sr-embed/widget", embedToken)}
+                className={secondaryBtn}
+              >
                 Módosítom a widgetet
               </Link>
             </div>
@@ -349,7 +371,7 @@ export function EmbedHomeClient({
               <p className="mt-5 text-[13px] text-faint">
                 {trial}.{" "}
                 <Link
-                  href="/sr-embed/elofizetes"
+                  href={withEmbedToken("/sr-embed/elofizetes", embedToken)}
                   className="font-semibold text-text underline underline-offset-2"
                 >
                   Előfizetés
@@ -434,7 +456,10 @@ export function EmbedHomeClient({
 
         <div className="mt-7 flex flex-col gap-3">
           {copy.ctaKind === "widget" ? (
-            <Link href="/sr-embed/widget" className={primaryBtn}>
+            <Link
+              href={withEmbedToken("/sr-embed/widget", embedToken)}
+              className={primaryBtn}
+            >
               {copy.cta}
             </Link>
           ) : copy.ctaKind === "reload" ? (

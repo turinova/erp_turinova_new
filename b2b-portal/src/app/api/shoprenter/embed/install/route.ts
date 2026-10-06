@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { publicAppUrl } from "@/lib/public-app-url";
-import { getEmbedSessionFromCookies } from "@/lib/shoprenter/embed-session";
+import { resolveEmbedSessionFromRequest } from "@/lib/shoprenter/embed-session";
 import { findEmbedShopById } from "@/lib/shoprenter/embed-shop";
 import { getInstallCapability } from "@/lib/shoprenter/install/mode";
 import {
@@ -16,8 +16,8 @@ import {
 } from "@/lib/shoprenter/install/snippet";
 import { WIDGET_JS_ASSET } from "@/lib/widget/asset-version";
 
-async function requireEmbed() {
-  const session = await getEmbedSessionFromCookies();
+async function requireEmbed(req: Request) {
+  const session = await resolveEmbedSessionFromRequest(req);
   if (!session) {
     return {
       error: NextResponse.json(
@@ -39,7 +39,7 @@ async function requireEmbed() {
 }
 
 export async function GET(req: Request) {
-  const auth = await requireEmbed();
+  const auth = await requireEmbed(req);
   if ("error" in auth) return auth.error;
 
   const apiBase = publicAppUrl(req.headers);
@@ -85,7 +85,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireEmbed();
+  const auth = await requireEmbed(req);
   if ("error" in auth) return auth.error;
 
   let body: Record<string, unknown> = {};
@@ -142,8 +142,8 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, result, script });
 }
 
-export async function DELETE() {
-  const auth = await requireEmbed();
+export async function DELETE(req: Request) {
+  const auth = await requireEmbed(req);
   if ("error" in auth) return auth.error;
 
   const result = await removeWidgetScript({ shopId: auth.shop.shopId });

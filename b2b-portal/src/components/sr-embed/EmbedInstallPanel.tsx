@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { embedFetch } from "@/lib/shoprenter/embed-fetch";
 import type { InstallCapability } from "@/lib/shoprenter/install/types";
 import type { ScriptInstallState } from "@/lib/shoprenter/install/types";
 
@@ -10,6 +11,7 @@ type Props = {
   snippets: { loader: string; legacy: string };
   storeUrl: string | null;
   shopName: string;
+  embedToken?: string | null;
 };
 
 export function EmbedInstallPanel({
@@ -18,6 +20,7 @@ export function EmbedInstallPanel({
   snippets,
   storeUrl,
   shopName,
+  embedToken,
 }: Props) {
   const [script, setScript] = useState(scriptInitial);
   const [pending, setPending] = useState(false);
@@ -46,11 +49,14 @@ export function EmbedInstallPanel({
     setError(null);
     setMessage(null);
     try {
-      const res = await fetch("/api/shoprenter/embed/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "install", enableWidget: true }),
-      });
+      const res = await embedFetch(
+        "/api/shoprenter/embed/install",
+        {
+          method: "POST",
+          body: JSON.stringify({ action: "install", enableWidget: true }),
+        },
+        embedToken,
+      );
       const data = await res.json();
       if (data.script) setScript(data.script);
       if (data.snippets?.loader) setSnippet(data.snippets.loader);
@@ -73,14 +79,17 @@ export function EmbedInstallPanel({
     setPending(true);
     setError(null);
     try {
-      const res = await fetch("/api/shoprenter/embed/install", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "confirm_manual",
-          enableWidget: true,
-        }),
-      });
+      const res = await embedFetch(
+        "/api/shoprenter/embed/install",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "confirm_manual",
+            enableWidget: true,
+          }),
+        },
+        embedToken,
+      );
       const data = await res.json();
       if (!res.ok || !data.result?.ok) {
         setError(data.error || "Mentés sikertelen");

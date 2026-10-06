@@ -6,6 +6,7 @@ import {
   catalogChip,
   EmbedStatusChip,
 } from "@/components/sr-embed/EmbedStatusChip";
+import { embedFetch } from "@/lib/shoprenter/embed-fetch";
 
 export type EmbedBoltShop = {
   shopName: string;
@@ -17,9 +18,9 @@ export type EmbedBoltShop = {
   hasCredentials: boolean;
 };
 
-type Props = { initial: EmbedBoltShop };
+type Props = { initial: EmbedBoltShop; embedToken?: string | null };
 
-export function EmbedBoltClient({ initial }: Props) {
+export function EmbedBoltClient({ initial, embedToken }: Props) {
   const [shop, setShop] = useState(initial);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -41,11 +42,14 @@ export function EmbedBoltClient({ initial }: Props) {
     setMessage(null);
     setError(null);
     try {
-      const res = await fetch("/api/shoprenter/embed/widget", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ widgetEnabled: next }),
-      });
+      const res = await embedFetch(
+        "/api/shoprenter/embed/widget",
+        {
+          method: "PATCH",
+          body: JSON.stringify({ widgetEnabled: next }),
+        },
+        embedToken,
+      );
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Mentés sikertelen");

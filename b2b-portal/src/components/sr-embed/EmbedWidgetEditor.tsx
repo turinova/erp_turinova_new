@@ -12,6 +12,7 @@ type Props = {
   catalogStatus: string | null;
   /** Deep-link from Kezdőlap discovery (?tab=extra). */
   initialTab?: TabId;
+  embedToken?: string | null;
 };
 
 /** Shoprenter embed widget page — shared editor + EmbedShell. */
@@ -21,6 +22,7 @@ export function EmbedWidgetEditor({
   storeUrl,
   catalogStatus,
   initialTab = "button",
+  embedToken,
 }: Props) {
   return (
     <WidgetEditor
@@ -30,6 +32,7 @@ export function EmbedWidgetEditor({
       storeUrl={storeUrl}
       catalogStatus={catalogStatus}
       initialTab={initialTab}
+      embedToken={embedToken}
     />
   );
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
+import { withEmbedToken } from "@/lib/shoprenter/embed-token";
 
 /**
  * Embed chrome — top segment nav only (no left rail).
@@ -33,6 +34,8 @@ type Props = {
   fullBleed?: boolean;
   /** Override document title for a11y (tabs show location visually). */
   title?: string;
+  /** Signed embed session — kept on nav links when 3P cookies are blocked. */
+  embedToken?: string | null;
 };
 
 export function EmbedShell({
@@ -41,6 +44,7 @@ export function EmbedShell({
   saveSlot,
   fullBleed = false,
   title: titleProp,
+  embedToken,
 }: Props) {
   const pathname = usePathname();
   const activeLabel =
@@ -49,12 +53,14 @@ export function EmbedShell({
       ?.label ??
     "ProGate";
 
+  const href = (path: string) => withEmbedToken(path, embedToken);
+
   return (
     <div className="flex min-h-dvh flex-col bg-bg text-text">
       <header className="glass-bar sticky top-0 z-20 shrink-0 border-b border-line-strong">
         <div className="flex h-12 items-center gap-2 px-3 md:px-4">
           <Link
-            href="/sr-embed"
+            href={href("/sr-embed")}
             className="flex shrink-0 items-center"
             aria-label="ProGate kezdőlap"
           >
@@ -82,7 +88,7 @@ export function EmbedShell({
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={href(item.href)}
                   aria-current={active ? "page" : undefined}
                   className={
                     active

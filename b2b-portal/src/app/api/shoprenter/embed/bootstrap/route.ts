@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { establishEmbedSessionFromQuery } from "@/lib/shoprenter/establish-embed";
-import { applyEmbedSessionCookie } from "@/lib/shoprenter/embed-session";
+import {
+  encodeEmbedSession,
+  setEmbedSessionCookieOnResponse,
+} from "@/lib/shoprenter/embed-session";
+import { EMBED_SESSION_QUERY } from "@/lib/shoprenter/embed-token";
 
 /**
- * Sets embed session cookie on the redirect response, then → /sr-embed.
- * Cookie must be on NextResponse (not cookies().set alone) for Shoprenter iframe.
+ * Establish shop + redirect to /sr-embed?e=<signed token>.
+ * Token in query is the reliable session in Shoprenter iframe (3P cookies often blocked).
+ * Cookie is best-effort when the browser still accepts it.
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -22,23 +27,26 @@ export async function GET(req: Request) {
     return NextResponse.redirect(dest);
   }
 
-  const res = NextResponse.redirect(new URL("/sr-embed", url.origin));
-  const cookieOk = applyEmbedSessionCookie(res, {
+  const token = encodeEmbedSession({
     shopId: result.shopId,
     organizationId: result.organizationId,
     shopName: result.shopName,
     publicId: result.publicId,
   });
-  if (!cookieOk) {
-    const dest = new URL("/sr-embed", url.origin);
-    dest.searchParams.set("error", "session");
-    dest.searchParams.set("shopname", result.shopName);
-    dest.searchParams.set(
+  if (!token) {
+    const err = new URL("/sr-embed", url.origin);
+    err.searchParams.set("error", "session");
+    err.searchParams.set("shopname", result.shopName);
+    err.searchParams.set(
       "msg",
       "Session létrehozása sikertelen (hiányzó SR_APP_CLIENT_SECRET).",
     );
-    return NextResponse.redirect(dest);
+    return NextResponse.redirect(err);
   }
 
+  const dest = new URL("/sr-embed", url.origin);
+  dest.searchParams.set(EMBED_SESSION_QUERY, token);
+  const res = NextResponse.redirect(dest);
+  setEmbedSessionCookieOnResponse(res, token);
   return res;
 }

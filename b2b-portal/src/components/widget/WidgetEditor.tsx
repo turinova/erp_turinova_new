@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { WidgetLivePreview } from "@/components/merchant/WidgetLivePreview";
 import { EmbedShell } from "@/components/sr-embed/EmbedShell";
+import { embedFetch } from "@/lib/shoprenter/embed-fetch";
+import { withEmbedToken } from "@/lib/shoprenter/embed-token";
 import { buildLoaderSnippet } from "@/lib/shoprenter/install/snippet";
 import type { MerchantWidgetDto } from "@/lib/widget/settings";
 import {
@@ -37,6 +39,8 @@ type Props = {
   catalogStatus?: string | null;
   /** Deep-link (?tab=extra). */
   initialTab?: TabId;
+  /** Signed embed session for iframe API calls / nav. */
+  embedToken?: string | null;
 };
 
 const TABS: { id: TabId; label: string }[] = [
@@ -162,6 +166,7 @@ export function WidgetEditor({
   storeUrl = null,
   catalogStatus = null,
   initialTab = "button",
+  embedToken,
 }: Props) {
   const isEmbed = surface === "embed";
   const resolvedShopName = shopName || initial.shoprenterShopName;
@@ -287,16 +292,23 @@ export function WidgetEditor({
       const endpoint = isEmbed
         ? "/api/shoprenter/embed/widget"
         : "/api/merchant/widget";
-      const res = await fetch(endpoint, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          widgetEnabled,
-          buttonLabel: label,
-          ...(isEmbed ? {} : { customerGroupIds: [] }),
-          settings: toSave,
-        }),
+      const body = JSON.stringify({
+        widgetEnabled,
+        buttonLabel: label,
+        ...(isEmbed ? {} : { customerGroupIds: [] }),
+        settings: toSave,
       });
+      const res = isEmbed
+        ? await embedFetch(
+            endpoint,
+            { method: "PATCH", body },
+            embedToken,
+          )
+        : await fetch(endpoint, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body,
+          });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Mentés sikertelen");
@@ -511,7 +523,7 @@ export function WidgetEditor({
                           </button>
                           {isEmbed ? (
                             <Link
-                              href="/sr-embed"
+                              href={withEmbedToken("/sr-embed", embedToken)}
                               className="text-[13px] font-semibold text-text underline underline-offset-2"
                             >
                               Telepítés: Kezdőlap
@@ -907,6 +919,7 @@ export function WidgetEditor({
         storeUrl={storeUrl}
         fullBleed
         saveSlot={saveSlot}
+        embedToken={embedToken}
       >
         {editorBody}
       </EmbedShell>

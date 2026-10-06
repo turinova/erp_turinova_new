@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { COMPANY } from "@/lib/company";
+import { withEmbedToken } from "@/lib/shoprenter/embed-token";
 
 const MAP = [
   {
@@ -95,7 +96,11 @@ function FaqArrow({ open }: { open: boolean }) {
   );
 }
 
-export function EmbedHelpClient() {
+export function EmbedHelpClient({
+  embedToken,
+}: {
+  embedToken?: string | null;
+}) {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   return (
@@ -123,7 +128,7 @@ export function EmbedHelpClient() {
           {MAP.map((item) => (
             <li key={item.href} className="border-b border-line-strong">
               <Link
-                href={item.href}
+                href={withEmbedToken(item.href, embedToken)}
                 className="flex items-start justify-between gap-3 py-3.5 no-underline hover:bg-surface-2/60"
               >
                 <span>

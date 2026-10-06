@@ -2,7 +2,10 @@ import { EmbedErrorState } from "@/components/sr-embed/EmbedErrorState";
 import { EmbedHomeClient } from "@/components/sr-embed/EmbedHomeClient";
 import { EmbedShell } from "@/components/sr-embed/EmbedShell";
 import { publicAppUrl } from "@/lib/public-app-url";
-import { getEmbedSessionFromCookies } from "@/lib/shoprenter/embed-session";
+import {
+  EMBED_SESSION_QUERY,
+  resolveEmbedSession,
+} from "@/lib/shoprenter/embed-session";
 import { findEmbedShopById } from "@/lib/shoprenter/embed-shop";
 import { getInstallCapability } from "@/lib/shoprenter/install/mode";
 import { getScriptInstallState } from "@/lib/shoprenter/install/shop-script-state";
@@ -34,8 +37,9 @@ export default async function SrEmbedEntryPage({
   const dev = one(sp.dev);
   const error = one(sp.error);
   const msg = one(sp.msg);
+  const embedTokenParam = one(sp[EMBED_SESSION_QUERY]);
 
-  // Shoprenter EntryPoint arrives with HMAC quartet → bootstrap sets cookie.
+  // Shoprenter EntryPoint arrives with HMAC quartet → bootstrap sets ?e= token.
   if (hmac && shopname && code && timestamp) {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(sp)) {
@@ -67,8 +71,8 @@ export default async function SrEmbedEntryPage({
     );
   }
 
-  const session = await getEmbedSessionFromCookies();
-  if (!session) {
+  const resolved = await resolveEmbedSession(embedTokenParam);
+  if (!resolved) {
     return (
       <EmbedErrorState
         title="Nyisd meg a Shoprenterből"
@@ -76,6 +80,7 @@ export default async function SrEmbedEntryPage({
       />
     );
   }
+  const { session, token: embedToken } = resolved;
 
   const shop = await findEmbedShopById(session.shopId);
   if (!shop) {
@@ -106,8 +111,13 @@ export default async function SrEmbedEntryPage({
   };
 
   return (
-    <EmbedShell shopName={shop.shopName} storeUrl={shop.storeUrl}>
+    <EmbedShell
+      shopName={shop.shopName}
+      storeUrl={shop.storeUrl}
+      embedToken={embedToken}
+    >
       <EmbedHomeClient
+        embedToken={embedToken}
         initial={{
           shopName: shop.shopName,
           storeUrl: shop.storeUrl,

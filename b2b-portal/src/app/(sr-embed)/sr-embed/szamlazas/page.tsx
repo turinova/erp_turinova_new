@@ -3,7 +3,11 @@ import { EmbedErrorState } from "@/components/sr-embed/EmbedErrorState";
 import { EmbedShell } from "@/components/sr-embed/EmbedShell";
 import { getOrgBillingState } from "@/lib/billing/org-billing";
 import { withPlatformAdmin } from "@/lib/db";
-import { getEmbedSessionFromCookies } from "@/lib/shoprenter/embed-session";
+import {
+  EMBED_SESSION_QUERY,
+  resolveEmbedSession,
+  withEmbedToken,
+} from "@/lib/shoprenter/embed-session";
 import { findEmbedShopById } from "@/lib/shoprenter/embed-shop";
 
 const STATUS_HU: Record<string, string> = {
@@ -30,8 +34,8 @@ export default async function SrEmbedSzamlazasPage({
   const sp = await searchParams;
   const okFlag = one(sp.ok);
 
-  const session = await getEmbedSessionFromCookies();
-  if (!session) {
+  const resolved = await resolveEmbedSession(one(sp[EMBED_SESSION_QUERY]));
+  if (!resolved) {
     return (
       <EmbedErrorState
         title="Nyisd meg a Shoprenterből"
@@ -39,6 +43,7 @@ export default async function SrEmbedSzamlazasPage({
       />
     );
   }
+  const { session, token: embedToken } = resolved;
   const shop = await findEmbedShopById(session.shopId);
   if (!shop) {
     return (
@@ -55,7 +60,11 @@ export default async function SrEmbedSzamlazasPage({
     : "Még nincs előfizetés";
 
   return (
-    <EmbedShell shopName={shop.shopName} storeUrl={shop.storeUrl}>
+    <EmbedShell
+      shopName={shop.shopName}
+      storeUrl={shop.storeUrl}
+      embedToken={embedToken}
+    >
       <div className="mx-auto w-full max-w-[640px] pb-12">
         <h1
           className="text-[28px] font-semibold leading-none tracking-tight text-text md:text-[34px]"
@@ -112,13 +121,13 @@ export default async function SrEmbedSzamlazasPage({
 
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
-            href="/sr-embed/elofizetes"
+            href={withEmbedToken("/sr-embed/elofizetes", embedToken)}
             className="tn-btn tn-btn-primary !h-11 px-5 text-[14px] font-semibold"
           >
             Előfizetés
           </Link>
           <Link
-            href="/sr-embed"
+            href={withEmbedToken("/sr-embed", embedToken)}
             className="tn-btn tn-btn-ghost !h-11 px-5 text-[14px] font-semibold"
           >
             Kezdőlap

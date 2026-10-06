@@ -9,6 +9,8 @@ import {
   type EmbedPricingConfig,
 } from "@/lib/billing/embed-pricing";
 import { formatHuf } from "@/lib/billing/plans";
+import { embedFetch } from "@/lib/shoprenter/embed-fetch";
+import { withEmbedToken } from "@/lib/shoprenter/embed-token";
 
 const FEATURES = [
   "Partnerár a bolton, gyors rendeléssel",
@@ -56,6 +58,7 @@ type Props = {
   trialEndsAt: string | null;
   pricing: EmbedPricingConfig;
   billingEnabled: boolean;
+  embedToken?: string | null;
 };
 
 function trialLabel(
@@ -98,6 +101,7 @@ export function EmbedPricingClient({
   trialEndsAt,
   pricing,
   billingEnabled,
+  embedToken,
 }: Props) {
   const [annual, setAnnual] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -143,11 +147,14 @@ export function EmbedPricingClient({
     }
     setPending(true);
     try {
-      const res = await fetch("/api/shoprenter/embed/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ annual }),
-      });
+      const res = await embedFetch(
+        "/api/shoprenter/embed/subscribe",
+        {
+          method: "POST",
+          body: JSON.stringify({ annual }),
+        },
+        embedToken,
+      );
       const data = (await res.json()) as {
         ok?: boolean;
         mode?: string;
@@ -400,12 +407,15 @@ export function EmbedPricingClient({
       </section>
 
       <p className="mt-8 text-center text-[12px] text-faint">
-        <Link href="/sr-embed" className="underline underline-offset-2 hover:text-text">
+        <Link
+          href={withEmbedToken("/sr-embed", embedToken)}
+          className="underline underline-offset-2 hover:text-text"
+        >
           Kezdőlap
         </Link>
         {" · "}
         <Link
-          href="/sr-embed/szamlazas"
+          href={withEmbedToken("/sr-embed/szamlazas", embedToken)}
           className="underline underline-offset-2 hover:text-text"
         >
           Számlázás
