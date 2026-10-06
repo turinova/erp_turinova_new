@@ -23,12 +23,14 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Same-origin iframe host for merchant / embed live preview
+        // Nested under /sr-embed inside Shoprenter admin — frame-ancestors must
+        // allow SR hosts too (browsers check every ancestor, not only parent).
         source: "/widget-preview",
         headers: [
           {
             key: "Content-Security-Policy",
-            value: "frame-ancestors 'self'",
+            value:
+              "frame-ancestors 'self' https://*.myshoprenter.hu https://*.shoprenter.hu https://admin.shoprenter.hu",
           },
           {
             key: "Cache-Control",
