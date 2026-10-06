@@ -8656,14 +8656,14 @@
   }
 
   function ensureFabStyles() {
-    const existing = document.getElementById("sr-b2b-qo-fab-css-v8");
+    const existing = document.getElementById("sr-b2b-qo-fab-css-v9");
     if (existing) return;
-    ["sr-b2b-qo-fab-css", "sr-b2b-qo-fab-css-v2", "sr-b2b-qo-fab-css-v3", "sr-b2b-qo-fab-css-v4", "sr-b2b-qo-fab-css-v5", "sr-b2b-qo-fab-css-v6", "sr-b2b-qo-fab-css-v7"].forEach(function (id) {
+    ["sr-b2b-qo-fab-css", "sr-b2b-qo-fab-css-v2", "sr-b2b-qo-fab-css-v3", "sr-b2b-qo-fab-css-v4", "sr-b2b-qo-fab-css-v5", "sr-b2b-qo-fab-css-v6", "sr-b2b-qo-fab-css-v7", "sr-b2b-qo-fab-css-v8"].forEach(function (id) {
       const legacy = document.getElementById(id);
       if (legacy) legacy.remove();
     });
     const style = document.createElement("style");
-    style.id = "sr-b2b-qo-fab-css-v8";
+    style.id = "sr-b2b-qo-fab-css-v9";
     style.textContent = [
       "@keyframes sr-b2b-qo-fab-in{",
       "  from{ opacity:0; transform:translateY(10px) scale(0.98); }",
@@ -8707,20 +8707,25 @@
       "#sr-b2b-qo-btn[data-ring-chase='1']{",
       "  overflow:visible;",
       "}",
-      "#sr-b2b-qo-btn[data-ring-chase='1']::before{",
-      "  content:'';",
+      /* Full conic disc spins via transform; ::after fill leaves only the rim visible */
+      "#sr-b2b-qo-btn[data-ring-chase='1'] .sr-b2b-qo-fab-ring{",
       "  position:absolute;",
       "  inset:-3px;",
       "  border-radius:inherit;",
-      "  padding:2px;",
-      "  background:conic-gradient(from 0deg, transparent 0 58%, var(--sr-qo-ring, #007AFF) 72%, #fff 86%, var(--sr-qo-ring, #007AFF) 94%, transparent 100%);",
-      "  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);",
-      "  -webkit-mask-composite:xor;",
-      "  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);",
-      "  mask-composite:exclude;",
-      "  animation:sr-b2b-qo-ring-spin 1.85s linear infinite;",
-      "  pointer-events:none;",
       "  z-index:0;",
+      "  pointer-events:none;",
+      "  background:conic-gradient(from 0deg, transparent 0 42%, var(--sr-qo-ring, #007AFF) 58%, #ffffff 66%, var(--sr-qo-ring, #007AFF) 74%, transparent 90%);",
+      "  animation:sr-b2b-qo-ring-spin 1.85s linear infinite;",
+      "  will-change:transform;",
+      "}",
+      "#sr-b2b-qo-btn[data-ring-chase='1']::after{",
+      "  content:'';",
+      "  position:absolute;",
+      "  inset:0;",
+      "  border-radius:inherit;",
+      "  background:var(--sr-qo-fill, #0A0A0C);",
+      "  z-index:1;",
+      "  pointer-events:none;",
       "}",
       "#sr-b2b-qo-btn:hover{",
       "  box-shadow:0 14px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.22);",
@@ -8758,8 +8763,8 @@
       "  outline:2px solid #0F7B6C;",
       "  outline-offset:3px;",
       "}",
-      "#sr-b2b-qo-btn .sr-b2b-qo-fab-icon{ display:flex;flex-shrink:0;position:relative;z-index:1; }",
-      "#sr-b2b-qo-btn .sr-b2b-qo-fab-label{ white-space:nowrap;position:relative;z-index:1; }",
+      "#sr-b2b-qo-btn .sr-b2b-qo-fab-icon{ display:flex;flex-shrink:0;position:relative;z-index:2; }",
+      "#sr-b2b-qo-btn .sr-b2b-qo-fab-label{ white-space:nowrap;position:relative;z-index:2; }",
       "@media (max-width:767px){",
       "  #sr-b2b-qo-btn[data-pos='bottom_right'],#sr-b2b-qo-btn[data-pos='bottom_left']{",
       "    bottom:max(80px, calc(16px + env(safe-area-inset-bottom, 0px)));",
@@ -8767,7 +8772,7 @@
       "}",
       "@media (prefers-reduced-motion:reduce){",
       "  #sr-b2b-qo-btn{ animation:none; backdrop-filter:none; -webkit-backdrop-filter:none; }",
-      "  #sr-b2b-qo-btn[data-ring-chase='1']::before{ animation:none; opacity:0.85; }",
+      "  #sr-b2b-qo-btn[data-ring-chase='1'] .sr-b2b-qo-fab-ring{ animation:none; opacity:0; }",
       "}",
       "#sr-b2b-qo-gate{",
       "  position:fixed;inset:0;z-index:2147483600;",
@@ -8895,12 +8900,6 @@
     }
 
     var ink = resolveFabInk(inkMode, color);
-    btn.style.setProperty("--sr-qo-ring", color);
-    if (cfg.fabRingChase === true) {
-      btn.setAttribute("data-ring-chase", "1");
-    } else {
-      btn.removeAttribute("data-ring-chase");
-    }
     if (style === "neon") {
       btn.style.background = "#0A0A0C";
       btn.style.color = "#FFFFFF";
@@ -8981,6 +8980,26 @@
         "0 8px 20px " +
         hexToRgba(color, 0.35) +
         ", 0 2px 6px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.28)";
+    }
+
+    btn.style.setProperty("--sr-qo-ring", color);
+    btn.style.setProperty(
+      "--sr-qo-fill",
+      btn.style.background || color || "#0A0A0C",
+    );
+    var ring = btn.querySelector(".sr-b2b-qo-fab-ring");
+    if (cfg.fabRingChase === true) {
+      btn.setAttribute("data-ring-chase", "1");
+      if (!ring) {
+        ring = el("span", {
+          className: "sr-b2b-qo-fab-ring",
+          "aria-hidden": "true",
+        });
+        btn.insertBefore(ring, btn.firstChild);
+      }
+    } else {
+      btn.removeAttribute("data-ring-chase");
+      if (ring && ring.parentNode) ring.parentNode.removeChild(ring);
     }
   }
 

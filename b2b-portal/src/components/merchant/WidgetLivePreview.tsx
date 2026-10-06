@@ -327,13 +327,16 @@ export function WidgetLivePreview(props: Props) {
 
   useEffect(() => {
     const id = "sr-fab-ring-chase-css";
-    if (document.getElementById(id)) return;
-    const style = document.createElement("style");
-    style.id = id;
-    style.textContent =
-      "@keyframes sr-fab-ring-chase{to{transform:rotate(360deg)}}" +
-      "@media (prefers-reduced-motion:reduce){.sr-fab-ring-chase-el{animation:none!important}}";
-    document.head.appendChild(style);
+    let style = document.getElementById(id) as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement("style");
+      style.id = id;
+      document.head.appendChild(style);
+    }
+    style.textContent = [
+      "@keyframes sr-fab-ring-chase{to{transform:rotate(360deg)}}",
+      "@media (prefers-reduced-motion:reduce){.sr-fab-ring-chase-el{animation:none!important;opacity:0!important}}",
+    ].join("");
   }, []);
 
   const sizeMeta =
@@ -553,29 +556,30 @@ export function WidgetLivePreview(props: Props) {
                   letterSpacing: "-0.01em",
                   overflow: props.fabRingChase ? "visible" : undefined,
                   isolation: "isolate",
-                  // CSS var for ring color
-                  ["--sr-qo-ring" as string]: props.fabColor,
+                  position: "absolute",
                 }}
                 aria-label={`${props.buttonLabel || "Gyors rendelés"} megnyitása`}
               >
                 {props.fabRingChase ? (
-                  <span
-                    aria-hidden
-                    className="sr-fab-ring-chase-el pointer-events-none absolute z-0 rounded-[inherit]"
-                    style={{
-                      inset: -3,
-                      padding: 2,
-                      background: `conic-gradient(from 0deg, transparent 0 58%, ${props.fabColor} 72%, #fff 86%, ${props.fabColor} 94%, transparent 100%)`,
-                      WebkitMask:
-                        "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-                      WebkitMaskComposite: "xor",
-                      mask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-                      maskComposite: "exclude",
-                      animation: "sr-fab-ring-chase 1.85s linear infinite",
-                    }}
-                  />
+                  <>
+                    <span
+                      aria-hidden
+                      className="sr-fab-ring-chase-el pointer-events-none absolute z-0 rounded-[inherit]"
+                      style={{
+                        inset: -3,
+                        background: `conic-gradient(from 0deg, transparent 0 42%, ${props.fabColor} 58%, #ffffff 66%, ${props.fabColor} 74%, transparent 90%)`,
+                        animation: "sr-fab-ring-chase 1.85s linear infinite",
+                        willChange: "transform",
+                      }}
+                    />
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 z-[1] rounded-[inherit]"
+                      style={{ background: visual.background }}
+                    />
+                  </>
                 ) : null}
-                <span className="relative z-[1] inline-flex items-center justify-center gap-[inherit]">
+                <span className="relative z-[2] inline-flex items-center justify-center gap-[inherit]">
                   <ListIcon color="currentColor" />
                   {showLabel ? (
                     <span>{props.buttonLabel || "Gyors rendelés"}</span>

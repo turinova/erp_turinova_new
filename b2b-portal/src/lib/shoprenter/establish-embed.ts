@@ -4,14 +4,19 @@ import {
   verifyShoprenterHmac,
   type ShoprenterEmbedQuery,
 } from "@/lib/shoprenter/embed-hmac";
-import { setEmbedSessionCookie } from "@/lib/shoprenter/embed-session";
 import {
   ensureAppStoreShop,
   kickAppStoreBootstrapAfterEnsure,
 } from "@/lib/shoprenter/ensure-app-store-shop";
 
 export type EstablishEmbedResult =
-  | { ok: true; shopName: string; publicId: string }
+  | {
+      ok: true;
+      shopId: string;
+      organizationId: string;
+      shopName: string;
+      publicId: string;
+    }
   | {
       ok: false;
       error: string;
@@ -23,6 +28,10 @@ export type EstablishEmbedResult =
       shopName?: string;
     };
 
+/**
+ * HMAC + ensure shop. Does NOT set cookies — caller must
+ * applyEmbedSessionCookie on the NextResponse (redirect).
+ */
 export async function establishEmbedSessionFromQuery(
   raw: Record<string, string | string[] | undefined>,
 ): Promise<EstablishEmbedResult> {
@@ -75,20 +84,11 @@ export async function establishEmbedSessionFromQuery(
 
   kickAppStoreBootstrapAfterEnsure(ensured);
 
-  const ok = await setEmbedSessionCookie({
+  return {
+    ok: true,
     shopId: ensured.shopId,
     organizationId: ensured.organizationId,
     shopName: ensured.shopName,
     publicId: ensured.publicId,
-  });
-  if (!ok) {
-    return {
-      ok: false,
-      error: "Session létrehozása sikertelen (hiányzó titkos kulcs).",
-      code: "session",
-      shopName,
-    };
-  }
-
-  return { ok: true, shopName: ensured.shopName, publicId: ensured.publicId };
+  };
 }

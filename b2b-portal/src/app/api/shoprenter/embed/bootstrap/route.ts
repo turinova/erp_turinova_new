@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { establishEmbedSessionFromQuery } from "@/lib/shoprenter/establish-embed";
+import { applyEmbedSessionCookie } from "@/lib/shoprenter/embed-session";
 
 /**
- * Sets embed session cookie then redirects to /sr-embed (Kezdőlap).
- * Used by EntryPoint when query params are present (cookie mutation must be
- * in a Route Handler, not an RSC).
+ * Sets embed session cookie on the redirect response, then → /sr-embed.
+ * Cookie must be on NextResponse (not cookies().set alone) for Shoprenter iframe.
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -22,5 +22,23 @@ export async function GET(req: Request) {
     return NextResponse.redirect(dest);
   }
 
-  return NextResponse.redirect(new URL("/sr-embed", url.origin));
+  const res = NextResponse.redirect(new URL("/sr-embed", url.origin));
+  const cookieOk = applyEmbedSessionCookie(res, {
+    shopId: result.shopId,
+    organizationId: result.organizationId,
+    shopName: result.shopName,
+    publicId: result.publicId,
+  });
+  if (!cookieOk) {
+    const dest = new URL("/sr-embed", url.origin);
+    dest.searchParams.set("error", "session");
+    dest.searchParams.set("shopname", result.shopName);
+    dest.searchParams.set(
+      "msg",
+      "Session létrehozása sikertelen (hiányzó SR_APP_CLIENT_SECRET).",
+    );
+    return NextResponse.redirect(dest);
+  }
+
+  return res;
 }

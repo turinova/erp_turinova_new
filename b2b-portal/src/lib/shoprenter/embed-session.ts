@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
 import {
   getSrAppClientSecret,
   isEmbedDevBypassAllowed,
@@ -92,7 +93,8 @@ export function decodeEmbedSession(token: string): EmbedSession | null {
   }
 }
 
-function cookieOpts(expiresAt: Date) {
+/** Cookie flags for Shoprenter admin iframe → app.progate.hu (cross-site). */
+export function embedSessionCookieOptions(expiresAt: Date) {
   const secure =
     process.env.NODE_ENV === "production" ||
     Boolean(process.env.VERCEL) ||
@@ -100,13 +102,34 @@ function cookieOpts(expiresAt: Date) {
   return {
     httpOnly: true,
     secure,
-    // Cross-site iframe (Shoprenter admin → app.progate.hu) needs None+Secure.
+    // Cross-site iframe needs None+Secure; Partitioned helps Chrome 3P cookie phaseout.
     sameSite: (secure ? "none" : "lax") as "none" | "lax",
     path: "/",
     expires: expiresAt,
+    ...(secure ? { partitioned: true as const } : {}),
   };
 }
 
+/**
+ * Attach embed session to a Route Handler response (required for 307 redirect
+ * Set-Cookie in cross-site iframes — cookies().set() alone often drops).
+ */
+export function applyEmbedSessionCookie(
+  res: NextResponse,
+  session: Omit<EmbedSession, "exp">,
+): boolean {
+  const token = encodeEmbedSession(session);
+  if (!token) return false;
+  const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+  res.cookies.set(
+    EMBED_SESSION_COOKIE,
+    token,
+    embedSessionCookieOptions(expiresAt),
+  );
+  return true;
+}
+
+/** @deprecated Prefer applyEmbedSessionCookie on the redirect response. */
 export async function setEmbedSessionCookie(
   session: Omit<EmbedSession, "exp">,
 ): Promise<boolean> {
@@ -114,14 +137,14 @@ export async function setEmbedSessionCookie(
   if (!token) return false;
   const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
   const jar = await cookies();
-  jar.set(EMBED_SESSION_COOKIE, token, cookieOpts(expiresAt));
+  jar.set(EMBED_SESSION_COOKIE, token, embedSessionCookieOptions(expiresAt));
   return true;
 }
 
 export async function clearEmbedSessionCookie(): Promise<void> {
   const jar = await cookies();
   jar.set(EMBED_SESSION_COOKIE, "", {
-    ...cookieOpts(new Date(0)),
+    ...embedSessionCookieOptions(new Date(0)),
     maxAge: 0,
   });
 }
