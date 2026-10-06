@@ -55,11 +55,13 @@ export default async function SrEmbedEntryPage({
     return (
       <EmbedErrorState
         title={
-          error === "shop_not_found"
-            ? "Bolt nincs a ProGate-ben"
-            : "Nem sikerült belépni"
+          error === "hmac"
+            ? "Hitelesítés sikertelen"
+            : error === "provision"
+              ? "Bolt összekötése sikertelen"
+              : "Nem sikerült belépni"
         }
-        detail={msg || "Nyisd meg az appot a Shoprenter adminból."}
+        detail={msg || "Nyisd meg újra az appot a Shoprenter adminból."}
         shopName={shopname || undefined}
       />
     );

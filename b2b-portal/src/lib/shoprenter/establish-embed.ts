@@ -5,7 +5,10 @@ import {
   type ShoprenterEmbedQuery,
 } from "@/lib/shoprenter/embed-hmac";
 import { setEmbedSessionCookie } from "@/lib/shoprenter/embed-session";
-import { findEmbedShopByName } from "@/lib/shoprenter/embed-shop";
+import {
+  ensureAppStoreShop,
+  kickAppStoreBootstrapAfterEnsure,
+} from "@/lib/shoprenter/ensure-app-store-shop";
 
 export type EstablishEmbedResult =
   | { ok: true; shopName: string; publicId: string }
@@ -15,8 +18,7 @@ export type EstablishEmbedResult =
       code:
         | "missing_params"
         | "hmac"
-        | "shop_not_found"
-        | "uninstalled"
+        | "provision"
         | "session";
       shopName?: string;
     };
@@ -61,30 +63,23 @@ export async function establishEmbedSessionFromQuery(
     };
   }
 
-  const shop = await findEmbedShopByName(shopName);
-  if (!shop) {
-    return {
-      ok: false,
-      error:
-        "Ez a bolt még nincs a ProGate-ben. Regisztrálj az app.progate.hu-n, vagy kérj invite-ot.",
-      code: "shop_not_found",
-      shopName,
-    };
-  }
-  if (shop.status === "uninstalled") {
-    return {
-      ok: false,
-      error: "Az app el lett távolítva erről a boltról. Telepítsd újra az App Store-ból.",
-      code: "uninstalled",
-      shopName,
-    };
+  let ensured;
+  try {
+    ensured = await ensureAppStoreShop(shopName);
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : "Bolt létrehozása sikertelen";
+    console.error("[establish-embed] ensure", shopName, err);
+    return { ok: false, error: msg, code: "provision", shopName };
   }
 
+  kickAppStoreBootstrapAfterEnsure(ensured);
+
   const ok = await setEmbedSessionCookie({
-    shopId: shop.shopId,
-    organizationId: shop.organizationId,
-    shopName: shop.shopName,
-    publicId: shop.publicId,
+    shopId: ensured.shopId,
+    organizationId: ensured.organizationId,
+    shopName: ensured.shopName,
+    publicId: ensured.publicId,
   });
   if (!ok) {
     return {
@@ -95,5 +90,5 @@ export async function establishEmbedSessionFromQuery(
     };
   }
 
-  return { ok: true, shopName: shop.shopName, publicId: shop.publicId };
+  return { ok: true, shopName: ensured.shopName, publicId: ensured.publicId };
 }

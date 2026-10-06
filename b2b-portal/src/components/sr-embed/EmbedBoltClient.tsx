@@ -89,17 +89,16 @@ export function EmbedBoltClient({ initial }: Props) {
             A bolt API nincs rendben
           </p>
           <p className="mt-1 text-[12px] leading-relaxed text-faint">
-            Hitelesítés hiányzik vagy lejárt. Javítsd a teljes ProGate
-            portálon (Beállítások).
+            Nyisd meg újra a ProGate appot a Shoprenter adminból — az
+            összekötés automatikusan helyreáll.
           </p>
-          <a
-            href="/settings"
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
             className="tn-btn tn-btn-primary mt-3"
+            onClick={() => window.location.reload()}
           >
-            Portál megnyitása
-          </a>
+            Frissítés
+          </button>
         </div>
       ) : null}
 
@@ -109,8 +108,8 @@ export function EmbedBoltClient({ initial }: Props) {
             A termékek még másolódnak
           </p>
           <p className="mt-1 text-[12px] leading-relaxed text-faint">
-            A widget keresője a bolton addig nem lesz teljes. Várj, vagy nézd
-            a syncet a portálon.
+            A widget keresője a bolton addig nem lesz teljes. Várj egy
+            percet, majd frissítsd az oldalt.
           </p>
         </div>
       ) : null}

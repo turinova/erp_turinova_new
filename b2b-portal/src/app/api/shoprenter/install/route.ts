@@ -4,11 +4,14 @@ import {
   verifyShoprenterHmac,
   isEmbedDevBypassAllowed,
 } from "@/lib/shoprenter/embed-hmac";
-import { markShopActiveFromInstall } from "@/lib/shoprenter/embed-shop";
+import {
+  ensureAppStoreShop,
+  kickAppStoreBootstrapAfterEnsure,
+} from "@/lib/shoprenter/ensure-app-store-shop";
 
 /**
  * Shoprenter RedirectUri after App Store install.
- * Verify HMAC → optional shop reactivate → redirect to `app_url` (SR admin iframe page).
+ * Verify HMAC → ensure org/shop/OAuth → redirect to `app_url` (SR admin iframe).
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -20,6 +23,15 @@ export async function GET(req: Request) {
       url.searchParams.get("dev") === "1" &&
       url.searchParams.get("app_url")
     ) {
+      const shop = (url.searchParams.get("shopname") || "").toLowerCase();
+      if (shop) {
+        try {
+          const ensured = await ensureAppStoreShop(shop);
+          kickAppStoreBootstrapAfterEnsure(ensured);
+        } catch (err) {
+          console.error("[shoprenter/install] ensure (dev)", err);
+        }
+      }
       return NextResponse.redirect(String(url.searchParams.get("app_url")));
     }
     return NextResponse.json(
@@ -34,9 +46,12 @@ export async function GET(req: Request) {
   }
 
   try {
-    await markShopActiveFromInstall(parsed.shopname);
+    const ensured = await ensureAppStoreShop(parsed.shopname);
+    kickAppStoreBootstrapAfterEnsure(ensured);
   } catch (err) {
-    console.error("[shoprenter/install] reactivate", err);
+    console.error("[shoprenter/install] ensure", err);
+    const msg = err instanceof Error ? err.message : "Provision hiba";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 
   const appUrl = parsed.app_url?.trim();

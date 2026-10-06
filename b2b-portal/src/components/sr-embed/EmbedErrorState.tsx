@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { TurinovaWordmark } from "@/components/brand/TurinovaWordmark";
 import { COMPANY } from "@/lib/company";
 
@@ -8,6 +7,9 @@ type Props = {
   shopName?: string;
 };
 
+/**
+ * Embed-only errors — stay inside the Shoprenter iframe (no portal signup CTA).
+ */
 export function EmbedErrorState({ title, detail, shopName }: Props) {
   const isDev = process.env.NODE_ENV === "development";
 
@@ -29,15 +31,9 @@ export function EmbedErrorState({ title, detail, shopName }: Props) {
         ) : null}
 
         <div className="mt-6 flex flex-wrap gap-2">
-          <Link
-            href={`${COMPANY.productUrl}/signup`}
-            className="tn-btn tn-btn-primary"
-          >
-            Regisztráció
-          </Link>
           <a
             href={`mailto:${COMPANY.emails.support}`}
-            className="tn-btn tn-btn-ghost"
+            className="tn-btn tn-btn-primary"
           >
             {COMPANY.emails.support}
           </a>

@@ -22,6 +22,14 @@ export function getSrAppClientSecret(): string | null {
   return s || null;
 }
 
+export function getSrAppClientId(): string | null {
+  const s =
+    process.env.SR_APP_CLIENT_ID?.trim() ||
+    process.env.SHOPRENTER_APP_CLIENT_ID?.trim() ||
+    "";
+  return s || null;
+}
+
 export function isEmbedDevBypassAllowed(): boolean {
   if (process.env.SR_EMBED_DEV === "1") return true;
   if (process.env.NODE_ENV === "development") return true;

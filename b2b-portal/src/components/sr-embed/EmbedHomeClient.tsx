@@ -46,7 +46,7 @@ const PHASE_COPY: Record<
     title: string;
     sub: string;
     cta: string;
-    ctaKind: "install" | "enable" | "widget" | "portal";
+    ctaKind: "install" | "enable" | "widget" | "reload";
   }
 > = {
   A: {
@@ -75,9 +75,9 @@ const PHASE_COPY: Record<
   },
   E: {
     title: "A bolt összekötése nincs rendben",
-    sub: "Ezt a teljes ProGate portálon tudod javítani.",
-    cta: "Javítom az összekötést",
-    ctaKind: "portal",
+    sub: "Zárd be és nyisd meg újra a ProGate appot a Shoprenter adminból — az összekötés automatikus.",
+    cta: "Frissítsd az oldalt",
+    ctaKind: "reload",
   },
 };
 
@@ -437,15 +437,14 @@ export function EmbedHomeClient({
             <Link href="/sr-embed/widget" className={primaryBtn}>
               {copy.cta}
             </Link>
-          ) : copy.ctaKind === "portal" ? (
-            <a
-              href="/settings"
-              target="_blank"
-              rel="noreferrer"
+          ) : copy.ctaKind === "reload" ? (
+            <button
+              type="button"
               className={primaryBtn}
+              onClick={() => window.location.reload()}
             >
               {copy.cta}
-            </a>
+            </button>
           ) : (
             <button
               type="button"
