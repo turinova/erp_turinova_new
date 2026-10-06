@@ -48,7 +48,8 @@ export async function installWidgetScript(opts: {
   if (mode === "manual") {
     return {
       ok: false,
-      error: "Másold be a scriptet a témába (egy kattintásos API még nincs bekapcsolva).",
+      error:
+        "Manuális mód (SR_INSTALL_MODE=manual). Másold be a scriptet a témába, vagy kapcsold be a ScriptTag API-t.",
       fallback: true,
     };
   }
@@ -58,7 +59,8 @@ export async function installWidgetScript(opts: {
   if (!loaded) {
     return {
       ok: false,
-      error: "Nincs Shoprenter API hitelesítés — előbb kösd a boltot a portálon.",
+      error:
+        "Nincs Shoprenter API token a bolthoz — nyisd meg újra az appot a Shoprenterből (újratelepítés / EntryPoint).",
       fallback: true,
     };
   }
@@ -89,9 +91,13 @@ export async function installWidgetScript(opts: {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "ScriptTag hiba";
     console.error("[installWidgetScript]", msg);
+    const scopeHint =
+      /\b(401|403)\b/.test(msg)
+        ? " Hiányzó ScriptTag scope? Partner Support: store.scriptTag:write, majd approveScopes a bolton."
+        : "";
     return {
       ok: false,
-      error: msg,
+      error: `${msg}${scopeHint}`,
       fallback: true,
     };
   }

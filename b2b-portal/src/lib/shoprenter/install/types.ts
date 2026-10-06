@@ -1,6 +1,10 @@
 export type InstallMethod = "manual" | "script_tag" | "stub";
 
-/** SR_INSTALL_MODE — default manual until store.scriptTag:write is granted. */
+/**
+ * SR_INSTALL_MODE — default `script_tag` (POST /scriptTags).
+ * Set `manual` only if App Store lacks store.scriptTag:write.
+ * @see https://doc.shoprenter.hu/api/script_tag.html
+ */
 export type InstallMode =
   | "manual"
   | "script_tag"
