@@ -4,6 +4,7 @@ import Link from 'next/link'
 import {
   ArrowLeft,
   Banknote,
+  Percent,
   Smartphone,
   Tag
 } from 'lucide-react'
@@ -20,12 +21,14 @@ import { PdaProductSearch } from '@/components/pos/pda/pda-product-search'
 import { PdaScroll, PdaShell } from '@/components/pos/pda/pda-shell'
 import { PosShiftGate } from '@/components/pos/pos-shift-gate'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { usePdaScanner } from '@/hooks/use-pda-scanner'
 import { usePdaViewport } from '@/hooks/use-pda-viewport'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { prepareBarcodeQuery } from '@/lib/pos/barcode'
 import { createPosCartHandoffAction } from '@/lib/pos/handoff-actions'
+import { updateAccessorySellGrossFromPdaAction } from '@/lib/pos/pda-price-actions'
 import { loadPosQuickProductsAction } from '@/lib/pos/quick-items-actions'
 import type { PosCartLine } from '@/lib/pos/session'
 import { getOpenPosShiftAction } from '@/lib/pos/shift-actions'
@@ -40,6 +43,10 @@ import { createSaleAction } from '@/lib/sales/actions'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import { computeSaleTotals } from '@/lib/sales/totals'
+import { cn } from '@/lib/utils'
+
+const QTY_PRESETS = [1, 5, 10, 100, 1000] as const
+type QtyPreset = (typeof QTY_PRESETS)[number]
 
 type View = 'hub' | 'check' | 'sell' | 'handoff_ok'
 
@@ -103,6 +110,10 @@ export function PdaPosClient({
     null
   )
   const [checkMsg, setCheckMsg] = useState<string | null>(null)
+  const [checkPriceEditing, setCheckPriceEditing] = useState(false)
+  const [checkGrossRaw, setCheckGrossRaw] = useState('')
+  const [checkPricePending, setCheckPricePending] = useState(false)
+  const [checkPriceFieldFocus, setCheckPriceFieldFocus] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [payMode, setPayMode] = useState<PosPayMode>('cash')
   const [pending, startTransition] = useTransition()
@@ -112,6 +123,12 @@ export function PdaPosClient({
   const [searchFocused, setSearchFocused] = useState(false)
   const [handoffCode, setHandoffCode] = useState<string | null>(null)
   const [handoffPending, setHandoffPending] = useState(false)
+  const [qtyPreset, setQtyPreset] = useState<QtyPreset>(1)
+  const [discOpenKey, setDiscOpenKey] = useState<string | null>(null)
+  const [discEditing, setDiscEditing] = useState(false)
+
+  const maxDisc = posConfig.maxDiscountPercent
+  const discountsEnabled = maxDisc > 0
 
   const cashMethod = paymentMethods.find((p) =>
     isCashPaymentMethodName(p.name)
@@ -143,7 +160,9 @@ export function PdaPosClient({
     view === 'handoff_ok' ||
     confirmOpen ||
     customerSheetOpen ||
-    searchFocused
+    searchFocused ||
+    discEditing ||
+    checkPriceFieldFocus
 
   useEffect(() => {
     if (!registerId) {
@@ -166,6 +185,16 @@ export function PdaPosClient({
       if (r.ok) setQuick(r.rows)
     })
   }, [view, warehouseId])
+
+  useEffect(() => {
+    setLines((prev) =>
+      prev.map((l) =>
+        l.discountPercentage > maxDisc
+          ? { ...l, discountPercentage: maxDisc }
+          : l
+      )
+    )
+  }, [maxDisc])
 
   const lookupBarcode = useCallback(
     async (raw: string): Promise<SaleProductSearchItem | null> => {
@@ -190,28 +219,33 @@ export function PdaPosClient({
     [warehouseId]
   )
 
-  const addProduct = useCallback((hit: SaleProductSearchItem) => {
-    if (hit.kind && hit.kind !== 'product') {
-      setFlash('PDA: csak termék (db). Anyag a pulti POS-on.')
-      return
-    }
-    if (!(hit.price_net > 0)) {
-      setFlash('Nincs eladási ár.')
-      return
-    }
-    setLines((prev) => {
-      const key = hit.id
-      const idx = prev.findIndex((l) => l.accessoryId === key)
-      if (idx >= 0) {
-        const next = [...prev]
-        const row = next[idx]!
-        next[idx] = { ...row, quantity: row.quantity + 1 }
-        return next
+  const addProduct = useCallback(
+    (hit: SaleProductSearchItem) => {
+      if (hit.kind && hit.kind !== 'product') {
+        setFlash('PDA: csak termék (db). Anyag a pulti POS-on.')
+        return
       }
-      return [...prev, catalogToLine(hit, 1)]
-    })
-    setFlash(null)
-  }, [])
+      if (!(hit.price_net > 0)) {
+        setFlash('Nincs eladási ár.')
+        return
+      }
+      const addQty = Math.max(1, qtyPreset)
+      setLines((prev) => {
+        const key = hit.id
+        const idx = prev.findIndex((l) => l.accessoryId === key)
+        if (idx >= 0) {
+          const next = [...prev]
+          const row = next[idx]!
+          next[idx] = { ...row, quantity: row.quantity + addQty }
+          return next
+        }
+        return [...prev, catalogToLine(hit, addQty)]
+      })
+      setQtyPreset(1)
+      setFlash(null)
+    },
+    [qtyPreset]
+  )
 
   const handleScan = useCallback(
     async (code: string) => {
@@ -227,6 +261,8 @@ export function PdaPosClient({
         setCheckProduct(product)
         setCheckMsg(null)
         setFlash(null)
+        setCheckPriceEditing(false)
+        setCheckPriceFieldFocus(false)
         return
       }
       addProduct(product)
@@ -294,6 +330,8 @@ export function PdaPosClient({
       return
     }
     setLines([])
+    setDiscOpenKey(null)
+    setQtyPreset(1)
     setHandoffCode(res.code)
     setView('handoff_ok')
   }
@@ -328,6 +366,8 @@ export function PdaPosClient({
         return
       }
       setLines([])
+      setDiscOpenKey(null)
+      setQtyPreset(1)
       setFlash(
         `Kész · ${result.saleNumber ?? result.id} · ${formatMoneyFt(totals.totalGross)} Ft`
       )
@@ -485,7 +525,14 @@ export function PdaPosClient({
 
       {view === 'check' ? (
         <>
-          <PdaTopbar title="Árellenőrzés" onBack={() => setView('hub')} />
+          <PdaTopbar
+            title="Árellenőrzés"
+            onBack={() => {
+              setCheckPriceEditing(false)
+              setCheckPriceFieldFocus(false)
+              setView('hub')
+            }}
+          />
           <div className="shrink-0 space-y-2 border-b border-border px-4 py-3">
             <p className="text-hint text-emerald-700">Szkenner aktív</p>
             <PdaProductSearch
@@ -494,6 +541,8 @@ export function PdaPosClient({
                 setCheckProduct(p)
                 setCheckMsg(null)
                 setFlash(null)
+                setCheckPriceEditing(false)
+                setCheckPriceFieldFocus(false)
               }}
               onBarcodeFallback={(code) => {
                 void handleScan(code)
@@ -502,6 +551,14 @@ export function PdaPosClient({
             />
           </div>
           <PdaScroll>
+            {flash && checkProduct ? (
+              <p
+                className="mb-2 rounded-md border border-border bg-surface px-3 py-2 text-body text-ink"
+                role="status"
+              >
+                {flash}
+              </p>
+            ) : null}
             {flash && !checkProduct ? (
               <p className="mb-2 text-body text-danger-ink" role="alert">
                 {flash}
@@ -520,18 +577,126 @@ export function PdaPosClient({
                 <p className="mt-1 text-hint text-ink-muted">
                   {checkProduct.sku}
                 </p>
-                <p className="mt-3 text-[32px] font-semibold tabular-nums tracking-tight text-ink">
-                  {formatMoneyFt(
-                    Math.round(
-                      checkProduct.price_net *
-                        (1 + checkProduct.tax_rate_percent / 100)
-                    )
-                  )}{' '}
-                  <span className="text-[18px] font-medium text-ink-secondary">
-                    Ft
-                  </span>
-                </p>
-                <p className="mt-1 text-body text-ink-secondary">
+                {checkPriceEditing ? (
+                  <div className="mt-3 space-y-2">
+                    <label
+                      htmlFor="pda-check-gross"
+                      className="text-hint font-medium text-ink-secondary"
+                    >
+                      Bruttó ár (Ft)
+                    </label>
+                    <div className="relative">
+                      <Input
+                        id="pda-check-gross"
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        className="h-12 pr-10 text-[18px] tabular-nums"
+                        value={checkGrossRaw}
+                        disabled={checkPricePending}
+                        onFocus={() => setCheckPriceFieldFocus(true)}
+                        onBlur={() => setCheckPriceFieldFocus(false)}
+                        onChange={(e) => setCheckGrossRaw(e.target.value)}
+                        autoFocus
+                      />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
+                        Ft
+                      </span>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-11 flex-1"
+                        disabled={checkPricePending}
+                        onClick={() => {
+                          setCheckPriceEditing(false)
+                          setCheckPriceFieldFocus(false)
+                        }}
+                      >
+                        Mégse
+                      </Button>
+                      <Button
+                        type="button"
+                        className="h-11 flex-1"
+                        disabled={checkPricePending}
+                        loading={checkPricePending}
+                        onClick={() => {
+                          if (
+                            checkProduct.kind &&
+                            checkProduct.kind !== 'product'
+                          ) {
+                            setFlash('Ár szerkesztés csak terméknél.')
+                            return
+                          }
+                          const n = Math.round(Number(checkGrossRaw))
+                          if (!Number.isFinite(n) || n < 0) {
+                            setFlash('Érvénytelen bruttó ár.')
+                            return
+                          }
+                          setCheckPricePending(true)
+                          setFlash(null)
+                          void updateAccessorySellGrossFromPdaAction({
+                            accessoryId: checkProduct.id,
+                            unitPriceGross: n
+                          }).then((res) => {
+                            setCheckPricePending(false)
+                            if (!res.ok) {
+                              setFlash(res.message)
+                              return
+                            }
+                            setCheckProduct((prev) =>
+                              prev
+                                ? { ...prev, price_net: res.priceNet }
+                                : prev
+                            )
+                            setCheckPriceEditing(false)
+                            setCheckPriceFieldFocus(false)
+                            setFlash(
+                              `Ár mentve · ${formatMoneyFt(res.unitPriceGross)} Ft`
+                            )
+                          })
+                        }}
+                      >
+                        Mentés
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-3 text-[32px] font-semibold tabular-nums tracking-tight text-ink">
+                      {formatMoneyFt(
+                        Math.round(
+                          checkProduct.price_net *
+                            (1 + checkProduct.tax_rate_percent / 100)
+                        )
+                      )}{' '}
+                      <span className="text-[18px] font-medium text-ink-secondary">
+                        Ft
+                      </span>
+                    </p>
+                    {canWrite &&
+                    (!checkProduct.kind || checkProduct.kind === 'product') ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="mt-3 h-11 w-full"
+                        onClick={() => {
+                          const gross = Math.round(
+                            checkProduct.price_net *
+                              (1 + checkProduct.tax_rate_percent / 100)
+                          )
+                          setCheckGrossRaw(String(gross))
+                          setCheckPriceEditing(true)
+                          setFlash(null)
+                        }}
+                      >
+                        Bruttó ár szerkesztése
+                      </Button>
+                    ) : null}
+                  </>
+                )}
+                <p className="mt-3 text-body text-ink-secondary">
                   Készlet:{' '}
                   <span className="font-semibold tabular-nums text-ink">
                     {checkProduct.on_hand}
@@ -574,6 +739,26 @@ export function PdaPosClient({
               }}
               onFocusChange={setSearchFocused}
             />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-hint text-ink-secondary">Mennyiség</span>
+              {QTY_PRESETS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  aria-pressed={qtyPreset === n}
+                  aria-label={`Mennyiség ${n}`}
+                  className={cn(
+                    'min-h-9 min-w-9 rounded-md border px-2 text-[13px] font-medium tabular-nums',
+                    qtyPreset === n
+                      ? 'border-ink bg-ink text-surface'
+                      : 'border-border bg-surface text-ink active:bg-subtle'
+                  )}
+                  onClick={() => setQtyPreset(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
             {flash ? (
               <p
                 className="rounded-md border border-border bg-surface px-3 py-2 text-body text-ink"
@@ -608,64 +793,184 @@ export function PdaPosClient({
                 })}
               </div>
             ) : null}
-            <ul className="space-y-2">
-              {lines.map((line) => (
-                <li
-                  key={lineKey(line)}
-                  className="flex items-center gap-2 rounded-md border border-border bg-surface px-2 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-medium text-ink">
-                      {line.name}
-                    </p>
-                    <p className="text-hint tabular-nums text-ink-muted">
-                      {formatMoneyFt(line.unitPriceGross)} Ft /{' '}
-                      {line.unitShortform}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="flex size-11 items-center justify-center rounded-md border border-border text-lg font-semibold active:bg-subtle"
-                      onClick={() =>
-                        setLines((prev) =>
-                          prev
-                            .map((l) =>
-                              lineKey(l) === lineKey(line)
-                                ? {
-                                    ...l,
-                                    quantity: Math.max(0, l.quantity - 1)
-                                  }
-                                : l
-                            )
-                            .filter((l) => l.quantity > 0)
-                        )
-                      }
-                    >
-                      −
-                    </button>
-                    <span className="w-8 text-center text-[16px] font-semibold tabular-nums">
-                      {line.quantity}
-                    </span>
-                    <button
-                      type="button"
-                      className="flex size-11 items-center justify-center rounded-md border border-border text-lg font-semibold active:bg-subtle"
-                      onClick={() =>
-                        setLines((prev) =>
-                          prev.map((l) =>
-                            lineKey(l) === lineKey(line)
-                              ? { ...l, quantity: l.quantity + 1 }
-                              : l
-                          )
-                        )
-                      }
-                    >
-                      +
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {lines.length > 0 ? (
+              <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-surface">
+                {lines.map((line) => {
+                  const key = lineKey(line)
+                  const discOpen = discOpenKey === key
+                  const hasDisc = line.discountPercentage > 0
+                  return (
+                    <li key={key} className="px-2 py-1.5">
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words text-[13px] font-medium leading-snug text-ink">
+                            {line.name}
+                          </p>
+                          <p className="mt-0.5 text-[11px] tabular-nums text-ink-muted">
+                            {formatMoneyFt(line.unitPriceGross)} Ft /{' '}
+                            {line.unitShortform}
+                            {hasDisc ? (
+                              <span className="ml-1.5 font-medium text-warning-ink">
+                                · −{line.discountPercentage}%
+                              </span>
+                            ) : null}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-0.5 pt-0.5">
+                          {discountsEnabled ? (
+                            <button
+                              type="button"
+                              aria-pressed={discOpen || hasDisc}
+                              aria-label="Kedvezmény"
+                              className={cn(
+                                'flex size-9 items-center justify-center rounded-md border text-[13px] font-semibold active:bg-subtle',
+                                discOpen || hasDisc
+                                  ? 'border-ink bg-ink text-surface'
+                                  : 'border-border text-ink'
+                              )}
+                              onClick={() =>
+                                setDiscOpenKey((k) => (k === key ? null : key))
+                              }
+                            >
+                              <Percent className="size-3.5" aria-hidden />
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="flex size-9 items-center justify-center rounded-md border border-border text-base font-semibold active:bg-subtle"
+                            aria-label={`Csökkentés ${qtyPreset}`}
+                            onClick={() =>
+                              setLines((prev) =>
+                                prev
+                                  .map((l) =>
+                                    lineKey(l) === key
+                                      ? {
+                                          ...l,
+                                          quantity: Math.max(
+                                            0,
+                                            l.quantity - qtyPreset
+                                          )
+                                        }
+                                      : l
+                                  )
+                                  .filter((l) => l.quantity > 0)
+                              )
+                            }
+                          >
+                            −
+                          </button>
+                          <span className="min-w-7 px-0.5 text-center text-[14px] font-semibold tabular-nums">
+                            {line.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            className="flex size-9 items-center justify-center rounded-md border border-border text-base font-semibold active:bg-subtle"
+                            aria-label={`Növelés ${qtyPreset}`}
+                            onClick={() =>
+                              setLines((prev) =>
+                                prev.map((l) =>
+                                  lineKey(l) === key
+                                    ? {
+                                        ...l,
+                                        quantity: l.quantity + qtyPreset
+                                      }
+                                    : l
+                                )
+                              )
+                            }
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      {discountsEnabled && discOpen ? (
+                        <div className="mt-1.5 flex items-center gap-1">
+                          <span className="text-hint text-ink-secondary">
+                            Kedv.
+                          </span>
+                          <button
+                            type="button"
+                            className="flex size-9 items-center justify-center rounded-md border border-border text-base font-semibold active:bg-subtle"
+                            aria-label="Kedvezmény csökkentése"
+                            disabled={line.discountPercentage <= 0}
+                            onClick={() =>
+                              setLines((prev) =>
+                                prev.map((l) =>
+                                  lineKey(l) === key
+                                    ? {
+                                        ...l,
+                                        discountPercentage: Math.max(
+                                          0,
+                                          l.discountPercentage - 1
+                                        )
+                                      }
+                                    : l
+                                )
+                              )
+                            }
+                          >
+                            −
+                          </button>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={maxDisc}
+                            inputMode="numeric"
+                            aria-label="Kedvezmény százalék"
+                            className="h-9 w-14 text-center tabular-nums"
+                            value={line.discountPercentage}
+                            onFocus={() => setDiscEditing(true)}
+                            onBlur={() => setDiscEditing(false)}
+                            onChange={(e) => {
+                              const n = Number(e.target.value)
+                              setLines((prev) =>
+                                prev.map((l) =>
+                                  lineKey(l) === key
+                                    ? {
+                                        ...l,
+                                        discountPercentage: Number.isFinite(n)
+                                          ? Math.min(
+                                              maxDisc,
+                                              Math.max(0, Math.round(n))
+                                            )
+                                          : 0
+                                      }
+                                    : l
+                                )
+                              )
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="flex size-9 items-center justify-center rounded-md border border-border text-base font-semibold active:bg-subtle"
+                            aria-label="Kedvezmény növelése"
+                            disabled={line.discountPercentage >= maxDisc}
+                            onClick={() =>
+                              setLines((prev) =>
+                                prev.map((l) =>
+                                  lineKey(l) === key
+                                    ? {
+                                        ...l,
+                                        discountPercentage: Math.min(
+                                          maxDisc,
+                                          l.discountPercentage + 1
+                                        )
+                                      }
+                                    : l
+                                )
+                              )
+                            }
+                          >
+                            +
+                          </button>
+                          <span className="text-hint text-ink-secondary">%</span>
+                        </div>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : null}
           </PdaScroll>
           <PdaDock
             totalGross={totals.totalGross}
