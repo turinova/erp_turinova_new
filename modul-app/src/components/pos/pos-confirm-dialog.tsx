@@ -95,7 +95,6 @@ export function PosConfirmDialog({
   globalDiscPct,
   cashMethodId,
   cardMethodId,
-  cashMethodName,
   cardMethodName,
   warehouseName,
   customerName,
