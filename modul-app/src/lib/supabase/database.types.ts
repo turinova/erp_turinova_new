@@ -1670,6 +1670,22 @@ export type Database = {
         }
         Returns: Record<string, unknown>
       }
+      void_sale_payment: {
+        Args: { p_payment_id: string }
+        Returns: Record<string, unknown>
+      }
+      update_sale_payment: {
+        Args: {
+          p_payment_id: string
+          p_payment_method_id: string
+          p_amount: number
+        }
+        Returns: Record<string, unknown>
+      }
+      recompute_sale_payment_status: {
+        Args: { p_sales_order_id: string }
+        Returns: string | null
+      }
       receive_goods_receipt: {
         Args: { p_receipt_id: string }
         Returns: Record<string, unknown>

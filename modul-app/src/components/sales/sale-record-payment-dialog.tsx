@@ -20,7 +20,9 @@ import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { recordSalePaymentAction } from '@/lib/sales/actions'
 import { isDeferredPaymentMethodName } from '@/lib/sales/payment-kind'
 import { formatMoneyFt } from '@/lib/sales/parse'
+import { salePaymentRemaining } from '@/lib/sales/payment-edit'
 import type { SaleDetail } from '@/lib/sales/queries'
+import { cn } from '@/lib/utils'
 
 type Props = {
   open: boolean
@@ -29,6 +31,8 @@ type Props = {
   paymentMethods: PaymentMethodOption[]
   /** Van aktív díjbekérő → alapból utalás */
   hasProforma?: boolean
+  /** Aktív végszámla → ne rögzítsen */
+  hasFinalInvoice?: boolean
   /** Teljes kiegyenlítés után: fulfill dialógus vagy végszámla */
   afterPayNavigate?: 'fulfill' | 'final' | null
 }
@@ -51,18 +55,12 @@ export function SaleRecordPaymentDialog({
   detail,
   paymentMethods,
   hasProforma = false,
+  hasFinalInvoice = false,
   afterPayNavigate = null
 }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const due = detail.total_gross + detail.cash_rounding_amount
-  const paidSum = detail.payments
-    .filter((p) => p.kind === 'payment')
-    .reduce((s, p) => s + p.amount, 0)
-  const refundSum = detail.payments
-    .filter((p) => p.kind === 'refund')
-    .reduce((s, p) => s + p.amount, 0)
-  const remaining = Math.max(0, due - (paidSum - refundSum))
+  const remaining = salePaymentRemaining(detail)
 
   /** Díjbekérő vagy fizetetlen eladás → utalás az alap. */
   const preferTransfer =
@@ -93,17 +91,34 @@ export function SaleRecordPaymentDialog({
     paymentMethods.find((m) => m.id === paymentMethodId)?.name
   )
 
+  const half = Math.round(remaining / 2)
+
   function handleSubmit() {
+    if (hasFinalInvoice) {
+      toast.error('Aktív számla mellett nem rögzíthető fizetés.')
+      return
+    }
+    const amt = Math.round(amount)
+    if (amt < 0) {
+      toast.error('Érvénytelen összeg.')
+      return
+    }
+    if (amt === 0) {
+      toast.message(
+        'Nincs fizetési sor — az eladás fizetetlen marad. Áruátadáshoz használd az Áru átadása gombot.'
+      )
+      onOpenChange(false)
+      return
+    }
+    if (amt > remaining + 1) {
+      toast.error(`Max. ${formatMoneyFt(remaining)} Ft.`)
+      return
+    }
+    if (!paymentMethodId) {
+      toast.error('Válassz fizetési módot.')
+      return
+    }
     startTransition(async () => {
-      const amt = Math.round(amount)
-      if (!(amt > 0)) {
-        toast.error('Adj meg pozitív összeget.')
-        return
-      }
-      if (!paymentMethodId) {
-        toast.error('Válassz fizetési módot.')
-        return
-      }
       const result = await recordSalePaymentAction({
         salesOrderId: detail.id,
         paymentMethodId,
@@ -150,7 +165,13 @@ export function SaleRecordPaymentDialog({
         </DialogHeader>
 
         <div className="space-y-3 py-1">
-          {hasProforma ? (
+          {hasFinalInvoice ? (
+            <p className="rounded-md border border-border bg-subtle px-2.5 py-2 text-hint text-ink-secondary">
+              Aktív számla mellett nem rögzíthető fizetés. Előbb sztornózd a
+              számlát.
+            </p>
+          ) : null}
+          {hasProforma && !hasFinalInvoice ? (
             <p className="rounded-md border border-border bg-subtle px-2.5 py-2 text-hint text-ink-secondary">
               Van kiállított díjbekérő
               {selectedIsTransfer
@@ -166,22 +187,53 @@ export function SaleRecordPaymentDialog({
               allowEmpty={false}
               portal={false}
               options={options}
+              disabled={hasFinalInvoice}
             />
           </FormField>
           <FormField label="Összeg (Ft)" htmlFor="rec-pay-amt" required>
             <Input
               id="rec-pay-amt"
               type="number"
-              min={1}
+              min={0}
               max={remaining}
               className="tabular-nums"
               value={amount}
+              disabled={hasFinalInvoice}
               onChange={(e) => {
                 const n = Number(e.target.value)
                 setAmount(Number.isFinite(n) ? n : 0)
               }}
             />
           </FormField>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                { label: '0 Ft', value: 0 },
+                { label: 'Fél', value: half },
+                { label: 'Teljes', value: remaining }
+              ] as const
+            ).map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                disabled={hasFinalInvoice || remaining <= 0}
+                onClick={() => setAmount(chip.value)}
+                className={cn(
+                  'rounded-md border border-border px-2 py-1 text-hint font-medium text-ink-secondary',
+                  'hover:bg-subtle hover:text-ink',
+                  'disabled:cursor-not-allowed disabled:opacity-50',
+                  amount === chip.value && 'border-ink bg-subtle text-ink'
+                )}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+          {amount === 0 ? (
+            <p className="text-hint text-ink-muted">
+              0 Ft: nincs fizetési sor — az eladás fizetetlen marad.
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -196,10 +248,12 @@ export function SaleRecordPaymentDialog({
           <Button
             type="button"
             loading={pending}
-            disabled={remaining <= 0 || paymentMethods.length === 0}
+            disabled={
+              hasFinalInvoice || remaining < 0 || paymentMethods.length === 0
+            }
             onClick={handleSubmit}
           >
-            Fizetés rögzítése
+            {amount === 0 ? 'Bezárás' : 'Fizetés rögzítése'}
           </Button>
         </DialogFooter>
       </DialogContent>

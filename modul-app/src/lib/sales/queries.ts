@@ -44,11 +44,14 @@ export type SaleItemRow = {
 
 export type SalePaymentRow = {
   id: string
+  payment_method_id: string | null
   payment_method_name: string
   amount: number
   paid_at: string
   status: string
   kind: 'payment' | 'refund'
+  provider_ref: string | null
+  sales_return_id: string | null
 }
 
 export type SaleReturnItemRow = {
@@ -108,6 +111,8 @@ export type SaleDetail = {
   created_at: string
   created_by_label: string | null
   pos_shift_id: string | null
+  /** null = nincs műszak; true = nyitott (fizetés edit OK) */
+  pos_shift_open: boolean | null
   items: SaleItemRow[]
   payments: SalePaymentRow[]
   returns: SaleReturnRow[]
@@ -277,11 +282,14 @@ export async function getSale(
       ),
       sales_payments (
         id,
+        payment_method_id,
         payment_method_name,
         amount,
         paid_at,
         status,
         kind,
+        provider_ref,
+        sales_return_id,
         deleted_at
       ),
       sales_returns (
@@ -365,24 +373,30 @@ export async function getSale(
   const payments = (
     (data.sales_payments ?? []) as {
       id: string
+      payment_method_id: string | null
       payment_method_name: string
       amount: number
       paid_at: string
       status: string
       kind?: string | null
+      provider_ref?: string | null
+      sales_return_id?: string | null
       deleted_at: string | null
     }[]
   )
     .filter((p) => !p.deleted_at)
     .map((p) => ({
       id: p.id,
+      payment_method_id: p.payment_method_id ?? null,
       payment_method_name: p.payment_method_name,
       amount: Number(p.amount),
       paid_at: p.paid_at,
       status: p.status,
       kind: (p.kind === 'refund' ? 'refund' : 'payment') as
         | 'payment'
-        | 'refund'
+        | 'refund',
+      provider_ref: p.provider_ref?.trim() || null,
+      sales_return_id: p.sales_return_id ?? null
     }))
 
   const returns: SaleReturnRow[] = (
@@ -522,6 +536,19 @@ export async function getSale(
     }
   }
 
+  const posShiftId =
+    (data as { pos_shift_id?: string | null }).pos_shift_id ?? null
+  let posShiftOpen: boolean | null = null
+  if (posShiftId) {
+    const { data: shift } = await supabase
+      .from('pos_shifts')
+      .select('status')
+      .eq('id', posShiftId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+    posShiftOpen = shift?.status === 'open'
+  }
+
   return {
     id: data.id,
     sale_number: data.sale_number,
@@ -545,8 +572,8 @@ export async function getSale(
     created_by_label:
       (data as { created_by_label_snapshot?: string | null })
         .created_by_label_snapshot ?? null,
-    pos_shift_id:
-      (data as { pos_shift_id?: string | null }).pos_shift_id ?? null,
+    pos_shift_id: posShiftId,
+    pos_shift_open: posShiftOpen,
     items,
     payments,
     returns,

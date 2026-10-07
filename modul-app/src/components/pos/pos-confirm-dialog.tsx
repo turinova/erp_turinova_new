@@ -51,6 +51,8 @@ import Link from 'next/link'
 export type PosConfirmResult = {
   payments: Array<{ paymentMethodId: string; amount: number }>
   tenders: PosTenderLine[]
+  /** Üres payments (0 Ft) → create_sale p_fulfill_now */
+  fulfillNow: boolean
   cardProviderRef: string | null
   cardAuthCode: string | null
   cardTerminalKind: PosCardTerminalKind | null
@@ -131,6 +133,8 @@ export function PosConfirmDialog({
 
   const [cashPart, setCashPart] = useState(0)
   const [cashReceived, setCashReceived] = useState(0)
+  /** KP / kártya: mennyit fizetett (0 = hitel). */
+  const [paidAmount, setPaidAmount] = useState(0)
   const [step, setStep] = useState<'review' | 'terminal'>('review')
   const [terminalKind, setTerminalKind] =
     useState<PosCardTerminalKind>('manual')
@@ -165,8 +169,10 @@ export function PosConfirmDialog({
     if (mode === 'split') {
       const half = Math.floor(due / 2)
       setCashPart(half > 0 ? hungarianCashRound(half) || half : 0)
+      setPaidAmount(due)
     } else {
       setCashPart(mode === 'cash' ? due : 0)
+      setPaidAmount(due)
     }
     setCashReceived(mode === 'cash' || mode === 'split' ? due : 0)
     const id = window.setTimeout(() => {
@@ -246,12 +252,16 @@ export function PosConfirmDialog({
     due,
     cashMethodId,
     cardMethodId,
-    cashAmount: mode === 'split' ? cashPart : undefined
+    cashAmount: mode === 'split' ? cashPart : undefined,
+    paidAmount: mode === 'split' ? undefined : paidAmount
   })
 
   const tenders = tendersBuild.ok ? tendersBuild.tenders : []
   const cashTender = tenders.find((t) => t.kind === 'cash')?.amount ?? 0
   const cardTender = tenders.find((t) => t.kind === 'card')?.amount ?? 0
+  const paidSum = tenders.reduce((s, t) => s + t.amount, 0)
+  const isCredit = paidSum === 0
+  const isPartial = paidSum > 0 && paidSum < due
   const change = posChangeDue(cashTender, cashReceived)
   const cashOk =
     cashTender <= 0 || Math.round(cashReceived) >= Math.round(cashTender)
@@ -265,8 +275,11 @@ export function PosConfirmDialog({
       return `A kapott összeg legyen legalább ${formatMoneyFt(cashTender)} Ft.`
     }
     const sum = tenders.reduce((s, t) => s + t.amount, 0)
-    if (Math.abs(sum - due) > 0) {
+    if (mode === 'split' && Math.abs(sum - due) > 0) {
       return 'A fizetések összege nem egyezik a fizetendővel.'
+    }
+    if (sum > due + 1) {
+      return 'A fizetett összeg meghaladja a fizetendőt.'
     }
     return null
   }
@@ -315,6 +328,7 @@ export function PosConfirmDialog({
         amount: t.amount
       })),
       tenders,
+      fulfillNow: tenders.length === 0,
       cardProviderRef: card?.providerRef ?? null,
       cardAuthCode: card?.authCode ?? null,
       cardTerminalKind: card?.kind ?? null,
@@ -354,18 +368,18 @@ export function PosConfirmDialog({
     >
       <DialogContent
         className={cn(
-          'flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0',
+          'flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0',
           touch
-            ? 'w-[calc(100vw-1rem)] max-w-2xl sm:max-w-2xl'
-            : 'max-w-xl'
+            ? 'w-[min(96vw,1100px)] max-w-6xl sm:max-w-6xl'
+            : 'max-w-5xl'
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-10">
+        <DialogHeader className="shrink-0 border-b border-border px-4 py-2.5 pr-10">
           <DialogTitle>
             {step === 'terminal' ? 'Kártyaterminál' : 'Eladás megerősítése'}
           </DialogTitle>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <StatusBadge
               tone={invoice ? 'info' : 'neutral'}
               variant={invoice ? 'solid' : 'outline'}
@@ -393,252 +407,358 @@ export function PosConfirmDialog({
               </StatusBadge>
             ) : null}
           </div>
-          {!invoice ? (
-            <p className="mt-2 text-hint text-ink-secondary">
-              Ez nem adóügyi nyugta. A hivatalos nyugtát az online
-              pénztárgépen állítsd ki.
-            </p>
-          ) : (
-            <p className="mt-2 text-hint text-ink-secondary">
-              A készlet azonnal csökken. Ellenőrizd a tételeket és az összeget.
-            </p>
-          )}
+          <p className="mt-1 text-hint text-ink-muted">
+            {invoice
+              ? 'A készlet azonnal csökken.'
+              : 'Nem adóügyi nyugta — a hivatalos nyugtát a pénztárgépen állítsd ki.'}
+          </p>
         </DialogHeader>
 
         {step === 'review' ? (
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-              {invoice && billing ? (
-                <div className="mb-3 rounded-md border border-border bg-subtle/40 px-3 py-2.5">
-                  <p className="mb-1 text-[12px] font-medium text-ink-secondary">
-                    Számlázási adatok
-                  </p>
-                  <div className="space-y-0.5 text-body leading-relaxed text-ink">
-                    {billing.billingName ? (
-                      <p className="font-semibold">{billing.billingName}</p>
-                    ) : null}
-                    <p className="text-ink-secondary">
-                      {[billing.billingPostalCode, billing.billingCity]
-                        .filter(Boolean)
-                        .join(' ')}
-                    </p>
-                    {billing.billingTaxNumber ? (
-                      <p className="tabular-nums text-ink-secondary">
-                        Adószám: {billing.billingTaxNumber}
+            <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden md:grid-cols-[1fr_1.15fr]">
+              {/* Bal: tételek + kompakt összesítő */}
+              <div className="flex min-h-0 min-w-0 flex-col border-b border-border md:border-b-0 md:border-r">
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                  {invoice && billing ? (
+                    <div className="mb-3 rounded-md border border-border bg-subtle/40 px-3 py-2.5">
+                      <p className="mb-1 text-[12px] font-medium text-ink-secondary">
+                        Számlázási adatok
                       </p>
-                    ) : null}
-                  </div>
-                </div>
-              ) : (
-                <p className="mb-3 text-hint text-ink-muted">
-                  Nincs számla — csak belső eladásrögzítés (készlet + műszak).
-                </p>
-              )}
+                      <div className="space-y-0.5 text-body leading-relaxed text-ink">
+                        {billing.billingName ? (
+                          <p className="font-semibold">{billing.billingName}</p>
+                        ) : null}
+                        <p className="text-ink-secondary">
+                          {[billing.billingPostalCode, billing.billingCity]
+                            .filter(Boolean)
+                            .join(' ')}
+                        </p>
+                        {billing.billingTaxNumber ? (
+                          <p className="tabular-nums text-ink-secondary">
+                            Adószám: {billing.billingTaxNumber}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
 
-              <table className="w-full border-collapse text-body">
-                <thead>
-                  <tr className="border-b border-border text-left text-label text-ink-secondary">
-                    <th className="pb-2 pr-2 font-medium">Tétel</th>
-                    <th className="w-14 pb-2 text-center font-medium">Qty</th>
-                    <th className="w-[6.5rem] pb-2 text-right font-medium">
-                      Bruttó
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((line) => {
-                    const { before, final } = lineAmounts(line)
-                    const hasDisc = line.discountPercentage > 0
-                    const over =
-                      line.onHand != null &&
-                      line.quantity > line.onHand + 0.0001
-                    return (
-                      <tr
-                        key={saleLineCartKey(line)}
-                        className={cn(
-                          'border-b border-border last:border-0',
-                          over && 'bg-warning-soft/60'
-                        )}
-                      >
-                        <td className="py-2 pr-2 align-top">
-                          <div className="font-semibold text-ink">
-                            {line.name}
-                          </div>
-                          <div className="mt-0.5 text-hint text-ink-secondary">
-                            {line.sku}
-                          </div>
-                        </td>
-                        <td className="py-2 text-center tabular-nums text-ink">
-                          {line.quantity}{' '}
-                          {saleUnitLabel(line.kind, line.unitShortform)}
-                        </td>
-                        <td className="py-2 text-right tabular-nums">
-                          {hasDisc ? (
-                            <div className="flex flex-col items-end leading-tight">
-                              <span className="text-[12px] text-ink-muted line-through">
-                                {formatMoneyFt(before)} Ft
-                              </span>
-                              <span className="font-semibold text-warning-ink">
-                                {formatMoneyFt(final)} Ft
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="font-semibold text-ink">
-                              {formatMoneyFt(final)} Ft
-                            </span>
-                          )}
-                        </td>
+                  <table className="w-full border-collapse text-body">
+                    <thead>
+                      <tr className="border-b border-border text-left text-label text-ink-secondary">
+                        <th className="pb-2 pr-2 font-medium">Tétel</th>
+                        <th className="w-14 pb-2 text-center font-medium">
+                          Qty
+                        </th>
+                        <th className="w-[6.5rem] pb-2 text-right font-medium">
+                          Bruttó
+                        </th>
                       </tr>
-                    )
-                  })}
-                  {fees.map((fee) => (
-                    <tr
-                      key={fee.key}
-                      className="border-b border-border bg-subtle/40 last:border-0"
-                    >
-                      <td className="py-2 pr-2 font-semibold text-ink">
-                        {fee.name}
-                      </td>
-                      <td className="py-2 text-center text-ink-muted">—</td>
-                      <td className="py-2 text-right font-semibold tabular-nums text-ink">
-                        {formatMoneyFt(Math.round(fee.unitPriceGross))} Ft
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {lines.map((line) => {
+                        const { before, final } = lineAmounts(line)
+                        const hasDisc = line.discountPercentage > 0
+                        const over =
+                          line.onHand != null &&
+                          line.quantity > line.onHand + 0.0001
+                        return (
+                          <tr
+                            key={saleLineCartKey(line)}
+                            className={cn(
+                              'border-b border-border last:border-0',
+                              over && 'bg-warning-soft/60'
+                            )}
+                          >
+                            <td className="py-2 pr-2 align-top">
+                              <div className="font-semibold text-ink">
+                                {line.name}
+                              </div>
+                              <div className="mt-0.5 text-hint text-ink-secondary">
+                                {line.sku}
+                              </div>
+                            </td>
+                            <td className="py-2 text-center tabular-nums text-ink">
+                              {line.quantity}{' '}
+                              {saleUnitLabel(line.kind, line.unitShortform)}
+                            </td>
+                            <td className="py-2 text-right tabular-nums">
+                              {hasDisc ? (
+                                <div className="flex flex-col items-end leading-tight">
+                                  <span className="text-[12px] text-ink-muted line-through">
+                                    {formatMoneyFt(before)} Ft
+                                  </span>
+                                  <span className="font-semibold text-warning-ink">
+                                    {formatMoneyFt(final)} Ft
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="font-semibold text-ink">
+                                  {formatMoneyFt(final)} Ft
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {fees.map((fee) => (
+                        <tr
+                          key={fee.key}
+                          className="border-b border-border bg-subtle/40 last:border-0"
+                        >
+                          <td className="py-2 pr-2 font-semibold text-ink">
+                            {fee.name}
+                          </td>
+                          <td className="py-2 text-center text-ink-muted">—</td>
+                          <td className="py-2 text-right font-semibold tabular-nums text-ink">
+                            {formatMoneyFt(Math.round(fee.unitPriceGross))} Ft
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-              <div className="mt-4 space-y-2 rounded-md border border-border bg-subtle/40 p-3">
-                <p className="text-[12px] font-medium text-ink-secondary">
-                  Fizetés
-                </p>
-                {mode === 'split' ? (
-                  <label className="block space-y-1">
-                    <span className="text-hint text-ink-secondary">
-                      Készpénz rész ({cashMethodName || 'KP'})
-                    </span>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={Math.max(0, due - 1)}
-                      className="h-11 tabular-nums"
-                      value={cashPart || ''}
-                      onChange={(e) =>
-                        setCashPart(Math.max(0, Math.round(Number(e.target.value) || 0)))
-                      }
+                <div className="shrink-0 space-y-1 border-t border-border bg-subtle/40 px-4 py-2.5">
+                  <SummaryRow
+                    label="Nettó"
+                    value={`${formatMoneyFt(baseTotals.totalNet)} Ft`}
+                  />
+                  <SummaryRow
+                    label="ÁFA"
+                    value={`${formatMoneyFt(baseTotals.totalVat)} Ft`}
+                  />
+                  {mode === 'cash' && cashRoundingAmount !== 0 ? (
+                    <SummaryRow
+                      label="KP kerekítés"
+                      value={`${cashRoundingAmount > 0 ? '+' : ''}${formatMoneyFt(cashRoundingAmount)} Ft`}
                     />
-                    <p className="text-hint text-ink-muted">
-                      Kártya rész:{' '}
-                      <span className="font-medium tabular-nums text-ink">
-                        {formatMoneyFt(Math.max(0, due - cashPart))} Ft
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Jobb: fizetés — eladó-first */}
+              <div className="flex min-h-0 min-w-0 flex-col bg-subtle/30">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+                  {/* Hero: fizetendő */}
+                  <div>
+                    <p className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
+                      Fizetendő
+                    </p>
+                    <p className="mt-0.5 text-[36px] font-semibold tabular-nums leading-none tracking-tight text-ink md:text-[40px]">
+                      {formatMoneyFt(due)}{' '}
+                      <span className="text-[20px] font-medium text-ink-secondary">
+                        Ft
                       </span>
                     </p>
-                  </label>
-                ) : null}
+                    <p className="mt-1.5 text-hint text-ink-secondary">
+                      {modeLabel}
+                      {' · '}
+                      {customerName ?? 'Vendég'}
+                    </p>
+                  </div>
 
-                {cashTender > 0 ? (
-                  <div className="space-y-2">
-                    <label className="block space-y-1">
-                      <span className="text-hint text-ink-secondary">
-                        Kapott készpénz
+                  {mode === 'split' ? (
+                    <label className="block space-y-1.5">
+                      <span className="text-[13px] font-medium text-ink">
+                        Mennyit fizet készpénzzel?
                       </span>
                       <Input
-                        ref={cashReceivedRef}
                         type="number"
-                        inputMode="numeric"
-                        min={cashTender}
+                        min={1}
+                        max={Math.max(0, due - 1)}
                         className={cn(
                           'tabular-nums',
                           touch ? 'h-12 text-[20px]' : 'h-11 text-[16px]'
                         )}
-                        value={cashReceived || ''}
+                        value={cashPart || ''}
                         onChange={(e) =>
-                          setCashReceived(
+                          setCashPart(
                             Math.max(0, Math.round(Number(e.target.value) || 0))
                           )
                         }
                       />
-                      <p
-                        className={cn(
-                          'font-semibold tabular-nums',
-                          touch ? 'text-[18px]' : 'text-[15px]',
-                          cashOk ? 'text-ink' : 'text-danger-ink'
-                        )}
-                      >
-                        Visszajáró:{' '}
-                        {cashOk ? `${formatMoneyFt(change)} Ft` : '—'}
+                      <p className="text-hint text-ink-muted">
+                        Kártya rész:{' '}
+                        <span className="font-medium tabular-nums text-ink">
+                          {formatMoneyFt(Math.max(0, due - cashPart))} Ft
+                        </span>
                       </p>
                     </label>
-                    {touch ? (
-                      <PosCashNumpad
-                        value={cashReceived}
-                        onChange={setCashReceived}
-                      />
-                    ) : null}
-                    {touch ? (
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="h-11"
-                          onClick={() => setCashReceived(cashTender)}
-                        >
-                          Pontos összeg
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="h-11"
-                          onClick={() => setCashReceived(0)}
-                        >
-                          Törlés
-                        </Button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[13px] font-medium text-ink">
+                        Mennyit fizet most?
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(
+                          [
+                            { label: 'Teljes', value: due },
+                            { label: 'Fél', value: Math.round(due / 2) },
+                            { label: '0 Ft', value: 0 }
+                          ] as const
+                        ).map((tile) => {
+                          const active = paidAmount === tile.value
+                          return (
+                            <button
+                              key={tile.label}
+                              type="button"
+                              onClick={() => {
+                                setPaidAmount(tile.value)
+                                if (mode === 'cash') setCashReceived(tile.value)
+                              }}
+                              className={cn(
+                                'flex h-12 flex-col items-center justify-center rounded-md border text-[13px] font-medium transition-colors',
+                                touch && 'h-14 text-[15px]',
+                                active
+                                  ? 'border-ink bg-ink text-surface'
+                                  : 'border-border bg-surface text-ink hover:border-border-strong hover:bg-subtle'
+                              )}
+                            >
+                              {tile.label}
+                              {tile.value > 0 && tile.label !== 'Teljes' ? (
+                                <span
+                                  className={cn(
+                                    'text-[11px] tabular-nums font-normal',
+                                    active ? 'text-surface/80' : 'text-ink-muted'
+                                  )}
+                                >
+                                  {formatMoneyFt(tile.value)}
+                                </span>
+                              ) : null}
+                            </button>
+                          )
+                        })}
                       </div>
-                    ) : null}
-                  </div>
-                ) : null}
+                      <label className="block space-y-1">
+                        <span className="text-hint text-ink-secondary">
+                          Pontos összeg (Ft)
+                        </span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={due}
+                          className={cn(
+                            'tabular-nums',
+                            touch ? 'h-12 text-[20px]' : 'h-11 text-[16px]'
+                          )}
+                          value={paidAmount}
+                          onChange={(e) => {
+                            const n = Math.round(Number(e.target.value) || 0)
+                            setPaidAmount(Math.max(0, Math.min(due, n)))
+                            if (mode === 'cash') {
+                              setCashReceived(Math.max(0, Math.min(due, n)))
+                            }
+                          }}
+                        />
+                      </label>
+                      {isCredit ? (
+                        <p className="rounded-md border border-warning/40 bg-warning-soft px-2.5 py-2 text-hint text-warning-ink">
+                          Hitelre átadás — fizetetlen eladás, áru kimegy.
+                        </p>
+                      ) : isPartial ? (
+                        <p className="rounded-md border border-border bg-surface px-2.5 py-2 text-hint text-ink-secondary">
+                          Részfizetés · hátralék{' '}
+                          <span className="font-semibold tabular-nums text-ink">
+                            {formatMoneyFt(due - paidSum)} Ft
+                          </span>
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
 
-                {cardTender > 0 ? (
-                  <p className="text-hint text-ink-secondary">
-                    Kártya ({cardMethodName || 'Kártya'}):{' '}
-                    <span className="font-semibold tabular-nums text-ink">
-                      {formatMoneyFt(cardTender)} Ft
-                    </span>
-                    {' · '}
-                    a következő lépésben a terminálon
-                  </p>
-                ) : null}
-              </div>
+                  {cashTender > 0 ? (
+                    <div className="space-y-2 rounded-md border border-border bg-surface p-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block space-y-1">
+                          <span className="text-hint text-ink-secondary">
+                            Kapott KP
+                          </span>
+                          <Input
+                            ref={cashReceivedRef}
+                            type="number"
+                            inputMode="numeric"
+                            min={cashTender}
+                            className={cn(
+                              'tabular-nums',
+                              touch ? 'h-12 text-[20px]' : 'h-11 text-[16px]'
+                            )}
+                            value={cashReceived || ''}
+                            onChange={(e) =>
+                              setCashReceived(
+                                Math.max(
+                                  0,
+                                  Math.round(Number(e.target.value) || 0)
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                        <div className="flex flex-col justify-end">
+                          <span className="text-hint text-ink-secondary">
+                            Visszajáró
+                          </span>
+                          <p
+                            className={cn(
+                              'font-semibold tabular-nums tracking-tight',
+                              touch ? 'text-[28px]' : 'text-[24px]',
+                              cashOk ? 'text-success-ink' : 'text-danger-ink'
+                            )}
+                          >
+                            {cashOk ? `${formatMoneyFt(change)} Ft` : '—'}
+                          </p>
+                        </div>
+                      </div>
+                      {touch ? (
+                        <PosCashNumpad
+                          value={cashReceived}
+                          onChange={setCashReceived}
+                        />
+                      ) : null}
+                      {touch ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-11"
+                            onClick={() => setCashReceived(cashTender)}
+                          >
+                            Pontos összeg
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-11"
+                            onClick={() => setCashReceived(0)}
+                          >
+                            Törlés
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
-              {localError ? (
-                <p className="mt-3 text-body text-danger-ink" role="alert">
-                  {localError}
-                </p>
-              ) : null}
-            </div>
+                  {cardTender > 0 ? (
+                    <p className="rounded-md border border-border bg-surface px-3 py-2.5 text-body text-ink-secondary">
+                      Következő: terminál ·{' '}
+                      <span className="font-semibold tabular-nums text-ink">
+                        {formatMoneyFt(cardTender)} Ft
+                      </span>
+                      {cardMethodName ? (
+                        <span className="text-hint text-ink-muted">
+                          {' '}
+                          ({cardMethodName})
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : null}
 
-            <div className="shrink-0 space-y-1.5 border-t border-border bg-subtle/50 px-4 py-3">
-              <SummaryRow
-                label="Nettó összesen"
-                value={`${formatMoneyFt(baseTotals.totalNet)} Ft`}
-              />
-              <SummaryRow
-                label="ÁFA összesen"
-                value={`${formatMoneyFt(baseTotals.totalVat)} Ft`}
-              />
-              {mode === 'cash' && cashRoundingAmount !== 0 ? (
-                <SummaryRow
-                  label="Készpénz kerekítés"
-                  value={`${cashRoundingAmount > 0 ? '+' : ''}${formatMoneyFt(cashRoundingAmount)} Ft`}
-                />
-              ) : null}
-              <div className="flex items-baseline justify-between gap-3 border-t border-border pt-2">
-                <span className="text-[13px] font-medium text-ink-secondary">
-                  Fizetendő (bruttó)
-                </span>
-                <span className="text-[26px] font-semibold tabular-nums tracking-tight text-ink">
-                  {formatMoneyFt(due)} Ft
-                </span>
+                  {localError ? (
+                    <p className="text-body text-danger-ink" role="alert">
+                      {localError}
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -655,13 +775,19 @@ export function PosConfirmDialog({
               </Button>
               <Button
                 type="button"
-                className={touch ? 'h-12 min-w-[12rem] text-[15px]' : 'h-11 min-w-[10rem]'}
+                className={
+                  touch
+                    ? 'h-12 min-w-[14rem] text-[15px]'
+                    : 'h-11 min-w-[12rem]'
+                }
                 loading={loading}
                 onClick={() => void goNext()}
               >
                 {cardTender > 0
-                  ? 'Tovább a terminálhoz'
-                  : `Eladás rögzítése · ${formatMoneyFt(due)} Ft`}
+                  ? `Tovább a terminálhoz · ${formatMoneyFt(cardTender)} Ft`
+                  : isCredit
+                    ? 'Hitelre átadás'
+                    : `Eladás rögzítése · ${formatMoneyFt(paidSum || due)} Ft`}
               </Button>
             </DialogFooter>
           </>

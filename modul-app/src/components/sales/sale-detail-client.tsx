@@ -3,7 +3,17 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Banknote, Download, ExternalLink, FileText, PackageCheck, Pencil, Undo2 } from 'lucide-react'
+import {
+  Banknote,
+  Download,
+  ExternalLink,
+  FileText,
+  PackageCheck,
+  Pencil,
+  Trash2,
+  Undo2,
+  UserPlus
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import { InvoiceIssueDialog } from '@/components/invoicing/invoice-issue-dialog'
@@ -19,10 +29,13 @@ import {
 } from '@/components/patterns/data-table'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
+import { SaleAssignCustomerDialog } from '@/components/sales/sale-assign-customer-dialog'
 import { SaleBillingEditDialog } from '@/components/sales/sale-billing-edit-dialog'
+import { SaleEditPaymentDialog } from '@/components/sales/sale-edit-payment-dialog'
 import { SaleRecordPaymentDialog } from '@/components/sales/sale-record-payment-dialog'
 import { SaleReturnDialog } from '@/components/sales/sale-return-dialog'
 import { SaleTotalsBreakdown } from '@/components/sales/sale-totals-breakdown'
+import type { OptiCustomerOption } from '@/lib/customers/queries'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { stornoTargetIds } from '@/lib/invoicing/invoice-rules'
 import {
@@ -30,7 +43,9 @@ import {
   type InvoiceListItem
 } from '@/lib/invoicing/types'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
-import { fulfillSaleAction } from '@/lib/sales/actions'
+import { fulfillSaleAction, voidSalePaymentAction } from '@/lib/sales/actions'
+import { canEditSalePayment } from '@/lib/sales/payment-edit'
+import type { SalePaymentRow } from '@/lib/sales/queries'
 import {
   canStartSaleReturn,
   formatMoneyFt,
@@ -150,6 +165,7 @@ type Props = {
   canWrite: boolean
   invoices?: InvoiceListItem[]
   hasAgentKey?: boolean
+  customerSeed?: OptiCustomerOption[]
 }
 
 export function SaleDetailClient({
@@ -157,7 +173,8 @@ export function SaleDetailClient({
   paymentMethods,
   canWrite,
   invoices = [],
-  hasAgentKey = false
+  hasAgentKey = false,
+  customerSeed = []
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -165,6 +182,10 @@ export function SaleDetailClient({
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
+  const [assignCustomerOpen, setAssignCustomerOpen] = useState(false)
+  const [editPayment, setEditPayment] = useState<SalePaymentRow | null>(null)
+  const [voidPayment, setVoidPayment] = useState<SalePaymentRow | null>(null)
+  const [voidPending, startVoid] = useTransition()
   const [openInvoiceAfterBilling, setOpenInvoiceAfterBilling] = useState(false)
   const [preferredKind, setPreferredKind] = useState<InvoiceIssueKind | null>(
     null
@@ -192,9 +213,10 @@ export function SaleDetailClient({
   const billingFilled = hasBilling(customer)
   const canEditBilling =
     canWrite && detail.status !== 'cancelled' && !hasFinalInvoice
+  const canAssignCustomer = canEditBilling
 
   const isConfirmed = detail.status === 'confirmed'
-  const canFulfill = canWrite && isConfirmed
+  const canFulfill = canWrite && isConfirmed && !hasFinalInvoice
 
   const isUnpaidLike =
     detail.payment_status === 'unpaid' || detail.payment_status === 'partial'
@@ -204,9 +226,6 @@ export function SaleDetailClient({
     isUnpaidLike &&
     !hasProforma &&
     !hasFinalInvoice
-
-  const needsFulfillCta =
-    canFulfill && detail.payment_status === 'paid' && !hasFinalInvoice
 
   /** Végszámla csak fulfilled + paid után (HU teljesítés). */
   const canIssueFinal =
@@ -218,16 +237,17 @@ export function SaleDetailClient({
   const canRecordPayment =
     canWrite &&
     detail.status !== 'cancelled' &&
+    !hasFinalInvoice &&
     (detail.payment_status === 'unpaid' || detail.payment_status === 'partial')
 
-  /** Certainty-first: egy következő lépés. */
+  /** Certainty-first: egy következő lépés. Hitel: confirmed unpaid → áruátadás. */
   type NextStep = 'fulfill' | 'proforma' | 'pay' | 'final' | null
-  const nextStep: NextStep = needsFulfillCta
-    ? 'fulfill'
-    : needsProformaCta
-      ? 'proforma'
-      : hasProforma && canRecordPayment
-        ? 'pay'
+  const nextStep: NextStep = needsProformaCta
+    ? 'proforma'
+    : hasProforma && canRecordPayment
+      ? 'pay'
+      : canFulfill
+        ? 'fulfill'
         : canIssueFinal
           ? 'final'
           : null
@@ -552,6 +572,23 @@ export function SaleDetailClient({
               ) : null}
             </>
           )}
+          {canAssignCustomer ? (
+            <div className="pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setAssignCustomerOpen(true)}
+              >
+                <UserPlus className="size-3.5" aria-hidden />
+                {isGuest ? 'Ügyfél hozzárendelése' : 'Ügyfél csere'}
+              </Button>
+            </div>
+          ) : hasFinalInvoice ? (
+            <p className="pt-1 text-hint text-ink-muted">
+              Aktív számla mellett nem módosítható.
+            </p>
+          ) : null}
         </InfoCard>
 
         <InfoCard title="Számlázási adatok">
@@ -799,25 +836,61 @@ export function SaleDetailClient({
                   const chip = isRefund
                     ? ({ tone: 'warning' as const, variant: 'soft' as const })
                     : payMethodChip(p.payment_method_name)
+                  const editable = canEditSalePayment({
+                    canWrite,
+                    saleStatus: detail.status,
+                    paymentStatus: detail.payment_status,
+                    hasFinalInvoice,
+                    posShiftOpen: detail.pos_shift_open,
+                    payment: p
+                  })
                   return (
                     <li
                       key={p.id}
                       className="flex items-center justify-between gap-2 px-3 py-2.5 text-body"
                     >
-                      <StatusBadge tone={chip.tone} variant={chip.variant}>
-                        {isRefund
-                          ? `Visszatérítés · ${p.payment_method_name}`
-                          : p.payment_method_name}
-                      </StatusBadge>
-                      <span
-                        className={cn(
-                          'font-semibold tabular-nums',
-                          isRefund ? 'text-warning-ink' : 'text-ink'
-                        )}
-                      >
-                        {isRefund ? '−' : ''}
-                        {formatMoneyFt(p.amount)} Ft
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <StatusBadge tone={chip.tone} variant={chip.variant}>
+                          {isRefund
+                            ? `Visszatérítés · ${p.payment_method_name}`
+                            : p.payment_method_name}
+                        </StatusBadge>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span
+                          className={cn(
+                            'font-semibold tabular-nums',
+                            isRefund ? 'text-warning-ink' : 'text-ink'
+                          )}
+                        >
+                          {isRefund ? '−' : ''}
+                          {formatMoneyFt(p.amount)} Ft
+                        </span>
+                        {editable ? (
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-1.5"
+                              aria-label="Fizetés szerkesztése"
+                              onClick={() => setEditPayment(p)}
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-1.5 text-danger-ink hover:text-danger-ink"
+                              aria-label="Fizetés törlése"
+                              onClick={() => setVoidPayment(p)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
                     </li>
                   )
                 })}
@@ -895,6 +968,17 @@ export function SaleDetailClient({
         />
       ) : null}
 
+      {canAssignCustomer ? (
+        <SaleAssignCustomerDialog
+          open={assignCustomerOpen}
+          onOpenChange={setAssignCustomerOpen}
+          salesOrderId={detail.id}
+          saleNumber={detail.sale_number}
+          isReplace={!isGuest}
+          seed={customerSeed}
+        />
+      ) : null}
+
       {canWrite ? (
         <InvoiceIssueDialog
           open={invoiceOpen}
@@ -916,6 +1000,7 @@ export function SaleDetailClient({
           detail={detail}
           paymentMethods={paymentMethods}
           hasProforma={hasProforma && !hasFinalInvoice}
+          hasFinalInvoice={hasFinalInvoice}
           afterPayNavigate={
             isConfirmed
               ? 'fulfill'
@@ -925,6 +1010,48 @@ export function SaleDetailClient({
           }
         />
       ) : null}
+
+      <SaleEditPaymentDialog
+        open={Boolean(editPayment)}
+        onOpenChange={(open) => {
+          if (!open) setEditPayment(null)
+        }}
+        detail={detail}
+        payment={editPayment}
+        paymentMethods={paymentMethods}
+      />
+
+      <ConfirmDialog
+        open={Boolean(voidPayment)}
+        onOpenChange={(open) => {
+          if (!open) setVoidPayment(null)
+        }}
+        title="Fizetés törlése"
+        description={
+          voidPayment
+            ? `${voidPayment.payment_method_name} · ${formatMoneyFt(voidPayment.amount)} Ft — eltávolítod erről az eladásról?`
+            : ''
+        }
+        confirmLabel="Fizetés törlése"
+        cancelLabel="Mégse"
+        variant="danger"
+        loading={voidPending}
+        onConfirm={() => {
+          if (!voidPayment) return
+          startVoid(async () => {
+            const result = await voidSalePaymentAction({
+              paymentId: voidPayment.id
+            })
+            if (!result.ok) {
+              toast.error(result.message)
+              return
+            }
+            toast.success('Fizetés törölve.')
+            setVoidPayment(null)
+            router.refresh()
+          })
+        }}
+      />
 
       <ConfirmDialog
         open={fulfillOpen}

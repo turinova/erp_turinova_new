@@ -29,6 +29,11 @@ export function buildPosTenders(input: {
   cashMethodId: string | null
   cardMethodId: string | null
   cashAmount?: number
+  /**
+   * KP / kártya: mennyit fizetett (0 = hitel, partial OK).
+   * Hiányzik → teljes due. Splitnél ignorált.
+   */
+  paidAmount?: number
 }): { ok: true; tenders: PosTenderLine[] } | { ok: false; message: string } {
   const due = Math.round(input.due)
   if (due <= 0) {
@@ -39,13 +44,25 @@ export function buildPosTenders(input: {
     if (!input.cashMethodId) {
       return { ok: false, message: 'Nincs készpénz fizetési mód.' }
     }
+    let paid =
+      input.paidAmount == null ? due : Math.round(input.paidAmount)
+    if (paid < 0) paid = 0
+    if (paid > due) {
+      return {
+        ok: false,
+        message: `A fizetett összeg max. ${due} Ft lehet.`
+      }
+    }
+    if (paid === 0) {
+      return { ok: true, tenders: [] }
+    }
     return {
       ok: true,
       tenders: [
         {
           kind: 'cash',
           paymentMethodId: input.cashMethodId,
-          amount: due
+          amount: paid
         }
       ]
     }
@@ -55,19 +72,31 @@ export function buildPosTenders(input: {
     if (!input.cardMethodId) {
       return { ok: false, message: 'Nincs kártya fizetési mód.' }
     }
+    let paid =
+      input.paidAmount == null ? due : Math.round(input.paidAmount)
+    if (paid < 0) paid = 0
+    if (paid > due) {
+      return {
+        ok: false,
+        message: `A fizetett összeg max. ${due} Ft lehet.`
+      }
+    }
+    if (paid === 0) {
+      return { ok: true, tenders: [] }
+    }
     return {
       ok: true,
       tenders: [
         {
           kind: 'card',
           paymentMethodId: input.cardMethodId,
-          amount: due
+          amount: paid
         }
       ]
     }
   }
 
-  // split
+  // split — mindig teljes due (hitel/partial v1-ben nem)
   if (!input.cashMethodId || !input.cardMethodId) {
     return {
       ok: false,

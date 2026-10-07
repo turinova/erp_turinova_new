@@ -183,6 +183,15 @@ export const updateSaleBillingSchema = z.object({
 
 export type UpdateSaleBillingInput = z.infer<typeof updateSaleBillingSchema>
 
+/** Meglévő eladáshoz ügyfél hozzárendelés / csere / vendég (null). */
+export const assignSaleCustomerSchema = z.object({
+  salesOrderId: z.string().uuid(),
+  customerId: z.string().uuid().nullable(),
+  pullBilling: z.boolean().default(true)
+})
+
+export type AssignSaleCustomerInput = z.infer<typeof assignSaleCustomerSchema>
+
 export const saleReturnLineSchema = z.object({
   salesOrderItemId: z.string().uuid(),
   quantity: z.number().positive('Adj meg pozitív mennyiséget.'),
@@ -208,6 +217,20 @@ export const recordSalePaymentSchema = z.object({
 })
 
 export type RecordSalePaymentInput = z.infer<typeof recordSalePaymentSchema>
+
+export const updateSalePaymentSchema = z.object({
+  paymentId: z.string().uuid(),
+  paymentMethodId: z.string().uuid('Válassz fizetési módot.'),
+  amount: z.number().positive('A fizetés legyen pozitív.')
+})
+
+export type UpdateSalePaymentInput = z.infer<typeof updateSalePaymentSchema>
+
+export const voidSalePaymentSchema = z.object({
+  paymentId: z.string().uuid()
+})
+
+export type VoidSalePaymentInput = z.infer<typeof voidSalePaymentSchema>
 
 export function formatMoneyFt(n: number) {
   return new Intl.NumberFormat('hu-HU', {

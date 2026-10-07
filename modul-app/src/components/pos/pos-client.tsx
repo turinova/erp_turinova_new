@@ -359,6 +359,32 @@ export function PosClient({
     setHydrated(true)
   }, [warehouses, registers, defaultWh])
 
+  // Session restore: ügyfél chip, ha nincs a seed 25-ben
+  useEffect(() => {
+    if (!hydrated || !customerId) return
+    if (customers.some((c) => c.id === customerId)) return
+    let cancelled = false
+    void fetch(
+      `/api/customers/search?id=${encodeURIComponent(customerId)}`,
+      { credentials: 'same-origin' }
+    )
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = (await res.json()) as { rows?: OptiCustomerOption[] }
+        const row = data.rows?.[0]
+        if (!row || cancelled) return
+        setCustomers((prev) =>
+          prev.some((x) => x.id === row.id) ? prev : [row, ...prev]
+        )
+      })
+      .catch(() => {
+        /* ignore — chip nélkül is megy a customerId a checkoutba */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [hydrated, customerId, customers])
+
   // Deep link: /pos?beallitasok=1
   useEffect(() => {
     if (searchParams.get('beallitasok') !== '1') return
@@ -563,16 +589,20 @@ export function PosClient({
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       const t = e.target as Node
+      const el = e.target as HTMLElement | null
+      // MenuSelect lista portál a body-n — ne zárjuk be a pickert a választás előtt
+      const inMenuSelect = Boolean(el?.closest?.('[data-menu-select]'))
       if (
         !searchWrapRef.current?.contains(t) &&
-        !searchResultsRef.current?.contains(t)
+        !searchResultsRef.current?.contains(t) &&
+        !inMenuSelect
       ) {
         setSearchOpen(false)
       }
-      if (!customerWrapRef.current?.contains(e.target as Node)) {
+      if (!customerWrapRef.current?.contains(t) && !inMenuSelect) {
         setCustomerOpen(false)
       }
-      if (!moreWrapRef.current?.contains(e.target as Node)) {
+      if (!moreWrapRef.current?.contains(t)) {
         setMoreOpen(false)
       }
     }
@@ -836,7 +866,8 @@ export function PosClient({
           unitPriceGross: Math.round(f.unitPriceGross),
           taxRatePercent: f.taxRatePercent
         })),
-        payments: confirm.payments
+        payments: confirm.payments,
+        fulfillNow: confirm.fulfillNow || confirm.payments.length === 0
       })
 
       if (!result.ok) {
@@ -1139,6 +1170,7 @@ export function PosClient({
                 value=""
                 seed={customers}
                 allowEmpty={false}
+                portal={false}
                 placeholder="Ügyfél keresése…"
                 onChange={(id, c) => {
                   setCustomerId(id)

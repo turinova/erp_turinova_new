@@ -164,11 +164,13 @@ export function MenuSelect({
       const spaceAbove = rect.top
       const openUp =
         spaceBelow < MENU_MAX_HEIGHT_PX + searchOffset && spaceAbove > spaceBelow
+      // Explicit px width — ne nőjön a modal/grid fölé hosszú hint miatt
       setMenuStyle({
         position: 'absolute',
         left: 0,
-        right: 0,
-        width: '100%',
+        width: rect.width,
+        maxWidth: '100%',
+        boxSizing: 'border-box',
         zIndex: MENU_Z,
         ...(openUp
           ? { bottom: 'calc(100% + 4px)', top: 'auto' }
@@ -308,6 +310,7 @@ export function MenuSelect({
         ref={menuRef}
         id={listId}
         role="listbox"
+        data-menu-select=""
         tabIndex={searchable ? undefined : -1}
         aria-activedescendant={
           filteredOptions[highlight]
@@ -430,7 +433,7 @@ export function MenuSelect({
       : menuInner
 
   return (
-    <div ref={rootRef} className={cn('relative', className)}>
+    <div ref={rootRef} className={cn('relative min-w-0', className)}>
       <button
         type="button"
         id={id}
@@ -441,7 +444,7 @@ export function MenuSelect({
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onTriggerKeyDown}
         className={cn(
-          'flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-body text-ink transition-colors duration-fast',
+          'flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-body text-ink transition-colors duration-fast',
           wrap ? 'min-h-8 py-1' : 'h-8',
           'hover:border-border-strong',
           'disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-disabled',

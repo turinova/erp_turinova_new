@@ -18,6 +18,11 @@ type Props = {
   emptyLabel?: string
   disabled?: boolean
   className?: string
+  /**
+   * MenuSelect portal — default true.
+   * POS popoverben false: a lista a wrap-en belül marad (click-outside).
+   */
+  portal?: boolean
   onChange: (customerId: string, customer: OptiCustomerOption | null) => void
 }
 
@@ -47,6 +52,7 @@ export function CustomerMenuSelect({
   emptyLabel = 'Nincs / vendég',
   disabled = false,
   className,
+  portal = true,
   onChange
 }: Props) {
   const [rows, setRows] = useState<OptiCustomerOption[]>(seed)
@@ -129,6 +135,7 @@ export function CustomerMenuSelect({
         allowEmpty={allowEmpty}
         emptyLabel={emptyLabel}
         disabled={disabled}
+        portal={portal}
         searchable
         filterLocally={false}
         loading={loading}

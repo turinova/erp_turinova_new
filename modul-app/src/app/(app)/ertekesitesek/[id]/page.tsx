@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 
 import { SaleDetailClient } from '@/components/sales/sale-detail-client'
 import { getSessionUser } from '@/lib/auth/session'
+import { listCustomersForSelect } from '@/lib/customers/queries'
 import { listInvoicesForSale } from '@/lib/invoicing/queries'
 import { getInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
 import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
@@ -39,12 +40,14 @@ export default async function ErtekesitesDetailPage({
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const [detail, paymentMethods, invoices, settings] = await Promise.all([
-    getSale(supabase, user.tenantId, id),
-    listActivePaymentMethods(supabase, user.tenantId),
-    listInvoicesForSale(supabase, user.tenantId, id).catch(() => []),
-    getInvoiceSettings(supabase, user.tenantId).catch(() => null)
-  ])
+  const [detail, paymentMethods, invoices, settings, customerSeed] =
+    await Promise.all([
+      getSale(supabase, user.tenantId, id),
+      listActivePaymentMethods(supabase, user.tenantId),
+      listInvoicesForSale(supabase, user.tenantId, id).catch(() => []),
+      getInvoiceSettings(supabase, user.tenantId).catch(() => null),
+      listCustomersForSelect(supabase, user.tenantId).catch(() => [])
+    ])
   if (!detail) notFound()
 
   return (
@@ -55,6 +58,7 @@ export default async function ErtekesitesDetailPage({
         canWrite={canWrite}
         invoices={invoices}
         hasAgentKey={hasAgentKey(settings)}
+        customerSeed={customerSeed}
       />
     </Suspense>
   )
