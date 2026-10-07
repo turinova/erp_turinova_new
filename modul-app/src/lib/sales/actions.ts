@@ -13,6 +13,7 @@ import {
   saleFormSchema,
   saleReturnFormSchema,
   updateSaleBillingSchema,
+  updateSaleNoteSchema,
   updateSalePaymentSchema,
   voidSalePaymentSchema,
   type AssignSaleCustomerInput,
@@ -20,6 +21,7 @@ import {
   type SaleFormInput,
   type SaleReturnFormInput,
   type UpdateSaleBillingInput,
+  type UpdateSaleNoteInput,
   type UpdateSalePaymentInput,
   type VoidSalePaymentInput
 } from '@/lib/sales/parse'
@@ -492,6 +494,54 @@ export async function fulfillSaleAction(
 
   revalidateSalePaths(result.id)
   return { ok: true, id: result.id, saleNumber: result.sale_number }
+}
+
+/** Detail: belső megjegyzés (számla után is engedett). */
+export async function updateSaleNoteAction(
+  input: UpdateSaleNoteInput
+): Promise<SaleActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const parsed = updateSaleNoteSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? 'Hibás adatok.'
+    }
+  }
+
+  const { salesOrderId, note } = parsed.data
+  const tenantId = ctx.user.tenantId!
+  const cleaned = note?.trim() ? note.trim() : null
+
+  const { data: sale, error: saleErr } = await ctx.supabase
+    .from('sales_orders')
+    .select('id, deleted_at')
+    .eq('id', salesOrderId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (saleErr || !sale || sale.deleted_at) {
+    return { ok: false, message: 'Az eladás nem található.' }
+  }
+
+  const { error } = await ctx.supabase
+    .from('sales_orders')
+    .update({
+      note: cleaned,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', salesOrderId)
+    .eq('tenant_id', tenantId)
+
+  if (error) {
+    console.error('updateSaleNoteAction', error.message)
+    return { ok: false, message: 'Nem sikerült menteni a megjegyzést.' }
+  }
+
+  revalidateSalePaths(salesOrderId)
+  return { ok: true, id: salesOrderId }
 }
 
 /** Detail: számlázási snapshot szerkesztés (amíg nincs aktív végszámla). */

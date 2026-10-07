@@ -47,5 +47,6 @@
 | [42-ugyfelrendeles.md](42-ugyfelrendeles.md) | **Ügyfélrendelés** — special order, 4 státusz, PO + foglalás + SMS (Alap) |
 | [43-atveteli-blokk.md](43-atveteli-blokk.md) | **Átvételi blokk** — Opti hőnyomtató elismervény, Lapszabászat ajándék |
 | [44-penzugy-finance.md](44-penzugy-finance.md) | **Pénzügy** — AR, ÁFA, export, kifiz Agent, soft-lock |
+| [45-pda-pos-addon.md](45-pda-pos-addon.md) | **PDA POS add-on** — gombos kézi eladás + árellenőrzés, 7 900 Ft |
 
 **Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok: **`33`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**. Agent commerce: **`38`**. Webshop add-on: **`39`**. Ügyfélrendelés: **`42`**. Átvételi blokk: **`43`**.

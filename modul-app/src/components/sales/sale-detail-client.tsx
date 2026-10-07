@@ -32,6 +32,7 @@ import { StatusBadge } from '@/components/patterns/status-badge'
 import { SaleAssignCustomerDialog } from '@/components/sales/sale-assign-customer-dialog'
 import { SaleBillingEditDialog } from '@/components/sales/sale-billing-edit-dialog'
 import { SaleEditPaymentDialog } from '@/components/sales/sale-edit-payment-dialog'
+import { SaleNoteCard } from '@/components/sales/sale-note-card'
 import { SaleRecordPaymentDialog } from '@/components/sales/sale-record-payment-dialog'
 import { SaleReturnDialog } from '@/components/sales/sale-return-dialog'
 import { SaleTotalsBreakdown } from '@/components/sales/sale-totals-breakdown'
@@ -646,11 +647,11 @@ export function SaleDetailClient({
         </InfoCard>
       </div>
 
-      {detail.note ? (
-        <p className="rounded-md border border-border bg-surface px-3 py-2.5 text-body text-ink-secondary">
-          {detail.note}
-        </p>
-      ) : null}
+      <SaleNoteCard
+        salesOrderId={detail.id}
+        note={detail.note}
+        canWrite={canWrite}
+      />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         <div className="space-y-4">

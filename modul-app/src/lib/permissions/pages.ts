@@ -29,7 +29,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 20
+export const PAGE_CATALOG_VERSION = 21
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -49,6 +49,7 @@ export const APP_PAGES: AppPageDef[] = [
     label: 'POS beállítások',
     category: 'Pult'
   },
+  { key: '/pos/pda', label: 'PDA POS', category: 'Pult' },
   { key: '/belepok', label: 'Belépők', category: 'Pult' },
   { key: '/ugyfelek', label: 'Ügyfelek', category: 'Ügyfél' },
   {
@@ -279,6 +280,7 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/ertekesitesek',
       '/pos',
       '/pos/beallitasok',
+      '/pos/pda',
       '/ertekesitesek/muszakok',
       '/szamlak',
       '/penzugy',

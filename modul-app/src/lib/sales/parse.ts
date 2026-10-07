@@ -183,6 +183,14 @@ export const updateSaleBillingSchema = z.object({
 
 export type UpdateSaleBillingInput = z.infer<typeof updateSaleBillingSchema>
 
+/** Belső megjegyzés az eladáson (nem számlaszöveg). */
+export const updateSaleNoteSchema = z.object({
+  salesOrderId: z.string().uuid(),
+  note: z.string().trim().max(500).nullable()
+})
+
+export type UpdateSaleNoteInput = z.infer<typeof updateSaleNoteSchema>
+
 /** Meglévő eladáshoz ügyfél hozzárendelés / csere / vendég (null). */
 export const assignSaleCustomerSchema = z.object({
   salesOrderId: z.string().uuid(),

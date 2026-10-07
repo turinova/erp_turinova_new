@@ -19,6 +19,22 @@
   }
 }
 
+/* PDA / A2HS — no rubber-band, lock document scroll while on route */
+html.pda-route,
+html.pda-route body {
+  overscroll-behavior: none;
+  overflow: hidden;
+  height: 100%;
+  touch-action: manipulation;
+}
+
+@media all and (display-mode: standalone) {
+  .pda-shell--standalone {
+    /* WebKit standalone: 100vh includes safe-area better than svh/dvh */
+    height: 100vh;
+  }
+}
+
 /* Linkify marketing port — mesh gradient blob */
 .linkify-root .lf-gradient {
   background: conic-gradient(

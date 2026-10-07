@@ -104,6 +104,8 @@ export async function loginAction(
 ): Promise<LoginState> {
   const email = String(formData.get('email') || '').trim()
   const password = String(formData.get('password') || '')
+  const nextRaw = String(formData.get('next') || '').trim()
+  const nextPath = nextRaw ? sanitizeNextPath(nextRaw) : '/home'
 
   if (!email || !password) {
     return { error: 'Add meg az email címet és a jelszót.' }
@@ -278,7 +280,7 @@ export async function loginAction(
 
       await stageLoginBootstrap({
         nonce: sessionNonce,
-        next: '/home',
+        next: nextPath,
         tenantId: current.tenantId,
         snapshotToken: snap
       })
@@ -329,7 +331,7 @@ export async function loginAction(
     cookieStore.set(DEV_SESSION_COOKIE, encodeURIComponent(email), {
       ...appSessionCookieOptions()
     })
-    redirect('/home')
+    redirect(nextPath)
   }
 
   return {

@@ -24,6 +24,7 @@ import {
   ScanBarcode,
   ScanSearch,
   Search,
+  Smartphone,
   Settings,
   Settings2,
   ShoppingCart,
@@ -122,6 +123,13 @@ const allNavSections: NavSection[] = [
           label: 'POS',
           href: '/pos',
           icon: Banknote,
+          accent: 'slate'
+        },
+      {
+          type: 'link',
+          label: 'PDA POS',
+          href: '/pos/pda',
+          icon: Smartphone,
           accent: 'slate'
         },
       {

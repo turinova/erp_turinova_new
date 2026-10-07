@@ -73,9 +73,17 @@ function withSurfaceHeaders(
 
 function redirectTo(request: NextRequest, pathname: string, reason?: string) {
   const url = request.nextUrl.clone()
+  const fromPath = request.nextUrl.pathname
   url.pathname = pathname
   if (reason) url.searchParams.set('reason', reason)
   else url.searchParams.delete('reason')
+  // PDA A2HS: session lejárat után vissza /pos/pda-ra
+  if (
+    (pathname === '/login' || pathname.endsWith('/login')) &&
+    fromPath.startsWith('/pos/pda')
+  ) {
+    url.searchParams.set('next', '/pos/pda')
+  }
   return noStore(NextResponse.redirect(url))
 }
 

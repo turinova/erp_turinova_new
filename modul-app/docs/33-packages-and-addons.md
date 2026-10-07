@@ -39,6 +39,7 @@ Bolt mag — **nem** opcionális:
 | `quote_ready_sms` | **0 + 89 Ft/db** | A Lapszabászat része; nincs külön havidíj |
 | `footcounter` | **5 000** + kamera egyszeri | AI belépőszámláló |
 | `webshop` | **12 900** | B2C online bolt — kategória/attr, shop-ready ([39](39-webshop-addon.md)) |
+| `pda_pos` | **7 900** | Gombos PDA / kézi POS + árellenőrzés (`/pos/pda`) — [45](45-pda-pos-addon.md) |
 
 **Kikapcsolt katalógus:** `beszerzes`, `pos`, `product_labels` (`active=false`) — feature az Alap planra került.
 

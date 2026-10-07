@@ -125,9 +125,26 @@ export type SaleListParams = {
   q?: string
   status?: SaleStatus | 'all'
   paymentStatus?: SalePaymentStatus | 'all'
+  channel?: SaleChannel | 'all'
   posShiftId?: string
+  /** Ügyfél detail: csak ehhez a customer_id-hoz tartozó eladások. */
+  customerId?: string
+  /**
+   * Ügyfél lista default: cancelled/returned kihagyása, ha status = all.
+   * Explicit status szűrő felülírja.
+   */
+  excludeTerminalStatuses?: boolean
   page?: number
   limit?: number
+}
+
+export type CustomerSalesSummary = {
+  saleCount: number
+  totalGross: number
+  /** Σ remaining unpaid+partial (payments alapján). */
+  openDue: number
+  /** Σ total_gross ahol payment_status = paid. */
+  paidGross: number
 }
 
 export type SaleListResult = {
@@ -179,12 +196,20 @@ export async function listSales(
   }
   if (params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
+  } else if (params.excludeTerminalStatuses) {
+    query = query.not('status', 'in', '(cancelled,returned)')
   }
   if (params.paymentStatus && params.paymentStatus !== 'all') {
     query = query.eq('payment_status', params.paymentStatus)
   }
+  if (params.channel && params.channel !== 'all') {
+    query = query.eq('channel', params.channel)
+  }
   if (params.posShiftId) {
     query = query.eq('pos_shift_id', params.posShiftId)
+  }
+  if (params.customerId) {
+    query = query.eq('customer_id', params.customerId)
   }
 
   const { data, error, count } = await query
@@ -222,6 +247,101 @@ export async function listSales(
   })
 
   return { rows, total: count ?? rows.length, page, limit }
+}
+
+/**
+ * Ügyfél értékesítés KPI — szűrőktől független.
+ * Nyitott tartozás: unpaid/partial sorok remaining-je (payments nettó).
+ */
+export async function getCustomerSalesSummary(
+  supabase: SupabaseClient,
+  params: { tenantId: string; customerId: string }
+): Promise<CustomerSalesSummary> {
+  const empty: CustomerSalesSummary = {
+    saleCount: 0,
+    totalGross: 0,
+    openDue: 0,
+    paidGross: 0
+  }
+
+  const { data: sales, error } = await supabase
+    .from('sales_orders')
+    .select('id, total_gross, cash_rounding_amount, payment_status')
+    .eq('tenant_id', params.tenantId)
+    .eq('customer_id', params.customerId)
+    .is('deleted_at', null)
+    .not('status', 'in', '(cancelled,returned)')
+
+  if (error) {
+    console.error('getCustomerSalesSummary sales', error.message)
+    throw new Error('Nem sikerült betölteni az ügyfél összesítőt.')
+  }
+
+  const rows = (sales ?? []) as {
+    id: string
+    total_gross: number
+    cash_rounding_amount: number | null
+    payment_status: string
+  }[]
+
+  if (rows.length === 0) return empty
+
+  const openIds = rows
+    .filter(
+      (r) =>
+        r.payment_status === 'unpaid' || r.payment_status === 'partial'
+    )
+    .map((r) => r.id)
+
+  const paidBySale = new Map<string, number>()
+
+  if (openIds.length > 0) {
+    const { data: payments, error: payErr } = await supabase
+      .from('sales_payments')
+      .select('sales_order_id, amount, kind')
+      .in('sales_order_id', openIds)
+      .is('deleted_at', null)
+
+    if (payErr) {
+      console.error('getCustomerSalesSummary payments', payErr.message)
+      throw new Error('Nem sikerült betölteni az ügyfél összesítőt.')
+    }
+
+    for (const p of payments ?? []) {
+      const id = p.sales_order_id as string
+      const amt = Number(p.amount) || 0
+      const signed = p.kind === 'refund' ? -amt : amt
+      paidBySale.set(id, (paidBySale.get(id) ?? 0) + signed)
+    }
+  }
+
+  let totalGross = 0
+  let paidGross = 0
+  let openDue = 0
+
+  for (const r of rows) {
+    const gross = Number(r.total_gross) || 0
+    const rounding = Number(r.cash_rounding_amount) || 0
+    totalGross += gross
+    if (r.payment_status === 'paid') {
+      paidGross += gross
+    }
+    if (
+      r.payment_status === 'unpaid' ||
+      r.payment_status === 'partial'
+    ) {
+      const due = Math.round(gross + rounding)
+      const netPaid = paidBySale.get(r.id) ?? 0
+      openDue += Math.max(0, due - netPaid)
+    }
+  }
+
+  return {
+    saleCount: rows.length,
+    totalGross: Math.round(totalGross),
+    openDue: Math.round(openDue),
+    paidGross: Math.round(paidGross)
+  }
 }
 
 export async function getSale(
@@ -610,7 +730,7 @@ function normalizeSearchKey(value: string): string {
     .toLocaleLowerCase('hu')
 }
 
-/** Match score: exact → prefix → contains (SKU/barcode > név). */
+/** Match score: exact → prefix → contains (SKU/barcode/MPN > név). */
 function saleSearchMatchScore(
   q: string,
   row: {
@@ -618,6 +738,7 @@ function saleSearchMatchScore(
     sku: string
     barcode: string | null
     barcode_internal: string | null
+    web_mpn?: string | null
   }
 ): number {
   const nq = normalizeSearchKey(q)
@@ -626,13 +747,20 @@ function saleSearchMatchScore(
   const sku = normalizeSearchKey(row.sku)
   const barcode = normalizeSearchKey(row.barcode ?? '')
   const barcodeInt = normalizeSearchKey(row.barcode_internal ?? '')
+  const mpn = normalizeSearchKey(row.web_mpn ?? '')
 
-  if (sku === nq || barcode === nq || barcodeInt === nq) return 1000
+  if (sku === nq || barcode === nq || barcodeInt === nq || mpn === nq)
+    return 1000
   if (name === nq) return 900
-  if (sku.startsWith(nq) || barcode.startsWith(nq) || barcodeInt.startsWith(nq))
+  if (
+    sku.startsWith(nq) ||
+    barcode.startsWith(nq) ||
+    barcodeInt.startsWith(nq) ||
+    mpn.startsWith(nq)
+  )
     return 700
   if (name.startsWith(nq)) return 600
-  if (sku.includes(nq)) return 400
+  if (sku.includes(nq) || mpn.includes(nq)) return 400
   if (barcode.includes(nq) || barcodeInt.includes(nq)) return 350
   if (name.includes(nq)) return 200
   return 0
@@ -732,10 +860,7 @@ async function searchAccessoriesForSale(
   warehouseId: string,
   candidateLimit: number
 ): Promise<ScoredSaleHit[]> {
-  const query = supabase
-    .from('accessories')
-    .select(
-      `
+  const accessorySelect = `
       id,
       name,
       sku,
@@ -748,44 +873,37 @@ async function searchAccessoriesForSale(
       tax_rates ( rate_percent ),
       units ( shortform )
     `
-    )
-    .eq('tenant_id', tenantId)
-    .eq('active', true)
-    .eq('sellable_pos', true)
-    .is('deleted_at', null)
-    .or(
-      `name.ilike.%${safe}%,sku.ilike.%${safe}%,barcode.ilike.%${safe}%,barcode_internal.ilike.%${safe}%`
-    )
-    .limit(candidateLimit)
 
-  const { data, error } = await query
+  const orFilter = `name.ilike.%${safe}%,sku.ilike.%${safe}%,barcode.ilike.%${safe}%,barcode_internal.ilike.%${safe}%`
 
-  let rows = data ?? []
-  if (error) {
-    if (error.message.includes('sellable_pos')) {
+  const [mainResult, mpnResult] = await Promise.all([
+    supabase
+      .from('accessories')
+      .select(accessorySelect)
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .eq('sellable_pos', true)
+      .is('deleted_at', null)
+      .or(orFilter)
+      .limit(candidateLimit),
+    supabase
+      .from('accessory_web')
+      .select('accessory_id, web_mpn')
+      .eq('tenant_id', tenantId)
+      .ilike('web_mpn', `%${safe}%`)
+      .limit(candidateLimit)
+  ])
+
+  let rows = mainResult.data ?? []
+  if (mainResult.error) {
+    if (mainResult.error.message.includes('sellable_pos')) {
       const fallback = await supabase
         .from('accessories')
-        .select(
-          `
-          id,
-          name,
-          sku,
-          barcode,
-          barcode_internal,
-          price_net,
-          tax_rate_id,
-          unit_id,
-          image_url,
-          tax_rates ( rate_percent ),
-          units ( shortform )
-        `
-        )
+        .select(accessorySelect)
         .eq('tenant_id', tenantId)
         .eq('active', true)
         .is('deleted_at', null)
-        .or(
-          `name.ilike.%${safe}%,sku.ilike.%${safe}%,barcode.ilike.%${safe}%,barcode_internal.ilike.%${safe}%`
-        )
+        .or(orFilter)
         .limit(candidateLimit)
       if (fallback.error) {
         console.error('searchProductsForSale', fallback.error.message)
@@ -793,8 +911,43 @@ async function searchAccessoriesForSale(
       }
       rows = fallback.data ?? []
     } else {
-      console.error('searchProductsForSale', error.message)
+      console.error('searchProductsForSale', mainResult.error.message)
       throw new Error('Nem sikerült keresni a termékek között.')
+    }
+  }
+
+  const mpnByAccessory = new Map<string, string>()
+  for (const row of mpnResult.data ?? []) {
+    const id = row.accessory_id as string
+    const mpn = (row.web_mpn as string | null) ?? ''
+    if (id && mpn) mpnByAccessory.set(id, mpn)
+  }
+
+  const missingMpnIds = [...mpnByAccessory.keys()].filter(
+    (id) => !rows.some((r) => (r.id as string) === id)
+  )
+  if (missingMpnIds.length > 0) {
+    const withPos = await supabase
+      .from('accessories')
+      .select(accessorySelect)
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .eq('sellable_pos', true)
+      .is('deleted_at', null)
+      .in('id', missingMpnIds)
+      .limit(candidateLimit)
+    if (withPos.error?.message.includes('sellable_pos')) {
+      const fb = await supabase
+        .from('accessories')
+        .select(accessorySelect)
+        .eq('tenant_id', tenantId)
+        .eq('active', true)
+        .is('deleted_at', null)
+        .in('id', missingMpnIds)
+        .limit(candidateLimit)
+      rows = [...rows, ...(fb.data ?? [])]
+    } else if (!withPos.error) {
+      rows = [...rows, ...(withPos.data ?? [])]
     }
   }
 
@@ -823,6 +976,7 @@ async function searchAccessoriesForSale(
     const sku = row.sku as string
     const barcode = (row.barcode as string | null) ?? null
     const barcodeInternal = (row.barcode_internal as string | null) ?? null
+    const webMpn = mpnByAccessory.get(row.id as string) ?? null
     return {
       kind: 'product' as const,
       id: row.id as string,
@@ -837,7 +991,8 @@ async function searchAccessoriesForSale(
         name,
         sku,
         barcode,
-        barcode_internal: barcodeInternal
+        barcode_internal: barcodeInternal,
+        web_mpn: webMpn
       })
     }
   })

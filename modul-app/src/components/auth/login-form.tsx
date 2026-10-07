@@ -11,13 +11,21 @@ const initialState: LoginState = {}
 
 type LoginFormProps = {
   showDevHint?: boolean
+  /** Session lejárat / A2HS: pl. /pos/pda */
+  nextPath?: string
 }
 
-export function LoginForm({ showDevHint = false }: LoginFormProps) {
+export function LoginForm({
+  showDevHint = false,
+  nextPath
+}: LoginFormProps) {
   const [state, formAction, pending] = useActionState(loginAction, initialState)
 
   return (
     <form action={formAction} className="flex w-full flex-col gap-3.5">
+      {nextPath ? (
+        <input type="hidden" name="next" value={nextPath} />
+      ) : null}
       <FormField label="Email" htmlFor="email" required>
         <Input
           id="email"

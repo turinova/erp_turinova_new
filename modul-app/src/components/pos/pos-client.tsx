@@ -21,6 +21,7 @@ import {
   Plus,
   Search,
   Settings,
+  Smartphone,
   Trash2,
   Undo2,
   User,
@@ -46,6 +47,10 @@ import { PosQuickTile } from '@/components/pos/pos-quick-tile'
 import { PosShiftCashMoveDialog } from '@/components/pos/pos-shift-cash-move-dialog'
 import { PosShiftCloseDialog } from '@/components/pos/pos-shift-close-dialog'
 import { PosShiftGate } from '@/components/pos/pos-shift-gate'
+import {
+  PosHandoffInbox,
+  type HandoffClaimResult
+} from '@/components/pos/pos-handoff-inbox'
 import { SaleAddFeeDialog } from '@/components/sales/sale-add-fee-dialog'
 import {
   billingFromCustomer,
@@ -78,6 +83,7 @@ import { getOpenPosShiftAction } from '@/lib/pos/shift-actions'
 import type { PosRegister } from '@/lib/pos/shifts'
 import type { PosTerminalPublicConfig } from '@/lib/pos/settings-types'
 import { loadPosQuickProductsAction } from '@/lib/pos/quick-items-actions'
+import { countOpenPosCartHandoffsAction } from '@/lib/pos/handoff-actions'
 import { usePosTouchMode, usePosWideLayout } from '@/lib/pos/touch-mode'
 import { type PosPayMode } from '@/lib/pos/tender'
 import {
@@ -113,6 +119,8 @@ type Props = {
   canWrite: boolean
   posConfig: PosTerminalPublicConfig
   hasLapszabaszat?: boolean
+  /** pda_pos addon — PDA kosár átvétel UI. Ki → gomb nincs. */
+  hasPdaPos?: boolean
 }
 
 function isCardPaymentMethodName(name: string) {
@@ -185,7 +193,8 @@ export function PosClient({
   feeTypes,
   canWrite,
   posConfig: initialPosConfig,
-  hasLapszabaszat = false
+  hasLapszabaszat = false,
+  hasPdaPos = false
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -261,6 +270,8 @@ export function PosClient({
   const [editingField, setEditingField] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [flash, setFlash] = useState<PosFlash | null>(null)
+  const [handoffInboxOpen, setHandoffInboxOpen] = useState(false)
+  const [handoffOpenCount, setHandoffOpenCount] = useState(0)
   const [invoiceRetryPending, startInvoiceRetry] = useTransition()
   const [pendingPayMode, setPendingPayMode] = useState<PosPayMode | null>(null)
 
@@ -429,6 +440,27 @@ export function PosClient({
       cancelled = true
     }
   }, [hydrated, registerId])
+
+  // PDA handoff badge — only when addon on
+  useEffect(() => {
+    if (!hasPdaPos || !hydrated) {
+      setHandoffOpenCount(0)
+      return
+    }
+    let cancelled = false
+    const tick = () => {
+      void countOpenPosCartHandoffsAction().then((r) => {
+        if (cancelled || !r.ok) return
+        setHandoffOpenCount(r.count)
+      })
+    }
+    tick()
+    const id = window.setInterval(tick, 30_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [hasPdaPos, hydrated, handoffInboxOpen])
 
   useEffect(() => {
     if (!hydrated) return
@@ -664,6 +696,45 @@ export function PosClient({
       cancelled = true
     }
   }, [warehouseId, quickReloadKey])
+
+  function applyHandoffClaim(
+    result: HandoffClaimResult,
+    mode: 'replace' | 'merge'
+  ) {
+    if (result.warehouseId && result.warehouseId !== warehouseId) {
+      setWarehouseId(result.warehouseId)
+    }
+    if (result.customerId) {
+      setCustomerId(result.customerId)
+    }
+    if (mode === 'replace') {
+      setLines(result.lines)
+      setFees([])
+    } else {
+      setLines((prev) => {
+        const next = [...prev]
+        for (const incoming of result.lines) {
+          const key = saleLineCartKey(incoming)
+          const idx = next.findIndex((l) => saleLineCartKey(l) === key)
+          if (idx >= 0) {
+            const row = next[idx]!
+            next[idx] = {
+              ...row,
+              quantity: isMaterialSaleKind(row.kind)
+                ? Math.round((row.quantity + incoming.quantity) * 10) / 10
+                : row.quantity + incoming.quantity
+            }
+          } else {
+            next.push(incoming)
+          }
+        }
+        return next
+      })
+    }
+    setHandoffOpenCount((c) => Math.max(0, c - 1))
+    if (!wide) setPane('cart')
+    toast.success(`Átvéve · ${result.code}`)
+  }
 
   function addOrBump(hit: SaleProductSearchItem, quantity?: number) {
     const kind = hit.kind ?? 'product'
@@ -1203,6 +1274,23 @@ export function PosClient({
         </Button>
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {hasPdaPos ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size={touch ? 'md' : 'sm'}
+              className={touch ? 'h-11' : undefined}
+              onClick={() => setHandoffInboxOpen(true)}
+            >
+              <Smartphone className="size-3.5" aria-hidden />
+              PDA kosarak
+              {handoffOpenCount > 0 ? (
+                <span className="ml-1 inline-flex min-w-[1.25rem] justify-center rounded-full bg-ink px-1.5 text-[11px] font-semibold tabular-nums text-surface">
+                  {handoffOpenCount > 25 ? '25+' : handoffOpenCount}
+                </span>
+              ) : null}
+            </Button>
+          ) : null}
           {posConfig.showInvoiceButton ? (
             <Button
               type="button"
@@ -2624,6 +2712,17 @@ export function PosClient({
           </div>
         </aside>
       </div>
+
+      {hasPdaPos ? (
+        <PosHandoffInbox
+          open={handoffInboxOpen}
+          onOpenChange={setHandoffInboxOpen}
+          hasExistingCart={lines.length > 0 || fees.length > 0}
+          onClaimed={(result, mode) => {
+            applyHandoffClaim(result, mode)
+          }}
+        />
+      ) : null}
 
       <PosReturnSearchDialog
         open={returnSearchOpen}

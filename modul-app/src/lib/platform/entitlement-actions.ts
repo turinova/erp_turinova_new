@@ -334,6 +334,12 @@ export async function setTenantAddon(input: {
       const { grantPosPageAccess } = await import('@/lib/pos/entitlement')
       await grantPosPageAccess(ctx.admin, input.tenantId)
     }
+    if (addonKey === 'pda_pos') {
+      const { grantPdaPosPageAccess } = await import(
+        '@/lib/pos/pda-entitlement'
+      )
+      await grantPdaPosPageAccess(ctx.admin, input.tenantId)
+    }
     if (addonKey === 'jelenlet') {
       const { grantJelenletPageAccess } = await import(
         '@/lib/jelenlet/entitlement'

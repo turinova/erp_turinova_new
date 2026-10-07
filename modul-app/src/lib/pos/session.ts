@@ -35,7 +35,7 @@ export type PosSessionState = {
 
 const STORAGE_KEY = 'modul-pos-session-v3'
 
-function normalizeCartLine(raw: unknown): PosCartLine | null {
+export function normalizeCartLine(raw: unknown): PosCartLine | null {
   if (!raw || typeof raw !== 'object') return null
   const l = raw as Record<string, unknown>
   const accessoryId =
