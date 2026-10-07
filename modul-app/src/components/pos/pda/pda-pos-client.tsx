@@ -48,6 +48,25 @@ import { cn } from '@/lib/utils'
 const QTY_PRESETS = [1, 5, 10, 100, 1000] as const
 type QtyPreset = (typeof QTY_PRESETS)[number]
 
+const PRICE_STEP_CHIPS = [-100, -10, -1, 1, 10, 100] as const
+const PRICE_NUMPAD = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'] as const
+
+function clampGrossRaw(raw: string): string {
+  const n = Math.round(Number(raw))
+  if (!Number.isFinite(n) || n < 0) return '0'
+  return String(Math.min(99_999_999, n))
+}
+
+function appendGrossDigit(raw: string, digit: string): string {
+  const next = raw === '0' ? digit : `${raw}${digit}`
+  if (next.length > 9) return raw
+  return clampGrossRaw(next)
+}
+
+function adjustGrossRaw(raw: string, delta: number): string {
+  return clampGrossRaw(String((Number(raw) || 0) + delta))
+}
+
 type View = 'hub' | 'check' | 'sell' | 'handoff_ok'
 
 type WarehousePick = { id: string; name: string; code?: string | null }
@@ -111,9 +130,8 @@ export function PdaPosClient({
   )
   const [checkMsg, setCheckMsg] = useState<string | null>(null)
   const [checkPriceEditing, setCheckPriceEditing] = useState(false)
-  const [checkGrossRaw, setCheckGrossRaw] = useState('')
+  const [checkGrossRaw, setCheckGrossRaw] = useState('0')
   const [checkPricePending, setCheckPricePending] = useState(false)
-  const [checkPriceFieldFocus, setCheckPriceFieldFocus] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [payMode, setPayMode] = useState<PosPayMode>('cash')
   const [pending, startTransition] = useTransition()
@@ -162,7 +180,7 @@ export function PdaPosClient({
     customerSheetOpen ||
     searchFocused ||
     discEditing ||
-    checkPriceFieldFocus
+    checkPriceEditing
 
   useEffect(() => {
     if (!registerId) {
@@ -262,7 +280,6 @@ export function PdaPosClient({
         setCheckMsg(null)
         setFlash(null)
         setCheckPriceEditing(false)
-        setCheckPriceFieldFocus(false)
         return
       }
       addProduct(product)
@@ -529,27 +546,27 @@ export function PdaPosClient({
             title="Árellenőrzés"
             onBack={() => {
               setCheckPriceEditing(false)
-              setCheckPriceFieldFocus(false)
               setView('hub')
             }}
           />
-          <div className="shrink-0 space-y-2 border-b border-border px-4 py-3">
-            <p className="text-hint text-emerald-700">Szkenner aktív</p>
-            <PdaProductSearch
-              warehouseId={warehouseId}
-              onPick={(p) => {
-                setCheckProduct(p)
-                setCheckMsg(null)
-                setFlash(null)
-                setCheckPriceEditing(false)
-                setCheckPriceFieldFocus(false)
-              }}
-              onBarcodeFallback={(code) => {
-                void handleScan(code)
-              }}
-              onFocusChange={setSearchFocused}
-            />
-          </div>
+          {!checkPriceEditing ? (
+            <div className="shrink-0 space-y-2 border-b border-border px-4 py-3">
+              <p className="text-hint text-emerald-700">Szkenner aktív</p>
+              <PdaProductSearch
+                warehouseId={warehouseId}
+                onPick={(p) => {
+                  setCheckProduct(p)
+                  setCheckMsg(null)
+                  setFlash(null)
+                  setCheckPriceEditing(false)
+                }}
+                onBarcodeFallback={(code) => {
+                  void handleScan(code)
+                }}
+                onFocusChange={setSearchFocused}
+              />
+            </div>
+          ) : null}
           <PdaScroll>
             {flash && checkProduct ? (
               <p
@@ -570,49 +587,75 @@ export function PdaPosClient({
               </p>
             ) : null}
             {checkProduct ? (
-              <div className="rounded-lg border border-border bg-surface p-4">
-                <p className="text-[18px] font-semibold text-ink">
+              <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-surface p-3">
+                <p className="break-words text-[16px] font-semibold leading-snug text-ink">
                   {checkProduct.display_name?.trim() || checkProduct.name}
                 </p>
-                <p className="mt-1 text-hint text-ink-muted">
+                <p className="mt-0.5 truncate text-hint text-ink-muted">
                   {checkProduct.sku}
                 </p>
                 {checkPriceEditing ? (
-                  <div className="mt-3 space-y-2">
-                    <label
-                      htmlFor="pda-check-gross"
-                      className="text-hint font-medium text-ink-secondary"
-                    >
-                      Bruttó ár (Ft)
-                    </label>
-                    <div className="relative">
-                      <Input
-                        id="pda-check-gross"
-                        type="number"
-                        min={0}
-                        inputMode="numeric"
-                        className="h-12 pr-10 text-[18px] tabular-nums"
-                        value={checkGrossRaw}
-                        disabled={checkPricePending}
-                        onFocus={() => setCheckPriceFieldFocus(true)}
-                        onBlur={() => setCheckPriceFieldFocus(false)}
-                        onChange={(e) => setCheckGrossRaw(e.target.value)}
-                        autoFocus
-                      />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-hint text-ink-muted">
+                  <div className="mt-3 space-y-2.5">
+                    <p className="text-hint font-medium text-ink-secondary">
+                      Bruttó ár
+                    </p>
+                    <p className="text-[28px] font-semibold tabular-nums tracking-tight text-ink">
+                      {formatMoneyFt(Number(checkGrossRaw) || 0)}{' '}
+                      <span className="text-[16px] font-medium text-ink-secondary">
                         Ft
                       </span>
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {PRICE_STEP_CHIPS.map((delta) => (
+                        <button
+                          key={delta}
+                          type="button"
+                          disabled={checkPricePending}
+                          className="min-h-9 min-w-[3.25rem] rounded-md border border-border bg-subtle px-2 text-[13px] font-semibold tabular-nums text-ink active:bg-border/60 disabled:opacity-50"
+                          onClick={() =>
+                            setCheckGrossRaw((raw) =>
+                              adjustGrossRaw(raw, delta)
+                            )
+                          }
+                        >
+                          {delta > 0 ? `+${delta}` : delta}
+                        </button>
+                      ))}
                     </div>
-                    <div className="flex gap-2 pt-1">
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {PRICE_NUMPAD.map((key) => (
+                        <button
+                          key={key}
+                          type="button"
+                          disabled={checkPricePending}
+                          className="flex h-11 items-center justify-center rounded-md border border-border bg-surface text-[16px] font-semibold tabular-nums text-ink active:bg-subtle disabled:opacity-50"
+                          onClick={() => {
+                            if (key === 'C') {
+                              setCheckGrossRaw('0')
+                              return
+                            }
+                            if (key === '⌫') {
+                              setCheckGrossRaw((raw) =>
+                                raw.length <= 1 ? '0' : raw.slice(0, -1)
+                              )
+                              return
+                            }
+                            setCheckGrossRaw((raw) =>
+                              appendGrossDigit(raw, key)
+                            )
+                          }}
+                        >
+                          {key}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 pt-0.5">
                       <Button
                         type="button"
                         variant="secondary"
                         className="h-11 flex-1"
                         disabled={checkPricePending}
-                        onClick={() => {
-                          setCheckPriceEditing(false)
-                          setCheckPriceFieldFocus(false)
-                        }}
+                        onClick={() => setCheckPriceEditing(false)}
                       >
                         Mégse
                       </Button>
@@ -651,7 +694,6 @@ export function PdaPosClient({
                                 : prev
                             )
                             setCheckPriceEditing(false)
-                            setCheckPriceFieldFocus(false)
                             setFlash(
                               `Ár mentve · ${formatMoneyFt(res.unitPriceGross)} Ft`
                             )
@@ -664,16 +706,23 @@ export function PdaPosClient({
                   </div>
                 ) : (
                   <>
-                    <p className="mt-3 text-[32px] font-semibold tabular-nums tracking-tight text-ink">
+                    <p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight text-ink">
                       {formatMoneyFt(
                         Math.round(
                           checkProduct.price_net *
                             (1 + checkProduct.tax_rate_percent / 100)
                         )
                       )}{' '}
-                      <span className="text-[18px] font-medium text-ink-secondary">
+                      <span className="text-[16px] font-medium text-ink-secondary">
                         Ft
                       </span>
+                    </p>
+                    <p className="mt-2 text-body text-ink-secondary">
+                      Készlet:{' '}
+                      <span className="font-semibold tabular-nums text-ink">
+                        {checkProduct.on_hand}
+                      </span>{' '}
+                      {checkProduct.unit_shortform || 'db'}
                     </p>
                     {canWrite &&
                     (!checkProduct.kind || checkProduct.kind === 'product') ? (
@@ -696,13 +745,6 @@ export function PdaPosClient({
                     ) : null}
                   </>
                 )}
-                <p className="mt-3 text-body text-ink-secondary">
-                  Készlet:{' '}
-                  <span className="font-semibold tabular-nums text-ink">
-                    {checkProduct.on_hand}
-                  </span>{' '}
-                  {checkProduct.unit_shortform || 'db'}
-                </p>
               </div>
             ) : (
               <p className="text-body text-ink-muted">
