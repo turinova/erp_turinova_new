@@ -32,26 +32,33 @@ export function buildPosTenders(input: {
   /**
    * KP / kártya: mennyit fizetett (0 = hitel, partial OK).
    * Hiányzik → teljes due. Splitnél ignorált.
+   * allowPartial=false → mindig teljes due (vendég).
    */
   paidAmount?: number
+  allowPartial?: boolean
 }): { ok: true; tenders: PosTenderLine[] } | { ok: false; message: string } {
   const due = Math.round(input.due)
   if (due <= 0) {
     return { ok: false, message: 'Nincs fizetendő összeg.' }
   }
 
+  /** Vendégnél (allowPartial=false) mindig teljes due. */
+  const allowPartial = input.allowPartial !== false
+  let paid =
+    !allowPartial || input.paidAmount == null
+      ? due
+      : Math.round(input.paidAmount)
+  if (paid < 0) paid = 0
+  if (paid > due) {
+    return {
+      ok: false,
+      message: `A fizetett összeg max. ${due} Ft lehet.`
+    }
+  }
+
   if (input.mode === 'cash') {
     if (!input.cashMethodId) {
       return { ok: false, message: 'Nincs készpénz fizetési mód.' }
-    }
-    let paid =
-      input.paidAmount == null ? due : Math.round(input.paidAmount)
-    if (paid < 0) paid = 0
-    if (paid > due) {
-      return {
-        ok: false,
-        message: `A fizetett összeg max. ${due} Ft lehet.`
-      }
     }
     if (paid === 0) {
       return { ok: true, tenders: [] }
@@ -71,15 +78,6 @@ export function buildPosTenders(input: {
   if (input.mode === 'card') {
     if (!input.cardMethodId) {
       return { ok: false, message: 'Nincs kártya fizetési mód.' }
-    }
-    let paid =
-      input.paidAmount == null ? due : Math.round(input.paidAmount)
-    if (paid < 0) paid = 0
-    if (paid > due) {
-      return {
-        ok: false,
-        message: `A fizetett összeg max. ${due} Ft lehet.`
-      }
     }
     if (paid === 0) {
       return { ok: true, tenders: [] }

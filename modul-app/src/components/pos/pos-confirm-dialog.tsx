@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import type { DocumentBillingState } from '@/components/sales/document-billing-fields'
 import { Button } from '@/components/ui/button'
+import type { OptiCustomerOption } from '@/lib/customers/queries'
 import {
   Dialog,
   DialogContent,
@@ -71,7 +73,14 @@ type Props = {
   cashMethodName: string
   cardMethodName: string
   warehouseName: string
+  /** Üres = vendég. Részfizetés / hitel csak ha kitöltött. */
+  customerId: string
   customerName: string | null
+  customerSeed?: OptiCustomerOption[]
+  onCustomerChange: (
+    customerId: string,
+    customer: OptiCustomerOption | null
+  ) => void
   invoice: boolean
   billing: DocumentBillingState | null
   overstockCount: number
@@ -97,7 +106,10 @@ export function PosConfirmDialog({
   cardMethodId,
   cardMethodName,
   warehouseName,
+  customerId,
   customerName,
+  customerSeed = [],
+  onCustomerChange,
   invoice,
   billing,
   overstockCount,
@@ -108,6 +120,7 @@ export function PosConfirmDialog({
   const cancelRef = useRef<HTMLButtonElement>(null)
   const cashReceivedRef = useRef<HTMLInputElement>(null)
   const { touch } = usePosTouchMode()
+  const canAdjustPaid = Boolean(customerId)
 
   const baseTotals = useMemo(
     () =>
@@ -188,6 +201,15 @@ export function PosConfirmDialog({
     }
   }, [open, mode, due])
 
+  /** Vendég → mindig teljes; vevő törléskor is reset. */
+  useEffect(() => {
+    if (!open) return
+    if (!canAdjustPaid && mode !== 'split') {
+      setPaidAmount(due)
+      if (mode === 'cash') setCashReceived(due)
+    }
+  }, [open, canAdjustPaid, due, mode])
+
   async function runTeyaPoll(paymentRequestId: string) {
     pollStopRef.current = false
     setTeyaPaymentId(paymentRequestId)
@@ -252,7 +274,8 @@ export function PosConfirmDialog({
     cashMethodId,
     cardMethodId,
     cashAmount: mode === 'split' ? cashPart : undefined,
-    paidAmount: mode === 'split' ? undefined : paidAmount
+    paidAmount: mode === 'split' ? undefined : paidAmount,
+    allowPartial: canAdjustPaid
   })
 
   const tenders = tendersBuild.ok ? tendersBuild.tenders : []
@@ -280,21 +303,20 @@ export function PosConfirmDialog({
     if (sum > due + 1) {
       return 'A fizetett összeg meghaladja a fizetendőt.'
     }
+    if (!canAdjustPaid && mode !== 'split' && sum < due - 1) {
+      return 'Vendégnél csak teljes fizetés engedélyezett. Részfizetéshez vagy hitelhez válassz vevőt.'
+    }
     return null
   }
 
-  async function goNext() {
+  function goNext() {
     const err = validateReview()
     if (err) {
       setLocalError(err)
       return
     }
     setLocalError(null)
-    if (cardTender > 0) {
-      setStep('terminal')
-      await launchTerminal(terminalKind)
-      return
-    }
+    // Kártya = készpénz flow amíg Teya terminál nincs bekötve (nincs második lépés).
     submitSale(null)
   }
 
@@ -392,10 +414,10 @@ export function PosConfirmDialog({
               {modeLabel}
             </StatusBadge>
             <StatusBadge
-              tone={customerName ? 'info' : 'neutral'}
-              variant={customerName ? 'soft' : 'outline'}
+              tone={customerId ? 'info' : 'neutral'}
+              variant={customerId ? 'soft' : 'outline'}
             >
-              {customerName ?? 'Vendég'}
+              {customerName ?? (customerId ? 'Vevő' : 'Vendég')}
             </StatusBadge>
             <StatusBadge tone="neutral" variant="outline">
               {warehouseName}
@@ -538,8 +560,8 @@ export function PosConfirmDialog({
 
               {/* Jobb: fizetés — eladó-first */}
               <div className="flex min-h-0 min-w-0 flex-col bg-subtle/30">
-                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-                  {/* Hero: fizetendő */}
+                {/* Vevő a scrollon kívül: Dialog + MenuSelect portal={false} */}
+                <div className="relative z-20 shrink-0 space-y-3 overflow-visible px-4 pb-3 pt-4">
                   <div>
                     <p className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
                       Fizetendő
@@ -552,11 +574,31 @@ export function PosConfirmDialog({
                     </p>
                     <p className="mt-1.5 text-hint text-ink-secondary">
                       {modeLabel}
-                      {' · '}
-                      {customerName ?? 'Vendég'}
                     </p>
                   </div>
+                  <div className="relative space-y-1">
+                    <span className="text-[13px] font-medium text-ink">
+                      Vevő
+                    </span>
+                    <CustomerMenuSelect
+                      id="pos-confirm-customer"
+                      value={customerId}
+                      seed={customerSeed}
+                      allowEmpty
+                      emptyLabel="Vendég"
+                      portal={false}
+                      placeholder="Ügyfél keresése…"
+                      onChange={onCustomerChange}
+                    />
+                    {!canAdjustPaid && mode !== 'split' ? (
+                      <p className="text-hint text-ink-muted">
+                        Részfizetéshez vagy hitelhez válassz vevőt.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
 
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
                   {mode === 'split' ? (
                     <label className="block space-y-1.5">
                       <span className="text-[13px] font-medium text-ink">
@@ -584,7 +626,7 @@ export function PosConfirmDialog({
                         </span>
                       </p>
                     </label>
-                  ) : (
+                  ) : canAdjustPaid ? (
                     <div className="space-y-2">
                       <p className="text-[13px] font-medium text-ink">
                         Mennyit fizet most?
@@ -664,7 +706,7 @@ export function PosConfirmDialog({
                         </p>
                       ) : null}
                     </div>
-                  )}
+                  ) : null}
 
                   {cashTender > 0 ? (
                     <div className="space-y-2 rounded-md border border-border bg-surface p-3">
@@ -739,7 +781,7 @@ export function PosConfirmDialog({
 
                   {cardTender > 0 ? (
                     <p className="rounded-md border border-border bg-surface px-3 py-2.5 text-body text-ink-secondary">
-                      Következő: terminál ·{' '}
+                      Kártya ·{' '}
                       <span className="font-semibold tabular-nums text-ink">
                         {formatMoneyFt(cardTender)} Ft
                       </span>
@@ -749,6 +791,10 @@ export function PosConfirmDialog({
                           ({cardMethodName})
                         </span>
                       ) : null}
+                      <span className="mt-0.5 block text-hint text-ink-muted">
+                        A terminálfizetést külön indítsd; itt csak az eladás
+                        rögzül.
+                      </span>
                     </p>
                   ) : null}
 
@@ -761,12 +807,23 @@ export function PosConfirmDialog({
               </div>
             </div>
 
-            <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:justify-end">
+            <DialogFooter
+              className={cn(
+                'shrink-0 border-t px-4 py-3 sm:justify-end',
+                mode === 'card'
+                  ? 'border-[#c9cc3a]/60 bg-[#e0e34e]'
+                  : 'border-border bg-surface'
+              )}
+            >
               <Button
                 ref={cancelRef}
                 type="button"
                 variant="secondary"
-                className={touch ? 'h-12 min-w-[6rem]' : 'h-11'}
+                className={cn(
+                  touch ? 'h-12 min-w-[6rem]' : 'h-11',
+                  mode === 'card' &&
+                    'border-ink/20 bg-white text-ink hover:bg-white hover:text-ink'
+                )}
                 disabled={loading}
                 onClick={() => onOpenChange(false)}
               >
@@ -780,13 +837,11 @@ export function PosConfirmDialog({
                     : 'h-11 min-w-[12rem]'
                 }
                 loading={loading}
-                onClick={() => void goNext()}
+                onClick={() => goNext()}
               >
-                {cardTender > 0
-                  ? `Tovább a terminálhoz · ${formatMoneyFt(cardTender)} Ft`
-                  : isCredit
-                    ? 'Hitelre átadás'
-                    : `Eladás rögzítése · ${formatMoneyFt(paidSum || due)} Ft`}
+                {isCredit
+                  ? 'Hitelre átadás'
+                  : `Eladás rögzítése · ${formatMoneyFt(paidSum || due)} Ft`}
               </Button>
             </DialogFooter>
           </>
@@ -865,11 +920,11 @@ export function PosConfirmDialog({
               ) : null}
             </div>
 
-            <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:justify-end">
+            <DialogFooter className="shrink-0 border-t border-[#c9cc3a]/60 bg-[#e0e34e] px-4 py-3 sm:justify-end">
               <Button
                 type="button"
                 variant="secondary"
-                className="h-11"
+                className="h-11 border-ink/20 bg-white text-ink hover:bg-white hover:text-ink"
                 disabled={loading}
                 onClick={() => {
                   pollStopRef.current = true

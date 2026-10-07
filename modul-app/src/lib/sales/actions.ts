@@ -176,6 +176,15 @@ export async function createSaleAction(
     amount: p.amount
   }))
 
+  // Vendég: nincs hitel (üres payments). Partial due-t a create_sale SQL ellenőrzi.
+  if (!d.customerId && payments.length === 0) {
+    return {
+      ok: false,
+      message:
+        'Vendégnél csak teljes fizetés engedélyezett. Részfizetéshez vagy hitelhez válassz vevőt.'
+    }
+  }
+
   const { data, error } = await ctx.supabase.rpc('create_sale', {
     p_warehouse_id: d.warehouseId,
     p_customer_id: d.customerId ?? null,

@@ -2754,7 +2754,18 @@ export function PosClient({
         warehouseName={
           warehouses.find((w) => w.id === warehouseId)?.name ?? '—'
         }
+        customerId={customerId}
         customerName={selectedCustomer?.name ?? null}
+        customerSeed={customers}
+        onCustomerChange={(id, c) => {
+          setCustomerId(id)
+          if (c) {
+            setCustomers((prev) =>
+              prev.some((x) => x.id === c.id) ? prev : [c, ...prev]
+            )
+            setBilling(billingFromCustomer(c))
+          }
+        }}
         invoice={wantInvoice && billingHasAny(billing)}
         billing={
           wantInvoice && billingHasAny(billing) ? billing : null
