@@ -8,6 +8,7 @@ export type PreviewConfigPayload = {
   fabInk?: string;
   fabInkCustom?: string | null;
   fabStyle?: string;
+  fabShape?: string;
   fabPosition?: string;
   fabSize?: string;
   fabRingChase?: boolean;

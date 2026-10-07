@@ -12,6 +12,7 @@ import {
   applyWidgetTheme,
   FAB_INK_PRESETS,
   FAB_POSITION_PRESETS,
+  FAB_SHAPE_PRESETS,
   FAB_SIZE_PRESETS,
   FAB_STYLE_PRESETS,
   normalizeFabHex,
@@ -19,6 +20,7 @@ import {
   resolveFabColor,
   WIDGET_THEME_PRESETS,
   type FabPositionId,
+  type FabShapeId,
   type FabSizeId,
   type FabStyleId,
   type WidgetModuleId,
@@ -437,6 +439,7 @@ export function WidgetEditor({
                   fabInk={settings.appearance.fabInk}
                   fabInkCustom={settings.appearance.fabInkCustom}
                   fabStyle={settings.appearance.fabStyle}
+                  fabShape={settings.appearance.fabShape}
                   fabPosition={settings.appearance.fabPosition}
                   fabSize={settings.appearance.fabSize}
                   fabRingChase={settings.appearance.fabRingChase}
@@ -562,6 +565,20 @@ export function WidgetEditor({
                         label: p.label,
                       }))}
                       onChange={(id) => patchAppearance({ fabStyle: id })}
+                    />
+                  </Field>
+
+                  <Field title="Alak" dense>
+                    <ChoiceGrid
+                      cols={3}
+                      value={
+                        (settings.appearance.fabShape || "pill") as FabShapeId
+                      }
+                      options={FAB_SHAPE_PRESETS.map((p) => ({
+                        id: p.id as FabShapeId,
+                        label: p.label,
+                      }))}
+                      onChange={(id) => patchAppearance({ fabShape: id })}
                     />
                   </Field>
 

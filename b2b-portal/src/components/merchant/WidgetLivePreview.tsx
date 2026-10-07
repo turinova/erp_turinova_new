@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FAB_SIZE_PRESETS,
+  fabShapeRadius,
   resolveFabVisual,
   type FabInkId,
   type FabPositionId,
+  type FabShapeId,
   type FabSizeId,
   type FabStyleId,
   type PanelThemeId,
@@ -29,6 +31,7 @@ type Props = {
   fabInk?: FabInkId;
   fabInkCustom?: string | null;
   fabStyle: FabStyleId;
+  fabShape?: FabShapeId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
   fabRingChase?: boolean;
@@ -246,6 +249,7 @@ function buildConfig(props: {
   fabInk?: FabInkId;
   fabInkCustom?: string | null;
   fabStyle: FabStyleId;
+  fabShape?: FabShapeId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
   fabRingChase?: boolean;
@@ -273,6 +277,7 @@ function buildConfig(props: {
     fabInk: props.fabInk ?? "auto",
     fabInkCustom: props.fabInkCustom ?? "",
     fabStyle: props.fabStyle,
+    fabShape: props.fabShape || "pill",
     fabPosition: props.fabPosition,
     fabSize: props.fabSize,
     fabRingChase: props.fabRingChase === true,
@@ -358,6 +363,7 @@ export function WidgetLivePreview(props: Props) {
         fabInk: props.fabInk,
         fabInkCustom: props.fabInkCustom,
         fabStyle: props.fabStyle,
+        fabShape: props.fabShape,
         fabPosition: props.fabPosition,
         fabSize: props.fabSize,
         fabRingChase: props.fabRingChase,
@@ -377,6 +383,7 @@ export function WidgetLivePreview(props: Props) {
       props.fabInk,
       props.fabInkCustom,
       props.fabStyle,
+      props.fabShape,
       props.fabPosition,
       props.fabSize,
       props.fabRingChase,
@@ -544,7 +551,7 @@ export function WidgetLivePreview(props: Props) {
                       ? "8px 12px"
                       : "10px 16px"
                     : "0",
-                  borderRadius: 999,
+                  borderRadius: fabShapeRadius(props.fabShape || "pill"),
                   background: visual.background,
                   color: visual.color,
                   border: visual.border,

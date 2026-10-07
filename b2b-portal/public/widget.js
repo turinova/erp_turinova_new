@@ -51,6 +51,7 @@
       fabColor: "",
       fabInk: "auto",
       fabStyle: "solid",
+      fabShape: "pill",
       fabPosition: "bottom_right",
       fabSize: "icon_label",
       fabRingChase: false,
@@ -309,6 +310,7 @@
           fabInk: cfg.fabInk || "auto",
           fabInkCustom: cfg.fabInkCustom || "",
           fabStyle: cfg.fabStyle || "solid",
+          fabShape: cfg.fabShape || "pill",
           fabPosition: cfg.fabPosition || "bottom_right",
           fabSize: cfg.fabSize || "icon_label",
           fabRingChase: cfg.fabRingChase === true,
@@ -554,6 +556,9 @@
           cfg.fabInkCustom = "";
         }
         if (c.fabStyle) cfg.fabStyle = c.fabStyle;
+        if (c.fabShape === "pill" || c.fabShape === "rounded" || c.fabShape === "square") {
+          cfg.fabShape = c.fabShape;
+        }
         if (c.fabPosition) cfg.fabPosition = c.fabPosition;
         if (c.fabSize) cfg.fabSize = c.fabSize;
         if (typeof c.fabRingChase === "boolean") cfg.fabRingChase = c.fabRingChase;
@@ -8860,6 +8865,12 @@
     return contrastingInk(bgHex);
   }
 
+  function fabShapeRadiusCss(shape) {
+    if (shape === "square") return "2px";
+    if (shape === "rounded") return "12px";
+    return "999px";
+  }
+
   function applyFabAppearance(btn) {
     var color = cfg.fabColor || "#007AFF";
     var style = cfg.fabStyle || "solid";
@@ -8868,6 +8879,8 @@
     if (position === "middle_left") position = "bottom_right";
     if (position === "middle_right") position = "bottom_right";
     btn.setAttribute("data-pos", position);
+    btn.setAttribute("data-shape", cfg.fabShape === "square" || cfg.fabShape === "rounded" ? cfg.fabShape : "pill");
+    btn.style.borderRadius = fabShapeRadiusCss(cfg.fabShape);
 
     // Clear conflicting inline position (CSS data-pos handles placement)
     btn.style.left = "";

@@ -19,6 +19,13 @@ export const FAB_STYLE_PRESETS = [
   { id: "neon", label: "Neon", hint: "Izzó fény" },
 ] as const;
 
+/** FAB corner shape — default pill matches today’s storefront button. */
+export const FAB_SHAPE_PRESETS = [
+  { id: "pill", label: "Lekerekített", radius: "999px" },
+  { id: "rounded", label: "Lágy négyzet", radius: "12px" },
+  { id: "square", label: "Négyzetes", radius: "2px" },
+] as const;
+
 /**
  * Five curated color skins (Figma / Notion / GitHub).
  * Ink is "auto" → max WCAG contrast on the solid fill.
@@ -125,6 +132,7 @@ export const WIDGET_MODULES = [
 export type WidgetThemeId = (typeof WIDGET_THEME_PRESETS)[number]["id"];
 export type FabColorPresetId = (typeof FAB_COLOR_PRESETS)[number]["id"];
 export type FabStyleId = (typeof FAB_STYLE_PRESETS)[number]["id"];
+export type FabShapeId = (typeof FAB_SHAPE_PRESETS)[number]["id"];
 export type FabPositionId = (typeof FAB_POSITION_PRESETS)[number]["id"];
 export type FabSizeId = (typeof FAB_SIZE_PRESETS)[number]["id"];
 export type PanelThemeId = (typeof PANEL_THEME_PRESETS)[number]["id"];
@@ -172,6 +180,8 @@ export type WidgetAppearance = {
   /** Used when fabInk === "custom". */
   fabInkCustom: string | null;
   fabStyle: FabStyleId;
+  /** Corner shape: pill (default) · rounded · square. */
+  fabShape: FabShapeId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
   panelTheme: PanelThemeId;
@@ -232,6 +242,7 @@ export type PublicWidgetConfig = {
   /** Hex when fabInk is custom; otherwise null. */
   fabInkCustom?: string | null;
   fabStyle: FabStyleId;
+  fabShape: FabShapeId;
   fabPosition: FabPositionId;
   fabSize: FabSizeId;
   panelTheme: PanelThemeId;
@@ -266,6 +277,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettingsPayload = {
     fabInk: "white",
     fabInkCustom: null,
     fabStyle: "glass",
+    fabShape: "pill",
     fabPosition: "bottom_right",
     fabSize: "icon_label",
     panelTheme: "high_contrast",
@@ -390,6 +402,18 @@ function mapStyleId(raw: unknown): FabStyleId {
   if (raw === "soft" || raw === "outline") return "glass";
   if (raw === "contrast") return "neon";
   return DEFAULT_WIDGET_SETTINGS.appearance.fabStyle;
+}
+
+function mapShapeId(raw: unknown): FabShapeId {
+  if (raw === "rounded" || raw === "square" || raw === "pill") return raw;
+  return "pill";
+}
+
+export function fabShapeRadius(shape: FabShapeId): string {
+  return (
+    FAB_SHAPE_PRESETS.find((p) => p.id === shape)?.radius ??
+    FAB_SHAPE_PRESETS[0].radius
+  );
 }
 
 function themeToColorPreset(themeId: WidgetThemeId): FabColorPresetId {
@@ -518,6 +542,7 @@ export function normalizeWidgetSettings(
       fabInk,
       fabInkCustom: fabInk === "custom" ? fabInkCustom : null,
       fabStyle: mapStyleId(appearanceRaw.fabStyle),
+      fabShape: mapShapeId(appearanceRaw.fabShape),
       fabPosition: mapPositionId(appearanceRaw.fabPosition),
       fabSize: mapSizeId(appearanceRaw.fabSize),
       panelTheme,
@@ -953,6 +978,7 @@ export function resolvePublicWidgetConfig(input: {
         ? normalized.appearance.fabInkCustom
         : null,
     fabStyle: normalized.appearance.fabStyle,
+    fabShape: normalized.appearance.fabShape,
     fabPosition: normalized.appearance.fabPosition,
     fabSize: normalized.appearance.fabSize,
     panelTheme: normalized.appearance.panelTheme || LOCKED_PANEL_THEME,
