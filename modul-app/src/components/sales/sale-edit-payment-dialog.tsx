@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { Textarea } from '@/components/ui/textarea'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { updateSalePaymentAction } from '@/lib/sales/actions'
 import { formatMoneyFt } from '@/lib/sales/parse'
@@ -55,6 +56,7 @@ export function SaleEditPaymentDialog({
   const defaultMethod = payment?.payment_method_id || paymentMethods[0]?.id || ''
   const [paymentMethodId, setPaymentMethodId] = useState(defaultMethod)
   const [amount, setAmount] = useState(payment?.amount ?? 0)
+  const [note, setNote] = useState('')
 
   useEffect(() => {
     if (!open || !payment) return
@@ -62,6 +64,7 @@ export function SaleEditPaymentDialog({
       payment.payment_method_id || paymentMethods[0]?.id || ''
     )
     setAmount(payment.amount)
+    setNote('')
   }, [open, payment, paymentMethods])
 
   const options = useMemo(
@@ -84,17 +87,23 @@ export function SaleEditPaymentDialog({
       toast.error('Válassz fizetési módot.')
       return
     }
+    const trimmed = note.trim()
+    if (!trimmed) {
+      toast.error('A korrekció indoka kötelező.')
+      return
+    }
     startTransition(async () => {
       const result = await updateSalePaymentAction({
         paymentId: payment.id,
         paymentMethodId,
-        amount: amt
+        amount: amt,
+        note: trimmed
       })
       if (!result.ok) {
         toast.error(result.message)
         return
       }
-      toast.success('Fizetés módosítva.')
+      toast.success('Fizetés korrigálva.')
       onOpenChange(false)
       router.refresh()
     })
@@ -104,12 +113,13 @@ export function SaleEditPaymentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Fizetés szerkesztése</DialogTitle>
+          <DialogTitle>Fizetés korrekciója</DialogTitle>
           <DialogDescription>
             {detail.sale_number} · max{' '}
             <span className="font-medium tabular-nums text-ink">
               {formatMoneyFt(maxAmount)} Ft
             </span>
+            . A régi sor érvénytelenítve lesz, új sor + naplóbejegyzés készül.
           </DialogDescription>
         </DialogHeader>
 
@@ -138,6 +148,16 @@ export function SaleEditPaymentDialog({
               }}
             />
           </FormField>
+          <FormField label="Indok" htmlFor="edit-pay-note" required>
+            <Textarea
+              id="edit-pay-note"
+              rows={3}
+              maxLength={500}
+              placeholder="Pl. elütés javítása"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </FormField>
         </div>
 
         <DialogFooter>
@@ -150,7 +170,7 @@ export function SaleEditPaymentDialog({
             Mégse
           </Button>
           <Button type="button" loading={pending} onClick={handleSave}>
-            Mentés
+            Korrekció mentése
           </Button>
         </DialogFooter>
       </DialogContent>

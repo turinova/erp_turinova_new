@@ -72,11 +72,17 @@ async function createManufacturers(
   return { ids, created, failed }
 }
 
+function uuidOrNull(v: string | null | undefined): string | null {
+  if (v == null || v === '' || v === 'null' || v === 'undefined') return null
+  return v
+}
+
 function payloadOf(w: PlannedWrite, tenantId: string, now: string): Record<string, unknown> {
   return {
     ...(w.kind === 'update' ? { id: w.id } : {}),
     tenant_id: tenantId,
     ...w.row,
+    manufacturer_id: uuidOrNull(w.row.manufacturer_id),
     updated_at: now
   }
 }

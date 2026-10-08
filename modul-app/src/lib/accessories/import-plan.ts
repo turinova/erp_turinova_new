@@ -296,7 +296,9 @@ export function planAccessoryImport(
 
     // Gyártó
     let manufacturerId = target?.manufacturer_id ?? ''
-    let manufacturerName = target ? (l.mfrById.get(target.manufacturer_id)?.name ?? '') : ''
+    let manufacturerName = target?.manufacturer_id
+      ? (l.mfrById.get(target.manufacturer_id)?.name ?? '')
+      : ''
     const mfrCell = cell(row, 'Gyarto')
     if (mfrCell.kind === 'keep') {
       if (isCreate) required('Gyarto')
@@ -563,7 +565,7 @@ export function planAccessoryImport(
       status = 'error'
     } else {
       const next: AccessoryWriteRow = {
-        manufacturer_id: manufacturerId || null,
+        manufacturer_id: manufacturerId && manufacturerId !== 'null' ? manufacturerId : null,
         tax_rate_id: tax.id,
         unit_id: unitId,
         name,

@@ -175,7 +175,8 @@ export async function createSaleAction(
 
   const payments = d.payments.map((p) => ({
     payment_method_id: p.paymentMethodId,
-    amount: p.amount
+    amount: p.amount,
+    provider_ref: p.providerRef?.trim() || null
   }))
 
   // Vendég: nincs hitel (üres payments). Partial due-t a create_sale SQL ellenőrzi.
@@ -393,7 +394,8 @@ export async function updateSalePaymentAction(
   const { data, error } = await ctx.supabase.rpc('update_sale_payment', {
     p_payment_id: d.paymentId,
     p_payment_method_id: d.paymentMethodId,
-    p_amount: d.amount
+    p_amount: d.amount,
+    p_note: d.note
   })
 
   if (error) {
@@ -433,12 +435,13 @@ export async function voidSalePaymentAction(
   }
 
   const { data, error } = await ctx.supabase.rpc('void_sale_payment', {
-    p_payment_id: parsed.data.paymentId
+    p_payment_id: parsed.data.paymentId,
+    p_note: parsed.data.note
   })
 
   if (error) {
     console.error('voidSalePaymentAction', error.message)
-    return { ok: false, message: 'Nem sikerült törölni a fizetést.' }
+    return { ok: false, message: 'Nem sikerült érvényteleníteni a fizetést.' }
   }
 
   const result = data as {
@@ -450,7 +453,7 @@ export async function voidSalePaymentAction(
   if (!result?.ok || !result.id) {
     return {
       ok: false,
-      message: result?.message ?? 'Nem sikerült törölni a fizetést.'
+      message: result?.message ?? 'Nem sikerült érvényteleníteni a fizetést.'
     }
   }
 

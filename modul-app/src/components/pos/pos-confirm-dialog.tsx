@@ -51,7 +51,11 @@ import { cn } from '@/lib/utils'
 import Link from 'next/link'
 
 export type PosConfirmResult = {
-  payments: Array<{ paymentMethodId: string; amount: number }>
+  payments: Array<{
+    paymentMethodId: string
+    amount: number
+    providerRef?: string | null
+  }>
   tenders: PosTenderLine[]
   /** Üres payments (0 Ft) → create_sale p_fulfill_now */
   fulfillNow: boolean
@@ -357,7 +361,9 @@ export function PosConfirmDialog({
     onConfirm({
       payments: tenders.map((t) => ({
         paymentMethodId: t.paymentMethodId,
-        amount: t.amount
+        amount: t.amount,
+        providerRef:
+          t.kind === 'card' ? (card?.providerRef ?? null) : null
       })),
       tenders,
       fulfillNow: tenders.length === 0,

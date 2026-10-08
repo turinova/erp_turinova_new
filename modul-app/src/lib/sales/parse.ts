@@ -133,7 +133,9 @@ export const saleFeeSchema = z.object({
 
 export const salePaymentSchema = z.object({
   paymentMethodId: z.string().uuid('Válassz fizetési módot.'),
-  amount: z.number().positive('A fizetés legyen pozitív.')
+  amount: z.number().positive('A fizetés legyen pozitív.'),
+  /** Terminál / Teya referencia — immutabilitás a payment soron. */
+  providerRef: z.string().trim().max(200).nullable().optional()
 })
 
 /** Dokumentum számlázás — nem ügyféltörzs. */
@@ -229,13 +231,23 @@ export type RecordSalePaymentInput = z.infer<typeof recordSalePaymentSchema>
 export const updateSalePaymentSchema = z.object({
   paymentId: z.string().uuid(),
   paymentMethodId: z.string().uuid('Válassz fizetési módot.'),
-  amount: z.number().positive('A fizetés legyen pozitív.')
+  amount: z.number().positive('A fizetés legyen pozitív.'),
+  note: z
+    .string()
+    .trim()
+    .min(1, 'A korrekció indoka kötelező.')
+    .max(500, 'Az indok legfeljebb 500 karakter.')
 })
 
 export type UpdateSalePaymentInput = z.infer<typeof updateSalePaymentSchema>
 
 export const voidSalePaymentSchema = z.object({
-  paymentId: z.string().uuid()
+  paymentId: z.string().uuid(),
+  note: z
+    .string()
+    .trim()
+    .min(1, 'Az érvénytelenítés indoka kötelező.')
+    .max(500, 'Az indok legfeljebb 500 karakter.')
 })
 
 export type VoidSalePaymentInput = z.infer<typeof voidSalePaymentSchema>

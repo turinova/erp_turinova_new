@@ -17,7 +17,8 @@ export type ImportExisting = {
   name: string
   barcode: string | null
   barcode_internal: string | null
-  manufacturer_id: string
+  /** NULL a DB-ben → null (soha ne legyen a `"null"` string — UUID hiba). */
+  manufacturer_id: string | null
   tax_rate_id: string
   unit_id: string
   price_net: number
@@ -131,7 +132,10 @@ export async function loadAccessoryImportContext(
         name: String(r.name),
         barcode: (r.barcode as string | null) ?? null,
         barcode_internal: (r.barcode_internal as string | null) ?? null,
-        manufacturer_id: String(r.manufacturer_id),
+        manufacturer_id:
+          r.manufacturer_id == null || r.manufacturer_id === ''
+            ? null
+            : String(r.manufacturer_id),
         tax_rate_id: String(r.tax_rate_id),
         unit_id: String(r.unit_id),
         price_net: Number(r.price_net),

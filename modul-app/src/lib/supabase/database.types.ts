@@ -1671,7 +1671,7 @@ export type Database = {
         Returns: Record<string, unknown>
       }
       void_sale_payment: {
-        Args: { p_payment_id: string }
+        Args: { p_payment_id: string; p_note: string }
         Returns: Record<string, unknown>
       }
       update_sale_payment: {
@@ -1679,6 +1679,7 @@ export type Database = {
           p_payment_id: string
           p_payment_method_id: string
           p_amount: number
+          p_note: string
         }
         Returns: Record<string, unknown>
       }

@@ -52,6 +52,23 @@ export type SalePaymentRow = {
   kind: 'payment' | 'refund'
   provider_ref: string | null
   sales_return_id: string | null
+  created_by_label: string | null
+  void_reason: string | null
+}
+
+export type SalePaymentEventRow = {
+  id: string
+  event_type: 'recorded' | 'voided' | 'corrected' | 'refunded' | 'note'
+  source: string
+  amount: number | null
+  payment_method_name: string | null
+  previous_amount: number | null
+  previous_payment_method_name: string | null
+  note: string | null
+  late_settlement: boolean
+  created_by_label: string | null
+  created_at: string
+  sales_payment_id: string | null
 }
 
 export type SaleReturnItemRow = {
@@ -115,6 +132,8 @@ export type SaleDetail = {
   pos_shift_open: boolean | null
   items: SaleItemRow[]
   payments: SalePaymentRow[]
+  /** Append-only fizetési tevékenység (legújabb elöl a UI-n). */
+  payment_events: SalePaymentEventRow[]
   returns: SaleReturnRow[]
   /** Mennyi adható még vissza tételenként */
   returnedQtyByItemId: Record<string, number>
@@ -410,7 +429,23 @@ export async function getSale(
         kind,
         provider_ref,
         sales_return_id,
+        created_by_label,
+        void_reason,
         deleted_at
+      ),
+      sales_payment_events (
+        id,
+        event_type,
+        source,
+        amount,
+        payment_method_name,
+        previous_amount,
+        previous_payment_method_name,
+        note,
+        late_settlement,
+        created_by_label,
+        created_at,
+        sales_payment_id
       ),
       sales_returns (
         id,
@@ -501,10 +536,12 @@ export async function getSale(
       kind?: string | null
       provider_ref?: string | null
       sales_return_id?: string | null
+      created_by_label?: string | null
+      void_reason?: string | null
       deleted_at: string | null
     }[]
   )
-    .filter((p) => !p.deleted_at)
+    .filter((p) => !p.deleted_at && p.status === 'completed')
     .map((p) => ({
       id: p.id,
       payment_method_id: p.payment_method_id ?? null,
@@ -516,8 +553,52 @@ export async function getSale(
         | 'payment'
         | 'refund',
       provider_ref: p.provider_ref?.trim() || null,
-      sales_return_id: p.sales_return_id ?? null
+      sales_return_id: p.sales_return_id ?? null,
+      created_by_label: p.created_by_label?.trim() || null,
+      void_reason: p.void_reason?.trim() || null
     }))
+
+  const paymentEventTypes = new Set([
+    'recorded',
+    'voided',
+    'corrected',
+    'refunded',
+    'note'
+  ])
+  const payment_events = (
+    (data as { sales_payment_events?: unknown }).sales_payment_events ?? []
+  ) as {
+    id: string
+    event_type: string
+    source: string
+    amount: number | null
+    payment_method_name: string | null
+    previous_amount: number | null
+    previous_payment_method_name: string | null
+    note: string | null
+    late_settlement: boolean | null
+    created_by_label: string | null
+    created_at: string
+    sales_payment_id: string | null
+  }[]
+  const paymentEvents: SalePaymentEventRow[] = payment_events
+    .filter((e) => paymentEventTypes.has(e.event_type))
+    .map((e) => ({
+      id: e.id,
+      event_type: e.event_type as SalePaymentEventRow['event_type'],
+      source: e.source,
+      amount: e.amount == null ? null : Number(e.amount),
+      payment_method_name: e.payment_method_name,
+      previous_amount:
+        e.previous_amount == null ? null : Number(e.previous_amount),
+      previous_payment_method_name: e.previous_payment_method_name,
+      note: e.note?.trim() || null,
+      late_settlement: e.late_settlement === true,
+      created_by_label: e.created_by_label?.trim() || null,
+      created_at: e.created_at,
+      sales_payment_id: e.sales_payment_id
+    }))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
 
   const returns: SaleReturnRow[] = (
     (data.sales_returns ?? []) as {
@@ -696,6 +777,7 @@ export async function getSale(
     pos_shift_open: posShiftOpen,
     items,
     payments,
+    payment_events: paymentEvents,
     returns,
     returnedQtyByItemId
   }
