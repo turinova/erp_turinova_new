@@ -75,10 +75,12 @@ export type SourceInvoicesSectionProps = {
   listHref: string
   listLinkLabel: string
   hint: string
-  /** Üres lista CTA — ha null, nincs gomb */
+  /** Kiállítás CTA — üres listán és/vagy headerben (ha van már bizonylat) */
   emptyCtaLabel?: string | null
   onEmptyCta?: () => void
   showEmptyCta?: boolean
+  /** Nem üres listánál a fejlécben is (következő bizonylat) */
+  showHeaderCta?: boolean
 }
 
 export function SourceInvoicesSection({
@@ -90,7 +92,8 @@ export function SourceInvoicesSection({
   hint,
   emptyCtaLabel,
   onEmptyCta,
-  showEmptyCta = false
+  showEmptyCta = false,
+  showHeaderCta = false
 }: SourceInvoicesSectionProps) {
   const router = useRouter()
   const [stornoId, setStornoId] = useState<string | null>(null)
@@ -102,20 +105,39 @@ export function SourceInvoicesSection({
     [invoices, stornoId]
   )
 
+  const ctaButton =
+    emptyCtaLabel && onEmptyCta ? (
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={onEmptyCta}
+      >
+        <FileText className="size-3.5" aria-hidden />
+        {emptyCtaLabel}
+      </Button>
+    ) : null
+
   return (
     <>
-      <section className="rounded-md border border-border bg-surface p-3.5">
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <div>
+      <section
+        id="bizonylatok"
+        className="scroll-mt-16 rounded-md border border-border bg-surface p-3.5"
+      >
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
             <h2 className="text-h3 text-ink">Bizonylatok</h2>
             <p className="text-hint text-ink-secondary">{hint}</p>
           </div>
-          <Link
-            href={listHref}
-            className="text-hint font-medium text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
-          >
-            {listLinkLabel}
-          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {invoices.length > 0 && showHeaderCta ? ctaButton : null}
+            <Link
+              href={listHref}
+              className="text-hint font-medium text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+            >
+              {listLinkLabel}
+            </Link>
+          </div>
         </div>
 
         {invoices.length === 0 ? (
@@ -123,17 +145,8 @@ export function SourceInvoicesSection({
             <p className="text-body text-ink-secondary">
               Még nincs kiállított bizonylat.
             </p>
-            {showEmptyCta && emptyCtaLabel && onEmptyCta ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-2"
-                onClick={onEmptyCta}
-              >
-                <FileText className="size-3.5" aria-hidden />
-                {emptyCtaLabel}
-              </Button>
+            {showEmptyCta && ctaButton ? (
+              <div className="mt-2">{ctaButton}</div>
             ) : null}
           </div>
         ) : (

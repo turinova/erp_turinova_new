@@ -7,6 +7,7 @@ export type InvoiceSourceType =
   | 'opti_quote'
   | 'opti_order'
   | 'manual'
+  | 'consolidated'
 export type InvoiceIssueKind = 'normal' | 'advance' | 'proforma'
 export type InvoicePaymentMethod = 'cash' | 'bank_transfer' | 'card'
 

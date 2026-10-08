@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import {
   CheckCircle2,
-  Download,
   Factory,
   FileDown,
   FileText,
@@ -15,8 +14,7 @@ import {
   Pencil,
   ScanSearch,
   Send,
-  ShoppingCart,
-  Wallet
+  ShoppingCart
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -27,10 +25,13 @@ import { AssignProductionDialog } from '@/components/quotes/assign-production-di
 import { CreateOrderDialog } from '@/components/quotes/create-order-dialog'
 import { QuoteBarcodeDisplay } from '@/components/quotes/quote-barcode-display'
 import { QuoteBillingEditDialog } from '@/components/quotes/quote-billing-edit-dialog'
+import { QuoteEditPaymentDialog } from '@/components/quotes/quote-edit-payment-dialog'
 import { QuoteFeesBlock } from '@/components/quotes/quote-fees-block'
 import { QuoteAccessoriesBlock } from '@/components/quotes/quote-accessories-block'
 import { QuoteInvoiceIssueDialog } from '@/components/quotes/quote-invoice-issue-dialog'
+import { QuotePaymentsSection } from '@/components/quotes/quote-payments-section'
 import { QuoteStatusStepper } from '@/components/quotes/quote-status-stepper'
+import { QuoteVoidPaymentDialog } from '@/components/quotes/quote-void-payment-dialog'
 import { SourceInvoicesSection } from '@/components/invoicing/source-invoices-section'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
@@ -101,14 +102,16 @@ import {
 } from '@/lib/quotes/status-labels'
 import {
   isQuoteEditableInOpti,
-  type QuoteDetail
+  type QuoteDetail,
+  type QuotePaymentRow
 } from '@/lib/quotes/queries'
 import { previewQuoteReadySms } from '@/lib/scanner/actions'
 import type { QuoteReadySmsCandidate } from '@/lib/sms/types'
 import {
-  activeDocs
+  activeDocs,
+  quoteInvoiceCtaLabel,
+  resolveQuoteInvoiceKindOptions
 } from '@/lib/invoicing/invoice-rules'
-import { fetchInvoicePdfAction } from '@/lib/invoicing/actions'
 import { quoteHasBilling } from '@/lib/invoicing/quote-invoice-lines'
 import type { InvoiceIssueKind, InvoiceListItem } from '@/lib/invoicing/types'
 import { cn } from '@/lib/utils'
@@ -119,8 +122,6 @@ type QuoteDetailClientProps = {
   canWrite: boolean
   /** Staff: aktív díjtípusok a „Díj hozzáadása” dialógushoz. Partner: []. */
   feeTypes?: import('@/lib/fee-types/queries').FeeTypeListItem[]
-  /** Staff: aktív termékek. Partner: []. */
-  accessoryOptions?: import('@/lib/accessories/queries').AccessoryListItem[]
   /** Partner portal — ugyanaz a dokumentum layout, más műveletek */
   surface?: 'staff' | 'partner'
   /** Staff: quote_ready_sms add-on — Kész dialógus */
@@ -180,7 +181,6 @@ export function QuoteDetailClient({
   company,
   canWrite,
   feeTypes = [],
-  accessoryOptions = [],
   surface = 'staff',
   hasSmsAddon = false,
   invoices = [],
@@ -212,6 +212,8 @@ export function QuoteDetailClient({
   const [excelPickerOpen, setExcelPickerOpen] = useState(false)
   const [orderDialogOpen, setOrderDialogOpen] = useState(false)
   const [addPaymentOpen, setAddPaymentOpen] = useState(false)
+  const [editPayment, setEditPayment] = useState<QuotePaymentRow | null>(null)
+  const [voidPayment, setVoidPayment] = useState<QuotePaymentRow | null>(null)
   const [productionDialogOpen, setProductionDialogOpen] = useState(false)
   const [handoverOpen, setHandoverOpen] = useState(false)
   const [smsDialogOpen, setSmsDialogOpen] = useState(false)
@@ -310,13 +312,32 @@ export function QuoteDetailClient({
   const overpaidGross = quoteOverpaidGross(amountDue, quote.total_paid)
   const hasRecordedPayments = quote.total_paid > 0
 
+  const { hasFinal: hasFinalInvoice } = useMemo(
+    () => activeDocs(invoices),
+    [invoices]
+  )
+
+  const invoiceKindOptions = useMemo(
+    () => resolveQuoteInvoiceKindOptions(quote.payment_status, invoices),
+    [quote.payment_status, invoices]
+  )
+  const invoiceCta = useMemo(
+    () => ({
+      label: quoteInvoiceCtaLabel(quote.payment_status, invoices),
+      preferredKind: invoiceKindOptions.defaultKind as InvoiceIssueKind,
+      canIssue: invoiceKindOptions.options.length > 0
+    }),
+    [quote.payment_status, invoices, invoiceKindOptions]
+  )
+
   const canAddPayment =
     !isPartner &&
     canWrite &&
     Boolean(quote.order_number) &&
     quote.status !== 'draft' &&
     quote.status !== 'cancelled' &&
-    quote.payment_status !== 'paid'
+    quote.payment_status !== 'paid' &&
+    !hasFinalInvoice
 
   const canAssignProduction =
     !isPartner &&
@@ -333,20 +354,23 @@ export function QuoteDetailClient({
     quote.status === 'ready' &&
     Boolean(quote.order_number)
 
-  const { hasFinal: hasFinalInvoice } = useMemo(
-    () => activeDocs(invoices),
-    [invoices]
-  )
   const hasInvoiceBilling = quoteHasBilling(quote)
   const canManageInvoicing =
     !isPartner && canWrite && Boolean(quote.order_number)
   const canEditBilling = canManageInvoicing && !hasFinalInvoice
-  const finalInvoiceForPdf = useMemo(() => {
-    const { stornoOf } = activeDocs(invoices)
-    return invoices.find(
-      (i) => i.invoice_type === 'szamla' && !stornoOf.has(i.id)
-    )
-  }, [invoices])
+  const canIssueInvoice =
+    canManageInvoicing &&
+    hasInvoiceBilling &&
+    Boolean(hasAgentKey) &&
+    invoiceCta.canIssue
+  const showFinanceJump =
+    !isPartner &&
+    Boolean(quote.order_number) &&
+    (canAddPayment ||
+      hasRecordedPayments ||
+      canManageInvoicing ||
+      quote.payments.length > 0 ||
+      quote.payment_events.length > 0)
 
   /** Egy primary / képernyő — státusz szerinti fő következő lépés. */
   const primaryAction:
@@ -778,6 +802,23 @@ export function QuoteDetailClient({
                 ) : (
                   <p>Nincs számlázási adat megadva.</p>
                 )}
+                {canEditBilling ? (
+                  <div className="pt-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setBillingOpen(true)}
+                    >
+                      <Pencil className="size-3.5" aria-hidden />
+                      {hasInvoiceBilling ? 'Szerkesztés' : 'Kitöltés'}
+                    </Button>
+                  </div>
+                ) : !isPartner && hasFinalInvoice ? (
+                  <p className="pt-1 text-hint text-ink-muted">
+                    Aktív számla mellett nem módosítható.
+                  </p>
+                ) : null}
               </InfoCard>
             </div>
 
@@ -1002,7 +1043,6 @@ export function QuoteDetailClient({
                 quoteId={quote.id}
                 currency={quote.currency}
                 accessories={quote.accessories}
-                accessoryOptions={accessoryOptions}
                 canEdit={canEditFees}
                 hasRecordedPayments={hasRecordedPayments}
               />
@@ -1377,119 +1417,29 @@ export function QuoteDetailClient({
                       </div>
                     ) : null}
 
-                    {canAddPayment ||
-                    hasRecordedPayments ||
-                    canManageInvoicing ? (
+                    {showFinanceJump ? (
                       <div className="space-y-1.5">
                         <p className="text-label font-semibold text-ink-secondary">
                           Pénzügy
                         </p>
-                        {canAddPayment ? (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="w-full justify-start"
-                            disabled={dialogOptionsLoading}
-                            loading={dialogOptionsLoading}
-                            onClick={() => void openPaymentDialog()}
+                        {canAddPayment ||
+                        hasRecordedPayments ||
+                        quote.payments.length > 0 ||
+                        quote.payment_events.length > 0 ? (
+                          <a
+                            href="#fizetesek"
+                            className="flex h-8 w-full items-center rounded-md border border-border px-2.5 text-body text-ink-secondary underline-offset-2 hover:bg-subtle hover:text-ink hover:underline"
                           >
-                            <Wallet className="size-3.5" aria-hidden />
-                            Befizetés rögzítése
-                          </Button>
+                            Befizetések →
+                          </a>
                         ) : null}
-                        {remainingGross > 0 ? (
-                          <p className="text-hint text-ink-secondary">
-                            Hátralék:{' '}
-                            <span className="font-medium tabular-nums text-ink">
-                              {formatQuotePrice(remainingGross, quote.currency)}
-                            </span>
-                          </p>
-                        ) : hasRecordedPayments ? (
-                          <p className="text-hint text-ink-secondary">
-                            Kifizetve
-                          </p>
-                        ) : null}
-
                         {canManageInvoicing ? (
-                          <>
-                            {canEditBilling ? (
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                className="w-full justify-start"
-                                onClick={() => setBillingOpen(true)}
-                              >
-                                <Pencil className="size-3.5" aria-hidden />
-                                {hasInvoiceBilling
-                                  ? 'Számlázási adatok'
-                                  : 'Számlázás kitöltése'}
-                              </Button>
-                            ) : null}
-                            {hasFinalInvoice && finalInvoiceForPdf ? (
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                className="w-full justify-start"
-                                onClick={() => {
-                                  void (async () => {
-                                    const result = await fetchInvoicePdfAction(
-                                      finalInvoiceForPdf.id
-                                    )
-                                    if (!result.ok) {
-                                      toast.error(result.message)
-                                      return
-                                    }
-                                    const bin = atob(result.base64)
-                                    const bytes = new Uint8Array(bin.length)
-                                    for (let i = 0; i < bin.length; i++) {
-                                      bytes[i] = bin.charCodeAt(i)
-                                    }
-                                    const blob = new Blob([bytes], {
-                                      type: 'application/pdf'
-                                    })
-                                    const url = URL.createObjectURL(blob)
-                                    const a = document.createElement('a')
-                                    a.href = url
-                                    a.download = result.filename
-                                    a.click()
-                                    URL.revokeObjectURL(url)
-                                  })()
-                                }}
-                              >
-                                <Download className="size-3.5" aria-hidden />
-                                Számla PDF
-                              </Button>
-                            ) : hasInvoiceBilling ? (
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                className="w-full justify-start"
-                                disabled={!hasAgentKey}
-                                title={
-                                  !hasAgentKey
-                                    ? 'Nincs Számlázz Agent kulcs'
-                                    : undefined
-                                }
-                                onClick={() => {
-                                  setInvoicePreferredKind(
-                                    quote.payment_status === 'paid'
-                                      ? 'normal'
-                                      : 'proforma'
-                                  )
-                                  setInvoiceOpen(true)
-                                }}
-                              >
-                                <FileText className="size-3.5" aria-hidden />
-                                {quote.payment_status === 'paid'
-                                  ? 'Számla kiállítása'
-                                  : 'Díjbekérő / számla'}
-                              </Button>
-                            ) : (
-                              <p className="text-hint text-ink-secondary">
-                                Számlázáshoz töltsd ki a számlázási adatokat.
-                              </p>
-                            )}
-                          </>
+                          <a
+                            href="#bizonylatok"
+                            className="flex h-8 w-full items-center rounded-md border border-border px-2.5 text-body text-ink-secondary underline-offset-2 hover:bg-subtle hover:text-ink hover:underline"
+                          >
+                            Bizonylatok →
+                          </a>
                         ) : null}
                       </div>
                     ) : null}
@@ -1743,68 +1693,53 @@ export function QuoteDetailClient({
                 </div>
               </dl>
 
-              {showStaffPayment || quote.payments.length > 0 ? (
-                <div className="mt-3 border-t border-border pt-2">
-                  <h3 className="mb-1.5 text-label font-semibold text-ink">
-                    Befizetések
-                  </h3>
-                  {quote.payments.length > 0 ? (
-                    <ul className="space-y-1.5">
-                      {quote.payments.map((p) => (
-                        <li
-                          key={p.id}
-                          className="rounded-md border border-border bg-subtle/40 px-2 py-1.5 text-hint"
-                        >
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className="font-medium text-ink">
-                              {p.payment_method_name}
-                            </span>
-                            <span className="tabular-nums font-semibold text-ink">
-                              {formatQuotePrice(p.amount, quote.currency)}
-                            </span>
-                          </div>
-                          <p className="text-ink-secondary">
-                            {new Intl.DateTimeFormat('hu-HU', {
-                              dateStyle: 'short',
-                              timeStyle: 'short'
-                            }).format(new Date(p.payment_date))}
-                            {!isPartner && p.comment ? ` · ${p.comment}` : ''}
-                          </p>
-                        </li>
-                      ))}
-                    </ul>
+              {showStaffPayment || showPartnerPayment || quote.payments.length > 0 ? (
+                <a
+                  href="#fizetesek"
+                  className="mt-3 block rounded-md border border-border px-2.5 py-2 text-hint text-ink-secondary underline-offset-2 hover:bg-subtle hover:text-ink hover:underline"
+                >
+                  <span className="font-medium text-ink">
+                    {PAYMENT_STATUS_LABEL[quote.payment_status]}
+                  </span>
+                  {remainingGross > 0 ? (
+                    <span className="mt-0.5 block tabular-nums">
+                      Hátralék{' '}
+                      {formatQuotePrice(remainingGross, quote.currency)} →
+                    </span>
                   ) : (
-                    <p className="text-body text-ink-secondary">
-                      Még nincs rögzített befizetés.
-                    </p>
+                    <span className="mt-0.5 block">
+                      Befizetések és tevékenység →
+                    </span>
                   )}
-                  {overpaidGross > 0 ? (
-                    <p className="mt-1.5 text-hint text-warning-ink">
-                      Túlfizetés:{' '}
-                      {formatQuotePrice(overpaidGross, quote.currency)}. A
-                      státusz Kifizetve marad.
-                    </p>
-                  ) : null}
-                  {canAddPayment ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="mt-2 w-full justify-start"
-                      disabled={dialogOptionsLoading}
-                      loading={dialogOptionsLoading}
-                      onClick={() => void openPaymentDialog()}
-                    >
-                      <Wallet className="size-3.5" aria-hidden />
-                      Befizetés rögzítése
-                    </Button>
-                  ) : null}
-                </div>
+                </a>
               ) : null}
             </section>
           </div>
         </aside>
       </div>
+
+      {showStaffPayment ||
+      showPartnerPayment ||
+      quote.payments.length > 0 ||
+      quote.payment_events.length > 0 ? (
+        <QuotePaymentsSection
+          detail={quote}
+          canWrite={canWrite}
+          isPartner={isPartner}
+          hasFinalInvoice={hasFinalInvoice}
+          canRecordPayment={canAddPayment}
+          recordLoading={dialogOptionsLoading}
+          onRecordPayment={() => void openPaymentDialog()}
+          onEditPayment={(p) => {
+            void (async () => {
+              const methods = await ensurePaymentMethods()
+              if (!methods) return
+              setEditPayment(p)
+            })()
+          }}
+          onVoidPayment={setVoidPayment}
+        />
+      ) : null}
 
       {!isPartner && quote.order_number ? (
         <SourceInvoicesSection
@@ -1814,18 +1749,11 @@ export function QuoteDetailClient({
           listHref="/szamlak?source=opti_order"
           listLinkLabel="Bizonylatok"
           hint="Díjbekérő, előleg, számla — ezen a megrendelésen"
-          showEmptyCta={
-            canManageInvoicing && hasInvoiceBilling && Boolean(hasAgentKey)
-          }
-          emptyCtaLabel={
-            quote.payment_status === 'paid'
-              ? 'Számla kiállítása'
-              : 'Díjbekérő / számla'
-          }
+          showEmptyCta={canIssueInvoice}
+          showHeaderCta={canIssueInvoice}
+          emptyCtaLabel={invoiceCta.label}
           onEmptyCta={() => {
-            setInvoicePreferredKind(
-              quote.payment_status === 'paid' ? 'normal' : 'proforma'
-            )
+            setInvoicePreferredKind(invoiceCta.preferredKind)
             setInvoiceOpen(true)
           }}
         />
@@ -2022,6 +1950,26 @@ export function QuoteDetailClient({
           onSuccess={() => router.refresh()}
         />
       ) : null}
+
+      <QuoteEditPaymentDialog
+        open={Boolean(editPayment)}
+        onOpenChange={(open) => {
+          if (!open) setEditPayment(null)
+        }}
+        detail={quote}
+        payment={editPayment}
+        paymentMethods={paymentMethods}
+      />
+
+      <QuoteVoidPaymentDialog
+        open={Boolean(voidPayment)}
+        onOpenChange={(open) => {
+          if (!open) setVoidPayment(null)
+        }}
+        payment={voidPayment}
+        orderNumber={quote.order_number ?? quote.quote_number}
+        currency={quote.currency}
+      />
 
       {quote.order_number && canHandover ? (
         <HandoverDialog

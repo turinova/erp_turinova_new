@@ -207,6 +207,7 @@ export function CreateOrderDialog({
                   value={paymentMethodId}
                   disabled={loading}
                   allowEmpty={false}
+                  portal={false}
                   placeholder="Válassz fizetési módot…"
                   options={paymentMethods.map((m) => ({
                     value: m.id,

@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ExternalLink, Pencil } from 'lucide-react'
+import { Download, ExternalLink, FileText, Pencil } from 'lucide-react'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
+
+import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 
 import {
   DataTable,
@@ -14,14 +16,9 @@ import {
   DataTableHeaderCell,
   DataTableRow
 } from '@/components/patterns/data-table'
-import { FormField } from '@/components/patterns/form-field'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { SaleTotalsBreakdown } from '@/components/sales/sale-totals-breakdown'
-import {
-  QuoteBillingFields,
-  type QuoteBillingState
-} from '@/components/sales-quotes/quote-billing-fields'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -39,8 +36,7 @@ import {
   cloneSalesQuoteAction,
   convertSalesQuoteToSaleAction,
   setSalesQuoteStatusAction,
-  syncQuoteBillingToCustomerAction,
-  updateSalesQuoteDraftAction
+  syncQuoteBillingToCustomerAction
 } from '@/lib/sales-quotes/actions'
 import {
   SALES_QUOTE_STATUS_LABEL,
@@ -136,18 +132,6 @@ function hasBilling(d: SalesQuoteDetail) {
   )
 }
 
-function billingFromDetail(d: SalesQuoteDetail): QuoteBillingState {
-  return {
-    billingName: d.billing_name ?? '',
-    billingCountry: d.billing_country || 'Magyarország',
-    billingCity: d.billing_city ?? '',
-    billingPostalCode: d.billing_postal_code ?? '',
-    billingStreet: d.billing_street ?? '',
-    billingHouseNumber: d.billing_house_number ?? '',
-    billingTaxNumber: d.billing_tax_number ?? ''
-  }
-}
-
 type Props = {
   detail: SalesQuoteDetail
   paymentMethods: PaymentMethodOption[]
@@ -163,15 +147,12 @@ export function SalesQuoteDetailClient({
   const [pending, startTransition] = useTransition()
   const [convertOpen, setConvertOpen] = useState(false)
   const [lostOpen, setLostOpen] = useState(false)
-  const [editOpen, setEditOpen] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
   const [payId, setPayId] = useState(paymentMethods[0]?.id ?? '')
+  const [payInFull, setPayInFull] = useState(true)
   const [lostReason, setLostReason] = useState('')
-  const [editNote, setEditNote] = useState(detail.note ?? '')
-  const [editValidUntil, setEditValidUntil] = useState(
-    detail.valid_until?.slice(0, 10) ?? ''
-  )
-  const [editBilling, setEditBilling] = useState(billingFromDetail(detail))
+  const [pdfLoading, setPdfLoading] = useState(false)
   const cancelRef = useRef<HTMLButtonElement>(null)
 
   const canAct =
@@ -179,18 +160,45 @@ export function SalesQuoteDetailClient({
     (detail.status === 'draft' || detail.status === 'sent') &&
     !detail.converted_sale_id
   const canEditDraft = canWrite && detail.status === 'draft'
+  const canCancel =
+    canWrite &&
+    (detail.status === 'draft' || detail.status === 'sent') &&
+    !detail.converted_sale_id
+  const canPdf =
+    detail.status !== 'cancelled' && detail.status !== 'lost'
 
   useEffect(() => {
-    if (!convertOpen && !lostOpen && !editOpen && !syncOpen) return
+    if (!convertOpen && !lostOpen && !syncOpen && !cancelOpen) return
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
-  }, [convertOpen, lostOpen, editOpen, syncOpen])
+  }, [convertOpen, lostOpen, syncOpen, cancelOpen])
 
-  useEffect(() => {
-    setEditNote(detail.note ?? '')
-    setEditValidUntil(detail.valid_until?.slice(0, 10) ?? '')
-    setEditBilling(billingFromDetail(detail))
-  }, [detail])
+  async function handlePdf() {
+    setPdfLoading(true)
+    try {
+      const res = await fetch(
+        `/api/ertekesitesek/arajanlatok/${detail.id}/pdf`
+      )
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as {
+          error?: string
+        } | null
+        throw new Error(data?.error || 'PDF hiba')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Arajanlat-${detail.quote_number}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('PDF letöltve.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'PDF hiba')
+    } finally {
+      setPdfLoading(false)
+    }
+  }
 
   const totals = totalsFromDetail(detail)
   const customerHref = `/ugyfelek/${detail.customer_id}`
@@ -219,10 +227,10 @@ export function SalesQuoteDetailClient({
             >
               {SALES_QUOTE_STATUS_LABEL[detail.status]}
             </StatusBadge>
+
             {detail.converted_sale_id ? (
               <Button
                 type="button"
-                variant="secondary"
                 onClick={() =>
                   router.push(`/ertekesitesek/${detail.converted_sale_id}`)
                 }
@@ -230,53 +238,64 @@ export function SalesQuoteDetailClient({
                 Eladás megnyitása
               </Button>
             ) : null}
+
+            {canPdf ? (
+              <Button
+                type="button"
+                variant={
+                  detail.status === 'draft' && !canAct ? 'primary' : 'secondary'
+                }
+                loading={pdfLoading}
+                onClick={() => void handlePdf()}
+              >
+                <Download className="size-3.5" aria-hidden />
+                PDF
+              </Button>
+            ) : null}
+
             {canEditDraft ? (
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setEditOpen(true)}
+                onClick={() =>
+                  router.push(
+                    `/ertekesitesek/arajanlatok/${detail.id}/szerkeszt`
+                  )
+                }
               >
                 <Pencil className="size-3.5" aria-hidden />
-                Szerkesztés
+                Tételek szerkesztése
               </Button>
             ) : null}
-            {canAct ? (
-              <>
-                {detail.status === 'draft' ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    loading={pending}
-                    onClick={() => {
-                      startTransition(async () => {
-                        const r = await setSalesQuoteStatusAction(
-                          detail.id,
-                          'sent'
-                        )
-                        if (!r.ok) toast.error(r.message)
-                        else {
-                          toast.success('Kiküldve jelölve.')
-                          router.refresh()
-                        }
-                      })
-                    }}
-                  >
-                    Kiküldve
-                  </Button>
-                ) : null}
-                <Button type="button" onClick={() => setConvertOpen(true)}>
-                  Eladás létrehozása
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setLostOpen(true)}
-                >
-                  Elveszett
-                </Button>
-              </>
+
+            {canAct && detail.status === 'draft' ? (
+              <Button
+                type="button"
+                variant="secondary"
+                loading={pending}
+                onClick={() => {
+                  startTransition(async () => {
+                    const r = await setSalesQuoteStatusAction(detail.id, 'sent')
+                    if (!r.ok) toast.error(r.message)
+                    else {
+                      toast.success('Kiküldve jelölve — töltsd le a PDF-et.')
+                      router.refresh()
+                    }
+                  })
+                }}
+              >
+                <FileText className="size-3.5" aria-hidden />
+                Kiküldve
+              </Button>
             ) : null}
-            {canWrite ? (
+
+            {canAct ? (
+              <Button type="button" onClick={() => setConvertOpen(true)}>
+                Eladás létrehozása
+              </Button>
+            ) : null}
+
+            {canWrite && !detail.converted_sale_id ? (
               <Button
                 type="button"
                 variant="secondary"
@@ -286,13 +305,38 @@ export function SalesQuoteDetailClient({
                     const r = await cloneSalesQuoteAction(detail.id)
                     if (!r.ok) toast.error(r.message)
                     else {
-                      toast.success('Másolat kész.')
+                      toast.success(
+                        r.skippedLines
+                          ? `Másolat kész (${r.skippedLines} törölt tétel kihagyva).`
+                          : 'Másolat kész.'
+                      )
                       router.push(`/ertekesitesek/arajanlatok/${r.id}`)
                     }
                   })
                 }}
               >
                 Másolat
+              </Button>
+            ) : null}
+
+            {canAct ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setLostOpen(true)}
+              >
+                Elveszett
+              </Button>
+            ) : null}
+
+            {canCancel ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-danger-ink hover:text-danger-ink"
+                onClick={() => setCancelOpen(true)}
+              >
+                Törlés
               </Button>
             ) : null}
           </div>
@@ -351,7 +395,11 @@ export function SalesQuoteDetailClient({
                 variant="ghost"
                 size="sm"
                 className="h-7 px-2 text-hint"
-                onClick={() => setEditOpen(true)}
+                onClick={() =>
+                  router.push(
+                    `/ertekesitesek/arajanlatok/${detail.id}/szerkeszt`
+                  )
+                }
               >
                 Szerkesztés
               </Button>
@@ -402,7 +450,11 @@ export function SalesQuoteDetailClient({
                   <button
                     type="button"
                     className="underline-offset-2 hover:underline"
-                    onClick={() => setEditOpen(true)}
+                    onClick={() =>
+                      router.push(
+                        `/ertekesitesek/arajanlatok/${detail.id}/szerkeszt`
+                      )
+                    }
                   >
                     Kitöltés
                   </button>
@@ -533,100 +585,6 @@ export function SalesQuoteDetailClient({
         </aside>
       </div>
 
-      <Dialog
-        open={editOpen}
-        onOpenChange={(o) => {
-          setEditOpen(o)
-          if (o) {
-            setEditNote(detail.note ?? '')
-            setEditValidUntil(detail.valid_until?.slice(0, 10) ?? '')
-            setEditBilling(billingFromDetail(detail))
-          }
-        }}
-      >
-        <DialogContent className="max-w-md gap-0 p-0">
-          <DialogHeader className="border-b border-border px-4 py-3 pr-10">
-            <DialogTitle>Ajánlat szerkesztése</DialogTitle>
-            <p className="mt-1 text-hint text-ink-secondary">
-              Csak piszkozat. Tételekhez: Másolat, majd új draft.
-            </p>
-          </DialogHeader>
-          <div className="max-h-[70vh] space-y-3 overflow-y-auto px-4 py-3">
-            <FormField label="Érvényes eddig" htmlFor="sq-edit-valid">
-              <Input
-                id="sq-edit-valid"
-                type="date"
-                value={editValidUntil}
-                onChange={(e) => setEditValidUntil(e.target.value)}
-              />
-            </FormField>
-            <FormField label="Megjegyzés" htmlFor="sq-edit-note">
-              <Input
-                id="sq-edit-note"
-                value={editNote}
-                maxLength={500}
-                onChange={(e) => setEditNote(e.target.value)}
-              />
-            </FormField>
-            <div>
-              <p className="mb-1.5 text-[12px] font-medium text-ink-secondary">
-                Számlázási adatok
-              </p>
-              <QuoteBillingFields
-                value={editBilling}
-                onChange={setEditBilling}
-                disabled={pending}
-                idPrefix="sq-edit-bill"
-              />
-            </div>
-          </div>
-          <DialogFooter className="border-t border-border px-4 py-3 sm:justify-end">
-            <Button
-              ref={cancelRef}
-              type="button"
-              variant="secondary"
-              disabled={pending}
-              onClick={() => setEditOpen(false)}
-            >
-              Mégse
-            </Button>
-            <Button
-              type="button"
-              loading={pending}
-              onClick={() => {
-                startTransition(async () => {
-                  const r = await updateSalesQuoteDraftAction({
-                    quoteId: detail.id,
-                    note: editNote || null,
-                    validUntil: editValidUntil || null,
-                    billing: {
-                      billingName: editBilling.billingName || null,
-                      billingCountry:
-                        editBilling.billingCountry || 'Magyarország',
-                      billingCity: editBilling.billingCity || null,
-                      billingPostalCode: editBilling.billingPostalCode || null,
-                      billingStreet: editBilling.billingStreet || null,
-                      billingHouseNumber:
-                        editBilling.billingHouseNumber || null,
-                      billingTaxNumber: editBilling.billingTaxNumber || null
-                    }
-                  })
-                  if (!r.ok) {
-                    toast.error(r.message)
-                    return
-                  }
-                  toast.success('Ajánlat mentve.')
-                  setEditOpen(false)
-                  router.refresh()
-                })
-              }}
-            >
-              Mentés
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={syncOpen} onOpenChange={setSyncOpen}>
         <DialogContent className="max-w-sm gap-0 p-0">
           <DialogHeader className="border-b border-border px-4 py-3 pr-10">
@@ -676,19 +634,44 @@ export function SalesQuoteDetailClient({
               {formatMoneyFt(detail.total_gross)} Ft).
             </p>
           </DialogHeader>
-          <div className="px-4 py-3">
-            <label className="mb-1 block text-[12px] font-medium text-ink-secondary">
-              Fizetési mód *
-            </label>
-            <MenuSelect
-              value={payId}
-              onChange={setPayId}
-              allowEmpty={false}
-              options={paymentMethods.map((p) => ({
-                value: p.id,
-                label: p.name
-              }))}
-            />
+          <div className="space-y-3 px-4 py-3">
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-ink-secondary">
+                Fizetés
+              </label>
+              <select
+                className="flex h-9 w-full rounded-md border border-border bg-surface px-2.5 text-body"
+                value={payInFull ? 'full' : 'transfer'}
+                onChange={(e) => setPayInFull(e.target.value === 'full')}
+              >
+                <option value="full">Teljes fizetés most</option>
+                <option value="transfer">
+                  Utalás / később — átadásra vár
+                </option>
+              </select>
+            </div>
+            {payInFull ? (
+              <div>
+                <label className="mb-1 block text-[12px] font-medium text-ink-secondary">
+                  Fizetési mód *
+                </label>
+                <MenuSelect
+                  value={payId}
+                  onChange={setPayId}
+                  allowEmpty={false}
+                  portal={false}
+                  options={paymentMethods.map((p) => ({
+                    value: p.id,
+                    label: p.name
+                  }))}
+                />
+              </div>
+            ) : (
+              <p className="text-hint text-ink-secondary">
+                Az eladás fizetetlen (confirmed) lesz — díjbekérő / befizetés az
+                eladáson.
+              </p>
+            )}
           </div>
           <DialogFooter className="border-t border-border px-4 py-3 sm:justify-end">
             <Button
@@ -703,15 +686,19 @@ export function SalesQuoteDetailClient({
             <Button
               type="button"
               loading={pending}
-              disabled={!payId}
+              disabled={payInFull && !payId}
               onClick={() => {
                 startTransition(async () => {
                   const r = await convertSalesQuoteToSaleAction({
                     quoteId: detail.id,
-                    paymentMethodId: payId
+                    paymentMethodId: payId || paymentMethods[0]?.id || '',
+                    payInFull
                   })
                   if (!r.ok) {
                     toast.error(r.message)
+                    if (r.saleId) {
+                      router.push(`/ertekesitesek/${r.saleId}`)
+                    }
                     return
                   }
                   toast.success('Eladás rögzítve.')
@@ -778,6 +765,30 @@ export function SalesQuoteDetailClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={cancelOpen}
+        onOpenChange={setCancelOpen}
+        title="Ajánlat törlése"
+        description={`${detail.quote_number} törlése — a státusz „Törölve” lesz. Ez nem vonható vissza a listából könnyen.`}
+        confirmLabel="Törlés"
+        cancelLabel="Mégse"
+        variant="danger"
+        loading={pending}
+        onConfirm={() => {
+          startTransition(async () => {
+            const r = await setSalesQuoteStatusAction(detail.id, 'cancelled')
+            if (!r.ok) {
+              toast.error(r.message)
+              return
+            }
+            toast.success('Ajánlat törölve.')
+            setCancelOpen(false)
+            router.push('/ertekesitesek/arajanlatok')
+            router.refresh()
+          })
+        }}
+      />
     </div>
   )
 }

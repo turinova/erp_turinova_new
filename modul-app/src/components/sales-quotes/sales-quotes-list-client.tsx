@@ -32,7 +32,7 @@ type Props = {
   page: number
   limit: number
   q: string
-  status: SalesQuoteStatus | 'all'
+  status: SalesQuoteStatus | 'all' | 'active'
   canWrite: boolean
 }
 
@@ -45,13 +45,18 @@ function formatDate(iso: string | null) {
   }
 }
 
-const STATUS_FILTERS: { value: SalesQuoteStatus | 'all'; label: string }[] = [
+const STATUS_FILTERS: {
+  value: SalesQuoteStatus | 'all' | 'active'
+  label: string
+}[] = [
+  { value: 'active', label: 'Aktív' },
   { value: 'all', label: 'Mind' },
   { value: 'draft', label: 'Piszkozat' },
   { value: 'sent', label: 'Kiküldve' },
   { value: 'accepted', label: 'Elfogadva' },
   { value: 'lost', label: 'Elveszett' },
-  { value: 'expired', label: 'Lejárt' }
+  { value: 'expired', label: 'Lejárt' },
+  { value: 'cancelled', label: 'Törölve' }
 ]
 
 export function SalesQuotesListClient({
@@ -70,14 +75,14 @@ export function SalesQuotesListClient({
   function pushParams(next: {
     q?: string
     page?: number
-    status?: SalesQuoteStatus | 'all'
+    status?: SalesQuoteStatus | 'all' | 'active'
   }) {
     const params = new URLSearchParams()
     const q = next.q ?? search
     const p = next.page ?? 1
     const status = next.status ?? initialStatus
     if (q.trim()) params.set('q', q.trim())
-    if (status && status !== 'all') params.set('status', status)
+    if (status && status !== 'active') params.set('status', status)
     if (p > 1) params.set('page', String(p))
     const qs = params.toString()
     router.push(

@@ -2,23 +2,30 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { X } from 'lucide-react'
+import { ScanBarcode, X } from 'lucide-react'
+import { toast } from 'sonner'
 
 import {
   ScannerHandoverDialog,
   type ScannerHandoverItem
 } from '@/components/scanner/scanner-handover-dialog'
 import { QuoteReadySmsDialog } from '@/components/orders/quote-ready-sms-dialog'
+import {
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeaderCell,
+  DataTableRow
+} from '@/components/patterns/data-table'
+import { FormField } from '@/components/patterns/form-field'
+import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
-import {
-  PAYMENT_STATUS_LABEL,
-  paymentStatusTone,
-  quoteRemainingGross
-} from '@/lib/quotes/payment-labels'
+import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
 import {
   QUOTE_STATUS_LABEL,
   quoteStatusTone
@@ -46,6 +53,13 @@ type ScannerClientProps = {
 const WEDGE_GAP_MS = 80
 /** Input mezőbe gépelés után ennyi idle után indít lookupot. */
 const INPUT_DEBOUNCE_MS = 300
+
+function showFeedback(tone: FeedbackTone, message: string) {
+  if (tone === 'success') toast.success(message)
+  else if (tone === 'warning') toast.warning(message)
+  else if (tone === 'danger') toast.error(message)
+  else toast.message(message)
+}
 
 export function ScannerClient({
   canWrite,
@@ -81,10 +95,6 @@ export function ScannerClient({
   )
   const [smsTargetIds, setSmsTargetIds] = useState<string[]>([])
   const [smsClearList, setSmsClearList] = useState(false)
-  const [feedback, setFeedback] = useState<{
-    tone: FeedbackTone
-    message: string
-  } | null>(null)
 
   useEffect(() => {
     handoverOpenRef.current = handoverOpen
@@ -116,10 +126,6 @@ export function ScannerClient({
       if (inputDebounceRef.current) clearTimeout(inputDebounceRef.current)
     }
   }, [])
-
-  function showFeedback(tone: FeedbackTone, message: string) {
-    setFeedback({ tone, message })
-  }
 
   function removeRows(ids: string[]) {
     const idSet = new Set(ids)
@@ -312,7 +318,6 @@ export function ScannerClient({
       setSelectedIds((prev) =>
         prev.includes(order.id) ? prev : [...prev, order.id]
       )
-      setFeedback(null)
     } catch {
       showFeedback('danger', 'Hiba a keresés során.')
     } finally {
@@ -367,7 +372,6 @@ export function ScannerClient({
       if (e.key.length !== 1) return
       if (e.key === ' ') return
 
-      // Scanner input: natív onChange / onPaste kezeli
       if (focusedOnScannerInput) return
 
       const now = Date.now()
@@ -382,7 +386,6 @@ export function ScannerClient({
 
     function onPaste(e: ClipboardEvent) {
       if (handoverOpenRef.current) return
-      // A mező saját onPaste-je kezeli
       if (e.target === inputRef.current) return
       if (isForeignEditable(e.target)) return
 
@@ -508,15 +511,14 @@ export function ScannerClient({
     mode === 'list' && selectedReady.length > 0 && canWrite
   const canMarkReady =
     mode === 'list' && selectedInProduction.length > 0 && canWrite
+  const hasSelection = selectedIds.length > 0
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-h1 text-ink">Scanner</h1>
-        <p className="mt-1 text-body text-ink-secondary">
-          Olvasd be a rendelés vonalkódját — fókusz nélkül is működik.
-        </p>
-      </div>
+      <PageHeader
+        title="Scanner"
+        description="Vonalkód → lista → egy művelet. Fókusz nélkül is működik."
+      />
 
       {!canWrite ? (
         <p
@@ -527,57 +529,35 @@ export function ScannerClient({
         </p>
       ) : null}
 
-      {feedback ? (
-        <p
-          className={cn(
-            'max-w-xl rounded-md border px-3 py-2 text-body',
-            feedback.tone === 'success' &&
-              'border-success/30 bg-success-soft text-success-ink',
-            feedback.tone === 'warning' &&
-              'border-warning/30 bg-warning-soft text-warning-ink',
-            feedback.tone === 'danger' &&
-              'border-danger/30 bg-danger-soft text-danger-ink',
-            feedback.tone === 'info' &&
-              'border-border bg-subtle text-ink-secondary'
-          )}
-          role="status"
-        >
-          {feedback.message}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <ModeChip
-          active={mode === 'list'}
-          onClick={() => setMode('list')}
-          label="Lista"
-        />
-        <ModeChip
-          active={mode === 'instant'}
-          onClick={() => setMode('instant')}
-          label="Azonnali"
+      <div className="flex flex-wrap items-center gap-3">
+        <SegmentedControl
+          ariaLabel="Scanner mód"
+          options={[
+            { value: 'list', label: 'Lista' },
+            { value: 'instant', label: 'Azonnali' }
+          ]}
+          value={mode}
+          onChange={setMode}
         />
         {mode === 'instant' ? (
-          <>
-            <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-            <ModeChip
-              active={instantAction === 'ready'}
-              onClick={() => setInstantAction('ready')}
-              label="Készre"
-            />
-            <ModeChip
-              active={instantAction === 'handover'}
-              onClick={() => setInstantAction('handover')}
-              label="Átadás"
-            />
-          </>
+          <SegmentedControl
+            ariaLabel="Azonnali művelet"
+            options={[
+              { value: 'ready', label: 'Készre' },
+              { value: 'handover', label: 'Átadás' }
+            ]}
+            value={instantAction}
+            onChange={setInstantAction}
+          />
         ) : null}
       </div>
 
-      <div className="max-w-xl space-y-1.5">
-        <label htmlFor="scanner-barcode" className="text-label text-ink">
-          Vonalkód
-        </label>
+      <FormField
+        label="Vonalkód"
+        htmlFor="scanner-barcode"
+        hint={scanning ? 'Keresés…' : undefined}
+        className="max-w-2xl"
+      >
         <Input
           ref={inputRef}
           id="scanner-barcode"
@@ -591,21 +571,18 @@ export function ScannerClient({
           onChange={(e) => onInputChange(e.target.value)}
           onPaste={onInputPaste}
         />
-        {scanning ? (
-          <p className="text-hint text-ink-secondary">Keresés…</p>
-        ) : null}
-      </div>
+      </FormField>
 
       {mode === 'list' ? (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-hint text-ink-secondary">
-              {rows.length === 0
-                ? 'Még nincs beolvasott rendelés.'
-                : `${rows.length} rendelés a listán · ${selectedIds.length} kijelölve`}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              {rows.length > 0 ? (
+          {rows.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-surface px-3 py-2">
+              <p className="text-hint text-ink-secondary">
+                {hasSelection
+                  ? `${selectedIds.length} kijelölve · ${rows.length} a listán`
+                  : `${rows.length} rendelés a listán`}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant="ghost"
@@ -614,175 +591,174 @@ export function ScannerClient({
                   onClick={() => {
                     setRows([])
                     setSelectedIds([])
-                    setFeedback(null)
                   }}
                 >
                   Lista törlése
                 </Button>
-              ) : null}
-              {readyPrimary ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={!canMarkReady || bulkLoading}
-                    onClick={() => void handleMarkReady()}
-                  >
-                    Gyártás kész
-                    {selectedInProduction.length > 0
-                      ? ` (${selectedInProduction.length})`
-                      : ''}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    disabled={!canHandover || bulkLoading}
-                    onClick={openHandoverForSelected}
-                  >
-                    Átadás
-                    {selectedReady.length > 0
-                      ? ` (${selectedReady.length})`
-                      : ''}
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={!canHandover || bulkLoading}
-                    onClick={openHandoverForSelected}
-                  >
-                    Átadás
-                    {selectedReady.length > 0
-                      ? ` (${selectedReady.length})`
-                      : ''}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    disabled={!canMarkReady || bulkLoading}
-                    loading={bulkLoading && canMarkReady}
-                    onClick={() => void handleMarkReady()}
-                  >
-                    Gyártás kész
-                    {selectedInProduction.length > 0
-                      ? ` (${selectedInProduction.length})`
-                      : ''}
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {rows.length > 0 ? (
-            <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full min-w-[720px] border-collapse text-left text-body">
-                <thead>
-                  <tr className="border-b border-border bg-subtle">
-                    <th className="w-10 px-2 py-2">
-                      <input
-                        type="checkbox"
-                        className="size-3.5 accent-primary"
-                        checked={
-                          rows.length > 0 &&
-                          selectedIds.length === rows.length
-                        }
-                        onChange={toggleSelectAll}
-                        aria-label="Összes kijelölése"
-                      />
-                    </th>
-                    <th className="px-2 py-2 text-label font-semibold text-ink">
-                      Rendelés
-                    </th>
-                    <th className="px-2 py-2 text-label font-semibold text-ink">
-                      Ügyfél
-                    </th>
-                    <th className="px-2 py-2 text-label font-semibold text-ink">
-                      Státusz
-                    </th>
-                    <th className="px-2 py-2 text-label font-semibold text-ink">
-                      Fizetés
-                    </th>
-                    <th className="px-2 py-2 text-right text-label font-semibold text-ink">
-                      Hátralék
-                    </th>
-                    <th className="w-10 px-2 py-2" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row) => {
-                    const remaining = quoteRemainingGross(
-                      row.final_total_gross,
-                      row.total_paid
-                    )
-                    return (
-                      <tr
-                        key={row.id}
-                        className="border-b border-border last:border-b-0 hover:bg-subtle/60"
+                {hasSelection ? (
+                  readyPrimary ? (
+                    <>
+                      {canMarkReady ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={bulkLoading}
+                          onClick={() => void handleMarkReady()}
+                        >
+                          Gyártás kész ({selectedInProduction.length})
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        disabled={!canHandover || bulkLoading}
+                        onClick={openHandoverForSelected}
                       >
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="checkbox"
-                            className="size-3.5 accent-primary"
-                            checked={selectedIds.includes(row.id)}
-                            onChange={() => toggleSelect(row.id)}
-                            aria-label={`${row.order_number} kijelölése`}
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <Link
-                            href={`/ajanlatok/${row.id}`}
-                            className="font-medium text-ink underline-offset-2 hover:underline"
-                          >
-                            {row.order_number}
-                          </Link>
-                          {row.project_name ? (
-                            <p className="text-hint text-ink-secondary truncate max-w-[180px]">
-                              {row.project_name}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="px-2 py-1.5 text-ink">
-                          {row.customer_name}
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <StatusBadge tone={quoteStatusTone(row.status)}>
-                            {QUOTE_STATUS_LABEL[row.status]}
-                          </StatusBadge>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <StatusBadge
-                            tone={paymentStatusTone(row.payment_status)}
-                          >
-                            {PAYMENT_STATUS_LABEL[row.payment_status]}
-                          </StatusBadge>
-                        </td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-ink">
-                          {remaining > 0
-                            ? formatQuotePrice(remaining, row.currency)
-                            : '—'}
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <button
-                            type="button"
-                            className="inline-flex size-7 items-center justify-center rounded-md text-ink-secondary hover:bg-subtle hover:text-ink"
-                            aria-label="Eltávolítás a listáról"
-                            onClick={() => removeRows([row.id])}
-                          >
-                            <X className="size-3.5" aria-hidden />
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                        Átadás ({selectedReady.length})
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      {canHandover ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={bulkLoading}
+                          onClick={openHandoverForSelected}
+                        >
+                          Átadás ({selectedReady.length})
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        disabled={!canMarkReady || bulkLoading}
+                        loading={bulkLoading && canMarkReady}
+                        onClick={() => void handleMarkReady()}
+                      >
+                        Gyártás kész
+                        {selectedInProduction.length > 0
+                          ? ` (${selectedInProduction.length})`
+                          : ''}
+                      </Button>
+                    </>
+                  )
+                ) : null}
+              </div>
             </div>
           ) : null}
+
+          {rows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-surface px-4 py-10 text-center">
+              <ScanBarcode
+                className="size-8 text-ink-muted"
+                strokeWidth={1.5}
+                aria-hidden
+              />
+              <p className="text-body text-ink">Olvasd be az első vonalkódot</p>
+              <p className="max-w-sm text-hint text-ink-secondary">
+                A beolvasott rendelések itt gyűlnek. Utána egy művelet: gyártás
+                kész vagy átadás.
+              </p>
+            </div>
+          ) : (
+            <DataTable className="min-w-0">
+              <DataTableHead>
+                <DataTableRow>
+                  <DataTableHeaderCell className="w-10 px-2">
+                    <input
+                      type="checkbox"
+                      className="size-3.5 accent-primary"
+                      checked={
+                        rows.length > 0 && selectedIds.length === rows.length
+                      }
+                      onChange={toggleSelectAll}
+                      aria-label="Összes kijelölése"
+                    />
+                  </DataTableHeaderCell>
+                  <DataTableHeaderCell>Rendelés</DataTableHeaderCell>
+                  <DataTableHeaderCell>Ügyfél</DataTableHeaderCell>
+                  <DataTableHeaderCell>Státusz</DataTableHeaderCell>
+                  <DataTableHeaderCell align="right">
+                    Hátralék
+                  </DataTableHeaderCell>
+                  <DataTableHeaderCell className="w-10">
+                    <span className="sr-only">Művelet</span>
+                  </DataTableHeaderCell>
+                </DataTableRow>
+              </DataTableHead>
+              <DataTableBody>
+                {rows.map((row) => {
+                  const remaining = quoteRemainingGross(
+                    row.final_total_gross,
+                    row.total_paid
+                  )
+                  const selected = selectedIds.includes(row.id)
+                  return (
+                    <DataTableRow
+                      key={row.id}
+                      className={cn(
+                        'hover:bg-subtle/80',
+                        selected &&
+                          'bg-subtle shadow-[inset_2px_0_0_0_#18181B]'
+                      )}
+                    >
+                      <DataTableCell className="w-10 px-2">
+                        <input
+                          type="checkbox"
+                          className="size-3.5 accent-primary"
+                          checked={selected}
+                          onChange={() => toggleSelect(row.id)}
+                          aria-label={`${row.order_number} kijelölése`}
+                        />
+                      </DataTableCell>
+                      <DataTableCell>
+                        <Link
+                          href={`/ajanlatok/${row.id}`}
+                          className="font-medium text-ink underline-offset-2 hover:underline"
+                        >
+                          {row.order_number}
+                        </Link>
+                        {row.project_name ? (
+                          <p className="max-w-[180px] truncate text-hint text-ink-secondary">
+                            {row.project_name}
+                          </p>
+                        ) : null}
+                      </DataTableCell>
+                      <DataTableCell>{row.customer_name}</DataTableCell>
+                      <DataTableCell>
+                        <StatusBadge tone={quoteStatusTone(row.status)}>
+                          {QUOTE_STATUS_LABEL[row.status]}
+                        </StatusBadge>
+                      </DataTableCell>
+                      <DataTableCell align="right">
+                        {remaining > 0
+                          ? formatQuotePrice(remaining, row.currency)
+                          : '—'}
+                      </DataTableCell>
+                      <DataTableCell className="w-10 px-1">
+                        <button
+                          type="button"
+                          className="inline-flex size-7 items-center justify-center rounded-md text-ink-secondary hover:bg-subtle hover:text-ink"
+                          aria-label="Eltávolítás a listáról"
+                          onClick={() => removeRows([row.id])}
+                        >
+                          <X className="size-3.5" aria-hidden />
+                        </button>
+                      </DataTableCell>
+                    </DataTableRow>
+                  )
+                })}
+              </DataTableBody>
+            </DataTable>
+          )}
         </>
       ) : (
-        <p className="max-w-xl text-body text-ink-secondary">
+        <p className="max-w-xl rounded-md border border-border bg-surface px-3 py-2.5 text-body text-ink-secondary">
           {instantAction === 'ready'
             ? 'Minden beolvasás azonnal készre állítja a gyártásban lévő rendelést.'
             : 'Minden beolvasás átadást indít a kész rendelésnél (hátralék esetén egy megerősítő ablak).'}
@@ -826,27 +802,41 @@ export function ScannerClient({
   )
 }
 
-function ModeChip({
-  active,
-  onClick,
-  label
+function SegmentedControl<T extends string>({
+  ariaLabel,
+  options,
+  value,
+  onChange
 }: {
-  active: boolean
-  onClick: () => void
-  label: string
+  ariaLabel: string
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (next: T) => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'inline-flex h-7 items-center rounded-md border px-2.5 text-hint font-medium transition-colors',
-        active
-          ? 'border-primary bg-primary text-white'
-          : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
-      )}
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className="inline-flex rounded-md border border-border bg-surface p-0.5"
     >
-      {label}
-    </button>
+      {options.map((opt) => {
+        const active = value === opt.value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              'inline-flex h-7 items-center rounded-[5px] px-2.5 text-hint font-medium transition-colors',
+              active
+                ? 'bg-ink text-white'
+                : 'text-ink-secondary hover:bg-subtle hover:text-ink'
+            )}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }

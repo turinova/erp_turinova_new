@@ -65,6 +65,10 @@ export function canStornoInvoice(
   return true
 }
 
+/**
+ * Sale számlázás kind mátrix.
+ * Végszámla / számla: paid + nem `confirmed` (előbb Áru átadása — stock/teljesítés).
+ */
 export function resolveInvoiceKindOptions(
   detail: SaleDetail,
   invoices: InvoiceListItem[]
@@ -72,51 +76,69 @@ export function resolveInvoiceKindOptions(
   options: { value: InvoiceIssueKind; label: string }[]
   defaultKind: InvoiceIssueKind
 } {
-  const { hasFinal, hasProforma } = activeDocs(invoices)
+  const { hasFinal, hasProforma, hasAdvance } = activeDocs(invoices)
   const paid = detail.payment_status === 'paid'
+  const awaitingFulfill = detail.status === 'confirmed'
 
   if (hasFinal) {
     return { options: [], defaultKind: 'normal' }
   }
 
-  if (hasProforma && paid) {
-    return {
-      options: [{ value: 'normal', label: 'Végszámla' }],
-      defaultKind: 'normal'
-    }
-  }
-
-  if (hasProforma && !paid) {
+  if ((hasProforma || hasAdvance) && !paid) {
     return {
       options: [{ value: 'advance', label: 'Előlegszámla' }],
       defaultKind: 'advance'
     }
   }
 
+  // Paid + még átadásra vár → előbb fulfill; számla CTA üres.
+  if (paid && awaitingFulfill) {
+    return { options: [], defaultKind: 'normal' }
+  }
+
   if (paid) {
     return {
       options: [
-        { value: 'normal', label: 'Számla' },
-        { value: 'advance', label: 'Előlegszámla' },
-        { value: 'proforma', label: 'Díjbekérő' }
+        {
+          value: 'normal',
+          label: hasProforma || hasAdvance ? 'Végszámla' : 'Számla'
+        }
       ],
       defaultKind: 'normal'
     }
   }
 
+  // Unpaid, nincs doksi: díjbekérő default; előleg opcionális; végszámla tilt.
   return {
     options: [
       { value: 'proforma', label: 'Díjbekérő' },
-      { value: 'advance', label: 'Előlegszámla' },
-      { value: 'normal', label: 'Számla' }
+      { value: 'advance', label: 'Előlegszámla' }
     ],
     defaultKind: 'proforma'
   }
 }
 
+/** CTA felirat a sale Bizonylatok szekcióhoz. */
+export function saleInvoiceCtaLabel(
+  detail: SaleDetail,
+  invoices: InvoiceListItem[]
+): string {
+  const { options, defaultKind } = resolveInvoiceKindOptions(detail, invoices)
+  if (options.length === 0) return 'Számla PDF'
+  const hit = options.find((o) => o.value === defaultKind)
+  if (hit?.value === 'proforma') return 'Díjbekérő kiállítása'
+  if (hit?.value === 'advance') return 'Előlegszámla kiállítása'
+  if (hit?.label === 'Végszámla') return 'Végszámla kiállítása'
+  return 'Számla kiállítása'
+}
+
 /**
- * Lapszabászat: nincs paid/státusz korlát a végszámlán.
- * Default javaslat: unpaid → díjbekérő, paid → számla.
+ * Lapszabászat számlázás — certainty-first (mint sale fizetés-tengely):
+ * - unpaid + 0 doksi → díjbekérő (default) / előleg
+ * - unpaid + díjbekérő → csak előleg
+ * - paid → csak számla / végszámla
+ * - végszámla unpaid mellett tiltva
+ * - díjbekérő paid mellett tiltva
  */
 export function resolveQuoteInvoiceKindOptions(
   paymentStatus: string,
@@ -125,52 +147,51 @@ export function resolveQuoteInvoiceKindOptions(
   options: { value: InvoiceIssueKind; label: string }[]
   defaultKind: InvoiceIssueKind
 } {
-  const { hasFinal, hasProforma } = activeDocs(invoices)
+  const { hasFinal, hasProforma, hasAdvance } = activeDocs(invoices)
   const paid = paymentStatus === 'paid'
 
   if (hasFinal) {
     return { options: [], defaultKind: 'normal' }
   }
 
-  if (hasProforma && paid) {
-    return {
-      options: [
-        { value: 'normal', label: 'Végszámla' },
-        { value: 'advance', label: 'Előlegszámla' }
-      ],
-      defaultKind: 'normal'
-    }
-  }
-
-  if (hasProforma && !paid) {
-    return {
-      options: [
-        { value: 'normal', label: 'Végszámla' },
-        { value: 'advance', label: 'Előlegszámla' }
-      ],
-      defaultKind: 'normal'
-    }
-  }
-
   if (paid) {
     return {
-      options: [
-        { value: 'normal', label: 'Számla' },
-        { value: 'advance', label: 'Előlegszámla' },
-        { value: 'proforma', label: 'Díjbekérő' }
-      ],
+      options: [{ value: 'normal', label: hasProforma || hasAdvance ? 'Végszámla' : 'Számla' }],
       defaultKind: 'normal'
+    }
+  }
+
+  if (hasProforma || hasAdvance) {
+    return {
+      options: [{ value: 'advance', label: 'Előlegszámla' }],
+      defaultKind: 'advance'
     }
   }
 
   return {
     options: [
       { value: 'proforma', label: 'Díjbekérő' },
-      { value: 'advance', label: 'Előlegszámla' },
-      { value: 'normal', label: 'Számla' }
+      { value: 'advance', label: 'Előlegszámla' }
     ],
     defaultKind: 'proforma'
   }
+}
+
+/** CTA felirat a quote detail Pénzügy gombhoz. */
+export function quoteInvoiceCtaLabel(
+  paymentStatus: string,
+  invoices: InvoiceListItem[]
+): string {
+  const { options, defaultKind } = resolveQuoteInvoiceKindOptions(
+    paymentStatus,
+    invoices
+  )
+  if (options.length === 0) return 'Számla PDF'
+  const hit = options.find((o) => o.value === defaultKind)
+  if (hit?.value === 'proforma') return 'Díjbekérő kiállítása'
+  if (hit?.value === 'advance') return 'Előlegszámla kiállítása'
+  if (hit?.label === 'Végszámla') return 'Végszámla kiállítása'
+  return 'Számla kiállítása'
 }
 
 /** Díjbekérő / előleg életút a listán. */

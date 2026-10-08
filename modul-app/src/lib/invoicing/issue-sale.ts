@@ -15,6 +15,8 @@ import {
   buildStornoXml,
   type SaleInvoiceLine
 } from '@/lib/invoicing/szamlazz-xml'
+import { isInvoicePaymentMethodAllowed } from '@/lib/invoicing/payment-method'
+import { sourceHasActiveFinalInvoice } from '@/lib/invoicing/eligible-consolidate'
 import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
 import {
   issueKindToStoredType,
@@ -160,7 +162,15 @@ export async function issueInvoiceFromSale(
       !r.is_storno_of_invoice_id &&
       !stornoOf.has(r.id)
   )
-  if (input.kind === 'normal' && activeFinal) {
+  const consolidatedFinal =
+    !activeFinal &&
+    (await sourceHasActiveFinalInvoice(
+      supabase,
+      tenantId,
+      'sale',
+      input.saleId
+    ))
+  if (input.kind === 'normal' && (activeFinal || consolidatedFinal)) {
     return {
       ok: false,
       message:
@@ -181,11 +191,29 @@ export async function issueInvoiceFromSale(
       r.provider_invoice_number
   )
 
+  if (!isInvoicePaymentMethodAllowed(input.kind, input.paymentMethod)) {
+    return {
+      ok: false,
+      message:
+        input.kind === 'proforma'
+          ? 'Díjbekérőn csak átutalás választható.'
+          : 'Érvénytelen fizetési mód.'
+    }
+  }
+
   if (input.kind === 'proforma' && activeProforma) {
     return {
       ok: false,
       message:
         'Már van aktív díjbekérő. Sztornózd / töröld, vagy állíts ki végszámlát fizetés után.'
+    }
+  }
+
+  if (input.kind === 'proforma' && detail.payment_status === 'paid') {
+    return {
+      ok: false,
+      message:
+        'Az eladás már ki van fizetve — állíts ki számlát, ne díjbekérőt.'
     }
   }
 
@@ -620,6 +648,18 @@ export async function stornoInvoice(
     return {
       ok: false,
       message: `Sztornó készült (${posted.invoiceNumber}), mentés sikertelen.`
+    }
+  }
+
+  // Összevont számla: linkek felszabadítása → források újra számlázhatók
+  if (inv.related_source_type === 'consolidated') {
+    const { error: linkDelErr } = await supabase
+      .from('invoice_source_links')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('invoice_id', inv.id)
+    if (linkDelErr) {
+      console.error('stornoInvoice free links', linkDelErr.message)
     }
   }
 

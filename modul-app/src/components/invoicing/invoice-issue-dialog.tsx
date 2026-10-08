@@ -23,7 +23,9 @@ import {
   resolveInvoiceKindOptions
 } from '@/lib/invoicing/invoice-rules'
 import {
+  allowedInvoicePaymentMethods,
   defaultInvoicePaymentMethod,
+  INVOICE_PAYMENT_METHOD_LABEL,
   invoicePaymentMethodHint
 } from '@/lib/invoicing/payment-method'
 import type {
@@ -119,6 +121,8 @@ export function InvoiceIssueDialog({
     () => detail.total_gross + detail.cash_rounding_amount,
     [detail]
   )
+  const payMethods = allowedInvoicePaymentMethods(kind)
+  const payLocked = payMethods.length <= 1
 
   const kindDisabled =
     options.length <= 1 || (hasProforma && detail.payment_status === 'paid')
@@ -385,19 +389,32 @@ export function InvoiceIssueDialog({
                   htmlFor="inv-pay"
                   hint={invoicePaymentMethodHint(kind)}
                 >
-                  <select
-                    id="inv-pay"
-                    className="flex h-9 w-full rounded-md border border-border bg-surface px-2.5 text-body"
-                    value={paymentMethod}
-                    disabled={pending}
-                    onChange={(e) =>
-                      setPaymentMethod(e.target.value as InvoicePaymentMethod)
-                    }
-                  >
-                    <option value="cash">Készpénz</option>
-                    <option value="card">Bankkártya</option>
-                    <option value="bank_transfer">Átutalás</option>
-                  </select>
+                  {payLocked ? (
+                    <p
+                      id="inv-pay"
+                      className="flex h-9 items-center rounded-md border border-border bg-subtle px-2.5 text-body font-medium text-ink"
+                    >
+                      {INVOICE_PAYMENT_METHOD_LABEL[payMethods[0]!]}
+                    </p>
+                  ) : (
+                    <select
+                      id="inv-pay"
+                      className="flex h-9 w-full rounded-md border border-border bg-surface px-2.5 text-body"
+                      value={paymentMethod}
+                      disabled={pending}
+                      onChange={(e) =>
+                        setPaymentMethod(
+                          e.target.value as InvoicePaymentMethod
+                        )
+                      }
+                    >
+                      {payMethods.map((m) => (
+                        <option key={m} value={m}>
+                          {INVOICE_PAYMENT_METHOD_LABEL[m]}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </FormField>
 
                 <div className="grid grid-cols-2 gap-2">

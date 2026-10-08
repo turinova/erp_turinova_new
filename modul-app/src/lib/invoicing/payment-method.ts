@@ -27,9 +27,33 @@ export function detectInvoicePaymentMethod(
   return null
 }
 
+const ALL_METHODS: InvoicePaymentMethod[] = [
+  'cash',
+  'card',
+  'bank_transfer'
+]
+
+/**
+ * Engedélyezett fizmodok típus szerint.
+ * Díjbekérő = csak átutalás (fizetési felhívás, nem pulti KP/kártya).
+ */
+export function allowedInvoicePaymentMethods(
+  kind: InvoiceIssueKind
+): InvoicePaymentMethod[] {
+  if (kind === 'proforma') return ['bank_transfer']
+  return ALL_METHODS
+}
+
+export function isInvoicePaymentMethodAllowed(
+  kind: InvoiceIssueKind,
+  method: InvoicePaymentMethod
+): boolean {
+  return allowedInvoicePaymentMethods(kind).includes(method)
+}
+
 /**
  * Default fizmod a dialógus megnyitásakor / típusváltáskor.
- * Mindhárom típusnál választható; ez csak a javasolt érték.
+ * Díjbekérő mindig átutalás (ERP cash override nélkül).
  */
 export function defaultInvoicePaymentMethod(
   kind: InvoiceIssueKind,
@@ -38,6 +62,8 @@ export function defaultInvoicePaymentMethod(
     paymentStatus?: string | null
   }
 ): InvoicePaymentMethod {
+  if (kind === 'proforma') return 'bank_transfer'
+
   const fromErp = detectInvoicePaymentMethod(opts?.lastPaymentMethodName)
   if (fromErp) return fromErp
 
@@ -45,16 +71,24 @@ export function defaultInvoicePaymentMethod(
     return 'cash'
   }
 
-  // Díjbekérő / előleg / unpaid számla → átutalás default
   return 'bank_transfer'
 }
 
 export function invoicePaymentMethodHint(kind: InvoiceIssueKind): string {
   if (kind === 'proforma') {
-    return 'A díjbekérőn: hogyan kérjük a fizetést. Még nem rögzít pénzt az ERP-ben.'
+    return 'Díjbekérőn csak átutalás — fizetési felhívás, nem rögzít ERP befizetést.'
   }
   if (kind === 'advance') {
     return 'Az előleg hogyan érkezett / érkezik (KP, kártya, utalás).'
   }
   return 'A számlán megjelenő mód. Ha az ERP-ben már fizetve van, a számla fizetettnek jelölődik.'
+}
+
+export const INVOICE_PAYMENT_METHOD_LABEL: Record<
+  InvoicePaymentMethod,
+  string
+> = {
+  cash: 'Készpénz',
+  card: 'Bankkártya',
+  bank_transfer: 'Átutalás'
 }

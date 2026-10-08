@@ -286,6 +286,7 @@ export function QuoteFeesBlock({
                 value={kind}
                 disabled={pending}
                 allowEmpty={false}
+                portal={false}
                 options={[
                   { value: 'fee', label: 'Díj' },
                   { value: 'credit', label: 'Jóváírás' }
@@ -305,6 +306,7 @@ export function QuoteFeesBlock({
                 value={feeTypeId}
                 disabled={pending}
                 allowEmpty={false}
+                portal={false}
                 searchable
                 searchPlaceholder="Díjtípus keresése…"
                 placeholder="Válassz…"

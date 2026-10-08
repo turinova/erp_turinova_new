@@ -1683,6 +1683,19 @@ export type Database = {
         }
         Returns: Record<string, unknown>
       }
+      void_quote_payment: {
+        Args: { p_payment_id: string; p_note: string }
+        Returns: Record<string, unknown>
+      }
+      update_quote_payment: {
+        Args: {
+          p_payment_id: string
+          p_payment_method_id: string
+          p_amount: number
+          p_note: string
+        }
+        Returns: Record<string, unknown>
+      }
       recompute_sale_payment_status: {
         Args: { p_sales_order_id: string }
         Returns: string | null

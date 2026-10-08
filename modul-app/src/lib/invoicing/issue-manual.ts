@@ -15,6 +15,7 @@ import {
   type SaleInvoiceLine
 } from '@/lib/invoicing/szamlazz-xml'
 import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
+import { isInvoicePaymentMethodAllowed } from '@/lib/invoicing/payment-method'
 import {
   issueKindToStoredType,
   type InvoiceIssueKind,
@@ -184,6 +185,13 @@ async function buildXmlAndPost(
   const buyerErr = validateBuyer(input.buyer)
   if (buyerErr) return { ok: false, message: buyerErr }
 
+  if (!isInvoicePaymentMethodAllowed(input.kind, input.paymentMethod)) {
+    return {
+      ok: false,
+      message: 'Díjbekérőn csak átutalás választható.'
+    }
+  }
+
   const lines = normalizeLines(input.lines)
   const amountGross = amountGrossFromInput(input.kind, input)
 
@@ -195,17 +203,15 @@ async function buildXmlAndPost(
     return { ok: false, message: 'Legalább egy érvényes tétel kell.' }
   }
 
-  if (!opts.preview) {
-    const lock = await isFinancePeriodLocked(
-      supabase,
-      tenantId,
-      input.fulfillmentDate
-    )
-    if (lock.locked) {
-      return {
-        ok: false,
-        message: `A ${lock.periodYm} időszak le van zárva. Feloldás: Pénzügy → Exportok.`
-      }
+  const lock = await isFinancePeriodLocked(
+    supabase,
+    tenantId,
+    input.fulfillmentDate
+  )
+  if (lock.locked) {
+    return {
+      ok: false,
+      message: `A ${lock.periodYm} időszak le van zárva. Feloldás: Pénzügy → Exportok.`
     }
   }
 

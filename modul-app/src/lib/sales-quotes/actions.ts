@@ -6,9 +6,11 @@ import { getSessionUser } from '@/lib/auth/session'
 import { updateCustomer } from '@/lib/customers/actions'
 import { createSaleAction } from '@/lib/sales/actions'
 import {
+  salesQuoteDraftLinesSchema,
   salesQuoteDraftUpdateSchema,
   salesQuoteFormSchema,
   type SalesQuoteBillingInput,
+  type SalesQuoteDraftLinesInput,
   type SalesQuoteDraftUpdateInput,
   type SalesQuoteFormInput,
   type SalesQuoteStatus
@@ -18,8 +20,14 @@ import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 import { createClient } from '@/lib/supabase/server'
 
 export type SalesQuoteActionResult =
-  | { ok: true; id: string; quoteNumber?: string; saleId?: string }
-  | { ok: false; message: string }
+  | {
+      ok: true
+      id: string
+      quoteNumber?: string
+      saleId?: string
+      skippedLines?: number
+    }
+  | { ok: false; message: string; saleId?: string }
 
 const LIST_PATH = '/ertekesitesek/arajanlatok'
 
@@ -165,6 +173,81 @@ export async function updateSalesQuoteDraftAction(
   return { ok: true, id: d.quoteId }
 }
 
+export async function replaceSalesQuoteDraftLinesAction(
+  input: SalesQuoteDraftLinesInput
+): Promise<SalesQuoteActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const parsed = salesQuoteDraftLinesSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? 'Hibás adatok.'
+    }
+  }
+
+  const d = parsed.data
+  const { data, error } = await ctx.supabase.rpc(
+    'replace_sales_quote_draft_lines',
+    {
+      p_quote_id: d.quoteId,
+      p_items: d.items.map((it) => {
+        const kind = it.kind ?? 'product'
+        if (kind === 'sheet_material') {
+          return {
+            line_kind: 'sheet_material',
+            sheet_material_id: it.sheetMaterialId,
+            quantity: it.quantity,
+            unit_price_gross: it.unitPriceGross,
+            discount_percentage: it.discountPercentage ?? 0
+          }
+        }
+        if (kind === 'linear_material') {
+          return {
+            line_kind: 'linear_material',
+            linear_material_id: it.linearMaterialId,
+            quantity: it.quantity,
+            unit_price_gross: it.unitPriceGross,
+            discount_percentage: it.discountPercentage ?? 0
+          }
+        }
+        return {
+          line_kind: 'product',
+          accessory_id: it.accessoryId,
+          quantity: it.quantity,
+          unit_price_gross: it.unitPriceGross,
+          discount_percentage: it.discountPercentage ?? 0
+        }
+      }),
+      p_fees: (d.fees ?? []).map((f) => ({
+        fee_type_id: f.feeTypeId ?? null,
+        name: f.name,
+        quantity: f.quantity,
+        unit_price_gross: f.unitPriceGross,
+        tax_rate_percent: f.taxRatePercent ?? 27
+      })),
+      p_discount: { percentage: d.discountPercentage ?? 0 }
+    }
+  )
+
+  if (error) {
+    console.error('replaceSalesQuoteDraftLinesAction', error.message)
+    return { ok: false, message: 'Nem sikerült menteni a tételeket.' }
+  }
+
+  const result = data as { ok?: boolean; id?: string; message?: string } | null
+  if (!result?.ok) {
+    return {
+      ok: false,
+      message: result?.message ?? 'Nem sikerült menteni a tételeket.'
+    }
+  }
+
+  revalidateQuotePaths(d.quoteId)
+  return { ok: true, id: d.quoteId }
+}
+
 /** Opcionális: ajánlat számlázás → ügyféltörzs (explicit megerősítés után). */
 export async function syncQuoteBillingToCustomerAction(
   quoteId: string
@@ -252,6 +335,8 @@ export async function setSalesQuoteStatusAction(
 export async function convertSalesQuoteToSaleAction(input: {
   quoteId: string
   paymentMethodId: string
+  /** true = teljes összeg most; false = utalás / függőben (confirmed unpaid) */
+  payInFull?: boolean
 }): Promise<SalesQuoteActionResult> {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
@@ -287,6 +372,8 @@ export async function convertSalesQuoteToSaleAction(input: {
   if (products.length === 0) {
     return { ok: false, message: 'Nincs tétel az ajánlaton.' }
   }
+
+  const payInFull = input.payInFull !== false
 
   const saleResult = await createSaleAction({
     warehouseId: detail.warehouse_id,
@@ -334,18 +421,21 @@ export async function convertSalesQuoteToSaleAction(input: {
       }
     }),
     fees: fees.map((f) => ({
-      feeTypeId: null,
+      feeTypeId: f.fee_type_id,
       name: f.name_snapshot,
       quantity: f.quantity,
       unitPriceGross: f.unit_price_gross,
       taxRatePercent: f.tax_rate_percent
     })),
-    payments: [
-      {
-        paymentMethodId: input.paymentMethodId,
-        amount: detail.total_gross
-      }
-    ]
+    payments: payInFull
+      ? [
+          {
+            paymentMethodId: input.paymentMethodId,
+            amount: detail.total_gross
+          }
+        ]
+      : [],
+    fulfillNow: false
   })
 
   if (!saleResult.ok) {
@@ -378,20 +468,24 @@ export async function convertSalesQuoteToSaleAction(input: {
 
   if (error) {
     console.error('mark_sales_quote_converted', error.message)
+    revalidateQuotePaths(input.quoteId, saleResult.id)
     return {
       ok: false,
       message:
-        'Az eladás létrejött, de az ajánlat státuszát nem sikerült frissíteni.'
+        'Az eladás létrejött, de az ajánlat státuszát nem sikerült frissíteni. Nyisd meg az eladást.',
+      saleId: saleResult.id
     }
   }
 
   const result = data as { ok?: boolean; message?: string } | null
   if (!result?.ok) {
+    revalidateQuotePaths(input.quoteId, saleResult.id)
     return {
       ok: false,
       message:
         result?.message ??
-        'Az eladás létrejött, de az ajánlat státuszát nem sikerült frissíteni.'
+        'Az eladás létrejött, de az ajánlat státuszát nem sikerült frissíteni. Nyisd meg az eladást.',
+      saleId: saleResult.id
     }
   }
 
@@ -420,7 +514,64 @@ export async function cloneSalesQuoteAction(
   )
   const fees = detail.items.filter((i) => i.item_kind === 'fee')
 
-  return createSalesQuoteAction({
+  const accessoryIds = products
+    .filter((p) => p.item_kind === 'product' && p.accessory_id)
+    .map((p) => p.accessory_id as string)
+  const sheetIds = products
+    .filter((p) => p.item_kind === 'sheet_material' && p.sheet_material_id)
+    .map((p) => p.sheet_material_id as string)
+  const linearIds = products
+    .filter((p) => p.item_kind === 'linear_material' && p.linear_material_id)
+    .map((p) => p.linear_material_id as string)
+
+  const [accRes, sheetRes, linearRes] = await Promise.all([
+    accessoryIds.length
+      ? supabase
+          .from('accessories')
+          .select('id')
+          .eq('tenant_id', user.tenantId)
+          .is('deleted_at', null)
+          .in('id', accessoryIds)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    sheetIds.length
+      ? supabase
+          .from('sheet_materials')
+          .select('id')
+          .eq('tenant_id', user.tenantId)
+          .is('deleted_at', null)
+          .in('id', sheetIds)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    linearIds.length
+      ? supabase
+          .from('linear_materials')
+          .select('id')
+          .eq('tenant_id', user.tenantId)
+          .is('deleted_at', null)
+          .in('id', linearIds)
+      : Promise.resolve({ data: [] as { id: string }[] })
+  ])
+
+  const aliveAcc = new Set((accRes.data ?? []).map((r) => r.id))
+  const aliveSheet = new Set((sheetRes.data ?? []).map((r) => r.id))
+  const aliveLinear = new Set((linearRes.data ?? []).map((r) => r.id))
+
+  const kept = products.filter((p) => {
+    if (p.item_kind === 'product') return aliveAcc.has(p.accessory_id!)
+    if (p.item_kind === 'sheet_material')
+      return aliveSheet.has(p.sheet_material_id!)
+    return aliveLinear.has(p.linear_material_id!)
+  })
+  const skipped = products.length - kept.length
+
+  if (kept.length === 0) {
+    return {
+      ok: false,
+      message:
+        'A forrás tételei már nem elérhetők (törölt termék/anyag). Új ajánlatot kell készítened.'
+    }
+  }
+
+  const created = await createSalesQuoteAction({
     warehouseId: detail.warehouse_id,
     customerId: detail.customer_id,
     note: detail.note,
@@ -436,7 +587,7 @@ export async function cloneSalesQuoteAction(
       billingHouseNumber: detail.billing_house_number,
       billingTaxNumber: detail.billing_tax_number
     },
-    items: products.map((p) => {
+    items: kept.map((p) => {
       if (p.item_kind === 'sheet_material') {
         return {
           kind: 'sheet_material' as const,
@@ -470,11 +621,14 @@ export async function cloneSalesQuoteAction(
       }
     }),
     fees: fees.map((f) => ({
-      feeTypeId: null,
+      feeTypeId: f.fee_type_id,
       name: f.name_snapshot,
       quantity: f.quantity,
       unitPriceGross: f.unit_price_gross,
       taxRatePercent: f.tax_rate_percent
     }))
   })
+
+  if (!created.ok) return created
+  return { ...created, skippedLines: skipped }
 }

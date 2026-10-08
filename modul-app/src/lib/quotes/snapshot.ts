@@ -105,13 +105,16 @@ export function materialLineFromPricing(
   material: MaterialPricing,
   sheet: OptiSheetMaterialOption | undefined
 ): QuoteMaterialLineInsert {
+  // main-app parity: boards_charged = full_board count only;
+  // charged_sqm = panel_area charged areas only (waste already in charged_area_m2).
+  // Full-board area must NOT be in charged_sqm — detail/PDF qty is
+  // `(charged_sqm / waste_multi) m² / boards_charged db`.
   const boardsCharged = material.boards.filter(
     (b) => b.pricing_method === 'full_board'
   ).length
-  const chargedSqm = material.boards.reduce(
-    (sum, b) => sum + b.charged_area_m2,
-    0
-  )
+  const chargedSqm = material.boards
+    .filter((b) => b.pricing_method === 'panel_area')
+    .reduce((sum, b) => sum + b.charged_area_m2, 0)
   const edgeLengthM = material.edge_materials.reduce(
     (sum, e) => sum + e.length_with_overhang_m,
     0

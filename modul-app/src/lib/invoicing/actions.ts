@@ -14,6 +14,17 @@ import {
   previewQuoteInvoice
 } from '@/lib/invoicing/issue-quote'
 import {
+  listEligibleConsolidateSources,
+  type EligibleConsolidateSource
+} from '@/lib/invoicing/eligible-consolidate'
+import {
+  issueConsolidatedInvoice,
+  previewConsolidatedInvoice,
+  pullConsolidatedLines,
+  type ConsolidateSourceRef,
+  type IssueConsolidatedInput
+} from '@/lib/invoicing/issue-consolidated'
+import {
   issueManualInvoice,
   previewManualInvoice,
   type IssueManualInvoiceInput
@@ -82,6 +93,96 @@ export async function createManualInvoiceAction(
     invoiceId: result.invoiceId,
     providerNumber: result.providerNumber,
     message: `Kiállítva: ${result.providerNumber}`
+  }
+}
+
+export async function listEligibleConsolidateSourcesAction(
+  customerId: string
+): Promise<
+  | { ok: true; sources: EligibleConsolidateSource[] }
+  | { ok: false; message: string }
+> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  if (!customerId) {
+    return { ok: false, message: 'Válassz ügyfelet.' }
+  }
+  const sources = await listEligibleConsolidateSources(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    customerId
+  )
+  return { ok: true, sources }
+}
+
+export async function pullConsolidatedLinesAction(input: {
+  customerId: string
+  sources: ConsolidateSourceRef[]
+}): Promise<
+  | {
+      ok: true
+      lines: {
+        name: string
+        quantity: number
+        unit: string
+        unitNet: number
+        vatPercent: number
+      }[]
+      buyer: IssueConsolidatedInput['buyer']
+      reference: string
+      sourceNumbers: string[]
+    }
+  | { ok: false; message: string }
+> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  return pullConsolidatedLines(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    input.customerId,
+    input.sources
+  )
+}
+
+export async function previewConsolidatedInvoiceAction(
+  input: IssueConsolidatedInput
+): Promise<{ ok: true; pdfBase64: string } | { ok: false; message: string }> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  return previewConsolidatedInvoice(ctx.supabase, ctx.user.tenantId!, input)
+}
+
+export async function createConsolidatedInvoiceAction(
+  input: IssueConsolidatedInput
+): Promise<InvoiceActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const result = await issueConsolidatedInvoice(
+    ctx.supabase,
+    ctx.user.tenantId!,
+    ctx.user.id ?? null,
+    input
+  )
+  if (!result.ok) return result
+
+  for (const src of input.sources) {
+    if (src.sourceType === 'sale') {
+      revalidateInvoicePaths({ saleId: src.sourceId, invoiceId: result.invoiceId })
+    } else {
+      revalidateInvoicePaths({
+        quoteId: src.sourceId,
+        invoiceId: result.invoiceId
+      })
+    }
+  }
+  revalidateInvoicePaths({ invoiceId: result.invoiceId })
+
+  return {
+    ok: true,
+    invoiceId: result.invoiceId,
+    providerNumber: result.providerNumber,
+    message: `Összevont számla: ${result.providerNumber}`
   }
 }
 
@@ -274,6 +375,15 @@ export async function stornoInvoiceAction(
     .eq('tenant_id', ctx.user.tenantId!)
     .maybeSingle()
 
+  const { data: beforeLinks } =
+    before?.related_source_type === 'consolidated'
+      ? await ctx.supabase
+          .from('invoice_source_links')
+          .select('source_type, source_id')
+          .eq('tenant_id', ctx.user.tenantId!)
+          .eq('invoice_id', invoiceId)
+      : { data: null as { source_type: string; source_id: string }[] | null }
+
   const result = await stornoInvoice(
     ctx.supabase,
     ctx.user.tenantId!,
@@ -295,6 +405,13 @@ export async function stornoInvoiceAction(
     quoteId,
     invoiceId: result.invoiceId
   })
+  for (const link of beforeLinks ?? []) {
+    if (link.source_type === 'sale') {
+      revalidateInvoicePaths({ saleId: link.source_id })
+    } else if (link.source_type === 'opti_order') {
+      revalidateInvoicePaths({ quoteId: link.source_id })
+    }
+  }
   return {
     ok: true,
     invoiceId: result.invoiceId,

@@ -38,7 +38,11 @@
 
 ## Detail
 
-Két badge: `status` × `payment_status`. CTA: Díjbekérő → Fizetés → Áru átadása → Végszámla.
+Két badge: `status` × `payment_status`.  
+**Egy** next-step banner (Díjbekérő → Fizetés → Áru átadása → Végszámla/Számla).  
+Header: nincs párhuzamos pénz/számla CTA-halmaz (csak PDF ha van végszámla, visszáru).  
+Pénz: `#fizetesek`. Számla: `#bizonylatok` (`resolveInvoiceKindOptions` + `saleInvoiceCtaLabel`; előleg itt).  
+Végszámla: csak **paid + nem `confirmed`**. POS paid+fulfilled: csendes detail (nincs utalás-banner).
 
 ## Ügyfél
 

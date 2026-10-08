@@ -171,33 +171,85 @@ export async function getInvoice(
   } as InvoiceRow
 }
 
+const INVOICE_LIST_SELECT = `id, internal_number, provider_invoice_number, invoice_type,
+       related_source_type, related_source_id, related_source_number,
+       customer_name, gross_total, payment_status, payment_due_date, created_at,
+       is_storno_of_invoice_id`
+
+function mapInvoiceListRows(
+  data: Record<string, unknown>[] | null
+): InvoiceListItem[] {
+  return (data ?? []).map((r) => ({
+    ...r,
+    gross_total: r.gross_total != null ? Number(r.gross_total) : null
+  })) as InvoiceListItem[]
+}
+
+/** Direkt + összevont (invoice_source_links) bizonylatok egy forráshoz. */
+async function listInvoicesForSource(
+  supabase: SupabaseClient,
+  tenantId: string,
+  sourceType: 'sale' | 'opti_order',
+  sourceId: string
+): Promise<InvoiceListItem[]> {
+  const { data: direct, error } = await supabase
+    .from('invoices')
+    .select(INVOICE_LIST_SELECT)
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', sourceType)
+    .eq('related_source_id', sourceId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('listInvoicesForSource', error.message)
+  }
+
+  const byId = new Map<string, InvoiceListItem>()
+  for (const row of mapInvoiceListRows(direct as Record<string, unknown>[])) {
+    byId.set(row.id, row)
+  }
+
+  const { data: links } = await supabase
+    .from('invoice_source_links')
+    .select('invoice_id')
+    .eq('tenant_id', tenantId)
+    .eq('source_type', sourceType)
+    .eq('source_id', sourceId)
+
+  const linkedIds = (links ?? [])
+    .map((l) => l.invoice_id as string)
+    .filter((id) => !byId.has(id))
+
+  if (linkedIds.length > 0) {
+    const { data: linked, error: linkedErr } = await supabase
+      .from('invoices')
+      .select(INVOICE_LIST_SELECT)
+      .eq('tenant_id', tenantId)
+      .in('id', linkedIds)
+      .is('deleted_at', null)
+    if (linkedErr) {
+      console.error('listInvoicesForSource links', linkedErr.message)
+    } else {
+      for (const row of mapInvoiceListRows(
+        linked as Record<string, unknown>[]
+      )) {
+        byId.set(row.id, row)
+      }
+    }
+  }
+
+  return [...byId.values()].sort((a, b) =>
+    a.created_at < b.created_at ? 1 : -1
+  )
+}
+
 export async function listInvoicesForSale(
   supabase: SupabaseClient,
   tenantId: string,
   saleId: string
 ): Promise<InvoiceListItem[]> {
-  const { data, error } = await supabase
-    .from('invoices')
-    .select(
-      `id, internal_number, provider_invoice_number, invoice_type,
-       related_source_type, related_source_id, related_source_number,
-       customer_name, gross_total, payment_status, payment_due_date, created_at,
-       is_storno_of_invoice_id`
-    )
-    .eq('tenant_id', tenantId)
-    .eq('related_source_type', 'sale')
-    .eq('related_source_id', saleId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    console.error('listInvoicesForSale', error.message)
-    return []
-  }
-  return (data ?? []).map((r) => ({
-    ...r,
-    gross_total: r.gross_total != null ? Number(r.gross_total) : null
-  })) as InvoiceListItem[]
+  return listInvoicesForSource(supabase, tenantId, 'sale', saleId)
 }
 
 export async function listInvoicesForQuote(
@@ -205,26 +257,5 @@ export async function listInvoicesForQuote(
   tenantId: string,
   quoteId: string
 ): Promise<InvoiceListItem[]> {
-  const { data, error } = await supabase
-    .from('invoices')
-    .select(
-      `id, internal_number, provider_invoice_number, invoice_type,
-       related_source_type, related_source_id, related_source_number,
-       customer_name, gross_total, payment_status, payment_due_date, created_at,
-       is_storno_of_invoice_id`
-    )
-    .eq('tenant_id', tenantId)
-    .eq('related_source_type', 'opti_order')
-    .eq('related_source_id', quoteId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    console.error('listInvoicesForQuote', error.message)
-    return []
-  }
-  return (data ?? []).map((r) => ({
-    ...r,
-    gross_total: r.gross_total != null ? Number(r.gross_total) : null
-  })) as InvoiceListItem[]
+  return listInvoicesForSource(supabase, tenantId, 'opti_order', quoteId)
 }

@@ -20,6 +20,7 @@ export type SalesQuoteItemRow = {
   accessory_id: string | null
   sheet_material_id: string | null
   linear_material_id: string | null
+  fee_type_id: string | null
   name_snapshot: string
   sku_snapshot: string | null
   unit_shortform: string
@@ -68,7 +69,7 @@ export async function listSalesQuotes(
   params: {
     tenantId: string
     q?: string
-    status?: SalesQuoteStatus | 'all'
+    status?: SalesQuoteStatus | 'all' | 'active'
     page?: number
     limit?: number
   }
@@ -78,6 +79,11 @@ export async function listSalesQuotes(
   page: number
   limit: number
 }> {
+  // Lejárt draft/sent → expired (best-effort)
+  void supabase.rpc('expire_sales_quotes_past_due', {
+    p_tenant_id: params.tenantId
+  })
+
   const page = Math.max(1, params.page ?? 1)
   const limit = Math.min(100, Math.max(1, params.limit ?? 25))
   const from = (page - 1) * limit
@@ -104,7 +110,9 @@ export async function listSalesQuotes(
       `quote_number.ilike.%${q}%,customer_name_snapshot.ilike.%${q}%`
     )
   }
-  if (params.status && params.status !== 'all') {
+  if (params.status === 'active') {
+    query = query.in('status', ['draft', 'sent'])
+  } else if (params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
   }
 
@@ -138,6 +146,10 @@ export async function getSalesQuote(
   tenantId: string,
   id: string
 ): Promise<SalesQuoteDetail | null> {
+  void supabase.rpc('expire_sales_quotes_past_due', {
+    p_tenant_id: tenantId
+  })
+
   const { data, error } = await supabase
     .from('sales_quotes')
     .select(
@@ -153,7 +165,7 @@ export async function getSalesQuote(
       warehouses ( name ),
       sales_quote_items (
         id, item_kind, accessory_id, sheet_material_id, linear_material_id,
-        name_snapshot, sku_snapshot,
+        fee_type_id, name_snapshot, sku_snapshot,
         unit_shortform, quantity, unit_price_gross, discount_percentage,
         discount_amount, total_gross, tax_rate_percent, sort_order, deleted_at
       )
@@ -179,6 +191,7 @@ export async function getSalesQuote(
       accessory_id: string | null
       sheet_material_id: string | null
       linear_material_id: string | null
+      fee_type_id: string | null
       name_snapshot: string
       sku_snapshot: string | null
       unit_shortform: string
@@ -200,6 +213,7 @@ export async function getSalesQuote(
       accessory_id: i.accessory_id,
       sheet_material_id: i.sheet_material_id ?? null,
       linear_material_id: i.linear_material_id ?? null,
+      fee_type_id: i.fee_type_id ?? null,
       name_snapshot: i.name_snapshot,
       sku_snapshot: i.sku_snapshot,
       unit_shortform: i.unit_shortform,

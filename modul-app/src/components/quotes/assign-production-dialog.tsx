@@ -181,6 +181,7 @@ export function AssignProductionDialog({
                   value={machineId}
                   disabled={loading}
                   allowEmpty={false}
+                  portal={false}
                   placeholder="Válassz gépet…"
                   options={machines.map((m) => ({
                     value: m.id,

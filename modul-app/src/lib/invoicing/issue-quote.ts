@@ -12,6 +12,7 @@ import {
   type QuoteInvoiceDetailLevel,
   type QuoteInvoiceLine
 } from '@/lib/invoicing/quote-invoice-lines'
+import { sourceHasActiveFinalInvoice } from '@/lib/invoicing/eligible-consolidate'
 import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
 import {
   postSzamlazzXml
@@ -21,10 +22,14 @@ import {
   type SaleInvoiceLine
 } from '@/lib/invoicing/szamlazz-xml'
 import {
+  isInvoicePaymentMethodAllowed
+} from '@/lib/invoicing/payment-method'
+import {
   issueKindToStoredType,
   type InvoiceIssueKind,
   type InvoicePaymentMethod
 } from '@/lib/invoicing/types'
+import { PAYMENT_TOLERANCE_GROSS } from '@/lib/quotes/payment-labels'
 import { getQuoteDetail, type QuoteDetail } from '@/lib/quotes/queries'
 
 export type IssueQuoteInvoiceInput = {
@@ -89,12 +94,29 @@ async function loadActiveDocs(
       .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
       .map((r) => r.is_storno_of_invoice_id as string)
   )
-  const activeFinal = rows.find(
+  let activeFinal = rows.find(
     (r) =>
       r.invoice_type === 'szamla' &&
       !r.is_storno_of_invoice_id &&
       !stornoOf.has(r.id)
   )
+  if (!activeFinal) {
+    const viaLink = await sourceHasActiveFinalInvoice(
+      supabase,
+      tenantId,
+      'opti_order',
+      quoteId
+    )
+    if (viaLink) {
+      activeFinal = {
+        id: 'consolidated',
+        invoice_type: 'szamla',
+        provider_invoice_number: null,
+        gross_total: null,
+        is_storno_of_invoice_id: null
+      }
+    }
+  }
   const activeAdvance = rows.find(
     (r) =>
       r.invoice_type === 'elolegszamla' &&
@@ -113,7 +135,8 @@ async function loadActiveDocs(
 function assertCanIssue(
   detail: QuoteDetail,
   kind: InvoiceIssueKind,
-  docs: Awaited<ReturnType<typeof loadActiveDocs>>
+  docs: Awaited<ReturnType<typeof loadActiveDocs>>,
+  paymentMethod: InvoicePaymentMethod
 ): { ok: true } | { ok: false; message: string } {
   if (detail.status === 'cancelled') {
     return { ok: false, message: 'Törölt ajánlathoz nem állítható ki számla.' }
@@ -131,20 +154,71 @@ function assertCanIssue(
         'Hiányoznak a számlázási adatok (név / cím). Töltsd ki az ajánlaton.'
     }
   }
-  if (kind === 'normal' && docs.activeFinal) {
+
+  if (!isInvoicePaymentMethodAllowed(kind, paymentMethod)) {
+    return {
+      ok: false,
+      message:
+        kind === 'proforma'
+          ? 'Díjbekérőn csak átutalás választható.'
+          : 'Érvénytelen fizetési mód.'
+    }
+  }
+
+  if (docs.activeFinal) {
     return {
       ok: false,
       message:
         'Ehhez a megrendeléshez már van aktív számla. Előbb sztornózd, ha újat szeretnél.'
     }
   }
-  if (kind === 'proforma' && docs.activeProforma) {
-    return {
-      ok: false,
-      message:
-        'Már van aktív díjbekérő. Sztornózd, vagy állíts ki végszámlát.'
+
+  const paid = detail.payment_status === 'paid'
+
+  if (kind === 'proforma') {
+    if (paid) {
+      return {
+        ok: false,
+        message:
+          'A megrendelés már ki van fizetve — állíts ki számlát, ne díjbekérőt.'
+      }
+    }
+    if (docs.activeProforma) {
+      return {
+        ok: false,
+        message:
+          'Már van aktív díjbekérő. Sztornózd, vagy rögzíts befizetést / előlegszámlát.'
+      }
+    }
+    if (docs.activeAdvance) {
+      return {
+        ok: false,
+        message:
+          'Van aktív előlegszámla — díjbekérő helyett előleg vagy számla következik.'
+      }
     }
   }
+
+  if (kind === 'normal') {
+    if (!paid) {
+      return {
+        ok: false,
+        message:
+          'Végszámlát csak kifizetett megrendeléshez. Előbb rögzítsd a befizetést, vagy állíts ki díjbekérőt / előleget.'
+      }
+    }
+  }
+
+  if (kind === 'advance') {
+    if (paid) {
+      return {
+        ok: false,
+        message:
+          'A megrendelés már ki van fizetve — állíts ki végszámlát, ne előleget.'
+      }
+    }
+  }
+
   return { ok: true }
 }
 
@@ -173,10 +247,30 @@ async function buildXmlForQuote(
     }
   }
 
+  const due =
+    Number(detail.final_total_gross || detail.total_gross) || 0
+  const remaining = Math.max(0, Math.round((due - detail.total_paid) * 100) / 100)
+
   if (input.kind === 'advance') {
     const amt = Number(input.advanceAmount) || 0
     if (amt <= 0) {
       return { ok: false, message: 'Az előleg összege kötelező.' }
+    }
+    if (amt > remaining + PAYMENT_TOLERANCE_GROSS) {
+      return {
+        ok: false,
+        message: `Az előleg nem lehet nagyobb, mint a hátralék (${remaining.toLocaleString('hu-HU')} Ft).`
+      }
+    }
+  }
+
+  if (input.kind === 'proforma') {
+    const amt = Number(input.proformaAmount) || 0
+    if (amt > 0 && amt > due + PAYMENT_TOLERANCE_GROSS) {
+      return {
+        ok: false,
+        message: `A díjbekérő összege nem lehet nagyobb, mint a végösszeg (${due.toLocaleString('hu-HU')} Ft).`
+      }
     }
   }
 
@@ -186,7 +280,9 @@ async function buildXmlForQuote(
   if (!mapped.ok) return mapped
 
   const docs = await loadActiveDocs(supabase, tenantId, detail.id)
-  const gate = assertCanIssue(detail, input.kind, docs)
+  const paymentMethod =
+    input.paymentMethod || detectPaymentMethod(detail)
+  const gate = assertCanIssue(detail, input.kind, docs, paymentMethod)
   if (!gate.ok) return gate
 
   const company = await getOrCreateTenantCompany(supabase, tenantId, 'Cég', {
@@ -220,7 +316,7 @@ async function buildXmlForQuote(
     const xml = buildSaleInvoiceXml({
       agentKey: settings.agent_key!.trim(),
       kind: input.kind,
-      paymentMethod: input.paymentMethod || detectPaymentMethod(detail),
+      paymentMethod,
       dueDate: input.dueDate,
       fulfillmentDate: input.fulfillmentDate,
       comment: input.comment || '',
@@ -228,9 +324,11 @@ async function buildXmlForQuote(
       sendEmail: opts.preview
         ? false
         : (input.sendEmail ?? settings.default_send_email ?? true),
+      // Díjbekérő / előleg soha ne legyen „fizetve” a Számlázzon csak azért, mert ERP paid.
       markAsPaid: opts.preview
         ? false
-        : (input.markAsPaid ?? detail.payment_status === 'paid'),
+        : input.kind === 'normal' &&
+          (input.markAsPaid ?? detail.payment_status === 'paid'),
       orderNumber,
       preview: opts.preview,
       buyer: {

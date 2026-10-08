@@ -26,6 +26,9 @@
 ._*
 *.pem
 
+# Puppeteer local profiles (PDF_TMPDIR / project temp)
+.tmp/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

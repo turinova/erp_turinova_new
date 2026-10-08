@@ -86,6 +86,8 @@ type Props = {
   enableTaxpayerLookup?: boolean
   /** Adószám mező fókusz nyitáskor */
   autoFocusTax?: boolean
+  /** Manuális számla: kötelező név + címülés/utca jelölés */
+  requiredBilling?: boolean
 }
 
 export function DocumentBillingFields({
@@ -95,7 +97,8 @@ export function DocumentBillingFields({
   idPrefix = 'doc-bill',
   hint = 'Csak ezen a dokumentumon érvényes. Az ügyféltörzset nem írja felül.',
   enableTaxpayerLookup = false,
-  autoFocusTax = false
+  autoFocusTax = false,
+  requiredBilling = false
 }: Props) {
   const taxRef = useRef<HTMLInputElement>(null)
   const [lookupLoading, setLookupLoading] = useState(false)
@@ -207,7 +210,11 @@ export function DocumentBillingFields({
         />
       </FormField>
 
-      <FormField label="Számlázási név" htmlFor={`${idPrefix}-name`}>
+      <FormField
+        label="Számlázási név"
+        htmlFor={`${idPrefix}-name`}
+        required={requiredBilling}
+      >
         <Input
           id={`${idPrefix}-name`}
           value={value.billingName}
@@ -224,7 +231,11 @@ export function DocumentBillingFields({
             onChange={(e) => patch({ billingPostalCode: e.target.value })}
           />
         </FormField>
-        <FormField label="Város" htmlFor={`${idPrefix}-city`}>
+        <FormField
+          label="Város"
+          htmlFor={`${idPrefix}-city`}
+          required={requiredBilling}
+        >
           <Input
             id={`${idPrefix}-city`}
             value={value.billingCity}
@@ -234,7 +245,11 @@ export function DocumentBillingFields({
         </FormField>
       </div>
       <div className="grid gap-2 sm:grid-cols-[1fr_6rem]">
-        <FormField label="Utca" htmlFor={`${idPrefix}-street`}>
+        <FormField
+          label="Utca"
+          htmlFor={`${idPrefix}-street`}
+          required={requiredBilling}
+        >
           <Input
             id={`${idPrefix}-street`}
             value={value.billingStreet}

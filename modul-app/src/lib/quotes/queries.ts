@@ -24,9 +24,26 @@ export function isQuoteEditableInOpti(status: QuoteStatus): boolean {
 export type QuotePaymentRow = {
   id: string
   amount: number
+  payment_method_id: string | null
   payment_method_name: string
   comment: string | null
   payment_date: string
+  created_by_label: string | null
+  void_reason: string | null
+}
+
+export type QuotePaymentEventRow = {
+  id: string
+  event_type: 'recorded' | 'voided' | 'corrected' | 'note'
+  source: string
+  amount: number | null
+  payment_method_name: string | null
+  previous_amount: number | null
+  previous_payment_method_name: string | null
+  note: string | null
+  created_by_label: string | null
+  created_at: string
+  quote_payment_id: string | null
 }
 
 export type QuoteListItem = {
@@ -74,6 +91,8 @@ export type QuoteDetail = {
   panel_quantity: number
   total_paid: number
   payments: QuotePaymentRow[]
+  /** Append-only befizetés napló (legújabb elöl). */
+  payment_events: QuotePaymentEventRow[]
   fees: QuoteFeeRow[]
   accessories: QuoteAccessoryRow[]
   production_machine_id: string | null
@@ -460,15 +479,31 @@ export async function getQuoteDetail(
     .is('deleted_at', null)
     .maybeSingle()
 
+  const paymentsSelectFull =
+    'id, amount, payment_method_id, payment_method_name, comment, payment_date, created_by_label, void_reason'
+  const paymentsSelectLean =
+    'id, amount, payment_method_id, payment_method_name, comment, payment_date'
+
   const paymentsQuery = options?.skipPayments
     ? Promise.resolve({ data: null as null, error: null })
     : supabase
         .from('quote_payments')
-        .select('id, amount, payment_method_name, comment, payment_date')
+        .select(paymentsSelectFull)
         .eq('quote_id', id)
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
         .order('payment_date', { ascending: true })
+
+  const paymentEventsQuery = options?.skipPayments
+    ? Promise.resolve({ data: null as null, error: null })
+    : supabase
+        .from('quote_payment_events')
+        .select(
+          'id, event_type, source, amount, payment_method_name, previous_amount, previous_payment_method_name, note, created_by_label, created_at, quote_payment_id'
+        )
+        .eq('quote_id', id)
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
 
   const feesQuery = listQuoteFees(supabase, tenantId, id).catch((err) => {
     console.error('getQuoteDetail fees', err)
@@ -482,13 +517,19 @@ export async function getQuoteDetail(
     }
   )
 
-  const [{ data: rawData, error }, paymentsResult, fees, accessories] =
-    await Promise.all([
-      quoteQuery,
-      paymentsQuery,
-      feesQuery,
-      accessoriesQuery
-    ])
+  const [
+    { data: rawData, error },
+    paymentsResult,
+    paymentEventsResult,
+    fees,
+    accessories
+  ] = await Promise.all([
+    quoteQuery,
+    paymentsQuery,
+    paymentEventsQuery,
+    feesQuery,
+    accessoriesQuery
+  ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = rawData as any
@@ -509,30 +550,106 @@ export async function getQuoteDetail(
   }
 
   let payments: QuotePaymentRow[] = []
+  let payment_events: QuotePaymentEventRow[] = []
   let total_paid = 0
 
   if (!options?.skipPayments) {
+    let paymentsRaw: Record<string, unknown>[] | null =
+      (paymentsResult.data as Record<string, unknown>[] | null) ?? null
     if (paymentsResult.error) {
-      console.error('getQuoteDetail payments', paymentsResult.error.message)
-      throw new Error('Nem sikerült betölteni a befizetéseket.')
+      const msg = paymentsResult.error.message || ''
+      if (/created_by_label|void_reason|column/i.test(msg)) {
+        console.warn('getQuoteDetail payments fallback lean', msg)
+        const lean = await supabase
+          .from('quote_payments')
+          .select(paymentsSelectLean)
+          .eq('quote_id', id)
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+          .order('payment_date', { ascending: true })
+        if (lean.error) {
+          console.error('getQuoteDetail payments', lean.error.message)
+          throw new Error('Nem sikerült betölteni a befizetéseket.')
+        }
+        paymentsRaw = (lean.data as Record<string, unknown>[] | null) ?? null
+      } else {
+        console.error('getQuoteDetail payments', msg)
+        throw new Error('Nem sikerült betölteni a befizetéseket.')
+      }
     }
 
-    payments = (paymentsResult.data ?? []).map(
-      (p: {
+    payments = (paymentsRaw ?? []).map((row) => {
+      const p = row as {
         id: string
         amount: number | string
+        payment_method_id?: string | null
         payment_method_name: string
         comment: string | null
         payment_date: string
-      }) => ({
+        created_by_label?: string | null
+        void_reason?: string | null
+      }
+      return {
         id: p.id,
         amount: Number(p.amount),
+        payment_method_id: p.payment_method_id ?? null,
         payment_method_name: p.payment_method_name,
         comment: p.comment,
-        payment_date: p.payment_date
-      })
-    )
+        payment_date: p.payment_date,
+        created_by_label: p.created_by_label?.trim() || null,
+        void_reason: p.void_reason?.trim() || null
+      }
+    })
     total_paid = payments.reduce((sum, p) => sum + p.amount, 0)
+
+    // Migráció előtt: tábla hiány → üres lista, ne dobjon 500-at.
+    if (paymentEventsResult.error) {
+      const msg = paymentEventsResult.error.message || ''
+      if (
+        /quote_payment_events|schema cache|does not exist|PGRST/i.test(msg)
+      ) {
+        console.warn('getQuoteDetail payment_events', msg)
+        payment_events = []
+      } else {
+        console.error('getQuoteDetail payment_events', msg)
+        throw new Error('Nem sikerült betölteni a fizetési tevékenységet.')
+      }
+    } else {
+      const eventTypes = new Set([
+        'recorded',
+        'voided',
+        'corrected',
+        'note'
+      ])
+      payment_events = ((paymentEventsResult.data ?? []) as {
+        id: string
+        event_type: string
+        source: string
+        amount: number | null
+        payment_method_name: string | null
+        previous_amount: number | null
+        previous_payment_method_name: string | null
+        note: string | null
+        created_by_label: string | null
+        created_at: string
+        quote_payment_id: string | null
+      }[])
+        .filter((e) => eventTypes.has(e.event_type))
+        .map((e) => ({
+          id: e.id,
+          event_type: e.event_type as QuotePaymentEventRow['event_type'],
+          source: e.source,
+          amount: e.amount == null ? null : Number(e.amount),
+          payment_method_name: e.payment_method_name,
+          previous_amount:
+            e.previous_amount == null ? null : Number(e.previous_amount),
+          previous_payment_method_name: e.previous_payment_method_name,
+          note: e.note?.trim() || null,
+          created_by_label: e.created_by_label?.trim() || null,
+          created_at: e.created_at,
+          quote_payment_id: e.quote_payment_id
+        }))
+    }
   }
 
   const customers = data.customers as
@@ -705,6 +822,7 @@ export async function getQuoteDetail(
     panel_quantity: panelQuantity,
     total_paid,
     payments,
+    payment_events,
     fees,
     accessories,
     production_machine_id: data.production_machine_id ?? null,

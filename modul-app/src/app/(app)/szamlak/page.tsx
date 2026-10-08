@@ -35,7 +35,13 @@ type SearchParams = Promise<{
 }>
 
 const VIEWS = new Set(['awaiting', 'all', 'invoices', 'stornos'])
-const SOURCES = new Set(['all', 'sale', 'opti_order', 'manual'])
+const SOURCES = new Set([
+  'all',
+  'sale',
+  'opti_order',
+  'manual',
+  'consolidated'
+])
 
 function resolveView(sp: {
   view?: string

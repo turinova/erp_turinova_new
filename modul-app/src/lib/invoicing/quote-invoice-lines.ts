@@ -63,22 +63,36 @@ function lineFromGross(
   }
 }
 
-function materialQtyUnit(ml: QuoteDetail['material_lines'][number]): {
+type MaterialLine = QuoteDetail['material_lines'][number]
+
+/**
+ * Invoice quantity = physical / customer-facing m² (not waste-inflated).
+ * - Full boards: boards_charged × board area
+ * - Panel portion: charged_sqm / waste_multi (strip hulladék from charged)
+ * Waste stays in unit price (lineNet / displayM2), not in qty.
+ */
+export function materialInvoiceDisplayM2(ml: MaterialLine): number {
+  const boards = Number(ml.boards_charged) || 0
+  const grain = Number(ml.board_grain_mm) || 0
+  const cross = Number(ml.board_cross_mm) || 0
+  const boardArea =
+    grain > 0 && cross > 0 ? (grain * cross) / 1_000_000 : 0
+  const waste = Number(ml.waste_multi) || 1
+  const wasteSafe = waste > 0 ? waste : 1
+  const chargedSqm = Number(ml.charged_sqm) || 0
+  const panelDisplayM2 = chargedSqm > 0 ? chargedSqm / wasteSafe : 0
+  return boards * boardArea + panelDisplayM2
+}
+
+function materialQtyUnit(ml: MaterialLine): {
   quantity: number
   unit: string
 } {
-  const boards = Number(ml.boards_charged) || 0
-  const sqm = Number(ml.charged_sqm) || 0
-  if (ml.pricing_method === 'full_board' && boards >= 0.01) {
-    return { quantity: roundQty(boards), unit: 'db' }
+  const displayM2 = roundQty(materialInvoiceDisplayM2(ml))
+  if (displayM2 >= 0.01) {
+    return { quantity: displayM2, unit: 'm²' }
   }
-  if (sqm >= 0.01) {
-    return { quantity: roundQty(sqm), unit: 'm²' }
-  }
-  if (boards >= 0.01) {
-    return { quantity: roundQty(boards), unit: 'db' }
-  }
-  return { quantity: 1, unit: 'db' }
+  return { quantity: 1, unit: 'm²' }
 }
 
 function pushAccessoriesAndFees(
@@ -124,6 +138,7 @@ function mapSummaryMaterialLines(detail: QuoteDetail): QuoteInvoiceLine[] {
 
   let materialGross = 0
   let materialNet = 0
+  let materialDisplayM2 = 0
   let cuttingGross = 0
   let cuttingNet = 0
   let cuttingLength = 0
@@ -134,6 +149,7 @@ function mapSummaryMaterialLines(detail: QuoteDetail): QuoteInvoiceLine[] {
   for (const ml of detail.material_lines) {
     materialGross += Number(ml.material_gross) || 0
     materialNet += Number(ml.material_net) || 0
+    materialDisplayM2 += materialInvoiceDisplayM2(ml)
     cuttingGross += Number(ml.cutting_gross) || 0
     cuttingNet += Number(ml.cutting_net) || 0
     cuttingLength += Number(ml.cutting_length_m) || 0
@@ -142,9 +158,10 @@ function mapSummaryMaterialLines(detail: QuoteDetail): QuoteInvoiceLine[] {
     edgeLength += Number(ml.edge_length_m) || 0
   }
 
+  const qtyM2 = roundQty(materialDisplayM2)
   const material = lineFromGross('Táblás anyag', materialGross, materialNet, {
-    quantity: 1,
-    unit: 'db'
+    quantity: qtyM2 >= 0.01 ? qtyM2 : 1,
+    unit: 'm²'
   })
   if (material) lines.push(material)
 
@@ -248,20 +265,62 @@ function reconcileToDue(
   }
 
   if (diff !== 0) {
-    const adj = lineFromGross('Kerekítés', diff, null, {
-      quantity: 1,
-      unit: 'db'
-    })
-    if (adj) lines.push(adj)
+    // Absorb ±1–2 Ft into the last real line — never a visible "Kerekítés" row.
+    const targetIdx = findAbsorbTargetIndex(lines, diff)
+    if (targetIdx == null) {
+      return {
+        ok: false,
+        message: `A számlatételek összege (${sumGross} Ft) nem egyezik a végösszeggel (${due} Ft).`
+      }
+    }
+    lines[targetIdx] = absorbGrossDiff(lines[targetIdx]!, diff)
   }
 
   return { ok: true, lines }
 }
 
+/** Prefer last positive material/service line that can take the Ft delta. */
+function findAbsorbTargetIndex(
+  lines: QuoteInvoiceLine[],
+  diff: number
+): number | null {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!
+    if (line.lineGross === 0) continue
+    const next = line.lineGross + diff
+    // Don't flip a positive line to ≤0 (or negative to ≥0) for a tiny fix
+    if (line.lineGross > 0 && next <= 0) continue
+    if (line.lineGross < 0 && next >= 0) continue
+    return i
+  }
+  return null
+}
+
+function absorbGrossDiff(
+  line: QuoteInvoiceLine,
+  diff: number
+): QuoteInvoiceLine {
+  const lineGross = roundMoney(line.lineGross + diff)
+  const lineNet =
+    line.lineGross !== 0
+      ? roundMoney(line.lineNet * (lineGross / line.lineGross))
+      : roundMoney(lineGross / (1 + line.vatPercent / 100))
+  const lineVat = lineGross - lineNet
+  const qty = line.quantity > 0 ? line.quantity : 1
+  return {
+    ...line,
+    lineGross,
+    lineNet,
+    lineVat,
+    unitNet: lineNet / qty
+  }
+}
+
 /**
  * Számla tételek.
- * - summary: anyag összesítve + szabás + él + termékek + díjak
- * - by_material: anyagonként név + szabás/él méter + termékek + díjak
+ * - summary: anyag összesítve (m², hulladék nélkül) + szabás + él + termékek + díjak
+ * - by_material: anyagonként név + m² (tábla + panel/waste) + szabás/él m
+ * Mennyiség soha nem waste-szel növelt charged_sqm — a hulladék az egységárban van.
  */
 export function mapQuoteInvoiceLines(
   detail: QuoteDetail,

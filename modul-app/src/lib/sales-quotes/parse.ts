@@ -129,8 +129,20 @@ export const salesQuoteDraftUpdateSchema = z.object({
   billing: salesQuoteBillingSchema
 })
 
+export const salesQuoteDraftLinesSchema = z.object({
+  quoteId: z.string().uuid(),
+  discountPercentage: z.number().min(0).max(100).optional(),
+  items: z
+    .array(salesQuoteLineSchema)
+    .min(1, 'Adj hozzá legalább egy terméket.'),
+  fees: z.array(salesQuoteFeeSchema).optional()
+})
+
 export type SalesQuoteFormInput = z.infer<typeof salesQuoteFormSchema>
 export type SalesQuoteBillingInput = z.infer<typeof salesQuoteBillingSchema>
 export type SalesQuoteDraftUpdateInput = z.infer<
   typeof salesQuoteDraftUpdateSchema
+>
+export type SalesQuoteDraftLinesInput = z.infer<
+  typeof salesQuoteDraftLinesSchema
 >

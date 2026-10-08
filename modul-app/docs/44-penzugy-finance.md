@@ -2,7 +2,7 @@
 
 **Státusz:** P0 + P0b + soft-lock.  
 **Route:** `/penzugy` · `/szamlak` · `/szamlak/uj` · `/penzugy/kintlevoseg` · `/penzugy/afa` · `/penzugy/exportok`  
-**Migráció:** `20260566_penzugy_finance.sql`, `20260567_penzugy_page_access.sql`, `20260568_manual_invoice_source.sql`  
+**Migráció:** `20260566_penzugy_finance.sql`, `20260567_penzugy_page_access.sql`, `20260568_manual_invoice_source.sql`, `20260588_invoice_source_links.sql`  
 **Kapcsolat:** [36](36-szamlazas-workflow.md) Számlázz Agent
 
 ---
@@ -18,7 +18,7 @@
 | Oldal | Feladat |
 |---|---|
 | Áttekintés | KPI: kinnlevő, lejárt, 7 nap, havi ÁFA, Agent hibák |
-| Bizonylatok | Meglévő `/szamlak` lista + forrás filter + **Új számla** (`/szamlak/uj`, `manual`) |
+| Bizonylatok | `/szamlak` lista + forrás filter + **Új számla** (`manual` / `consolidated` + `invoice_source_links`) |
 | Kintlévőség | Aging + **Fizetés** (ERP + `action-szamla_agent_kifiz`) |
 | ÁFA összesítő | Teljesítés hónap × ÁFA kulcs (díjbekérő nélkül) |
 | Exportok | XLSX / CSV / ZIP + soft-lock + Számlázz adóhatósági deep-link |

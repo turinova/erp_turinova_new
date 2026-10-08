@@ -23,9 +23,12 @@ import {
   resolveQuoteInvoiceKindOptions
 } from '@/lib/invoicing/invoice-rules'
 import {
+  allowedInvoicePaymentMethods,
   defaultInvoicePaymentMethod,
+  INVOICE_PAYMENT_METHOD_LABEL,
   invoicePaymentMethodHint
 } from '@/lib/invoicing/payment-method'
+import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
 import type {
   InvoiceIssueKind,
   InvoiceListItem,
@@ -119,10 +122,12 @@ export function QuoteInvoiceIssueDialog({
   const previewGen = useRef(0)
 
   const dueGross = quote.final_total_gross
+  const remainingGross = quoteRemainingGross(dueGross, quote.total_paid)
   const docLabel = quote.order_number ?? quote.quote_number
+  const payMethods = allowedInvoicePaymentMethods(kind)
+  const payLocked = payMethods.length <= 1
 
-  const kindLocked =
-    Boolean(preferredKind) || options.length <= 1
+  const kindLocked = Boolean(preferredKind) || options.length <= 1
   const showKindSelect =
     options.length > 0 && (!kindLocked || showKindPicker)
 
@@ -375,19 +380,32 @@ export function QuoteInvoiceIssueDialog({
                   htmlFor="q-inv-pay"
                   hint={invoicePaymentMethodHint(kind)}
                 >
-                  <select
-                    id="q-inv-pay"
-                    className="flex h-9 w-full rounded-md border border-border bg-surface px-2.5 text-body"
-                    value={paymentMethod}
-                    disabled={pending}
-                    onChange={(e) =>
-                      setPaymentMethod(e.target.value as InvoicePaymentMethod)
-                    }
-                  >
-                    <option value="cash">Készpénz</option>
-                    <option value="card">Bankkártya</option>
-                    <option value="bank_transfer">Átutalás</option>
-                  </select>
+                  {payLocked ? (
+                    <p
+                      id="q-inv-pay"
+                      className="flex h-9 items-center rounded-md border border-border bg-subtle px-2.5 text-body font-medium text-ink"
+                    >
+                      {INVOICE_PAYMENT_METHOD_LABEL[payMethods[0]!]}
+                    </p>
+                  ) : (
+                    <select
+                      id="q-inv-pay"
+                      className="flex h-9 w-full rounded-md border border-border bg-surface px-2.5 text-body"
+                      value={paymentMethod}
+                      disabled={pending}
+                      onChange={(e) =>
+                        setPaymentMethod(
+                          e.target.value as InvoicePaymentMethod
+                        )
+                      }
+                    >
+                      {payMethods.map((m) => (
+                        <option key={m} value={m}>
+                          {INVOICE_PAYMENT_METHOD_LABEL[m]}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </FormField>
 
                 {showDetailLevel ? (
@@ -433,8 +451,8 @@ export function QuoteInvoiceIssueDialog({
                     </div>
                     <p className="text-hint text-ink-secondary">
                       {detailLevel === 'by_material'
-                        ? 'Anyag neve, szabás és él méter anyagonként. Az előnézet frissül.'
-                        : 'Egy sor anyag + szabás + él (összesítve).'}
+                        ? 'Anyag mennyiség: tábla + panel m² (hulladék nélkül). Szabás/él méter anyagonként.'
+                        : 'Egy sor anyag (m², hulladék nélkül) + szabás + él.'}
                     </p>
                   </div>
                 ) : null}
@@ -465,6 +483,11 @@ export function QuoteInvoiceIssueDialog({
                     label="Előleg (bruttó Ft)"
                     htmlFor="q-inv-adv"
                     required
+                    hint={
+                      remainingGross > 0
+                        ? `Max. hátralék: ${formatQuotePrice(remainingGross, quote.currency)}`
+                        : undefined
+                    }
                   >
                     <Input
                       id="q-inv-adv"
@@ -472,7 +495,7 @@ export function QuoteInvoiceIssueDialog({
                       value={advanceAmount}
                       disabled={pending}
                       onChange={(e) => setAdvanceAmount(e.target.value)}
-                      placeholder={String(Math.round(dueGross))}
+                      placeholder={String(Math.round(remainingGross || dueGross))}
                     />
                   </FormField>
                 ) : null}

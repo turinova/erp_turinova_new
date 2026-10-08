@@ -35,8 +35,13 @@ export type InvoiceListView =
   | 'invoices'
   | 'stornos'
 
-/** Forrás szűrő — értékesítés / lapszabászat / manuális / mind */
-export type InvoiceSourceFilter = 'all' | 'sale' | 'opti_order' | 'manual'
+/** Forrás szűrő — értékesítés / lapszabászat / manuális / összevont / mind */
+export type InvoiceSourceFilter =
+  | 'all'
+  | 'sale'
+  | 'opti_order'
+  | 'manual'
+  | 'consolidated'
 
 type Props = {
   initialRows: InvoiceListItem[]
@@ -73,7 +78,8 @@ const SOURCE_FILTERS: { value: InvoiceSourceFilter; label: string }[] = [
   { value: 'all', label: 'Minden forrás' },
   { value: 'sale', label: 'Értékesítés' },
   { value: 'opti_order', label: 'Lapszabászat' },
-  { value: 'manual', label: 'Manuális' }
+  { value: 'manual', label: 'Manuális' },
+  { value: 'consolidated', label: 'Összevont' }
 ]
 
 function formatDate(iso: string | null) {
@@ -114,6 +120,7 @@ function sourceKindLabel(row: InvoiceListItem): string {
   if (row.related_source_type === 'sale') return 'Értékesítés'
   if (row.related_source_type === 'opti_order') return 'Lapszabászat'
   if (row.related_source_type === 'manual') return 'Manuális'
+  if (row.related_source_type === 'consolidated') return 'Összevont'
   return '—'
 }
 

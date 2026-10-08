@@ -157,6 +157,7 @@ export function HandoverDialog({
                 value={paymentMethodId}
                 disabled={loading || paymentMethods.length === 0}
                 allowEmpty={false}
+                portal={false}
                 placeholder={
                   paymentMethods.length === 0
                     ? 'Nincs aktív mód'

@@ -1,6 +1,13 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition
+} from 'react'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
@@ -42,20 +49,56 @@ import type { QuoteAccessoryRow } from '@/lib/quotes/accessory-totals'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import { QUOTE_PAID_TOTALS_WARNING } from '@/lib/quotes/payment-labels'
 
+type QuoteAccessoryOption = Pick<
+  AccessoryListItem,
+  | 'id'
+  | 'name'
+  | 'sku'
+  | 'price_gross'
+  | 'tax_rate_percent'
+  | 'unit_shortform'
+  | 'active'
+>
+
 type QuoteAccessoriesBlockProps = {
   quoteId: string
   currency: string
   accessories: QuoteAccessoryRow[]
-  accessoryOptions: AccessoryListItem[]
   canEdit: boolean
   hasRecordedPayments?: boolean
+}
+
+const DEBOUNCE_MS = 200
+
+async function fetchAccessoryOptions(q: string): Promise<QuoteAccessoryOption[]> {
+  const sp = new URLSearchParams()
+  if (q.trim()) sp.set('q', q.trim())
+  sp.set('page', '1')
+  const res = await fetch(`/api/termekek?${sp.toString()}`, {
+    credentials: 'same-origin'
+  })
+  const data = (await res.json()) as {
+    rows?: AccessoryListItem[]
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error || 'Keresés sikertelen.')
+  return (data.rows ?? [])
+    .filter((r) => r.active !== false)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      sku: r.sku,
+      price_gross: r.price_gross,
+      tax_rate_percent: r.tax_rate_percent,
+      unit_shortform: r.unit_shortform,
+      active: r.active
+    }))
 }
 
 export function QuoteAccessoriesBlock({
   quoteId,
   currency,
   accessories,
-  accessoryOptions,
   canEdit,
   hasRecordedPayments = false
 }: QuoteAccessoriesBlockProps) {
@@ -71,7 +114,16 @@ export function QuoteAccessoriesBlock({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [pending, startTransition] = useTransition()
 
-  const selected = accessoryOptions.find((t) => t.id === accessoryId)
+  const [options, setOptions] = useState<QuoteAccessoryOption[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const cacheRef = useRef(new Map<string, QuoteAccessoryOption>())
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reqRef = useRef(0)
+
+  const selected =
+    cacheRef.current.get(accessoryId) ??
+    options.find((t) => t.id === accessoryId)
   const quantity = parseIntegerInput(quantityRaw) ?? 0
   const unitGross = parseIntegerInput(grossRaw)
   const vatPercent = selected?.tax_rate_percent ?? 0
@@ -85,29 +137,62 @@ export function QuoteAccessoriesBlock({
     return { lineGross, lineNet, lineVat }
   }, [unitGross, quantity, vatPercent])
 
+  const runSearch = useCallback(async (q: string) => {
+    const req = ++reqRef.current
+    setSearchLoading(true)
+    setSearchError(null)
+    try {
+      const next = await fetchAccessoryOptions(q)
+      if (req !== reqRef.current) return
+      for (const row of next) cacheRef.current.set(row.id, row)
+      setOptions(next)
+    } catch (err) {
+      if (req !== reqRef.current) return
+      setSearchError(err instanceof Error ? err.message : 'Keresés sikertelen.')
+      setOptions([])
+    } finally {
+      if (req === reqRef.current) setSearchLoading(false)
+    }
+  }, [])
+
+  const onQueryChange = useCallback(
+    (q: string) => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => {
+        void runSearch(q)
+      }, DEBOUNCE_MS)
+    },
+    [runSearch]
+  )
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
+
   function resetForm() {
-    setAccessoryId(accessoryOptions[0]?.id ?? '')
+    setAccessoryId('')
     setQuantityRaw('1')
-    setGrossRaw(
-      accessoryOptions[0] ? String(accessoryOptions[0].price_gross) : ''
-    )
+    setGrossRaw('')
     setComment('')
     setFieldErrors({})
+    setSearchError(null)
   }
 
   function openCreate() {
     resetForm()
-    if (accessoryOptions[0]) {
-      setAccessoryId(accessoryOptions[0].id)
-      setGrossRaw(String(accessoryOptions[0].price_gross))
-    }
     setOpen(true)
+    void runSearch('')
   }
 
   function handleAccessoryChange(id: string) {
     setAccessoryId(id)
-    const t = accessoryOptions.find((x) => x.id === id)
-    if (t) setGrossRaw(String(t.price_gross))
+    const t = cacheRef.current.get(id) ?? options.find((x) => x.id === id)
+    if (t) {
+      cacheRef.current.set(t.id, t)
+      setGrossRaw(String(t.price_gross))
+    }
   }
 
   function handleSubmit() {
@@ -152,17 +237,26 @@ export function QuoteAccessoriesBlock({
     return Math.round(abs)
   }
 
+  const menuOptions = useMemo(() => {
+    const byId = new Map<string, QuoteAccessoryOption>()
+    for (const row of options) byId.set(row.id, row)
+    if (accessoryId) {
+      const selectedOpt = cacheRef.current.get(accessoryId)
+      if (selectedOpt) byId.set(selectedOpt.id, selectedOpt)
+    }
+    return [...byId.values()].map((t) => ({
+      value: t.id,
+      label: t.name,
+      hint: `${t.sku} · ${formatMoneyFt(t.price_gross)}/${t.unit_shortform}`
+    }))
+  }, [options, accessoryId])
+
   return (
     <div className="mb-3 overflow-hidden rounded-md border border-border bg-subtle/40">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-subtle px-3 py-2">
         <h3 className="text-label font-semibold text-ink">Termékek</h3>
         {canEdit ? (
-          <Button
-            type="button"
-            size="sm"
-            onClick={openCreate}
-            disabled={accessoryOptions.length === 0}
-          >
+          <Button type="button" size="sm" onClick={openCreate}>
             <Plus className="size-3.5" aria-hidden />
             Termék hozzáadása
           </Button>
@@ -175,11 +269,7 @@ export function QuoteAccessoriesBlock({
         </p>
       ) : null}
 
-      {accessoryOptions.length === 0 && canEdit ? (
-        <p className="px-3 py-3 text-body text-ink-secondary">
-          Nincs aktív termék. Vedd fel a Törzsadatok → Termékek alatt.
-        </p>
-      ) : accessories.length === 0 ? (
+      {accessories.length === 0 ? (
         <p className="px-3 py-3 text-center text-body text-ink-secondary">
           Még nincs termék az ajánlaton.
         </p>
@@ -252,7 +342,7 @@ export function QuoteAccessoriesBlock({
           <DialogHeader>
             <DialogTitle>Termék hozzáadása</DialogTitle>
             <DialogDescription>
-              A törzsárat felülírhatod. Az ajánlaton snapshot készül.
+              Keresés név vagy cikkszám alapján. A törzsárat felülírhatod.
               {hasRecordedPayments ? ` ${QUOTE_PAID_TOTALS_WARNING}` : ''}
             </DialogDescription>
           </DialogHeader>
@@ -262,7 +352,7 @@ export function QuoteAccessoriesBlock({
               label="Termék"
               htmlFor="quote-accessory"
               required
-              error={fieldErrors.accessoryId}
+              error={fieldErrors.accessoryId ?? searchError ?? undefined}
             >
               <MenuSelect
                 id="quote-accessory"
@@ -270,13 +360,14 @@ export function QuoteAccessoriesBlock({
                 disabled={pending}
                 allowEmpty={false}
                 searchable
+                filterLocally={false}
+                loading={searchLoading}
+                onQueryChange={onQueryChange}
                 searchPlaceholder="Termék vagy cikkszám…"
-                placeholder="Válassz…"
-                options={accessoryOptions.map((t) => ({
-                  value: t.id,
-                  label: t.name,
-                  hint: `${t.sku} · ${formatMoneyFt(t.price_gross)}/${t.unit_shortform}`
-                }))}
+                placeholder="Keresés…"
+                emptyLabel="Nincs találat"
+                portal={false}
+                options={menuOptions}
                 onChange={handleAccessoryChange}
               />
             </FormField>

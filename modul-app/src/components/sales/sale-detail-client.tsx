@@ -4,11 +4,8 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  Banknote,
   Download,
   ExternalLink,
-  FileText,
-  PackageCheck,
   Pencil,
   Undo2,
   UserPlus
@@ -39,7 +36,11 @@ import { SaleTotalsBreakdown } from '@/components/sales/sale-totals-breakdown'
 import { SaleVoidPaymentDialog } from '@/components/sales/sale-void-payment-dialog'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { stornoTargetIds } from '@/lib/invoicing/invoice-rules'
+import {
+  resolveInvoiceKindOptions,
+  saleInvoiceCtaLabel,
+  stornoTargetIds
+} from '@/lib/invoicing/invoice-rules'
 import {
   type InvoiceIssueKind,
   type InvoiceListItem
@@ -211,12 +212,6 @@ export function SaleDetailClient({
     !hasFinalInvoice
 
   /** Végszámla csak fulfilled + paid után (HU teljesítés). */
-  const canIssueFinal =
-    detail.payment_status === 'paid' &&
-    !isConfirmed &&
-    hasProforma &&
-    !hasFinalInvoice
-
   const canRecordPayment =
     canWrite &&
     detail.status !== 'cancelled' &&
@@ -224,7 +219,22 @@ export function SaleDetailClient({
     !hasFinalInvoice &&
     (detail.payment_status === 'unpaid' || detail.payment_status === 'partial')
 
-  /** Certainty-first: egy következő lépés. Hitel: confirmed unpaid → áruátadás. */
+  const invoiceKind = useMemo(
+    () => resolveInvoiceKindOptions(detail, invoices),
+    [detail, invoices]
+  )
+  const invoiceCtaLabel = useMemo(
+    () => saleInvoiceCtaLabel(detail, invoices),
+    [detail, invoices]
+  )
+  const canIssueInvoiceDoc =
+    canWrite &&
+    detail.status !== 'cancelled' &&
+    Boolean(hasAgentKey) &&
+    billingFilled &&
+    invoiceKind.options.length > 0
+
+  /** Certainty-first: egy következő workflow lépés (POS paid+fulfilled → null). */
   type NextStep = 'fulfill' | 'proforma' | 'pay' | 'final' | null
   const nextStep: NextStep = needsProformaCta
     ? 'proforma'
@@ -232,18 +242,12 @@ export function SaleDetailClient({
       ? 'pay'
       : canFulfill
         ? 'fulfill'
-        : canIssueFinal
+        : detail.payment_status === 'paid' &&
+            !isConfirmed &&
+            !hasFinalInvoice &&
+            invoiceKind.options.some((o) => o.value === 'normal')
           ? 'final'
           : null
-
-  const canIssueInvoice =
-    canWrite &&
-    detail.status !== 'cancelled' &&
-    !hasFinalInvoice &&
-    (needsProformaCta ||
-      canIssueFinal ||
-      (!isUnpaidLike && !hasProforma) ||
-      (hasProforma && detail.payment_status === 'paid' && isConfirmed))
 
   function openInvoiceFlow(kind: InvoiceIssueKind | null) {
     if (!billingFilled) {
@@ -368,26 +372,6 @@ export function SaleDetailClient({
                 Műszak
               </Button>
             ) : null}
-            {canRecordPayment ? (
-              <Button
-                type="button"
-                variant={nextStep === 'pay' ? 'primary' : 'secondary'}
-                onClick={() => setPayOpen(true)}
-              >
-                <Banknote className="size-3.5" aria-hidden />
-                Fizetés rögzítése
-              </Button>
-            ) : null}
-            {canFulfill ? (
-              <Button
-                type="button"
-                variant={nextStep === 'fulfill' ? 'primary' : 'secondary'}
-                onClick={() => setFulfillOpen(true)}
-              >
-                <PackageCheck className="size-3.5" aria-hidden />
-                Áru átadása
-              </Button>
-            ) : null}
             {hasFinalInvoice && finalInvoice ? (
               <a
                 href={`/api/invoices/${finalInvoice.id}/pdf`}
@@ -396,46 +380,8 @@ export function SaleDetailClient({
                 className={buttonVariants({ variant: 'secondary' })}
               >
                 <Download className="size-3.5" aria-hidden />
-                PDF
+                Számla PDF
               </a>
-            ) : canIssueInvoice ? (
-              <Button
-                type="button"
-                variant={
-                  nextStep === 'proforma' || nextStep === 'final'
-                    ? 'primary'
-                    : 'secondary'
-                }
-                onClick={() => {
-                  if (
-                    hasProforma &&
-                    detail.payment_status === 'paid' &&
-                    isConfirmed
-                  ) {
-                    setOpenInvoiceAfterFulfill(true)
-                    setFulfillOpen(true)
-                    return
-                  }
-                  openInvoiceFlow(
-                    nextStep === 'proforma'
-                      ? 'proforma'
-                      : nextStep === 'final'
-                        ? 'normal'
-                        : needsProformaCta
-                          ? 'proforma'
-                          : canIssueFinal
-                            ? 'normal'
-                            : null
-                  )
-                }}
-              >
-                <FileText className="size-3.5" aria-hidden />
-                {nextStep === 'proforma' || needsProformaCta
-                  ? 'Díjbekérő'
-                  : nextStep === 'final' || canIssueFinal
-                    ? 'Végszámla'
-                    : 'Számla kiállítása'}
-              </Button>
             ) : null}
             {canReturn ? (
               <Button
@@ -474,24 +420,14 @@ export function SaleDetailClient({
         </div>
       ) : null}
 
-      {nextStep === 'fulfill' ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning-soft px-3 py-2.5">
-          <p className="text-body text-warning-ink">
-            Fizetés megérkezett — add át az árut. A készlet ekkor csökken
-            {hasProforma ? ', utána jön a végszámla' : ''}.
-          </p>
-          <Button type="button" size="sm" onClick={() => setFulfillOpen(true)}>
-            Áru átadása
-          </Button>
-        </div>
-      ) : null}
-
       {nextStep === 'pay' ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-subtle px-3 py-2.5">
           <p className="text-body text-ink-secondary">
             Van díjbekérő — ha megérkezett az utalás, rögzítsd a fizetést
-            {isConfirmed ? ', majd add át az árut' : ', majd állíts ki végszámlát'}
-            .
+            {isConfirmed
+              ? ', majd add át az árut'
+              : ', majd állíts ki végszámlát'}
+            . Előlegszámla a Bizonylatoknál.
           </p>
           <Button
             type="button"
@@ -504,17 +440,29 @@ export function SaleDetailClient({
         </div>
       ) : null}
 
+      {nextStep === 'fulfill' ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning-soft px-3 py-2.5">
+          <p className="text-body text-warning-ink">
+            Fizetés megérkezett — add át az árut. A készlet ekkor csökken
+            {hasProforma ? ', utána jön a végszámla' : ''}.
+          </p>
+          <Button type="button" size="sm" onClick={() => setFulfillOpen(true)}>
+            Áru átadása
+          </Button>
+        </div>
+      ) : null}
+
       {nextStep === 'final' ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-subtle px-3 py-2.5">
           <p className="text-body text-ink-secondary">
-            Áru átadva és fizetve — állítsd ki a végszámlát.
+            Áru átadva és fizetve — állítsd ki a bizonylatot.
           </p>
           <Button
             type="button"
             size="sm"
-            onClick={() => openInvoiceFlow('normal')}
+            onClick={() => openInvoiceFlow(invoiceKind.defaultKind)}
           >
-            Végszámla
+            {invoiceCtaLabel}
           </Button>
         </div>
       ) : null}
@@ -803,23 +751,33 @@ export function SaleDetailClient({
             totals={totals}
             dueTone={paymentTone === 'neutral' ? undefined : paymentTone}
           />
-          <a
-            href="#fizetesek"
-            className="block rounded-md border border-border px-2.5 py-2 text-hint text-ink-secondary underline-offset-2 hover:bg-subtle hover:text-ink hover:underline"
-          >
-            <span className="font-medium text-ink">
-              {SALE_PAYMENT_STATUS_LABEL[
-                detail.payment_status as SalePaymentStatus
-              ] ?? detail.payment_status}
-            </span>
-            {salePaymentRemaining(detail) > 0 ? (
-              <span className="mt-0.5 block tabular-nums">
-                Hátralék {formatMoneyFt(salePaymentRemaining(detail))} Ft →
+          <div className="space-y-1.5">
+            <a
+              href="#fizetesek"
+              className="block rounded-md border border-border px-2.5 py-2 text-hint text-ink-secondary underline-offset-2 hover:bg-subtle hover:text-ink hover:underline"
+            >
+              <span className="font-medium text-ink">
+                {SALE_PAYMENT_STATUS_LABEL[
+                  detail.payment_status as SalePaymentStatus
+                ] ?? detail.payment_status}
               </span>
-            ) : (
-              <span className="mt-0.5 block">Fizetések és tevékenység →</span>
-            )}
-          </a>
+              {salePaymentRemaining(detail) > 0 ? (
+                <span className="mt-0.5 block tabular-nums">
+                  Hátralék {formatMoneyFt(salePaymentRemaining(detail))} Ft →
+                </span>
+              ) : (
+                <span className="mt-0.5 block">Befizetések →</span>
+              )}
+            </a>
+            {canWrite && detail.status !== 'cancelled' ? (
+              <a
+                href="#bizonylatok"
+                className="block rounded-md border border-border px-2.5 py-2 text-hint text-ink-secondary underline-offset-2 hover:bg-subtle hover:text-ink hover:underline"
+              >
+                Bizonylatok →
+              </a>
+            ) : null}
+          </div>
         </aside>
       </div>
 
@@ -840,17 +798,10 @@ export function SaleDetailClient({
         listHref="/szamlak"
         listLinkLabel="Összes számla"
         hint="Díjbekérő, előleg, számla — ezen az eladáson"
-        showEmptyCta={canWrite && detail.status !== 'cancelled'}
-        emptyCtaLabel={
-          detail.payment_status === 'paid'
-            ? 'Számla kiállítása'
-            : 'Díjbekérő kiállítása'
-        }
-        onEmptyCta={() =>
-          openInvoiceFlow(
-            detail.payment_status === 'paid' ? 'normal' : 'proforma'
-          )
-        }
+        showEmptyCta={canIssueInvoiceDoc}
+        showHeaderCta={canIssueInvoiceDoc}
+        emptyCtaLabel={invoiceCtaLabel}
+        onEmptyCta={() => openInvoiceFlow(invoiceKind.defaultKind)}
       />
 
       <p className="text-hint text-ink-secondary">

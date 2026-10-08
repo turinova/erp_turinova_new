@@ -592,6 +592,33 @@ export async function addQuotePayment(input: {
     return { ok: false, message: 'Nincs bejelentkezett felhasználó.' }
   }
 
+  const { data: invoices } = await ctx.supabase
+    .from('invoices')
+    .select('id, invoice_type, is_storno_of_invoice_id')
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', 'opti_order')
+    .eq('related_source_id', input.quoteId)
+    .is('deleted_at', null)
+
+  const invRows = invoices ?? []
+  const stornoOf = new Set(
+    invRows
+      .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
+      .map((r) => r.is_storno_of_invoice_id as string)
+  )
+  const hasFinal = invRows.some(
+    (r) =>
+      r.invoice_type === 'szamla' &&
+      !r.is_storno_of_invoice_id &&
+      !stornoOf.has(r.id)
+  )
+  if (hasFinal) {
+    return {
+      ok: false,
+      message: 'Aktív számla mellett nem rögzíthető új befizetés.'
+    }
+  }
+
   const comment = input.comment.trim()
   const { error: insertError } = await ctx.supabase.from('quote_payments').insert({
     tenant_id: tenantId,
@@ -613,6 +640,90 @@ export async function addQuotePayment(input: {
   revalidatePath(`${LIST_PATH}/${input.quoteId}`)
   revalidatePath('/megrendelesek')
   return { ok: true }
+}
+
+export type VoidQuotePaymentResult =
+  | { ok: true; id: string }
+  | { ok: false; message: string }
+
+export async function voidQuotePaymentAction(input: {
+  paymentId: string
+  note: string
+}): Promise<VoidQuotePaymentResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const note = input.note.trim()
+  if (!note) {
+    return { ok: false, message: 'Az érvénytelenítés indoka kötelező.' }
+  }
+
+  const { data, error } = await ctx.supabase.rpc('void_quote_payment', {
+    p_payment_id: input.paymentId,
+    p_note: note
+  })
+
+  if (error) {
+    console.error('voidQuotePaymentAction', error.message)
+    return { ok: false, message: 'Nem sikerült érvényteleníteni a befizetést.' }
+  }
+
+  const result = data as { ok?: boolean; message?: string; id?: string } | null
+  if (!result?.ok || !result.id) {
+    return {
+      ok: false,
+      message: result?.message ?? 'Nem sikerült érvényteleníteni a befizetést.'
+    }
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath(`${LIST_PATH}/${result.id}`)
+  revalidatePath('/megrendelesek')
+  return { ok: true, id: result.id }
+}
+
+export type UpdateQuotePaymentResult =
+  | { ok: true; id: string }
+  | { ok: false; message: string }
+
+export async function updateQuotePaymentAction(input: {
+  paymentId: string
+  paymentMethodId: string
+  amount: number
+  note: string
+}): Promise<UpdateQuotePaymentResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const note = input.note.trim()
+  if (!note) {
+    return { ok: false, message: 'A korrekció indoka kötelező.' }
+  }
+
+  const { data, error } = await ctx.supabase.rpc('update_quote_payment', {
+    p_payment_id: input.paymentId,
+    p_payment_method_id: input.paymentMethodId,
+    p_amount: input.amount,
+    p_note: note
+  })
+
+  if (error) {
+    console.error('updateQuotePaymentAction', error.message)
+    return { ok: false, message: 'Nem sikerült korrigálni a befizetést.' }
+  }
+
+  const result = data as { ok?: boolean; message?: string; id?: string } | null
+  if (!result?.ok || !result.id) {
+    return {
+      ok: false,
+      message: result?.message ?? 'Nem sikerült korrigálni a befizetést.'
+    }
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath(`${LIST_PATH}/${result.id}`)
+  revalidatePath('/megrendelesek')
+  return { ok: true, id: result.id }
 }
 
 export type UpdateQuoteBillingInput = {

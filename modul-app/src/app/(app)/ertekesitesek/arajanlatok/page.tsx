@@ -31,11 +31,15 @@ export default async function ArajnlatokPage({
   const q = typeof sp.q === 'string' ? sp.q : ''
   const pageRaw = typeof sp.page === 'string' ? Number(sp.page) : 1
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1
-  const statusRaw = typeof sp.status === 'string' ? sp.status : 'all'
+  const statusRaw = typeof sp.status === 'string' ? sp.status : 'active'
   const status =
-    statusRaw !== 'all' && STATUSES.has(statusRaw as SalesQuoteStatus)
-      ? (statusRaw as SalesQuoteStatus)
-      : ('all' as const)
+    statusRaw === 'active'
+      ? ('active' as const)
+      : statusRaw === 'all'
+        ? ('all' as const)
+        : STATUSES.has(statusRaw as SalesQuoteStatus)
+          ? (statusRaw as SalesQuoteStatus)
+          : ('active' as const)
 
   const user = await getSessionUser()
   const canWrite = Boolean(user?.role && user.role !== 'viewer')
