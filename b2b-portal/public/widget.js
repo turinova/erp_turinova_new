@@ -2069,6 +2069,14 @@
       "  width:100%;height:100%;object-fit:cover;display:block",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-title{",
+      "  font-size:12.5px;font-weight:650;line-height:1.3;color:var(--sr-qo-text);",
+      "  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-codes{",
+      "  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;font-weight:500;",
+      "  color:var(--sr-qo-muted);display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px",
+      "}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-sku{",
       "  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;",
       "  display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px",
@@ -2079,6 +2087,18 @@
       "#sr-b2b-quickorder-root .sr-qo-suggest-meta{",
       "  font-size:11px;color:var(--sr-qo-muted);line-height:1.35;",
       "  display:flex;flex-wrap:wrap;gap:6px 10px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-stock{",
+      "  font-size:10px;font-weight:600;padding:1px 6px;border-radius:999px;",
+      "  background:rgba(22,163,74,.1);color:#15803d",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-stock.is-out,",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-stock.is-blocked{",
+      "  background:rgba(185,28,28,.1);color:#b91c1c",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-stock.is-low,",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-stock.is-pending{",
+      "  background:rgba(180,83,9,.1);color:#b45309",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-price{",
       "  flex-shrink:0;font-size:12px;font-weight:650;font-variant-numeric:tabular-nums;",
@@ -4206,7 +4226,7 @@
         }
       }
       if (!sku) {
-        flashError("Írd be a cikkszámot, gyári számot vagy vonalkódot.");
+        flashError("Írd be a cikkszámot, gyári számot, vonalkódot vagy terméknevet.");
         skuInput.focus();
         return;
       }
@@ -4484,9 +4504,9 @@
     var skuInput = el("input", {
       className: "sr-qo-input sr-qo-sku-input",
       type: "text",
-      placeholder: "Cikkszám / gyári / vonalkód",
+      placeholder: "Cikkszám, gyári szám vagy terméknév",
       autocomplete: "off",
-      "aria-label": "Cikkszám, gyári cikkszám vagy vonalkód",
+      "aria-label": "Cikkszám, gyári szám, vonalkód vagy terméknév",
       "aria-autocomplete": "list",
       "aria-controls": "sr-qo-sku-suggest",
       role: "combobox",
@@ -4600,6 +4620,78 @@
       addSkuFromInputs();
     }
 
+    /** Name-first suggest row (Zoro / Magento B2B pattern). */
+    function buildSuggestHitKids(hit) {
+      var sku = hit.sku ? String(hit.sku).trim() : "";
+      var name = hit.name ? String(hit.name).trim() : "";
+      var title = name || sku || "—";
+      var codeParts = [];
+      if (sku && name) codeParts.push(sku);
+      if (
+        hit.modelNumber &&
+        String(hit.modelNumber).trim() &&
+        String(hit.modelNumber).trim().toUpperCase() !== sku.toUpperCase()
+      ) {
+        codeParts.push(
+          el("span", { className: "sr-qo-suggest-model" }, [
+            String(hit.modelNumber).trim(),
+          ]),
+        );
+      }
+      var bodyKids = [
+        el("span", { className: "sr-qo-suggest-title" }, [title]),
+      ];
+      if (codeParts.length) {
+        bodyKids.push(
+          el("span", { className: "sr-qo-suggest-codes" }, codeParts),
+        );
+      }
+      var metaKids = [];
+      if (hit.packLabel) {
+        metaKids.push(String(hit.packLabel));
+      }
+      if (hit.orderable === false) {
+        metaKids.push(
+          el("span", { className: "sr-qo-suggest-stock is-blocked" }, [
+            "nem rendelhető",
+          ]),
+        );
+      } else if (hit.inStock === false || hit.stockTone === "out") {
+        metaKids.push(
+          el("span", { className: "sr-qo-suggest-stock is-out" }, [
+            hit.stockLabel || "nincs készleten",
+          ]),
+        );
+      } else if (hit.stockTone === "low") {
+        metaKids.push(
+          el("span", { className: "sr-qo-suggest-stock is-low" }, [
+            hit.stockLabel || "alacsony készlet",
+          ]),
+        );
+      } else if (hit.stockLabel && hit.stockTone === "ok") {
+        metaKids.push(
+          el("span", { className: "sr-qo-suggest-stock" }, [hit.stockLabel]),
+        );
+      }
+      if (metaKids.length) {
+        bodyKids.push(el("span", { className: "sr-qo-suggest-meta" }, metaKids));
+      }
+      var kids = [];
+      if (hit.imageUrl) {
+        kids.push(
+          el("span", { className: "sr-qo-suggest-thumb", "aria-hidden": "true" }, [
+            el("img", { src: hit.imageUrl, alt: "" }),
+          ]),
+        );
+      }
+      kids.push(el("span", { className: "sr-qo-suggest-body" }, bodyKids));
+      var price = formatHitPrice(hit);
+      if (price) {
+        kids.push(el("span", { className: "sr-qo-suggest-price" }, [price]));
+      }
+      return kids;
+    }
+
     function renderSuggest(list, q) {
       suggestBox.innerHTML = "";
       suggestItems = list || [];
@@ -4619,44 +4711,6 @@
         return;
       }
       suggestItems.forEach(function (hit, i) {
-        var meta = [];
-        if (hit.name) meta.push(hit.name);
-        if (hit.packLabel) meta.push(hit.packLabel);
-        if (hit.orderable === false) meta.push("nem rendelhető");
-        else if (hit.inStock === false) meta.push("nincs készleten");
-        var price = formatHitPrice(hit);
-        var skuKids = [hit.sku];
-        if (
-          hit.modelNumber &&
-          String(hit.modelNumber).trim() &&
-          String(hit.modelNumber).trim().toUpperCase() !==
-            String(hit.sku).trim().toUpperCase()
-        ) {
-          skuKids.push(
-            el("span", { className: "sr-qo-suggest-model" }, [
-              hit.modelNumber,
-            ]),
-          );
-        }
-        var kids = [];
-        if (hit.imageUrl) {
-          kids.push(
-            el("span", { className: "sr-qo-suggest-thumb", "aria-hidden": "true" }, [
-              el("img", { src: hit.imageUrl, alt: "" }),
-            ]),
-          );
-        }
-        kids.push(
-          el("span", { className: "sr-qo-suggest-body" }, [
-            el("span", { className: "sr-qo-suggest-sku" }, skuKids),
-            el("span", { className: "sr-qo-suggest-meta" }, [
-              meta.join(" · ") || "—",
-            ]),
-          ]),
-        );
-        if (price) {
-          kids.push(el("span", { className: "sr-qo-suggest-price" }, [price]));
-        }
         var btn = el(
           "button",
           {
@@ -4669,7 +4723,7 @@
               pickSuggest(hit);
             },
           },
-          kids,
+          buildSuggestHitKids(hit),
         );
         suggestBox.appendChild(btn);
       });
@@ -7446,9 +7500,9 @@
     var listsAddSkuInput = el("input", {
       className: "sr-qo-input sr-qo-sku-input",
       type: "text",
-      placeholder: "Cikkszám / gyári / vonalkód",
+      placeholder: "Cikkszám, gyári szám vagy terméknév",
       autocomplete: "off",
-      "aria-label": "Cikkszám, gyári cikkszám vagy vonalkód",
+      "aria-label": "Cikkszám, gyári szám, vonalkód vagy terméknév",
       "aria-autocomplete": "list",
       "aria-controls": "sr-qo-lists-sku-suggest",
       role: "combobox",
@@ -7534,44 +7588,6 @@
         return;
       }
       listsSuggestItems.forEach(function (hit, i) {
-        var meta = [];
-        if (hit.name) meta.push(hit.name);
-        if (hit.packLabel) meta.push(hit.packLabel);
-        if (hit.orderable === false) meta.push("nem rendelhető");
-        else if (hit.inStock === false) meta.push("nincs készleten");
-        var price = formatHitPrice(hit);
-        var skuKids = [hit.sku];
-        if (
-          hit.modelNumber &&
-          String(hit.modelNumber).trim() &&
-          String(hit.modelNumber).trim().toUpperCase() !==
-            String(hit.sku).trim().toUpperCase()
-        ) {
-          skuKids.push(
-            el("span", { className: "sr-qo-suggest-model" }, [
-              hit.modelNumber,
-            ]),
-          );
-        }
-        var kids = [];
-        if (hit.imageUrl) {
-          kids.push(
-            el("span", { className: "sr-qo-suggest-thumb", "aria-hidden": "true" }, [
-              el("img", { src: hit.imageUrl, alt: "" }),
-            ]),
-          );
-        }
-        kids.push(
-          el("span", { className: "sr-qo-suggest-body" }, [
-            el("span", { className: "sr-qo-suggest-sku" }, skuKids),
-            el("span", { className: "sr-qo-suggest-meta" }, [
-              meta.join(" · ") || "—",
-            ]),
-          ]),
-        );
-        if (price) {
-          kids.push(el("span", { className: "sr-qo-suggest-price" }, [price]));
-        }
         listsSuggestBox.appendChild(
           el(
             "button",
@@ -7585,7 +7601,7 @@
                 pickListsSuggest(hit);
               },
             },
-            kids,
+            buildSuggestHitKids(hit),
           ),
         );
       });

@@ -153,10 +153,16 @@ export async function upsertCatalogPage(
            sku = excluded.sku,
            model_number = excluded.model_number,
            gtin = excluded.gtin,
-           name = coalesce(
-             nullif(btrim(excluded.name), ''),
-             product_catalog.name
-           ),
+           name = case
+             when nullif(btrim(excluded.name), '') is null
+               then product_catalog.name
+             when nullif(btrim(product_catalog.name), '') is null
+               then excluded.name
+             when length(btrim(excluded.name))
+               >= length(btrim(product_catalog.name))
+               then excluded.name
+             else product_catalog.name
+           end,
            image_url = coalesce(
              nullif(btrim(excluded.image_url), ''),
              product_catalog.image_url

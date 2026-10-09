@@ -1499,18 +1499,12 @@ function pickProductFields(
 }
 
 /**
- * Shoprenter termék megjelenő neve — name / imageAlt / productDescriptions.
- * A listaáras `product` resource gyakran üres `name`-et ad; a név a leírásban van.
+ * Boltban látható cím a productDescriptions-ből (ha a lista payloadban inline van).
+ * A `/products` lista gyakran csak href stubot ad — akkor undefined.
  */
-export function pickProductDisplayName(
+export function pickNameFromProductDescriptions(
   item: Record<string, unknown>,
 ): string | undefined {
-  const top =
-    (typeof item.name === "string" && item.name.trim()) ||
-    (typeof item.imageAlt === "string" && item.imageAlt.trim()) ||
-    "";
-  if (top) return top;
-
   const descs = item.productDescriptions;
   if (!descs || typeof descs !== "object") return undefined;
 
@@ -1526,18 +1520,67 @@ export function pickProductDisplayName(
       ? descs
       : [];
 
+  let fallback: string | undefined;
   for (const raw of items) {
     if (!raw || typeof raw !== "object") continue;
     const d = raw as Record<string, unknown>;
-    if (typeof d.name === "string" && d.name.trim()) return d.name.trim();
-    // nested description object
-    const nested = d.productDescription ?? d.description;
-    if (nested && typeof nested === "object") {
-      const n = nested as Record<string, unknown>;
-      if (typeof n.name === "string" && n.name.trim()) return n.name.trim();
+    let n =
+      typeof d.name === "string" && d.name.trim() ? d.name.trim() : "";
+    if (!n) {
+      const nested = d.productDescription ?? d.description;
+      if (nested && typeof nested === "object") {
+        const nest = nested as Record<string, unknown>;
+        if (typeof nest.name === "string" && nest.name.trim()) {
+          n = nest.name.trim();
+        }
+      }
     }
+    if (!n) continue;
+    const lang = d.language;
+    const langInner =
+      lang && typeof lang === "object"
+        ? (lang as { innerId?: unknown }).innerId
+        : undefined;
+    if (langInner === 1 || langInner === "1") return n;
+    if (!fallback) fallback = n;
+  }
+  return fallback;
+}
+
+/**
+ * Shoprenter termék megjelenő neve.
+ * Prioritás: productDescriptions → product.name → imageAlt (utolsó mentőöv).
+ * A listaáras `product` resource gyakran üres `name`-et ad; a valódi cím a leírásban van.
+ * Az `imageAlt` gyakran rövid SEO/alt szöveg — ne előzze meg a teljes terméknévét.
+ */
+export function pickProductDisplayName(
+  item: Record<string, unknown>,
+): string | undefined {
+  const fromDesc = pickNameFromProductDescriptions(item);
+  if (fromDesc) return fromDesc;
+
+  if (typeof item.name === "string" && item.name.trim()) {
+    return item.name.trim();
+  }
+  if (typeof item.imageAlt === "string" && item.imageAlt.trim()) {
+    return item.imageAlt.trim();
   }
   return undefined;
+}
+
+/** True if the draft name likely came only from imageAlt (weak / short title). */
+export function productNameLikelyFromImageAlt(
+  item: Record<string, unknown>,
+  draftName: string | null | undefined,
+): boolean {
+  const n = (draftName || "").trim();
+  if (!n) return false;
+  const itemName =
+    typeof item.name === "string" ? item.name.trim() : "";
+  const alt =
+    typeof item.imageAlt === "string" ? item.imageAlt.trim() : "";
+  if (itemName && itemName === n) return false;
+  return Boolean(alt && alt === n);
 }
 
 /** Shoprenter productDescription resource id (base64). */
@@ -1606,8 +1649,9 @@ export async function resolveProductDisplayName(
 ): Promise<string | undefined> {
   const item = opts.productItem;
   if (item) {
-    const inline = pickProductDisplayName(item);
-    if (inline) return inline;
+    // Inline descriptions first — never short-circuit on imageAlt alone.
+    const fromDesc = pickNameFromProductDescriptions(item);
+    if (fromDesc) return fromDesc;
 
     const descs = item.productDescriptions;
     if (descs && typeof descs === "object" && !Array.isArray(descs)) {
@@ -1637,16 +1681,26 @@ export async function resolveProductDisplayName(
     opts.productInnerId != null && Number.isFinite(opts.productInnerId)
       ? Math.round(opts.productInnerId)
       : null;
-  if (inner == null || inner < 1) return undefined;
+  if (inner != null && inner >= 1) {
+    for (const lang of [1, 2]) {
+      const id = productDescriptionResourceId(inner, lang);
+      const data = await fetchJsonRecord(
+        config,
+        `/productDescriptions/${id}?full=1`,
+      );
+      const name = data ? nameFromDescriptionPayload(data) : undefined;
+      if (name) return name;
+    }
+  }
 
-  for (const lang of [1, 2]) {
-    const id = productDescriptionResourceId(inner, lang);
-    const data = await fetchJsonRecord(
-      config,
-      `/productDescriptions/${id}?full=1`,
-    );
-    const name = data ? nameFromDescriptionPayload(data) : undefined;
-    if (name) return name;
+  // Fallback only after description fetch attempts.
+  if (item) {
+    if (typeof item.name === "string" && item.name.trim()) {
+      return item.name.trim();
+    }
+    if (typeof item.imageAlt === "string" && item.imageAlt.trim()) {
+      return item.imageAlt.trim();
+    }
   }
   return undefined;
 }
@@ -1656,7 +1710,10 @@ async function enrichProductName(
   product: ResolvedProduct,
   item: Record<string, unknown>,
 ): Promise<ResolvedProduct> {
-  if (product.name && product.name !== product.sku) return product;
+  const hasStrongName =
+    Boolean(product.name && product.name !== product.sku) &&
+    !productNameLikelyFromImageAlt(item, product.name);
+  if (hasStrongName) return product;
   const fromDesc = await resolveProductDisplayName(config, {
     productItem: item,
     productInnerId: product.productId,
@@ -1930,9 +1987,11 @@ export type ProductSearchHit = {
   name?: string;
   modelNumber?: string;
   gtin?: string;
+  imageUrl?: string;
   priceNetFormatted?: string;
   priceGrossFormatted?: string;
   stockTone?: ResolvedProduct["stockTone"];
+  stockLabel?: string;
   inStock?: boolean;
   orderable?: boolean;
   packLabel?: string;
@@ -1974,9 +2033,11 @@ export async function searchProducts(
         name: p.name,
         modelNumber: p.modelNumber,
         gtin: p.gtin,
+        imageUrl: p.imageUrl,
         priceNetFormatted: p.priceNetFormatted,
         priceGrossFormatted: p.priceGrossFormatted,
         stockTone: p.stockTone,
+        stockLabel: p.stockLabel,
         inStock: p.inStock,
         orderable: p.orderable,
         packLabel: p.packLabel,

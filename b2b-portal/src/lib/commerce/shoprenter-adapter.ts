@@ -8,6 +8,7 @@ import {
   pickManufacturerRef,
   pickPackRules,
   pickProductDisplayName,
+  productNameLikelyFromImageAlt,
   PRODUCTS_PAGE_LIMIT,
   resolveProductDisplayName,
   type CategoryMeta,
@@ -187,8 +188,12 @@ export function createShoprenterAdapter(
       }
 
       // A lista full=1 gyakran üres name-et ad; a név productDescriptions-ben van.
-      // Korábban max 25 / oldal → ~549 termék névtelen maradt (pl. AL250).
-      const needName = rows.filter((r) => !r.draft.name?.trim());
+      // imageAlt-only draft is weak — still fetch the real description title.
+      const needName = rows.filter(
+        (r) =>
+          !r.draft.name?.trim() ||
+          productNameLikelyFromImageAlt(r.item, r.draft.name),
+      );
       const NAME_CONCURRENCY = 3;
       const NAME_DELAY_MS = 80;
       let cursorIdx = 0;

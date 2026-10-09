@@ -60,12 +60,17 @@ export function catalogRowToHit(row: CatalogRow): ProductSearchHit {
       : NaN;
   const minQty = Math.max(1, row.min_qty || 1);
   const qtyStep = Math.max(1, row.qty_step || 1);
+  const imageUrl =
+    typeof row.image_url === "string" && row.image_url.trim()
+      ? row.image_url.trim()
+      : undefined;
   return {
     sku: row.sku,
     productId: productIdFromExternal(row.external_product_id),
     name: row.name ?? undefined,
     modelNumber: row.model_number ?? undefined,
     gtin: row.gtin ?? undefined,
+    imageUrl,
     priceNetFormatted: Number.isFinite(net) ? formatHuf(net) : undefined,
     minQty,
     qtyStep,
@@ -379,7 +384,7 @@ export async function searchCatalog(
 
   const res = await query<CatalogRow>(
     client,
-    `select sku, sku_norm, external_product_id, name, model_number, gtin,
+    `select sku, sku_norm, external_product_id, name, image_url, model_number, gtin,
             min_qty, qty_step, list_price_net::text, active
      from product_catalog
      where shop_id = $1
