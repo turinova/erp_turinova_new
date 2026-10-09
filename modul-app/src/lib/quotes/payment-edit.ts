@@ -1,6 +1,5 @@
 import type { QuoteDetail, QuotePaymentRow } from '@/lib/quotes/queries'
 import type { QuoteStatus } from '@/lib/quotes/queries'
-import type { PaymentStatus } from '@/lib/quotes/payment-labels'
 
 /** Befizetés szerkeszthető / érvényteleníthető? (UI + szerver kapuk). */
 export function canEditQuotePayment(input: {
