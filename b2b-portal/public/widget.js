@@ -887,6 +887,69 @@
     return node;
   }
 
+  /**
+   * Name-first product identity — shared by typeahead, order lines, lists, orders.
+   * Layout: [optional thumb] + title (name) + mono codes (sku · model).
+   */
+  function buildProductIdentityBlock(opts) {
+    opts = opts || {};
+    var sku = opts.sku != null ? String(opts.sku).trim() : "";
+    var name = opts.name != null ? String(opts.name).trim() : "";
+    var titleFallback =
+      opts.titleFallback != null ? String(opts.titleFallback) : "—";
+    var title = name || sku || titleFallback;
+    var href = opts.href ? String(opts.href) : "";
+    var model =
+      opts.modelNumber != null ? String(opts.modelNumber).trim() : "";
+    var showThumb = opts.showThumb === true && opts.imageUrl;
+
+    var titleInner;
+    if (href && title && title !== "Nem található") {
+      titleInner = el(
+        "a",
+        {
+          className: "sr-qo-id-link",
+          href: href,
+          target: "_blank",
+          rel: "noopener noreferrer",
+          title: title,
+          onClick: function (ev) {
+            ev.stopPropagation();
+          },
+        },
+        [title],
+      );
+    } else {
+      titleInner = title;
+    }
+
+    var codeParts = [];
+    if (sku && name) codeParts.push(sku);
+    if (model && model.toUpperCase() !== sku.toUpperCase()) {
+      codeParts.push(el("span", { className: "sr-qo-id-model" }, [model]));
+    }
+
+    var bodyKids = [el("div", { className: "sr-qo-id-title" }, [titleInner])];
+    if (codeParts.length) {
+      bodyKids.push(el("div", { className: "sr-qo-id-codes" }, codeParts));
+    }
+
+    var rootKids = [];
+    if (showThumb) {
+      rootKids.push(
+        el("span", { className: "sr-qo-id-thumb", "aria-hidden": "true" }, [
+          el("img", { src: String(opts.imageUrl), alt: "" }),
+        ]),
+      );
+    }
+    rootKids.push(el("div", { className: "sr-qo-id-body" }, bodyKids));
+    return el(
+      "div",
+      { className: "sr-qo-id" + (showThumb ? " has-thumb" : "") },
+      rootKids,
+    );
+  }
+
   var DRAFT_KEY = "sr-b2b-qo-draft-v1";
 
   function loadDraft() {
@@ -1696,19 +1759,49 @@
       "  line-height:1.35;cursor:default",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-product.sr-qo-name{",
-      "  max-width:none;overflow:hidden",
+      "  max-width:none;overflow:hidden;vertical-align:middle",
       "}",
+      "#sr-b2b-quickorder-root .sr-qo-id{",
+      "  display:flex;flex-direction:row;align-items:center;gap:10px;min-width:0",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-id-thumb{",
+      "  width:36px;height:36px;flex-shrink:0;overflow:hidden;",
+      "  background:var(--sr-qo-surface-2);border:0.5px solid var(--sr-qo-line);",
+      "  display:flex;align-items:center;justify-content:center",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-id-thumb img{",
+      "  width:100%;height:100%;object-fit:cover;display:block",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-id-body{",
+      "  flex:1;min-width:0;display:flex;flex-direction:column;gap:2px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-id-title{",
+      "  font-size:12.5px;font-weight:650;line-height:1.3;color:var(--sr-qo-text);",
+      "  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-id-link{",
+      "  color:inherit;text-decoration:none;cursor:pointer",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-id-link:hover{",
+      "  color:var(--sr-qo-accent);text-decoration:underline;text-underline-offset:2px",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-id-codes{",
+      "  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;font-weight:500;",
+      "  color:var(--sr-qo-muted);display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;",
+      "  overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-id-model{font-weight:500;color:var(--sr-qo-faint)}",
       "#sr-b2b-quickorder-root .sr-qo-name a.sr-qo-name-link{",
-      "  color:inherit;text-decoration:underline;text-decoration-color:rgba(55,53,47,.28);",
-      "  text-underline-offset:2px;cursor:pointer",
+      "  color:inherit;text-decoration:none;cursor:pointer",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-name a.sr-qo-name-link:hover{",
-      "  color:var(--sr-qo-accent);text-decoration-color:var(--sr-qo-accent)",
+      "  color:var(--sr-qo-accent);text-decoration:underline;text-underline-offset:2px",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-name.has-img{",
       "  cursor:zoom-in;text-decoration:none",
       "}",
-      "#sr-b2b-quickorder-root .sr-qo-name.has-img a.sr-qo-name-link{",
+      "#sr-b2b-quickorder-root .sr-qo-name.has-img a.sr-qo-name-link,",
+      "#sr-b2b-quickorder-root .sr-qo-name.has-img a.sr-qo-id-link{",
       "  cursor:pointer",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-num{",
@@ -1731,12 +1824,13 @@
       "  color:var(--sr-qo-ok);font-weight:650",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-product-name{",
-      "  font-weight:600;line-height:1.25;font-size:13px;",
-      "  overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+      "  font-size:12.5px;font-weight:650;line-height:1.3;",
+      "  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-product-meta{",
-      "  margin-top:1px;font-size:10px;font-weight:500;color:var(--sr-qo-muted);",
-      "  font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
+      "  margin-top:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;",
+      "  font-size:11px;font-weight:500;color:var(--sr-qo-muted);",
+      "  overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-line-total{",
       "  font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;font-size:13px",
@@ -2054,6 +2148,9 @@
       "  display:flex;flex-direction:row;align-items:center;gap:10px;width:100%;text-align:left;",
       "  padding:8px 10px;border:0;border-bottom:1px solid var(--sr-qo-line);",
       "  background:transparent;cursor:pointer;font:inherit;color:var(--sr-qo-text)",
+      "}",
+      "#sr-b2b-quickorder-root .sr-qo-suggest-item .sr-qo-id{",
+      "  flex:1;min-width:0",
       "}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-item:last-child{border-bottom:0}",
       "#sr-b2b-quickorder-root .sr-qo-suggest-item:hover,",
@@ -3888,33 +3985,16 @@
           refreshLinePricing(idx);
         });
 
-        var nameText =
-          line.found === false ? "Nem található" : line.name || "—";
         var href = line.found === false ? "" : productPageUrl(line);
-        var nameInner = href
-          ? el(
-              "a",
-              {
-                className: "sr-qo-name-link",
-                href: href,
-                target: "_blank",
-                rel: "noopener noreferrer",
-                title: nameText,
-                onClick: function (ev) {
-                  ev.stopPropagation();
-                },
-              },
-              [nameText],
-            )
-          : nameText;
-        var metaParts = [line.sku];
-        if (line.modelNumber) metaParts.push(line.modelNumber);
-        var productKids = [
-          el("div", { className: "sr-qo-product-name" }, [nameInner]),
-          el("div", { className: "sr-qo-product-meta" }, [
-            metaParts.join(" · "),
-          ]),
-        ];
+        var idBlock = buildProductIdentityBlock({
+          sku: line.sku,
+          name: line.found === false ? "" : line.name || "",
+          titleFallback: line.found === false ? "Nem található" : "—",
+          modelNumber: line.modelNumber,
+          href: href,
+          imageUrl: line.imageUrl,
+          showThumb: !!line.imageUrl,
+        });
         var nameClass =
           "sr-qo-product" +
           (line.imageUrl ? " sr-qo-name has-img" : " sr-qo-name");
@@ -3922,10 +4002,10 @@
           "td",
           {
             className: nameClass,
-            title: line.name || "",
+            title: line.name || line.sku || "",
             "data-label": "Termék",
           },
-          productKids,
+          [idBlock],
         );
         if (line.imageUrl) {
           nameCell.addEventListener("mouseenter", function (ev) {
@@ -4621,32 +4701,15 @@
       addSkuFromInputs();
     }
 
-    /** Name-first suggest row (Zoro / Magento B2B pattern). */
+    /** Name-first suggest row — shared identity + pack/stock meta + price. */
     function buildSuggestHitKids(hit) {
-      var sku = hit.sku ? String(hit.sku).trim() : "";
-      var name = hit.name ? String(hit.name).trim() : "";
-      var title = name || sku || "—";
-      var codeParts = [];
-      if (sku && name) codeParts.push(sku);
-      if (
-        hit.modelNumber &&
-        String(hit.modelNumber).trim() &&
-        String(hit.modelNumber).trim().toUpperCase() !== sku.toUpperCase()
-      ) {
-        codeParts.push(
-          el("span", { className: "sr-qo-suggest-model" }, [
-            String(hit.modelNumber).trim(),
-          ]),
-        );
-      }
-      var bodyKids = [
-        el("span", { className: "sr-qo-suggest-title" }, [title]),
-      ];
-      if (codeParts.length) {
-        bodyKids.push(
-          el("span", { className: "sr-qo-suggest-codes" }, codeParts),
-        );
-      }
+      var idBlock = buildProductIdentityBlock({
+        sku: hit.sku,
+        name: hit.name,
+        modelNumber: hit.modelNumber,
+        imageUrl: hit.imageUrl,
+        showThumb: !!hit.imageUrl,
+      });
       var metaKids = [];
       if (hit.packLabel) {
         metaKids.push(String(hit.packLabel));
@@ -4675,17 +4738,14 @@
         );
       }
       if (metaKids.length) {
-        bodyKids.push(el("span", { className: "sr-qo-suggest-meta" }, metaKids));
+        var body = idBlock.querySelector(".sr-qo-id-body");
+        if (body) {
+          body.appendChild(
+            el("span", { className: "sr-qo-suggest-meta" }, metaKids),
+          );
+        }
       }
-      var kids = [];
-      if (hit.imageUrl) {
-        kids.push(
-          el("span", { className: "sr-qo-suggest-thumb", "aria-hidden": "true" }, [
-            el("img", { src: hit.imageUrl, alt: "" }),
-          ]),
-        );
-      }
-      kids.push(el("span", { className: "sr-qo-suggest-body" }, bodyKids));
+      var kids = [idBlock];
       var price = formatHitPrice(hit);
       if (price) {
         kids.push(el("span", { className: "sr-qo-suggest-price" }, [price]));
@@ -5651,9 +5711,7 @@
           el("thead", null, [
             el("tr", null, [
               el("th", { style: { width: "36px" } }, [""]),
-              el("th", null, ["Cikkszám"]),
-              el("th", null, ["Gyártói"]),
-              el("th", null, ["Név"]),
+              el("th", null, ["Termék"]),
               el("th", null, ["Db"]),
               el("th", null, ["Akkori nettó"]),
               el("th", null, ["Sor"]),
@@ -6202,30 +6260,18 @@
           },
         });
         cb.checked = !!selectedLineKeys[key];
-        var nameText = l.name || "—";
-        var href = productPageUrl(l);
-        var nameInner = href
-          ? el(
-              "a",
-              {
-                className: "sr-qo-name-link",
-                href: href,
-                target: "_blank",
-                rel: "noopener noreferrer",
-                title: "Termék megnyitása új ablakban",
-                onClick: function (ev) {
-                  ev.stopPropagation();
-                },
-              },
-              [nameText],
-            )
-          : nameText;
+        var orderIdBlock = buildProductIdentityBlock({
+          sku: l.sku,
+          name: l.name,
+          modelNumber: l.modelNumber,
+          href: productPageUrl(l),
+          imageUrl: l.imageUrl,
+          showThumb: !!l.imageUrl,
+        });
         ordersDetailBody.appendChild(
           el("tr", null, [
             el("td", null, [cb]),
-            el("td", { className: "sr-qo-mono" }, [l.sku || "—"]),
-            el("td", { className: "sr-qo-mono muted" }, [l.modelNumber || "—"]),
-            el("td", { className: "sr-qo-name" }, [nameInner]),
+            el("td", { className: "sr-qo-name" }, [orderIdBlock]),
             el("td", { className: "num" }, [String(l.quantity || 1) + " db"]),
             el("td", { className: "num" }, [
               l.priceNet != null ? formatHufClient(l.priceNet) : "—",
@@ -7773,8 +7819,7 @@
         el("table", { className: "sr-qo-orders-table" }, [
           el("thead", null, [
             el("tr", null, [
-              el("th", null, ["Cikkszám"]),
-              el("th", null, ["Név"]),
+              el("th", null, ["Termék"]),
               el("th", null, ["Db"]),
               el("th", { className: "actions" }, [""]),
             ]),
@@ -8064,8 +8109,15 @@
         );
         listsDetailBody.appendChild(
           el("tr", null, [
-            el("td", null, [line.sku || "—"]),
-            el("td", null, [line.name || "—"]),
+            el("td", { className: "sr-qo-name" }, [
+              buildProductIdentityBlock({
+                sku: line.sku,
+                name: line.name,
+                modelNumber: line.modelNumber,
+                imageUrl: line.imageUrl,
+                showThumb: !!line.imageUrl,
+              }),
+            ]),
             el("td", null, [qtyInput]),
             el("td", { className: "actions" }, [remBtn]),
           ]),
