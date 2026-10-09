@@ -111,6 +111,7 @@ export function EmbedHomeClient({
   const [copied, setCopied] = useState(false);
   const [activeSnippet, setActiveSnippet] = useState(snippets.loader);
   const [pauseOpen, setPauseOpen] = useState(false);
+  const [resyncPending, setResyncPending] = useState(false);
   const ensuredVersion = useRef(false);
 
   // Quiet ScriptTag `v=` bump when asset version ships (storefront cache-bust).
@@ -325,6 +326,35 @@ export function EmbedHomeClient({
     }
   }
 
+  async function resyncCatalog() {
+    setResyncPending(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await embedFetch(
+        "/api/shoprenter/embed/catalog/resync",
+        { method: "POST", body: "{}" },
+        embedToken,
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Szinkron indítás sikertelen");
+        return;
+      }
+      setShop((s) => ({
+        ...s,
+        catalogStatus: "pending",
+        catalogSyncedAt: null,
+      }));
+      setMessage("Termékek újratöltése elindult — 1–2 perc.");
+      setTimeout(() => setMessage(null), 4000);
+    } catch {
+      setError("Hálózati hiba");
+    } finally {
+      setResyncPending(false);
+    }
+  }
+
   function onPrimary() {
     if (copy.ctaKind === "install") {
       void runInstall();
@@ -409,6 +439,30 @@ export function EmbedHomeClient({
               </p>
             ) : null}
           </div>
+        </section>
+
+        <section className="mt-8 border-[1.5px] border-line-strong bg-surface px-5 py-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">
+            Katalógus
+          </p>
+          <h2 className="mt-1 text-[16px] font-semibold tracking-tight text-text">
+            Termékek újratöltése
+          </h2>
+          <p className="mt-1 max-w-md text-[13px] leading-snug text-faint">
+            Ha a kereső régi vagy rövid neveket mutat, töltsd újra a termékeket
+            a Shoprenterből.
+            {shop.catalogSyncedAt
+              ? ` Utolsó sync: ${new Date(shop.catalogSyncedAt).toLocaleString("hu-HU")}.`
+              : null}
+          </p>
+          <button
+            type="button"
+            className="tn-btn tn-btn-primary mt-4"
+            disabled={resyncPending || pending || needsReauth}
+            onClick={() => void resyncCatalog()}
+          >
+            {resyncPending ? "Indítás…" : "Termékek újratöltése"}
+          </button>
         </section>
 
         <div className="mt-10 border-t border-line pt-4">
