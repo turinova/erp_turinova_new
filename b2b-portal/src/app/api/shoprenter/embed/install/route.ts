@@ -108,11 +108,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, result, script });
   }
 
+  // Quiet bump: recreate ScriptTag if loader `v=` is behind WIDGET_JS_ASSET.
+  if (action === "ensure_version") {
+    const result = await installWidgetScript({
+      shopId: auth.shop.shopId,
+      publicId: auth.shop.publicId,
+      apiBase,
+      enableWidget: auth.shop.widgetEnabled,
+      bumpVersion: true,
+    });
+    const script = await getScriptInstallState(auth.shop.shopId);
+    return NextResponse.json({
+      ok: result.ok,
+      result,
+      script,
+      assetVersion: WIDGET_JS_ASSET,
+    });
+  }
+
   const result = await installWidgetScript({
     shopId: auth.shop.shopId,
     publicId: auth.shop.publicId,
     apiBase,
     enableWidget,
+    bumpVersion: true,
   });
   const script = await getScriptInstallState(auth.shop.shopId);
 

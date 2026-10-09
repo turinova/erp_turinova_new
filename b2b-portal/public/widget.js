@@ -4537,6 +4537,7 @@
     var suggestActive = -1;
     var suggestTimer = null;
     var suggestSeq = 0;
+    var suggestAbort = null;
 
     function hideSuggest() {
       suggestBox.classList.remove("is-on");
@@ -4738,9 +4739,17 @@
         return;
       }
       var seq = ++suggestSeq;
+      if (suggestAbort) {
+        try {
+          suggestAbort.abort();
+        } catch (_e) {}
+      }
+      suggestAbort =
+        typeof AbortController !== "undefined" ? new AbortController() : null;
       try {
         var res = await fetch(
           apiUrl("/api/products/search?q=" + encodeURIComponent(q) + "&limit=8"),
+          suggestAbort ? { signal: suggestAbort.signal } : undefined,
         );
         var data = await res.json();
         if (seq !== suggestSeq) return;
@@ -4760,6 +4769,7 @@
         cfg.catalogReady = true;
         renderSuggest(data.products || [], q);
       } catch (e) {
+        if (e && e.name === "AbortError") return;
         if (seq !== suggestSeq) return;
           suggestBox.innerHTML = "";
           suggestBox.appendChild(
@@ -4775,7 +4785,7 @@
       if (suggestTimer) clearTimeout(suggestTimer);
       suggestTimer = setTimeout(function () {
         runSkuSuggest(false);
-      }, 220);
+      }, 300);
     }
 
     skuInput.addEventListener("input", function () {
@@ -7530,6 +7540,7 @@
     var listsSuggestActive = -1;
     var listsSuggestTimer = null;
     var listsSuggestSeq = 0;
+    var listsSuggestAbort = null;
 
     function hideListsSuggest() {
       listsSuggestBox.classList.remove("is-on");
@@ -7616,9 +7627,17 @@
         return;
       }
       var seq = ++listsSuggestSeq;
+      if (listsSuggestAbort) {
+        try {
+          listsSuggestAbort.abort();
+        } catch (_e) {}
+      }
+      listsSuggestAbort =
+        typeof AbortController !== "undefined" ? new AbortController() : null;
       try {
         var res = await fetch(
           apiUrl("/api/products/search?q=" + encodeURIComponent(q) + "&limit=8"),
+          listsSuggestAbort ? { signal: listsSuggestAbort.signal } : undefined,
         );
         var data = await res.json();
         if (seq !== listsSuggestSeq) return;
@@ -7638,6 +7657,7 @@
         cfg.catalogReady = true;
         renderListsSuggest(data.products || [], q);
       } catch (e) {
+        if (e && e.name === "AbortError") return;
         if (seq !== listsSuggestSeq) return;
         listsSuggestBox.innerHTML = "";
         listsSuggestBox.appendChild(
@@ -7653,7 +7673,7 @@
       if (listsSuggestTimer) clearTimeout(listsSuggestTimer);
       listsSuggestTimer = setTimeout(function () {
         runListsSkuSuggest();
-      }, 220);
+      }, 300);
     }
 
     listsAddSkuInput.addEventListener("input", scheduleListsSkuSuggest);

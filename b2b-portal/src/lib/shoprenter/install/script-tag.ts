@@ -165,3 +165,24 @@ export function findProgateScriptTag(
   );
   return hit ?? null;
 }
+
+/** Cache-bust query `v` from a ScriptTag loader URL. */
+export function scriptTagAssetVersion(src: string): string | null {
+  try {
+    const u = new URL(src);
+    const v = u.searchParams.get("v");
+    return v && v.trim() ? v.trim() : null;
+  } catch {
+    const m = String(src || "").match(/[?&]v=([^&]+)/);
+    return m ? decodeURIComponent(m[1]!) : null;
+  }
+}
+
+export function scriptTagNeedsVersionBump(
+  src: string,
+  currentVersion: string,
+): boolean {
+  const have = scriptTagAssetVersion(src);
+  if (!have) return true;
+  return have !== currentVersion;
+}

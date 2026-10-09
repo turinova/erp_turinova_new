@@ -37,28 +37,27 @@ export async function GET(request: Request) {
     }
 
     const shop = await resolveShopContextForRequest(request);
-    const meta = await withPlatformAdmin((client) =>
-      loadShopCatalogStatus(client, shop.shopId),
-    );
-    const catalogReady = catalogIsSearchable(meta.catalogStatus);
 
-    if (!catalogReady) {
-      return jsonWithCors(request, {
-        products: [],
-        catalogReady: false,
+    // One DB round-trip: status + search (was two separate withPlatformAdmin calls).
+    const result = await withPlatformAdmin(async (client) => {
+      const meta = await loadShopCatalogStatus(client, shop.shopId);
+      const catalogReady = catalogIsSearchable(meta.catalogStatus);
+      if (!catalogReady) {
+        return {
+          products: [] as ReturnType<typeof catalogRowToHit>[],
+          catalogReady: false as const,
+          catalogStatus: meta.catalogStatus,
+        };
+      }
+      const rows = await searchCatalog(client, shop.shopId, q, limit);
+      return {
+        products: rows.map(catalogRowToHit),
+        catalogReady: true as const,
         catalogStatus: meta.catalogStatus,
-      });
-    }
-
-    const rows = await withPlatformAdmin((client) =>
-      searchCatalog(client, shop.shopId, q, limit),
-    );
-    return jsonWithCors(request, {
-      products: rows.map(catalogRowToHit),
-      catalogReady: true,
-      catalogStatus: meta.catalogStatus,
-      source: "db",
+      };
     });
+
+    return jsonWithCors(request, { ...result, source: "db" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "search failed";
     return jsonWithCors(request, { error: msg, products: [] }, { status: 500 });

@@ -11,8 +11,10 @@ import {
   deleteScriptTag,
   findProgateScriptTag,
   listScriptTags,
+  scriptTagNeedsVersionBump,
 } from "@/lib/shoprenter/install/script-tag";
 import type { InstallResult } from "@/lib/shoprenter/install/types";
+import { WIDGET_JS_ASSET } from "@/lib/widget/asset-version";
 
 export async function installWidgetScript(opts: {
   shopId: string;
@@ -20,12 +22,19 @@ export async function installWidgetScript(opts: {
   apiBase: string;
   /** When true, also flip shops.widget_enabled. */
   enableWidget?: boolean;
+  /**
+   * Recreate ScriptTag when loader `v=` ≠ current WIDGET_JS_ASSET.
+   * Default true so storefronts pick up UI fixes after deploy.
+   */
+  bumpVersion?: boolean;
 }): Promise<InstallResult> {
   const mode = getInstallMode();
   const enableWidget = opts.enableWidget !== false;
+  const bumpVersion = opts.bumpVersion !== false;
   const src = buildWidgetLoaderUrl({
     apiBase: opts.apiBase,
     publicId: opts.publicId,
+    version: WIDGET_JS_ASSET,
   });
 
   if (mode === "stub_success") {
@@ -69,12 +78,23 @@ export async function installWidgetScript(opts: {
     const existing = await listScriptTags(loaded.config);
     const found = findProgateScriptTag(existing, opts.publicId);
     if (found) {
-      await setScriptInstalled(opts.shopId, {
-        method: "script_tag",
-        scriptTagId: found.id,
-        enableWidget,
-      });
-      return { ok: true, method: "script_tag", scriptTagId: found.id };
+      const needsBump =
+        bumpVersion &&
+        scriptTagNeedsVersionBump(found.src, WIDGET_JS_ASSET);
+      if (!needsBump) {
+        await setScriptInstalled(opts.shopId, {
+          method: "script_tag",
+          scriptTagId: found.id,
+          enableWidget,
+        });
+        return { ok: true, method: "script_tag", scriptTagId: found.id };
+      }
+      // Stale cache-bust `v=` — delete and recreate with current asset.
+      try {
+        await deleteScriptTag(loaded.config, found.id);
+      } catch (err) {
+        console.warn("[installWidgetScript] delete stale tag", err);
+      }
     }
 
     const created = await createScriptTag(loaded.config, {

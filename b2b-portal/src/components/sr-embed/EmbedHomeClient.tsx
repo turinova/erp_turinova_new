@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { embedFetch } from "@/lib/shoprenter/embed-fetch";
 import { withEmbedToken } from "@/lib/shoprenter/embed-token";
 import type { InstallCapability } from "@/lib/shoprenter/install/types";
@@ -111,6 +111,36 @@ export function EmbedHomeClient({
   const [copied, setCopied] = useState(false);
   const [activeSnippet, setActiveSnippet] = useState(snippets.loader);
   const [pauseOpen, setPauseOpen] = useState(false);
+  const ensuredVersion = useRef(false);
+
+  // Quiet ScriptTag `v=` bump when asset version ships (storefront cache-bust).
+  useEffect(() => {
+    if (ensuredVersion.current) return;
+    if (!shop.hasCredentials || shop.status === "needs_reauth") return;
+    if (!script.installedAt && !script.method) return;
+    ensuredVersion.current = true;
+    void embedFetch(
+      "/api/shoprenter/embed/install",
+      {
+        method: "POST",
+        body: JSON.stringify({ action: "ensure_version" }),
+      },
+      embedToken,
+    )
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (data?.script) setScript(data.script);
+      })
+      .catch(() => {
+        /* non-blocking */
+      });
+  }, [
+    shop.hasCredentials,
+    shop.status,
+    script.installedAt,
+    script.method,
+    embedToken,
+  ]);
 
   const scriptInstalled = Boolean(script.installedAt || script.method);
   const catalogReady =

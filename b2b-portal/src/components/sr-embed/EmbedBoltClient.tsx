@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   apiChip,
   catalogChip,
@@ -23,8 +23,26 @@ type Props = { initial: EmbedBoltShop; embedToken?: string | null };
 export function EmbedBoltClient({ initial, embedToken }: Props) {
   const [shop, setShop] = useState(initial);
   const [pending, setPending] = useState(false);
+  const [resyncPending, setResyncPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const ensuredVersion = useRef(false);
+
+  useEffect(() => {
+    if (ensuredVersion.current) return;
+    if (!shop.hasCredentials || shop.status === "needs_reauth") return;
+    ensuredVersion.current = true;
+    void embedFetch(
+      "/api/shoprenter/embed/install",
+      {
+        method: "POST",
+        body: JSON.stringify({ action: "ensure_version" }),
+      },
+      embedToken,
+    ).catch(() => {
+      /* non-blocking */
+    });
+  }, [shop.hasCredentials, shop.status, embedToken]);
 
   const api = apiChip({
     hasCredentials: shop.hasCredentials,
@@ -62,6 +80,35 @@ export function EmbedBoltClient({ initial, embedToken }: Props) {
       setError("Hálózati hiba");
     } finally {
       setPending(false);
+    }
+  }
+
+  async function resyncCatalog() {
+    setResyncPending(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await embedFetch(
+        "/api/shoprenter/embed/catalog/resync",
+        { method: "POST", body: "{}" },
+        embedToken,
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Szinkron indítás sikertelen");
+        return;
+      }
+      setShop((s) => ({
+        ...s,
+        catalogStatus: "pending",
+        catalogSyncedAt: null,
+      }));
+      setMessage("Termékek újratöltése elindult — 1–2 perc.");
+      setTimeout(() => setMessage(null), 4000);
+    } catch {
+      setError("Hálózati hiba");
+    } finally {
+      setResyncPending(false);
     }
   }
 
@@ -170,6 +217,18 @@ export function EmbedBoltClient({ initial, embedToken }: Props) {
             ? `Utolsó sync: ${new Date(shop.catalogSyncedAt).toLocaleString("hu-HU")}`
             : "Még nem volt sikeres sync."}
         </p>
+        <p className="mt-2 text-[12px] leading-relaxed text-faint">
+          Ha a kereső régi / rövid neveket mutat, töltsd újra a termékeket a
+          Shoprenterből.
+        </p>
+        <button
+          type="button"
+          className="tn-btn tn-btn-primary mt-3"
+          disabled={resyncPending || needsReauth || pending}
+          onClick={() => void resyncCatalog()}
+        >
+          {resyncPending ? "Indítás…" : "Termékek újratöltése"}
+        </button>
       </section>
 
       <p className="mt-8 text-[12px] text-faint">
