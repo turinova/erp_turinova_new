@@ -1237,7 +1237,7 @@ export function PosSettingsDialog({
                         pánt). A POS kereső ezekre is talál.
                       </p>
                     </div>
-                    <FormField id="pos-alias-search" label="Termék keresése">
+                    <FormField htmlFor="pos-alias-search" label="Termék keresése">
                       <Input
                         id="pos-alias-search"
                         value={aliasQ}
