@@ -64,7 +64,7 @@ export default async function PosHasznalatPage({
   }
 
   let loadError: string | null = null
-  let stats = await loadPosAdoptionStats(supabase, user.tenantId, range).catch(
+  const stats = await loadPosAdoptionStats(supabase, user.tenantId, range).catch(
     (err) => {
       loadError =
         err instanceof Error
