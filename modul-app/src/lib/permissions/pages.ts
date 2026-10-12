@@ -29,7 +29,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 21
+export const PAGE_CATALOG_VERSION = 22
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -228,6 +228,12 @@ export const APP_PAGES: AppPageDef[] = [
     key: '/beallitasok/felhasznalok',
     label: 'Felhasználók',
     category: 'Beállítások'
+  },
+  // Append-only: bitset catalog order — új kulcs mindig a lista végére
+  {
+    key: '/ertekesitesek/pos-hasznalat',
+    label: 'POS használat',
+    category: 'Értékesítés'
   }
 ]
 
@@ -282,6 +288,7 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/pos/beallitasok',
       '/pos/pda',
       '/ertekesitesek/muszakok',
+      '/ertekesitesek/pos-hasznalat',
       '/szamlak',
       '/penzugy',
       '/penzugy/kintlevoseg',

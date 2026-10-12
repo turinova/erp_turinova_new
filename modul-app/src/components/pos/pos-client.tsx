@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -89,6 +90,11 @@ import {
   logPosSearchEventAction
 } from '@/lib/pos/discovery-actions'
 import type { PosManufacturerChip } from '@/lib/pos/discovery'
+import {
+  logPosScanEventAction,
+  loadPosTodayProgressAction
+} from '@/lib/pos/adoption-actions'
+import type { PosScanSource } from '@/lib/pos/adoption'
 import {
   loadPosRecents,
   pushPosRecent,
@@ -283,6 +289,9 @@ export function PosClient({
   const [editingField, setEditingField] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [flash, setFlash] = useState<PosFlash | null>(null)
+  const [todayPosSales, setTodayPosSales] = useState<number | null>(null)
+  const [dailyPosGoal, setDailyPosGoal] = useState(60)
+  const goalCelebratedKey = useRef<string | null>(null)
   const [handoffInboxOpen, setHandoffInboxOpen] = useState(false)
   const [handoffOpenCount, setHandoffOpenCount] = useState(0)
   const [invoiceRetryPending, startInvoiceRetry] = useTransition()
@@ -714,6 +723,35 @@ export function PosClient({
     }
   }, [searchQ, warehouseId, stockFirst, searchKind, hasLapszabaszat])
 
+  const applyTodayProgress = useCallback((salesCount: number, dailyTarget: number) => {
+    setDailyPosGoal(dailyTarget)
+    setTodayPosSales((prev) => {
+      const next = salesCount
+      const dayKey = new Date().toISOString().slice(0, 10)
+      const celebKey = `${dayKey}:${dailyTarget}`
+      if (
+        next >= dailyTarget &&
+        (prev == null || prev < dailyTarget) &&
+        goalCelebratedKey.current !== celebKey
+      ) {
+        goalCelebratedKey.current = celebKey
+        toast.success(`Napi cél megvan! ${next}/${dailyTarget} POS eladás`)
+      }
+      return next
+    })
+  }, [])
+
+  const refreshTodayProgress = useCallback(() => {
+    void loadPosTodayProgressAction().then((res) => {
+      if (!res.ok) return
+      applyTodayProgress(res.salesCount, res.dailyTarget)
+    })
+  }, [applyTodayProgress])
+
+  useEffect(() => {
+    refreshTodayProgress()
+  }, [openShiftId, warehouseId, refreshTodayProgress])
+
   useEffect(() => {
     if (!warehouseId) {
       setQuickHits([])
@@ -805,7 +843,11 @@ export function PosClient({
     }
   }
 
-  function addOrBump(hit: SaleProductSearchItem, quantity?: number) {
+  function addOrBump(
+    hit: SaleProductSearchItem,
+    quantity?: number,
+    source: PosScanSource = 'typeahead'
+  ) {
     const kind = hit.kind ?? 'product'
     if (isMaterialSaleKind(kind) && quantity == null) {
       if (!(hit.price_net > 0)) {
@@ -843,6 +885,15 @@ export function PosClient({
       return [...prev, catalogToLine(hit, addQty)]
     })
     rememberPick(hit)
+    if ((hit.kind ?? 'product') === 'product') {
+      void logPosScanEventAction({
+        warehouseId,
+        registerId: registerId || null,
+        shiftId: openShiftId,
+        source,
+        accessoryId: hit.id
+      })
+    }
     setQtyPreset(1)
     setFlash(null)
     setHighlightId(key)
@@ -876,7 +927,7 @@ export function PosClient({
         setFlash({ kind: 'error', message: res.message })
         return false
       }
-      addOrBump(res.product)
+      addOrBump(res.product, undefined, 'barcode')
       return true
     } finally {
       scanLock.current = false
@@ -1092,6 +1143,21 @@ export function PosClient({
       setConfirmOpen(false)
       setPendingPayMode(null)
       focusBarcode()
+      setTodayPosSales((prev) => {
+        const next = (prev ?? 0) + 1
+        const dayKey = new Date().toISOString().slice(0, 10)
+        const celebKey = `${dayKey}:${dailyPosGoal}`
+        if (
+          next >= dailyPosGoal &&
+          (prev == null || prev < dailyPosGoal) &&
+          goalCelebratedKey.current !== celebKey
+        ) {
+          goalCelebratedKey.current = celebKey
+          toast.success(`Napi cél megvan! ${next}/${dailyPosGoal} POS eladás`)
+        }
+        return next
+      })
+      window.setTimeout(() => refreshTodayProgress(), 800)
       router.refresh()
     })
   }
@@ -1495,6 +1561,61 @@ export function PosClient({
         </div>
       </header>
 
+      {todayPosSales != null ? (
+        <div
+          className={cn(
+            'shrink-0 border-b border-border bg-surface px-3',
+            touch ? 'py-2' : 'py-1.5'
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-hint text-ink-secondary">
+              Mai POS cél
+              {todayPosSales >= dailyPosGoal ? (
+                <span className="ml-1.5 font-medium text-success-ink">
+                  — megvan!
+                </span>
+              ) : null}
+            </p>
+            <p
+              className={cn(
+                'text-hint font-medium tabular-nums',
+                todayPosSales >= dailyPosGoal
+                  ? 'text-success-ink'
+                  : 'text-ink'
+              )}
+            >
+              {todayPosSales} / {dailyPosGoal}
+            </p>
+          </div>
+          <div
+            className="mt-1.5 h-2 overflow-hidden rounded-full bg-subtle"
+            role="progressbar"
+            aria-valuenow={todayPosSales}
+            aria-valuemin={0}
+            aria-valuemax={dailyPosGoal}
+            aria-label="Napi POS eladás cél"
+          >
+            <div
+              className={cn(
+                'h-full rounded-full transition-[width] duration-300',
+                todayPosSales >= dailyPosGoal ? 'bg-success-ink' : 'bg-ink'
+              )}
+              style={{
+                width: `${Math.min(
+                  100,
+                  dailyPosGoal > 0
+                    ? Math.round((todayPosSales / dailyPosGoal) * 100)
+                    : 0
+                )}%`
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {flash ? (
         <PosFeedbackBar
           flash={flash}
@@ -1647,7 +1768,7 @@ export function PosClient({
                       ? searchHits[0]
                       : (searchHits[selectedSearchIndex] ?? searchHits[0])
                   if (hit) {
-                    addOrBump(hit)
+                    addOrBump(hit, undefined, 'typeahead')
                     setSearchQ('')
                     setSearchHits([])
                     setSearchOpen(false)
@@ -1844,7 +1965,7 @@ export function PosClient({
                             zeroStock={hit.on_hand <= 0}
                             flash={flashQuickId === hit.id}
                             onClick={() => {
-                              addOrBump(hit)
+                              addOrBump(hit, undefined, 'recent')
                               setFlashQuickId(hit.id)
                               window.setTimeout(() => setFlashQuickId(null), 280)
                               setSearchQ('')
@@ -1928,7 +2049,13 @@ export function PosClient({
                               zeroStock={zero}
                               flash={flashQuickId === hit.id}
                               onClick={() => {
-                                addOrBump(hit)
+                                const source: PosScanSource =
+                                  title === 'Gyors'
+                                    ? 'quick'
+                                    : title === 'Mostanában'
+                                      ? 'recent'
+                                      : 'frequent'
+                                addOrBump(hit, undefined, source)
                                 setFlashQuickId(hit.id)
                                 window.setTimeout(
                                   () => setFlashQuickId(null),
@@ -1983,7 +2110,7 @@ export function PosClient({
                           e.preventDefault()
                         }}
                         onClick={() => {
-                          addOrBump(hit)
+                          addOrBump(hit, undefined, 'typeahead')
                           setSearchQ('')
                           setSearchHits([])
                           setSearchOpen(false)

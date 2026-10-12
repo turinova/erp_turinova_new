@@ -36,6 +36,7 @@ import {
   Scale,
   Store,
   Tags,
+  Target,
   Truck,
   Undo2,
   Users,
@@ -205,6 +206,13 @@ const allNavSections: NavSection[] = [
               label: 'Műszakok',
               href: '/ertekesitesek/muszakok',
               icon: History,
+              accent: 'slate'
+            },
+            {
+              type: 'link',
+              label: 'POS használat',
+              href: '/ertekesitesek/pos-hasznalat',
+              icon: Target,
               accent: 'slate'
             }
           ]
