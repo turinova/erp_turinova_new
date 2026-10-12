@@ -1,9 +1,11 @@
 import { z } from 'zod'
 
 export {
+  displayGrossFromStored,
   formatHuNumber,
   formatMoneyFt,
   grossFromNet,
+  netAndGrossFromGrossInput,
   netFromGross,
   parseDecimalInput,
   parseIntegerInput
@@ -54,6 +56,11 @@ export const accessoryFormSchema = z
     unitId: z.string().uuid('Válassz egységet.'),
     priceNet: z
       .number({ invalid_type_error: 'Érvényes árat adj meg.' })
+      .min(0, 'Az ár nem lehet negatív.')
+      .int('Az ár egész forint legyen.'),
+    /** Polcár — tárolt bruttó (ÁFA round-trip biztonság). */
+    priceGross: z
+      .number({ invalid_type_error: 'Érvényes bruttó árat adj meg.' })
       .min(0, 'Az ár nem lehet negatív.')
       .int('Az ár egész forint legyen.'),
     purchasePriceNet: z

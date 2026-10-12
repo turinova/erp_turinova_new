@@ -52,7 +52,7 @@ Jobb: kosár + sticky footer
 - Zero-hit UI: tippek (szóköz, SKU, POS-eladható, alias) + **Gyors felvétel** + Keresőszavak.
 - Miss telemetria: `pos_search_events` → manager **POS használat** top miss lista (`pos_search_miss_stats`).
 - **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha nincs kiválasztható találat); miss → **PosMissProductDialog** (ha `allow_pos_quick_create`, default be): Gyors felvétel / Hozzárendelem / Mégse; különben flash.
-- **Gyors felvétel / Új termék:** topbar **Új ügyfél** mellett **Új termék**. Mezők: név, vonalkód (+ **Generálás**, nem ír SKU-t), ÁFA, (egység csak ha több van), opcionális beszerzés+szorzó, bruttó. SKU a szerveren auto. → `sellable_pos=true`, kosár (`20260598`).
+- **Gyors felvétel / Új termék:** topbar **Új ügyfél** mellett **Új termék**. Mezők: név, vonalkód (+ **Generálás**, nem ír SKU-t), ÁFA, (egység csak ha több van), opcionális beszerzés+szorzó, bruttó. SKU a szerveren auto. → `sellable_pos=true`, kosár (`20260598`). Beírt bruttó → `accessories.price_gross` (polcár; ÁFA round-trip, pl. 4000 Ft @ 27% ne legyen 4001) — `20260599`.
 - **Hozzárendelés:** keres a teljes aktív katalógusban (nem csak POS) → üres `barcode` vagy `barcode_internal` + `sellable_pos=true`.
 - Törzsadat: **Belső vonalkód → Generálás** (ugyanaz az EAN-13 allokátor).
 - **Qty-first:** előválasztott mennyiség a következő scan/tile/találat tapre (reset 1-re add után).

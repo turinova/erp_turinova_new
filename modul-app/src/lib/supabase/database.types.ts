@@ -133,6 +133,8 @@ export type Accessory = {
   barcode: string | null
   barcode_internal: string | null
   price_net: number
+  /** Polcár / ügyfél-facing bruttó Ft (ÁFA round-trip forrásigazság). */
+  price_gross: number
   purchase_price_net: number | null
   margin_factor: number | null
   image_url: string | null
@@ -923,6 +925,7 @@ export type Database = {
           barcode?: string | null
           barcode_internal?: string | null
           price_net: number
+          price_gross: number
           purchase_price_net?: number | null
           margin_factor?: number | null
           image_url?: string | null
@@ -1603,6 +1606,7 @@ export type Database = {
           name: string
           sku: string
           price_net: number
+          price_gross: number
           barcode: string | null
           barcode_internal: string | null
           image_url: string | null
@@ -1626,6 +1630,7 @@ export type Database = {
           barcode: string | null
           barcode_internal: string | null
           price_net: number
+          price_gross: number
           tax_rate_percent: number
           unit_shortform: string
           image_url: string | null
@@ -1648,6 +1653,7 @@ export type Database = {
           barcode: string | null
           barcode_internal: string | null
           price_net: number
+          price_gross: number
           tax_rate_percent: number
           unit_shortform: string
           image_url: string | null

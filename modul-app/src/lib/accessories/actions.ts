@@ -85,6 +85,7 @@ export type AccessoryFormInput = {
   taxRateId: string
   unitId: string
   priceNet: number
+  priceGross: number
   purchasePriceNet: number | null
   marginFactor: number | null
   imageUrl?: string | null
@@ -173,6 +174,7 @@ export async function createAccessory(
       tax_rate_id: values.taxRateId,
       unit_id: values.unitId,
       price_net: values.priceNet,
+      price_gross: values.priceGross,
       purchase_price_net: values.purchasePriceNet,
       margin_factor: values.marginFactor,
       image_url: values.imageUrl ?? null,
@@ -239,6 +241,7 @@ export async function updateAccessory(
       tax_rate_id: values.taxRateId,
       unit_id: values.unitId,
       price_net: values.priceNet,
+      price_gross: values.priceGross,
       purchase_price_net: values.purchasePriceNet,
       margin_factor: values.marginFactor,
       image_url: values.imageUrl ?? null,

@@ -35,6 +35,7 @@ export type AccessoryWriteRow = {
   barcode: string | null
   barcode_internal: string | null
   price_net: number
+  price_gross: number
   purchase_price_net: number | null
   margin_factor: number | null
   active: boolean
@@ -492,6 +493,7 @@ export function planAccessoryImport(
     }
 
     let priceNet = target?.price_net ?? null
+    let priceGross = target?.price_gross ?? null
     const grossCell = cell(row, 'Brutto_Ft')
     const vat = tax?.ratePercent ?? 0
     if (grossCell.kind === 'clear') {
@@ -502,7 +504,8 @@ export function planAccessoryImport(
         fieldError(s, 'Brutto_Ft', `„${grossCell.text}” — nem ár. Pl. 2490`)
       } else if (tax) {
         if (!Number.isInteger(n)) fieldWarn(s, 'Brutto_Ft', `Egész forintra kerekítve: ${Math.round(n)}.`, 'info')
-        priceNet = netFromGross(Math.round(n), vat)
+        priceGross = Math.round(n)
+        priceNet = netFromGross(priceGross, vat)
       }
     } else if (
       !pricingError &&
@@ -511,8 +514,11 @@ export function planAccessoryImport(
       margin != null
     ) {
       priceNet = Math.round(purchase * margin)
+      priceGross = grossFromNet(priceNet, vat)
     } else if (isCreate && !pricingError) {
       fieldError(s, 'Brutto_Ft', 'Új terméknél adj meg bruttó árat, vagy beszerzési árat + árrés szorzót.')
+    } else if (priceNet != null && priceGross == null) {
+      priceGross = grossFromNet(priceNet, vat)
     }
 
     // Kép
@@ -561,7 +567,14 @@ export function planAccessoryImport(
     const changes: string[] = []
     let write: PlannedWrite | null = null
 
-    if (s.fatal || (isCreate && hasError) || !tax || !unitId || priceNet == null) {
+    if (
+      s.fatal ||
+      (isCreate && hasError) ||
+      !tax ||
+      !unitId ||
+      priceNet == null ||
+      priceGross == null
+    ) {
       status = 'error'
     } else {
       const next: AccessoryWriteRow = {
@@ -573,6 +586,7 @@ export function planAccessoryImport(
         barcode,
         barcode_internal: barcodeInternal,
         price_net: priceNet,
+        price_gross: priceGross,
         purchase_price_net: purchase,
         margin_factor: margin,
         active,
@@ -593,8 +607,9 @@ export function planAccessoryImport(
         if (next.unit_id !== t.unit_id) changes.push(`Egység: ${l.unitById.get(next.unit_id)?.shortform ?? ''}`)
         if (next.barcode !== t.barcode) changes.push(next.barcode ? 'Vonalkód' : 'Vonalkód törölve')
         if (next.barcode_internal !== t.barcode_internal) changes.push(next.barcode_internal ? 'Belső vonalkód' : 'Belső vonalkód törölve')
-        const oldGross = grossFromNet(t.price_net, prevTax?.ratePercent ?? 0)
-        const newGross = grossFromNet(next.price_net, vat)
+        const oldGross =
+          t.price_gross ?? grossFromNet(t.price_net, prevTax?.ratePercent ?? 0)
+        const newGross = next.price_gross
         if (next.price_net !== t.price_net || oldGross !== newGross) {
           changes.push(`Bruttó ár: ${formatMoneyFt(oldGross)} → ${formatMoneyFt(newGross)}`)
         }

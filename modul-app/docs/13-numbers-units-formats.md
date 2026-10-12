@@ -38,6 +38,14 @@ Ebben a domainben ez nem apróság, hanem üzleti konzisztencia.
 - Az ÁFA ne csak százalék legyen, hanem emberileg érthető megnevezés is, ahol kell
 - Ha nettó és bruttó együtt látszik, a különbség legyen egyértelmű (`Nettó összesen` vs `Fizetendő (bruttó)`)
 
+### Polcár / bruttó round-trip (termékek)
+
+- Egész Ft nettó ↔ bruttó `Math.round` mellett **nem minden bruttó állítható elő** (pl. 4000 Ft @ 27%: nincs olyan egész nettó, amire `round(net×1.27)=4000`).
+- **Forrásigazság a polcárra:** `accessories.price_gross` (beírt bruttó). A `price_net` ÁFA-bázis / margin számításra van.
+- `netFromGross` round-trip-safe: ha van pontos nettó, azt választja; ha nincs, a polcárat nem növelő legközelebbit.
+- POS / eladás kosár: `unitPriceGross` = tárolt `price_gross`, ne nettóból számolt megjelenítés.
+- Migráció: `20260599_accessories_price_gross.sql`.
+
 ## 5. Mértékegységek
 
 Példák:

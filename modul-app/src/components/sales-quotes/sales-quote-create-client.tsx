@@ -72,6 +72,10 @@ function catalogToLine(hit: SaleProductSearchItem): Line {
   const kind = hit.kind ?? 'product'
   const taxPct = Number(hit.tax_rate_percent ?? 0)
   const net = Number(hit.price_net ?? 0)
+  const gross =
+    hit.price_gross != null && Number.isFinite(Number(hit.price_gross))
+      ? Math.round(Number(hit.price_gross))
+      : Math.round(net * (1 + taxPct / 100))
   return {
     kind,
     accessoryId: kind === 'product' ? hit.id : null,
@@ -81,7 +85,7 @@ function catalogToLine(hit: SaleProductSearchItem): Line {
     sku: hit.sku,
     unitShortform: hit.unit_shortform,
     quantity: isMaterialSaleKind(kind) ? 1 : 1,
-    unitPriceGross: Math.round(net * (1 + taxPct / 100)),
+    unitPriceGross: gross,
     taxPercent: taxPct,
     discountPercentage: 0,
     onHand: hit.on_hand

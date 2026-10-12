@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 
-import { grossFromNet, netFromGross } from '@/lib/accessories/parse'
+import { netFromGross } from '@/lib/accessories/parse'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 import { revalidateShopProduct } from '@/lib/webshop/revalidate-product'
 
@@ -80,6 +80,7 @@ export async function updateAccessorySellGrossFromPdaAction(input: {
     .from('accessories')
     .update({
       price_net: priceNet,
+      price_gross: gross,
       margin_factor: marginFactor,
       updated_at: new Date().toISOString()
     })
@@ -105,6 +106,6 @@ export async function updateAccessorySellGrossFromPdaAction(input: {
     ok: true,
     priceNet,
     marginFactor,
-    unitPriceGross: grossFromNet(priceNet, taxPct)
+    unitPriceGross: gross
   }
 }

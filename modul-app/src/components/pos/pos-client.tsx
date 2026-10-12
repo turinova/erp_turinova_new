@@ -183,7 +183,10 @@ function catalogToLine(
   const kind = hit.kind ?? 'product'
   const taxPct = Number(hit.tax_rate_percent ?? 0)
   const net = Number(hit.price_net ?? 0)
-  const gross = Math.round(net * (1 + taxPct / 100))
+  const gross =
+    hit.price_gross != null && Number.isFinite(Number(hit.price_gross))
+      ? Math.round(Number(hit.price_gross))
+      : Math.round(net * (1 + taxPct / 100))
   const qty = isMaterialSaleKind(kind)
     ? Math.max(0.1, Math.round(quantity * 10) / 10)
     : Math.max(1, quantity)

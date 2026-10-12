@@ -30,12 +30,78 @@ export function formatMoneyFt(value: number): string {
   return `${formatHuNumber(value, 0)} Ft`
 }
 
-export function netFromGross(gross: number, vatPercent: number): number {
-  return Math.round(gross / (1 + vatPercent / 100))
+export function grossFromNet(net: number, vatPercent: number): number {
+  if (!Number.isFinite(net) || net < 0) return 0
+  if (!Number.isFinite(vatPercent) || vatPercent <= 0) return Math.round(net)
+  return Math.round(net * (1 + vatPercent / 100))
 }
 
-export function grossFromNet(net: number, vatPercent: number): number {
-  return Math.round(net * (1 + vatPercent / 100))
+/**
+ * Bruttó → nettó egész Ft.
+ * Ha létezik olyan nettó, amire `grossFromNet(net) === gross`, azt választja
+ * (round-trip safe). Ha nincs (pl. 4000 Ft @ 27%), a legközelebbit veszi,
+ * döntetlennél a polcárat nem növelőt (grossFromNet ≤ gross).
+ *
+ * A pontos polcárhoz tárold a bruttót is (`accessories.price_gross`).
+ */
+export function netFromGross(gross: number, vatPercent: number): number {
+  if (!Number.isFinite(gross) || gross < 0) return 0
+  const g = Math.round(gross)
+  if (!Number.isFinite(vatPercent) || vatPercent <= 0) return g
+
+  const factor = 1 + vatPercent / 100
+  const approx = g / factor
+  const candidates = [
+    ...new Set([
+      Math.floor(approx),
+      Math.ceil(approx),
+      Math.round(approx),
+      Math.floor(approx) - 1,
+      Math.ceil(approx) + 1
+    ])
+  ].filter((n) => Number.isFinite(n) && n >= 0)
+
+  for (const n of candidates) {
+    if (grossFromNet(n, vatPercent) === g) return n
+  }
+
+  let best = Math.round(approx)
+  let bestScore = Number.POSITIVE_INFINITY
+  for (const n of candidates) {
+    const displayed = grossFromNet(n, vatPercent)
+    const dist = Math.abs(displayed - g)
+    const overPenalty = displayed > g ? 0.5 : 0
+    const score = dist + overPenalty
+    if (score < bestScore) {
+      bestScore = score
+      best = n
+    }
+  }
+  return best
+}
+
+/** Beírt bruttó = polcár forrás; nettó számítás round-trip-safe. */
+export function netAndGrossFromGrossInput(
+  gross: number,
+  vatPercent: number
+): { priceNet: number; priceGross: number } {
+  const priceGross = Math.round(gross)
+  return {
+    priceGross,
+    priceNet: netFromGross(priceGross, vatPercent)
+  }
+}
+
+/** Megjelenő bruttó: tárolt polcár, különben nettóból számolt. */
+export function displayGrossFromStored(
+  priceNet: number,
+  vatPercent: number,
+  priceGross?: number | null
+): number {
+  if (priceGross != null && Number.isFinite(Number(priceGross))) {
+    return Math.round(Number(priceGross))
+  }
+  return grossFromNet(priceNet, vatPercent)
 }
 
 /** m² a tábla méretéből */

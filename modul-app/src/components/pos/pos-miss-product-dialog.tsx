@@ -561,7 +561,7 @@ export function PosMissProductDialog({
               htmlFor={priceId}
               required
               error={fieldErrors.unitPriceGross}
-              hint={`Ft / ${unitShort}${vatPercent ? ` · ${vatPercent} % ÁFA` : ''}`}
+              hint={`Polcár · Ft / ${unitShort}${vatPercent ? ` · ${vatPercent} % ÁFA` : ''} — pontosan ez megy a kosárba.`}
             >
               <div className="relative">
                 <Input

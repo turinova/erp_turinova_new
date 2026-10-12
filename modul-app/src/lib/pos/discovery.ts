@@ -9,6 +9,7 @@ type FrequentRow = {
   barcode: string | null
   barcode_internal: string | null
   price_net: number | string
+  price_gross?: number | string | null
   tax_rate_percent: number | string
   unit_shortform: string
   image_url: string | null
@@ -23,12 +24,18 @@ export type PosManufacturerChip = {
 }
 
 function mapFrequent(row: FrequentRow): SaleProductSearchItem {
+  const priceNet = Number(row.price_net) || 0
+  const storedGross =
+    row.price_gross != null && Number.isFinite(Number(row.price_gross))
+      ? Math.round(Number(row.price_gross))
+      : undefined
   return {
     kind: 'product',
     id: row.id,
     name: row.name,
     sku: row.sku,
-    price_net: Number(row.price_net) || 0,
+    price_net: priceNet,
+    ...(storedGross != null ? { price_gross: storedGross } : {}),
     tax_rate_percent: Number(row.tax_rate_percent) || 0,
     unit_shortform: row.unit_shortform || 'db',
     on_hand: Number(row.on_hand) || 0,

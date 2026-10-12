@@ -791,6 +791,11 @@ export type SaleProductSearchItem = {
   display_name?: string
   sku: string
   price_net: number
+  /**
+   * Polcár (bruttó Ft). Ha megvan, ezt használd kosárba / megjelenítésre —
+   * nettóból számolt bruttó ÁFA round-trip miatt eltérhet (pl. 4000 → 4001).
+   */
+  price_gross?: number
   tax_rate_percent: number
   /** DB shortform: db / m2 / m */
   unit_shortform: string
@@ -985,6 +990,7 @@ async function searchAccessoriesForSale(
       barcode,
       barcode_internal,
       price_net,
+      price_gross,
       tax_rate_id,
       unit_id,
       image_url,
@@ -1095,13 +1101,20 @@ async function searchAccessoriesForSale(
     const barcode = (row.barcode as string | null) ?? null
     const barcodeInternal = (row.barcode_internal as string | null) ?? null
     const webMpn = mpnByAccessory.get(row.id as string) ?? null
+    const priceNet = Number(row.price_net) || 0
+    const taxPct = Number(tax?.rate_percent ?? 0)
+    const storedGross =
+      row.price_gross != null && Number.isFinite(Number(row.price_gross))
+        ? Math.round(Number(row.price_gross))
+        : undefined
     return {
       kind: 'product' as const,
       id: row.id as string,
       name,
       sku,
-      price_net: Number(row.price_net) || 0,
-      tax_rate_percent: Number(tax?.rate_percent ?? 0),
+      price_net: priceNet,
+      ...(storedGross != null ? { price_gross: storedGross } : {}),
+      tax_rate_percent: taxPct,
       unit_shortform: unit?.shortform ?? 'db',
       on_hand: onHandMap.get(row.id as string) ?? 0,
       image_url: (row.image_url as string | null) ?? null,

@@ -22,6 +22,7 @@ export type ImportExisting = {
   tax_rate_id: string
   unit_id: string
   price_net: number
+  price_gross: number
   purchase_price_net: number | null
   margin_factor: number | null
   active: boolean
@@ -39,7 +40,7 @@ export type AccessoryImportContext = {
 }
 
 export const EXISTING_COLUMNS =
-  'id, sku, name, barcode, barcode_internal, manufacturer_id, tax_rate_id, unit_id, price_net, purchase_price_net, margin_factor, active, image_url, web_gallery'
+  'id, sku, name, barcode, barcode_internal, manufacturer_id, tax_rate_id, unit_id, price_net, price_gross, purchase_price_net, margin_factor, active, image_url, web_gallery'
 
 export function skuKey(sku: string): string {
   return sku.trim().toLowerCase()
@@ -139,6 +140,7 @@ export async function loadAccessoryImportContext(
         tax_rate_id: String(r.tax_rate_id),
         unit_id: String(r.unit_id),
         price_net: Number(r.price_net),
+        price_gross: Number(r.price_gross),
         purchase_price_net: r.purchase_price_net == null ? null : Number(r.purchase_price_net),
         margin_factor: r.margin_factor == null ? null : Number(r.margin_factor),
         active: r.active === true,

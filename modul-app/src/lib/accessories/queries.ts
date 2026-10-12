@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { grossFromNet } from '@/lib/accessories/parse'
+import { displayGrossFromStored } from '@/lib/accessories/parse'
 import { fetchAllPages } from '@/lib/supabase/fetch-all'
 
 export type AccessoryListItem = {
@@ -64,6 +64,7 @@ const ACCESSORY_SELECT = `
   tax_rate_id,
   unit_id,
   price_net,
+  price_gross,
   purchase_price_net,
   margin_factor,
   image_url,
@@ -88,6 +89,7 @@ const ACCESSORY_LIST_SELECT = `
   tax_rate_id,
   unit_id,
   price_net,
+  price_gross,
   purchase_price_net,
   margin_factor,
   image_url,
@@ -133,7 +135,11 @@ function mapAccessoryRow(row: Record<string, unknown>): AccessoryListItem {
     unit_name: (unit as { name?: string } | null)?.name ?? '—',
     unit_shortform: (unit as { shortform?: string } | null)?.shortform ?? 'db',
     price_net: priceNet,
-    price_gross: grossFromNet(priceNet, taxPercent),
+    price_gross: displayGrossFromStored(
+      priceNet,
+      taxPercent,
+      row.price_gross as number | null | undefined
+    ),
     purchase_price_net:
       row.purchase_price_net == null ? null : Number(row.purchase_price_net),
     margin_factor:
@@ -349,10 +355,11 @@ function mapRpcAccessoryRow(
 ): AccessoryListItem & { in_shop: boolean } {
   const priceNet = Number(row.price_net ?? 0)
   const taxPercent = Number(row.tax_rate_percent ?? 0)
-  const priceGross =
-    row.price_gross != null
-      ? Number(row.price_gross)
-      : grossFromNet(priceNet, taxPercent)
+  const priceGross = displayGrossFromStored(
+    priceNet,
+    taxPercent,
+    row.price_gross as number | null | undefined
+  )
 
   return {
     id: String(row.id),

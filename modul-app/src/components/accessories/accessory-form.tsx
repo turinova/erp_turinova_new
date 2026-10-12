@@ -174,7 +174,8 @@ export function AccessoryForm({
 
   function handleSave() {
     if (!canWrite) return
-    if (priceNet === null) {
+    const gross = parseIntegerInput(grossRaw)
+    if (priceNet === null || gross === null) {
       setFieldErrors({ priceNet: 'Érvényes bruttó árat adj meg.' })
       toast.error('Ellenőrizd a megadott adatokat.')
       return
@@ -198,6 +199,7 @@ export function AccessoryForm({
         taxRateId,
         unitId,
         priceNet,
+        priceGross: gross,
         purchasePriceNet: purchaseParsed.purchasePriceNet,
         marginFactor: purchaseParsed.marginFactor,
         imageUrl,
@@ -643,7 +645,11 @@ export function AccessoryForm({
             htmlFor="accessory-gross"
             required
             error={fieldErrors.priceNet}
-            hint={!fieldErrors.priceNet ? `Ft / ${unitShort}` : undefined}
+            hint={
+              !fieldErrors.priceNet
+                ? `Polcár (Ft / ${unitShort}) — pontosan ez jelenik meg a POS-on.`
+                : undefined
+            }
           >
             <div className="relative">
               <Input

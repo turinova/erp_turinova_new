@@ -146,6 +146,7 @@ async function toSearchItem(
     name: string
     sku: string
     price_net: number | string
+    price_gross?: number | string | null
     tax_rate_percent: number
     unit_shortform: string
     image_url?: string | null
@@ -162,12 +163,18 @@ async function toSearchItem(
   } catch {
     onHand = 0
   }
+  const priceNet = Number(row.price_net) || 0
+  const storedGross =
+    row.price_gross != null && Number.isFinite(Number(row.price_gross))
+      ? Math.round(Number(row.price_gross))
+      : undefined
   return {
     kind: 'product',
     id: row.id,
     name: row.name,
     sku: row.sku,
-    price_net: Number(row.price_net) || 0,
+    price_net: priceNet,
+    ...(storedGross != null ? { price_gross: storedGross } : {}),
     tax_rate_percent: Number(row.tax_rate_percent) || 0,
     unit_shortform: row.unit_shortform || 'db',
     on_hand: onHand,
@@ -430,6 +437,7 @@ export async function createPosQuickProductAction(input: {
         tax_rate_id: defaults.taxRateId,
         unit_id: defaults.unitId,
         price_net: priced.priceNet,
+        price_gross: gross,
         purchase_price_net: priced.purchasePriceNet,
         margin_factor: priced.marginFactor,
         image_url: null,
@@ -437,7 +445,7 @@ export async function createPosQuickProductAction(input: {
         sellable_pos: true,
         web_gallery: []
       })
-      .select('id, name, sku, price_net, image_url')
+      .select('id, name, sku, price_net, price_gross, image_url')
       .single()
 
     if (!error && data) {
@@ -451,6 +459,7 @@ export async function createPosQuickProductAction(input: {
           name: data.name,
           sku: data.sku,
           price_net: data.price_net,
+          price_gross: data.price_gross ?? gross,
           tax_rate_percent: defaults.taxPct,
           unit_shortform: defaults.unitShort,
           image_url: data.image_url
@@ -608,6 +617,7 @@ export async function assignPosBarcodeAction(input: {
       barcode,
       barcode_internal,
       price_net,
+      price_gross,
       image_url,
       tax_rates ( rate_percent ),
       units ( shortform )
@@ -702,6 +712,7 @@ export async function assignPosBarcodeAction(input: {
         name: row.name as string,
         sku: row.sku as string,
         price_net: row.price_net as number | string,
+        price_gross: row.price_gross as number | string | null,
         tax_rate_percent: Number(tax?.rate_percent ?? 0),
         unit_shortform: unit?.shortform ?? 'db',
         image_url: (row.image_url as string | null) ?? null
@@ -733,6 +744,7 @@ export async function assignPosBarcodeAction(input: {
       name: row.name as string,
       sku: row.sku as string,
       price_net: row.price_net as number | string,
+      price_gross: row.price_gross as number | string | null,
       tax_rate_percent: Number(tax?.rate_percent ?? 0),
       unit_shortform: unit?.shortform ?? 'db',
       image_url: (row.image_url as string | null) ?? null

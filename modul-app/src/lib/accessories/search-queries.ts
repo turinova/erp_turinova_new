@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { grossFromNet } from '@/lib/accessories/parse'
+import { displayGrossFromStored } from '@/lib/accessories/parse'
 
 export type AccessorySearchItem = {
   id: string
@@ -78,6 +78,7 @@ export async function searchAccessories(
       name,
       sku,
       price_net,
+      price_gross,
       manufacturers ( name ),
       tax_rates ( rate_percent ),
       units ( shortform )
@@ -125,7 +126,11 @@ export async function searchAccessories(
       unit_shortform: unit?.shortform ?? 'db',
       price_net: priceNet,
       tax_rate_percent: taxPercent,
-      price_gross: grossFromNet(priceNet, taxPercent)
+      price_gross: displayGrossFromStored(
+        priceNet,
+        taxPercent,
+        row.price_gross == null ? null : Number(row.price_gross)
+      )
     }
   })
 

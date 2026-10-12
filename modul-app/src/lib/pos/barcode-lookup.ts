@@ -13,6 +13,7 @@ type RpcRow = {
   name: string
   sku: string
   price_net: number | string
+  price_gross?: number | string | null
   barcode: string | null
   barcode_internal: string | null
   image_url: string | null
@@ -62,6 +63,11 @@ export async function lookupPosBarcodeProduct(
     const row = rows[0]
     if (!row) continue
 
+    const priceNet = Number(row.price_net) || 0
+    const storedGross =
+      row.price_gross != null && Number.isFinite(Number(row.price_gross))
+        ? Math.round(Number(row.price_gross))
+        : undefined
     return {
       ok: true,
       product: {
@@ -69,7 +75,8 @@ export async function lookupPosBarcodeProduct(
         id: row.id,
         name: row.name,
         sku: row.sku,
-        price_net: Number(row.price_net) || 0,
+        price_net: priceNet,
+        ...(storedGross != null ? { price_gross: storedGross } : {}),
         tax_rate_percent: Number(row.tax_rate_percent) || 0,
         unit_shortform: row.unit_shortform || 'db',
         on_hand: Number(row.on_hand) || 0,
@@ -99,6 +106,7 @@ async function lookupPosBarcodeHybrid(
       name,
       sku,
       price_net,
+      price_gross,
       barcode,
       barcode_internal,
       image_url,
@@ -123,6 +131,7 @@ async function lookupPosBarcodeHybrid(
     name: string
     sku: string
     price_net: number | string
+    price_gross?: number | string | null
     barcode: string | null
     barcode_internal: string | null
     image_url: string | null
@@ -169,6 +178,12 @@ async function lookupPosBarcodeHybrid(
   const units = exact.units
   const unit = Array.isArray(units) ? units[0] : units
 
+  const priceNet = Number(exact.price_net) || 0
+  const storedGross =
+    exact.price_gross != null && Number.isFinite(Number(exact.price_gross))
+      ? Math.round(Number(exact.price_gross))
+      : undefined
+
   return {
     ok: true,
     product: {
@@ -176,7 +191,8 @@ async function lookupPosBarcodeHybrid(
       id: exact.id,
       name: exact.name,
       sku: exact.sku,
-      price_net: Number(exact.price_net) || 0,
+      price_net: priceNet,
+      ...(storedGross != null ? { price_gross: storedGross } : {}),
       tax_rate_percent: Number(tax?.rate_percent ?? 0),
       unit_shortform: unit?.shortform ?? 'db',
       on_hand: onHand,
