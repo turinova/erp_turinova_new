@@ -212,8 +212,8 @@ export async function savePosSettingsAction(input: {
     .eq('tenant_id', ctx.user.tenantId!)
 
   if (error && /allow_pos_quick_create/i.test(error.message)) {
-    const withoutQuick = { ...payload }
-    delete withoutQuick.allow_pos_quick_create
+    const { allow_pos_quick_create: omittedQuick, ...withoutQuick } = payload
+    void omittedQuick
     ;({ error } = await ctx.supabase
       .from('tenant_pos_settings')
       .update(withoutQuick)
@@ -221,9 +221,13 @@ export async function savePosSettingsAction(input: {
   }
 
   if (error && /search_barcode_only/i.test(error.message)) {
-    const legacyPayload = { ...payload }
-    delete legacyPayload.search_barcode_only
-    delete legacyPayload.allow_pos_quick_create
+    const {
+      search_barcode_only: omittedBarcodeOnly,
+      allow_pos_quick_create: omittedQuick2,
+      ...legacyPayload
+    } = payload
+    void omittedBarcodeOnly
+    void omittedQuick2
     ;({ error } = await ctx.supabase
       .from('tenant_pos_settings')
       .update(legacyPayload)
