@@ -4,8 +4,15 @@ import type { InvoicePaymentMethod } from '@/lib/invoicing/types'
 export function isCashPaymentMethodName(
   name: string | null | undefined
 ): boolean {
-  const n = (name ?? '').toLowerCase()
-  return n.includes('készpénz') || n.includes('keszpenz') || n === 'cash'
+  const n = (name ?? '').trim().toLowerCase()
+  return (
+    n.includes('készpénz') ||
+    n.includes('keszpenz') ||
+    n.includes('cash') ||
+    n === 'kp' ||
+    n === 'k.p.' ||
+    n === 'k.p'
+  )
 }
 
 /** Bankkártya / card — azonnali paid. */

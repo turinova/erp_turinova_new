@@ -184,7 +184,7 @@ export async function createSaleAction(
     return {
       ok: false,
       message:
-        'Vendégnél csak teljes fizetés engedélyezett. Részfizetéshez vagy hitelhez válassz vevőt.'
+        'Vendégnél csak teljes fizetés engedélyezett. Részfizetéshez vagy hitelhez válassz vevőt. (nincs fizetési sor)'
     }
   }
 

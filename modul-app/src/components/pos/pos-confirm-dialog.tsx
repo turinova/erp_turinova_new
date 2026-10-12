@@ -319,7 +319,10 @@ export function PosConfirmDialog({
       return 'A fizetett összeg meghaladja a fizetendőt.'
     }
     if (!canAdjustPaid && mode !== 'split' && sum < due - 1) {
-      return 'Vendégnél csak teljes fizetés engedélyezett. Részfizetéshez vagy hitelhez válassz vevőt.'
+      return (
+        'Vendégnél csak teljes fizetés engedélyezett. Részfizetéshez vagy hitelhez válassz vevőt.' +
+        ` (fizetendő: ${due} Ft, megadva: ${sum} Ft)`
+      )
     }
     return null
   }
@@ -340,10 +343,23 @@ export function PosConfirmDialog({
     authCode: string | null
     kind: PosCardTerminalKind
   } | null) {
-    if (!tendersBuild.ok) {
-      setLocalError(tendersBuild.message)
+    // Vendég: mindig a aktuális due-val építünk (ne stale paidAmount).
+    const submitTendersBuild =
+      !canAdjustPaid && mode !== 'split'
+        ? buildPosTenders({
+            mode,
+            due,
+            cashMethodId,
+            cardMethodId,
+            paidAmount: due,
+            allowPartial: false
+          })
+        : tendersBuild
+    if (!submitTendersBuild.ok) {
+      setLocalError(submitTendersBuild.message)
       return
     }
+    const submitTenders = submitTendersBuild.tenders
     const noteParts: string[] = []
     if (card?.kind === 'teya') {
       noteParts.push(
@@ -359,14 +375,14 @@ export function PosConfirmDialog({
       )
     }
     onConfirm({
-      payments: tenders.map((t) => ({
+      payments: submitTenders.map((t) => ({
         paymentMethodId: t.paymentMethodId,
         amount: t.amount,
         providerRef:
           t.kind === 'card' ? (card?.providerRef ?? null) : null
       })),
-      tenders,
-      fulfillNow: tenders.length === 0,
+      tenders: submitTenders,
+      fulfillNow: submitTenders.length === 0,
       cardProviderRef: card?.providerRef ?? null,
       cardAuthCode: card?.authCode ?? null,
       cardTerminalKind: card?.kind ?? null,
@@ -571,7 +587,8 @@ export function PosConfirmDialog({
                     />
                     {!canAdjustPaid && mode !== 'split' ? (
                       <p className="text-hint text-ink-muted">
-                        Részfizetéshez vagy hitelhez válassz vevőt.
+                        Vendég: a teljes összeg megy be. Részfizetéshez válassz
+                        vevőt.
                       </p>
                     ) : null}
                   </div>
@@ -875,7 +892,8 @@ export function PosConfirmDialog({
                     />
                     {!canAdjustPaid && mode !== 'split' ? (
                       <p className="text-hint text-ink-muted">
-                        Részfizetéshez vagy hitelhez válassz vevőt.
+                        Vendég: a teljes összeg megy be. Részfizetéshez válassz
+                        vevőt.
                       </p>
                     ) : null}
                   </div>
