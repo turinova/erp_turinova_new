@@ -5,12 +5,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
 import { looksLikeBarcode } from '@/lib/pos/barcode'
-import { searchSaleProductsAction } from '@/lib/sales/actions'
+import { searchPosProductsClient } from '@/lib/pos/search-client'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import { cn } from '@/lib/utils'
 
-const DEBOUNCE_MS = 220
+const DEBOUNCE_MS = 200
 
 type Props = {
   warehouseId: string
@@ -39,15 +39,18 @@ export function PdaProductSearch({
   const runSearch = useCallback(
     async (term: string) => {
       const t = term.trim()
-      if (t.length < 2 || !warehouseId) {
-        setRows([])
-        setLoading(false)
+      const minLen = /^\d+$/.test(t) ? 1 : 2
+      if (t.length < minLen || !warehouseId) {
+        if (!t) {
+          setRows([])
+          setLoading(false)
+        }
         return
       }
       const id = ++req.current
       setLoading(true)
       setError(null)
-      const res = await searchSaleProductsAction(t, warehouseId, {
+      const res = await searchPosProductsClient(t, warehouseId, {
         kind: 'product',
         includeMaterials: false,
         limit: 15,
@@ -95,6 +98,8 @@ export function PdaProductSearch({
     }
   }
 
+  const showList = q.trim().length >= 2 || (/^\d+$/.test(q.trim()) && q.trim().length >= 1)
+
   return (
     <div className={cn('space-y-2', className)}>
       <div className="relative">
@@ -117,6 +122,7 @@ export function PdaProductSearch({
           placeholder="Vonalkód, SKU, gyártói, név…"
           autoComplete="off"
           enterKeyHint="search"
+          aria-busy={loading}
           className="h-12 pl-11 text-[16px]"
         />
       </div>
@@ -125,12 +131,19 @@ export function PdaProductSearch({
           {error}
         </p>
       ) : null}
-      {q.trim().length >= 2 ? (
-        <ul className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-border bg-surface">
-          {loading ? (
+      {showList ? (
+        <ul
+          className={cn(
+            'max-h-48 space-y-1 overflow-y-auto rounded-md border border-border bg-surface transition-opacity',
+            loading && rows.length > 0 && 'opacity-60'
+          )}
+        >
+          {loading && rows.length === 0 ? (
             <li className="px-3 py-2 text-hint text-ink-muted">Keresés…</li>
-          ) : rows.length === 0 ? (
-            <li className="px-3 py-2 text-hint text-ink-muted">Nincs találat</li>
+          ) : !loading && rows.length === 0 ? (
+            <li className="px-3 py-2 text-hint text-ink-muted">
+              Nincs találat: {q.trim()}
+            </li>
           ) : (
             rows.map((p) => {
               const gross = Math.round(

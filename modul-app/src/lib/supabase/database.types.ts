@@ -1611,6 +1611,61 @@ export type Database = {
           on_hand: number
         }[]
       }
+      search_pos_products: {
+        Args: {
+          p_tenant_id: string
+          p_warehouse_id: string
+          p_q: string
+          p_limit?: number
+          p_stock_first?: boolean
+        }
+        Returns: {
+          id: string
+          name: string
+          sku: string
+          barcode: string | null
+          barcode_internal: string | null
+          price_net: number
+          tax_rate_percent: number
+          unit_shortform: string
+          image_url: string | null
+          on_hand: number
+          web_mpn: string | null
+          match_score: number
+        }[]
+      }
+      pos_frequent_products: {
+        Args: {
+          p_tenant_id: string
+          p_warehouse_id: string
+          p_days?: number
+          p_limit?: number
+        }
+        Returns: {
+          id: string
+          name: string
+          sku: string
+          barcode: string | null
+          barcode_internal: string | null
+          price_net: number
+          tax_rate_percent: number
+          unit_shortform: string
+          image_url: string | null
+          on_hand: number
+          sale_count: number
+        }[]
+      }
+      pos_search_manufacturer_chips: {
+        Args: {
+          p_tenant_id: string
+          p_limit?: number
+        }
+        Returns: {
+          id: string
+          name: string
+          product_count: number
+        }[]
+      }
       accessories_on_hand: {
         Args: {
           p_tenant_id: string

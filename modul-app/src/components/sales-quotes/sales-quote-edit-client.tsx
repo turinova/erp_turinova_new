@@ -190,7 +190,8 @@ export function SalesQuoteEditClient({
 
   useEffect(() => {
     const q = searchQ.trim()
-    if (q.length < 1 || !warehouseId) {
+    const minLen = /^\d+$/.test(q) ? 1 : 2
+    if (q.length < minLen || !warehouseId) {
       setSearchHits([])
       return
     }
@@ -202,7 +203,7 @@ export function SalesQuoteEditClient({
         setSearching(false)
         setSearchHits(res.ok ? res.rows : [])
       })
-    }, 180)
+    }, 120)
     return () => clearTimeout(t)
   }, [searchQ, warehouseId, hasLapszabaszat])
 

@@ -83,13 +83,23 @@ import { getOpenPosShiftAction } from '@/lib/pos/shift-actions'
 import type { PosRegister } from '@/lib/pos/shifts'
 import type { PosTerminalPublicConfig } from '@/lib/pos/settings-types'
 import { loadPosQuickProductsAction } from '@/lib/pos/quick-items-actions'
+import {
+  loadPosFrequentAction,
+  loadPosManufacturerChipsAction,
+  logPosSearchEventAction
+} from '@/lib/pos/discovery-actions'
+import type { PosManufacturerChip } from '@/lib/pos/discovery'
+import {
+  loadPosRecents,
+  pushPosRecent,
+  recentToSearchItem,
+  type PosRecentEntry
+} from '@/lib/pos/recents'
 import { countOpenPosCartHandoffsAction } from '@/lib/pos/handoff-actions'
 import { usePosTouchMode, usePosWideLayout } from '@/lib/pos/touch-mode'
 import { type PosPayMode } from '@/lib/pos/tender'
-import {
-  createSaleAction,
-  searchSaleProductsAction
-} from '@/lib/sales/actions'
+import { searchPosProductsClient } from '@/lib/pos/search-client'
+import { createSaleAction } from '@/lib/sales/actions'
 import { createSaleInvoiceAction } from '@/lib/invoicing/actions'
 import type { InvoicePaymentMethod } from '@/lib/invoicing/types'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
@@ -256,6 +266,9 @@ export function PosClient({
   const [quickHits, setQuickHits] = useState<SaleProductSearchItem[]>([])
   const [quickLoading, setQuickLoading] = useState(false)
   const [quickReloadKey, setQuickReloadKey] = useState(0)
+  const [recentEntries, setRecentEntries] = useState<PosRecentEntry[]>([])
+  const [frequentHits, setFrequentHits] = useState<SaleProductSearchItem[]>([])
+  const [mfrChips, setMfrChips] = useState<PosManufacturerChip[]>([])
   const { touch, setTouch } = usePosTouchMode()
   const wide = usePosWideLayout()
   const [pane, setPane] = useState<'catalog' | 'cart'>('catalog')
@@ -263,7 +276,7 @@ export function PosClient({
   const [moreOpen, setMoreOpen] = useState(false)
   const [flashQuickId, setFlashQuickId] = useState<string | null>(null)
   const [settingsSection, setSettingsSection] = useState<
-    'pay' | 'sale' | 'card' | 'quick' | undefined
+    'pay' | 'sale' | 'card' | 'quick' | 'aliases' | undefined
   >(undefined)
   const moreWrapRef = useRef<HTMLDivElement>(null)
 
@@ -278,6 +291,7 @@ export function PosClient({
   const searchRef = useRef<HTMLInputElement>(null)
   const searchWrapRef = useRef<HTMLDivElement>(null)
   const searchResultsRef = useRef<HTMLDivElement>(null)
+  const searchReqId = useRef(0)
   const customerWrapRef = useRef<HTMLDivElement>(null)
   const scanLock = useRef(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -534,9 +548,22 @@ export function PosClient({
       ) {
         return
       }
-      if (e.key === 'F2') {
+      if (e.key === 'F2' || e.key === 'F3') {
         e.preventDefault()
         searchRef.current?.focus()
+        setEditingField(true)
+        return
+      }
+      if (
+        e.key === '/' &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !isTypingTarget(e.target)
+      ) {
+        e.preventDefault()
+        searchRef.current?.focus()
+        setEditingField(true)
         return
       }
       if (e.key === 'F4') {
@@ -649,31 +676,39 @@ export function PosClient({
     if (raw === '1') setStockFirst(true)
   }, [])
 
-  // Gépelés = mindig typeahead. Exact barcode csak wedge / Enter (nem debounce).
+  // Gépelés = typeahead. Sticky lista + stale-guard; exact barcode csak wedge/Enter.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     const q = searchQ.trim()
-    if (q.length < 1 || !warehouseId) {
-      setSearchHits([])
-      setSearching(false)
+    const minLen = /^\d+$/.test(q) ? 1 : 2
+    if (q.length < minLen || !warehouseId) {
+      // Üres / túl rövid: lista törlés csak ha tényleg nincs query
+      if (!q) {
+        setSearchHits([])
+        setSearching(false)
+      }
       return
     }
-    setSearching(true)
     searchTimer.current = setTimeout(() => {
-      void searchSaleProductsAction(q, warehouseId, {
+      const reqId = ++searchReqId.current
+      setSearching(true)
+      void searchPosProductsClient(q, warehouseId, {
         inStockOnly: false,
         stockFirst,
         kind: searchKind,
         includeMaterials: hasLapszabaszat
       }).then((res) => {
+        if (reqId !== searchReqId.current) return
         setSearching(false)
         if (res.ok) {
           setSearchHits(res.rows)
           setSearchOpen(true)
           setSelectedSearchIndex(0)
-        } else setSearchHits([])
+        } else {
+          setSearchHits([])
+        }
       })
-    }, 180)
+    }, 200)
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current)
     }
@@ -682,20 +717,39 @@ export function PosClient({
   useEffect(() => {
     if (!warehouseId) {
       setQuickHits([])
+      setFrequentHits([])
       return
     }
     let cancelled = false
     setQuickLoading(true)
-    void loadPosQuickProductsAction(warehouseId).then((res) => {
+    void Promise.all([
+      loadPosQuickProductsAction(warehouseId),
+      loadPosFrequentAction(warehouseId)
+    ]).then(([quickRes, freqRes]) => {
       if (cancelled) return
       setQuickLoading(false)
-      if (res.ok) setQuickHits(res.rows)
-      else setQuickHits([])
+      setQuickHits(quickRes.ok ? quickRes.rows : [])
+      setFrequentHits(freqRes.ok ? freqRes.rows : [])
     })
     return () => {
       cancelled = true
     }
   }, [warehouseId, quickReloadKey])
+
+  useEffect(() => {
+    setRecentEntries(loadPosRecents(warehouseId || 't', registerId || 'r'))
+  }, [warehouseId, registerId])
+
+  useEffect(() => {
+    let cancelled = false
+    void loadPosManufacturerChipsAction().then((res) => {
+      if (cancelled) return
+      setMfrChips(res.ok ? res.chips : [])
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function applyHandoffClaim(
     result: HandoffClaimResult,
@@ -736,6 +790,21 @@ export function PosClient({
     toast.success(`Átvéve · ${result.code}`)
   }
 
+  function rememberPick(hit: SaleProductSearchItem) {
+    if ((hit.kind ?? 'product') !== 'product') return
+    const next = pushPosRecent(warehouseId || 't', registerId || 'r', hit)
+    setRecentEntries(next)
+    if (searchQ.trim()) {
+      void logPosSearchEventAction({
+        warehouseId,
+        registerId: registerId || null,
+        q: searchQ.trim(),
+        hitCount: searchHits.length,
+        pickedAccessoryId: hit.id
+      })
+    }
+  }
+
   function addOrBump(hit: SaleProductSearchItem, quantity?: number) {
     const kind = hit.kind ?? 'product'
     if (isMaterialSaleKind(kind) && quantity == null) {
@@ -773,11 +842,25 @@ export function PosClient({
       }
       return [...prev, catalogToLine(hit, addQty)]
     })
+    rememberPick(hit)
     setQtyPreset(1)
     setFlash(null)
     setHighlightId(key)
     setTimeout(() => setHighlightId(null), 600)
   }
+
+  const recentHits = useMemo(
+    () => recentEntries.map(recentToSearchItem),
+    [recentEntries]
+  )
+
+  const frequentFiltered = useMemo(() => {
+    const skip = new Set([
+      ...quickHits.map((h) => h.id),
+      ...recentHits.map((h) => h.id)
+    ])
+    return frequentHits.filter((h) => !skip.has(h.id)).slice(0, 8)
+  }, [frequentHits, quickHits, recentHits])
 
   /** Exact barcode lookup. true = kosárba került; missnél a kézi query marad. */
   async function runBarcodeScan(raw: string): Promise<boolean> {
@@ -1521,16 +1604,24 @@ export function PosClient({
               )}
               aria-hidden
             />
+            {searching ? (
+              <span
+                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-hint text-ink-muted"
+                aria-live="polite"
+              >
+                …
+              </span>
+            ) : null}
             <Input
               ref={searchRef}
               id="pos-search"
               value={searchQ}
-              placeholder="Vonalkód / SKU / név…"
+              placeholder="Vonalkód / SKU / név…  (/ vagy F2)"
               className={cn('pl-8', touch && 'h-12 text-[16px]')}
               autoComplete="off"
+              aria-busy={searching}
               onFocus={() => setEditingField(true)}
               onBlur={() => {
-                // Ne kapcsold be azonnal a wedge-et: találat kattintás / lista fókusz
                 window.setTimeout(() => {
                   const el = document.activeElement
                   if (searchWrapRef.current?.contains(el)) return
@@ -1552,7 +1643,9 @@ export function PosClient({
                 } else if (e.key === 'Enter') {
                   e.preventDefault()
                   const hit =
-                    searchHits[selectedSearchIndex] ?? searchHits[0]
+                    searchHits.length === 1
+                      ? searchHits[0]
+                      : (searchHits[selectedSearchIndex] ?? searchHits[0])
                   if (hit) {
                     addOrBump(hit)
                     setSearchQ('')
@@ -1582,6 +1675,28 @@ export function PosClient({
               }}
             />
           </div>
+
+          {!searchQ.trim() && mfrChips.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {mfrChips.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  className={cn(
+                    'rounded-md border border-border bg-surface text-hint text-ink-secondary hover:bg-subtle',
+                    touch ? 'min-h-11 px-3 py-2' : 'px-2.5 py-1'
+                  )}
+                  onClick={() => {
+                    setSearchQ(chip.name)
+                    searchRef.current?.focus()
+                    setEditingField(true)
+                  }}
+                >
+                  {chip.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
@@ -1636,46 +1751,126 @@ export function PosClient({
               </>
             ) : null}
             <span className="text-hint text-ink-secondary">
-              {touch
-                ? 'Scannelj vagy koppints'
-                : 'Gépelés: lista · scanner: fókusz nélkül · Enter: exact ha nincs találat'}
+              {touch ? 'Scannelj vagy koppints' : '↑↓ Enter · Esc ürít'}
             </span>
           </div>
 
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="text-hint text-ink-secondary">Mennyiség:</span>
-            {([1, 2, 5, 10, 100, 1000] as const).map((n) => (
-              <button
-                key={n}
-                type="button"
-                aria-pressed={qtyPreset === n}
-                className={cn(
-                  'rounded-md border tabular-nums',
-                  touch ? 'min-h-11 min-w-11 px-3' : 'min-h-8 min-w-8 px-2.5 py-1',
-                  qtyPreset === n
-                    ? 'border-ink bg-ink text-surface'
-                    : 'border-border bg-surface text-ink hover:bg-subtle'
-                )}
-                onClick={() => setQtyPreset(n)}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
+          {!searchQ.trim() ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-hint text-ink-secondary">Mennyiség:</span>
+              {([1, 2, 5, 10, 100, 1000] as const).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  aria-pressed={qtyPreset === n}
+                  className={cn(
+                    'rounded-md border tabular-nums',
+                    touch
+                      ? 'min-h-11 min-w-11 px-3'
+                      : 'min-h-8 min-w-8 px-2.5 py-1',
+                    qtyPreset === n
+                      ? 'border-ink bg-ink text-surface'
+                      : 'border-border bg-surface text-ink hover:bg-subtle'
+                  )}
+                  onClick={() => setQtyPreset(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div
             ref={searchResultsRef}
             className="mt-2 min-h-0 flex-1 overflow-auto rounded-md border border-border"
           >
-            {searching && searchHits.length === 0 ? (
+            {searching && searchHits.length === 0 && searchQ.trim() ? (
               <p className="p-4 text-hint text-ink-secondary">Keresés…</p>
-            ) : searchHits.length === 0 && searchQ.trim() ? (
-              <p className="p-4 text-hint text-ink-secondary">Nincs találat</p>
+            ) : !searching && searchHits.length === 0 && searchQ.trim() ? (
+              <div className="flex flex-col gap-3 p-4">
+                <p className="text-hint text-ink-secondary">
+                  Nincs találat: <span className="text-ink">{searchQ.trim()}</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={touch ? 'h-11' : undefined}
+                    onClick={() => {
+                      setSearchQ('')
+                      searchRef.current?.focus()
+                    }}
+                  >
+                    Kereső ürítése
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={touch ? 'h-11' : undefined}
+                    onClick={() => {
+                      setSettingsSection('aliases')
+                      setSettingsOpen(true)
+                    }}
+                  >
+                    Keresőszavak
+                  </Button>
+                </div>
+                {recentHits.length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-label text-ink-secondary">
+                      Mostanában
+                    </p>
+                    <div
+                      className={cn(
+                        'grid gap-2.5 grid-cols-2',
+                        !touch && 'xl:grid-cols-3'
+                      )}
+                    >
+                      {recentHits.slice(0, 4).map((hit) => {
+                        const gross = Math.round(
+                          hit.price_net * (1 + hit.tax_rate_percent / 100)
+                        )
+                        return (
+                          <PosQuickTile
+                            key={`miss-r-${hit.id}`}
+                            name={hit.display_name?.trim() || hit.name}
+                            fullName={hit.name}
+                            sku={hit.sku}
+                            priceLabel={`${formatMoneyFt(gross)} Ft`}
+                            imageUrl={hit.image_url}
+                            onHand={hit.on_hand}
+                            unitShortform={hit.unit_shortform}
+                            qtyBadge={qtyPreset > 1 ? qtyPreset : null}
+                            zeroStock={hit.on_hand <= 0}
+                            flash={flashQuickId === hit.id}
+                            onClick={() => {
+                              addOrBump(hit)
+                              setFlashQuickId(hit.id)
+                              window.setTimeout(() => setFlashQuickId(null), 280)
+                              setSearchQ('')
+                              setEditingField(false)
+                              focusBarcode()
+                            }}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             ) : searchHits.length === 0 && !searchQ.trim() ? (
-              <div className="p-3">
-                {quickLoading && quickHits.length === 0 ? (
+              <div className="space-y-4 p-3">
+                {quickLoading &&
+                quickHits.length === 0 &&
+                recentHits.length === 0 &&
+                frequentFiltered.length === 0 ? (
                   <p className="text-hint text-ink-secondary">Betöltés…</p>
-                ) : quickHits.length === 0 ? (
+                ) : null}
+
+                {quickHits.length === 0 &&
+                recentHits.length === 0 &&
+                frequentFiltered.length === 0 &&
+                !quickLoading ? (
                   <div className="flex flex-col items-start gap-3 p-1">
                     <p className="text-body text-ink-secondary">
                       Scannelj vagy gépelj. A gyakori cikkeket ide teheted —
@@ -1693,48 +1888,70 @@ export function PosClient({
                       Gyors termékek beállítása
                     </Button>
                   </div>
-                ) : (
-                  <div
-                    className={cn(
-                      'grid gap-2.5',
-                      'grid-cols-2',
-                      !touch && 'lg:grid-cols-2 xl:grid-cols-3'
-                    )}
-                  >
-                    {quickHits.map((hit) => {
-                      const gross = Math.round(
-                        hit.price_net * (1 + hit.tax_rate_percent / 100)
-                      )
-                      const zero = hit.on_hand <= 0
-                      const label = hit.display_name?.trim() || hit.name
-                      return (
-                        <PosQuickTile
-                          key={hit.id}
-                          name={label}
-                          fullName={hit.name}
-                          sku={hit.sku}
-                          priceLabel={`${formatMoneyFt(gross)} Ft`}
-                          imageUrl={hit.image_url}
-                          onHand={hit.on_hand}
-                          unitShortform={hit.unit_shortform}
-                          qtyBadge={qtyPreset > 1 ? qtyPreset : null}
-                          zeroStock={zero}
-                          flash={flashQuickId === hit.id}
-                          onClick={() => {
-                            addOrBump(hit)
-                            setFlashQuickId(hit.id)
-                            window.setTimeout(() => setFlashQuickId(null), 280)
-                            setEditingField(false)
-                            focusBarcode()
-                          }}
-                        />
-                      )
-                    })}
-                  </div>
+                ) : null}
+
+                {(
+                  [
+                    ['Gyors', quickHits] as const,
+                    ['Mostanában', recentHits] as const,
+                    ['Gyakori', frequentFiltered] as const
+                  ] as const
+                ).map(([title, rows]) =>
+                  rows.length === 0 ? null : (
+                    <div key={title}>
+                      <p className="mb-2 text-label text-ink-secondary">
+                        {title}
+                      </p>
+                      <div
+                        className={cn(
+                          'grid gap-2.5 grid-cols-2',
+                          !touch && 'lg:grid-cols-2 xl:grid-cols-3'
+                        )}
+                      >
+                        {rows.map((hit) => {
+                          const gross = Math.round(
+                            hit.price_net * (1 + hit.tax_rate_percent / 100)
+                          )
+                          const zero = hit.on_hand <= 0
+                          const label = hit.display_name?.trim() || hit.name
+                          return (
+                            <PosQuickTile
+                              key={`${title}-${hit.id}`}
+                              name={label}
+                              fullName={hit.name}
+                              sku={hit.sku}
+                              priceLabel={`${formatMoneyFt(gross)} Ft`}
+                              imageUrl={hit.image_url}
+                              onHand={hit.on_hand}
+                              unitShortform={hit.unit_shortform}
+                              qtyBadge={qtyPreset > 1 ? qtyPreset : null}
+                              zeroStock={zero}
+                              flash={flashQuickId === hit.id}
+                              onClick={() => {
+                                addOrBump(hit)
+                                setFlashQuickId(hit.id)
+                                window.setTimeout(
+                                  () => setFlashQuickId(null),
+                                  280
+                                )
+                                setEditingField(false)
+                                focusBarcode()
+                              }}
+                            />
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
                 )}
               </div>
             ) : (
-              <table className="w-full border-collapse text-body">
+              <table
+                className={cn(
+                  'w-full border-collapse text-body transition-opacity',
+                  searching && 'opacity-60'
+                )}
+              >
                 <thead>
                   <tr className="sticky top-0 border-b border-border bg-subtle text-left text-label text-ink-secondary">
                     <th className="px-2.5 py-2 font-medium">Termék</th>

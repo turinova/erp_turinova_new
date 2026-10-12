@@ -244,7 +244,8 @@ export function SaleCreateClient({
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     const q = searchQ.trim()
-    if (q.length < 1 || !warehouseId) {
+    const minLen = /^\d+$/.test(q) ? 1 : 2
+    if (q.length < minLen || !warehouseId) {
       setSearchHits([])
       setSearching(false)
       return
@@ -261,7 +262,7 @@ export function SaleCreateClient({
           setSearchOpen(true)
         } else setSearchHits([])
       })
-    }, 220)
+    }, 120)
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current)
     }

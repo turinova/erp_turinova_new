@@ -885,18 +885,54 @@ export async function searchProductsForSale(
   const wantLinear =
     includeMaterials && (kind === 'all' || kind === 'linear_material')
 
+  // Gyors path: csak termék → lean POS RPC (token/unaccent/typo + on_hand)
+  if (wantProduct && !wantSheet && !wantLinear) {
+    const { searchPosProductsRpc } = await import('@/lib/pos/product-search')
+    const rpcRows = await searchPosProductsRpc(
+      supabase,
+      tenantId,
+      warehouseId,
+      safe,
+      { limit, stockFirst }
+    )
+    if (rpcRows) {
+      const filtered = opts?.inStockOnly
+        ? rpcRows.filter((r) => r.on_hand > 0)
+        : rpcRows
+      return filtered.slice(0, limit)
+    }
+  }
+
   const perSource = Math.max(limit * 2, 24)
   const parts: Promise<ScoredSaleHit[]>[] = []
 
   if (wantProduct) {
     parts.push(
-      searchAccessoriesForSale(
-        supabase,
-        tenantId,
-        safe,
-        warehouseId,
-        perSource
-      )
+      (async () => {
+        const { searchPosProductsRpc } = await import(
+          '@/lib/pos/product-search'
+        )
+        const rpcRows = await searchPosProductsRpc(
+          supabase,
+          tenantId,
+          warehouseId,
+          safe,
+          { limit: perSource, stockFirst }
+        )
+        if (rpcRows) {
+          return rpcRows.map((row, i) => ({
+            ...row,
+            _score: 1000 - i
+          }))
+        }
+        return searchAccessoriesForSale(
+          supabase,
+          tenantId,
+          safe,
+          warehouseId,
+          perSource
+        )
+      })()
     )
   }
   if (wantSheet) {

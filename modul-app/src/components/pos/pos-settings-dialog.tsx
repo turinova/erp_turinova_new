@@ -24,6 +24,10 @@ import {
   savePosQuickItemsAction
 } from '@/lib/pos/quick-items-actions'
 import {
+  loadPosAliasesAction,
+  savePosAliasesAction
+} from '@/lib/pos/discovery-actions'
+import {
   POS_LABEL_MAX,
   POS_QUICK_ITEMS_MAX,
   resolvePosDisplayName
@@ -42,7 +46,7 @@ import { cn } from '@/lib/utils'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { PosQuickTile } from '@/components/pos/pos-quick-tile'
 
-type SectionId = 'pay' | 'sale' | 'card' | 'quick'
+type SectionId = 'pay' | 'sale' | 'card' | 'quick' | 'aliases'
 
 type Props = {
   open: boolean
@@ -69,6 +73,11 @@ const SECTIONS: Array<{ id: SectionId; label: string; hint: string }> = [
     id: 'quick',
     label: 'Gyors termékek',
     hint: '1 tap a pulton'
+  },
+  {
+    id: 'aliases',
+    label: 'Keresőszavak',
+    hint: 'Szinonimák a pultos keresőhöz'
   },
   {
     id: 'card',
@@ -144,6 +153,19 @@ export function PosSettingsDialog({
   >([])
   const [quickSearching, setQuickSearching] = useState(false)
 
+  const [aliasQ, setAliasQ] = useState('')
+  const [aliasHits, setAliasHits] = useState<
+    Array<{ id: string; name: string; sku: string }>
+  >([])
+  const [aliasSearching, setAliasSearching] = useState(false)
+  const [aliasProduct, setAliasProduct] = useState<{
+    id: string
+    name: string
+    sku: string
+  } | null>(null)
+  const [aliasText, setAliasText] = useState('')
+  const aliasSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -179,6 +201,10 @@ export function PosSettingsDialog({
     setAdvancedOpen(false)
     setQuickAddQ('')
     setQuickHits([])
+    setAliasQ('')
+    setAliasHits([])
+    setAliasProduct(null)
+    setAliasText('')
     setLoading(true)
     let cancelled = false
     void loadPosSettingsAction().then((r) => {
@@ -1200,6 +1226,156 @@ export function PosSettingsDialog({
                   </section>
                 ) : null}
 
+                {section === 'aliases' ? (
+                  <section className="space-y-3" aria-labelledby="pos-sec-alias">
+                    <div>
+                      <h3 id="pos-sec-alias" className="text-h3 text-ink">
+                        Keresőszavak
+                      </h3>
+                      <p className="text-hint text-ink-secondary">
+                        Szinonimák, ahogy a pultos hívja a terméket (pl. gomb,
+                        pánt). A POS kereső ezekre is talál.
+                      </p>
+                    </div>
+                    <FormField id="pos-alias-search" label="Termék keresése">
+                      <Input
+                        id="pos-alias-search"
+                        value={aliasQ}
+                        autoComplete="off"
+                        disabled={!canWrite || pending}
+                        placeholder="Név / SKU…"
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setAliasQ(v)
+                          if (aliasSearchTimer.current)
+                            clearTimeout(aliasSearchTimer.current)
+                          if (v.trim().length < 2) {
+                            setAliasHits([])
+                            return
+                          }
+                          setAliasSearching(true)
+                          aliasSearchTimer.current = setTimeout(() => {
+                            const wh =
+                              registers.find((r) => r.id === registerId)
+                                ?.warehouse_id ??
+                              registers[0]?.warehouse_id ??
+                              ''
+                            if (!wh) {
+                              setAliasSearching(false)
+                              setAliasHits([])
+                              return
+                            }
+                            void searchSaleProductsAction(v.trim(), wh, {
+                              kind: 'product',
+                              includeMaterials: false,
+                              limit: 8
+                            }).then((res) => {
+                              setAliasSearching(false)
+                              setAliasHits(
+                                res.ok
+                                  ? res.rows.map((r) => ({
+                                      id: r.id,
+                                      name: r.name,
+                                      sku: r.sku
+                                    }))
+                                  : []
+                              )
+                            })
+                          }, 120)
+                        }}
+                      />
+                    </FormField>
+                    {aliasSearching ? (
+                      <p className="text-hint text-ink-secondary">Keresés…</p>
+                    ) : null}
+                    {aliasHits.length > 0 && !aliasProduct ? (
+                      <ul className="divide-y divide-border rounded-md border border-border">
+                        {aliasHits.map((h) => (
+                          <li key={h.id}>
+                            <button
+                              type="button"
+                              className="flex w-full flex-col gap-0.5 px-3 py-2 text-left hover:bg-subtle"
+                              onClick={() => {
+                                setAliasProduct(h)
+                                setAliasHits([])
+                                setAliasQ(h.name)
+                                void loadPosAliasesAction(h.id).then((r) => {
+                                  if (r.ok) setAliasText(r.aliases.join('\n'))
+                                  else setError(r.message)
+                                })
+                              }}
+                            >
+                              <span className="text-body text-ink">{h.name}</span>
+                              <span className="text-hint text-ink-secondary">
+                                {h.sku}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {aliasProduct ? (
+                      <div className="space-y-2">
+                        <p className="text-body text-ink">
+                          {aliasProduct.name}{' '}
+                          <span className="text-hint text-ink-secondary">
+                            ({aliasProduct.sku})
+                          </span>
+                        </p>
+                        <FormField
+                          id="pos-alias-text"
+                          label="Keresőszavak (soronként)"
+                        >
+                          <textarea
+                            id="pos-alias-text"
+                            className="min-h-28 w-full rounded-md border border-border bg-surface px-2.5 py-2 text-body text-ink"
+                            value={aliasText}
+                            disabled={!canWrite || pending}
+                            placeholder={'gomb\npánt\nzsanér'}
+                            onChange={(e) => setAliasText(e.target.value)}
+                          />
+                        </FormField>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            disabled={!canWrite || pending}
+                            loading={pending}
+                            onClick={() => {
+                              setMessage(null)
+                              setError(null)
+                              startTransition(async () => {
+                                const r = await savePosAliasesAction(
+                                  aliasProduct.id,
+                                  aliasText
+                                )
+                                if (!r.ok) {
+                                  setError(r.message)
+                                  return
+                                }
+                                setMessage('Keresőszavak mentve.')
+                              })
+                            }}
+                          >
+                            Keresőszavak mentése
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={pending}
+                            onClick={() => {
+                              setAliasProduct(null)
+                              setAliasText('')
+                              setAliasQ('')
+                            }}
+                          >
+                            Másik termék
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
+
                 {error ? (
                   <p className="text-hint text-danger-ink" role="alert">
                     {error}
@@ -1254,11 +1430,13 @@ export function PosSettingsDialog({
             disabled={!canWrite || pending || loading || Boolean(loadError)}
             loading={pending}
             onClick={save}
-            className={section === 'quick' ? 'hidden' : undefined}
+            className={
+              section === 'quick' || section === 'aliases' ? 'hidden' : undefined
+            }
           >
             Mentés
           </Button>
-          {section === 'quick' ? (
+          {section === 'quick' || section === 'aliases' ? (
             <Button
               type="button"
               disabled={pending}
