@@ -27,7 +27,9 @@ function normalizeSettings(row: Record<string, unknown>): TenantPosSettings {
       Math.max(0, Number(row.max_discount_percent ?? 100))
     ),
     show_invoice_button: row.show_invoice_button !== false,
-    require_customer: Boolean(row.require_customer)
+    require_customer: Boolean(row.require_customer),
+    search_barcode_only: Boolean(row.search_barcode_only),
+    allow_pos_quick_create: row.allow_pos_quick_create !== false
   }
 }
 
@@ -42,6 +44,40 @@ export async function getPosSettings(
     .maybeSingle()
 
   if (error) {
+    // Migráció előtt: search_barcode_only oszlop hiányzik
+    if (
+      /search_barcode_only|allow_pos_quick_create/i.test(error.message)
+    ) {
+      const legacy = await supabase
+        .from('tenant_pos_settings')
+        .select(
+          'tenant_id, card_provider, teya_env, teya_store_id, teya_terminal_id, teya_client_id, teya_client_secret, teya_epos_instance_id, allow_cash, allow_card, allow_split, default_pay_mode, stock_policy, max_discount_percent, show_invoice_button, require_customer, search_barcode_only'
+        )
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+      if (legacy.error) {
+        // Még a search_barcode_only előtt
+        if (/search_barcode_only/i.test(legacy.error.message)) {
+          const older = await supabase
+            .from('tenant_pos_settings')
+            .select(
+              'tenant_id, card_provider, teya_env, teya_store_id, teya_terminal_id, teya_client_id, teya_client_secret, teya_epos_instance_id, allow_cash, allow_card, allow_split, default_pay_mode, stock_policy, max_discount_percent, show_invoice_button, require_customer'
+            )
+            .eq('tenant_id', tenantId)
+            .maybeSingle()
+          if (older.error) {
+            console.error('getPosSettings', older.error.message)
+            throw new Error('Nem sikerült betölteni a POS beállításokat.')
+          }
+          if (!older.data) return null
+          return normalizeSettings(older.data as Record<string, unknown>)
+        }
+        console.error('getPosSettings', legacy.error.message)
+        throw new Error('Nem sikerült betölteni a POS beállításokat.')
+      }
+      if (!legacy.data) return null
+      return normalizeSettings(legacy.data as Record<string, unknown>)
+    }
     console.error('getPosSettings', error.message)
     throw new Error('Nem sikerült betölteni a POS beállításokat.')
   }
@@ -69,12 +105,44 @@ export async function getOrCreatePosSettings(
       stock_policy: 'warn',
       max_discount_percent: 100,
       show_invoice_button: true,
-      require_customer: false
+      require_customer: false,
+      search_barcode_only: false,
+      allow_pos_quick_create: true
     })
     .select(POS_SETTINGS_SELECT)
     .single()
 
   if (error || !data) {
+    // Migráció előtt: új oszlopok nélkül
+    if (
+      error &&
+      /search_barcode_only|allow_pos_quick_create/i.test(error.message)
+    ) {
+      const { data: legacy, error: legacyErr } = await supabase
+        .from('tenant_pos_settings')
+        .insert({
+          tenant_id: tenantId,
+          card_provider: 'manual',
+          teya_env: 'production',
+          teya_epos_instance_id: 'modul-pos',
+          allow_cash: true,
+          allow_card: true,
+          allow_split: true,
+          stock_policy: 'warn',
+          max_discount_percent: 100,
+          show_invoice_button: true,
+          require_customer: false
+        })
+        .select(
+          'tenant_id, card_provider, teya_env, teya_store_id, teya_terminal_id, teya_client_id, teya_client_secret, teya_epos_instance_id, allow_cash, allow_card, allow_split, default_pay_mode, stock_policy, max_discount_percent, show_invoice_button, require_customer'
+        )
+        .single()
+      if (legacyErr || !legacy) {
+        console.error('getOrCreatePosSettings', legacyErr?.message)
+        throw new Error('Nem sikerült létrehozni a POS beállításokat.')
+      }
+      return normalizeSettings(legacy as Record<string, unknown>)
+    }
     console.error('getOrCreatePosSettings', error?.message)
     throw new Error('Nem sikerült létrehozni a POS beállításokat.')
   }

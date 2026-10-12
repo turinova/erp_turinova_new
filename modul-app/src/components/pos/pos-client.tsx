@@ -44,6 +44,10 @@ import {
 import { PosReturnSearchDialog } from '@/components/pos/pos-return-search-dialog'
 import { PosSettingsDialog } from '@/components/pos/pos-settings-dialog'
 import { PosMaterialQtyDialog } from '@/components/pos/pos-material-qty-dialog'
+import {
+  PosMissProductDialog,
+  type PosMissProductContext
+} from '@/components/pos/pos-miss-product-dialog'
 import { PosQuickTile } from '@/components/pos/pos-quick-tile'
 import { PosShiftCashMoveDialog } from '@/components/pos/pos-shift-cash-move-dialog'
 import { PosShiftCloseDialog } from '@/components/pos/pos-shift-close-dialog'
@@ -269,6 +273,8 @@ export function PosClient({
   >('all')
   const [qtyDialogHit, setQtyDialogHit] =
     useState<SaleProductSearchItem | null>(null)
+  const [missContext, setMissContext] =
+    useState<PosMissProductContext | null>(null)
   const [quickHits, setQuickHits] = useState<SaleProductSearchItem[]>([])
   const [quickLoading, setQuickLoading] = useState(false)
   const [quickReloadKey, setQuickReloadKey] = useState(0)
@@ -943,6 +949,19 @@ export function PosClient({
     try {
       const res = await fetchPosBarcodeLookup(code, warehouseId)
       if (!res.ok) {
+        if (
+          res.notFound &&
+          canWrite &&
+          posConfig.allowPosQuickCreate !== false
+        ) {
+          setFlash(null)
+          setMissContext({
+            query: raw.trim() || code,
+            barcode: code,
+            reason: 'barcode'
+          })
+          return false
+        }
         setFlash({ kind: 'error', message: res.message })
         return false
       }
@@ -951,6 +970,30 @@ export function PosClient({
     } finally {
       scanLock.current = false
     }
+  }
+
+  function openMissFromSearch() {
+    if (!canWrite || posConfig.allowPosQuickCreate === false) return
+    const q = searchQ.trim()
+    if (!q) return
+    const code = looksLikeBarcode(q)
+      ? prepareBarcodeQuery(q).normalized || prepareBarcodeQuery(q).raw
+      : null
+    setMissContext({
+      query: q,
+      barcode: code,
+      reason: code ? 'barcode' : 'search'
+    })
+  }
+
+  function openNewProduct() {
+    if (!canWrite || posConfig.allowPosQuickCreate === false) return
+    setMissContext({
+      query: '',
+      barcode: null,
+      reason: 'search',
+      startAt: 'create'
+    })
   }
 
   function openPay(mode: PosPayMode) {
@@ -1442,6 +1485,19 @@ export function PosClient({
           <UserPlus className="size-3.5" aria-hidden />
           Új ügyfél
         </Button>
+
+        {canWrite && posConfig.allowPosQuickCreate !== false ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size={touch ? 'md' : 'sm'}
+            className={touch ? 'h-11' : undefined}
+            onClick={openNewProduct}
+          >
+            <Package className="size-3.5" aria-hidden />
+            Új termék
+          </Button>
+        ) : null}
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {hasPdaPos ? (
@@ -1965,6 +2021,15 @@ export function PosClient({
                   <li>Alias (keresőszó) a Beállítások → Keresőszavak alatt</li>
                 </ul>
                 <div className="flex flex-wrap gap-2">
+                  {canWrite && posConfig.allowPosQuickCreate !== false ? (
+                    <Button
+                      type="button"
+                      className={touch ? 'h-11' : undefined}
+                      onClick={openMissFromSearch}
+                    >
+                      Gyors felvétel
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="secondary"
@@ -3206,6 +3271,25 @@ export function PosClient({
         onClear={() => {
           setWantInvoice(false)
           setBilling(EMPTY_DOCUMENT_BILLING)
+        }}
+      />
+
+      <PosMissProductDialog
+        open={missContext != null}
+        context={missContext}
+        warehouseId={warehouseId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMissContext(null)
+            setTimeout(focusBarcode, 100)
+          }
+        }}
+        onAdded={(product, source) => {
+          addOrBump(product, undefined, source)
+          setSearchQ('')
+          setSearchHits([])
+          setEditingField(false)
+          if (!wide) setPane('cart')
         }}
       />
 

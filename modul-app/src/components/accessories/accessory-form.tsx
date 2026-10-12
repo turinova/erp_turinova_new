@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { Printer } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -21,6 +21,7 @@ import {
   createAccessory,
   updateAccessory
 } from '@/lib/accessories/actions'
+import { generatePosInternalBarcodeAction } from '@/lib/pos/miss-product-actions'
 import {
   formatHuNumber,
   formatMoneyFt,
@@ -83,6 +84,7 @@ export function AccessoryForm({
 }: AccessoryFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [generatingBarcode, setGeneratingBarcode] = useState(false)
   const [labelOpen, setLabelOpen] = useState(false)
 
   const defaultTaxId =
@@ -137,9 +139,18 @@ export function AccessoryForm({
   )
   const [active, setActive] = useState(initial?.active ?? true)
   const [sellablePos, setSellablePos] = useState(
-    initial?.sellable_pos ?? true
+    initial?.sellable_pos ?? false
   )
+  const [sellablePosTouched, setSellablePosTouched] = useState(Boolean(initial))
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  // Új termék: vonalkód → automatikus POS pipa (amíg a user nem nyúl hozzá)
+  useEffect(() => {
+    if (initial || sellablePosTouched) return
+    const hasCode =
+      barcode.trim().length > 0 || barcodeInternal.trim().length > 0
+    setSellablePos(hasCode)
+  }, [barcode, barcodeInternal, initial, sellablePosTouched])
 
   const vatPercent =
     taxRates.find((t) => t.id === taxRateId)?.rate_percent ?? 0
@@ -381,15 +392,41 @@ export function AccessoryForm({
             htmlFor="accessory-barcode-internal"
             optionalLabel
             error={fieldErrors.barcodeInternal}
+            hint="Ha nincs gyári kód: Generálás → belső EAN-13 (200…), címkézhető / POS."
           >
-            <Input
-              id="accessory-barcode-internal"
-              value={barcodeInternal}
-              onChange={(e) => setBarcodeInternal(e.target.value)}
-              maxLength={64}
-              disabled={pending || !canWrite}
-              autoComplete="off"
-            />
+            <div className="flex gap-2">
+              <Input
+                id="accessory-barcode-internal"
+                value={barcodeInternal}
+                onChange={(e) => setBarcodeInternal(e.target.value)}
+                maxLength={64}
+                disabled={pending || !canWrite || generatingBarcode}
+                autoComplete="off"
+                className="min-w-0 flex-1 font-mono"
+              />
+              {canWrite ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="shrink-0"
+                  disabled={pending || generatingBarcode}
+                  onClick={() => {
+                    setGeneratingBarcode(true)
+                    void generatePosInternalBarcodeAction().then((r) => {
+                      setGeneratingBarcode(false)
+                      if (!r.ok) {
+                        toast.error(r.message)
+                        return
+                      }
+                      setBarcodeInternal(r.barcode)
+                      toast.success('Belső vonalkód generálva.')
+                    })
+                  }}
+                >
+                  {generatingBarcode ? '…' : 'Generálás'}
+                </Button>
+              ) : null}
+            </div>
           </FormField>
         </FormSection>
 
@@ -666,9 +703,12 @@ export function AccessoryForm({
               id="accessory-sellable-pos"
               checked={sellablePos}
               disabled={pending || !canWrite}
-              onCheckedChange={setSellablePos}
+              onCheckedChange={(v) => {
+                setSellablePosTouched(true)
+                setSellablePos(v)
+              }}
               label="Elérhető a POS-on"
-              description="Ha ki van kapcsolva, a pulti kereső nem listázza (katalógus / csak web)."
+              description="Pultkatalógus. Új terméknél vonalkód esetén automatikusan be; különben kézzel."
             />
           </div>
         </FormSection>

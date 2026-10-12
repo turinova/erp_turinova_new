@@ -17,7 +17,9 @@ Napi bolt-cél (default): **60 POS eladás**.
 - Metrika: `sales_orders` ahol `pos_shift_id` nem null
 - Scan mix: `pos_scan_events` (barcode / typeahead / quick…)
 - Kereső miss: top zero-hit (`pos_search_miss_stats`, 14 nap) → alias / név javítás
-- Migráció: `20260593_pos_adoption.sql` + kereső `20260596_search_pos_products_compact.sql`
+- Pultkatalógus: `sellable_pos` + opcionális „csak vonalkódos” kereső; szinkron gomb
+- Miss: **Gyors felvétel** / hozzárendelés (`allow_pos_quick_create`, default be) — `20260598`
+- Migráció: `20260593` + `20260596` + `20260597` + `20260598`
 
 ## Fázis 2 — micro-liga
 

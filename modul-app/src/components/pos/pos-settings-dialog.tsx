@@ -141,6 +141,8 @@ export function PosSettingsDialog({
   const [maxDiscount, setMaxDiscount] = useState(100)
   const [showInvoice, setShowInvoice] = useState(true)
   const [requireCustomer, setRequireCustomer] = useState(false)
+  const [searchBarcodeOnly, setSearchBarcodeOnly] = useState(false)
+  const [allowPosQuickCreate, setAllowPosQuickCreate] = useState(true)
 
   const [regTerminalId, setRegTerminalId] = useState('')
   const [regEposId, setRegEposId] = useState('')
@@ -190,6 +192,8 @@ export function PosSettingsDialog({
     setMaxDiscount(s.max_discount_percent ?? 100)
     setShowInvoice(s.show_invoice_button !== false)
     setRequireCustomer(Boolean(s.require_customer))
+    setSearchBarcodeOnly(Boolean(s.search_barcode_only))
+    setAllowPosQuickCreate(s.allow_pos_quick_create !== false)
   }
 
   useEffect(() => {
@@ -480,6 +484,8 @@ export function PosSettingsDialog({
         maxDiscountPercent: maxDiscount,
         showInvoiceButton: showInvoice,
         requireCustomer,
+        searchBarcodeOnly,
+        allowPosQuickCreate,
         registerId,
         registerTeyaTerminalId: regTerminalId,
         registerTeyaEposInstanceId: regEposId
@@ -776,6 +782,76 @@ export function PosSettingsDialog({
                           </span>
                         </span>
                       </label>
+                      <label className="flex items-start gap-2.5 text-body text-ink">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-4 rounded border-border"
+                          checked={searchBarcodeOnly}
+                          disabled={!canWrite || pending}
+                          onChange={(e) =>
+                            setSearchBarcodeOnly(e.target.checked)
+                          }
+                        />
+                        <span>
+                          <span className="font-medium">
+                            Keresőben csak vonalkódos
+                          </span>
+                          <span className="mt-0.5 block text-hint text-ink-secondary">
+                            Typeahead: csak külső vagy belső vonalkóddal
+                            rendelkező, POS-eladható termékek. Default ki.
+                          </span>
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2.5 text-body text-ink">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-4 rounded border-border"
+                          checked={allowPosQuickCreate}
+                          disabled={!canWrite || pending}
+                          onChange={(e) =>
+                            setAllowPosQuickCreate(e.target.checked)
+                          }
+                        />
+                        <span>
+                          <span className="font-medium">
+                            Gyors felvétel a pulton
+                          </span>
+                          <span className="mt-0.5 block text-hint text-ink-secondary">
+                            Ismeretlen vonalkód / nincs találat → új termék vagy
+                            hozzárendelés meglévőhöz. Default be.
+                          </span>
+                        </span>
+                      </label>
+                      {canWrite ? (
+                        <div className="border-t border-border pt-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={pending}
+                            onClick={() => {
+                              setMessage(null)
+                              setError(null)
+                              startTransition(async () => {
+                                const { syncSellablePosFromBarcodesAction } =
+                                  await import('@/lib/pos/settings-actions')
+                                const r =
+                                  await syncSellablePosFromBarcodesAction()
+                                if (!r.ok) {
+                                  setError(r.message)
+                                  return
+                                }
+                                setMessage(r.message ?? 'Kész.')
+                              })
+                            }}
+                          >
+                            POS katalógus szinkron vonalkódból
+                          </Button>
+                          <p className="mt-1.5 text-hint text-ink-muted">
+                            Van barcode/internal → Elérhető a POS-on; nincs →
+                            kikapcsol. Kézi kivételeket utána állítsd vissza.
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
                   </section>
                 ) : null}

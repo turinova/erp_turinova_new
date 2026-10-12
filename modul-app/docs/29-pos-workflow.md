@@ -44,12 +44,17 @@ Jobb: kosár + sticky footer
 - RPC: `search_pos_products` (`20260596` compact): **spaced token-ALL** *vagy* **compact contains** (egybeírt `korpuszösszehúzó` ↔ `Korpusz összehúzó`).
 - Gather: 1. token ILIKE + hosszú egybeírt **prefix** (6–7 char) + trgm; Pass2 soft; Pass3 fuzzy (compact, thr ~0.28).
 - Mezők: név / SKU / barcode / belső barcode / MPN / brand / gyártó / `web_search_aliases`; limit ~15.
-- `accessories.sellable_pos = true` (default true; form: „Elérhető a POS-on”) — inaktív / nem POS → nincs találat.
+- **Pultkatalógus:** `sellable_pos` (default **false**; barcode/internal → backfill/szinkron true). Form: „Elérhető a POS-on”.
+- Opcionális POS setting: **Keresőben csak vonalkódos** (`search_barcode_only`, default ki) — typeahead tovább szűkít.
+- Szinkron gomb (POS beállítások): `sync_sellable_pos_from_barcodes` — migráció `20260597`.
 - Soft stock: 0 készlet is listázható; **Elöl a készletes** chip rendez; OOS sor muted + „Nincs készleten”.
 - **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés; üres LRU nem cache-el zero-hitet.
-- Zero-hit UI: tippek (szóköz, SKU, POS-eladható, alias) + Keresőszavak.
+- Zero-hit UI: tippek (szóköz, SKU, POS-eladható, alias) + **Gyors felvétel** + Keresőszavak.
 - Miss telemetria: `pos_search_events` → manager **POS használat** top miss lista (`pos_search_miss_stats`).
-- **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha nincs kiválasztható találat); miss → flash, query marad.
+- **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha nincs kiválasztható találat); miss → **PosMissProductDialog** (ha `allow_pos_quick_create`, default be): Gyors felvétel / Hozzárendelem / Mégse; különben flash.
+- **Gyors felvétel / Új termék:** topbar **Új ügyfél** mellett **Új termék**. Mezők: név, vonalkód (+ **Generálás**, nem ír SKU-t), ÁFA, (egység csak ha több van), opcionális beszerzés+szorzó, bruttó. SKU a szerveren auto. → `sellable_pos=true`, kosár (`20260598`).
+- **Hozzárendelés:** keres a teljes aktív katalógusban (nem csak POS) → üres `barcode` vagy `barcode_internal` + `sellable_pos=true`.
+- Törzsadat: **Belső vonalkód → Generálás** (ugyanaz az EAN-13 allokátor).
 - **Qty-first:** előválasztott mennyiség a következő scan/tile/találat tapre (reset 1-re add után).
 - **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Munkalap; anyag ILIKE + prefix variánsok; tábla → qty dialógus **m²** (1 tizedes), munkalap → **m**; kosár lépés 0,1; stock out fulfillkor (`20260577`).
 - Golden: `node --env-file=.env.local scripts/golden-test-pos-search.mjs`
@@ -124,6 +129,6 @@ Policy (P0): allow_cash/card/split · stock_policy warn|block · max_discount_pe
 
 ## 5. Edge (rövid)
 
-Ismeretlen barcode → inline hiba; soft stock warn; empty cart CTA disabled; RPC fail → kosár megmarad; success → clear + refocus; Teya/manual cancel → nincs sale.
+Ismeretlen barcode → miss dialógus (vagy flash ha gyors felvétel ki); soft stock warn; empty cart CTA disabled; RPC fail → kosár megmarad; success → clear + refocus; Teya/manual cancel → nincs sale.
 
-Migráció: `20260524_alap_includes_pos_labels.sql` (Alap); `20260529_pos_terminal_settings.sql` (Teya settings); `20260530_pos_settings_policies.sql`; `20260531_accessory_sellable_pos.sql` (`sellable_pos`); `20260532_pos_quick_items.sql` (gyorsrács); `20260533_pos_quick_label.sql` (`pos_label`). Korábbi: `20260517`, `20260511_pos_page.sql`.
+Migráció: `20260524_alap_includes_pos_labels.sql` (Alap); `20260529_pos_terminal_settings.sql` (Teya settings); `20260530_pos_settings_policies.sql`; `20260531_accessory_sellable_pos.sql` (`sellable_pos`); `20260532_pos_quick_items.sql` (gyorsrács); `20260533_pos_quick_label.sql` (`pos_label`); `20260597` (barcode gate); `20260598` (`allow_pos_quick_create`). Korábbi: `20260517`, `20260511_pos_page.sql`.

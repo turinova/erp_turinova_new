@@ -21,6 +21,10 @@ export type TenantPosSettings = {
   max_discount_percent: number
   show_invoice_button: boolean
   require_customer: boolean
+  /** POS typeahead: csak barcode ∪ barcode_internal kitöltött. */
+  search_barcode_only: boolean
+  /** Ismeretlen barcode / zero-hit → gyors felvétel + hozzárendelés. */
+  allow_pos_quick_create: boolean
 }
 
 /** Kliensnek biztonságos nézet (nincs secret). */
@@ -41,10 +45,12 @@ export type PosTerminalPublicConfig = {
   maxDiscountPercent: number
   showInvoiceButton: boolean
   requireCustomer: boolean
+  searchBarcodeOnly: boolean
+  allowPosQuickCreate: boolean
 }
 
 export const POS_SETTINGS_SELECT =
-  'tenant_id, card_provider, teya_env, teya_store_id, teya_terminal_id, teya_client_id, teya_client_secret, teya_epos_instance_id, allow_cash, allow_card, allow_split, default_pay_mode, stock_policy, max_discount_percent, show_invoice_button, require_customer' as const
+  'tenant_id, card_provider, teya_env, teya_store_id, teya_terminal_id, teya_client_id, teya_client_secret, teya_epos_instance_id, allow_cash, allow_card, allow_split, default_pay_mode, stock_policy, max_discount_percent, show_invoice_button, require_customer, search_barcode_only, allow_pos_quick_create' as const
 
 export function isTeyaReady(s: TenantPosSettings | null): boolean {
   if (!s || s.card_provider !== 'teya') return false
@@ -76,7 +82,9 @@ export function toPublicPosConfig(
       stockPolicy: 'warn',
       maxDiscountPercent: 100,
       showInvoiceButton: true,
-      requireCustomer: false
+      requireCustomer: false,
+      searchBarcodeOnly: false,
+      allowPosQuickCreate: true
     }
   }
   return {
@@ -98,6 +106,8 @@ export function toPublicPosConfig(
       Math.max(0, Number(s.max_discount_percent) || 100)
     ),
     showInvoiceButton: s.show_invoice_button !== false,
-    requireCustomer: Boolean(s.require_customer)
+    requireCustomer: Boolean(s.require_customer),
+    searchBarcodeOnly: Boolean(s.search_barcode_only),
+    allowPosQuickCreate: s.allow_pos_quick_create !== false
   }
 }

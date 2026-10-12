@@ -117,6 +117,8 @@ export async function savePosSettingsAction(input: {
   maxDiscountPercent: number
   showInvoiceButton: boolean
   requireCustomer: boolean
+  searchBarcodeOnly: boolean
+  allowPosQuickCreate: boolean
   /** Ha megadva: pénztár Teya override mentése. */
   registerId?: string | null
   registerTeyaTerminalId?: string
@@ -183,28 +185,58 @@ export async function savePosSettingsAction(input: {
     }
   }
 
-  const { error } = await ctx.supabase
+  const payload = {
+    card_provider: input.cardProvider,
+    teya_env: input.teyaEnv,
+    teya_store_id: input.teyaStoreId.trim() || null,
+    teya_terminal_id: input.teyaTerminalId.trim() || null,
+    teya_client_id: input.teyaClientId.trim() || null,
+    teya_client_secret: secret,
+    teya_epos_instance_id: input.teyaEposInstanceId.trim() || 'modul-pos',
+    allow_cash: input.allowCash,
+    allow_card: input.allowCard,
+    allow_split: input.allowSplit,
+    default_pay_mode: input.defaultPayMode,
+    stock_policy: input.stockPolicy,
+    max_discount_percent: maxDisc,
+    show_invoice_button: input.showInvoiceButton,
+    require_customer: input.requireCustomer,
+    search_barcode_only: input.searchBarcodeOnly,
+    allow_pos_quick_create: input.allowPosQuickCreate,
+    updated_at: new Date().toISOString()
+  }
+
+  let { error } = await ctx.supabase
     .from('tenant_pos_settings')
-    .update({
-      card_provider: input.cardProvider,
-      teya_env: input.teyaEnv,
-      teya_store_id: input.teyaStoreId.trim() || null,
-      teya_terminal_id: input.teyaTerminalId.trim() || null,
-      teya_client_id: input.teyaClientId.trim() || null,
-      teya_client_secret: secret,
-      teya_epos_instance_id:
-        input.teyaEposInstanceId.trim() || 'modul-pos',
-      allow_cash: input.allowCash,
-      allow_card: input.allowCard,
-      allow_split: input.allowSplit,
-      default_pay_mode: input.defaultPayMode,
-      stock_policy: input.stockPolicy,
-      max_discount_percent: maxDisc,
-      show_invoice_button: input.showInvoiceButton,
-      require_customer: input.requireCustomer,
-      updated_at: new Date().toISOString()
-    })
+    .update(payload)
     .eq('tenant_id', ctx.user.tenantId!)
+
+  if (error && /allow_pos_quick_create/i.test(error.message)) {
+    const { allow_pos_quick_create: _omitQuick, ...withoutQuick } = payload
+    ;({ error } = await ctx.supabase
+      .from('tenant_pos_settings')
+      .update(withoutQuick)
+      .eq('tenant_id', ctx.user.tenantId!))
+  }
+
+  if (error && /search_barcode_only/i.test(error.message)) {
+    const {
+      search_barcode_only: _omit,
+      allow_pos_quick_create: _omit2,
+      ...legacyPayload
+    } = payload
+    ;({ error } = await ctx.supabase
+      .from('tenant_pos_settings')
+      .update(legacyPayload)
+      .eq('tenant_id', ctx.user.tenantId!))
+    if (!error) {
+      return {
+        ok: false,
+        message:
+          'Beállítások részben mentve — futtasd a 20260597 migrációt a vonalkódos keresőhöz.'
+      }
+    }
+  }
 
   if (error) {
     console.error('savePosSettingsAction', error.message)
@@ -234,6 +266,47 @@ export async function savePosSettingsAction(input: {
 
   revalidatePath('/pos')
   return { ok: true, message: 'Beállítások mentve.' }
+}
+
+/** sellable_pos ← barcode ∪ barcode_internal (tenant). */
+export async function syncSellablePosFromBarcodesAction(): Promise<
+  PosSettingsActionResult & { enabled?: number; disabled?: number }
+> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data, error } = await ctx.supabase.rpc(
+    'sync_sellable_pos_from_barcodes',
+    { p_tenant_id: ctx.user.tenantId! }
+  )
+  if (error) {
+    if (
+      /sync_sellable_pos_from_barcodes|schema cache|does not exist/i.test(
+        error.message
+      )
+    ) {
+      return {
+        ok: false,
+        message:
+          'Futtasd a 20260597_pos_catalog_barcode_gate.sql migrációt.'
+      }
+    }
+    console.error('syncSellablePosFromBarcodesAction', error.message)
+    return { ok: false, message: 'Nem sikerült a POS katalógus szinkron.' }
+  }
+  const row = (data ?? {}) as {
+    ok?: boolean
+    enabled?: number
+    disabled?: number
+  }
+  revalidatePath('/pos')
+  revalidatePath('/torzsadatok/alapanyagok/termekek')
+  return {
+    ok: true,
+    message: `POS-on: +${row.enabled ?? 0}, kikapcsolva: ${row.disabled ?? 0}.`,
+    enabled: Number(row.enabled) || 0,
+    disabled: Number(row.disabled) || 0
+  }
 }
 
 export async function testPosTeyaConnectionAction(): Promise<PosSettingsActionResult> {
