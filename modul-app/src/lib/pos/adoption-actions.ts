@@ -76,9 +76,15 @@ export async function loadPosAdoptionStatsAction(
   }
 }
 
-/** Mai bolt-szintű progress a pultos soft sávhoz. */
+/** Bolt-szintű napi / heti / havi progress a pultos soft sávhoz. */
 export async function loadPosTodayProgressAction(): Promise<
-  | { ok: true; salesCount: number; dailyTarget: number }
+  | {
+      ok: true
+      salesCount: number
+      weekSalesCount: number
+      monthSalesCount: number
+      dailyTarget: number
+    }
   | { ok: false; message: string }
 > {
   const user = await getSessionUser()
@@ -88,11 +94,17 @@ export async function loadPosTodayProgressAction(): Promise<
   const supabase = await createClient()
   if (!supabase) return { ok: false, message: 'Nincs adatbázis kapcsolat.' }
   try {
-    const stats = await loadPosAdoptionStats(supabase, user.tenantId, 'today')
+    const [today, week, month] = await Promise.all([
+      loadPosAdoptionStats(supabase, user.tenantId, 'today'),
+      loadPosAdoptionStats(supabase, user.tenantId, 'week'),
+      loadPosAdoptionStats(supabase, user.tenantId, 'month')
+    ])
     return {
       ok: true,
-      salesCount: stats.sales_count,
-      dailyTarget: stats.daily_sales_target
+      salesCount: today.sales_count,
+      weekSalesCount: week.sales_count,
+      monthSalesCount: month.sales_count,
+      dailyTarget: today.daily_sales_target
     }
   } catch (err) {
     return {

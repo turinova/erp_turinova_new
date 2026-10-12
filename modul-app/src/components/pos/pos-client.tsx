@@ -290,6 +290,8 @@ export function PosClient({
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [flash, setFlash] = useState<PosFlash | null>(null)
   const [todayPosSales, setTodayPosSales] = useState<number | null>(null)
+  const [weekPosSales, setWeekPosSales] = useState<number | null>(null)
+  const [monthPosSales, setMonthPosSales] = useState<number | null>(null)
   const [dailyPosGoal, setDailyPosGoal] = useState(60)
   const goalCelebratedKey = useRef<string | null>(null)
   const [handoffInboxOpen, setHandoffInboxOpen] = useState(false)
@@ -723,28 +725,45 @@ export function PosClient({
     }
   }, [searchQ, warehouseId, stockFirst, searchKind, hasLapszabaszat])
 
-  const applyTodayProgress = useCallback((salesCount: number, dailyTarget: number) => {
-    setDailyPosGoal(dailyTarget)
-    setTodayPosSales((prev) => {
-      const next = salesCount
-      const dayKey = new Date().toISOString().slice(0, 10)
-      const celebKey = `${dayKey}:${dailyTarget}`
-      if (
-        next >= dailyTarget &&
-        (prev == null || prev < dailyTarget) &&
-        goalCelebratedKey.current !== celebKey
-      ) {
-        goalCelebratedKey.current = celebKey
-        toast.success(`Napi cél megvan! ${next}/${dailyTarget} POS eladás`)
-      }
-      return next
-    })
-  }, [])
+  const applyTodayProgress = useCallback(
+    (input: {
+      salesCount: number
+      weekSalesCount: number
+      monthSalesCount: number
+      dailyTarget: number
+    }) => {
+      setDailyPosGoal(input.dailyTarget)
+      setWeekPosSales(input.weekSalesCount)
+      setMonthPosSales(input.monthSalesCount)
+      setTodayPosSales((prev) => {
+        const next = input.salesCount
+        const dayKey = new Date().toISOString().slice(0, 10)
+        const celebKey = `${dayKey}:${input.dailyTarget}`
+        if (
+          next >= input.dailyTarget &&
+          (prev == null || prev < input.dailyTarget) &&
+          goalCelebratedKey.current !== celebKey
+        ) {
+          goalCelebratedKey.current = celebKey
+          toast.success(
+            `Napi cél megvan! ${next}/${input.dailyTarget} POS eladás`
+          )
+        }
+        return next
+      })
+    },
+    []
+  )
 
   const refreshTodayProgress = useCallback(() => {
     void loadPosTodayProgressAction().then((res) => {
       if (!res.ok) return
-      applyTodayProgress(res.salesCount, res.dailyTarget)
+      applyTodayProgress({
+        salesCount: res.salesCount,
+        weekSalesCount: res.weekSalesCount,
+        monthSalesCount: res.monthSalesCount,
+        dailyTarget: res.dailyTarget
+      })
     })
   }, [applyTodayProgress])
 
@@ -1157,6 +1176,8 @@ export function PosClient({
         }
         return next
       })
+      setWeekPosSales((prev) => (prev == null ? prev : prev + 1))
+      setMonthPosSales((prev) => (prev == null ? prev : prev + 1))
       window.setTimeout(() => refreshTodayProgress(), 800)
       router.refresh()
     })
@@ -1570,48 +1591,71 @@ export function PosClient({
           role="status"
           aria-live="polite"
         >
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-hint text-ink-secondary">
-              Mai POS cél
-              {todayPosSales >= dailyPosGoal ? (
-                <span className="ml-1.5 font-medium text-success-ink">
-                  — megvan!
-                </span>
-              ) : null}
-            </p>
-            <p
-              className={cn(
-                'text-hint font-medium tabular-nums',
-                todayPosSales >= dailyPosGoal
-                  ? 'text-success-ink'
-                  : 'text-ink'
-              )}
-            >
-              {todayPosSales} / {dailyPosGoal}
-            </p>
-          </div>
-          <div
-            className="mt-1.5 h-2 overflow-hidden rounded-full bg-subtle"
-            role="progressbar"
-            aria-valuenow={todayPosSales}
-            aria-valuemin={0}
-            aria-valuemax={dailyPosGoal}
-            aria-label="Napi POS eladás cél"
-          >
-            <div
-              className={cn(
-                'h-full rounded-full transition-[width] duration-300',
-                todayPosSales >= dailyPosGoal ? 'bg-success-ink' : 'bg-ink'
-              )}
-              style={{
-                width: `${Math.min(
-                  100,
-                  dailyPosGoal > 0
-                    ? Math.round((todayPosSales / dailyPosGoal) * 100)
-                    : 0
-                )}%`
-              }}
-            />
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+            <div className="min-w-[10rem] flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-hint text-ink-secondary">
+                  Mai POS cél
+                  {todayPosSales >= dailyPosGoal ? (
+                    <span className="ml-1.5 font-medium text-success-ink">
+                      — megvan!
+                    </span>
+                  ) : null}
+                </p>
+                <p
+                  className={cn(
+                    'text-hint font-medium tabular-nums',
+                    todayPosSales >= dailyPosGoal
+                      ? 'text-success-ink'
+                      : 'text-ink'
+                  )}
+                >
+                  {todayPosSales} / {dailyPosGoal}
+                </p>
+              </div>
+              <div
+                className="mt-1.5 h-2 overflow-hidden rounded-full bg-subtle"
+                role="progressbar"
+                aria-valuenow={todayPosSales}
+                aria-valuemin={0}
+                aria-valuemax={dailyPosGoal}
+                aria-label="Napi POS eladás cél"
+              >
+                <div
+                  className={cn(
+                    'h-full rounded-full transition-[width] duration-300',
+                    todayPosSales >= dailyPosGoal
+                      ? 'bg-success-ink'
+                      : 'bg-ink'
+                  )}
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      dailyPosGoal > 0
+                        ? Math.round((todayPosSales / dailyPosGoal) * 100)
+                        : 0
+                    )}%`
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex shrink-0 items-stretch gap-3">
+              <div className="min-w-[4.5rem]" title="Bolt POS eladások ezen a héten">
+                <p className="text-hint text-ink-secondary">Hét</p>
+                <p className="text-body font-medium tabular-nums text-ink">
+                  {weekPosSales ?? '—'}
+                </p>
+              </div>
+              <div
+                className="min-w-[4.5rem]"
+                title="Bolt POS eladások ebben a hónapban"
+              >
+                <p className="text-hint text-ink-secondary">Hónap</p>
+                <p className="text-body font-medium tabular-nums text-ink">
+                  {monthPosSales ?? '—'}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
