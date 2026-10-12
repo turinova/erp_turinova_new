@@ -1323,7 +1323,7 @@ export function PosSettingsDialog({
                           </span>
                         </p>
                         <FormField
-                          id="pos-alias-text"
+                          htmlFor="pos-alias-text"
                           label="Keresőszavak (soronként)"
                         >
                           <textarea
