@@ -1116,6 +1116,18 @@ async function searchAccessoriesForSale(
   })
 }
 
+/** POS anyagkereső: egybeírt query → rövid prefix is (pl. korpusz…). */
+function saleSearchLikeTerms(safe: string): string[] {
+  const terms = [safe]
+  const noSpace = safe.replace(/\s+/g, '')
+  if (!safe.includes(' ') && noSpace.length >= 6) {
+    terms.push(noSpace.slice(0, 6))
+  }
+  const parts = safe.split(/\s+/).filter((p) => p.length >= 3)
+  for (const p of parts) terms.push(p)
+  return [...new Set(terms)]
+}
+
 async function searchSheetsForSale(
   supabase: SupabaseClient,
   tenantId: string,
@@ -1123,15 +1135,19 @@ async function searchSheetsForSale(
   warehouseId: string,
   candidateLimit: number
 ): Promise<ScoredSaleHit[]> {
+  const likeTerms = saleSearchLikeTerms(safe)
   const { data: manufacturerMatches } = await supabase
     .from('manufacturers')
     .select('id')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
-    .ilike('name', `%${safe}%`)
+    .or(likeTerms.map((t) => `name.ilike.%${t}%`).join(','))
     .limit(30)
   const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
-  const orParts = [`name.ilike.%${safe}%`, `machine_code.ilike.%${safe}%`]
+  const orParts = likeTerms.flatMap((t) => [
+    `name.ilike.%${t}%`,
+    `machine_code.ilike.%${t}%`
+  ])
   if (manufacturerIds.length > 0) {
     orParts.push(`manufacturer_id.in.(${manufacturerIds.join(',')})`)
   }
@@ -1222,15 +1238,16 @@ async function searchLinearsForSale(
   warehouseId: string,
   candidateLimit: number
 ): Promise<ScoredSaleHit[]> {
+  const likeTerms = saleSearchLikeTerms(safe)
   const { data: manufacturerMatches } = await supabase
     .from('manufacturers')
     .select('id')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
-    .ilike('name', `%${safe}%`)
+    .or(likeTerms.map((t) => `name.ilike.%${t}%`).join(','))
     .limit(30)
   const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
-  const orParts = [`name.ilike.%${safe}%`]
+  const orParts = likeTerms.map((t) => `name.ilike.%${t}%`)
   if (manufacturerIds.length > 0) {
     orParts.push(`manufacturer_id.in.(${manufacturerIds.join(',')})`)
   }

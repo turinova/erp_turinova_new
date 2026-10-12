@@ -32,6 +32,7 @@ import type {
   PosAdoptionRange,
   PosAdoptionStats
 } from '@/lib/pos/adoption'
+import type { PosSearchMissRow } from '@/lib/pos/discovery'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import { cn } from '@/lib/utils'
 
@@ -42,6 +43,7 @@ type Props = {
   weekStart: string
   dailyTarget: number
   canWrite: boolean
+  searchMisses?: PosSearchMissRow[]
 }
 
 function ProgressBar({
@@ -95,7 +97,8 @@ export function PosAdoptionClient({
   awards,
   weekStart,
   dailyTarget: initialDailyTarget,
-  canWrite
+  canWrite,
+  searchMisses = []
 }: Props) {
   const [range, setRange] = useState(initialRange)
   const [stats, setStats] = useState(initialStats)
@@ -255,6 +258,41 @@ export function PosAdoptionClient({
           <p className="mt-0.5 text-hint text-ink-muted">egyéb forrás</p>
         </div>
       </div>
+
+      <section className="rounded-md border border-border bg-surface p-3">
+        <h2 className="text-label text-ink">Kereső miss-ek (14 nap)</h2>
+        <p className="mt-1 text-hint text-ink-secondary">
+          Amit begépeltek, de nem volt találat — alias / név javítás ide.
+        </p>
+        {searchMisses.length === 0 ? (
+          <p className="mt-3 text-hint text-ink-muted">
+            Még nincs zero-hit adat (vagy futtasd a 20260596 migrációt).
+          </p>
+        ) : (
+          <DataTable className="mt-3">
+            <DataTableHead>
+              <DataTableRow>
+                <DataTableHeaderCell>Keresés</DataTableHeaderCell>
+                <DataTableHeaderCell className="text-right">
+                  db
+                </DataTableHeaderCell>
+              </DataTableRow>
+            </DataTableHead>
+            <DataTableBody>
+              {searchMisses.map((row) => (
+                <DataTableRow key={row.q}>
+                  <DataTableCell className="font-medium text-ink">
+                    {row.q}
+                  </DataTableCell>
+                  <DataTableCell className="text-right tabular-nums text-ink">
+                    {row.miss_count}
+                  </DataTableCell>
+                </DataTableRow>
+              ))}
+            </DataTableBody>
+          </DataTable>
+        )}
+      </section>
 
       {canWrite ? (
         <section className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-surface p-3">

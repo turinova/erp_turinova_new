@@ -111,8 +111,11 @@ export async function searchPosProductsClient(
   }
 
   const rows = body.rows ?? []
-  cache.set(key, { at: Date.now(), rows })
-  pruneCache()
+  // Empty results: don't poison LRU (compound / typo miss after catalog fix)
+  if (rows.length > 0) {
+    cache.set(key, { at: Date.now(), rows })
+    pruneCache()
+  }
 
   return {
     ok: true,

@@ -88,6 +88,37 @@ export async function loadPosManufacturerChips(
   )
 }
 
+export type PosSearchMissRow = {
+  q: string
+  miss_count: number
+  last_at: string
+}
+
+export async function loadPosSearchMissStats(
+  supabase: SupabaseClient,
+  tenantId: string,
+  days = 14,
+  limit = 15
+): Promise<PosSearchMissRow[]> {
+  const { data, error } = await supabase.rpc('pos_search_miss_stats', {
+    p_tenant_id: tenantId,
+    p_days: days,
+    p_limit: limit
+  })
+  if (error) {
+    if (/pos_search_miss_stats|schema cache|does not exist/i.test(error.message)) {
+      return []
+    }
+    console.error('loadPosSearchMissStats', error.message)
+    return []
+  }
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    q: String(row.q ?? ''),
+    miss_count: Number(row.miss_count) || 0,
+    last_at: String(row.last_at ?? '')
+  }))
+}
+
 export async function logPosSearchEvent(
   supabase: SupabaseClient,
   input: {

@@ -1956,6 +1956,14 @@ export function PosClient({
                 <p className="text-hint text-ink-secondary">
                   Nincs találat: <span className="text-ink">{searchQ.trim()}</span>
                 </p>
+                <ul className="list-disc space-y-1 pl-4 text-hint text-ink-muted">
+                  <li>Próbálj szóközt: pl. „korpusz összehúzó”</li>
+                  <li>Kereshetsz csak a 2. szóra vagy SKU-ra</li>
+                  <li>
+                    Ha a termék nem POS-eladható / inaktív, itt nem jelenik meg
+                  </li>
+                  <li>Alias (keresőszó) a Beállítások → Keresőszavak alatt</li>
+                </ul>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"

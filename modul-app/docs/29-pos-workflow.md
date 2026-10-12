@@ -41,13 +41,18 @@ Jobb: kosár + sticky footer
 - Pay CTA: `Készpénz · 12 450 Ft` (összeg a gombon).
 
 **Kereső (typeahead, nem full-text engine):**
-- Match: exact → prefix → contains (név / SKU / barcode / belső barcode); limit ~15.
-- `accessories.sellable_pos = true` (default true; form: „Elérhető a POS-on”).
+- RPC: `search_pos_products` (`20260596` compact): **spaced token-ALL** *vagy* **compact contains** (egybeírt `korpuszösszehúzó` ↔ `Korpusz összehúzó`).
+- Gather: 1. token ILIKE + hosszú egybeírt **prefix** (6–7 char) + trgm; Pass2 soft; Pass3 fuzzy (compact, thr ~0.28).
+- Mezők: név / SKU / barcode / belső barcode / MPN / brand / gyártó / `web_search_aliases`; limit ~15.
+- `accessories.sellable_pos = true` (default true; form: „Elérhető a POS-on”) — inaktív / nem POS → nincs találat.
 - Soft stock: 0 készlet is listázható; **Elöl a készletes** chip rendez; OOS sor muted + „Nincs készleten”.
-- **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés.
+- **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés; üres LRU nem cache-el zero-hitet.
+- Zero-hit UI: tippek (szóköz, SKU, POS-eladható, alias) + Keresőszavak.
+- Miss telemetria: `pos_search_events` → manager **POS használat** top miss lista (`pos_search_miss_stats`).
 - **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha nincs kiválasztható találat); miss → flash, query marad.
 - **Qty-first:** előválasztott mennyiség a következő scan/tile/találat tapre (reset 1-re add után).
-- **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Munkalap; tábla → qty dialógus **m²** (1 tizedes), munkalap → **m**; kosár lépés 0,1; stock out fulfillkor (`20260577`).
+- **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Munkalap; anyag ILIKE + prefix variánsok; tábla → qty dialógus **m²** (1 tizedes), munkalap → **m**; kosár lépés 0,1; stock out fulfillkor (`20260577`).
+- Golden: `node --env-file=.env.local scripts/golden-test-pos-search.mjs`
 
 **Gyors termékek (kurált rács, nem auto top-seller):**
 - Tábla: `pos_quick_items` + `pos_label` (rövid pult-felirat, max 32); migráció `20260533`.

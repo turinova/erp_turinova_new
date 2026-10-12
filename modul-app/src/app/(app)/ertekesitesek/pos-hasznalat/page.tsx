@@ -10,6 +10,7 @@ import {
   toLocalDateStr,
   type PosAdoptionRange
 } from '@/lib/pos/adoption'
+import { loadPosSearchMissStats } from '@/lib/pos/discovery'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = { title: 'POS használat' }
@@ -95,9 +96,10 @@ export default async function PosHasznalatPage({
     )
   }
 
-  const [awards, dailyTarget] = await Promise.all([
+  const [awards, dailyTarget, searchMisses] = await Promise.all([
     listPosAdoptionAwards(supabase, user.tenantId, 8),
-    getDailySalesTarget(supabase, user.tenantId)
+    getDailySalesTarget(supabase, user.tenantId),
+    loadPosSearchMissStats(supabase, user.tenantId, 14, 15)
   ])
   const weekStart = toLocalDateStr(startOfWeekMonday())
 
@@ -109,6 +111,7 @@ export default async function PosHasznalatPage({
       weekStart={weekStart}
       dailyTarget={dailyTarget}
       canWrite={canWrite}
+      searchMisses={searchMisses}
     />
   )
 }
