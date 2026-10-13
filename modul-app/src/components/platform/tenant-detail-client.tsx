@@ -1834,10 +1834,6 @@ function SnapshotItem({
   )
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('hu-HU')
-}
-
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString('hu-HU')
 }
