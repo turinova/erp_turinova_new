@@ -57,11 +57,11 @@ export default async function SubscriptionPage() {
       <PageHeader title="Előfizetés" />
       <div className="mt-4">
         <SubscriptionOverview
-          billingStatus={overview.billingStatus}
-          trialEndsAt={overview.trialEndsAt}
-          paidThrough={overview.paidThrough}
-          planName={overview.plan?.name ?? null}
-          addons={overview.addons}
+          derivedStatus={overview.derivedStatus}
+          accessUntil={overview.accessUntil}
+          planKey={overview.planKey}
+          planName={overview.planName}
+          extras={overview.extras}
           smsUsage={overview.smsUsage}
         />
       </div>

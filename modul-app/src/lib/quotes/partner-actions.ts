@@ -270,6 +270,53 @@ export async function savePartnerOptiQuote(
   return { ok: true, id: quoteId, quoteNumber }
 }
 
+export type PartnerSubmitPaymentMethod = {
+  id: string
+  name: string
+  comment: string | null
+}
+
+export type ListPartnerPaymentMethodsResult =
+  | { ok: true; methods: PartnerSubmitPaymentMethod[] }
+  | { ok: false; message: string }
+
+/** Partner beküldés dialógus — kapcsolt cég aktív módjai. */
+export async function listPartnerPaymentMethodsForSubmit(): Promise<ListPartnerPaymentMethodsResult> {
+  const session = await getPartnerSession()
+  if (!session) {
+    return { ok: false, message: 'Nincs bejelentkezve.' }
+  }
+  const tenantId = session.selectedTenantId
+  if (!tenantId) {
+    return {
+      ok: false,
+      message: 'Nincs kapcsolt cég. Válassz céget a Beállításokban.'
+    }
+  }
+
+  const supabase = await createClient()
+  if (!supabase) {
+    return { ok: false, message: 'Az adatbázis kapcsolat nem elérhető.' }
+  }
+
+  const { listActivePaymentMethodsForPartner } = await import(
+    '@/lib/payment-methods/queries'
+  )
+  try {
+    const methods = await listActivePaymentMethodsForPartner(supabase, tenantId)
+    return { ok: true, methods }
+  } catch (err) {
+    console.error('listPartnerPaymentMethodsForSubmit', err)
+    return {
+      ok: false,
+      message:
+        err instanceof Error
+          ? err.message
+          : 'Nem sikerült betölteni a fizetési módokat.'
+    }
+  }
+}
+
 export type SubmitPartnerQuoteResult =
   | { ok: true; id: string; quoteNumber: string }
   | { ok: false; message: string }
@@ -278,10 +325,11 @@ export type SoftDeletePartnerQuoteResult =
   | { ok: true; id: string }
   | { ok: false; message: string }
 
-/** Beküldés a kapcsolt cégnek — lock (portal_submitted_at). */
-export async function submitPartnerQuote(
+/** Beküldés a kapcsolt cégnek — lock + preferred fizetési mód snapshot. */
+export async function submitPartnerQuote(input: {
   quoteId: string
-): Promise<SubmitPartnerQuoteResult> {
+  paymentMethodId: string
+}): Promise<SubmitPartnerQuoteResult> {
   try {
     const session = await getPartnerSession()
     if (!session) {
@@ -296,6 +344,11 @@ export async function submitPartnerQuote(
       }
     }
 
+    const paymentMethodId = input.paymentMethodId?.trim()
+    if (!paymentMethodId) {
+      return { ok: false, message: 'Válassz fizetési módot.' }
+    }
+
     const supabase = await createClient()
     if (!supabase) {
       return { ok: false, message: 'Az adatbázis kapcsolat nem elérhető.' }
@@ -304,7 +357,7 @@ export async function submitPartnerQuote(
     const { data: existing, error: loadError } = await supabase
       .from('quotes')
       .select('id, quote_number, status, portal_submitted_at, tenant_id')
-      .eq('id', quoteId)
+      .eq('id', input.quoteId)
       .eq('partner_profile_id', session.id)
       .eq('source', 'portal')
       .is('deleted_at', null)
@@ -329,14 +382,34 @@ export async function submitPartnerQuote(
       return { ok: false, message: 'Ez az ajánlat már be van küldve.' }
     }
 
+    const { data: method, error: methodError } = await supabase
+      .from('payment_methods')
+      .select('id, name, comment')
+      .eq('id', paymentMethodId)
+      .eq('tenant_id', tenantId)
+      .eq('active', true)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (methodError || !method) {
+      return {
+        ok: false,
+        message:
+          'Érvénytelen vagy inaktív fizetési mód. Válassz másikat, vagy jelezd a cégnek.'
+      }
+    }
+
     const now = new Date().toISOString()
     const { data: updated, error: updateError } = await supabase
       .from('quotes')
       .update({
         portal_submitted_at: now,
+        preferred_payment_method_id: method.id,
+        preferred_payment_method_name: method.name,
+        preferred_payment_method_comment: method.comment?.trim() || null,
         updated_at: now
       })
-      .eq('id', quoteId)
+      .eq('id', input.quoteId)
       .eq('partner_profile_id', session.id)
       .eq('source', 'portal')
       .is('portal_submitted_at', null)
@@ -353,8 +426,10 @@ export async function submitPartnerQuote(
       PARTNER_QUOTES_PATH,
       PARTNER_ORDERS_PATH,
       PARTNER_OPTI_PATH,
-      `${PARTNER_QUOTES_PATH}/${quoteId}`
+      `${PARTNER_QUOTES_PATH}/${input.quoteId}`
     )
+    revalidatePath('/home')
+    revalidatePath(`/ajanlatok/${input.quoteId}`)
 
     return {
       ok: true,

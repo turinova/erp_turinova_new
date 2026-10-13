@@ -384,13 +384,13 @@ export type PlatformBillingGlance = {
   billingActive: number
 }
 
-/** Előfizetés pillantás — manuális billing mezők. */
+/** Előfizetés pillantás — access_until. */
 export async function getPlatformBillingGlance(
   admin: SupabaseClient
 ): Promise<PlatformBillingGlance> {
   const { data, error } = await admin
     .from('tenants')
-    .select('id, billing_status, trial_ends_at, status')
+    .select('id, access_until, access_source, status')
     .neq('status', 'churned')
 
   if (error) {
@@ -398,20 +398,180 @@ export async function getPlatformBillingGlance(
     return { pastDue: 0, trialSoon: 0, billingActive: 0 }
   }
 
-  const now = Date.now()
-  const weekMs = 7 * 24 * 60 * 60 * 1000
+  const {
+    deriveAccessStatus,
+    toDateOnly,
+    todayInBudapest,
+    daysBetween
+  } = await import('@/lib/billing/access')
+  const today = todayInBudapest()
   let pastDue = 0
   let trialSoon = 0
   let billingActive = 0
 
   for (const t of data ?? []) {
-    if (t.billing_status === 'past_due') pastDue += 1
-    if (t.billing_status === 'active') billingActive += 1
-    if (t.trial_ends_at) {
-      const end = new Date(t.trial_ends_at).getTime()
-      if (end - now < weekMs) trialSoon += 1
+    const until = toDateOnly(t.access_until as string | null)
+    const derived = deriveAccessStatus({
+      accessUntil: until,
+      accessSource: t.access_source as string | null,
+      today
+    })
+    if (derived === 'grace' || derived === 'expired') pastDue += 1
+    if (derived === 'ok' || derived === 'trial') billingActive += 1
+    if (
+      (derived === 'ok' || derived === 'trial') &&
+      until &&
+      daysBetween(today, until) <= 7
+    ) {
+      trialSoon += 1
     }
   }
 
   return { pastDue, trialSoon, billingActive }
+}
+
+export type PlatformOpsInboxItem = {
+  id: string
+  kind:
+    | 'expired'
+    | 'grace'
+    | 'ending_soon'
+    | 'unset'
+    | 'never_login'
+    | 'package_review'
+  label: string
+  tenantId: string
+  tenantName: string
+}
+
+/** Lean Teendők — access_until + actionable ops (Cégek home). */
+export async function getPlatformOpsInbox(
+  admin: SupabaseClient,
+  limit = 12
+): Promise<PlatformOpsInboxItem[]> {
+  const { data, error } = await admin
+    .from('tenants')
+    .select('id, name, status, access_until, access_source, billing_notes')
+    .neq('status', 'churned')
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    console.error('getPlatformOpsInbox', error.message)
+    return []
+  }
+
+  const tenantIds = (data ?? []).map((t) => t.id)
+  const neverLogin = new Set<string>()
+  if (tenantIds.length > 0) {
+    const { data: memberships } = await admin
+      .from('tenant_memberships')
+      .select('tenant_id, user_id')
+      .in('tenant_id', tenantIds)
+      .eq('status', 'active')
+
+    const lastByUser = new Map<string, string | null>()
+    try {
+      const users = await listAllAuthUsersCached(admin)
+      for (const u of users) {
+        lastByUser.set(u.id, u.last_sign_in_at ?? null)
+      }
+    } catch (e) {
+      console.error('getPlatformOpsInbox auth', e)
+    }
+
+    const tenantHasLogin = new Map<string, boolean>()
+    for (const m of memberships ?? []) {
+      const last = lastByUser.get(m.user_id as string)
+      if (last) tenantHasLogin.set(m.tenant_id as string, true)
+    }
+    for (const id of tenantIds) {
+      if (tenantHasLogin.get(id)) continue
+      const row = (data ?? []).find((t) => t.id === id)
+      if (row?.status === 'active') neverLogin.add(id)
+    }
+  }
+
+  const {
+    deriveAccessStatus,
+    toDateOnly,
+    todayInBudapest,
+    daysBetween
+  } = await import('@/lib/billing/access')
+  const today = todayInBudapest()
+  const items: PlatformOpsInboxItem[] = []
+
+  for (const t of data ?? []) {
+    const until = toDateOnly(t.access_until as string | null)
+    const derived = deriveAccessStatus({
+      accessUntil: until,
+      accessSource: t.access_source as string | null,
+      today
+    })
+
+    if (derived === 'expired') {
+      items.push({
+        id: `expired:${t.id}`,
+        kind: 'expired',
+        label: 'Lejárt',
+        tenantId: t.id,
+        tenantName: t.name
+      })
+    } else if (derived === 'grace') {
+      items.push({
+        id: `grace:${t.id}`,
+        kind: 'grace',
+        label: 'Lejárt — grace',
+        tenantId: t.id,
+        tenantName: t.name
+      })
+    } else if (derived === 'unset') {
+      items.push({
+        id: `unset:${t.id}`,
+        kind: 'unset',
+        label: 'Nincs dátum',
+        tenantId: t.id,
+        tenantName: t.name
+      })
+    } else if (until && daysBetween(today, until) <= 7) {
+      items.push({
+        id: `ending:${t.id}`,
+        kind: 'ending_soon',
+        label: derived === 'trial' ? 'Próba hamarosan' : 'Hamarosan lejár',
+        tenantId: t.id,
+        tenantName: t.name
+      })
+    }
+
+    if (neverLogin.has(t.id)) {
+      items.push({
+        id: `never:${t.id}`,
+        kind: 'never_login',
+        label: 'Még nem lépett be',
+        tenantId: t.id,
+        tenantName: t.name
+      })
+    }
+    const notes = (t.billing_notes as string | null) ?? ''
+    if (notes.includes('package_migrate:review')) {
+      items.push({
+        id: `pkg:${t.id}`,
+        kind: 'package_review',
+        label: 'Csomag átnézés',
+        tenantId: t.id,
+        tenantName: t.name
+      })
+    }
+  }
+
+  const priority: Record<PlatformOpsInboxItem['kind'], number> = {
+    expired: 0,
+    grace: 1,
+    ending_soon: 2,
+    unset: 3,
+    package_review: 4,
+    never_login: 5
+  }
+  items.sort((a, b) => priority[a.kind] - priority[b.kind])
+  return items.slice(0, limit)
 }

@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { ALWAYS_ALLOWED_PAGE_KEYS } from '@/lib/permissions/pages'
+import {
+  MANAGED_BUNDLE_ADDON_KEYS,
+  bundledAddonKeysForPlan,
+  retainedAddonKeysForPlan
+} from '@/lib/platform/plan-bundles'
 
 export type ProductFeature = {
   key: string
@@ -186,10 +191,149 @@ export async function materializeTenantEntitlements(
   return { ok: true, keys: [...keys] }
 }
 
+/**
+ * Planváltáskor: bundelt add-onok be, felesleges managed add-onok ki
+ * (à la carte megmarad plan szerint). Side-effect page grant / HR seed.
+ */
+export async function syncPlanBundledAddons(
+  admin: SupabaseClient,
+  tenantId: string,
+  planKey: string,
+  actorUserId: string | null
+): Promise<{ ok: true; enabled: string[]; disabled: string[] } | { ok: false; message: string }> {
+  const { data: addonCatalog, error: catalogError } = await admin
+    .from('product_addons')
+    .select('id, key')
+    .in('key', [...MANAGED_BUNDLE_ADDON_KEYS])
+
+  if (catalogError) {
+    console.error('syncPlanBundledAddons catalog', catalogError.message)
+    return { ok: false, message: 'Add-on katalógus betöltése sikertelen.' }
+  }
+
+  const byKey = new Map(
+    (addonCatalog ?? []).map((a) => [a.key as string, a.id as string])
+  )
+
+  const { data: currentRows, error: currentError } = await admin
+    .from('tenant_addons')
+    .select('addon_id, product_addons(key)')
+    .eq('tenant_id', tenantId)
+
+  if (currentError) {
+    console.error('syncPlanBundledAddons current', currentError.message)
+    return { ok: false, message: 'Tenant add-on lista sikertelen.' }
+  }
+
+  const currentlyEnabled = new Set<string>()
+  for (const row of currentRows ?? []) {
+    const raw = row.product_addons as
+      | { key: string }
+      | { key: string }[]
+      | null
+    const addon = Array.isArray(raw) ? raw[0] : raw
+    if (addon?.key) currentlyEnabled.add(addon.key)
+  }
+
+  const toEnable = bundledAddonKeysForPlan(planKey)
+  const keep = retainedAddonKeysForPlan(planKey)
+  const enabled: string[] = []
+  const disabled: string[] = []
+
+  for (const key of toEnable) {
+    const addonId = byKey.get(key)
+    if (!addonId) continue
+    const { error } = await admin.from('tenant_addons').upsert(
+      {
+        tenant_id: tenantId,
+        addon_id: addonId,
+        enabled_at: new Date().toISOString(),
+        enabled_by: actorUserId
+      },
+      { onConflict: 'tenant_id,addon_id' }
+    )
+    if (error) {
+      console.error('syncPlanBundledAddons enable', key, error.message)
+      return { ok: false, message: `Add-on bekapcsolás sikertelen: ${key}` }
+    }
+    if (!currentlyEnabled.has(key)) enabled.push(key)
+  }
+
+  for (const key of MANAGED_BUNDLE_ADDON_KEYS) {
+    if (keep.has(key)) continue
+    if (!currentlyEnabled.has(key) && !toEnable.includes(key)) continue
+    const addonId = byKey.get(key)
+    if (!addonId) continue
+    // Only remove if currently enabled
+    if (!currentlyEnabled.has(key)) continue
+    const { error } = await admin
+      .from('tenant_addons')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('addon_id', addonId)
+    if (error) {
+      console.error('syncPlanBundledAddons disable', key, error.message)
+      return { ok: false, message: `Add-on kikapcsolás sikertelen: ${key}` }
+    }
+    disabled.push(key)
+  }
+
+  // Side effects for newly enabled (and for already-on bundle so page_access friss)
+  const grantKeys = [...new Set([...toEnable, ...enabled])]
+  for (const addonKey of grantKeys) {
+    if (addonKey === 'footcounter') {
+      const { grantBelepokPageAccess } = await import(
+        '@/lib/footcounter/entitlement'
+      )
+      await grantBelepokPageAccess(admin, tenantId)
+    }
+    if (addonKey === 'pda_pos') {
+      const { grantPdaPosPageAccess } = await import(
+        '@/lib/pos/pda-entitlement'
+      )
+      await grantPdaPosPageAccess(admin, tenantId)
+    }
+    if (addonKey === 'jelenlet') {
+      const { grantJelenletPageAccess } = await import(
+        '@/lib/jelenlet/entitlement'
+      )
+      await grantJelenletPageAccess(admin, tenantId)
+      try {
+        await admin.rpc('seed_hr_hu_holidays_for_tenant', {
+          p_tenant_id: tenantId
+        })
+      } catch (e) {
+        console.error('seed_hr_hu_holidays_for_tenant', e)
+      }
+      try {
+        await admin.rpc('seed_hr_employee_types_for_tenant', {
+          p_tenant_id: tenantId
+        })
+      } catch (e) {
+        console.error('seed_hr_employee_types_for_tenant', e)
+      }
+    }
+    if (addonKey === 'lapszabaszat') {
+      const { grantLapszabaszatPageAccess } = await import(
+        '@/lib/lapszabaszat/entitlement'
+      )
+      await grantLapszabaszatPageAccess(admin, tenantId)
+    }
+  }
+
+  return { ok: true, enabled, disabled }
+}
+
 export async function materializePlanTenants(
   admin: SupabaseClient,
   planId: string
 ): Promise<{ ok: true; count: number } | { ok: false; message: string }> {
+  const { data: plan } = await admin
+    .from('product_plans')
+    .select('id, key')
+    .eq('id', planId)
+    .maybeSingle()
+
   const { data: tenants, error } = await admin
     .from('tenants')
     .select('id')
@@ -201,6 +345,10 @@ export async function materializePlanTenants(
 
   let count = 0
   for (const t of tenants ?? []) {
+    if (plan?.key) {
+      const sync = await syncPlanBundledAddons(admin, t.id, plan.key, null)
+      if (!sync.ok) return sync
+    }
     const result = await materializeTenantEntitlements(admin, t.id)
     if (!result.ok) {
       return { ok: false, message: result.message }

@@ -7,6 +7,7 @@ import {
   getDefaultPlanId,
   materializePlanTenants,
   materializeTenantEntitlements,
+  syncPlanBundledAddons,
   writeEntitlementAudit
 } from '@/lib/platform/entitlements'
 import { WEBSHOP_ENABLED } from '@/lib/webshop/enabled'
@@ -155,6 +156,16 @@ export async function setTenantPlan(input: {
   const ctx = await requirePlatformAdmin()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
+  const { data: planRow } = await ctx.admin
+    .from('product_plans')
+    .select('id, key, name')
+    .eq('id', input.planId)
+    .maybeSingle()
+
+  if (!planRow?.key) {
+    return { ok: false, message: 'Plan nem található.' }
+  }
+
   const { error } = await ctx.admin
     .from('tenants')
     .update({
@@ -166,6 +177,14 @@ export async function setTenantPlan(input: {
   if (error) {
     return { ok: false, message: 'Plan hozzárendelés sikertelen.' }
   }
+
+  const sync = await syncPlanBundledAddons(
+    ctx.admin,
+    input.tenantId,
+    planRow.key,
+    ctx.user.id
+  )
+  if (!sync.ok) return sync
 
   const mat = await materializeTenantEntitlements(ctx.admin, input.tenantId)
   if (!mat.ok) return mat
@@ -179,12 +198,21 @@ export async function setTenantPlan(input: {
     tenantId: input.tenantId,
     actorUserId: ctx.user.id,
     action: 'tenant.plan_set',
-    details: { planId: input.planId, keys: mat.keys }
+    details: {
+      planId: input.planId,
+      planKey: planRow.key,
+      keys: mat.keys,
+      bundledEnabled: sync.enabled,
+      bundledDisabled: sync.disabled
+    }
   })
 
   revalidatePath(`${TENANTS}/${input.tenantId}`)
   revalidatePath(TENANTS)
-  return { ok: true, message: 'Plan beállítva és alkalmazva.' }
+  return {
+    ok: true,
+    message: `Plan beállítva: ${planRow.name} (bundel sync + entitlement).`
+  }
 }
 
 export async function setTenantAddon(input: {
@@ -213,26 +241,33 @@ export async function setTenantAddon(input: {
 
   if (input.enabled) {
     const {
-      LAPSZABASZAT_ADDON_KEY,
       LAPSZABASZAT_DEPENDENT_ADDON_KEYS,
-      tenantHasAddonKey
+      tenantHasAddonKey,
+      tenantHasLapszabaszat
     } = await import('@/lib/lapszabaszat/entitlement')
+    const { LAPSZABASZAT_ADDON_KEY } = await import(
+      '@/lib/lapszabaszat/types'
+    )
 
     if (
       (LAPSZABASZAT_DEPENDENT_ADDON_KEYS as readonly string[]).includes(
         addonKey
       )
     ) {
-      const hasCore = await tenantHasAddonKey(
+      const hasCoreAddon = await tenantHasAddonKey(
         ctx.admin,
         input.tenantId,
         LAPSZABASZAT_ADDON_KEY
       )
-      if (!hasCore) {
+      const hasCoreFeature = await tenantHasLapszabaszat(
+        ctx.admin,
+        input.tenantId
+      )
+      if (!hasCoreAddon && !hasCoreFeature) {
         return {
           ok: false,
           message:
-            'Előbb kapcsold be a Lapszabászat add-ont — ez az add-on arra épül.'
+            'Előbb kapcsold be a Műhely plant vagy a Lapszabászat add-ont — ez az add-on arra épül.'
         }
       }
     }
@@ -700,7 +735,7 @@ export async function assignDefaultPlanAndMaterialize(
 ): Promise<EntitlementActionResult> {
   const planId = await getDefaultPlanId(admin)
   if (!planId) {
-    return { ok: false, message: 'Nincs default plan (Alap).' }
+    return { ok: false, message: 'Nincs default plan (Bolt).' }
   }
 
   const { error } = await admin

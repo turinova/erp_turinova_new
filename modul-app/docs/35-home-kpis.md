@@ -20,6 +20,7 @@
 
 ```
 Értékesítés  [ Mai forgalom+spark | Nyitott ajánlat | Lejáró | Beszerzés ]
+Új partner rendelések  (lista inbox)  ← partner_orders; üresen rejtve
 Jelenlét     [ Bent x/y | Nincs itt | Szabadság | Beteg | Hiányzó nap ]
 Belépők      [ Belépő | Kilépő | Csúcs | Nettó ] + heatmap  ← footcounter
 Elmaradás    [ Szabás m | Élzarás m | Megrendelés db ]   ← lapszabászat, heti szabás felett
@@ -28,6 +29,13 @@ Elmaradás    [ Szabás m | Élzarás m | Megrendelés db ]   ← lapszabászat,
 
 Közös UI: `src/components/home/home-metric-row.tsx` (`MetricRow` / `MetricCell`).
 
+### Partner portál inbox
+
+- Main-app „Ügyfél árajánlatok” pár: `source=portal` + `portal_submitted_at` + `status=draft`
+- Oszlopok: Partner · Ajánlat · Fizetési mód (+ comment hint) · Összeg · Beérkezett
+- Fizetési mód: `preferred_payment_method_name` / `_comment` snapshot
+- Link: `/ajanlatok/:id`
+
 ---
 
 ## Fájlok
@@ -35,8 +43,10 @@ Közös UI: `src/components/home/home-metric-row.tsx` (`MetricRow` / `MetricCell
 | Réteg | Fájl |
 |---|---|
 | Query | `src/lib/home/kpi-queries.ts` |
+| Partner inbox | `src/lib/home/partner-portal-inbox.ts` |
 | Spark | `src/components/home/home-sales-spark-chart.tsx` |
 | UI | `src/components/home/home-kpi-strip.tsx` |
+| Partner UI | `src/components/home/partner-portal-inbox-card.tsx` |
 | Seeder | `scripts/seed-home-kpis.mjs` |
 
 ```bash

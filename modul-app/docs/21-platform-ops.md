@@ -1,8 +1,9 @@
 # 21 — Platform ops (1–2 fős SaaS üzem)
 
-**Állapot:** Sprint 1 (partner ops + staff auth tooling). Migrációk: `20260406_platform_ops.sql`, `20260407_partner_ops.sql`.
+**Állapot:** 2026-10-13 — **Square lean IA**: Cégek (home + Teendők) · Partnerek · Katalógus.  
+Migrációk: `20260406_platform_ops.sql`, `20260407_partner_ops.sql`, `20260600_square_plans_…`.
 
-Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-partner-portal.md`.
+Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-partner-portal.md`, `33-packages-and-addons.md`.
 
 ---
 
@@ -35,9 +36,9 @@ Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-pa
 | # | Döntés |
 |---|---|
 | 1 | Fizetés **manuális** (bank / külső számla) — **nincs** Stripe / checkout |
-| 2 | Plan, add-on, `paid_through`, státusz: **csak platform** |
+| 2 | Plan, add-on, `access_until` (+ hosszabbítás): **csak platform** |
 | 3 | Tenant oldalon **soha nincs self-serve** (nincs add-on switch, plan váltás, fizetés gomb) |
-| 4 | Listaárak (**nettó**): Alap **39 990**/hó (2 hónap automata próba; éves **399 900** = 2 hónap ajándék). Add-on: lapszabászat **10 000**, Jelenlét **9 900**, partner **19 000**, SMS **4 900 + 89 Ft/db**, belépőszámláló **5 000** + kamera egyszeri. Részletek: [33](33-packages-and-addons.md). |
+| 4 | Listaárak (**nettó**): **Bolt 39 990** / **Bolt+ 59 900** / **Műhely 49 990** / **Pro 94 900** (2 hó próba→Bolt; éves = 10×). Bolt+ = PDA+jelenlét+foot szoftver; hardver egyszeri. SMS **89 Ft/db**. Mátrix: [46](46-csomagok-funkcio-matrix.md) · árak: [33](33-packages-and-addons.md). |
 | 5 | Havi becslés = plan + enabled add-onok + SMS ledger (`sent`/`delivered`, lapszabászat + ügyfélrendelés) — platform és tenant **ugyanaz** a lib |
 | 6 | Tenant UI: `/beallitasok/elofizetes` — **csak owner**; **nincs ár**; státusz + aktív / elérhető funkciók |
 | 7 | Staff sidebar alján: ÁSZF / Adatkezelés / Impresszum (`getLegalUrls`, mint partner) |
@@ -52,8 +53,20 @@ Migráció: `20260427_manual_subscription_pricing.sql`, `20260428_elofizetes_own
 | Host | Ki | Útvonal |
 |------|-----|---------|
 | `app.optinova.hu` | Tenant staff | `/home`, …; `/platform` → redirect `admin.` (prod) |
-| `admin.optinova.hu` | Platform operátor | tiszta: `/`, `/tenants`, … → rewrite `/platform/*` |
+| `admin.optinova.hu` | Platform operátor | tiszta: `/tenants`, `/partnerek`, `/katalogus` → rewrite `/platform/*` |
 | `optinova.hu` | Partner | változatlan |
+
+### Lean menü (2026-10-13)
+
+| Menü | Útvonal | Megjegyzés |
+|---|---|---|
+| **Cégek** | `/tenants` (default home) | Teendők sáv + lista; `/` → ide redirect |
+| **Partnerek** | `/partnerek` | `?tenant=` szűrő a cég detailből |
+| **Katalógus** | `/katalogus` | 4 plan kártya; Haladó = feature/add-on szerkesztés |
+| ~~Áttekintés / Health / Csomagok / Add-onok~~ | redirect | legacy URL-ek a fentiekre |
+
+**Cég detail tabok:** Üzem (plan+billing) · Emberek · Eszközök · Haladó (onboarding, demó, danger, audit).  
+**Nincs** 20 partner dump az Összegzésen — Műhelynél szám + link.
 
 ---
 
@@ -96,20 +109,30 @@ Csak **tenant staff** felhasználóra (nem partner portál).
 
 ---
 
-## 7. Manuális billing mezők (`tenants`)
+## 7. Manuális billing (`tenants`) — lean `access_until`
 
-- `billing_status`: `none` \| `trial` \| `active` \| `past_due` \| `canceled`
-- `trial_ends_at`, `paid_through`
-- `billing_notes`, `internal_notes`
-- `contact_phone`, `contact_email`
+**Egy igazság:** `access_until` (nap, Europe/Budapest) + opcionális `access_source` (`trial` \| `paid` \| `manual`).
+
+| Mező / UI | Szerep |
+|---|---|
+| `access_until` | Hozzáférés utolsó napja |
+| `access_source` | Badge: próba vs fizetett |
+| Származtatott státusz | `unset` / `trial` / `ok` / `grace` (≤14 nap lejárat után) / `expired` — **nem** szerkeszthető enum |
+| Platform Üzem | Hero + **+1 hónap** (primary) / +1 év / Próba 14 nap; Haladó: dátum + Leállít |
+| Teendők | `expired` → `grace` → `ending_soon` → `unset` (+ never_login / package_review) |
+| Új cég | Auto **14 nap próba** |
+| Legacy sync | `billing_status` / `trial_ends_at` / `paid_through` írva marad (riport); UI nem szerkeszti |
+| `billing_notes`, `internal_notes`, `contact_*` | Változatlan |
+
+Migráció: `20260601_access_until_lean_billing.sql`. Lib: `src/lib/billing/access.ts`.
 
 ### 7.1 Katalógus árak (nettó HUF)
 
 - `product_plans.price_monthly_huf` (+ `currency`) — **nettó** havidíj
 - `product_addons.price_monthly_huf`, opcionális `price_unit_huf` + `unit_key` (`sms_sent`) — **nettó**
-- Szerkesztés: `/platform/csomagok`, `/platform/add-onok`
-- Tenant detail → **Billing**: havi becslés (nettó) + manuális státusz / határidő
-- Tenant app → **Előfizetés**: csak olvasás; UI mindenütt jelzi: nettó
+- Szerkesztés: `/platform/katalogus` (és Haladó plan/add-on)
+- Tenant detail → **Üzem / Előfizetés**: havi becslés + access_until hosszabbítás
+- Tenant app → **Előfizetés**: csak olvasás (származtatott státusz + dátum)
 
 **TILOS tenant oldalon:** add-on enable, plan váltás, fizetés / upgrade CTA.
 

@@ -31,6 +31,7 @@ import { QuoteAccessoriesBlock } from '@/components/quotes/quote-accessories-blo
 import { QuoteInvoiceIssueDialog } from '@/components/quotes/quote-invoice-issue-dialog'
 import { QuotePaymentsSection } from '@/components/quotes/quote-payments-section'
 import { QuoteStatusStepper } from '@/components/quotes/quote-status-stepper'
+import { PartnerSubmitDialog } from '@/components/quotes/partner-submit-dialog'
 import { QuoteVoidPaymentDialog } from '@/components/quotes/quote-void-payment-dialog'
 import { SourceInvoicesSection } from '@/components/invoicing/source-invoices-section'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
@@ -597,9 +598,12 @@ export function QuoteDetailClient({
     })
   }
 
-  function handlePartnerSubmit() {
+  function handlePartnerSubmit(paymentMethodId: string) {
     startTransition(async () => {
-      const result = await submitPartnerQuote(quote.id)
+      const result = await submitPartnerQuote({
+        quoteId: quote.id,
+        paymentMethodId
+      })
       if (!result?.ok) {
         toast.error(result?.message ?? 'Nem sikerült beküldeni.')
         return
@@ -695,6 +699,25 @@ export function QuoteDetailClient({
         ) : null}
         {quote.project_name ? (
           <p className="text-body text-ink-secondary">{quote.project_name}</p>
+        ) : null}
+        {quote.source === 'portal' &&
+        quote.portal_submitted_at &&
+        quote.preferred_payment_method_name ? (
+          <div className="mt-2 max-w-xl rounded-md border border-border bg-subtle px-3 py-2">
+            <p className="text-hint text-ink-secondary">
+              {isPartner
+                ? 'Választott fizetési mód'
+                : 'Partner által választott fizetési mód'}
+            </p>
+            <p className="text-body font-medium text-ink">
+              {quote.preferred_payment_method_name}
+            </p>
+            {quote.preferred_payment_method_comment ? (
+              <p className="mt-1 text-hint text-ink">
+                {quote.preferred_payment_method_comment}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -2015,13 +2038,10 @@ export function QuoteDetailClient({
 
       {isPartnerDraft ? (
         <>
-          <ConfirmDialog
+          <PartnerSubmitDialog
             open={submitOpen}
             onOpenChange={setSubmitOpen}
-            title="Ajánlat beküldése"
-            description={`Beküldöd a(z) ${quote.quote_number} ajánlatot a cégnek? Utána már nem szerkesztheted.`}
-            confirmLabel="Beküldés"
-            variant="primary"
+            quoteNumber={quote.quote_number}
             loading={pending}
             onConfirm={handlePartnerSubmit}
           />

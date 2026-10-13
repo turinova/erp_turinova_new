@@ -49,6 +49,8 @@ export async function listPlatformPartners(
   params: {
     q?: string
     link?: 'all' | 'linked' | 'unlinked'
+    /** Csak akiknek selected_tenant_id = ez. */
+    tenantId?: string
     page?: number
     limit?: number
   }
@@ -71,7 +73,9 @@ export async function listPlatformPartners(
       { count: 'exact' }
     )
 
-  if (link === 'linked') {
+  if (params.tenantId) {
+    query = query.eq('selected_tenant_id', params.tenantId)
+  } else if (link === 'linked') {
     query = query.not('selected_tenant_id', 'is', null)
   } else if (link === 'unlinked') {
     query = query.is('selected_tenant_id', null)

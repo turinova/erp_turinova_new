@@ -215,43 +215,43 @@ export function RoiCalculator({
             <div className="grid gap-2 sm:grid-cols-1">
               <AddonToggle
                 id="addon-lapszab"
-                label={MARKETING_PRICING.addons.lapszabaszat.name}
-                price={`${formatHufPlain(MARKETING_PRICING.addons.lapszabaszat.priceMonthlyHuf)}/hó`}
+                label="Műhely (lapszabászat)"
+                price={`+${formatHufPlain(MARKETING_PRICING.plans.muhely.priceMonthlyHuf - MARKETING_PRICING.plan.priceMonthlyHuf)}/hó → ${formatHufPlain(MARKETING_PRICING.plans.muhely.priceMonthlyHuf)}`}
                 checked={input.lapszabaszatAddon}
                 onChange={(v) => patch({ lapszabaszatAddon: v })}
               />
               <AddonToggle
                 id="addon-jelenlet"
-                label={MARKETING_PRICING.addons.jelenlet.name}
-                price={`${formatHufPlain(MARKETING_PRICING.addons.jelenlet.priceMonthlyHuf)}/hó`}
+                label="Bolt+ üzem (jelenlét)"
+                price={`+${formatHufPlain(MARKETING_PRICING.plans.bolt_plus.priceMonthlyHuf - MARKETING_PRICING.plan.priceMonthlyHuf)}/hó → ${formatHufPlain(MARKETING_PRICING.plans.bolt_plus.priceMonthlyHuf)}`}
                 checked={input.jelenletAddon}
                 onChange={(v) => patch({ jelenletAddon: v })}
               />
               <AddonToggle
                 id="addon-sms"
                 label={MARKETING_PRICING.addons.quote_ready_sms.name}
-                price={`${formatHufPlain(MARKETING_PRICING.addons.quote_ready_sms.priceMonthlyHuf)}/hó + ${MARKETING_PRICING.addons.quote_ready_sms.priceUnitHuf} Ft/db`}
+                price={`${MARKETING_PRICING.addons.quote_ready_sms.priceUnitHuf} Ft/db`}
                 checked={input.smsAddon}
                 onChange={(v) => patch({ smsAddon: v })}
               />
               <AddonToggle
                 id="addon-partner"
                 label={MARKETING_PRICING.addons.partner_orders.name}
-                price={`${formatHufPlain(MARKETING_PRICING.addons.partner_orders.priceMonthlyHuf)}/hó`}
+                price="Műhely része"
                 checked={input.partnerAddon}
                 onChange={(v) => patch({ partnerAddon: v })}
               />
               <AddonToggle
                 id="addon-foot"
-                label={MARKETING_PRICING.addons.footcounter.name}
-                price={`${formatHufPlain(MARKETING_PRICING.addons.footcounter.priceMonthlyHuf)}/hó + kamera egyszeri`}
+                label="Bolt+ üzem (belépő)"
+                price="Bolt+ bundel + kamera egyszeri"
                 checked={input.footcounterAddon}
                 onChange={(v) => patch({ footcounterAddon: v })}
               />
             </div>
             <p className="text-[12px] text-ink-muted">
-              Alap: {formatHufNet(MARKETING_PRICING.plan.priceMonthlyHuf)}/hó ·
-              első {MARKETING_PRICING.trialMonths} hónap az Alapban 0 Ft.
+              Bolt: {formatHufNet(MARKETING_PRICING.plan.priceMonthlyHuf)}/hó ·
+              első {MARKETING_PRICING.trialMonths} hónap a Boltban 0 Ft.
             </p>
           </div>
         </div>

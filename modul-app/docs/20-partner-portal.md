@@ -43,8 +43,8 @@ Kezdőlap · Kereső · Opti · Ajánlatok · Megrendelések · Beállítások.
 2. Nyilvános listából választ tenanthoz (csak ahol add-on + `active`).
 3. Kereső / Opti = annak a tenantnak törzse + árazása.
 4. **Első draft mentés (modell A)** → `ensure_partner_customer(tenant_id)` → `customers` + `quotes` (`source=portal`, `status=draft`, `portal_submitted_at` null).
-5. **Beküldés** → `portal_submitted_at = now()`; status marad `draft`; partner **nem** szerkeszthet tovább.
-6. Staff: Online / Új beküldés → meglévő convert → order / gyártás.
+5. **Beküldés** → kötelező fizetési mód (tenant aktív `payment_methods` + comment); snapshot: `preferred_payment_method_id/name/comment`; `portal_submitted_at = now()`; status marad `draft`; partner **nem** szerkeszthet tovább. (Szándék ≠ `quote_payments`.)
+6. Staff: Online / Új beküldés (home inbox) → meglévő convert → order / gyártás; preferred mód előválasztás / megjelenítés.
 7. Partner Megrendelések: `portal_submitted_at IS NOT NULL` (+ későbbi státuszok).
 
 Egy partner × egy tenant = **egy** `customers` sor (`partner_profile_id`). Másik cég = másik customer sor.
@@ -71,6 +71,7 @@ Egy partner × egy tenant = **egy** `customers` sor (`partner_profile_id`). Más
 | Név-unique | Csak staff ügyfelekre (`partner_profile_id IS NULL`) |
 | `quotes.partner_profile_id` | Ki küldte |
 | `quotes.portal_submitted_at` | Mentve vs beküldve |
+| `quotes.preferred_payment_method_*` | Beküldéskori fizetési mód + comment snapshot |
 | `ensure_partner_customer(uuid)` | Idempotens RPC (email merge, revive, insert) |
 
 RLS váz: partner saját profil; saját portal quote-ok; katalógus SELECT csak `selected_tenant` + add-on; staff policy változatlan. Production / order írás csak membership.

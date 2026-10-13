@@ -231,48 +231,62 @@ export async function listPlatformAttentionItems(
     }
   }
 
-  // Billing figyelem (manuális mezők)
+  // Billing figyelem — access_until
+  const { deriveAccessStatus, toDateOnly, todayInBudapest, daysBetween } =
+    await import('@/lib/billing/access')
+  const today = todayInBudapest()
   const { data: billingTenants } = await admin
     .from('tenants')
-    .select('id, name, status, billing_status, trial_ends_at, paid_through')
+    .select('id, name, status, access_until, access_source')
     .neq('status', 'churned')
     .limit(100)
 
   for (const t of billingTenants ?? []) {
     if (items.length >= 16) break
     if (items.some((i) => i.id === t.id)) continue
-    if (t.billing_status === 'past_due') {
+    const until = toDateOnly(t.access_until as string | null)
+    const derived = deriveAccessStatus({
+      accessUntil: until,
+      accessSource: t.access_source as string | null,
+      today
+    })
+    if (derived === 'grace' || derived === 'expired') {
       items.push({
         id: t.id,
         name: t.name,
         status: t.status as TenantStatus,
-        reason: 'Billing: hátralék',
+        reason:
+          derived === 'grace'
+            ? 'Hozzáférés lejárt (grace)'
+            : 'Hozzáférés lejárt',
         href: `/platform/tenants/${t.id}`,
         kind: 'tenant'
       })
       continue
     }
-    if (t.trial_ends_at) {
-      const end = new Date(t.trial_ends_at).getTime()
-      if (end < now) {
-        items.push({
-          id: t.id,
-          name: t.name,
-          status: t.status as TenantStatus,
-          reason: 'Trial lejárt',
-          href: `/platform/tenants/${t.id}`,
-          kind: 'tenant'
-        })
-      } else if (end - now < weekMs) {
-        items.push({
-          id: t.id,
-          name: t.name,
-          status: t.status as TenantStatus,
-          reason: 'Trial 7 napon belül lejár',
-          href: `/platform/tenants/${t.id}`,
-          kind: 'tenant'
-        })
-      }
+    if (derived === 'unset') {
+      items.push({
+        id: t.id,
+        name: t.name,
+        status: t.status as TenantStatus,
+        reason: 'Nincs hozzáférési dátum',
+        href: `/platform/tenants/${t.id}`,
+        kind: 'tenant'
+      })
+      continue
+    }
+    if (until && daysBetween(today, until) <= 7) {
+      items.push({
+        id: t.id,
+        name: t.name,
+        status: t.status as TenantStatus,
+        reason:
+          derived === 'trial'
+            ? 'Próba 7 napon belül lejár'
+            : 'Hozzáférés 7 napon belül lejár',
+        href: `/platform/tenants/${t.id}`,
+        kind: 'tenant'
+      })
     }
   }
 
@@ -484,9 +498,8 @@ export type PlatformTenantDetail = {
     status: TenantStatus
     created_at: string
     max_seats: number | null
-    billing_status: string
-    trial_ends_at: string | null
-    paid_through: string | null
+    access_until: string | null
+    access_source: string | null
     billing_notes: string | null
     internal_notes: string | null
     contact_phone: string | null
@@ -506,7 +519,7 @@ export async function getPlatformTenantDetail(
   const { data: tenant, error } = await admin
     .from('tenants')
     .select(
-      'id, name, slug, status, created_at, max_seats, billing_status, trial_ends_at, paid_through, billing_notes, internal_notes, contact_phone, contact_email'
+      'id, name, slug, status, created_at, max_seats, access_until, access_source, billing_notes, internal_notes, contact_phone, contact_email'
     )
     .eq('id', tenantId)
     .maybeSingle()
@@ -524,8 +537,7 @@ export async function getPlatformTenantDetail(
     { data: quotes30d },
     { count: linkedPartners },
     { count: portalSubmits30d },
-    { count: smsSentThisMonth },
-    { data: partnerRows }
+    { count: smsSentThisMonth }
   ] = await Promise.all([
     admin
       .from('tenant_onboarding')
@@ -606,13 +618,7 @@ export async function getPlatformTenantDetail(
         .in('status', ['sent', 'delivered'])
         .gte('created_at', start)
         .lt('created_at', end)
-    })(),
-    admin
-      .from('partner_profiles')
-      .select('user_id, name, email, status')
-      .eq('selected_tenant_id', tenantId)
-      .order('created_at', { ascending: false })
-      .limit(20)
+    })()
   ])
 
   const gmvQuotes30d = Math.round(
@@ -659,15 +665,6 @@ export async function getPlatformTenantDetail(
     }
   })
 
-  const linkedPartnersList: PlatformLinkedPartner[] = (partnerRows ?? []).map(
-    (p) => ({
-      userId: p.user_id,
-      name: p.name || p.email,
-      email: p.email,
-      status: p.status
-    })
-  )
-
   const now = Date.now()
   const day7 = now - 7 * 24 * 60 * 60 * 1000
   const day30 = now - 30 * 24 * 60 * 60 * 1000
@@ -713,9 +710,8 @@ export async function getPlatformTenantDetail(
         tenant.max_seats === null || tenant.max_seats === undefined
           ? null
           : Number(tenant.max_seats),
-      billing_status: (tenant.billing_status as string) || 'none',
-      trial_ends_at: tenant.trial_ends_at ?? null,
-      paid_through: tenant.paid_through ?? null,
+      access_until: (tenant.access_until as string | null) ?? null,
+      access_source: (tenant.access_source as string | null) ?? null,
       billing_notes: tenant.billing_notes ?? null,
       internal_notes: tenant.internal_notes ?? null,
       contact_phone: tenant.contact_phone ?? null,
@@ -738,7 +734,7 @@ export async function getPlatformTenantDetail(
       smsSentThisMonth: smsSentThisMonth ?? 0
     },
     members,
-    linkedPartners: linkedPartnersList,
+    linkedPartners: [],
     company: company
       ? {
           name: company.name,

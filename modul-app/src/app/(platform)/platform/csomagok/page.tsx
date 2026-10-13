@@ -1,42 +1,8 @@
-import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 
-import { PlansClient } from '@/components/platform/plans-client'
-import { requirePlatformAdmin } from '@/lib/platform/auth'
-import {
-  listProductFeatures,
-  listProductPlans
-} from '@/lib/platform/entitlement-queries'
+import { ph } from '@/lib/platform/platform-href-server'
 
-export const metadata: Metadata = {
-  title: 'Csomagok'
-}
-
-export default async function PlatformPlansPage() {
-  const ctx = await requirePlatformAdmin()
-  if (!ctx.ok) {
-    return (
-      <p className="text-body text-danger-ink" role="alert">
-        {ctx.message}
-      </p>
-    )
-  }
-
-  const [plans, features] = await Promise.all([
-    listProductPlans(ctx.admin),
-    listProductFeatures(ctx.admin)
-  ])
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-h1 text-ink">Csomagok</h1>
-        <p className="mt-1 text-body text-ink-secondary">
-          Plan feature-ök és **nettó** havidíj. Mentés után az „Alkalmaz” gomb
-          írja át a meglévő cégeket (feature); az ár a következő becslésekre
-          érvényes.
-        </p>
-      </div>
-      <PlansClient plans={plans} features={features} />
-    </div>
-  )
+/** Legacy URL → Katalógus. */
+export default async function PlatformPlansRedirect() {
+  redirect(await ph('/katalogus'))
 }

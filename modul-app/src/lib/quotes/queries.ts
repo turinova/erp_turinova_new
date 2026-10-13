@@ -72,6 +72,9 @@ export type QuoteDetail = {
   payment_status: PaymentStatus
   source: string
   portal_submitted_at: string | null
+  preferred_payment_method_id: string | null
+  preferred_payment_method_name: string | null
+  preferred_payment_method_comment: string | null
   pricing_mode: PricingMode
   currency: string
   total_net: number
@@ -321,6 +324,9 @@ export async function getQuoteDetail(
       production_date,
       barcode,
       portal_submitted_at,
+      preferred_payment_method_id,
+      preferred_payment_method_name,
+      preferred_payment_method_comment,
       billing_name_snapshot,
       billing_country_snapshot,
       billing_city_snapshot,
@@ -408,6 +414,9 @@ export async function getQuoteDetail(
       production_date,
       barcode,
       portal_submitted_at,
+      preferred_payment_method_id,
+      preferred_payment_method_name,
+      preferred_payment_method_comment,
       billing_name_snapshot,
       billing_country_snapshot,
       billing_city_snapshot,
@@ -801,6 +810,12 @@ export async function getQuoteDetail(
     payment_status: (data.payment_status ?? 'not_paid') as PaymentStatus,
     source: data.source,
     portal_submitted_at: data.portal_submitted_at ?? null,
+    preferred_payment_method_id:
+      (data.preferred_payment_method_id as string | null) ?? null,
+    preferred_payment_method_name:
+      (data.preferred_payment_method_name as string | null) ?? null,
+    preferred_payment_method_comment:
+      (data.preferred_payment_method_comment as string | null) ?? null,
     pricing_mode: data.pricing_mode as PricingMode,
     currency: data.currency,
     total_net: Number(data.total_net),

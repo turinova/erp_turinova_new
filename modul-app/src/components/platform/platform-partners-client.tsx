@@ -29,6 +29,8 @@ type Props = {
   limit: number
   initialQ: string
   initialLink: LinkFilter
+  tenantFilterId?: string | null
+  tenantFilterName?: string | null
 }
 
 function formatDate(iso: string | null) {
@@ -49,7 +51,9 @@ export function PlatformPartnersClient({
   page,
   limit,
   initialQ,
-  initialLink
+  initialLink,
+  tenantFilterId = null,
+  tenantFilterName = null
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -82,11 +86,37 @@ export function PlatformPartnersClient({
         <div>
           <h1 className="text-h1 text-ink">Partnerek</h1>
           <p className="mt-1 text-body text-ink-secondary">
-            Online asztalosok — nem tenant seat. Disable / unlink / impersonate
-            a partner részletezőn.
+            Online asztalosok — nem tenant seat. Disable / unlink a partner
+            részletezőn.
           </p>
         </div>
       </div>
+
+      {tenantFilterId ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-subtle px-3 py-2">
+          <p className="text-body text-ink">
+            Szűrve cégre:{' '}
+            <span className="font-medium">
+              {tenantFilterName ?? tenantFilterId.slice(0, 8)}
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={href(`/tenants/${tenantFilterId}`)}
+              className="text-[13px] text-ink underline-offset-2 hover:underline"
+            >
+              ← Cég
+            </Link>
+            <button
+              type="button"
+              className="text-[13px] text-ink-secondary underline-offset-2 hover:underline"
+              onClick={() => pushParams({ tenant: null, page: null })}
+            >
+              Szűrő törlése
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
         <form onSubmit={handleSearch} className="relative max-w-sm flex-1">

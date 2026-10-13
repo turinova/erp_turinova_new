@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { HomeChartsDashboard } from '@/components/home/home-charts-dashboard'
 import { HomeKpiStrip } from '@/components/home/home-kpi-strip'
+import { PartnerPortalInboxCard } from '@/components/home/partner-portal-inbox-card'
 import { PageHeader } from '@/components/patterns/page-header'
 import { getSessionUser } from '@/lib/auth/session'
 import { tenantHasFootcounter } from '@/lib/footcounter/entitlement'
@@ -9,6 +10,11 @@ import { getFootcounterHomeSlim } from '@/lib/footcounter/queries'
 import type { FootcounterHomeSlim } from '@/lib/footcounter/types'
 import { getHomePageData } from '@/lib/home/chart-queries'
 import { getHomeKpiBundle, type HomeKpiBundle } from '@/lib/home/kpi-queries'
+import {
+  getHomePartnerPortalInbox,
+  tenantHasPartnerOrders,
+  type HomePartnerPortalInboxRow
+} from '@/lib/home/partner-portal-inbox'
 import { tenantHasJelenlet } from '@/lib/jelenlet/entitlement'
 import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import { findNavLinkByPath } from '@/lib/navigation'
@@ -30,6 +36,7 @@ export default async function HomePage() {
   let data: Awaited<ReturnType<typeof getHomePageData>> | null = null
   let kpis: HomeKpiBundle | null = null
   let footcounter: FootcounterHomeSlim | null = null
+  let partnerInbox: HomePartnerPortalInboxRow[] = []
   let showLapszabaszatCharts = false
   let loadError: string | null = null
 
@@ -37,11 +44,12 @@ export default async function HomePage() {
     const supabase = await createClient()
     if (supabase) {
       try {
-        const [hasFootcounter, hasLapszabaszat, hasJelenlet] =
+        const [hasFootcounter, hasLapszabaszat, hasJelenlet, hasPartnerOrders] =
           await Promise.all([
             tenantHasFootcounter(supabase, user.tenantId),
             tenantHasLapszabaszat(supabase, user.tenantId),
-            tenantHasJelenlet(supabase, user.tenantId)
+            tenantHasJelenlet(supabase, user.tenantId),
+            tenantHasPartnerOrders(supabase, user.tenantId)
           ])
         showLapszabaszatCharts = hasLapszabaszat
 
@@ -57,6 +65,14 @@ export default async function HomePage() {
 
         if (hasFootcounter) {
           footcounter = await getFootcounterHomeSlim(supabase, user.tenantId)
+        }
+
+        if (hasPartnerOrders) {
+          partnerInbox = await getHomePartnerPortalInbox(
+            supabase,
+            user.tenantId,
+            10
+          )
         }
       } catch (e) {
         loadError =
@@ -87,6 +103,8 @@ export default async function HomePage() {
       ) : null}
 
       {kpis ? <HomeKpiStrip data={kpis} /> : null}
+
+      <PartnerPortalInboxCard rows={partnerInbox} />
 
       {data ? (
         <HomeChartsDashboard

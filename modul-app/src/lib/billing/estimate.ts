@@ -124,6 +124,18 @@ export async function estimateTenantMonthlyBill(
     | null
   const plan = Array.isArray(planRaw) ? planRaw[0] : planRaw
 
+  /** Planben lévő feature-ök — bundelt add-on havidíj skip (double-bill védelem). */
+  const planFeatureKeys = new Set<string>()
+  if (plan?.id) {
+    const { data: planFeats } = await supabase
+      .from('product_plan_features')
+      .select('feature_key')
+      .eq('plan_id', plan.id)
+    for (const row of planFeats ?? []) {
+      planFeatureKeys.add(row.feature_key as string)
+    }
+  }
+
   if (plan) {
     const price = Number(plan.price_monthly_huf) || 0
     currency = plan.currency || 'HUF'
@@ -165,7 +177,27 @@ export async function estimateTenantMonthlyBill(
     const addon = Array.isArray(addons) ? addons[0] : addons
     if (!addon || addon.active === false) continue
 
+    if (addon.unit_key === 'sms_sent' && addon.price_unit_huf != null) {
+      smsUnitPrice = Number(addon.price_unit_huf) || 0
+    }
+
     const monthly = Number(addon.price_monthly_huf) || 0
+    if (monthly <= 0 && addon.unit_key) {
+      // Usage-only (SMS) — ne legyen 0 Ft-os fix sor
+      continue
+    }
+
+    // Ha a plan már tartalmazza az add-on capability key-t → ne számlázz havidíjat
+    const coveredByPlan =
+      planFeatureKeys.has(addon.key) ||
+      (addon.key === 'lapszabaszat' && planFeatureKeys.has('lapszabaszat')) ||
+      (addon.key === 'pda_pos' && planFeatureKeys.has('pda_pos')) ||
+      (addon.key === 'jelenlet' && planFeatureKeys.has('jelenlet')) ||
+      (addon.key === 'footcounter' && planFeatureKeys.has('footcounter')) ||
+      (addon.key === 'webshop' && planFeatureKeys.has('webshop'))
+
+    if (coveredByPlan) continue
+
     if (monthly > 0 || !addon.unit_key) {
       lines.push({
         kind: 'addon',
@@ -175,10 +207,6 @@ export async function estimateTenantMonthlyBill(
         unitPriceHuf: monthly,
         amountHuf: monthly
       })
-    }
-
-    if (addon.unit_key === 'sms_sent' && addon.price_unit_huf != null) {
-      smsUnitPrice = Number(addon.price_unit_huf) || 0
     }
   }
 

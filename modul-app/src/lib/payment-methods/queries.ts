@@ -14,6 +14,13 @@ export type PaymentMethodOption = {
   name: string
 }
 
+/** Partner beküldés dialógus — aktív mód + comment. */
+export type PartnerPaymentMethodOption = {
+  id: string
+  name: string
+  comment: string | null
+}
+
 export async function listPaymentMethods(
   supabase: SupabaseClient,
   tenantId: string
@@ -52,4 +59,29 @@ export async function listActivePaymentMethods(
   }
 
   return data ?? []
+}
+
+/** Partner: kapcsolt cég aktív módjai (+ comment a beküldés UI-hoz). */
+export async function listActivePaymentMethodsForPartner(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<PartnerPaymentMethodOption[]> {
+  const { data, error } = await supabase
+    .from('payment_methods')
+    .select('id, name, comment')
+    .eq('tenant_id', tenantId)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('listActivePaymentMethodsForPartner', error.message)
+    throw new Error('Nem sikerült betölteni a fizetési módokat.')
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    comment: (row.comment as string | null) ?? null
+  }))
 }

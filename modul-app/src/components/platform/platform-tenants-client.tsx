@@ -21,6 +21,7 @@ import {
   TENANT_STATUS_LABEL,
   tenantStatusTone
 } from '@/lib/platform/onboarding'
+import type { PlatformOpsInboxItem } from '@/lib/platform/partner-overview'
 import type { PlatformTenantListItem } from '@/lib/platform/queries'
 import type { TenantStatus } from '@/lib/supabase/database.types'
 import { usePlatformHref } from '@/lib/platform/use-platform-href'
@@ -33,6 +34,7 @@ type Props = {
   limit: number
   initialQ: string
   initialStatus: TenantStatus | 'all'
+  inbox?: PlatformOpsInboxItem[]
 }
 
 const STATUS_OPTIONS: Array<TenantStatus | 'all'> = [
@@ -50,7 +52,8 @@ export function PlatformTenantsClient({
   page,
   limit,
   initialQ,
-  initialStatus
+  initialStatus,
+  inbox = []
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -83,7 +86,7 @@ export function PlatformTenantsClient({
         <div>
           <h1 className="text-h1 text-ink">Cégek</h1>
           <p className="mt-1 text-body text-ink-secondary">
-            Tenant lifecycle és onboarding állapot.
+            Plan · billing · belépés. Teendők felül, ha van.
           </p>
         </div>
         <Link
@@ -94,6 +97,37 @@ export function PlatformTenantsClient({
           Új cég
         </Link>
       </div>
+
+      {inbox.length > 0 ? (
+        <section className="mb-4 rounded-md border border-border bg-surface">
+          <div className="border-b border-border px-3 py-2">
+            <h2 className="text-body font-semibold text-ink">Teendők</h2>
+          </div>
+          <ul className="divide-y divide-border">
+            {inbox.map((item) => (
+              <li key={item.id}>
+                <Link
+                  href={href(`/tenants/${item.tenantId}`)}
+                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 no-underline hover:bg-subtle"
+                >
+                  <span className="font-medium text-ink">{item.tenantName}</span>
+                  <StatusBadge
+                    tone={
+                      item.kind === 'expired' || item.kind === 'grace'
+                        ? 'danger'
+                        : item.kind === 'ending_soon'
+                          ? 'warning'
+                          : 'neutral'
+                    }
+                  >
+                    {item.label}
+                  </StatusBadge>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end">
         <form onSubmit={handleSearch} className="relative max-w-sm flex-1">

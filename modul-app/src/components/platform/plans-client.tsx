@@ -13,6 +13,7 @@ import {
 } from '@/lib/platform/entitlement-actions'
 import type { ProductFeature, ProductPlan } from '@/lib/platform/entitlements'
 import { formatHuf } from '@/lib/billing/estimate'
+import { planBundleHint } from '@/lib/platform/plan-bundles'
 
 type PlanRow = ProductPlan & {
   featureKeys: string[]
@@ -154,8 +155,13 @@ export function PlansClient({
       </div>
 
       <p className="text-body text-ink-secondary">
-        {selected.description ??
+        {planBundleHint(selected.key) ||
+          selected.description ||
           'A plan mentése csak a katalógust írja. A meglévő cégekre az Alkalmaz gomb írja át.'}
+      </p>
+      <p className="text-hint text-ink-muted">
+        „Alkalmaz” = bundel add-on sync + entitlement rematerialize az összes
+        ilyen planű cégre (override-ok megmaradnak).
       </p>
 
       <div className="flex flex-wrap items-end gap-2 rounded-md border border-border bg-surface p-3">

@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 
 import { PlatformTenantsClient } from '@/components/platform/platform-tenants-client'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
+import { getPlatformOpsInbox } from '@/lib/platform/partner-overview'
 import { listPlatformTenants } from '@/lib/platform/queries'
 import type { TenantStatus } from '@/lib/supabase/database.types'
 
@@ -47,12 +48,15 @@ export default async function PlatformTenantsPage({
       ? (statusRaw as TenantStatus)
       : 'all'
 
-  const result = await listPlatformTenants(ctx.admin, {
-    q: q || undefined,
-    status,
-    page,
-    limit: 25
-  })
+  const [result, inbox] = await Promise.all([
+    listPlatformTenants(ctx.admin, {
+      q: q || undefined,
+      status,
+      page,
+      limit: 25
+    }),
+    getPlatformOpsInbox(ctx.admin, 12)
+  ])
 
   return (
     <Suspense fallback={null}>
@@ -63,6 +67,7 @@ export default async function PlatformTenantsPage({
         limit={result.limit}
         initialQ={q}
         initialStatus={status}
+        inbox={inbox}
       />
     </Suspense>
   )

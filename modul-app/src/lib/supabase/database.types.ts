@@ -14,6 +14,9 @@ export type TenantBillingStatus =
   | 'past_due'
   | 'canceled'
 
+/** Lean billing: trial | paid | manual — access_until forrása. */
+export type TenantAccessSource = 'trial' | 'paid' | 'manual'
+
 export type Tenant = {
   id: string
   name: string
@@ -21,9 +24,15 @@ export type Tenant = {
   status: TenantStatus
   plan_id: string | null
   max_seats: number | null
+  /** @deprecated UI: használd access_until + deriveAccessStatus */
   billing_status: TenantBillingStatus
+  /** @deprecated UI: használd access_until */
   trial_ends_at: string | null
+  /** @deprecated UI: használd access_until */
   paid_through: string | null
+  /** Hozzáférés utolsó napja (YYYY-MM-DD). */
+  access_until: string | null
+  access_source: TenantAccessSource | null
   billing_notes: string | null
   internal_notes: string | null
   contact_phone: string | null
@@ -592,6 +601,9 @@ export type Quote = {
   finished_at: string | null
   partner_profile_id: string | null
   portal_submitted_at: string | null
+  preferred_payment_method_id: string | null
+  preferred_payment_method_name: string | null
+  preferred_payment_method_comment: string | null
   ordered_at: string | null
   created_by: string
   created_at: string

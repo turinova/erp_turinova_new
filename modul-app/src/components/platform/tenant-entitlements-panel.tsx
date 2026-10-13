@@ -18,6 +18,11 @@ import {
   LAPSZABASZAT_ADDON_KEY,
   LAPSZABASZAT_DEPENDENT_ADDON_KEYS
 } from '@/lib/lapszabaszat/types'
+import {
+  bundledAddonKeysForPlan,
+  planBundleHint
+} from '@/lib/platform/plan-bundles'
+import { formatHuf } from '@/lib/billing/estimate'
 
 type AddonRow = ProductAddon & {
   featureKeys: string[]
@@ -68,10 +73,28 @@ export function TenantEntitlementsPanel({
     }))
   }, [features])
 
+  const selectedPlan = useMemo(
+    () => plans.find((p) => p.id === planId) ?? null,
+    [plans, planId]
+  )
+
+  const currentPlan = useMemo(
+    () => plans.find((p) => p.id === currentPlanId) ?? null,
+    [plans, currentPlanId]
+  )
+
+  /** Bundel lock a mentett plan szerint (ne a draft dropdown). */
+  const planBundledKeys = useMemo(
+    () => new Set(bundledAddonKeysForPlan(currentPlan?.key)),
+    [currentPlan?.key]
+  )
+
   const lapszabaszatOn = useMemo(
     () =>
-      addons.some((a) => a.key === LAPSZABASZAT_ADDON_KEY && a.enabled),
-    [addons]
+      addons.some((a) => a.key === LAPSZABASZAT_ADDON_KEY && a.enabled) ||
+      planBundledKeys.has(LAPSZABASZAT_ADDON_KEY) ||
+      features.some((f) => f.key === 'lapszabaszat' && f.entitled),
+    [addons, planBundledKeys, features]
   )
 
   function handlePlanSave() {
@@ -143,7 +166,7 @@ export function TenantEntitlementsPanel({
             placeholder="Válassz…"
             options={plans.map((p) => ({
               value: p.id,
-              label: p.is_default ? `${p.name} (default)` : p.name
+              label: `${p.name}${p.is_default ? ' (default)' : ''} · ${formatHuf(p.price_monthly_huf)}`
             }))}
             onChange={setPlanId}
           />
@@ -159,6 +182,15 @@ export function TenantEntitlementsPanel({
           Plan mentése
         </Button>
       </div>
+
+      {selectedPlan ? (
+        <p className="mb-4 text-hint text-ink-secondary">
+          {planBundleHint(selectedPlan.key) || selectedPlan.description}
+          {selectedPlan.key === 'muhely'
+            ? ' · PDA/jelenlét/belépő à la carte maradhat.'
+            : null}
+        </p>
+      ) : null}
 
       <div className="mb-5">
         <p className="mb-2 text-hint font-semibold text-ink-secondary">
@@ -176,6 +208,8 @@ export function TenantEntitlementsPanel({
                 LAPSZABASZAT_DEPENDENT_ADDON_KEYS as readonly string[]
               ).includes(addon.key)
               const blocked = needsLapszabaszat && !lapszabaszatOn && !addon.enabled
+              const inPlanBundle = planBundledKeys.has(addon.key)
+              const monthly = addon.price_monthly_huf ?? 0
 
               return (
                 <li
@@ -186,11 +220,17 @@ export function TenantEntitlementsPanel({
                     <p className="text-body font-medium text-ink">{addon.name}</p>
                     <p className="text-hint text-ink-secondary">
                       {addon.featureKeys.length} feature
-                      {addon.description ? ` · ${addon.description}` : ''}
+                      {inPlanBundle
+                        ? ' · plan bundel (billing skip)'
+                        : monthly > 0
+                          ? ` · ${formatHuf(monthly)}/hó`
+                          : addon.unit_key === 'sms_sent'
+                            ? ` · ${addon.price_unit_huf ?? 89} Ft/SMS`
+                            : ' · 0 Ft/hó'}
                     </p>
                     {blocked ? (
                       <p className="mt-0.5 text-[11px] text-warning-ink">
-                        Kell a Lapszabászat add-on.
+                        Kell Műhely plan vagy Lapszabászat add-on.
                       </p>
                     ) : null}
                     {addon.key === LAPSZABASZAT_ADDON_KEY && addon.enabled ? (
@@ -200,6 +240,9 @@ export function TenantEntitlementsPanel({
                     ) : null}
                   </div>
                   <div className="flex items-center gap-2">
+                    {inPlanBundle ? (
+                      <StatusBadge tone="info">Bundel</StatusBadge>
+                    ) : null}
                     <StatusBadge tone={addon.enabled ? 'success' : 'neutral'}>
                       {addon.enabled ? 'Bekapcsolva' : 'Ki'}
                     </StatusBadge>
@@ -207,7 +250,12 @@ export function TenantEntitlementsPanel({
                       type="button"
                       variant="secondary"
                       size="sm"
-                      disabled={pending || blocked}
+                      disabled={pending || blocked || inPlanBundle}
+                      title={
+                        inPlanBundle
+                          ? 'Plan része — planváltással kapcsold'
+                          : undefined
+                      }
                       onClick={() =>
                         handleAddonToggle(addon.id, !addon.enabled)
                       }

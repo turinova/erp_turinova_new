@@ -13,6 +13,7 @@ type SearchParams = Promise<{
   q?: string
   page?: string
   link?: string
+  tenant?: string
 }>
 
 export default async function PlatformPartnersPage({
@@ -32,6 +33,7 @@ export default async function PlatformPartnersPage({
 
   const page = Math.max(1, Number(params.page) || 1)
   const q = params.q?.trim() ?? ''
+  const tenantId = params.tenant?.trim() || undefined
   const linkRaw = params.link
   const link =
     linkRaw === 'linked' || linkRaw === 'unlinked' ? linkRaw : 'all'
@@ -39,9 +41,20 @@ export default async function PlatformPartnersPage({
   const result = await listPlatformPartners(ctx.admin, {
     q,
     link,
+    tenantId,
     page,
     limit: 25
   })
+
+  let tenantName: string | null = null
+  if (tenantId) {
+    const { data } = await ctx.admin
+      .from('tenants')
+      .select('name')
+      .eq('id', tenantId)
+      .maybeSingle()
+    tenantName = data?.name ?? null
+  }
 
   return (
     <Suspense
@@ -60,6 +73,8 @@ export default async function PlatformPartnersPage({
         limit={result.limit}
         initialQ={q}
         initialLink={link}
+        tenantFilterId={tenantId ?? null}
+        tenantFilterName={tenantName}
       />
     </Suspense>
   )

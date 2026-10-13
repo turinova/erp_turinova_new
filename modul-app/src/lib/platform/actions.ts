@@ -3,6 +3,19 @@
 import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+import {
+  DEFAULT_TRIAL_DAYS,
+  extendAccessUntil,
+  legacyFieldsFromAccess,
+  parseAccessSource,
+  stopAccessUntil,
+  toDateOnly,
+  todayInBudapest,
+  trialAccessUntil,
+  type AccessSource
+} from '@/lib/billing/access'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
 import { writePlatformAudit } from '@/lib/platform/audit'
 import { slugifyTenantName } from '@/lib/platform/onboarding'
@@ -61,13 +74,24 @@ export async function createPlatformTenant(input: {
     return { ok: false, message: 'Ez a slug már foglalt.' }
   }
 
+  const trialUntil = trialAccessUntil(DEFAULT_TRIAL_DAYS)
+  const trialLegacy = legacyFieldsFromAccess({
+    accessUntil: trialUntil,
+    accessSource: 'trial'
+  })
+
   const { data: tenant, error: tenantError } = await admin
     .from('tenants')
     .insert({
       name,
       slug,
       status: 'provisioning',
-      max_seats: 10
+      max_seats: 10,
+      access_until: trialUntil,
+      access_source: 'trial',
+      billing_status: trialLegacy.billing_status,
+      trial_ends_at: trialLegacy.trial_ends_at,
+      paid_through: trialLegacy.paid_through
     })
     .select('id')
     .single()
@@ -853,11 +877,80 @@ export async function updateTenantMaxSeats(input: {
   return { ok: true }
 }
 
+async function writeTenantAccess(
+  admin: SupabaseClient,
+  input: {
+    tenantId: string
+    accessUntil: string | null
+    accessSource: AccessSource | null
+    actorUserId: string
+    auditAction: string
+    extraDetails?: Record<string, unknown>
+    billingNotes?: string
+    internalNotes?: string
+    contactPhone?: string
+    contactEmail?: string
+  }
+): Promise<PlatformActionResult> {
+  const legacy = legacyFieldsFromAccess({
+    accessUntil: input.accessUntil,
+    accessSource: input.accessSource
+  })
+
+  const patch: Record<string, unknown> = {
+    access_until: input.accessUntil,
+    access_source: input.accessSource,
+    billing_status: legacy.billing_status,
+    trial_ends_at: legacy.trial_ends_at,
+    paid_through: legacy.paid_through,
+    updated_at: new Date().toISOString()
+  }
+  if (input.billingNotes !== undefined) {
+    patch.billing_notes = input.billingNotes.trim() || null
+  }
+  if (input.internalNotes !== undefined) {
+    patch.internal_notes = input.internalNotes.trim() || null
+  }
+  if (input.contactPhone !== undefined) {
+    patch.contact_phone = input.contactPhone.trim() || null
+  }
+  if (input.contactEmail !== undefined) {
+    patch.contact_email = input.contactEmail.trim() || null
+  }
+
+  const { error } = await admin
+    .from('tenants')
+    .update(patch)
+    .eq('id', input.tenantId)
+
+  if (error) {
+    console.error(input.auditAction, error.message)
+    return { ok: false, message: 'Nem sikerült menteni.' }
+  }
+
+  await writePlatformAudit(admin, {
+    tenantId: input.tenantId,
+    actorUserId: input.actorUserId,
+    action: input.auditAction,
+    details: {
+      accessUntil: input.accessUntil,
+      accessSource: input.accessSource,
+      ...input.extraDetails
+    }
+  })
+
+  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
+  revalidatePath(TENANTS_PATH)
+  revalidatePath(PLATFORM_PATH)
+  return { ok: true }
+}
+
+/** Kapcsolat + jegyzet (+ opcionális manuális dátum a Haladóban). */
 export async function updateTenantOpsFields(input: {
   tenantId: string
-  billingStatus: string
-  trialEndsAt: string | null
-  paidThrough: string | null
+  /** YYYY-MM-DD vagy null — ha megadva, access_source = manual (vagy megtartott). */
+  accessUntil: string | null
+  accessSource?: AccessSource | null
   billingNotes: string
   internalNotes: string
   contactPhone: string
@@ -866,45 +959,116 @@ export async function updateTenantOpsFields(input: {
   const ctx = await requirePlatformAdmin()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
-  const allowed = ['none', 'trial', 'active', 'past_due', 'canceled']
-  if (!allowed.includes(input.billingStatus)) {
-    return { ok: false, message: 'Érvénytelen billing státusz.' }
+  const until = toDateOnly(input.accessUntil)
+  if (input.accessUntil && !until) {
+    return { ok: false, message: 'Érvénytelen dátum.' }
   }
 
-  const { error } = await ctx.admin
-    .from('tenants')
-    .update({
-      billing_status: input.billingStatus,
-      trial_ends_at: input.trialEndsAt,
-      paid_through: input.paidThrough,
-      billing_notes: input.billingNotes.trim() || null,
-      internal_notes: input.internalNotes.trim() || null,
-      contact_phone: input.contactPhone.trim() || null,
-      contact_email: input.contactEmail.trim() || null,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', input.tenantId)
-
-  if (error) {
-    console.error('updateTenantOpsFields', error.message)
-    return { ok: false, message: 'Nem sikerült menteni.' }
+  let source: AccessSource | null = null
+  if (until) {
+    source =
+      input.accessSource ??
+      parseAccessSource(
+        (
+          await ctx.admin
+            .from('tenants')
+            .select('access_source')
+            .eq('id', input.tenantId)
+            .maybeSingle()
+        ).data?.access_source as string | null
+      ) ??
+      'manual'
   }
 
-  await writePlatformAudit(ctx.admin, {
+  return writeTenantAccess(ctx.admin, {
     tenantId: input.tenantId,
+    accessUntil: until,
+    accessSource: until ? source : null,
     actorUserId: ctx.user.id,
-    action: 'tenant.ops_fields',
-    details: {
-      billingStatus: input.billingStatus,
-      trialEndsAt: input.trialEndsAt,
-      paidThrough: input.paidThrough
-    }
+    auditAction: 'tenant.ops_fields',
+    billingNotes: input.billingNotes,
+    internalNotes: input.internalNotes,
+    contactPhone: input.contactPhone,
+    contactEmail: input.contactEmail
   })
+}
 
-  revalidatePath(`${TENANTS_PATH}/${input.tenantId}`)
-  revalidatePath(TENANTS_PATH)
-  revalidatePath(PLATFORM_PATH)
-  return { ok: true }
+/** Átutalás után: +N hónap a max(jelenlegi, ma) bázisról. */
+export async function extendTenantAccess(input: {
+  tenantId: string
+  months: 1 | 12
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data: row, error } = await ctx.admin
+    .from('tenants')
+    .select('access_until')
+    .eq('id', input.tenantId)
+    .maybeSingle()
+
+  if (error || !row) {
+    return { ok: false, message: 'A cég nem található.' }
+  }
+
+  const next = extendAccessUntil(row.access_until as string | null, input.months)
+  const result = await writeTenantAccess(ctx.admin, {
+    tenantId: input.tenantId,
+    accessUntil: next,
+    accessSource: 'paid',
+    actorUserId: ctx.user.id,
+    auditAction: 'tenant.access_extend',
+    extraDetails: { months: input.months }
+  })
+  if (result.ok) {
+    return { ok: true, message: `Hozzáférés: ${next}` }
+  }
+  return result
+}
+
+/** Próba indítás / újraindítás (default 14 nap ma-tól). */
+export async function grantTenantTrial(input: {
+  tenantId: string
+  days?: number
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const days = input.days ?? DEFAULT_TRIAL_DAYS
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
+    return { ok: false, message: 'A próba 1–90 nap lehet.' }
+  }
+
+  const next = trialAccessUntil(days)
+  const result = await writeTenantAccess(ctx.admin, {
+    tenantId: input.tenantId,
+    accessUntil: next,
+    accessSource: 'trial',
+    actorUserId: ctx.user.id,
+    auditAction: 'tenant.access_trial',
+    extraDetails: { days }
+  })
+  if (result.ok) {
+    return { ok: true, message: `Próba: ${next}` }
+  }
+  return result
+}
+
+/** Hozzáférés leállítása: access_until = tegnap. */
+export async function stopTenantAccess(input: {
+  tenantId: string
+}): Promise<PlatformActionResult> {
+  const ctx = await requirePlatformAdmin()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const next = stopAccessUntil(todayInBudapest())
+  return writeTenantAccess(ctx.admin, {
+    tenantId: input.tenantId,
+    accessUntil: next,
+    accessSource: 'manual',
+    actorUserId: ctx.user.id,
+    auditAction: 'tenant.access_stop'
+  })
 }
 
 /** Platform: új tag a céghez (manuális, mint tenant Felhasználók). */

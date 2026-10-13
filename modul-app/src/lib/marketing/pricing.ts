@@ -1,17 +1,19 @@
-/** Publikus listaárak (nettó HUF) — marketing + megtérülés-kalkulátor. */
+/** Publikus listaárak (nettó HUF) — marketing + megtérülés-kalkulátor.
+ *  Belső forrásigazság: docs/33 + product_plans. /arak jegelve 2027 Q2-ig.
+ */
 
 export const MARKETING_PRICING = {
   currency: 'HUF',
   netLabel: 'nettó',
-  /** Automatikus próbaidő — Alap csomag. */
+  /** Automatikus próbaidő — Bolt csomag. */
   trialMonths: 2,
   /** Éves fizetésnél ajándék hónapok (10× fizetsz, 12-t kapsz). */
   annualGiftMonths: 2,
+  /** Legacy alias — megegyezik plans.bolt-tal. */
   plan: {
-    key: 'alap',
-    name: 'Alap',
+    key: 'bolt',
+    name: 'Bolt',
     priceMonthlyHuf: 39_990,
-    /** 10 × havi — 2 hónap ajándék. */
     priceYearlyHuf: 399_900,
     blurb: 'A bolt napi munkájához szükséges funkciók.',
     features: [
@@ -23,15 +25,45 @@ export const MARKETING_PRICING = {
       'Polc- és termékcímkék',
       'Ügyfelek és törzsadatok'
     ],
-    /** A lista nem teljes — ez jelzi, hogy ennél sokkal több van benne. */
     featuresNote: 'És az összes további funkció, amit a bolt működtetéséhez még használsz.'
+  },
+  plans: {
+    bolt: {
+      key: 'bolt',
+      name: 'Bolt',
+      priceMonthlyHuf: 39_990,
+      priceYearlyHuf: 399_900,
+      blurb: 'Pult + készlet + beszerzés + ügyfélrendelés + számla.'
+    },
+    bolt_plus: {
+      key: 'bolt_plus',
+      name: 'Bolt+',
+      priceMonthlyHuf: 59_900,
+      priceYearlyHuf: 599_000,
+      blurb: 'Bolt + PDA + jelenlét + belépő (szoftver). Hardver egyszeri.'
+    },
+    muhely: {
+      key: 'muhely',
+      name: 'Műhely',
+      priceMonthlyHuf: 49_990,
+      priceYearlyHuf: 499_900,
+      blurb: 'Bolt + lapszabászat. PDA à la carte.'
+    },
+    pro: {
+      key: 'pro',
+      name: 'Pro',
+      priceMonthlyHuf: 94_900,
+      priceYearlyHuf: 949_000,
+      blurb: 'Bolt+ + prioritás. Webshop※ jégelt.'
+    }
   },
   addons: {
     lapszabaszat: {
       key: 'lapszabaszat',
       name: 'Lapszabászati modul',
-      priceMonthlyHuf: 29_990,
-      blurb: 'Rendelés a partner saját fiókjából.',
+      /** Műhely plan része — marketing ROI: 0 (ne duplázd). */
+      priceMonthlyHuf: 0,
+      blurb: 'Rendelés a partner saját fiókjából — Műhely csomag.',
       accent: 'violet' as const
     },
     quote_ready_sms: {
@@ -53,25 +85,31 @@ export const MARKETING_PRICING = {
     jelenlet: {
       key: 'jelenlet',
       name: 'Jelenléti ív',
-      priceMonthlyHuf: 9_900,
-      blurb: 'Jelenlét és távollét egy naptárban.',
-      hardwareNote:
-        'Chipkártyás olvasó külön rendelhető.',
+      priceMonthlyHuf: 0,
+      blurb: 'Jelenlét és távollét — Bolt+ / Pro bundel.',
+      hardwareNote: 'Chipkártyás olvasó külön rendelhető.',
       accent: 'emerald' as const
     },
     footcounter: {
       key: 'footcounter',
       name: 'Belépőszámláló',
-      priceMonthlyHuf: 5_000,
-      blurb: 'Belépőszám óránként, időjárással együtt.',
+      priceMonthlyHuf: 0,
+      blurb: 'Belépőszám — Bolt+ / Pro bundel.',
       hardwareNote: 'A kamera egyszeri díjára külön ajánlatot adunk.',
+      accent: 'indigo' as const
+    },
+    pda_pos: {
+      key: 'pda_pos',
+      name: 'PDA POS',
+      priceMonthlyHuf: 7_900,
+      blurb: 'Bolt+/Pro bundel; Műhelyen à la carte.',
       accent: 'indigo' as const
     },
     webshop: {
       key: 'webshop',
       name: 'Webshop',
       priceMonthlyHuf: 12_900,
-      blurb: 'Online bolt a meglévő termékekből — kategória, tulajdonság, shop-ready.',
+      blurb: 'Online bolt — Pro ※ jégelt.',
       accent: 'indigo' as const
     }
   }
@@ -104,7 +142,5 @@ export function formatHufPlain(amount: number): string {
 
 /** Éves csomag effektív havi díja (12 hónapra vetítve). */
 export function planEffectiveMonthlyFromYearly(): number {
-  return Math.round(
-    MARKETING_PRICING.plan.priceYearlyHuf / 12
-  )
+  return Math.round(MARKETING_PRICING.plan.priceYearlyHuf / 12)
 }

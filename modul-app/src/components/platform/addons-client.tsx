@@ -21,6 +21,7 @@ import {
   updateProductAddon
 } from '@/lib/platform/entitlement-actions'
 import type { ProductAddon, ProductFeature } from '@/lib/platform/entitlements'
+import { MANAGED_BUNDLE_ADDON_KEYS } from '@/lib/platform/plan-bundles'
 
 type AddonRow = ProductAddon & {
   featureKeys: string[]
@@ -77,6 +78,11 @@ export function AddonsClient({
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {(MANAGED_BUNDLE_ADDON_KEYS as readonly string[]).includes(
+                  addon.key
+                ) ? (
+                  <StatusBadge tone="info">Plan bundel</StatusBadge>
+                ) : null}
                 <StatusBadge tone={addon.active ? 'success' : 'neutral'}>
                   {addon.active ? 'Aktív' : 'Inaktív'}
                 </StatusBadge>

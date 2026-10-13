@@ -25,7 +25,7 @@ export default function FeaturesPage() {
         <header className="border-b border-border bg-gradient-to-b from-zinc-50 via-white to-white">
           <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
             <span className="inline-flex h-7 items-center rounded-full border border-border bg-white px-3 text-[12px] font-medium text-ink-secondary">
-              Alap csomag · {FEATURE_PAGE_STEPS.filter((s) => s.package === 'alap').length} fő funkció
+              Bolt csomag · {FEATURE_PAGE_STEPS.filter((s) => s.package === 'alap').length} fő funkció
             </span>
             <h1 className="mt-4 max-w-2xl text-[2.25rem] font-semibold tracking-tight text-ink md:text-[2.75rem] md:leading-[1.1]">
               A bolt mindennapi funkciói egy rendszerben

@@ -3,12 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Activity,
   Building2,
   Hammer,
-  LayoutDashboard,
   Package,
-  Puzzle,
   type LucideIcon
 } from 'lucide-react'
 import Image from 'next/image'
@@ -17,13 +14,11 @@ import type { SessionUser } from '@/lib/auth/session'
 import { usePlatformHref } from '@/lib/platform/use-platform-href'
 import { cn } from '@/lib/utils'
 
+/** Square lean ops: 3 menüpont. Áttekintés/Health/Add-onok → Cégek / Katalógus. */
 const NAV: Array<{ clean: string; label: string; icon: LucideIcon }> = [
-  { clean: '/', label: 'Áttekintés', icon: LayoutDashboard },
   { clean: '/tenants', label: 'Cégek', icon: Building2 },
   { clean: '/partnerek', label: 'Partnerek', icon: Hammer },
-  { clean: '/csomagok', label: 'Csomagok', icon: Package },
-  { clean: '/add-onok', label: 'Add-onok', icon: Puzzle },
-  { clean: '/health', label: 'Health', icon: Activity }
+  { clean: '/katalogus', label: 'Katalógus', icon: Package }
 ]
 
 export function PlatformShell({
@@ -43,7 +38,7 @@ export function PlatformShell({
         aria-label="Platform menü"
       >
         <div className="flex h-topbar shrink-0 items-center border-b border-border px-3">
-          <Link href={href('/')} className="flex items-center no-underline">
+          <Link href={href('/tenants')} className="flex items-center no-underline">
             <Image
               src="/images/turinova-logo.png"
               alt="Turinova"
@@ -56,18 +51,19 @@ export function PlatformShell({
         </div>
         <div className="border-b border-border px-3 py-2">
           <p className="text-hint font-semibold uppercase tracking-wide text-ink-muted">
-            Turinova Platform
+            Platform ops
           </p>
         </div>
         <nav className="mt-2 flex flex-1 flex-col gap-0.5 px-2 pb-4">
           {NAV.map((item) => {
             const itemHref = href(item.clean)
             const active =
-              item.clean === '/'
-                ? pathname === '/platform' || pathname === '/'
-                : pathname === itemHref ||
-                  pathname.startsWith(`${itemHref}/`) ||
-                  pathname.startsWith(`/platform${item.clean}`)
+              pathname === itemHref ||
+              pathname.startsWith(`${itemHref}/`) ||
+              pathname.startsWith(`/platform${item.clean}`) ||
+              (item.clean === '/katalogus' &&
+                (pathname.includes('/csomagok') ||
+                  pathname.includes('/add-onok')))
             const Icon = item.icon
             return (
               <Link
@@ -105,7 +101,7 @@ export function PlatformShell({
       <div className="md:ml-[var(--sidebar-width)]">
         <header className="flex h-topbar items-center border-b border-border bg-surface px-4 md:px-6">
           <p className="text-body font-medium text-ink">
-            Platform operátor konzol
+            Cégek · plan · belépés
           </p>
         </header>
         <main className="px-4 pb-6 pt-4 md:px-6">{children}</main>

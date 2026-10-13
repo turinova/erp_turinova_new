@@ -86,20 +86,20 @@ export function computeSubscriptionMonthlyHuf(input: RoiInputs): {
 } {
   const planHuf = MARKETING_PRICING.plan.priceMonthlyHuf
   let addonsHuf = 0
+  // Plan uplift (Square bundel) — ne a régi à la carte 10k/9.9k/5k
   if (input.lapszabaszatAddon) {
-    addonsHuf += MARKETING_PRICING.addons.lapszabaszat.priceMonthlyHuf
+    addonsHuf +=
+      MARKETING_PRICING.plans.muhely.priceMonthlyHuf - planHuf
+  }
+  if (input.jelenletAddon || input.footcounterAddon) {
+    addonsHuf +=
+      MARKETING_PRICING.plans.bolt_plus.priceMonthlyHuf - planHuf
   }
   if (input.smsAddon) {
     addonsHuf += MARKETING_PRICING.addons.quote_ready_sms.priceMonthlyHuf
   }
   if (input.partnerAddon) {
     addonsHuf += MARKETING_PRICING.addons.partner_orders.priceMonthlyHuf
-  }
-  if (input.jelenletAddon) {
-    addonsHuf += MARKETING_PRICING.addons.jelenlet.priceMonthlyHuf
-  }
-  if (input.footcounterAddon) {
-    addonsHuf += MARKETING_PRICING.addons.footcounter.priceMonthlyHuf
   }
   const smsUsage = input.smsAddon
     ? clampNonNeg(input.smsPerMonth) *
