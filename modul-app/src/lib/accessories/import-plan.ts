@@ -22,6 +22,7 @@ import type {
   AccessoryImportStatus
 } from '@/lib/accessories/import-types'
 import { formatMoneyFt, grossFromNet, netFromGross } from '@/lib/accessories/parse'
+import { normalizeStoredBarcode } from '@/lib/pos/barcode'
 import { closest, parseBool } from '@/lib/webshop/excel/format'
 
 export const NEW_MANUFACTURER_PREFIX = 'new:'
@@ -125,14 +126,16 @@ function buildLookups(ctx: AccessoryImportContext): Lookups {
   for (const e of ctx.existing) {
     l.byId.set(e.id, e)
     l.bySku.set(skuKey(e.sku), e)
-    if (e.barcode?.trim()) {
-      l.barcodeOwner.set(e.barcode.trim(), e)
-      if (e.barcode.startsWith('0')) l.barcodeStripped.set(e.barcode.trim().replace(/^0+/, ''), e)
+    const bc = normalizeStoredBarcode(e.barcode)
+    if (bc) {
+      l.barcodeOwner.set(bc, e)
+      if (bc.startsWith('0')) l.barcodeStripped.set(bc.replace(/^0+/, ''), e)
     }
-    if (e.barcode_internal?.trim()) {
-      l.internalOwner.set(e.barcode_internal.trim(), e)
-      if (e.barcode_internal.startsWith('0')) {
-        l.internalStripped.set(e.barcode_internal.trim().replace(/^0+/, ''), e)
+    const bi = normalizeStoredBarcode(e.barcode_internal)
+    if (bi) {
+      l.internalOwner.set(bi, e)
+      if (bi.startsWith('0')) {
+        l.internalStripped.set(bi.replace(/^0+/, ''), e)
       }
     }
   }
@@ -430,18 +433,19 @@ export function planAccessoryImport(
         fieldError(s, h, `Legfeljebb ${MAX_BARCODE} karakter.`)
         return current
       }
-      const owner = owners.get(text)
+      const stored = normalizeStoredBarcode(text) ?? text
+      const owner = owners.get(stored)
       if (owner && owner.id !== target?.id) {
         fieldError(s, h, `Már foglalt: „${owner.name}” (${owner.sku}) használja.`)
         return current
       }
-      const firstRow = seen.get(text)
+      const firstRow = seen.get(stored)
       if (firstRow != null) {
         fieldError(s, h, `Ugyanez a kód a(z) ${firstRow}. sorban is szerepel.`)
         return current
       }
-      seen.set(text, row.rowNumber)
-      return text
+      seen.set(stored, row.rowNumber)
+      return stored
     }
     const barcode = barcodeField('Vonalkod', target?.barcode ?? null, l.barcodeOwner, l.barcodeStripped, seenBarcode)
     const barcodeInternal = barcodeField(

@@ -358,7 +358,9 @@ export function ProductLabelPrintDialog({
                 </legend>
                 <div className="grid grid-cols-2 gap-1.5">
                   {LABEL_TEMPLATES.map((tpl) => {
-                    const disabled = tpl.id === 'barcode' && !hasBarcode
+                    const disabled =
+                      (tpl.id === 'barcode' && !hasBarcode) ||
+                      (tpl.id === 'sku' && !payload?.sku?.trim())
                     return (
                       <button
                         key={tpl.id}

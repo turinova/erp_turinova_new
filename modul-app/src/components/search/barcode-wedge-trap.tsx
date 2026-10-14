@@ -68,8 +68,6 @@ type SearchBurst = {
   lastAt: number
   /** False until 2nd key within WEDGE_GAP — typing stays native until then. */
   confirmed: boolean
-  /** First key was Digit/Minus — barcode-like start. */
-  digitStart: boolean
 }
 
 export type BarcodeWedgeTrapProps = {
@@ -91,7 +89,8 @@ export type BarcodeWedgeTrapProps = {
  * Document capture + e.code map (HU layout Digit0→ö bypass).
  *
  * Keresőmező: 1. billentyű native (gépelés OK); 2. gyors billentyű → wedge
- * confirm + remap. Lassú gépelés soha nem wipe-eli a mezőt.
+ * confirm + remap — betű–betű is (pl. DT-CZ…), ne csak Digit/Minus start.
+ * Lassú gépelés (gap > WEDGE_GAP) soha nem wipe-eli a mezőt.
  */
 export function BarcodeWedgeTrap({
   enabled = true,
@@ -237,8 +236,12 @@ export function BarcodeWedgeTrap({
 
       const isDigitOrLetter =
         e.code.startsWith('Digit') || e.code.startsWith('Key')
-      const isDigitOrMinus =
-        e.code.startsWith('Digit') || e.code === 'Minus'
+      const isBarcodeChar =
+        isDigitOrLetter ||
+        e.code === 'Minus' ||
+        e.code === 'Equal' ||
+        e.code === 'Period' ||
+        e.code === 'Slash'
 
       // --- Free focus / trap: classic buffer ---
       if (freeFocus) {
@@ -261,7 +264,7 @@ export function BarcodeWedgeTrap({
 
       // Slow / new sequence — never preventDefault (typing stays native)
       if (!continuing) {
-        if (!isDigitOrLetter && e.code !== 'Minus') {
+        if (!isBarcodeChar) {
           burstRef.current = null
           return
         }
@@ -269,20 +272,19 @@ export function BarcodeWedgeTrap({
           chars: ch,
           startedAt: now,
           lastAt: now,
-          confirmed: false,
-          digitStart: isDigitOrMinus
+          confirmed: false
         }
         return
       }
 
-      // Fast 2nd+ key
+      // Fast 2nd key → confirm wedge (letter–letter too: DT-CZ… / SKU+szám)
+      // Scanner gap ~5–20 ms; human typing rarely <45 ms — false steal rare.
+      // looksLikeBarcode at idle/Enter rejects short words (asztal…).
       if (!burst.confirmed) {
-        // Fast letter–letter only → human typing, don't steal
-        if (!burst.digitStart && !isDigitOrMinus) {
+        if (!isBarcodeChar) {
           burstRef.current = null
           return
         }
-        // Confirm wedge: take over with remapped buffer
         e.preventDefault()
         e.stopPropagation()
         burst.confirmed = true
@@ -295,6 +297,10 @@ export function BarcodeWedgeTrap({
       }
 
       // Confirmed burst continues
+      if (!isBarcodeChar) {
+        burstRef.current = null
+        return
+      }
       const span = now - burst.startedAt
       if (span > WEDGE_MAX_SPAN_MS && burst.chars.length < minLength) {
         burstRef.current = null

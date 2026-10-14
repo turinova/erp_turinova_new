@@ -183,13 +183,14 @@ export function ProductLabelSheet({
           <div
             style={{
               fontSize: toU(layout.sku.fontMm),
-              fontWeight: 600,
+              fontWeight: 700,
               lineHeight: 1,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               maxWidth: '100%',
-              letterSpacing: '0.03em'
+              letterSpacing:
+                (payload.sku?.length ?? 0) > 12 ? '0.01em' : '0.02em'
             }}
           >
             {payload.sku}

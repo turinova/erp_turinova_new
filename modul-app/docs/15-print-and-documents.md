@@ -62,7 +62,9 @@ Ha van címkenyomtatás:
 
 ### 6a. Termék címke (33×25 mm) — scan-safe
 
-- **Prioritás:** quiet zone + bar magasság → ár → SKU → név (zsugorít).
+- **Prioritás:** quiet zone + bar magasság → ár → **SKU** → név (zsugorít).
+- **SKU:** cél ~**3.6 mm** (floor ~3.2); barcode + SKU mellett név max **1 sor**. Excess barcode magasság előbb SKU-nak.
+- **Sablon „Nagy SKU”:** név ki → SKU cél ~**4.2 mm** + ár + kód (raktár pick).
 - **HRI** (számjegyek a sáv alatt): alapból **ki**; opcionális „Kód számjegyei”.
 - CODE128 quiet zone ≥ **10× X** (min ~1.5 mm) — **szimmetrikus CSS padding**, jsbarcode `margin=0`.
 - Modulbecslés: tiszta szám → CODE128 **C**; vegyes → Code B. X &lt; 0.20 mm vagy sáv &lt; 5.5 mm → print tiltva.

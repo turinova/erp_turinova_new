@@ -7,6 +7,7 @@ import {
   listAccessoryTaxOptions,
   listAccessoryUnitOptions
 } from '@/lib/accessories/queries'
+import { normalizeStoredBarcode } from '@/lib/pos/barcode'
 import { getOrCreatePosSettings } from '@/lib/pos/settings'
 import { resolveSellNetFromPricing } from '@/lib/pricing/margin'
 import { getAccessoryOnHand } from '@/lib/stock/queries'
@@ -322,7 +323,7 @@ export async function createPosQuickProductAction(input: {
     }
   }
 
-  let barcodeRaw = input.barcode?.trim() || null
+  let barcodeRaw = normalizeStoredBarcode(input.barcode)
   if (barcodeRaw && barcodeRaw.length > 64) {
     return {
       ok: false,
@@ -338,9 +339,8 @@ export async function createPosQuickProductAction(input: {
   // Üres vonalkód → belső EAN-13 (POS / címke)
   if (!barcodeRaw) {
     try {
-      barcodeRaw = await allocateUniqueInternalEan13(
-        ctx.supabase,
-        ctx.user.tenantId!
+      barcodeRaw = normalizeStoredBarcode(
+        await allocateUniqueInternalEan13(ctx.supabase, ctx.user.tenantId!)
       )
     } catch (err) {
       return {
@@ -351,6 +351,9 @@ export async function createPosQuickProductAction(input: {
             : 'Nem sikerült vonalkódot generálni.'
       }
     }
+  }
+  if (!barcodeRaw) {
+    return { ok: false, message: 'Nem sikerült vonalkódot generálni.' }
   }
 
   const defaults = await resolveDefaults(
@@ -597,7 +600,7 @@ export async function assignPosBarcodeAction(input: {
   if (!allowed.ok) return allowed
 
   const accessoryId = input.accessoryId?.trim()
-  const barcode = input.barcode?.trim()
+  const barcode = normalizeStoredBarcode(input.barcode)
   if (!accessoryId) return { ok: false, message: 'Hiányzó termék.' }
   if (!barcode) return { ok: false, message: 'Hiányzó vonalkód.' }
   if (barcode.length > 64) {
@@ -634,9 +637,12 @@ export async function assignPosBarcodeAction(input: {
   }
   if (!row) return { ok: false, message: 'A termék nem található.' }
 
-  const existingBarcode = (row.barcode as string | null)?.trim() || null
-  const existingInternal =
-    (row.barcode_internal as string | null)?.trim() || null
+  const existingBarcode = normalizeStoredBarcode(
+    row.barcode as string | null
+  )
+  const existingInternal = normalizeStoredBarcode(
+    row.barcode_internal as string | null
+  )
 
   if (existingBarcode === barcode || existingInternal === barcode) {
     // Már rajta van — csak POS-ra kapcsoljuk

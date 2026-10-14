@@ -36,7 +36,7 @@ export function prepareBarcodeQuery(raw: string): {
   }
 }
 
-/** Case-insensitive exact (ASCII / barcode mezők). */
+/** Case-insensitive exact (ASCII / barcode mezők) — JS safety a hit-listán. */
 export function barcodeFieldsMatch(
   stored: string | null | undefined,
   scanned: string
@@ -46,9 +46,25 @@ export function barcodeFieldsMatch(
 }
 
 /**
- * PostgREST `.or` filter: `ilike` wildcards nélkül = case-insensitive exact.
+ * Mentéskor: trim + ASCII UPPER (scanner normalize + btree `.eq.` index).
+ * Nem remapol ö/ü — az csak wedge path.
+ */
+export function normalizeStoredBarcode(
+  raw: string | null | undefined
+): string | null {
+  if (raw == null) return null
+  const t = raw.trim().replace(/\s+/g, '')
+  if (!t) return null
+  return t.replace(/[a-z]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 32)
+  )
+}
+
+/**
+ * PostgREST `.or` exact filter — btree unique index barát (ne ilike).
+ * Case: hívó oldalon UPPER `normalizeScannerBarcode` / `normalizeStoredBarcode`.
  * `%` `_` `,` már ki vannak szűrve a hívó oldalon.
  */
 export function barcodeExactOrFilter(safe: string): string {
-  return `barcode.ilike.${safe},barcode_internal.ilike.${safe},sku.ilike.${safe}`
+  return `barcode.eq.${safe},barcode_internal.eq.${safe},sku.eq.${safe}`
 }

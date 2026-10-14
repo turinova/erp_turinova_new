@@ -6,7 +6,7 @@ import {
   type ProductLabelPayload
 } from '@/lib/labels/types'
 
-export type LabelTemplateId = 'full' | 'shelf' | 'barcode' | 'price'
+export type LabelTemplateId = 'full' | 'sku' | 'shelf' | 'barcode' | 'price'
 
 export const LABEL_TEMPLATES: Array<{
   id: LabelTemplateId
@@ -20,6 +20,17 @@ export const LABEL_TEMPLATES: Array<{
     hint: 'Név, SKU, ár, kód',
     fields: (hasBarcode) => ({
       showName: true,
+      showSku: true,
+      showPrice: true,
+      showBarcode: hasBarcode
+    })
+  },
+  {
+    id: 'sku',
+    label: 'Nagy SKU',
+    hint: 'SKU, ár, kód (nincs név)',
+    fields: (hasBarcode) => ({
+      showName: false,
       showSku: true,
       showPrice: true,
       showBarcode: hasBarcode
@@ -102,15 +113,19 @@ export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 5.5
 /**
  * Scan-safe floors for 33×25: barcode first, then price/SKU, name shrinks.
  * HRI off by default → barcode floor is bars-only.
+ * SKU floor ~3.2 mm — warehouse pick readability (was 2.5).
  */
 const FLOOR_33 = {
   name: 2.8,
-  sku: 2.5,
+  sku: 3.2,
   /** Room for amount + readable unit line (~2.1 mm). */
   price: 4.8,
   barcode: 7.5,
   barcodeWithHuman: 9.2
 } as const
+
+/** Desired SKU font (mm) on 33×25 when space allows. */
+export const SKU_DESIRED_FONT_MM = 3.6
 
 /** Balanced pads — avoid top-starved / bottom-empty print look. */
 const PAD = {
@@ -128,6 +143,8 @@ export const UNIT_MIN_FONT_MM = 2.0
  * Higher = fewer chars/line = more lines reserved (avoids under-wrap).
  */
 const CHAR_WIDTH_FACTOR = 0.62
+/** With barcode + SKU: 1 line name — frees height for larger SKU. */
+const NAME_MAX_LINES_WITH_BARCODE_AND_SKU = 1
 const NAME_MAX_LINES_WITH_BARCODE = 2
 const NAME_MAX_LINES_NO_BARCODE = 3
 const NAME_MIN_FONT = 1.55
@@ -377,8 +394,8 @@ function clampFontToRow(
 }
 
 /**
- * Scan-safe layout: quiet zone + bar height first; tighter gaps; larger SKU;
- * HRI off by default; leftover prefers barcode.
+ * Scan-safe layout: quiet zone + bar height first; SKU ~3.6 mm (Nagy SKU ~4.2);
+ * HRI off by default; excess barcode height → SKU then name.
  */
 export function computeLabelLayout(input: {
   size: LabelSize
@@ -421,7 +438,9 @@ export function computeLabelLayout(input: {
     : { quietZoneMm: 1.5 }
 
   const nameMaxLines = showBarcode
-    ? NAME_MAX_LINES_WITH_BARCODE
+    ? showSku
+      ? NAME_MAX_LINES_WITH_BARCODE_AND_SKU
+      : NAME_MAX_LINES_WITH_BARCODE
     : NAME_MAX_LINES_NO_BARCODE
 
   const visibleCount =
@@ -442,7 +461,9 @@ export function computeLabelLayout(input: {
       )
     : { fontDes: 0, lines: 1, contentMin: 0 }
 
-  const skuFontDes = 2.7
+  // Nagy SKU sablon (nincs név): push toward ~4.2 mm when space allows
+  const skuFontDes =
+    showSku && !showName ? 4.2 : showSku ? SKU_DESIRED_FONT_MM : 0
   let priceFontDes = desiredPriceFont(input.price)
   if (!showSku && showName && showPrice) {
     priceFontDes = Number((priceFontDes * 0.94).toFixed(2))
@@ -467,37 +488,46 @@ export function computeLabelLayout(input: {
   let barcodeRow = 0
 
   const textFixed = nameRow + skuRow + priceRow
+  const skuDesiredRow = showSku ? skuContentMm(skuFontDes) : 0
 
   if (showBarcode) {
     const rem = available - textFixed
     if (rem >= barcodeMin) {
-      // Give all leftover to barcode (scan height), not name
+      // Give leftover to barcode (scan height)
       barcodeRow = Number(rem.toFixed(2))
-      // Soft target: if barcode already huge and name is cramped at floor, ok
-      if (
-        barcodeRow > BARCODE_TARGET_HEIGHT_MM + 4 &&
-        showName &&
-        nameRow < nameContentMm(nameResolved.fontDes, nameResolved.lines)
-      ) {
-        const need = nameContentMm(nameResolved.fontDes, nameResolved.lines)
-        const give = Math.min(
-          barcodeRow - barcodeMin,
-          Math.max(0, need - nameRow)
-        )
-        if (give > 0.05) {
-          nameRow = Number((nameRow + give).toFixed(2))
-          barcodeRow = Number((barcodeRow - give).toFixed(2))
+      // Excess above soft target → SKU first (warehouse pick), then name
+      const softCap = BARCODE_TARGET_HEIGHT_MM + 2
+      if (barcodeRow > softCap) {
+        let spare = Number((barcodeRow - Math.max(barcodeMin, softCap)).toFixed(2))
+        if (showSku && skuRow < skuDesiredRow && spare > 0.05) {
+          const giveSku = Math.min(spare, skuDesiredRow - skuRow)
+          skuRow = Number((skuRow + giveSku).toFixed(2))
+          barcodeRow = Number((barcodeRow - giveSku).toFixed(2))
+          spare = Number((spare - giveSku).toFixed(2))
+        }
+        if (
+          spare > 0.05 &&
+          showName &&
+          nameRow < nameContentMm(nameResolved.fontDes, nameResolved.lines)
+        ) {
+          const need = nameContentMm(nameResolved.fontDes, nameResolved.lines)
+          const give = Math.min(spare, Math.max(0, need - nameRow))
+          if (give > 0.05) {
+            nameRow = Number((nameRow + give).toFixed(2))
+            barcodeRow = Number((barcodeRow - give).toFixed(2))
+          }
         }
       }
     } else {
       // Squeeze text blocks; never drop barcode below floor if possible
+      // Prefer keeping SKU near floor (cut name/price first)
       const budget = Math.max(0, available - barcodeMin)
       const squeeze = textFixed > 0 ? Math.min(1, budget / textFixed) : 1
       nameRow = showName
-        ? Math.max(floor.name * 0.85, Number((nameMin * squeeze).toFixed(2)))
+        ? Math.max(floor.name * 0.75, Number((nameMin * squeeze).toFixed(2)))
         : 0
       skuRow = showSku
-        ? Math.max(floor.sku * 0.9, Number((skuMin * squeeze).toFixed(2)))
+        ? Math.max(floor.sku * 0.95, Number((skuMin * squeeze).toFixed(2)))
         : 0
       priceRow = showPrice
         ? Math.max(floor.price * 0.9, Number((priceMin * squeeze).toFixed(2)))
@@ -508,11 +538,11 @@ export function computeLabelLayout(input: {
       )
       const sum = nameRow + skuRow + priceRow + barcodeRow
       if (sum > available + 0.01) {
-        // Last resort: proportional — but keep barcode share ≥ floor share
+        // Last resort: cut name → price → SKU (SKU last)
         const overflow = sum - available
         let cut = overflow
         const cutFromName = showName
-          ? Math.min(cut, Math.max(0, nameRow - floor.name * 0.8))
+          ? Math.min(cut, Math.max(0, nameRow - floor.name * 0.75))
           : 0
         nameRow = Number((nameRow - cutFromName).toFixed(2))
         cut -= cutFromName
@@ -522,7 +552,7 @@ export function computeLabelLayout(input: {
         priceRow = Number((priceRow - cutFromPrice).toFixed(2))
         cut -= cutFromPrice
         const cutFromSku = showSku
-          ? Math.min(cut, Math.max(0, skuRow - floor.sku * 0.85))
+          ? Math.min(cut, Math.max(0, skuRow - floor.sku * 0.9))
           : 0
         skuRow = Number((skuRow - cutFromSku).toFixed(2))
         cut -= cutFromSku
@@ -534,9 +564,9 @@ export function computeLabelLayout(input: {
   } else if (textFixed > 0) {
     const leftover = Math.max(0, available - textFixed)
     if (leftover > 0.1) {
-      const wName = showName ? 1.2 : 0
-      const wSku = showSku ? 0.55 : 0
-      const wPrice = showPrice ? 1.4 : 0
+      const wName = showName ? 0.9 : 0
+      const wSku = showSku ? 1.35 : 0
+      const wPrice = showPrice ? 1.2 : 0
       const wSum = wName + wSku + wPrice || 1
       if (showName)
         nameRow = Number((nameMin + (leftover * wName) / wSum).toFixed(2))

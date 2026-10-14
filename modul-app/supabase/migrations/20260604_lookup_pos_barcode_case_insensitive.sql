@@ -1,5 +1,6 @@
--- POS barcode lookup: case-insensitive exact match
--- (USB wedge e.code → lowercase Key*; DB / címke tipikusan UPPER, pl. DT-CZ00035251)
+-- POS barcode lookup: case-insensitive via lower() — SUPERSEDED by 20260605
+-- (equality + UPPER hygiene; lower() skipped barcode btree indexes).
+-- Kept for migration history; apply 20260605 after this.
 
 create or replace function public.lookup_pos_barcode(
   p_tenant_id uuid,

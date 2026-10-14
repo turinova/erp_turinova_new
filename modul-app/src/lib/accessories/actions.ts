@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { accessoryFormSchema } from '@/lib/accessories/parse'
+import { normalizeStoredBarcode } from '@/lib/pos/barcode'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 import { revalidateShopProduct } from '@/lib/webshop/revalidate-product'
 
@@ -161,6 +162,8 @@ export async function createAccessory(
   }
 
   const values = parsed.data
+  const barcode = normalizeStoredBarcode(values.barcode)
+  const barcodeInternal = normalizeStoredBarcode(values.barcodeInternal)
 
   const { data, error } = await ctx.supabase
     .from('accessories')
@@ -169,8 +172,8 @@ export async function createAccessory(
       name: values.name,
       manufacturer_id: values.manufacturerId,
       sku: values.sku,
-      barcode: values.barcode,
-      barcode_internal: values.barcodeInternal,
+      barcode,
+      barcode_internal: barcodeInternal,
       tax_rate_id: values.taxRateId,
       unit_id: values.unitId,
       price_net: values.priceNet,
@@ -229,6 +232,8 @@ export async function updateAccessory(
   }
 
   const values = parsed.data
+  const barcode = normalizeStoredBarcode(values.barcode)
+  const barcodeInternal = normalizeStoredBarcode(values.barcodeInternal)
 
   const { data, error } = await ctx.supabase
     .from('accessories')
@@ -236,8 +241,8 @@ export async function updateAccessory(
       name: values.name,
       manufacturer_id: values.manufacturerId,
       sku: values.sku,
-      barcode: values.barcode,
-      barcode_internal: values.barcodeInternal,
+      barcode,
+      barcode_internal: barcodeInternal,
       tax_rate_id: values.taxRateId,
       unit_id: values.unitId,
       price_net: values.priceNet,
