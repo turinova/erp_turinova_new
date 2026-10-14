@@ -95,7 +95,7 @@ export type LabelLayout = {
   quietZoneMm: number
   name: LabelBlockLayout | null
   sku: LabelBlockLayout | null
-  /** `over-barcode` = thin strip above bars (Teljes); `row` = own grid row (Nagy SKU). */
+  /** `row` = own grid row (Teljes + Nagy SKU). `over-barcode` kept for type compat. */
   skuPlacement: SkuPlacement | null
   price: LabelBlockLayout | null
   /** Always true — amount + /unit on one baseline. */
@@ -432,16 +432,11 @@ export function computeLabelLayout(input: {
   let barcodeRow = 0
   let skuPlacement: SkuPlacement | null = null
 
-  /** Legacy over-barcode strip (unused on Teljes — SKU is own row). */
-  const skuStripMm = 2.35
-  const skuStripPadMm = 0.15
   const hriReserve = showHumanReadable ? 1.9 : 0
   const barcodeFloor = BARCODE_ABSOLUTE_MIN_HEIGHT_MM + hriReserve
   const nameMaxLines = showBarcode
     ? NAME_MAX_LINES_BARCODE
     : NAME_MAX_LINES_NO_BARCODE
-  const barcodeMinWithStrip = (strip: number) =>
-    barcodeFloor + (strip > 0 ? strip + skuStripPadMm : 0)
   /** Teljes: SKU row height for ~3.5 mm type. */
   const skuFullRowMm = 3.85
 
@@ -517,9 +512,8 @@ export function computeLabelLayout(input: {
       overflow -= cut
     }
     if (overflow > 0.01) {
-      const strip = skuPlacement === 'over-barcode' ? skuStripMm : 0
       barcodeRow = Number(
-        Math.max(barcodeMinWithStrip(strip), barcodeRow - overflow).toFixed(2)
+        Math.max(barcodeFloor, barcodeRow - overflow).toFixed(2)
       )
     }
   }
@@ -536,14 +530,11 @@ export function computeLabelLayout(input: {
     : { fontMm: 0, lines: 1 }
 
   if (showName && showBarcode) {
-    const barcodeMin = barcodeMinWithStrip(
-      skuPlacement === 'over-barcode' ? skuStripMm : 0
-    )
     for (let i = 0; i < 12; i++) {
       const need = nameContentMm(nameFitted.fontMm, nameFitted.lines) + 0.15
       const needsMoreRoom = need > nameRow + 0.05
       if (!needsMoreRoom) break
-      const spare = barcodeRow - barcodeMin
+      const spare = barcodeRow - barcodeFloor
       if (spare < 0.15) break
       const give = Math.min(spare, Math.max(0.2, need - nameRow + 0.3))
       barcodeRow = Number((barcodeRow - give).toFixed(2))
@@ -558,15 +549,13 @@ export function computeLabelLayout(input: {
     }
   }
 
-  // Teljes: SKU font first, then cap name below it
+  // Teljes / Nagy SKU: row font; then cap name below SKU on Teljes
   const skuFont =
     skuPlacement === 'row'
       ? mode === 'warehouse'
         ? clampFont(SKU_WAREHOUSE_FONT_MM, skuRow * 0.92, 3.4)
         : clampFont(SKU_SECONDARY_FONT_MM, skuRow * 0.92, 3.2)
-      : skuPlacement === 'over-barcode'
-        ? clampFont(SKU_SECONDARY_FONT_MM, skuRow * 0.95, 2.0)
-        : 0
+      : 0
 
   let nameFont = nameFitted.fontMm
   if (showName && showSku && skuFont > 0) {
@@ -620,12 +609,7 @@ export function computeLabelLayout(input: {
     }
   }
 
-  let barcodeZone = showBarcode ? barcodeRow : 0
-  let skuInZone = skuPlacement === 'over-barcode' ? skuRow : 0
-  if (skuPlacement === 'over-barcode' && showBarcode) {
-    barcodeZone = barcodeRow
-    skuInZone = skuStripMm
-  }
+  const barcodeZone = showBarcode ? barcodeRow : 0
 
   return {
     padTopMm,
@@ -640,7 +624,7 @@ export function computeLabelLayout(input: {
     sku:
       showSku && skuPlacement
         ? {
-            rowMm: skuPlacement === 'over-barcode' ? skuInZone : skuRow,
+            rowMm: skuRow,
             fontMm: skuFont,
             secondaryFontMm: 0
           }
