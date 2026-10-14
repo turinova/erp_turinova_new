@@ -5,8 +5,9 @@ import { useMemo, type CSSProperties } from 'react'
 
 import {
   computeLabelLayout,
-  estimateCode128Modules,
+  estimateBarcodeModules,
   LABEL_PX_PER_MM,
+  resolveLabelBarcodeFormat,
   solveBarcodeXMm
 } from '@/lib/labels/layout'
 import {
@@ -97,9 +98,15 @@ export function ProductLabelSheet({
 
   const barcodeMetrics = useMemo(() => {
     if (!layout.barcode || !barcode) {
-      return { heightPx: 24, moduleWidth: 1.4, quietMm: 1.5 }
+      return {
+        heightPx: 24,
+        moduleWidth: 1.4,
+        quietMm: 2,
+        format: 'CODE128' as const
+      }
     }
-    const modules = estimateCode128Modules(barcode)
+    const format = resolveLabelBarcodeFormat(barcode)
+    const modules = estimateBarcodeModules(barcode)
     const { quietZoneMm } = solveBarcodeXMm(contentWidthMm, modules)
     const quietMm = Math.max(layout.quietZoneMm, quietZoneMm)
     const barsWidthMm = Math.max(4, contentWidthMm - 2 * quietMm)
@@ -116,7 +123,7 @@ export function ProductLabelSheet({
       layout.barcode.rowMm - hriMm - skuStripMm
     )
     const heightPx = Math.max(12, Math.round(usableMm * pxPerMm))
-    return { heightPx, moduleWidth, quietMm }
+    return { heightPx, moduleWidth, quietMm, format }
   }, [layout, barcode, contentWidthMm, pxPerMm, skuOverBarcode])
 
   const cell = (rowMm: number, extra?: CSSProperties): CSSProperties => ({
@@ -293,7 +300,7 @@ export function ProductLabelSheet({
           >
             <Barcode
               value={barcode}
-              format="CODE128"
+              format={barcodeMetrics.format}
               width={barcodeMetrics.moduleWidth}
               height={barcodeMetrics.heightPx}
               displayValue={false}

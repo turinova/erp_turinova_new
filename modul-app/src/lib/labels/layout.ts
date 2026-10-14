@@ -1,3 +1,4 @@
+import { isValidEan13 } from '@/lib/barcodes/ean13'
 import {
   labelBarcodeValue,
   labelSizeMm,
@@ -5,6 +6,8 @@ import {
   type LabelSize,
   type ProductLabelPayload
 } from '@/lib/labels/types'
+
+export type LabelBarcodeFormat = 'EAN13' | 'CODE128'
 
 export type LabelTemplateId = 'shelf' | 'full' | 'sku' | 'barcode' | 'price'
 
@@ -109,15 +112,23 @@ export const LABEL_PX_PER_MM = 96 / 25.4
 
 /**
  * Absolute min narrow-bar width (mm) for handheld POS on 33×25.
- * GS1 ideal ≥0.25; EAN-13 as CODE128C on this width lands ~0.21 — allow 0.20.
+ * GS1 retail target ≥0.25; thinner bars fail cheap scanners / 203 dpi thermal.
  */
-export const BARCODE_MIN_X_MM = 0.2
+export const BARCODE_MIN_X_MM = 0.25
+
+/**
+ * Soft quiet-zone floor (mm). Prefer 10×X when space allows; never below this.
+ */
+export const BARCODE_MIN_QUIET_MM = 2.0
 
 /** Prefer at least this bar height (mm) when barcode is shown. */
-export const BARCODE_TARGET_HEIGHT_MM = 7.0
+export const BARCODE_TARGET_HEIGHT_MM = 8.0
 
 /** Hard floor — below this, refuse print. */
-export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 5.5
+export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 6.0
+
+/** EAN-13 bar modules (excl. quiet) — denser than CODE128C for the same 13 digits. */
+export const EAN13_BAR_MODULES = 95
 
 /**
  * Teljes sablon SKU — fontosabb / nagyobb, mint a név (ops pick).
@@ -136,11 +147,12 @@ export const UNIT_MIN_FONT_MM = 2.0
 /** SKU must stay at least this much larger than name (mm) when both shown. */
 export const SKU_OVER_NAME_MM = 0.4
 
+/** Tight side pad → max barcode content width (thicker X). */
 const PAD = {
-  top: 0.85,
-  side: 0.95,
-  bottom: 0.85,
-  safety: 0.25
+  top: 0.7,
+  side: 0.55,
+  bottom: 0.7,
+  safety: 0.2
 } as const
 
 /** Tight rhythm — little air between name / price / barcode. */
@@ -231,6 +243,14 @@ function clampFont(desired: number, maxMm: number, minMm: number): number {
 }
 
 /**
+ * Prefer native EAN-13 for valid 13-digit codes — ~95 modules vs ~123 CODE128C
+ * → thicker X on the same 33 mm label (scanners + retail).
+ */
+export function resolveLabelBarcodeFormat(value: string): LabelBarcodeFormat {
+  return isValidEan13(value.trim()) ? 'EAN13' : 'CODE128'
+}
+
+/**
  * CODE128 symbol width in modules (excluding quiet zones).
  * Matches jsbarcode auto subset: pure digits → Code C (2 digits/symbol);
  * otherwise Code B (1 char/symbol). Stop = 13 modules.
@@ -255,29 +275,49 @@ export function estimateCode128Modules(value: string): number {
   return dataSymbols * 11 + 13
 }
 
-export function computeQuietZoneMm(xMm: number): number {
-  return Math.max(1.5, 10 * xMm)
+/** Modules for the format we will actually render. */
+export function estimateBarcodeModules(value: string): number {
+  if (resolveLabelBarcodeFormat(value) === 'EAN13') return EAN13_BAR_MODULES
+  return estimateCode128Modules(value)
 }
 
+export function computeQuietZoneMm(xMm: number): number {
+  return Math.max(BARCODE_MIN_QUIET_MM, 10 * xMm)
+}
+
+/**
+ * Maximize narrow-bar width (X) for the content width.
+ * Prefer GS1 quiet (10×X); if that would thin bars, keep quiet at
+ * BARCODE_MIN_QUIET_MM and spend the rest on X.
+ */
 export function solveBarcodeXMm(
   contentWidthMm: number,
   modules: number
 ): { xMm: number; quietZoneMm: number; symbolWidthMm: number } {
   const m = Math.max(1, modules)
-  let x = contentWidthMm / (m + 20)
-  let quiet = computeQuietZoneMm(x)
-  if (quiet > 10 * x + 0.001) {
-    x = Math.max(0.01, (contentWidthMm - 3) / m)
-    quiet = computeQuietZoneMm(x)
+  const W = Math.max(4, contentWidthMm)
+
+  // Max X with soft quiet floor
+  let quiet = BARCODE_MIN_QUIET_MM
+  let x = Math.max(0.01, (W - 2 * quiet) / m)
+
+  // If X is large enough that GS1 wants wider quiet, grow quiet (shrink X)
+  if (10 * x > quiet + 0.001) {
+    x = Math.max(0.01, W / (m + 20))
+    quiet = 10 * x
+    if (quiet < BARCODE_MIN_QUIET_MM) {
+      quiet = BARCODE_MIN_QUIET_MM
+      x = Math.max(0.01, (W - 2 * quiet) / m)
+    }
   }
-  const symbolWidthMm = m * x
-  const total = 2 * quiet + symbolWidthMm
-  if (total > contentWidthMm + 0.01) {
-    x = Math.max(0.01, (contentWidthMm - 2 * Math.max(1.5, quiet)) / m)
-    quiet = Math.min(computeQuietZoneMm(x), (contentWidthMm - m * x) / 2)
-    quiet = Math.max(0.8, quiet)
-    x = Math.max(0.01, (contentWidthMm - 2 * quiet) / m)
+
+  // Clamp quiet so symbol still fits
+  const maxQuiet = Math.max(0.5, (W - m * Math.min(x, BARCODE_MIN_X_MM)) / 2)
+  if (quiet > maxQuiet + 0.01 && maxQuiet >= BARCODE_MIN_QUIET_MM * 0.85) {
+    quiet = Math.max(BARCODE_MIN_QUIET_MM * 0.85, maxQuiet)
+    x = Math.max(0.01, (W - 2 * quiet) / m)
   }
+
   return {
     xMm: Number(x.toFixed(4)),
     quietZoneMm: Number(quiet.toFixed(3)),
@@ -313,7 +353,7 @@ export function assessLabelScanSafety(input: {
     4,
     labelWidthMm - 2 * (layout.padSideMm + layout.safetyInsetMm)
   )
-  const modules = estimateCode128Modules(barcodeValue)
+  const modules = estimateBarcodeModules(barcodeValue)
   const { xMm, quietZoneMm } = solveBarcodeXMm(contentWidth, modules)
 
   const hriMm = layout.showHumanReadable
@@ -329,7 +369,7 @@ export function assessLabelScanSafety(input: {
     return {
       ok: false,
       reason:
-        'A vonalkód túl hosszú ehhez a 33×25 mm címkéhez — a sávok túl keskenyek lennének. Használj rövidebb (lehetőleg csak számos) kódot; a „Csak kód” sablon ezen nem segít.',
+        'A vonalkód sávjai túl keskenyek lennének (X < 0,25 mm) — a szkenner nem olvasná megbízhatóan. Használj rövidebb (lehetőleg csak számos) kódot; a „Csak kód” sablon ezen nem segít.',
       xMm,
       quietZoneMm,
       barHeightMm
@@ -345,7 +385,7 @@ export function assessLabelScanSafety(input: {
       barHeightMm
     }
   }
-  if (quietZoneMm < 1.2) {
+  if (quietZoneMm < BARCODE_MIN_QUIET_MM * 0.9) {
     return {
       ok: false,
       reason:
@@ -406,10 +446,10 @@ export function computeLabelLayout(input: {
   const text = input.productName.trim() || input.payload.name || '—'
   const contentWidthMm = Math.max(8, w - 2 * (padSideMm + safetyInsetMm))
 
-  const modules = barcodeVal ? estimateCode128Modules(barcodeVal) : 40
+  const modules = barcodeVal ? estimateBarcodeModules(barcodeVal) : 40
   const { quietZoneMm: resolvedQuiet } = showBarcode
     ? solveBarcodeXMm(contentWidthMm, modules)
-    : { quietZoneMm: 1.5 }
+    : { quietZoneMm: BARCODE_MIN_QUIET_MM }
 
   const mode = detectMode({ showName, showSku, showPrice, showBarcode })
 
