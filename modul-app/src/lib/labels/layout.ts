@@ -118,8 +118,9 @@ export const BARCODE_MIN_X_MM = 0.25
 
 /**
  * Soft quiet-zone floor (mm). Prefer 10×X when space allows; never below this.
+ * Main-app shelf labels use ~0 quiet; 1.5 mm is a scan-safe compromise on 33×25.
  */
-export const BARCODE_MIN_QUIET_MM = 2.0
+export const BARCODE_MIN_QUIET_MM = 1.5
 
 /** Prefer at least this bar height (mm) when barcode is shown. */
 export const BARCODE_TARGET_HEIGHT_MM = 8.0
@@ -129,6 +130,16 @@ export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 6.0
 
 /** EAN-13 bar modules (excl. quiet) — denser than CODE128C for the same 13 digits. */
 export const EAN13_BAR_MODULES = 95
+
+/**
+ * JsBarcode narrow-bar width (CSS px) before SVG stretch-to-fill.
+ * Match main-app AccessoryLabelPrintDialog (`width={2.5}`) — avoids sub-pixel
+ * bars that thermal heads smear. Printed X comes from CSS 100% fill, not this.
+ */
+export const BARCODE_INTRINSIC_MODULE_PX = 2.5
+
+/** Intrinsic SVG bar height (px) before stretch — main-app uses ~50 on 33×25. */
+export const BARCODE_INTRINSIC_HEIGHT_PX = 50
 
 /**
  * Teljes sablon SKU — fontosabb / nagyobb, mint a név (ops pick).
@@ -147,12 +158,15 @@ export const UNIT_MIN_FONT_MM = 2.0
 /** SKU must stay at least this much larger than name (mm) when both shown. */
 export const SKU_OVER_NAME_MM = 0.4
 
-/** Tight side pad → max barcode content width (thicker X). */
+/**
+ * Text inset. Barcode row breaks out (full-bleed) via negative margin in the sheet —
+ * same idea as main-app (0 side pad on the symbol).
+ */
 const PAD = {
   top: 0.7,
-  side: 0.55,
+  side: 0.45,
   bottom: 0.7,
-  safety: 0.2
+  safety: 0.15
 } as const
 
 /** Tight rhythm — little air between name / price / barcode. */
@@ -349,10 +363,8 @@ export function assessLabelScanSafety(input: {
     }
   }
 
-  const contentWidth = Math.max(
-    4,
-    labelWidthMm - 2 * (layout.padSideMm + layout.safetyInsetMm)
-  )
+  // Barcode is full-bleed across the label (text keeps side pad).
+  const contentWidth = Math.max(4, labelWidthMm)
   const modules = estimateBarcodeModules(barcodeValue)
   const { xMm, quietZoneMm } = solveBarcodeXMm(contentWidth, modules)
 
@@ -444,11 +456,14 @@ export function computeLabelLayout(input: {
   )
 
   const text = input.productName.trim() || input.payload.name || '—'
+  /** Text / name wrap width (inset). */
   const contentWidthMm = Math.max(8, w - 2 * (padSideMm + safetyInsetMm))
+  /** Barcode uses full label width (full-bleed stretch). */
+  const barcodeContentWidthMm = Math.max(8, w)
 
   const modules = barcodeVal ? estimateBarcodeModules(barcodeVal) : 40
   const { quietZoneMm: resolvedQuiet } = showBarcode
-    ? solveBarcodeXMm(contentWidthMm, modules)
+    ? solveBarcodeXMm(barcodeContentWidthMm, modules)
     : { quietZoneMm: BARCODE_MIN_QUIET_MM }
 
   const mode = detectMode({ showName, showSku, showPrice, showBarcode })

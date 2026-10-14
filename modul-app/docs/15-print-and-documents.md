@@ -71,9 +71,9 @@ Zárolt döntések:
 - **Nagy SKU** — raktár pick (~4.2 mm SKU sor, nincs név).
 - **Ár:** egy sor **`12 345 Ft/db`**.
 - **Fix zónák**: SKU sor védve; leftover → név; scan floor barcode-on.
-- **HRI** alapból ki. X &lt; **0.25 mm** vagy sáv &lt; **6.0 mm** vagy quiet &lt; ~2 mm → print tiltva.
-- **Vastagabb sávok:** érvényes 13 jegyű kód → natív **EAN-13** (~95 modul); egyébként CODE128. Oldalsó pad szűk; quiet min ~2 mm.
-- **Előnézet = print:** mm + `LABEL_PX_PER_MM` + CSS `scale`.
+- **HRI** alapból ki. X &lt; **0.25 mm** vagy sáv &lt; **6.0 mm** vagy quiet &lt; ~1.5 mm → print tiltva.
+- **Vastagabb sávok (main-app parity):** érvényes 13 jegyű → **EAN-13**; egyébként CODE128. Intrinsic modul **`width={2.5}`**, SVG **`width/height: 100%` + `object-fit: fill`** a barcode cellában (full-bleed, quiet ~1.5 mm). Nyomtatott X = cellaszélesség / modulszám — nem 96 dpi mm-számolt ~1 px.
+- **Előnézet = print:** mm layout + ugyanaz a stretch. Preview zoom: CSS `scale`.
 - Nyomtató: **100% / Actual size**. Illesztés: `tenant_label_print_settings`.
 - Layout: `src/lib/labels/layout.ts`; UI: `ProductLabelPrintDialog`.
 

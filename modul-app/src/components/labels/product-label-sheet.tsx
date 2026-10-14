@@ -4,6 +4,8 @@ import dynamic from 'next/dynamic'
 import { useMemo, type CSSProperties } from 'react'
 
 import {
+  BARCODE_INTRINSIC_HEIGHT_PX,
+  BARCODE_INTRINSIC_MODULE_PX,
   computeLabelLayout,
   estimateBarcodeModules,
   LABEL_PX_PER_MM,
@@ -75,7 +77,6 @@ export function ProductLabelSheet({
   )
 
   const isPreview = mode === 'preview'
-  const pxPerMm = LABEL_PX_PER_MM
   const displayScale = isPreview ? previewScale / LABEL_PX_PER_MM : 1
 
   const toU = (mmVal: number) => `${mmVal}mm`
@@ -94,26 +95,20 @@ export function ProductLabelSheet({
   if (layout.price) gridRows.push(toU(layout.price.rowMm))
   if (layout.barcode) gridRows.push(toU(layout.barcode.rowMm))
 
-  const contentWidthMm = Math.max(4, mm.w - 2 * padX)
-
   const barcodeMetrics = useMemo(() => {
     if (!layout.barcode || !barcode) {
       return {
-        heightPx: 24,
-        moduleWidth: 1.4,
-        quietMm: 2,
+        heightPx: BARCODE_INTRINSIC_HEIGHT_PX,
+        moduleWidth: BARCODE_INTRINSIC_MODULE_PX,
+        quietMm: 1.5,
         format: 'CODE128' as const
       }
     }
     const format = resolveLabelBarcodeFormat(barcode)
     const modules = estimateBarcodeModules(barcode)
-    const { quietZoneMm } = solveBarcodeXMm(contentWidthMm, modules)
+    // Full-bleed: quiet solved against full label width (main-app style).
+    const { quietZoneMm } = solveBarcodeXMm(mm.w, modules)
     const quietMm = Math.max(layout.quietZoneMm, quietZoneMm)
-    const barsWidthMm = Math.max(4, contentWidthMm - 2 * quietMm)
-    const moduleWidth = Math.max(
-      0.8,
-      Number(((barsWidthMm / modules) * pxPerMm).toFixed(2))
-    )
     const hriMm = layout.showHumanReadable
       ? layout.barcode.secondaryFontMm + 0.35
       : 0
@@ -122,9 +117,18 @@ export function ProductLabelSheet({
       2.5,
       layout.barcode.rowMm - hriMm - skuStripMm
     )
-    const heightPx = Math.max(12, Math.round(usableMm * pxPerMm))
-    return { heightPx, moduleWidth, quietMm, format }
-  }, [layout, barcode, contentWidthMm, pxPerMm, skuOverBarcode])
+    // Fat intrinsic SVG (main-app 2.5 × ~50); CSS stretch sets printed X/H.
+    const heightPx = Math.max(
+      BARCODE_INTRINSIC_HEIGHT_PX,
+      Math.round(usableMm * LABEL_PX_PER_MM)
+    )
+    return {
+      heightPx,
+      moduleWidth: BARCODE_INTRINSIC_MODULE_PX,
+      quietMm,
+      format
+    }
+  }, [layout, barcode, mm.w, skuOverBarcode])
 
   const cell = (rowMm: number, extra?: CSSProperties): CSSProperties => ({
     height: toU(rowMm),
@@ -181,6 +185,20 @@ export function ProductLabelSheet({
           : null)
       }}
     >
+      {/* Stretch barcode SVG like main-app — printed X = cell width / modules */}
+      <style>{`
+        .label-barcode-svg-wrap svg {
+          display: block !important;
+          width: 100% !important;
+          height: 100% !important;
+          max-width: 100% !important;
+          max-height: 100% !important;
+          object-fit: fill !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+      `}</style>
+
       {layout.name ? (
         <div
           style={cell(layout.name.rowMm, {
@@ -266,7 +284,11 @@ export function ProductLabelSheet({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'stretch',
-            justifyContent: 'flex-end'
+            justifyContent: 'flex-end',
+            // Cancel sheet side pad → full-bleed barcode (main-app parity)
+            marginLeft: toU(-padX),
+            marginRight: toU(-padX),
+            width: `calc(100% + ${toU(padX * 2)})`
           })}
         >
           {skuOverBarcode ? (
@@ -278,13 +300,16 @@ export function ProductLabelSheet({
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
-                flexShrink: 0
+                flexShrink: 0,
+                paddingLeft: toU(padX),
+                paddingRight: toU(padX)
               }}
             >
               {skuEl(layout.sku!)}
             </div>
           ) : null}
           <div
+            className="label-barcode-svg-wrap"
             style={{
               display: 'flex',
               flex: 1,
@@ -321,7 +346,9 @@ export function ProductLabelSheet({
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 maxWidth: '100%',
-                textAlign: 'center'
+                textAlign: 'center',
+                paddingLeft: toU(padX),
+                paddingRight: toU(padX)
               }}
             >
               {barcode}

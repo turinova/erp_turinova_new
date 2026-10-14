@@ -89,6 +89,20 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
         page-break-after: auto;
         break-after: auto;
       }
+      /* Main-app parity: fat SVG stretched to barcode cell → thicker printed bars */
+      #${CONTAINER_ID} .label-barcode-svg-wrap {
+        overflow: hidden !important;
+      }
+      #${CONTAINER_ID} .label-barcode-svg-wrap svg {
+        display: block !important;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        object-fit: fill !important;
+      }
     }
   `
   document.head.appendChild(style)
