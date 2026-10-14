@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
+import {
+  barcodeExactOrFilter,
+  barcodeFieldsMatch,
+  looksLikeBarcode,
+  prepareBarcodeQuery
+} from '@/lib/pos/barcode'
 import { normalizeScannerBarcode } from '@/lib/scanner/normalize-wedge'
 
 export type AccessoryBarcodeHit = {
@@ -48,7 +53,7 @@ export async function lookupAccessoryByBarcode(
       .eq('tenant_id', tenantId)
       .eq('active', true)
       .is('deleted_at', null)
-      .or(`barcode.eq.${safe},barcode_internal.eq.${safe},sku.eq.${safe}`)
+      .or(barcodeExactOrFilter(safe))
       .limit(5)
 
     if (error) {
@@ -60,9 +65,9 @@ export async function lookupAccessoryByBarcode(
     const exact =
       rows.find(
         (r) =>
-          r.barcode === safe ||
-          r.barcode_internal === safe ||
-          r.sku === safe
+          barcodeFieldsMatch(r.barcode, safe) ||
+          barcodeFieldsMatch(r.barcode_internal, safe) ||
+          barcodeFieldsMatch(r.sku, safe)
       ) ?? null
 
     if (exact) {

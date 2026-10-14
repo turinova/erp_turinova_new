@@ -8,9 +8,12 @@ import {
 } from '@/lib/pos/barcode'
 import { charFromWedgeKeyboardEvent } from '@/lib/scanner/normalize-wedge'
 
-/** Max gap between keys to count as USB wedge burst (ms). */
-const WEDGE_GAP_MS = 50
-/** Max total span for a wedge burst in a visible search field (ms). */
+/**
+ * Max gap between keys to confirm USB wedge (ms).
+ * Humans typing are typically >80 ms; scanners ~5–20 ms.
+ */
+const WEDGE_GAP_MS = 45
+/** Max total span for a confirmed search-field wedge burst (ms). */
 const WEDGE_MAX_SPAN_MS = 450
 
 function isHardBlockTarget(el: EventTarget | null): boolean {
@@ -59,6 +62,16 @@ function setNativeInputValue(input: HTMLInputElement, value: string) {
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+type SearchBurst = {
+  chars: string
+  startedAt: number
+  lastAt: number
+  /** False until 2nd key within WEDGE_GAP — typing stays native until then. */
+  confirmed: boolean
+  /** First key was Digit/Minus — barcode-like start. */
+  digitStart: boolean
+}
+
 export type BarcodeWedgeTrapProps = {
   /** false = trap ki (pl. dialógus nyitva) */
   enabled?: boolean
@@ -76,7 +89,9 @@ export type BarcodeWedgeTrapProps = {
 /**
  * Rejtett fókusz-trap USB wedge scannerhez.
  * Document capture + e.code map (HU layout Digit0→ö bypass).
- * Keresőmező fókuszban: gyors burst → remap + exact scan; lassú gépelés érintetlen.
+ *
+ * Keresőmező: 1. billentyű native (gépelés OK); 2. gyors billentyű → wedge
+ * confirm + remap. Lassú gépelés soha nem wipe-eli a mezőt.
  */
 export function BarcodeWedgeTrap({
   enabled = true,
@@ -91,12 +106,7 @@ export function BarcodeWedgeTrap({
   const onScanRef = useRef(onScan)
   onScanRef.current = onScan
 
-  /** Search-field wedge burst (remapped chars + timing). */
-  const burstRef = useRef<{
-    chars: string
-    startedAt: number
-    lastAt: number
-  } | null>(null)
+  const burstRef = useRef<SearchBurst | null>(null)
 
   const focusTrap = useCallback(() => {
     if (!enabled) return
@@ -135,7 +145,6 @@ export function BarcodeWedgeTrap({
       if (lockRef.current) return
       const { raw, normalized } = prepareBarcodeQuery(rawValue)
       const code = normalized || raw
-      // Gate AFTER normalize (ö→0)
       if (!code || !looksLikeBarcode(code)) return
 
       lockRef.current = true
@@ -160,7 +169,6 @@ export function BarcodeWedgeTrap({
       timerRef.current = setTimeout(() => {
         const t = value.trim()
         if (t.length < minLength) return
-        // Normalize-first gate (fixes all-ö / Digit0 idle miss)
         if (!looksLikeBarcode(t)) return
         void runScan(t, clearInput)
       }, idleMs)
@@ -176,6 +184,12 @@ export function BarcodeWedgeTrap({
       const active = document.activeElement
 
       if (isHardBlockTarget(active) && active !== inputRef.current) return
+
+      // Typing edits — drop provisional wedge state
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        burstRef.current = null
+        return
+      }
 
       const inSearch = isSearchLikeInput(active, inputRef.current)
       const inTrap = active === inputRef.current
@@ -201,13 +215,14 @@ export function BarcodeWedgeTrap({
           return
         }
         if (inSearch) {
-          const burst = burstRef.current?.chars.trim() ?? ''
+          const burst = burstRef.current
           const field = (active as HTMLInputElement).value.trim()
-          const candidate = burst || field
-          if (!candidate || !looksLikeBarcode(candidate)) {
-            burstRef.current = null
-            return
-          }
+          const candidate =
+            burst?.confirmed && burst.chars.trim()
+              ? burst.chars.trim()
+              : field
+          burstRef.current = null
+          if (!candidate || !looksLikeBarcode(candidate)) return
           e.preventDefault()
           e.stopPropagation()
           if (timerRef.current) clearTimeout(timerRef.current)
@@ -222,6 +237,8 @@ export function BarcodeWedgeTrap({
 
       const isDigitOrLetter =
         e.code.startsWith('Digit') || e.code.startsWith('Key')
+      const isDigitOrMinus =
+        e.code.startsWith('Digit') || e.code === 'Minus'
 
       // --- Free focus / trap: classic buffer ---
       if (freeFocus) {
@@ -234,7 +251,7 @@ export function BarcodeWedgeTrap({
         return
       }
 
-      // --- Search field: wedge burst via e.code (no ö in the box) ---
+      // --- Search field: provisional → confirm on 2nd fast key ---
       if (!inSearch) return
 
       const now = Date.now()
@@ -242,28 +259,42 @@ export function BarcodeWedgeTrap({
       const continuing =
         burst != null && now - burst.lastAt <= WEDGE_GAP_MS
 
+      // Slow / new sequence — never preventDefault (typing stays native)
       if (!continuing) {
-        // New potential burst — only hijack Digit/Minus immediately
-        // (letters start slow typing for SKU; second fast key upgrades)
-        if (!e.code.startsWith('Digit') && e.code !== 'Minus') {
+        if (!isDigitOrLetter && e.code !== 'Minus') {
           burstRef.current = null
           return
         }
-        e.preventDefault()
-        e.stopPropagation()
-        const input = active as HTMLInputElement
-        // Replace field with remapped burst (0 not ö) — new scan
         burstRef.current = {
           chars: ch,
           startedAt: now,
-          lastAt: now
+          lastAt: now,
+          confirmed: false,
+          digitStart: isDigitOrMinus
         }
-        setNativeInputValue(input, ch)
-        scheduleIdleScan(ch, input)
         return
       }
 
-      // Continuing fast burst
+      // Fast 2nd+ key
+      if (!burst.confirmed) {
+        // Fast letter–letter only → human typing, don't steal
+        if (!burst.digitStart && !isDigitOrMinus) {
+          burstRef.current = null
+          return
+        }
+        // Confirm wedge: take over with remapped buffer
+        e.preventDefault()
+        e.stopPropagation()
+        burst.confirmed = true
+        burst.chars += ch
+        burst.lastAt = now
+        const input = active as HTMLInputElement
+        setNativeInputValue(input, burst.chars)
+        scheduleIdleScan(burst.chars, input)
+        return
+      }
+
+      // Confirmed burst continues
       const span = now - burst.startedAt
       if (span > WEDGE_MAX_SPAN_MS && burst.chars.length < minLength) {
         burstRef.current = null

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { prepareBarcodeQuery } from '@/lib/pos/barcode'
+import {
+  barcodeExactOrFilter,
+  barcodeFieldsMatch,
+  prepareBarcodeQuery
+} from '@/lib/pos/barcode'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import { getAccessoryOnHand } from '@/lib/stock/queries'
 
@@ -118,7 +122,7 @@ async function lookupPosBarcodeHybrid(
     .eq('tenant_id', tenantId)
     .eq('active', true)
     .is('deleted_at', null)
-    .or(`barcode.eq.${safe},barcode_internal.eq.${safe},sku.eq.${safe}`)
+    .or(barcodeExactOrFilter(safe))
     .limit(5)
 
   if (error) {
@@ -147,10 +151,10 @@ async function lookupPosBarcodeHybrid(
   const exact =
     rows.find(
       (r) =>
-        (r.sellable_pos !== false) &&
-        (r.barcode === safe ||
-          r.barcode_internal === safe ||
-          r.sku === safe)
+        r.sellable_pos !== false &&
+        (barcodeFieldsMatch(r.barcode, safe) ||
+          barcodeFieldsMatch(r.barcode_internal, safe) ||
+          barcodeFieldsMatch(r.sku, safe))
     ) ?? null
 
   if (!exact) {

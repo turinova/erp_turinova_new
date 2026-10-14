@@ -74,9 +74,10 @@ A legtöbb vonalkódolvasó billentyűzetként viselkedik. Erre külön szabály
 
 - **No-focus / body fókusz:** USB wedge → exact `barcode` / `barcode_internal` / `sku` → azonnal termék ID lap (`toast` + `router.push`).
 - **Miss:** lista szűrés a **normalizált** kódra + „Nincs exact egyezés” toast.
-- **Gépelés a keresőmezőben:** lassú = debounce lista; **gyors wedge burst** (Digit/`e.code`, gap ≤50 ms) = remap (ö→0) + exact scan — ne maradjon `ö` a mezőben.
+- **Gépelés a keresőmezőben:** lassú = debounce lista (1. billentyű always native — ne wipe-eljen). **Wedge confirm:** 2. billentyű gap ≤45 ms + Digit érintett → remap (`e.code`, ö→0) + exact scan.
 - **Enter a mezőben:** exact lookup (stale-guard: ha közben továbbírt, ne ugorjon elavult partialra).
 - **Wedge path:** stale-guard **ki**; `looksLikeBarcode` **normalize-first** (all-zero / Digit0 idle ne némuljon).
+- **Alfanumerikus kód** (pl. `DT-CZ00035251`): `normalizeScannerBarcode` ASCII **UPPER** (`e.code` Key* → kisbetű); POS RPC `lookup_pos_barcode` + hybrid/kereső **case-insensitive** exact (`20260604`).
 - Dialógus nyitva (törlés / címke): trap pause a terméklistán.
 
 ## 6. Excelből beillesztés

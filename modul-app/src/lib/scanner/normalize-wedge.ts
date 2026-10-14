@@ -100,6 +100,7 @@ function remapWedgeChars(raw: string): string {
 /**
  * HU layout + US wedge: ö/Ö→0, ü/Ü→-, NFD ö→0.
  * Legacy Y→Z csak ha a string döntően numerikus (EAN/UPC), különben nem nyúlunk betűs SKU-hoz.
+ * ASCII betűk UPPER — `e.code` Key* mindig kisbetű; DB / címke tipikusan `DT-CZ…`.
  */
 export function normalizeScannerBarcode(raw: string): string {
   let remapped = remapWedgeChars(raw)
@@ -113,5 +114,8 @@ export function normalizeScannerBarcode(raw: string): string {
     remapped = remapped.replace(/Y/g, 'Z').replace(/y/g, 'z')
   }
 
-  return normalizeBarcode(remapped)
+  // Locale-független ASCII upper (ne Turkish İ)
+  return normalizeBarcode(remapped).replace(/[a-z]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 32)
+  )
 }
