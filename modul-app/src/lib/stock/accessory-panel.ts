@@ -27,20 +27,12 @@ export async function getAccessoryProcurementStock(
     related_orders: []
   }
 
-  const [{ data: balanceRows, error: balanceErr }, { data: recentMoves, error: recentErr }] =
+  const [{ data: balanceRpc, error: balanceErr }, { data: recentMoves, error: recentErr }] =
     await Promise.all([
-      supabase
-        .from('stock_movements')
-        .select(
-          `
-          quantity,
-          movement_type,
-          warehouse_id,
-          warehouses ( name, code )
-        `
-        )
-        .eq('tenant_id', tenantId)
-        .eq('accessory_id', accessoryId),
+      supabase.rpc('accessory_stock_by_warehouse', {
+        p_tenant_id: tenantId,
+        p_accessory_id: accessoryId
+      }),
       supabase
         .from('stock_movements')
         .select(
@@ -61,55 +53,73 @@ export async function getAccessoryProcurementStock(
         .limit(10)
     ])
 
-  if (balanceErr) {
-    console.error('getAccessoryProcurementStock balance', balanceErr.message)
-    throw new Error('Nem sikerült lekérdezni a készletet.')
-  }
   if (recentErr) {
     console.error('getAccessoryProcurementStock recent', recentErr.message)
     throw new Error('Nem sikerült lekérdezni a készletmozgásokat.')
   }
 
-  const byWh = new Map<
-    string,
-    { name: string; code: string; onHand: number }
-  >()
+  let by_warehouse: AccessoryWarehouseStock[] = []
   let total = 0
 
-  for (const row of balanceRows ?? []) {
-    const qty = Number(row.quantity)
-    const delta =
-      row.movement_type === 'in'
-        ? qty
-        : row.movement_type === 'out'
-          ? -qty
-          : 0
-    total += delta
-
-    const whJoin = row.warehouses as
-      | { name: string; code: string }
-      | { name: string; code: string }[]
-      | null
-    const wh = Array.isArray(whJoin) ? whJoin[0] : whJoin
-    const whId = row.warehouse_id as string
-    const prev = byWh.get(whId) ?? {
-      name: wh?.name ?? '—',
-      code: wh?.code ?? '',
-      onHand: 0
-    }
-    prev.onHand += delta
-    byWh.set(whId, prev)
-  }
-
-  const by_warehouse: AccessoryWarehouseStock[] = [...byWh.entries()]
-    .map(([warehouse_id, v]) => ({
-      warehouse_id,
-      warehouse_name: v.name,
-      warehouse_code: v.code,
-      on_hand: v.onHand
+  if (!balanceErr && balanceRpc) {
+    by_warehouse = (
+      balanceRpc as Array<{
+        warehouse_id: string
+        warehouse_name: string
+        warehouse_code: string
+        on_hand: number | string
+      }>
+    ).map((row) => ({
+      warehouse_id: row.warehouse_id,
+      warehouse_name: row.warehouse_name ?? '—',
+      warehouse_code: row.warehouse_code ?? '',
+      on_hand: Number(row.on_hand)
     }))
-    .filter((r) => Math.abs(r.on_hand) > 0.0001)
-    .sort((a, b) => a.warehouse_name.localeCompare(b.warehouse_name, 'hu'))
+    total = by_warehouse.reduce((sum, row) => sum + row.on_hand, 0)
+  } else {
+    // Fallback until 20260606: per-warehouse accessory_on_hand (no unbounded JS scan).
+    console.error(
+      'getAccessoryProcurementStock balance RPC missing — apply 20260606',
+      balanceErr?.message
+    )
+    const { data: warehouses, error: whErr } = await supabase
+      .from('warehouses')
+      .select('id, name, code')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+    if (whErr) {
+      console.error('getAccessoryProcurementStock warehouses', whErr.message)
+      throw new Error('Nem sikerült lekérdezni a készletet.')
+    }
+    const balances = await Promise.all(
+      (warehouses ?? []).map(async (w) => {
+        const { data: qty, error: qErr } = await supabase.rpc(
+          'accessory_on_hand',
+          {
+            p_tenant_id: tenantId,
+            p_accessory_id: accessoryId,
+            p_warehouse_id: w.id
+          }
+        )
+        if (qErr) {
+          console.error('getAccessoryProcurementStock on_hand', qErr.message)
+          return null
+        }
+        return {
+          warehouse_id: w.id as string,
+          warehouse_name: (w.name as string) ?? '—',
+          warehouse_code: (w.code as string) ?? '',
+          on_hand: Number(qty ?? 0)
+        }
+      })
+    )
+    by_warehouse = balances
+      .filter((r): r is AccessoryWarehouseStock => r != null)
+      .filter((r) => Math.abs(r.on_hand) > 0.0001)
+      .sort((a, b) => a.warehouse_name.localeCompare(b.warehouse_name, 'hu'))
+    total = by_warehouse.reduce((sum, row) => sum + row.on_hand, 0)
+  }
 
   const recent = recentMoves ?? []
   const receiptIds = [

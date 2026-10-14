@@ -75,25 +75,23 @@ import type { FeeTypeListItem } from '@/lib/fee-types/queries'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
 import { saleItemShelfGross } from '@/lib/pos/shelf-price'
+import { BarcodeWedgeTrap } from '@/components/search/barcode-wedge-trap'
 import {
-  BarcodeWedgeTrap,
-  fetchPosBarcodeLookup
-} from '@/components/search/barcode-wedge-trap'
+  clearPosBarcodeCache,
+  fetchPosBarcodeLookupCached,
+  forgetPosBarcodeHit,
+  peekPosBarcodeCache
+} from '@/lib/pos/pos-barcode-client'
 import {
   loadPosSession,
   savePosSession,
   type PosCartLine,
   type PosFeeLine
 } from '@/lib/pos/session'
-import { getOpenPosShiftAction } from '@/lib/pos/shift-actions'
+import { fetchPosBootstrap } from '@/lib/pos/bootstrap-client'
 import type { PosRegister } from '@/lib/pos/shifts'
 import type { PosTerminalPublicConfig } from '@/lib/pos/settings-types'
-import { loadPosQuickProductsAction } from '@/lib/pos/quick-items-actions'
-import {
-  loadPosFrequentAction,
-  loadPosManufacturerChipsAction,
-  logPosSearchEventAction
-} from '@/lib/pos/discovery-actions'
+import { logPosSearchEventAction } from '@/lib/pos/discovery-actions'
 import type { PosManufacturerChip } from '@/lib/pos/discovery'
 import {
   logPosScanEventAction,
@@ -448,31 +446,134 @@ export function PosClient({
     setRegisterId(next)
   }, [hydrated, registersForWh, registerId])
 
-  // Load open shift for register
+  const applyTodayProgress = useCallback(
+    (input: {
+      salesCount: number
+      weekSalesCount: number
+      monthSalesCount: number
+      dailyTarget: number
+    }) => {
+      setDailyPosGoal(input.dailyTarget)
+      setWeekPosSales(input.weekSalesCount)
+      setMonthPosSales(input.monthSalesCount)
+      setTodayPosSales((prev) => {
+        const next = input.salesCount
+        const dayKey = new Date().toISOString().slice(0, 10)
+        const celebKey = `${dayKey}:${input.dailyTarget}`
+        if (
+          next >= input.dailyTarget &&
+          (prev == null || prev < input.dailyTarget) &&
+          goalCelebratedKey.current !== celebKey
+        ) {
+          goalCelebratedKey.current = celebKey
+          toast.success(
+            `Napi cél megvan! ${next}/${input.dailyTarget} POS eladás`
+          )
+        }
+        return next
+      })
+    },
+    []
+  )
+
+  const refreshTodayProgress = useCallback(() => {
+    void loadPosTodayProgressAction().then((res) => {
+      if (!res.ok) return
+      applyTodayProgress({
+        salesCount: res.salesCount,
+        weekSalesCount: res.weekSalesCount,
+        monthSalesCount: res.monthSalesCount,
+        dailyTarget: res.dailyTarget
+      })
+    })
+  }, [applyTodayProgress])
+
+  // One lean bootstrap: shift (blocking) + quick/frequent/progress/chips
   useEffect(() => {
     if (!hydrated || !registerId) {
       setOpenShiftId(null)
       setShiftLoading(false)
       return
     }
+    const ac = new AbortController()
     let cancelled = false
     setShiftLoading(true)
-    void getOpenPosShiftAction(registerId).then((r) => {
-      if (cancelled) return
-      setShiftLoading(false)
-      if (!r.ok) {
-        setFlash({ kind: 'error', message: r.message })
-        setOpenShiftId(null)
-        return
-      }
-      setOpenShiftId(r.shift?.id ?? null)
+    setQuickLoading(true)
+    void fetchPosBootstrap({
+      warehouseId,
+      registerId,
+      include: 'all',
+      signal: ac.signal
     })
+      .then((r) => {
+        if (cancelled) return
+        setShiftLoading(false)
+        setQuickLoading(false)
+        if (!r.ok) {
+          setFlash({ kind: 'error', message: r.message })
+          setOpenShiftId(null)
+          setQuickHits([])
+          setFrequentHits([])
+          return
+        }
+        setOpenShiftId(r.shift?.id ?? null)
+        setQuickHits(r.quick)
+        setFrequentHits(r.frequent)
+        setMfrChips(r.chips)
+        if (r.progress) {
+          applyTodayProgress({
+            salesCount: r.progress.salesCount,
+            weekSalesCount: r.progress.weekSalesCount,
+            monthSalesCount: r.progress.monthSalesCount,
+            dailyTarget: r.progress.dailyTarget
+          })
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled || ac.signal.aborted) return
+        setShiftLoading(false)
+        setQuickLoading(false)
+        const msg =
+          err instanceof Error ? err.message : 'Nem sikerült a POS betöltés.'
+        setFlash({ kind: 'error', message: msg })
+        setOpenShiftId(null)
+      })
     return () => {
       cancelled = true
+      ac.abort()
     }
-  }, [hydrated, registerId])
+  }, [hydrated, registerId, warehouseId, applyTodayProgress])
 
-  // PDA handoff badge — only when addon on
+  // Settings mentés után: csak katalógus tile-ok (shift érintetlen)
+  useEffect(() => {
+    if (!hydrated || !warehouseId || !registerId || quickReloadKey === 0) return
+    const ac = new AbortController()
+    let cancelled = false
+    setQuickLoading(true)
+    void fetchPosBootstrap({
+      warehouseId,
+      registerId,
+      include: 'catalog',
+      signal: ac.signal
+    })
+      .then((r) => {
+        if (cancelled) return
+        setQuickLoading(false)
+        if (!r.ok) return
+        setQuickHits(r.quick)
+        setFrequentHits(r.frequent)
+      })
+      .catch(() => {
+        if (cancelled || ac.signal.aborted) return
+        setQuickLoading(false)
+      })
+    return () => {
+      cancelled = true
+      ac.abort()
+    }
+  }, [quickReloadKey, hydrated, warehouseId, registerId])
+
+  // PDA handoff badge — only when addon on (külön path, ritka poll)
   useEffect(() => {
     if (!hasPdaPos || !hydrated) {
       setHandoffOpenCount(0)
@@ -521,6 +622,7 @@ export function PosClient({
       })
       return
     }
+    if (next !== warehouseId) clearPosBarcodeCache()
     setWarehouseId(next)
   }
 
@@ -738,88 +840,9 @@ export function PosClient({
     }
   }, [searchQ, warehouseId, stockFirst, searchKind, hasLapszabaszat])
 
-  const applyTodayProgress = useCallback(
-    (input: {
-      salesCount: number
-      weekSalesCount: number
-      monthSalesCount: number
-      dailyTarget: number
-    }) => {
-      setDailyPosGoal(input.dailyTarget)
-      setWeekPosSales(input.weekSalesCount)
-      setMonthPosSales(input.monthSalesCount)
-      setTodayPosSales((prev) => {
-        const next = input.salesCount
-        const dayKey = new Date().toISOString().slice(0, 10)
-        const celebKey = `${dayKey}:${input.dailyTarget}`
-        if (
-          next >= input.dailyTarget &&
-          (prev == null || prev < input.dailyTarget) &&
-          goalCelebratedKey.current !== celebKey
-        ) {
-          goalCelebratedKey.current = celebKey
-          toast.success(
-            `Napi cél megvan! ${next}/${input.dailyTarget} POS eladás`
-          )
-        }
-        return next
-      })
-    },
-    []
-  )
-
-  const refreshTodayProgress = useCallback(() => {
-    void loadPosTodayProgressAction().then((res) => {
-      if (!res.ok) return
-      applyTodayProgress({
-        salesCount: res.salesCount,
-        weekSalesCount: res.weekSalesCount,
-        monthSalesCount: res.monthSalesCount,
-        dailyTarget: res.dailyTarget
-      })
-    })
-  }, [applyTodayProgress])
-
-  useEffect(() => {
-    refreshTodayProgress()
-  }, [openShiftId, warehouseId, refreshTodayProgress])
-
-  useEffect(() => {
-    if (!warehouseId) {
-      setQuickHits([])
-      setFrequentHits([])
-      return
-    }
-    let cancelled = false
-    setQuickLoading(true)
-    void Promise.all([
-      loadPosQuickProductsAction(warehouseId),
-      loadPosFrequentAction(warehouseId)
-    ]).then(([quickRes, freqRes]) => {
-      if (cancelled) return
-      setQuickLoading(false)
-      setQuickHits(quickRes.ok ? quickRes.rows : [])
-      setFrequentHits(freqRes.ok ? freqRes.rows : [])
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [warehouseId, quickReloadKey])
-
   useEffect(() => {
     setRecentEntries(loadPosRecents(warehouseId || 't', registerId || 'r'))
   }, [warehouseId, registerId])
-
-  useEffect(() => {
-    let cancelled = false
-    void loadPosManufacturerChipsAction().then((res) => {
-      if (cancelled) return
-      setMfrChips(res.ok ? res.chips : [])
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   function applyHandoffClaim(
     result: HandoffClaimResult,
@@ -945,6 +968,50 @@ export function PosClient({
     return frequentHits.filter((h) => !skip.has(h.id)).slice(0, 8)
   }, [frequentHits, quickHits, recentHits])
 
+  function undoBarcodeBump(hit: SaleProductSearchItem, addQty: number) {
+    const key = cartKeyFromHit(hit)
+    setLines((prev) => {
+      const existing = prev.find((l) => saleLineCartKey(l) === key)
+      if (!existing) return prev
+      const nextQty = isMaterialSaleKind(existing.kind)
+        ? Math.round((existing.quantity - addQty) * 10) / 10
+        : existing.quantity - addQty
+      if (nextQty <= 0.0001) {
+        return prev.filter((l) => saleLineCartKey(l) !== key)
+      }
+      return prev.map((l) =>
+        saleLineCartKey(l) === key ? { ...l, quantity: nextQty } : l
+      )
+    })
+  }
+
+  function reconcileBarcodeLine(
+    cached: SaleProductSearchItem,
+    fresh: SaleProductSearchItem,
+    addedQty: number
+  ) {
+    const key = cartKeyFromHit(cached)
+    if (cached.id !== fresh.id) {
+      undoBarcodeBump(cached, addedQty)
+      addOrBump(fresh, addedQty, 'barcode')
+      return
+    }
+    setLines((prev) =>
+      prev.map((l) => {
+        if (saleLineCartKey(l) !== key) return l
+        const gross = saleItemShelfGross(fresh)
+        return {
+          ...l,
+          name: fresh.name,
+          sku: fresh.sku,
+          unitPriceGross: gross,
+          taxPercent: Number(fresh.tax_rate_percent ?? l.taxPercent),
+          onHand: fresh.on_hand
+        }
+      })
+    )
+  }
+
   /** Exact barcode lookup. true = kosárba került; missnél a kézi query marad. */
   async function runBarcodeScan(raw: string): Promise<boolean> {
     if (!warehouseId || scanLock.current) return false
@@ -952,9 +1019,42 @@ export function PosClient({
     const code = normalized || trimmed
     if (!code) return false
 
+    const cached = peekPosBarcodeCache(code, warehouseId)
+    if (cached) {
+      const addQty = Math.max(1, qtyPreset)
+      addOrBump(cached, undefined, 'barcode')
+      // Background reconcile — typeahead path untouched
+      void fetchPosBarcodeLookupCached(code, warehouseId).then((res) => {
+        if (!res.ok) {
+          undoBarcodeBump(cached, addQty)
+          forgetPosBarcodeHit(code, warehouseId)
+          if (
+            res.notFound &&
+            canWrite &&
+            posConfig.allowPosQuickCreate !== false
+          ) {
+            setFlash(null)
+            setMissContext({
+              query: raw.trim() || code,
+              barcode: code,
+              reason: 'barcode'
+            })
+            return
+          }
+          setFlash({
+            kind: 'error',
+            message: res.message || 'Vonalkód érvénytelen.'
+          })
+          return
+        }
+        reconcileBarcodeLine(cached, res.product, addQty)
+      })
+      return true
+    }
+
     scanLock.current = true
     try {
-      const res = await fetchPosBarcodeLookup(code, warehouseId)
+      const res = await fetchPosBarcodeLookupCached(code, warehouseId)
       if (!res.ok) {
         if (
           res.notFound &&

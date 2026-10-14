@@ -230,7 +230,9 @@ export function KeresoClient({
             toast.success(hit.name, {
               description: 'Terméklap megnyitása…'
             })
-            router.push(`${accessoryDetailBase}/${hit.id}`)
+            const href = `${accessoryDetailBase}/${hit.id}`
+            router.prefetch(href)
+            router.push(href)
             return
           }
           skipNextDebounceRef.current = true

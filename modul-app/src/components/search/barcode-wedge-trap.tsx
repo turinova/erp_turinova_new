@@ -393,38 +393,4 @@ export async function fetchAccessoryBarcodeLookup(
   }
 }
 
-export async function fetchPosBarcodeLookup(
-  code: string,
-  warehouseId: string
-): Promise<
-  | {
-      ok: true
-      product: import('@/lib/sales/queries').SaleProductSearchItem
-    }
-  | { ok: false; message: string; notFound?: boolean }
-> {
-  const sp = new URLSearchParams({ q: code, warehouseId })
-  const res = await fetch(`/api/pos/barcode-lookup?${sp.toString()}`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' }
-  })
-  const data = (await res.json()) as
-    | {
-        ok: true
-        product: import('@/lib/sales/queries').SaleProductSearchItem
-      }
-    | { ok: false; message: string; notFound?: boolean }
-
-  if (!res.ok || !data.ok) {
-    if ('ok' in data && data.ok === false) {
-      return {
-        ok: false,
-        message: data.message || 'Vonalkód nem található.',
-        notFound: data.notFound ?? res.status === 404
-      }
-    }
-    return { ok: false, message: 'Vonalkód keresés sikertelen.' }
-  }
-
-  return { ok: true, product: data.product }
-}
+export { fetchPosBarcodeLookupCached as fetchPosBarcodeLookup } from '@/lib/pos/pos-barcode-client'

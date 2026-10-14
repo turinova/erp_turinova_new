@@ -380,17 +380,35 @@ async function handleSession(request: NextRequest) {
 
     const isKeresoApi =
       pathname === '/api/kereso' || pathname.startsWith('/api/kereso/')
+    /** Exact barcode → ID (kereső / termékek wedge) — same lean skip as kereső. */
+    const isBarcodeLookupApi =
+      pathname === '/api/barcode-lookup' ||
+      pathname.startsWith('/api/barcode-lookup/')
+    /** POS wedge exact scan — lean skip; staff-only API (not partner-shared). */
+    const isPosBarcodeLookupApi =
+      pathname === '/api/pos/barcode-lookup' ||
+      pathname.startsWith('/api/pos/barcode-lookup/')
+    /** POS mount bootstrap (shift + tiles) — same lean skip; staff-only. */
+    const isPosBootstrapApi =
+      pathname === '/api/pos/bootstrap' ||
+      pathname.startsWith('/api/pos/bootstrap/')
 
     const isPartnerSharedApi =
       pathname === '/api/optimize' ||
       pathname.startsWith('/api/optimize/') ||
       isKeresoApi ||
+      isBarcodeLookupApi ||
       /^\/api\/ajanlatok\/[^/]+\/pdf$/.test(pathname)
 
     if (user) {
-      // Kereső keystroke: skip partner/membership/isAppSessionValid waterfall.
-      // Az API lean auth + RLS dönt.
-      if (isKeresoApi) {
+      // Kereső / catalog barcode / POS barcode+bootstrap: skip partner/membership waterfall.
+      // Az API lean auth + RLS dönt (POS: staff membership only).
+      if (
+        isKeresoApi ||
+        isBarcodeLookupApi ||
+        isPosBarcodeLookupApi ||
+        isPosBootstrapApi
+      ) {
         isAuthenticated = true
       } else if (partnerCtx) {
         const { data: partnerRow } = await supabase

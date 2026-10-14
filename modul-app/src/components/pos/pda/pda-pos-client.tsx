@@ -27,6 +27,10 @@ import { usePdaViewport } from '@/hooks/use-pda-viewport'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { prepareBarcodeQuery } from '@/lib/pos/barcode'
+import {
+  fetchPosBarcodeLookupCached,
+  peekPosBarcodeCache
+} from '@/lib/pos/pos-barcode-client'
 import { createPosCartHandoffAction } from '@/lib/pos/handoff-actions'
 import { updateAccessorySellGrossFromPdaAction } from '@/lib/pos/pda-price-actions'
 import { loadPosQuickProductsAction } from '@/lib/pos/quick-items-actions'
@@ -218,21 +222,17 @@ export function PdaPosClient({
     async (raw: string): Promise<SaleProductSearchItem | null> => {
       const { normalized } = prepareBarcodeQuery(raw)
       if (!normalized || !warehouseId) return null
-      const res = await fetch(
-        `/api/pos/barcode-lookup?q=${encodeURIComponent(normalized)}&warehouseId=${encodeURIComponent(warehouseId)}`,
-        { credentials: 'same-origin' }
-      )
-      const data = (await res.json()) as {
-        ok?: boolean
-        product?: SaleProductSearchItem
-        message?: string
-        notFound?: boolean
+      const cached = peekPosBarcodeCache(normalized, warehouseId)
+      if (cached) {
+        void fetchPosBarcodeLookupCached(normalized, warehouseId)
+        return cached
       }
-      if (!data.ok || !data.product) {
-        setFlash(data.message ?? 'Nincs találat.')
+      const res = await fetchPosBarcodeLookupCached(normalized, warehouseId)
+      if (!res.ok) {
+        setFlash(res.message || 'Nincs találat.')
         return null
       }
-      return data.product
+      return res.product
     },
     [warehouseId]
   )

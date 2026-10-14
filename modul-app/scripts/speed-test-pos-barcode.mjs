@@ -207,6 +207,16 @@ async function main() {
     })
   }
 
+  console.log('\n=== UPPER candidate (single RPC code) ===')
+  await time('rpc_upper', async () => {
+    const { error } = await admin.rpc('lookup_pos_barcode', {
+      p_tenant_id: tenantId,
+      p_code: code.toUpperCase(),
+      p_warehouse_id: warehouseId
+    })
+    if (error) throw error
+  })
+
   console.log('\n--- summary ---')
   const improveHybrid =
     old.p50 > 0 ? Math.round((1 - hybrid.p50 / old.p50) * 100) : 0
@@ -218,9 +228,12 @@ async function main() {
     console.log(
       `OLD→RPC   p50: ${old.p50}ms → ${neu.p50}ms (${improve}% faster), p95: ${old.p95}ms → ${neu.p95}ms`
     )
+    console.log(
+      'HTTP lean auth: SPEED_TEST_BASE_URL + credentials → /api/pos/barcode-lookup Server-Timing (target ≤250ms warm).'
+    )
   } else {
     console.log(
-      'Full lookup_pos_barcode RPC: futtasd a 20260570_lookup_pos_barcode.sql-t a Modul Supabase SQL editorben, majd: npm run speed-test:pos-barcode'
+      'Full lookup_pos_barcode RPC: futtasd a 20260570/20260605 migrációt, majd: npm run speed-test:pos-barcode'
     )
   }
 }

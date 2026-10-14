@@ -54,6 +54,12 @@ HTTP TTFB-t **`next build && next start`**-tal mérj — **ne** `next dev` + `WA
 |---|---|---|
 | Lista / megrendelések meleg érzés | **&lt; 300 ms** tartalom | `next start` + Network |
 | Kereső keystroke → találat (meleg API) | **≤ 180 ms** (stretch 120) | `/api/kereso` + `Server-Timing` |
+| Catalog barcode lookup (meleg API) | **≤ 250 ms** | `/api/barcode-lookup` + `Server-Timing` |
+| POS barcode lookup (meleg API) | **≤ 250 ms** | `/api/pos/barcode-lookup` + `Server-Timing` |
+| POS barcode cache hit → kosár | **≤ 50 ms** érzés | session LRU optimistic |
+| POS bootstrap (meleg) | **≤ 400 ms** | `/api/pos/bootstrap` + `Server-Timing` |
+| POS interaktív UI shift után | **≤ 500 ms** warm | egy bootstrap GET, ne Action-zuhatag |
+| Termék ID shell (stock deferred) | **≤ 900 ms** TTFB | `loading.tsx` + Suspense; `speed-test:catalog-barcode` |
 | Session snapshot hit | **&lt; 5 ms** local verify | speed-test „snapshot HMAC” |
 | Session DB miss (ritka) | **≤ 200 ms** | speed-test „session-parallel” |
 | Navigáció staff oldalak között | ne „töltődik 1–2 s” | snapshot cookie jelen van |
@@ -78,6 +84,28 @@ HTTP TTFB-t **`next build && next start`**-tal mérj — **ne** `next dev` + `WA
 3. Partner settings: **60 s memory cache** OK; invalidálás mentéskor.
 4. Debounce **≤ 150 ms**; TanStack Query `staleTime` + `placeholderData`.
 
+### Catalog barcode → termék ID
+
+1. `/api/barcode-lookup`: **`resolveKeresoAuth`** + middleware skip (mint kereső) — ne full session bundle.
+2. Exact match **`.eq.`** (UPPER); SQL hygiene `20260605`.
+3. ID route: **`loading.tsx`** + form shell előbb; készlet / bolt **`Suspense`**.
+4. Készlet egyenleg: **`accessory_stock_by_warehouse`** (`20260606`) — tilos unbounded `stock_movements` JS aggregáció.
+5. Hit után: `router.prefetch` + `push`. Mérés: `npm run speed-test:catalog-barcode`.
+
+### POS barcode → kosár
+
+1. `/api/pos/barcode-lookup`: **`resolvePosLeanAuth`** (staff membership only — nincs partner fallback) + middleware skip + `Server-Timing`.
+2. **Tilos** a typeahead `/api/pos/search` / gépelés debounce pathot összekeverni exact scannel.
+3. Client: session LRU + single-flight (`pos-barcode-client`); cache hit → optimistic `addOrBump` + background reconcile / rollback.
+4. RPC `lookup_pos_barcode` UPPER `.eq.`; mérés: `npm run speed-test:pos-barcode`.
+
+### POS oldal mount
+
+1. Hydrate localStorage → **egy** `GET /api/pos/bootstrap` (ne 6–8 Server Action POST).
+2. Lean auth + middleware skip; `Server-Timing`.
+3. Shift **blocking**; quick/frequent/progress/chips ugyanabból a válaszból.
+4. Mutációk (sale, shift open/close, invoice) maradnak Server Actionök.
+
 ### Adat
 
 1. Lista default **limit 25**; nincs `select('*')`.
@@ -89,7 +117,7 @@ HTTP TTFB-t **`next build && next start`**-tal mérj — **ne** `next dev` + `WA
 
 1. Sebességet **`npm run build && npm run start`**-tal ítélj.
 2. `npm run dev` + `WATCHPACK_POLLING` (T7) → **torz** (másodperces compile).
-3. Speed-test: `npm run speed-test` (`scripts/speed-test.mjs`).
+3. Speed-test: `npm run speed-test` (`scripts/speed-test.mjs`); barcode path: `npm run speed-test:catalog-barcode`.
 
 ---
 
@@ -98,14 +126,26 @@ HTTP TTFB-t **`next build && next start`**-tal mérj — **ne** `next dev` + `WA
 ```
 src/lib/auth/session.ts              ← snapshot-first SessionUser
 src/lib/auth/session-snapshot.ts     ← HMAC sign/verify
-src/lib/auth/kereso-auth.ts          ← lean kereső auth
 src/lib/auth/actions.ts              ← login írja a snapshotot
-src/lib/supabase/middleware.ts       ← lean path + kereső skip
+src/lib/supabase/middleware.ts       ← lean path + kereső/barcode skip
 src/lib/search/materials-search.ts   ← RPC + legacy fallback
+src/lib/search/kereso-auth.ts        ← lean auth (kereső + catalog barcode)
+src/lib/pos/pos-lean-auth.ts         ← lean staff auth (POS barcode/bootstrap)
+src/lib/pos/pos-barcode-client.ts    ← LRU + single-flight
+src/lib/pos/bootstrap.ts             ← shift+catalog+progress bundle
+src/lib/pos/bootstrap-client.ts
+src/lib/search/accessory-barcode-lookup.ts
+src/lib/stock/accessory-panel.ts     ← accessory_stock_by_warehouse RPC
 src/app/api/kereso/route.ts          ← Server-Timing
+src/app/api/barcode-lookup/route.ts  ← lean + Server-Timing
+src/app/api/pos/barcode-lookup/route.ts ← lean + Server-Timing
+src/app/api/pos/bootstrap/route.ts   ← mount bootstrap
+src/app/(app)/…/termekek/[id]/loading.tsx
+src/app/(app)/…/termekek/[id]/page.tsx  ← Suspense stock/shop
 src/components/search/kereso-client.tsx
 src/components/providers/app-query-provider.tsx
 supabase/migrations/20260421*.sql
+supabase/migrations/20260606_accessory_stock_by_warehouse.sql
 vercel.json                          ← regions: ["dub1"]
 ```
 

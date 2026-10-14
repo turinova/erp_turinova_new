@@ -72,12 +72,13 @@ A legtöbb vonalkódolvasó billentyűzetként viselkedik. Erre külön szabály
 
 `BarcodeWedgeTrap` a `/torzsadatok/alapanyagok/termekek` és `/kereso` oldalakon:
 
-- **No-focus / body fókusz:** USB wedge → exact `barcode` / `barcode_internal` / `sku` → azonnal termék ID lap (`toast` + `router.push`).
+- **No-focus / body fókusz:** USB wedge → exact `barcode` / `barcode_internal` / `sku` → azonnal termék ID lap (`toast` + `prefetch` + `router.push`).
 - **Miss:** lista szűrés a **normalizált** kódra + „Nincs exact egyezés” toast.
 - **Gépelés a keresőmezőben:** lassú = debounce lista (1. billentyű always native — ne wipe-eljen). **Wedge confirm:** 2. gyors billentyű gap ≤45 ms (betű–betű is, pl. `DT-CZ…`) → remap (`e.code`, ö→0) + exact scan; `looksLikeBarcode` szűri a rövid szavakat.
 - **Enter a mezőben:** exact lookup (stale-guard: ha közben továbbírt, ne ugorjon elavult partialra).
 - **Wedge path:** stale-guard **ki**; `looksLikeBarcode` **normalize-first** (all-zero / Digit0 idle ne némuljon).
 - **Alfanumerikus kód** (pl. `DT-CZ00035251`): ne abortáljon letter–letter heurisztikán; scan → UPPER; lookup **`.eq.`**; mentés UPPER; SQL `20260605`.
+- **Instant-nav (scan → ID):** `/api/barcode-lookup` = lean `resolveKeresoAuth` + middleware skip (mint kereső); `Server-Timing`; ID route `loading.tsx` + form shell előbb, készlet/bolt `Suspense` + `accessory_stock_by_warehouse` (`20260606`). Cél: lookup ≤250 ms, shell ≤0.5–0.9 s.
 - Dialógus nyitva (törlés / címke): trap pause a terméklistán.
 
 ## 6. Excelből beillesztés

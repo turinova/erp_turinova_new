@@ -2,7 +2,13 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ReactNode
+} from 'react'
 import { Printer } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -58,6 +64,10 @@ type AccessoryFormProps = {
   procurementStock?: AccessoryProcurementStock | null
   hasWebshop?: boolean
   shopStatus?: ShopCardStatus | null
+  /** Suspense slot — ha megadva, a sync `procurementStock` helyett ez jelenik meg. */
+  deferredStockSection?: ReactNode
+  /** Suspense slot — ha megadva, a sync shop card helyett ez jelenik meg. */
+  deferredShopSection?: ReactNode
 }
 
 function defaultUnitId(units: AccessoryUnitOption[]): string {
@@ -80,7 +90,9 @@ export function AccessoryForm({
   canPrintLabels = false,
   procurementStock = null,
   hasWebshop = false,
-  shopStatus = null
+  shopStatus = null,
+  deferredStockSection = null,
+  deferredShopSection = null
 }: AccessoryFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -736,25 +748,29 @@ export function AccessoryForm({
           />
         </FormSection>
 
-        {mode === 'edit' && procurementStock && initial ? (
-          <AccessoryProcurementStockSection
-            stock={procurementStock}
-            accessoryId={initial.id}
-            unitShortform={
-              units.find((u) => u.id === unitId)?.shortform ??
-              initial?.unit_shortform ??
-              'db'
-            }
-          />
-        ) : null}
+        {mode === 'edit' && deferredStockSection
+          ? deferredStockSection
+          : mode === 'edit' && procurementStock && initial ? (
+              <AccessoryProcurementStockSection
+                stock={procurementStock}
+                accessoryId={initial.id}
+                unitShortform={
+                  units.find((u) => u.id === unitId)?.shortform ??
+                  initial?.unit_shortform ??
+                  'db'
+                }
+              />
+            ) : null}
 
-        {hasWebshop ? (
-          <AccessoryShopCard
-            accessoryId={mode === 'edit' && initial ? initial.id : null}
-            status={shopStatus}
-            canWrite={canWrite}
-          />
-        ) : null}
+        {deferredShopSection
+          ? deferredShopSection
+          : hasWebshop ? (
+              <AccessoryShopCard
+                accessoryId={mode === 'edit' && initial ? initial.id : null}
+                status={shopStatus}
+                canWrite={canWrite}
+              />
+            ) : null}
       </div>
 
       {canPrintLabels ? (

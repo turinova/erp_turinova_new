@@ -37,7 +37,16 @@ export async function lookupPosBarcodeProduct(
   warehouseId: string
 ): Promise<PosBarcodeLookupResult> {
   const { raw, normalized } = prepareBarcodeQuery(code)
-  const candidates = [...new Set([normalized, raw].filter(Boolean))]
+  // UPPER + dedupe — hygiene 20260605; SKU match uses lower(p_code) so UPPER is fine.
+  const candidates = [
+    ...new Set(
+      [normalized, raw]
+        .filter(Boolean)
+        .map((c) => c.replace(/[%_,]/g, '').trim())
+        .filter(Boolean)
+        .map((c) => c.toUpperCase())
+    )
+  ]
   if (candidates.length === 0) {
     return { ok: false, message: 'Üres vonalkód.', notFound: true }
   }
@@ -45,10 +54,7 @@ export async function lookupPosBarcodeProduct(
     return { ok: false, message: 'Válaszd ki a raktárat.' }
   }
 
-  for (const c of candidates) {
-    const safe = c.replace(/[%_,]/g, '').trim()
-    if (!safe) continue
-
+  for (const safe of candidates) {
     const { data, error } = await supabase.rpc('lookup_pos_barcode', {
       p_tenant_id: tenantId,
       p_code: safe,

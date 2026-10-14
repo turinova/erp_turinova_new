@@ -186,7 +186,9 @@ export function AccessoriesClient({
             toast.success(hit.name, {
               description: 'Terméklap megnyitása…'
             })
-            router.push(`${LIST_PATH}/${hit.id}`)
+            const href = `${LIST_PATH}/${hit.id}`
+            router.prefetch(href)
+            router.push(href)
             return
           }
           applyListSearch(code)
