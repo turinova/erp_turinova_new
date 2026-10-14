@@ -102,11 +102,11 @@ export function ProductLabelPrintDialog({
   const [unit, setUnit] = useState('db')
   const [amount, setAmount] = useState(1)
   const [templateId, setTemplateId] = useState<LabelTemplateId | 'custom'>(
-    'shelf'
+    'full'
   )
   const [fields, setFields] = useState<LabelFields>({
     showName: true,
-    showSku: false,
+    showSku: true,
     showBarcode: true,
     showPrice: true
   })
@@ -135,10 +135,8 @@ export function ProductLabelPrintDialog({
     setPrice(Math.round(payload.priceGross))
     setUnit(payload.unitShortform || 'db')
     setAmount(Math.max(1, Math.round(initialAmount) || 1))
-    setTemplateId('shelf')
-    setFields(
-      LABEL_TEMPLATES.find((t) => t.id === 'shelf')!.fields(bc)
-    )
+    setTemplateId('full')
+    setFields(LABEL_TEMPLATES.find((t) => t.id === 'full')!.fields(bc))
     setShowHumanReadable(false)
     setSettingsOpen(false)
   }, [open, payload, initialAmount])
@@ -320,8 +318,8 @@ export function ProductLabelPrintDialog({
         <DialogHeader>
           <DialogTitle>Címke nyomtatása</DialogTitle>
           <DialogDescription>
-            33×25 mm · hierarchia: ár → név → vonalkód → SKU. Alapértelmezett:
-            Polc. Előnézet = print layout (nagyítva). Nyomtatás: 100% / Actual
+            33×25 mm · alap: Teljes (SKU be, nagyobb mint a név). Hierarchia:
+            ár → SKU → név. A név nem vágódik le. Nyomtatás: 100% / Actual
             size.
           </DialogDescription>
         </DialogHeader>
@@ -348,8 +346,9 @@ export function ProductLabelPrintDialog({
                 />
               </div>
               <p className="max-w-sm text-center text-[11px] text-ink-muted">
-                Polc: vásárlói nézet. Nagy SKU: raktár pick. Teljes: apró SKU a
-                vonalkód felett. Ár mindig <span className="font-medium">Ft/{unit || 'db'}</span> egy sorban.
+                SKU alapból be és nagyobb, mint a név. Ár:{' '}
+                <span className="font-medium">Ft/{unit || 'db'}</span>. Weight
+                400 — mérethierarchia.
               </p>
               {!scanSafety.ok ? (
                 <p className="max-w-sm text-center text-[12px] text-destructive">

@@ -60,19 +60,20 @@ Ha van címkenyomtatás:
 - külön formátum specifikáció kell
 - méret, margó, vonalkód elhelyezés, betűméret legyen fixen definiálva
 
-### 6a. Termék címke (33×25 mm) — shelf-edge hierarchy
+### 6a. Termék címke (33×25 mm) — v3
 
-Zárolt vizuális sorrend (NIST / retail shelf-edge): **Ár > Név > vonalkód > SKU**.
+Zárolt döntések:
 
-- **Alap sablon: Polc** — név + ár + vonalkód (SKU ki). Vásárlói polcra.
-- **Teljes** — mint Polc, plusz **SKU** (~2.7 mm, weight 600, mono) a vonalkód *felett*, soha a név és ár között.
-- **Nagy SKU** — raktár pick: nagy SKU sor + ár + kód (nincs név).
-- **Ár:** egy sorban **`12 345 Ft/db`** (egység inline, nem külön `/ db` sor). Ár a legnagyobb elem.
-- **Név:** max 2 sor, weight 600; mindig erősebb, mint a secondary SKU.
-- **Fix zónák** (`computeLabelLayout`): name / price / barcode budget mm-ben; szöveg a zónába zsugorít — ne fordítsd meg a hierarchiát.
-- **HRI** alapból ki. CODE128 quiet zone ≥ **10× X**; X &lt; 0.20 mm vagy sáv &lt; 5.5 mm → print tiltva.
-- **Előnézet = print:** mm + `LABEL_PX_PER_MM`, dialógus CSS `scale`.
-- Nyomtató: **100% / Actual size**. Illesztés: tenant `tenant_label_print_settings` (±2 mm).
+- **Default sablon: Teljes** — név + **SKU ON** + ár + vonalkód (SKU kikapcsolható).
+- **Vizuális hierarchia mérettel** (minden `font-weight: 400`): **Ár > SKU > Név**. Nincs bold.
+- **SKU** (Teljes): ~**3.5 mm**, saját sor a név és az ár között; `sku.font ≥ name.font + 0.4 mm`.
+- **Név soha nincs levágva** — nincs ellipsis; shrink + max **3** sor; min ~**2.8 mm**.
+- **Nagy SKU** — raktár pick (~4.2 mm SKU sor, nincs név).
+- **Ár:** egy sor **`12 345 Ft/db`**.
+- **Fix zónák**: SKU sor védve; leftover → név; scan floor barcode-on.
+- **HRI** alapból ki. X &lt; 0.20 mm vagy sáv &lt; 5.5 mm → print tiltva.
+- **Előnézet = print:** mm + `LABEL_PX_PER_MM` + CSS `scale`.
+- Nyomtató: **100% / Actual size**. Illesztés: `tenant_label_print_settings`.
 - Layout: `src/lib/labels/layout.ts`; UI: `ProductLabelPrintDialog`.
 
 ## 7. PDF kontra HTML print

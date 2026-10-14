@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 
 const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
 
-/** Lighter stack — thermal bold bleed reads thicker on paper. */
+/** Hierarchy by size only — thermal bleed; no bold. */
 const LABEL_FONT_FAMILY =
   'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
 
@@ -131,22 +131,18 @@ export function ProductLabelSheet({
 
   const hasOffset = offsetXMm !== 0 || offsetYMm !== 0
 
-  const skuEl = (sku: NonNullable<typeof layout.sku>, compact: boolean) => (
+  const skuEl = (sku: NonNullable<typeof layout.sku>) => (
     <div
       style={{
         fontSize: toU(sku.fontMm),
-        fontWeight: compact ? 500 : 600,
+        fontWeight: 400,
         lineHeight: 1,
         whiteSpace: 'nowrap',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         maxWidth: '100%',
-        letterSpacing: compact ? '0.04em' : '0.02em',
-        textAlign: 'center',
-        fontFamily: compact
-          ? 'ui-monospace, SFMono-Regular, Menlo, monospace'
-          : undefined,
-        opacity: compact ? 0.9 : 1
+        letterSpacing: '0.02em',
+        textAlign: 'center'
       }}
     >
       {payload.sku}
@@ -189,11 +185,12 @@ export function ProductLabelSheet({
           <div
             style={{
               fontSize: toU(layout.name.fontMm),
-              fontWeight: 500,
-              lineHeight: 1.1,
+              fontWeight: 400,
+              lineHeight: 1.12,
               textAlign: 'center',
               width: '100%',
               maxHeight: '100%',
+              // Full name — never ellipsis; layout guarantees row fits all lines
               overflow: 'hidden',
               overflowWrap: 'anywhere',
               wordBreak: 'break-word',
@@ -213,7 +210,7 @@ export function ProductLabelSheet({
             justifyContent: 'center'
           })}
         >
-          {skuEl(layout.sku!, false)}
+          {skuEl(layout.sku!)}
         </div>
       ) : null}
 
@@ -231,7 +228,7 @@ export function ProductLabelSheet({
           <span
             style={{
               fontSize: toU(layout.price.fontMm),
-              fontWeight: 700,
+              fontWeight: 400,
               lineHeight: 1,
               whiteSpace: 'nowrap',
               letterSpacing: '-0.01em',
@@ -244,11 +241,11 @@ export function ProductLabelSheet({
           <span
             style={{
               fontSize: toU(layout.price.secondaryFontMm),
-              fontWeight: 500,
+              fontWeight: 400,
               lineHeight: 1,
               whiteSpace: 'nowrap',
               letterSpacing: '0.02em',
-              opacity: 0.88
+              opacity: 0.9
             }}
           >
             /{unit}
@@ -277,7 +274,7 @@ export function ProductLabelSheet({
                 flexShrink: 0
               }}
             >
-              {skuEl(layout.sku!, true)}
+              {skuEl(layout.sku!)}
             </div>
           ) : null}
           <div
@@ -312,6 +309,7 @@ export function ProductLabelSheet({
                 lineHeight: 1.1,
                 marginTop: toU(0.15),
                 fontFamily: 'ui-monospace, monospace',
+                fontWeight: 400,
                 letterSpacing: '0.04em',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
