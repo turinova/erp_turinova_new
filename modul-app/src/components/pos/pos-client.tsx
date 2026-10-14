@@ -488,7 +488,7 @@ export function PosClient({
     })
   }, [applyTodayProgress])
 
-  // One lean bootstrap: shift (blocking) + quick/frequent/progress/chips
+  // Lean bootstrap: shift+catalog+chips first (blocking); progress deferred
   useEffect(() => {
     if (!hydrated || !registerId) {
       setOpenShiftId(null)
@@ -502,7 +502,7 @@ export function PosClient({
     void fetchPosBootstrap({
       warehouseId,
       registerId,
-      include: 'all',
+      include: 'shift,catalog,chips',
       signal: ac.signal
     })
       .then((r) => {
@@ -520,14 +520,21 @@ export function PosClient({
         setQuickHits(r.quick)
         setFrequentHits(r.frequent)
         setMfrChips(r.chips)
-        if (r.progress) {
+        // Soft KPI — ne blokkolja a pult UI-t
+        void fetchPosBootstrap({
+          warehouseId,
+          registerId,
+          include: 'progress',
+          signal: ac.signal
+        }).then((prog) => {
+          if (cancelled || !prog.ok || !prog.progress) return
           applyTodayProgress({
-            salesCount: r.progress.salesCount,
-            weekSalesCount: r.progress.weekSalesCount,
-            monthSalesCount: r.progress.monthSalesCount,
-            dailyTarget: r.progress.dailyTarget
+            salesCount: prog.progress.salesCount,
+            weekSalesCount: prog.progress.weekSalesCount,
+            monthSalesCount: prog.progress.monthSalesCount,
+            dailyTarget: prog.progress.dailyTarget
           })
-        }
+        })
       })
       .catch((err: unknown) => {
         if (cancelled || ac.signal.aborted) return
@@ -805,7 +812,8 @@ export function PosClient({
     searchReqId.current += 1
     setSearchHits([])
     setSelectedSearchIndex(0)
-    const minLen = /^\d+$/.test(q) ? 1 : 2
+    // Pure digits: wait ≥4 (API also throttles 1–3). Names: ≥2.
+    const minLen = /^\d+$/.test(q) ? 4 : 2
     if (q.length < minLen || !warehouseId) {
       setSearching(false)
       return
@@ -822,7 +830,8 @@ export function PosClient({
         inStockOnly: false,
         stockFirst,
         kind: searchKind,
-        includeMaterials: hasLapszabaszat
+        // Materials only once the query is meaningful (avoids heavy short-q RPC)
+        includeMaterials: hasLapszabaszat && q.length >= 4
       }).then((res) => {
         if (reqId !== searchReqId.current) return
         setSearching(false)

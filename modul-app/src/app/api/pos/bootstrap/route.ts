@@ -26,6 +26,18 @@ export async function GET(request: Request) {
       { status: 400 }
     )
   }
+  // progress-only soft refresh may omit registerId
+  if (
+    !include.shift &&
+    !include.catalog &&
+    !include.chips &&
+    !include.progress
+  ) {
+    return NextResponse.json(
+      { ok: false, message: 'Üres include.' },
+      { status: 400 }
+    )
+  }
 
   const supabase = await createClient()
   if (!supabase) {

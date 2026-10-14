@@ -101,10 +101,16 @@ HTTP TTFB-t **`next build && next start`**-tal mérj — **ne** `next dev` + `WA
 
 ### POS oldal mount
 
-1. Hydrate localStorage → **egy** `GET /api/pos/bootstrap` (ne 6–8 Server Action POST).
-2. Lean auth + middleware skip; `Server-Timing`.
-3. Shift **blocking**; quick/frequent/progress/chips ugyanabból a válaszból.
+1. Hydrate → `GET /api/pos/bootstrap?include=shift,catalog,chips` (ne Action-zuhatag).
+2. Progress **deferred** (`include=progress`) — ne blokkolja a pultot.
+3. Lean auth + middleware skip; `Server-Timing`.
 4. Mutációk (sale, shift open/close, invoice) maradnak Server Actionök.
+
+### POS typeahead
+
+1. `/api/pos/search`: **`resolvePosLeanAuth`** + middleware skip + `Server-Timing`.
+2. Pure digit `q` hossza ≤3 → üres rows (`throttled`); materials csak hosszabb querynél.
+3. Client: digit minLen **4**; `includeMaterials` csak `q.length ≥ 4`.
 
 ### Adat
 

@@ -392,6 +392,9 @@ async function handleSession(request: NextRequest) {
     const isPosBootstrapApi =
       pathname === '/api/pos/bootstrap' ||
       pathname.startsWith('/api/pos/bootstrap/')
+    /** POS typeahead — lean skip; staff-only (not partner-shared). */
+    const isPosSearchApi =
+      pathname === '/api/pos/search' || pathname.startsWith('/api/pos/search/')
 
     const isPartnerSharedApi =
       pathname === '/api/optimize' ||
@@ -401,13 +404,14 @@ async function handleSession(request: NextRequest) {
       /^\/api\/ajanlatok\/[^/]+\/pdf$/.test(pathname)
 
     if (user) {
-      // Kereső / catalog barcode / POS barcode+bootstrap: skip partner/membership waterfall.
+      // Kereső / catalog barcode / POS barcode+bootstrap+search: skip membership waterfall.
       // Az API lean auth + RLS dönt (POS: staff membership only).
       if (
         isKeresoApi ||
         isBarcodeLookupApi ||
         isPosBarcodeLookupApi ||
-        isPosBootstrapApi
+        isPosBootstrapApi ||
+        isPosSearchApi
       ) {
         isAuthenticated = true
       } else if (partnerCtx) {

@@ -48,12 +48,12 @@ Jobb: kosár + sticky footer
 - Opcionális POS setting: **Keresőben csak vonalkódos** (`search_barcode_only`, default ki) — typeahead tovább szűkít.
 - Szinkron gomb (POS beállítások): `sync_sellable_pos_from_barcodes` — migráció `20260597`.
 - Soft stock: 0 készlet is listázható; **Elöl a készletes** chip rendez; OOS sor muted + „Nincs készleten”.
-- **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés; üres LRU nem cache-el zero-hitet.
+- **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés; üres LRU nem cache-el zero-hitet. Pure digit stub (1–3) **nem** hív RPC-t; materials csak `q.length ≥ 4`. API: lean auth + middleware skip + `Server-Timing`.
 - Zero-hit UI: tippek (szóköz, SKU, POS-eladható, alias) + **Gyors felvétel** + Keresőszavak.
 - Miss telemetria: `pos_search_events` → manager **POS használat** top miss lista (`pos_search_miss_stats`).
 - **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha barcode-szerű / nincs typeahead lista); miss → **PosMissProductDialog** (ha `allow_pos_quick_create`, default be): Gyors felvétel / Hozzárendelem / Mégse; különben flash. Match: client **UPPER** + DB **`.eq.` / RPC equality** (index); hygiene `20260605`.
 - **Barcode hot path (perf):** `/api/pos/barcode-lookup` = **lean staff auth** (`resolvePosLeanAuth`) + middleware skip + `Server-Timing` — **nem** nyúl a typeahead `/api/pos/search`-hez. Session LRU + single-flight + optimistic kosár (cache hit); stale/miss → rollback. PDA ugyanaz a client cache.
-- **Mount bootstrap (perf):** hydrate (localStorage) után **egy** `GET /api/pos/bootstrap` (shift + quick/frequent + progress + chips). Shift továbbra is blocking a fő UI előtt; typeahead/sale/invoice actionök érintetlenek. Settings mentés → `include=catalog` partial. PDA handoff poll külön marad.
+- **Mount bootstrap (perf):** hydrate után `GET /api/pos/bootstrap?include=shift,catalog,chips` (blocking), majd soft `include=progress`. Typeahead/sale/invoice érintetlen. Settings → `include=catalog`. PDA handoff poll külön.
 - **Gyors felvétel / Új termék:** topbar **Új ügyfél** mellett **Új termék**. Mezők: név, vonalkód (+ **Generálás**, nem ír SKU-t), ÁFA, (egység csak ha több van), opcionális beszerzés+szorzó, bruttó. SKU a szerveren auto. → `sellable_pos=true`, kosár (`20260598`). Beírt bruttó → `accessories.price_gross` (polcár; ÁFA round-trip, pl. 4000 Ft @ 27% ne legyen 4001) — `20260599`.
 - **Hozzárendelés:** keres a teljes aktív katalógusban (nem csak POS) → üres `barcode` vagy `barcode_internal` + `sellable_pos=true`.
 - Törzsadat: **Belső vonalkód → Generálás** (ugyanaz az EAN-13 allokátor).

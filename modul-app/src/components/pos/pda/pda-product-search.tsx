@@ -40,7 +40,7 @@ export function PdaProductSearch({
   const runSearch = useCallback(
     async (term: string) => {
       const t = term.trim()
-      const minLen = /^\d+$/.test(t) ? 1 : 2
+      const minLen = /^\d+$/.test(t) ? 4 : 2
       if (t.length < minLen || !warehouseId) {
         if (!t) {
           setRows([])
@@ -109,7 +109,9 @@ export function PdaProductSearch({
     }
   }
 
-  const showList = q.trim().length >= 2 || (/^\d+$/.test(q.trim()) && q.trim().length >= 1)
+  const showList =
+    q.trim().length >= 2 ||
+    (/^\d+$/.test(q.trim()) && q.trim().length >= 4)
 
   return (
     <div className={cn('space-y-2', className)}>
