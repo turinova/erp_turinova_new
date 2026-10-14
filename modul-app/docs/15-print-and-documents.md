@@ -60,18 +60,19 @@ Ha van címkenyomtatás:
 - külön formátum specifikáció kell
 - méret, margó, vonalkód elhelyezés, betűméret legyen fixen definiálva
 
-### 6a. Termék címke (33×25 mm) — scan-safe
+### 6a. Termék címke (33×25 mm) — shelf-edge hierarchy
 
-- **Prioritás:** quiet zone + bar magasság → ár → **SKU** → név (zsugorít).
-- **SKU:** cél ~**3.6 mm** (floor ~3.2); barcode + SKU mellett név max **1 sor**. Excess barcode magasság előbb SKU-nak.
-- **Sablon „Nagy SKU”:** név ki → SKU cél ~**4.2 mm** + ár + kód (raktár pick).
-- **HRI** (számjegyek a sáv alatt): alapból **ki**; opcionális „Kód számjegyei”.
-- CODE128 quiet zone ≥ **10× X** (min ~1.5 mm) — **szimmetrikus CSS padding**, jsbarcode `margin=0`.
-- Modulbecslés: tiszta szám → CODE128 **C**; vegyes → Code B. X &lt; 0.20 mm vagy sáv &lt; 5.5 mm → print tiltva.
-- **Egység** (`/ db`): ≥ ~2.0 mm, bold, opacity 1 (thermal olvashatóság).
-- Pad: kiegyensúlyozott top/bottom (ne top-starved); barcode sor kitölti a magasságot.
-- Nyomtató: **100% / Actual size** (ne Fit to page), 300 dpi thermal.
-- **Illesztés:** dialógus **Beállítások** (összecsukva) → H/V offset ±2 mm; mentés **tenant** táblába (`tenant_label_print_settings`), nem böngészőbe. Writer jog kell a mentéshez; viewer csak olvas.
+Zárolt vizuális sorrend (NIST / retail shelf-edge): **Ár > Név > vonalkód > SKU**.
+
+- **Alap sablon: Polc** — név + ár + vonalkód (SKU ki). Vásárlói polcra.
+- **Teljes** — mint Polc, plusz **SKU** (~2.7 mm, weight 600, mono) a vonalkód *felett*, soha a név és ár között.
+- **Nagy SKU** — raktár pick: nagy SKU sor + ár + kód (nincs név).
+- **Ár:** egy sorban **`12 345 Ft/db`** (egység inline, nem külön `/ db` sor). Ár a legnagyobb elem.
+- **Név:** max 2 sor, weight 600; mindig erősebb, mint a secondary SKU.
+- **Fix zónák** (`computeLabelLayout`): name / price / barcode budget mm-ben; szöveg a zónába zsugorít — ne fordítsd meg a hierarchiát.
+- **HRI** alapból ki. CODE128 quiet zone ≥ **10× X**; X &lt; 0.20 mm vagy sáv &lt; 5.5 mm → print tiltva.
+- **Előnézet = print:** mm + `LABEL_PX_PER_MM`, dialógus CSS `scale`.
+- Nyomtató: **100% / Actual size**. Illesztés: tenant `tenant_label_print_settings` (±2 mm).
 - Layout: `src/lib/labels/layout.ts`; UI: `ProductLabelPrintDialog`.
 
 ## 7. PDF kontra HTML print

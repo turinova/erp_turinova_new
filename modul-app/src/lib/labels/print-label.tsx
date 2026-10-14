@@ -81,6 +81,9 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
         margin: 0 auto !important;
         overflow: hidden !important;
         box-sizing: border-box !important;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
       #${CONTAINER_ID} > .label-sheet:last-child {
         page-break-after: auto;

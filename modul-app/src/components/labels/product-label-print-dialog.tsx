@@ -102,11 +102,11 @@ export function ProductLabelPrintDialog({
   const [unit, setUnit] = useState('db')
   const [amount, setAmount] = useState(1)
   const [templateId, setTemplateId] = useState<LabelTemplateId | 'custom'>(
-    'full'
+    'shelf'
   )
   const [fields, setFields] = useState<LabelFields>({
     showName: true,
-    showSku: true,
+    showSku: false,
     showBarcode: true,
     showPrice: true
   })
@@ -135,8 +135,10 @@ export function ProductLabelPrintDialog({
     setPrice(Math.round(payload.priceGross))
     setUnit(payload.unitShortform || 'db')
     setAmount(Math.max(1, Math.round(initialAmount) || 1))
-    setTemplateId('full')
-    setFields(LABEL_TEMPLATES[0].fields(bc))
+    setTemplateId('shelf')
+    setFields(
+      LABEL_TEMPLATES.find((t) => t.id === 'shelf')!.fields(bc)
+    )
     setShowHumanReadable(false)
     setSettingsOpen(false)
   }, [open, payload, initialAmount])
@@ -318,8 +320,9 @@ export function ProductLabelPrintDialog({
         <DialogHeader>
           <DialogTitle>Címke nyomtatása</DialogTitle>
           <DialogDescription>
-            33×25 mm scan-safe. Nyomtatáskor: méret 100% / Actual size — ne
-            „Fit to page”.
+            33×25 mm · hierarchia: ár → név → vonalkód → SKU. Alapértelmezett:
+            Polc. Előnézet = print layout (nagyítva). Nyomtatás: 100% / Actual
+            size.
           </DialogDescription>
         </DialogHeader>
 
@@ -327,7 +330,7 @@ export function ProductLabelPrintDialog({
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-stone-50 p-5">
               <p className="text-hint text-ink-secondary">
-                Előnézet · 33×25 mm
+                Előnézet · 33×25 mm (print-azonos, nagyítva)
               </p>
               <div className="overflow-hidden rounded-md border border-border bg-white p-4 shadow-sm">
                 <ProductLabelSheet
@@ -344,6 +347,10 @@ export function ProductLabelPrintDialog({
                   offsetYMm={offsetY}
                 />
               </div>
+              <p className="max-w-sm text-center text-[11px] text-ink-muted">
+                Polc: vásárlói nézet. Nagy SKU: raktár pick. Teljes: apró SKU a
+                vonalkód felett. Ár mindig <span className="font-medium">Ft/{unit || 'db'}</span> egy sorban.
+              </p>
               {!scanSafety.ok ? (
                 <p className="max-w-sm text-center text-[12px] text-destructive">
                   {scanSafety.reason}

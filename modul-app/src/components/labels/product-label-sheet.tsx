@@ -20,6 +20,10 @@ import { cn } from '@/lib/utils'
 
 const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
 
+/** Lighter stack — thermal bold bleed reads thicker on paper. */
+const LABEL_FONT_FAMILY =
+  'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+
 type Props = {
   payload: ProductLabelPayload
   fields: LabelFields
@@ -28,10 +32,9 @@ type Props = {
   unitShortform: string
   size: LabelSize
   mode: 'print' | 'preview'
+  /** Preview zoom (px/mm visual); layout always LABEL_PX_PER_MM then CSS scale. */
   previewScale?: number
-  /** Digits under bars — default off (scan height). */
   showHumanReadable?: boolean
-  /** Printer calibration — shift content on the die-cut (mm). */
   offsetXMm?: number
   offsetYMm?: number
   className?: string
@@ -71,20 +74,22 @@ export function ProductLabelSheet({
   )
 
   const isPreview = mode === 'preview'
-  const pxPerMm = isPreview ? previewScale : LABEL_PX_PER_MM
-  const width = isPreview ? `${mm.w * previewScale}px` : `${mm.w}mm`
-  const height = isPreview ? `${mm.h * previewScale}px` : `${mm.h}mm`
+  const pxPerMm = LABEL_PX_PER_MM
+  const displayScale = isPreview ? previewScale / LABEL_PX_PER_MM : 1
 
-  const toU = (mmVal: number) =>
-    isPreview ? `${(mmVal * previewScale).toFixed(2)}px` : `${mmVal}mm`
+  const toU = (mmVal: number) => `${mmVal}mm`
 
   const padX = layout.padSideMm + layout.safetyInsetMm
   const padTop = layout.padTopMm + layout.safetyInsetMm
   const padBottom = layout.padBottomMm + layout.safetyInsetMm
 
+  const skuAsRow = layout.sku && layout.skuPlacement === 'row'
+  const skuOverBarcode =
+    layout.sku && layout.skuPlacement === 'over-barcode'
+
   const gridRows: string[] = []
   if (layout.name) gridRows.push(toU(layout.name.rowMm))
-  if (layout.sku) gridRows.push(toU(layout.sku.rowMm))
+  if (skuAsRow) gridRows.push(toU(layout.sku!.rowMm))
   if (layout.price) gridRows.push(toU(layout.price.rowMm))
   if (layout.barcode) gridRows.push(toU(layout.barcode.rowMm))
 
@@ -97,7 +102,6 @@ export function ProductLabelSheet({
     const modules = estimateCode128Modules(barcode)
     const { quietZoneMm } = solveBarcodeXMm(contentWidthMm, modules)
     const quietMm = Math.max(layout.quietZoneMm, quietZoneMm)
-    // Bars only — quiet zone is symmetric CSS padding (optical center)
     const barsWidthMm = Math.max(4, contentWidthMm - 2 * quietMm)
     const moduleWidth = Math.max(
       0.8,
@@ -106,10 +110,14 @@ export function ProductLabelSheet({
     const hriMm = layout.showHumanReadable
       ? layout.barcode.secondaryFontMm + 0.35
       : 0
-    const usableMm = Math.max(2.5, layout.barcode.rowMm - hriMm)
+    const skuStripMm = skuOverBarcode ? layout.sku!.rowMm + 0.15 : 0
+    const usableMm = Math.max(
+      2.5,
+      layout.barcode.rowMm - hriMm - skuStripMm
+    )
     const heightPx = Math.max(12, Math.round(usableMm * pxPerMm))
     return { heightPx, moduleWidth, quietMm }
-  }, [layout, barcode, contentWidthMm, pxPerMm])
+  }, [layout, barcode, contentWidthMm, pxPerMm, skuOverBarcode])
 
   const cell = (rowMm: number, extra?: CSSProperties): CSSProperties => ({
     height: toU(rowMm),
@@ -123,12 +131,34 @@ export function ProductLabelSheet({
 
   const hasOffset = offsetXMm !== 0 || offsetYMm !== 0
 
-  return (
+  const skuEl = (sku: NonNullable<typeof layout.sku>, compact: boolean) => (
+    <div
+      style={{
+        fontSize: toU(sku.fontMm),
+        fontWeight: compact ? 500 : 600,
+        lineHeight: 1,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        maxWidth: '100%',
+        letterSpacing: compact ? '0.04em' : '0.02em',
+        textAlign: 'center',
+        fontFamily: compact
+          ? 'ui-monospace, SFMono-Regular, Menlo, monospace'
+          : undefined,
+        opacity: compact ? 0.9 : 1
+      }}
+    >
+      {payload.sku}
+    </div>
+  )
+
+  const sheet = (
     <div
       className={cn(className)}
       style={{
-        width,
-        height,
+        width: `${mm.w}mm`,
+        height: `${mm.h}mm`,
         padding: `${toU(padTop)} ${toU(padX)} ${toU(padBottom)}`,
         margin: 0,
         backgroundColor: '#fff',
@@ -139,6 +169,8 @@ export function ProductLabelSheet({
         overflow: 'hidden',
         boxSizing: 'border-box',
         color: '#000',
+        fontFamily: LABEL_FONT_FAMILY,
+        WebkitFontSmoothing: 'antialiased',
         ...(hasOffset
           ? {
               transform: `translate(${toU(offsetXMm)}, ${toU(offsetYMm)})`
@@ -157,14 +189,15 @@ export function ProductLabelSheet({
           <div
             style={{
               fontSize: toU(layout.name.fontMm),
-              fontWeight: 700,
+              fontWeight: 500,
               lineHeight: 1.1,
               textAlign: 'center',
               width: '100%',
               maxHeight: '100%',
               overflow: 'hidden',
               overflowWrap: 'anywhere',
-              wordBreak: 'break-word'
+              wordBreak: 'break-word',
+              letterSpacing: '0.01em'
             }}
           >
             {text}
@@ -172,29 +205,15 @@ export function ProductLabelSheet({
         </div>
       ) : null}
 
-      {layout.sku ? (
+      {skuAsRow ? (
         <div
-          style={cell(layout.sku.rowMm, {
+          style={cell(layout.sku!.rowMm, {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           })}
         >
-          <div
-            style={{
-              fontSize: toU(layout.sku.fontMm),
-              fontWeight: 700,
-              lineHeight: 1,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: '100%',
-              letterSpacing:
-                (payload.sku?.length ?? 0) > 12 ? '0.01em' : '0.02em'
-            }}
-          >
-            {payload.sku}
-          </div>
+          {skuEl(layout.sku!, false)}
         </div>
       ) : null}
 
@@ -202,37 +221,38 @@ export function ProductLabelSheet({
         <div
           style={cell(layout.price.rowMm, {
             display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
+            flexDirection: 'row',
+            alignItems: 'baseline',
             justifyContent: 'center',
-            gap: toU(0.12)
+            flexWrap: 'nowrap',
+            gap: toU(0.2)
           })}
         >
-          <div
+          <span
             style={{
               fontSize: toU(layout.price.fontMm),
-              fontWeight: 800,
+              fontWeight: 700,
               lineHeight: 1,
               whiteSpace: 'nowrap',
-              letterSpacing: '-0.02em',
+              letterSpacing: '-0.01em',
               overflow: 'hidden',
               maxWidth: '100%'
             }}
           >
             {priceLabel} Ft
-          </div>
-          <div
+          </span>
+          <span
             style={{
               fontSize: toU(layout.price.secondaryFontMm),
-              fontWeight: 700,
+              fontWeight: 500,
               lineHeight: 1,
-              opacity: 1,
               whiteSpace: 'nowrap',
-              letterSpacing: '0.02em'
+              letterSpacing: '0.02em',
+              opacity: 0.88
             }}
           >
-            / {unit}
-          </div>
+            /{unit}
+          </span>
         </div>
       ) : null}
 
@@ -245,6 +265,21 @@ export function ProductLabelSheet({
             justifyContent: 'flex-end'
           })}
         >
+          {skuOverBarcode ? (
+            <div
+              style={{
+                height: toU(layout.sku!.rowMm),
+                maxHeight: toU(layout.sku!.rowMm),
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                flexShrink: 0
+              }}
+            >
+              {skuEl(layout.sku!, true)}
+            </div>
+          ) : null}
           <div
             style={{
               display: 'flex',
@@ -289,6 +324,37 @@ export function ProductLabelSheet({
           ) : null}
         </div>
       ) : null}
+    </div>
+  )
+
+  if (!isPreview || displayScale === 1) {
+    return sheet
+  }
+
+  const slotW = mm.w * previewScale
+  const slotH = mm.h * previewScale
+  return (
+    <div
+      style={{
+        width: slotW,
+        height: slotH,
+        position: 'relative',
+        overflow: 'hidden'
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: `${mm.w}mm`,
+          height: `${mm.h}mm`,
+          transform: `scale(${displayScale})`,
+          transformOrigin: 'top left'
+        }}
+      >
+        {sheet}
+      </div>
     </div>
   )
 }

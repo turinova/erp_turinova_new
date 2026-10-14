@@ -6,8 +6,11 @@ import {
   type ProductLabelPayload
 } from '@/lib/labels/types'
 
-export type LabelTemplateId = 'full' | 'sku' | 'shelf' | 'barcode' | 'price'
+export type LabelTemplateId = 'shelf' | 'full' | 'sku' | 'barcode' | 'price'
 
+/**
+ * Templates — Polc first (customer shelf). Hierarchy: Ár > Név > barcode > SKU.
+ */
 export const LABEL_TEMPLATES: Array<{
   id: LabelTemplateId
   label: string
@@ -15,9 +18,20 @@ export const LABEL_TEMPLATES: Array<{
   fields: (hasBarcode: boolean) => LabelFields
 }> = [
   {
+    id: 'shelf',
+    label: 'Polc',
+    hint: 'Név + ár + kód (polcra)',
+    fields: (hasBarcode) => ({
+      showName: true,
+      showSku: false,
+      showPrice: true,
+      showBarcode: hasBarcode
+    })
+  },
+  {
     id: 'full',
     label: 'Teljes',
-    hint: 'Név, SKU, ár, kód',
+    hint: 'Név + ár + apró SKU + kód',
     fields: (hasBarcode) => ({
       showName: true,
       showSku: true,
@@ -28,21 +42,10 @@ export const LABEL_TEMPLATES: Array<{
   {
     id: 'sku',
     label: 'Nagy SKU',
-    hint: 'SKU, ár, kód (nincs név)',
+    hint: 'SKU + ár + kód (raktár)',
     fields: (hasBarcode) => ({
       showName: false,
       showSku: true,
-      showPrice: true,
-      showBarcode: hasBarcode
-    })
-  },
-  {
-    id: 'shelf',
-    label: 'Polc',
-    hint: 'Név, ár, kód',
-    fields: (hasBarcode) => ({
-      showName: true,
-      showSku: false,
       showPrice: true,
       showBarcode: hasBarcode
     })
@@ -73,24 +76,29 @@ export const LABEL_TEMPLATES: Array<{
 
 export type LabelBlockLayout = {
   rowMm: number
-  /** Primary text size for the block (name / sku / price amount). */
+  /** Primary text size (name / sku / price amount). */
   fontMm: number
-  /** Secondary (unit under price, human-readable under barcode). */
+  /** Secondary: inline /unit under price amount, or HRI under bars. */
   secondaryFontMm: number
 }
+
+/** Where the SKU block renders in the sheet. */
+export type SkuPlacement = 'row' | 'over-barcode'
 
 export type LabelLayout = {
   padTopMm: number
   padSideMm: number
   padBottomMm: number
-  /** Extra inset beyond pad — print tolerance (Brother/DYMO shift). */
   safetyInsetMm: number
   gapMm: number
-  /** CODE128 quiet zone each side (mm), inside content width. */
   quietZoneMm: number
   name: LabelBlockLayout | null
   sku: LabelBlockLayout | null
+  /** `over-barcode` = thin strip above bars (Teljes); `row` = own grid row (Nagy SKU). */
+  skuPlacement: SkuPlacement | null
   price: LabelBlockLayout | null
+  /** Always true — amount + /unit on one baseline. */
+  priceUnitInline: boolean
   barcode: LabelBlockLayout | null
   showHumanReadable: boolean
 }
@@ -105,70 +113,56 @@ export const LABEL_PX_PER_MM = 96 / 25.4
 export const BARCODE_MIN_X_MM = 0.2
 
 /** Prefer at least this bar height (mm) when barcode is shown. */
-export const BARCODE_TARGET_HEIGHT_MM = 8.0
+export const BARCODE_TARGET_HEIGHT_MM = 7.5
 
 /** Hard floor — below this, refuse print. */
 export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 5.5
 
-/**
- * Scan-safe floors for 33×25: barcode first, then price/SKU, name shrinks.
- * HRI off by default → barcode floor is bars-only.
- * SKU floor ~3.2 mm — warehouse pick readability (was 2.5).
- */
-const FLOOR_33 = {
-  name: 2.8,
-  sku: 3.2,
-  /** Room for amount + readable unit line (~2.1 mm). */
-  price: 4.8,
-  barcode: 7.5,
-  barcodeWithHuman: 9.2
-} as const
+/** Secondary SKU strip (Teljes) — readable but still under name/price. */
+export const SKU_SECONDARY_FONT_MM = 2.7
 
-/** Desired SKU font (mm) on 33×25 when space allows. */
-export const SKU_DESIRED_FONT_MM = 3.6
+/** Warehouse pick SKU. */
+export const SKU_WAREHOUSE_FONT_MM = 4.0
 
-/** Balanced pads — avoid top-starved / bottom-empty print look. */
-const PAD = {
-  top: 1.05,
-  side: 1.0,
-  bottom: 0.45,
-  safety: 0.35
-} as const
+/** @deprecated — use SKU_SECONDARY_FONT_MM / SKU_WAREHOUSE_FONT_MM */
+export const SKU_DESIRED_FONT_MM = SKU_SECONDARY_FONT_MM
 
-/** Minimum unit font on thermal (mm) — opacity/size for /db readability. */
 export const UNIT_MIN_FONT_MM = 2.0
 
-/**
- * Conservative glyph width for bold UI sans (mm per font-mm).
- * Higher = fewer chars/line = more lines reserved (avoids under-wrap).
- */
-const CHAR_WIDTH_FACTOR = 0.62
-/** With barcode + SKU: 1 line name — frees height for larger SKU. */
-const NAME_MAX_LINES_WITH_BARCODE_AND_SKU = 1
-const NAME_MAX_LINES_WITH_BARCODE = 2
-const NAME_MAX_LINES_NO_BARCODE = 3
-const NAME_MIN_FONT = 1.55
+const PAD = {
+  top: 0.85,
+  side: 0.95,
+  bottom: 0.85,
+  safety: 0.25
+} as const
+
+/** Tight rhythm — little air between name / price / barcode. */
+const GAP_MM = 0.12
+
+/** Slightly optimistic — 2-line shelf titles stay ≥ ~2.5 mm. */
+const CHAR_WIDTH_FACTOR = 0.52
+const NAME_MIN_FONT = 2.0
+const NAME_MAX_LINES = 2
 
 function desiredNameFont(text: string): number {
   const len = text.trim().length
   let base = 3.0
-  if (len > 70) base = 1.75
-  else if (len > 50) base = 2.0
-  else if (len > 35) base = 2.3
-  else if (len > 22) base = 2.55
+  if (len > 70) base = 2.35
+  else if (len > 50) base = 2.55
+  else if (len > 35) base = 2.75
+  else if (len > 22) base = 2.9
   return Number(base.toFixed(2))
 }
 
 function desiredPriceFont(price: number): number {
   const digits = new Intl.NumberFormat('hu-HU').format(price).length
-  let base = 5.2
-  if (digits > 8) base = 3.6
-  else if (digits > 6) base = 4.2
-  else if (digits > 5) base = 4.6
+  let base = 5.4
+  if (digits > 8) base = 3.8
+  else if (digits > 6) base = 4.4
+  else if (digits > 5) base = 4.9
   return Number(base.toFixed(2))
 }
 
-/** Uncapped wrap estimate from content width. */
 function nameLinesForWidth(
   text: string,
   fontMm: number,
@@ -183,20 +177,46 @@ function nameLinesForWidth(
 }
 
 function nameContentMm(fontMm: number, lines: number): number {
-  return fontMm * 1.12 * lines + 0.2
+  return fontMm * 1.14 * lines
 }
 
-function skuContentMm(fontMm: number): number {
-  return fontMm + 0.35
+function resolveNameFont(
+  text: string,
+  desiredFont: number,
+  contentWidthMm: number,
+  maxRowMm: number,
+  maxLines: number
+): { fontMm: number; lines: number } {
+  let font = desiredFont
+  for (let i = 0; i < 40; i++) {
+    const rawLines = nameLinesForWidth(text, font, contentWidthMm)
+    const lines = Math.min(maxLines, rawLines)
+    const need = nameContentMm(font, lines)
+    if (rawLines > maxLines && font > NAME_MIN_FONT) {
+      font = Number((font * 0.9).toFixed(2))
+      continue
+    }
+    if (need > maxRowMm + 0.05 && font > NAME_MIN_FONT) {
+      font = Number((font * 0.92).toFixed(2))
+      continue
+    }
+    return {
+      fontMm: Number(Math.max(NAME_MIN_FONT, font).toFixed(2)),
+      lines
+    }
+  }
+  const lines = Math.min(
+    maxLines,
+    nameLinesForWidth(text, font, contentWidthMm)
+  )
+  return {
+    fontMm: Number(Math.max(NAME_MIN_FONT, font).toFixed(2)),
+    lines
+  }
 }
 
-function priceContentMm(fontMm: number, unitFontMm: number): number {
-  return fontMm + unitFontMm + 0.35
-}
-
-function barcodeContentMinMm(human: boolean): number {
-  // Bars-only floor; HRI adds secondary line under bars.
-  return human ? FLOOR_33.barcodeWithHuman : FLOOR_33.barcode
+function clampFont(desired: number, maxMm: number, minMm: number): number {
+  return Number(Math.max(minMm, Math.min(desired, maxMm)).toFixed(2))
 }
 
 /**
@@ -206,23 +226,19 @@ function barcodeContentMinMm(human: boolean): number {
  */
 export function estimateCode128Modules(value: string): number {
   const raw = value.trim()
-  if (!raw) return 11 + 11 + 13 // start + check + stop
+  if (!raw) return 11 + 11 + 13
 
   const isDigits = /^\d+$/.test(raw)
-  // Symbol chars excluding Stop; each is 11 modules; Stop adds 13 (= +2 over 11).
   let dataSymbols: number
   if (isDigits) {
     const n = raw.length
     const pairs = Math.floor(n / 2)
     if (n % 2 === 0) {
-      // StartC + pairs + check
       dataSymbols = 1 + pairs + 1
     } else {
-      // StartC + pairs + CodeB latch + last digit + check
       dataSymbols = 1 + pairs + 1 + 1 + 1
     }
   } else {
-    // StartB + chars + check
     dataSymbols = 1 + raw.length + 1
   }
   return dataSymbols * 11 + 13
@@ -232,29 +248,21 @@ export function computeQuietZoneMm(xMm: number): number {
   return Math.max(1.5, 10 * xMm)
 }
 
-/**
- * Solve for X given content width and module count.
- * content = 2×quiet + modules×X, quiet = max(1.5, 10X)
- */
 export function solveBarcodeXMm(
   contentWidthMm: number,
   modules: number
 ): { xMm: number; quietZoneMm: number; symbolWidthMm: number } {
   const m = Math.max(1, modules)
-  // Case quiet = 10X: content = 20X + mX → X = content/(m+20)
   let x = contentWidthMm / (m + 20)
   let quiet = computeQuietZoneMm(x)
   if (quiet > 10 * x + 0.001) {
-    // quiet stuck at 1.5 floor: content = 3 + mX → X = (content-3)/m
     x = Math.max(0.01, (contentWidthMm - 3) / m)
     quiet = computeQuietZoneMm(x)
   }
   const symbolWidthMm = m * x
-  // If quiet+symbol overflows, shrink X
   const total = 2 * quiet + symbolWidthMm
   if (total > contentWidthMm + 0.01) {
     x = Math.max(0.01, (contentWidthMm - 2 * Math.max(1.5, quiet)) / m)
-    // Recompute with floor quiet
     quiet = Math.min(computeQuietZoneMm(x), (contentWidthMm - m * x) / 2)
     quiet = Math.max(0.8, quiet)
     x = Math.max(0.01, (contentWidthMm - 2 * quiet) / m)
@@ -300,7 +308,11 @@ export function assessLabelScanSafety(input: {
   const hriMm = layout.showHumanReadable
     ? layout.barcode.secondaryFontMm + 0.35
     : 0
-  const barHeightMm = Math.max(0, layout.barcode.rowMm - hriMm)
+  const skuStripMm =
+    layout.skuPlacement === 'over-barcode' && layout.sku
+      ? layout.sku.rowMm + 0.15
+      : 0
+  const barHeightMm = Math.max(0, layout.barcode.rowMm - hriMm - skuStripMm)
 
   if (xMm < BARCODE_MIN_X_MM) {
     return {
@@ -336,66 +348,25 @@ export function assessLabelScanSafety(input: {
   return { ok: true, reason: null, xMm, quietZoneMm, barHeightMm }
 }
 
-/**
- * Fit product name: shrink font until wrap ≤ maxLines.
- * Never truncates — smaller type instead of ellipsis.
- */
-function resolveNameBlock(
-  text: string,
-  desiredFont: number,
-  contentWidthMm: number,
-  floorName: number,
-  maxLines: number,
-  maxContentMm?: number
-): { fontDes: number; lines: number; contentMin: number } {
-  let font = desiredFont
-  for (let i = 0; i < 36; i++) {
-    const rawLines = nameLinesForWidth(text, font, contentWidthMm)
-    if (rawLines > maxLines && font > NAME_MIN_FONT) {
-      font = Number((font * 0.9).toFixed(2))
-      continue
-    }
-    const lines = Math.min(maxLines, rawLines)
-    const content = nameContentMm(font, lines)
-    if (
-      maxContentMm != null &&
-      content > maxContentMm + 0.05 &&
-      font > NAME_MIN_FONT
-    ) {
-      font = Number((font * 0.92).toFixed(2))
-      continue
-    }
-    return {
-      fontDes: Number(Math.max(NAME_MIN_FONT, font).toFixed(2)),
-      lines,
-      contentMin: Math.max(floorName, content)
-    }
-  }
-  const lines = Math.min(maxLines, nameLinesForWidth(text, font, contentWidthMm))
-  return {
-    fontDes: Number(Math.max(NAME_MIN_FONT, font).toFixed(2)),
-    lines,
-    contentMin: Math.max(floorName, nameContentMm(font, lines))
-  }
-}
+type ZoneMode = 'shelf' | 'full' | 'warehouse' | 'barcode' | 'price-only'
 
-function clampFontToRow(
-  desiredFont: number,
-  rowMm: number,
-  contentFn: (font: number) => number
-): number {
-  let font = desiredFont
-  for (let i = 0; i < 24; i++) {
-    if (contentFn(font) <= rowMm) return Number(font.toFixed(2))
-    font *= 0.92
-    if (font < 1.2) break
-  }
-  return Number(Math.max(1.2, font).toFixed(2))
+function detectMode(input: {
+  showName: boolean
+  showSku: boolean
+  showPrice: boolean
+  showBarcode: boolean
+}): ZoneMode {
+  const { showName, showSku, showPrice, showBarcode } = input
+  if (showBarcode && !showName && !showSku && !showPrice) return 'barcode'
+  if (!showBarcode && showName && showPrice && !showSku) return 'price-only'
+  if (showSku && !showName) return 'warehouse'
+  if (showName && showSku) return 'full'
+  return 'shelf'
 }
 
 /**
- * Scan-safe layout: quiet zone + bar height first; SKU ~3.6 mm (Nagy SKU ~4.2);
- * HRI off by default; excess barcode height → SKU then name.
+ * Fixed-zone layout (NIST / shelf-edge hierarchy):
+ * Ár > Név > barcode > SKU. Unit inline with price (Ft/db).
  */
 export function computeLabelLayout(input: {
   size: LabelSize
@@ -403,16 +374,14 @@ export function computeLabelLayout(input: {
   productName: string
   price: number
   payload: ProductLabelPayload
-  /** Default false — digits under bars waste scan height on 33×25. */
   showHumanReadable?: boolean
 }): LabelLayout {
-  const floor = FLOOR_33
   const { w, h } = labelSizeMm(input.size)
-
   const padTopMm = PAD.top
   const padSideMm = PAD.side
   const padBottomMm = PAD.bottom
   const safetyInsetMm = PAD.safety
+  const gapMm = GAP_MM
 
   const barcodeVal = labelBarcodeValue(input.payload)
   const showName = input.fields.showName
@@ -423,216 +392,197 @@ export function computeLabelLayout(input: {
     showBarcode && (input.showHumanReadable ?? false)
   )
 
-  // Tight vertical rhythm — reclaim space for barcode / SKU
-  const gapMm = !showSku && showName && showPrice ? 0.22 : 0.15
-
   const text = input.productName.trim() || input.payload.name || '—'
-  const contentWidthMm = Math.max(
-    8,
-    w - 2 * (padSideMm + safetyInsetMm)
-  )
+  const contentWidthMm = Math.max(8, w - 2 * (padSideMm + safetyInsetMm))
 
   const modules = barcodeVal ? estimateCode128Modules(barcodeVal) : 40
   const { quietZoneMm: resolvedQuiet } = showBarcode
     ? solveBarcodeXMm(contentWidthMm, modules)
     : { quietZoneMm: 1.5 }
 
-  const nameMaxLines = showBarcode
-    ? showSku
-      ? NAME_MAX_LINES_WITH_BARCODE_AND_SKU
-      : NAME_MAX_LINES_WITH_BARCODE
-    : NAME_MAX_LINES_NO_BARCODE
+  const mode = detectMode({ showName, showSku, showPrice, showBarcode })
 
   const visibleCount =
-    Number(showName) + Number(showSku) + Number(showPrice) + Number(showBarcode)
-  const gapsTotal = Math.max(0, visibleCount - 1) * gapMm
+    Number(showName) +
+    Number(showSku && mode === 'warehouse') +
+    Number(showPrice) +
+    Number(showBarcode)
+  // Teljes: SKU lives inside barcode zone — not a separate gap
+  const gapCount = Math.max(0, visibleCount - 1)
   const available = Math.max(
     4,
-    h - padTopMm - padBottomMm - 2 * safetyInsetMm - gapsTotal
+    h - padTopMm - padBottomMm - 2 * safetyInsetMm - gapCount * gapMm
   )
 
-  const nameResolved = showName
-    ? resolveNameBlock(
+  let nameRow = 0
+  let skuRow = 0
+  let priceRow = 0
+  let barcodeRow = 0
+  let skuPlacement: SkuPlacement | null = null
+
+  const skuStripMm = 2.95
+  const hriReserve = showHumanReadable ? 1.9 : 0
+  const barcodeFloor = BARCODE_ABSOLUTE_MIN_HEIGHT_MM + hriReserve
+
+  if (mode === 'barcode') {
+    barcodeRow = available
+  } else if (mode === 'price-only') {
+    priceRow = Math.min(8.5, available * 0.42)
+    nameRow = available - priceRow
+  } else if (mode === 'warehouse') {
+    // SKU dominant row → price → barcode
+    const barcodeWant = Math.max(
+      barcodeFloor,
+      Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve, available * 0.4)
+    )
+    const priceWant = Math.min(5.4, available * 0.26)
+    barcodeRow = barcodeWant
+    priceRow = priceWant
+    skuRow = Math.max(5.2, available - barcodeRow - priceRow)
+    skuPlacement = 'row'
+  } else if (mode === 'full') {
+    // name → price → barcode(+SKU strip); compact text rows, leftover → barcode
+    if (showBarcode) {
+      const strip = showSku ? skuStripMm : 0
+      const priceWant = Math.min(5.4, available * 0.26)
+      const barcodeWant = Math.max(
+        barcodeFloor + strip,
+        Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve + strip, available * 0.42)
+      )
+      barcodeRow = barcodeWant
+      priceRow = priceWant
+      nameRow = Math.max(4.4, available - barcodeRow - priceRow)
+      if (showSku) {
+        skuRow = skuStripMm
+        skuPlacement = 'over-barcode'
+      }
+    } else {
+      const priceWant = Math.min(5.6, available * 0.32)
+      priceRow = priceWant
+      if (showSku) {
+        skuRow = skuStripMm
+        skuPlacement = 'row'
+        nameRow = Math.max(4.4, available - priceRow - skuRow)
+      } else {
+        nameRow = Math.max(4.8, available - priceRow)
+      }
+    }
+  } else {
+    // shelf: compact name + price, leftover → barcode
+    const barcodeWant = Math.max(
+      barcodeFloor,
+      Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve, available * 0.42)
+    )
+    const priceWant = Math.min(5.5, available * 0.27)
+    barcodeRow = barcodeWant
+    priceRow = priceWant
+    nameRow = Math.max(4.5, available - barcodeRow - priceRow)
+  }
+
+  // If barcode+name+price overflow, cut name then price (never barcode below floor)
+  const primarySum =
+    (showName ? nameRow : 0) +
+    (skuPlacement === 'row' ? skuRow : 0) +
+    (showPrice ? priceRow : 0) +
+    (showBarcode ? barcodeRow : 0)
+  if (showBarcode && primarySum > available + 0.05) {
+    let overflow = primarySum - available
+    if (showName && overflow > 0) {
+      const cut = Math.min(overflow, Math.max(0, nameRow - 4.2))
+      nameRow = Number((nameRow - cut).toFixed(2))
+      overflow -= cut
+    }
+    if (showPrice && overflow > 0) {
+      const cut = Math.min(overflow, Math.max(0, priceRow - 5.0))
+      priceRow = Number((priceRow - cut).toFixed(2))
+      overflow -= cut
+    }
+    if (skuPlacement === 'row' && overflow > 0) {
+      const cut = Math.min(overflow, Math.max(0, skuRow - 5.0))
+      skuRow = Number((skuRow - cut).toFixed(2))
+      overflow -= cut
+    }
+    if (overflow > 0.01) {
+      barcodeRow = Number(Math.max(barcodeFloor, barcodeRow - overflow).toFixed(2))
+    }
+  }
+
+  // Fonts fit zones
+  const nameFitted = showName
+    ? resolveNameFont(
         text,
         desiredNameFont(text),
         contentWidthMm,
-        floor.name,
-        nameMaxLines
+        nameRow,
+        NAME_MAX_LINES
       )
-    : { fontDes: 0, lines: 1, contentMin: 0 }
+    : { fontMm: 0, lines: 1 }
 
-  // Nagy SKU sablon (nincs név): push toward ~4.2 mm when space allows
-  const skuFontDes =
-    showSku && !showName ? 4.2 : showSku ? SKU_DESIRED_FONT_MM : 0
-  let priceFontDes = desiredPriceFont(input.price)
-  if (!showSku && showName && showPrice) {
-    priceFontDes = Number((priceFontDes * 0.94).toFixed(2))
-  }
-  const unitFontDes = 2.15
-
-  const nameMin = showName ? nameResolved.contentMin : 0
-  const skuMin = showSku ? Math.max(floor.sku, skuContentMm(skuFontDes)) : 0
-  const priceMin = showPrice
-    ? Math.max(floor.price, priceContentMm(priceFontDes, unitFontDes))
-    : 0
-  const barcodeMin = showBarcode
-    ? Math.max(
-        showHumanReadable ? floor.barcodeWithHuman : floor.barcode,
-        barcodeContentMinMm(showHumanReadable)
-      )
-    : 0
-
-  let nameRow = showName ? nameMin : 0
-  let skuRow = showSku ? skuMin : 0
-  let priceRow = showPrice ? priceMin : 0
-  let barcodeRow = 0
-
-  const textFixed = nameRow + skuRow + priceRow
-  const skuDesiredRow = showSku ? skuContentMm(skuFontDes) : 0
-
-  if (showBarcode) {
-    const rem = available - textFixed
-    if (rem >= barcodeMin) {
-      // Give leftover to barcode (scan height)
-      barcodeRow = Number(rem.toFixed(2))
-      // Excess above soft target → SKU first (warehouse pick), then name
-      const softCap = BARCODE_TARGET_HEIGHT_MM + 2
-      if (barcodeRow > softCap) {
-        let spare = Number((barcodeRow - Math.max(barcodeMin, softCap)).toFixed(2))
-        if (showSku && skuRow < skuDesiredRow && spare > 0.05) {
-          const giveSku = Math.min(spare, skuDesiredRow - skuRow)
-          skuRow = Number((skuRow + giveSku).toFixed(2))
-          barcodeRow = Number((barcodeRow - giveSku).toFixed(2))
-          spare = Number((spare - giveSku).toFixed(2))
-        }
-        if (
-          spare > 0.05 &&
-          showName &&
-          nameRow < nameContentMm(nameResolved.fontDes, nameResolved.lines)
-        ) {
-          const need = nameContentMm(nameResolved.fontDes, nameResolved.lines)
-          const give = Math.min(spare, Math.max(0, need - nameRow))
-          if (give > 0.05) {
-            nameRow = Number((nameRow + give).toFixed(2))
-            barcodeRow = Number((barcodeRow - give).toFixed(2))
-          }
-        }
-      }
-    } else {
-      // Squeeze text blocks; never drop barcode below floor if possible
-      // Prefer keeping SKU near floor (cut name/price first)
-      const budget = Math.max(0, available - barcodeMin)
-      const squeeze = textFixed > 0 ? Math.min(1, budget / textFixed) : 1
-      nameRow = showName
-        ? Math.max(floor.name * 0.75, Number((nameMin * squeeze).toFixed(2)))
-        : 0
-      skuRow = showSku
-        ? Math.max(floor.sku * 0.95, Number((skuMin * squeeze).toFixed(2)))
-        : 0
-      priceRow = showPrice
-        ? Math.max(floor.price * 0.9, Number((priceMin * squeeze).toFixed(2)))
-        : 0
-      barcodeRow = Math.max(
-        barcodeMin,
-        available - nameRow - skuRow - priceRow
-      )
-      const sum = nameRow + skuRow + priceRow + barcodeRow
-      if (sum > available + 0.01) {
-        // Last resort: cut name → price → SKU (SKU last)
-        const overflow = sum - available
-        let cut = overflow
-        const cutFromName = showName
-          ? Math.min(cut, Math.max(0, nameRow - floor.name * 0.75))
-          : 0
-        nameRow = Number((nameRow - cutFromName).toFixed(2))
-        cut -= cutFromName
-        const cutFromPrice = showPrice
-          ? Math.min(cut, Math.max(0, priceRow - floor.price * 0.85))
-          : 0
-        priceRow = Number((priceRow - cutFromPrice).toFixed(2))
-        cut -= cutFromPrice
-        const cutFromSku = showSku
-          ? Math.min(cut, Math.max(0, skuRow - floor.sku * 0.9))
-          : 0
-        skuRow = Number((skuRow - cutFromSku).toFixed(2))
-        cut -= cutFromSku
-        if (cut > 0.01) {
-          barcodeRow = Number(Math.max(4.5, barcodeRow - cut).toFixed(2))
-        }
-      }
-    }
-  } else if (textFixed > 0) {
-    const leftover = Math.max(0, available - textFixed)
-    if (leftover > 0.1) {
-      const wName = showName ? 0.9 : 0
-      const wSku = showSku ? 1.35 : 0
-      const wPrice = showPrice ? 1.2 : 0
-      const wSum = wName + wSku + wPrice || 1
-      if (showName)
-        nameRow = Number((nameMin + (leftover * wName) / wSum).toFixed(2))
-      if (showSku)
-        skuRow = Number((skuMin + (leftover * wSku) / wSum).toFixed(2))
-      if (showPrice)
-        priceRow = Number((priceMin + (leftover * wPrice) / wSum).toFixed(2))
-    }
+  // Name must stay ≥ secondary SKU when both visible
+  let nameFont = nameFitted.fontMm
+  if (showName && showSku && skuPlacement === 'over-barcode') {
+    nameFont = Math.max(nameFont, SKU_SECONDARY_FONT_MM + 0.45)
+    nameFont = clampFont(nameFont, nameRow / 1.14, NAME_MIN_FONT)
   }
 
-  // Fit name into allocated row (shrink font; never ellipsis-truncate)
-  let nameFont = 0
-  if (showName) {
-    const fitted = resolveNameBlock(
-      text,
-      nameResolved.fontDes,
-      contentWidthMm,
-      floor.name,
-      nameMaxLines,
-      nameRow
-    )
-    nameFont = fitted.fontDes
-    // Do NOT steal from barcode for name — scan height wins
-  }
+  const skuFont =
+    skuPlacement === 'row'
+      ? clampFont(SKU_WAREHOUSE_FONT_MM, skuRow * 0.92, 3.2)
+      : skuPlacement === 'over-barcode'
+        ? clampFont(SKU_SECONDARY_FONT_MM, skuRow * 0.95, 2.3)
+        : 0
 
-  const skuFont = showSku
-    ? clampFontToRow(skuFontDes, skuRow, skuContentMm)
+  // Inline price: amount + /unit on one line → secondary ~45% of amount
+  let priceFont = showPrice
+    ? clampFont(desiredPriceFont(input.price), priceRow * 0.88, 3.2)
     : 0
-  const priceFont = showPrice
-    ? clampFontToRow(priceFontDes, priceRow, (f) =>
-        priceContentMm(f, Math.min(unitFontDes, Math.max(UNIT_MIN_FONT_MM, f * 0.42)))
-      )
-    : 0
-  // Prefer ≥2.0 mm unit for thermal readability; only shrink under hard squeeze
   let unitFont = showPrice
     ? Number(
-        Math.min(
-          unitFontDes,
-          Math.max(UNIT_MIN_FONT_MM, priceFont * 0.42)
+        Math.max(
+          UNIT_MIN_FONT_MM,
+          Math.min(priceFont * 0.48, priceRow * 0.42)
         ).toFixed(2)
       )
     : 0
-  if (
-    showPrice &&
-    unitFont > 0 &&
-    priceContentMm(priceFont, unitFont) > priceRow + 0.05
-  ) {
+  // Ensure amount + unit fit one line height
+  if (showPrice && Math.max(priceFont, unitFont) > priceRow - 0.2) {
+    priceFont = clampFont(priceFont, priceRow - 0.25, 3.0)
     unitFont = Number(
-      Math.max(
-        1.7,
-        Math.min(unitFont, priceRow - priceFont - 0.25)
-      ).toFixed(2)
+      Math.max(1.7, Math.min(unitFont, priceFont * 0.48)).toFixed(2)
     )
   }
 
-  const priceFontFinal =
-    showPrice && priceContentMm(priceFont, unitFont) > priceRow
-      ? clampFontToRow(priceFont, priceRow, (f) =>
-          priceContentMm(
-            f,
-            Math.min(unitFont, Math.max(UNIT_MIN_FONT_MM * 0.85, f * 0.42))
-          )
-        )
-      : priceFont
-
   const barcodeSecondary = showHumanReadable ? 1.55 : 0
+
+  // Shrink text rows to content — spare goes to barcode (less empty between fields)
+  if (showName && nameRow > 0) {
+    const lines = Math.min(
+      NAME_MAX_LINES,
+      nameLinesForWidth(text, nameFont, contentWidthMm)
+    )
+    const tight = nameContentMm(nameFont, lines) + 0.15
+    if (tight + 0.2 < nameRow) {
+      const spare = nameRow - tight
+      nameRow = Number(tight.toFixed(2))
+      if (showBarcode) barcodeRow = Number((barcodeRow + spare).toFixed(2))
+    }
+  }
+  if (showPrice && priceRow > 0) {
+    const tight = Math.max(priceFont, unitFont) + 0.25
+    if (tight + 0.15 < priceRow) {
+      const spare = priceRow - tight
+      priceRow = Number(tight.toFixed(2))
+      if (showBarcode) barcodeRow = Number((barcodeRow + spare).toFixed(2))
+    }
+  }
+
+  // When over-barcode, sku strip is drawn inside barcode cell
+  let barcodeZone = showBarcode ? barcodeRow : 0
+  let skuInZone = skuPlacement === 'over-barcode' ? skuRow : 0
+  if (skuPlacement === 'over-barcode' && showBarcode) {
+    barcodeZone = barcodeRow
+    skuInZone = skuStripMm
+  }
 
   return {
     padTopMm,
@@ -642,25 +592,28 @@ export function computeLabelLayout(input: {
     gapMm,
     quietZoneMm: Number(resolvedQuiet.toFixed(3)),
     name: showName
-      ? {
-          rowMm: nameRow,
-          fontMm: nameFont,
-          secondaryFontMm: 0
-        }
+      ? { rowMm: nameRow, fontMm: nameFont, secondaryFontMm: 0 }
       : null,
-    sku: showSku
-      ? { rowMm: skuRow, fontMm: skuFont, secondaryFontMm: 0 }
-      : null,
+    sku:
+      showSku && skuPlacement
+        ? {
+            rowMm: skuPlacement === 'over-barcode' ? skuInZone : skuRow,
+            fontMm: skuFont,
+            secondaryFontMm: 0
+          }
+        : null,
+    skuPlacement,
     price: showPrice
       ? {
           rowMm: priceRow,
-          fontMm: priceFontFinal,
+          fontMm: priceFont,
           secondaryFontMm: unitFont
         }
       : null,
+    priceUnitInline: true,
     barcode: showBarcode
       ? {
-          rowMm: barcodeRow,
+          rowMm: barcodeZone,
           fontMm: 0,
           secondaryFontMm: barcodeSecondary
         }
