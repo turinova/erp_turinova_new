@@ -65,7 +65,7 @@ Ha van címkenyomtatás:
 Zárolt döntések:
 
 - **Default sablon: Teljes** — név + **SKU ON** + ár + vonalkód (SKU kikapcsolható).
-- **Vizuális hierarchia mérettel** (minden `font-weight: 400`): **Ár > SKU > Név**. Nincs bold.
+- **Vizuális hierarchia mérettel** (minden `font-weight: 550`): **Ár > SKU > Név**.
 - **SKU** (Teljes): ~**3.5 mm**, saját sor a név és az ár között; `sku.font ≥ name.font + 0.4 mm`.
 - **Név soha nincs levágva** — nincs ellipsis; shrink + max **3** sor; min ~**2.8 mm**.
 - **Nagy SKU** — raktár pick (~4.2 mm SKU sor, nincs név).

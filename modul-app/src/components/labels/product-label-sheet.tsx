@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils'
 
 const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
 
-/** Hierarchy by size only — thermal bleed; no bold. */
+/** Hierarchy by size; weight 550 everywhere. */
 const LABEL_FONT_FAMILY =
   'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
 
@@ -135,7 +135,7 @@ export function ProductLabelSheet({
     <div
       style={{
         fontSize: toU(sku.fontMm),
-        fontWeight: 400,
+        fontWeight: 550,
         lineHeight: 1,
         whiteSpace: 'nowrap',
         overflow: 'hidden',
@@ -185,7 +185,7 @@ export function ProductLabelSheet({
           <div
             style={{
               fontSize: toU(layout.name.fontMm),
-              fontWeight: 400,
+              fontWeight: 550,
               lineHeight: 1.12,
               textAlign: 'center',
               width: '100%',
@@ -228,7 +228,7 @@ export function ProductLabelSheet({
           <span
             style={{
               fontSize: toU(layout.price.fontMm),
-              fontWeight: 400,
+              fontWeight: 550,
               lineHeight: 1,
               whiteSpace: 'nowrap',
               letterSpacing: '-0.01em',
@@ -241,7 +241,7 @@ export function ProductLabelSheet({
           <span
             style={{
               fontSize: toU(layout.price.secondaryFontMm),
-              fontWeight: 400,
+              fontWeight: 550,
               lineHeight: 1,
               whiteSpace: 'nowrap',
               letterSpacing: '0.02em',
@@ -309,7 +309,7 @@ export function ProductLabelSheet({
                 lineHeight: 1.1,
                 marginTop: toU(0.15),
                 fontFamily: 'ui-monospace, monospace',
-                fontWeight: 400,
+                fontWeight: 550,
                 letterSpacing: '0.04em',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',

@@ -348,7 +348,7 @@ export function ProductLabelPrintDialog({
               <p className="max-w-sm text-center text-[11px] text-ink-muted">
                 SKU alapból be és nagyobb, mint a név. Ár:{' '}
                 <span className="font-medium">Ft/{unit || 'db'}</span>. Weight
-                400 — mérethierarchia.
+                550 — mérethierarchia.
               </p>
               {!scanSafety.ok ? (
                 <p className="max-w-sm text-center text-[12px] text-destructive">

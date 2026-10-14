@@ -10,7 +10,7 @@ export type LabelTemplateId = 'shelf' | 'full' | 'sku' | 'barcode' | 'price'
 
 /**
  * Templates — Teljes default (SKU ON). Visual hierarchy by size: Ár > SKU > Név.
- * Name never truncated; weight 400 everywhere (sheet).
+ * Name never truncated; weight 550 everywhere (sheet).
  */
 export const LABEL_TEMPLATES: Array<{
   id: LabelTemplateId
@@ -565,7 +565,7 @@ export function computeLabelLayout(input: {
     nameFont = clampFont(nameFont, nameRow / 1.12, Math.min(NAME_MIN_FONT, nameCap))
   }
 
-  // Inline price: amount + /unit — size hierarchy, weight 400 in sheet
+  // Inline price: amount + /unit — size hierarchy, weight 550 in sheet
   let priceFont = showPrice
     ? clampFont(desiredPriceFont(input.price), priceRow * 0.9, 3.4)
     : 0
