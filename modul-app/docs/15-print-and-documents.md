@@ -69,7 +69,7 @@ Ha van címkenyomtatás:
 - **Egység** (`/ db`): ≥ ~2.0 mm, bold, opacity 1 (thermal olvashatóság).
 - Pad: kiegyensúlyozott top/bottom (ne top-starved); barcode sor kitölti a magasságot.
 - Nyomtató: **100% / Actual size** (ne Fit to page), 300 dpi thermal.
-- **Illesztés:** dialógusban H/V offset ±2 mm (`localStorage`); ha a driver tolja a tartalmat.
+- **Illesztés:** dialógus **Beállítások** (összecsukva) → H/V offset ±2 mm; mentés **tenant** táblába (`tenant_label_print_settings`), nem böngészőbe. Writer jog kell a mentéshez; viewer csak olvas.
 - Layout: `src/lib/labels/layout.ts`; UI: `ProductLabelPrintDialog`.
 
 ## 7. PDF kontra HTML print

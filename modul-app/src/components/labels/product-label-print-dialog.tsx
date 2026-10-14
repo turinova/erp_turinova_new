@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Minus, Plus, Printer } from 'lucide-react'
+import { ChevronDown, Minus, Plus, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ProductLabelSheet } from '@/components/labels/product-label-sheet'
@@ -24,6 +24,16 @@ import {
   type LabelTemplateId
 } from '@/lib/labels/layout'
 import { printProductLabels } from '@/lib/labels/print-label'
+import {
+  loadLabelPrintSettingsAction,
+  saveLabelPrintSettingsAction
+} from '@/lib/labels/print-settings-actions'
+import {
+  clampLabelOffset,
+  LABEL_OFFSET_MAX,
+  LABEL_OFFSET_MIN,
+  LABEL_OFFSET_STEP
+} from '@/lib/labels/print-settings'
 import {
   labelBarcodeValue,
   labelSizeMm,
@@ -50,37 +60,33 @@ const FIELD_CHIPS: Array<{ key: keyof LabelFields; label: string }> = [
   { key: 'showBarcode', label: 'Vonalkód' }
 ]
 
-const OFFSET_STORAGE_KEY = 'modul-label-print-offset'
-const OFFSET_MIN = -2
-const OFFSET_MAX = 2
-const OFFSET_STEP = 0.1
+const LEGACY_OFFSET_KEY = 'modul-label-print-offset'
 
-type StoredOffset = { x: number; y: number }
-
-function clampOffset(n: number): number {
-  const rounded = Math.round(n / OFFSET_STEP) * OFFSET_STEP
-  return Math.min(OFFSET_MAX, Math.max(OFFSET_MIN, Number(rounded.toFixed(1))))
+function formatOffsetPair(x: number, y: number): string {
+  const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`)
+  return `${fmt(x)} / ${fmt(y)} mm`
 }
 
-function readStoredOffset(): StoredOffset {
+/** One-shot: ha DB üres (0,0) és van régi localStorage, vedd át draftnak. */
+function readLegacyLocalOffset(): { x: number; y: number } | null {
   try {
-    const raw = localStorage.getItem(OFFSET_STORAGE_KEY)
-    if (!raw) return { x: 0, y: 0 }
-    const parsed = JSON.parse(raw) as Partial<StoredOffset>
-    return {
-      x: clampOffset(Number(parsed.x) || 0),
-      y: clampOffset(Number(parsed.y) || 0)
-    }
+    const raw = localStorage.getItem(LEGACY_OFFSET_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { x?: number; y?: number }
+    const x = clampLabelOffset(Number(parsed.x) || 0)
+    const y = clampLabelOffset(Number(parsed.y) || 0)
+    if (x === 0 && y === 0) return null
+    return { x, y }
   } catch {
-    return { x: 0, y: 0 }
+    return null
   }
 }
 
-function writeStoredOffset(o: StoredOffset) {
+function clearLegacyLocalOffset() {
   try {
-    localStorage.setItem(OFFSET_STORAGE_KEY, JSON.stringify(o))
+    localStorage.removeItem(LEGACY_OFFSET_KEY)
   } catch {
-    /* ignore quota / private mode */
+    /* ignore */
   }
 }
 
@@ -108,10 +114,19 @@ export function ProductLabelPrintDialog({
   const [showHumanReadable, setShowHumanReadable] = useState(false)
   const [offsetX, setOffsetX] = useState(0)
   const [offsetY, setOffsetY] = useState(0)
+  const [savedOffsetX, setSavedOffsetX] = useState(0)
+  const [savedOffsetY, setSavedOffsetY] = useState(0)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [canWriteSettings, setCanWriteSettings] = useState(false)
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsSaving, setSettingsSaving] = useState(false)
   const [printing, setPrinting] = useState(false)
 
   const barcode = payload ? labelBarcodeValue(payload) : null
   const hasBarcode = Boolean(barcode)
+  const settingsDirty =
+    offsetX !== savedOffsetX || offsetY !== savedOffsetY
+  const hasActiveOffset = offsetX !== 0 || offsetY !== 0
 
   useEffect(() => {
     if (!open || !payload) return
@@ -123,10 +138,50 @@ export function ProductLabelPrintDialog({
     setTemplateId('full')
     setFields(LABEL_TEMPLATES[0].fields(bc))
     setShowHumanReadable(false)
-    const stored = readStoredOffset()
-    setOffsetX(stored.x)
-    setOffsetY(stored.y)
+    setSettingsOpen(false)
   }, [open, payload, initialAmount])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setSettingsLoading(true)
+    void (async () => {
+      const res = await loadLabelPrintSettingsAction()
+      if (cancelled) return
+      setSettingsLoading(false)
+      if (!res.ok) {
+        setOffsetX(0)
+        setOffsetY(0)
+        setSavedOffsetX(0)
+        setSavedOffsetY(0)
+        setCanWriteSettings(false)
+        return
+      }
+      setCanWriteSettings(res.canWrite)
+      let x = res.settings.offsetXMm
+      let y = res.settings.offsetYMm
+      // Legacy localStorage → draft, ha tenant még 0,0
+      if (x === 0 && y === 0) {
+        const legacy = readLegacyLocalOffset()
+        if (legacy) {
+          x = legacy.x
+          y = legacy.y
+          toast.message('Korábbi böngésző-illesztés betöltve', {
+            description: 'Mentés a Beállításokban — tenant szinten tárolódik.'
+          })
+        }
+      } else {
+        clearLegacyLocalOffset()
+      }
+      setOffsetX(x)
+      setOffsetY(y)
+      setSavedOffsetX(res.settings.offsetXMm)
+      setSavedOffsetY(res.settings.offsetYMm)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   const unitOptions = useMemo(() => {
     const opts = units.map((u) => ({
@@ -173,20 +228,40 @@ export function ProductLabelPrintDialog({
   }
 
   function updateOffset(axis: 'x' | 'y', value: number) {
-    const next = clampOffset(value)
-    if (axis === 'x') {
-      setOffsetX(next)
-      writeStoredOffset({ x: next, y: offsetY })
-    } else {
-      setOffsetY(next)
-      writeStoredOffset({ x: offsetX, y: next })
-    }
+    const next = clampLabelOffset(value)
+    if (axis === 'x') setOffsetX(next)
+    else setOffsetY(next)
   }
 
-  function resetOffset() {
+  function resetOffsetDraft() {
     setOffsetX(0)
     setOffsetY(0)
-    writeStoredOffset({ x: 0, y: 0 })
+  }
+
+  async function handleSaveSettings() {
+    if (!canWriteSettings) {
+      toast.error('Nincs jogosultságod a mentéshez.')
+      return
+    }
+    setSettingsSaving(true)
+    try {
+      const res = await saveLabelPrintSettingsAction({
+        offsetXMm: offsetX,
+        offsetYMm: offsetY
+      })
+      if (!res.ok) {
+        toast.error(res.message)
+        return
+      }
+      setSavedOffsetX(res.settings.offsetXMm)
+      setSavedOffsetY(res.settings.offsetYMm)
+      setOffsetX(res.settings.offsetXMm)
+      setOffsetY(res.settings.offsetYMm)
+      clearLegacyLocalOffset()
+      toast.success('Illesztés mentve a céghez.')
+    } finally {
+      setSettingsSaving(false)
+    }
   }
 
   async function handlePrint() {
@@ -203,6 +278,12 @@ export function ProductLabelPrintDialog({
     if (!scanSafety.ok) {
       toast.error(scanSafety.reason ?? 'A vonalkód nem nyomtatható biztonságosan.')
       return
+    }
+    if (settingsDirty) {
+      toast.message('Nem mentett illesztés', {
+        description:
+          'A nyomtatás a jelenlegi (nem mentett) eltolással megy. Mentés: Beállítások.'
+      })
     }
     setPrinting(true)
     try {
@@ -244,7 +325,6 @@ export function ProductLabelPrintDialog({
 
         {payload ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
-            {/* Preview first */}
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-stone-50 p-5">
               <p className="text-hint text-ink-secondary">
                 Előnézet · 33×25 mm
@@ -271,7 +351,6 @@ export function ProductLabelPrintDialog({
               ) : null}
             </div>
 
-            {/* Controls */}
             <div className="flex flex-col gap-3.5">
               <fieldset className="space-y-1.5">
                 <legend className="text-label font-medium text-ink">
@@ -431,95 +510,181 @@ export function ProductLabelPrintDialog({
                 </div>
               </FormField>
 
-              <fieldset className="space-y-1.5">
-                <legend className="text-label font-medium text-ink">
-                  Nyomtató illesztés (mm)
-                </legend>
-                <p className="text-hint text-ink-muted">
-                  Ha alul üres / oldalra csúszik: állítsd ide. Mentődik ezen a
-                  böngészőn.
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <FormField label="Vízszintes" htmlFor="label-off-x">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        aria-label="Balra"
-                        onClick={() => updateOffset('x', offsetX - OFFSET_STEP)}
-                      >
-                        <Minus className="size-3.5" aria-hidden />
-                      </Button>
-                      <Input
-                        id="label-off-x"
-                        type="number"
-                        step={OFFSET_STEP}
-                        min={OFFSET_MIN}
-                        max={OFFSET_MAX}
-                        value={offsetX}
-                        onChange={(e) =>
-                          updateOffset('x', Number(e.target.value) || 0)
-                        }
-                        className="w-16 text-center tabular-nums"
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        aria-label="Jobbra"
-                        onClick={() => updateOffset('x', offsetX + OFFSET_STEP)}
-                      >
-                        <Plus className="size-3.5" aria-hidden />
-                      </Button>
-                    </div>
-                  </FormField>
-                  <FormField label="Függőleges" htmlFor="label-off-y">
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        aria-label="Fel"
-                        onClick={() => updateOffset('y', offsetY - OFFSET_STEP)}
-                      >
-                        <Minus className="size-3.5" aria-hidden />
-                      </Button>
-                      <Input
-                        id="label-off-y"
-                        type="number"
-                        step={OFFSET_STEP}
-                        min={OFFSET_MIN}
-                        max={OFFSET_MAX}
-                        value={offsetY}
-                        onChange={(e) =>
-                          updateOffset('y', Number(e.target.value) || 0)
-                        }
-                        className="w-16 text-center tabular-nums"
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        aria-label="Le"
-                        onClick={() => updateOffset('y', offsetY + OFFSET_STEP)}
-                      >
-                        <Plus className="size-3.5" aria-hidden />
-                      </Button>
-                    </div>
-                  </FormField>
-                </div>
-                {offsetX !== 0 || offsetY !== 0 ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={resetOffset}
-                  >
-                    Illesztés nullázása
-                  </Button>
+              {/* Beállítások — alapból zárva */}
+              <div className="rounded-md border border-border bg-surface">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-subtle"
+                  onClick={() => setSettingsOpen((v) => !v)}
+                  aria-expanded={settingsOpen}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium text-ink">
+                      Beállítások
+                    </span>
+                    {!settingsOpen && hasActiveOffset ? (
+                      <span className="mt-0.5 block text-[11px] text-ink-muted tabular-nums">
+                        Illesztés: {formatOffsetPair(offsetX, offsetY)}
+                        {settingsDirty ? ' · nem mentett' : ''}
+                      </span>
+                    ) : !settingsOpen ? (
+                      <span className="mt-0.5 block text-[11px] text-ink-muted">
+                        Nyomtató illesztés (tenant)
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1.5 text-hint text-ink-secondary">
+                    {settingsOpen ? 'Elrejt' : 'Megnyit'}
+                    <ChevronDown
+                      className={cn(
+                        'size-3.5 transition-transform',
+                        settingsOpen && 'rotate-180'
+                      )}
+                      aria-hidden
+                    />
+                  </span>
+                </button>
+
+                {settingsOpen ? (
+                  <div className="space-y-3 border-t border-border px-3 py-3">
+                    <p className="text-hint text-ink-muted">
+                      Ha alul üres / oldalra csúszik: állítsd az eltolást. A
+                      mentés a céghez tartozik (minden gépen ugyanaz). Nyomtatás:
+                      100% / Actual size.
+                    </p>
+                    {settingsLoading ? (
+                      <p className="text-hint text-ink-muted">Betöltés…</p>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <FormField
+                            label="Vízszintes"
+                            htmlFor="label-off-x"
+                          >
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                aria-label="Balra"
+                                disabled={!canWriteSettings}
+                                onClick={() =>
+                                  updateOffset('x', offsetX - LABEL_OFFSET_STEP)
+                                }
+                              >
+                                <Minus className="size-3.5" aria-hidden />
+                              </Button>
+                              <Input
+                                id="label-off-x"
+                                type="number"
+                                step={LABEL_OFFSET_STEP}
+                                min={LABEL_OFFSET_MIN}
+                                max={LABEL_OFFSET_MAX}
+                                value={offsetX}
+                                disabled={!canWriteSettings}
+                                onChange={(e) =>
+                                  updateOffset(
+                                    'x',
+                                    Number(e.target.value) || 0
+                                  )
+                                }
+                                className="w-16 text-center tabular-nums"
+                              />
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                aria-label="Jobbra"
+                                disabled={!canWriteSettings}
+                                onClick={() =>
+                                  updateOffset('x', offsetX + LABEL_OFFSET_STEP)
+                                }
+                              >
+                                <Plus className="size-3.5" aria-hidden />
+                              </Button>
+                            </div>
+                          </FormField>
+                          <FormField
+                            label="Függőleges"
+                            htmlFor="label-off-y"
+                          >
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                aria-label="Fel"
+                                disabled={!canWriteSettings}
+                                onClick={() =>
+                                  updateOffset('y', offsetY - LABEL_OFFSET_STEP)
+                                }
+                              >
+                                <Minus className="size-3.5" aria-hidden />
+                              </Button>
+                              <Input
+                                id="label-off-y"
+                                type="number"
+                                step={LABEL_OFFSET_STEP}
+                                min={LABEL_OFFSET_MIN}
+                                max={LABEL_OFFSET_MAX}
+                                value={offsetY}
+                                disabled={!canWriteSettings}
+                                onChange={(e) =>
+                                  updateOffset(
+                                    'y',
+                                    Number(e.target.value) || 0
+                                  )
+                                }
+                                className="w-16 text-center tabular-nums"
+                              />
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                aria-label="Le"
+                                disabled={!canWriteSettings}
+                                onClick={() =>
+                                  updateOffset('y', offsetY + LABEL_OFFSET_STEP)
+                                }
+                              >
+                                <Plus className="size-3.5" aria-hidden />
+                              </Button>
+                            </div>
+                          </FormField>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {canWriteSettings ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              loading={settingsSaving}
+                              disabled={!settingsDirty || settingsSaving}
+                              onClick={() => void handleSaveSettings()}
+                            >
+                              Illesztés mentése
+                            </Button>
+                          ) : (
+                            <p className="text-hint text-ink-muted">
+                              Csak megtekintés — a mentéshez írási jog kell.
+                            </p>
+                          )}
+                          {hasActiveOffset || settingsDirty ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={!canWriteSettings}
+                              onClick={resetOffsetDraft}
+                            >
+                              Nullázás
+                            </Button>
+                          ) : null}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 ) : null}
-              </fieldset>
+              </div>
             </div>
           </div>
         ) : null}
