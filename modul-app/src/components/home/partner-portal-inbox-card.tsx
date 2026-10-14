@@ -79,15 +79,8 @@ export function PartnerPortalInboxCard({
                   {row.quoteNumber}
                 </Link>
               </DataTableCell>
-              <DataTableCell>
-                <p className="text-ink">
-                  {row.paymentMethodName?.trim() || '—'}
-                </p>
-                {row.paymentMethodComment ? (
-                  <p className="mt-0.5 line-clamp-2 text-hint text-ink-secondary">
-                    {row.paymentMethodComment}
-                  </p>
-                ) : null}
+              <DataTableCell className="text-ink">
+                {row.paymentMethodName?.trim() || '—'}
               </DataTableCell>
               <DataTableCell className="text-right tabular-nums font-medium text-ink">
                 {formatMoneyFt(row.totalGross)} Ft

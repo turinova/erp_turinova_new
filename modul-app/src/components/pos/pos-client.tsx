@@ -696,17 +696,24 @@ export function PosClient({
     if (raw === '1') setStockFirst(true)
   }, [])
 
-  // Gépelés = typeahead. Sticky lista + stale-guard; exact barcode csak wedge/Enter.
+  // Gépelés = typeahead. Query változáskor azonnal töröljük a sticky listát,
+  // különben Enter a régi találatot rakja kosárba (vonalkód scan race).
+  // Vonalkód / SKU-szerű: ne fuzzy-zzünk gépelés közben — Enter = exact lookup.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     const q = searchQ.trim()
+    // Invalidate in-flight + ne ragadjon régi hit Enterre
+    searchReqId.current += 1
+    setSearchHits([])
+    setSelectedSearchIndex(0)
     const minLen = /^\d+$/.test(q) ? 1 : 2
     if (q.length < minLen || !warehouseId) {
-      // Üres / túl rövid: lista törlés csak ha tényleg nincs query
-      if (!q) {
-        setSearchHits([])
-        setSearching(false)
-      }
+      setSearching(false)
+      return
+    }
+    if (looksLikeBarcode(q)) {
+      setSearching(false)
+      setSearchOpen(false)
       return
     }
     searchTimer.current = setTimeout(() => {
@@ -1866,6 +1873,19 @@ export function PosClient({
                   setSelectedSearchIndex((i) => Math.max(0, i - 1))
                 } else if (e.key === 'Enter') {
                   e.preventDefault()
+                  const q = searchQ.trim()
+                  // Vonalkód / EAN: mindig exact lookup — ne a fuzzy typeahead első sorát.
+                  if (looksLikeBarcode(q)) {
+                    void runBarcodeScan(q).then((ok) => {
+                      if (!ok) return
+                      setSearchQ('')
+                      setSearchHits([])
+                      setSearchOpen(false)
+                      setEditingField(false)
+                      focusBarcode()
+                    })
+                    return
+                  }
                   const hit =
                     searchHits.length === 1
                       ? searchHits[0]
@@ -1877,17 +1897,7 @@ export function PosClient({
                     setSearchOpen(false)
                     setEditingField(false)
                     focusBarcode()
-                    return
                   }
-                  if (!looksLikeBarcode(searchQ)) return
-                  void runBarcodeScan(searchQ).then((ok) => {
-                    if (!ok) return
-                    setSearchQ('')
-                    setSearchHits([])
-                    setSearchOpen(false)
-                    setEditingField(false)
-                    focusBarcode()
-                  })
                 } else if (e.key === 'Escape') {
                   e.preventDefault()
                   setSearchQ('')

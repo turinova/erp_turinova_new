@@ -191,6 +191,13 @@ export function KeresoClient({
     [syncUrl]
   )
 
+  const qDraftRef = useRef(qDraft)
+  qDraftRef.current = qDraft
+
+  /**
+   * Exact barcode / SKU → detail. Csak Enter / wedge — NEM debounce,
+   * különben gépelés közben partial overwrite / elnavigálás.
+   */
   const resolveBarcodeOrSearch = useCallback(
     async (rawQ: string, nextKind: KindFilter, nextPage: number) => {
       const trimmed = rawQ.trim()
@@ -206,13 +213,17 @@ export function KeresoClient({
           const { normalized, raw } = prepareBarcodeQuery(trimmed)
           const code = normalized || raw
           const hit = await fetchAccessoryBarcodeLookup(code)
+          // Stale: user továbbírt amíg a lookup ment
+          const still =
+            qDraftRef.current.trim() === trimmed ||
+            qDraftRef.current.trim() === code
+          if (!still) return
           if (hit.ok) {
             toast.success(hit.name)
             router.push(`${accessoryDetailBase}/${hit.id}`)
             return
           }
           skipNextDebounceRef.current = true
-          setQDraft(code)
           commitSearch(code, nextKind, 1)
           if (hit.notFound) {
             toast.message('Nincs exact egyezés — lista keresés', {
@@ -237,6 +248,7 @@ export function KeresoClient({
     [resolveBarcodeOrSearch]
   )
 
+  // Gépelés = csak listakeresés. Exact barcode: Enter / wedge.
   useEffect(() => {
     if (skipDebounceRef.current) {
       skipDebounceRef.current = false
@@ -247,10 +259,10 @@ export function KeresoClient({
       return
     }
     const timeoutId = window.setTimeout(() => {
-      void resolveBarcodeOrSearch(qDraft.trim(), kindRef.current, 1)
+      commitSearch(qDraft.trim(), kindRef.current, 1)
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(timeoutId)
-  }, [qDraft, resolveBarcodeOrSearch])
+  }, [qDraft, commitSearch])
 
   const hasQuery = Boolean(activeQ)
 

@@ -143,7 +143,6 @@ export async function getOrCreatePosSettings(
       }
       return normalizeSettings(legacy as Record<string, unknown>)
     }
-    console.error('getOrCreatePosSettings', error?.message)
     throw new Error('Nem sikerült létrehozni a POS beállításokat.')
   }
   return normalizeSettings(data as Record<string, unknown>)

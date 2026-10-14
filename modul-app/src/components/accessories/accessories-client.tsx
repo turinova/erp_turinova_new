@@ -149,6 +149,13 @@ export function AccessoriesClient({
     [router, web]
   )
 
+  const searchRef = useRef(search)
+  searchRef.current = search
+
+  /**
+   * Exact barcode / SKU → detail. Csak Enter / wedge — NEM debounce
+   * (különben partial overwrite gépelés közben).
+   */
   const resolveBarcodeOrSearch = useCallback(
     async (rawQ: string) => {
       const trimmed = rawQ.trim()
@@ -164,6 +171,10 @@ export function AccessoriesClient({
           const { normalized, raw } = prepareBarcodeQuery(trimmed)
           const code = normalized || raw
           const hit = await fetchAccessoryBarcodeLookup(code)
+          const still =
+            searchRef.current.trim() === trimmed ||
+            searchRef.current.trim() === code
+          if (!still) return
           if (hit.ok) {
             toast.success(hit.name)
             router.push(`${LIST_PATH}/${hit.id}`)
@@ -193,6 +204,7 @@ export function AccessoriesClient({
     [resolveBarcodeOrSearch]
   )
 
+  // Gépelés = csak listakeresés. Exact barcode: Enter / wedge.
   useEffect(() => {
     if (skipDebounceRef.current) {
       skipDebounceRef.current = false
@@ -204,10 +216,10 @@ export function AccessoriesClient({
     }
     if (search.trim() === activeQ) return
     const t = window.setTimeout(() => {
-      void resolveBarcodeOrSearch(search)
+      applyListSearch(search)
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(t)
-  }, [search, activeQ, resolveBarcodeOrSearch])
+  }, [search, activeQ, applyListSearch])
 
   const trapPaused = Boolean(deleteTarget || previewTarget || labelTarget)
 

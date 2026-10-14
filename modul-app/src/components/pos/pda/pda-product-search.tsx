@@ -47,6 +47,12 @@ export function PdaProductSearch({
         }
         return
       }
+      // SKU / EAN gépelés: Enter = exact; ne fuzzy prefix lista
+      if (looksLikeBarcode(t)) {
+        setRows([])
+        setLoading(false)
+        return
+      }
       const id = ++req.current
       setLoading(true)
       setError(null)
@@ -70,6 +76,9 @@ export function PdaProductSearch({
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current)
+    // Sticky lista törlés — Enter ne örököljön régi sort vonalkód scan közben
+    req.current += 1
+    setRows([])
     timer.current = setTimeout(() => {
       void runSearch(q)
     }, DEBOUNCE_MS)
@@ -85,15 +94,16 @@ export function PdaProductSearch({
   }
 
   function handleEnter() {
-    const first = rows[0]
-    if (first) {
-      onPick(first)
+    const t = q.trim()
+    // Exact barcode előbb — fuzzy első sor ne írja felül a scannelést
+    if (t && looksLikeBarcode(t)) {
+      onBarcodeFallback(t)
       clear()
       return
     }
-    const t = q.trim()
-    if (t && looksLikeBarcode(t)) {
-      onBarcodeFallback(t)
+    const first = rows[0]
+    if (first) {
+      onPick(first)
       clear()
     }
   }

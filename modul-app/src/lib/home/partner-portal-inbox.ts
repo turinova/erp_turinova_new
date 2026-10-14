@@ -5,7 +5,6 @@ export type HomePartnerPortalInboxRow = {
   quoteNumber: string
   partnerName: string
   paymentMethodName: string | null
-  paymentMethodComment: string | null
   totalGross: number
   currency: string
   submittedAt: string
@@ -50,7 +49,6 @@ export async function getHomePartnerPortalInbox(
       currency,
       portal_submitted_at,
       preferred_payment_method_name,
-      preferred_payment_method_comment,
       customers ( name ),
       partner_profiles ( name )
     `
@@ -90,9 +88,6 @@ export async function getHomePartnerPortalInbox(
         partner?.name?.trim() || customer?.name?.trim() || 'Partner',
       paymentMethodName:
         (row.preferred_payment_method_name as string | null)?.trim() || null,
-      paymentMethodComment:
-        (row.preferred_payment_method_comment as string | null)?.trim() ||
-        null,
       totalGross: gross,
       currency: (row.currency as string) || 'HUF',
       submittedAt: row.portal_submitted_at as string
