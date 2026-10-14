@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { effectiveWebTitle } from '@/lib/accessories/web-shop'
-import { grossFromNet } from '@/lib/sheet-materials/parse'
+import { displayGrossFromStored } from '@/lib/sheet-materials/parse'
 import {
   CATALOG_PAGE_SIZE,
   CATALOG_PARAM,
@@ -98,11 +98,20 @@ const CARD_SELECT = `
   web_slug,
   image_url,
   price_net,
+  price_gross,
   web_net_quantity,
   web_net_unit,
   web_multipack,
   tax_rates ( rate_percent )
 `
+
+function shelfGrossOf(row: Record<string, unknown>): number {
+  return displayGrossFromStored(
+    Number(row.price_net) || 0,
+    vatOf(row),
+    row.price_gross == null ? null : Number(row.price_gross)
+  )
+}
 
 function unitPriceOf(row: Record<string, unknown>, priceGross: number): string | null {
   return unitPriceLabel(priceGross, netContentOf(row.web_net_quantity, row.web_net_unit, row.web_multipack))
@@ -157,7 +166,7 @@ export async function loadCards(
   for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
     const id = String(row.id)
     const qty = stock.get(id) ?? 0
-    const priceGross = grossFromNet(Number(row.price_net), vatOf(row))
+    const priceGross = shelfGrossOf(row)
     byId.set(id, {
       id,
       slug: String(row.web_slug).trim().toLowerCase(),
@@ -515,7 +524,7 @@ export async function listCategoryProducts(
       admin
         .from('storefront_products')
         .select(
-          'id, name, web_title, web_slug, web_group_id, image_url, price_net, created_at, web_net_quantity, web_net_unit, web_multipack, tax_rates ( rate_percent )'
+          'id, name, web_title, web_slug, web_group_id, image_url, price_net, price_gross, created_at, web_net_quantity, web_net_unit, web_multipack, tax_rates ( rate_percent )'
         )
         .eq('tenant_id', tenantId)
         .in('web_category_id', catIds)
@@ -555,7 +564,7 @@ export async function listCategoryProducts(
   const members: Member[] = rows.map((r) => {
     const id = String(r.id)
     const created = Date.parse(String(r.created_at ?? ''))
-    const priceGross = grossFromNet(Number(r.price_net), vatOf(r))
+    const priceGross = shelfGrossOf(r as unknown as Record<string, unknown>)
     return {
       id,
       slug: String(r.web_slug).trim().toLowerCase(),

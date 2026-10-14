@@ -14,7 +14,10 @@ import {
   mapAccessoryWebFields,
   WEB_SELECT_COLUMNS
 } from '@/lib/accessories/web-shop'
-import { grossFromNet } from '@/lib/sheet-materials/parse'
+import {
+  displayGrossFromStored,
+  grossFromNet
+} from '@/lib/sheet-materials/parse'
 import { getTenantCompany } from '@/lib/company/queries'
 import { getWebshopLegalSettings } from '@/lib/webshop/legal/settings'
 import { getAccessoriesOnHandMap } from '@/lib/stock/queries'
@@ -50,6 +53,7 @@ const PDP_SELECT = `
   barcode,
   image_url,
   price_net,
+  price_gross,
   active,
   sellable_web,
   web_category_id,
@@ -66,6 +70,7 @@ const CARD_SELECT = `
   web_gtin,
   image_url,
   price_net,
+  price_gross,
   web_slug,
   web_color,
   web_size,
@@ -259,7 +264,11 @@ function toCard(row: Record<string, unknown>): PublicPdpCard | null {
       name: String(row.name ?? '')
     }),
     imageUrl: trimOrNull(row.image_url),
-    priceGross: grossFromNet(Number(row.price_net), vatOf(row))
+    priceGross: displayGrossFromStored(
+      Number(row.price_net) || 0,
+      vatOf(row),
+      row.price_gross == null ? null : Number(row.price_gross)
+    )
   }
 }
 
@@ -588,7 +597,11 @@ export async function getPublicPdpBySlug(
     : row.manufacturers
   const vatPercent = vatOf(row)
   const priceNet = Number(row.price_net)
-  const priceGross = grossFromNet(priceNet, vatPercent)
+  const priceGross = displayGrossFromStored(
+    priceNet || 0,
+    vatPercent,
+    row.price_gross == null ? null : Number(row.price_gross)
+  )
   const manufacturerName =
     (manufacturer as { name?: string } | null)?.name ?? null
 

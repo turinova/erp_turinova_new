@@ -11,7 +11,7 @@ import {
   mapAccessoryWebFields,
   WEB_SELECT_COLUMNS
 } from '@/lib/accessories/web-shop'
-import { grossFromNet } from '@/lib/sheet-materials/parse'
+import { displayGrossFromStored } from '@/lib/sheet-materials/parse'
 import { categoryChain, type StorefrontShell } from '@/lib/storefront/shell'
 import { productPath, siteUrl, STOREFRONT_HOME } from '@/lib/storefront/url'
 import { getAccessoriesOnHandMap } from '@/lib/stock/queries'
@@ -95,7 +95,7 @@ export type FeedResult = {
 }
 
 const FEED_SELECT = `
-  id, name, sku, barcode, image_url, price_net, web_category_id, updated_at,
+  id, name, sku, barcode, image_url, price_net, price_gross, web_category_id, updated_at,
   ${WEB_SELECT_COLUMNS},
   manufacturers ( name ),
   tax_rates ( rate_percent )
@@ -449,7 +449,11 @@ export async function buildFeed(shell: StorefrontShell): Promise<FeedResult> {
     const chain = categoryChain(categories, categoryId)
     const leaf = chain[chain.length - 1]
     const groupId = web.web_group_id?.trim() || null
-    const priceGross = grossFromNet(priceNet, vat)
+    const priceGross = displayGrossFromStored(
+      priceNet || 0,
+      vat,
+      row.price_gross == null ? null : Number(row.price_gross)
+    )
     const l = web.product_length_cm
     const w = web.product_width_cm
     const h = web.product_height_cm
