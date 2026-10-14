@@ -82,8 +82,7 @@ export function CimkeNyomtatasMockup({ className }: { className?: string }) {
             Címke nyomtatása
           </p>
           <p className="text-[12.5px] text-ink-secondary">
-            Scan-safe 33×25 mm: nagyobb vonalkód, quiet zone, szorosabb
-            elrendezés.
+            33×25 mm scan-safe. Nyomtatáskor: méret 100% / Actual size.
           </p>
         </div>
 

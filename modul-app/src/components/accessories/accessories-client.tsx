@@ -153,11 +153,16 @@ export function AccessoriesClient({
   searchRef.current = search
 
   /**
-   * Exact barcode / SKU → detail. Csak Enter / wedge — NEM debounce
-   * (különben partial overwrite gépelés közben).
+   * Exact barcode / SKU → detail. Csak Enter / wedge — NEM debounce.
+   * `wedge`: no-focus scan → mindig navigálhat (stale-guard ki).
+   * `submit`: Enter a keresőben → still-guard (ne ugorjon elavult partialra).
    */
   const resolveBarcodeOrSearch = useCallback(
-    async (rawQ: string) => {
+    async (
+      rawQ: string,
+      opts?: { source?: 'wedge' | 'submit' }
+    ) => {
+      const source = opts?.source ?? 'submit'
       const trimmed = rawQ.trim()
       if (!trimmed) {
         applyListSearch('')
@@ -171,12 +176,16 @@ export function AccessoriesClient({
           const { normalized, raw } = prepareBarcodeQuery(trimmed)
           const code = normalized || raw
           const hit = await fetchAccessoryBarcodeLookup(code)
-          const still =
-            searchRef.current.trim() === trimmed ||
-            searchRef.current.trim() === code
-          if (!still) return
+          if (source === 'submit') {
+            const still =
+              searchRef.current.trim() === trimmed ||
+              searchRef.current.trim() === code
+            if (!still) return
+          }
           if (hit.ok) {
-            toast.success(hit.name)
+            toast.success(hit.name, {
+              description: 'Terméklap megnyitása…'
+            })
             router.push(`${LIST_PATH}/${hit.id}`)
             return
           }
@@ -199,7 +208,7 @@ export function AccessoriesClient({
 
   const handleWedgeScan = useCallback(
     async (normalized: string, raw: string) => {
-      await resolveBarcodeOrSearch(normalized || raw)
+      await resolveBarcodeOrSearch(normalized || raw, { source: 'wedge' })
     },
     [resolveBarcodeOrSearch]
   )
@@ -281,7 +290,7 @@ export function AccessoriesClient({
       />
       <PageHeader
         title="Termékek"
-        description="Eladható termékek törzse — vonalkód / SKU szkenner fókusz nélkül is."
+        description="Eladható termékek törzse — szkenner fókusz nélkül azonnal a terméklapra (vonalkód / SKU)."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
             <AccessoriesExcel canWrite={canWrite} />
@@ -299,7 +308,7 @@ export function AccessoriesClient({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            void resolveBarcodeOrSearch(search)
+            void resolveBarcodeOrSearch(search, { source: 'submit' })
           }}
           className="relative max-w-sm flex-1"
           role="search"

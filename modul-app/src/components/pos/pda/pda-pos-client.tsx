@@ -40,6 +40,7 @@ import {
   isCardPaymentMethodName
 } from '@/lib/sales/payment-kind'
 import { createSaleAction } from '@/lib/sales/actions'
+import { saleItemShelfGross } from '@/lib/pos/shelf-price'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import { computeSaleTotals } from '@/lib/sales/totals'
@@ -85,11 +86,7 @@ function catalogToLine(
   quantity = 1
 ): PosCartLine {
   const taxPct = Number(hit.tax_rate_percent ?? 0)
-  const net = Number(hit.price_net ?? 0)
-  const gross =
-    hit.price_gross != null && Number.isFinite(Number(hit.price_gross))
-      ? Math.round(Number(hit.price_gross))
-      : Math.round(net * (1 + taxPct / 100))
+  const gross = saleItemShelfGross(hit)
   return {
     kind: 'product',
     accessoryId: hit.id,
@@ -693,7 +690,11 @@ export function PdaPosClient({
                             }
                             setCheckProduct((prev) =>
                               prev
-                                ? { ...prev, price_net: res.priceNet }
+                                ? {
+                                    ...prev,
+                                    price_net: res.priceNet,
+                                    price_gross: res.unitPriceGross
+                                  }
                                 : prev
                             )
                             setCheckPriceEditing(false)
@@ -710,12 +711,7 @@ export function PdaPosClient({
                 ) : (
                   <>
                     <p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight text-ink">
-                      {formatMoneyFt(
-                        Math.round(
-                          checkProduct.price_net *
-                            (1 + checkProduct.tax_rate_percent / 100)
-                        )
-                      )}{' '}
+                      {formatMoneyFt(saleItemShelfGross(checkProduct))}{' '}
                       <span className="text-[16px] font-medium text-ink-secondary">
                         Ft
                       </span>
@@ -734,11 +730,9 @@ export function PdaPosClient({
                         variant="secondary"
                         className="mt-3 h-11 w-full"
                         onClick={() => {
-                          const gross = Math.round(
-                            checkProduct.price_net *
-                              (1 + checkProduct.tax_rate_percent / 100)
+                          setCheckGrossRaw(
+                            String(saleItemShelfGross(checkProduct))
                           )
-                          setCheckGrossRaw(String(gross))
                           setCheckPriceEditing(true)
                           setFlash(null)
                         }}
@@ -817,9 +811,7 @@ export function PdaPosClient({
             {quick.length > 0 ? (
               <div className="mb-3 grid grid-cols-2 gap-2">
                 {quick.slice(0, 12).map((p) => {
-                  const gross = Math.round(
-                    p.price_net * (1 + p.tax_rate_percent / 100)
-                  )
+                  const gross = saleItemShelfGross(p)
                   return (
                     <button
                       key={p.id}

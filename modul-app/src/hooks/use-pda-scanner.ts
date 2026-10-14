@@ -8,7 +8,8 @@ import {
   type RefObject
 } from 'react'
 
-import { looksLikeBarcode } from '@/lib/pos/barcode'
+import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
+import { charFromWedgeKeyboardEvent } from '@/lib/scanner/normalize-wedge'
 
 const REFLECT_MS = 50
 const BUFFER_IDLE_MS = 80
@@ -79,8 +80,9 @@ export function usePdaScanner({ enabled, paused, onScan }: Options): {
 
   const emitScan = useCallback(
     (raw: string) => {
-      const code = raw.trim()
-      if (!code) return
+      const { normalized, raw: trimmed } = prepareBarcodeQuery(raw)
+      const code = normalized || trimmed
+      if (!code || !looksLikeBarcode(code)) return
       const now = Date.now()
       const prev = lastScanRef.current
       if (prev && prev.code === code && now - prev.at < DUPLICATE_MS) {
@@ -175,7 +177,8 @@ export function usePdaScanner({ enabled, paused, onScan }: Options): {
         return
       }
 
-      if (e.key.length !== 1) return
+      const ch = charFromWedgeKeyboardEvent(e)
+      if (!ch) return
 
       e.preventDefault()
       const now = Date.now()
@@ -183,9 +186,9 @@ export function usePdaScanner({ enabled, paused, onScan }: Options): {
         !bufferRef.current.startedAt ||
         now - bufferRef.current.lastAt > MAX_BUFFER_MS
       ) {
-        bufferRef.current = { chars: e.key, startedAt: now, lastAt: now }
+        bufferRef.current = { chars: ch, startedAt: now, lastAt: now }
       } else {
-        bufferRef.current.chars += e.key
+        bufferRef.current.chars += ch
         bufferRef.current.lastAt = now
       }
       if (bufferTimer.current) clearTimeout(bufferTimer.current)

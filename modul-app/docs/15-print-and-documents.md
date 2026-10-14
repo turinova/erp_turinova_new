@@ -64,9 +64,12 @@ Ha van címkenyomtatás:
 
 - **Prioritás:** quiet zone + bar magasság → ár → SKU → név (zsugorít).
 - **HRI** (számjegyek a sáv alatt): alapból **ki**; opcionális „Kód számjegyei”.
-- CODE128 quiet zone ≥ **10× X** (min ~1.5 mm) mindkét oldalon; print safety inset ~0.45 mm.
-- Modulbecslés: tiszta szám → CODE128 **C** (2 jegy/szimbólum); vegyes → Code B. Túl keskeny X (&lt; 0.20 mm) vagy túl alacsony sáv (&lt; 5.5 mm) → nyomtatás tiltva + toast (X-fail ≠ „Csak kód”).
-- Nyomtató: **100% / Actual size**, lehetőleg 300 dpi thermal.
+- CODE128 quiet zone ≥ **10× X** (min ~1.5 mm) — **szimmetrikus CSS padding**, jsbarcode `margin=0`.
+- Modulbecslés: tiszta szám → CODE128 **C**; vegyes → Code B. X &lt; 0.20 mm vagy sáv &lt; 5.5 mm → print tiltva.
+- **Egység** (`/ db`): ≥ ~2.0 mm, bold, opacity 1 (thermal olvashatóság).
+- Pad: kiegyensúlyozott top/bottom (ne top-starved); barcode sor kitölti a magasságot.
+- Nyomtató: **100% / Actual size** (ne Fit to page), 300 dpi thermal.
+- **Illesztés:** dialógusban H/V offset ±2 mm (`localStorage`); ha a driver tolja a tartalmat.
 - Layout: `src/lib/labels/layout.ts`; UI: `ProductLabelPrintDialog`.
 
 ## 7. PDF kontra HTML print

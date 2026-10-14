@@ -50,6 +50,40 @@ const FIELD_CHIPS: Array<{ key: keyof LabelFields; label: string }> = [
   { key: 'showBarcode', label: 'Vonalkód' }
 ]
 
+const OFFSET_STORAGE_KEY = 'modul-label-print-offset'
+const OFFSET_MIN = -2
+const OFFSET_MAX = 2
+const OFFSET_STEP = 0.1
+
+type StoredOffset = { x: number; y: number }
+
+function clampOffset(n: number): number {
+  const rounded = Math.round(n / OFFSET_STEP) * OFFSET_STEP
+  return Math.min(OFFSET_MAX, Math.max(OFFSET_MIN, Number(rounded.toFixed(1))))
+}
+
+function readStoredOffset(): StoredOffset {
+  try {
+    const raw = localStorage.getItem(OFFSET_STORAGE_KEY)
+    if (!raw) return { x: 0, y: 0 }
+    const parsed = JSON.parse(raw) as Partial<StoredOffset>
+    return {
+      x: clampOffset(Number(parsed.x) || 0),
+      y: clampOffset(Number(parsed.y) || 0)
+    }
+  } catch {
+    return { x: 0, y: 0 }
+  }
+}
+
+function writeStoredOffset(o: StoredOffset) {
+  try {
+    localStorage.setItem(OFFSET_STORAGE_KEY, JSON.stringify(o))
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 export function ProductLabelPrintDialog({
   open,
   payload,
@@ -72,6 +106,8 @@ export function ProductLabelPrintDialog({
   })
   /** Digits under bars — default off for scan height on 33×25. */
   const [showHumanReadable, setShowHumanReadable] = useState(false)
+  const [offsetX, setOffsetX] = useState(0)
+  const [offsetY, setOffsetY] = useState(0)
   const [printing, setPrinting] = useState(false)
 
   const barcode = payload ? labelBarcodeValue(payload) : null
@@ -87,6 +123,9 @@ export function ProductLabelPrintDialog({
     setTemplateId('full')
     setFields(LABEL_TEMPLATES[0].fields(bc))
     setShowHumanReadable(false)
+    const stored = readStoredOffset()
+    setOffsetX(stored.x)
+    setOffsetY(stored.y)
   }, [open, payload, initialAmount])
 
   const unitOptions = useMemo(() => {
@@ -133,6 +172,23 @@ export function ProductLabelPrintDialog({
     setFields((f) => ({ ...f, [key]: !f[key] }))
   }
 
+  function updateOffset(axis: 'x' | 'y', value: number) {
+    const next = clampOffset(value)
+    if (axis === 'x') {
+      setOffsetX(next)
+      writeStoredOffset({ x: next, y: offsetY })
+    } else {
+      setOffsetY(next)
+      writeStoredOffset({ x: offsetX, y: next })
+    }
+  }
+
+  function resetOffset() {
+    setOffsetX(0)
+    setOffsetY(0)
+    writeStoredOffset({ x: 0, y: 0 })
+  }
+
   async function handlePrint() {
     if (!payload) return
     if (
@@ -158,7 +214,9 @@ export function ProductLabelPrintDialog({
         unitShortform: unit || 'db',
         size: '33x25',
         amount,
-        showHumanReadable
+        showHumanReadable,
+        offsetXMm: offsetX,
+        offsetYMm: offsetY
       })
     } catch (err) {
       console.error(err)
@@ -179,8 +237,8 @@ export function ProductLabelPrintDialog({
         <DialogHeader>
           <DialogTitle>Címke nyomtatása</DialogTitle>
           <DialogDescription>
-            Scan-safe 33×25 mm: nagyobb vonalkód, quiet zone, szorosabb
-            elrendezés. Nyomtatáskor állítsd a méretet 100%-ra.
+            33×25 mm scan-safe. Nyomtatáskor: méret 100% / Actual size — ne
+            „Fit to page”.
           </DialogDescription>
         </DialogHeader>
 
@@ -191,7 +249,7 @@ export function ProductLabelPrintDialog({
               <p className="text-hint text-ink-secondary">
                 Előnézet · 33×25 mm
               </p>
-              <div className="rounded-md border border-border bg-white p-4 shadow-sm">
+              <div className="overflow-hidden rounded-md border border-border bg-white p-4 shadow-sm">
                 <ProductLabelSheet
                   payload={payload}
                   fields={fields}
@@ -202,6 +260,8 @@ export function ProductLabelPrintDialog({
                   mode="preview"
                   previewScale={9}
                   showHumanReadable={showHumanReadable}
+                  offsetXMm={offsetX}
+                  offsetYMm={offsetY}
                 />
               </div>
               {!scanSafety.ok ? (
@@ -370,6 +430,96 @@ export function ProductLabelPrintDialog({
                   </Button>
                 </div>
               </FormField>
+
+              <fieldset className="space-y-1.5">
+                <legend className="text-label font-medium text-ink">
+                  Nyomtató illesztés (mm)
+                </legend>
+                <p className="text-hint text-ink-muted">
+                  Ha alul üres / oldalra csúszik: állítsd ide. Mentődik ezen a
+                  böngészőn.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <FormField label="Vízszintes" htmlFor="label-off-x">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        aria-label="Balra"
+                        onClick={() => updateOffset('x', offsetX - OFFSET_STEP)}
+                      >
+                        <Minus className="size-3.5" aria-hidden />
+                      </Button>
+                      <Input
+                        id="label-off-x"
+                        type="number"
+                        step={OFFSET_STEP}
+                        min={OFFSET_MIN}
+                        max={OFFSET_MAX}
+                        value={offsetX}
+                        onChange={(e) =>
+                          updateOffset('x', Number(e.target.value) || 0)
+                        }
+                        className="w-16 text-center tabular-nums"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        aria-label="Jobbra"
+                        onClick={() => updateOffset('x', offsetX + OFFSET_STEP)}
+                      >
+                        <Plus className="size-3.5" aria-hidden />
+                      </Button>
+                    </div>
+                  </FormField>
+                  <FormField label="Függőleges" htmlFor="label-off-y">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        aria-label="Fel"
+                        onClick={() => updateOffset('y', offsetY - OFFSET_STEP)}
+                      >
+                        <Minus className="size-3.5" aria-hidden />
+                      </Button>
+                      <Input
+                        id="label-off-y"
+                        type="number"
+                        step={OFFSET_STEP}
+                        min={OFFSET_MIN}
+                        max={OFFSET_MAX}
+                        value={offsetY}
+                        onChange={(e) =>
+                          updateOffset('y', Number(e.target.value) || 0)
+                        }
+                        className="w-16 text-center tabular-nums"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        aria-label="Le"
+                        onClick={() => updateOffset('y', offsetY + OFFSET_STEP)}
+                      >
+                        <Plus className="size-3.5" aria-hidden />
+                      </Button>
+                    </div>
+                  </FormField>
+                </div>
+                {offsetX !== 0 || offsetY !== 0 ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={resetOffset}
+                  >
+                    Illesztés nullázása
+                  </Button>
+                ) : null}
+              </fieldset>
             </div>
           </div>
         ) : null}

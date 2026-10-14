@@ -106,17 +106,22 @@ export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 5.5
 const FLOOR_33 = {
   name: 2.8,
   sku: 2.5,
-  price: 4.2,
+  /** Room for amount + readable unit line (~2.1 mm). */
+  price: 4.8,
   barcode: 7.5,
   barcodeWithHuman: 9.2
 } as const
 
+/** Balanced pads — avoid top-starved / bottom-empty print look. */
 const PAD = {
-  top: 0.55,
+  top: 1.05,
   side: 1.0,
-  bottom: 0.4,
-  safety: 0.45
+  bottom: 0.45,
+  safety: 0.35
 } as const
+
+/** Minimum unit font on thermal (mm) — opacity/size for /db readability. */
+export const UNIT_MIN_FONT_MM = 2.0
 
 /**
  * Conservative glyph width for bold UI sans (mm per font-mm).
@@ -169,7 +174,7 @@ function skuContentMm(fontMm: number): number {
 }
 
 function priceContentMm(fontMm: number, unitFontMm: number): number {
-  return fontMm + unitFontMm + 0.45
+  return fontMm + unitFontMm + 0.35
 }
 
 function barcodeContentMinMm(human: boolean): number {
@@ -442,7 +447,7 @@ export function computeLabelLayout(input: {
   if (!showSku && showName && showPrice) {
     priceFontDes = Number((priceFontDes * 0.94).toFixed(2))
   }
-  const unitFontDes = 1.7
+  const unitFontDes = 2.15
 
   const nameMin = showName ? nameResolved.contentMin : 0
   const skuMin = showSku ? Math.max(floor.sku, skuContentMm(skuFontDes)) : 0
@@ -562,17 +567,38 @@ export function computeLabelLayout(input: {
     : 0
   const priceFont = showPrice
     ? clampFontToRow(priceFontDes, priceRow, (f) =>
-        priceContentMm(f, Math.min(unitFontDes, f * 0.4))
+        priceContentMm(f, Math.min(unitFontDes, Math.max(UNIT_MIN_FONT_MM, f * 0.42)))
       )
     : 0
-  const unitFont = showPrice
-    ? Number(Math.min(unitFontDes, Math.max(1.35, priceFont * 0.36)).toFixed(2))
+  // Prefer ≥2.0 mm unit for thermal readability; only shrink under hard squeeze
+  let unitFont = showPrice
+    ? Number(
+        Math.min(
+          unitFontDes,
+          Math.max(UNIT_MIN_FONT_MM, priceFont * 0.42)
+        ).toFixed(2)
+      )
     : 0
+  if (
+    showPrice &&
+    unitFont > 0 &&
+    priceContentMm(priceFont, unitFont) > priceRow + 0.05
+  ) {
+    unitFont = Number(
+      Math.max(
+        1.7,
+        Math.min(unitFont, priceRow - priceFont - 0.25)
+      ).toFixed(2)
+    )
+  }
 
   const priceFontFinal =
     showPrice && priceContentMm(priceFont, unitFont) > priceRow
       ? clampFontToRow(priceFont, priceRow, (f) =>
-          priceContentMm(f, Math.min(unitFont, f * 0.36))
+          priceContentMm(
+            f,
+            Math.min(unitFont, Math.max(UNIT_MIN_FONT_MM * 0.85, f * 0.42))
+          )
         )
       : priceFont
 

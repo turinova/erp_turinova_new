@@ -195,11 +195,18 @@ export function KeresoClient({
   qDraftRef.current = qDraft
 
   /**
-   * Exact barcode / SKU → detail. Csak Enter / wedge — NEM debounce,
-   * különben gépelés közben partial overwrite / elnavigálás.
+   * Exact barcode / SKU → termék ID. Csak Enter / wedge — NEM debounce.
+   * `wedge`: no-focus scan → mindig navigálhat (stale-guard ki).
+   * `submit`: Enter a mezőben → still-guard.
    */
   const resolveBarcodeOrSearch = useCallback(
-    async (rawQ: string, nextKind: KindFilter, nextPage: number) => {
+    async (
+      rawQ: string,
+      nextKind: KindFilter,
+      nextPage: number,
+      opts?: { source?: 'wedge' | 'submit' }
+    ) => {
+      const source = opts?.source ?? 'submit'
       const trimmed = rawQ.trim()
       if (!trimmed) {
         commitSearch('', nextKind, nextPage)
@@ -213,13 +220,16 @@ export function KeresoClient({
           const { normalized, raw } = prepareBarcodeQuery(trimmed)
           const code = normalized || raw
           const hit = await fetchAccessoryBarcodeLookup(code)
-          // Stale: user továbbírt amíg a lookup ment
-          const still =
-            qDraftRef.current.trim() === trimmed ||
-            qDraftRef.current.trim() === code
-          if (!still) return
+          if (source === 'submit') {
+            const still =
+              qDraftRef.current.trim() === trimmed ||
+              qDraftRef.current.trim() === code
+            if (!still) return
+          }
           if (hit.ok) {
-            toast.success(hit.name)
+            toast.success(hit.name, {
+              description: 'Terméklap megnyitása…'
+            })
             router.push(`${accessoryDetailBase}/${hit.id}`)
             return
           }
@@ -243,7 +253,9 @@ export function KeresoClient({
 
   const handleWedgeScan = useCallback(
     async (normalized: string, raw: string) => {
-      await resolveBarcodeOrSearch(normalized || raw, kindRef.current, 1)
+      await resolveBarcodeOrSearch(normalized || raw, kindRef.current, 1, {
+        source: 'wedge'
+      })
     },
     [resolveBarcodeOrSearch]
   )
@@ -315,11 +327,12 @@ export function KeresoClient({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    void resolveBarcodeOrSearch(qDraft, kind, 1)
+    void resolveBarcodeOrSearch(qDraft, kind, 1, { source: 'submit' })
   }
 
   function handleKindChange(next: KindFilter) {
-    void resolveBarcodeOrSearch(qDraft, next, 1)
+    // Chip váltás: csak lista, ne barcode navigate
+    commitSearch(qDraft.trim(), next, 1)
   }
 
   function handlePageChange(nextPage: number) {
@@ -350,7 +363,7 @@ export function KeresoClient({
         title="Kereső"
         description={
           description ??
-          'Név, gyártó, SKU vagy vonalkód — a szkenner fókusz nélkül is működik.'
+          'Név, gyártó, SKU vagy vonalkód — szkenner fókusz nélkül azonnal a terméklapra.'
         }
       />
 

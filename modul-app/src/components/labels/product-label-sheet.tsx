@@ -31,6 +31,9 @@ type Props = {
   previewScale?: number
   /** Digits under bars — default off (scan height). */
   showHumanReadable?: boolean
+  /** Printer calibration — shift content on the die-cut (mm). */
+  offsetXMm?: number
+  offsetYMm?: number
   className?: string
 }
 
@@ -44,6 +47,8 @@ export function ProductLabelSheet({
   mode,
   previewScale = 9,
   showHumanReadable = false,
+  offsetXMm = 0,
+  offsetYMm = 0,
   className
 }: Props) {
   const mm = labelSizeMm(size)
@@ -87,31 +92,23 @@ export function ProductLabelSheet({
 
   const barcodeMetrics = useMemo(() => {
     if (!layout.barcode || !barcode) {
-      return { heightPx: 24, moduleWidth: 1.4, marginPx: 0 }
+      return { heightPx: 24, moduleWidth: 1.4, quietMm: 1.5 }
     }
     const modules = estimateCode128Modules(barcode)
-    const { xMm, quietZoneMm } = solveBarcodeXMm(contentWidthMm, modules)
-    const quiet = Math.max(layout.quietZoneMm, quietZoneMm)
+    const { quietZoneMm } = solveBarcodeXMm(contentWidthMm, modules)
+    const quietMm = Math.max(layout.quietZoneMm, quietZoneMm)
+    // Bars only — quiet zone is symmetric CSS padding (optical center)
+    const barsWidthMm = Math.max(4, contentWidthMm - 2 * quietMm)
+    const moduleWidth = Math.max(
+      0.8,
+      Number(((barsWidthMm / modules) * pxPerMm).toFixed(2))
+    )
     const hriMm = layout.showHumanReadable
       ? layout.barcode.secondaryFontMm + 0.35
       : 0
     const usableMm = Math.max(2.5, layout.barcode.rowMm - hriMm)
     const heightPx = Math.max(12, Math.round(usableMm * pxPerMm))
-    // Fit symbol+quiet into content width (avoid clipping quiet zone)
-    const maxTotalPx = contentWidthMm * pxPerMm
-    let moduleWidth = Math.max(0.8, xMm * pxPerMm)
-    let marginPx = Math.max(2, quiet * pxPerMm)
-    const total = modules * moduleWidth + 2 * marginPx
-    if (total > maxTotalPx + 0.5) {
-      const scale = maxTotalPx / total
-      moduleWidth *= scale
-      marginPx *= scale
-    }
-    return {
-      heightPx,
-      moduleWidth: Number(moduleWidth.toFixed(2)),
-      marginPx: Math.max(2, Math.round(marginPx))
-    }
+    return { heightPx, moduleWidth, quietMm }
   }, [layout, barcode, contentWidthMm, pxPerMm])
 
   const cell = (rowMm: number, extra?: CSSProperties): CSSProperties => ({
@@ -123,6 +120,8 @@ export function ProductLabelSheet({
     boxSizing: 'border-box',
     ...extra
   })
+
+  const hasOffset = offsetXMm !== 0 || offsetYMm !== 0
 
   return (
     <div
@@ -139,7 +138,12 @@ export function ProductLabelSheet({
         gap: toU(layout.gapMm),
         overflow: 'hidden',
         boxSizing: 'border-box',
-        color: '#000'
+        color: '#000',
+        ...(hasOffset
+          ? {
+              transform: `translate(${toU(offsetXMm)}, ${toU(offsetYMm)})`
+            }
+          : null)
       }}
     >
       {layout.name ? (
@@ -200,7 +204,7 @@ export function ProductLabelSheet({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: toU(0.15)
+            gap: toU(0.12)
           })}
         >
           <div
@@ -219,9 +223,11 @@ export function ProductLabelSheet({
           <div
             style={{
               fontSize: toU(layout.price.secondaryFontMm),
+              fontWeight: 700,
               lineHeight: 1,
-              opacity: 0.85,
-              whiteSpace: 'nowrap'
+              opacity: 1,
+              whiteSpace: 'nowrap',
+              letterSpacing: '0.02em'
             }}
           >
             / {unit}
@@ -234,7 +240,7 @@ export function ProductLabelSheet({
           style={cell(layout.barcode.rowMm, {
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center',
+            alignItems: 'stretch',
             justifyContent: 'flex-end'
           })}
         >
@@ -244,9 +250,12 @@ export function ProductLabelSheet({
               flex: 1,
               minHeight: 0,
               width: '100%',
-              alignItems: 'flex-end',
+              alignItems: 'stretch',
               justifyContent: 'center',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              paddingLeft: toU(barcodeMetrics.quietMm),
+              paddingRight: toU(barcodeMetrics.quietMm),
+              boxSizing: 'border-box'
             }}
           >
             <Barcode
@@ -255,9 +264,7 @@ export function ProductLabelSheet({
               width={barcodeMetrics.moduleWidth}
               height={barcodeMetrics.heightPx}
               displayValue={false}
-              margin={barcodeMetrics.marginPx}
-              marginTop={0}
-              marginBottom={0}
+              margin={0}
               background="#ffffff"
               lineColor="#000000"
             />
@@ -267,12 +274,13 @@ export function ProductLabelSheet({
               style={{
                 fontSize: toU(layout.barcode.secondaryFontMm),
                 lineHeight: 1.1,
-                marginTop: toU(0.2),
+                marginTop: toU(0.15),
                 fontFamily: 'ui-monospace, monospace',
                 letterSpacing: '0.04em',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
-                maxWidth: '100%'
+                maxWidth: '100%',
+                textAlign: 'center'
               }}
             >
               {barcode}

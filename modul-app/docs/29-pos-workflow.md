@@ -67,7 +67,7 @@ Jobb: kosár + sticky footer
 - Settings: preview + **Pult felirat** (üres = teljes név; rövidítésnél hagyd a méretet) + sorrend.
 - Kereső találat: név `line-clamp-2` + SKU + ár + készlet.
 
-Kosár: desktop tábla (név+chip | − qty + | **Bruttó összeg** | ✕); touch: kártyák. Kedvezménynél áthúzott eredeti + új. Díj a Bruttó összeg oszlopban. Expand (desktop): Bruttó egységár + sor-kedv. Confirm: Bruttó részösszeg → Nettó/ÁFA → Fizetendő; touch cash numpad. Készlethiány = warning soft + chip. Scan = success flash.
+Kosár: desktop tábla (név+chip | − qty + | **Bruttó összeg** + alatta kis **egységár** `Ft / egység` | ✕); touch: kártyák, ugyanez az összeg alatt. Kedvezménynél áthúzott eredeti + új; egységár listaár (+ −%). Díj a Bruttó összeg oszlopban. Expand (desktop): Bruttó egységár szerkesztő + sor-kedv. Confirm: Bruttó részösszeg → Nettó/ÁFA → Fizetendő; touch cash numpad. Készlethiány = warning soft + chip. Scan = success flash.
 
 **Visszáru (S5):** topbar **Visszáru** → eladás kereső → `/ertekesitesek/[id]?return=1`. Részletek: [30](30-visszaru-workflow.md).
 

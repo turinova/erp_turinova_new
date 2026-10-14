@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { looksLikeBarcode } from '@/lib/pos/barcode'
 import { searchPosProductsClient } from '@/lib/pos/search-client'
+import { saleItemShelfGross } from '@/lib/pos/shelf-price'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import { cn } from '@/lib/utils'
@@ -156,9 +157,7 @@ export function PdaProductSearch({
             </li>
           ) : (
             rows.map((p) => {
-              const gross = Math.round(
-                p.price_net * (1 + p.tax_rate_percent / 100)
-              )
+              const gross = saleItemShelfGross(p)
               return (
                 <li key={p.id}>
                   <button

@@ -74,6 +74,7 @@ import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { FeeTypeListItem } from '@/lib/fee-types/queries'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
+import { saleItemShelfGross } from '@/lib/pos/shelf-price'
 import {
   BarcodeWedgeTrap,
   fetchPosBarcodeLookup
@@ -182,11 +183,7 @@ function catalogToLine(
 ): PosCartLine {
   const kind = hit.kind ?? 'product'
   const taxPct = Number(hit.tax_rate_percent ?? 0)
-  const net = Number(hit.price_net ?? 0)
-  const gross =
-    hit.price_gross != null && Number.isFinite(Number(hit.price_gross))
-      ? Math.round(Number(hit.price_gross))
-      : Math.round(net * (1 + taxPct / 100))
+  const gross = saleItemShelfGross(hit)
   const qty = isMaterialSaleKind(kind)
     ? Math.max(0.1, Math.round(quantity * 10) / 10)
     : Math.max(1, quantity)
@@ -2078,9 +2075,7 @@ export function PosClient({
                       )}
                     >
                       {recentHits.slice(0, 4).map((hit) => {
-                        const gross = Math.round(
-                          hit.price_net * (1 + hit.tax_rate_percent / 100)
-                        )
+                        const gross = saleItemShelfGross(hit)
                         return (
                           <PosQuickTile
                             key={`miss-r-${hit.id}`}
@@ -2160,9 +2155,7 @@ export function PosClient({
                         )}
                       >
                         {rows.map((hit) => {
-                          const gross = Math.round(
-                            hit.price_net * (1 + hit.tax_rate_percent / 100)
-                          )
+                          const gross = saleItemShelfGross(hit)
                           const zero = hit.on_hand <= 0
                           const label = hit.display_name?.trim() || hit.name
                           return (
@@ -2222,9 +2215,7 @@ export function PosClient({
                 </thead>
                 <tbody>
                   {searchHits.map((hit, index) => {
-                    const gross = Math.round(
-                      hit.price_net * (1 + hit.tax_rate_percent / 100)
-                    )
+                    const gross = saleItemShelfGross(hit)
                     const zero = hit.on_hand <= 0
                     return (
                       <tr
@@ -2491,9 +2482,18 @@ export function PosClient({
                             <Plus className="size-4" />
                           </Button>
                         </div>
-                        <span className="text-[17px] font-semibold tabular-nums text-ink">
-                          {formatMoneyFt(g)} Ft
-                        </span>
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-[17px] font-semibold tabular-nums text-ink">
+                            {formatMoneyFt(g)} Ft
+                          </span>
+                          <span className="mt-0.5 text-[11px] tabular-nums text-ink-muted">
+                            {formatMoneyFt(line.unitPriceGross)} Ft /{' '}
+                            {saleUnitLabel(line.kind, line.unitShortform)}
+                            {line.discountPercentage > 0
+                              ? ` · −${line.discountPercentage}%`
+                              : ''}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )
@@ -2837,20 +2837,29 @@ export function PosClient({
                             </div>
                           </td>
                           <td className="whitespace-nowrap px-1.5 py-2 text-right align-middle tabular-nums text-ink">
-                            {line.discountPercentage > 0 ? (
-                              <div className="flex flex-col items-end leading-tight">
-                                <span className="text-[11px] text-ink-muted line-through decoration-ink-muted">
-                                  {formatMoneyFt(before)} Ft
-                                </span>
-                                <span className="text-[14px] font-semibold text-warning-ink sm:text-[15px]">
+                            <div className="flex flex-col items-end leading-tight">
+                              {line.discountPercentage > 0 ? (
+                                <>
+                                  <span className="text-[11px] text-ink-muted line-through decoration-ink-muted">
+                                    {formatMoneyFt(before)} Ft
+                                  </span>
+                                  <span className="text-[14px] font-semibold text-warning-ink sm:text-[15px]">
+                                    {formatMoneyFt(g)} Ft
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-[14px] font-semibold sm:text-[15px]">
                                   {formatMoneyFt(g)} Ft
                                 </span>
-                              </div>
-                            ) : (
-                              <span className="text-[14px] font-semibold sm:text-[15px]">
-                                {formatMoneyFt(g)} Ft
+                              )}
+                              <span className="mt-0.5 text-[11px] tabular-nums text-ink-muted">
+                                {formatMoneyFt(line.unitPriceGross)} Ft /{' '}
+                                {saleUnitLabel(line.kind, line.unitShortform)}
+                                {line.discountPercentage > 0
+                                  ? ` · −${line.discountPercentage}%`
+                                  : ''}
                               </span>
-                            )}
+                            </div>
                           </td>
                           <td className="px-0.5 py-2 align-middle">
                             <Button

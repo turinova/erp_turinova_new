@@ -68,6 +68,17 @@ A legtöbb vonalkódolvasó billentyűzetként viselkedik. Erre külön szabály
   - hang vagy vizuális megerősítés
   - az elem megjelölése / hozzáadása
 
+### 5a. Termékek + globális kereső (no-focus → ID)
+
+`BarcodeWedgeTrap` a `/torzsadatok/alapanyagok/termekek` és `/kereso` oldalakon:
+
+- **No-focus / body fókusz:** USB wedge → exact `barcode` / `barcode_internal` / `sku` → azonnal termék ID lap (`toast` + `router.push`).
+- **Miss:** lista szűrés a **normalizált** kódra + „Nincs exact egyezés” toast.
+- **Gépelés a keresőmezőben:** lassú = debounce lista; **gyors wedge burst** (Digit/`e.code`, gap ≤50 ms) = remap (ö→0) + exact scan — ne maradjon `ö` a mezőben.
+- **Enter a mezőben:** exact lookup (stale-guard: ha közben továbbírt, ne ugorjon elavult partialra).
+- **Wedge path:** stale-guard **ki**; `looksLikeBarcode` **normalize-first** (all-zero / Digit0 idle ne némuljon).
+- Dialógus nyitva (törlés / címke): trap pause a terméklistán.
+
 ## 6. Excelből beillesztés
 
 ERP-ben ez alapigény.

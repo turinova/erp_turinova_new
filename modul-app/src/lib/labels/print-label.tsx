@@ -15,6 +15,8 @@ type PrintArgs = {
   amount: number
   /** Digits under bars — default false (scan-safe). */
   showHumanReadable?: boolean
+  offsetXMm?: number
+  offsetYMm?: number
 }
 
 const CONTAINER_ID = 'modul-product-label-print'
@@ -50,7 +52,10 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
         margin: 0 !important;
         padding: 0 !important;
         width: ${w} !important;
+        height: ${h} !important;
         background: white !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
       body > *:not(#${CONTAINER_ID}) {
         display: none !important;
@@ -62,7 +67,8 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
         visibility: visible !important;
         display: block !important;
         width: ${w} !important;
-        margin: 0 !important;
+        height: auto !important;
+        margin: 0 auto !important;
         padding: 0 !important;
         background: white !important;
       }
@@ -72,7 +78,7 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
         page-break-after: always;
         break-after: page;
         page-break-inside: avoid;
-        margin: 0 !important;
+        margin: 0 auto !important;
         overflow: hidden !important;
         box-sizing: border-box !important;
       }
@@ -99,6 +105,8 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
       size={args.size}
       mode="print"
       showHumanReadable={args.showHumanReadable ?? false}
+      offsetXMm={args.offsetXMm ?? 0}
+      offsetYMm={args.offsetYMm ?? 0}
     />
   ))
 
