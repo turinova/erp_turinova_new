@@ -72,7 +72,11 @@ export type LabelLayout = {
   padTopMm: number
   padSideMm: number
   padBottomMm: number
+  /** Extra inset beyond pad — print tolerance (Brother/DYMO shift). */
+  safetyInsetMm: number
   gapMm: number
+  /** CODE128 quiet zone each side (mm), inside content width. */
+  quietZoneMm: number
   name: LabelBlockLayout | null
   sku: LabelBlockLayout | null
   price: LabelBlockLayout | null
@@ -80,11 +84,38 @@ export type LabelLayout = {
   showHumanReadable: boolean
 }
 
+/** CSS px per mm at 96dpi — preview + print barcode SVG use the same base. */
+export const LABEL_PX_PER_MM = 96 / 25.4
+
+/**
+ * Absolute min narrow-bar width (mm) for handheld POS on 33×25.
+ * GS1 ideal ≥0.25; EAN-13 as CODE128C on this width lands ~0.21 — allow 0.20.
+ */
+export const BARCODE_MIN_X_MM = 0.2
+
+/** Prefer at least this bar height (mm) when barcode is shown. */
+export const BARCODE_TARGET_HEIGHT_MM = 8.0
+
+/** Hard floor — below this, refuse print. */
+export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 5.5
+
+/**
+ * Scan-safe floors for 33×25: barcode first, then price/SKU, name shrinks.
+ * HRI off by default → barcode floor is bars-only.
+ */
 const FLOOR_33 = {
-  name: 3.4,
-  sku: 2.0,
-  price: 4.4,
-  barcode: 5.0
+  name: 2.8,
+  sku: 2.5,
+  price: 4.2,
+  barcode: 7.5,
+  barcodeWithHuman: 9.2
+} as const
+
+const PAD = {
+  top: 0.55,
+  side: 1.0,
+  bottom: 0.4,
+  safety: 0.45
 } as const
 
 /**
@@ -92,25 +123,26 @@ const FLOOR_33 = {
  * Higher = fewer chars/line = more lines reserved (avoids under-wrap).
  */
 const CHAR_WIDTH_FACTOR = 0.62
-const NAME_MAX_LINES = 3
-const NAME_MIN_FONT = 1.45
+const NAME_MAX_LINES_WITH_BARCODE = 2
+const NAME_MAX_LINES_NO_BARCODE = 3
+const NAME_MIN_FONT = 1.55
 
 function desiredNameFont(text: string): number {
   const len = text.trim().length
-  let base = 3.2
-  if (len > 70) base = 1.8
-  else if (len > 50) base = 2.1
-  else if (len > 35) base = 2.4
-  else if (len > 22) base = 2.7
+  let base = 3.0
+  if (len > 70) base = 1.75
+  else if (len > 50) base = 2.0
+  else if (len > 35) base = 2.3
+  else if (len > 22) base = 2.55
   return Number(base.toFixed(2))
 }
 
 function desiredPriceFont(price: number): number {
   const digits = new Intl.NumberFormat('hu-HU').format(price).length
-  let base = 5.4
-  if (digits > 8) base = 3.8
-  else if (digits > 6) base = 4.4
-  else if (digits > 5) base = 4.8
+  let base = 5.2
+  if (digits > 8) base = 3.6
+  else if (digits > 6) base = 4.2
+  else if (digits > 5) base = 4.6
   return Number(base.toFixed(2))
 }
 
@@ -129,23 +161,161 @@ function nameLinesForWidth(
 }
 
 function nameContentMm(fontMm: number, lines: number): number {
-  return fontMm * 1.15 * lines + 0.35
+  return fontMm * 1.12 * lines + 0.2
 }
 
 function skuContentMm(fontMm: number): number {
-  return fontMm + 0.55
+  return fontMm + 0.35
 }
 
 function priceContentMm(fontMm: number, unitFontMm: number): number {
-  return fontMm + unitFontMm + 0.7
+  return fontMm + unitFontMm + 0.45
 }
 
 function barcodeContentMinMm(human: boolean): number {
-  return 4.8 + (human ? 2.0 : 0.3)
+  // Bars-only floor; HRI adds secondary line under bars.
+  return human ? FLOOR_33.barcodeWithHuman : FLOOR_33.barcode
 }
 
 /**
- * Fit full product name: shrink font until wrap ≤ NAME_MAX_LINES.
+ * CODE128 symbol width in modules (excluding quiet zones).
+ * Matches jsbarcode auto subset: pure digits → Code C (2 digits/symbol);
+ * otherwise Code B (1 char/symbol). Stop = 13 modules.
+ */
+export function estimateCode128Modules(value: string): number {
+  const raw = value.trim()
+  if (!raw) return 11 + 11 + 13 // start + check + stop
+
+  const isDigits = /^\d+$/.test(raw)
+  // Symbol chars excluding Stop; each is 11 modules; Stop adds 13 (= +2 over 11).
+  let dataSymbols: number
+  if (isDigits) {
+    const n = raw.length
+    const pairs = Math.floor(n / 2)
+    if (n % 2 === 0) {
+      // StartC + pairs + check
+      dataSymbols = 1 + pairs + 1
+    } else {
+      // StartC + pairs + CodeB latch + last digit + check
+      dataSymbols = 1 + pairs + 1 + 1 + 1
+    }
+  } else {
+    // StartB + chars + check
+    dataSymbols = 1 + raw.length + 1
+  }
+  return dataSymbols * 11 + 13
+}
+
+export function computeQuietZoneMm(xMm: number): number {
+  return Math.max(1.5, 10 * xMm)
+}
+
+/**
+ * Solve for X given content width and module count.
+ * content = 2×quiet + modules×X, quiet = max(1.5, 10X)
+ */
+export function solveBarcodeXMm(
+  contentWidthMm: number,
+  modules: number
+): { xMm: number; quietZoneMm: number; symbolWidthMm: number } {
+  const m = Math.max(1, modules)
+  // Case quiet = 10X: content = 20X + mX → X = content/(m+20)
+  let x = contentWidthMm / (m + 20)
+  let quiet = computeQuietZoneMm(x)
+  if (quiet > 10 * x + 0.001) {
+    // quiet stuck at 1.5 floor: content = 3 + mX → X = (content-3)/m
+    x = Math.max(0.01, (contentWidthMm - 3) / m)
+    quiet = computeQuietZoneMm(x)
+  }
+  const symbolWidthMm = m * x
+  // If quiet+symbol overflows, shrink X
+  const total = 2 * quiet + symbolWidthMm
+  if (total > contentWidthMm + 0.01) {
+    x = Math.max(0.01, (contentWidthMm - 2 * Math.max(1.5, quiet)) / m)
+    // Recompute with floor quiet
+    quiet = Math.min(computeQuietZoneMm(x), (contentWidthMm - m * x) / 2)
+    quiet = Math.max(0.8, quiet)
+    x = Math.max(0.01, (contentWidthMm - 2 * quiet) / m)
+  }
+  return {
+    xMm: Number(x.toFixed(4)),
+    quietZoneMm: Number(quiet.toFixed(3)),
+    symbolWidthMm: Number((m * x).toFixed(3))
+  }
+}
+
+export type LabelScanSafety = {
+  ok: boolean
+  reason: string | null
+  xMm: number
+  quietZoneMm: number
+  barHeightMm: number
+}
+
+export function assessLabelScanSafety(input: {
+  layout: LabelLayout
+  barcodeValue: string | null
+  labelWidthMm: number
+}): LabelScanSafety {
+  const { layout, barcodeValue, labelWidthMm } = input
+  if (!layout.barcode || !barcodeValue?.trim()) {
+    return {
+      ok: true,
+      reason: null,
+      xMm: 0,
+      quietZoneMm: 0,
+      barHeightMm: 0
+    }
+  }
+
+  const contentWidth = Math.max(
+    4,
+    labelWidthMm - 2 * (layout.padSideMm + layout.safetyInsetMm)
+  )
+  const modules = estimateCode128Modules(barcodeValue)
+  const { xMm, quietZoneMm } = solveBarcodeXMm(contentWidth, modules)
+
+  const hriMm = layout.showHumanReadable
+    ? layout.barcode.secondaryFontMm + 0.35
+    : 0
+  const barHeightMm = Math.max(0, layout.barcode.rowMm - hriMm)
+
+  if (xMm < BARCODE_MIN_X_MM) {
+    return {
+      ok: false,
+      reason:
+        'A vonalkód túl hosszú ehhez a 33×25 mm címkéhez — a sávok túl keskenyek lennének. Használj rövidebb (lehetőleg csak számos) kódot; a „Csak kód” sablon ezen nem segít.',
+      xMm,
+      quietZoneMm,
+      barHeightMm
+    }
+  }
+  if (barHeightMm < BARCODE_ABSOLUTE_MIN_HEIGHT_MM) {
+    return {
+      ok: false,
+      reason:
+        'A vonalkód sávja túl alacsony. Kapcsold ki a név/ár/SKU mezőket, kapcsold ki a „Kód számjegyei” opciót, vagy válaszd a „Csak kód” sablont.',
+      xMm,
+      quietZoneMm,
+      barHeightMm
+    }
+  }
+  if (quietZoneMm < 1.2) {
+    return {
+      ok: false,
+      reason:
+        'Nincs elég üres szegély (quiet zone) a vonalkód mellett — a szkenner nem tudná megbízhatóan olvasni. Rövidítsd a kódot.',
+      xMm,
+      quietZoneMm,
+      barHeightMm
+    }
+  }
+
+  return { ok: true, reason: null, xMm, quietZoneMm, barHeightMm }
+}
+
+/**
+ * Fit product name: shrink font until wrap ≤ maxLines.
  * Never truncates — smaller type instead of ellipsis.
  */
 function resolveNameBlock(
@@ -153,16 +323,17 @@ function resolveNameBlock(
   desiredFont: number,
   contentWidthMm: number,
   floorName: number,
+  maxLines: number,
   maxContentMm?: number
 ): { fontDes: number; lines: number; contentMin: number } {
   let font = desiredFont
   for (let i = 0; i < 36; i++) {
     const rawLines = nameLinesForWidth(text, font, contentWidthMm)
-    if (rawLines > NAME_MAX_LINES && font > NAME_MIN_FONT) {
+    if (rawLines > maxLines && font > NAME_MIN_FONT) {
       font = Number((font * 0.9).toFixed(2))
       continue
     }
-    const lines = Math.min(NAME_MAX_LINES, rawLines)
+    const lines = Math.min(maxLines, rawLines)
     const content = nameContentMm(font, lines)
     if (
       maxContentMm != null &&
@@ -178,10 +349,7 @@ function resolveNameBlock(
       contentMin: Math.max(floorName, content)
     }
   }
-  const lines = Math.min(
-    NAME_MAX_LINES,
-    nameLinesForWidth(text, font, contentWidthMm)
-  )
+  const lines = Math.min(maxLines, nameLinesForWidth(text, font, contentWidthMm))
   return {
     fontDes: Number(Math.max(NAME_MIN_FONT, font).toFixed(2)),
     lines,
@@ -204,8 +372,8 @@ function clampFontToRow(
 }
 
 /**
- * Single layout engine: row heights + fonts with content guards.
- * Name wrap is width-aware; leftover prefers name fit, then barcode.
+ * Scan-safe layout: quiet zone + bar height first; tighter gaps; larger SKU;
+ * HRI off by default; leftover prefers barcode.
  */
 export function computeLabelLayout(input: {
   size: LabelSize
@@ -213,48 +381,68 @@ export function computeLabelLayout(input: {
   productName: string
   price: number
   payload: ProductLabelPayload
+  /** Default false — digits under bars waste scan height on 33×25. */
+  showHumanReadable?: boolean
 }): LabelLayout {
   const floor = FLOOR_33
   const { w, h } = labelSizeMm(input.size)
 
-  const padTopMm = 1.0
-  const padSideMm = 1.2
-  const padBottomMm = 0.5
+  const padTopMm = PAD.top
+  const padSideMm = PAD.side
+  const padBottomMm = PAD.bottom
+  const safetyInsetMm = PAD.safety
 
   const barcodeVal = labelBarcodeValue(input.payload)
   const showName = input.fields.showName
   const showSku = input.fields.showSku && Boolean(input.payload.sku?.trim())
   const showPrice = input.fields.showPrice
   const showBarcode = input.fields.showBarcode && Boolean(barcodeVal)
-  const showHumanReadable = showBarcode
+  const showHumanReadable = Boolean(
+    showBarcode && (input.showHumanReadable ?? false)
+  )
 
-  // Shelf-like (name adjacent to price): slightly larger gap
-  const gapMm = !showSku && showName && showPrice ? 0.55 : 0.35
+  // Tight vertical rhythm — reclaim space for barcode / SKU
+  const gapMm = !showSku && showName && showPrice ? 0.22 : 0.15
 
   const text = input.productName.trim() || input.payload.name || '—'
-  const contentWidthMm = Math.max(8, w - padSideMm * 2)
+  const contentWidthMm = Math.max(
+    8,
+    w - 2 * (padSideMm + safetyInsetMm)
+  )
+
+  const modules = barcodeVal ? estimateCode128Modules(barcodeVal) : 40
+  const { quietZoneMm: resolvedQuiet } = showBarcode
+    ? solveBarcodeXMm(contentWidthMm, modules)
+    : { quietZoneMm: 1.5 }
+
+  const nameMaxLines = showBarcode
+    ? NAME_MAX_LINES_WITH_BARCODE
+    : NAME_MAX_LINES_NO_BARCODE
 
   const visibleCount =
     Number(showName) + Number(showSku) + Number(showPrice) + Number(showBarcode)
   const gapsTotal = Math.max(0, visibleCount - 1) * gapMm
-  const available = Math.max(4, h - padTopMm - padBottomMm - gapsTotal)
+  const available = Math.max(
+    4,
+    h - padTopMm - padBottomMm - 2 * safetyInsetMm - gapsTotal
+  )
 
   const nameResolved = showName
     ? resolveNameBlock(
         text,
         desiredNameFont(text),
         contentWidthMm,
-        floor.name
+        floor.name,
+        nameMaxLines
       )
     : { fontDes: 0, lines: 1, contentMin: 0 }
 
-  const skuFontDes = 2.2
-  // Soft-cap price when sitting directly under name (no SKU buffer)
+  const skuFontDes = 2.7
   let priceFontDes = desiredPriceFont(input.price)
   if (!showSku && showName && showPrice) {
-    priceFontDes = Number((priceFontDes * 0.92).toFixed(2))
+    priceFontDes = Number((priceFontDes * 0.94).toFixed(2))
   }
-  const unitFontDes = 1.85
+  const unitFontDes = 1.7
 
   const nameMin = showName ? nameResolved.contentMin : 0
   const skuMin = showSku ? Math.max(floor.sku, skuContentMm(skuFontDes)) : 0
@@ -262,7 +450,10 @@ export function computeLabelLayout(input: {
     ? Math.max(floor.price, priceContentMm(priceFontDes, unitFontDes))
     : 0
   const barcodeMin = showBarcode
-    ? Math.max(floor.barcode, barcodeContentMinMm(showHumanReadable))
+    ? Math.max(
+        showHumanReadable ? floor.barcodeWithHuman : floor.barcode,
+        barcodeContentMinMm(showHumanReadable)
+      )
     : 0
 
   let nameRow = showName ? nameMin : 0
@@ -270,36 +461,41 @@ export function computeLabelLayout(input: {
   let priceRow = showPrice ? priceMin : 0
   let barcodeRow = 0
 
-  const fixed = nameRow + skuRow + priceRow
+  const textFixed = nameRow + skuRow + priceRow
 
   if (showBarcode) {
-    const rem = available - fixed
+    const rem = available - textFixed
     if (rem >= barcodeMin) {
-      let extra = rem - barcodeMin
-      barcodeRow = barcodeMin
-      if (extra > 0.05 && showName) {
+      // Give all leftover to barcode (scan height), not name
+      barcodeRow = Number(rem.toFixed(2))
+      // Soft target: if barcode already huge and name is cramped at floor, ok
+      if (
+        barcodeRow > BARCODE_TARGET_HEIGHT_MM + 4 &&
+        showName &&
+        nameRow < nameContentMm(nameResolved.fontDes, nameResolved.lines)
+      ) {
         const need = nameContentMm(nameResolved.fontDes, nameResolved.lines)
-        const deficit = Math.max(0, need - nameRow)
-        const give = Math.min(extra, deficit)
-        nameRow = Number((nameRow + give).toFixed(2))
-        extra -= give
+        const give = Math.min(
+          barcodeRow - barcodeMin,
+          Math.max(0, need - nameRow)
+        )
+        if (give > 0.05) {
+          nameRow = Number((nameRow + give).toFixed(2))
+          barcodeRow = Number((barcodeRow - give).toFixed(2))
+        }
       }
-      barcodeRow = Number((barcodeMin + extra).toFixed(2))
     } else {
-      const floorsSum =
-        floor.name * Number(showName) +
-        floor.sku * Number(showSku) +
-        floor.price * Number(showPrice)
-      const budget = Math.max(floorsSum, available - barcodeMin)
-      const squeeze = fixed > 0 ? Math.min(1, budget / fixed) : 1
+      // Squeeze text blocks; never drop barcode below floor if possible
+      const budget = Math.max(0, available - barcodeMin)
+      const squeeze = textFixed > 0 ? Math.min(1, budget / textFixed) : 1
       nameRow = showName
-        ? Math.max(floor.name, Number((nameMin * squeeze).toFixed(2)))
+        ? Math.max(floor.name * 0.85, Number((nameMin * squeeze).toFixed(2)))
         : 0
       skuRow = showSku
-        ? Math.max(floor.sku, Number((skuMin * squeeze).toFixed(2)))
+        ? Math.max(floor.sku * 0.9, Number((skuMin * squeeze).toFixed(2)))
         : 0
       priceRow = showPrice
-        ? Math.max(floor.price, Number((priceMin * squeeze).toFixed(2)))
+        ? Math.max(floor.price * 0.9, Number((priceMin * squeeze).toFixed(2)))
         : 0
       barcodeRow = Math.max(
         barcodeMin,
@@ -307,19 +503,35 @@ export function computeLabelLayout(input: {
       )
       const sum = nameRow + skuRow + priceRow + barcodeRow
       if (sum > available + 0.01) {
-        const s = available / sum
-        nameRow = showName ? Number((nameRow * s).toFixed(2)) : 0
-        skuRow = showSku ? Number((skuRow * s).toFixed(2)) : 0
-        priceRow = showPrice ? Number((priceRow * s).toFixed(2)) : 0
-        barcodeRow = Number((barcodeRow * s).toFixed(2))
+        // Last resort: proportional — but keep barcode share ≥ floor share
+        const overflow = sum - available
+        let cut = overflow
+        const cutFromName = showName
+          ? Math.min(cut, Math.max(0, nameRow - floor.name * 0.8))
+          : 0
+        nameRow = Number((nameRow - cutFromName).toFixed(2))
+        cut -= cutFromName
+        const cutFromPrice = showPrice
+          ? Math.min(cut, Math.max(0, priceRow - floor.price * 0.85))
+          : 0
+        priceRow = Number((priceRow - cutFromPrice).toFixed(2))
+        cut -= cutFromPrice
+        const cutFromSku = showSku
+          ? Math.min(cut, Math.max(0, skuRow - floor.sku * 0.85))
+          : 0
+        skuRow = Number((skuRow - cutFromSku).toFixed(2))
+        cut -= cutFromSku
+        if (cut > 0.01) {
+          barcodeRow = Number(Math.max(4.5, barcodeRow - cut).toFixed(2))
+        }
       }
     }
-  } else if (fixed > 0) {
-    const leftover = Math.max(0, available - fixed)
-    if (leftover > 0.15) {
-      const wName = showName ? 1.3 : 0
-      const wSku = showSku ? 0.35 : 0
-      const wPrice = showPrice ? 1.5 : 0
+  } else if (textFixed > 0) {
+    const leftover = Math.max(0, available - textFixed)
+    if (leftover > 0.1) {
+      const wName = showName ? 1.2 : 0
+      const wSku = showSku ? 0.55 : 0
+      const wPrice = showPrice ? 1.4 : 0
       const wSum = wName + wSku + wPrice || 1
       if (showName)
         nameRow = Number((nameMin + (leftover * wName) / wSum).toFixed(2))
@@ -330,7 +542,7 @@ export function computeLabelLayout(input: {
     }
   }
 
-  // Fit full name into allocated row (shrink font; never ellipsis-truncate)
+  // Fit name into allocated row (shrink font; never ellipsis-truncate)
   let nameFont = 0
   if (showName) {
     const fitted = resolveNameBlock(
@@ -338,24 +550,11 @@ export function computeLabelLayout(input: {
       nameResolved.fontDes,
       contentWidthMm,
       floor.name,
+      nameMaxLines,
       nameRow
     )
     nameFont = fitted.fontDes
-    // If still short on height at min font, steal from barcode (keep barcode floor)
-    const need = nameContentMm(nameFont, fitted.lines)
-    if (need > nameRow + 0.05 && showBarcode && barcodeRow > barcodeMin) {
-      const steal = Math.min(barcodeRow - barcodeMin, need - nameRow)
-      nameRow = Number((nameRow + steal).toFixed(2))
-      barcodeRow = Number((barcodeRow - steal).toFixed(2))
-    }
-    // Final pass after possible steal
-    nameFont = resolveNameBlock(
-      text,
-      nameFont,
-      contentWidthMm,
-      floor.name,
-      nameRow
-    ).fontDes
+    // Do NOT steal from barcode for name — scan height wins
   }
 
   const skuFont = showSku
@@ -367,23 +566,25 @@ export function computeLabelLayout(input: {
       )
     : 0
   const unitFont = showPrice
-    ? Number(Math.min(unitFontDes, Math.max(1.4, priceFont * 0.38)).toFixed(2))
+    ? Number(Math.min(unitFontDes, Math.max(1.35, priceFont * 0.36)).toFixed(2))
     : 0
 
   const priceFontFinal =
     showPrice && priceContentMm(priceFont, unitFont) > priceRow
       ? clampFontToRow(priceFont, priceRow, (f) =>
-          priceContentMm(f, Math.min(unitFont, f * 0.38))
+          priceContentMm(f, Math.min(unitFont, f * 0.36))
         )
       : priceFont
 
-  const barcodeSecondary = showHumanReadable ? 1.7 : 0
+  const barcodeSecondary = showHumanReadable ? 1.55 : 0
 
   return {
     padTopMm,
     padSideMm,
     padBottomMm,
+    safetyInsetMm,
     gapMm,
+    quietZoneMm: Number(resolvedQuiet.toFixed(3)),
     name: showName
       ? {
           rowMm: nameRow,
@@ -418,6 +619,7 @@ export function computeLabelRowHeights(input: {
   fields: LabelFields
   productName: string
   payload: ProductLabelPayload
+  showHumanReadable?: boolean
 }) {
   const layout = computeLabelLayout({
     ...input,

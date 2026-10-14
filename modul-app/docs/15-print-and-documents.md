@@ -60,6 +60,15 @@ Ha van címkenyomtatás:
 - külön formátum specifikáció kell
 - méret, margó, vonalkód elhelyezés, betűméret legyen fixen definiálva
 
+### 6a. Termék címke (33×25 mm) — scan-safe
+
+- **Prioritás:** quiet zone + bar magasság → ár → SKU → név (zsugorít).
+- **HRI** (számjegyek a sáv alatt): alapból **ki**; opcionális „Kód számjegyei”.
+- CODE128 quiet zone ≥ **10× X** (min ~1.5 mm) mindkét oldalon; print safety inset ~0.45 mm.
+- Modulbecslés: tiszta szám → CODE128 **C** (2 jegy/szimbólum); vegyes → Code B. Túl keskeny X (&lt; 0.20 mm) vagy túl alacsony sáv (&lt; 5.5 mm) → nyomtatás tiltva + toast (X-fail ≠ „Csak kód”).
+- Nyomtató: **100% / Actual size**, lehetőleg 300 dpi thermal.
+- Layout: `src/lib/labels/layout.ts`; UI: `ProductLabelPrintDialog`.
+
 ## 7. PDF kontra HTML print
 
 Ajánlott szemlélet:

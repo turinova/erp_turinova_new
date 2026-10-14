@@ -3,7 +3,12 @@
 import dynamic from 'next/dynamic'
 import { useMemo, type CSSProperties } from 'react'
 
-import { computeLabelLayout } from '@/lib/labels/layout'
+import {
+  computeLabelLayout,
+  estimateCode128Modules,
+  LABEL_PX_PER_MM,
+  solveBarcodeXMm
+} from '@/lib/labels/layout'
 import {
   labelBarcodeValue,
   labelSizeMm,
@@ -24,6 +29,8 @@ type Props = {
   size: LabelSize
   mode: 'print' | 'preview'
   previewScale?: number
+  /** Digits under bars — default off (scan height). */
+  showHumanReadable?: boolean
   className?: string
 }
 
@@ -35,7 +42,8 @@ export function ProductLabelSheet({
   unitShortform,
   size,
   mode,
-  previewScale = 8.5,
+  previewScale = 9,
+  showHumanReadable = false,
   className
 }: Props) {
   const mm = labelSizeMm(size)
@@ -51,17 +59,23 @@ export function ProductLabelSheet({
         fields,
         productName: text,
         price,
-        payload
+        payload,
+        showHumanReadable
       }),
-    [size, fields, text, price, payload]
+    [size, fields, text, price, payload, showHumanReadable]
   )
 
   const isPreview = mode === 'preview'
+  const pxPerMm = isPreview ? previewScale : LABEL_PX_PER_MM
   const width = isPreview ? `${mm.w * previewScale}px` : `${mm.w}mm`
   const height = isPreview ? `${mm.h * previewScale}px` : `${mm.h}mm`
 
   const toU = (mmVal: number) =>
     isPreview ? `${(mmVal * previewScale).toFixed(2)}px` : `${mmVal}mm`
+
+  const padX = layout.padSideMm + layout.safetyInsetMm
+  const padTop = layout.padTopMm + layout.safetyInsetMm
+  const padBottom = layout.padBottomMm + layout.safetyInsetMm
 
   const gridRows: string[] = []
   if (layout.name) gridRows.push(toU(layout.name.rowMm))
@@ -69,24 +83,36 @@ export function ProductLabelSheet({
   if (layout.price) gridRows.push(toU(layout.price.rowMm))
   if (layout.barcode) gridRows.push(toU(layout.barcode.rowMm))
 
-  const barcodeSvgPx = (() => {
-    if (!layout.barcode) return 24
-    const readableMm = layout.showHumanReadable
-      ? layout.barcode.secondaryFontMm + 0.45
-      : 0.25
-    const usable = Math.max(2.5, layout.barcode.rowMm - readableMm)
-    const pxPerMm = isPreview ? previewScale : 3.78
-    return Math.max(14, Math.round(usable * pxPerMm))
-  })()
+  const contentWidthMm = Math.max(4, mm.w - 2 * padX)
 
-  const barcodeModuleWidth = (() => {
-    if (!barcode) return 1.4
-    const chars = barcode.length
-    const availPx =
-      (mm.w - layout.padSideMm * 2) * (isPreview ? previewScale : 3.78)
-    const modules = Math.max(1, chars * 11)
-    return Math.max(1, Math.min(2.6, availPx / modules))
-  })()
+  const barcodeMetrics = useMemo(() => {
+    if (!layout.barcode || !barcode) {
+      return { heightPx: 24, moduleWidth: 1.4, marginPx: 0 }
+    }
+    const modules = estimateCode128Modules(barcode)
+    const { xMm, quietZoneMm } = solveBarcodeXMm(contentWidthMm, modules)
+    const quiet = Math.max(layout.quietZoneMm, quietZoneMm)
+    const hriMm = layout.showHumanReadable
+      ? layout.barcode.secondaryFontMm + 0.35
+      : 0
+    const usableMm = Math.max(2.5, layout.barcode.rowMm - hriMm)
+    const heightPx = Math.max(12, Math.round(usableMm * pxPerMm))
+    // Fit symbol+quiet into content width (avoid clipping quiet zone)
+    const maxTotalPx = contentWidthMm * pxPerMm
+    let moduleWidth = Math.max(0.8, xMm * pxPerMm)
+    let marginPx = Math.max(2, quiet * pxPerMm)
+    const total = modules * moduleWidth + 2 * marginPx
+    if (total > maxTotalPx + 0.5) {
+      const scale = maxTotalPx / total
+      moduleWidth *= scale
+      marginPx *= scale
+    }
+    return {
+      heightPx,
+      moduleWidth: Number(moduleWidth.toFixed(2)),
+      marginPx: Math.max(2, Math.round(marginPx))
+    }
+  }, [layout, barcode, contentWidthMm, pxPerMm])
 
   const cell = (rowMm: number, extra?: CSSProperties): CSSProperties => ({
     height: toU(rowMm),
@@ -104,7 +130,7 @@ export function ProductLabelSheet({
       style={{
         width,
         height,
-        padding: `${toU(layout.padTopMm)} ${toU(layout.padSideMm)} ${toU(layout.padBottomMm)}`,
+        padding: `${toU(padTop)} ${toU(padX)} ${toU(padBottom)}`,
         margin: 0,
         backgroundColor: '#fff',
         display: 'grid',
@@ -128,7 +154,7 @@ export function ProductLabelSheet({
             style={{
               fontSize: toU(layout.name.fontMm),
               fontWeight: 700,
-              lineHeight: 1.12,
+              lineHeight: 1.1,
               textAlign: 'center',
               width: '100%',
               maxHeight: '100%',
@@ -153,12 +179,13 @@ export function ProductLabelSheet({
           <div
             style={{
               fontSize: toU(layout.sku.fontMm),
+              fontWeight: 600,
               lineHeight: 1,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               maxWidth: '100%',
-              letterSpacing: '0.02em'
+              letterSpacing: '0.03em'
             }}
           >
             {payload.sku}
@@ -173,7 +200,7 @@ export function ProductLabelSheet({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: toU(0.25)
+            gap: toU(0.15)
           })}
         >
           <div
@@ -225,10 +252,12 @@ export function ProductLabelSheet({
             <Barcode
               value={barcode}
               format="CODE128"
-              width={barcodeModuleWidth}
-              height={barcodeSvgPx}
+              width={barcodeMetrics.moduleWidth}
+              height={barcodeMetrics.heightPx}
               displayValue={false}
-              margin={0}
+              margin={barcodeMetrics.marginPx}
+              marginTop={0}
+              marginBottom={0}
               background="#ffffff"
               lineColor="#000000"
             />
@@ -238,7 +267,7 @@ export function ProductLabelSheet({
               style={{
                 fontSize: toU(layout.barcode.secondaryFontMm),
                 lineHeight: 1.1,
-                marginTop: toU(0.3),
+                marginTop: toU(0.2),
                 fontFamily: 'ui-monospace, monospace',
                 letterSpacing: '0.04em',
                 whiteSpace: 'nowrap',

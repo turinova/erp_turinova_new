@@ -82,8 +82,8 @@ export function CimkeNyomtatasMockup({ className }: { className?: string }) {
             Címke nyomtatása
           </p>
           <p className="text-[12.5px] text-ink-secondary">
-            Az előnézet élőben követi a beállításokat. Kikapcsolt mezőknél a
-            vonalkód nagyobb helyet kap.
+            Scan-safe 33×25 mm: nagyobb vonalkód, quiet zone, szorosabb
+            elrendezés.
           </p>
         </div>
 

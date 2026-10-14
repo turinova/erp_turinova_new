@@ -17,10 +17,16 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
-import { LABEL_TEMPLATES, type LabelTemplateId } from '@/lib/labels/layout'
+import {
+  assessLabelScanSafety,
+  computeLabelLayout,
+  LABEL_TEMPLATES,
+  type LabelTemplateId
+} from '@/lib/labels/layout'
 import { printProductLabels } from '@/lib/labels/print-label'
 import {
   labelBarcodeValue,
+  labelSizeMm,
   type LabelFields,
   type ProductLabelPayload
 } from '@/lib/labels/types'
@@ -64,6 +70,8 @@ export function ProductLabelPrintDialog({
     showBarcode: true,
     showPrice: true
   })
+  /** Digits under bars — default off for scan height on 33×25. */
+  const [showHumanReadable, setShowHumanReadable] = useState(false)
   const [printing, setPrinting] = useState(false)
 
   const barcode = payload ? labelBarcodeValue(payload) : null
@@ -78,6 +86,7 @@ export function ProductLabelPrintDialog({
     setAmount(Math.max(1, Math.round(initialAmount) || 1))
     setTemplateId('full')
     setFields(LABEL_TEMPLATES[0].fields(bc))
+    setShowHumanReadable(false)
   }, [open, payload, initialAmount])
 
   const unitOptions = useMemo(() => {
@@ -91,6 +100,25 @@ export function ProductLabelPrintDialog({
     }
     return opts
   }, [units, unit])
+
+  const scanSafety = useMemo(() => {
+    if (!payload || !fields.showBarcode || !barcode) {
+      return { ok: true as const, reason: null as string | null }
+    }
+    const layout = computeLabelLayout({
+      size: '33x25',
+      fields,
+      productName: name,
+      price,
+      payload,
+      showHumanReadable
+    })
+    return assessLabelScanSafety({
+      layout,
+      barcodeValue: barcode,
+      labelWidthMm: labelSizeMm('33x25').w
+    })
+  }, [payload, fields, name, price, barcode, showHumanReadable])
 
   function applyTemplate(id: LabelTemplateId) {
     const tpl = LABEL_TEMPLATES.find((t) => t.id === id)
@@ -116,6 +144,10 @@ export function ProductLabelPrintDialog({
       toast.error('Válassz ki legalább egy mezőt a címkéhez.')
       return
     }
+    if (!scanSafety.ok) {
+      toast.error(scanSafety.reason ?? 'A vonalkód nem nyomtatható biztonságosan.')
+      return
+    }
     setPrinting(true)
     try {
       await printProductLabels({
@@ -125,7 +157,8 @@ export function ProductLabelPrintDialog({
         price,
         unitShortform: unit || 'db',
         size: '33x25',
-        amount
+        amount,
+        showHumanReadable
       })
     } catch (err) {
       console.error(err)
@@ -146,8 +179,8 @@ export function ProductLabelPrintDialog({
         <DialogHeader>
           <DialogTitle>Címke nyomtatása</DialogTitle>
           <DialogDescription>
-            Az előnézet élőben követi a beállításokat. Kikapcsolt mezőknél a
-            vonalkód nagyobb helyet kap.
+            Scan-safe 33×25 mm: nagyobb vonalkód, quiet zone, szorosabb
+            elrendezés. Nyomtatáskor állítsd a méretet 100%-ra.
           </DialogDescription>
         </DialogHeader>
 
@@ -168,8 +201,14 @@ export function ProductLabelPrintDialog({
                   size="33x25"
                   mode="preview"
                   previewScale={9}
+                  showHumanReadable={showHumanReadable}
                 />
               </div>
+              {!scanSafety.ok ? (
+                <p className="max-w-sm text-center text-[12px] text-destructive">
+                  {scanSafety.reason}
+                </p>
+              ) : null}
             </div>
 
             {/* Controls */}
@@ -234,12 +273,32 @@ export function ProductLabelPrintDialog({
                       </button>
                     )
                   })}
+                  {hasBarcode && fields.showBarcode ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowHumanReadable((v) => !v)}
+                      aria-pressed={showHumanReadable}
+                      className={cn(
+                        'rounded-full border px-2.5 py-0.5 text-[12px] font-medium transition-colors',
+                        showHumanReadable
+                          ? 'border-primary/30 bg-primary text-white'
+                          : 'border-border bg-surface text-ink-secondary hover:bg-subtle'
+                      )}
+                    >
+                      Kód számjegyei
+                    </button>
+                  ) : null}
                 </div>
                 {!hasBarcode ? (
                   <p className="text-hint text-ink-muted">
                     Nincs vonalkód a terméken — add meg a törzsadatban.
                   </p>
-                ) : null}
+                ) : (
+                  <p className="text-hint text-ink-muted">
+                    A számjegyek a sáv alatt alapból ki vannak — több hely a
+                    szkennelhető vonalkódnak.
+                  </p>
+                )}
               </fieldset>
 
               <FormField label="Termék neve" htmlFor="label-name">
@@ -328,7 +387,7 @@ export function ProductLabelPrintDialog({
             type="button"
             onClick={() => void handlePrint()}
             loading={printing}
-            disabled={!payload}
+            disabled={!payload || !scanSafety.ok}
           >
             <Printer className="size-3.5" aria-hidden />
             Nyomtatás

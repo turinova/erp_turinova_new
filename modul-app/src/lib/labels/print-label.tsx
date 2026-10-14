@@ -13,6 +13,8 @@ type PrintArgs = {
   unitShortform: string
   size: LabelSize
   amount: number
+  /** Digits under bars — default false (scan-safe). */
+  showHumanReadable?: boolean
 }
 
 const CONTAINER_ID = 'modul-product-label-print'
@@ -96,6 +98,7 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
       unitShortform={args.unitShortform}
       size={args.size}
       mode="print"
+      showHumanReadable={args.showHumanReadable ?? false}
     />
   ))
 
