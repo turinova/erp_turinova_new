@@ -208,7 +208,7 @@ export function SaleAssignCustomerDialog({
                   {
                     id: c.id,
                     name: c.name,
-                    email: null,
+                    email: c.email,
                     mobile: c.mobile,
                     billing_name: null,
                     billing_country: 'Magyarország',

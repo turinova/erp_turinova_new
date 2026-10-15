@@ -4,8 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import { StatusBadge } from '@/components/patterns/status-badge'
-import type { DocumentBillingState } from '@/components/sales/document-billing-fields'
+import {
+  billingHasAny,
+  type DocumentBillingState
+} from '@/components/sales/document-billing-fields'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { UserPlus } from 'lucide-react'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import {
   Dialog,
@@ -85,8 +90,16 @@ type Props = {
     customerId: string,
     customer: OptiCustomerOption | null
   ) => void
+  /** Badge: számla kiállítás várható (want + kitöltött billing). */
   invoice: boolean
   billing: DocumentBillingState | null
+  /** Pult: számla kapcsoló a confirmban (Square Charge). PDA: false. */
+  showInvoiceOption?: boolean
+  wantInvoice?: boolean
+  onWantInvoiceChange?: (want: boolean) => void
+  onEditBilling?: () => void
+  requireCustomer?: boolean
+  onQuickCustomer?: () => void
   overstockCount: number
   registerId?: string | null
   loading?: boolean
@@ -118,6 +131,12 @@ export function PosConfirmDialog({
   onCustomerChange,
   invoice,
   billing,
+  showInvoiceOption = false,
+  wantInvoice = false,
+  onWantInvoiceChange,
+  onEditBilling,
+  requireCustomer = false,
+  onQuickCustomer,
   overstockCount,
   registerId = null,
   loading = false,
@@ -307,6 +326,12 @@ export function PosConfirmDialog({
     mode === 'cash' ? 'Készpénz' : mode === 'card' ? 'Kártya' : 'Vegyes'
 
   function validateReview(): string | null {
+    if (requireCustomer && !customerId) {
+      return 'Ügyfél kötelező ehhez a pulthoz.'
+    }
+    if (wantInvoice && !(billing && billingHasAny(billing))) {
+      return 'Számlát kérnél — töltsd ki a számlázási adatokat.'
+    }
     if (!tendersBuild.ok) return tendersBuild.message
     if (!cashOk) {
       return `A kapott összeg legyen legalább ${formatMoneyFt(cashTender)} Ft.`
@@ -876,7 +901,7 @@ export function PosConfirmDialog({
                       {modeLabel}
                     </p>
                   </div>
-                  <div className="relative space-y-1">
+                  <div className="relative space-y-1.5">
                     <span className="text-[13px] font-medium text-ink">
                       Vevő
                     </span>
@@ -890,11 +915,54 @@ export function PosConfirmDialog({
                       placeholder="Ügyfél keresése…"
                       onChange={onCustomerChange}
                     />
+                    {onQuickCustomer ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className={cn(
+                          'w-full gap-1.5',
+                          touchUi ? 'h-11' : 'h-9'
+                        )}
+                        onClick={onQuickCustomer}
+                      >
+                        <UserPlus className="size-3.5" aria-hidden />
+                        Új ügyfél…
+                      </Button>
+                    ) : null}
                     {!canAdjustPaid && mode !== 'split' ? (
                       <p className="text-hint text-ink-muted">
                         Vendég: a teljes összeg megy be. Részfizetéshez válassz
                         vevőt.
                       </p>
+                    ) : null}
+                    {showInvoiceOption ? (
+                      <div className="space-y-2 border-t border-border pt-3">
+                        <Switch
+                          id="pos-confirm-invoice"
+                          checked={wantInvoice}
+                          label="Számlát kérek"
+                          description="Online számla az eladáshoz (nem AEE nyugta)."
+                          onCheckedChange={(checked) => {
+                            onWantInvoiceChange?.(checked)
+                            if (checked) onEditBilling?.()
+                          }}
+                        />
+                        {wantInvoice ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className={cn(
+                              'w-full',
+                              touchUi ? 'h-11' : 'h-9'
+                            )}
+                            onClick={() => onEditBilling?.()}
+                          >
+                            {billing && billingHasAny(billing)
+                              ? 'Számlázási adatok szerkesztése'
+                              : 'Számlázási adatok…'}
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>

@@ -38,12 +38,14 @@ opening + KP befizetés − KP visszatérítés + cash in − cash out
 
 ## 3. UX
 
-- POS: kapu (nyitó Ft) → topbar Műszakzárás / KP feladás  
-- 1 pénztár = auto; több = választó  
+- POS: kapu (nyitó Ft + WH/pénztár választó) → eladó UI-n **nincs** „Műszak nyitva” badge (gate = előfeltétel)  
+- Több: **Műszakzárás** / **KP feladás** / **KP betét**  
+- 1 pénztár = auto (eladó topbaron rejtve); több = gate-en select, eladáskor muted kontextus  
 - Lista: `/ertekesitesek/muszakok` — eltérés chip  
+- Záráskor a parkolt kosár (`modul-pos-held-v1`) törlődik (előtte warn, ha van)  
 
 ---
 
 ## 4. Edge (rövid)
 
-Nincs műszak → POS tilt · eltérés note kötelező · WH/register váltás open mellett tilt · előző záró default nyitáskor.
+Nincs műszak → POS tilt · eltérés note kötelező · WH/register váltás open mellett tilt · előző záró default nyitáskor · parkolt kosár záráskor elvész.

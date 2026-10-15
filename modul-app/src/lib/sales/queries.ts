@@ -808,6 +808,8 @@ export type SaleProductSearchItem = {
   stock_unit?: 'db' | 'fm'
   image_url: string | null
   size_label?: string
+  /** Tábla gépkód (POS megjelenítés / kód-prefix találat). */
+  machine_code?: string
 }
 
 function normalizeSearchKey(value: string): string {
@@ -884,11 +886,18 @@ export async function searchProductsForSale(
   const kind = opts?.kind ?? 'all'
   const includeMaterials = opts?.includeMaterials === true
 
-  const wantProduct = kind === 'all' || kind === 'product'
+  const { isSheetMachineCodeQuery } = await import('@/lib/sales/material-qty')
+  const sheetCodeQ = isSheetMachineCodeQuery(safe)
+  // 3+ jegyű tábla-kód: ne keverjen termék/szálas zajt a Mind módban.
+  const wantProduct =
+    (kind === 'all' || kind === 'product') &&
+    !(sheetCodeQ && includeMaterials && kind === 'all')
   const wantSheet =
     includeMaterials && (kind === 'all' || kind === 'sheet_material')
   const wantLinear =
-    includeMaterials && (kind === 'all' || kind === 'linear_material')
+    includeMaterials &&
+    (kind === 'all' || kind === 'linear_material') &&
+    !(sheetCodeQ && kind === 'all')
 
   // Gyors path: csak termék → lean POS RPC (token/unaccent/typo + on_hand)
   if (wantProduct && !wantSheet && !wantLinear) {
@@ -1129,7 +1138,7 @@ async function searchAccessoriesForSale(
   })
 }
 
-/** POS anyagkereső: egybeírt query → rövid prefix is (pl. korpusz…). */
+/** POS anyag névkereső: egybeírt query → rövid prefix is (pl. korpusz…). */
 function saleSearchLikeTerms(safe: string): string[] {
   const terms = [safe]
   const noSpace = safe.replace(/\s+/g, '')
@@ -1141,6 +1150,15 @@ function saleSearchLikeTerms(safe: string): string[] {
   return [...new Set(terms)]
 }
 
+function sheetMachineCodeScore(q: string, machineCode: string): number {
+  const nq = normalizeSearchKey(q)
+  const nc = normalizeSearchKey(machineCode)
+  if (!nq || !nc) return 0
+  if (nc === nq) return 1000
+  if (nc.startsWith(nq)) return 700 + Math.min(50, nq.length)
+  return 0
+}
+
 async function searchSheetsForSale(
   supabase: SupabaseClient,
   tenantId: string,
@@ -1148,29 +1166,16 @@ async function searchSheetsForSale(
   warehouseId: string,
   candidateLimit: number
 ): Promise<ScoredSaleHit[]> {
-  const likeTerms = saleSearchLikeTerms(safe)
-  const { data: manufacturerMatches } = await supabase
-    .from('manufacturers')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .or(likeTerms.map((t) => `name.ilike.%${t}%`).join(','))
-    .limit(30)
-  const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
-  const orParts = likeTerms.flatMap((t) => [
-    `name.ilike.%${t}%`,
-    `machine_code.ilike.%${t}%`
-  ])
-  if (manufacturerIds.length > 0) {
-    orParts.push(`manufacturer_id.in.(${manufacturerIds.join(',')})`)
-  }
+  const { isSheetMachineCodeQuery } = await import('@/lib/sales/material-qty')
+  const codeMode = isSheetMachineCodeQuery(safe)
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('sheet_materials')
     .select(
       `
       id,
       name,
+      machine_code,
       length_mm,
       width_mm,
       thickness_mm,
@@ -1182,8 +1187,19 @@ async function searchSheetsForSale(
     .eq('tenant_id', tenantId)
     .eq('active', true)
     .is('deleted_at', null)
-    .or(orParts.join(','))
     .limit(candidateLimit)
+
+  if (codeMode) {
+    // Prefix only — 312 → 312…; ne contains (%312%).
+    query = query.ilike('machine_code', `${safe}%`)
+  } else {
+    // Név only — nincs gyártó / machine_code a sima typeaheadben.
+    const likeTerms = saleSearchLikeTerms(safe)
+    const orParts = likeTerms.map((t) => `name.ilike.%${t}%`)
+    query = query.or(orParts.join(','))
+  }
+
+  const { data, error } = await query
 
   if (error) {
     console.error('searchSheetsForSale', error.message)
@@ -1220,11 +1236,21 @@ async function searchSheetsForSale(
     if (priceNet <= 0) continue
     const stock = onHandMap.get(row.id) ?? 0
     const size = materialSizeLabel(lengthMm, widthMm, thicknessMm)
+    const machineCode = (row.machine_code as string | null)?.trim() || ''
+    const score = codeMode
+      ? sheetMachineCodeScore(safe, machineCode)
+      : saleSearchMatchScore(safe, {
+          name: row.name,
+          sku: size,
+          barcode: null,
+          barcode_internal: null
+        })
+    if (codeMode && score <= 0) continue
     out.push({
       kind: 'sheet_material',
       id: row.id,
       name: row.name,
-      sku: size,
+      sku: machineCode || size,
       price_net: priceNet,
       tax_rate_percent: Number(tax?.rate_percent ?? 0),
       unit_shortform: 'm2',
@@ -1233,12 +1259,8 @@ async function searchSheetsForSale(
       area_or_length_factor: area,
       image_url: (row.image_url as string | null) ?? null,
       size_label: size,
-      _score: saleSearchMatchScore(safe, {
-        name: row.name,
-        sku: size,
-        barcode: null,
-        barcode_internal: null
-      })
+      ...(machineCode ? { machine_code: machineCode } : {}),
+      _score: score
     })
   }
   return out
@@ -1251,19 +1273,9 @@ async function searchLinearsForSale(
   warehouseId: string,
   candidateLimit: number
 ): Promise<ScoredSaleHit[]> {
+  // Szálas / munkalap: csak név (nincs gyártó).
   const likeTerms = saleSearchLikeTerms(safe)
-  const { data: manufacturerMatches } = await supabase
-    .from('manufacturers')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .or(likeTerms.map((t) => `name.ilike.%${t}%`).join(','))
-    .limit(30)
-  const manufacturerIds = (manufacturerMatches ?? []).map((m) => m.id)
   const orParts = likeTerms.map((t) => `name.ilike.%${t}%`)
-  if (manufacturerIds.length > 0) {
-    orParts.push(`manufacturer_id.in.(${manufacturerIds.join(',')})`)
-  }
 
   const { data, error } = await supabase
     .from('linear_materials')
@@ -1347,6 +1359,171 @@ async function searchLinearsForSale(
         barcode: null,
         barcode_internal: null
       })
+    })
+  }
+  return out
+}
+
+/** POS visszáru: eladás-találat egy konkrét termék (accessory) alapján. */
+export type SaleReturnByProductHit = {
+  saleId: string
+  saleNumber: string
+  customerName: string | null
+  fulfilledAt: string | null
+  saleTotalGross: number
+  status: string
+  itemId: string
+  itemName: string
+  quantitySold: number
+  quantityReturned: number
+  quantityReturnable: number
+  unitPriceGross: number
+}
+
+export type ListSalesForReturnByProductParams = {
+  tenantId: string
+  accessoryId: string
+  warehouseId: string
+  /** Inclusive local-day window as ISO (timestamptz). */
+  fromIso: string
+  toIso: string
+  limit?: number
+}
+
+/**
+ * Eladások, ahol a termék szerepel és van még returnable qty.
+ * Clerk flow: termék → dátum → lista (nem E-szám).
+ */
+export async function listSalesForReturnByProduct(
+  supabase: SupabaseClient,
+  params: ListSalesForReturnByProductParams
+): Promise<SaleReturnByProductHit[]> {
+  const limit = Math.min(40, Math.max(1, params.limit ?? 20))
+
+  const { data, error } = await supabase
+    .from('sales_order_items')
+    .select(
+      `
+      id,
+      quantity,
+      unit_price_gross,
+      name_snapshot,
+      sales_orders!inner (
+        id,
+        sale_number,
+        customer_name_snapshot,
+        total_gross,
+        status,
+        fulfilled_at,
+        warehouse_id,
+        tenant_id,
+        deleted_at
+      )
+    `
+    )
+    .eq('tenant_id', params.tenantId)
+    .eq('accessory_id', params.accessoryId)
+    .eq('item_kind', 'product')
+    .is('deleted_at', null)
+    .eq('sales_orders.tenant_id', params.tenantId)
+    .is('sales_orders.deleted_at', null)
+    .in('sales_orders.status', ['fulfilled', 'partially_returned'])
+    .eq('sales_orders.warehouse_id', params.warehouseId)
+    .gte('sales_orders.fulfilled_at', params.fromIso)
+    .lte('sales_orders.fulfilled_at', params.toIso)
+    .order('fulfilled_at', {
+      referencedTable: 'sales_orders',
+      ascending: false
+    })
+    .limit(limit)
+
+  if (error) {
+    console.error('listSalesForReturnByProduct', error.message)
+    throw new Error('Nem sikerült keresni a visszáruzható eladásokat.')
+  }
+
+  type Row = {
+    id: string
+    quantity: number
+    unit_price_gross: number
+    name_snapshot: string
+    sales_orders:
+      | {
+          id: string
+          sale_number: string
+          customer_name_snapshot: string | null
+          total_gross: number
+          status: string
+          fulfilled_at: string | null
+          warehouse_id: string
+          tenant_id: string
+          deleted_at: string | null
+        }
+      | {
+          id: string
+          sale_number: string
+          customer_name_snapshot: string | null
+          total_gross: number
+          status: string
+          fulfilled_at: string | null
+          warehouse_id: string
+          tenant_id: string
+          deleted_at: string | null
+        }[]
+  }
+
+  const rows = (data ?? []) as unknown as Row[]
+  if (rows.length === 0) return []
+
+  const itemIds = rows.map((r) => r.id)
+  const { data: retRows, error: retErr } = await supabase
+    .from('sales_return_items')
+    .select(
+      `
+      sales_order_item_id,
+      quantity,
+      deleted_at,
+      sales_returns!inner ( deleted_at )
+    `
+    )
+    .in('sales_order_item_id', itemIds)
+    .is('deleted_at', null)
+    .is('sales_returns.deleted_at', null)
+
+  if (retErr) {
+    console.error('listSalesForReturnByProduct returns', retErr.message)
+    throw new Error('Nem sikerült betölteni a korábbi visszárukat.')
+  }
+
+  const returnedByItem = new Map<string, number>()
+  for (const r of retRows ?? []) {
+    const id = r.sales_order_item_id as string
+    const qty = Number(r.quantity)
+    returnedByItem.set(id, (returnedByItem.get(id) ?? 0) + qty)
+  }
+
+  const out: SaleReturnByProductHit[] = []
+  for (const row of rows) {
+    const saleRaw = row.sales_orders
+    const sale = Array.isArray(saleRaw) ? saleRaw[0] : saleRaw
+    if (!sale) continue
+    const sold = Number(row.quantity)
+    const returned = returnedByItem.get(row.id) ?? 0
+    const returnable = Math.max(0, sold - returned)
+    if (returnable <= 0.0001) continue
+    out.push({
+      saleId: sale.id,
+      saleNumber: sale.sale_number,
+      customerName: sale.customer_name_snapshot,
+      fulfilledAt: sale.fulfilled_at,
+      saleTotalGross: Number(sale.total_gross),
+      status: sale.status,
+      itemId: row.id,
+      itemName: row.name_snapshot,
+      quantitySold: sold,
+      quantityReturned: returned,
+      quantityReturnable: returnable,
+      unitPriceGross: Number(row.unit_price_gross)
     })
   }
   return out

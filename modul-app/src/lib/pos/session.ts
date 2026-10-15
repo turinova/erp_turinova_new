@@ -120,3 +120,10 @@ export function clearPosSession() {
     // ignore
   }
 }
+
+export function isPosCartEmpty(
+  lines: PosCartLine[],
+  fees: PosFeeLine[]
+): boolean {
+  return lines.length === 0 && fees.length === 0
+}

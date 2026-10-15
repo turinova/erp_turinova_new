@@ -25,7 +25,7 @@ Napi bolt-cél (default): **60 POS eladás**.
 
 - Heti **egy** győztes (manager jelöli) — kávé / utalvány / műszakpreferencia.
 - **Nem** bérpótlék, **nem** nyilvános shaming TV.
-- Pulton: „Mai cél: X/60” soft jelzés.
+- Pulton: Több menü tetején `Mai cél X/60` (hét/hó tooltip) — nincs topbar sáv.
 
 ## Edge case
 

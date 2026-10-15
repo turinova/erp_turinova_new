@@ -27,18 +27,19 @@ Fullscreen · 50/50 (≥1024)
 Bal: kereső/scanner (tábla: Termék | Készlet | Bruttó egységár)
   chip: **Elöl a készletes** · **Mennyiség 1|2|5|10|100|1000** (qty-first)
   idle: **Gyors termékek** tile-rács (kurált, max 24)
-Jobb: kosár + sticky footer
-  Nettó | Fizetendő (nagy)
-  [Díj] [Kedv.] · [Készpénz · összeg] [Kártya · összeg] [Vegyes]
-<1024: tab **Termékek | Kosár (n)**; pay sticky a kosár panelen
+Jobb: kosár toolbar — **PDA** · Félrerak · Ürítés · **Visszáru** · (Visszahív) · **Több**
+  (affordance: PDA badge/info soft ha van handoff; Ürítés danger-soft; Visszáru info-soft; Díj `CirclePlus` + Kedv. warning-soft a totals mellett — Pay marad az egyetlen heavy primary)
+  sticky footer: totals · pay [KP] [Kártya] [⇄]
+  **Nincs eladó topbar** — max magasság a katalógusnak
+<1024: tab **Termékek | Kosár (n) | Több**; pay sticky a kosár panelen
 ```
 
 **Érintő / tablet (`usePosTouchMode`):**
-- Auto: `(pointer: coarse)` vagy `localStorage modul-pos-touch=1` (Több menü → Érintő mód).
+- Auto: `(pointer: coarse)` vagy `localStorage modul-pos-touch=1` (Több → Érintő mód).
 - Target ~44–48px (kereső h-12, qty, pay h-16); F4/F5 hint elrejtve.
-- Topbar: Ügyfél/Számla látható; Beállítás / KP / Zárás / Visszáru / Kilépés → **Több**.
+- Nincs Checkout topbar. **Visszáru** a kosár fejen (park warn ha van kosár). **Több**: cél, WH/pénztár ha >1, Új termék, KP, Zárás, Érintő, Kilépés. Gate: WH/pénztár.
 - Touch kosár: kártya sorok (nem tábla); confirm: nagyobb dialógus + készpénz **numpad**.
-- Pay CTA: `Készpénz · 12 450 Ft` (összeg a gombon).
+- Pay CTA: `Készpénz · 12 450 Ft` / `Kártya · …` egy sorban; Vegyes csak `⇄` ikon (`min-w-12`, title/aria).
 
 **Kereső (typeahead, nem full-text engine):**
 - RPC: `search_pos_products` (`20260596` compact): **spaced token-ALL** *vagy* **compact contains** (egybeírt `korpuszösszehúzó` ↔ `Korpusz összehúzó`).
@@ -54,11 +55,11 @@ Jobb: kosár + sticky footer
 - **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha barcode-szerű / nincs typeahead lista); miss → **PosMissProductDialog** (ha `allow_pos_quick_create`, default be): Gyors felvétel / Hozzárendelem / Mégse; különben flash. Match: client **UPPER** + DB **`.eq.` / RPC equality** (index); hygiene `20260605`.
 - **Barcode hot path (perf):** `/api/pos/barcode-lookup` = **lean staff auth** (`resolvePosLeanAuth`) + middleware skip + `Server-Timing` — **nem** nyúl a typeahead `/api/pos/search`-hez. Session LRU + single-flight + optimistic kosár (cache hit); stale/miss → rollback. PDA ugyanaz a client cache.
 - **Mount bootstrap (perf):** hydrate után `GET /api/pos/bootstrap?include=shift,catalog,chips` (blocking), majd soft `include=progress`. Typeahead/sale/invoice érintetlen. Settings → `include=catalog`. PDA handoff poll külön.
-- **Gyors felvétel / Új termék:** topbar **Új ügyfél** mellett **Új termék**. Mezők: név, vonalkód (+ **Generálás**, nem ír SKU-t), ÁFA, (egység csak ha több van), opcionális beszerzés+szorzó, bruttó. SKU a szerveren auto. → `sellable_pos=true`, kosár (`20260598`). Beírt bruttó → `accessories.price_gross` (polcár; ÁFA round-trip, pl. 4000 Ft @ 27% ne legyen 4001) — `20260599`.
+- **Gyors felvétel / Új termék:** Több → **Új termék** (+ miss/zero-hit CTA). Mezők: név, vonalkód (+ **Generálás**, nem ír SKU-t), ÁFA, (egység csak ha több van), opcionális beszerzés+szorzó, bruttó. SKU a szerveren auto. → `sellable_pos=true`, kosár (`20260598`). Beírt bruttó → `accessories.price_gross` (polcár; ÁFA round-trip, pl. 4000 Ft @ 27% ne legyen 4001) — `20260599`.
 - **Hozzárendelés:** keres a teljes aktív katalógusban (nem csak POS) → üres `barcode` vagy `barcode_internal` + `sellable_pos=true`.
 - Törzsadat: **Belső vonalkód → Generálás** (ugyanaz az EAN-13 allokátor).
 - **Qty-first:** előválasztott mennyiség a következő scan/tile/találat tapre (reset 1-re add után).
-- **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Munkalap; anyag ILIKE + prefix variánsok; tábla → qty dialógus **m²** (1 tizedes), munkalap → **m**; kosár lépés 0,1; stock out fulfillkor (`20260577`).
+- **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Munkalap; **név-only** ILIKE (nincs gyártó). Tábla gépkód: ha q `^\d{3}` → `machine_code` **prefix** (3+ digit, digit-throttle kivétel); Mind módban ilyenkor nincs termék/szálas zaj. Qty dialógus: **m²|tábla** / **m|szál** toggle (default tábla/szál; `fm` csak m); kosár canonical **m²/m**; preset 1/2/3; soft OOS warn; kosár lépés 0,1; stock out fulfillkor (`20260577`).
 - Golden: `node --env-file=.env.local scripts/golden-test-pos-search.mjs`
 
 **Gyors termékek (kurált rács, nem auto top-seller):**
@@ -71,15 +72,20 @@ Jobb: kosár + sticky footer
 
 Kosár: desktop tábla (név+chip | − qty + | **Bruttó összeg** + alatta kis **egységár** `Ft / egység` | ✕); touch: kártyák, ugyanez az összeg alatt. Kedvezménynél áthúzott eredeti + új; egységár listaár (+ −%). Díj a Bruttó összeg oszlopban. Expand (desktop): Bruttó egységár szerkesztő + sor-kedv. Confirm: Bruttó részösszeg → Nettó/ÁFA → Fizetendő; touch cash numpad. Készlethiány = warning soft + chip. Scan = success flash.
 
-**Visszáru (S5):** topbar **Visszáru** → eladás kereső → `/ertekesitesek/[id]?return=1`. Részletek: [30](30-visszaru-workflow.md).
+**Parkolt kosár (1 slot, sessionStorage `modul-pos-held-v1`):** kosár fejléc **Félrerak** / **Ürítés** / (ha van) **Visszahív** + **Parkolt törlése**. Max 1 parkolt / pénztár; második park tiltva amíg vissza nem hívod vagy törlöd. Üres aktív kosárra visszahív azonnal; nem üresre Confirm (felülír). Műszakzárás törli a parkoltat (előtte warn). Eladás siker → csak az aktív kosár ürül (parkolt megmarad).
+
+**Visszáru (S5):** kosár **Visszáru** → termék barcode/név + dátum chip → eladások a termékkel → wizard a POS-on (nem ERP). Haladó: eladás szám / ügyfél. Nyitott kosárnál: park ajánlat. Részletek: [30](30-visszaru-workflow.md).
+
+**KP mozgás:** Több → **KP feladás** (`out`) / **KP betét** (`in`) → `PosShiftCashMoveDialog` → toast.
 
 **Visszajelzés (POS):** egy inline sáv a topbar alatt (`PosFeedbackBar`).  
-Eladás sikerére **nincs toast** (duplikáció tilos). Toast csak mellékhatásra: clipboard (`Másolva`), ügyfél billing hint.
+Eladás sikerére **nincs toast** (duplikáció tilos). Toast mellékhatásra: clipboard, ügyfél billing hint, park/visszahív, KP mozgás.
 
 Success sáv: nagy **összeg** + eladásszám · fizetés mód · opcionális számla / AEE hint · auto-dismiss ~5 s.  
 Számla fail: egy **warning** sáv (nem error+success egyszerre).
 
-**Beállítások:** topbar → `PosSettingsDialog` (`max-w-3xl`): bal szekciók (Fizetés / Eladás / Gyors termékek / Kártyagép) + `MenuSelect`, plain HU.  
+**Beállítások:** Több → `PosSettingsDialog` (`max-w-3xl`): Fizetés / Eladás / Gyors termékek / Keresőszavak / Kártyagép.  
+Eladás: számla + ügyfél = **fizetés ablak** (confirm); nincs „Alapértelmezett fizetés” UI (holt).  
 Deep link: `/pos?beallitasok=1` · legacy `/pos/beallitasok` → redirect.
 
 ---
@@ -87,16 +93,15 @@ Deep link: `/pos?beallitasok=1` · legacy `/pos/beallitasok` → redirect.
 ## 2. Happy path
 
 ```
-Scan/keres → kosár → (díj/kedv/ügyfél) → Készpénz | Kártya | Vegyes
-→ Confirm (due + KP visszajáró / split)
-→ ha van kártya rész: Teya payment-request VAGY kézi megerősítés (pay-then-sale)
-→ create_sale(channel=pos, payments[]) → clear + focus
-→ success sáv (összeg-first, nincs toast) + AEE hint ha kell
+Scan/keres → kosár → Készpénz | Kártya | Vegyes
+→ Confirm: Vevő (default Vendég) · opcionális „Számlát kérek” + billing · due / KP
+→ ha van kártya rész: Teya / kézi → create_sale → clear + focus
+→ success sáv (összeg-first) + AEE hint ha kell
 ```
 
-Primary confirm: **Eladás rögzítése** (kézi kártyánál: **Sikeres — eladás rögzítése**; Teya: auto rögzítés SUCCESSFUL után).
+Primary confirm: **Eladás rögzítése**. Ügyfél / számla a **confirmban** (Square Charge), nem a topbaron. `require_customer` / üres billing → confirm validáció.
 
-Copy: badge **Eladás** (nem „Nyugta”); számla esetén **Számla**.
+Copy: badge **Eladás**; számla esetén **Számla**.
 
 **Gyorsbillentyűk (nem touch):** F2 kereső · F4 készpénz · F5 kártya · `+`/`−` utolsó sor qty (nem input fókuszban).
 
@@ -125,7 +130,8 @@ Policy (P0): allow_cash/card/split · stock_policy warn|block · max_discount_pe
 |---|---|
 | **P0+P1** | Shell, cart, search, barcode, pay sheet, session — **kész** |
 | **Tender** | Split, visszajáró, Teya/manual, shortcut, AEE hint — **kész** |
-| **Később** | Held cart, ePG API, qvik, Teya register OAuth UI, drag-reorder quick grid (nem scope) |
+| **Clerk UX** | Held cart (1 slot), kosár ürítés, in-POS return `from=pos`, KP betét — **kész** |
+| **Később** | ePG API, qvik, Teya register OAuth UI, drag-reorder quick grid, multi held (nem scope) |
 
 ---
 

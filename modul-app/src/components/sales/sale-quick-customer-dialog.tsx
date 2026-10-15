@@ -23,7 +23,16 @@ import {
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated: (customer: { id: string; name: string; mobile: string | null }) => void
+  onCreated: (customer: {
+    id: string
+    name: string
+    email: string
+    mobile: string | null
+  }) => void
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
 export function SaleQuickCustomerDialog({
@@ -33,14 +42,18 @@ export function SaleQuickCustomerDialog({
 }: Props) {
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
   const [mobile, setMobile] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
+  const [emailError, setEmailError] = useState<string | null>(null)
   const [mobileError, setMobileError] = useState<string | null>(null)
 
   function reset() {
     setName('')
+    setEmail('')
     setMobile('')
     setNameError(null)
+    setEmailError(null)
     setMobileError(null)
   }
 
@@ -52,17 +65,27 @@ export function SaleQuickCustomerDialog({
 
   function handleSubmit() {
     setNameError(null)
+    setEmailError(null)
     setMobileError(null)
     const trimmed = name.trim()
+    const emailTrimmed = email.trim()
     if (!trimmed) {
       setNameError('A név megadása kötelező.')
+      return
+    }
+    if (!emailTrimmed) {
+      setEmailError('Az e-mail megadása kötelező — ide megy a számla.')
+      return
+    }
+    if (!looksLikeEmail(emailTrimmed)) {
+      setEmailError('Érvénytelen e-mail cím.')
       return
     }
 
     startTransition(async () => {
       const result = await createCustomer({
         name: trimmed,
-        email: '',
+        email: emailTrimmed,
         mobile,
         smsNotification: false,
         billingName: '',
@@ -77,6 +100,7 @@ export function SaleQuickCustomerDialog({
 
       if (!result.ok) {
         if (result.fieldErrors?.name) setNameError(result.fieldErrors.name)
+        if (result.fieldErrors?.email) setEmailError(result.fieldErrors.email)
         if (result.fieldErrors?.mobile) setMobileError(result.fieldErrors.mobile)
         toast.error(result.message)
         return
@@ -86,6 +110,7 @@ export function SaleQuickCustomerDialog({
       onCreated({
         id: result.id,
         name: trimmed,
+        email: emailTrimmed,
         mobile: mobile.trim() || null
       })
       reset()
@@ -99,8 +124,8 @@ export function SaleQuickCustomerDialog({
         <DialogHeader>
           <DialogTitle>Új ügyfél</DialogTitle>
           <DialogDescription>
-            Gyors felvétel az eladáshoz. További adatokat később az Ügyfelek
-            menüben szerkeszthetsz.
+            Gyors felvétel. Az e-mailre mehet a számla — további adatokat később
+            az Ügyfelek menüben szerkeszthetsz.
           </DialogDescription>
         </DialogHeader>
 
@@ -116,6 +141,24 @@ export function SaleQuickCustomerDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
+              maxLength={160}
+              disabled={pending}
+            />
+          </FormField>
+          <FormField
+            label="E-mail"
+            htmlFor="sale-qc-email"
+            required
+            hint="Számla kézbesítés"
+            error={emailError ?? undefined}
+          >
+            <Input
+              id="sale-qc-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               maxLength={160}
               disabled={pending}
             />

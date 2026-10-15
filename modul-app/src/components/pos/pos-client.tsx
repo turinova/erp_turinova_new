@@ -11,27 +11,27 @@ import {
   useTransition
 } from 'react'
 import {
+  ArrowLeftRight,
   Banknote,
   ChevronDown,
-  FileText,
+  CirclePlus,
+  Inbox,
   LogOut,
   Minus,
   MoreHorizontal,
   Package,
+  Pause,
   Percent,
   Plus,
   Search,
   Settings,
-  Smartphone,
   Trash2,
-  Undo2,
-  User,
-  UserPlus,
-  X
+  Undo2
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/patterns/status-badge'
+import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
   PosConfirmDialog,
   type PosConfirmResult
@@ -66,7 +66,6 @@ import {
 } from '@/components/sales/document-billing-fields'
 import { PosInvoiceBillingDialog } from '@/components/pos/pos-invoice-billing-dialog'
 import { SaleQuickCustomerDialog } from '@/components/sales/sale-quick-customer-dialog'
-import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
@@ -83,6 +82,17 @@ import {
   peekPosBarcodeCache
 } from '@/lib/pos/pos-barcode-client'
 import {
+  activeCartToHeld,
+  clearPosHeldCart,
+  heldCartDue,
+  heldCartItemCount,
+  heldCartMatchesRegister,
+  loadPosHeldCart,
+  savePosHeldCart,
+  type PosHeldCart
+} from '@/lib/pos/held-cart'
+import {
+  isPosCartEmpty,
   loadPosSession,
   savePosSession,
   type PosCartLine,
@@ -114,6 +124,7 @@ import type { InvoicePaymentMethod } from '@/lib/invoicing/types'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import {
   isMaterialSaleKind,
+  isSheetMachineCodeQuery,
   saleLineCartKey,
   saleUnitLabel
 } from '@/lib/sales/material-qty'
@@ -240,6 +251,12 @@ export function PosClient({
   const [shiftLoading, setShiftLoading] = useState(true)
   const [closeOpen, setCloseOpen] = useState(false)
   const [cashMoveOpen, setCashMoveOpen] = useState(false)
+  const [held, setHeld] = useState<PosHeldCart | null>(null)
+  const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false)
+  const [recallOverwriteOpen, setRecallOverwriteOpen] = useState(false)
+  const [discardHeldOpen, setDiscardHeldOpen] = useState(false)
+  const [closeHeldWarnOpen, setCloseHeldWarnOpen] = useState(false)
+  const [returnCartWarnOpen, setReturnCartWarnOpen] = useState(false)
   const [cashMoveKind, setCashMoveKind] = useState<'in' | 'out'>('out')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [customers, setCustomers] = useState(initialCustomers)
@@ -249,7 +266,6 @@ export function PosClient({
     EMPTY_DOCUMENT_BILLING
   )
   const [invoiceOpen, setInvoiceOpen] = useState(false)
-  const [customerOpen, setCustomerOpen] = useState(false)
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false)
   const [feeDialogOpen, setFeeDialogOpen] = useState(false)
   const [returnSearchOpen, setReturnSearchOpen] = useState(false)
@@ -307,7 +323,6 @@ export function PosClient({
   const searchWrapRef = useRef<HTMLDivElement>(null)
   const searchResultsRef = useRef<HTMLDivElement>(null)
   const searchReqId = useRef(0)
-  const customerWrapRef = useRef<HTMLDivElement>(null)
   const scanLock = useRef(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -317,6 +332,13 @@ export function PosClient({
   const cardMethod = paymentMethods.find((p) =>
     isCardPaymentMethodName(p.name)
   )
+  const showCashPay = Boolean(cashMethod && allowCashPay)
+  const showCardPay = Boolean(cardMethod && allowCardPay)
+  const showSplitPay = Boolean(
+    cashMethod && cardMethod && allowSplitPay
+  )
+  const payButtonCount =
+    (showCashPay ? 1 : 0) + (showCardPay ? 1 : 0) + (showSplitPay ? 1 : 0)
 
   const applyCashRound = pendingPayMode === 'cash'
 
@@ -395,6 +417,16 @@ export function PosClient({
       setLines(saved.lines)
       setFees(saved.fees)
       setGlobalDiscPct(saved.globalDiscPct)
+    }
+    const parked = loadPosHeldCart()
+    if (
+      parked &&
+      heldCartMatchesRegister(parked, nextWh, preferred)
+    ) {
+      setHeld(parked)
+    } else if (parked) {
+      clearPosHeldCart()
+      setHeld(null)
     }
     setHydrated(true)
   }, [warehouses, registers, defaultWh])
@@ -656,6 +688,99 @@ export function PosClient({
     !settingsOpen
 
   /** Trap soft-reclaim; no-op placeholder a meglévő blur/close hívásokhoz. */
+  function clearActiveCart() {
+    setLines([])
+    setFees([])
+    setGlobalDiscPct(0)
+    setCustomerId('')
+    setWantInvoice(false)
+    setBilling(EMPTY_DOCUMENT_BILLING)
+    setExpandedIds(new Set())
+    setDiscOpen(false)
+    setQtyPreset(1)
+  }
+
+  function parkActiveCart() {
+    if (isPosCartEmpty(lines, fees)) return
+    if (loadPosHeldCart()) {
+      setFlash({
+        kind: 'error',
+        message: 'Már van parkolt kosár — hívd vissza vagy töröld.'
+      })
+      return
+    }
+    if (confirmOpen || qtyDialogHit || missContext) {
+      setFlash({
+        kind: 'error',
+        message: 'Zárd be a nyitott ablakot, majd parkold a kosarat.'
+      })
+      return
+    }
+    const custName =
+      customers.find((c) => c.id === customerId)?.name?.trim() || null
+    const next = activeCartToHeld(
+      {
+        warehouseId,
+        registerId,
+        customerId,
+        lines,
+        fees,
+        globalDiscPct
+      },
+      custName
+    )
+    if (!next) return
+    if (!savePosHeldCart(next)) {
+      setFlash({
+        kind: 'error',
+        message: 'Nem sikerült félretenni a kosarat (tároló tele?).'
+      })
+      return
+    }
+    clearActiveCart()
+    setHeld(next)
+    toast.success(
+      `Kosár félretéve · ${heldCartItemCount(next)} tétel · ${formatMoneyFt(heldCartDue(next))} Ft`
+    )
+    focusBarcode()
+  }
+
+  function applyHeldToActive(parked: PosHeldCart) {
+    setWarehouseId(parked.warehouseId)
+    if (parked.registerId) setRegisterId(parked.registerId)
+    setCustomerId(parked.customerId)
+    setLines(parked.lines)
+    setFees(parked.fees)
+    setGlobalDiscPct(parked.globalDiscPct)
+    clearPosHeldCart()
+    setHeld(null)
+    toast.success('Parkolt kosár visszahívva.')
+    if (!wide) setPane('cart')
+    focusBarcode()
+  }
+
+  function recallHeldCart() {
+    const parked = loadPosHeldCart()
+    if (!parked) {
+      setHeld(null)
+      return
+    }
+    if (!heldCartMatchesRegister(parked, warehouseId, registerId)) {
+      clearPosHeldCart()
+      setHeld(null)
+      setFlash({
+        kind: 'error',
+        message: 'A parkolt kosár másik pénztárhoz tartozik — törölve.'
+      })
+      return
+    }
+    if (!isPosCartEmpty(lines, fees)) {
+      setRecallOverwriteOpen(true)
+      return
+    }
+    applyHeldToActive(parked)
+  }
+
   function focusBarcode() {
     setEditingField(false)
   }
@@ -784,9 +909,6 @@ export function PosClient({
       ) {
         setSearchOpen(false)
       }
-      if (!customerWrapRef.current?.contains(t) && !inMenuSelect) {
-        setCustomerOpen(false)
-      }
       if (!moreWrapRef.current?.contains(t)) {
         setMoreOpen(false)
       }
@@ -805,6 +927,7 @@ export function PosClient({
   // Gépelés = typeahead. Query változáskor azonnal töröljük a sticky listát,
   // különben Enter a régi találatot rakja kosárba (vonalkód scan race).
   // Vonalkód / SKU-szerű: ne fuzzy-zzünk gépelés közben — Enter = exact lookup.
+  // Kivétel: tábla gépkód-kezdet (312…) → typeahead, ne barcode gate.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     const q = searchQ.trim()
@@ -812,17 +935,28 @@ export function PosClient({
     searchReqId.current += 1
     setSearchHits([])
     setSelectedSearchIndex(0)
-    // Pure digits: wait ≥4 (API also throttles 1–3). Names: ≥2.
-    const minLen = /^\d+$/.test(q) ? 4 : 2
+    const sheetCodeQ =
+      hasLapszabaszat &&
+      isSheetMachineCodeQuery(q) &&
+      searchKind !== 'product' &&
+      searchKind !== 'linear_material'
+    // Pure digits: wait ≥4 (termék). Tábla-kód: ≥3. Names: ≥2.
+    const minLen = sheetCodeQ ? 3 : /^\d+$/.test(q) ? 4 : 2
     if (q.length < minLen || !warehouseId) {
       setSearching(false)
       return
     }
-    if (looksLikeBarcode(q)) {
+    if (looksLikeBarcode(q) && !sheetCodeQ) {
       setSearching(false)
       setSearchOpen(false)
       return
     }
+    const includeMaterials =
+      hasLapszabaszat &&
+      (searchKind === 'sheet_material' ||
+        searchKind === 'linear_material' ||
+        q.length >= 4 ||
+        sheetCodeQ)
     searchTimer.current = setTimeout(() => {
       const reqId = ++searchReqId.current
       setSearching(true)
@@ -830,8 +964,7 @@ export function PosClient({
         inStockOnly: false,
         stockFirst,
         kind: searchKind,
-        // Materials only once the query is meaningful (avoids heavy short-q RPC)
-        includeMaterials: hasLapszabaszat && q.length >= 4
+        includeMaterials
       }).then((res) => {
         if (reqId !== searchReqId.current) return
         setSearching(false)
@@ -1154,10 +1287,6 @@ export function PosClient({
       setFlash({ kind: 'error', message: 'Vegyes fizetéshez kell készpénz és kártya mód.' })
       return
     }
-    if (posConfig.requireCustomer && !customerId) {
-      setFlash({ kind: 'error', message: 'Ügyfél kötelező ehhez a pulthoz.' })
-      return
-    }
     if (
       posConfig.stockPolicy === 'block' &&
       overstock.length > 0
@@ -1166,10 +1295,6 @@ export function PosClient({
         kind: 'error',
         message: `Készlethiány miatt nem indítható (${overstock.length} tétel).`
       })
-      return
-    }
-    if (wantInvoice && !billingHasAny(billing)) {
-      setFlash({ kind: 'error', message: 'Számlát kérnél — töltsd ki a számlázási adatokat.' })
       return
     }
     setFlash(null)
@@ -1310,14 +1435,7 @@ export function PosClient({
         })
       }
 
-      setLines([])
-      setFees([])
-      setGlobalDiscPct(0)
-      setCustomerId('')
-      setWantInvoice(false)
-      setBilling(EMPTY_DOCUMENT_BILLING)
-      setExpandedIds(new Set())
-      setDiscOpen(false)
+      clearActiveCart()
       setConfirmOpen(false)
       setPendingPayMode(null)
       focusBarcode()
@@ -1471,367 +1589,6 @@ export function PosClient({
         }}
       />
 
-      {/* Top bar */}
-      <header
-        className={cn(
-          'flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-surface px-3',
-          touch ? 'py-2.5' : 'py-2'
-        )}
-      >
-        <span className="text-[13px] font-semibold text-ink">POS</span>
-
-        {warehouses.length === 1 ? (
-          <span
-            className={cn(
-              'rounded-md border border-border bg-subtle px-2.5 text-body text-ink',
-              touch ? 'py-2' : 'py-1'
-            )}
-          >
-            {warehouses[0]!.name}
-          </span>
-        ) : (
-          <div className={touch ? 'min-w-[10rem] flex-1 sm:max-w-[14rem]' : 'w-[12rem]'}>
-            <MenuSelect
-              id="pos-wh"
-              value={warehouseId}
-              onChange={changeWarehouse}
-              allowEmpty={false}
-              options={warehouseOptions}
-            />
-          </div>
-        )}
-
-        {registersForWh.length === 1 ? (
-          <span
-            className={cn(
-              'rounded-md border border-border bg-subtle px-2.5 text-body text-ink',
-              touch ? 'py-2' : 'py-1'
-            )}
-          >
-            {registersForWh[0]!.name}
-          </span>
-        ) : (
-          <div className={touch ? 'min-w-[9rem] sm:max-w-[12rem]' : 'w-[11rem]'}>
-            <MenuSelect
-              id="pos-reg"
-              value={registerId}
-              onChange={changeRegister}
-              allowEmpty={false}
-              options={registerOptions}
-            />
-          </div>
-        )}
-
-        <StatusBadge tone="success" variant="outline">
-          Műszak nyitva
-        </StatusBadge>
-
-        <div ref={customerWrapRef} className="relative">
-          {selectedCustomer ? (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 text-body',
-                touch ? 'min-h-11 py-2' : 'py-1'
-              )}
-            >
-              <User className="size-3.5 text-ink-muted" aria-hidden />
-              {selectedCustomer.name}
-              <button
-                type="button"
-                aria-label="Ügyfél eltávolítása"
-                className={cn(
-                  'rounded hover:bg-subtle',
-                  touch ? 'p-1.5' : 'p-0.5'
-                )}
-                onClick={() => {
-                  setCustomerId('')
-                  if (!wantInvoice) setBilling(EMPTY_DOCUMENT_BILLING)
-                }}
-              >
-                <X className="size-3.5" />
-              </button>
-            </span>
-          ) : (
-            <Button
-              type="button"
-              variant="secondary"
-              size={touch ? 'md' : 'sm'}
-              className={touch ? 'h-11' : undefined}
-              onClick={() => setCustomerOpen((o) => !o)}
-            >
-              <User className="size-3.5" aria-hidden />
-              Ügyfél
-            </Button>
-          )}
-          {customerOpen && !selectedCustomer ? (
-            <div className="absolute left-0 z-30 mt-1 w-[18rem] rounded-md border border-border bg-surface p-2 shadow-md">
-              <CustomerMenuSelect
-                id="pos-customer"
-                value=""
-                seed={customers}
-                allowEmpty={false}
-                portal={false}
-                placeholder="Ügyfél keresése…"
-                onChange={(id, c) => {
-                  setCustomerId(id)
-                  if (c) {
-                    setCustomers((prev) =>
-                      prev.some((x) => x.id === c.id) ? prev : [c, ...prev]
-                    )
-                    setBilling(billingFromCustomer(c))
-                    if (wantInvoice) {
-                      toast.message('Számlázási adatok behúzva az ügyfélről.')
-                    }
-                  }
-                  setCustomerOpen(false)
-                  focusBarcode()
-                }}
-              />
-            </div>
-          ) : null}
-        </div>
-
-        <Button
-          type="button"
-          variant="secondary"
-          size={touch ? 'md' : 'sm'}
-          className={touch ? 'h-11' : undefined}
-          onClick={() => setQuickCustomerOpen(true)}
-        >
-          <UserPlus className="size-3.5" aria-hidden />
-          Új ügyfél
-        </Button>
-
-        {canWrite && posConfig.allowPosQuickCreate !== false ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size={touch ? 'md' : 'sm'}
-            className={touch ? 'h-11' : undefined}
-            onClick={openNewProduct}
-          >
-            <Package className="size-3.5" aria-hidden />
-            Új termék
-          </Button>
-        ) : null}
-
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          {hasPdaPos ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size={touch ? 'md' : 'sm'}
-              className={touch ? 'h-11' : undefined}
-              onClick={() => setHandoffInboxOpen(true)}
-            >
-              <Smartphone className="size-3.5" aria-hidden />
-              PDA kosarak
-              {handoffOpenCount > 0 ? (
-                <span className="ml-1 inline-flex min-w-[1.25rem] justify-center rounded-full bg-ink px-1.5 text-[11px] font-semibold tabular-nums text-surface">
-                  {handoffOpenCount > 25 ? '25+' : handoffOpenCount}
-                </span>
-              ) : null}
-            </Button>
-          ) : null}
-          {posConfig.showInvoiceButton ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size={touch ? 'md' : 'sm'}
-              aria-pressed={wantInvoice}
-              className={cn(
-                touch && 'h-11',
-                wantInvoice
-                  ? 'border-ink bg-ink text-surface hover:bg-ink/90'
-                  : undefined
-              )}
-              onClick={() => {
-                const c = customers.find((x) => x.id === customerId)
-                if (c) {
-                  setBilling(billingFromCustomer(c))
-                }
-                setInvoiceOpen(true)
-              }}
-            >
-              <FileText className="size-3.5" aria-hidden />
-              {wantInvoice ? 'Számla · szerkeszt' : 'Számlát kér'}
-            </Button>
-          ) : null}
-
-          <div ref={moreWrapRef} className="relative">
-            <Button
-              type="button"
-              variant="secondary"
-              size={touch ? 'md' : 'sm'}
-              className={touch ? 'h-11' : undefined}
-              aria-expanded={moreOpen}
-              aria-haspopup="menu"
-              onClick={() => setMoreOpen((o) => !o)}
-            >
-              <MoreHorizontal className="size-4" aria-hidden />
-              Több
-            </Button>
-            {moreOpen ? (
-              <div
-                role="menu"
-                className="absolute right-0 z-40 mt-1 w-[14rem] rounded-md border border-border bg-surface p-1 shadow-md"
-              >
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    setSettingsSection(undefined)
-                    setSettingsOpen(true)
-                  }}
-                >
-                  <Settings className="size-3.5" aria-hidden />
-                  Beállítások
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    setCashMoveKind('out')
-                    setCashMoveOpen(true)
-                  }}
-                >
-                  <Banknote className="size-3.5" aria-hidden />
-                  KP feladás
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    setCloseOpen(true)
-                  }}
-                >
-                  Műszakzárás
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    setReturnSearchOpen(true)
-                  }}
-                >
-                  <Undo2 className="size-3.5" aria-hidden />
-                  Visszáru
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
-                  onClick={() => {
-                    setTouch(!touch)
-                    setMoreOpen(false)
-                  }}
-                >
-                  {touch ? 'Sűrű (egér) mód' : 'Érintő mód'}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
-                  onClick={() => {
-                    setMoreOpen(false)
-                    router.push('/ertekesitesek')
-                  }}
-                >
-                  <LogOut className="size-3.5" aria-hidden />
-                  Kilépés
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </header>
-
-      {todayPosSales != null ? (
-        <div
-          className={cn(
-            'shrink-0 border-b border-border bg-surface px-3',
-            touch ? 'py-2' : 'py-1.5'
-          )}
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-            <div className="min-w-[10rem] flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-hint text-ink-secondary">
-                  Mai POS cél
-                  {todayPosSales >= dailyPosGoal ? (
-                    <span className="ml-1.5 font-medium text-success-ink">
-                      — megvan!
-                    </span>
-                  ) : null}
-                </p>
-                <p
-                  className={cn(
-                    'text-hint font-medium tabular-nums',
-                    todayPosSales >= dailyPosGoal
-                      ? 'text-success-ink'
-                      : 'text-ink'
-                  )}
-                >
-                  {todayPosSales} / {dailyPosGoal}
-                </p>
-              </div>
-              <div
-                className="mt-1.5 h-2 overflow-hidden rounded-full bg-subtle"
-                role="progressbar"
-                aria-valuenow={todayPosSales}
-                aria-valuemin={0}
-                aria-valuemax={dailyPosGoal}
-                aria-label="Napi POS eladás cél"
-              >
-                <div
-                  className={cn(
-                    'h-full rounded-full transition-[width] duration-300',
-                    todayPosSales >= dailyPosGoal
-                      ? 'bg-success-ink'
-                      : 'bg-ink'
-                  )}
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      dailyPosGoal > 0
-                        ? Math.round((todayPosSales / dailyPosGoal) * 100)
-                        : 0
-                    )}%`
-                  }}
-                />
-              </div>
-            </div>
-            <div className="flex shrink-0 items-stretch gap-3">
-              <div className="min-w-[4.5rem]" title="Bolt POS eladások ezen a héten">
-                <p className="text-hint text-ink-secondary">Hét</p>
-                <p className="text-body font-medium tabular-nums text-ink">
-                  {weekPosSales ?? '—'}
-                </p>
-              </div>
-              <div
-                className="min-w-[4.5rem]"
-                title="Bolt POS eladások ebben a hónapban"
-              >
-                <p className="text-hint text-ink-secondary">Hónap</p>
-                <p className="text-body font-medium tabular-nums text-ink">
-                  {monthPosSales ?? '—'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {flash ? (
         <PosFeedbackBar
           flash={flash}
@@ -1889,7 +1646,7 @@ export function PosClient({
       ) : null}
 
       {!wide ? (
-        <div className="flex shrink-0 gap-1.5 border-b border-border bg-surface px-3 py-2">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-surface px-3 py-2">
           <button
             type="button"
             className={cn(
@@ -1917,6 +1674,143 @@ export function PosClient({
               ? ` (${lines.length + fees.length})`
               : ''}
           </button>
+          <div ref={moreWrapRef} className="relative shrink-0">
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-11 gap-1.5"
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+              onClick={() => setMoreOpen((o) => !o)}
+            >
+              <MoreHorizontal className="size-4" aria-hidden />
+              Több
+            </Button>
+            {moreOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 z-40 mt-1 w-[14rem] rounded-md border border-border bg-surface p-1 shadow-md"
+              >
+                {todayPosSales != null ? (
+                  <p
+                    className="border-b border-border px-2.5 py-2 text-hint tabular-nums text-ink-secondary"
+                    title={`Hét ${weekPosSales ?? '—'} · Hónap ${monthPosSales ?? '—'}`}
+                  >
+                    Mai cél{' '}
+                    <span
+                      className={cn(
+                        'font-semibold',
+                        todayPosSales >= dailyPosGoal
+                          ? 'text-success-ink'
+                          : 'text-ink'
+                      )}
+                    >
+                      {todayPosSales}/{dailyPosGoal}
+                      {todayPosSales >= dailyPosGoal ? ' ✓' : ''}
+                    </span>
+                  </p>
+                ) : null}
+                {warehouses.length > 1 || registersForWh.length > 1 ? (
+                  <p className="border-b border-border px-2.5 py-2 text-hint text-ink-muted">
+                    {[
+                      warehouses.find((w) => w.id === warehouseId)?.name,
+                      selectedRegister?.name
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                ) : null}
+                {canWrite && posConfig.allowPosQuickCreate !== false ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                    onClick={() => {
+                      setMoreOpen(false)
+                      openNewProduct()
+                    }}
+                  >
+                    <Package className="size-3.5" aria-hidden />
+                    Új termék
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    setSettingsSection(undefined)
+                    setSettingsOpen(true)
+                  }}
+                >
+                  <Settings className="size-3.5" aria-hidden />
+                  Beállítások
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    setCashMoveKind('out')
+                    setCashMoveOpen(true)
+                  }}
+                >
+                  <Banknote className="size-3.5" aria-hidden />
+                  KP feladás
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    setCashMoveKind('in')
+                    setCashMoveOpen(true)
+                  }}
+                >
+                  <Banknote className="size-3.5" aria-hidden />
+                  KP betét
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    if (held) setCloseHeldWarnOpen(true)
+                    else setCloseOpen(true)
+                  }}
+                >
+                  Műszakzárás
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                  onClick={() => {
+                    setTouch(!touch)
+                    setMoreOpen(false)
+                  }}
+                >
+                  {touch ? 'Sűrű (egér) mód' : 'Érintő mód'}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                  onClick={() => {
+                    setMoreOpen(false)
+                    router.push('/ertekesitesek')
+                  }}
+                >
+                  <LogOut className="size-3.5" aria-hidden />
+                  Kilépés
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -1980,8 +1874,14 @@ export function PosClient({
                 } else if (e.key === 'Enter') {
                   e.preventDefault()
                   const q = searchQ.trim()
+                  const sheetCodeEnter =
+                    hasLapszabaszat &&
+                    isSheetMachineCodeQuery(q) &&
+                    searchKind !== 'product' &&
+                    searchKind !== 'linear_material'
                   // Vonalkód / EAN: mindig exact lookup — ne a fuzzy typeahead első sorát.
-                  if (looksLikeBarcode(q)) {
+                  // Tábla gépkód (312…) → lista pick, ne product barcode.
+                  if (looksLikeBarcode(q) && !sheetCodeEnter) {
                     void runBarcodeScan(q).then((ok) => {
                       if (!ok) return
                       setSearchQ('')
@@ -2377,12 +2277,17 @@ export function PosClient({
                                 {hit.name}
                               </div>
                               <div className="text-hint text-ink-secondary">
-                                {hit.sku}
                                 {hit.kind === 'sheet_material'
-                                  ? ' · Tábla'
+                                  ? [
+                                      hit.machine_code || null,
+                                      hit.size_label || hit.sku || null,
+                                      'Tábla'
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' · ')
                                   : hit.kind === 'linear_material'
-                                    ? ' · Munkalap'
-                                    : ''}
+                                    ? `${hit.sku} · Munkalap`
+                                    : hit.sku}
                                 {zero ? ' · Nincs készleten' : ''}
                                 {zero && (hit.kind ?? 'product') === 'product' ? (
                                   <>
@@ -2435,6 +2340,243 @@ export function PosClient({
             !wide && pane !== 'cart' && 'hidden'
           )}
         >
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-surface px-2 py-2 sm:px-3">
+            {hasPdaPos ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className={cn(
+                  touch ? 'h-11' : 'h-9',
+                  'gap-1.5',
+                  handoffOpenCount > 0 &&
+                    'border-info/30 bg-info-soft text-info-ink hover:bg-info-soft'
+                )}
+                onClick={() => setHandoffInboxOpen(true)}
+              >
+                <Inbox className="size-3.5" aria-hidden />
+                PDA
+                {handoffOpenCount > 0 ? (
+                  <span className="inline-flex min-w-[1.25rem] justify-center rounded-full bg-info px-1.5 text-[11px] font-semibold tabular-nums text-white">
+                    {handoffOpenCount > 25 ? '25+' : handoffOpenCount}
+                  </span>
+                ) : null}
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              className={cn(touch ? 'h-11' : 'h-9', 'gap-1.5')}
+              disabled={
+                isPosCartEmpty(lines, fees) ||
+                Boolean(held) ||
+                confirmOpen ||
+                qtyDialogHit != null
+              }
+              onClick={() => parkActiveCart()}
+            >
+              <Pause className="size-3.5" aria-hidden />
+              Félrerak
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className={cn(
+                touch ? 'h-11' : 'h-9',
+                'gap-1.5 border-danger/25 bg-danger-soft/50 text-danger-ink hover:bg-danger-soft'
+              )}
+              disabled={
+                isPosCartEmpty(lines, fees) ||
+                confirmOpen ||
+                qtyDialogHit != null
+              }
+              onClick={() => setClearCartConfirmOpen(true)}
+            >
+              <Trash2 className="size-3.5" aria-hidden />
+              Ürítés
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className={cn(
+                touch ? 'h-11' : 'h-9',
+                'gap-1.5 border-info/25 bg-info-soft/50 text-info-ink hover:bg-info-soft'
+              )}
+              onClick={() => {
+                if (!isPosCartEmpty(lines, fees)) {
+                  setReturnCartWarnOpen(true)
+                } else {
+                  setReturnSearchOpen(true)
+                }
+              }}
+            >
+              <Undo2 className="size-3.5" aria-hidden />
+              Visszáru
+            </Button>
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              {held ? (
+                <>
+                  <Button
+                    type="button"
+                    className={cn(touch ? 'h-11' : 'h-9', 'gap-1.5')}
+                    onClick={() => recallHeldCart()}
+                  >
+                    Visszahív
+                    <span className="text-hint opacity-90">
+                      {formatMoneyFt(heldCartDue(held))} Ft ·{' '}
+                      {heldCartItemCount(held)}
+                    </span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className={cn(touch ? 'h-11' : 'h-9')}
+                    onClick={() => setDiscardHeldOpen(true)}
+                  >
+                    Parkolt törlése
+                  </Button>
+                </>
+              ) : null}
+              {wide ? (
+                <div ref={moreWrapRef} className="relative">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={cn(touch ? 'h-11' : 'h-9', 'gap-1.5')}
+                    aria-expanded={moreOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setMoreOpen((o) => !o)}
+                  >
+                    <MoreHorizontal className="size-4" aria-hidden />
+                    Több
+                  </Button>
+                  {moreOpen ? (
+                    <div
+                      role="menu"
+                      className="absolute right-0 z-40 mt-1 w-[14rem] rounded-md border border-border bg-surface p-1 shadow-md"
+                    >
+                      {todayPosSales != null ? (
+                        <p
+                          className="border-b border-border px-2.5 py-2 text-hint tabular-nums text-ink-secondary"
+                          title={`Hét ${weekPosSales ?? '—'} · Hónap ${monthPosSales ?? '—'}`}
+                        >
+                          Mai cél{' '}
+                          <span
+                            className={cn(
+                              'font-semibold',
+                              todayPosSales >= dailyPosGoal
+                                ? 'text-success-ink'
+                                : 'text-ink'
+                            )}
+                          >
+                            {todayPosSales}/{dailyPosGoal}
+                            {todayPosSales >= dailyPosGoal ? ' ✓' : ''}
+                          </span>
+                        </p>
+                      ) : null}
+                      {warehouses.length > 1 || registersForWh.length > 1 ? (
+                        <p className="border-b border-border px-2.5 py-2 text-hint text-ink-muted">
+                          {[
+                            warehouses.find((w) => w.id === warehouseId)?.name,
+                            selectedRegister?.name
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      ) : null}
+                      {canWrite && posConfig.allowPosQuickCreate !== false ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                          onClick={() => {
+                            setMoreOpen(false)
+                            openNewProduct()
+                          }}
+                        >
+                          <Package className="size-3.5" aria-hidden />
+                          Új termék
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                        onClick={() => {
+                          setMoreOpen(false)
+                          setSettingsSection(undefined)
+                          setSettingsOpen(true)
+                        }}
+                      >
+                        <Settings className="size-3.5" aria-hidden />
+                        Beállítások
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                        onClick={() => {
+                          setMoreOpen(false)
+                          setCashMoveKind('out')
+                          setCashMoveOpen(true)
+                        }}
+                      >
+                        <Banknote className="size-3.5" aria-hidden />
+                        KP feladás
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                        onClick={() => {
+                          setMoreOpen(false)
+                          setCashMoveKind('in')
+                          setCashMoveOpen(true)
+                        }}
+                      >
+                        <Banknote className="size-3.5" aria-hidden />
+                        KP betét
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                        onClick={() => {
+                          setMoreOpen(false)
+                          if (held) setCloseHeldWarnOpen(true)
+                          else setCloseOpen(true)
+                        }}
+                      >
+                        Műszakzárás
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                        onClick={() => {
+                          setTouch(!touch)
+                          setMoreOpen(false)
+                        }}
+                      >
+                        {touch ? 'Sűrű (egér) mód' : 'Érintő mód'}
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2.5 text-left text-body hover:bg-subtle"
+                        onClick={() => {
+                          setMoreOpen(false)
+                          router.push('/ertekesitesek')
+                        }}
+                      >
+                        <LogOut className="size-3.5" aria-hidden />
+                        Kilépés
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
           <div className="min-h-0 flex-1 overflow-auto p-2 sm:p-3">
             {lines.length === 0 && fees.length === 0 ? (
               <div className="rounded-md border border-dashed border-border bg-surface p-6 text-center">
@@ -3064,7 +3206,7 @@ export function PosClient({
           </div>
 
           {/* Sticky footer */}
-          <div className="shrink-0 space-y-3 border-t border-border bg-surface p-3">
+          <div className="shrink-0 space-y-2 border-t border-border bg-surface p-3">
             {wantInvoice && billingHasAny(billing) ? (
               <button
                 type="button"
@@ -3087,8 +3229,8 @@ export function PosClient({
               </button>
             ) : null}
 
-            <div className="flex items-end justify-between gap-3">
-              <div>
+            <div className="flex items-end justify-between gap-2">
+              <div className="min-w-0">
                 <p className="text-[12px] font-medium text-ink-secondary">
                   Nettó összesen
                 </p>
@@ -3096,7 +3238,63 @@ export function PosClient({
                   {formatMoneyFt(totals.totalNet)} Ft
                 </p>
               </div>
-              <div className="text-right">
+
+              <div className="flex shrink-0 items-center gap-1 pb-0.5">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className={cn(
+                    'shrink-0 px-0 border-border bg-subtle/60 text-ink-secondary hover:bg-subtle hover:text-ink',
+                    touch ? 'size-9' : 'size-8'
+                  )}
+                  disabled={feeTypes.length === 0}
+                  aria-label="Díj hozzáadása"
+                  title="Díj hozzáadása"
+                  onClick={() => setFeeDialogOpen(true)}
+                >
+                  <CirclePlus
+                    className={touch ? 'size-4' : 'size-3.5'}
+                    aria-hidden
+                  />
+                </Button>
+                {discountsEnabled ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className={cn(
+                      'shrink-0 gap-0.5 px-1.5 tabular-nums border-warning/20 bg-warning-soft/50 text-warning-ink hover:bg-warning-soft',
+                      touch ? 'h-9 min-w-9' : 'h-8 min-w-8',
+                      globalDiscPct > 0 &&
+                        'border-warning/35 bg-warning-soft text-warning-ink'
+                    )}
+                    aria-label={
+                      globalDiscPct > 0
+                        ? `Kedvezmény ${globalDiscPct}% — szerkesztés`
+                        : 'Kedvezmény'
+                    }
+                    aria-expanded={discOpen || globalDiscPct > 0}
+                    title={
+                      globalDiscPct > 0
+                        ? `Kedvezmény −${globalDiscPct}%`
+                        : 'Kedvezmény'
+                    }
+                    onClick={() => setDiscOpen((o) => !o)}
+                  >
+                    {globalDiscPct > 0 ? (
+                      <span className="text-hint font-semibold">
+                        −{globalDiscPct}%
+                      </span>
+                    ) : (
+                      <Percent
+                        className={touch ? 'size-4' : 'size-3.5'}
+                        aria-hidden
+                      />
+                    )}
+                  </Button>
+                ) : null}
+              </div>
+
+              <div className="min-w-0 text-right">
                 <p className="text-[12px] font-medium text-ink-secondary">
                   Fizetendő (bruttó)
                 </p>
@@ -3117,111 +3315,83 @@ export function PosClient({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              {totals.globalDiscountAmount > 0 ? (
-                <StatusBadge tone="warning" variant="soft">
-                  Kedv. −{totals.globalDiscountPercent}% · −
-                  {formatMoneyFt(totals.globalDiscountAmount)} Ft
-                </StatusBadge>
-              ) : null}
-              {overstock.length > 0 ? (
-                <StatusBadge tone="warning" variant="solid">
-                  {overstock.length} készlethiányos
-                </StatusBadge>
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                className={touch ? 'h-12 min-w-[5.5rem]' : 'h-11 min-w-[5.5rem]'}
-                disabled={feeTypes.length === 0}
-                onClick={() => setFeeDialogOpen(true)}
-              >
-                <Plus className="size-4" aria-hidden />
-                Díj
-              </Button>
-              {discountsEnabled ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className={touch ? 'h-12 min-w-[5.5rem]' : 'h-11 min-w-[5.5rem]'}
-                onClick={() => setDiscOpen((o) => !o)}
-              >
-                <Percent className="size-4" aria-hidden />
-                Kedv.
-              </Button>
-              ) : null}
-              {discountsEnabled && (discOpen || globalDiscPct > 0) ? (
-                <div className="flex items-center gap-0.5">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className={cn(
-                      'shrink-0 p-0',
-                      touch ? 'size-12' : 'size-11'
-                    )}
-                    aria-label="Globál kedvezmény csökkentése"
-                    disabled={globalDiscPct <= 0}
-                    onClick={() =>
-                      setGlobalDiscPct((n) => Math.max(0, n - 1))
-                    }
-                  >
-                    <Minus className="size-4" />
-                  </Button>
-                  <Input
-                    id="pos-disc"
-                    type="number"
-                    min={0}
-                    max={maxDisc}
-                    className={cn(
-                      'w-14 text-center tabular-nums',
-                      touch ? 'h-12 text-[16px]' : 'h-11'
-                    )}
-                    value={globalDiscPct}
-                    aria-label="Globál kedvezmény %"
-                    onFocus={() => setEditingField(true)}
-                    onBlur={() => {
-                      setEditingField(false)
-                      setTimeout(focusBarcode, 100)
-                    }}
-                    onChange={(e) => {
-                      const n = Number(e.target.value)
-                      setGlobalDiscPct(
-                        Number.isFinite(n)
-                          ? Math.min(maxDisc, Math.max(0, n))
-                          : 0
-                      )
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className={cn(
-                      'shrink-0 p-0',
-                      touch ? 'size-12' : 'size-11'
-                    )}
-                    aria-label="Globál kedvezmény növelése"
-                    disabled={globalDiscPct >= maxDisc}
-                    onClick={() =>
-                      setGlobalDiscPct((n) => Math.min(maxDisc, n + 1))
-                    }
-                  >
-                    <Plus className="size-4" />
-                  </Button>
-                  <span className="text-hint text-ink-secondary">%</span>
-                </div>
-              ) : null}
-            </div>
+            {discountsEnabled && (discOpen || globalDiscPct > 0) ? (
+              <div className="flex items-center justify-center gap-0.5">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className={cn('shrink-0 p-0', touch ? 'size-9' : 'size-8')}
+                  aria-label="Globál kedvezmény csökkentése"
+                  disabled={globalDiscPct <= 0}
+                  onClick={() =>
+                    setGlobalDiscPct((n) => Math.max(0, n - 1))
+                  }
+                >
+                  <Minus className="size-3.5" />
+                </Button>
+                <Input
+                  id="pos-disc"
+                  type="number"
+                  min={0}
+                  max={maxDisc}
+                  className={cn(
+                    'w-12 text-center tabular-nums',
+                    touch ? 'h-9 text-[16px]' : 'h-8'
+                  )}
+                  value={globalDiscPct}
+                  aria-label="Globál kedvezmény %"
+                  onFocus={() => setEditingField(true)}
+                  onBlur={() => {
+                    setEditingField(false)
+                    if (globalDiscPct <= 0) setDiscOpen(false)
+                    setTimeout(focusBarcode, 100)
+                  }}
+                  onChange={(e) => {
+                    const n = Number(e.target.value)
+                    setGlobalDiscPct(
+                      Number.isFinite(n)
+                        ? Math.min(maxDisc, Math.max(0, n))
+                        : 0
+                    )
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className={cn('shrink-0 p-0', touch ? 'size-9' : 'size-8')}
+                  aria-label="Globál kedvezmény növelése"
+                  disabled={globalDiscPct >= maxDisc}
+                  onClick={() =>
+                    setGlobalDiscPct((n) => Math.min(maxDisc, n + 1))
+                  }
+                >
+                  <Plus className="size-3.5" />
+                </Button>
+                <span className="text-hint text-ink-secondary">%</span>
+              </div>
+            ) : null}
 
             {paymentMethods.length === 0 ? (
               <p className="text-hint text-warning-ink">
                 Nincs aktív fizetési mód — Törzsadatok.
               </p>
+            ) : !cashMethod && !cardMethod ? (
+              <p className="text-hint text-warning-ink">
+                Állíts be készpénz vagy kártya fizetési módot a
+                Törzsadatokban.
+              </p>
             ) : (
-              <div className="grid grid-cols-2 gap-2.5">
-                {cashMethod && allowCashPay ? (
+              <div
+                className={cn(
+                  'grid gap-2.5',
+                  payButtonCount >= 3
+                    ? 'grid-cols-[1fr_1fr_auto]'
+                    : payButtonCount === 2
+                      ? 'grid-cols-2'
+                      : 'grid-cols-1'
+                )}
+              >
+                {showCashPay ? (
                   <Button
                     type="button"
                     className={cn(
@@ -3248,7 +3418,7 @@ export function PosClient({
                     </span>
                   </Button>
                 ) : null}
-                {cardMethod && allowCardPay ? (
+                {showCardPay ? (
                   <Button
                     type="button"
                     variant="secondary"
@@ -3276,28 +3446,24 @@ export function PosClient({
                     </span>
                   </Button>
                 ) : null}
-                {cashMethod && cardMethod && allowSplitPay ? (
+                {showSplitPay ? (
                   <Button
                     type="button"
                     variant="secondary"
                     className={cn(
-                      'col-span-2 font-semibold',
-                      touch ? 'h-12 text-[15px]' : 'h-11 text-[14px]'
+                      'shrink-0 px-0',
+                      touch ? 'h-16 min-w-12' : 'h-14 min-w-11'
                     )}
                     disabled={lines.length === 0 || pending}
+                    aria-label="Vegyes fizetés — KP + kártya"
+                    title="Vegyes fizetés — KP + kártya"
                     onClick={() => openPay('split')}
                   >
-                    Vegyes (KP + kártya)
-                    {lines.length > 0
-                      ? ` · ${formatMoneyFt(totals.due)} Ft`
-                      : ''}
+                    <ArrowLeftRight
+                      className={touch ? 'size-5' : 'size-4'}
+                      aria-hidden
+                    />
                   </Button>
-                ) : null}
-                {!cashMethod && !cardMethod ? (
-                  <p className="col-span-2 text-hint text-warning-ink">
-                    Állíts be készpénz vagy kártya fizetési módot a
-                    Törzsadatokban.
-                  </p>
                 ) : null}
               </div>
             )}
@@ -3319,7 +3485,106 @@ export function PosClient({
       <PosReturnSearchDialog
         open={returnSearchOpen}
         onOpenChange={setReturnSearchOpen}
+        warehouseId={warehouseId}
+        paymentMethods={paymentMethods}
       />
+
+      <ConfirmDialog
+        open={clearCartConfirmOpen}
+        onOpenChange={setClearCartConfirmOpen}
+        title="Kosár ürítése"
+        description={`Ürítsem az aktív kosarat? (${lines.length + fees.length} tétel). A parkolt kosár megmarad.`}
+        confirmLabel="Ürítés"
+        cancelLabel="Mégse"
+        variant="danger"
+        onConfirm={() => {
+          clearActiveCart()
+          setClearCartConfirmOpen(false)
+          focusBarcode()
+        }}
+      />
+
+      <ConfirmDialog
+        open={recallOverwriteOpen}
+        onOpenChange={setRecallOverwriteOpen}
+        title="Parkolt kosár visszahívása"
+        description="Az aktív kosár felülíródik a parkolttal. Folytatod?"
+        confirmLabel="Felülír"
+        cancelLabel="Mégse"
+        variant="danger"
+        onConfirm={() => {
+          const parked = loadPosHeldCart()
+          setRecallOverwriteOpen(false)
+          if (parked) applyHeldToActive(parked)
+        }}
+      />
+
+      <ConfirmDialog
+        open={discardHeldOpen}
+        onOpenChange={setDiscardHeldOpen}
+        title="Parkolt kosár törlése"
+        description="A félretett kosár végleg törlődik."
+        confirmLabel="Törlés"
+        cancelLabel="Mégse"
+        variant="danger"
+        onConfirm={() => {
+          clearPosHeldCart()
+          setHeld(null)
+          setDiscardHeldOpen(false)
+          toast.message('Parkolt kosár törölve.')
+        }}
+      />
+
+      <ConfirmDialog
+        open={closeHeldWarnOpen}
+        onOpenChange={setCloseHeldWarnOpen}
+        title="Műszakzárás"
+        description="Van parkolt kosár — záráskor törlődik. Folytatod a zárást?"
+        confirmLabel="Zárás folytatása"
+        cancelLabel="Mégse"
+        variant="primary"
+        onConfirm={() => {
+          setCloseHeldWarnOpen(false)
+          setCloseOpen(true)
+        }}
+      />
+
+      <ConfirmDialog
+        open={returnCartWarnOpen}
+        onOpenChange={setReturnCartWarnOpen}
+        title="Visszáru"
+        description={
+          held
+            ? 'Nyitott kosár van, és már van parkolt kosár. Folytatod a visszárut? (Az aktív kosár megmarad a háttérben.)'
+            : 'Nyitott kosár van. Parkoljam félre, mielőtt a visszárura mész?'
+        }
+        confirmLabel={held ? 'Folytatás' : 'Félrerak és folytatás'}
+        cancelLabel="Mégse"
+        variant="primary"
+        onConfirm={() => {
+          setReturnCartWarnOpen(false)
+          if (!held && !isPosCartEmpty(lines, fees)) {
+            parkActiveCart()
+          }
+          setReturnSearchOpen(true)
+        }}
+      >
+        {!held ? (
+          <div className="px-0 pb-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full"
+              onClick={() => {
+                setReturnCartWarnOpen(false)
+                setReturnSearchOpen(true)
+              }}
+            >
+              Folytatás park nélkül
+            </Button>
+          </div>
+        ) : null}
+      </ConfirmDialog>
 
       <PosSettingsDialog
         open={settingsOpen}
@@ -3366,7 +3631,7 @@ export function PosClient({
             id: c.id,
             name: c.name,
             mobile: c.mobile,
-            email: null as string | null,
+            email: c.email,
             billing_name: null as string | null,
             billing_country: 'Magyarország',
             billing_city: null as string | null,
@@ -3391,7 +3656,7 @@ export function PosClient({
         open={invoiceOpen}
         onOpenChange={(open) => {
           setInvoiceOpen(open)
-          if (!open) setTimeout(focusBarcode, 100)
+          if (!open && !confirmOpen) setTimeout(focusBarcode, 100)
         }}
         initial={billing}
         canClear={wantInvoice}
@@ -3474,12 +3739,34 @@ export function PosClient({
               prev.some((x) => x.id === c.id) ? prev : [c, ...prev]
             )
             setBilling(billingFromCustomer(c))
+            if (wantInvoice) {
+              toast.message('Számlázási adatok behúzva az ügyfélről.')
+            }
+          } else if (!wantInvoice) {
+            setBilling(EMPTY_DOCUMENT_BILLING)
           }
         }}
         invoice={wantInvoice && billingHasAny(billing)}
-        billing={
-          wantInvoice && billingHasAny(billing) ? billing : null
-        }
+        billing={wantInvoice ? billing : null}
+        showInvoiceOption={posConfig.showInvoiceButton}
+        wantInvoice={wantInvoice}
+        onWantInvoiceChange={(want) => {
+          setWantInvoice(want)
+          if (!want) {
+            setBilling(EMPTY_DOCUMENT_BILLING)
+            return
+          }
+          const c = customers.find((x) => x.id === customerId)
+          if (c) setBilling(billingFromCustomer(c))
+          setInvoiceOpen(true)
+        }}
+        onEditBilling={() => {
+          const c = customers.find((x) => x.id === customerId)
+          if (c) setBilling(billingFromCustomer(c))
+          setInvoiceOpen(true)
+        }}
+        requireCustomer={posConfig.requireCustomer}
+        onQuickCustomer={() => setQuickCustomerOpen(true)}
         overstockCount={overstock.length}
         registerId={registerId || null}
         loading={pending}
@@ -3494,10 +3781,9 @@ export function PosClient({
             shiftId={openShiftId}
             onClosed={() => {
               setOpenShiftId(null)
-              setLines([])
-              setFees([])
-              setGlobalDiscPct(0)
-              setCustomerId('')
+              clearActiveCart()
+              clearPosHeldCart()
+              setHeld(null)
             }}
           />
           <PosShiftCashMoveDialog
@@ -3506,7 +3792,11 @@ export function PosClient({
             shiftId={openShiftId}
             kind={cashMoveKind}
             onDone={() => {
-              /* expected cash updates on next close preview */
+              toast.success(
+                cashMoveKind === 'in'
+                  ? 'KP betét rögzítve.'
+                  : 'KP feladás rögzítve.'
+              )
             }}
           />
         </>

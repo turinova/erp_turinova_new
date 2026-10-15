@@ -41,6 +41,9 @@ import type {
   TenantPosSettings,
   TeyaEnv
 } from '@/lib/pos/settings-types'
+
+/** Holt UI — megőrizzük mentéskor, amíg a pult nem használja. */
+type PreservedPayMode = PosPayModeSetting | null
 import type { PosRegister } from '@/lib/pos/shifts'
 import { cn } from '@/lib/utils'
 import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
@@ -135,8 +138,7 @@ export function PosSettingsDialog({
   const [allowCash, setAllowCash] = useState(true)
   const [allowCard, setAllowCard] = useState(true)
   const [allowSplit, setAllowSplit] = useState(true)
-  const [defaultPayMode, setDefaultPayMode] =
-    useState<PosPayModeSetting | ''>('')
+  const preservedDefaultPayMode = useRef<PreservedPayMode>(null)
   const [stockPolicy, setStockPolicy] = useState<PosStockPolicy>('warn')
   const [maxDiscount, setMaxDiscount] = useState(100)
   const [showInvoice, setShowInvoice] = useState(true)
@@ -187,7 +189,7 @@ export function PosSettingsDialog({
     setAllowCash(s.allow_cash !== false)
     setAllowCard(s.allow_card !== false)
     setAllowSplit(s.allow_split !== false)
-    setDefaultPayMode(s.default_pay_mode ?? '')
+    preservedDefaultPayMode.current = s.default_pay_mode ?? null
     setStockPolicy(s.stock_policy === 'block' ? 'block' : 'warn')
     setMaxDiscount(s.max_discount_percent ?? 100)
     setShowInvoice(s.show_invoice_button !== false)
@@ -298,15 +300,9 @@ export function PosSettingsDialog({
     }
   }, [open, section, quickAddQ, registerId, registers, quickItems])
 
-  // Ha a default mód már nem engedélyezett, ürítsük.
   useEffect(() => {
-    if (defaultPayMode === 'cash' && !allowCash) setDefaultPayMode('')
-    if (defaultPayMode === 'card' && !allowCard) setDefaultPayMode('')
-    if (defaultPayMode === 'split' && (!allowSplit || !allowCash || !allowCard)) {
-      setDefaultPayMode('')
-    }
     if (allowSplit && (!allowCash || !allowCard)) setAllowSplit(false)
-  }, [allowCash, allowCard, allowSplit, defaultPayMode])
+  }, [allowCash, allowCard, allowSplit])
 
   const hasSecret = hasStoredSecret || Boolean(clientSecret.trim())
 
@@ -349,18 +345,6 @@ export function PosSettingsDialog({
     allowCard,
     allowSplit
   ])
-
-  const defaultPayOptions = useMemo(() => {
-    const opts: Array<{ value: string; label: string }> = [
-      { value: '', label: 'Nincs — a kezelő választ' }
-    ]
-    if (allowCash) opts.push({ value: 'cash', label: 'Készpénz' })
-    if (allowCard) opts.push({ value: 'card', label: 'Kártya' })
-    if (allowSplit && allowCash && allowCard) {
-      opts.push({ value: 'split', label: 'Vegyes (KP + kártya)' })
-    }
-    return opts
-  }, [allowCash, allowCard, allowSplit])
 
   const stockOptions = [
     {
@@ -479,7 +463,7 @@ export function PosSettingsDialog({
         allowCash,
         allowCard,
         allowSplit,
-        defaultPayMode: defaultPayMode || null,
+        defaultPayMode: preservedDefaultPayMode.current,
         stockPolicy,
         maxDiscountPercent: maxDiscount,
         showInvoiceButton: showInvoice,
@@ -668,28 +652,11 @@ export function PosSettingsDialog({
                           <span className="mt-0.5 block text-hint text-ink-secondary">
                             {!allowCash || !allowCard
                               ? 'Előbb kapcsold be a készpénzt és a kártyát is.'
-                              : 'Egy eladáson belül mindkettő.'}
+                              : 'Ritka · ⇄ ikon a fizetés sorában.'}
                           </span>
                         </span>
                       </label>
                     </div>
-
-                    <FormField
-                      label="Alapértelmezett mód"
-                      htmlFor="pos-def-pay"
-                      hint="Ha beállítod, ez lesz a javasolt gomb — a kezelő még válthat."
-                    >
-                      <MenuSelect
-                        id="pos-def-pay"
-                        value={defaultPayMode}
-                        options={defaultPayOptions}
-                        allowEmpty={false}
-                        disabled={!canWrite || pending}
-                        onChange={(v) =>
-                          setDefaultPayMode(v as PosPayModeSetting | '')
-                        }
-                      />
-                    </FormField>
                   </section>
                 ) : null}
 
@@ -725,7 +692,7 @@ export function PosSettingsDialog({
                       <FormField
                         label="Legnagyobb kedvezmény (%)"
                         htmlFor="pos-max-disc"
-                        hint="0 = nincs kedvezmény a pulton."
+                        hint="0 = nincs % gomb a pult összesítőjén."
                       >
                         <Input
                           id="pos-max-disc"
@@ -757,9 +724,12 @@ export function PosSettingsDialog({
                           onChange={(e) => setShowInvoice(e.target.checked)}
                         />
                         <span>
-                          <span className="font-medium">Számla gomb</span>
+                          <span className="font-medium">
+                            Számla a fizetésnél
+                          </span>
                           <span className="mt-0.5 block text-hint text-ink-secondary">
-                            Megjelenik a pult tetején („Számlát kér”).
+                            A fizetés ablakban megjelenik a „Számlát kérek”
+                            kapcsoló.
                           </span>
                         </span>
                       </label>
@@ -775,10 +745,11 @@ export function PosSettingsDialog({
                         />
                         <span>
                           <span className="font-medium">
-                            Ügyfél kötelező
+                            Ügyfél kötelező fizetésnél
                           </span>
                           <span className="mt-0.5 block text-hint text-ink-secondary">
-                            Eladás előtt ki kell választani az ügyfelet.
+                            A fizetés ablakban ki kell választani a vevőt
+                            (Vendég nem elég).
                           </span>
                         </span>
                       </label>
@@ -817,8 +788,8 @@ export function PosSettingsDialog({
                             Gyors felvétel a pulton
                           </span>
                           <span className="mt-0.5 block text-hint text-ink-secondary">
-                            Ismeretlen vonalkód / nincs találat → új termék vagy
-                            hozzárendelés meglévőhöz. Default be.
+                            Ismeretlen vonalkódnál miss dialógus, vagy Több → Új
+                            termék. Default be.
                           </span>
                         </span>
                       </label>
@@ -847,7 +818,8 @@ export function PosSettingsDialog({
                             POS katalógus szinkron vonalkódból
                           </Button>
                           <p className="mt-1.5 text-hint text-ink-muted">
-                            Van barcode/internal → Elérhető a POS-on; nincs →
+                            Óvatosan — sok termék POS-láthatóságát átírja. Van
+                            barcode/internal → Elérhető a POS-on; nincs →
                             kikapcsol. Kézi kivételeket utána állítsd vissza.
                           </p>
                         </div>

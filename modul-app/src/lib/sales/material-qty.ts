@@ -1,5 +1,13 @@
 /** Eladási mennyiség (m² / m) és készlet-átváltás — P0 anyag eladás. */
 
+/**
+ * Tábla gépkód-kezdet a POS keresőben: legalább 3 számjeggyel indul
+ * (pl. `312`, `312ABC`). Ilyenkor machine_code prefix match, nem név.
+ */
+export function isSheetMachineCodeQuery(q: string): boolean {
+  return /^\d{3}/.test(q.trim())
+}
+
 export type SaleLineKind =
   | 'product'
   | 'fee'
@@ -21,6 +29,98 @@ export function parseSaleMaterialQtyInput(raw: string): number | null {
   if (!Number.isFinite(value) || value <= 0) return null
   const rounded = roundSaleMaterialQty(value)
   return rounded > 0 ? rounded : null
+}
+
+/** POS anyag dialógus: eladási (m²/m) vs készlet darab (tábla/szál). */
+export type MaterialQtyInputMode = 'sell' | 'stock'
+
+const MAX_STOCK_PIECES = 999
+const MAX_SELL_QTY = 9999
+
+/** Tábla / szál darab: min 0,1, max 999, 1 tizedes (pl. 2,5 tábla). */
+export function parseStockPieceInput(raw: string): number | null {
+  const normalized = raw.trim().replace(/\s/g, '').replace(',', '.')
+  if (!normalized) return null
+  const value = Number(normalized)
+  if (!Number.isFinite(value) || value <= 0) return null
+  const rounded = roundSaleMaterialQty(value)
+  if (!(rounded > 0) || rounded > MAX_STOCK_PIECES) return null
+  return rounded
+}
+
+/** fm szálasnál nincs külön „szál” mód — csak méter. */
+export function materialQtyAllowsStockMode(
+  kind: 'sheet_material' | 'linear_material',
+  stockUnit?: 'db' | 'fm' | null
+): boolean {
+  if (kind === 'sheet_material') return true
+  return stockUnit !== 'fm'
+}
+
+export function materialQtyStockLabel(
+  kind: 'sheet_material' | 'linear_material'
+): string {
+  return kind === 'sheet_material' ? 'tábla' : 'szál'
+}
+
+/** Eladási qty (m²/m) ← dialógus input. */
+export function sellQtyFromMaterialInput(input: {
+  mode: MaterialQtyInputMode
+  raw: string
+  kind: 'sheet_material' | 'linear_material'
+  factor: number
+  stockUnit?: 'db' | 'fm' | null
+}): { ok: true; sellQty: number } | { ok: false; error: string } {
+  const sellUnit = saleUnitLabel(input.kind)
+  const stockLabel = materialQtyStockLabel(input.kind)
+  const allowsStock = materialQtyAllowsStockMode(input.kind, input.stockUnit)
+  const mode =
+    input.mode === 'stock' && allowsStock ? 'stock' : 'sell'
+
+  if (mode === 'stock') {
+    if (!(input.factor > 0)) {
+      return { ok: false, error: 'Hiányzó méret — nem lehet tábla/szál szerint számolni.' }
+    }
+    const pieces = parseStockPieceInput(input.raw)
+    if (pieces == null) {
+      return {
+        ok: false,
+        error: `Adj meg legalább 0,1 ${stockLabel} (max ${MAX_STOCK_PIECES}).`
+      }
+    }
+    const sellQty = roundSaleMaterialQty(pieces * input.factor)
+    if (!(sellQty > 0) || sellQty > MAX_SELL_QTY) {
+      return { ok: false, error: 'Érvénytelen mennyiség.' }
+    }
+    return { ok: true, sellQty }
+  }
+
+  const parsed = parseSaleMaterialQtyInput(input.raw)
+  if (parsed == null) {
+    return { ok: false, error: `Adj meg legalább 0,1 ${sellUnit} mennyiséget.` }
+  }
+  if (parsed > MAX_SELL_QTY) {
+    return { ok: false, error: `Maximum ${MAX_SELL_QTY} ${sellUnit}.` }
+  }
+  return { ok: true, sellQty: parsed }
+}
+
+/** m²/m → tábla/szál (hint); fm-nél = sellQty. */
+export function stockPiecesFromSellQty(
+  sellQty: number,
+  factor: number
+): number | null {
+  if (!(sellQty > 0) || !(factor > 0)) return null
+  return Math.round((sellQty / factor) * 1000) / 1000
+}
+
+/** Toggle: sell qty → stock darab string (1 tizedes megmarad). */
+export function formatStockPiecesInput(sellQty: number, factor: number): string {
+  const pieces = stockPiecesFromSellQty(sellQty, factor)
+  if (pieces == null || !(pieces > 0)) return '1'
+  const rounded = roundSaleMaterialQty(pieces)
+  if (!(rounded > 0)) return '0.1'
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded)
 }
 
 export function formatSaleQty(

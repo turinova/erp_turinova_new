@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
+  ArrowLeft,
   Download,
   ExternalLink,
   Pencil,
@@ -163,6 +164,11 @@ export function SaleDetailClient({
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  /** POS visszáru belépő — replace után is megmarad. */
+  const [fromPos] = useState(() => searchParams.get('from') === 'pos')
+  const salePath = fromPos
+    ? `/ertekesitesek/${detail.id}?from=pos`
+    : `/ertekesitesek/${detail.id}`
   const [returnOpen, setReturnOpen] = useState(false)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [payOpen, setPayOpen] = useState(false)
@@ -271,7 +277,7 @@ export function SaleDetailClient({
   useEffect(() => {
     if (searchParams.get('return') === '1' && canReturn) {
       setReturnOpen(true)
-      router.replace(`/ertekesitesek/${detail.id}`, { scroll: false })
+      router.replace(salePath, { scroll: false })
       return
     }
     if (searchParams.get('fulfill') === '1' && canFulfill) {
@@ -279,7 +285,7 @@ export function SaleDetailClient({
       if (hasProforma && detail.payment_status === 'paid') {
         setOpenInvoiceAfterFulfill(true)
       }
-      router.replace(`/ertekesitesek/${detail.id}`, { scroll: false })
+      router.replace(salePath, { scroll: false })
       return
     }
     const issue = searchParams.get('issue')
@@ -288,7 +294,7 @@ export function SaleDetailClient({
       if (issue === 'normal' && isConfirmed) {
         setFulfillOpen(true)
         setOpenInvoiceAfterFulfill(true)
-        router.replace(`/ertekesitesek/${detail.id}`, { scroll: false })
+        router.replace(salePath, { scroll: false })
         return
       }
       const kind: InvoiceIssueKind | null =
@@ -304,7 +310,7 @@ export function SaleDetailClient({
       } else {
         setInvoiceOpen(true)
       }
-      router.replace(`/ertekesitesek/${detail.id}`, { scroll: false })
+      router.replace(salePath, { scroll: false })
     }
   }, [
     searchParams,
@@ -317,7 +323,8 @@ export function SaleDetailClient({
     billingFilled,
     hasProforma,
     isConfirmed,
-    router
+    router,
+    salePath
   ])
 
   useEffect(() => {
@@ -345,6 +352,19 @@ export function SaleDetailClient({
 
   return (
     <div className="space-y-4">
+      {fromPos ? (
+        <div className="sticky top-0 z-20 -mx-1 border-b border-border bg-surface/95 px-1 py-2 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-11"
+            onClick={() => router.push('/pos')}
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
+            Vissza a pultra
+          </Button>
+        </div>
+      ) : null}
       <PageHeader
         title={detail.sale_number}
         description={metaParts.join(' · ')}

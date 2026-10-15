@@ -1153,7 +1153,7 @@ export function SaleCreateClient({
             id: c.id,
             name: c.name,
             mobile: c.mobile,
-            email: null as string | null,
+            email: c.email,
             billing_name: null as string | null,
             billing_country: 'Magyarország',
             billing_city: null as string | null,

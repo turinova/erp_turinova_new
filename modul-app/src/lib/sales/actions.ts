@@ -4,9 +4,17 @@ import { revalidatePath } from 'next/cache'
 
 import { getSessionUser } from '@/lib/auth/session'
 import {
+  getSale,
+  listSalesForReturnByProduct,
   searchProductsForSale,
-  type SaleProductSearchItem
+  type SaleDetail,
+  type SaleProductSearchItem,
+  type SaleReturnByProductHit
 } from '@/lib/sales/queries'
+import {
+  returnDateWindowRange,
+  type ReturnDateWindow
+} from '@/lib/sales/return-search'
 import {
   assignSaleCustomerSchema,
   recordSalePaymentSchema,
@@ -788,7 +796,7 @@ export type SaleReturnSearchHit = {
   fulfilled_at: string | null
 }
 
-/** POS / visszáru: eladás kereső (szám vagy ügyfél). */
+/** POS / visszáru: eladás kereső (szám vagy ügyfél) — haladó / ritka. */
 export async function searchSalesForReturnAction(
   q: string
 ): Promise<
@@ -834,5 +842,88 @@ export async function searchSalesForReturnAction(
       status: r.status,
       fulfilled_at: r.fulfilled_at
     }))
+  }
+}
+
+/** POS visszáru főút: termék → eladások returnable qty-vel. */
+export async function searchSalesForReturnByProductAction(
+  accessoryId: string,
+  warehouseId: string,
+  window: ReturnDateWindow = '7d'
+): Promise<
+  | { ok: true; rows: SaleReturnByProductHit[] }
+  | { ok: false; message: string }
+> {
+  const user = await getSessionUser()
+  if (!user?.tenantId || user.isDevSession) {
+    return { ok: false, message: 'Nincs munkamenet.' }
+  }
+  const supabase = await createClient()
+  if (!supabase) return { ok: false, message: 'Nincs adatbázis kapcsolat.' }
+
+  const id = accessoryId.trim()
+  const wh = warehouseId.trim()
+  if (!id || !wh) {
+    return { ok: false, message: 'Válassz terméket és raktárat.' }
+  }
+
+  const { fromIso, toIso } = returnDateWindowRange(window)
+  try {
+    const rows = await listSalesForReturnByProduct(supabase, {
+      tenantId: user.tenantId,
+      accessoryId: id,
+      warehouseId: wh,
+      fromIso,
+      toIso,
+      limit: 20
+    })
+    return { ok: true, rows }
+  } catch (e) {
+    return {
+      ok: false,
+      message:
+        e instanceof Error
+          ? e.message
+          : 'Nem sikerült keresni a visszáruzható eladásokat.'
+    }
+  }
+}
+
+/** POS visszáru wizard: eladás detail betöltés. */
+export async function getSaleForReturnAction(
+  saleId: string
+): Promise<
+  | { ok: true; detail: SaleDetail }
+  | { ok: false; message: string }
+> {
+  const user = await getSessionUser()
+  if (!user?.tenantId || user.isDevSession) {
+    return { ok: false, message: 'Nincs munkamenet.' }
+  }
+  const supabase = await createClient()
+  if (!supabase) return { ok: false, message: 'Nincs adatbázis kapcsolat.' }
+
+  const id = saleId.trim()
+  if (!id) return { ok: false, message: 'Hiányzó eladás.' }
+
+  try {
+    const detail = await getSale(supabase, user.tenantId, id)
+    if (!detail) return { ok: false, message: 'Eladás nem található.' }
+    if (
+      detail.status !== 'fulfilled' &&
+      detail.status !== 'partially_returned'
+    ) {
+      return {
+        ok: false,
+        message: 'Ebből az eladásból nem indítható visszáru.'
+      }
+    }
+    return { ok: true, detail }
+  } catch (e) {
+    return {
+      ok: false,
+      message:
+        e instanceof Error ? e.message : 'Nem sikerült betölteni az eladást.'
+    }
   }
 }

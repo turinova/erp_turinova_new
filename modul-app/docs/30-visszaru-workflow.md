@@ -1,8 +1,8 @@
 # 30 — Visszáru workflow (S5)
 
-**Státusz:** S5-P0+P1 implementálva (counter return + POS belépő).  
-**Route:** nincs külön lista — `/ertekesitesek/[id]` + `/pos` → eladás kereső.  
-**Migráció:** `supabase/migrations/20260513_sale_returns.sql`  
+**Státusz:** S5-P0+P1+P1b implementálva (counter return + POS termék-első).  
+**Route:** nincs külön lista — `/pos` Visszáru overlay + `/ertekesitesek/[id]` wizard.  
+**Migráció:** `20260513_sale_returns.sql`, `20260609_sales_order_items_accessory_return_idx.sql`  
 **Kapcsolat:** [28](28-ertekesites-workflow.md), [29](29-pos-workflow.md)
 
 ---
@@ -30,10 +30,15 @@
 
 ## 2. IA (15 éves teszt)
 
-1. Megkeresem az eladást (lista / POS kereső).  
-2. **Visszáru indítása** az eladás detailen.  
-3. Kipipálom a tételeket, qty, készletbe? → mód → megerősítés.  
-4. A listán látom: `Részben visszáru` / `Visszáru`.
+**POS (főút — nyugta / E-szám nélkül):**
+
+1. **Visszáru** → beolvasom / keresem a **visszahozott terméket**.  
+2. Dátum chip (Ma / Tegnap / 7 nap / 30 nap) → lista: melyik eladásból adható még vissza.  
+3. Kiválasztom a sort (1 találat = automatikus) → wizard a POS-on (nem ERP).  
+4. Qty + készletbe? → mód → **Visszáru rögzítése**.
+
+**Haladó:** eladás szám / ügyfél név (összecsukva).  
+**ERP detail:** továbbra is **Visszáru indítása** az eladás lapon.
 
 Nincs külön főmenü-pont.
 
@@ -81,14 +86,20 @@ Nincs külön főmenü-pont.
 ## 5. Happy path
 
 ```
-Detail / POS kereső → Visszáru indítása
-→ tételek + qty + restock → Készpénz|Kártya
-→ Confirm → create_sale_return → toast + refresh
+POS Visszáru → (nyitott kosár: park ajánlat)
+→ termék barcode/név + dátum chip
+→ eladások ezzel a termékkel (returnable > 0), aktuális WH
+→ 1 találat: wizard; több: clerk választ
+→ preferált tétel qty=1 + restock → Készpénz|Kártya
+→ Confirm → create_sale_return → toast → vissza a pultra (parkolt megmarad)
 ```
 
 Primary confirm: **Visszáru rögzítése**. Default fókusz: **Mégse**.
 
 Címkék: `Visszatérítendő (bruttó)`, `Nettó összesen`, `ÁFA összesen` — ugyanaz a szótár mint [13](13-numbers-units-formats.md).
+
+**Kereső:** `listSalesForReturnByProduct` + index `sales_order_items_accessory_return_idx` (`20260609`).  
+Haladó: `searchSalesForReturnAction` (szám / ügyfél).
 
 ---
 
@@ -97,10 +108,11 @@ Címkék: `Visszatérítendő (bruttó)`, `Nettó összesen`, `ÁFA összesen` �
 | | Scope |
 |---|---|
 | **S5-P0** | Detail wizard + RPC + státusz + lista szűrő |
-| **S5-P1** | POS belépő (eladás kereső → detail `?return=1`) + restock ki + ok mező |
+| **S5-P1** | POS belépő + sticky **Vissza a pultra** + restock ki + ok mező |
+| **S5-P1b** | **Termék-első** POS overlay (barcode/név → dátum → eladás lista → wizard); E-szám = haladó |
 | **S5-P2** | Csere (return + új sale nettó) |
 | **S5-P3** | Credit note / számla (S3 után) |
-| **S5-P4** | Webshop RMA, unlinked refund |
+| **S5-P4** | Webshop RMA, unlinked refund (manager) |
 
 ---
 

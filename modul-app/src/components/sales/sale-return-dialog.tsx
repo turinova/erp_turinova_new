@@ -36,6 +36,13 @@ type Props = {
   onOpenChange: (open: boolean) => void
   detail: SaleDetail
   paymentMethods: PaymentMethodOption[]
+  /**
+   * POS termék-első flow: csak ezt a sort jelöld ki alapból (qty 1),
+   * a többi returnable sor látszik, de nincs kijelölve.
+   */
+  preferItemId?: string | null
+  /** Siker után (POS overlay); ha hiányzik → router.refresh. */
+  onSuccess?: () => void
 }
 
 function formatQty(n: number) {
@@ -47,7 +54,9 @@ export function SaleReturnDialog({
   open,
   onOpenChange,
   detail,
-  paymentMethods
+  paymentMethods,
+  preferItemId = null,
+  onSuccess
 }: Props) {
   const router = useRouter()
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -77,13 +86,23 @@ export function SaleReturnDialog({
   useEffect(() => {
     if (!open) return
     const next: Record<string, LineState> = {}
+    const prefer = preferItemId?.trim() || null
     for (const it of returnableLines) {
       const rem = Math.max(0, it.quantitySold - it.quantityReturned)
       if (rem <= 0) continue
-      next[it.id] = {
-        selected: rem > 0,
-        quantity: rem,
-        restock: it.itemKind === 'product'
+      const isPreferred = prefer != null && it.id === prefer
+      if (prefer) {
+        next[it.id] = {
+          selected: isPreferred,
+          quantity: isPreferred ? Math.min(1, rem) : rem,
+          restock: it.itemKind === 'product'
+        }
+      } else {
+        next[it.id] = {
+          selected: rem > 0,
+          quantity: rem,
+          restock: it.itemKind === 'product'
+        }
       }
     }
     setLines(next)
@@ -102,7 +121,7 @@ export function SaleReturnDialog({
     setPaymentMethodId(
       matchOrig?.id ?? cash?.id ?? card?.id ?? paymentMethods[0]?.id ?? ''
     )
-  }, [open, returnableLines, paymentMethods, detail.payments])
+  }, [open, returnableLines, paymentMethods, detail.payments, preferItemId])
 
   useEffect(() => {
     if (!open || confirmOpen) return
@@ -191,7 +210,8 @@ export function SaleReturnDialog({
       )
       setConfirmOpen(false)
       onOpenChange(false)
-      router.refresh()
+      if (onSuccess) onSuccess()
+      else router.refresh()
     })
   }
 

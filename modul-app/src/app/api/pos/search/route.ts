@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { resolvePosLeanAuth } from '@/lib/pos/pos-lean-auth'
+import { isSheetMachineCodeQuery } from '@/lib/sales/material-qty'
 import { searchProductsForSale } from '@/lib/sales/queries'
 import { createClient } from '@/lib/supabase/server'
 
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 type Kind = 'all' | 'product' | 'sheet_material' | 'linear_material'
 
-/** Pure digit stubs — too broad for full RPC + materials. */
+/** Pure digit stubs — too broad for full product RPC (anyag kód-pálya kivétel). */
 const SHORT_DIGIT_MAX = 3
 
 function parseKind(raw: string | null): Kind {
@@ -40,6 +41,9 @@ export async function GET(request: Request) {
     : 15
   const kind = parseKind(searchParams.get('kind'))
   let includeMaterials = searchParams.get('includeMaterials') === '1'
+  const sheetCodeQ = isSheetMachineCodeQuery(q)
+  const materialKind =
+    kind === 'sheet_material' || kind === 'linear_material'
 
   if (!q) {
     return NextResponse.json(
@@ -54,8 +58,18 @@ export async function GET(request: Request) {
     )
   }
 
-  // Short pure-digit stubs: empty rows (client should debounce ≥4 digits).
-  if (/^\d+$/.test(q) && q.length <= SHORT_DIGIT_MAX) {
+  // Short pure-digit stubs: empty for product path.
+  // Tábla gépkód prefix (312…) — ne throttle-öld, ha anyag keresés szándék.
+  const allowSheetCodeDigits =
+    sheetCodeQ &&
+    (includeMaterials ||
+      kind === 'sheet_material' ||
+      kind === 'all')
+  if (
+    /^\d+$/.test(q) &&
+    q.length <= SHORT_DIGIT_MAX &&
+    !allowSheetCodeDigits
+  ) {
     const totalMs = Math.round(performance.now() - totalStart)
     return NextResponse.json(
       { ok: true, rows: [], ms: totalMs, throttled: true },
@@ -68,13 +82,18 @@ export async function GET(request: Request) {
     )
   }
 
-  // Short queries: cheaper product-only search (no materials join path).
-  if (q.length < 4) {
+  // Short queries: cheaper product-only — except anyag chip / tábla-kód.
+  if (q.length < 4 && !materialKind && !allowSheetCodeDigits) {
     includeMaterials = false
-    if (kind === 'all') {
-      // keep kind all but materials off
-    }
     limit = Math.min(limit, 10)
+  }
+
+  // Tábla-kód 3+ digit: Mind/Tábla → anyagok be (entitlement később).
+  if (allowSheetCodeDigits && kind !== 'product' && kind !== 'linear_material') {
+    includeMaterials = true
+  }
+  if (materialKind) {
+    includeMaterials = true
   }
 
   const supabase = await createClient()
@@ -124,6 +143,26 @@ export async function GET(request: Request) {
         }
       )
     }
+  }
+
+  // Sheet-code on "all" without lapszab: fall back to empty (ne product RPC 3 digiten).
+  if (
+    sheetCodeQ &&
+    /^\d+$/.test(q) &&
+    q.length <= SHORT_DIGIT_MAX &&
+    !includeMaterials &&
+    kind !== 'product'
+  ) {
+    const totalMs = Math.round(performance.now() - totalStart)
+    return NextResponse.json(
+      { ok: true, rows: [], ms: totalMs, throttled: true },
+      {
+        headers: {
+          'Cache-Control': 'private, no-store',
+          'Server-Timing': `auth;dur=${authResult.authMs}, total;dur=${totalMs}`
+        }
+      }
+    )
   }
 
   const queryStart = performance.now()
