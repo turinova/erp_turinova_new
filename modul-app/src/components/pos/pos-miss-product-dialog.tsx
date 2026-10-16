@@ -322,7 +322,7 @@ export function PosMissProductDialog({
   const description =
     step === 'choice'
       ? fromBarcode
-        ? `A „${scannedBarcode || query}” nincs a pultkatalógusban.`
+        ? 'Ez a kód nincs a pultkatalógusban — ellenőrizd a beolvasott értéket (HU billentyűzet: ö/ü/Y).'
         : query
           ? `Nincs találat: „${query}”.`
           : 'Válaszd a felvételt vagy a meglévő termékhez rendelést.'
@@ -345,6 +345,26 @@ export function PosMissProductDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+
+        {step === 'choice' && fromBarcode && (scannedBarcode || query) ? (
+          <div
+            className="rounded-md border border-border bg-subtle/60 px-3 py-2"
+            role="status"
+          >
+            <p className="text-hint text-ink-secondary">Beolvasva</p>
+            <p className="mt-0.5 break-all font-mono text-body font-semibold tabular-nums text-ink">
+              {scannedBarcode || query}
+            </p>
+            {scannedBarcode &&
+            query &&
+            scannedBarcode !== query &&
+            scannedBarcode.toUpperCase() !== query.toUpperCase() ? (
+              <p className="mt-1 break-all font-mono text-hint text-ink-muted">
+                nyers: {query}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {error ? (
           <p className="text-hint text-danger-ink" role="alert">

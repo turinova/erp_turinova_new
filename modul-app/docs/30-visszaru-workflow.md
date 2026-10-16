@@ -3,6 +3,7 @@
 **Státusz:** S5-P0+P1+P1b implementálva (counter return + POS termék-első).  
 **Route:** nincs külön lista — `/pos` Visszáru overlay + `/ertekesitesek/[id]` wizard.  
 **Migráció:** `20260513_sale_returns.sql`, `20260609_sales_order_items_accessory_return_idx.sql`  
+**(POS scan, kapcsolódó):** `20260610_lookup_pos_barcode_hu_wedge_variants.sql` — HU wedge / compact barcode.  
 **Kapcsolat:** [28](28-ertekesites-workflow.md), [29](29-pos-workflow.md)
 
 ---

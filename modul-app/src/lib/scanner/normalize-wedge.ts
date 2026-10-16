@@ -99,7 +99,8 @@ function remapWedgeChars(raw: string): string {
 
 /**
  * HU layout + US wedge: ö/Ö→0, ü/Ü→-, NFD ö→0.
- * Legacy Y→Z csak ha a string döntően numerikus (EAN/UPC), különben nem nyúlunk betűs SKU-hoz.
+ * Y→Z: numerikus-nehéz EAN/UPC (digitRatio≥0.7) mindig; betűs beszállítói
+ * kódoknál (DT-CZ…) a lookup kandidátus lista viszi a Y↔Z variánst.
  * ASCII betűk UPPER — `e.code` Key* mindig kisbetű; DB / címke tipikusan `DT-CZ…`.
  */
 export function normalizeScannerBarcode(raw: string): string {
@@ -110,6 +111,9 @@ export function normalizeScannerBarcode(raw: string): string {
     alnum.length === 0
       ? 0
       : [...alnum].filter((c) => c >= '0' && c <= '9').length / alnum.length
+  // EAN/UPC: HU QWERTZ KeyZ→Y scancode nélkül is javít (legacy).
+  // Alfanumerikus (DT-CZ…): digitRatio < 0.7 → ne írd át a primary stringet;
+  // barcodeLookupCandidates adja a Y↔Z próbákat.
   if (digitRatio >= 0.7) {
     remapped = remapped.replace(/Y/g, 'Z').replace(/y/g, 'z')
   }
@@ -118,4 +122,20 @@ export function normalizeScannerBarcode(raw: string): string {
   return normalizeBarcode(remapped).replace(/[a-z]/g, (ch) =>
     String.fromCharCode(ch.charCodeAt(0) - 32)
   )
+}
+
+/** Alphanumeric-only UPPER (kötőjel / írásjel nélkül) — HU wedge + CODE128. */
+export function barcodeCompactAlnum(code: string): string {
+  return code.replace(/[^0-9A-Za-z]/g, '').toUpperCase()
+}
+
+/**
+ * HU QWERTZ: KeyZ scancode nélkül Y jön a mezőbe → DT-CY… vs DT-CZ….
+ * Egy lépéses Y↔Z csere (nem idempotens kétszer).
+ */
+export function swapBarcodeYZ(code: string): string {
+  return code
+    .replace(/Y/g, '\u0000')
+    .replace(/Z/g, 'Y')
+    .replace(/\u0000/g, 'Z')
 }

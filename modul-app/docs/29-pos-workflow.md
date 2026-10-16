@@ -25,7 +25,7 @@ Entitlement: capability `pos` + page `/pos` + `/pos/beallitasok` + `/ertekesites
 ```
 Fullscreen · 50/50 (≥1024)
 Bal: kereső/scanner (tábla: Termék | Készlet | Bruttó egységár)
-  chip: **Elöl a készletes** · **Mennyiség 1|2|5|10|100|1000** (qty-first)
+  chip: **Elöl a készletes** (qty mindig 1 scan/kattintáskor; módosítás a kosárban)
   idle: **Gyors termékek** tile-rács (kurált, max 24)
 Jobb: kosár toolbar — **PDA** · Félrerak · Ürítés · **Visszáru** · (Visszahív) · **Több**
   (affordance: PDA badge/info soft ha van handoff; Ürítés danger-soft; Visszáru info-soft; Díj `CirclePlus` + Kedv. warning-soft a totals mellett — Pay marad az egyetlen heavy primary)
@@ -36,7 +36,7 @@ Jobb: kosár toolbar — **PDA** · Félrerak · Ürítés · **Visszáru** · (
 
 **Érintő / tablet (`usePosTouchMode`):**
 - Auto: `(pointer: coarse)` vagy `localStorage modul-pos-touch=1` (Több → Érintő mód).
-- Target ~44–48px (kereső h-12, qty, pay h-16); F4/F5 hint elrejtve.
+- Target ~44–48px (kereső h-12, pay h-16); F4/F5 hint elrejtve.
 - Nincs Checkout topbar. **Visszáru** a kosár fejen (park warn ha van kosár). **Több**: cél, WH/pénztár ha >1, Új termék, KP, Zárás, Érintő, Kilépés. Gate: WH/pénztár.
 - Touch kosár: kártya sorok (nem tábla); confirm: nagyobb dialógus + készpénz **numpad**.
 - Pay CTA: `Készpénz · 12 450 Ft` / `Kártya · …` egy sorban; Vegyes csak `⇄` ikon (`min-w-12`, title/aria).
@@ -52,13 +52,13 @@ Jobb: kosár toolbar — **PDA** · Félrerak · Ürítés · **Visszáru** · (
 - **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés; üres LRU nem cache-el zero-hitet. Pure digit stub (1–3) **nem** hív RPC-t; materials csak `q.length ≥ 4`. API: lean auth + middleware skip + `Server-Timing`.
 - Zero-hit UI: tippek (szóköz, SKU, POS-eladható, alias) + **Gyors felvétel** + Keresőszavak.
 - Miss telemetria: `pos_search_events` → manager **POS használat** top miss lista (`pos_search_miss_stats`).
-- **Exact barcode:** csak no-focus wedge (`BarcodeWedgeTrap`) vagy Enter (ha barcode-szerű / nincs typeahead lista); miss → **PosMissProductDialog** (ha `allow_pos_quick_create`, default be): Gyors felvétel / Hozzárendelem / Mégse; különben flash. Match: client **UPPER** + DB **`.eq.` / RPC equality** (index); hygiene `20260605`.
-- **Barcode hot path (perf):** `/api/pos/barcode-lookup` = **lean staff auth** (`resolvePosLeanAuth`) + middleware skip + `Server-Timing` — **nem** nyúl a typeahead `/api/pos/search`-hez. Session LRU + single-flight + optimistic kosár (cache hit); stale/miss → rollback. PDA ugyanaz a client cache.
+- **Exact barcode:** wedge (`BarcodeWedgeTrap`, gap **90 ms**, `e.code` HU Digit0/Minus) vagy Enter; miss → **PosMissProductDialog** + **Beolvasva** monoszpace kód. Match: `barcodeLookupCandidates` (normalize ö/ü, **Y↔Z**, hyphen-compact) → RPC `lookup_pos_barcode` (`20260610` compact + sku); hygiene `20260605`.
+- **SKU gépelés (4–12 digit):** typeahead **+** parallel exact lookup (ne üres lista). EAN-13 / alfanumerikus CODE128 (`DT-CZ…`): exact preview, nem fuzzy.
+- **Barcode hot path (perf):** `/api/pos/barcode-lookup` = **lean staff auth** (`resolvePosLeanAuth`) + middleware skip + `Server-Timing` — **nem** nyúl a typeahead `/api/pos/search`-hez (SKU gépelésnél parallel hívás OK). Session LRU + single-flight + optimistic kosár (cache hit); stale/miss → rollback. PDA ugyanaz. Migráció: `20260610`.
 - **Mount bootstrap (perf):** hydrate után `GET /api/pos/bootstrap?include=shift,catalog,chips` (blocking), majd soft `include=progress`. Typeahead/sale/invoice érintetlen. Settings → `include=catalog`. PDA handoff poll külön.
 - **Gyors felvétel / Új termék:** Több → **Új termék** (+ miss/zero-hit CTA). Mezők: név, vonalkód (+ **Generálás**, nem ír SKU-t), ÁFA, (egység csak ha több van), opcionális beszerzés+szorzó, bruttó. SKU a szerveren auto. → `sellable_pos=true`, kosár (`20260598`). Beírt bruttó → `accessories.price_gross` (polcár; ÁFA round-trip, pl. 4000 Ft @ 27% ne legyen 4001) — `20260599`.
 - **Hozzárendelés:** keres a teljes aktív katalógusban (nem csak POS) → üres `barcode` vagy `barcode_internal` + `sellable_pos=true`.
 - Törzsadat: **Belső vonalkód → Generálás** (ugyanaz az EAN-13 allokátor).
-- **Qty-first:** előválasztott mennyiség a következő scan/tile/találat tapre (reset 1-re add után).
 - **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Munkalap; **név-only** ILIKE (nincs gyártó). Tábla gépkód: ha q `^\d{3}` → `machine_code` **prefix** (3+ digit, digit-throttle kivétel); Mind módban ilyenkor nincs termék/szálas zaj. Qty dialógus: **m²|tábla** / **m|szál** toggle (default tábla/szál; `fm` csak m); kosár canonical **m²/m**; preset 1/2/3; soft OOS warn; kosár lépés 0,1; stock out fulfillkor (`20260577`).
 - Golden: `node --env-file=.env.local scripts/golden-test-pos-search.mjs`
 
@@ -66,7 +66,7 @@ Jobb: kosár toolbar — **PDA** · Félrerak · Ürítés · **Visszáru** · (
 - Tábla: `pos_quick_items` + `pos_label` (rövid pult-felirat, max 32); migráció `20260533`.
 - Idle: text-first **tile** — **3 sor** wrap név + **teljes cikkszám** + méret/RAL chip + ár + készlet; OOS warning border.
 - Megjelenő név: manuális `pos_label` → különben **teljes katalógusnév** (3 sor wrap); méret/RAL chip a névből.
-- Grid: **2 oszlop**; qty badge; tap flash; empty → beállítás CTA.
+- Grid: **2 oszlop**; tap flash; empty → beállítás CTA.
 - Settings: preview + **Pult felirat** (üres = teljes név; rövidítésnél hagyd a méretet) + sorrend.
 - Kereső találat: név `line-clamp-2` + SKU + ár + készlet.
 

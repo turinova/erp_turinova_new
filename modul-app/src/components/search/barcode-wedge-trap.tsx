@@ -10,11 +10,12 @@ import { charFromWedgeKeyboardEvent } from '@/lib/scanner/normalize-wedge'
 
 /**
  * Max gap between keys to confirm USB wedge (ms).
- * Humans typing are typically >80 ms; scanners ~5–20 ms.
+ * Humans typing are typically >100 ms; cheap USB/BT scanners often 40–80 ms
+ * (HU layout + kereső fókusz — 45 ms alatt DT-CZ… soha nem confirmálódott).
  */
-const WEDGE_GAP_MS = 45
+const WEDGE_GAP_MS = 90
 /** Max total span for a confirmed search-field wedge burst (ms). */
-const WEDGE_MAX_SPAN_MS = 450
+const WEDGE_MAX_SPAN_MS = 900
 
 function isHardBlockTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false

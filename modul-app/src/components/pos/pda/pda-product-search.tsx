@@ -4,7 +4,8 @@ import { Search } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
-import { looksLikeBarcode } from '@/lib/pos/barcode'
+import { isSkuTypeaheadQuery, looksLikeBarcode } from '@/lib/pos/barcode'
+import { fetchPosBarcodeLookupCached } from '@/lib/pos/pos-barcode-client'
 import { searchPosProductsClient } from '@/lib/pos/search-client'
 import { saleItemShelfGross } from '@/lib/pos/shelf-price'
 import { formatMoneyFt } from '@/lib/sales/parse'
@@ -48,15 +49,18 @@ export function PdaProductSearch({
         }
         return
       }
-      // SKU / EAN gépelés: Enter = exact; ne fuzzy prefix lista
-      if (looksLikeBarcode(t)) {
-        setRows([])
-        setLoading(false)
-        return
-      }
       const id = ++req.current
       setLoading(true)
       setError(null)
+      // EAN-13 / alfanumerikus: exact preview. SKU 4–12 digit: typeahead + exact.
+      if (looksLikeBarcode(t) && !isSkuTypeaheadQuery(t)) {
+        const exact = await fetchPosBarcodeLookupCached(t, warehouseId)
+        if (id !== req.current) return
+        setLoading(false)
+        if (exact.ok) setRows([exact.product])
+        else setRows([])
+        return
+      }
       const res = await searchPosProductsClient(t, warehouseId, {
         kind: 'product',
         includeMaterials: false,
@@ -64,6 +68,17 @@ export function PdaProductSearch({
         stockFirst: true
       })
       if (id !== req.current) return
+      if (isSkuTypeaheadQuery(t)) {
+        const exact = await fetchPosBarcodeLookupCached(t, warehouseId)
+        if (id !== req.current) return
+        setLoading(false)
+        if (exact.ok) {
+          const hit = exact.product
+          const rest = res.ok ? res.rows.filter((r) => r.id !== hit.id) : []
+          setRows([hit, ...rest])
+          return
+        }
+      }
       setLoading(false)
       if (!res.ok) {
         setError(res.message)

@@ -72,7 +72,11 @@ import { MenuSelect } from '@/components/ui/menu-select'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { FeeTypeListItem } from '@/lib/fee-types/queries'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
-import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
+import {
+  isSkuTypeaheadQuery,
+  looksLikeBarcode,
+  prepareBarcodeQuery
+} from '@/lib/pos/barcode'
 import { saleItemShelfGross } from '@/lib/pos/shelf-price'
 import { BarcodeWedgeTrap } from '@/components/search/barcode-wedge-trap'
 import {
@@ -298,7 +302,6 @@ export function PosClient({
   const { touch, setTouch } = usePosTouchMode()
   const wide = usePosWideLayout()
   const [pane, setPane] = useState<'catalog' | 'cart'>('catalog')
-  const [qtyPreset, setQtyPreset] = useState(1)
   const [moreOpen, setMoreOpen] = useState(false)
   const [flashQuickId, setFlashQuickId] = useState<string | null>(null)
   const [settingsSection, setSettingsSection] = useState<
@@ -697,7 +700,6 @@ export function PosClient({
     setBilling(EMPTY_DOCUMENT_BILLING)
     setExpandedIds(new Set())
     setDiscOpen(false)
-    setQtyPreset(1)
   }
 
   function parkActiveCart() {
@@ -926,7 +928,8 @@ export function PosClient({
 
   // Gépelés = typeahead. Query változáskor azonnal töröljük a sticky listát,
   // különben Enter a régi találatot rakja kosárba (vonalkód scan race).
-  // Vonalkód / SKU-szerű: ne fuzzy-zzünk gépelés közben — Enter = exact lookup.
+  // Alfanumerikus CODE128 / EAN-13: exact preview (lookup), ne fuzzy.
+  // Tiszta szám SKU (4–12): typeahead + exact preview — clerk lássa a sort.
   // Kivétel: tábla gépkód-kezdet (312…) → typeahead, ne barcode gate.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
@@ -946,10 +949,32 @@ export function PosClient({
       setSearching(false)
       return
     }
-    if (looksLikeBarcode(q) && !sheetCodeQ) {
+    const skuTyped = isSkuTypeaheadQuery(q)
+    const barcodeLike = looksLikeBarcode(q) && !sheetCodeQ
+    // EAN-13 / alfanumerikus (DT-CZ…): ne fuzzy — exact preview lent.
+    if (barcodeLike && !skuTyped) {
       setSearching(false)
       setSearchOpen(false)
-      return
+      if (q.length >= 6) {
+        const reqId = searchReqId.current
+        searchTimer.current = setTimeout(() => {
+          setSearching(true)
+          void fetchPosBarcodeLookupCached(q, warehouseId).then((res) => {
+            if (reqId !== searchReqId.current) return
+            setSearching(false)
+            if (res.ok) {
+              setSearchHits([res.product])
+              setSearchOpen(true)
+              setSelectedSearchIndex(0)
+            } else {
+              setSearchHits([])
+            }
+          })
+        }, 180)
+      }
+      return () => {
+        if (searchTimer.current) clearTimeout(searchTimer.current)
+      }
     }
     const includeMaterials =
       hasLapszabaszat &&
@@ -960,16 +985,31 @@ export function PosClient({
     searchTimer.current = setTimeout(() => {
       const reqId = ++searchReqId.current
       setSearching(true)
-      void searchPosProductsClient(q, warehouseId, {
+      const typeahead = searchPosProductsClient(q, warehouseId, {
         inStockOnly: false,
         stockFirst,
         kind: searchKind,
         includeMaterials
-      }).then((res) => {
+      })
+      // SKU: parallel exact — ha a fuzzy üres, lookup mégis megtalálja.
+      const exact =
+        skuTyped || barcodeLike
+          ? fetchPosBarcodeLookupCached(q, warehouseId)
+          : Promise.resolve(null)
+      void Promise.all([typeahead, exact]).then(([res, exactRes]) => {
         if (reqId !== searchReqId.current) return
         setSearching(false)
+        const rows = res.ok ? res.rows : []
+        if (exactRes && exactRes.ok) {
+          const hit = exactRes.product
+          const rest = rows.filter((r) => r.id !== hit.id)
+          setSearchHits([hit, ...rest])
+          setSearchOpen(true)
+          setSelectedSearchIndex(0)
+          return
+        }
         if (res.ok) {
-          setSearchHits(res.rows)
+          setSearchHits(rows)
           setSearchOpen(true)
           setSelectedSearchIndex(0)
         } else {
@@ -1061,7 +1101,7 @@ export function PosClient({
         ? quantity
         : isMaterialSaleKind(kind)
           ? 0.1
-          : Math.max(1, qtyPreset)
+          : 1
     const key = cartKeyFromHit(hit)
 
     setLines((prev) => {
@@ -1091,7 +1131,6 @@ export function PosClient({
         accessoryId: hit.id
       })
     }
-    setQtyPreset(1)
     setFlash(null)
     setHighlightId(key)
     setTimeout(() => setHighlightId(null), 600)
@@ -1163,7 +1202,7 @@ export function PosClient({
 
     const cached = peekPosBarcodeCache(code, warehouseId)
     if (cached) {
-      const addQty = Math.max(1, qtyPreset)
+      const addQty = 1
       addOrBump(cached, undefined, 'barcode')
       // Background reconcile — typeahead path untouched
       void fetchPosBarcodeLookupCached(code, warehouseId).then((res) => {
@@ -1995,31 +2034,6 @@ export function PosClient({
             </span>
           </div>
 
-          {!searchQ.trim() ? (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-hint text-ink-secondary">Mennyiség:</span>
-              {([1, 2, 5, 10, 100, 1000] as const).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  aria-pressed={qtyPreset === n}
-                  className={cn(
-                    'rounded-md border tabular-nums',
-                    touch
-                      ? 'min-h-11 min-w-11 px-3'
-                      : 'min-h-8 min-w-8 px-2.5 py-1',
-                    qtyPreset === n
-                      ? 'border-ink bg-ink text-surface'
-                      : 'border-border bg-surface text-ink hover:bg-subtle'
-                  )}
-                  onClick={() => setQtyPreset(n)}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          ) : null}
-
           <div
             ref={searchResultsRef}
             className="mt-2 min-h-0 flex-1 overflow-auto rounded-md border border-border"
@@ -2095,7 +2109,6 @@ export function PosClient({
                             imageUrl={hit.image_url}
                             onHand={hit.on_hand}
                             unitShortform={hit.unit_shortform}
-                            qtyBadge={qtyPreset > 1 ? qtyPreset : null}
                             zeroStock={hit.on_hand <= 0}
                             flash={flashQuickId === hit.id}
                             onClick={() => {
@@ -2177,7 +2190,6 @@ export function PosClient({
                               imageUrl={hit.image_url}
                               onHand={hit.on_hand}
                               unitShortform={hit.unit_shortform}
-                              qtyBadge={qtyPreset > 1 ? qtyPreset : null}
                               zeroStock={zero}
                               flash={flashQuickId === hit.id}
                               onClick={() => {

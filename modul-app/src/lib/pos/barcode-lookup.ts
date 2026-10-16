@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   barcodeExactOrFilter,
   barcodeFieldsMatch,
-  prepareBarcodeQuery
+  barcodeLookupCandidates
 } from '@/lib/pos/barcode'
 import type { SaleProductSearchItem } from '@/lib/sales/queries'
 import { getAccessoryOnHand } from '@/lib/stock/queries'
@@ -26,8 +26,29 @@ type RpcRow = {
   on_hand: number | string
 }
 
+function mapRpcRow(row: RpcRow): SaleProductSearchItem {
+  const priceNet = Number(row.price_net) || 0
+  const storedGross =
+    row.price_gross != null && Number.isFinite(Number(row.price_gross))
+      ? Math.round(Number(row.price_gross))
+      : undefined
+  return {
+    kind: 'product',
+    id: row.id,
+    name: row.name,
+    sku: row.sku,
+    price_net: priceNet,
+    ...(storedGross != null ? { price_gross: storedGross } : {}),
+    tax_rate_percent: Number(row.tax_rate_percent) || 0,
+    unit_shortform: row.unit_shortform || 'db',
+    on_hand: Number(row.on_hand) || 0,
+    image_url: row.image_url ?? null
+  }
+}
+
 /**
- * Exact POS barcode → termék + on_hand (RPC, egy round-trip / kandidátus).
+ * Exact POS barcode → termék + on_hand.
+ * Kandidátusok: normalize, Y↔Z (HU QWERTZ), hyphen-compact — 20260610 RPC.
  * Ha a lookup_pos_barcode RPC még nincs migrálva → hybrid fallback.
  */
 export async function lookupPosBarcodeProduct(
@@ -36,17 +57,7 @@ export async function lookupPosBarcodeProduct(
   code: string,
   warehouseId: string
 ): Promise<PosBarcodeLookupResult> {
-  const { raw, normalized } = prepareBarcodeQuery(code)
-  // UPPER + dedupe — hygiene 20260605; SKU match uses lower(p_code) so UPPER is fine.
-  const candidates = [
-    ...new Set(
-      [normalized, raw]
-        .filter(Boolean)
-        .map((c) => c.replace(/[%_,]/g, '').trim())
-        .filter(Boolean)
-        .map((c) => c.toUpperCase())
-    )
-  ]
+  const candidates = barcodeLookupCandidates(code)
   if (candidates.length === 0) {
     return { ok: false, message: 'Üres vonalkód.', notFound: true }
   }
@@ -63,7 +74,14 @@ export async function lookupPosBarcodeProduct(
 
     if (error) {
       if (/lookup_pos_barcode|schema cache|does not exist/i.test(error.message)) {
-        return lookupPosBarcodeHybrid(supabase, tenantId, safe, warehouseId)
+        const hybrid = await lookupPosBarcodeHybrid(
+          supabase,
+          tenantId,
+          safe,
+          warehouseId
+        )
+        if (hybrid.ok) return hybrid
+        continue
       }
       console.error('lookupPosBarcodeProduct', error.message)
       return { ok: false, message: 'Nem sikerült a vonalkód keresés.' }
@@ -72,27 +90,7 @@ export async function lookupPosBarcodeProduct(
     const rows = (data ?? []) as RpcRow[]
     const row = rows[0]
     if (!row) continue
-
-    const priceNet = Number(row.price_net) || 0
-    const storedGross =
-      row.price_gross != null && Number.isFinite(Number(row.price_gross))
-        ? Math.round(Number(row.price_gross))
-        : undefined
-    return {
-      ok: true,
-      product: {
-        kind: 'product',
-        id: row.id,
-        name: row.name,
-        sku: row.sku,
-        price_net: priceNet,
-        ...(storedGross != null ? { price_gross: storedGross } : {}),
-        tax_rate_percent: Number(row.tax_rate_percent) || 0,
-        unit_shortform: row.unit_shortform || 'db',
-        on_hand: Number(row.on_hand) || 0,
-        image_url: row.image_url ?? null
-      }
-    }
+    return { ok: true, product: mapRpcRow(row) }
   }
 
   return {
@@ -129,7 +127,7 @@ async function lookupPosBarcodeHybrid(
     .eq('active', true)
     .is('deleted_at', null)
     .or(barcodeExactOrFilter(safe))
-    .limit(5)
+    .limit(8)
 
   if (error) {
     console.error('lookupPosBarcodeHybrid', error.message)

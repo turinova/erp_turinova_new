@@ -1,6 +1,10 @@
-import { normalizeScannerBarcode } from '@/lib/scanner/normalize-wedge'
+import {
+  barcodeCompactAlnum,
+  normalizeScannerBarcode,
+  swapBarcodeYZ
+} from '@/lib/scanner/normalize-wedge'
 
-export { normalizeScannerBarcode }
+export { normalizeScannerBarcode, barcodeCompactAlnum, swapBarcodeYZ }
 
 /**
  * Wedge / Enter exact-scan heurisztika — NEM typeahead debounce-hoz.
@@ -25,6 +29,16 @@ export function looksLikeBarcode(raw: string): boolean {
   return /\d/.test(t)
 }
 
+/**
+ * Tiszta szám SKU (4–12 jegy) — typeahead OK.
+ * EAN-13 (13 jegy) és alfanumerikus CODE128 → exact-first, ne fuzzy lista.
+ */
+export function isSkuTypeaheadQuery(raw: string): boolean {
+  const t = raw.trim()
+  if (!/^\d+$/.test(t)) return false
+  return t.length >= 4 && t.length <= 12
+}
+
 export function prepareBarcodeQuery(raw: string): {
   normalized: string
   raw: string
@@ -36,13 +50,48 @@ export function prepareBarcodeQuery(raw: string): {
   }
 }
 
+/**
+ * Exact lookup próbák: normalize, nyers, Y↔Z (HU QWERTZ), hyphen-compact.
+ * Max ~6 dedupe-olt UPPER string — 1 RPC / kandidátus, indexbarát.
+ */
+export function barcodeLookupCandidates(code: string): string[] {
+  const { raw, normalized } = prepareBarcodeQuery(code)
+  const bases = [normalized, raw]
+    .filter(Boolean)
+    .map((c) => c.replace(/[%_,]/g, '').trim())
+    .filter(Boolean)
+    .map((c) => c.toUpperCase())
+
+  const out = new Set<string>()
+  for (const b of bases) {
+    out.add(b)
+    const yz = swapBarcodeYZ(b)
+    if (yz !== b) out.add(yz)
+    const compact = barcodeCompactAlnum(b)
+    if (compact && compact !== b) out.add(compact)
+    if (yz !== b) {
+      const yzCompact = barcodeCompactAlnum(yz)
+      if (yzCompact) out.add(yzCompact)
+    }
+  }
+  return [...out]
+}
+
 /** Case-insensitive exact (ASCII / barcode mezők) — JS safety a hit-listán. */
 export function barcodeFieldsMatch(
   stored: string | null | undefined,
   scanned: string
 ): boolean {
   if (!stored) return false
-  return stored.toUpperCase() === scanned.toUpperCase()
+  const a = stored.toUpperCase()
+  const b = scanned.toUpperCase()
+  if (a === b) return true
+  const ca = barcodeCompactAlnum(a)
+  const cb = barcodeCompactAlnum(b)
+  if (ca && ca === cb) return true
+  if (ca && ca === barcodeCompactAlnum(swapBarcodeYZ(b))) return true
+  if (cb && barcodeCompactAlnum(swapBarcodeYZ(a)) === cb) return true
+  return false
 }
 
 /**
