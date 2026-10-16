@@ -887,17 +887,20 @@ export async function searchProductsForSale(
   const includeMaterials = opts?.includeMaterials === true
 
   const { isSheetMachineCodeQuery } = await import('@/lib/sales/material-qty')
+  const { wantProductInSaleSearch } = await import('@/lib/pos/search-policy')
   const sheetCodeQ = isSheetMachineCodeQuery(safe)
-  // 3+ jegyű tábla-kód: ne keverjen termék/szálas zajt a Mind módban.
-  const wantProduct =
-    (kind === 'all' || kind === 'product') &&
-    !(sheetCodeQ && includeMaterials && kind === 'all')
+  // Mind + digit≥4: mindig termék (SKU). Csak 3 jegyű stub (312) = tábla-only.
+  const wantProduct = wantProductInSaleSearch({
+    kind,
+    q: safe,
+    includeMaterials
+  })
   const wantSheet =
     includeMaterials && (kind === 'all' || kind === 'sheet_material')
   const wantLinear =
     includeMaterials &&
     (kind === 'all' || kind === 'linear_material') &&
-    !(sheetCodeQ && kind === 'all')
+    !(sheetCodeQ && kind === 'all' && /^\d{3}$/.test(safe))
 
   // Gyors path: csak termék → lean POS RPC (token/unaccent/typo + on_hand)
   if (wantProduct && !wantSheet && !wantLinear) {

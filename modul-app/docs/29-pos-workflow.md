@@ -59,8 +59,8 @@ Jobb: kosár toolbar — **PDA** · Félrerak · Ürítés · **Visszáru** · (
 - **Gyors felvétel / Új termék:** Több → **Új termék** (+ miss/zero-hit CTA). Mezők: név, vonalkód (+ **Generálás**, nem ír SKU-t), ÁFA, (egység csak ha több van), opcionális beszerzés+szorzó, bruttó. SKU a szerveren auto. → `sellable_pos=true`, kosár (`20260598`). Beírt bruttó → `accessories.price_gross` (polcár; ÁFA round-trip, pl. 4000 Ft @ 27% ne legyen 4001) — `20260599`.
 - **Hozzárendelés:** keres a teljes aktív katalógusban (nem csak POS) → üres `barcode` vagy `barcode_internal` + `sellable_pos=true`.
 - Törzsadat: **Belső vonalkód → Generálás** (ugyanaz az EAN-13 allokátor).
-- **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Munkalap; **név-only** ILIKE (nincs gyártó). Tábla gépkód: ha q `^\d{3}` → `machine_code` **prefix** (3+ digit, digit-throttle kivétel); Mind módban ilyenkor nincs termék/szálas zaj. Qty dialógus: **m²|tábla** / **m|szál** toggle (default tábla/szál; `fm` csak m); kosár canonical **m²/m**; preset 1/2/3; soft OOS warn; kosár lépés 0,1; stock out fulfillkor (`20260577`).
-- Golden: `node --env-file=.env.local scripts/golden-test-pos-search.mjs`
+- **Anyag (lapszab):** kereső chip Mind/Termék/Tábla/Szálas; **név-only** ILIKE (nincs gyártó). Tábla gépkód: `machine_code` **prefix**. **Mind + pontosan 3 jegy** (`312`) → csak tábla (rövid stub). **Mind + ≥4 digit** (SKU pl. `1277`) → **termék typeahead + anyag** együtt — chip csak szűr, nem cserél nyelvet (`search-policy.ts`). Enter: barcode/SKU always exact (`shouldRunBarcodeEnter`); 3 jegyű stub → lista pick. Exact hit + `q.length > 5` → Odoo-style fuzzy suppress. Qty dialógus: **m²|tábla** / **m|szál** toggle; kosár canonical **m²/m**; soft OOS; stock out fulfillkor (`20260577`).
+- Policy unit: `npm run test:pos-search-policy` · Golden: `node --env-file=.env.local scripts/golden-test-pos-search.mjs`
 
 **Gyors termékek (kurált rács, nem auto top-seller):**
 - Tábla: `pos_quick_items` + `pos_label` (rövid pult-felirat, max 32); migráció `20260533`.

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Input } from '@/components/ui/input'
 import { isSkuTypeaheadQuery, looksLikeBarcode } from '@/lib/pos/barcode'
+import { mergeExactAndFuzzyHits } from '@/lib/pos/search-policy'
 import { fetchPosBarcodeLookupCached } from '@/lib/pos/pos-barcode-client'
 import { searchPosProductsClient } from '@/lib/pos/search-client'
 import { saleItemShelfGross } from '@/lib/pos/shelf-price'
@@ -72,12 +73,15 @@ export function PdaProductSearch({
         const exact = await fetchPosBarcodeLookupCached(t, warehouseId)
         if (id !== req.current) return
         setLoading(false)
-        if (exact.ok) {
-          const hit = exact.product
-          const rest = res.ok ? res.rows.filter((r) => r.id !== hit.id) : []
-          setRows([hit, ...rest])
+        if (!res.ok && !exact.ok) {
+          setError(res.ok ? null : res.message)
+          setRows([])
           return
         }
+        const rows = res.ok ? res.rows : []
+        const exactHit = exact.ok ? exact.product : null
+        setRows(mergeExactAndFuzzyHits(t, rows, exactHit))
+        return
       }
       setLoading(false)
       if (!res.ok) {
@@ -111,8 +115,8 @@ export function PdaProductSearch({
 
   function handleEnter() {
     const t = q.trim()
-    // Exact barcode előbb — fuzzy első sor ne írja felül a scannelést
-    if (t && looksLikeBarcode(t)) {
+    // Exact barcode/SKU előbb — fuzzy első sor ne írja felül a scannelést
+    if (t && (looksLikeBarcode(t) || isSkuTypeaheadQuery(t))) {
       onBarcodeFallback(t)
       clear()
       return

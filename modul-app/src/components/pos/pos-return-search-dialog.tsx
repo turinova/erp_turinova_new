@@ -13,7 +13,8 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { looksLikeBarcode } from '@/lib/pos/barcode'
+import { isSkuTypeaheadQuery, looksLikeBarcode } from '@/lib/pos/barcode'
+import { mergeExactAndFuzzyHits } from '@/lib/pos/search-policy'
 import { fetchPosBarcodeLookupCached } from '@/lib/pos/pos-barcode-client'
 import { searchPosProductsClient } from '@/lib/pos/search-client'
 import {
@@ -210,7 +211,8 @@ export function PosReturnSearchDialog({
         setProductPending(false)
         return
       }
-      if (looksLikeBarcode(t)) {
+      // EAN/CODE128: exact only on Enter. SKU 4–12: typeahead + exact.
+      if (looksLikeBarcode(t) && !isSkuTypeaheadQuery(t)) {
         setProductHits([])
         setProductPending(false)
         return
@@ -225,6 +227,20 @@ export function PosReturnSearchDialog({
         stockFirst: false
       })
       if (id !== productReq.current) return
+      if (isSkuTypeaheadQuery(t)) {
+        const exact = await fetchPosBarcodeLookupCached(t, warehouseId)
+        if (id !== productReq.current) return
+        setProductPending(false)
+        if (!res.ok && !exact.ok) {
+          setProductError(res.ok ? null : res.message)
+          setProductHits([])
+          return
+        }
+        const rows = res.ok ? res.rows : []
+        const exactHit = exact.ok ? exact.product : null
+        setProductHits(mergeExactAndFuzzyHits(t, rows, exactHit))
+        return
+      }
       setProductPending(false)
       if (!res.ok) {
         setProductError(res.message)
@@ -279,7 +295,8 @@ export function PosReturnSearchDialog({
   async function onProductEnter() {
     const t = q.trim()
     if (!t || !warehouseId) return
-    if (looksLikeBarcode(t) || productHits.length === 0) {
+    // Exact barcode/SKU előbb — ne stale typeahead sor
+    if (looksLikeBarcode(t) || isSkuTypeaheadQuery(t) || productHits.length === 0) {
       setProductPending(true)
       setProductError(null)
       const res = await fetchPosBarcodeLookupCached(t, warehouseId)

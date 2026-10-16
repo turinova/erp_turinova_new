@@ -77,6 +77,13 @@ import {
   looksLikeBarcode,
   prepareBarcodeQuery
 } from '@/lib/pos/barcode'
+import {
+  isBarcodeExactPreviewOnly,
+  mergeExactAndFuzzyHits,
+  searchMinLength,
+  shouldRunBarcodeEnter,
+  shouldShowTypingMissEmpty
+} from '@/lib/pos/search-policy'
 import { saleItemShelfGross } from '@/lib/pos/shelf-price'
 import { BarcodeWedgeTrap } from '@/components/search/barcode-wedge-trap'
 import {
@@ -929,8 +936,8 @@ export function PosClient({
   // Gépelés = typeahead. Query változáskor azonnal töröljük a sticky listát,
   // különben Enter a régi találatot rakja kosárba (vonalkód scan race).
   // Alfanumerikus CODE128 / EAN-13: exact preview (lookup), ne fuzzy.
-  // Tiszta szám SKU (4–12): typeahead + exact preview — clerk lássa a sort.
-  // Kivétel: tábla gépkód-kezdet (312…) → typeahead, ne barcode gate.
+  // Tiszta szám SKU (4–12): typeahead + exact — Mindnél is (search-policy).
+  // 3 jegyű tábla stub (312): anyag; ≥4 digit: termék + anyag.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     const q = searchQ.trim()
@@ -943,16 +950,15 @@ export function PosClient({
       isSheetMachineCodeQuery(q) &&
       searchKind !== 'product' &&
       searchKind !== 'linear_material'
-    // Pure digits: wait ≥4 (termék). Tábla-kód: ≥3. Names: ≥2.
-    const minLen = sheetCodeQ ? 3 : /^\d+$/.test(q) ? 4 : 2
+    const minLen = searchMinLength({ q, sheetCodeActive: sheetCodeQ })
     if (q.length < minLen || !warehouseId) {
       setSearching(false)
       return
     }
     const skuTyped = isSkuTypeaheadQuery(q)
-    const barcodeLike = looksLikeBarcode(q) && !sheetCodeQ
+    const exactPreviewOnly = isBarcodeExactPreviewOnly(q, sheetCodeQ)
     // EAN-13 / alfanumerikus (DT-CZ…): ne fuzzy — exact preview lent.
-    if (barcodeLike && !skuTyped) {
+    if (exactPreviewOnly) {
       setSearching(false)
       setSearchOpen(false)
       if (q.length >= 6) {
@@ -967,7 +973,17 @@ export function PosClient({
               setSearchOpen(true)
               setSelectedSearchIndex(0)
             } else {
+              // Részleges CODE128: ne zero-hit panik gépelés közben
               setSearchHits([])
+              if (
+                shouldShowTypingMissEmpty({
+                  q,
+                  exactMiss: true,
+                  sheetCodeActive: sheetCodeQ
+                })
+              ) {
+                setSearchOpen(false)
+              }
             }
           })
         }, 180)
@@ -993,23 +1009,19 @@ export function PosClient({
       })
       // SKU: parallel exact — ha a fuzzy üres, lookup mégis megtalálja.
       const exact =
-        skuTyped || barcodeLike
+        skuTyped || looksLikeBarcode(q)
           ? fetchPosBarcodeLookupCached(q, warehouseId)
           : Promise.resolve(null)
       void Promise.all([typeahead, exact]).then(([res, exactRes]) => {
         if (reqId !== searchReqId.current) return
         setSearching(false)
         const rows = res.ok ? res.rows : []
-        if (exactRes && exactRes.ok) {
-          const hit = exactRes.product
-          const rest = rows.filter((r) => r.id !== hit.id)
-          setSearchHits([hit, ...rest])
-          setSearchOpen(true)
-          setSelectedSearchIndex(0)
-          return
-        }
-        if (res.ok) {
-          setSearchHits(rows)
+        const exactHit =
+          exactRes && exactRes.ok ? exactRes.product : null
+        // Odoo-style: hosszú exact → ne fuzzy zaj
+        const merged = mergeExactAndFuzzyHits(q, rows, exactHit)
+        if (merged.length > 0) {
+          setSearchHits(merged)
           setSearchOpen(true)
           setSelectedSearchIndex(0)
         } else {
@@ -1913,14 +1925,14 @@ export function PosClient({
                 } else if (e.key === 'Enter') {
                   e.preventDefault()
                   const q = searchQ.trim()
-                  const sheetCodeEnter =
-                    hasLapszabaszat &&
-                    isSheetMachineCodeQuery(q) &&
-                    searchKind !== 'product' &&
-                    searchKind !== 'linear_material'
-                  // Vonalkód / EAN: mindig exact lookup — ne a fuzzy typeahead első sorát.
-                  // Tábla gépkód (312…) → lista pick, ne product barcode.
-                  if (looksLikeBarcode(q) && !sheetCodeEnter) {
+                  // Exact barcode/SKU Enter — ne stale lista. 3 jegyű tábla stub → lista pick.
+                  if (
+                    shouldRunBarcodeEnter({
+                      q,
+                      hasLapszabaszat,
+                      searchKind
+                    })
+                  ) {
                     void runBarcodeScan(q).then((ok) => {
                       if (!ok) return
                       setSearchQ('')
