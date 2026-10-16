@@ -47,7 +47,7 @@ export function wantSheetInSaleSearch(opts: {
   q: string
   includeMaterials: boolean
 }): boolean {
-  const { kind, q, includeMaterials } = opts
+  const { kind, includeMaterials } = opts
   if (!includeMaterials) return false
   if (kind !== 'all' && kind !== 'sheet_material') return false
   return true
