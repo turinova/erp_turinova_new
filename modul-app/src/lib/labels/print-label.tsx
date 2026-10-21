@@ -8,6 +8,7 @@ import {
   sendZplViaBrowserPrint,
   type BrowserPrintDevice
 } from '@/lib/labels/browser-print-client'
+import { isScannableOn33x25 } from '@/lib/labels/print-policy'
 import { generateLabelZpl } from '@/lib/labels/zpl'
 import type { LabelFields, LabelSize, ProductLabelPayload } from '@/lib/labels/types'
 
@@ -157,6 +158,12 @@ export async function printProductLabelsHtml(args: PrintArgs): Promise<void> {
 
 async function printViaZebra(args: PrintArgs): Promise<PrintLabelResult> {
   void args.size // only 33x25 supported for ZPL today
+  const wantBarcode = args.fields.showBarcode && Boolean(args.barcodeValue)
+  if (wantBarcode && !isScannableOn33x25(args.barcodeValue)) {
+    throw new Error(
+      'A vonalkód nem fér olvashatóan a 33×25 címkére. Használj belső EAN-t, vagy kapcsold ki a Vonalkód mezőt.'
+    )
+  }
   const generated = generateLabelZpl({
     productName: args.productName,
     price: args.price,
@@ -169,6 +176,7 @@ async function printViaZebra(args: PrintArgs): Promise<PrintLabelResult> {
     offsetXMm: args.offsetXMm,
     offsetYMm: args.offsetYMm
   })
+  // sendZplViaBrowserPrint always re-probes (USB unplug-safe)
   await sendZplViaBrowserPrint(generated.zpl, args.zebraDevice ?? null)
   return { method: 'zebra', fitWarning: generated.fitWarning }
 }

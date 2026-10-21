@@ -60,17 +60,19 @@ Ha van címkenyomtatás:
 - külön formátum specifikáció kell
 - méret, margó, vonalkód elhelyezés, betűméret legyen fixen definiálva
 
-### 6a. Termék címke (33×25 mm) — v4 (Zebra Browser Print)
+### 6a. Termék címke (33×25 mm) — v5 (Zebra Browser Print + policy)
 
 Zárolt döntések:
 
 - **Nyomtatás primary:** Zebra **Browser Print** → nyers **ZPL** (`lib/labels/zpl.ts` + `browser-print-client.ts`). A vonalkódot a **ZD220 firmware** rajzolja (`^BEN` EAN-13 / `^BCN` CODE128), nem Chrome raster.
+- **Barcode policy (`print-policy.ts`):** 33×25-ön csak **EAN-13** vagy **rövid CODE128** (`^BY2` scannelhető). Hosszú gyártói (pl. `DT-CZ…`) → **belső EAN** kötelező; ha nincs → print **tiltva** (vagy vonalkód mező ki).
+- **ZPL layout:** bottom-up — először barcode band alul, szöveg a fennmaradó sávban (`estimateFbLines`).
 - **203 dpi:** `^PW264` / `^LL200` / `^LH0,0`; modul **`^BY2`**. EAN szélesség = **113 modul** (quiet benne); FO középre + **~2 mm** oldalsó pad.
 - **Szöveg:** `^FB…,C` középre; **nincs** JS ellipsis. `^MD14` default (túl sötét = olvashatatlan sávok).
 - **EAN `^FD`:** pontosan **12 digit**; érvényes belső EAN default.
 - **Előnézet:** HTML sheet (tájékoztató). **HTML nyomtatás** csak fallback.
 - **Illesztés:** `tenant_label_print_settings` → `^LS` / `^LT`. Bal clip → negatív X (tartalom jobbra).
-- **Gép:** Browser Print + default ZD220; HTTPS `9101/ssl_support`; media kalibráció.
+- **Gép / USB:** Browser Print + default ZD220; HTTPS `9101/ssl_support`; media kalibráció. **Minden nyomtatás előtt re-probe**; tab focus / visibility → re-probe; hibaállapotnál **Újracsatlakozás**; USB kihúzás → clerk-facing hiba (`mapBrowserPrintError`).
 - Layout preview: `layout.ts`; print: `print-label.tsx` → ZPL.
 
 ## 7. PDF kontra HTML print

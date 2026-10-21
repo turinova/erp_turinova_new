@@ -2,6 +2,8 @@
  * Zebra Browser Print — local HTTP API (no vendor JS required).
  * HTTP page → http://127.0.0.1:9100
  * HTTPS page → https://127.0.0.1:9101 (accept SSL once: /ssl_support)
+ *
+ * USB unplug edge cases: always re-probe before write; stale device UIDs fail.
  */
 
 export type BrowserPrintDevice = {
@@ -21,6 +23,15 @@ export type BrowserPrintProbe =
   | { status: 'ssl'; hint: string }
 
 const TIMEOUT_MS = 4000
+
+const HINT_DOWN =
+  'A Zebra Browser Print nem fut. Indítsd el a tálcán (Zebra ikon).'
+const HINT_SSL =
+  'Nyisd meg egyszer: https://127.0.0.1:9101/ssl_support — fogadd el a tanúsítványt.'
+const HINT_USB =
+  'A nyomtató nem elérhető — ellenőrizd az USB kábelt, a Pause gombot, majd Újracsatlakozás.'
+const HINT_NO_DEFAULT =
+  'Nincs default nyomtató. Browser Print → Default printer: ZD220.'
 
 function getBaseUrl(): string {
   if (typeof window === 'undefined') return 'http://127.0.0.1:9100/'
@@ -81,15 +92,9 @@ export async function probeBrowserPrint(): Promise<BrowserPrintProbe> {
   const def = await fetchJson<unknown>('default?type=printer')
   if (!def.ok) {
     if (def.kind === 'ssl') {
-      return {
-        status: 'ssl',
-        hint: 'Nyisd meg egyszer: https://127.0.0.1:9101/ssl_support — fogadd el a tanúsítványt.'
-      }
+      return { status: 'ssl', hint: HINT_SSL }
     }
-    return {
-      status: 'down',
-      hint: 'A Zebra Browser Print nem fut. Indítsd el a tálcán (Zebra ikon).'
-    }
+    return { status: 'down', hint: HINT_DOWN }
   }
 
   const device = normalizeDevice(def.data)
@@ -111,27 +116,52 @@ export async function probeBrowserPrint(): Promise<BrowserPrintProbe> {
   return { status: 'no_default', devices: printers }
 }
 
-export async function sendZplViaBrowserPrint(
-  zpl: string,
-  preferred?: BrowserPrintDevice | null
-): Promise<void> {
-  let device = preferred ?? null
-  if (!device) {
-    const probe = await probeBrowserPrint()
-    if (probe.status === 'ok') device = probe.device
-    else if (probe.status === 'no_default' && probe.devices[0]) {
-      device = probe.devices[0]
-    } else if (probe.status === 'ssl') {
-      throw new Error(probe.hint)
-    } else if (probe.status === 'down') {
-      throw new Error(probe.hint)
-    } else {
-      throw new Error(
-        'Nincs default nyomtató. Browser Print → Default printer: ZD220.'
-      )
-    }
+/** Map raw fetch/write errors to clerk-facing Hungarian copy. */
+export function mapBrowserPrintError(err: unknown): string {
+  if (!(err instanceof Error)) return HINT_USB
+  if (err.name === 'AbortError') {
+    return 'A Zebra Browser Print nem válaszolt időben — ellenőrizd az USB-t és a szolgáltatást.'
   }
+  const msg = err.message || ''
+  if (
+    /Failed to fetch|NetworkError|Load failed|ECONNREFUSED|ERR_CONNECTION|abort/i.test(
+      msg
+    )
+  ) {
+    return HINT_USB
+  }
+  if (/SSL|certificate|ERR_CERT/i.test(msg)) {
+    return HINT_SSL
+  }
+  // Already localized hints from this module
+  if (
+    msg.includes('Browser Print') ||
+    msg.includes('nyomtató') ||
+    msg.includes('USB') ||
+    msg.includes('ssl_support') ||
+    msg.includes('default')
+  ) {
+    return msg
+  }
+  return msg || HINT_USB
+}
 
+function deviceFromProbe(probe: BrowserPrintProbe): BrowserPrintDevice | null {
+  if (probe.status === 'ok') return probe.device
+  if (probe.status === 'no_default' && probe.devices[0]) return probe.devices[0]
+  return null
+}
+
+function throwFromProbe(probe: BrowserPrintProbe): never {
+  if (probe.status === 'ssl') throw new Error(probe.hint)
+  if (probe.status === 'down') throw new Error(probe.hint)
+  throw new Error(HINT_NO_DEFAULT)
+}
+
+async function writeZpl(
+  device: BrowserPrintDevice,
+  zpl: string
+): Promise<void> {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
   try {
@@ -148,16 +178,58 @@ export async function sendZplViaBrowserPrint(
       const body = await res.text().catch(() => '')
       throw new Error(
         body ||
-          'A nyomtató nem fogadta a címkét — ellenőrizd a papírt / Pause gombot.'
+          'A nyomtató nem fogadta a címkét — ellenőrizd a papírt / Pause gombot / USB-t.'
       )
     }
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error('A Zebra Browser Print nem válaszolt időben.')
-    }
-    throw err
+    throw new Error(mapBrowserPrintError(err))
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * Send ZPL via Browser Print.
+ * Always re-probes first (USB unplug invalidates cached device).
+ * One retry after fresh probe if the first write fails with a network-like error.
+ */
+export async function sendZplViaBrowserPrint(
+  zpl: string,
+  preferred?: BrowserPrintDevice | null
+): Promise<void> {
+  const probe = await probeBrowserPrint()
+  let device = deviceFromProbe(probe)
+  if (!device) throwFromProbe(probe)
+
+  // Prefer matching UID from dialog cache if still listed as default/available
+  if (
+    preferred?.uid &&
+    probe.status === 'ok' &&
+    probe.device.uid === preferred.uid
+  ) {
+    device = preferred
+  } else if (
+    preferred?.uid &&
+    probe.status === 'no_default' &&
+    probe.devices.some((d) => d.uid === preferred.uid)
+  ) {
+    device = preferred
+  }
+
+  try {
+    await writeZpl(device!, zpl)
+  } catch (firstErr) {
+    // USB was unplugged between probe and write, or Browser Print flaked — one retry
+    const retryProbe = await probeBrowserPrint()
+    const retryDevice = deviceFromProbe(retryProbe)
+    if (!retryDevice) {
+      throw new Error(mapBrowserPrintError(firstErr))
+    }
+    try {
+      await writeZpl(retryDevice, zpl)
+    } catch (secondErr) {
+      throw new Error(mapBrowserPrintError(secondErr))
+    }
   }
 }
 
@@ -174,7 +246,7 @@ export function browserPrintStatusLabel(probe: BrowserPrintProbe): {
         text:
           probe.devices.length > 0
             ? 'Nincs default printer — állítsd be a Browser Printben'
-            : 'Nincs Zebra nyomtató'
+            : 'Nincs Zebra nyomtató (USB?)'
       }
     case 'ssl':
       return { tone: 'error', text: 'HTTPS SSL — fogadd el a tanúsítványt' }

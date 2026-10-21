@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, Minus, Plus, Printer } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, Minus, Plus, Printer, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { LabelAlignmentSchema } from '@/components/labels/label-alignment-schema'
@@ -18,14 +18,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
-import {
-  assessLabelScanSafety,
-  computeLabelLayout,
-  LABEL_TEMPLATES,
-  type LabelTemplateId
-} from '@/lib/labels/layout'
+import { LABEL_TEMPLATES, type LabelTemplateId } from '@/lib/labels/layout'
 import {
   browserPrintStatusLabel,
+  mapBrowserPrintError,
   probeBrowserPrint,
   type BrowserPrintDevice,
   type BrowserPrintProbe
@@ -41,32 +37,18 @@ import {
   LABEL_OFFSET_MIN,
   LABEL_OFFSET_STEP
 } from '@/lib/labels/print-settings'
-import { generateLabelZpl } from '@/lib/labels/zpl'
+import {
+  defaultBarcodeSource,
+  isScannableOn33x25,
+  resolvePrintableBarcode
+} from '@/lib/labels/print-policy'
 import { isValidEan13 } from '@/lib/barcodes/ean13'
 import {
-  labelBarcodeValue,
-  labelSizeMm,
   type LabelBarcodeSource,
   type LabelFields,
   type ProductLabelPayload
 } from '@/lib/labels/types'
 import { cn } from '@/lib/utils'
-
-/**
- * Soft-force scan-safe code: valid internal EAN-13 wins over long supplier CODE128
- * (33×25 physics — ~95 modules vs 120+).
- */
-function defaultBarcodeSource(
-  payload: ProductLabelPayload | null
-): LabelBarcodeSource {
-  if (!payload) return 'auto'
-  const internal = payload.barcodeInternal?.trim() || ''
-  const supplier = payload.barcode?.trim() || ''
-  if (internal && isValidEan13(internal)) return 'internal'
-  if (internal && !supplier) return 'internal'
-  if (supplier && !internal) return 'supplier'
-  return 'auto'
-}
 
 type UnitOption = { id: string; name: string; shortform: string }
 
@@ -149,19 +131,48 @@ export function ProductLabelPrintDialog({
   const [printing, setPrinting] = useState(false)
   const [barcodeSource, setBarcodeSource] =
     useState<LabelBarcodeSource>('auto')
-  const [forcePrintUnsafe, setForcePrintUnsafe] = useState(false)
   const [zebraProbe, setZebraProbe] = useState<BrowserPrintProbe | null>(null)
   const [zebraDevice, setZebraDevice] = useState<BrowserPrintDevice | null>(
     null
   )
+  const [zebraProbing, setZebraProbing] = useState(false)
+  const zebraProbeGen = useRef(0)
 
-  const barcode = payload
-    ? labelBarcodeValue(payload, barcodeSource)
-    : null
+  const refreshZebraProbe = useCallback(async (): Promise<BrowserPrintProbe> => {
+    const gen = ++zebraProbeGen.current
+    setZebraProbing(true)
+    try {
+      const probe = await probeBrowserPrint()
+      if (gen !== zebraProbeGen.current) return probe
+      setZebraProbe(probe)
+      setZebraDevice(probe.status === 'ok' ? probe.device : null)
+      return probe
+    } finally {
+      if (gen === zebraProbeGen.current) setZebraProbing(false)
+    }
+  }, [])
+
+  const printResolve = useMemo(() => {
+    if (!payload) {
+      return null
+    }
+    return resolvePrintableBarcode(payload, barcodeSource)
+  }, [payload, barcodeSource])
+
+  /** Policy-resolved code for preview + print (never overflow CODE128). */
+  const barcode = printResolve?.value ?? null
   const hasBarcode = Boolean(barcode)
+  const barcodeBlocked =
+    Boolean(fields.showBarcode) && Boolean(printResolve?.blocked)
   const hasSupplierCode = Boolean(payload?.barcode?.trim())
   const hasInternalCode = Boolean(payload?.barcodeInternal?.trim())
-  const showBarcodePicker = hasSupplierCode && hasInternalCode
+  const hasValidInternal = Boolean(
+    payload?.barcodeInternal?.trim() &&
+      isValidEan13(payload.barcodeInternal.trim())
+  )
+  const supplierScannable = isScannableOn33x25(payload?.barcode)
+  const showBarcodePicker =
+    hasSupplierCode || hasInternalCode || hasValidInternal
   const settingsDirty =
     offsetX !== savedOffsetX || offsetY !== savedOffsetY
   const hasActiveOffset = offsetX !== 0 || offsetY !== 0
@@ -170,7 +181,8 @@ export function ProductLabelPrintDialog({
     if (!open || !payload) return
     const source = defaultBarcodeSource(payload)
     setBarcodeSource(source)
-    const bc = Boolean(labelBarcodeValue(payload, source))
+    const resolved = resolvePrintableBarcode(payload, source)
+    const bc = Boolean(resolved.value) && !resolved.blocked
     setName(payload.name)
     setPrice(Math.round(payload.priceGross))
     setUnit(payload.unitShortform || 'db')
@@ -179,24 +191,42 @@ export function ProductLabelPrintDialog({
     setFields(LABEL_TEMPLATES.find((t) => t.id === 'full')!.fields(bc))
     setShowHumanReadable(false)
     setSettingsOpen(false)
-    setForcePrintUnsafe(false)
+    if (resolved.forcedInternal) {
+      setBarcodeSource('internal')
+    }
   }, [open, payload, initialAmount])
 
+  // Keep source on internal when policy forces it
+  useEffect(() => {
+    if (!printResolve?.forcedInternal) return
+    if (barcodeSource !== 'internal') setBarcodeSource('internal')
+  }, [printResolve?.forcedInternal, barcodeSource])
+
+  // Probe on open + re-probe when tab/window returns (USB unplug while away)
   useEffect(() => {
     if (!open) return
-    let cancelled = false
     setZebraProbe(null)
     setZebraDevice(null)
-    void (async () => {
-      const probe = await probeBrowserPrint()
-      if (cancelled) return
-      setZebraProbe(probe)
-      setZebraDevice(probe.status === 'ok' ? probe.device : null)
-    })()
-    return () => {
-      cancelled = true
+    void refreshZebraProbe()
+
+    let lastAt = 0
+    const throttledRefresh = () => {
+      const now = Date.now()
+      if (now - lastAt < 1500) return
+      lastAt = now
+      void refreshZebraProbe()
     }
-  }, [open])
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') throttledRefresh()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', throttledRefresh)
+    return () => {
+      zebraProbeGen.current += 1
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', throttledRefresh)
+    }
+  }, [open, refreshZebraProbe])
 
   useEffect(() => {
     if (!open) return
@@ -252,65 +282,37 @@ export function ProductLabelPrintDialog({
     return opts
   }, [units, unit])
 
-  /** Payload with resolved code so layout/scan use the chosen source. */
+  /** Payload with policy-resolved code for preview sheet. */
   const effectivePayload = useMemo((): ProductLabelPayload | null => {
     if (!payload) return null
-    const code = labelBarcodeValue(payload, barcodeSource)
     return {
       ...payload,
-      barcode: code,
+      barcode: barcode,
       barcodeInternal: null
     }
-  }, [payload, barcodeSource])
-
-  const scanSafety = useMemo(() => {
-    if (!effectivePayload || !fields.showBarcode || !barcode) {
-      return { ok: true as const, reason: null as string | null }
-    }
-    const layout = computeLabelLayout({
-      size: '33x25',
-      fields,
-      productName: name,
-      price,
-      payload: effectivePayload,
-      showHumanReadable
-    })
-    return assessLabelScanSafety({
-      layout,
-      barcodeValue: barcode,
-      labelWidthMm: labelSizeMm('33x25').w
-    })
-  }, [effectivePayload, fields, name, price, barcode, showHumanReadable])
-
-  const zplFit = useMemo(() => {
-    if (!payload || !barcode || !fields.showBarcode) {
-      return { fitWarning: null as string | null, barcodeFits: true }
-    }
-    const g = generateLabelZpl({
-      productName: name,
-      price,
-      unitShortform: unit || 'db',
-      fields,
-      payload,
-      barcodeValue: barcode,
-      showHumanReadable,
-      amount: 1
-    })
-    return { fitWarning: g.fitWarning, barcodeFits: g.barcodeFits }
-  }, [payload, barcode, fields, name, price, unit, showHumanReadable])
+  }, [payload, barcode])
 
   const zebraStatus = zebraProbe ? browserPrintStatusLabel(zebraProbe) : null
   const zebraReady = zebraProbe?.status === 'ok'
+  const canPrintBarcode =
+    !fields.showBarcode || (hasBarcode && !barcodeBlocked)
 
   function applyTemplate(id: LabelTemplateId) {
     const tpl = LABEL_TEMPLATES.find((t) => t.id === id)
     if (!tpl) return
     setTemplateId(id)
-    setFields(tpl.fields(hasBarcode))
+    setFields(tpl.fields(hasBarcode && !barcodeBlocked))
   }
 
   function toggleField(key: keyof LabelFields) {
-    if (key === 'showBarcode' && !hasBarcode) return
+    if (key === 'showBarcode') {
+      if (fields.showBarcode) {
+        setTemplateId('custom')
+        setFields((f) => ({ ...f, showBarcode: false }))
+        return
+      }
+      if (!hasBarcode) return
+    }
     setTemplateId('custom')
     setFields((f) => ({ ...f, [key]: !f[key] }))
   }
@@ -352,10 +354,7 @@ export function ProductLabelPrintDialog({
     }
   }
 
-  async function handlePrint(opts?: {
-    forceUnsafe?: boolean
-    method?: 'zebra' | 'html'
-  }) {
+  async function handlePrint(opts?: { method?: 'zebra' | 'html' }) {
     if (!payload || !effectivePayload) return
     if (
       !fields.showName &&
@@ -366,49 +365,47 @@ export function ProductLabelPrintDialog({
       toast.error('Válassz ki legalább egy mezőt a címkéhez.')
       return
     }
+    if (fields.showBarcode && barcodeBlocked) {
+      toast.error(
+        printResolve?.message ??
+          'Nincs olvasható vonalkód a 33×25 címkéhez. Generálj belső EAN-t, vagy kapcsold ki a Vonalkód mezőt.'
+      )
+      return
+    }
+    if (fields.showBarcode && barcode && !isScannableOn33x25(barcode)) {
+      toast.error(
+        'A vonalkód nem fér olvashatóan. Válts belső EAN-re, vagy kapcsold ki a Vonalkód mezőt.'
+      )
+      return
+    }
     const method = opts?.method ?? 'zebra'
-    if (
-      method === 'zebra' &&
-      !zplFit.barcodeFits &&
-      !opts?.forceUnsafe &&
-      !forcePrintUnsafe
-    ) {
-      toast.message('Gyenge szkennelhetőség', {
-        description:
-          zplFit.fitWarning ??
-          'Válts belső EAN-re, vagy nyomtasd „Mégis”.'
-      })
-      return
-    }
-    if (
-      method === 'html' &&
-      !scanSafety.ok &&
-      !opts?.forceUnsafe &&
-      !forcePrintUnsafe
-    ) {
-      toast.message('Gyenge szkennelhetőség', {
-        description:
-          'A vonalkód sávjai keskenyek lehetnek. Válts belső EAN-re, vagy nyomtasd „Mégis”.'
-      })
-      return
-    }
     if (settingsDirty) {
       toast.message('Nem mentett illesztés', {
         description:
           'A nyomtatás a jelenlegi (nem mentett) eltolással megy. Mentés: Beállítások.'
       })
     }
-    if (method === 'zebra' && !zebraReady) {
-      let msg = 'Zebra Browser Print nem elérhető.'
-      if (zebraProbe?.status === 'ssl' || zebraProbe?.status === 'down') {
-        msg = zebraProbe.hint
-      } else if (zebraProbe?.status === 'no_default') {
-        msg =
-          'Nincs default Zebra nyomtató. Browser Print → Default: ZD220.'
+
+    let deviceForPrint = zebraDevice
+    if (method === 'zebra') {
+      // Fresh probe every print — USB may have been unplugged since last status
+      const probe = await refreshZebraProbe()
+      if (probe.status !== 'ok') {
+        let msg = 'Zebra Browser Print nem elérhető.'
+        if (probe.status === 'ssl' || probe.status === 'down') {
+          msg = probe.hint
+        } else if (probe.status === 'no_default') {
+          msg =
+            probe.devices.length > 0
+              ? 'Nincs default Zebra nyomtató. Browser Print → Default: ZD220.'
+              : 'Nincs Zebra nyomtató — csatlakoztasd USB-n, majd Újracsatlakozás.'
+        }
+        toast.error(msg)
+        return
       }
-      toast.error(msg)
-      return
+      deviceForPrint = probe.device
     }
+
     setPrinting(true)
     try {
       const result = await printProductLabels({
@@ -422,15 +419,17 @@ export function ProductLabelPrintDialog({
         showHumanReadable,
         offsetXMm: offsetX,
         offsetYMm: offsetY,
-        barcodeValue: barcode,
+        barcodeValue: fields.showBarcode ? barcode : null,
         method,
-        zebraDevice
+        zebraDevice: deviceForPrint
       })
+      if (printResolve?.forcedInternal) {
+        toast.message('Belső EAN', {
+          description: printResolve.message ?? undefined
+        })
+      }
       if (result.method === 'zebra') {
         toast.success('Elküldve a Zebra nyomtatóra')
-        if (result.fitWarning) {
-          toast.message('Figyelem', { description: result.fitWarning })
-        }
       } else {
         toast.message('HTML nyomtatás', {
           description:
@@ -439,9 +438,9 @@ export function ProductLabelPrintDialog({
       }
     } catch (err) {
       console.error(err)
-      const msg =
-        err instanceof Error ? err.message : 'A nyomtatás sikertelen.'
-      toast.error(msg)
+      toast.error(mapBrowserPrintError(err))
+      // Refresh status so the banner shows disconnected after failed send
+      if (method === 'zebra') void refreshZebraProbe()
     } finally {
       setPrinting(false)
     }
@@ -462,9 +461,9 @@ export function ProductLabelPrintDialog({
             Ha a bal szél levág: Beállítások → vízszintes illesztés negatív irányba.
           </DialogDescription>
           {zebraStatus ? (
-            <p
+            <div
               className={cn(
-                'mt-1.5 rounded-md px-2.5 py-1.5 text-[12px]',
+                'mt-1.5 flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px]',
                 zebraStatus.tone === 'ok' &&
                   'border border-success/30 bg-success-soft text-success-ink',
                 zebraStatus.tone === 'warn' &&
@@ -473,11 +472,30 @@ export function ProductLabelPrintDialog({
                   'border border-danger/30 bg-danger-soft text-danger-ink'
               )}
             >
-              {zebraStatus.text}
-              {zebraProbe?.status === 'ssl' || zebraProbe?.status === 'down'
-                ? ` — ${zebraProbe.hint}`
-                : null}
-            </p>
+              <p className="min-w-0 flex-1">
+                {zebraStatus.text}
+                {zebraProbe?.status === 'ssl' || zebraProbe?.status === 'down'
+                  ? ` — ${zebraProbe.hint}`
+                  : zebraProbe?.status === 'no_default' &&
+                      zebraProbe.devices.length === 0
+                    ? ' — csatlakoztasd USB-n, majd Újracsatlakozás.'
+                    : null}
+              </p>
+              {zebraStatus.tone !== 'ok' ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
+                  loading={zebraProbing}
+                  disabled={zebraProbing || printing}
+                  onClick={() => void refreshZebraProbe()}
+                >
+                  <RefreshCw className="size-3.5" aria-hidden />
+                  Újracsatlakozás
+                </Button>
+              ) : null}
+            </div>
           ) : open ? (
             <p className="mt-1.5 text-[12px] text-ink-muted">
               Zebra kapcsolat ellenőrzése…
@@ -510,30 +528,39 @@ export function ProductLabelPrintDialog({
                 illesztését. Ár:{' '}
                 <span className="font-medium">Ft/{unit || 'db'}</span>.
               </p>
-              {!zplFit.barcodeFits && zplFit.fitWarning ? (
-                <div className="max-w-sm space-y-1.5 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-center">
+              {printResolve?.forcedInternal && printResolve.message ? (
+                <div className="max-w-sm rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-center">
                   <p className="text-[12px] text-warning-ink">
-                    {zplFit.fitWarning}
+                    {printResolve.message}
                   </p>
-                  {hasInternalCode && barcodeSource !== 'internal' ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setBarcodeSource('internal')
-                        setForcePrintUnsafe(false)
-                      }}
-                    >
-                      Belső EAN használata
-                    </Button>
-                  ) : null}
                 </div>
-              ) : !scanSafety.ok ? (
-                <div className="max-w-sm space-y-1.5 rounded-md border border-border bg-subtle px-3 py-2 text-center">
-                  <p className="text-[11px] text-ink-muted">
-                    HTML előnézet figyelmeztetés (ZPL nyomtatásnál a nyomtató
-                    rajzolja a kódot): {scanSafety.reason}
+              ) : null}
+              {barcodeBlocked && printResolve?.message ? (
+                <div className="max-w-sm space-y-1.5 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-center">
+                  <p className="text-[12px] text-danger-ink">
+                    {printResolve.message}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setFields((f) => ({ ...f, showBarcode: false }))
+                      setTemplateId('custom')
+                    }}
+                  >
+                    Címke vonalkód nélkül
+                  </Button>
+                </div>
+              ) : null}
+              {!barcodeBlocked &&
+              fields.showBarcode &&
+              hasBarcode &&
+              !hasValidInternal ? (
+                <div className="max-w-sm rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-center">
+                  <p className="text-[12px] text-warning-ink">
+                    Nincs belső EAN a terméken. Érdemes generálni — hosszú
+                    gyártói kód később nem fér a 33×25 címkére.
                   </p>
                 </div>
               ) : null}
@@ -575,13 +602,14 @@ export function ProductLabelPrintDialog({
                 </div>
               </fieldset>
 
-              {showBarcodePicker || hasSupplierCode || hasInternalCode ? (
+              {showBarcodePicker ? (
                 <fieldset className="space-y-1.5">
                   <legend className="text-label font-medium text-ink">
                     Nyomtatandó kód
                   </legend>
                   <p className="text-[11px] text-ink-muted">
-                    Ha nem olvas: Belső EAN + „Csak kód” sablon.
+                    33×25 mm: csak EAN vagy rövid CODE128. Hosszú gyártói kód
+                    (pl. DT-CZ…) nem fér — belső EAN kell.
                   </p>
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
                     {(
@@ -589,27 +617,32 @@ export function ProductLabelPrintDialog({
                         {
                           id: 'auto' as const,
                           label: 'Auto',
-                          hint: 'Érvényes EAN előny'
+                          hint: 'EAN előny'
                         },
                         {
                           id: 'supplier' as const,
                           label: 'Gyártói',
                           hint: hasSupplierCode
-                            ? (payload.barcode ?? '').slice(0, 14)
+                            ? supplierScannable
+                              ? (payload!.barcode ?? '').slice(0, 14)
+                              : 'Nem fér (33 mm)'
                             : '—'
                         },
                         {
                           id: 'internal' as const,
                           label: 'Belső EAN',
-                          hint: hasInternalCode
-                            ? (payload.barcodeInternal ?? '').slice(0, 14)
-                            : '—'
+                          hint: hasValidInternal
+                            ? (payload!.barcodeInternal ?? '').slice(0, 14)
+                            : hasInternalCode
+                              ? 'Érvénytelen EAN'
+                              : 'Nincs'
                         }
                       ] as const
                     ).map((opt) => {
                       const disabled =
-                        (opt.id === 'supplier' && !hasSupplierCode) ||
-                        (opt.id === 'internal' && !hasInternalCode)
+                        (opt.id === 'supplier' &&
+                          (!hasSupplierCode || !supplierScannable)) ||
+                        (opt.id === 'internal' && !hasValidInternal)
                       return (
                         <button
                           key={opt.id}
@@ -617,11 +650,11 @@ export function ProductLabelPrintDialog({
                           disabled={disabled}
                           onClick={() => {
                             setBarcodeSource(opt.id)
-                            setForcePrintUnsafe(false)
-                            if (
-                              !fields.showBarcode &&
-                              labelBarcodeValue(payload, opt.id)
-                            ) {
+                            const next = resolvePrintableBarcode(
+                              payload!,
+                              opt.id
+                            )
+                            if (!fields.showBarcode && next.value) {
                               setFields((f) => ({ ...f, showBarcode: true }))
                             }
                           }}
@@ -652,7 +685,10 @@ export function ProductLabelPrintDialog({
                 </legend>
                 <div className="flex flex-wrap gap-1.5">
                   {FIELD_CHIPS.map(({ key, label }) => {
-                    const disabled = key === 'showBarcode' && !hasBarcode
+                    const disabled =
+                      key === 'showBarcode' &&
+                      !hasBarcode &&
+                      !fields.showBarcode
                     const on = fields[key]
                     return (
                       <button
@@ -966,37 +1002,27 @@ export function ProductLabelPrintDialog({
           <Button
             type="button"
             variant="secondary"
-            onClick={() => void handlePrint({ method: 'html', forceUnsafe: true })}
+            onClick={() => void handlePrint({ method: 'html' })}
             loading={printing}
-            disabled={!payload}
+            disabled={!payload || !canPrintBarcode}
             title="Csak ha a Browser Print nem elérhető"
           >
             HTML nyomtatás
           </Button>
-          {!zplFit.barcodeFits ? (
-            <Button
-              type="button"
-              onClick={() => {
-                setForcePrintUnsafe(true)
-                void handlePrint({ forceUnsafe: true, method: 'zebra' })
-              }}
-              loading={printing}
-              disabled={!payload || !zebraReady}
-            >
-              <Printer className="size-3.5" aria-hidden />
-              Mégis Zebra
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              onClick={() => void handlePrint({ method: 'zebra' })}
-              loading={printing}
-              disabled={!payload || !zebraReady}
-            >
-              <Printer className="size-3.5" aria-hidden />
-              Nyomtatás
-            </Button>
-          )}
+          <Button
+            type="button"
+            onClick={() => void handlePrint({ method: 'zebra' })}
+            loading={printing}
+            disabled={!payload || !zebraReady || !canPrintBarcode}
+            title={
+              !zebraReady
+                ? 'Zebra nem kész — Újracsatlakozás vagy HTML nyomtatás'
+                : undefined
+            }
+          >
+            <Printer className="size-3.5" aria-hidden />
+            Nyomtatás
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
