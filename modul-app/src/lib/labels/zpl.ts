@@ -2,9 +2,9 @@
  * 33×25 mm product label → ZPL II for Zebra ZD220 @ 203 dpi.
  * Barcodes are drawn by the printer (^BE / ^BC) — not raster SVG.
  *
- * Pack priority (space): barcode (scannable) → price → SKU → name (shrinks).
- * No silent drop of checked fields — name shrinks first; packOk=false if still impossible.
- * Uses full content width/height with minimal gaps between text rows.
+ * %-zone layout: fixed absolute bands (name 28 / SKU 18 / price 22 / barcode 32).
+ * Off fields leave a blank slot — other zones do NOT grow (uniform labels).
+ * SKU+price always 1 line; name max 2. Exception: barcode-only maximizes the code.
  */
 
 import { isValidEan13 } from '@/lib/barcodes/ean13'
@@ -17,11 +17,14 @@ export const ZPL_DOTS_PER_MM = 8
 export const ZPL_LABEL_W_DOTS = 33 * ZPL_DOTS_PER_MM // 264
 export const ZPL_LABEL_H_DOTS = 25 * ZPL_DOTS_PER_MM // 200
 
-/** Edge pad (~1 mm) — maximize printable area. */
+/** Edge pad (~1 mm). */
 export const ZPL_PAD_DOTS = 8
 
 export const ZPL_CONTENT_X = ZPL_PAD_DOTS
 export const ZPL_CONTENT_W = ZPL_LABEL_W_DOTS - 2 * ZPL_PAD_DOTS // 248
+
+/** Usable vertical budget inside pads. */
+export const ZPL_CONTENT_H = ZPL_LABEL_H_DOTS - 2 * ZPL_PAD_DOTS // 184
 
 export const ZPL_MODULE_DOTS = 2
 
@@ -30,25 +33,39 @@ export const EAN13_TOTAL_MODULES = 113
 
 const CODE128_QUIET_DOTS = 10
 
-/** Default / dense barcode band when text fields share the label (~7 mm). */
-export const ZPL_BARCODE_BAND_DOTS = 56
-
-/** Max barcode band for barcode-only (~17.5 mm). */
-export const ZPL_BARCODE_BAND_MAX_DOTS = 140
-
 /** Min scannable barcode height (~6.5 mm). */
 export const ZPL_BARCODE_BAND_MIN_DOTS = 52
 
-/** Intra-line leading inside ^FB (dots). */
+/** Max barcode for barcode-only. */
+export const ZPL_BARCODE_BAND_MAX_DOTS = 140
+
+/** @deprecated alias — zone model uses weights. */
+export const ZPL_BARCODE_BAND_DOTS = ZPL_BARCODE_BAND_MIN_DOTS
+
+/** Base zone weights (Teljes). Sum = 100. */
+export const ZONE_WEIGHT = {
+  name: 28,
+  sku: 18,
+  price: 22,
+  barcode: 32
+} as const
+
 const LINE_EXTRA = 1
 
-/** Gap between text blocks (dots) — keep minimal. */
-const BLOCK_GAP = 0
+/** Crisp print. */
+export const ZPL_DEFAULT_DARKNESS = 11
 
-/** Tiny gap between text zone and barcode. */
-const TEXT_BAR_GAP = 2
+const NAME_WIDTH_RATIO = 0.82
+const SKU_WIDTH_RATIO = 0.88
+const PRICE_WIDTH_RATIO = 0.9
 
-export const ZPL_DEFAULT_DARKNESS = 14
+const NAME_FONT_MAX = 28
+const SKU_FONT_MAX = 36
+const PRICE_FONT_MAX = 40
+const FONT_MIN = 14
+
+/** HRI eats a few dots from barcode zone. */
+const HRI_RESERVE_DOTS = 10
 
 export type LabelZplFieldId = 'name' | 'sku' | 'price'
 
@@ -72,7 +89,6 @@ export type LabelZplResult = {
   symbology: 'EAN13' | 'CODE128' | null
   barcodeFits: boolean
   fitWarning: string | null
-  /** False if a checked field could not fit even after shrinking name. */
   packOk: boolean
   droppedFields: LabelZplFieldId[]
 }
@@ -80,9 +96,14 @@ export type LabelZplResult = {
 type TextBlock = {
   kind: LabelZplFieldId
   text: string
-  font: number
+  fontH: number
+  fontW: number
   maxLines: number
   lines: number
+  /** Absolute ^FO Y (top of text / first line). */
+  y: number
+  zoneY: number
+  zoneH: number
 }
 
 export function escapeZplFd(raw: string): string {
@@ -123,7 +144,16 @@ function formatPrice(price: number): string {
   return new Intl.NumberFormat('hu-HU').format(Math.round(price))
 }
 
-/** Estimate wrapped lines for ^FB (approx chars/line at given font). */
+function fontWidth(kind: LabelZplFieldId, fontH: number): number {
+  const ratio =
+    kind === 'name'
+      ? NAME_WIDTH_RATIO
+      : kind === 'sku'
+        ? SKU_WIDTH_RATIO
+        : PRICE_WIDTH_RATIO
+  return Math.max(10, Math.round(fontH * ratio))
+}
+
 export function estimateFbLines(
   text: string,
   fontW: number,
@@ -136,45 +166,68 @@ export function estimateFbLines(
   return Math.min(maxLines, Math.max(1, raw))
 }
 
-function blockHeight(font: number, lines: number): number {
-  return lines * (font + LINE_EXTRA)
+function blockHeight(fontH: number, lines: number): number {
+  return lines * (fontH + LINE_EXTRA)
 }
 
-function totalBlocksHeight(blocks: TextBlock[]): number {
-  if (blocks.length === 0) return 0
-  let h = 0
-  for (let i = 0; i < blocks.length; i++) {
-    if (i > 0) h += BLOCK_GAP
-    h += blockHeight(blocks[i].font, blocks[i].lines)
-  }
-  return h
-}
-
-function barcodeBandDots(textFieldCount: number, barcodeOnly: boolean): number {
-  if (barcodeOnly) {
-    return Math.min(
-      ZPL_BARCODE_BAND_MAX_DOTS,
-      ZPL_LABEL_H_DOTS - 2 * ZPL_PAD_DOTS
-    )
-  }
-  if (textFieldCount >= 3) return ZPL_BARCODE_BAND_DOTS
-  if (textFieldCount === 2) return 64
-  if (textFieldCount === 1) return 72
-  return ZPL_BARCODE_BAND_DOTS
-}
+type ZoneId = 'name' | 'sku' | 'price' | 'barcode'
 
 type PackPlan = {
   blocks: TextBlock[]
   barH: number
   barY: number
+  /** First text Y (compat / diagnostics). */
   textTop: number
   packOk: boolean
   droppedFields: LabelZplFieldId[]
+  /** Allocated zone heights (active only). */
+  zones: Partial<Record<ZoneId, { y: number; h: number }>>
+}
+
+/** Largest-remainder allocation of `total` dots by weights. */
+export function allocateZoneDots(
+  weights: Partial<Record<ZoneId, number>>,
+  total: number
+): Record<ZoneId, number> {
+  const entries = (Object.keys(weights) as ZoneId[]).filter(
+    (k) => (weights[k] ?? 0) > 0
+  )
+  const result: Record<ZoneId, number> = {
+    name: 0,
+    sku: 0,
+    price: 0,
+    barcode: 0
+  }
+  if (entries.length === 0 || total <= 0) return result
+
+  const sumW = entries.reduce((s, k) => s + (weights[k] ?? 0), 0)
+  const exact = entries.map((k) => ({
+    k,
+    raw: ((weights[k] ?? 0) / sumW) * total,
+    floor: 0,
+    frac: 0
+  }))
+  let used = 0
+  for (const e of exact) {
+    e.floor = Math.floor(e.raw)
+    e.frac = e.raw - e.floor
+    used += e.floor
+  }
+  let rem = total - used
+  exact.sort((a, b) => b.frac - a.frac)
+  for (const e of exact) {
+    if (rem <= 0) break
+    e.floor += 1
+    rem -= 1
+  }
+  for (const e of exact) result[e.k] = e.floor
+  return result
 }
 
 /**
- * Priority packer: reserve barcode, then price → SKU → name.
- * Grow fonts to fill leftover height; never silently drop price/SKU.
+ * Fixed %-zone packer. SKU/price = 1 line; name ≤ 2 lines.
+ * All four slots always keep Teljes heights; off fields leave blank space
+ * so price/barcode stay in the same place across labels.
  */
 export function packLabel33x25(input: {
   productName: string
@@ -185,6 +238,7 @@ export function packLabel33x25(input: {
   showSku: boolean
   showPrice: boolean
   showBarcode: boolean
+  showHumanReadable?: boolean
 }): PackPlan {
   const nameText = escapeZplFd(input.productName || '—') || '—'
   const skuText = escapeZplFd(input.sku)
@@ -194,194 +248,161 @@ export function packLabel33x25(input: {
   const wantSku = input.showSku && Boolean(skuText)
   const wantPrice = input.showPrice
   const wantBarcode = input.showBarcode
+  const hri = Boolean(input.showHumanReadable)
 
-  const textFieldCount =
-    Number(wantName) + Number(wantSku) + Number(wantPrice)
-  const barcodeOnly = wantBarcode && textFieldCount === 0
+  const contentTop = ZPL_PAD_DOTS
+  const contentH = ZPL_CONTENT_H
 
-  const barH = wantBarcode
-    ? barcodeBandDots(textFieldCount, barcodeOnly)
-    : 0
-  const barY = wantBarcode
-    ? ZPL_LABEL_H_DOTS - ZPL_PAD_DOTS - barH
-    : ZPL_LABEL_H_DOTS - ZPL_PAD_DOTS
-  const textTop = ZPL_PAD_DOTS
-  const textBottom = wantBarcode
-    ? barY - TEXT_BAR_GAP
-    : ZPL_LABEL_H_DOTS - ZPL_PAD_DOTS
-  const available = Math.max(0, textBottom - textTop)
-
-  if (barcodeOnly || textFieldCount === 0) {
+  // Barcode-only: maximize code, center vertically (dedicated template)
+  if (wantBarcode && !wantName && !wantSku && !wantPrice) {
+    const barH = Math.min(ZPL_BARCODE_BAND_MAX_DOTS, contentH)
+    const barY = contentTop + Math.floor((contentH - barH) / 2)
     return {
       blocks: [],
       barH,
-      barY: barcodeOnly
-        ? Math.max(
-            ZPL_PAD_DOTS,
-            Math.floor((ZPL_LABEL_H_DOTS - barH) / 2)
-          )
-        : barY,
-      textTop,
-      packOk: true,
-      droppedFields: []
-    }
-  }
-
-  // Font ranges — price largest; when tight, shrink name first, then SKU, then price
-  const PRICE_MIN = 24
-  const PRICE_MAX = 42
-  const SKU_MIN = 22
-  const SKU_MAX = 38
-  const NAME_MIN = 16
-  const NAME_MAX = 30
-
-  function buildBlocks(opts: {
-    nameFont: number
-    nameMaxLines: number
-    skuFont: number
-    priceFont: number
-  }): TextBlock[] {
-    const blocks: TextBlock[] = []
-    if (wantName) {
-      const lines = estimateFbLines(nameText, opts.nameFont, opts.nameMaxLines)
-      blocks.push({
-        kind: 'name',
-        text: nameText,
-        font: opts.nameFont,
-        maxLines: opts.nameMaxLines,
-        lines
-      })
-    }
-    if (wantSku) {
-      blocks.push({
-        kind: 'sku',
-        text: skuText,
-        font: opts.skuFont,
-        maxLines: 1,
-        lines: 1
-      })
-    }
-    if (wantPrice) {
-      blocks.push({
-        kind: 'price',
-        text: priceText,
-        font: opts.priceFont,
-        maxLines: 1,
-        lines: 1
-      })
-    }
-    return blocks
-  }
-
-  // 1) Start large; shrink name → SKU → price until it fits
-  let nameFont = NAME_MAX
-  let nameMaxLines = 2
-  let skuFont = SKU_MAX
-  let priceFont = PRICE_MAX
-  let found: TextBlock[] | null = null
-
-  for (let step = 0; step < 120; step++) {
-    const blocks = buildBlocks({
-      nameFont: wantName ? nameFont : NAME_MIN,
-      nameMaxLines: wantName ? nameMaxLines : 1,
-      skuFont: wantSku ? skuFont : SKU_MIN,
-      priceFont: wantPrice ? priceFont : PRICE_MIN
-    })
-    if (totalBlocksHeight(blocks) <= available) {
-      found = blocks
-      break
-    }
-    // Shrink priority: name font → name lines → sku → price
-    if (wantName && nameFont > NAME_MIN) {
-      nameFont -= 2
-    } else if (wantName && nameMaxLines > 1) {
-      nameMaxLines = 1
-      nameFont = NAME_MAX
-    } else if (wantSku && skuFont > SKU_MIN) {
-      skuFont -= 2
-    } else if (wantPrice && priceFont > PRICE_MIN) {
-      priceFont -= 2
-    } else {
-      break
-    }
-  }
-
-  if (!found) {
-    const blocks = buildBlocks({
-      nameFont: NAME_MIN,
-      nameMaxLines: 1,
-      skuFont: SKU_MIN,
-      priceFont: PRICE_MIN
-    })
-    // Drop name first, then SKU — price last
-    const dropped: LabelZplFieldId[] = []
-    let emergency = blocks
-    if (totalBlocksHeight(emergency) > available && wantName) {
-      emergency = emergency.filter((b) => b.kind !== 'name')
-      dropped.push('name')
-    }
-    if (totalBlocksHeight(emergency) > available && wantSku) {
-      emergency = emergency.filter((b) => b.kind !== 'sku')
-      dropped.push('sku')
-    }
-    if (totalBlocksHeight(emergency) > available && wantPrice) {
-      emergency = emergency.filter((b) => b.kind !== 'price')
-      dropped.push('price')
-    }
-    return {
-      blocks: emergency,
-      barH: Math.max(barH, ZPL_BARCODE_BAND_MIN_DOTS),
       barY,
-      textTop,
-      packOk: dropped.length === 0,
-      droppedFields: dropped
+      textTop: contentTop,
+      packOk: true,
+      droppedFields: [],
+      zones: { barcode: { y: barY, h: barH } }
     }
   }
 
-  // 2) Grow fonts to fill leftover height (price → sku → name)
-  let blocks = found.map((b) => ({ ...b }))
-  const growOrder: LabelZplFieldId[] = ['price', 'sku', 'name']
-  let guard = 0
-  while (guard++ < 80) {
-    const used = totalBlocksHeight(blocks)
-    const slack = available - used
-    if (slack < 2) break
-    let grew = false
-    for (const kind of growOrder) {
-      const b = blocks.find((x) => x.kind === kind)
-      if (!b) continue
-      const max =
-        kind === 'price' ? PRICE_MAX : kind === 'sku' ? SKU_MAX : NAME_MAX
-      if (b.font >= max) continue
-      const next = Math.min(max, b.font + 2)
-      const trial = blocks.map((x) =>
-        x.kind === kind
-          ? {
-              ...x,
-              font: next,
-              lines:
-                kind === 'name'
-                  ? estimateFbLines(x.text, next, x.maxLines)
-                  : 1
-            }
-          : x
-      )
-      if (totalBlocksHeight(trial) <= available) {
-        blocks = trial
-        grew = true
-        break
+  // No fields at all
+  if (!wantName && !wantSku && !wantPrice && !wantBarcode) {
+    return {
+      blocks: [],
+      barH: 0,
+      barY: contentTop + contentH,
+      textTop: contentTop,
+      packOk: true,
+      droppedFields: [],
+      zones: {}
+    }
+  }
+
+  // Always allocate the full Teljes grid — never redistribute into active fields
+  const heights = allocateZoneDots({ ...ZONE_WEIGHT }, contentH)
+
+  // HRI reserve inside barcode zone (draw height only; slot stays fixed)
+  let barDrawH = heights.barcode
+  if (wantBarcode && hri && barDrawH > HRI_RESERVE_DOTS + 40) {
+    barDrawH = heights.barcode - HRI_RESERVE_DOTS
+  } else if (wantBarcode && hri) {
+    barDrawH = Math.max(40, heights.barcode - 6)
+  }
+
+  // Fixed slots top → bottom (blank if field off)
+  const order: ZoneId[] = ['name', 'sku', 'price', 'barcode']
+  const zones: Partial<Record<ZoneId, { y: number; h: number }>> = {}
+  let yCursor = contentTop
+  for (const id of order) {
+    const h = heights[id] ?? 0
+    zones[id] = { y: yCursor, h }
+    yCursor += h
+  }
+
+  const blocks: TextBlock[] = []
+  const dropped: LabelZplFieldId[] = []
+
+  function fitTextInZone(
+    kind: LabelZplFieldId,
+    text: string,
+    zone: { y: number; h: number },
+    maxLines: number,
+    fontMax: number
+  ): TextBlock | null {
+    const inner = Math.max(FONT_MIN, zone.h - 2)
+    // Prefer 1 line at largest font that fits zone; name may use 2
+    let lines = 1
+    let fontH = Math.min(fontMax, inner)
+    let fontW = fontWidth(kind, fontH)
+    let used = estimateFbLines(text, fontW, 1)
+
+    if (kind === 'name' && maxLines >= 2) {
+      // If 1-line at this font would wrap beyond 1, switch to 2-line mode
+      if (used > 1 || estimateFbLines(text, fontW, 2) > 1) {
+        lines = 2
+        fontH = Math.min(fontMax, Math.max(FONT_MIN, Math.floor((inner - LINE_EXTRA) / 2)))
+        fontW = fontWidth(kind, fontH)
+        used = estimateFbLines(text, fontW, 2)
       }
     }
-    if (!grew) break
+
+    // Shrink until block fits in zone (SKU/price stay 1 line)
+    while (blockHeight(fontH, used) > zone.h && fontH > FONT_MIN) {
+      fontH -= 2
+      fontW = fontWidth(kind, fontH)
+      used = estimateFbLines(text, fontW, kind === 'name' ? maxLines : 1)
+      if (kind !== 'name') used = 1
+      else lines = used
+    }
+
+    if (kind !== 'name') {
+      lines = 1
+      used = 1
+    } else {
+      lines = Math.min(maxLines, Math.max(1, used))
+    }
+
+    const textH = blockHeight(fontH, lines)
+    // Vertically center block in zone (1-line); 2-line name from top+1 of zone
+    const y =
+      lines === 1
+        ? zone.y + Math.max(0, Math.floor((zone.h - textH) / 2))
+        : zone.y + Math.max(0, Math.floor((zone.h - textH) / 2))
+
+    return {
+      kind,
+      text,
+      fontH,
+      fontW,
+      maxLines: kind === 'name' ? 2 : 1,
+      lines,
+      y,
+      zoneY: zone.y,
+      zoneH: zone.h
+    }
   }
+
+  if (wantName && zones.name) {
+    const b = fitTextInZone('name', nameText, zones.name, 2, NAME_FONT_MAX)
+    if (b) blocks.push(b)
+    else dropped.push('name')
+  }
+  if (wantSku && zones.sku) {
+    const b = fitTextInZone('sku', skuText, zones.sku, 1, SKU_FONT_MAX)
+    if (b) blocks.push(b)
+    else dropped.push('sku')
+  }
+  if (wantPrice && zones.price) {
+    const b = fitTextInZone('price', priceText, zones.price, 1, PRICE_FONT_MAX)
+    if (b) blocks.push(b)
+    else dropped.push('price')
+  }
+
+  const barZone = zones.barcode
+  const barY = barZone?.y ?? contentTop + contentH
+  const barH = wantBarcode ? (barZone ? barDrawH : 0) : 0
+  // Center barcode symbol inside its zone if zone taller than draw height
+  const barYDraw =
+    barZone && barH < barZone.h
+      ? barZone.y + Math.floor((barZone.h - barH) / 2)
+      : barY
+
+  const textTop =
+    blocks.length > 0
+      ? Math.min(...blocks.map((b) => b.y))
+      : contentTop
 
   return {
     blocks,
     barH,
-    barY,
+    barY: barYDraw,
     textTop,
-    packOk: true,
-    droppedFields: []
+    packOk: dropped.length === 0,
+    droppedFields: dropped,
+    zones
   }
 }
 
@@ -482,7 +503,8 @@ export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
     showName,
     showSku,
     showPrice,
-    showBarcode
+    showBarcode,
+    showHumanReadable: hri
   })
 
   if (!plan.packOk && plan.droppedFields.length > 0) {
@@ -521,13 +543,10 @@ export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
     })
   }
 
-  let y = plan.textTop
-  for (let i = 0; i < plan.blocks.length; i++) {
-    const b = plan.blocks[i]
-    if (i > 0) y += BLOCK_GAP
-    y = pushCenteredText(body, y, b.text, {
-      fontH: b.font,
-      fontW: b.font,
+  for (const b of plan.blocks) {
+    pushCenteredText(body, b.y, b.text, {
+      fontH: b.fontH,
+      fontW: b.fontW,
       maxLines: b.maxLines,
       lineGap: 0
     })

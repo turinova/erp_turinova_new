@@ -67,8 +67,6 @@ export function resolvePrintableBarcode(
   const supplierOverflow =
     Boolean(supplier) &&
     classifyBarcodeFor33x25(supplier).kind === 'code128_overflow'
-  const forcedInternalNotice =
-    'A gyártói kód nem fér olvashatóan a 33×25 címkére — belső EAN kerül a címkére.'
 
   const classified = classifyBarcodeFor33x25(requested)
 
@@ -81,7 +79,7 @@ export function resolvePrintableBarcode(
       source: usingInternal ? 'internal' : source,
       forcedInternal: warnForced,
       blocked: false,
-      message: warnForced ? forcedInternalNotice : null,
+      message: null,
       action: warnForced ? 'use_internal' : 'ok'
     }
   }
@@ -93,7 +91,7 @@ export function resolvePrintableBarcode(
         source: 'internal',
         forcedInternal: true,
         blocked: false,
-        message: forcedInternalNotice,
+        message: null,
         action: 'use_internal'
       }
     }
@@ -116,7 +114,7 @@ export function resolvePrintableBarcode(
       source: 'internal',
       forcedInternal: warnForced || source !== 'internal',
       blocked: false,
-      message: warnForced ? forcedInternalNotice : null,
+      message: null,
       action: warnForced ? 'use_internal' : 'ok'
     }
   }

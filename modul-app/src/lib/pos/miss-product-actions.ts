@@ -427,6 +427,22 @@ export async function createPosQuickProductAction(input: {
 
   let sku = skuInput || makeSku(barcodeRaw)
 
+  let barcodeInternal: string
+  try {
+    barcodeInternal = await allocateUniqueInternalEan13(
+      ctx.supabase,
+      ctx.user.tenantId!
+    )
+  } catch (err) {
+    return {
+      ok: false,
+      message:
+        err instanceof Error
+          ? err.message
+          : 'Nem sikerült belső vonalkódot generálni.'
+    }
+  }
+
   // SKU ütközésnél fallback (barcode = SKU gyakori kis boltban)
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data, error } = await ctx.supabase
@@ -436,7 +452,7 @@ export async function createPosQuickProductAction(input: {
         name,
         sku,
         barcode: barcodeRaw,
-        barcode_internal: null,
+        barcode_internal: barcodeInternal,
         tax_rate_id: defaults.taxRateId,
         unit_id: defaults.unitId,
         price_net: priced.priceNet,

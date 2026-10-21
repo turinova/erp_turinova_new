@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { accessoryFormSchema } from '@/lib/accessories/parse'
+import { allocateUniqueInternalEan13 } from '@/lib/barcodes/allocate-internal'
 import { normalizeStoredBarcode } from '@/lib/pos/barcode'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 import { revalidateShopProduct } from '@/lib/webshop/revalidate-product'
@@ -163,7 +164,28 @@ export async function createAccessory(
 
   const values = parsed.data
   const barcode = normalizeStoredBarcode(values.barcode)
-  const barcodeInternal = normalizeStoredBarcode(values.barcodeInternal)
+  let barcodeInternal = normalizeStoredBarcode(values.barcodeInternal)
+
+  // Új termék: belső EAN mindig legyen (címke / POS) — ha üres, allokálunk
+  if (!barcodeInternal) {
+    try {
+      barcodeInternal = await allocateUniqueInternalEan13(
+        ctx.supabase,
+        ctx.user.tenantId!
+      )
+    } catch (err) {
+      return {
+        ok: false,
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Nem sikerült belső vonalkódot generálni.',
+        fieldErrors: {
+          barcodeInternal: 'Nem sikerült belső vonalkódot generálni.'
+        }
+      }
+    }
+  }
 
   const { data, error } = await ctx.supabase
     .from('accessories')

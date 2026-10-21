@@ -7,6 +7,7 @@ import { describe, it } from 'node:test'
 
 import { buildInternalEan13 } from '@/lib/barcodes/ean13'
 import {
+  allocateZoneDots,
   code128Fits33mm,
   ean13Data12ForZpl,
   ean13OriginX,
@@ -15,6 +16,9 @@ import {
   generateLabelZpl,
   mmToDots,
   packLabel33x25,
+  ZONE_WEIGHT,
+  ZPL_BARCODE_BAND_MIN_DOTS,
+  ZPL_CONTENT_H,
   ZPL_CONTENT_W,
   ZPL_DEFAULT_DARKNESS,
   ZPL_LABEL_H_DOTS,
@@ -75,6 +79,53 @@ describe('code128Fits33mm', () => {
   })
 })
 
+describe('allocateZoneDots', () => {
+  it('sums to content height for full weights', () => {
+    const h = allocateZoneDots({ ...ZONE_WEIGHT }, ZPL_CONTENT_H)
+    assert.equal(h.name + h.sku + h.price + h.barcode, ZPL_CONTENT_H)
+    assert.ok(h.barcode >= ZPL_BARCODE_BAND_MIN_DOTS - 5)
+  })
+
+  it('full grid always uses all four weights', () => {
+    const h = allocateZoneDots({ ...ZONE_WEIGHT }, ZPL_CONTENT_H)
+    assert.ok(h.name > 0 && h.sku > 0 && h.price > 0 && h.barcode > 0)
+  })
+})
+
+describe('fixed zones (no redistribute)', () => {
+  it('keeps price/barcode Y the same when SKU is off', () => {
+    const full = packLabel33x25({
+      productName: 'Strong csavar 4x20',
+      price: 4,
+      unitShortform: 'db',
+      sku: '11162',
+      showName: true,
+      showSku: true,
+      showPrice: true,
+      showBarcode: true
+    })
+    const noSku = packLabel33x25({
+      productName: 'Strong csavar 4x20',
+      price: 4,
+      unitShortform: 'db',
+      sku: '11162',
+      showName: true,
+      showSku: false,
+      showPrice: true,
+      showBarcode: true
+    })
+    const priceFull = full.blocks.find((b) => b.kind === 'price')!
+    const priceNoSku = noSku.blocks.find((b) => b.kind === 'price')!
+    assert.equal(priceFull.zoneY, priceNoSku.zoneY)
+    assert.equal(priceFull.zoneH, priceNoSku.zoneH)
+    assert.equal(full.zones.barcode?.y, noSku.zones.barcode?.y)
+    assert.equal(full.zones.barcode?.h, noSku.zones.barcode?.h)
+    assert.equal(noSku.blocks.some((b) => b.kind === 'sku'), false)
+    // SKU slot still reserved
+    assert.ok(noSku.zones.sku && noSku.zones.sku.h > 0)
+  })
+})
+
 describe('generateLabelZpl', () => {
   it('emits centered FB text, LH, modest darkness, EAN quiet FO', () => {
     const ean = buildInternalEan13('123456789')
@@ -94,7 +145,6 @@ describe('generateLabelZpl', () => {
     assert.match(zpl, new RegExp(`\\^PW${ZPL_LABEL_W_DOTS}`))
     assert.match(zpl, new RegExp(`\\^LL${ZPL_LABEL_H_DOTS}`))
     assert.match(zpl, new RegExp(`\\^MD${ZPL_DEFAULT_DARKNESS}`))
-    // Bottom-up: ^FB line count = actual wrapped lines (not maxLines)
     assert.match(zpl, new RegExp(`\\^FB${ZPL_CONTENT_W},[12],0,C,0`))
     assert.match(zpl, /\^BEN,/)
     assert.match(zpl, new RegExp(`\\^BY${ZPL_MODULE_DOTS},`))
@@ -140,7 +190,7 @@ describe('generateLabelZpl', () => {
     assert.match(zpl, /\^BEN,/)
   })
 
-  it('pack grows fonts and keeps all fields', () => {
+  it('zone pack: SKU/price 1 line, name ≤2, condensed fonts', () => {
     const plan = packLabel33x25({
       productName: 'Strong csavar 4x20',
       price: 4,
@@ -153,9 +203,36 @@ describe('generateLabelZpl', () => {
     })
     assert.equal(plan.packOk, true)
     assert.equal(plan.blocks.length, 3)
+    const name = plan.blocks.find((b) => b.kind === 'name')
+    const sku = plan.blocks.find((b) => b.kind === 'sku')
     const price = plan.blocks.find((b) => b.kind === 'price')
-    assert.ok(price)
-    assert.ok(price!.font >= 24)
+    assert.ok(name && name.lines <= 2)
+    assert.ok(sku && sku.lines === 1)
+    assert.ok(price && price.lines === 1)
+    assert.ok(price!.fontW < price!.fontH)
+    assert.ok(plan.barH >= ZPL_BARCODE_BAND_MIN_DOTS - 2)
+  })
+
+  it('zone order: name above sku above price above barcode', () => {
+    const plan = packLabel33x25({
+      productName: 'Strong csavar 4x20',
+      price: 4,
+      unitShortform: 'db',
+      sku: '11162',
+      showName: true,
+      showSku: true,
+      showPrice: true,
+      showBarcode: true
+    })
+    const name = plan.blocks.find((b) => b.kind === 'name')!
+    const sku = plan.blocks.find((b) => b.kind === 'sku')!
+    const price = plan.blocks.find((b) => b.kind === 'price')!
+    assert.ok(name.zoneY < sku.zoneY)
+    assert.ok(sku.zoneY < price.zoneY)
+    assert.ok(price.zoneY < plan.barY)
+    // No huge dead gap: price zone ends near barcode zone
+    const priceZoneEnd = price.zoneY + price.zoneH
+    assert.ok(plan.barY - priceZoneEnd <= 2)
   })
 
   it('uses ^PQ for copies', () => {

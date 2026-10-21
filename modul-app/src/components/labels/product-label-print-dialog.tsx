@@ -482,9 +482,8 @@ export function ProductLabelPrintDialog({
       <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Címke nyomtatása</DialogTitle>
-          <DialogDescription>
-            33×25 mm · Zebra ZPL (középre, natív vonalkód). Előnézet tájékoztató.
-            Ha a bal szél levág: Beállítások → vízszintes illesztés negatív irányba.
+          <DialogDescription className="sr-only">
+            33×25 mm címke nyomtatása
           </DialogDescription>
           {zebraStatus ? (
             <div
@@ -549,18 +548,6 @@ export function ProductLabelPrintDialog({
                   barcodeValue={barcode}
                 />
               </div>
-              <p className="max-w-sm text-center text-[11px] text-ink-muted">
-                Az eltolás nem mozgatja az előnézetet — csak a nyomtató
-                illesztését. Ár:{' '}
-                <span className="font-medium">Ft/{unit || 'db'}</span>.
-              </p>
-              {printResolve?.forcedInternal && printResolve.message ? (
-                <div className="max-w-sm rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-center">
-                  <p className="text-[12px] text-warning-ink">
-                    {printResolve.message}
-                  </p>
-                </div>
-              ) : null}
               {barcodeBlocked && printResolve?.message ? (
                 <div className="max-w-sm space-y-1.5 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-center">
                   <p className="text-[12px] text-danger-ink">

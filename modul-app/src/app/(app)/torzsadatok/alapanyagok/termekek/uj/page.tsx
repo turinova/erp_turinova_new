@@ -9,6 +9,7 @@ import {
   listAccessoryTaxOptions,
   listAccessoryUnitOptions
 } from '@/lib/accessories/queries'
+import { allocateUniqueInternalEan13 } from '@/lib/barcodes/allocate-internal'
 import { createClient } from '@/lib/supabase/server'
 import { tenantHasWebshop } from '@/lib/webshop/entitlement'
 
@@ -24,13 +25,16 @@ export default async function NewTermekPage() {
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const [manufacturers, suppliers, taxRates, units, hasWebshop] =
+  const [manufacturers, suppliers, taxRates, units, hasWebshop, defaultInternal] =
     await Promise.all([
       listAccessoryManufacturerOptions(supabase, user.tenantId),
       listAccessorySupplierOptions(supabase, user.tenantId),
       listAccessoryTaxOptions(supabase, user.tenantId),
       listAccessoryUnitOptions(supabase, user.tenantId),
-      tenantHasWebshop(supabase, user.tenantId)
+      tenantHasWebshop(supabase, user.tenantId),
+      canWrite
+        ? allocateUniqueInternalEan13(supabase, user.tenantId).catch(() => null)
+        : Promise.resolve(null)
     ])
 
   return (
@@ -43,6 +47,7 @@ export default async function NewTermekPage() {
       canWrite={canWrite}
       tenantId={user.tenantId}
       hasWebshop={hasWebshop}
+      defaultBarcodeInternal={defaultInternal}
     />
   )
 }

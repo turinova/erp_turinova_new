@@ -66,9 +66,9 @@ Zárolt döntések:
 
 - **Nyomtatás primary:** Zebra **Browser Print** → nyers **ZPL** (`lib/labels/zpl.ts` + `browser-print-client.ts`). A vonalkódot a **ZD220 firmware** rajzolja (`^BEN` EAN-13 / `^BCN` CODE128), nem Chrome raster.
 - **Barcode policy (`print-policy.ts`):** 33×25-ön csak **EAN-13** vagy **rövid CODE128** (`^BY2` scannelhető). Hosszú gyártói (pl. `DT-CZ…`) → **belső EAN** kötelező; ha nincs → print **tiltva** (vagy vonalkód mező ki).
-- **ZPL layout:** priority packer (`packLabel33x25`) — barcode → ár → SKU → név (név zsugorodik). Nincs silent mező-drop; adaptív betűméret; sűrű (~1 mm pad, 0 gap); barcode band ~56 dot teljes sablonnál.
+- **ZPL layout:** fix %-zónák (`packLabel33x25`) — név 28 / SKU 18 / ár 22 / kód 32. Kikapcsolt mező = **üres sáv** (többi nem nő) → egységes pozíció. SKU+ár **1 sor**, név **max 2**. Kivétel: „Csak kód” max barcode.
 - **203 dpi:** `^PW264` / `^LL200` / `^LH0,0`; modul **`^BY2`**. EAN szélesség = **113 modul** (quiet benne); FO középre + **~1 mm** oldalsó pad.
-- **Szöveg:** `^FB…,C` középre; **nincs** JS ellipsis. `^MD14` default (túl sötét = olvashatatlan sávok).
+- **Szöveg:** `^FB…,C` középre; condensed `^A0` width; **nincs** JS ellipsis. `^MD11` default.
 - **EAN `^FD`:** pontosan **12 digit**; érvényes belső EAN default.
 - **Előnézet:** HTML sheet (tájékoztató). **HTML nyomtatás** csak fallback.
 - **Illesztés:** `tenant_label_print_settings` → `^LS` / `^LT`. Bal clip → negatív X (tartalom jobbra).

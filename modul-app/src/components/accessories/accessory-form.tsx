@@ -64,6 +64,8 @@ type AccessoryFormProps = {
   procurementStock?: AccessoryProcurementStock | null
   hasWebshop?: boolean
   shopStatus?: ShopCardStatus | null
+  /** Új termék: előre allokált belső EAN (200…). */
+  defaultBarcodeInternal?: string | null
   /** Suspense slot — ha megadva, a sync `procurementStock` helyett ez jelenik meg. */
   deferredStockSection?: ReactNode
   /** Suspense slot — ha megadva, a sync shop card helyett ez jelenik meg. */
@@ -91,6 +93,7 @@ export function AccessoryForm({
   procurementStock = null,
   hasWebshop = false,
   shopStatus = null,
+  defaultBarcodeInternal = null,
   deferredStockSection = null,
   deferredShopSection = null
 }: AccessoryFormProps) {
@@ -116,7 +119,9 @@ export function AccessoryForm({
   const [sku, setSku] = useState(initial?.sku ?? '')
   const [barcode, setBarcode] = useState(initial?.barcode ?? '')
   const [barcodeInternal, setBarcodeInternal] = useState(
-    initial?.barcode_internal ?? ''
+    () =>
+      initial?.barcode_internal?.trim() ||
+      (mode === 'create' ? defaultBarcodeInternal?.trim() || '' : '')
   )
   const [taxRateId, setTaxRateId] = useState(defaultTaxId)
   const [unitId, setUnitId] = useState(
@@ -413,9 +418,7 @@ export function AccessoryForm({
           <FormField
             label="Belső vonalkód"
             htmlFor="accessory-barcode-internal"
-            optionalLabel
             error={fieldErrors.barcodeInternal}
-            hint="Ha nincs gyári kód: Generálás → belső EAN-13 (200…), címkézhető / POS."
           >
             <div className="flex gap-2">
               <Input
