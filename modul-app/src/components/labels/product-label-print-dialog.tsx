@@ -458,8 +458,8 @@ export function ProductLabelPrintDialog({
         <DialogHeader>
           <DialogTitle>Címke nyomtatása</DialogTitle>
           <DialogDescription>
-            33×25 mm · Zebra Browser Print (ZPL) · előnézet tájékoztató. Illesztés
-            csak nyomtatáskor.
+            33×25 mm · Zebra ZPL (középre, natív vonalkód). Előnézet tájékoztató.
+            Ha a bal szél levág: Beállítások → vízszintes illesztés negatív irányba.
           </DialogDescription>
           {zebraStatus ? (
             <p

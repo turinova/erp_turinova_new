@@ -1,13 +1,16 @@
 /**
  * 33×25 mm product label → ZPL II for Zebra ZD220 @ 203 dpi.
  * Barcodes are drawn by the printer (^BE / ^BC) — not raster SVG.
+ *
+ * Layout rules (scan-first):
+ * - ~2 mm side pad so left quiet zone / first glyphs are not clipped
+ * - Text centered via ^FB … C
+ * - EAN-13 width = 113 modules (incl. GS1 quiet), not 95
+ * - Darkness default modest (^MD14) — too dark bleeds bars
  */
 
 import { isValidEan13 } from '@/lib/barcodes/ean13'
-import {
-  estimateCode128Modules,
-  EAN13_BAR_MODULES
-} from '@/lib/labels/layout'
+import { estimateCode128Modules } from '@/lib/labels/layout'
 import type { LabelFields, ProductLabelPayload } from '@/lib/labels/types'
 
 /** 203 dpi: 8 dots per mm. */
@@ -16,11 +19,26 @@ export const ZPL_DOTS_PER_MM = 8
 export const ZPL_LABEL_W_DOTS = 33 * ZPL_DOTS_PER_MM // 264
 export const ZPL_LABEL_H_DOTS = 25 * ZPL_DOTS_PER_MM // 200
 
-/** Module width — ^BY3 does not fit EAN-13 on 33 mm. */
+/** Side pad (~2 mm) — keeps text + barcode quiet off the die-cut edge. */
+export const ZPL_PAD_DOTS = 16
+
+export const ZPL_CONTENT_X = ZPL_PAD_DOTS
+export const ZPL_CONTENT_W = ZPL_LABEL_W_DOTS - 2 * ZPL_PAD_DOTS // 232
+
+/** Module width — ^BY3 EAN does not fit 33 mm with quiet zones. */
 export const ZPL_MODULE_DOTS = 2
+
+/**
+ * EAN-13 total modules including quiet zones (11 + 95 + 7).
+ * Use this for FO centering — not bar-only 95.
+ */
+export const EAN13_TOTAL_MODULES = 113
 
 /** Soft quiet each side for CODE128 fit check (dots). */
 const CODE128_QUIET_DOTS = 10
+
+/** Default darkness — Zebra: lowest that still prints clean. */
+export const ZPL_DEFAULT_DARKNESS = 14
 
 export type LabelZplInput = {
   productName: string
@@ -34,7 +52,7 @@ export type LabelZplInput = {
   amount?: number
   offsetXMm?: number
   offsetYMm?: number
-  /** Darkness 0–30; default 20. */
+  /** Darkness 0–30; default 14. */
   darkness?: number
   /** Print speed ips; default 2. */
   printSpeed?: number
@@ -71,37 +89,46 @@ export function ean13Data12ForZpl(code: string): string | null {
   return null
 }
 
+export function ean13TotalWidthDots(moduleDots = ZPL_MODULE_DOTS): number {
+  return EAN13_TOTAL_MODULES * moduleDots
+}
+
+/** Centered FO X so the full EAN (bars + quiet) stays inside the pad. */
+export function ean13OriginX(moduleDots = ZPL_MODULE_DOTS): number {
+  const w = ean13TotalWidthDots(moduleDots)
+  const centered = Math.floor((ZPL_LABEL_W_DOTS - w) / 2)
+  return Math.max(ZPL_PAD_DOTS, centered)
+}
+
 export function code128Fits33mm(value: string): boolean {
   const modules = estimateCode128Modules(value)
   const width = modules * ZPL_MODULE_DOTS + 2 * CODE128_QUIET_DOTS
-  return width <= ZPL_LABEL_W_DOTS - 8
-}
-
-function wrapName(text: string, maxChars: number, maxLines: number): string[] {
-  const t = escapeZplFd(text)
-  if (!t) return []
-  const lines: string[] = []
-  let rest = t
-  while (rest.length > 0 && lines.length < maxLines) {
-    if (rest.length <= maxChars) {
-      lines.push(rest)
-      break
-    }
-    let cut = rest.lastIndexOf(' ', maxChars)
-    if (cut < maxChars * 0.4) cut = maxChars
-    lines.push(rest.slice(0, cut).trimEnd())
-    rest = rest.slice(cut).trimStart()
-  }
-  if (rest.length > 0 && lines.length === maxLines) {
-    const last = lines[maxLines - 1]!
-    lines[maxLines - 1] =
-      last.length > 1 ? `${last.slice(0, -1)}…` : last
-  }
-  return lines
+  return width <= ZPL_CONTENT_W
 }
 
 function formatPrice(price: number): string {
   return new Intl.NumberFormat('hu-HU').format(Math.round(price))
+}
+
+/**
+ * Centered text block. No JS ellipsis — ^FB wraps; overflow overwrites last line.
+ * Order: ^FO → ^A → ^FB → ^FD (Zebra Field Block).
+ */
+function pushCenteredText(
+  lines: string[],
+  y: number,
+  text: string,
+  opts: { fontH: number; fontW: number; maxLines: number; lineGap?: number }
+): number {
+  const fd = escapeZplFd(text)
+  if (!fd) return y
+  const gap = opts.lineGap ?? 0
+  lines.push(`^FO${ZPL_CONTENT_X},${y}`)
+  lines.push(`^A0N,${opts.fontH},${opts.fontW}`)
+  lines.push(`^FB${ZPL_CONTENT_W},${opts.maxLines},${gap},C,0`)
+  lines.push(`^FD${fd}^FS`)
+  const lineH = opts.fontH + 4 + gap
+  return y + opts.maxLines * lineH
 }
 
 /**
@@ -115,7 +142,10 @@ export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
   const showBarcode = input.fields.showBarcode && Boolean(rawBarcode)
   const hri = Boolean(input.showHumanReadable)
   const copies = Math.max(1, Math.round(input.amount ?? 1))
-  const dark = Math.min(30, Math.max(0, Math.round(input.darkness ?? 20)))
+  const dark = Math.min(
+    30,
+    Math.max(0, Math.round(input.darkness ?? ZPL_DEFAULT_DARKNESS))
+  )
   const speed = Math.min(4, Math.max(1, Math.round(input.printSpeed ?? 2)))
 
   const ox = mmToDots(input.offsetXMm ?? 0)
@@ -130,7 +160,11 @@ export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
   if (showBarcode) {
     if (useEan) {
       symbology = 'EAN13'
-      barcodeFits = true
+      barcodeFits = ean13TotalWidthDots() <= ZPL_LABEL_W_DOTS - 2 * ZPL_PAD_DOTS
+      if (!barcodeFits) {
+        fitWarning =
+          'Az EAN nem fér quiet zone-nal a címkére — ellenőrizd a médiát / illesztést.'
+      }
     } else {
       symbology = 'CODE128'
       barcodeFits = code128Fits33mm(rawBarcode)
@@ -145,11 +179,11 @@ export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
     showBarcode && !showName && !showSku && !showPrice
   const warehouse = showSku && !showName
 
-  // Vertical layout (dots from top)
-  let y = 6
+  let y = 8
   const lines: string[] = [
     '^XA',
     '^CI28',
+    '^LH0,0',
     `^PW${ZPL_LABEL_W_DOTS}`,
     `^LL${ZPL_LABEL_H_DOTS}`,
     `^MD${dark}`,
@@ -159,8 +193,11 @@ export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
   ]
 
   if (barcodeOnly) {
-    const barH = 130
-    const barY = Math.max(8, Math.floor((ZPL_LABEL_H_DOTS - barH) / 2) - 4)
+    const barH = 120
+    const barY = Math.max(
+      ZPL_PAD_DOTS,
+      Math.floor((ZPL_LABEL_H_DOTS - barH) / 2)
+    )
     appendBarcode(lines, {
       y: barY,
       height: barH,
@@ -170,16 +207,23 @@ export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
       hri: false
     })
   } else if (warehouse) {
-    const sku = escapeZplFd(input.payload.sku)
-    lines.push(`^FO8,${y}^A0N,36,36^FD${sku}^FS`)
-    y += 42
+    y = pushCenteredText(lines, y, input.payload.sku, {
+      fontH: 34,
+      fontW: 34,
+      maxLines: 1
+    })
+    y += 4
     if (showPrice) {
       const priceLine = `${formatPrice(input.price)} Ft/${escapeZplFd(input.unitShortform || 'db')}`
-      lines.push(`^FO8,${y}^A0N,28,28^FD${priceLine}^FS`)
-      y += 34
+      y = pushCenteredText(lines, y, priceLine, {
+        fontH: 26,
+        fontW: 26,
+        maxLines: 1
+      })
+      y += 4
     }
     if (showBarcode) {
-      const barH = Math.min(80, ZPL_LABEL_H_DOTS - y - 8)
+      const barH = Math.min(72, ZPL_LABEL_H_DOTS - y - ZPL_PAD_DOTS)
       appendBarcode(lines, {
         y,
         height: Math.max(56, barH),
@@ -190,33 +234,36 @@ export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
       })
     }
   } else {
-    // Full / shelf: name → sku → price → barcode
+    // Full / shelf: name → sku → price → barcode (all centered)
     if (showName) {
-      const maxLines = showSku ? 2 : 2
-      const nameLines = wrapName(
-        input.productName || '—',
-        22,
-        maxLines
-      )
-      for (const nl of nameLines) {
-        lines.push(`^FO8,${y}^A0N,22,22^FD${nl}^FS`)
-        y += 24
-      }
+      y = pushCenteredText(lines, y, input.productName || '—', {
+        fontH: 20,
+        fontW: 20,
+        maxLines: 2,
+        lineGap: 0
+      })
       y += 2
     }
     if (showSku) {
-      const sku = escapeZplFd(input.payload.sku)
-      lines.push(`^FO8,${y}^A0N,28,28^FD${sku}^FS`)
-      y += 32
+      y = pushCenteredText(lines, y, input.payload.sku, {
+        fontH: 26,
+        fontW: 26,
+        maxLines: 1
+      })
+      y += 2
     }
     if (showPrice) {
       const priceLine = `${formatPrice(input.price)} Ft/${escapeZplFd(input.unitShortform || 'db')}`
-      lines.push(`^FO8,${y}^A0N,32,32^FD${priceLine}^FS`)
-      y += 36
+      y = pushCenteredText(lines, y, priceLine, {
+        fontH: 28,
+        fontW: 28,
+        maxLines: 1
+      })
+      y += 2
     }
     if (showBarcode) {
-      const remaining = ZPL_LABEL_H_DOTS - y - 6
-      const barH = Math.min(80, Math.max(56, remaining))
+      const remaining = ZPL_LABEL_H_DOTS - y - ZPL_PAD_DOTS
+      const barH = Math.min(70, Math.max(56, remaining))
       const barY = Math.min(y, ZPL_LABEL_H_DOTS - barH - 4)
       appendBarcode(lines, {
         y: barY,
@@ -255,20 +302,18 @@ function appendBarcode(
   lines.push(`^BY${ZPL_MODULE_DOTS},3,${opts.height}`)
 
   if (opts.useEan && opts.ean12) {
-    // EAN-13 @ ^BY2 = 190 dots; center on 264
-    const symbolW = EAN13_BAR_MODULES * ZPL_MODULE_DOTS
-    const bx = Math.max(4, Math.floor((ZPL_LABEL_W_DOTS - symbolW) / 2))
+    const bx = ean13OriginX()
     lines.push(`^FO${bx},${opts.y}^BEN,${opts.height},${hriFlag},N`)
     lines.push(`^FD${opts.ean12}^FS`)
   } else {
     const data = escapeZplFd(opts.rawBarcode)
     const modules = estimateCode128Modules(data)
-    const symbolW = modules * ZPL_MODULE_DOTS
+    const symbolW =
+      modules * ZPL_MODULE_DOTS + 2 * CODE128_QUIET_DOTS
     const bx = Math.max(
-      4,
-      Math.floor((ZPL_LABEL_W_DOTS - Math.min(symbolW, ZPL_LABEL_W_DOTS - 8)) / 2)
+      ZPL_PAD_DOTS,
+      Math.floor((ZPL_LABEL_W_DOTS - Math.min(symbolW, ZPL_CONTENT_W)) / 2)
     )
-    // Automatic subset packing
     lines.push(`^FO${bx},${opts.y}^BCN,${opts.height},${hriFlag},N,N,A`)
     lines.push(`^FD${data}^FS`)
   }

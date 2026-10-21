@@ -65,13 +65,13 @@ Ha van címkenyomtatás:
 Zárolt döntések:
 
 - **Nyomtatás primary:** Zebra **Browser Print** → nyers **ZPL** (`lib/labels/zpl.ts` + `browser-print-client.ts`). A vonalkódot a **ZD220 firmware** rajzolja (`^BEN` EAN-13 / `^BCN` CODE128), nem Chrome raster.
-- **203 dpi:** `^PW264` / `^LL200`; modul **`^BY2`** (0,25 mm). `^BY3` EAN-13-nál **nem fér** 33 mm-re.
-- **EAN `^FD`:** pontosan **12 digit** (check digit a nyomtató); érvényes belső EAN default.
-- **Előnézet:** HTML sheet (tájékoztató). **HTML nyomtatás** csak secondary fallback (gyengébb szkennelés).
-- **Illesztés:** `tenant_label_print_settings` → ZPL `^LS` / `^LT` (mm→dot).
-- **Gép:** Browser Print fut + default = ZD220; HTTPS-en egyszer `https://127.0.0.1:9101/ssl_support`; Accepted Hosts = production domain.
-- **Default sablon: Teljes** — név + SKU + ár + vonalkód. HRI alapból ki.
-- Layout preview: `layout.ts` / `ProductLabelSheet`; print: `print-label.tsx` → ZPL.
+- **203 dpi:** `^PW264` / `^LL200` / `^LH0,0`; modul **`^BY2`**. EAN szélesség = **113 modul** (quiet benne); FO középre + **~2 mm** oldalsó pad.
+- **Szöveg:** `^FB…,C` középre; **nincs** JS ellipsis. `^MD14` default (túl sötét = olvashatatlan sávok).
+- **EAN `^FD`:** pontosan **12 digit**; érvényes belső EAN default.
+- **Előnézet:** HTML sheet (tájékoztató). **HTML nyomtatás** csak fallback.
+- **Illesztés:** `tenant_label_print_settings` → `^LS` / `^LT`. Bal clip → negatív X (tartalom jobbra).
+- **Gép:** Browser Print + default ZD220; HTTPS `9101/ssl_support`; media kalibráció.
+- Layout preview: `layout.ts`; print: `print-label.tsx` → ZPL.
 
 ## 7. PDF kontra HTML print
 

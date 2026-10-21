@@ -9,12 +9,17 @@ import { buildInternalEan13 } from '@/lib/barcodes/ean13'
 import {
   code128Fits33mm,
   ean13Data12ForZpl,
+  ean13OriginX,
+  ean13TotalWidthDots,
   escapeZplFd,
   generateLabelZpl,
   mmToDots,
+  ZPL_CONTENT_W,
+  ZPL_DEFAULT_DARKNESS,
   ZPL_LABEL_H_DOTS,
   ZPL_LABEL_W_DOTS,
-  ZPL_MODULE_DOTS
+  ZPL_MODULE_DOTS,
+  ZPL_PAD_DOTS
 } from './zpl'
 
 const fieldsAll = {
@@ -27,6 +32,19 @@ const fieldsAll = {
 describe('escapeZplFd', () => {
   it('strips caret and tilde', () => {
     assert.equal(escapeZplFd('a^b~c'), 'abc')
+  })
+})
+
+describe('ean13 geometry', () => {
+  it('total width includes quiet zones (113 modules)', () => {
+    assert.equal(ean13TotalWidthDots(), 113 * ZPL_MODULE_DOTS)
+    assert.ok(ean13TotalWidthDots() <= ZPL_LABEL_W_DOTS - 2 * ZPL_PAD_DOTS)
+  })
+
+  it('origin keeps barcode inside side pad', () => {
+    const bx = ean13OriginX()
+    assert.ok(bx >= ZPL_PAD_DOTS)
+    assert.ok(bx + ean13TotalWidthDots() <= ZPL_LABEL_W_DOTS - ZPL_PAD_DOTS + 1)
   })
 })
 
@@ -57,7 +75,7 @@ describe('code128Fits33mm', () => {
 })
 
 describe('generateLabelZpl', () => {
-  it('emits media size and UTF-8', () => {
+  it('emits centered FB text, LH, modest darkness, EAN quiet FO', () => {
     const ean = buildInternalEan13('123456789')
     const { zpl, symbology } = generateLabelZpl({
       productName: 'Strong csavar 4x20',
@@ -71,15 +89,36 @@ describe('generateLabelZpl', () => {
     assert.match(zpl, /\^XA/)
     assert.match(zpl, /\^XZ/)
     assert.match(zpl, /\^CI28/)
+    assert.match(zpl, /\^LH0,0/)
     assert.match(zpl, new RegExp(`\\^PW${ZPL_LABEL_W_DOTS}`))
     assert.match(zpl, new RegExp(`\\^LL${ZPL_LABEL_H_DOTS}`))
+    assert.match(zpl, new RegExp(`\\^MD${ZPL_DEFAULT_DARKNESS}`))
+    assert.match(zpl, new RegExp(`\\^FB${ZPL_CONTENT_W},2,0,C,0`))
     assert.match(zpl, /\^BEN,/)
     assert.match(zpl, new RegExp(`\\^BY${ZPL_MODULE_DOTS},`))
+    assert.match(zpl, new RegExp(`\\^FO${ean13OriginX()},`))
     assert.match(zpl, new RegExp(`\\^FD${ean.slice(0, 12)}\\^FS`))
     assert.equal(symbology, 'EAN13')
     assert.match(zpl, /Strong csavar/)
     assert.match(zpl, /11162/)
     assert.match(zpl, /4 Ft\/db/)
+    assert.doesNotMatch(zpl, /…/)
+  })
+
+  it('does not JS-ellipsis long names', () => {
+    const ean = buildInternalEan13('333333333')
+    const long =
+      'Strong csavar 4x20 3600.-/doboz extra hosszú termék megnevezés'
+    const { zpl } = generateLabelZpl({
+      productName: long,
+      price: 4,
+      unitShortform: 'db',
+      fields: fieldsAll,
+      payload: { sku: '11162', barcode: null, barcodeInternal: ean },
+      barcodeValue: ean
+    })
+    assert.doesNotMatch(zpl, /…/)
+    assert.match(zpl, /Strong csavar/)
   })
 
   it('uses ^PQ for copies', () => {
@@ -102,7 +141,12 @@ describe('generateLabelZpl', () => {
       productName: 'X',
       price: 1,
       unitShortform: 'db',
-      fields: { ...fieldsAll, showName: false, showSku: false, showPrice: false },
+      fields: {
+        ...fieldsAll,
+        showName: false,
+        showSku: false,
+        showPrice: false
+      },
       payload: { sku: '', barcode: null, barcodeInternal: ean },
       barcodeValue: ean,
       offsetXMm: 1,
