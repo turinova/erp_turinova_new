@@ -35,6 +35,7 @@ import {
   LABEL_OFFSET_MIN,
   LABEL_OFFSET_STEP
 } from '@/lib/labels/print-settings'
+import { isValidEan13 } from '@/lib/barcodes/ean13'
 import {
   labelBarcodeValue,
   labelSizeMm,
@@ -44,15 +45,19 @@ import {
 } from '@/lib/labels/types'
 import { cn } from '@/lib/utils'
 
+/**
+ * Soft-force scan-safe code: valid internal EAN-13 wins over long supplier CODE128
+ * (33×25 physics — ~95 modules vs 120+).
+ */
 function defaultBarcodeSource(
   payload: ProductLabelPayload | null
 ): LabelBarcodeSource {
   if (!payload) return 'auto'
-  const internal = payload.barcodeInternal?.trim()
-  const supplier = payload.barcode?.trim()
-  if (internal && supplier) return 'auto'
+  const internal = payload.barcodeInternal?.trim() || ''
+  const supplier = payload.barcode?.trim() || ''
+  if (internal && isValidEan13(internal)) return 'internal'
   if (internal && !supplier) return 'internal'
-  if (supplier) return 'supplier'
+  if (supplier && !internal) return 'supplier'
   return 'auto'
 }
 
@@ -451,13 +456,16 @@ export function ProductLabelPrintDialog({
                   <legend className="text-label font-medium text-ink">
                     Nyomtatandó kód
                   </legend>
+                  <p className="text-[11px] text-ink-muted">
+                    Ha nem olvas: Belső EAN + „Csak kód” sablon.
+                  </p>
                   <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
                     {(
                       [
                         {
                           id: 'auto' as const,
                           label: 'Auto',
-                          hint: 'EAN ha van'
+                          hint: 'Érvényes EAN előny'
                         },
                         {
                           id: 'supplier' as const,

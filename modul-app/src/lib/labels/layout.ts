@@ -114,21 +114,31 @@ export const LABEL_PX_PER_MM = 96 / 25.4
 
 /**
  * Absolute min narrow-bar width (mm) for handheld POS on 33×25.
- * GS1 retail target ≥0.25; thinner bars fail cheap scanners / 203 dpi thermal.
+ * GS1 retail / thermal on-demand ≥0.25; Zebra 203 dpi → ≥2 dots (0.25 mm).
  */
 export const BARCODE_MIN_X_MM = 0.25
 
+/** 203 dpi thermal dot pitch (mm). */
+export const THERMAL_DOT_MM_203 = 25.4 / 203
+
 /**
- * Soft quiet-zone floor (mm). Prefer 10×X when space allows; never below this.
- * Thermal on-demand: 1.2 mm (was 1.5) — thicker X on 33×25 CODE128; still ≥~4×X at min X.
+ * Print quiet zone (mm each side) — FIXED small, not GS1 10×X.
+ * Large quiet was shrinking bars into the middle (unreadable). Scanners need
+ * *some* white, but X thickness matters more on 33 mm labels.
  */
-export const BARCODE_MIN_QUIET_MM = 1.2
+export const BARCODE_MIN_QUIET_MM = 1.0
 
 /** Prefer at least this bar height (mm) when barcode is shown. */
-export const BARCODE_TARGET_HEIGHT_MM = 8.0
+export const BARCODE_TARGET_HEIGHT_MM = 10.0
 
-/** Hard floor — below this, refuse print. */
-export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 6.0
+/** Hard floor — below this, warn (soft). */
+export const BARCODE_ABSOLUTE_MIN_HEIGHT_MM = 7.0
+
+/** Snap X to whole thermal dots (min 2 dots ≈ 0.25 mm @ 203 dpi). */
+export function snapXMmToThermalDots(xMm: number, minDots = 2): number {
+  const dots = Math.max(minDots, Math.round(xMm / THERMAL_DOT_MM_203))
+  return Number((dots * THERMAL_DOT_MM_203).toFixed(4))
+}
 
 /** EAN-13 bar modules (excl. quiet) — denser than CODE128C for the same 13 digits. */
 export const EAN13_BAR_MODULES = 95
@@ -308,14 +318,15 @@ export function estimateBarcodeModules(value: string): number {
   return estimateCode128Modules(value)
 }
 
-export function computeQuietZoneMm(xMm: number): number {
-  return Math.max(BARCODE_MIN_QUIET_MM, 10 * xMm)
+export function computeQuietZoneMm(_xMm: number): number {
+  // Fixed print quiet — do not grow with 10×X (that starved bar width on 33×25).
+  void _xMm
+  return BARCODE_MIN_QUIET_MM
 }
 
 /**
- * Maximize narrow-bar width (X) for the content width.
- * Prefer GS1 quiet (10×X); if that would thin bars, keep quiet at
- * BARCODE_MIN_QUIET_MM and spend the rest on X.
+ * Maximize narrow-bar width (X) for the label width.
+ * Quiet is a small fixed pad; remaining width → bars (edge-to-edge scan).
  */
 export function solveBarcodeXMm(
   contentWidthMm: number,
@@ -324,24 +335,12 @@ export function solveBarcodeXMm(
   const m = Math.max(1, modules)
   const W = Math.max(4, contentWidthMm)
 
-  // Max X with soft quiet floor
   let quiet = BARCODE_MIN_QUIET_MM
   let x = Math.max(0.01, (W - 2 * quiet) / m)
 
-  // If X is large enough that GS1 wants wider quiet, grow quiet (shrink X)
-  if (10 * x > quiet + 0.001) {
-    x = Math.max(0.01, W / (m + 20))
-    quiet = 10 * x
-    if (quiet < BARCODE_MIN_QUIET_MM) {
-      quiet = BARCODE_MIN_QUIET_MM
-      x = Math.max(0.01, (W - 2 * quiet) / m)
-    }
-  }
-
-  // Clamp quiet so symbol still fits
-  const maxQuiet = Math.max(0.5, (W - m * Math.min(x, BARCODE_MIN_X_MM)) / 2)
-  if (quiet > maxQuiet + 0.01 && maxQuiet >= BARCODE_MIN_QUIET_MM * 0.85) {
-    quiet = Math.max(BARCODE_MIN_QUIET_MM * 0.85, maxQuiet)
+  // If still below min X, shrink quiet slightly (floor 0.75 mm)
+  if (x < BARCODE_MIN_X_MM && quiet > 0.75) {
+    quiet = 0.75
     x = Math.max(0.01, (W - 2 * quiet) / m)
   }
 
@@ -390,11 +389,12 @@ export function assessLabelScanSafety(input: {
       : 0
   const barHeightMm = Math.max(0, layout.barcode.rowMm - hriMm - skuStripMm)
 
-  if (xMm < BARCODE_MIN_X_MM) {
+  const xDots = snapXMmToThermalDots(xMm, 2)
+  if (xMm < BARCODE_MIN_X_MM || xDots < BARCODE_MIN_X_MM - 0.01) {
     return {
       ok: false,
       reason:
-        'A vonalkód sávjai túl keskenyek lennének (X < 0,25 mm) — a szkenner nem olvasná megbízhatóan. Használj rövidebb (lehetőleg csak számos) kódot; a „Csak kód” sablon ezen nem segít.',
+        'A vonalkód sávjai túl keskenyek (X < 0,25 mm / 2 printer-pont) — a szkenner nem olvasná. Válaszd a „Belső EAN” kódot, vagy a „Csak kód” sablont.',
       xMm,
       quietZoneMm,
       barHeightMm
@@ -404,17 +404,7 @@ export function assessLabelScanSafety(input: {
     return {
       ok: false,
       reason:
-        'A vonalkód sávja túl alacsony. Kapcsold ki a név/ár/SKU mezőket, kapcsold ki a „Kód számjegyei” opciót, vagy válaszd a „Csak kód” sablont.',
-      xMm,
-      quietZoneMm,
-      barHeightMm
-    }
-  }
-  if (quietZoneMm < BARCODE_MIN_QUIET_MM * 0.9) {
-    return {
-      ok: false,
-      reason:
-        'Nincs elég üres szegély (quiet zone) a vonalkód mellett — a szkenner nem tudná megbízhatóan olvasni. Rövidítsd a kódot.',
+        'A vonalkód sávja túl alacsony. Kapcsold ki a név/ár/SKU mezőket, vagy válaszd a „Csak kód” sablont.',
       xMm,
       quietZoneMm,
       barHeightMm
@@ -519,13 +509,13 @@ export function computeLabelLayout(input: {
     nameRow = available - priceRow
   } else if (mode === 'warehouse') {
     const barcodeWant = Math.max(
-      barcodeFloor,
-      Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve, available * 0.38)
+      Math.max(barcodeFloor, 9.0),
+      Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve, available * 0.4)
     )
-    const priceWant = Math.min(5.2, available * 0.26)
+    const priceWant = Math.min(4.8, available * 0.22)
     barcodeRow = barcodeWant
     priceRow = priceWant
-    skuRow = Math.max(5.2, available - barcodeRow - priceRow)
+    skuRow = Math.max(4.8, available - barcodeRow - priceRow)
     skuPlacement = 'row'
   } else if (mode === 'full') {
     // SKU saját sor (nagyobb, mint a név) → ár → barcode; leftover → név
@@ -534,15 +524,16 @@ export function computeLabelLayout(input: {
       skuPlacement = 'row'
     }
     if (showBarcode) {
-      const priceWant = Math.min(5.0, available * 0.24)
+      // Scan-first: barcode gets ~42% height (was ~34%) — thicker readable bars
+      const priceWant = Math.min(4.6, available * 0.2)
       const barcodeSoft = Math.max(
-        barcodeFloor,
-        Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve, available * 0.34)
+        Math.max(barcodeFloor, 9.0),
+        Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve, available * 0.44)
       )
       priceRow = priceWant
       barcodeRow = barcodeSoft
       nameRow = Math.max(
-        4.2,
+        3.6,
         available - barcodeRow - priceRow - (showSku ? skuRow : 0)
       )
     } else {
@@ -554,15 +545,15 @@ export function computeLabelLayout(input: {
       )
     }
   } else {
-    // shelf: leftover → name
+    // shelf: scan-first barcode share
     const barcodeWant = Math.max(
-      barcodeFloor,
-      Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve, available * 0.34)
+      Math.max(barcodeFloor, 9.0),
+      Math.min(BARCODE_TARGET_HEIGHT_MM + hriReserve, available * 0.42)
     )
-    const priceWant = Math.min(5.2, available * 0.26)
+    const priceWant = Math.min(4.8, available * 0.22)
     barcodeRow = barcodeWant
     priceRow = priceWant
-    nameRow = Math.max(5.5, available - barcodeRow - priceRow)
+    nameRow = Math.max(4.5, available - barcodeRow - priceRow)
   }
 
   // Overflow: cut name / price / barcode — keep SKU row (ops-critical)

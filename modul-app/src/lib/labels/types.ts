@@ -27,6 +27,7 @@ export type ProductLabelPayload = {
 /**
  * Resolve printable barcode.
  * `auto`: prefer valid internal EAN-13 (thicker X on 33×25), else supplier, else internal.
+ * Print dialog soft-forces `internal` when EAN is valid — same preference.
  */
 export function labelBarcodeValue(
   payload: Pick<ProductLabelPayload, 'barcode' | 'barcodeInternal'>,
@@ -36,6 +37,7 @@ export function labelBarcodeValue(
   const internal = payload.barcodeInternal?.trim() || ''
   if (source === 'supplier') return supplier || null
   if (source === 'internal') return internal || null
+  // Prefer short EAN-13 over long supplier CODE128 on 33×25
   if (internal && isValidEan13(internal)) return internal
   if (supplier) return supplier
   return internal || null

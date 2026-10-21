@@ -9,6 +9,7 @@ import {
   computeLabelLayout,
   estimateBarcodeModules,
   LABEL_PX_PER_MM,
+  BARCODE_MIN_QUIET_MM,
   resolveLabelBarcodeFormat,
   solveBarcodeXMm
 } from '@/lib/labels/layout'
@@ -107,15 +108,15 @@ export function ProductLabelSheet({
       return {
         heightPx: BARCODE_INTRINSIC_HEIGHT_PX,
         moduleWidth: BARCODE_INTRINSIC_MODULE_PX,
-        quietMm: 1.5,
+        quietMm: BARCODE_MIN_QUIET_MM,
         format: 'CODE128' as const
       }
     }
     const format = resolveLabelBarcodeFormat(barcode)
     const modules = estimateBarcodeModules(barcode)
-    // Full-bleed: quiet solved against full label width (main-app style).
+    // Fixed small quiet only — do NOT max() with inflated GS1 quiet (photo bug).
     const { quietZoneMm } = solveBarcodeXMm(mm.w, modules)
-    const quietMm = Math.max(layout.quietZoneMm, quietZoneMm)
+    const quietMm = quietZoneMm
     const hriMm = layout.showHumanReadable
       ? layout.barcode.secondaryFontMm + 0.35
       : 0
@@ -124,7 +125,7 @@ export function ProductLabelSheet({
       2.5,
       layout.barcode.rowMm - hriMm - skuStripMm
     )
-    // Fat intrinsic SVG (main-app 2.5 × ~50); CSS stretch sets printed X/H.
+    // Fat intrinsic SVG; CSS width 100% stretch → printed X = (label − 2×quiet) / modules
     const heightPx = Math.max(
       BARCODE_INTRINSIC_HEIGHT_PX,
       Math.round(usableMm * LABEL_PX_PER_MM)
