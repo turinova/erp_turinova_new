@@ -14,6 +14,7 @@ import {
   escapeZplFd,
   generateLabelZpl,
   mmToDots,
+  packLabel33x25,
   ZPL_CONTENT_W,
   ZPL_DEFAULT_DARKNESS,
   ZPL_LABEL_H_DOTS,
@@ -120,6 +121,41 @@ describe('generateLabelZpl', () => {
     })
     assert.doesNotMatch(zpl, /…/)
     assert.match(zpl, /Strong csavar/)
+  })
+
+  it('never silently drops price when name wraps (photo bug)', () => {
+    const ean = buildInternalEan13('444444444')
+    const { zpl, packOk, droppedFields } = generateLabelZpl({
+      productName: 'Strong csavar 4x20 3600.- /doboz',
+      price: 4,
+      unitShortform: 'db',
+      fields: fieldsAll,
+      payload: { sku: '11162', barcode: null, barcodeInternal: ean },
+      barcodeValue: ean
+    })
+    assert.equal(packOk, true)
+    assert.deepEqual(droppedFields, [])
+    assert.match(zpl, /4 Ft\/db/)
+    assert.match(zpl, /11162/)
+    assert.match(zpl, /\^BEN,/)
+  })
+
+  it('pack grows fonts and keeps all fields', () => {
+    const plan = packLabel33x25({
+      productName: 'Strong csavar 4x20',
+      price: 4,
+      unitShortform: 'db',
+      sku: '11162',
+      showName: true,
+      showSku: true,
+      showPrice: true,
+      showBarcode: true
+    })
+    assert.equal(plan.packOk, true)
+    assert.equal(plan.blocks.length, 3)
+    const price = plan.blocks.find((b) => b.kind === 'price')
+    assert.ok(price)
+    assert.ok(price!.font >= 24)
   })
 
   it('uses ^PQ for copies', () => {

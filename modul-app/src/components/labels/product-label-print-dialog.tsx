@@ -42,6 +42,7 @@ import {
   isScannableOn33x25,
   resolvePrintableBarcode
 } from '@/lib/labels/print-policy'
+import { packLabel33x25 } from '@/lib/labels/zpl'
 import { isValidEan13 } from '@/lib/barcodes/ean13'
 import {
   type LabelBarcodeSource,
@@ -177,6 +178,20 @@ export function ProductLabelPrintDialog({
     offsetX !== savedOffsetX || offsetY !== savedOffsetY
   const hasActiveOffset = offsetX !== 0 || offsetY !== 0
 
+  /** ZPL pack preview — flags if a checked field would be dropped. */
+  const packPreview = useMemo(() => {
+    return packLabel33x25({
+      productName: name,
+      price,
+      unitShortform: unit || 'db',
+      sku: payload?.sku?.trim() || '',
+      showName: fields.showName,
+      showSku: fields.showSku && Boolean(payload?.sku?.trim()),
+      showPrice: fields.showPrice,
+      showBarcode: fields.showBarcode && Boolean(barcode) && !barcodeBlocked
+    })
+  }, [name, price, unit, payload?.sku, fields, barcode, barcodeBlocked])
+
   useEffect(() => {
     if (!open || !payload) return
     const source = defaultBarcodeSource(payload)
@@ -296,6 +311,8 @@ export function ProductLabelPrintDialog({
   const zebraReady = zebraProbe?.status === 'ok'
   const canPrintBarcode =
     !fields.showBarcode || (hasBarcode && !barcodeBlocked)
+  const canPrintPack = packPreview.packOk
+  const canPrint = canPrintBarcode && canPrintPack
 
   function applyTemplate(id: LabelTemplateId) {
     const tpl = LABEL_TEMPLATES.find((t) => t.id === id)
@@ -375,6 +392,15 @@ export function ProductLabelPrintDialog({
     if (fields.showBarcode && barcode && !isScannableOn33x25(barcode)) {
       toast.error(
         'A vonalkód nem fér olvashatóan. Válts belső EAN-re, vagy kapcsold ki a Vonalkód mezőt.'
+      )
+      return
+    }
+    if (!packPreview.packOk) {
+      const labels = packPreview.droppedFields
+        .map((f) => (f === 'name' ? 'Név' : f === 'sku' ? 'SKU' : 'Ár'))
+        .join(', ')
+      toast.error(
+        `Nem fér minden mező a címkére${labels ? ` (kihagyva: ${labels})` : ''}. Kapcsolj ki egy mezőt.`
       )
       return
     }
@@ -561,6 +587,14 @@ export function ProductLabelPrintDialog({
                   <p className="text-[12px] text-warning-ink">
                     Nincs belső EAN a terméken. Érdemes generálni — hosszú
                     gyártói kód később nem fér a 33×25 címkére.
+                  </p>
+                </div>
+              ) : null}
+              {!packPreview.packOk ? (
+                <div className="max-w-sm rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-center">
+                  <p className="text-[12px] text-danger-ink">
+                    A pipált mezők nem férnek a 33×25 címkére. Kapcsolj ki egy
+                    mezőt (pl. Név), hogy az ár és a vonalkód biztosan ráférjen.
                   </p>
                 </div>
               ) : null}
@@ -1004,7 +1038,7 @@ export function ProductLabelPrintDialog({
             variant="secondary"
             onClick={() => void handlePrint({ method: 'html' })}
             loading={printing}
-            disabled={!payload || !canPrintBarcode}
+            disabled={!payload || !canPrint}
             title="Csak ha a Browser Print nem elérhető"
           >
             HTML nyomtatás
@@ -1013,7 +1047,7 @@ export function ProductLabelPrintDialog({
             type="button"
             onClick={() => void handlePrint({ method: 'zebra' })}
             loading={printing}
-            disabled={!payload || !zebraReady || !canPrintBarcode}
+            disabled={!payload || !zebraReady || !canPrint}
             title={
               !zebraReady
                 ? 'Zebra nem kész — Újracsatlakozás vagy HTML nyomtatás'

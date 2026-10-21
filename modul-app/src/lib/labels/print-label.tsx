@@ -176,6 +176,12 @@ async function printViaZebra(args: PrintArgs): Promise<PrintLabelResult> {
     offsetXMm: args.offsetXMm,
     offsetYMm: args.offsetYMm
   })
+  if (!generated.packOk) {
+    throw new Error(
+      generated.fitWarning ??
+        'Nem fér minden pipált mező a címkére. Kapcsolj ki egy mezőt.'
+    )
+  }
   // sendZplViaBrowserPrint always re-probes (USB unplug-safe)
   await sendZplViaBrowserPrint(generated.zpl, args.zebraDevice ?? null)
   return { method: 'zebra', fitWarning: generated.fitWarning }
