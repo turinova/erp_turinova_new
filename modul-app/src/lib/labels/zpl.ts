@@ -1,0 +1,275 @@
+/**
+ * 33×25 mm product label → ZPL II for Zebra ZD220 @ 203 dpi.
+ * Barcodes are drawn by the printer (^BE / ^BC) — not raster SVG.
+ */
+
+import { isValidEan13 } from '@/lib/barcodes/ean13'
+import {
+  estimateCode128Modules,
+  EAN13_BAR_MODULES
+} from '@/lib/labels/layout'
+import type { LabelFields, ProductLabelPayload } from '@/lib/labels/types'
+
+/** 203 dpi: 8 dots per mm. */
+export const ZPL_DOTS_PER_MM = 8
+
+export const ZPL_LABEL_W_DOTS = 33 * ZPL_DOTS_PER_MM // 264
+export const ZPL_LABEL_H_DOTS = 25 * ZPL_DOTS_PER_MM // 200
+
+/** Module width — ^BY3 does not fit EAN-13 on 33 mm. */
+export const ZPL_MODULE_DOTS = 2
+
+/** Soft quiet each side for CODE128 fit check (dots). */
+const CODE128_QUIET_DOTS = 10
+
+export type LabelZplInput = {
+  productName: string
+  price: number
+  unitShortform: string
+  fields: LabelFields
+  payload: Pick<ProductLabelPayload, 'sku' | 'barcode' | 'barcodeInternal'>
+  /** Resolved printable code (supplier / internal / auto). */
+  barcodeValue?: string | null
+  showHumanReadable?: boolean
+  amount?: number
+  offsetXMm?: number
+  offsetYMm?: number
+  /** Darkness 0–30; default 20. */
+  darkness?: number
+  /** Print speed ips; default 2. */
+  printSpeed?: number
+}
+
+export type LabelZplResult = {
+  zpl: string
+  symbology: 'EAN13' | 'CODE128' | null
+  barcodeFits: boolean
+  /** Hint when CODE128 is too wide for 33 mm @ ^BY2. */
+  fitWarning: string | null
+}
+
+/** Strip ZPL control chars from field data. */
+export function escapeZplFd(raw: string): string {
+  return raw
+    .replace(/[\^~]/g, '')
+    .replace(/\r?\n/g, ' ')
+    .trim()
+}
+
+export function mmToDots(mm: number): number {
+  return Math.round(mm * ZPL_DOTS_PER_MM)
+}
+
+/**
+ * Zebra ^BE expects exactly 12 data digits; printer adds check digit.
+ * Valid EAN-13 → first 12; otherwise null.
+ */
+export function ean13Data12ForZpl(code: string): string | null {
+  const d = code.replace(/\D/g, '')
+  if (d.length === 13 && isValidEan13(d)) return d.slice(0, 12)
+  if (d.length === 12) return d
+  return null
+}
+
+export function code128Fits33mm(value: string): boolean {
+  const modules = estimateCode128Modules(value)
+  const width = modules * ZPL_MODULE_DOTS + 2 * CODE128_QUIET_DOTS
+  return width <= ZPL_LABEL_W_DOTS - 8
+}
+
+function wrapName(text: string, maxChars: number, maxLines: number): string[] {
+  const t = escapeZplFd(text)
+  if (!t) return []
+  const lines: string[] = []
+  let rest = t
+  while (rest.length > 0 && lines.length < maxLines) {
+    if (rest.length <= maxChars) {
+      lines.push(rest)
+      break
+    }
+    let cut = rest.lastIndexOf(' ', maxChars)
+    if (cut < maxChars * 0.4) cut = maxChars
+    lines.push(rest.slice(0, cut).trimEnd())
+    rest = rest.slice(cut).trimStart()
+  }
+  if (rest.length > 0 && lines.length === maxLines) {
+    const last = lines[maxLines - 1]!
+    lines[maxLines - 1] =
+      last.length > 1 ? `${last.slice(0, -1)}…` : last
+  }
+  return lines
+}
+
+function formatPrice(price: number): string {
+  return new Intl.NumberFormat('hu-HU').format(Math.round(price))
+}
+
+/**
+ * Build one ZPL job for 33×25 (may include ^PQ for copies).
+ */
+export function generateLabelZpl(input: LabelZplInput): LabelZplResult {
+  const showName = input.fields.showName
+  const showSku = input.fields.showSku && Boolean(input.payload.sku?.trim())
+  const showPrice = input.fields.showPrice
+  const rawBarcode = (input.barcodeValue ?? '').trim()
+  const showBarcode = input.fields.showBarcode && Boolean(rawBarcode)
+  const hri = Boolean(input.showHumanReadable)
+  const copies = Math.max(1, Math.round(input.amount ?? 1))
+  const dark = Math.min(30, Math.max(0, Math.round(input.darkness ?? 20)))
+  const speed = Math.min(4, Math.max(1, Math.round(input.printSpeed ?? 2)))
+
+  const ox = mmToDots(input.offsetXMm ?? 0)
+  const oy = mmToDots(input.offsetYMm ?? 0)
+
+  const ean12 = showBarcode ? ean13Data12ForZpl(rawBarcode) : null
+  const useEan = Boolean(ean12)
+  let barcodeFits = true
+  let fitWarning: string | null = null
+  let symbology: LabelZplResult['symbology'] = null
+
+  if (showBarcode) {
+    if (useEan) {
+      symbology = 'EAN13'
+      barcodeFits = true
+    } else {
+      symbology = 'CODE128'
+      barcodeFits = code128Fits33mm(rawBarcode)
+      if (!barcodeFits) {
+        fitWarning =
+          'A gyártói kód túl hosszú 33 mm-en — válaszd a Belső EAN-t a biztos olvasáshoz.'
+      }
+    }
+  }
+
+  const barcodeOnly =
+    showBarcode && !showName && !showSku && !showPrice
+  const warehouse = showSku && !showName
+
+  // Vertical layout (dots from top)
+  let y = 6
+  const lines: string[] = [
+    '^XA',
+    '^CI28',
+    `^PW${ZPL_LABEL_W_DOTS}`,
+    `^LL${ZPL_LABEL_H_DOTS}`,
+    `^MD${dark}`,
+    `^PR${speed}`,
+    `^LS${ox}`,
+    `^LT${oy}`
+  ]
+
+  if (barcodeOnly) {
+    const barH = 130
+    const barY = Math.max(8, Math.floor((ZPL_LABEL_H_DOTS - barH) / 2) - 4)
+    appendBarcode(lines, {
+      y: barY,
+      height: barH,
+      ean12,
+      rawBarcode,
+      useEan,
+      hri: false
+    })
+  } else if (warehouse) {
+    const sku = escapeZplFd(input.payload.sku)
+    lines.push(`^FO8,${y}^A0N,36,36^FD${sku}^FS`)
+    y += 42
+    if (showPrice) {
+      const priceLine = `${formatPrice(input.price)} Ft/${escapeZplFd(input.unitShortform || 'db')}`
+      lines.push(`^FO8,${y}^A0N,28,28^FD${priceLine}^FS`)
+      y += 34
+    }
+    if (showBarcode) {
+      const barH = Math.min(80, ZPL_LABEL_H_DOTS - y - 8)
+      appendBarcode(lines, {
+        y,
+        height: Math.max(56, barH),
+        ean12,
+        rawBarcode,
+        useEan,
+        hri
+      })
+    }
+  } else {
+    // Full / shelf: name → sku → price → barcode
+    if (showName) {
+      const maxLines = showSku ? 2 : 2
+      const nameLines = wrapName(
+        input.productName || '—',
+        22,
+        maxLines
+      )
+      for (const nl of nameLines) {
+        lines.push(`^FO8,${y}^A0N,22,22^FD${nl}^FS`)
+        y += 24
+      }
+      y += 2
+    }
+    if (showSku) {
+      const sku = escapeZplFd(input.payload.sku)
+      lines.push(`^FO8,${y}^A0N,28,28^FD${sku}^FS`)
+      y += 32
+    }
+    if (showPrice) {
+      const priceLine = `${formatPrice(input.price)} Ft/${escapeZplFd(input.unitShortform || 'db')}`
+      lines.push(`^FO8,${y}^A0N,32,32^FD${priceLine}^FS`)
+      y += 36
+    }
+    if (showBarcode) {
+      const remaining = ZPL_LABEL_H_DOTS - y - 6
+      const barH = Math.min(80, Math.max(56, remaining))
+      const barY = Math.min(y, ZPL_LABEL_H_DOTS - barH - 4)
+      appendBarcode(lines, {
+        y: barY,
+        height: barH,
+        ean12,
+        rawBarcode,
+        useEan,
+        hri
+      })
+    }
+  }
+
+  lines.push(`^PQ${copies},0,1,Y`)
+  lines.push('^XZ')
+
+  return {
+    zpl: lines.join('\n'),
+    symbology,
+    barcodeFits,
+    fitWarning
+  }
+}
+
+function appendBarcode(
+  lines: string[],
+  opts: {
+    y: number
+    height: number
+    ean12: string | null
+    rawBarcode: string
+    useEan: boolean
+    hri: boolean
+  }
+) {
+  const hriFlag = opts.hri ? 'Y' : 'N'
+  lines.push(`^BY${ZPL_MODULE_DOTS},3,${opts.height}`)
+
+  if (opts.useEan && opts.ean12) {
+    // EAN-13 @ ^BY2 = 190 dots; center on 264
+    const symbolW = EAN13_BAR_MODULES * ZPL_MODULE_DOTS
+    const bx = Math.max(4, Math.floor((ZPL_LABEL_W_DOTS - symbolW) / 2))
+    lines.push(`^FO${bx},${opts.y}^BEN,${opts.height},${hriFlag},N`)
+    lines.push(`^FD${opts.ean12}^FS`)
+  } else {
+    const data = escapeZplFd(opts.rawBarcode)
+    const modules = estimateCode128Modules(data)
+    const symbolW = modules * ZPL_MODULE_DOTS
+    const bx = Math.max(
+      4,
+      Math.floor((ZPL_LABEL_W_DOTS - Math.min(symbolW, ZPL_LABEL_W_DOTS - 8)) / 2)
+    )
+    // Automatic subset packing
+    lines.push(`^FO${bx},${opts.y}^BCN,${opts.height},${hriFlag},N,N,A`)
+    lines.push(`^FD${data}^FS`)
+  }
+}

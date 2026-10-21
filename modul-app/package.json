@@ -9,6 +9,7 @@
     "start": "next start --port 3010",
     "lint": "next lint",
     "test:pos-search-policy": "npx --yes tsx --test src/lib/pos/search-policy.test.ts",
+    "test:label-zpl": "npx --yes tsx --test src/lib/labels/zpl.test.ts",
     "clean": "rm -rf .next var",
     "speed-test": "node --env-file=.env.local scripts/speed-test.mjs",
     "speed-test:pos-barcode": "node --env-file=.env.local scripts/speed-test-pos-barcode.mjs",

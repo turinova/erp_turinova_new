@@ -3,6 +3,12 @@
 import { createRoot, type Root } from 'react-dom/client'
 
 import { ProductLabelSheet } from '@/components/labels/product-label-sheet'
+import {
+  probeBrowserPrint,
+  sendZplViaBrowserPrint,
+  type BrowserPrintDevice
+} from '@/lib/labels/browser-print-client'
+import { generateLabelZpl } from '@/lib/labels/zpl'
 import type { LabelFields, LabelSize, ProductLabelPayload } from '@/lib/labels/types'
 
 type PrintArgs = {
@@ -19,6 +25,19 @@ type PrintArgs = {
   offsetYMm?: number
   /** Resolved barcode (supplier / internal / auto). */
   barcodeValue?: string | null
+  /**
+   * `zebra` (default): Browser Print ZPL.
+   * `html`: Chrome → driver raster (fallback only).
+   * `auto`: try Zebra, then HTML on failure.
+   */
+  method?: 'zebra' | 'html' | 'auto'
+  /** Cached device from dialog probe. */
+  zebraDevice?: BrowserPrintDevice | null
+}
+
+export type PrintLabelResult = {
+  method: 'zebra' | 'html'
+  fitWarning: string | null
 }
 
 const CONTAINER_ID = 'modul-product-label-print'
@@ -34,7 +53,8 @@ function cleanup() {
   document.getElementById(STYLE_ID)?.remove()
 }
 
-export async function printProductLabels(args: PrintArgs): Promise<void> {
+/** Legacy Chrome print dialog path — barcodes are rasterized (often unscannable). */
+export async function printProductLabelsHtml(args: PrintArgs): Promise<void> {
   cleanup()
 
   const { w, h } = { w: '33mm', h: '25mm' }
@@ -91,7 +111,6 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
         page-break-after: auto;
         break-after: auto;
       }
-      /* Main-app parity: fat SVG stretched to barcode cell → thicker printed bars */
       #${CONTAINER_ID} .label-barcode-svg-wrap {
         overflow: hidden !important;
       }
@@ -135,3 +154,51 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
   window.print()
   setTimeout(cleanup, 800)
 }
+
+async function printViaZebra(args: PrintArgs): Promise<PrintLabelResult> {
+  void args.size // only 33x25 supported for ZPL today
+  const generated = generateLabelZpl({
+    productName: args.productName,
+    price: args.price,
+    unitShortform: args.unitShortform,
+    fields: args.fields,
+    payload: args.payload,
+    barcodeValue: args.barcodeValue,
+    showHumanReadable: args.showHumanReadable,
+    amount: args.amount,
+    offsetXMm: args.offsetXMm,
+    offsetYMm: args.offsetYMm
+  })
+  await sendZplViaBrowserPrint(generated.zpl, args.zebraDevice ?? null)
+  return { method: 'zebra', fitWarning: generated.fitWarning }
+}
+
+/**
+ * Primary: Zebra Browser Print (native ZPL barcodes).
+ * Fallback: HTML window.print (explicit method or auto after Zebra fail).
+ */
+export async function printProductLabels(
+  args: PrintArgs
+): Promise<PrintLabelResult> {
+  const method = args.method ?? 'zebra'
+
+  if (method === 'html') {
+    await printProductLabelsHtml(args)
+    return { method: 'html', fitWarning: null }
+  }
+
+  if (method === 'zebra') {
+    return printViaZebra(args)
+  }
+
+  // auto
+  try {
+    return await printViaZebra(args)
+  } catch (err) {
+    console.warn('[label-print] Zebra failed, HTML fallback', err)
+    await printProductLabelsHtml(args)
+    return { method: 'html', fitWarning: null }
+  }
+}
+
+export { probeBrowserPrint }

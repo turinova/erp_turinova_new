@@ -24,6 +24,12 @@ import {
   LABEL_TEMPLATES,
   type LabelTemplateId
 } from '@/lib/labels/layout'
+import {
+  browserPrintStatusLabel,
+  probeBrowserPrint,
+  type BrowserPrintDevice,
+  type BrowserPrintProbe
+} from '@/lib/labels/browser-print-client'
 import { printProductLabels } from '@/lib/labels/print-label'
 import {
   loadLabelPrintSettingsAction,
@@ -35,6 +41,7 @@ import {
   LABEL_OFFSET_MIN,
   LABEL_OFFSET_STEP
 } from '@/lib/labels/print-settings'
+import { generateLabelZpl } from '@/lib/labels/zpl'
 import { isValidEan13 } from '@/lib/barcodes/ean13'
 import {
   labelBarcodeValue,
@@ -143,6 +150,10 @@ export function ProductLabelPrintDialog({
   const [barcodeSource, setBarcodeSource] =
     useState<LabelBarcodeSource>('auto')
   const [forcePrintUnsafe, setForcePrintUnsafe] = useState(false)
+  const [zebraProbe, setZebraProbe] = useState<BrowserPrintProbe | null>(null)
+  const [zebraDevice, setZebraDevice] = useState<BrowserPrintDevice | null>(
+    null
+  )
 
   const barcode = payload
     ? labelBarcodeValue(payload, barcodeSource)
@@ -170,6 +181,22 @@ export function ProductLabelPrintDialog({
     setSettingsOpen(false)
     setForcePrintUnsafe(false)
   }, [open, payload, initialAmount])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setZebraProbe(null)
+    setZebraDevice(null)
+    void (async () => {
+      const probe = await probeBrowserPrint()
+      if (cancelled) return
+      setZebraProbe(probe)
+      setZebraDevice(probe.status === 'ok' ? probe.device : null)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -255,6 +282,26 @@ export function ProductLabelPrintDialog({
     })
   }, [effectivePayload, fields, name, price, barcode, showHumanReadable])
 
+  const zplFit = useMemo(() => {
+    if (!payload || !barcode || !fields.showBarcode) {
+      return { fitWarning: null as string | null, barcodeFits: true }
+    }
+    const g = generateLabelZpl({
+      productName: name,
+      price,
+      unitShortform: unit || 'db',
+      fields,
+      payload,
+      barcodeValue: barcode,
+      showHumanReadable,
+      amount: 1
+    })
+    return { fitWarning: g.fitWarning, barcodeFits: g.barcodeFits }
+  }, [payload, barcode, fields, name, price, unit, showHumanReadable])
+
+  const zebraStatus = zebraProbe ? browserPrintStatusLabel(zebraProbe) : null
+  const zebraReady = zebraProbe?.status === 'ok'
+
   function applyTemplate(id: LabelTemplateId) {
     const tpl = LABEL_TEMPLATES.find((t) => t.id === id)
     if (!tpl) return
@@ -305,7 +352,10 @@ export function ProductLabelPrintDialog({
     }
   }
 
-  async function handlePrint(opts?: { forceUnsafe?: boolean }) {
+  async function handlePrint(opts?: {
+    forceUnsafe?: boolean
+    method?: 'zebra' | 'html'
+  }) {
     if (!payload || !effectivePayload) return
     if (
       !fields.showName &&
@@ -316,10 +366,29 @@ export function ProductLabelPrintDialog({
       toast.error('Válassz ki legalább egy mezőt a címkéhez.')
       return
     }
-    if (!scanSafety.ok && !opts?.forceUnsafe && !forcePrintUnsafe) {
+    const method = opts?.method ?? 'zebra'
+    if (
+      method === 'zebra' &&
+      !zplFit.barcodeFits &&
+      !opts?.forceUnsafe &&
+      !forcePrintUnsafe
+    ) {
       toast.message('Gyenge szkennelhetőség', {
         description:
-          'A vonalkód sávjai keskenyek lehetnek ezen a címkén. Válts belső EAN-re, vagy nyomtasd „Mégis”.'
+          zplFit.fitWarning ??
+          'Válts belső EAN-re, vagy nyomtasd „Mégis”.'
+      })
+      return
+    }
+    if (
+      method === 'html' &&
+      !scanSafety.ok &&
+      !opts?.forceUnsafe &&
+      !forcePrintUnsafe
+    ) {
+      toast.message('Gyenge szkennelhetőség', {
+        description:
+          'A vonalkód sávjai keskenyek lehetnek. Válts belső EAN-re, vagy nyomtasd „Mégis”.'
       })
       return
     }
@@ -329,9 +398,20 @@ export function ProductLabelPrintDialog({
           'A nyomtatás a jelenlegi (nem mentett) eltolással megy. Mentés: Beállítások.'
       })
     }
+    if (method === 'zebra' && !zebraReady) {
+      let msg = 'Zebra Browser Print nem elérhető.'
+      if (zebraProbe?.status === 'ssl' || zebraProbe?.status === 'down') {
+        msg = zebraProbe.hint
+      } else if (zebraProbe?.status === 'no_default') {
+        msg =
+          'Nincs default Zebra nyomtató. Browser Print → Default: ZD220.'
+      }
+      toast.error(msg)
+      return
+    }
     setPrinting(true)
     try {
-      await printProductLabels({
+      const result = await printProductLabels({
         payload: effectivePayload,
         fields,
         productName: name,
@@ -342,11 +422,26 @@ export function ProductLabelPrintDialog({
         showHumanReadable,
         offsetXMm: offsetX,
         offsetYMm: offsetY,
-        barcodeValue: barcode
+        barcodeValue: barcode,
+        method,
+        zebraDevice
       })
+      if (result.method === 'zebra') {
+        toast.success('Elküldve a Zebra nyomtatóra')
+        if (result.fitWarning) {
+          toast.message('Figyelem', { description: result.fitWarning })
+        }
+      } else {
+        toast.message('HTML nyomtatás', {
+          description:
+            'Böngészős nyomtatás — a vonalkód kevésbé megbízható, mint ZPL-lel.'
+        })
+      }
     } catch (err) {
       console.error(err)
-      toast.error('A nyomtatás sikertelen.')
+      const msg =
+        err instanceof Error ? err.message : 'A nyomtatás sikertelen.'
+      toast.error(msg)
     } finally {
       setPrinting(false)
     }
@@ -363,9 +458,31 @@ export function ProductLabelPrintDialog({
         <DialogHeader>
           <DialogTitle>Címke nyomtatása</DialogTitle>
           <DialogDescription>
-            33×25 mm · előnézet középen. Hosszú név max 2 sor (SKU alatt nem
-            csúszik). Illesztés csak nyomtatáskor. 100% / Actual size.
+            33×25 mm · Zebra Browser Print (ZPL) · előnézet tájékoztató. Illesztés
+            csak nyomtatáskor.
           </DialogDescription>
+          {zebraStatus ? (
+            <p
+              className={cn(
+                'mt-1.5 rounded-md px-2.5 py-1.5 text-[12px]',
+                zebraStatus.tone === 'ok' &&
+                  'border border-success/30 bg-success-soft text-success-ink',
+                zebraStatus.tone === 'warn' &&
+                  'border border-warning/40 bg-warning-soft text-warning-ink',
+                zebraStatus.tone === 'error' &&
+                  'border border-danger/30 bg-danger-soft text-danger-ink'
+              )}
+            >
+              {zebraStatus.text}
+              {zebraProbe?.status === 'ssl' || zebraProbe?.status === 'down'
+                ? ` — ${zebraProbe.hint}`
+                : null}
+            </p>
+          ) : open ? (
+            <p className="mt-1.5 text-[12px] text-ink-muted">
+              Zebra kapcsolat ellenőrzése…
+            </p>
+          ) : null}
         </DialogHeader>
 
         {payload && effectivePayload ? (
@@ -393,10 +510,10 @@ export function ProductLabelPrintDialog({
                 illesztését. Ár:{' '}
                 <span className="font-medium">Ft/{unit || 'db'}</span>.
               </p>
-              {!scanSafety.ok ? (
+              {!zplFit.barcodeFits && zplFit.fitWarning ? (
                 <div className="max-w-sm space-y-1.5 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-center">
                   <p className="text-[12px] text-warning-ink">
-                    {scanSafety.reason}
+                    {zplFit.fitWarning}
                   </p>
                   {hasInternalCode && barcodeSource !== 'internal' ? (
                     <Button
@@ -411,6 +528,13 @@ export function ProductLabelPrintDialog({
                       Belső EAN használata
                     </Button>
                   ) : null}
+                </div>
+              ) : !scanSafety.ok ? (
+                <div className="max-w-sm space-y-1.5 rounded-md border border-border bg-subtle px-3 py-2 text-center">
+                  <p className="text-[11px] text-ink-muted">
+                    HTML előnézet figyelmeztetés (ZPL nyomtatásnál a nyomtató
+                    rajzolja a kódot): {scanSafety.reason}
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -839,25 +963,35 @@ export function ProductLabelPrintDialog({
           >
             Mégse
           </Button>
-          {!scanSafety.ok ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void handlePrint({ method: 'html', forceUnsafe: true })}
+            loading={printing}
+            disabled={!payload}
+            title="Csak ha a Browser Print nem elérhető"
+          >
+            HTML nyomtatás
+          </Button>
+          {!zplFit.barcodeFits ? (
             <Button
               type="button"
               onClick={() => {
                 setForcePrintUnsafe(true)
-                void handlePrint({ forceUnsafe: true })
+                void handlePrint({ forceUnsafe: true, method: 'zebra' })
               }}
               loading={printing}
-              disabled={!payload}
+              disabled={!payload || !zebraReady}
             >
               <Printer className="size-3.5" aria-hidden />
-              Mégis nyomtatás
+              Mégis Zebra
             </Button>
           ) : (
             <Button
               type="button"
-              onClick={() => void handlePrint()}
+              onClick={() => void handlePrint({ method: 'zebra' })}
               loading={printing}
-              disabled={!payload}
+              disabled={!payload || !zebraReady}
             >
               <Printer className="size-3.5" aria-hidden />
               Nyomtatás

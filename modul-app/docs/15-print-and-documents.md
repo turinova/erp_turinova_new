@@ -60,22 +60,18 @@ Ha van címkenyomtatás:
 - külön formátum specifikáció kell
 - méret, margó, vonalkód elhelyezés, betűméret legyen fixen definiálva
 
-### 6a. Termék címke (33×25 mm) — v3
+### 6a. Termék címke (33×25 mm) — v4 (Zebra Browser Print)
 
 Zárolt döntések:
 
-- **Default sablon: Teljes** — név + **SKU ON** + ár + vonalkód (SKU kikapcsolható).
-- **Vizuális hierarchia mérettel** (minden `font-weight: 550`): **Ár > SKU > Név**.
-- **SKU** (Teljes): ~**3.5 mm**, saját sor a név és az ár között; `sku.font ≥ name.font + 0.4 mm`.
-- **Név soha nincs levágva** — nincs ellipsis; shrink + max **3** sor; min ~**2.8 mm**.
-- **Nagy SKU** — raktár pick (~4.2 mm SKU sor, nincs név).
-- **Ár:** egy sor **`12 345 Ft/db`**.
-- **Fix zónák**: SKU sor védve; leftover → név; scan floor barcode-on.
-- **HRI** alapból ki. X &lt; **0.25 mm** vagy sáv &lt; **6.0 mm** vagy quiet &lt; ~1.5 mm → print tiltva.
-- **Vastagabb sávok (main-app parity):** érvényes 13 jegyű → **EAN-13**; egyébként CODE128. Intrinsic modul **`width={2.5}`**, SVG **`width/height: 100%` + `object-fit: fill`** a barcode cellában (full-bleed, quiet ~1.5 mm). Nyomtatott X = cellaszélesség / modulszám — nem 96 dpi mm-számolt ~1 px.
-- **Előnézet = print:** mm layout + ugyanaz a stretch. Preview zoom: CSS `scale`.
-- Nyomtató: **100% / Actual size**. Illesztés: `tenant_label_print_settings`.
-- Layout: `src/lib/labels/layout.ts`; UI: `ProductLabelPrintDialog`.
+- **Nyomtatás primary:** Zebra **Browser Print** → nyers **ZPL** (`lib/labels/zpl.ts` + `browser-print-client.ts`). A vonalkódot a **ZD220 firmware** rajzolja (`^BEN` EAN-13 / `^BCN` CODE128), nem Chrome raster.
+- **203 dpi:** `^PW264` / `^LL200`; modul **`^BY2`** (0,25 mm). `^BY3` EAN-13-nál **nem fér** 33 mm-re.
+- **EAN `^FD`:** pontosan **12 digit** (check digit a nyomtató); érvényes belső EAN default.
+- **Előnézet:** HTML sheet (tájékoztató). **HTML nyomtatás** csak secondary fallback (gyengébb szkennelés).
+- **Illesztés:** `tenant_label_print_settings` → ZPL `^LS` / `^LT` (mm→dot).
+- **Gép:** Browser Print fut + default = ZD220; HTTPS-en egyszer `https://127.0.0.1:9101/ssl_support`; Accepted Hosts = production domain.
+- **Default sablon: Teljes** — név + SKU + ár + vonalkód. HRI alapból ki.
+- Layout preview: `layout.ts` / `ProductLabelSheet`; print: `print-label.tsx` → ZPL.
 
 ## 7. PDF kontra HTML print
 
