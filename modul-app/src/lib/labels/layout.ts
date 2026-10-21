@@ -13,7 +13,7 @@ export type LabelTemplateId = 'shelf' | 'full' | 'sku' | 'barcode' | 'price'
 
 /**
  * Templates — Teljes default (SKU ON). Visual hierarchy by size: Ár > SKU > Név.
- * Name never truncated; weight 550 everywhere (sheet).
+ * Name: max 2 lines with SKU (ellipsis) — cannot invade SKU; weight 550.
  */
 export const LABEL_TEMPLATES: Array<{
   id: LabelTemplateId
@@ -84,6 +84,8 @@ export type LabelBlockLayout = {
   fontMm: number
   /** Secondary: inline /unit under price amount, or HRI under bars. */
   secondaryFontMm: number
+  /** Name only — hard CSS line-clamp (matches layout fit). */
+  maxLines?: number
 }
 
 /** Where the SKU block renders in the sheet. */
@@ -118,9 +120,9 @@ export const BARCODE_MIN_X_MM = 0.25
 
 /**
  * Soft quiet-zone floor (mm). Prefer 10×X when space allows; never below this.
- * Main-app shelf labels use ~0 quiet; 1.5 mm is a scan-safe compromise on 33×25.
+ * Thermal on-demand: 1.2 mm (was 1.5) — thicker X on 33×25 CODE128; still ≥~4×X at min X.
  */
-export const BARCODE_MIN_QUIET_MM = 1.5
+export const BARCODE_MIN_QUIET_MM = 1.2
 
 /** Prefer at least this bar height (mm) when barcode is shown. */
 export const BARCODE_TARGET_HEIGHT_MM = 8.0
@@ -169,15 +171,26 @@ const PAD = {
   safety: 0.15
 } as const
 
-/** Tight rhythm — little air between name / price / barcode. */
-const GAP_MM = 0.12
+/**
+ * Gap between blocks. Was 0.12 — name bled into SKU on print.
+ * Fixed (no user toggle) so clerks can't collapse it.
+ */
+const GAP_MM = 0.4
 
 /** Optimistic wrap — prefer larger name over early shrink. */
 const CHAR_WIDTH_FACTOR = 0.5
-/** Never go below this — name is never truncated, only shrunk to this floor. */
+/** Floor font — below this unreadable on 33×25 thermal. */
 const NAME_MIN_FONT = 2.8
-const NAME_MAX_LINES_BARCODE = 3
-const NAME_MAX_LINES_NO_BARCODE = 4
+/**
+ * Hard line caps — long names ellipsis, never invade SKU.
+ * With SKU: 2 lines max. Without SKU: 3. Not configurable in UI.
+ */
+export const NAME_MAX_LINES_WITH_SKU = 2
+export const NAME_MAX_LINES_BARCODE = 2
+export const NAME_MAX_LINES_NO_BARCODE = 3
+
+/** Extra air after name when SKU follows (mm) — baked into name row pad. */
+const NAME_BEFORE_SKU_PAD_MM = 0.2
 
 function desiredNameFont(text: string): number {
   const len = text.trim().length
@@ -489,9 +502,13 @@ export function computeLabelLayout(input: {
 
   const hriReserve = showHumanReadable ? 1.9 : 0
   const barcodeFloor = BARCODE_ABSOLUTE_MIN_HEIGHT_MM + hriReserve
-  const nameMaxLines = showBarcode
-    ? NAME_MAX_LINES_BARCODE
-    : NAME_MAX_LINES_NO_BARCODE
+  // Hard caps — user cannot raise these in the dialog
+  const nameMaxLines =
+    showName && showSku
+      ? NAME_MAX_LINES_WITH_SKU
+      : showBarcode
+        ? NAME_MAX_LINES_BARCODE
+        : NAME_MAX_LINES_NO_BARCODE
   /** Teljes: SKU row height for ~3.5 mm type. */
   const skuFullRowMm = 3.85
 
@@ -573,7 +590,7 @@ export function computeLabelLayout(input: {
     }
   }
 
-  // Fit name (never truncate chars); steal from barcode if needed — not from SKU
+  // Fit name within hard line cap; steal from barcode if needed — never from SKU
   let nameFitted = showName
     ? resolveNameFont(
         text,
@@ -586,12 +603,26 @@ export function computeLabelLayout(input: {
 
   if (showName && showBarcode) {
     for (let i = 0; i < 12; i++) {
-      const need = nameContentMm(nameFitted.fontMm, nameFitted.lines) + 0.15
+      const need =
+        nameContentMm(nameFitted.fontMm, nameFitted.lines) +
+        0.15 +
+        (showSku ? NAME_BEFORE_SKU_PAD_MM : 0)
       const needsMoreRoom = need > nameRow + 0.05
       if (!needsMoreRoom) break
+      // Cap name growth — do not expand past max lines' worth of space
+      const maxNameRow =
+        nameContentMm(NAME_MIN_FONT, nameMaxLines) +
+        0.4 +
+        (showSku ? NAME_BEFORE_SKU_PAD_MM : 0)
+      if (nameRow >= maxNameRow - 0.05) break
       const spare = barcodeRow - barcodeFloor
       if (spare < 0.15) break
-      const give = Math.min(spare, Math.max(0.2, need - nameRow + 0.3))
+      const give = Math.min(
+        spare,
+        Math.max(0.2, need - nameRow + 0.3),
+        maxNameRow - nameRow
+      )
+      if (give < 0.1) break
       barcodeRow = Number((barcodeRow - give).toFixed(2))
       nameRow = Number((nameRow + give).toFixed(2))
       nameFitted = resolveNameFont(
@@ -601,6 +632,20 @@ export function computeLabelLayout(input: {
         nameRow,
         nameMaxLines
       )
+    }
+  }
+
+  // Clamp name row to fitted content (hard ceiling) — prevents bleed into SKU
+  if (showName && nameFitted.lines > 0) {
+    const lines = Math.min(nameFitted.lines, nameMaxLines)
+    const ceiling =
+      nameContentMm(nameFitted.fontMm, lines) +
+      0.2 +
+      (showSku ? NAME_BEFORE_SKU_PAD_MM : 0)
+    if (nameRow > ceiling + 0.05) {
+      const spare = nameRow - ceiling
+      nameRow = Number(ceiling.toFixed(2))
+      if (showBarcode) barcodeRow = Number((barcodeRow + spare).toFixed(2))
     }
   }
 
@@ -641,10 +686,14 @@ export function computeLabelLayout(input: {
 
   const barcodeSecondary = showHumanReadable ? 1.55 : 0
 
-  // Tighten price row only; name stays at content height (never clip)
+  // Tighten name to content (clipped to max lines) — spare → barcode
   if (showName && nameRow > 0) {
-    const tight = nameContentMm(nameFont, nameFitted.lines) + 0.15
-    if (tight + 0.15 < nameRow) {
+    const lines = Math.min(nameFitted.lines, nameMaxLines)
+    const tight =
+      nameContentMm(nameFont, lines) +
+      0.15 +
+      (showSku ? NAME_BEFORE_SKU_PAD_MM : 0)
+    if (tight + 0.1 < nameRow) {
       const spare = nameRow - tight
       nameRow = Number(tight.toFixed(2))
       if (showBarcode) barcodeRow = Number((barcodeRow + spare).toFixed(2))
@@ -655,11 +704,11 @@ export function computeLabelLayout(input: {
     if (tight + 0.15 < priceRow) {
       const spare = priceRow - tight
       priceRow = Number(tight.toFixed(2))
-      if (showName) {
-        // Prefer giving spare to name for readability
-        nameRow = Number((nameRow + spare).toFixed(2))
-      } else if (showBarcode) {
+      // Never grow name when SKU is present (overlap risk) — give to barcode
+      if (showBarcode) {
         barcodeRow = Number((barcodeRow + spare).toFixed(2))
+      } else if (showName && !showSku) {
+        nameRow = Number((nameRow + spare).toFixed(2))
       }
     }
   }
@@ -674,7 +723,12 @@ export function computeLabelLayout(input: {
     gapMm,
     quietZoneMm: Number(resolvedQuiet.toFixed(3)),
     name: showName
-      ? { rowMm: nameRow, fontMm: nameFont, secondaryFontMm: 0 }
+      ? {
+          rowMm: nameRow,
+          fontMm: nameFont,
+          secondaryFontMm: 0,
+          maxLines: nameMaxLines
+        }
       : null,
     sku:
       showSku && skuPlacement

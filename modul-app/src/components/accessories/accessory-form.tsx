@@ -267,11 +267,20 @@ export function AccessoryForm({
         description="Törzsadatok → Alapanyagok → Termékek"
         actions={
           <div className="flex items-center gap-1.5">
-            {canPrintLabels && labelPayload ? (
+            {labelPayload ? (
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setLabelOpen(true)}
+                disabled={!canPrintLabels}
+                title={
+                  canPrintLabels
+                    ? 'Címke nyomtatása'
+                    : 'A címkenyomtatás nincs a csomagban (product_labels entitlement).'
+                }
+                onClick={() => {
+                  if (!canPrintLabels) return
+                  setLabelOpen(true)
+                }}
               >
                 <Printer className="size-3.5" aria-hidden />
                 Címke
@@ -773,9 +782,9 @@ export function AccessoryForm({
             ) : null}
       </div>
 
-      {canPrintLabels ? (
+      {labelPayload ? (
         <ProductLabelPrintDialog
-          open={labelOpen}
+          open={labelOpen && canPrintLabels}
           payload={labelPayload}
           units={units}
           onClose={() => setLabelOpen(false)}

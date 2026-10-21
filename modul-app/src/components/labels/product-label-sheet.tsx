@@ -38,8 +38,11 @@ type Props = {
   /** Preview zoom (px/mm visual); layout always LABEL_PX_PER_MM then CSS scale. */
   previewScale?: number
   showHumanReadable?: boolean
+  /** Printer registration — applied only in `print` mode (preview stays centered). */
   offsetXMm?: number
   offsetYMm?: number
+  /** Override resolved barcode (supplier / internal / auto from dialog). */
+  barcodeValue?: string | null
   className?: string
 }
 
@@ -55,11 +58,15 @@ export function ProductLabelSheet({
   showHumanReadable = false,
   offsetXMm = 0,
   offsetYMm = 0,
+  barcodeValue: barcodeValueProp,
   className
 }: Props) {
   const mm = labelSizeMm(size)
   const text = productName || payload.name || '—'
-  const barcode = labelBarcodeValue(payload)
+  const barcode =
+    barcodeValueProp !== undefined
+      ? barcodeValueProp?.trim() || null
+      : labelBarcodeValue(payload)
   const unit = unitShortform || 'db'
   const priceLabel = new Intl.NumberFormat('hu-HU').format(price)
 
@@ -140,7 +147,9 @@ export function ProductLabelSheet({
     ...extra
   })
 
-  const hasOffset = offsetXMm !== 0 || offsetYMm !== 0
+  // Preview = centered artwork. Offset only at print (printer registration).
+  const hasPrintOffset =
+    mode === 'print' && (offsetXMm !== 0 || offsetYMm !== 0)
 
   const skuEl = (sku: NonNullable<typeof layout.sku>) => (
     <div
@@ -178,7 +187,7 @@ export function ProductLabelSheet({
         color: '#000',
         fontFamily: LABEL_FONT_FAMILY,
         WebkitFontSmoothing: 'antialiased',
-        ...(hasOffset
+        ...(hasPrintOffset
           ? {
               transform: `translate(${toU(offsetXMm)}, ${toU(offsetYMm)})`
             }
@@ -203,8 +212,10 @@ export function ProductLabelSheet({
         <div
           style={cell(layout.name.rowMm, {
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            // Hard clip — name must never paint into SKU row
+            overflow: 'hidden'
           })}
         >
           <div
@@ -215,11 +226,14 @@ export function ProductLabelSheet({
               textAlign: 'center',
               width: '100%',
               maxHeight: '100%',
-              // Full name — never ellipsis; layout guarantees row fits all lines
               overflow: 'hidden',
               overflowWrap: 'anywhere',
               wordBreak: 'break-word',
-              letterSpacing: '0.01em'
+              letterSpacing: '0.01em',
+              // Hard line-clamp (layout.maxLines) — clerk cannot override
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: layout.name.maxLines ?? 2
             }}
           >
             {text}

@@ -17,6 +17,8 @@ type PrintArgs = {
   showHumanReadable?: boolean
   offsetXMm?: number
   offsetYMm?: number
+  /** Resolved barcode (supplier / internal / auto). */
+  barcodeValue?: string | null
 }
 
 const CONTAINER_ID = 'modul-product-label-print'
@@ -124,6 +126,7 @@ export async function printProductLabels(args: PrintArgs): Promise<void> {
       showHumanReadable={args.showHumanReadable ?? false}
       offsetXMm={args.offsetXMm ?? 0}
       offsetYMm={args.offsetYMm ?? 0}
+      barcodeValue={args.barcodeValue}
     />
   ))
 

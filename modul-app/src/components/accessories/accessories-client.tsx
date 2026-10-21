@@ -48,7 +48,8 @@ import { looksLikeBarcode, prepareBarcodeQuery } from '@/lib/pos/barcode'
 import { cn } from '@/lib/utils'
 
 const LIST_PATH = '/torzsadatok/alapanyagok/termekek'
-const DEBOUNCE_MS = 150
+/** Dev/lassú DB: ne 150 ms — kevesebb aborted fetch, kevesebb villanás. */
+const DEBOUNCE_MS = 280
 
 const WEB_FILTER_LABEL: Record<AccessoryWebFilter, string> = {
   all: 'Összes',
@@ -63,6 +64,20 @@ function listHref(q: string, web: AccessoryWebFilter, page: number): string {
   if (page > 1) sp.set('page', String(page))
   const qs = sp.toString()
   return qs ? `${LIST_PATH}?${qs}` : LIST_PATH
+}
+
+/**
+ * URL sync RSC refetch nélkül — `router.replace` minden debounce-nál
+ * újrafuttatná a szerver page-et + client fetch = localhost lag / „elvált” érzés.
+ */
+function syncListUrl(q: string, web: AccessoryWebFilter, page: number) {
+  if (typeof window === 'undefined') return
+  const href = listHref(q, web, page)
+  const next = new URL(href, window.location.origin)
+  const target = `${next.pathname}${next.search}`
+  const cur = `${window.location.pathname}${window.location.search}`
+  if (cur === target) return
+  window.history.replaceState(window.history.state, '', target)
 }
 
 function toLabelPayload(row: AccessoryListItem): ProductLabelPayload {
@@ -138,15 +153,20 @@ export function AccessoriesClient({
   const skipNextDebounceRef = useRef(false)
 
   const applyListSearch = useCallback(
-    (next: string, nextPage = 1) => {
+    (
+      next: string,
+      nextPage = 1,
+      mode: 'typing' | 'commit' = 'commit'
+    ) => {
       const trimmed = next.trim()
       skipNextDebounceRef.current = true
-      setSearch(trimmed)
+      // typing: ne trimeld vissza a mezőt (trailing space / részleges szó)
+      if (mode === 'commit') setSearch(trimmed)
       setActiveQ(trimmed)
       setPage(nextPage)
-      router.replace(listHref(trimmed, web, nextPage), { scroll: false })
+      syncListUrl(trimmed, web, nextPage)
     },
-    [router, web]
+    [web]
   )
 
   const searchRef = useRef(search)
@@ -227,7 +247,7 @@ export function AccessoriesClient({
     }
     if (search.trim() === activeQ) return
     const t = window.setTimeout(() => {
-      applyListSearch(search)
+      applyListSearch(search, 1, 'typing')
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(t)
   }, [search, activeQ, applyListSearch])
@@ -263,7 +283,7 @@ export function AccessoriesClient({
 
   function goPage(next: number) {
     setPage(next)
-    router.replace(listHref(activeQ, web, next), { scroll: false })
+    syncListUrl(activeQ, web, next)
   }
 
   function handleDelete() {
@@ -452,18 +472,24 @@ export function AccessoriesClient({
                 </DataTableCell>
                 <DataTableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
-                    {canPrintLabels ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Címke: ${row.name}`}
-                        title="Címke nyomtatása"
-                        onClick={() => setLabelTarget(toLabelPayload(row))}
-                      >
-                        <Printer className="size-3.5" aria-hidden />
-                      </Button>
-                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Címke: ${row.name}`}
+                      title={
+                        canPrintLabels
+                          ? 'Címke nyomtatása'
+                          : 'Címke nincs a csomagban (product_labels)'
+                      }
+                      disabled={!canPrintLabels}
+                      onClick={() => {
+                        if (!canPrintLabels) return
+                        setLabelTarget(toLabelPayload(row))
+                      }}
+                    >
+                      <Printer className="size-3.5" aria-hidden />
+                    </Button>
                     {canWrite ? (
                       <Button
                         type="button"
@@ -577,9 +603,9 @@ export function AccessoriesClient({
         onConfirm={handleDelete}
       />
 
-      {canPrintLabels ? (
+      {canPrintLabels || labelTarget ? (
         <ProductLabelPrintDialog
-          open={Boolean(labelTarget)}
+          open={Boolean(labelTarget) && canPrintLabels}
           payload={labelTarget}
           units={units}
           onClose={() => setLabelTarget(null)}

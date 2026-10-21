@@ -74,12 +74,13 @@ A legtöbb vonalkódolvasó billentyűzetként viselkedik. Erre külön szabály
 
 - **No-focus / body fókusz:** USB wedge → exact `barcode` / `barcode_internal` / `sku` → azonnal termék ID lap (`toast` + `prefetch` + `router.push`).
 - **Miss:** lista szűrés a **normalizált** kódra + „Nincs exact egyezés” toast.
-- **Gépelés a keresőmezőben:** lassú = debounce lista (1. billentyű always native — ne wipe-eljen). **Wedge confirm:** 2. gyors billentyű gap ≤45 ms (betű–betű is, pl. `DT-CZ…`) → remap (`e.code`, ö→0) + exact scan; `looksLikeBarcode` szűri a rövid szavakat.
+- **Gépelés a keresőmezőben:** debounce lista (**~280 ms**); URL `history.replaceState` (ne `router.replace` → ne SSR dupla-fetch localhoston). Controlled input **nem trim** gépelés közben (trailing space OK). Több szó: RPC token-AND név+SKU+barcode+gyártó (`20260611`). **Wedge confirm:** 2. gyors billentyű → remap + exact scan; `looksLikeBarcode` szűri a rövid szavakat.
 - **Enter a mezőben:** exact lookup (stale-guard: ha közben továbbírt, ne ugorjon elavult partialra).
 - **Wedge path:** stale-guard **ki**; `looksLikeBarcode` **normalize-first** (all-zero / Digit0 idle ne némuljon).
 - **Alfanumerikus kód** (pl. `DT-CZ00035251`): ne abortáljon letter–letter heurisztikán; scan → UPPER; lookup **`.eq.`**; mentés UPPER; SQL `20260605`.
 - **Instant-nav (scan → ID):** `/api/barcode-lookup` = lean `resolveKeresoAuth` + middleware skip (mint kereső); `Server-Timing`; ID route `loading.tsx` + form shell előbb, készlet/bolt `Suspense` + `accessory_stock_by_warehouse` (`20260606`). Cél: lookup ≤250 ms, shell ≤0.5–0.9 s.
 - Dialógus nyitva (törlés / címke): trap pause a terméklistán.
+- **Címke nyomtatás:** előnézet mindig középen (offset csak print); soft scan-warn + „Mégis”; kód: Auto / Gyártói / Belső EAN; entitlement nélkül disabled gomb + tooltip.
 
 ## 6. Excelből beillesztés
 

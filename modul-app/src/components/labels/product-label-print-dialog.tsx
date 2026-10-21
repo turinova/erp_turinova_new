@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, Minus, Plus, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { LabelAlignmentSchema } from '@/components/labels/label-alignment-schema'
 import { ProductLabelSheet } from '@/components/labels/product-label-sheet'
 import { FormField } from '@/components/patterns/form-field'
 import { Button } from '@/components/ui/button'
@@ -37,10 +38,23 @@ import {
 import {
   labelBarcodeValue,
   labelSizeMm,
+  type LabelBarcodeSource,
   type LabelFields,
   type ProductLabelPayload
 } from '@/lib/labels/types'
 import { cn } from '@/lib/utils'
+
+function defaultBarcodeSource(
+  payload: ProductLabelPayload | null
+): LabelBarcodeSource {
+  if (!payload) return 'auto'
+  const internal = payload.barcodeInternal?.trim()
+  const supplier = payload.barcode?.trim()
+  if (internal && supplier) return 'auto'
+  if (internal && !supplier) return 'internal'
+  if (supplier) return 'supplier'
+  return 'auto'
+}
 
 type UnitOption = { id: string; name: string; shortform: string }
 
@@ -121,16 +135,26 @@ export function ProductLabelPrintDialog({
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [printing, setPrinting] = useState(false)
+  const [barcodeSource, setBarcodeSource] =
+    useState<LabelBarcodeSource>('auto')
+  const [forcePrintUnsafe, setForcePrintUnsafe] = useState(false)
 
-  const barcode = payload ? labelBarcodeValue(payload) : null
+  const barcode = payload
+    ? labelBarcodeValue(payload, barcodeSource)
+    : null
   const hasBarcode = Boolean(barcode)
+  const hasSupplierCode = Boolean(payload?.barcode?.trim())
+  const hasInternalCode = Boolean(payload?.barcodeInternal?.trim())
+  const showBarcodePicker = hasSupplierCode && hasInternalCode
   const settingsDirty =
     offsetX !== savedOffsetX || offsetY !== savedOffsetY
   const hasActiveOffset = offsetX !== 0 || offsetY !== 0
 
   useEffect(() => {
     if (!open || !payload) return
-    const bc = Boolean(labelBarcodeValue(payload))
+    const source = defaultBarcodeSource(payload)
+    setBarcodeSource(source)
+    const bc = Boolean(labelBarcodeValue(payload, source))
     setName(payload.name)
     setPrice(Math.round(payload.priceGross))
     setUnit(payload.unitShortform || 'db')
@@ -139,6 +163,7 @@ export function ProductLabelPrintDialog({
     setFields(LABEL_TEMPLATES.find((t) => t.id === 'full')!.fields(bc))
     setShowHumanReadable(false)
     setSettingsOpen(false)
+    setForcePrintUnsafe(false)
   }, [open, payload, initialAmount])
 
   useEffect(() => {
@@ -195,8 +220,19 @@ export function ProductLabelPrintDialog({
     return opts
   }, [units, unit])
 
+  /** Payload with resolved code so layout/scan use the chosen source. */
+  const effectivePayload = useMemo((): ProductLabelPayload | null => {
+    if (!payload) return null
+    const code = labelBarcodeValue(payload, barcodeSource)
+    return {
+      ...payload,
+      barcode: code,
+      barcodeInternal: null
+    }
+  }, [payload, barcodeSource])
+
   const scanSafety = useMemo(() => {
-    if (!payload || !fields.showBarcode || !barcode) {
+    if (!effectivePayload || !fields.showBarcode || !barcode) {
       return { ok: true as const, reason: null as string | null }
     }
     const layout = computeLabelLayout({
@@ -204,7 +240,7 @@ export function ProductLabelPrintDialog({
       fields,
       productName: name,
       price,
-      payload,
+      payload: effectivePayload,
       showHumanReadable
     })
     return assessLabelScanSafety({
@@ -212,7 +248,7 @@ export function ProductLabelPrintDialog({
       barcodeValue: barcode,
       labelWidthMm: labelSizeMm('33x25').w
     })
-  }, [payload, fields, name, price, barcode, showHumanReadable])
+  }, [effectivePayload, fields, name, price, barcode, showHumanReadable])
 
   function applyTemplate(id: LabelTemplateId) {
     const tpl = LABEL_TEMPLATES.find((t) => t.id === id)
@@ -264,8 +300,8 @@ export function ProductLabelPrintDialog({
     }
   }
 
-  async function handlePrint() {
-    if (!payload) return
+  async function handlePrint(opts?: { forceUnsafe?: boolean }) {
+    if (!payload || !effectivePayload) return
     if (
       !fields.showName &&
       !fields.showSku &&
@@ -275,8 +311,11 @@ export function ProductLabelPrintDialog({
       toast.error('Válassz ki legalább egy mezőt a címkéhez.')
       return
     }
-    if (!scanSafety.ok) {
-      toast.error(scanSafety.reason ?? 'A vonalkód nem nyomtatható biztonságosan.')
+    if (!scanSafety.ok && !opts?.forceUnsafe && !forcePrintUnsafe) {
+      toast.message('Gyenge szkennelhetőség', {
+        description:
+          'A vonalkód sávjai keskenyek lehetnek ezen a címkén. Válts belső EAN-re, vagy nyomtasd „Mégis”.'
+      })
       return
     }
     if (settingsDirty) {
@@ -288,7 +327,7 @@ export function ProductLabelPrintDialog({
     setPrinting(true)
     try {
       await printProductLabels({
-        payload,
+        payload: effectivePayload,
         fields,
         productName: name,
         price,
@@ -297,7 +336,8 @@ export function ProductLabelPrintDialog({
         amount,
         showHumanReadable,
         offsetXMm: offsetX,
-        offsetYMm: offsetY
+        offsetYMm: offsetY,
+        barcodeValue: barcode
       })
     } catch (err) {
       console.error(err)
@@ -318,21 +358,20 @@ export function ProductLabelPrintDialog({
         <DialogHeader>
           <DialogTitle>Címke nyomtatása</DialogTitle>
           <DialogDescription>
-            33×25 mm · alap: Teljes (SKU be, nagyobb mint a név). Hierarchia:
-            ár → SKU → név. A név nem vágódik le. Nyomtatás: 100% / Actual
-            size.
+            33×25 mm · előnézet középen. Hosszú név max 2 sor (SKU alatt nem
+            csúszik). Illesztés csak nyomtatáskor. 100% / Actual size.
           </DialogDescription>
         </DialogHeader>
 
-        {payload ? (
+        {payload && effectivePayload ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-stone-50 p-5">
               <p className="text-hint text-ink-secondary">
-                Előnézet · 33×25 mm (print-azonos, nagyítva)
+                Előnézet · 33×25 mm · tartalom középen
               </p>
               <div className="overflow-hidden rounded-md border border-border bg-white p-4 shadow-sm">
                 <ProductLabelSheet
-                  payload={payload}
+                  payload={effectivePayload}
                   fields={fields}
                   productName={name}
                   price={price}
@@ -341,19 +380,33 @@ export function ProductLabelPrintDialog({
                   mode="preview"
                   previewScale={9}
                   showHumanReadable={showHumanReadable}
-                  offsetXMm={offsetX}
-                  offsetYMm={offsetY}
+                  barcodeValue={barcode}
                 />
               </div>
               <p className="max-w-sm text-center text-[11px] text-ink-muted">
-                SKU alapból be és nagyobb, mint a név. Ár:{' '}
-                <span className="font-medium">Ft/{unit || 'db'}</span>. Weight
-                550 — mérethierarchia.
+                Az eltolás nem mozgatja az előnézetet — csak a nyomtató
+                illesztését. Ár:{' '}
+                <span className="font-medium">Ft/{unit || 'db'}</span>.
               </p>
               {!scanSafety.ok ? (
-                <p className="max-w-sm text-center text-[12px] text-destructive">
-                  {scanSafety.reason}
-                </p>
+                <div className="max-w-sm space-y-1.5 rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-center">
+                  <p className="text-[12px] text-warning-ink">
+                    {scanSafety.reason}
+                  </p>
+                  {hasInternalCode && barcodeSource !== 'internal' ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setBarcodeSource('internal')
+                        setForcePrintUnsafe(false)
+                      }}
+                    >
+                      Belső EAN használata
+                    </Button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
 
@@ -392,6 +445,74 @@ export function ProductLabelPrintDialog({
                   })}
                 </div>
               </fieldset>
+
+              {showBarcodePicker || hasSupplierCode || hasInternalCode ? (
+                <fieldset className="space-y-1.5">
+                  <legend className="text-label font-medium text-ink">
+                    Nyomtatandó kód
+                  </legend>
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                    {(
+                      [
+                        {
+                          id: 'auto' as const,
+                          label: 'Auto',
+                          hint: 'EAN ha van'
+                        },
+                        {
+                          id: 'supplier' as const,
+                          label: 'Gyártói',
+                          hint: hasSupplierCode
+                            ? (payload.barcode ?? '').slice(0, 14)
+                            : '—'
+                        },
+                        {
+                          id: 'internal' as const,
+                          label: 'Belső EAN',
+                          hint: hasInternalCode
+                            ? (payload.barcodeInternal ?? '').slice(0, 14)
+                            : '—'
+                        }
+                      ] as const
+                    ).map((opt) => {
+                      const disabled =
+                        (opt.id === 'supplier' && !hasSupplierCode) ||
+                        (opt.id === 'internal' && !hasInternalCode)
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => {
+                            setBarcodeSource(opt.id)
+                            setForcePrintUnsafe(false)
+                            if (
+                              !fields.showBarcode &&
+                              labelBarcodeValue(payload, opt.id)
+                            ) {
+                              setFields((f) => ({ ...f, showBarcode: true }))
+                            }
+                          }}
+                          className={cn(
+                            'rounded-md border px-2 py-1.5 text-left transition-colors',
+                            barcodeSource === opt.id
+                              ? 'border-primary bg-primary-soft'
+                              : 'border-border bg-surface hover:bg-subtle',
+                            disabled && 'cursor-not-allowed opacity-40'
+                          )}
+                        >
+                          <span className="block text-[13px] font-medium text-ink">
+                            {opt.label}
+                          </span>
+                          <span className="block truncate text-[11px] text-ink-muted">
+                            {opt.hint}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </fieldset>
+              ) : null}
 
               <fieldset className="space-y-1.5">
                 <legend className="text-label font-medium text-ink">
@@ -556,10 +677,14 @@ export function ProductLabelPrintDialog({
                 {settingsOpen ? (
                   <div className="space-y-3 border-t border-border px-3 py-3">
                     <p className="text-hint text-ink-muted">
-                      Ha alul üres / oldalra csúszik: állítsd az eltolást. A
-                      mentés a céghez tartozik (minden gépen ugyanaz). Nyomtatás:
-                      100% / Actual size.
+                      Ha a nyomtatott matrica fizikailag csúszik: állítsd az
+                      illesztést. A címke tartalma középen marad. Mentés = cég
+                      szintű (minden gép).
                     </p>
+                    <LabelAlignmentSchema
+                      offsetXMm={offsetX}
+                      offsetYMm={offsetY}
+                    />
                     {settingsLoading ? (
                       <p className="text-hint text-ink-muted">Betöltés…</p>
                     ) : (
@@ -697,7 +822,7 @@ export function ProductLabelPrintDialog({
           </div>
         ) : null}
 
-        <DialogFooter>
+        <DialogFooter className="flex-wrap gap-2">
           <Button
             type="button"
             variant="secondary"
@@ -706,15 +831,30 @@ export function ProductLabelPrintDialog({
           >
             Mégse
           </Button>
-          <Button
-            type="button"
-            onClick={() => void handlePrint()}
-            loading={printing}
-            disabled={!payload || !scanSafety.ok}
-          >
-            <Printer className="size-3.5" aria-hidden />
-            Nyomtatás
-          </Button>
+          {!scanSafety.ok ? (
+            <Button
+              type="button"
+              onClick={() => {
+                setForcePrintUnsafe(true)
+                void handlePrint({ forceUnsafe: true })
+              }}
+              loading={printing}
+              disabled={!payload}
+            >
+              <Printer className="size-3.5" aria-hidden />
+              Mégis nyomtatás
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={() => void handlePrint()}
+              loading={printing}
+              disabled={!payload}
+            >
+              <Printer className="size-3.5" aria-hidden />
+              Nyomtatás
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
