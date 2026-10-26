@@ -141,7 +141,6 @@ export async function getHomeSalesKpis(
   const monthDates = daysInMonth(year, month)
   const monthStart = monthDates[0]!
   const prior = priorMonthRangeYmd(today)
-  const start7 = addDaysYmd(today, -6)
   const rangeStartYmd = prior.start < monthStart ? prior.start : monthStart
   const { startIso: rangeStart } = budapestDayRangeIso(rangeStartYmd)
   const { endIso: rangeEnd } = budapestDayRangeIso(today)
