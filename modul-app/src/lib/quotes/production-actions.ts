@@ -3,9 +3,9 @@
 import { revalidatePath } from 'next/cache'
 
 import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
-import { normalizeBarcode } from '@/lib/quotes/production-utils'
 import { sendQuoteReadySms } from '@/lib/sms/send-ready'
 import type { QuoteReadySmsResult } from '@/lib/sms/send-ready'
+import { normalizeScannerBarcode } from '@/lib/scanner/normalize-wedge'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 const LIST_PATH = '/ajanlatok'
@@ -33,7 +33,8 @@ export async function assignQuoteProduction(input: {
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
   const tenantId = ctx.user.tenantId!
-  const barcode = normalizeBarcode(input.barcode)
+  /** Same HU wedge remap as /scanner lookup (ö→0, ü→-). */
+  const barcode = normalizeScannerBarcode(input.barcode)
   const productionDate = input.productionDate.trim()
   const machineId = input.productionMachineId.trim()
 

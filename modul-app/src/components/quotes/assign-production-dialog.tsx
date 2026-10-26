@@ -23,6 +23,7 @@ import {
   clearQuoteProduction
 } from '@/lib/quotes/production-actions'
 import { defaultProductionDateIso } from '@/lib/quotes/production-utils'
+import { normalizeScannerBarcode } from '@/lib/scanner/normalize-wedge'
 
 type ExistingAssignment = {
   productionMachineId: string | null
@@ -38,10 +39,6 @@ type AssignProductionDialogProps = {
   machines: ProductionMachineOption[]
   existing: ExistingAssignment
   onSuccess: () => void
-}
-
-function normalizeBarcodeInput(value: string): string {
-  return value.replace(/\s+/g, '')
 }
 
 export function AssignProductionDialog({
@@ -76,7 +73,11 @@ export function AssignProductionDialog({
     setProductionDate(
       existing?.productionDate ?? defaultProductionDateIso()
     )
-    setBarcode(existing?.barcode ?? '')
+    setBarcode(
+      existing?.barcode
+        ? normalizeScannerBarcode(existing.barcode)
+        : ''
+    )
     setError(null)
     const id = window.setTimeout(() => barcodeRef.current?.focus(), 50)
     return () => window.clearTimeout(id)
@@ -95,7 +96,8 @@ export function AssignProductionDialog({
       setError('Add meg a gyártás dátumát.')
       return
     }
-    if (!barcode.trim()) {
+    const normalizedBarcode = normalizeScannerBarcode(barcode)
+    if (!normalizedBarcode) {
       setError('A vonalkód kötelező.')
       return
     }
@@ -107,7 +109,7 @@ export function AssignProductionDialog({
         quoteId,
         productionMachineId: machineId,
         productionDate,
-        barcode
+        barcode: normalizedBarcode
       })
       if (!result.ok) {
         setError(result.message)
@@ -210,14 +212,14 @@ export function AssignProductionDialog({
               label="Vonalkód"
               htmlFor="assign-barcode"
               required
-              hint="Fizikai vonalkód-olvasó használata ajánlott."
+              hint="USB olvasó ajánlott. HU billentyűzet: ö/ü automatikusan 0/-."
             >
               <Input
                 ref={barcodeRef}
                 id="assign-barcode"
                 value={barcode}
                 onChange={(e) =>
-                  setBarcode(normalizeBarcodeInput(e.target.value))
+                  setBarcode(normalizeScannerBarcode(e.target.value))
                 }
                 placeholder="Beolvasás vagy kézi megadás"
                 disabled={loading}
