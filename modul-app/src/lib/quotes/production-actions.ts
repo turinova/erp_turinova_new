@@ -238,6 +238,94 @@ export async function markQuoteReady(
   return { ok: true, sms }
 }
 
+export type SendQuoteReadySmsStandaloneResult =
+  | { ok: true; sms: QuoteReadySmsResult }
+  | { ok: false; message: string }
+
+/**
+ * Kézi SMS a detailről (első küldés vagy újraküldés).
+ * Nem vált státuszt — csak `ready` / `finished` megrendelésen.
+ */
+export async function sendQuoteReadySmsStandalone(input: {
+  quoteId: string
+  force?: boolean
+}): Promise<SendQuoteReadySmsStandaloneResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const quoteId = input.quoteId.trim()
+  if (!quoteId) {
+    return { ok: false, message: 'Hiányzó megrendelés.' }
+  }
+
+  const { data: quote, error } = await ctx.supabase
+    .from('quotes')
+    .select('id, status, order_number')
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error || !quote) {
+    return { ok: false, message: 'Megrendelés nem található.' }
+  }
+  if (!quote.order_number) {
+    return { ok: false, message: 'Csak megrendeléshez küldhető SMS.' }
+  }
+  if (quote.status !== 'ready' && quote.status !== 'finished') {
+    return {
+      ok: false,
+      message: 'SMS csak kész vagy lezárt megrendeléshez küldhető.'
+    }
+  }
+
+  try {
+    const sms = await sendQuoteReadySms({
+      supabase: ctx.supabase,
+      tenantId,
+      tenantName: ctx.user.companyName || 'Turinova',
+      quoteId,
+      userId: ctx.user.id,
+      sendSms: true,
+      force: Boolean(input.force)
+    })
+    revalidateOrderPaths(quoteId)
+    if (sms.status === 'failed') {
+      return {
+        ok: false,
+        message: sms.error || 'SMS sikertelen.'
+      }
+    }
+    if (sms.status === 'skipped') {
+      return {
+        ok: false,
+        message:
+          sms.reason === 'already_sent'
+            ? 'Az SMS már elment — használd az újraküldést.'
+            : sms.reason === 'no_entitlement'
+              ? 'Nincs SMS add-on.'
+              : sms.reason === 'no_opt_in'
+                ? 'Az ügyfél nem kér SMS-t.'
+                : sms.reason === 'bad_phone'
+                  ? 'Érvénytelen telefonszám.'
+                  : sms.reason === 'no_customer'
+                    ? 'Nincs ügyfél a megrendelésen.'
+                    : sms.reason === 'empty_body'
+                      ? 'Üres SMS sablon.'
+                      : 'SMS kihagyva.'
+      }
+    }
+    return { ok: true, sms }
+  } catch (err) {
+    console.error('sendQuoteReadySmsStandalone', err)
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : 'SMS hiba'
+    }
+  }
+}
+
 export type FinishQuoteHandoverResult =
   | { ok: true; paymentCreated: boolean }
   | { ok: false; message: string }

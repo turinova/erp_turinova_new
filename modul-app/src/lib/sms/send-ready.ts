@@ -81,12 +81,14 @@ function evaluateEligibility(input: {
 export async function listQuoteReadySmsCandidates(
   supabase: SupabaseClient,
   tenantId: string,
-  quoteIds: string[]
+  quoteIds: string[],
+  options?: { force?: boolean }
 ): Promise<{
   hasAddon: boolean
   candidates: QuoteReadySmsCandidate[]
 }> {
   const uniqueIds = [...new Set(quoteIds.filter(Boolean))]
+  const force = Boolean(options?.force)
   if (uniqueIds.length === 0) {
     return { hasAddon: false, candidates: [] }
   }
@@ -172,7 +174,8 @@ export async function listQuoteReadySmsCandidates(
       customerName: customer?.name ?? '—',
       mobile: customer?.mobile ?? null,
       smsNotification: Boolean(customer?.sms_notification),
-      alreadySentAt
+      // Újraküldésnél a már elküldött ne blokkoljon.
+      alreadySentAt: force ? null : alreadySentAt
     })
 
     return {
@@ -202,8 +205,11 @@ export async function sendQuoteReadySms(input: {
   userId: string | null
   /** Explicit user choice from modal. */
   sendSms: boolean
+  /** Már elküldött SMS utáni újraküldés (ledger + stamp frissül). */
+  force?: boolean
 }): Promise<QuoteReadySmsResult> {
   const { supabase, tenantId, quoteId } = input
+  const force = Boolean(input.force)
 
   if (!input.sendSms) {
     await insertSmsSendEvent(supabase, {
@@ -255,7 +261,7 @@ export async function sendQuoteReadySms(input: {
     return { status: 'failed', error: 'Megrendelés nem található SMS-hez.' }
   }
 
-  if (quote.ready_notification_sent_at) {
+  if (quote.ready_notification_sent_at && !force) {
     await insertSmsSendEvent(supabase, {
       tenantId,
       quoteId,
@@ -366,12 +372,15 @@ export async function sendQuoteReadySms(input: {
   }
 
   const sentAt = new Date().toISOString()
-  const { error: stampError } = await supabase
+  let stampQuery = supabase
     .from('quotes')
     .update({ ready_notification_sent_at: sentAt })
     .eq('id', quoteId)
     .eq('tenant_id', tenantId)
-    .is('ready_notification_sent_at', null)
+  if (!force) {
+    stampQuery = stampQuery.is('ready_notification_sent_at', null)
+  }
+  const { error: stampError } = await stampQuery
 
   if (stampError) {
     console.error('ready_notification_sent_at', stampError.message)

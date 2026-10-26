@@ -29,6 +29,11 @@ type Props = {
   onOpenChange: (open: boolean) => void
   candidates: QuoteReadySmsCandidate[]
   loading?: boolean
+  /**
+   * `mark-ready` — készre állítás + opcionális SMS (default).
+   * `sms-only` — csak SMS (első / újraküldés a detailről).
+   */
+  mode?: 'mark-ready' | 'sms-only'
   onConfirm: (smsQuoteIds: string[]) => void
 }
 
@@ -37,11 +42,13 @@ export function QuoteReadySmsDialog({
   onOpenChange,
   candidates,
   loading = false,
+  mode = 'mark-ready',
   onConfirm
 }: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const eligible = candidates.filter((c) => c.eligible)
   const [selected, setSelected] = useState<string[]>([])
+  const smsOnly = mode === 'sms-only'
 
   useEffect(() => {
     if (!open) return
@@ -57,8 +64,15 @@ export function QuoteReadySmsDialog({
     )
   }
 
-  const title =
-    candidates.length === 1
+  const single = candidates.length === 1 ? candidates[0] : null
+  const isResend = Boolean(single?.alreadySentAt)
+  const title = smsOnly
+    ? candidates.length === 1
+      ? isResend
+        ? 'SMS újraküldése?'
+        : 'SMS az ügyfélnek?'
+      : `SMS küldése (${candidates.length})`
+    : candidates.length === 1
       ? 'Készre állítás + SMS'
       : `Készre állítás (${candidates.length})`
 
@@ -74,8 +88,9 @@ export function QuoteReadySmsDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            A megrendelés(ek) készre állnak. Pipáld azokat, amelyekhez SMS-t
-            küldesz. Sikertelen SMS nem vonja vissza a kész státuszt.
+            {smsOnly
+              ? 'Ellenőrizd a számot. Sikertelen SMS nem változtatja a státuszt.'
+              : 'A megrendelés(ek) készre állnak. Pipáld azokat, amelyekhez SMS-t küldesz. Sikertelen SMS nem vonja vissza a kész státuszt.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -91,14 +106,16 @@ export function QuoteReadySmsDialog({
                   !canSelect && 'bg-subtle opacity-80'
                 )}
               >
-                <input
-                  type="checkbox"
-                  className="mt-0.5 size-3.5 accent-ink"
-                  checked={checked}
-                  disabled={!canSelect || loading}
-                  onChange={() => toggle(c.quoteId)}
-                  aria-label={`SMS: ${c.orderNumber}`}
-                />
+                {smsOnly && single ? null : (
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-3.5 accent-ink"
+                    checked={checked}
+                    disabled={!canSelect || loading}
+                    onChange={() => toggle(c.quoteId)}
+                    aria-label={`SMS: ${c.orderNumber}`}
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="text-label font-semibold text-ink">
                     {c.orderNumber}{' '}
@@ -119,7 +136,9 @@ export function QuoteReadySmsDialog({
 
         {eligible.length === 0 ? (
           <p className="text-hint text-ink-secondary">
-            Nincs SMS-re jogosult ügyfél — a készre állítás SMS nélkül megy.
+            {smsOnly
+              ? 'Nincs küldhető SMS — javítsd a telefont, opt-int vagy a sablont.'
+              : 'Nincs SMS-re jogosult ügyfél — a készre állítás SMS nélkül megy.'}
           </p>
         ) : null}
 
@@ -137,11 +156,30 @@ export function QuoteReadySmsDialog({
             type="button"
             variant="primary"
             loading={loading}
-            onClick={() => onConfirm(selected)}
+            disabled={
+              smsOnly
+                ? single
+                  ? !single.eligible
+                  : selected.length === 0 || eligible.length === 0
+                : false
+            }
+            onClick={() =>
+              onConfirm(
+                smsOnly && single ? [single.quoteId] : selected
+              )
+            }
           >
-            {selected.length > 0
-              ? `Készre állítás + ${selected.length} SMS`
-              : 'Készre állítás SMS nélkül'}
+            {smsOnly
+              ? single
+                ? isResend
+                  ? 'SMS újraküldése'
+                  : 'SMS küldése'
+                : selected.length > 0
+                  ? `SMS küldése (${selected.length})`
+                  : 'SMS küldése'
+              : selected.length > 0
+                ? `Készre állítás + ${selected.length} SMS`
+                : 'Készre állítás SMS nélkül'}
           </Button>
         </DialogFooter>
       </DialogContent>

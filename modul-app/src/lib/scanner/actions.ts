@@ -39,7 +39,10 @@ export type BulkActionResult = {
   smsFailedCount: number
 }
 
-export async function previewQuoteReadySms(quoteIds: string[]) {
+export async function previewQuoteReadySms(
+  quoteIds: string[],
+  options?: { force?: boolean }
+) {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false as const, message: ctx.message }
 
@@ -47,7 +50,8 @@ export async function previewQuoteReadySms(quoteIds: string[]) {
     const preview = await listQuoteReadySmsCandidates(
       ctx.supabase,
       ctx.user.tenantId!,
-      quoteIds
+      quoteIds,
+      { force: options?.force }
     )
     return { ok: true as const, ...preview }
   } catch (err) {

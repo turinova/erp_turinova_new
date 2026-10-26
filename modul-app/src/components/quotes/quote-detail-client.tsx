@@ -96,7 +96,10 @@ import {
   partnerQuoteStatusLabel,
   partnerQuoteStatusTone
 } from '@/lib/quotes/partner-status-labels'
-import { markQuoteReady } from '@/lib/quotes/production-actions'
+import {
+  markQuoteReady,
+  sendQuoteReadySmsStandalone
+} from '@/lib/quotes/production-actions'
 import {
   QUOTE_STATUS_LABEL,
   quoteStatusTone
@@ -218,9 +221,13 @@ export function QuoteDetailClient({
   const [productionDialogOpen, setProductionDialogOpen] = useState(false)
   const [handoverOpen, setHandoverOpen] = useState(false)
   const [smsDialogOpen, setSmsDialogOpen] = useState(false)
+  const [smsDialogMode, setSmsDialogMode] = useState<'mark-ready' | 'sms-only'>(
+    'mark-ready'
+  )
   const [smsCandidates, setSmsCandidates] = useState<QuoteReadySmsCandidate[]>(
     []
   )
+  const [smsPreviewLoading, setSmsPreviewLoading] = useState(false)
   const [billingOpen, setBillingOpen] = useState(false)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [invoicePreferredKind, setInvoicePreferredKind] =
@@ -354,6 +361,16 @@ export function QuoteDetailClient({
     canWrite &&
     quote.status === 'ready' &&
     Boolean(quote.order_number)
+
+  /** Kész/lezárt + SMS add-on → secondary gomb (első / újraküldés). Nincs nested ⋯. */
+  const canManageReadySms =
+    !isPartner &&
+    canWrite &&
+    hasSmsAddon &&
+    Boolean(quote.order_number) &&
+    (quote.status === 'ready' || quote.status === 'finished')
+  const smsAlreadySent = Boolean(quote.ready_notification_sent_at)
+  const showReadySmsAction = canManageReadySms
 
   const hasInvoiceBilling = quoteHasBilling(quote)
   const canManageInvoicing =
@@ -554,7 +571,9 @@ export function QuoteDetailClient({
       return
     }
     startTransition(async () => {
+      setSmsPreviewLoading(true)
       const preview = await previewQuoteReadySms([quote.id])
+      setSmsPreviewLoading(false)
       if (!preview.ok) {
         toast.error(preview.message)
         return
@@ -563,8 +582,52 @@ export function QuoteDetailClient({
         runMarkReady()
         return
       }
+      setSmsDialogMode('mark-ready')
       setSmsCandidates(preview.candidates)
       setSmsDialogOpen(true)
+    })
+  }
+
+  function openReadySmsDialog(force: boolean) {
+    setSmsPreviewLoading(true)
+    setSmsDialogMode('sms-only')
+    setSmsDialogOpen(true)
+    startTransition(async () => {
+      const preview = await previewQuoteReadySms([quote.id], { force })
+      setSmsPreviewLoading(false)
+      if (!preview.ok) {
+        toast.error(preview.message)
+        setSmsDialogOpen(false)
+        return
+      }
+      if (!preview.hasAddon) {
+        toast.error('Nincs SMS add-on.')
+        setSmsDialogOpen(false)
+        return
+      }
+      setSmsCandidates(preview.candidates)
+    })
+  }
+
+  function confirmStandaloneSms(smsQuoteIds: string[]) {
+    if (!smsQuoteIds.includes(quote.id)) {
+      setSmsDialogOpen(false)
+      return
+    }
+    startTransition(async () => {
+      const result = await sendQuoteReadySmsStandalone({
+        quoteId: quote.id,
+        force: smsAlreadySent
+      })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(
+        smsAlreadySent ? 'SMS újraküldve.' : 'SMS elküldve.'
+      )
+      setSmsDialogOpen(false)
+      router.refresh()
     })
   }
 
@@ -1437,6 +1500,40 @@ export function QuoteDetailClient({
                             Átadás
                           </Button>
                         )}
+                        {showReadySmsAction && primaryAction === 'handover' ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="w-full justify-start"
+                            disabled={pending || smsPreviewLoading}
+                            loading={smsPreviewLoading}
+                            onClick={() => openReadySmsDialog(smsAlreadySent)}
+                          >
+                            {smsAlreadySent
+                              ? 'SMS újraküldése'
+                              : 'SMS az ügyfélnek'}
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {showReadySmsAction && primaryAction !== 'handover' ? (
+                      <div className="space-y-1.5">
+                        <p className="text-label font-semibold text-ink-secondary">
+                          Értesítés
+                        </p>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="w-full justify-start"
+                          disabled={pending || smsPreviewLoading}
+                          loading={smsPreviewLoading}
+                          onClick={() => openReadySmsDialog(smsAlreadySent)}
+                        >
+                          {smsAlreadySent
+                            ? 'SMS újraküldése'
+                            : 'SMS az ügyfélnek'}
+                        </Button>
                       </div>
                     ) : null}
 
@@ -1660,6 +1757,29 @@ export function QuoteDetailClient({
                   <div>
                     <dt className="text-hint text-ink-secondary">Vonalkód</dt>
                     <dd className="font-mono text-ink">{quote.barcode}</dd>
+                  </div>
+                ) : null}
+                {!isPartner &&
+                (hasSmsAddon || quote.ready_notification_sent_at) &&
+                quote.order_number &&
+                (quote.status === 'ready' ||
+                  quote.status === 'finished' ||
+                  quote.status === 'in_production') ? (
+                  <div>
+                    <dt className="text-hint text-ink-secondary">SMS</dt>
+                    <dd className="text-ink">
+                      {quote.ready_notification_sent_at
+                        ? `elküldve ${new Intl.DateTimeFormat('hu-HU', {
+                            dateStyle: 'short',
+                            timeStyle: 'short'
+                          }).format(new Date(quote.ready_notification_sent_at))}`
+                        : hasSmsAddon
+                          ? quote.status === 'ready' ||
+                            quote.status === 'finished'
+                            ? 'még nem ment ki'
+                            : '—'
+                          : '—'}
+                    </dd>
                   </div>
                 ) : null}
                 <div>
@@ -2012,10 +2132,15 @@ export function QuoteDetailClient({
         open={smsDialogOpen}
         onOpenChange={setSmsDialogOpen}
         candidates={smsCandidates}
-        loading={pending}
-        onConfirm={(smsQuoteIds) =>
+        loading={pending || smsPreviewLoading}
+        mode={smsDialogMode}
+        onConfirm={(smsQuoteIds) => {
+          if (smsDialogMode === 'sms-only') {
+            confirmStandaloneSms(smsQuoteIds)
+            return
+          }
           runMarkReady(smsQuoteIds.includes(quote.id))
-        }
+        }}
       />
 
       {!isPartner && quote.order_number ? (

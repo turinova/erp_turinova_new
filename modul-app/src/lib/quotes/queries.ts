@@ -102,6 +102,8 @@ export type QuoteDetail = {
   production_date: string | null
   barcode: string | null
   production_machine_name: string | null
+  /** Kész-értesítő SMS utolsó sikeres küldése (stamp). */
+  ready_notification_sent_at: string | null
   customer: {
     id: string
     name: string
@@ -465,6 +467,7 @@ export async function getQuoteDetail(
       production_machine_id,
       production_date,
       barcode,
+      ready_notification_sent_at,
       portal_submitted_at,
       preferred_payment_method_id,
       preferred_payment_method_name,
@@ -555,6 +558,7 @@ export async function getQuoteDetail(
       production_machine_id,
       production_date,
       barcode,
+      ready_notification_sent_at,
       portal_submitted_at,
       preferred_payment_method_id,
       preferred_payment_method_name,
@@ -985,6 +989,8 @@ export async function getQuoteDetail(
     production_machine_id: data.production_machine_id ?? null,
     production_date: data.production_date ?? null,
     barcode: data.barcode ?? null,
+    ready_notification_sent_at:
+      (data.ready_notification_sent_at as string | null) ?? null,
     production_machine_name: (() => {
       const m = data.production_machines as
         | { name: string }

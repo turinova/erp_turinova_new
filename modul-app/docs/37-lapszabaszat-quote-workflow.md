@@ -57,6 +57,13 @@ Clear → vissza `ordered`.
 | Kész (+ SMS) | ✓ | ✓ | ✓ |
 | Átadás (+ hátralék) | ✓ | ✓ | ✓ |
 
+### Kész-értesítő SMS (CSO parity — [42](42-ugyfelrendeles.md))
+
+- Stamp: `quotes.ready_notification_sent_at`; ledger: `sms_send_events.quote_id`.
+- Detail **Megrendelés infó:** `SMS: elküldve …` / `még nem ment ki` (add-on mellett).
+- Secondary gomb (Átadás mellett / Értesítés): **„SMS az ügyfélnek”** vagy **„SMS újraküldése”** (`force`) — nem kapu, nincs nested ⋯.
+- Készre állításkor továbbra is opcionális SMS a meglévő dialógusban.
+
 ---
 
 ## 5. Árajánlat összesítő — Mennyiség (main-app parity)
