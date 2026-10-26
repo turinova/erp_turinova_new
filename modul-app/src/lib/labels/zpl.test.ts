@@ -8,19 +8,30 @@ import { describe, it } from 'node:test'
 import { buildInternalEan13 } from '@/lib/barcodes/ean13'
 import {
   allocateZoneDots,
+  clampLabelName,
   code128Fits33mm,
+  code128BarsCenterX,
+  code128OriginX,
+  ean13BarsCenterX,
   ean13Data12ForZpl,
   ean13OriginX,
   ean13TotalWidthDots,
+  EAN13_BAR_MODULES,
   escapeZplFd,
+  estimateFbLinesRaw,
+  fbCharsPerLine,
+  fitTextToFbLines,
   generateLabelZpl,
+  LABEL_NAME_MAX_CHARS,
   mmToDots,
   packLabel33x25,
+  truncateLabelNameInput,
   ZONE_WEIGHT,
   ZPL_BARCODE_BAND_MIN_DOTS,
   ZPL_CONTENT_H,
   ZPL_CONTENT_W,
   ZPL_DEFAULT_DARKNESS,
+  ZPL_LABEL_CENTER_X,
   ZPL_LABEL_H_DOTS,
   ZPL_LABEL_W_DOTS,
   ZPL_MODULE_DOTS,
@@ -46,10 +57,28 @@ describe('ean13 geometry', () => {
     assert.ok(ean13TotalWidthDots() <= ZPL_LABEL_W_DOTS - 2 * ZPL_PAD_DOTS)
   })
 
-  it('origin keeps barcode inside side pad', () => {
+  it('^FO is left of bars (not quiet) and bars stay on label', () => {
     const bx = ean13OriginX()
-    assert.ok(bx >= ZPL_PAD_DOTS)
-    assert.ok(bx + ean13TotalWidthDots() <= ZPL_LABEL_W_DOTS - ZPL_PAD_DOTS + 1)
+    const barW = EAN13_BAR_MODULES * ZPL_MODULE_DOTS
+    assert.equal(bx, ZPL_LABEL_CENTER_X - Math.floor(barW / 2))
+    assert.ok(bx >= 0)
+    assert.ok(bx + barW <= ZPL_LABEL_W_DOTS)
+  })
+
+  it('visible bars share label center with ^FB text axis', () => {
+    assert.equal(ean13BarsCenterX(), ZPL_LABEL_CENTER_X)
+    // Content box (^FO pad + ^FB width) center == label center
+    assert.equal(ZPL_PAD_DOTS + Math.floor(ZPL_CONTENT_W / 2), ZPL_LABEL_CENTER_X)
+  })
+})
+
+describe('code128 geometry', () => {
+  it('bars share label center with ^FB text axis', () => {
+    const code = '10006634300'
+    assert.equal(code128BarsCenterX(code), ZPL_LABEL_CENTER_X)
+    const fo = code128OriginX(code)
+    assert.ok(fo >= 0)
+    assert.ok(fo < ZPL_LABEL_CENTER_X)
   })
 })
 
@@ -157,10 +186,15 @@ describe('generateLabelZpl', () => {
     assert.doesNotMatch(zpl, /…/)
   })
 
-  it('does not JS-ellipsis long names', () => {
+  it('clamps long names to LABEL_NAME_MAX_CHARS with ellipsis', () => {
     const ean = buildInternalEan13('333333333')
     const long =
-      'Strong csavar 4x20 3600.-/doboz extra hosszú termék megnevezés'
+      'Strong csavar 4x20 3600.-/doboz extra hosszú termék megnevezés ami biztosan túlcsordul'
+    assert.ok(long.length > LABEL_NAME_MAX_CHARS)
+    const clamped = clampLabelName(long)
+    assert.equal(clamped.length, LABEL_NAME_MAX_CHARS)
+    assert.ok(clamped.endsWith('…'))
+    assert.equal(truncateLabelNameInput(long).length, LABEL_NAME_MAX_CHARS)
     const { zpl } = generateLabelZpl({
       productName: long,
       price: 4,
@@ -169,8 +203,50 @@ describe('generateLabelZpl', () => {
       payload: { sku: '11162', barcode: null, barcodeInternal: ean },
       barcodeValue: ean
     })
-    assert.doesNotMatch(zpl, /…/)
+    assert.match(zpl, /…/)
     assert.match(zpl, /Strong csavar/)
+    assert.doesNotMatch(zpl, /túlcsordul/)
+  })
+
+  it('name never needs more than 2 FB lines (slim overflow bug)', () => {
+    const ean = buildInternalEan13('888888888')
+    const long =
+      'SLIM DUPLAFALÚ FIÓKOLDAL DF-A 300mm ANTRACIT EXTRA HOSSZÚ'
+    const plan = packLabel33x25({
+      productName: long,
+      price: 7177,
+      unitShortform: 'Grt',
+      sku: '10006634300',
+      showName: true,
+      showSku: true,
+      showPrice: true,
+      showBarcode: true
+    })
+    const name = plan.blocks.find((b) => b.kind === 'name')!
+    const sku = plan.blocks.find((b) => b.kind === 'sku')!
+    assert.ok(name.lines <= 2)
+    assert.ok(estimateFbLinesRaw(name.text, name.fontW) <= 2)
+    assert.ok(name.y + name.lines * (name.fontH + 1) <= sku.zoneY + 1)
+    const { zpl } = generateLabelZpl({
+      productName: long,
+      price: 7177,
+      unitShortform: 'Grt',
+      fields: fieldsAll,
+      payload: { sku: '10006634300', barcode: null, barcodeInternal: ean },
+      barcodeValue: ean
+    })
+    assert.match(zpl, /\^FB248,2,0,C,0/)
+    assert.doesNotMatch(zpl, /EXTRA HOSSZÚ/)
+  })
+
+  it('fitTextToFbLines respects budget', () => {
+    const fontW = 24
+    const cpl = fbCharsPerLine(fontW)
+    const raw = 'X'.repeat(cpl * 3)
+    const fitted = fitTextToFbLines(raw, fontW, 2)
+    assert.ok(fitted.length <= cpl * 2)
+    assert.ok(fitted.endsWith('…'))
+    assert.ok(estimateFbLinesRaw(fitted, fontW) <= 2)
   })
 
   it('never silently drops price when name wraps (photo bug)', () => {
@@ -190,7 +266,7 @@ describe('generateLabelZpl', () => {
     assert.match(zpl, /\^BEN,/)
   })
 
-  it('zone pack: SKU/price 1 line, name ≤2, condensed fonts', () => {
+  it('zone pack: SKU/price 1 line, name ≤2, square fonts (axis-safe)', () => {
     const plan = packLabel33x25({
       productName: 'Strong csavar 4x20',
       price: 4,
@@ -209,8 +285,36 @@ describe('generateLabelZpl', () => {
     assert.ok(name && name.lines <= 2)
     assert.ok(sku && sku.lines === 1)
     assert.ok(price && price.lines === 1)
-    assert.ok(price!.fontW < price!.fontH)
+    assert.equal(price!.fontW, price!.fontH)
+    assert.equal(name!.fontW, name!.fontH)
     assert.ok(plan.barH >= ZPL_BARCODE_BAND_MIN_DOTS - 2)
+  })
+
+  it('EAN and CODE128 FO place bars on label center axis', () => {
+    const ean = buildInternalEan13('555555555')
+    const { zpl: zplEan } = generateLabelZpl({
+      productName: 'Axis test',
+      price: 100,
+      unitShortform: 'db',
+      fields: fieldsAll,
+      payload: { sku: 'SKU1', barcode: null, barcodeInternal: ean },
+      barcodeValue: ean
+    })
+    assert.match(zplEan, new RegExp(`\\^FO${ean13OriginX()},`))
+    assert.equal(ean13BarsCenterX(), ZPL_LABEL_CENTER_X)
+
+    const supplier = '10006634300'
+    const { zpl: zplC128, symbology } = generateLabelZpl({
+      productName: 'Axis test',
+      price: 100,
+      unitShortform: 'db',
+      fields: fieldsAll,
+      payload: { sku: 'SKU1', barcode: supplier, barcodeInternal: null },
+      barcodeValue: supplier
+    })
+    assert.equal(symbology, 'CODE128')
+    assert.match(zplC128, new RegExp(`\\^FO${code128OriginX(supplier)},`))
+    assert.equal(code128BarsCenterX(supplier), ZPL_LABEL_CENTER_X)
   })
 
   it('zone order: name above sku above price above barcode', () => {

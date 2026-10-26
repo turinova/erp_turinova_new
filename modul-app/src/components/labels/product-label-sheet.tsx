@@ -6,7 +6,6 @@ import { useMemo, type CSSProperties } from 'react'
 import {
   BARCODE_INTRINSIC_HEIGHT_PX,
   BARCODE_INTRINSIC_MODULE_PX,
-  computeLabelLayout,
   estimateBarcodeModules,
   LABEL_PX_PER_MM,
   BARCODE_MIN_QUIET_MM,
@@ -20,6 +19,13 @@ import {
   type LabelSize,
   type ProductLabelPayload
 } from '@/lib/labels/types'
+import {
+  clampLabelName,
+  dotsToMm,
+  packLabel33x25,
+  ZPL_DOTS_PER_MM,
+  ZPL_PAD_DOTS
+} from '@/lib/labels/zpl'
 import { cn } from '@/lib/utils'
 
 const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
@@ -47,6 +53,8 @@ type Props = {
   className?: string
 }
 
+type ZoneId = 'name' | 'sku' | 'price' | 'barcode'
+
 export function ProductLabelSheet({
   payload,
   fields,
@@ -63,48 +71,73 @@ export function ProductLabelSheet({
   className
 }: Props) {
   const mm = labelSizeMm(size)
-  const text = productName || payload.name || '—'
+  const nameText = clampLabelName(productName || payload.name || '—')
   const barcode =
     barcodeValueProp !== undefined
       ? barcodeValueProp?.trim() || null
       : labelBarcodeValue(payload)
   const unit = unitShortform || 'db'
-  const priceLabel = new Intl.NumberFormat('hu-HU').format(price)
+  const priceLabel = new Intl.NumberFormat('hu-HU').format(Math.round(price))
+  const sku = payload.sku?.trim() || ''
 
-  const layout = useMemo(
+  const showName = fields.showName
+  const showSku = fields.showSku && Boolean(sku)
+  const showPrice = fields.showPrice
+  const showBarcode = fields.showBarcode && Boolean(barcode)
+
+  /** Same packer as ZPL print — preview zones match the printer. */
+  const plan = useMemo(
     () =>
-      computeLabelLayout({
-        size,
-        fields,
-        productName: text,
+      packLabel33x25({
+        productName: nameText,
         price,
-        payload,
+        unitShortform: unit,
+        sku,
+        showName,
+        showSku,
+        showPrice,
+        showBarcode,
         showHumanReadable
       }),
-    [size, fields, text, price, payload, showHumanReadable]
+    [
+      nameText,
+      price,
+      unit,
+      sku,
+      showName,
+      showSku,
+      showPrice,
+      showBarcode,
+      showHumanReadable
+    ]
   )
 
   const isPreview = mode === 'preview'
   const displayScale = isPreview ? previewScale / LABEL_PX_PER_MM : 1
 
   const toU = (mmVal: number) => `${mmVal}mm`
+  const padMm = dotsToMm(ZPL_PAD_DOTS)
 
-  const padX = layout.padSideMm + layout.safetyInsetMm
-  const padTop = layout.padTopMm + layout.safetyInsetMm
-  const padBottom = layout.padBottomMm + layout.safetyInsetMm
+  const nameBlock = plan.blocks.find((b) => b.kind === 'name')
+  const skuBlock = plan.blocks.find((b) => b.kind === 'sku')
+  const priceBlock = plan.blocks.find((b) => b.kind === 'price')
 
-  const skuAsRow = layout.sku && layout.skuPlacement === 'row'
-  const skuOverBarcode =
-    layout.sku && layout.skuPlacement === 'over-barcode'
+  const zoneOrder: ZoneId[] =
+    showBarcode && !showName && !showSku && !showPrice
+      ? ['barcode']
+      : (['name', 'sku', 'price', 'barcode'] as ZoneId[]).filter(
+          (id) => plan.zones[id]
+        )
 
-  const gridRows: string[] = []
-  if (layout.name) gridRows.push(toU(layout.name.rowMm))
-  if (skuAsRow) gridRows.push(toU(layout.sku!.rowMm))
-  if (layout.price) gridRows.push(toU(layout.price.rowMm))
-  if (layout.barcode) gridRows.push(toU(layout.barcode.rowMm))
+  const gridRows = zoneOrder.map((id) => toU(dotsToMm(plan.zones[id]!.h)))
+
+  const barcodeZoneH = plan.zones.barcode
+    ? dotsToMm(plan.zones.barcode.h)
+    : 0
+  const barcodeDrawMm = plan.barH > 0 ? dotsToMm(plan.barH) : barcodeZoneH
 
   const barcodeMetrics = useMemo(() => {
-    if (!layout.barcode || !barcode) {
+    if (!showBarcode || !barcode) {
       return {
         heightPx: BARCODE_INTRINSIC_HEIGHT_PX,
         moduleWidth: BARCODE_INTRINSIC_MODULE_PX,
@@ -114,18 +147,9 @@ export function ProductLabelSheet({
     }
     const format = resolveLabelBarcodeFormat(barcode)
     const modules = estimateBarcodeModules(barcode)
-    // Fixed small quiet only — do NOT max() with inflated GS1 quiet (photo bug).
     const { quietZoneMm } = solveBarcodeXMm(mm.w, modules)
-    const quietMm = quietZoneMm
-    const hriMm = layout.showHumanReadable
-      ? layout.barcode.secondaryFontMm + 0.35
-      : 0
-    const skuStripMm = skuOverBarcode ? layout.sku!.rowMm + 0.15 : 0
-    const usableMm = Math.max(
-      2.5,
-      layout.barcode.rowMm - hriMm - skuStripMm
-    )
-    // Fat intrinsic SVG; CSS width 100% stretch → printed X = (label − 2×quiet) / modules
+    const hriMm = showHumanReadable ? 1.2 : 0
+    const usableMm = Math.max(2.5, barcodeDrawMm - hriMm)
     const heightPx = Math.max(
       BARCODE_INTRINSIC_HEIGHT_PX,
       Math.round(usableMm * LABEL_PX_PER_MM)
@@ -133,10 +157,10 @@ export function ProductLabelSheet({
     return {
       heightPx,
       moduleWidth: BARCODE_INTRINSIC_MODULE_PX,
-      quietMm,
+      quietMm: quietZoneMm,
       format
     }
-  }, [layout, barcode, mm.w, skuOverBarcode])
+  }, [showBarcode, barcode, mm.w, barcodeDrawMm, showHumanReadable])
 
   const cell = (rowMm: number, extra?: CSSProperties): CSSProperties => ({
     height: toU(rowMm),
@@ -148,27 +172,10 @@ export function ProductLabelSheet({
     ...extra
   })
 
-  // Preview = centered artwork. Offset only at print (printer registration).
   const hasPrintOffset =
     mode === 'print' && (offsetXMm !== 0 || offsetYMm !== 0)
 
-  const skuEl = (sku: NonNullable<typeof layout.sku>) => (
-    <div
-      style={{
-        fontSize: toU(sku.fontMm),
-        fontWeight: 550,
-        lineHeight: 1,
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        maxWidth: '100%',
-        letterSpacing: '0.02em',
-        textAlign: 'center'
-      }}
-    >
-      {payload.sku}
-    </div>
-  )
+  const fontMmFromDots = (dots: number) => dots / ZPL_DOTS_PER_MM
 
   const sheet = (
     <div
@@ -176,13 +183,13 @@ export function ProductLabelSheet({
       style={{
         width: `${mm.w}mm`,
         height: `${mm.h}mm`,
-        padding: `${toU(padTop)} ${toU(padX)} ${toU(padBottom)}`,
+        padding: `${toU(padMm)} ${toU(padMm)}`,
         margin: 0,
         backgroundColor: '#fff',
         display: 'grid',
-        gridTemplateRows: gridRows.join(' '),
+        gridTemplateRows: gridRows.length > 0 ? gridRows.join(' ') : '1fr',
         gridTemplateColumns: '100%',
-        gap: toU(layout.gapMm),
+        gap: 0,
         overflow: 'hidden',
         boxSizing: 'border-box',
         color: '#000',
@@ -195,7 +202,6 @@ export function ProductLabelSheet({
           : null)
       }}
     >
-      {/* Stretch barcode SVG like main-app — printed X = cell width / modules */}
       <style>{`
         .label-barcode-svg-wrap svg {
           display: block !important;
@@ -209,168 +215,177 @@ export function ProductLabelSheet({
         }
       `}</style>
 
-      {layout.name ? (
-        <div
-          style={cell(layout.name.rowMm, {
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'center',
-            // Hard clip — name must never paint into SKU row
-            overflow: 'hidden'
-          })}
-        >
-          <div
-            style={{
-              fontSize: toU(layout.name.fontMm),
-              fontWeight: 550,
-              lineHeight: 1.12,
-              textAlign: 'center',
-              width: '100%',
-              maxHeight: '100%',
-              overflow: 'hidden',
-              overflowWrap: 'anywhere',
-              wordBreak: 'break-word',
-              letterSpacing: '0.01em',
-              // Hard line-clamp (layout.maxLines) — clerk cannot override
-              display: '-webkit-box',
-              WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: layout.name.maxLines ?? 2
-            }}
-          >
-            {text}
-          </div>
-        </div>
-      ) : null}
+      {zoneOrder.map((id) => {
+        const zone = plan.zones[id]!
+        const rowMm = dotsToMm(zone.h)
 
-      {skuAsRow ? (
-        <div
-          style={cell(layout.sku!.rowMm, {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          })}
-        >
-          {skuEl(layout.sku!)}
-        </div>
-      ) : null}
-
-      {layout.price ? (
-        <div
-          style={cell(layout.price.rowMm, {
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'baseline',
-            justifyContent: 'center',
-            flexWrap: 'nowrap',
-            gap: toU(0.2)
-          })}
-        >
-          <span
-            style={{
-              fontSize: toU(layout.price.fontMm),
-              fontWeight: 550,
-              lineHeight: 1,
-              whiteSpace: 'nowrap',
-              letterSpacing: '-0.01em',
-              overflow: 'hidden',
-              maxWidth: '100%'
-            }}
-          >
-            {priceLabel} Ft
-          </span>
-          <span
-            style={{
-              fontSize: toU(layout.price.secondaryFontMm),
-              fontWeight: 550,
-              lineHeight: 1,
-              whiteSpace: 'nowrap',
-              letterSpacing: '0.02em',
-              opacity: 0.9
-            }}
-          >
-            /{unit}
-          </span>
-        </div>
-      ) : null}
-
-      {layout.barcode && barcode ? (
-        <div
-          style={cell(layout.barcode.rowMm, {
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'stretch',
-            justifyContent: 'flex-end',
-            // Cancel sheet side pad → full-bleed barcode (main-app parity)
-            marginLeft: toU(-padX),
-            marginRight: toU(-padX),
-            width: `calc(100% + ${toU(padX * 2)})`
-          })}
-        >
-          {skuOverBarcode ? (
+        if (id === 'name') {
+          if (!showName || !nameBlock) {
+            return <div key={id} style={cell(rowMm)} aria-hidden />
+          }
+          return (
             <div
-              style={{
-                height: toU(layout.sku!.rowMm),
-                maxHeight: toU(layout.sku!.rowMm),
+              key={id}
+              style={cell(rowMm, {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                overflow: 'hidden',
-                flexShrink: 0,
-                paddingLeft: toU(padX),
-                paddingRight: toU(padX)
-              }}
+                overflow: 'hidden'
+              })}
             >
-              {skuEl(layout.sku!)}
+              <div
+                style={{
+                  fontSize: toU(fontMmFromDots(nameBlock.fontH)),
+                  fontWeight: 550,
+                  lineHeight: 1.05,
+                  textAlign: 'center',
+                  width: '100%',
+                  maxHeight: '100%',
+                  overflow: 'hidden',
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                  letterSpacing: '0.01em',
+                  display: '-webkit-box',
+                  WebkitBoxOrient: 'vertical',
+                  WebkitLineClamp: nameBlock.maxLines
+                }}
+              >
+                {nameText}
+              </div>
             </div>
-          ) : null}
+          )
+        }
+
+        if (id === 'sku') {
+          if (!showSku || !skuBlock) {
+            return <div key={id} style={cell(rowMm)} aria-hidden />
+          }
+          return (
+            <div
+              key={id}
+              style={cell(rowMm, {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              })}
+            >
+              <div
+                style={{
+                  fontSize: toU(fontMmFromDots(skuBlock.fontH)),
+                  fontWeight: 550,
+                  lineHeight: 1,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                  letterSpacing: '0.02em',
+                  textAlign: 'center'
+                }}
+              >
+                {sku}
+              </div>
+            </div>
+          )
+        }
+
+        if (id === 'price') {
+          if (!showPrice || !priceBlock) {
+            return <div key={id} style={cell(rowMm)} aria-hidden />
+          }
+          return (
+            <div
+              key={id}
+              style={cell(rowMm, {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden'
+              })}
+            >
+              <div
+                style={{
+                  fontSize: toU(fontMmFromDots(priceBlock.fontH)),
+                  fontWeight: 550,
+                  lineHeight: 1,
+                  whiteSpace: 'nowrap',
+                  letterSpacing: '-0.01em',
+                  overflow: 'hidden',
+                  maxWidth: '100%',
+                  textAlign: 'center'
+                }}
+              >
+                {priceLabel} Ft/{unit}
+              </div>
+            </div>
+          )
+        }
+
+        // barcode
+        if (!showBarcode || !barcode) {
+          return <div key={id} style={cell(rowMm)} aria-hidden />
+        }
+        return (
           <div
-            className="label-barcode-svg-wrap"
-            style={{
+            key={id}
+            style={cell(rowMm, {
               display: 'flex',
-              flex: 1,
-              minHeight: 0,
-              width: '100%',
+              flexDirection: 'column',
               alignItems: 'stretch',
               justifyContent: 'center',
-              overflow: 'hidden',
-              paddingLeft: toU(barcodeMetrics.quietMm),
-              paddingRight: toU(barcodeMetrics.quietMm),
-              boxSizing: 'border-box'
-            }}
+              marginLeft: toU(-padMm),
+              marginRight: toU(-padMm),
+              width: `calc(100% + ${toU(padMm * 2)})`
+            })}
           >
-            <Barcode
-              value={barcode}
-              format={barcodeMetrics.format}
-              width={barcodeMetrics.moduleWidth}
-              height={barcodeMetrics.heightPx}
-              displayValue={false}
-              margin={0}
-              background="#ffffff"
-              lineColor="#000000"
-            />
-          </div>
-          {layout.showHumanReadable ? (
             <div
+              className="label-barcode-svg-wrap"
               style={{
-                fontSize: toU(layout.barcode.secondaryFontMm),
-                lineHeight: 1.1,
-                marginTop: toU(0.15),
-                fontFamily: 'ui-monospace, monospace',
-                fontWeight: 550,
-                letterSpacing: '0.04em',
-                whiteSpace: 'nowrap',
+                display: 'flex',
+                flex: 1,
+                minHeight: 0,
+                width: '100%',
+                alignItems: 'stretch',
+                justifyContent: 'center',
                 overflow: 'hidden',
-                maxWidth: '100%',
-                textAlign: 'center',
-                paddingLeft: toU(padX),
-                paddingRight: toU(padX)
+                paddingLeft: toU(barcodeMetrics.quietMm),
+                paddingRight: toU(barcodeMetrics.quietMm),
+                boxSizing: 'border-box'
               }}
             >
-              {barcode}
+              <Barcode
+                value={barcode}
+                format={barcodeMetrics.format}
+                width={barcodeMetrics.moduleWidth}
+                height={barcodeMetrics.heightPx}
+                displayValue={false}
+                margin={0}
+                background="#ffffff"
+                lineColor="#000000"
+              />
             </div>
-          ) : null}
-        </div>
-      ) : null}
+            {showHumanReadable ? (
+              <div
+                style={{
+                  fontSize: toU(1.2),
+                  lineHeight: 1.1,
+                  marginTop: toU(0.1),
+                  fontFamily: 'ui-monospace, monospace',
+                  fontWeight: 550,
+                  letterSpacing: '0.04em',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  maxWidth: '100%',
+                  textAlign: 'center',
+                  paddingLeft: toU(padMm),
+                  paddingRight: toU(padMm)
+                }}
+              >
+                {barcode}
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 

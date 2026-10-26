@@ -67,13 +67,14 @@ Zárolt döntések:
 - **Nyomtatás primary:** Zebra **Browser Print** → nyers **ZPL** (`lib/labels/zpl.ts` + `browser-print-client.ts`). A vonalkódot a **ZD220 firmware** rajzolja (`^BEN` EAN-13 / `^BCN` CODE128), nem Chrome raster.
 - **Barcode policy (`print-policy.ts`):** 33×25-ön csak **EAN-13** vagy **rövid CODE128** (`^BY2` scannelhető). Hosszú gyártói (pl. `DT-CZ…`) → **belső EAN** kötelező; ha nincs → print **tiltva** (vagy vonalkód mező ki).
 - **ZPL layout:** fix %-zónák (`packLabel33x25`) — név 28 / SKU 18 / ár 22 / kód 32. Kikapcsolt mező = **üres sáv** (többi nem nő) → egységes pozíció. SKU+ár **1 sor**, név **max 2**. Kivétel: „Csak kód” max barcode.
-- **203 dpi:** `^PW264` / `^LL200` / `^LH0,0`; modul **`^BY2`**. EAN szélesség = **113 modul** (quiet benne); FO középre + **~1 mm** oldalsó pad.
-- **Szöveg:** `^FB…,C` középre; condensed `^A0` width; **nincs** JS ellipsis. `^MD11` default.
+- **Név limit:** címke dialógus + ZPL **`LABEL_NAME_MAX_CHARS = 36`**. Packer: `fitTextToFbLines` + `FB_CHAR_WIDTH_FACTOR=0.62` → max **2 sor**, soha nem folyik SKU-ra (ellipsis). Törzsadat név maradhat 200.
+- **203 dpi:** `^PW264` / `^LL200` / `^LH0,0`; modul **`^BY2`**. EAN / CODE128: `^FO` = **látható sávok** bal széle (quiet kívül); sávközép = `ZPL_LABEL_CENTER_X` = `^FB` szövegtengely.
+- **Szöveg:** `^FB…,C` a tartalomdobozban; `^A0` width = height (1:1 — condensed elcsúsztatta a középre igazítást); `^MD11` default.
 - **EAN `^FD`:** pontosan **12 digit**; érvényes belső EAN default.
-- **Előnézet:** HTML sheet (tájékoztató). **HTML nyomtatás** csak fallback.
+- **Előnézet:** ugyanaz a ZPL → PNG (`@zebrash/browser`, 8 dpmm native + **3×** smooth upscale a képernyőre; self-host font `/fonts/zebrash/`). Offset (`^LS`/`^LT`) a previewban is. Renderer fail → HTML sheet fallback. **HTML nyomtatás** csak fallback.
 - **Illesztés:** `tenant_label_print_settings` → `^LS` / `^LT`. Bal clip → negatív X (tartalom jobbra).
 - **Gép / USB:** Browser Print + default ZD220; HTTPS `9101/ssl_support`; media kalibráció. **Minden nyomtatás előtt re-probe**; tab focus / visibility → re-probe; hibaállapotnál **Újracsatlakozás**; USB kihúzás → clerk-facing hiba (`mapBrowserPrintError`).
-- Layout preview: `layout.ts`; print: `print-label.tsx` → ZPL.
+- Preview + print truth: `generateLabelZpl` → `zpl-preview.ts` / Browser Print `write`.
 
 ## 7. PDF kontra HTML print
 

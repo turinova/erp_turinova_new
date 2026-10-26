@@ -28,9 +28,22 @@ export const ZPL_CONTENT_H = ZPL_LABEL_H_DOTS - 2 * ZPL_PAD_DOTS // 184
 
 export const ZPL_MODULE_DOTS = 2
 
-/** EAN-13 total modules including quiet (11+95+7). */
-export const EAN13_TOTAL_MODULES = 113
+/**
+ * GS1 EAN-13: left quiet 11 + bars 95 + right quiet 7.
+ * Zebra ^BE / zebrash: ^FO is the left edge of the *visible bars* (quiet is
+ * outside the symbol width). Center bars on ZPL_LABEL_CENTER_X.
+ */
+export const EAN13_LEFT_QUIET_MODULES = 11
+export const EAN13_BAR_MODULES = 95
+export const EAN13_RIGHT_QUIET_MODULES = 7
+/** EAN-13 total modules including quiet (11+95+7) — scan geometry / docs. */
+export const EAN13_TOTAL_MODULES =
+  EAN13_LEFT_QUIET_MODULES + EAN13_BAR_MODULES + EAN13_RIGHT_QUIET_MODULES
 
+/** Horizontal center of the label (text ^FB and barcode bars share this). */
+export const ZPL_LABEL_CENTER_X = Math.floor(ZPL_LABEL_W_DOTS / 2)
+
+/** Extra quiet for CODE128 fit checks only — not part of ^FO width (zebrash). */
 const CODE128_QUIET_DOTS = 10
 
 /** Min scannable barcode height (~6.5 mm). */
@@ -55,14 +68,31 @@ const LINE_EXTRA = 1
 /** Crisp print. */
 export const ZPL_DEFAULT_DARKNESS = 11
 
-const NAME_WIDTH_RATIO = 0.82
-const SKU_WIDTH_RATIO = 0.88
-const PRICE_WIDTH_RATIO = 0.9
+/**
+ * ^A0 width/height. Must stay 1.0 — condensed (fontW < fontH) breaks ^FB
+ * center alignment in zebrash (scaleX distorts block width) and looks off-axis.
+ */
+const NAME_WIDTH_RATIO = 1
+const SKU_WIDTH_RATIO = 1
+const PRICE_WIDTH_RATIO = 1
 
 const NAME_FONT_MAX = 28
 const SKU_FONT_MAX = 36
 const PRICE_FONT_MAX = 40
 const FONT_MIN = 14
+
+/**
+ * Clerk-proof hard cap for 33×25 name (≤2 lines at readable ^A0).
+ * ~2×16 chars @ font 24 with conservative Helvetica advance.
+ * Master product name may be longer (200); label dialog + ZPL clamp here.
+ */
+export const LABEL_NAME_MAX_CHARS = 36
+
+/**
+ * Average glyph advance / em for ^A0 Helvetica-Bold (zebrash + Zebra).
+ * Was 0.52 (too optimistic → 3-line overflow into SKU).
+ */
+export const FB_CHAR_WIDTH_FACTOR = 0.62
 
 /** HRI eats a few dots from barcode zone. */
 const HRI_RESERVE_DOTS = 10
@@ -113,8 +143,29 @@ export function escapeZplFd(raw: string): string {
     .trim()
 }
 
+/** Editable field: strip ZPL-hostile chars and hard-cap (no ellipsis). */
+export function truncateLabelNameInput(raw: string): string {
+  return escapeZplFd(raw).slice(0, LABEL_NAME_MAX_CHARS)
+}
+
+/**
+ * Deterministic label name for preview + ZPL — never silent printer clip.
+ * Over-limit → hard truncate + ellipsis (counts toward max).
+ */
+export function clampLabelName(raw: string): string {
+  const t = escapeZplFd(raw)
+  if (!t) return '—'
+  if (t.length <= LABEL_NAME_MAX_CHARS) return t
+  const body = t.slice(0, LABEL_NAME_MAX_CHARS - 1).trimEnd()
+  return `${body}…`
+}
+
 export function mmToDots(mm: number): number {
   return Math.round(mm * ZPL_DOTS_PER_MM)
+}
+
+export function dotsToMm(dots: number): number {
+  return dots / ZPL_DOTS_PER_MM
 }
 
 export function ean13Data12ForZpl(code: string): string | null {
@@ -128,10 +179,48 @@ export function ean13TotalWidthDots(moduleDots = ZPL_MODULE_DOTS): number {
   return EAN13_TOTAL_MODULES * moduleDots
 }
 
+/**
+ * ^FO X for EAN-13 — FO is left of visible bars (not quiet). Bars center =
+ * ZPL_LABEL_CENTER_X (same axis as ^FB text).
+ */
 export function ean13OriginX(moduleDots = ZPL_MODULE_DOTS): number {
-  const w = ean13TotalWidthDots(moduleDots)
-  const centered = Math.floor((ZPL_LABEL_W_DOTS - w) / 2)
-  return Math.max(ZPL_PAD_DOTS, centered)
+  const barW = EAN13_BAR_MODULES * moduleDots
+  let fo = ZPL_LABEL_CENTER_X - Math.floor(barW / 2)
+  const maxFo = Math.max(0, ZPL_LABEL_W_DOTS - barW)
+  fo = Math.max(0, Math.min(maxFo, fo))
+  return fo
+}
+
+/** Center of EAN visible bars for the FO returned by ean13OriginX. */
+export function ean13BarsCenterX(moduleDots = ZPL_MODULE_DOTS): number {
+  const barW = EAN13_BAR_MODULES * moduleDots
+  return ean13OriginX(moduleDots) + Math.floor(barW / 2)
+}
+
+/**
+ * ^FO X for CODE128 — FO is left of encoded bars (zebrash/Zebra); quiet is
+ * outside. Center bar width on ZPL_LABEL_CENTER_X.
+ */
+export function code128OriginX(
+  value: string,
+  moduleDots = ZPL_MODULE_DOTS
+): number {
+  const modules = estimateCode128Modules(value)
+  const barW = modules * moduleDots
+  let fo = ZPL_LABEL_CENTER_X - Math.floor(barW / 2)
+  const maxFo = Math.max(0, ZPL_LABEL_W_DOTS - barW)
+  fo = Math.max(0, Math.min(maxFo, fo))
+  return fo
+}
+
+/** Center of CODE128 bars for diagnostics / tests. */
+export function code128BarsCenterX(
+  value: string,
+  moduleDots = ZPL_MODULE_DOTS
+): number {
+  const modules = estimateCode128Modules(value)
+  const barW = modules * moduleDots
+  return code128OriginX(value, moduleDots) + Math.floor(barW / 2)
 }
 
 export function code128Fits33mm(value: string): boolean {
@@ -154,16 +243,42 @@ function fontWidth(kind: LabelZplFieldId, fontH: number): number {
   return Math.max(10, Math.round(fontH * ratio))
 }
 
+/** How many characters fit on one ^FB line at this font width. */
+export function fbCharsPerLine(fontW: number): number {
+  const w = Math.max(8, fontW)
+  return Math.max(4, Math.floor(ZPL_CONTENT_W / (w * FB_CHAR_WIDTH_FACTOR)))
+}
+
+/** Uncapped line count (for shrink loops). */
+export function estimateFbLinesRaw(text: string, fontW: number): number {
+  const t = escapeZplFd(text)
+  if (!t) return 0
+  return Math.max(1, Math.ceil(t.length / fbCharsPerLine(fontW)))
+}
+
 export function estimateFbLines(
   text: string,
   fontW: number,
   maxLines: number
 ): number {
+  return Math.min(maxLines, estimateFbLinesRaw(text, fontW))
+}
+
+/**
+ * Hard-truncate so text never needs more than maxLines at fontW.
+ * Prevents zebrash/^FB from painting into the next zone.
+ */
+export function fitTextToFbLines(
+  text: string,
+  fontW: number,
+  maxLines: number
+): string {
   const t = escapeZplFd(text)
-  if (!t) return 0
-  const charsPerLine = Math.max(6, Math.floor(ZPL_CONTENT_W / (fontW * 0.52)))
-  const raw = Math.ceil(t.length / charsPerLine)
-  return Math.min(maxLines, Math.max(1, raw))
+  if (!t) return '—'
+  const budget = fbCharsPerLine(fontW) * Math.max(1, maxLines)
+  if (t.length <= budget) return t
+  if (budget <= 1) return '…'
+  return `${t.slice(0, budget - 1).trimEnd()}…`
 }
 
 function blockHeight(fontH: number, lines: number): number {
@@ -240,7 +355,7 @@ export function packLabel33x25(input: {
   showBarcode: boolean
   showHumanReadable?: boolean
 }): PackPlan {
-  const nameText = escapeZplFd(input.productName || '—') || '—'
+  const nameText = clampLabelName(input.productName || '—')
   const skuText = escapeZplFd(input.sku)
   const priceText = `${formatPrice(input.price)} Ft/${escapeZplFd(input.unitShortform || 'db')}`
 
@@ -313,51 +428,59 @@ export function packLabel33x25(input: {
     fontMax: number
   ): TextBlock | null {
     const inner = Math.max(FONT_MIN, zone.h - 2)
-    // Prefer 1 line at largest font that fits zone; name may use 2
+    const hardMax = kind === 'name' ? Math.min(2, maxLines) : 1
+
+    // Prefer 1 line at largest font; name may use 2 if needed
     let lines = 1
     let fontH = Math.min(fontMax, inner)
     let fontW = fontWidth(kind, fontH)
-    let used = estimateFbLines(text, fontW, 1)
 
-    if (kind === 'name' && maxLines >= 2) {
-      // If 1-line at this font would wrap beyond 1, switch to 2-line mode
-      if (used > 1 || estimateFbLines(text, fontW, 2) > 1) {
-        lines = 2
-        fontH = Math.min(fontMax, Math.max(FONT_MIN, Math.floor((inner - LINE_EXTRA) / 2)))
-        fontW = fontWidth(kind, fontH)
-        used = estimateFbLines(text, fontW, 2)
-      }
+    if (kind === 'name' && hardMax >= 2 && estimateFbLinesRaw(text, fontW) > 1) {
+      lines = 2
+      fontH = Math.min(
+        fontMax,
+        Math.max(FONT_MIN, Math.floor((inner - LINE_EXTRA) / 2))
+      )
+      fontW = fontWidth(kind, fontH)
     }
 
-    // Shrink until block fits in zone (SKU/price stay 1 line)
+    // Shrink until raw wrap ≤ hardMax (or FONT_MIN), then hard-truncate
+    while (
+      estimateFbLinesRaw(text, fontW) > hardMax &&
+      fontH > FONT_MIN
+    ) {
+      fontH -= 2
+      fontW = fontWidth(kind, fontH)
+      if (kind === 'name' && hardMax >= 2) lines = 2
+    }
+
+    // Zone height shrink (SKU/price stay 1 line)
+    let fitted = fitTextToFbLines(text, fontW, hardMax)
+    let used = estimateFbLines(fitted, fontW, hardMax)
     while (blockHeight(fontH, used) > zone.h && fontH > FONT_MIN) {
       fontH -= 2
       fontW = fontWidth(kind, fontH)
-      used = estimateFbLines(text, fontW, kind === 'name' ? maxLines : 1)
-      if (kind !== 'name') used = 1
-      else lines = used
+      fitted = fitTextToFbLines(text, fontW, hardMax)
+      used = estimateFbLines(fitted, fontW, hardMax)
     }
 
+    lines = kind === 'name' ? Math.min(hardMax, Math.max(1, used)) : 1
+    fitted = fitTextToFbLines(text, fontW, lines)
+    used = estimateFbLines(fitted, fontW, lines)
     if (kind !== 'name') {
       lines = 1
       used = 1
-    } else {
-      lines = Math.min(maxLines, Math.max(1, used))
     }
 
     const textH = blockHeight(fontH, lines)
-    // Vertically center block in zone (1-line); 2-line name from top+1 of zone
-    const y =
-      lines === 1
-        ? zone.y + Math.max(0, Math.floor((zone.h - textH) / 2))
-        : zone.y + Math.max(0, Math.floor((zone.h - textH) / 2))
+    const y = zone.y + Math.max(0, Math.floor((zone.h - textH) / 2))
 
     return {
       kind,
-      text,
+      text: fitted,
       fontH,
       fontW,
-      maxLines: kind === 'name' ? 2 : 1,
+      maxLines: hardMax,
       lines,
       y,
       zoneY: zone.y,
@@ -412,10 +535,14 @@ function pushCenteredText(
   text: string,
   opts: { fontH: number; fontW: number; maxLines: number; lineGap?: number }
 ): number {
-  const fd = escapeZplFd(text)
+  // Text is already fitTextToFbLines'd in the packer — still re-fit as safety net
+  const fd = fitTextToFbLines(text, opts.fontW, opts.maxLines)
   if (!fd) return y
   const gap = opts.lineGap ?? 0
-  const usedLines = estimateFbLines(fd, opts.fontW, opts.maxLines)
+  const usedLines = Math.min(
+    opts.maxLines,
+    Math.max(1, estimateFbLines(fd, opts.fontW, opts.maxLines))
+  )
   lines.push(`^FO${ZPL_CONTENT_X},${y}`)
   lines.push(`^A0N,${opts.fontH},${opts.fontW}`)
   lines.push(`^FB${ZPL_CONTENT_W},${usedLines},${gap},C,0`)
@@ -443,12 +570,7 @@ function appendBarcode(
     out.push(`^FD${opts.ean12}^FS`)
   } else {
     const data = escapeZplFd(opts.rawBarcode)
-    const modules = estimateCode128Modules(data)
-    const symbolW = modules * ZPL_MODULE_DOTS + 2 * CODE128_QUIET_DOTS
-    const bx = Math.max(
-      ZPL_PAD_DOTS,
-      Math.floor((ZPL_LABEL_W_DOTS - Math.min(symbolW, ZPL_CONTENT_W)) / 2)
-    )
+    const bx = code128OriginX(data)
     out.push(`^FO${bx},${opts.y}^BCN,${opts.height},${hriFlag},N,N,A`)
     out.push(`^FD${data}^FS`)
   }

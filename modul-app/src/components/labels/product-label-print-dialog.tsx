@@ -5,7 +5,7 @@ import { ChevronDown, Minus, Plus, Printer, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { LabelAlignmentSchema } from '@/components/labels/label-alignment-schema'
-import { ProductLabelSheet } from '@/components/labels/product-label-sheet'
+import { ZplLabelPreview } from '@/components/labels/zpl-label-preview'
 import { FormField } from '@/components/patterns/form-field'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,7 +42,11 @@ import {
   isScannableOn33x25,
   resolvePrintableBarcode
 } from '@/lib/labels/print-policy'
-import { packLabel33x25 } from '@/lib/labels/zpl'
+import {
+  LABEL_NAME_MAX_CHARS,
+  packLabel33x25,
+  truncateLabelNameInput
+} from '@/lib/labels/zpl'
 import { isValidEan13 } from '@/lib/barcodes/ean13'
 import {
   type LabelBarcodeSource,
@@ -198,7 +202,7 @@ export function ProductLabelPrintDialog({
     setBarcodeSource(source)
     const resolved = resolvePrintableBarcode(payload, source)
     const bc = Boolean(resolved.value) && !resolved.blocked
-    setName(payload.name)
+    setName(truncateLabelNameInput(payload.name))
     setPrice(Math.round(payload.priceGross))
     setUnit(payload.unitShortform || 'db')
     setAmount(Math.max(1, Math.round(initialAmount) || 1))
@@ -532,22 +536,19 @@ export function ProductLabelPrintDialog({
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
             <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border bg-stone-50 p-5">
               <p className="text-hint text-ink-secondary">
-                Előnézet · 33×25 mm · tartalom középen
+                Előnézet · 33×25 mm · ZPL
               </p>
-              <div className="overflow-hidden rounded-md border border-border bg-white p-4 shadow-sm">
-                <ProductLabelSheet
-                  payload={effectivePayload}
-                  fields={fields}
-                  productName={name}
-                  price={price}
-                  unitShortform={unit || 'db'}
-                  size="33x25"
-                  mode="preview"
-                  previewScale={9}
-                  showHumanReadable={showHumanReadable}
-                  barcodeValue={barcode}
-                />
-              </div>
+              <ZplLabelPreview
+                payload={effectivePayload}
+                fields={fields}
+                productName={name}
+                price={price}
+                unitShortform={unit || 'db'}
+                showHumanReadable={showHumanReadable}
+                barcodeValue={fields.showBarcode ? barcode : null}
+                offsetXMm={offsetX}
+                offsetYMm={offsetY}
+              />
               {barcodeBlocked && printResolve?.message ? (
                 <div className="max-w-sm space-y-1.5 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-center">
                   <p className="text-[12px] text-danger-ink">
@@ -758,11 +759,18 @@ export function ProductLabelPrintDialog({
                 )}
               </fieldset>
 
-              <FormField label="Termék neve" htmlFor="label-name">
+              <FormField
+                label="Termék neve"
+                htmlFor="label-name"
+                hint={`${name.length}/${LABEL_NAME_MAX_CHARS}`}
+              >
                 <Input
                   id="label-name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  maxLength={LABEL_NAME_MAX_CHARS}
+                  onChange={(e) =>
+                    setName(truncateLabelNameInput(e.target.value))
+                  }
                   disabled={!fields.showName}
                 />
               </FormField>
