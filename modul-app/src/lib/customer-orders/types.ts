@@ -232,6 +232,8 @@ export type CsoWaitingListItem = {
   customerMobile: string
   depositAmount: number | null
   smsSentAt: string | null
+  /** Rendelésfej megjegyzés (customer_special_orders.note). */
+  orderNote: string | null
   name: string
   qty: number
   unitShortform: string
@@ -249,6 +251,7 @@ export type CsoWaitingListItem = {
   poQtyOrdered: number | null
   /** PO sorra beérkezett mennyiség (csak received receipt). */
   poQtyReceived: number | null
+  /** Tétel megjegyzés. */
   note: string | null
   createdAt: string
   /** Listára-helyezés blocker üzenetek (Teendő nézet). */
@@ -256,6 +259,42 @@ export type CsoWaitingListItem = {
 }
 
 export type CsoWaitingCounts = Record<CsoWaitingView, number>
+
+/** Van-e megjeleníthető fej- vagy tétel-megjegyzés. */
+export function hasCsoWaitingNote(input: {
+  orderNote?: string | null
+  note?: string | null
+}): boolean {
+  return Boolean(input.orderNote?.trim() || input.note?.trim())
+}
+
+/**
+ * Várólista tooltip szöveg. Hosszú note esetén rövidít + utalás a részletezőre.
+ */
+export function formatCsoNoteTooltip(input: {
+  orderNote?: string | null
+  itemNote?: string | null
+  maxLen?: number
+}): string | null {
+  const order = input.orderNote?.trim() || ''
+  const item = input.itemNote?.trim() || ''
+  if (!order && !item) return null
+
+  const maxLen = input.maxLen ?? 280
+  const parts: string[] = []
+  if (order && item) {
+    parts.push(`Rendelés: ${order}`, `Tétel: ${item}`)
+  } else if (order) {
+    parts.push(`Rendelés: ${order}`)
+  } else {
+    parts.push(item)
+  }
+  let text = parts.join('\n')
+  if (text.length > maxLen) {
+    text = `${text.slice(0, Math.max(0, maxLen - 24)).trimEnd()}… (teljes a rendelésen)`
+  }
+  return text
+}
 
 /** Listára tehető-e a tétel (katalógus + beszállító). */
 export function csoItemLeadBlockers(item: {
@@ -284,12 +323,130 @@ export type CustomerSpecialOrderItemRow = {
   poId: string | null
   poNumber: string | null
   poStatus: CsoPoStatus | null
+  /** PO létrehozás (listára kerülés proxy). */
+  poCreatedAt: string | null
+  /** PO elküldés időpontja. */
+  poOrderedAt: string | null
   poQtyOrdered: number | null
   poQtyReceived: number | null
   reservedQty: number | null
   reservedAt: string | null
   note: string | null
   sortOrder: number
+}
+
+export type CsoJourneyStep = {
+  key: string
+  label: string
+  at: string | null
+  /** true = megtörtént; false = még hátra */
+  done: boolean
+  hint?: string
+}
+
+/** Kompakt rendelés-út a részletezőhöz (nem teljes audit). */
+export function buildCsoJourney(input: {
+  createdAt: string
+  smsSentAt: string | null
+  items: Array<{
+    status: CsoItemStatus
+    poNumber: string | null
+    poStatus: CsoPoStatus | null
+    poCreatedAt: string | null
+    poOrderedAt: string | null
+    reservedAt: string | null
+  }>
+}): CsoJourneyStep[] {
+  const active = input.items.filter((i) => i.status !== 'torolve')
+  const steps: CsoJourneyStep[] = [
+    {
+      key: 'created',
+      label: 'Felvéve',
+      at: input.createdAt,
+      done: true
+    }
+  ]
+
+  const withPo = active.filter((i) => i.poStatus != null || i.poCreatedAt)
+  const earliestPoCreated = withPo
+    .map((i) => i.poCreatedAt)
+    .filter((d): d is string => Boolean(d))
+    .sort()[0] ?? null
+  const anyOnList = active.some(
+    (i) =>
+      i.status === 'rendelve' ||
+      i.status === 'itt_van' ||
+      i.status === 'atadva' ||
+      (i.poStatus != null && i.poStatus !== 'cancelled')
+  )
+  const draftPo = withPo.find(
+    (i) => !i.poStatus || i.poStatus === 'draft'
+  )
+  steps.push({
+    key: 'listed',
+    label: 'Beszállítói listán',
+    at: earliestPoCreated,
+    done: anyOnList,
+    hint: draftPo?.poNumber
+      ? `${draftPo.poNumber} (vázlat)`
+      : withPo[0]?.poNumber ?? undefined
+  })
+
+  const orderedAts = withPo
+    .map((i) => i.poOrderedAt)
+    .filter((d): d is string => Boolean(d))
+    .sort()
+  const anyOrdered = withPo.some(
+    (i) =>
+      i.poStatus === 'ordered' ||
+      i.poStatus === 'partial' ||
+      i.poStatus === 'received'
+  )
+  steps.push({
+    key: 'ordered',
+    label: 'Elküldve a beszállítónak',
+    at: orderedAts[0] ?? null,
+    done: anyOrdered
+  })
+
+  const readyAts = active
+    .filter((i) => i.status === 'itt_van' || i.status === 'atadva')
+    .map((i) => i.reservedAt)
+    .filter((d): d is string => Boolean(d))
+    .sort()
+  const anyReady = active.some(
+    (i) => i.status === 'itt_van' || i.status === 'atadva'
+  )
+  steps.push({
+    key: 'ready',
+    label: 'Átvehető',
+    at: readyAts[0] ?? null,
+    done: anyReady
+  })
+
+  steps.push({
+    key: 'sms',
+    label: 'SMS az ügyfélnek',
+    at: input.smsSentAt,
+    done: Boolean(input.smsSentAt)
+  })
+
+  const allDone =
+    active.length > 0 && active.every((i) => i.status === 'atadva')
+  steps.push({
+    key: 'handover',
+    label: 'Átadva a vevőnek',
+    at: null,
+    done: allDone
+  })
+
+  return steps
+}
+
+/** Átadáskor létrejött értékesítés link. */
+export type CsoSaleLink = {
+  salesOrderId: string
+  saleNumber: string
 }
 
 export type CustomerSpecialOrderDetail = {
@@ -305,6 +462,20 @@ export type CustomerSpecialOrderDetail = {
   note: string | null
   createdAt: string
   items: CustomerSpecialOrderItemRow[]
+  /** Legutóbbi / elsődleges eladás (shortcut). */
+  salesOrderId: string | null
+  saleNumber: string | null
+  /** Összes átadáshoz kötött eladás (részleges átadás). */
+  saleLinks: CsoSaleLink[]
+}
+
+export type CsoNextAlso = {
+  kind: 'lead' | 'blocked' | 'sms'
+  count: number
+  /** Rövid ige+tárgy a másodlagos sorhoz. */
+  label: string
+  /** blocked: első hiányos tétel a szerkesztőhöz. */
+  focusItemId?: string
 }
 
 export type CsoNextStep = {
@@ -312,19 +483,79 @@ export type CsoNextStep = {
   body: string
   href?: string
   hrefLabel?: string
+  /**
+   * `sms` legacy — a compute már nem adja vissza primaryként;
+   * átvehetőnél mindig `handover`, SMS opcionális (`suggestSms` / also).
+   */
   kind: 'lead' | 'send_po' | 'receive' | 'sms' | 'handover' | 'done' | 'blocked'
+  /** blocked primary: első hiányos tétel. */
+  focusItemId?: string
+  /**
+   * Másodlagos teendő vegyes státusznál (pl. úton + még listázható).
+   * Nem primary — a UI secondary gombbal jeleníti meg.
+   */
+  also?: CsoNextAlso
+  /**
+   * Átvehető + SMS még nem ment → UI secondary „SMS” gomb
+   * (akkor is, ha az `also` lead/blocked).
+   */
+  suggestSms?: boolean
 }
 
-/** Certainty-first: egy mondat, mit tegyen most a user. */
+type CsoNextStepItem = {
+  id: string
+  status: CsoItemStatus
+  accessoryId: string | null
+  supplierId: string | null
+  poId: string | null
+  poNumber: string | null
+  poStatus: CsoPoStatus | null
+}
+
+function blockedBody(items: CsoNextStepItem[]): string {
+  const noAccessory = items.filter((i) => !i.accessoryId).length
+  const noSupplier = items.filter((i) => i.accessoryId && !i.supplierId).length
+  if (noAccessory > 0 && noSupplier > 0) {
+    return `${items.length} tételnél hiányzik a termék vagy a beszállító — javítsd, utána listára tehető.`
+  }
+  if (noAccessory > 0) {
+    return `${noAccessory} szabad tételhez katalógus termék kell — utána listára tehető.`
+  }
+  return `${noSupplier || items.length} tételnél hiányzik a beszállító — válassz beszállítót, utána listára tehető.`
+}
+
+function buildAlso(
+  leadable: CsoNextStepItem[],
+  blocked: CsoNextStepItem[]
+): CsoNextAlso | undefined {
+  // Preferencia: előbb a kész listázás, aztán a hiány pótlása.
+  if (leadable.length > 0) {
+    return {
+      kind: 'lead',
+      count: leadable.length,
+      label:
+        leadable.length === 1
+          ? '1 tétel listára tehető'
+          : `${leadable.length} tétel listára tehető`
+    }
+  }
+  if (blocked.length > 0) {
+    return {
+      kind: 'blocked',
+      count: blocked.length,
+      label:
+        blocked.length === 1
+          ? '1 tételnél hiányzik adat'
+          : `${blocked.length} tételnél hiányzik adat`,
+      focusItemId: blocked[0]?.id
+    }
+  }
+  return undefined
+}
+
+/** Certainty-first: egy mondat, mit tegyen most a user (+ opcionális másodlagos). */
 export function csoComputeNextStep(input: {
-  items: Array<{
-    status: CsoItemStatus
-    accessoryId: string | null
-    supplierId: string | null
-    poId: string | null
-    poNumber: string | null
-    poStatus: CsoPoStatus | null
-  }>
+  items: CsoNextStepItem[]
   smsSentAt: string | null
 }): CsoNextStep | null {
   const active = input.items.filter((i) => i.status !== 'torolve')
@@ -342,23 +573,43 @@ export function csoComputeNextStep(input: {
       body: 'Minden tétel átadva a vevőnek.'
     }
   }
+
+  const leadable = active.filter(
+    (i) => i.status === 'felveve' && i.accessoryId && i.supplierId
+  )
+  const blocked = active.filter(
+    (i) =>
+      i.status === 'felveve' && (!i.accessoryId || !i.supplierId)
+  )
+
   const ready = active.filter((i) => i.status === 'itt_van')
   if (ready.length > 0) {
-    if (!input.smsSentAt) {
-      return {
-        kind: 'sms',
-        title: 'Következő: SMS az ügyfélnek',
-        body: `${ready.length} tétel átvehető. Küldj értesítőt, majd add át a vevőnek.`
-      }
-    }
+    const alsoLeadOrBlocked = buildAlso(leadable, blocked)
+    const needsSms = !input.smsSentAt
+    // SMS soha nem kapu: primary mindig átadás. SMS = also (ha nincs más) vagy suggestSms.
+    const also =
+      alsoLeadOrBlocked ??
+      (needsSms
+        ? {
+            kind: 'sms' as const,
+            count: 1,
+            label: 'SMS még nem ment — csak ha a vevő nincs itt'
+          }
+        : undefined)
     return {
       kind: 'handover',
       title: 'Következő: átadás a vevőnek',
-      body: `${ready.length} tétel vár átadásra. Fizetés / előleg levonás a pulton történik.`
+      body: needsSms
+        ? `${ready.length} tétel átvehető. Add át + fizess — SMS csak akkor kell, ha a vevő még nincs itt.`
+        : `${ready.length} tétel vár átadásra. Fizetés / előleg a pulton.`,
+      also,
+      suggestSms: needsSms
     }
   }
+
   const onWay = active.filter((i) => i.status === 'rendelve')
   if (onWay.length > 0) {
+    const also = buildAlso(leadable, blocked)
     const draft = onWay.find(
       (i) => i.poId && (!i.poStatus || i.poStatus === 'draft')
     )
@@ -370,7 +621,8 @@ export function csoComputeNextStep(input: {
         href: `/beszallitoi-rendelesek/${draft.poId}`,
         hrefLabel: draft.poNumber
           ? `Megnyitás: ${draft.poNumber}`
-          : 'Beszállítói rendelés'
+          : 'Beszállítói rendelés',
+        also
       }
     }
     const orderedPo = onWay.find((i) => i.poId && i.poStatus === 'ordered')
@@ -382,32 +634,57 @@ export function csoComputeNextStep(input: {
         href: `/beszallitoi-rendelesek/${orderedPo.poId}`,
         hrefLabel: orderedPo.poNumber
           ? `PO megnyitás: ${orderedPo.poNumber}`
-          : 'Beszállítói rendelés'
+          : 'Beszállítói rendelés',
+        also
       }
     }
     return {
       kind: 'receive',
       title: 'Következő: bevételezés',
-      body: 'Az áru úton van. Beérkezéskor a Beérkezések menüben vedd fel — a kézi „Megérkezett” csak kivétel.'
+      body: 'Az áru úton van. Beérkezéskor a Beérkezések menüben vedd fel — a kézi „Megérkezett” csak kivétel.',
+      also
     }
   }
-  const leadable = active.filter(
-    (i) => i.status === 'felveve' && i.accessoryId && i.supplierId
-  )
+
   if (leadable.length > 0) {
+    // Primary lead: blocked mehet also-ként (hiányos sorok ne vesszenek el).
+    const also =
+      blocked.length > 0
+        ? buildAlso([], blocked)
+        : undefined
     return {
       kind: 'lead',
       title: 'Következő: tedd beszállítói listára',
-      body: `${leadable.length} tétel felvehető. Egy gombbal PO vázlatra kerül — a beszállítónak még nem megy el.`
+      body: `${leadable.length} tétel felvehető. Egy gombbal PO vázlatra kerül — a beszállítónak még nem megy el.`,
+      also
     }
   }
-  const blocked = active.filter((i) => i.status === 'felveve')
+
   if (blocked.length > 0) {
     return {
       kind: 'blocked',
       title: 'Hiányzik a termék vagy a beszállító',
-      body: 'Nyisd meg a tételt, rendelj hozzá katalógus terméket és beszállítót — utána listára tehető.'
+      body: blockedBody(blocked),
+      focusItemId: blocked[0]?.id
     }
   }
+
   return null
+}
+
+/** UI gombfelirat blocked primary CTA-hoz. */
+export function csoBlockedCtaLabel(
+  items: Array<{
+    status: CsoItemStatus
+    accessoryId: string | null
+    supplierId: string | null
+  }>
+): string {
+  const blocked = items.filter(
+    (i) =>
+      i.status === 'felveve' && (!i.accessoryId || !i.supplierId)
+  )
+  if (blocked.length === 0) return 'Tétel javítása'
+  const onlySupplier = blocked.every((i) => i.accessoryId && !i.supplierId)
+  return onlySupplier ? 'Válassz beszállítót' : 'Tétel javítása'
 }

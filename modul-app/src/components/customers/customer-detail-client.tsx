@@ -5,8 +5,21 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback } from 'react'
 
 import { CustomerForm } from '@/components/customers/customer-form'
-import { CustomerSalesList } from '@/components/customers/customer-sales-list'
+import {
+  CustomerQuotesList,
+  type CustomerQuotesPeriod
+} from '@/components/customers/customer-quotes-list'
+import {
+  CustomerSalesList,
+  type CustomerSalesPeriod
+} from '@/components/customers/customer-sales-list'
 import type { CustomerDetail } from '@/lib/customers/queries'
+import type { PaymentStatus } from '@/lib/quotes/payment-labels'
+import type {
+  CustomerQuotesSummary,
+  QuoteListItem,
+  QuoteStatus
+} from '@/lib/quotes/queries'
 import type {
   CustomerSalesSummary,
   SaleListItem
@@ -18,12 +31,14 @@ import type {
 } from '@/lib/sales/parse'
 import { cn } from '@/lib/utils'
 
-type TabKey = 'adatok' | 'eladasok'
+type TabKey = 'adatok' | 'eladasok' | 'lapszabaszat'
 
 type Props = {
   customer: CustomerDetail
   canWrite: boolean
   canOpenSales: boolean
+  canOpenLapszab: boolean
+  canOpenOpti: boolean
   sales: {
     rows: SaleListItem[]
     total: number
@@ -33,41 +48,79 @@ type Props = {
     pay: SalePaymentStatus | 'all'
     channel: SaleChannel | 'all'
     status: SaleStatus | 'all'
+    period: CustomerSalesPeriod
   } | null
   salesSummary: CustomerSalesSummary | null
+  quotes: {
+    rows: QuoteListItem[]
+    total: number
+    page: number
+    limit: number
+    q: string
+    pay: PaymentStatus | 'all'
+    status: QuoteStatus | 'all'
+    period: CustomerQuotesPeriod
+  } | null
+  quotesSummary: CustomerQuotesSummary | null
 }
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'adatok', label: 'Adatok' },
-  { key: 'eladasok', label: 'Értékesítések' }
+  { key: 'eladasok', label: 'Értékesítések' },
+  { key: 'lapszabaszat', label: 'Lapszabászat' }
 ]
+
+function clearSalesParams(sp: URLSearchParams) {
+  sp.delete('page')
+  sp.delete('q')
+  sp.delete('pay')
+  sp.delete('channel')
+  sp.delete('status')
+  sp.delete('period')
+}
+
+function clearLapszabParams(sp: URLSearchParams) {
+  sp.delete('lpage')
+  sp.delete('lq')
+  sp.delete('lpay')
+  sp.delete('lstatus')
+  sp.delete('lperiod')
+}
 
 export function CustomerDetailClient({
   customer,
   canWrite,
   canOpenSales,
+  canOpenLapszab,
+  canOpenOpti,
   sales,
-  salesSummary
+  salesSummary,
+  quotes,
+  quotesSummary
 }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const raw = searchParams.get('tab')
-  const active: TabKey =
-    raw === 'eladasok' && canOpenSales ? 'eladasok' : 'adatok'
+
+  let active: TabKey = 'adatok'
+  if (raw === 'eladasok' && canOpenSales) active = 'eladasok'
+  else if (raw === 'lapszabaszat' && canOpenLapszab) active = 'lapszabaszat'
 
   const setTab = useCallback(
     (key: TabKey) => {
       const sp = new URLSearchParams(searchParams.toString())
       if (key === 'adatok') {
         sp.delete('tab')
-        sp.delete('page')
-        sp.delete('q')
-        sp.delete('pay')
-        sp.delete('channel')
-        sp.delete('status')
-      } else {
+        clearSalesParams(sp)
+        clearLapszabParams(sp)
+      } else if (key === 'eladasok') {
         sp.set('tab', 'eladasok')
+        clearLapszabParams(sp)
         sp.delete('page')
+      } else {
+        sp.set('tab', 'lapszabaszat')
+        clearSalesParams(sp)
+        sp.delete('lpage')
       }
       const q = sp.toString()
       router.replace(q ? `?${q}` : '?', { scroll: false })
@@ -75,7 +128,8 @@ export function CustomerDetailClient({
     [router, searchParams]
   )
 
-  const tabCount = salesSummary?.saleCount ?? 0
+  const salesCount = salesSummary?.saleCount ?? 0
+  const quotesCount = quotesSummary?.quoteCount ?? 0
 
   return (
     <div>
@@ -86,6 +140,13 @@ export function CustomerDetailClient({
       >
         {TABS.map((tab) => {
           if (tab.key === 'eladasok' && !canOpenSales) return null
+          if (tab.key === 'lapszabaszat' && !canOpenLapszab) return null
+          const count =
+            tab.key === 'eladasok'
+              ? salesCount
+              : tab.key === 'lapszabaszat'
+                ? quotesCount
+                : 0
           return (
             <button
               key={tab.key}
@@ -101,9 +162,9 @@ export function CustomerDetailClient({
               )}
             >
               {tab.label}
-              {tab.key === 'eladasok' && tabCount > 0 ? (
+              {count > 0 ? (
                 <span className="ml-1.5 tabular-nums opacity-80">
-                  ({tabCount})
+                  ({count})
                 </span>
               ) : null}
             </button>
@@ -113,11 +174,42 @@ export function CustomerDetailClient({
 
       {active === 'adatok' ? (
         <CustomerForm mode="edit" initial={customer} canWrite={canWrite} />
-      ) : sales && salesSummary ? (
+      ) : active === 'eladasok' ? (
+        sales && salesSummary ? (
+          <div className="pb-10">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-[16px] font-semibold text-ink">
+                {customer.name} · értékesítések
+              </h2>
+              <Link
+                href="/ugyfelek"
+                className="text-body text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+              >
+                Vissza a listához
+              </Link>
+            </div>
+            <CustomerSalesList
+              rows={sales.rows}
+              total={sales.total}
+              page={sales.page}
+              limit={sales.limit}
+              q={sales.q}
+              pay={sales.pay}
+              channel={sales.channel}
+              status={sales.status}
+              period={sales.period}
+              summary={salesSummary}
+              canOpenSales={canOpenSales}
+            />
+          </div>
+        ) : (
+          <p className="text-body text-ink-muted">Nem sikerült betölteni.</p>
+        )
+      ) : quotes && quotesSummary ? (
         <div className="pb-10">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-[16px] font-semibold text-ink">
-              {customer.name} · értékesítések
+              {customer.name} · lapszabászat
             </h2>
             <Link
               href="/ugyfelek"
@@ -126,17 +218,17 @@ export function CustomerDetailClient({
               Vissza a listához
             </Link>
           </div>
-          <CustomerSalesList
-            rows={sales.rows}
-            total={sales.total}
-            page={sales.page}
-            limit={sales.limit}
-            q={sales.q}
-            pay={sales.pay}
-            channel={sales.channel}
-            status={sales.status}
-            summary={salesSummary}
-            canOpenSales={canOpenSales}
+          <CustomerQuotesList
+            rows={quotes.rows}
+            total={quotes.total}
+            page={quotes.page}
+            limit={quotes.limit}
+            q={quotes.q}
+            pay={quotes.pay}
+            status={quotes.status}
+            period={quotes.period}
+            summary={quotesSummary}
+            canOpenOpti={canOpenOpti}
           />
         </div>
       ) : (

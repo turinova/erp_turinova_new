@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { CustomerOrderDetailClient } from '@/components/customer-orders/customer-order-detail-client'
 import { getSessionUser } from '@/lib/auth/session'
 import { getCustomerSpecialOrder } from '@/lib/customer-orders/queries'
+import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
 import { listActiveSuppliersForSelect } from '@/lib/suppliers/queries'
 import { createClient } from '@/lib/supabase/server'
 import { listUnits } from '@/lib/units/queries'
@@ -39,10 +40,11 @@ export default async function UgyfelrendelesDetailPage({
   const supabase = await createClient()
   if (!supabase) notFound()
 
-  const [order, suppliers, units] = await Promise.all([
+  const [order, suppliers, units, paymentMethods] = await Promise.all([
     getCustomerSpecialOrder(supabase, user.tenantId, id),
     listActiveSuppliersForSelect(supabase, user.tenantId),
-    listUnits(supabase, user.tenantId)
+    listUnits(supabase, user.tenantId),
+    listActivePaymentMethods(supabase, user.tenantId)
   ])
 
   if (!order) notFound()
@@ -70,6 +72,7 @@ export default async function UgyfelrendelesDetailPage({
       order={order}
       suppliers={supplierOptions}
       units={units}
+      paymentMethods={paymentMethods}
       canWrite={canWrite}
     />
   )

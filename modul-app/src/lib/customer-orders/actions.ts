@@ -36,11 +36,23 @@ import {
   type CsoReadySmsCandidate,
   type SmsSkipReason
 } from '@/lib/sms/types'
+import {
+  isCashPaymentMethodName,
+  isDeferredPaymentMethodName
+} from '@/lib/sales/payment-kind'
+import { hungarianCashRound } from '@/lib/sales/totals'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 import { ensureDefaultWarehouse } from '@/lib/warehouses/queries'
 
 export type CsoActionResult =
-  | { ok: true; id?: string; message?: string }
+  | {
+      ok: true
+      id?: string
+      message?: string
+      /** Átadáskor létrejött értékesítés (első, ha több order). */
+      saleId?: string
+      saleNumber?: string
+    }
   | { ok: false; message: string; fieldErrors?: Record<string, string> }
 
 const LIST_PATH = '/ugyfelrendelesek'
@@ -52,6 +64,7 @@ function revalidateCso(id?: string) {
   revalidatePath(`${LIST_PATH}/varolista`)
   if (id) revalidatePath(`${LIST_PATH}/${id}`)
   revalidatePath('/beszallitoi-rendelesek')
+  revalidatePath('/ertekesitesek')
   revalidatePath('/home')
 }
 
@@ -62,6 +75,7 @@ function revalidateCsoMany(orderIds: string[]) {
     revalidatePath(`${LIST_PATH}/${id}`)
   }
   revalidatePath('/beszallitoi-rendelesek')
+  revalidatePath('/ertekesitesek')
   revalidatePath('/home')
 }
 
@@ -1152,108 +1166,584 @@ export async function markSpecialOrderItemsArrivedAction(input: {
   }
 }
 
+/**
+ * Átadás = értékesítés létrehozása + tételek atadva.
+ * Készlet csak a sale fulfill-nél megy ki (nincs külön CSO stock out).
+ */
 export async function handOverSpecialOrderItemsAction(input: {
   orderId?: string
   itemIds: string[]
+  paymentMethodId: string
 }): Promise<CsoActionResult> {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
   const tenantId = ctx.user.tenantId!
+  const supabase = ctx.supabase
+  const userId = ctx.user.id
   if (!input.itemIds.length) {
     return { ok: false, message: 'Válassz legalább egy tételt.' }
   }
+  const paymentMethodId = input.paymentMethodId?.trim()
+  if (!paymentMethodId) {
+    return { ok: false, message: 'Válassz fizetési módot.' }
+  }
 
-  let q = ctx.supabase
+  const { data: payMethod, error: payErr } = await supabase
+    .from('payment_methods')
+    .select('id, name')
+    .eq('tenant_id', tenantId)
+    .eq('id', paymentMethodId)
+    .eq('active', true)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (payErr || !payMethod) {
+    return { ok: false, message: 'Érvénytelen fizetési mód.' }
+  }
+  const deferred = isDeferredPaymentMethodName(payMethod.name)
+
+  let q = supabase
     .from('customer_special_order_items')
-    .select('id, order_id, name, qty, status, accessory_id, warehouse_id, reserved_qty')
+    .select(
+      `
+      id, order_id, name, qty, status, accessory_id, material_id,
+      linear_material_id, warehouse_id, reserved_qty, unit_price_gross,
+      customer_special_orders!inner (
+        id, order_number, customer_id, customer_name, customer_mobile,
+        deposit_amount, sales_order_id, deleted_at
+      )
+    `
+    )
     .eq('tenant_id', tenantId)
     .in('id', input.itemIds)
     .is('deleted_at', null)
+    .is('customer_special_orders.deleted_at', null)
   if (input.orderId) q = q.eq('order_id', input.orderId)
 
-  const { data: items, error } = await q
-
-  if (error || !items?.length) {
+  const { data: rawItems, error } = await q
+  if (error || !rawItems?.length) {
     return { ok: false, message: 'A tételek nem találhatók.' }
   }
-  if (items.some((it) => it.status !== 'itt_van')) {
-    return { ok: false, message: 'Csak „Itt van” státuszú tételt lehet átadni.' }
+  if (rawItems.some((it) => it.status !== 'itt_van')) {
+    return { ok: false, message: 'Csak „Átvehető” (itt van) tételt lehet átadni.' }
+  }
+  if (
+    rawItems.some(
+      (it) => it.unit_price_gross == null || !Number.isFinite(Number(it.unit_price_gross))
+    )
+  ) {
+    return {
+      ok: false,
+      message: 'Minden átadandó tételnek legyen ára — szerkeszd a hiányzó árakat.'
+    }
   }
 
-  let done = 0
-  const failed: string[] = []
+  type OrderHead = {
+    id: string
+    order_number: string
+    customer_id: string | null
+    customer_name: string
+    customer_mobile: string
+    deposit_amount: number | null
+    sales_order_id: string | null
+  }
 
+  type HandoverItem = {
+    id: string
+    order_id: string
+    name: string
+    qty: number
+    accessory_id: string | null
+    material_id: string | null
+    linear_material_id: string | null
+    warehouse_id: string | null
+    reserved_qty: number | null
+    unit_price_gross: number
+    order: OrderHead
+  }
+
+  const items: HandoverItem[] = []
+  for (const row of rawItems) {
+    const ordRaw = row.customer_special_orders as
+      | OrderHead
+      | OrderHead[]
+      | null
+    const ord = Array.isArray(ordRaw) ? ordRaw[0] : ordRaw
+    if (!ord || (ord as { deleted_at?: string | null }).deleted_at) {
+      return { ok: false, message: 'A rendelés nem található.' }
+    }
+    items.push({
+      id: row.id as string,
+      order_id: row.order_id as string,
+      name: String(row.name),
+      qty: Number(row.qty),
+      accessory_id: (row.accessory_id as string | null) ?? null,
+      material_id: (row.material_id as string | null) ?? null,
+      linear_material_id: (row.linear_material_id as string | null) ?? null,
+      warehouse_id: (row.warehouse_id as string | null) ?? null,
+      reserved_qty:
+        row.reserved_qty != null ? Number(row.reserved_qty) : null,
+      unit_price_gross: Number(row.unit_price_gross),
+      order: {
+        id: ord.id,
+        order_number: ord.order_number,
+        customer_id: ord.customer_id,
+        customer_name: ord.customer_name,
+        customer_mobile: ord.customer_mobile ?? '',
+        deposit_amount: ord.deposit_amount,
+        sales_order_id: ord.sales_order_id
+      }
+    })
+  }
+
+  const byOrder = new Map<string, HandoverItem[]>()
   for (const it of items) {
-    // Előbb státusz (claim), utána készlet — így dupla átadás nem von le kétszer.
-    const { data: claimed } = await ctx.supabase
-      .from('customer_special_order_items')
-      .update({ status: 'atadva', reserved_qty: null, updated_at: nowIso() })
-      .eq('id', it.id)
-      .eq('tenant_id', tenantId)
-      .eq('status', 'itt_van')
-      .select('id')
-    if (!claimed?.length) continue
+    const list = byOrder.get(it.order_id) ?? []
+    list.push(it)
+    byOrder.set(it.order_id, list)
+  }
 
-    if (it.accessory_id && it.warehouse_id) {
-      const { data: smNumber, error: numErr } = await ctx.supabase.rpc(
-        'generate_stock_movement_number',
-        { p_tenant_id: tenantId }
+  const defaultWh = await ensureDefaultWarehouse(supabase, tenantId)
+  const createdSales: { saleId: string; saleNumber: string; orderId: string }[] =
+    []
+  const orderIds = [...byOrder.keys()]
+
+  for (const [orderId, orderItems] of byOrder) {
+    const head = orderItems[0]!.order
+    const whIds = [
+      ...new Set(
+        orderItems
+          .map((i) => i.warehouse_id)
+          .filter((id): id is string => Boolean(id))
       )
-      const qty = Math.abs(Number(it.reserved_qty ?? it.qty))
-      const smErr = numErr
-        ? numErr
-        : (
-            await ctx.supabase.from('stock_movements').insert({
-              tenant_id: tenantId,
-              warehouse_id: it.warehouse_id,
-              product_type: 'accessory',
-              accessory_id: it.accessory_id,
-              quantity: qty,
-              movement_type: 'out',
-              source_type: 'customer_special_order',
-              source_id: it.id,
-              note: `Ügyfélrendelés átadás: ${it.name}`,
-              stock_movement_number: smNumber as string,
-              created_by: ctx.user.id
-            })
-          ).error
+    ]
+    if (whIds.length > 1) {
+      return {
+        ok: false,
+        message:
+          'Egy átadáson belül csak egy raktár tételei lehetnek. Válaszd szét raktár szerint.'
+      }
+    }
+    const warehouseId = whIds[0] ?? defaultWh.id
 
-      if (smErr) {
-        console.error('handOver stock', smErr.message)
-        await ctx.supabase
+    // Előleg csak az első sale-nél (ha még nincs link).
+    const { count: priorLinks } = await supabase
+      .from('cso_sale_links')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('customer_special_order_id', orderId)
+    const applyDeposit =
+      !priorLinks &&
+      !head.sales_order_id &&
+      head.deposit_amount != null &&
+      Number(head.deposit_amount) > 0
+    const depositAmt = applyDeposit ? Math.round(Number(head.deposit_amount)) : 0
+
+    const saleItems: Array<Record<string, unknown>> = []
+    const saleFees: Array<Record<string, unknown>> = []
+    const itemIdByKey: Array<{ key: string; csoItemId: string }> = []
+
+    for (const it of orderItems) {
+      const qty = Math.abs(Number(it.reserved_qty ?? it.qty))
+      const price = Math.round(Number(it.unit_price_gross))
+      if (it.accessory_id) {
+        saleItems.push({
+          line_kind: 'product',
+          accessory_id: it.accessory_id,
+          quantity: qty,
+          unit_price_gross: price,
+          discount_percentage: 0,
+          discount_amount: 0
+        })
+        itemIdByKey.push({
+          key: `product:${it.accessory_id}:${qty}:${price}`,
+          csoItemId: it.id
+        })
+      } else if (it.material_id) {
+        saleItems.push({
+          line_kind: 'sheet_material',
+          sheet_material_id: it.material_id,
+          quantity: qty,
+          unit_price_gross: price,
+          discount_percentage: 0,
+          discount_amount: 0
+        })
+        itemIdByKey.push({
+          key: `sheet:${it.material_id}:${qty}:${price}`,
+          csoItemId: it.id
+        })
+      } else if (it.linear_material_id) {
+        saleItems.push({
+          line_kind: 'linear_material',
+          linear_material_id: it.linear_material_id,
+          quantity: qty,
+          unit_price_gross: price,
+          discount_percentage: 0,
+          discount_amount: 0
+        })
+        itemIdByKey.push({
+          key: `linear:${it.linear_material_id}:${qty}:${price}`,
+          csoItemId: it.id
+        })
+      } else {
+        // Nem katalógus: díjsor (nincs stock) — pénz követhető.
+        saleFees.push({
+          fee_type_id: null,
+          name: it.name,
+          quantity: qty,
+          unit_price_gross: price,
+          tax_rate_percent: 27
+        })
+        itemIdByKey.push({ key: `fee:${it.id}`, csoItemId: it.id })
+      }
+    }
+
+    if (!saleItems.length && !saleFees.length) {
+      return { ok: false, message: 'Nincs értékesíthető tétel.' }
+    }
+    // create_sale kötelezően vár legalább 1 termék/anyag sort (díj önmagában nem elég).
+    if (!saleItems.length) {
+      return {
+        ok: false,
+        message:
+          'Átadáshoz kell legalább egy katalógus termék vagy anyag. A szabad szöveges tételeket kapcsold termékhez.'
+      }
+    }
+
+    const noteParts = [
+      `Ügyfélrendelés ${head.order_number} átadás`,
+      head.customer_name ? `· ${head.customer_name}` : '',
+      depositAmt > 0 ? `· előleg beszámítva: ${depositAmt} Ft` : ''
+    ]
+    const note = noteParts.filter(Boolean).join(' ')
+
+    // Claim tételek előbb — dupla kattintás ne hozzon 2 sale-t.
+    const claimedIds: string[] = []
+    for (const it of orderItems) {
+      const { data: claimed } = await supabase
+        .from('customer_special_order_items')
+        .update({
+          status: 'atadva',
+          reserved_qty: null,
+          updated_at: nowIso()
+        })
+        .eq('id', it.id)
+        .eq('tenant_id', tenantId)
+        .eq('status', 'itt_van')
+        .select('id')
+      if (claimed?.length) claimedIds.push(it.id)
+    }
+    if (!claimedIds.length) {
+      return { ok: false, message: CHANGED_MEANWHILE }
+    }
+    if (claimedIds.length !== orderItems.length) {
+      // Részleges claim — rollback claimed
+      for (const id of claimedIds) {
+        const orig = orderItems.find((i) => i.id === id)
+        await supabase
           .from('customer_special_order_items')
           .update({
             status: 'itt_van',
-            reserved_qty: it.reserved_qty ?? it.qty,
+            reserved_qty: orig?.reserved_qty ?? orig?.qty ?? null,
             updated_at: nowIso()
           })
-          .eq('id', it.id)
+          .eq('id', id)
           .eq('tenant_id', tenantId)
-        failed.push(it.name)
-        continue
+      }
+      return {
+        ok: false,
+        message: 'Közben változott egy tétel — frissítsd az oldalt, és próbáld újra.'
       }
     }
-    done += 1
+
+    let customerId = head.customer_id
+
+    let itemsGross = 0
+    for (const it of orderItems) {
+      itemsGross += Math.round(
+        Math.abs(Number(it.reserved_qty ?? it.qty)) *
+          Math.round(Number(it.unit_price_gross))
+      )
+    }
+    const rawDue = Math.max(0, itemsGross - depositAmt)
+    const isCash = isCashPaymentMethodName(payMethod.name)
+    const estimatedDue =
+      isCash && rawDue > 0 ? hungarianCashRound(rawDue) : rawDue
+
+    const rollbackClaim = async () => {
+      for (const id of claimedIds) {
+        const orig = orderItems.find((i) => i.id === id)
+        await supabase
+          .from('customer_special_order_items')
+          .update({
+            status: 'itt_van',
+            reserved_qty: orig?.reserved_qty ?? orig?.qty ?? null,
+            updated_at: nowIso()
+          })
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+      }
+    }
+
+    // create_sale: üres payment + fulfill csak customer_id-val (vendég tiltva).
+    // Due=0 / utalás: ha nincs ügyfél, snapshot név+mobilból biztosítunk egyet.
+    async function ensureCustomerId(): Promise<string | null> {
+      if (customerId) return customerId
+      const name = head.customer_name?.trim()
+      const mobile = head.customer_mobile?.trim()
+      if (!name) return null
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .ilike('name', name)
+        .maybeSingle()
+      if (existing?.id) {
+        customerId = existing.id as string
+        if (mobile) {
+          await supabase
+            .from('customers')
+            .update({ mobile, updated_at: nowIso() })
+            .eq('id', customerId)
+            .eq('tenant_id', tenantId)
+        }
+        await supabase
+          .from('customer_special_orders')
+          .update({ customer_id: customerId, updated_at: nowIso() })
+          .eq('id', orderId)
+          .eq('tenant_id', tenantId)
+        return customerId
+      }
+      const { data: created, error: cErr } = await supabase
+        .from('customers')
+        .insert({
+          tenant_id: tenantId,
+          name,
+          mobile: mobile || null
+        })
+        .select('id')
+        .single()
+      if (cErr || !created) {
+        console.error('handOver ensureCustomer', cErr?.message)
+        return null
+      }
+      customerId = created.id as string
+      await supabase
+        .from('customer_special_orders')
+        .update({ customer_id: customerId, updated_at: nowIso() })
+        .eq('id', orderId)
+        .eq('tenant_id', tenantId)
+      return customerId
+    }
+
+    let pPayments: Array<Record<string, unknown>> = []
+    let fulfillNow = false
+    if (deferred) {
+      const ensured = await ensureCustomerId()
+      if (!ensured) {
+        await rollbackClaim()
+        return {
+          ok: false,
+          message:
+            'Utalásos átadáshoz kell ügyfél (név) a rendelésen — hitel / díjbekérő.'
+        }
+      }
+      pPayments = []
+      fulfillNow = true
+    } else if (estimatedDue <= 0) {
+      // Előleg fedezte — fulfill üres paymenttel; ügyfél kell a create_sale vendég-szabály miatt.
+      const ensured = await ensureCustomerId()
+      if (!ensured) {
+        await rollbackClaim()
+        return {
+          ok: false,
+          message:
+            'Nincs fennmaradó fizetendő — az átadáshoz kell ügyfélnév a rendelésen.'
+        }
+      }
+      pPayments = []
+      fulfillNow = true
+    } else {
+      pPayments = [
+        {
+          payment_method_id: paymentMethodId,
+          amount: estimatedDue,
+          provider_ref: null
+        }
+      ]
+    }
+
+    const { data: saleData, error: saleErr } = await supabase.rpc(
+      'create_sale',
+      {
+        p_warehouse_id: warehouseId,
+        p_customer_id: customerId,
+        p_channel: 'manual',
+        p_note: note,
+        p_items: saleItems,
+        p_fees: saleFees,
+        p_discount: {
+          percentage: 0,
+          amount: depositAmt
+        },
+        p_payments: pPayments,
+        p_pos_register_id: null,
+        p_fulfill_now: fulfillNow
+      }
+    )
+
+    if (saleErr) {
+      console.error('handOver create_sale', saleErr.message)
+      for (const id of claimedIds) {
+        const orig = orderItems.find((i) => i.id === id)
+        await supabase
+          .from('customer_special_order_items')
+          .update({
+            status: 'itt_van',
+            reserved_qty: orig?.reserved_qty ?? orig?.qty ?? null,
+            updated_at: nowIso()
+          })
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+      }
+      return {
+        ok: false,
+        message: 'Nem sikerült az értékesítést rögzíteni. Próbáld újra.'
+      }
+    }
+
+    const saleResult = saleData as {
+      ok?: boolean
+      id?: string
+      sale_number?: string
+      message?: string
+    }
+    if (!saleResult?.ok || !saleResult.id) {
+      for (const id of claimedIds) {
+        const orig = orderItems.find((i) => i.id === id)
+        await supabase
+          .from('customer_special_order_items')
+          .update({
+            status: 'itt_van',
+            reserved_qty: orig?.reserved_qty ?? orig?.qty ?? null,
+            updated_at: nowIso()
+          })
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+      }
+      return {
+        ok: false,
+        message:
+          saleResult?.message ??
+          'Nem sikerült az értékesítést rögzíteni (készlet / fizetés).'
+      }
+    }
+
+    const saleId = saleResult.id
+    const saleNumber = saleResult.sale_number ?? ''
+
+    await supabase
+      .from('sales_orders')
+      .update({
+        customer_special_order_id: orderId,
+        updated_at: nowIso()
+      })
+      .eq('id', saleId)
+      .eq('tenant_id', tenantId)
+
+    await supabase.from('cso_sale_links').insert({
+      tenant_id: tenantId,
+      customer_special_order_id: orderId,
+      sales_order_id: saleId,
+      created_by: userId
+    })
+
+    await supabase
+      .from('customer_special_orders')
+      .update({
+        sales_order_id: saleId,
+        updated_at: nowIso()
+      })
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+
+    // Tétel-szintű link: accessory/material egyezés sorrendben
+    const { data: saleLines } = await supabase
+      .from('sales_order_items')
+      .select(
+        'id, item_kind, accessory_id, sheet_material_id, linear_material_id, quantity, unit_price_gross'
+      )
+      .eq('sales_order_id', saleId)
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+
+    if (saleLines?.length) {
+      const used = new Set<string>()
+      for (const line of saleLines) {
+        if (line.item_kind === 'fee') continue
+        const match = orderItems.find((it) => {
+          if (used.has(it.id)) return false
+          const qty = Math.abs(Number(it.reserved_qty ?? it.qty))
+          const price = Math.round(Number(it.unit_price_gross))
+          if (Number(line.quantity) !== qty) return false
+          if (Math.round(Number(line.unit_price_gross)) !== price) return false
+          if (
+            line.item_kind === 'product' &&
+            it.accessory_id &&
+            line.accessory_id === it.accessory_id
+          ) {
+            return true
+          }
+          if (
+            line.item_kind === 'sheet_material' &&
+            it.material_id &&
+            line.sheet_material_id === it.material_id
+          ) {
+            return true
+          }
+          if (
+            line.item_kind === 'linear_material' &&
+            it.linear_material_id &&
+            line.linear_material_id === it.linear_material_id
+          ) {
+            return true
+          }
+          return false
+        })
+        if (match) {
+          used.add(match.id)
+          await supabase
+            .from('sales_order_items')
+            .update({ customer_special_order_item_id: match.id })
+            .eq('id', line.id)
+            .eq('tenant_id', tenantId)
+        }
+      }
+    }
+    void itemIdByKey
+
+    createdSales.push({ saleId, saleNumber, orderId })
+    revalidatePath(`/ertekesitesek/${saleId}`)
   }
 
-  const orderIds = [...new Set(items.map((i) => i.order_id as string))]
   revalidateCsoMany(orderIds)
 
-  if (!done && failed.length) {
-    return {
-      ok: false,
-      message: `Nem sikerült a készletből kivezetni: ${failed.join(', ')}.`
-    }
-  }
-  if (!done) return { ok: false, message: CHANGED_MEANWHILE }
+  const first = createdSales[0]
+  const itemCount = items.length
+  const saleLabel =
+    createdSales.length === 1
+      ? first?.saleNumber
+        ? ` Eladás: ${first.saleNumber}.`
+        : ''
+      : ` ${createdSales.length} értékesítés rögzítve.`
 
   return {
     ok: true,
-    id: input.orderId ?? orderIds[0],
-    message: failed.length
-      ? `${done} tétel átadva. Nem sikerült (készlet): ${failed.join(', ')}.`
-      : `${done} tétel átadva.`
+    id: input.orderId ?? first?.orderId ?? orderIds[0],
+    saleId: first?.saleId,
+    saleNumber: first?.saleNumber,
+    message: `${itemCount} tétel átadva.${saleLabel}`
   }
 }
 

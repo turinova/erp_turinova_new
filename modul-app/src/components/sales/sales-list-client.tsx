@@ -265,13 +265,24 @@ export function SalesListClient({
                 onClick={() => router.push(`/ertekesitesek/${row.id}`)}
               >
                 <DataTableCell>
-                  <Link
-                    href={`/ertekesitesek/${row.id}`}
-                    className="font-medium text-ink underline-offset-2 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {row.sale_number}
-                  </Link>
+                  <div className="flex flex-col gap-0.5">
+                    <Link
+                      href={`/ertekesitesek/${row.id}`}
+                      className="font-medium text-ink underline-offset-2 hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {row.sale_number}
+                    </Link>
+                    {row.customer_special_order_id && row.cso_order_number ? (
+                      <Link
+                        href={`/ugyfelrendelesek/${row.customer_special_order_id}`}
+                        className="text-hint text-ink-secondary underline-offset-2 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        UR · {row.cso_order_number}
+                      </Link>
+                    ) : null}
+                  </div>
                 </DataTableCell>
                 <DataTableCell className="text-ink-secondary">
                   {row.customer_name ?? 'Vendég'}

@@ -13,6 +13,7 @@ import {
   type CsoWaitingView
 } from '@/lib/customer-orders/types'
 import { createClient } from '@/lib/supabase/server'
+import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
 import { listSuppliers } from '@/lib/suppliers/queries'
 
 export const metadata: Metadata = {
@@ -65,32 +66,35 @@ export default async function CsoWaitingListPage({
   let limit = 25
   let counts = EMPTY_COUNTS
   let suppliers: { id: string; name: string }[] = []
+  let paymentMethods: { id: string; name: string }[] = []
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        const [listResult, countResult, supplierResult] = await Promise.all([
-          listCustomerSpecialOrderItemsWaiting(supabase, {
-            tenantId: user.tenantId,
-            view,
-            q: q || undefined,
-            supplierId: supplierId || undefined,
-            notifyPending,
-            page,
-            limit: 25
-          }),
-          countCustomerSpecialOrderItemsWaiting(
-            supabase,
-            user.tenantId,
-            supplierId || undefined
-          ),
-          listSuppliers(supabase, {
-            tenantId: user.tenantId,
-            status: 'active',
-            limit: 200
-          })
-        ])
+        const [listResult, countResult, supplierResult, paymentResult] =
+          await Promise.all([
+            listCustomerSpecialOrderItemsWaiting(supabase, {
+              tenantId: user.tenantId,
+              view,
+              q: q || undefined,
+              supplierId: supplierId || undefined,
+              notifyPending,
+              page,
+              limit: 25
+            }),
+            countCustomerSpecialOrderItemsWaiting(
+              supabase,
+              user.tenantId,
+              supplierId || undefined
+            ),
+            listSuppliers(supabase, {
+              tenantId: user.tenantId,
+              status: 'active',
+              limit: 200
+            }),
+            listActivePaymentMethods(supabase, user.tenantId)
+          ])
         rows = listResult.rows
         total = listResult.total
         limit = listResult.limit
@@ -99,6 +103,7 @@ export default async function CsoWaitingListPage({
           id: s.id,
           name: s.name
         }))
+        paymentMethods = paymentResult
       } catch (err) {
         loadError =
           err instanceof Error
@@ -138,6 +143,7 @@ export default async function CsoWaitingListPage({
         initialSupplierId={supplierId}
         initialNotifyPending={notifyPending}
         suppliers={suppliers}
+        paymentMethods={paymentMethods}
       />
     </Suspense>
   )

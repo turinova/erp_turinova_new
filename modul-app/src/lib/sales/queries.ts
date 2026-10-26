@@ -23,6 +23,9 @@ export type SaleListItem = {
   pos_shift_id: string | null
   /** Lista: számlázási állapot (peer bizonylatokból). */
   invoice_status: SaleInvoiceListStatus
+  /** Ügyfélrendelés-átadásból jött. */
+  customer_special_order_id: string | null
+  cso_order_number: string | null
 }
 
 export type SaleItemRow = {
@@ -130,6 +133,8 @@ export type SaleDetail = {
   pos_shift_id: string | null
   /** null = nincs műszak; true = nyitott (fizetés edit OK) */
   pos_shift_open: boolean | null
+  customer_special_order_id: string | null
+  cso_order_number: string | null
   items: SaleItemRow[]
   payments: SalePaymentRow[]
   /** Append-only fizetési tevékenység (legújabb elöl a UI-n). */
@@ -153,6 +158,10 @@ export type SaleListParams = {
    * Explicit status szűrő felülírja.
    */
   excludeTerminalStatuses?: boolean
+  /** Inclusive lower bound on created_at (ISO). */
+  createdFrom?: string
+  /** Inclusive upper bound on created_at (ISO). */
+  createdTo?: string
   page?: number
   limit?: number
 }
@@ -198,7 +207,9 @@ export async function listSales(
       created_at,
       created_by_label_snapshot,
       pos_shift_id,
+      customer_special_order_id,
       warehouses ( name ),
+      customer_special_orders!sales_orders_customer_special_order_id_fkey ( order_number ),
       sales_order_items ( id, deleted_at )
     `,
       { count: 'exact' }
@@ -230,6 +241,12 @@ export async function listSales(
   if (params.customerId) {
     query = query.eq('customer_id', params.customerId)
   }
+  if (params.createdFrom) {
+    query = query.gte('created_at', params.createdFrom)
+  }
+  if (params.createdTo) {
+    query = query.lte('created_at', params.createdTo)
+  }
 
   const { data, error, count } = await query
   if (error) {
@@ -243,6 +260,11 @@ export async function listSales(
       | { name: string }[]
       | null
     const whOne = Array.isArray(wh) ? wh[0] : wh
+    const csoRaw = row.customer_special_orders as
+      | { order_number?: string }
+      | { order_number?: string }[]
+      | null
+    const csoOne = Array.isArray(csoRaw) ? csoRaw[0] : csoRaw
     const items = (row.sales_order_items ?? []) as {
       id: string
       deleted_at: string | null
@@ -261,7 +283,10 @@ export async function listSales(
       created_at: row.created_at,
       created_by_label: row.created_by_label_snapshot ?? null,
       pos_shift_id: row.pos_shift_id ?? null,
-      invoice_status: 'none'
+      invoice_status: 'none',
+      customer_special_order_id:
+        (row.customer_special_order_id as string | null) ?? null,
+      cso_order_number: csoOne?.order_number ?? null
     }
   })
 
@@ -400,7 +425,9 @@ export async function getSale(
       created_at,
       created_by_label_snapshot,
       pos_shift_id,
+      customer_special_order_id,
       warehouses ( name ),
+      customer_special_orders!sales_orders_customer_special_order_id_fkey ( id, order_number ),
       sales_order_items (
         id,
         item_kind,
@@ -775,6 +802,21 @@ export async function getSale(
         .created_by_label_snapshot ?? null,
     pos_shift_id: posShiftId,
     pos_shift_open: posShiftOpen,
+    customer_special_order_id:
+      (data as { customer_special_order_id?: string | null })
+        .customer_special_order_id ?? null,
+    cso_order_number: (() => {
+      const csoRaw = (
+        data as {
+          customer_special_orders?:
+            | { order_number?: string }
+            | { order_number?: string }[]
+            | null
+        }
+      ).customer_special_orders
+      const csoOne = Array.isArray(csoRaw) ? csoRaw[0] : csoRaw
+      return csoOne?.order_number ?? null
+    })(),
     items,
     payments,
     payment_events: paymentEvents,

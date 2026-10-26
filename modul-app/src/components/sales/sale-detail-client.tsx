@@ -487,6 +487,32 @@ export function SaleDetailClient({
         </div>
       ) : null}
 
+      {detail.customer_special_order_id && detail.cso_order_number ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-subtle px-3 py-2.5">
+          <p className="text-body text-ink-secondary">
+            Ügyfélrendelés-átadásból:{' '}
+            <Link
+              href={`/ugyfelrendelesek/${detail.customer_special_order_id}`}
+              className="font-medium text-ink underline-offset-2 hover:underline"
+            >
+              {detail.cso_order_number}
+            </Link>
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              router.push(
+                `/ugyfelrendelesek/${detail.customer_special_order_id}`
+              )
+            }
+          >
+            Rendelés megnyitása
+          </Button>
+        </div>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2">
         <InfoCard title="Ügyfél">
           {isGuest ? (

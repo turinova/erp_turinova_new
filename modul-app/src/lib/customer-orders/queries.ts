@@ -18,7 +18,12 @@ import {
 
 const LIST_LIMIT = 25
 
-type PoJoin = { po_number: string; status: string }
+type PoJoin = {
+  po_number: string
+  status: string
+  created_at?: string | null
+  ordered_at?: string | null
+}
 type PoItemJoin = {
   purchase_order_id: string
   quantity?: number | null
@@ -160,6 +165,12 @@ export async function getCustomerSpecialOrder(
       `
       id, order_number, customer_id, customer_name, customer_mobile,
       status, deposit_amount, promised_date, sms_sent_at, note, created_at,
+      sales_order_id,
+      sales_orders!customer_special_orders_sales_order_id_fkey ( id, sale_number ),
+      cso_sale_links (
+        sales_order_id,
+        sales_orders ( id, sale_number )
+      ),
       customer_special_order_items (
         id, name, qty, unit_shortform, unit_price_gross, sku_snapshot,
         accessory_id, supplier_id, status,
@@ -170,7 +181,7 @@ export async function getCustomerSpecialOrder(
         purchase_order_items (
           purchase_order_id,
           quantity,
-          purchase_orders ( po_number, status )
+          purchase_orders ( po_number, status, created_at, ordered_at )
         )
       )
     `
@@ -232,6 +243,8 @@ export async function getCustomerSpecialOrder(
         poId: poi?.purchase_order_id ?? null,
         poNumber: po?.po_number ?? null,
         poStatus: (po?.status as CsoPoStatus | undefined) ?? null,
+        poCreatedAt: (po?.created_at as string | null | undefined) ?? null,
+        poOrderedAt: (po?.ordered_at as string | null | undefined) ?? null,
         poQtyOrdered:
           poi?.quantity != null ? Number(poi.quantity) : null,
         poQtyReceived: null as number | null,
@@ -257,6 +270,54 @@ export async function getCustomerSpecialOrder(
       : null
   }))
 
+  const primarySaleRaw = data.sales_orders as
+    | { id?: string; sale_number?: string }
+    | { id?: string; sale_number?: string }[]
+    | null
+  const primarySale = Array.isArray(primarySaleRaw)
+    ? (primarySaleRaw[0] ?? null)
+    : primarySaleRaw
+
+  const linkRows = (data.cso_sale_links ?? []) as Array<{
+    sales_order_id?: string
+    sales_orders?:
+      | { id?: string; sale_number?: string }
+      | { id?: string; sale_number?: string }[]
+      | null
+  }>
+  const saleLinks = linkRows
+    .map((row) => {
+      const so = Array.isArray(row.sales_orders)
+        ? (row.sales_orders[0] ?? null)
+        : (row.sales_orders ?? null)
+      const salesOrderId = so?.id ?? row.sales_order_id
+      const saleNumber = so?.sale_number
+      if (!salesOrderId || !saleNumber) return null
+      return { salesOrderId, saleNumber }
+    })
+    .filter((x): x is { salesOrderId: string; saleNumber: string } =>
+      Boolean(x)
+    )
+
+  // Ha van shortcut de nincs a links-ben (régi / race), told be.
+  const salesOrderId =
+    (data.sales_order_id as string | null) ??
+    primarySale?.id ??
+    saleLinks[0]?.salesOrderId ??
+    null
+  const saleNumber =
+    primarySale?.sale_number ??
+    saleLinks.find((l) => l.salesOrderId === salesOrderId)?.saleNumber ??
+    saleLinks[0]?.saleNumber ??
+    null
+  if (
+    salesOrderId &&
+    saleNumber &&
+    !saleLinks.some((l) => l.salesOrderId === salesOrderId)
+  ) {
+    saleLinks.unshift({ salesOrderId, saleNumber })
+  }
+
   return {
     id: data.id as string,
     orderNumber: data.order_number as string,
@@ -270,7 +331,10 @@ export async function getCustomerSpecialOrder(
     smsSentAt: (data.sms_sent_at as string | null) ?? null,
     note: (data.note as string | null) ?? null,
     createdAt: data.created_at as string,
-    items
+    items,
+    salesOrderId,
+    saleNumber,
+    saleLinks
   }
 }
 
@@ -312,6 +376,7 @@ function mapWaitingRow(r: Record<string, unknown>): CsoWaitingListItem {
     depositAmount:
       order?.deposit_amount != null ? Number(order.deposit_amount) : null,
     smsSentAt: (order?.sms_sent_at as string | null) ?? null,
+    orderNote: (order?.note as string | null) ?? null,
     name: String(r.name),
     qty: Number(r.qty),
     unitShortform: String(r.unit_shortform ?? 'db'),
@@ -340,7 +405,7 @@ const WAITING_ITEM_SELECT = `
   accessory_id, supplier_id, status, purchase_order_item_id, note, created_at,
   customer_special_orders!inner (
     id, order_number, customer_name, customer_mobile,
-    deposit_amount, sms_sent_at, deleted_at
+    deposit_amount, sms_sent_at, note, deleted_at
   ),
   suppliers ( name ),
   accessories ( sku ),

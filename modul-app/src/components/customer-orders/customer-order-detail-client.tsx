@@ -2,8 +2,15 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
-import { Pencil, Plus, RotateCcw } from 'lucide-react'
+import { useMemo, useState, useTransition, type ReactNode } from 'react'
+import {
+  ExternalLink,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RotateCcw,
+  StickyNote
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -14,7 +21,6 @@ import {
 import { CsoLeadOrderDialog } from '@/components/customer-orders/cso-lead-order-dialog'
 import { CsoReadySmsDialog } from '@/components/customer-orders/cso-ready-sms-dialog'
 import {
-  CsoTotalsFooter,
   csoHasPrice,
   csoLineGross,
   csoQtyByUnit
@@ -45,6 +51,8 @@ import {
 } from '@/lib/customer-orders/actions'
 import {
   CSO_STATUS_LABEL,
+  buildCsoJourney,
+  csoBlockedCtaLabel,
   csoComputeNextStep,
   csoItemProgressLabel,
   csoPartialArriveHint,
@@ -55,7 +63,13 @@ import {
   type CustomerSpecialOrderDetail,
   type CustomerSpecialOrderItemRow
 } from '@/lib/customer-orders/types'
+import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
+import {
+  isCashPaymentMethodName,
+  isDeferredPaymentMethodName
+} from '@/lib/sales/payment-kind'
 import { formatMoneyFt } from '@/lib/sales/parse'
+import { hungarianCashRound } from '@/lib/sales/totals'
 import type { CsoReadySmsCandidate } from '@/lib/sms/types'
 import type { SupplierSelectOption } from '@/lib/suppliers/queries'
 import type { UnitListItem } from '@/lib/units/queries'
@@ -65,15 +79,9 @@ type Props = {
   order: CustomerSpecialOrderDetail
   suppliers: SupplierSelectOption[]
   units: UnitListItem[]
+  paymentMethods: PaymentMethodOption[]
   canWrite: boolean
 }
-
-const PROGRESS_ORDER: CsoItemStatus[] = [
-  'felveve',
-  'rendelve',
-  'itt_van',
-  'atadva'
-]
 
 const dateFmt = new Intl.DateTimeFormat('hu-HU', {
   timeZone: 'Europe/Budapest',
@@ -116,6 +124,23 @@ type Confirm =
   | { kind: 'hide-order' }
   | null
 
+function InfoCard({
+  title,
+  children
+}: {
+  title: string
+  children: ReactNode
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface p-3">
+      <h3 className="mb-1.5 text-body font-semibold text-ink">{title}</h3>
+      <div className="space-y-0.5 text-body leading-relaxed text-ink-secondary">
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function cancelLineOutcome(item: CustomerSpecialOrderItemRow) {
   if (item.status === 'felveve') return '→ lemondva'
   if (item.status === 'itt_van') {
@@ -138,6 +163,7 @@ export function CustomerOrderDetailClient({
   order,
   suppliers,
   units,
+  paymentMethods,
   canWrite
 }: Props) {
   const router = useRouter()
@@ -152,10 +178,18 @@ export function CustomerOrderDetailClient({
   const [smsOpen, setSmsOpen] = useState(false)
   const [smsCandidates, setSmsCandidates] = useState<CsoReadySmsCandidate[]>([])
   const [smsLoading, setSmsLoading] = useState(false)
+  const [paymentMethodId, setPaymentMethodId] = useState(() => {
+    const cash = paymentMethods.find((p) => isCashPaymentMethodName(p.name))
+    return cash?.id ?? paymentMethods[0]?.id ?? ''
+  })
 
   const supplierOptions = useMemo(
     () => suppliers.map((s) => ({ value: s.id, label: s.name })),
     [suppliers]
+  )
+  const paymentOptions = useMemo(
+    () => paymentMethods.map((p) => ({ value: p.id, label: p.name })),
+    [paymentMethods]
   )
   const unitOptions = useMemo(
     () => units.map((u) => ({ value: u.shortform, label: u.shortform, hint: u.name })),
@@ -168,10 +202,6 @@ export function CustomerOrderDetailClient({
   const cancelledItems = order.items.filter((i) => i.status === 'torolve')
   const editItem = order.items.find((i) => i.id === editItemId) ?? null
 
-  const counts = PROGRESS_ORDER.map((s) => ({
-    status: s,
-    n: activeItems.filter((i) => i.status === s).length
-  }))
   const readyCount = activeItems.filter((i) => i.status === 'itt_van').length
 
   const selectable = activeItems.filter((i) => i.status !== 'atadva')
@@ -186,13 +216,22 @@ export function CustomerOrderDetailClient({
     (i) => i.status === 'felveve' || i.status === 'rendelve'
   )
 
-  const primary: 'handover' | 'lead' | null =
-    handoverIds.length > 0 ? 'handover' : leadIds.length > 0 ? 'lead' : null
-
   const nextStep = csoComputeNextStep({
-    items: activeItems,
+    items: activeItems.map((i) => ({
+      id: i.id,
+      status: i.status,
+      accessoryId: i.accessoryId,
+      supplierId: i.supplierId,
+      poId: i.poId,
+      poNumber: i.poNumber,
+      poStatus: i.poStatus
+    })),
     smsSentAt: order.smsSentAt
   })
+
+  const alsoLeadIds = activeItems
+    .filter((i) => i.status === 'felveve' && !leadBlocker(i))
+    .map((i) => i.id)
 
   const onWayWithPo = activeItems.filter(
     (i) => i.status === 'rendelve' && i.poId
@@ -213,7 +252,11 @@ export function CustomerOrderDetailClient({
   ).length
 
   function run(
-    fn: () => Promise<{ ok: boolean; message?: string }>,
+    fn: () => Promise<{
+      ok: boolean
+      message?: string
+      saleId?: string
+    }>,
     after?: () => void
   ) {
     startTransition(async () => {
@@ -222,7 +265,14 @@ export function CustomerOrderDetailClient({
         toast.error(res.message ?? 'Hiba történt.')
         return
       }
-      toast.success(res.message ?? 'Kész.')
+      toast.success(res.message ?? 'Kész.', {
+        action: res.saleId
+          ? {
+              label: 'Eladás',
+              onClick: () => router.push(`/ertekesitesek/${res.saleId}`)
+            }
+          : undefined
+      })
       setSelected(new Set())
       after?.()
       router.refresh()
@@ -293,20 +343,78 @@ export function CustomerOrderDetailClient({
     (s, i) => s + csoLineGross(i.unitPriceGross, i.qty),
     0
   )
-  const firstHandover = !activeItems.some((i) => i.status === 'atadva')
+  const firstHandover = order.saleLinks.length === 0
   const deposit = order.depositAmount ?? 0
   const depositApplied = firstHandover && deposit > 0
-  const handoverDue = depositApplied
+  const handoverDueRaw = depositApplied
     ? Math.max(0, handoverGross - deposit)
     : handoverGross
+  const payMethodName =
+    paymentMethods.find((p) => p.id === paymentMethodId)?.name ?? ''
+  const payDeferred = isDeferredPaymentMethodName(payMethodName)
+  const handoverDue =
+    !payDeferred && isCashPaymentMethodName(payMethodName) && handoverDueRaw > 0
+      ? hungarianCashRound(handoverDueRaw)
+      : handoverDueRaw
+  const legacyAtadvaWithoutSale =
+    activeItems.some((i) => i.status === 'atadva') &&
+    order.saleLinks.length === 0
+
+  /** ⋯ menü: csak SMS újraküldés (első küldés a Következő sávban). */
+  const showSmsResendInMenu =
+    canWrite && readyCount > 0 && order.smsSentAt != null
+
+  const showOverflowMenu =
+    canWrite &&
+    (showSmsResendInMenu || fullyCancelled || canCancelOrder)
+
+  const headerMeta = [
+    order.customerName,
+    `Felvéve: ${fmtDateTime(order.createdAt)}`
+  ]
+
+  const nextStepUrgent =
+    nextStep?.kind === 'handover' || nextStep?.kind === 'blocked'
+
+  const statusCounts = {
+    felveve: activeItems.filter((i) => i.status === 'felveve').length,
+    rendelve: activeItems.filter((i) => i.status === 'rendelve').length,
+    itt_van: activeItems.filter((i) => i.status === 'itt_van').length,
+    atadva: activeItems.filter((i) => i.status === 'atadva').length
+  }
+  const statusSummary = [
+    statusCounts.felveve ? `${statusCounts.felveve} felvéve` : null,
+    statusCounts.rendelve ? `${statusCounts.rendelve} beszerzés` : null,
+    statusCounts.itt_van ? `${statusCounts.itt_van} átvehető` : null,
+    statusCounts.atadva ? `${statusCounts.atadva} átadva` : null
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  const journey = buildCsoJourney({
+    createdAt: order.createdAt,
+    smsSentAt: order.smsSentAt,
+    items: activeItems
+  })
+
+  const depositDue =
+    order.depositAmount != null && order.depositAmount > 0
+      ? Math.max(0, totalGross - order.depositAmount)
+      : null
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <PageHeader
         title={order.orderNumber}
-        description={`${order.customerName} · ${order.customerMobile}`}
+        description={headerMeta.join(' · ')}
         actions={
           <div className="flex flex-wrap items-center gap-1.5">
+            <StatusBadge
+              tone={csoStatusTone(order.status as CsoItemStatus)}
+              variant="soft"
+            >
+              {CSO_STATUS_LABEL[order.status as CsoItemStatus]}
+            </StatusBadge>
             <Button
               type="button"
               variant="secondary"
@@ -314,164 +422,194 @@ export function CustomerOrderDetailClient({
             >
               Vissza a listához
             </Button>
-            {canWrite && primary === 'handover' ? (
-              <Button
-                type="button"
-                loading={pending}
-                onClick={() => setConfirm({ kind: 'handover', ids: handoverIds })}
-              >
-                Átadás a vevőnek ({handoverIds.length})
-              </Button>
-            ) : null}
-            {canWrite && primary === 'lead' ? (
-              <Button
-                type="button"
-                loading={pending}
-                onClick={() => openLead(leadIds)}
-              >
-                Beszállítói listára ({leadIds.length})
-              </Button>
+            {showOverflowMenu ? (
+              <details className="relative">
+                <summary
+                  className={cn(
+                    buttonVariants({ variant: 'ghost', size: 'md' }),
+                    'list-none [&::-webkit-details-marker]:hidden'
+                  )}
+                >
+                  <MoreHorizontal className="size-3.5" aria-hidden />
+                  Műveletek
+                </summary>
+                <div
+                  role="menu"
+                  className="absolute right-0 z-40 mt-1 w-56 rounded-md border border-border bg-surface p-1 shadow-elev2"
+                >
+                  {showSmsResendInMenu ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body text-ink hover:bg-subtle"
+                      disabled={pending}
+                      onClick={openSmsDialog}
+                    >
+                      SMS újraküldése
+                    </button>
+                  ) : null}
+                  {fullyCancelled ? (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body text-ink hover:bg-subtle"
+                        disabled={pending}
+                        onClick={() =>
+                          run(() =>
+                            restoreSpecialOrderAction({ orderId: order.id })
+                          )
+                        }
+                      >
+                        <RotateCcw className="size-3.5" aria-hidden />
+                        Összes tétel visszaállítása
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body text-ink hover:bg-subtle"
+                        disabled={pending}
+                        onClick={() => setConfirm({ kind: 'hide-order' })}
+                      >
+                        Elrejtés a listáról
+                      </button>
+                    </>
+                  ) : null}
+                  {canCancelOrder ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body text-danger-ink hover:bg-subtle"
+                      disabled={pending}
+                      onClick={() => setConfirm({ kind: 'cancel-order' })}
+                    >
+                      Rendelés lemondása
+                    </button>
+                  ) : null}
+                </div>
+              </details>
             ) : null}
           </div>
         }
       />
 
       {canWrite && nextStep && nextStep.kind !== 'done' ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border-strong bg-surface px-3 py-2.5">
-          <div className="min-w-0">
-            <p className="text-label font-semibold text-ink">{nextStep.title}</p>
-            <p className="mt-0.5 text-body text-ink-secondary">{nextStep.body}</p>
+        <div
+          className={cn(
+            'space-y-2 rounded-md border px-3 py-3',
+            nextStepUrgent
+              ? 'border-warning/35 bg-warning-soft'
+              : 'border-border bg-subtle'
+          )}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p
+                className={cn(
+                  'text-label font-semibold',
+                  nextStepUrgent ? 'text-warning-ink' : 'text-ink'
+                )}
+              >
+                {nextStep.title}
+              </p>
+              <p
+                className={cn(
+                  'mt-0.5 text-body',
+                  nextStepUrgent ? 'text-warning-ink' : 'text-ink-secondary'
+                )}
+              >
+                {nextStep.body}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-1.5">
+              {nextStep.href ? (
+                <Link
+                  href={nextStep.href}
+                  className={buttonVariants({ size: 'md' })}
+                >
+                  {nextStep.hrefLabel ?? 'Megnyitás'}
+                </Link>
+              ) : null}
+              {nextStep.kind === 'lead' && leadIds.length > 0 ? (
+                <Button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => openLead(leadIds)}
+                >
+                  Beszállítói listára ({leadIds.length})
+                </Button>
+              ) : null}
+              {nextStep.kind === 'handover' && handoverIds.length > 0 ? (
+                <>
+                  <Button
+                    type="button"
+                    disabled={pending}
+                    onClick={() =>
+                      setConfirm({ kind: 'handover', ids: handoverIds })
+                    }
+                  >
+                    Átadás a vevőnek ({handoverIds.length})
+                  </Button>
+                  {nextStep.suggestSms ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={pending}
+                      onClick={openSmsDialog}
+                    >
+                      SMS (opcionális)
+                    </Button>
+                  ) : null}
+                </>
+              ) : null}
+              {nextStep.kind === 'blocked' && nextStep.focusItemId ? (
+                <Button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setEditItemId(nextStep.focusItemId!)}
+                >
+                  {csoBlockedCtaLabel(activeItems)}
+                </Button>
+              ) : null}
+              {nextStep.kind === 'receive' && !nextStep.href ? (
+                <Link
+                  href="/beerkezesek"
+                  className={buttonVariants({ size: 'md' })}
+                >
+                  Beérkezések
+                </Link>
+              ) : null}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {nextStep.href ? (
-              <Link
-                href={nextStep.href}
-                className={buttonVariants({ variant: 'secondary', size: 'sm' })}
-              >
-                {nextStep.hrefLabel ?? 'Megnyitás'}
-              </Link>
-            ) : null}
-            {nextStep.kind === 'sms' ? (
-              <Button
-                type="button"
-                size="sm"
-                disabled={pending}
-                onClick={openSmsDialog}
-              >
-                SMS az ügyfélnek
-              </Button>
-            ) : null}
-            {nextStep.kind === 'lead' && leadIds.length > 0 ? (
-              <Button
-                type="button"
-                size="sm"
-                disabled={pending}
-                onClick={() => openLead(leadIds)}
-              >
-                Beszállítói listára
-              </Button>
-            ) : null}
-            {nextStep.kind === 'handover' && handoverIds.length > 0 ? (
-              <Button
-                type="button"
-                size="sm"
-                disabled={pending}
-                onClick={() =>
-                  setConfirm({ kind: 'handover', ids: handoverIds })
-                }
-              >
-                Átadás a vevőnek
-              </Button>
-            ) : null}
-            {nextStep.kind === 'receive' ? (
-              <Link
-                href="/beerkezesek"
-                className={buttonVariants({ variant: 'secondary', size: 'sm' })}
-              >
-                Beérkezések
-              </Link>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {canWrite && !primary && nextStep?.kind === 'receive' ? (
-        <p className="text-hint text-ink-secondary">
-          Kézi „Megérkezett” csak kivétel (pl. polcról / nincs PO). Preferált:{' '}
-          <Link
-            href={
-              orderedPoLink?.poId
-                ? `/beszallitoi-rendelesek/${orderedPoLink.poId}`
-                : '/beerkezesek'
-            }
-            className="font-medium text-ink underline-offset-2 hover:underline"
-          >
-            bevételezés
-          </Link>
-          .
-        </p>
-      ) : null}
-
-      {/* Haladás + fejadatok */}
-      <section className="space-y-2 rounded-md border border-border bg-surface px-3 py-2.5">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <span className="text-label text-ink-secondary">Haladás</span>
-          {counts.map(({ status, n }) => (
-            <span
-              key={status}
-              className={cn('inline-flex items-center gap-1.5', n === 0 && 'opacity-50')}
-            >
-              <StatusBadge tone={csoStatusTone(status)}>
-                {CSO_STATUS_LABEL[status]}
-              </StatusBadge>
-              <span className="text-body font-semibold tabular-nums text-ink">
-                {n}
-              </span>
-            </span>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <dl className="flex flex-wrap gap-x-5 gap-y-1 text-body">
-            <div className="flex gap-1.5">
-              <dt className="text-ink-secondary">Felvéve:</dt>
-              <dd className="text-ink">{fmtDateTime(order.createdAt)}</dd>
-            </div>
-            <div className="flex gap-1.5">
-              <dt className="text-ink-secondary">Ígért nap:</dt>
-              <dd className="text-ink">
-                {order.promisedDate ? fmtDate(order.promisedDate) : '—'}
-              </dd>
-            </div>
-            <div className="flex gap-1.5">
-              <dt className="text-ink-secondary">Előleg:</dt>
-              <dd className="tabular-nums text-ink">
-                {order.depositAmount != null
-                  ? `${formatMoneyFt(order.depositAmount)} Ft`
-                  : '—'}
-              </dd>
-            </div>
-            <div className="flex gap-1.5">
-              <dt className="text-ink-secondary">SMS:</dt>
-              <dd className="text-ink">
-                {order.smsSentAt
-                  ? `elküldve ${fmtDateTime(order.smsSentAt)}`
-                  : readyCount > 0
-                    ? 'még nem ment ki'
-                    : 'küldés a rendelésről / várólistáról'}
-              </dd>
-            </div>
-            {order.note ? (
-              <div className="flex gap-1.5">
-                <dt className="text-ink-secondary">Megjegyzés:</dt>
-                <dd className="whitespace-normal break-words text-ink">{order.note}</dd>
-              </div>
-            ) : null}
-          </dl>
-          {canWrite ? (
-            <div className="flex flex-wrap gap-1.5">
-              {canWrite &&
-              readyCount > 0 &&
-              (order.smsSentAt || nextStep?.kind !== 'sms') ? (
+          {nextStep.also ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+              <p className="text-body text-ink-secondary">
+                Emellett: {nextStep.also.label}
+              </p>
+              {nextStep.also.kind === 'lead' && alsoLeadIds.length > 0 ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => openLead(alsoLeadIds)}
+                >
+                  Listára ({alsoLeadIds.length})
+                </Button>
+              ) : null}
+              {nextStep.also.kind === 'blocked' &&
+              nextStep.also.focusItemId ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => setEditItemId(nextStep.also!.focusItemId!)}
+                >
+                  Pótold a hiányt
+                </Button>
+              ) : null}
+              {nextStep.also.kind === 'sms' ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -479,73 +617,150 @@ export function CustomerOrderDetailClient({
                   disabled={pending}
                   onClick={openSmsDialog}
                 >
-                  {order.smsSentAt ? 'SMS újraküldése' : 'SMS az ügyfélnek'}
+                  SMS küldése
                 </Button>
-              ) : null}
-              {canWrite ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setHeaderOpen(true)}
-                >
-                  <Pencil className="size-3.5" aria-hidden />
-                  Adatok szerkesztése
-                </Button>
-              ) : null}
-              {canCancelOrder ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-danger-ink hover:text-danger-ink"
-                  disabled={pending}
-                  onClick={() => setConfirm({ kind: 'cancel-order' })}
-                >
-                  Rendelés lemondása
-                </Button>
-              ) : null}
-              {fullyCancelled ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() =>
-                      run(() => restoreSpecialOrderAction({ orderId: order.id }))
-                    }
-                  >
-                    <RotateCcw className="size-3.5" aria-hidden />
-                    Összes tétel visszaállítása
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => setConfirm({ kind: 'hide-order' })}
-                  >
-                    Elrejtés a listáról
-                  </Button>
-                </>
               ) : null}
             </div>
           ) : null}
         </div>
-      </section>
+      ) : null}
 
-      {/* Kijelölési sáv */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <InfoCard title="Ügyfél">
+          <p className="font-medium text-ink">{order.customerName}</p>
+          <p>
+            <a
+              href={`tel:${order.customerMobile.replace(/\s/g, '')}`}
+              className="text-ink underline-offset-2 hover:underline"
+            >
+              {order.customerMobile}
+            </a>
+          </p>
+          {order.customerId ? (
+            <div className="pt-2">
+              <Link
+                href={`/ugyfelek/${order.customerId}`}
+                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-hint font-medium text-ink-secondary no-underline hover:bg-subtle hover:text-ink"
+              >
+                <ExternalLink className="size-3.5" aria-hidden />
+                Ügyfél megnyitása
+              </Link>
+            </div>
+          ) : null}
+          {canWrite ? (
+            <div className="pt-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setHeaderOpen(true)}
+              >
+                <Pencil className="size-3.5" aria-hidden />
+                Adatok szerkesztése
+              </Button>
+            </div>
+          ) : null}
+        </InfoCard>
+
+        <InfoCard title="Rendelés">
+          <p>
+            <span className="text-ink-muted">Felvéve: </span>
+            <span className="text-ink">{fmtDateTime(order.createdAt)}</span>
+          </p>
+          <p>
+            <span className="text-ink-muted">Ígért nap: </span>
+            <span className="text-ink">
+              {order.promisedDate ? fmtDate(order.promisedDate) : '—'}
+            </span>
+          </p>
+          <p>
+            <span className="text-ink-muted">Előleg: </span>
+            <span className="tabular-nums text-ink">
+              {order.depositAmount != null
+                ? `${formatMoneyFt(order.depositAmount)} Ft`
+                : '—'}
+            </span>
+          </p>
+          <p>
+            <span className="text-ink-muted">SMS: </span>
+            <span className="text-ink">
+              {order.smsSentAt
+                ? `elküldve ${fmtDateTime(order.smsSentAt)}`
+                : readyCount > 0
+                  ? 'még nem ment ki'
+                  : '—'}
+            </span>
+          </p>
+          {order.saleLinks.length > 0 ? (
+            <p className="pt-1">
+              <span className="text-ink-muted">Eladás: </span>
+              {order.saleLinks.map((link, idx) => (
+                <span key={link.salesOrderId}>
+                  {idx > 0 ? ', ' : null}
+                  <Link
+                    href={`/ertekesitesek/${link.salesOrderId}`}
+                    className="font-medium text-ink underline-offset-2 hover:underline"
+                  >
+                    {link.saleNumber}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          ) : null}
+          {statusSummary ? (
+            <p className="pt-1 text-hint text-ink-muted">{statusSummary}</p>
+          ) : null}
+        </InfoCard>
+      </div>
+
+      {legacyAtadvaWithoutSale ? (
+        <div className="rounded-md border border-warning/35 bg-warning-soft px-3 py-2.5">
+          <p className="text-body text-warning-ink">
+            Van átadott tétel, de nincs hozzákötött értékesítés (régi átadás). Az
+            új átadások automatikusan eladást hoznak létre.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
+              Megjegyzés
+            </p>
+            {order.note?.trim() ? (
+              <p className="mt-1 whitespace-pre-wrap break-words text-body text-ink-secondary">
+                {order.note.trim()}
+              </p>
+            ) : (
+              <p className="mt-1 text-body text-ink-muted">Nincs megjegyzés.</p>
+            )}
+          </div>
+          {canWrite ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setHeaderOpen(true)}
+            >
+              <Pencil className="size-3.5" aria-hidden />
+              Szerkesztés
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
       {canWrite && selectedItems.length > 0 ? (
         <div
-          className="flex flex-wrap items-center gap-2 rounded-md border border-border-strong bg-subtle px-3 py-2"
+          className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-subtle px-3 py-2"
           role="region"
           aria-label="Kijelölt tételek műveletei"
         >
           <span className="text-body font-semibold text-ink">
             {selectedItems.length} tétel kijelölve
           </span>
-          {primary !== 'lead' && leadIds.length > 0 ? (
+          {leadIds.length > 0 && nextStep?.kind !== 'lead' ? (
             <Button
               type="button"
               variant="secondary"
@@ -554,6 +769,17 @@ export function CustomerOrderDetailClient({
               onClick={() => openLead(leadIds)}
             >
               Beszállítói listára ({leadIds.length})
+            </Button>
+          ) : null}
+          {handoverIds.length > 0 && nextStep?.kind !== 'handover' ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={pending}
+              onClick={() => setConfirm({ kind: 'handover', ids: handoverIds })}
+            >
+              Átadás ({handoverIds.length})
             </Button>
           ) : null}
           {arriveCandidates.length > 0 ? (
@@ -586,278 +812,404 @@ export function CustomerOrderDetailClient({
         </div>
       ) : null}
 
-      <DataTable>
-        <DataTableHead>
-          <DataTableRow>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        <div className="space-y-3">
+          <div className="overflow-hidden rounded-md border border-border bg-surface">
             {canWrite ? (
-              <DataTableHeaderCell className="w-8">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  disabled={selectable.length === 0}
-                  onChange={() =>
-                    setSelected(
-                      allSelected ? new Set() : new Set(selectable.map((i) => i.id))
-                    )
-                  }
-                  aria-label="Összes tétel kijelölése"
-                  className="size-3.5 accent-[var(--color-primary,#18181B)]"
-                />
-              </DataTableHeaderCell>
-            ) : null}
-            <DataTableHeaderCell>Termék</DataTableHeaderCell>
-            <DataTableHeaderCell>Beszállító</DataTableHeaderCell>
-            <DataTableHeaderCell className="text-right">Menny.</DataTableHeaderCell>
-            <DataTableHeaderCell className="text-right">Bruttó / egys.</DataTableHeaderCell>
-            <DataTableHeaderCell className="text-right">Sor bruttó</DataTableHeaderCell>
-            <DataTableHeaderCell>Státusz</DataTableHeaderCell>
-            {canWrite ? (
-              <DataTableHeaderCell className="text-right">Művelet</DataTableHeaderCell>
-            ) : null}
-          </DataTableRow>
-        </DataTableHead>
-        <DataTableBody>
-          {activeItems.length === 0 ? (
-            <DataTableRow>
-              <DataTableCell colSpan={canWrite ? 8 : 6} className="py-6 text-ink-secondary">
-                Nincs aktív tétel.
-              </DataTableCell>
-            </DataTableRow>
-          ) : null}
-          {activeItems.map((item) => {
-            const blocker = leadBlocker(item)
-            const hasPrice = csoHasPrice(item.unitPriceGross)
-            return (
-              <DataTableRow key={item.id} className="align-top">
-                {canWrite ? (
-                  <DataTableCell className="pt-3 align-top">
-                    {item.status !== 'atadva' ? (
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                <p className="text-body font-semibold text-ink">Tételek</p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setAddOpen(true)}
+                >
+                  <Plus className="size-3.5" aria-hidden />
+                  Tétel hozzáadása
+                </Button>
+              </div>
+            ) : (
+              <div className="border-b border-border px-3 py-2">
+                <p className="text-body font-semibold text-ink">Tételek</p>
+              </div>
+            )}
+            <DataTable>
+              <DataTableHead>
+                <DataTableRow>
+                  {canWrite ? (
+                    <DataTableHeaderCell className="w-8">
                       <input
                         type="checkbox"
-                        checked={selected.has(item.id)}
-                        onChange={() => toggle(item.id)}
-                        aria-label={`${item.name} kijelölése`}
+                        checked={allSelected}
+                        disabled={selectable.length === 0}
+                        onChange={() =>
+                          setSelected(
+                            allSelected
+                              ? new Set()
+                              : new Set(selectable.map((i) => i.id))
+                          )
+                        }
+                        aria-label="Összes tétel kijelölése"
                         className="size-3.5 accent-[var(--color-primary,#18181B)]"
                       />
-                    ) : null}
-                  </DataTableCell>
-                ) : null}
-                <DataTableCell className="py-2 align-top">
-                  <div className="min-w-[14rem] max-w-md space-y-0.5">
-                    <p className="whitespace-normal break-words text-[14px] font-semibold leading-snug text-ink">
-                      {item.name}
-                    </p>
-                    <p className="whitespace-normal break-all text-body text-ink-secondary">
-                      <span className="font-mono">{item.sku || 'nincs SKU'}</span>
-                      {item.accessoryId ? ' · Katalógus' : ' · Szabad tétel'}
-                    </p>
-                    {item.poId && item.poNumber ? (
-                      <p className="text-body text-ink-secondary">
-                        Beszállítói rendelés:{' '}
-                        <Link
-                          href={`/beszallitoi-rendelesek/${item.poId}`}
-                          className="font-medium text-ink underline underline-offset-2"
-                        >
-                          {csoPoLinkLabel(item.poNumber, item.poStatus)}
-                        </Link>
-                      </p>
-                    ) : null}
-                    {(() => {
-                      const hint = csoPartialArriveHint({
-                        status: item.status,
-                        qty: item.qty,
-                        unitShortform: item.unitShortform,
-                        poQtyOrdered: item.poQtyOrdered,
-                        poQtyReceived: item.poQtyReceived
-                      })
-                      return hint ? (
-                        <p className="text-body font-medium text-warning-ink">
-                          {hint}
-                        </p>
-                      ) : null
-                    })()}
-                    {item.status === 'itt_van' && item.reservedQty != null ? (
-                      <p className="text-body text-success-ink">
-                        Foglalva a vevőnek: {fmtQty(item.reservedQty)} {item.unitShortform}
-                      </p>
-                    ) : null}
-                    {blocker ? (
-                      <p className="text-body font-medium text-warning-ink">{blocker}</p>
-                    ) : null}
-                    {item.note ? (
-                      <p className="whitespace-normal break-words text-body text-ink-secondary">
-                        Megjegyzés: {item.note}
-                      </p>
-                    ) : null}
-                  </div>
-                </DataTableCell>
-                <DataTableCell className="min-w-[10rem] py-2 align-top">
-                  {canWrite && item.status === 'felveve' ? (
-                    <MenuSelect
-                      id={`cso-item-supplier-${item.id}`}
-                      value={item.supplierId ?? ''}
-                      onChange={(v) =>
-                        run(() =>
-                          updateSpecialOrderItemAction({
-                            orderId: order.id,
-                            itemId: item.id,
-                            patch: { supplierId: v || null }
-                          })
-                        )
-                      }
-                      allowEmpty
-                      emptyLabel="Nincs beszállító"
-                      placeholder="Válassz beszállítót"
-                      searchable={suppliers.length > 8}
-                      options={supplierOptions}
-                      disabled={pending}
-                      wrap
-                      triggerClassName={cn(
-                        item.accessoryId && !item.supplierId && 'border-warning text-warning-ink'
-                      )}
-                    />
-                  ) : (
-                    <span className="block pt-1 text-body text-ink">
-                      {item.supplierName ?? '—'}
-                    </span>
-                  )}
-                </DataTableCell>
-                <DataTableCell className="whitespace-nowrap pt-2.5 text-right align-top tabular-nums">
-                  {fmtQty(item.qty)} {item.unitShortform}
-                </DataTableCell>
-                <DataTableCell className="whitespace-nowrap pt-2.5 text-right align-top tabular-nums">
-                  {hasPrice ? (
-                    `${formatMoneyFt(item.unitPriceGross ?? 0)} Ft`
-                  ) : (
-                    <span className="font-semibold text-warning-ink">Ár kell</span>
-                  )}
-                </DataTableCell>
-                <DataTableCell className="whitespace-nowrap pt-2.5 text-right align-top text-[15px] font-semibold tabular-nums text-ink">
-                  {hasPrice
-                    ? `${formatMoneyFt(csoLineGross(item.unitPriceGross, item.qty))} Ft`
-                    : '—'}
-                </DataTableCell>
-                <DataTableCell className="pt-2.5 align-top">
-                  <StatusBadge tone={csoStatusTone(item.status)}>
-                    {csoItemProgressLabel(item.status, item.poStatus)}
-                  </StatusBadge>
-                  {item.status === 'rendelve' ? (
-                    <p className="mt-1 max-w-[9rem] text-hint text-ink-secondary">
-                      Bevételezéskor automatikusan „Itt van”.
-                    </p>
+                    </DataTableHeaderCell>
                   ) : null}
-                </DataTableCell>
-                {canWrite ? (
-                  <DataTableCell className="py-2 text-right align-top">
-                    <div className="flex flex-wrap justify-end gap-1.5">
-                      {item.status === 'felveve' && !blocker ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          disabled={pending}
-                          onClick={() => openLead([item.id])}
-                        >
-                          Megrendel
-                        </Button>
+                  <DataTableHeaderCell>Termék</DataTableHeaderCell>
+                  <DataTableHeaderCell className="text-right">
+                    Menny.
+                  </DataTableHeaderCell>
+                  <DataTableHeaderCell className="text-right">
+                    Bruttó / eg.
+                  </DataTableHeaderCell>
+                  <DataTableHeaderCell className="text-right">
+                    Sor
+                  </DataTableHeaderCell>
+                  <DataTableHeaderCell>Állapot</DataTableHeaderCell>
+                  {canWrite ? (
+                    <DataTableHeaderCell className="w-28 text-right">
+                      <span className="sr-only">Művelet</span>
+                    </DataTableHeaderCell>
+                  ) : null}
+                </DataTableRow>
+              </DataTableHead>
+              <DataTableBody>
+                {activeItems.length === 0 ? (
+                  <DataTableRow>
+                    <DataTableCell
+                      colSpan={canWrite ? 7 : 5}
+                      className="py-6 text-ink-secondary"
+                    >
+                      Nincs aktív tétel.
+                    </DataTableCell>
+                  </DataTableRow>
+                ) : null}
+                {activeItems.map((item) => {
+                  const blocker = leadBlocker(item)
+                  const hasPrice = csoHasPrice(item.unitPriceGross)
+                  const needSupplier =
+                    canWrite &&
+                    item.status === 'felveve' &&
+                    Boolean(item.accessoryId) &&
+                    !item.supplierId
+                  const partialHint = csoPartialArriveHint({
+                    status: item.status,
+                    qty: item.qty,
+                    unitShortform: item.unitShortform,
+                    poQtyOrdered: item.poQtyOrdered,
+                    poQtyReceived: item.poQtyReceived
+                  })
+                  return (
+                    <DataTableRow key={item.id} className="align-top">
+                      {canWrite ? (
+                        <DataTableCell className="pt-3 align-top">
+                          {item.status !== 'atadva' ? (
+                            <input
+                              type="checkbox"
+                              checked={selected.has(item.id)}
+                              onChange={() => toggle(item.id)}
+                              aria-label={`${item.name} kijelölése`}
+                              className="size-3.5 accent-[var(--color-primary,#18181B)]"
+                            />
+                          ) : null}
+                        </DataTableCell>
                       ) : null}
-                      {item.status === 'itt_van' ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          disabled={pending}
-                          onClick={() => setConfirm({ kind: 'handover', ids: [item.id] })}
-                        >
-                          Átadás
-                        </Button>
+                      <DataTableCell className="py-2 align-top">
+                        <div className="min-w-[12rem] max-w-lg space-y-0.5">
+                          <p className="whitespace-normal break-words text-[14px] font-semibold leading-snug text-ink">
+                            {item.name}
+                          </p>
+                          <p className="text-body text-ink-secondary">
+                            {item.sku ? (
+                              <span className="font-mono">{item.sku}</span>
+                            ) : (
+                              <span className="text-ink-muted">nincs SKU</span>
+                            )}
+                            {item.supplierName ? (
+                              <>
+                                {' · '}
+                                <span>{item.supplierName}</span>
+                              </>
+                            ) : null}
+                          </p>
+                          {item.poId && item.poNumber ? (
+                            <p className="text-body text-ink-secondary">
+                              <Link
+                                href={`/beszallitoi-rendelesek/${item.poId}`}
+                                className="font-medium text-ink underline-offset-2 hover:underline"
+                              >
+                                {csoPoLinkLabel(item.poNumber, item.poStatus)}
+                              </Link>
+                            </p>
+                          ) : null}
+                          {needSupplier ? (
+                            <div className="max-w-xs pt-1">
+                              <MenuSelect
+                                id={`cso-item-supplier-${item.id}`}
+                                value={item.supplierId ?? ''}
+                                onChange={(v) =>
+                                  run(() =>
+                                    updateSpecialOrderItemAction({
+                                      orderId: order.id,
+                                      itemId: item.id,
+                                      patch: { supplierId: v || null }
+                                    })
+                                  )
+                                }
+                                allowEmpty
+                                emptyLabel="Nincs beszállító"
+                                placeholder="Válassz beszállítót"
+                                searchable={suppliers.length > 8}
+                                options={supplierOptions}
+                                disabled={pending}
+                                wrap
+                                triggerClassName="border-warning text-warning-ink"
+                              />
+                            </div>
+                          ) : null}
+                          {blocker && !needSupplier ? (
+                            <p className="text-body font-medium text-warning-ink">
+                              {blocker}
+                            </p>
+                          ) : null}
+                          {partialHint ? (
+                            <p className="text-body font-medium text-warning-ink">
+                              {partialHint}
+                            </p>
+                          ) : null}
+                          {item.status === 'itt_van' &&
+                          item.reservedQty != null ? (
+                            <p className="text-hint text-success-ink">
+                              Foglalva: {fmtQty(item.reservedQty)}{' '}
+                              {item.unitShortform}
+                            </p>
+                          ) : null}
+                          {item.note?.trim() ? (
+                            <p className="flex items-start gap-1 whitespace-normal break-words text-body text-ink-secondary">
+                              <StickyNote
+                                className="mt-0.5 size-3 shrink-0 text-ink-muted"
+                                aria-hidden
+                              />
+                              <span>{item.note.trim()}</span>
+                            </p>
+                          ) : null}
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell className="whitespace-nowrap pt-2.5 text-right align-top tabular-nums text-body">
+                        {fmtQty(item.qty)} {item.unitShortform}
+                      </DataTableCell>
+                      <DataTableCell className="whitespace-nowrap pt-2.5 text-right align-top tabular-nums text-body">
+                        {hasPrice ? (
+                          `${formatMoneyFt(item.unitPriceGross ?? 0)} Ft`
+                        ) : (
+                          <span className="font-semibold text-warning-ink">
+                            Ár kell
+                          </span>
+                        )}
+                      </DataTableCell>
+                      <DataTableCell className="whitespace-nowrap pt-2.5 text-right align-top tabular-nums">
+                        {hasPrice ? (
+                          <span className="font-semibold text-ink">
+                            {formatMoneyFt(
+                              csoLineGross(item.unitPriceGross, item.qty)
+                            )}{' '}
+                            Ft
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </DataTableCell>
+                      <DataTableCell className="pt-2.5 align-top">
+                        <StatusBadge tone={csoStatusTone(item.status)}>
+                          {csoItemProgressLabel(item.status, item.poStatus)}
+                        </StatusBadge>
+                      </DataTableCell>
+                      {canWrite ? (
+                        <DataTableCell className="py-2 text-right align-top">
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {item.status === 'felveve' && !blocker ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                disabled={pending}
+                                onClick={() => openLead([item.id])}
+                              >
+                                Listára
+                              </Button>
+                            ) : null}
+                            {item.status === 'itt_van' ? (
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                disabled={pending}
+                                onClick={() =>
+                                  setConfirm({
+                                    kind: 'handover',
+                                    ids: [item.id]
+                                  })
+                                }
+                              >
+                                Átadás
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditItemId(item.id)}
+                              aria-label={`${item.name} szerkesztése`}
+                            >
+                              <Pencil className="size-3.5" aria-hidden />
+                            </Button>
+                          </div>
+                        </DataTableCell>
                       ) : null}
+                    </DataTableRow>
+                  )
+                })}
+              </DataTableBody>
+            </DataTable>
+          </div>
+
+          {cancelledItems.length > 0 ? (
+            <details className="rounded-md border border-border bg-surface">
+              <summary className="cursor-pointer px-3 py-2 text-body font-medium text-ink-secondary">
+                {cancelledItems.length} lemondott tétel
+              </summary>
+              <ul className="divide-y divide-border border-t border-border">
+                {cancelledItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="whitespace-normal break-words text-body font-semibold text-ink-secondary line-through">
+                        {item.name}
+                      </p>
+                      <p className="text-body text-ink-secondary">
+                        <span className="font-mono">
+                          {item.sku || 'nincs SKU'}
+                        </span>{' '}
+                        · {fmtQty(item.qty)} {item.unitShortform}
+                      </p>
+                    </div>
+                    {canWrite ? (
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => setEditItemId(item.id)}
-                        aria-label={`${item.name} szerkesztése`}
+                        disabled={pending}
+                        onClick={() =>
+                          run(() =>
+                            restoreSpecialOrderItemAction({
+                              orderId: order.id,
+                              itemId: item.id
+                            })
+                          )
+                        }
                       >
-                        <Pencil className="size-3.5" aria-hidden />
-                        Szerkesztés
+                        <RotateCcw className="size-3.5" aria-hidden />
+                        Visszaállítás
                       </Button>
-                    </div>
-                  </DataTableCell>
-                ) : null}
-              </DataTableRow>
-            )
-          })}
-        </DataTableBody>
-      </DataTable>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
 
-      <div className="overflow-hidden rounded-md border border-border">
-        {canWrite ? (
-          <div className="border-b border-border bg-surface px-3 py-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setAddOpen(true)}
-            >
-              <Plus className="size-3.5" aria-hidden />
-              Tétel hozzáadása
-            </Button>
+        <aside className="space-y-3">
+          <div className="rounded-md border border-border bg-surface p-3">
+            <h3 className="mb-2 text-body font-semibold text-ink">Összegzés</h3>
+            <p className="text-body text-ink-secondary">
+              <span className="font-semibold tabular-nums text-ink">
+                {activeItems.length}
+              </span>{' '}
+              tétel
+              {csoQtyByUnit(activeItems).length > 0 ? (
+                <span>
+                  {' '}
+                  ·{' '}
+                  {csoQtyByUnit(activeItems)
+                    .map((q) => `${fmtQty(q.qty)} ${q.unit}`)
+                    .join(' + ')}
+                </span>
+              ) : null}
+            </p>
+            <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-right text-body">
+              <dt className="text-left text-ink-secondary">Összesen (bruttó)</dt>
+              <dd className="font-semibold tabular-nums text-ink">
+                {formatMoneyFt(totalGross)} Ft
+              </dd>
+              {order.depositAmount != null && order.depositAmount > 0 ? (
+                <>
+                  <dt className="text-left text-ink-secondary">Előleg</dt>
+                  <dd className="tabular-nums text-ink">
+                    −{formatMoneyFt(order.depositAmount)} Ft
+                  </dd>
+                  <dt className="text-left font-semibold text-ink">
+                    Átvételkor fizet
+                  </dt>
+                  <dd className="font-semibold tabular-nums text-ink">
+                    {formatMoneyFt(depositDue ?? 0)} Ft
+                  </dd>
+                </>
+              ) : null}
+            </dl>
+            {missingPriceCount > 0 ? (
+              <p className="mt-2 text-body font-semibold text-warning-ink">
+                {missingPriceCount} tételnél hiányzik az ár.
+              </p>
+            ) : null}
+            <p className="mt-2 text-hint text-ink-muted">
+              Az árak bruttók (ÁFA-val).
+            </p>
           </div>
-        ) : null}
-        <CsoTotalsFooter
-          itemCount={activeItems.length}
-          qtyByUnit={csoQtyByUnit(activeItems)}
-          totalGross={totalGross}
-          deposit={order.depositAmount}
-          missingPriceCount={missingPriceCount}
-        />
-      </div>
 
-      {cancelledItems.length > 0 ? (
-        <details className="rounded-md border border-border bg-surface">
-          <summary className="cursor-pointer px-3 py-2 text-body font-medium text-ink-secondary">
-            {cancelledItems.length} lemondott tétel
-          </summary>
-          <ul className="divide-y divide-border border-t border-border">
-            {cancelledItems.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="whitespace-normal break-words text-body font-semibold text-ink-secondary line-through">
-                    {item.name}
-                  </p>
-                  <p className="text-body text-ink-secondary">
-                    <span className="font-mono">{item.sku || 'nincs SKU'}</span> ·{' '}
-                    {fmtQty(item.qty)} {item.unitShortform}
-                  </p>
-                </div>
-                {canWrite ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() =>
-                      run(() =>
-                        restoreSpecialOrderItemAction({
-                          orderId: order.id,
-                          itemId: item.id
-                        })
-                      )
-                    }
-                  >
-                    <RotateCcw className="size-3.5" aria-hidden />
-                    Visszaállítás
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+          <div className="rounded-md border border-border bg-surface p-3">
+            <h3 className="mb-2 text-body font-semibold text-ink">
+              Rendelés útja
+            </h3>
+            <ol className="space-y-2">
+              {journey.map((step) => (
+                <li key={step.key} className="flex gap-2.5">
+                  <span
+                    className={cn(
+                      'mt-1.5 size-2 shrink-0 rounded-full',
+                      step.done ? 'bg-ink' : 'bg-border'
+                    )}
+                    aria-hidden
+                  />
+                  <div className="min-w-0">
+                    <p
+                      className={cn(
+                        'text-body',
+                        step.done
+                          ? 'font-medium text-ink'
+                          : 'text-ink-muted'
+                      )}
+                    >
+                      {step.label}
+                    </p>
+                    {step.at ? (
+                      <p className="text-hint text-ink-secondary">
+                        {fmtDateTime(step.at)}
+                      </p>
+                    ) : step.done ? null : (
+                      <p className="text-hint text-ink-muted">még nem</p>
+                    )}
+                    {step.hint ? (
+                      <p className="text-hint text-ink-muted">{step.hint}</p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </aside>
+      </div>
 
       <CsoHeaderEditDialog open={headerOpen} onOpenChange={setHeaderOpen} order={order} />
 
@@ -949,15 +1301,34 @@ export function CustomerOrderDetailClient({
           if (!o) setConfirm(null)
         }}
         variant="primary"
-        title={`Átadod a vevőnek? (${handoverItems.length} tétel)`}
-        description="A tételek „Átadva” lesznek, a készletből kivezetjük. Fizetés a pulton (POS / készpénz)."
-        confirmLabel="Átadás"
+        title={`Átadás + értékesítés (${handoverItems.length} tétel)`}
+        description="Létrejön egy értékesítés, a készlet egyszer jön le, a tételek „Átadva” lesznek."
+        confirmLabel={
+          payDeferred
+            ? 'Átadás (utalás / hitel)'
+            : handoverDue > 0
+              ? `Átadás és fizetés (${formatMoneyFt(handoverDue)} Ft)`
+              : 'Átadás (előleg fedezte)'
+        }
         loading={pending}
         onConfirm={() => {
           if (confirm?.kind !== 'handover') return
+          if (!paymentMethodId) {
+            toast.error('Válassz fizetési módot.')
+            return
+          }
+          if (handoverItems.some((i) => !csoHasPrice(i.unitPriceGross))) {
+            toast.error('Minden tételnek legyen ára.')
+            return
+          }
           const ids = confirm.ids
           run(
-            () => handOverSpecialOrderItemsAction({ orderId: order.id, itemIds: ids }),
+            () =>
+              handOverSpecialOrderItemsAction({
+                orderId: order.id,
+                itemIds: ids,
+                paymentMethodId
+              }),
             () => setConfirm(null)
           )
         }}
@@ -989,30 +1360,48 @@ export function CustomerOrderDetailClient({
                 <dd className="tabular-nums text-ink">−{formatMoneyFt(deposit)} Ft</dd>
               </>
             ) : null}
-            <dt className="font-semibold text-ink">Fizetendő most</dt>
+            <dt className="font-semibold text-ink">
+              {payDeferred ? 'Fizetendő (később)' : 'Fizetendő most'}
+            </dt>
             <dd className="text-[18px] font-semibold tabular-nums text-ink">
               {formatMoneyFt(handoverDue)} Ft
             </dd>
           </dl>
+          {paymentOptions.length > 0 ? (
+            <div className="space-y-1">
+              <p className="text-hint font-medium text-ink-secondary">
+                Fizetési mód
+              </p>
+              <MenuSelect
+                value={paymentMethodId}
+                onChange={setPaymentMethodId}
+                options={paymentOptions}
+                placeholder="Válassz…"
+                aria-label="Fizetési mód"
+              />
+              {payDeferred ? (
+                <p className="text-hint text-ink-secondary">
+                  Utalás: az áru átadva, az eladás fizetetlen marad (díjbekérő az
+                  értékesítésen).
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-body font-semibold text-warning-ink">
+              Nincs aktív fizetési mód — állíts be a törzsadatokban.
+            </p>
+          )}
           <ul className="space-y-1 rounded-md border border-border bg-subtle px-2.5 py-2 text-body text-ink">
-            <li>✓ Áru átadva a vevőnek</li>
-            <li>
-              ✓ Fizetés beszedve
-              {handoverDue > 0
-                ? ` (${formatMoneyFt(handoverDue)} Ft)`
-                : ' (nincs fennmaradó)'}
-            </li>
+            <li>✓ Értékesítés létrejön (megjelenik az Értékesítéseknél)</li>
+            <li>✓ Készlet egyszer csökken</li>
+            <li>✓ Tételek „Átadva”</li>
             {depositApplied ? (
               <li>✓ Előleg beszámítva ({formatMoneyFt(deposit)} Ft)</li>
             ) : null}
-            <li className="text-ink-secondary">
-              Nyugta / számla: POS vagy Értékesítések — ez a képernyő csak az átadást
-              rögzíti.
-            </li>
           </ul>
           {handoverItems.some((i) => !csoHasPrice(i.unitPriceGross)) ? (
             <p className="text-body font-semibold text-warning-ink">
-              Van tétel ár nélkül — az összeg nem teljes.
+              Van tétel ár nélkül — előbb add meg az árat.
             </p>
           ) : null}
         </div>

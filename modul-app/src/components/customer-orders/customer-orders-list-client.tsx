@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useTransition } from 'react'
-import { ClipboardList, Plus, Search } from 'lucide-react'
+import { useEffect, useState, useTransition } from 'react'
+import { ClipboardList, Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
@@ -19,6 +19,7 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { cancelSpecialOrderAction } from '@/lib/customer-orders/actions'
 import {
   CSO_STATUS_LABEL,
@@ -30,6 +31,12 @@ import {
 import { formatMoneyFt } from '@/lib/sales/parse'
 import { cn } from '@/lib/utils'
 
+type ListStatus =
+  | CsoItemStatus
+  | 'all'
+  | 'active'
+type SmsFilter = 'all' | 'sent' | 'pending'
+
 type Props = {
   rows: CustomerSpecialOrderListItem[]
   total: number
@@ -37,11 +44,11 @@ type Props = {
   limit: number
   canWrite: boolean
   initialQ: string
-  initialStatus: string
-  initialSms: 'all' | 'sent' | 'pending'
+  initialStatus: ListStatus
+  initialSms: SmsFilter
 }
 
-const STATUS_CHIPS: { value: string; label: string }[] = [
+const STATUS_OPTIONS: { value: ListStatus; label: string }[] = [
   { value: 'active', label: 'Aktív' },
   { value: 'felveve', label: 'Felvéve' },
   { value: 'rendelve', label: 'Beszerzés' },
@@ -51,11 +58,27 @@ const STATUS_CHIPS: { value: string; label: string }[] = [
   { value: 'all', label: 'Mind' }
 ]
 
-const SMS_CHIPS: { value: 'all' | 'sent' | 'pending'; label: string }[] = [
-  { value: 'all', label: 'SMS: mind' },
+const STATUS_FILTER_LABEL: Record<ListStatus, string> = {
+  active: 'Aktív',
+  felveve: 'Felvéve',
+  rendelve: 'Beszerzés',
+  itt_van: 'Átvehető',
+  atadva: 'Átadva',
+  torolve: 'Törölve',
+  all: 'Mind'
+}
+
+const SMS_OPTIONS: { value: SmsFilter; label: string }[] = [
+  { value: 'all', label: 'Mind' },
   { value: 'pending', label: 'SMS nélkül' },
   { value: 'sent', label: 'SMS elküldve' }
 ]
+
+const SMS_FILTER_LABEL: Record<SmsFilter, string> = {
+  all: 'Mind',
+  pending: 'SMS nélkül',
+  sent: 'SMS elküldve'
+}
 
 const dateFmt = new Intl.DateTimeFormat('hu-HU', {
   timeZone: 'Europe/Budapest',
@@ -113,7 +136,7 @@ export function CustomerOrdersListClient({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [qDraft, setQDraft] = useState(initialQ)
+  const [search, setSearch] = useState(initialQ)
   const [pending, startTransition] = useTransition()
   const [cancelRow, setCancelRow] =
     useState<CustomerSpecialOrderListItem | null>(null)
@@ -121,19 +144,90 @@ export function CustomerOrdersListClient({
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
   const to = Math.min(page * limit, total)
-  const statusValue = initialStatus || 'active'
-  const smsValue = initialSms || 'all'
+  const statusValue: ListStatus = initialStatus || 'active'
+  const smsValue: SmsFilter = initialSms || 'all'
 
-  function pushParams(patch: Record<string, string | null>) {
-    const next = new URLSearchParams(searchParams.toString())
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === null || value === '') next.delete(key)
-      else next.set(key, value)
-    }
-    if (!('page' in patch)) next.delete('page')
-    const qs = next.toString()
+  useEffect(() => {
+    setSearch(initialQ)
+  }, [initialQ])
+
+  function pushParams(next: {
+    q?: string
+    page?: number
+    status?: ListStatus
+    sms?: SmsFilter
+  }) {
+    const sp = new URLSearchParams(searchParams.toString())
+    const q = next.q !== undefined ? next.q : search
+    const p = next.page ?? 1
+    const nextStatus = next.status ?? statusValue
+    const nextSms = next.sms ?? smsValue
+
+    if (q.trim()) sp.set('q', q.trim())
+    else sp.delete('q')
+
+    if (nextStatus && nextStatus !== 'active') sp.set('status', nextStatus)
+    else sp.delete('status')
+
+    if (nextSms && nextSms !== 'all') sp.set('sms', nextSms)
+    else sp.delete('sms')
+
+    if (p > 1) sp.set('page', String(p))
+    else sp.delete('page')
+
+    const qs = sp.toString()
     startTransition(() => {
       router.push(qs ? `${pathname}?${qs}` : pathname)
+    })
+  }
+
+  useEffect(() => {
+    if (search === initialQ) return
+    const t = window.setTimeout(() => {
+      pushParams({ q: search, page: 1 })
+    }, 300)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce only on search text
+  }, [search])
+
+  function clearAllFilters() {
+    setSearch('')
+    pushParams({
+      q: '',
+      status: 'active',
+      sms: 'all',
+      page: 1
+    })
+  }
+
+  const hasFilters =
+    statusValue !== 'active' ||
+    smsValue !== 'all' ||
+    initialQ.trim().length > 0
+
+  const activeChips: { key: string; label: string; clear: () => void }[] = []
+  if (initialQ.trim()) {
+    activeChips.push({
+      key: 'q',
+      label: `Keresés: ${initialQ.trim()}`,
+      clear: () => {
+        setSearch('')
+        pushParams({ q: '', page: 1 })
+      }
+    })
+  }
+  if (statusValue !== 'active') {
+    activeChips.push({
+      key: 'status',
+      label: `Státusz: ${STATUS_FILTER_LABEL[statusValue]}`,
+      clear: () => pushParams({ status: 'active', page: 1 })
+    })
+  }
+  if (smsValue !== 'all') {
+    activeChips.push({
+      key: 'sms',
+      label: `SMS: ${SMS_FILTER_LABEL[smsValue]}`,
+      clear: () => pushParams({ sms: 'all', page: 1 })
     })
   }
 
@@ -181,98 +275,112 @@ export function CustomerOrdersListClient({
         }
       />
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {STATUS_CHIPS.map((chip) => {
-          const active = statusValue === chip.value
-          return (
-            <button
-              key={chip.value}
-              type="button"
-              disabled={pending}
-              onClick={() =>
-                pushParams({
-                  status: chip.value === 'active' ? null : chip.value,
-                  page: null
-                })
-              }
-              className={cn(
-                'inline-flex h-8 items-center rounded-md border px-2.5 text-[13px] transition-colors',
-                active
-                  ? 'border-ink bg-ink text-white'
-                  : 'border-border bg-white text-ink-secondary hover:bg-subtle'
-              )}
-            >
-              {chip.label}
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        {SMS_CHIPS.map((chip) => {
-          const active = smsValue === chip.value
-          return (
-            <button
-              key={chip.value}
-              type="button"
-              disabled={pending}
-              onClick={() =>
-                pushParams({
-                  sms: chip.value === 'all' ? null : chip.value,
-                  page: null
-                })
-              }
-              className={cn(
-                'inline-flex h-8 items-center rounded-md border px-2.5 text-[13px] transition-colors',
-                active
-                  ? chip.value === 'pending'
-                    ? 'border-warning bg-warning-soft text-warning-ink'
-                    : 'border-ink bg-ink text-white'
-                  : 'border-border bg-white text-ink-secondary hover:bg-subtle'
-              )}
-            >
-              {chip.label}
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted" />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
+          <label className="sr-only" htmlFor="cso-list-search">
+            Keresés számra, névre, telefonra
+          </label>
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
+            aria-hidden
+          />
           <Input
-            value={qDraft}
-            onChange={(e) => setQDraft(e.target.value)}
+            id="cso-list-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
-                pushParams({ q: qDraft.trim() || null, page: '1' })
+                e.preventDefault()
+                pushParams({ q: search, page: 1 })
               }
             }}
             placeholder="Szám, név, telefon…"
             className="pl-8"
-            aria-label="Keresés"
           />
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          disabled={pending}
-          onClick={() => pushParams({ q: qDraft.trim() || null, page: '1' })}
-        >
-          Keresés
-        </Button>
+        <p className="shrink-0 text-hint tabular-nums text-ink-muted">
+          {from}–{to} / {total}
+        </p>
       </div>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[9.5rem] flex-1 sm:flex-none sm:w-[11rem]">
+          <label
+            className="mb-1 block text-hint text-ink-muted"
+            htmlFor="cso-list-status"
+          >
+            Státusz
+          </label>
+          <MenuSelect
+            id="cso-list-status"
+            value={statusValue}
+            options={STATUS_OPTIONS}
+            allowEmpty={false}
+            disabled={pending}
+            onChange={(v) =>
+              pushParams({ status: v as ListStatus, page: 1 })
+            }
+          />
+        </div>
+        <div className="min-w-[9.5rem] flex-1 sm:flex-none sm:w-[11rem]">
+          <label
+            className="mb-1 block text-hint text-ink-muted"
+            htmlFor="cso-list-sms"
+          >
+            SMS
+          </label>
+          <MenuSelect
+            id="cso-list-sms"
+            value={smsValue}
+            options={SMS_OPTIONS}
+            allowEmpty={false}
+            disabled={pending}
+            onChange={(v) => pushParams({ sms: v as SmsFilter, page: 1 })}
+          />
+        </div>
+      </div>
+
+      {activeChips.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {activeChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={chip.clear}
+              className="inline-flex h-7 max-w-full items-center gap-1 rounded-md border border-border bg-surface px-2 text-hint text-ink-secondary transition-colors hover:border-ink/20 hover:text-ink"
+              aria-label={`${chip.label} szűrő törlése`}
+            >
+              <span className="truncate">{chip.label}</span>
+              <X className="size-3 shrink-0" aria-hidden />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="h-7 px-1.5 text-hint font-medium text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+          >
+            Összes törlése
+          </button>
+        </div>
+      ) : null}
 
       {rows.length === 0 ? (
         <div className="rounded-md border border-border bg-surface px-4 py-10 text-center">
           <ClipboardList className="mx-auto size-8 text-ink-muted" aria-hidden />
           <p className="mt-3 text-body text-ink-secondary">
-            {statusValue === 'active' && smsValue === 'all'
-              ? 'Nincs aktív ügyfélrendelés.'
-              : 'Nincs találat ezekkel a szűrőkkel.'}
+            {hasFilters
+              ? 'Nincs találat ezekkel a szűrőkkel.'
+              : 'Nincs aktív ügyfélrendelés.'}
           </p>
-          {canWrite && statusValue === 'active' && smsValue === 'all' ? (
+          {hasFilters ? (
+            <button
+              type="button"
+              className="mt-3 text-body font-medium text-ink underline-offset-2 hover:underline"
+              onClick={clearAllFilters}
+            >
+              Szűrők törlése
+            </button>
+          ) : canWrite ? (
             <Link
               href="/ugyfelrendelesek/uj"
               className={cn(
@@ -391,7 +499,7 @@ export function CustomerOrdersListClient({
                 variant="ghost"
                 size="sm"
                 disabled={page <= 1 || pending}
-                onClick={() => pushParams({ page: String(page - 1) })}
+                onClick={() => pushParams({ page: page - 1 })}
               >
                 Előző
               </Button>
@@ -400,7 +508,7 @@ export function CustomerOrdersListClient({
                 variant="ghost"
                 size="sm"
                 disabled={page >= totalPages || pending}
-                onClick={() => pushParams({ page: String(page + 1) })}
+                onClick={() => pushParams({ page: page + 1 })}
               >
                 Következő
               </Button>

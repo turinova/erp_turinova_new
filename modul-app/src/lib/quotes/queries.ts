@@ -164,9 +164,28 @@ export type QuoteDetail = {
 export type QuoteListParams = {
   tenantId: string
   status?: QuoteStatus | 'all'
+  paymentStatus?: PaymentStatus | 'all'
   q?: string
+  /** Ügyfél detail: csak ehhez a customer_id-hoz. */
+  customerId?: string
+  /** Inclusive lower bound on updated_at (ISO). */
+  createdFrom?: string
+  /**
+   * status=all esetén cancelled kihagyása (ügyfél tab default).
+   * Explicit status szűrő felülírja.
+   */
+  excludeCancelled?: boolean
   page?: number
   limit?: number
+}
+
+export type CustomerQuotesSummary = {
+  quoteCount: number
+  draftCount: number
+  orderCount: number
+  totalGross: number
+  /** Σ remaining not_paid+partial (payments alapján). */
+  openDue: number
 }
 
 export type QuoteListResult = {
@@ -213,31 +232,54 @@ export async function listQuotes(
 
   if (params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
+  } else if (params.status === 'all') {
+    if (params.excludeCancelled) {
+      query = query.neq('status', 'cancelled')
+    }
   } else {
+    // Legacy listázók: status nélkül → csak piszkozat
     query = query.eq('status', 'draft')
+  }
+
+  if (params.paymentStatus && params.paymentStatus !== 'all') {
+    query = query.eq('payment_status', params.paymentStatus)
+  }
+
+  if (params.customerId) {
+    query = query.eq('customer_id', params.customerId)
+  }
+
+  if (params.createdFrom) {
+    query = query.gte('updated_at', params.createdFrom)
   }
 
   const q = params.q?.trim()
   if (q) {
     const safe = q.replace(/[%_,]/g, '')
     if (safe) {
-      const { data: customerMatches } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('tenant_id', params.tenantId)
-        .is('deleted_at', null)
-        .ilike('name', `%${safe}%`)
-        .limit(100)
-
-      const customerIds = (customerMatches ?? []).map((c) => c.id)
-      if (customerIds.length > 0) {
+      if (params.customerId) {
         query = query.or(
-          `quote_number.ilike.%${safe}%,project_name.ilike.%${safe}%,customer_id.in.(${customerIds.join(',')})`
+          `quote_number.ilike.%${safe}%,order_number.ilike.%${safe}%,project_name.ilike.%${safe}%`
         )
       } else {
-        query = query.or(
-          `quote_number.ilike.%${safe}%,project_name.ilike.%${safe}%`
-        )
+        const { data: customerMatches } = await supabase
+          .from('customers')
+          .select('id')
+          .eq('tenant_id', params.tenantId)
+          .is('deleted_at', null)
+          .ilike('name', `%${safe}%`)
+          .limit(100)
+
+        const customerIds = (customerMatches ?? []).map((c) => c.id)
+        if (customerIds.length > 0) {
+          query = query.or(
+            `quote_number.ilike.%${safe}%,order_number.ilike.%${safe}%,project_name.ilike.%${safe}%,customer_id.in.(${customerIds.join(',')})`
+          )
+        } else {
+          query = query.or(
+            `quote_number.ilike.%${safe}%,order_number.ilike.%${safe}%,project_name.ilike.%${safe}%`
+          )
+        }
       }
     }
   }
@@ -282,6 +324,106 @@ export async function listQuotes(
   })
 
   return { rows, total: count ?? 0, page, limit }
+}
+
+/**
+ * Ügyfél lapszabászat KPI — szűrőktől független.
+ * Nyitott tartozás: not_paid/partial sorok remaining-je (quote_payments).
+ */
+export async function getCustomerQuotesSummary(
+  supabase: SupabaseClient,
+  params: { tenantId: string; customerId: string }
+): Promise<CustomerQuotesSummary> {
+  const empty: CustomerQuotesSummary = {
+    quoteCount: 0,
+    draftCount: 0,
+    orderCount: 0,
+    totalGross: 0,
+    openDue: 0
+  }
+
+  const { data: quotes, error } = await supabase
+    .from('quotes')
+    .select(
+      'id, status, payment_status, final_total_gross, total_gross, order_number, source, portal_submitted_at'
+    )
+    .eq('tenant_id', params.tenantId)
+    .eq('customer_id', params.customerId)
+    .is('deleted_at', null)
+    .neq('status', 'cancelled')
+    .or('source.neq.portal,portal_submitted_at.not.is.null')
+
+  if (error) {
+    console.error('getCustomerQuotesSummary quotes', error.message)
+    throw new Error('Nem sikerült betölteni az ügyfél lapszabászat összesítőt.')
+  }
+
+  const rows = (quotes ?? []) as {
+    id: string
+    status: string
+    payment_status: string | null
+    final_total_gross: number | null
+    total_gross: number | null
+    order_number: string | null
+  }[]
+
+  if (rows.length === 0) return empty
+
+  const openIds = rows
+    .filter(
+      (r) =>
+        r.payment_status === 'not_paid' || r.payment_status === 'partial'
+    )
+    .map((r) => r.id)
+
+  const paidByQuote = new Map<string, number>()
+  if (openIds.length > 0) {
+    const { data: payments, error: payErr } = await supabase
+      .from('quote_payments')
+      .select('quote_id, amount')
+      .in('quote_id', openIds)
+      .is('deleted_at', null)
+
+    if (payErr) {
+      console.error('getCustomerQuotesSummary payments', payErr.message)
+      throw new Error('Nem sikerült betölteni az ügyfél lapszabászat összesítőt.')
+    }
+
+    for (const p of payments ?? []) {
+      const id = p.quote_id as string
+      const amt = Number(p.amount) || 0
+      paidByQuote.set(id, (paidByQuote.get(id) ?? 0) + amt)
+    }
+  }
+
+  let totalGross = 0
+  let openDue = 0
+  let draftCount = 0
+
+  for (const r of rows) {
+    const gross = Number(r.final_total_gross ?? r.total_gross) || 0
+    totalGross += gross
+    if (r.status === 'draft') draftCount += 1
+    if (
+      r.payment_status === 'not_paid' ||
+      r.payment_status === 'partial'
+    ) {
+      const paid = paidByQuote.get(r.id) ?? 0
+      openDue += Math.max(0, gross - paid)
+    }
+  }
+
+  const orderCount = rows.filter(
+    (r) => Boolean(r.order_number) || r.status !== 'draft'
+  ).length
+
+  return {
+    quoteCount: rows.length,
+    draftCount,
+    orderCount,
+    totalGross: Math.round(totalGross),
+    openDue: Math.round(openDue)
+  }
 }
 
 export async function getQuoteDetail(

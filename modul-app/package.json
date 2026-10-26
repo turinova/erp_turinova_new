@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start --port 3010",
     "lint": "next lint",
+    "test:cso-next-step": "npx --yes tsx --test src/lib/customer-orders/cso-next-step.test.ts",
+    "test:cso-note-tooltip": "npx --yes tsx --test src/lib/customer-orders/cso-note-tooltip.test.ts",
     "test:pos-search-policy": "npx --yes tsx --test src/lib/pos/search-policy.test.ts",
     "test:label-zpl": "npx --yes tsx --test src/lib/labels/zpl.test.ts",
     "test:label-print-policy": "npx --yes tsx --test src/lib/labels/print-policy.test.ts",

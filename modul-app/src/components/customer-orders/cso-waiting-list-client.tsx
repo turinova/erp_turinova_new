@@ -5,10 +5,10 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import {
   ClipboardList,
-  Copy,
   MessageSquare,
   PackageCheck,
   Search,
+  StickyNote,
   Truck
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -29,6 +29,7 @@ import { StatusBadge } from '@/components/patterns/status-badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Select } from '@/components/ui/select'
 import {
   handOverSpecialOrderItemsAction,
@@ -44,10 +45,14 @@ import {
   csoPartialArriveHint,
   csoPoLinkLabel,
   csoStatusTone,
+  formatCsoNoteTooltip,
+  hasCsoWaitingNote,
   type CsoWaitingCounts,
   type CsoWaitingListItem,
   type CsoWaitingView
 } from '@/lib/customer-orders/types'
+import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
+import { isCashPaymentMethodName } from '@/lib/sales/payment-kind'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { CsoReadySmsCandidate } from '@/lib/sms/types'
 import { cn } from '@/lib/utils'
@@ -66,6 +71,7 @@ type Props = {
   initialSupplierId: string
   initialNotifyPending: boolean
   suppliers: SupplierOpt[]
+  paymentMethods: PaymentMethodOption[]
 }
 
 const dateFmt = new Intl.DateTimeFormat('hu-HU', {
@@ -110,19 +116,6 @@ function groupBySupplier(rows: CsoWaitingListItem[]): SupplierGroup[] {
   return Array.from(map.values())
 }
 
-function buildSupplierText(items: CsoWaitingListItem[]): string {
-  const bySup = groupBySupplier(items)
-  return bySup
-    .map((g) => {
-      const lines = g.items.map(
-        (it) =>
-          `• ${it.name}${it.sku ? ` (${it.sku})` : ''} — ${fmtQty(it.qty)} ${it.unitShortform}`
-      )
-      return `${g.supplierName}\n${lines.join('\n')}`
-    })
-    .join('\n\n')
-}
-
 export function CsoWaitingListClient({
   rows,
   total,
@@ -134,7 +127,8 @@ export function CsoWaitingListClient({
   initialView,
   initialSupplierId,
   initialNotifyPending,
-  suppliers
+  suppliers,
+  paymentMethods
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -148,6 +142,14 @@ export function CsoWaitingListClient({
   const [smsOpen, setSmsOpen] = useState(false)
   const [smsCandidates, setSmsCandidates] = useState<CsoReadySmsCandidate[]>([])
   const [smsLoading, setSmsLoading] = useState(false)
+  const [paymentMethodId, setPaymentMethodId] = useState(() => {
+    const cash = paymentMethods.find((p) => isCashPaymentMethodName(p.name))
+    return cash?.id ?? paymentMethods[0]?.id ?? ''
+  })
+  const paymentOptions = useMemo(
+    () => paymentMethods.map((p) => ({ value: p.id, label: p.name })),
+    [paymentMethods]
+  )
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
@@ -215,7 +217,7 @@ export function CsoWaitingListClient({
   }
 
   function runAction(
-    fn: () => Promise<{ ok: boolean; message?: string }>
+    fn: () => Promise<{ ok: boolean; message?: string; saleId?: string }>
   ) {
     startTransition(async () => {
       const res = await fn()
@@ -223,23 +225,19 @@ export function CsoWaitingListClient({
         toast.error(res.message ?? 'Hiba')
         return
       }
-      toast.success(res.message ?? 'Kész')
+      toast.success(res.message ?? 'Kész', {
+        action: res.saleId
+          ? {
+              label: 'Eladás',
+              onClick: () => router.push(`/ertekesitesek/${res.saleId}`)
+            }
+          : undefined
+      })
       setSelected(new Set())
       setArriveOpen(false)
       setHandoverOpen(false)
       router.refresh()
     })
-  }
-
-  async function copySupplierText() {
-    if (!selectedItems.length) return
-    const text = buildSupplierText(selectedItems)
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success('Szöveg a vágólapon.')
-    } catch {
-      toast.error('Nem sikerült a vágólapra másolni.')
-    }
   }
 
   function openSmsDialog() {
@@ -411,18 +409,6 @@ export function CsoWaitingListClient({
             Törlés
           </Button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            {(allLeadable || allOnWay) && selectedItems.length > 0 ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={pending}
-                onClick={() => void copySupplierText()}
-              >
-                <Copy className="size-3.5" aria-hidden />
-                Szöveg a beszállítónak
-              </Button>
-            ) : null}
             {allLeadable ? (
               <Button
                 type="button"
@@ -526,12 +512,12 @@ export function CsoWaitingListClient({
               <DataTableHeaderCell className="text-right">
                 Bruttó
               </DataTableHeaderCell>
+              <DataTableHeaderCell className="w-10">
+                <span className="sr-only">Megjegyzés</span>
+              </DataTableHeaderCell>
               <DataTableHeaderCell>Státusz</DataTableHeaderCell>
               <DataTableHeaderCell>PO</DataTableHeaderCell>
               <DataTableHeaderCell>Dátum</DataTableHeaderCell>
-              <DataTableHeaderCell className="w-[1%]">
-                <span className="sr-only">Művelet</span>
-              </DataTableHeaderCell>
             </DataTableRow>
           </DataTableHead>
           <DataTableBody>
@@ -629,26 +615,51 @@ export function CsoWaitingListClient({
       <ConfirmDialog
         open={handoverOpen}
         onOpenChange={setHandoverOpen}
-        title="Átadás"
-        description={`${selectedItems.length} tétel átadása ${[...new Set(selectedItems.map((i) => i.orderNumber))].join(', ')} rendelés(ek)ből. Katalógus tételnél készlet kivezetés történik.`}
-        confirmLabel="Átadás"
+        title="Átadás + értékesítés"
+        description={`${selectedItems.length} tétel · ${[...new Set(selectedItems.map((i) => i.orderNumber))].join(', ')}. Létrejön értékesítés, a készlet egyszer csökken.`}
+        confirmLabel="Átadás és eladás"
         cancelLabel="Mégse"
         variant="primary"
         loading={pending}
-        onConfirm={() =>
+        onConfirm={() => {
+          if (!paymentMethodId) {
+            toast.error('Válassz fizetési módot.')
+            return
+          }
           runAction(() =>
             handOverSpecialOrderItemsAction({
-              itemIds: selectedItems.map((i) => i.id)
+              itemIds: selectedItems.map((i) => i.id),
+              paymentMethodId
             })
           )
-        }
+        }}
       >
-        {selectedItems.some((i) => (i.depositAmount ?? 0) > 0) ? (
-          <p className="text-[13px] text-ink-secondary">
-            Előleg az érintett rendeléseken — a fizetendő összeget a rendelés
-            részletén ellenőrizd.
-          </p>
-        ) : null}
+        <div className="space-y-2">
+          {paymentOptions.length > 0 ? (
+            <div className="space-y-1">
+              <p className="text-hint font-medium text-ink-secondary">
+                Fizetési mód
+              </p>
+              <MenuSelect
+                value={paymentMethodId}
+                onChange={setPaymentMethodId}
+                options={paymentOptions}
+                placeholder="Válassz…"
+                aria-label="Fizetési mód"
+              />
+            </div>
+          ) : (
+            <p className="text-body font-semibold text-warning-ink">
+              Nincs aktív fizetési mód.
+            </p>
+          )}
+          {selectedItems.some((i) => (i.depositAmount ?? 0) > 0) ? (
+            <p className="text-[13px] text-ink-secondary">
+              Előleg az érintett rendeléseken — első átadáskor levonjuk az
+              eladásból.
+            </p>
+          ) : null}
+        </div>
       </ConfirmDialog>
     </div>
   )
@@ -760,6 +771,32 @@ function SupplierGroupRows({
               ? `${formatMoneyFt(item.unitPriceGross)} Ft`
               : '—'}
           </DataTableCell>
+          <DataTableCell className="w-10 text-center">
+            {(() => {
+              const tip = formatCsoNoteTooltip({
+                orderNote: item.orderNote,
+                itemNote: item.note
+              })
+              if (
+                !tip ||
+                !hasCsoWaitingNote({
+                  orderNote: item.orderNote,
+                  note: item.note
+                })
+              ) {
+                return <span className="text-ink-muted">—</span>
+              }
+              return (
+                <span
+                  className="inline-flex size-7 items-center justify-center rounded-md text-ink-secondary"
+                  title={tip}
+                  aria-label="Megjegyzés"
+                >
+                  <StickyNote className="size-3.5" aria-hidden />
+                </span>
+              )
+            })()}
+          </DataTableCell>
           <DataTableCell>
             <StatusBadge tone={csoStatusTone(item.status)}>
               {csoItemProgressLabel(item.status, item.poStatus)}
@@ -779,14 +816,6 @@ function SupplierGroupRows({
           </DataTableCell>
           <DataTableCell className="whitespace-nowrap text-[12.5px] text-ink-secondary">
             {fmtDate(item.createdAt)}
-          </DataTableCell>
-          <DataTableCell>
-            <Link
-              href={`/ugyfelrendelesek/${item.orderId}`}
-              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-            >
-              Rendelés
-            </Link>
           </DataTableCell>
         </DataTableRow>
       ))}
