@@ -54,7 +54,8 @@ export default async function HomePage() {
         showLapszabaszatCharts = hasLapszabaszat
 
         kpis = await getHomeKpiBundle(supabase, user.tenantId, {
-          includeJelenlet: hasJelenlet
+          includeJelenlet: hasJelenlet,
+          includeLapszabaszat: hasLapszabaszat
         })
 
         try {

@@ -4,6 +4,7 @@ import {
   addDaysYmd,
   budapestDayRangeIso,
   budapestTodayYmd,
+  MONTH_LABELS_HU,
   toBudapestYmdFromIso
 } from '@/lib/home/date'
 import {
@@ -25,12 +26,19 @@ export type SalesDayPoint = {
 export type HomeSalesKpis = {
   todayGross: number
   todaySaleCount: number
-  openQuoteCount: number
-  expiringQuoteCount: number
+  /** Hónap elejétől máig (Budapest). */
+  monthGross: number
+  monthSaleCount: number
+  /** Előző hónap ugyanarra a napra (1…D) — progress összehasonlítás. */
+  priorMonthGross: number
+  monthLabel: string
   todayReturnCount: number
   todayReturnGross: number
-  openPurchaseOrderCount: number
-  overduePurchaseOrderCount: number
+  /** Unpaid/partial remaining (sales_payments nettó). */
+  openDue: number
+  /** Unpaid/partial számlák bruttó összege (ring nevező). */
+  openInvoiceGross: number
+  openInvoiceCount: number
   last7Days: SalesDayPoint[]
 }
 
@@ -46,15 +54,23 @@ export type HomeJelenletKpis = {
   missingDayCount: number
   /** Max 3 név a távolléthez (glance) */
   awayNames: string[]
+  /** Max 3 név a „Nincs itt” (elvárt, nincs érkezés) glance-hez */
+  lateNames: string[]
+}
+
+/** Mai + 7 nap lapszabászat megrendelés-intake (`ordered_at`). */
+export type HomeLapszabaszatKpis = {
+  todayGross: number
+  todayCount: number
+  last7Days: SalesDayPoint[]
 }
 
 export type HomeKpiBundle = {
   sales: HomeSalesKpis
   jelenlet: HomeJelenletKpis | null
+  /** null = lapszabászat entitlement OFF / nem kértük */
+  lapszabaszat: HomeLapszabaszatKpis | null
 }
-
-const OPEN_QUOTE_STATUSES = ['draft', 'sent'] as const
-const OPEN_PO_STATUSES = ['ordered', 'partial'] as const
 
 const WEEKDAY_SHORT = ['V', 'H', 'K', 'Sze', 'Cs', 'P', 'Szo'] as const
 
@@ -76,99 +92,105 @@ function budapestNowMinutes(): number {
   return h * 60 + min
 }
 
+function priorMonthRangeYmd(todayYmd: string): {
+  start: string
+  end: string
+} {
+  const { year, month } = budapestYearMonth()
+  const dayOfMonth = Number(todayYmd.slice(8, 10))
+  let py = year
+  let pm = month - 1
+  if (pm < 1) {
+    pm = 12
+    py -= 1
+  }
+  const dates = daysInMonth(py, pm)
+  const endIdx = Math.min(dayOfMonth, dates.length) - 1
+  return { start: dates[0]!, end: dates[endIdx]! }
+}
+
+type SaleAggRow = {
+  id: string
+  total_gross: number | string
+  fulfilled_at: string | null
+  created_at: string
+}
+
+function sumGrossInRange(
+  byDay: Map<string, { gross: number; count: number }>,
+  startYmd: string,
+  endYmd: string
+): { gross: number; count: number } {
+  let gross = 0
+  let count = 0
+  for (const [ymd, v] of byDay) {
+    if (ymd >= startYmd && ymd <= endYmd) {
+      gross += v.gross
+      count += v.count
+    }
+  }
+  return { gross, count }
+}
+
 export async function getHomeSalesKpis(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<HomeSalesKpis> {
   const today = budapestTodayYmd()
+  const { year, month } = budapestYearMonth()
+  const monthDates = daysInMonth(year, month)
+  const monthStart = monthDates[0]!
+  const prior = priorMonthRangeYmd(today)
   const start7 = addDaysYmd(today, -6)
-  const { startIso: rangeStart } = budapestDayRangeIso(start7)
+  const rangeStartYmd = prior.start < monthStart ? prior.start : monthStart
+  const { startIso: rangeStart } = budapestDayRangeIso(rangeStartYmd)
   const { endIso: rangeEnd } = budapestDayRangeIso(today)
   const todayRange = budapestDayRangeIso(today)
 
-  const [
-    fulfilledWeekRes,
-    createdWeekRes,
-    openQuotesRes,
-    expiringQuotesRes,
-    returnsRes,
-    openPoRes,
-    overduePoRes
-  ] = await Promise.all([
-    supabase
-      .from('sales_orders')
-      .select('id, total_gross, status, fulfilled_at, created_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .neq('status', 'cancelled')
-      .gte('fulfilled_at', rangeStart)
-      .lt('fulfilled_at', rangeEnd),
-    supabase
-      .from('sales_orders')
-      .select('id, total_gross, status, fulfilled_at, created_at')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .in('status', ['fulfilled', 'partially_returned', 'returned'])
-      .is('fulfilled_at', null)
-      .gte('created_at', rangeStart)
-      .lt('created_at', rangeEnd),
-    supabase
-      .from('sales_quotes')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .in('status', [...OPEN_QUOTE_STATUSES]),
-    supabase
-      .from('sales_quotes')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .in('status', [...OPEN_QUOTE_STATUSES])
-      .not('valid_until', 'is', null)
-      .lte('valid_until', today),
-    supabase
-      .from('sales_returns')
-      .select('id, total_gross')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .gte('created_at', todayRange.startIso)
-      .lt('created_at', todayRange.endIso),
-    supabase
-      .from('purchase_orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .in('status', [...OPEN_PO_STATUSES]),
-    supabase
-      .from('purchase_orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null)
-      .in('status', [...OPEN_PO_STATUSES])
-      .not('expected_date', 'is', null)
-      .lt('expected_date', today)
-  ])
+  const [fulfilledRes, createdRes, returnsRes, openInvoicesRes] =
+    await Promise.all([
+      supabase
+        .from('sales_orders')
+        .select('id, total_gross, status, fulfilled_at, created_at')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .neq('status', 'cancelled')
+        .gte('fulfilled_at', rangeStart)
+        .lt('fulfilled_at', rangeEnd),
+      supabase
+        .from('sales_orders')
+        .select('id, total_gross, status, fulfilled_at, created_at')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .in('status', ['fulfilled', 'partially_returned', 'returned'])
+        .is('fulfilled_at', null)
+        .gte('created_at', rangeStart)
+        .lt('created_at', rangeEnd),
+      supabase
+        .from('sales_returns')
+        .select('id, total_gross')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .gte('created_at', todayRange.startIso)
+        .lt('created_at', todayRange.endIso),
+      supabase
+        .from('sales_orders')
+        .select('id, total_gross, cash_rounding_amount, payment_status')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .not('status', 'in', '(cancelled,returned)')
+        .in('payment_status', ['unpaid', 'partial'])
+    ])
 
-  if (fulfilledWeekRes.error) {
-    console.error('getHomeSalesKpis fulfilled', fulfilledWeekRes.error.message)
+  if (fulfilledRes.error) {
+    console.error('getHomeSalesKpis fulfilled', fulfilledRes.error.message)
   }
-  if (createdWeekRes.error) {
-    console.error('getHomeSalesKpis created', createdWeekRes.error.message)
+  if (createdRes.error) {
+    console.error('getHomeSalesKpis created', createdRes.error.message)
   }
 
-  const weekMap = new Map<
-    string,
-    {
-      id: string
-      total_gross: number | string
-      fulfilled_at: string | null
-      created_at: string
-    }
-  >()
-  for (const r of [
-    ...(fulfilledWeekRes.data ?? []),
-    ...(createdWeekRes.data ?? [])
-  ]) {
+  const weekMap = new Map<string, SaleAggRow>()
+  for (const r of [...(fulfilledRes.data ?? []), ...(createdRes.data ?? [])]) {
     weekMap.set(String(r.id), {
       id: String(r.id),
       total_gross: r.total_gross as number | string,
@@ -176,51 +198,103 @@ export async function getHomeSalesKpis(
       created_at: r.created_at as string
     })
   }
-  const weekRows = [...weekMap.values()]
 
   const byDay = new Map<string, { gross: number; count: number }>()
+  // Fill last-7 buckets for spark (always present)
   for (let i = 6; i >= 0; i--) {
-    const ymd = addDaysYmd(today, -i)
-    byDay.set(ymd, { gross: 0, count: 0 })
+    byDay.set(addDaysYmd(today, -i), { gross: 0, count: 0 })
   }
 
-  for (const r of weekRows) {
-    const iso = (r.fulfilled_at as string | null) ?? (r.created_at as string)
+  for (const r of weekMap.values()) {
+    const iso = r.fulfilled_at ?? r.created_at
     if (!iso) continue
     const ymd = toBudapestYmdFromIso(iso)
-    const bucket = byDay.get(ymd)
-    if (!bucket) continue
+    let bucket = byDay.get(ymd)
+    if (!bucket) {
+      bucket = { gross: 0, count: 0 }
+      byDay.set(ymd, bucket)
+    }
     bucket.gross += Number(r.total_gross) || 0
     bucket.count += 1
   }
 
-  const last7Days: SalesDayPoint[] = [...byDay.entries()].map(
-    ([ymd, v]) => ({
+  const last7Days: SalesDayPoint[] = []
+  for (let i = 6; i >= 0; i--) {
+    const ymd = addDaysYmd(today, -i)
+    const v = byDay.get(ymd) ?? { gross: 0, count: 0 }
+    last7Days.push({
       ymd,
       label: dayLabel(ymd),
       gross: v.gross,
       count: v.count
     })
-  )
+  }
 
   const todayPoint = byDay.get(today) ?? { gross: 0, count: 0 }
+  const monthAgg = sumGrossInRange(byDay, monthStart, today)
+  const priorAgg = sumGrossInRange(byDay, prior.start, prior.end)
+
   const returns = returnsRes.data ?? []
   if (returnsRes.error) {
     console.error('getHomeSalesKpis returns', returnsRes.error.message)
   }
 
+  let openDue = 0
+  let openInvoiceGross = 0
+  const openRows = (openInvoicesRes.data ?? []) as {
+    id: string
+    total_gross: number
+    cash_rounding_amount: number | null
+    payment_status: string
+  }[]
+
+  if (openInvoicesRes.error) {
+    console.error('getHomeSalesKpis openDue', openInvoicesRes.error.message)
+  } else if (openRows.length > 0) {
+    const openIds = openRows.map((r) => r.id)
+    const paidBySale = new Map<string, number>()
+    const { data: payments, error: payErr } = await supabase
+      .from('sales_payments')
+      .select('sales_order_id, amount, kind')
+      .in('sales_order_id', openIds)
+      .is('deleted_at', null)
+
+    if (payErr) {
+      console.error('getHomeSalesKpis payments', payErr.message)
+    } else {
+      for (const p of payments ?? []) {
+        const id = p.sales_order_id as string
+        const amt = Number(p.amount) || 0
+        const signed = p.kind === 'refund' ? -amt : amt
+        paidBySale.set(id, (paidBySale.get(id) ?? 0) + signed)
+      }
+    }
+
+    for (const r of openRows) {
+      const gross = Number(r.total_gross) || 0
+      const rounding = Number(r.cash_rounding_amount) || 0
+      const due = Math.round(gross + rounding)
+      openInvoiceGross += due
+      const netPaid = paidBySale.get(r.id) ?? 0
+      openDue += Math.max(0, due - netPaid)
+    }
+  }
+
   return {
     todayGross: todayPoint.gross,
     todaySaleCount: todayPoint.count,
-    openQuoteCount: openQuotesRes.count ?? 0,
-    expiringQuoteCount: expiringQuotesRes.count ?? 0,
+    monthGross: monthAgg.gross,
+    monthSaleCount: monthAgg.count,
+    priorMonthGross: priorAgg.gross,
+    monthLabel: MONTH_LABELS_HU[month - 1] ?? '',
     todayReturnCount: returns.length,
     todayReturnGross: returns.reduce(
       (s, r) => s + (Number(r.total_gross) || 0),
       0
     ),
-    openPurchaseOrderCount: openPoRes.count ?? 0,
-    overduePurchaseOrderCount: overduePoRes.count ?? 0,
+    openDue: Math.round(openDue),
+    openInvoiceGross: Math.round(openInvoiceGross),
+    openInvoiceCount: openRows.length,
     last7Days
   }
 }
@@ -317,6 +391,7 @@ export async function getHomeJelenletKpis(
   let otherAway = 0
   let expectedToday = 0
   const awayNames: string[] = []
+  const lateNames: string[] = []
 
   for (const emp of employees) {
     const eid = emp.id as string
@@ -351,7 +426,6 @@ export async function getHomeJelenletKpis(
       todayYmd: today
     })
 
-    // Távollét mindig számít a mai képbe
     if (awayType) {
       expectedToday += 1
       const kind = absenceStatus(awayType)
@@ -372,7 +446,10 @@ export async function getHomeJelenletKpis(
     }
 
     const shiftMin = timeToMinutes(shiftStart) ?? 8 * 60
-    if (nowMin >= shiftMin) late += 1
+    if (nowMin >= shiftMin) {
+      late += 1
+      if (lateNames.length < 3) lateNames.push(name)
+    }
   }
 
   return {
@@ -383,20 +460,94 @@ export async function getHomeJelenletKpis(
     sick,
     otherAway,
     missingDayCount,
-    awayNames
+    awayNames,
+    lateNames
+  }
+}
+
+/**
+ * Lapszabászat megrendelések: `ordered_at` nap szerint, nem cancelled.
+ * Status (ordered → finished) nem számít — intake GMV.
+ */
+export async function getHomeLapszabaszatKpis(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<HomeLapszabaszatKpis> {
+  const today = budapestTodayYmd()
+  const start7 = addDaysYmd(today, -6)
+  const { startIso: rangeStart } = budapestDayRangeIso(start7)
+  const { endIso: rangeEnd } = budapestDayRangeIso(today)
+
+  const { data, error } = await supabase
+    .from('quotes')
+    .select('final_total_gross, total_gross, ordered_at')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .not('order_number', 'is', null)
+    .neq('status', 'cancelled')
+    .gte('ordered_at', rangeStart)
+    .lt('ordered_at', rangeEnd)
+
+  if (error) {
+    console.error('getHomeLapszabaszatKpis', error.message)
+    return {
+      todayGross: 0,
+      todayCount: 0,
+      last7Days: Array.from({ length: 7 }, (_, i) => {
+        const ymd = addDaysYmd(today, -6 + i)
+        return { ymd, label: dayLabel(ymd), gross: 0, count: 0 }
+      })
+    }
+  }
+
+  const byDay = new Map<string, { gross: number; count: number }>()
+  for (let i = 6; i >= 0; i--) {
+    byDay.set(addDaysYmd(today, -i), { gross: 0, count: 0 })
+  }
+
+  for (const row of data ?? []) {
+    const iso = row.ordered_at as string | null
+    if (!iso) continue
+    const ymd = toBudapestYmdFromIso(iso)
+    const bucket = byDay.get(ymd)
+    if (!bucket) continue
+    bucket.gross += Number(row.final_total_gross ?? row.total_gross) || 0
+    bucket.count += 1
+  }
+
+  const last7Days: SalesDayPoint[] = []
+  for (let i = 6; i >= 0; i--) {
+    const ymd = addDaysYmd(today, -i)
+    const v = byDay.get(ymd) ?? { gross: 0, count: 0 }
+    last7Days.push({
+      ymd,
+      label: dayLabel(ymd),
+      gross: v.gross,
+      count: v.count
+    })
+  }
+
+  const todayPoint = byDay.get(today) ?? { gross: 0, count: 0 }
+  return {
+    todayGross: todayPoint.gross,
+    todayCount: todayPoint.count,
+    last7Days
   }
 }
 
 export async function getHomeKpiBundle(
   supabase: SupabaseClient,
   tenantId: string,
-  opts: { includeJelenlet: boolean }
+  opts: { includeJelenlet: boolean; includeLapszabaszat: boolean }
 ): Promise<HomeKpiBundle> {
-  const [sales, jelenlet] = await Promise.all([
+  const [sales, jelenlet, lapszabaszat] = await Promise.all([
     getHomeSalesKpis(supabase, tenantId),
     opts.includeJelenlet
       ? getHomeJelenletKpis(supabase, tenantId)
+      : Promise.resolve(null),
+    opts.includeLapszabaszat
+      ? getHomeLapszabaszatKpis(supabase, tenantId)
       : Promise.resolve(null)
   ])
-  return { sales, jelenlet }
+  return { sales, jelenlet, lapszabaszat }
 }

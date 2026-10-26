@@ -3,17 +3,38 @@
 import Link from 'next/link'
 import { ShoppingCart, Users } from 'lucide-react'
 
+import {
+  MonthProgressBar,
+  OpenDueRing,
+  ReturnRatioBar
+} from '@/components/home/home-kpi-micro'
 import { HomeSalesSparkChart } from '@/components/home/home-sales-spark-chart'
 import { MetricCell, MetricRow } from '@/components/home/home-metric-row'
 import type {
   HomeJelenletKpis,
   HomeKpiBundle,
+  HomeLapszabaszatKpis,
   HomeSalesKpis
 } from '@/lib/home/kpi-queries'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import { cn } from '@/lib/utils'
 
-function SalesGlance({ sales }: { sales: HomeSalesKpis }) {
+function SalesGlance({
+  sales,
+  lapszabaszat
+}: {
+  sales: HomeSalesKpis
+  lapszabaszat: HomeLapszabaszatKpis | null
+}) {
+  const showLapszab = lapszabaszat != null
+  const collectedOnOpen = Math.max(0, sales.openInvoiceGross - sales.openDue)
+  const paidHint =
+    sales.openInvoiceCount === 0
+      ? 'Nincs kinnlevő'
+      : sales.openInvoiceGross > 0
+        ? `${Math.round((collectedOnOpen / sales.openInvoiceGross) * 100)}% befizetve · ${sales.openInvoiceCount} számla`
+        : `${sales.openInvoiceCount} számla`
+
   return (
     <section className="space-y-2">
       <div className="flex items-center gap-1.5 px-0.5">
@@ -28,7 +49,12 @@ function SalesGlance({ sales }: { sales: HomeSalesKpis }) {
       </div>
 
       <div className="rounded-md border border-border bg-surface">
-        <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3 lg:grid-cols-5 lg:divide-y-0">
+        <div
+          className={cn(
+            'grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3 lg:divide-y-0',
+            showLapszab ? 'lg:grid-cols-6' : 'lg:grid-cols-5'
+          )}
+        >
           <div className="col-span-2 sm:col-span-3 lg:col-span-2">
             <Link
               href="/ertekesitesek"
@@ -49,38 +75,85 @@ function SalesGlance({ sales }: { sales: HomeSalesKpis }) {
                   : `${sales.todaySaleCount} eladás · 7 nap`}
               </p>
               <div className="mt-2">
-                <HomeSalesSparkChart data={sales.last7Days} metric="gross" />
+                <HomeSalesSparkChart
+                  data={sales.last7Days}
+                  metric="gross"
+                  gradientId="homeSalesSpark"
+                />
               </div>
             </Link>
           </div>
+
+          {lapszabaszat ? (
+            <MetricCell
+              label="Mai lapszabászat"
+              value={`${formatMoneyFt(lapszabaszat.todayGross)} Ft`}
+              href="/megrendelesek"
+              hint={
+                lapszabaszat.todayCount === 0
+                  ? 'Ma még nincs megrendelés'
+                  : `${lapszabaszat.todayCount} megrendelés`
+              }
+              emphasize={lapszabaszat.todayCount > 0 ? 'success' : null}
+              footer={
+                <HomeSalesSparkChart
+                  data={lapszabaszat.last7Days}
+                  metric="gross"
+                  height={28}
+                  strokeWidth={1.25}
+                  gradientId="homeLapszabSpark"
+                  showTooltip={false}
+                />
+              }
+            />
+          ) : null}
+
           <MetricCell
-            label="Nyitott ajánlat"
-            value={String(sales.openQuoteCount)}
-            href="/ertekesitesek/arajanlatok"
-            emphasize={sales.openQuoteCount > 0 ? 'warning' : null}
-          />
-          <MetricCell
-            label="Lejáró ajánlat"
-            value={String(sales.expiringQuoteCount)}
-            href="/ertekesitesek/arajanlatok"
-            hint={sales.expiringQuoteCount > 0 ? 'Ma / lejárt' : undefined}
-            emphasize={sales.expiringQuoteCount > 0 ? 'danger' : null}
-          />
-          <MetricCell
-            label="Beszerzés"
-            value={String(sales.openPurchaseOrderCount)}
-            href="/beszallitoi-rendelesek"
+            label="Havi forgalom"
+            value={`${formatMoneyFt(sales.monthGross)} Ft`}
+            href="/ertekesitesek"
             hint={
-              sales.overduePurchaseOrderCount > 0
-                ? `${sales.overduePurchaseOrderCount} késik`
-                : undefined
+              sales.monthSaleCount === 0
+                ? sales.monthLabel
+                : `${sales.monthLabel} · ${sales.monthSaleCount} eladás`
             }
-            emphasize={
-              sales.overduePurchaseOrderCount > 0
-                ? 'danger'
-                : sales.openPurchaseOrderCount > 0
-                  ? 'warning'
-                  : null
+            footer={
+              <MonthProgressBar
+                current={sales.monthGross}
+                prior={sales.priorMonthGross}
+              />
+            }
+          />
+
+          <MetricCell
+            label="Mai visszáru"
+            value={`${formatMoneyFt(sales.todayReturnGross)} Ft`}
+            href="/ertekesitesek"
+            hint={
+              sales.todayReturnCount === 0
+                ? 'Nincs visszáru'
+                : `${sales.todayReturnCount} tétel`
+            }
+            emphasize={sales.todayReturnGross > 0 ? 'danger' : null}
+            footer={
+              <ReturnRatioBar
+                returnGross={sales.todayReturnGross}
+                todayGross={sales.todayGross}
+              />
+            }
+          />
+
+          <MetricCell
+            label="Kinnlevő"
+            value={`${formatMoneyFt(sales.openDue)} Ft`}
+            href="/ertekesitesek"
+            hint={paidHint}
+            emphasize={sales.openDue > 0 ? 'warning' : null}
+            footer={
+              <OpenDueRing
+                openDue={sales.openDue}
+                openInvoiceGross={sales.openInvoiceGross}
+              />
             }
           />
         </div>
@@ -89,12 +162,27 @@ function SalesGlance({ sales }: { sales: HomeSalesKpis }) {
   )
 }
 
+function compactNameHint(names: string[], total: number): string | undefined {
+  if (total <= 0 || names.length === 0) return undefined
+  const shown = names.slice(0, 3)
+  const extra = total - shown.length
+  return extra > 0 ? `${shown.join(', ')} +${extra}` : shown.join(', ')
+}
+
 function JelenletGlance({ jelenlet }: { jelenlet: HomeJelenletKpis }) {
   const awayTotal =
     jelenlet.vacation + jelenlet.sick + jelenlet.otherAway
   const awayHint =
     jelenlet.awayNames.length > 0
       ? jelenlet.awayNames.join(', ')
+      : undefined
+  const lateHint = compactNameHint(jelenlet.lateNames, jelenlet.late)
+  const lateTitle =
+    jelenlet.lateNames.length > 0
+      ? jelenlet.lateNames.join(', ') +
+        (jelenlet.late > jelenlet.lateNames.length
+          ? ` (+${jelenlet.late - jelenlet.lateNames.length})`
+          : '')
       : undefined
 
   return (
@@ -121,7 +209,8 @@ function JelenletGlance({ jelenlet }: { jelenlet: HomeJelenletKpis }) {
           label="Nincs itt"
           value={String(jelenlet.late)}
           href="/jelenlet"
-          hint={jelenlet.late > 0 ? 'Elvárt, nincs érkezés' : undefined}
+          hint={lateHint}
+          hintTitle={lateTitle}
           emphasize={jelenlet.late > 0 ? 'danger' : null}
         />
         <MetricCell
@@ -155,7 +244,7 @@ function JelenletGlance({ jelenlet }: { jelenlet: HomeJelenletKpis }) {
 export function HomeKpiStrip({ data }: { data: HomeKpiBundle }) {
   return (
     <div className="mb-5 space-y-4">
-      <SalesGlance sales={data.sales} />
+      <SalesGlance sales={data.sales} lapszabaszat={data.lapszabaszat} />
       {data.jelenlet ? <JelenletGlance jelenlet={data.jelenlet} /> : null}
     </div>
   )

@@ -58,13 +58,19 @@ export function MetricCell({
   value,
   href,
   hint,
-  emphasize
+  hintTitle,
+  emphasize,
+  footer
 }: {
   label: string
   value: string
   href: string
   hint?: string
+  /** Native tooltip — pl. teljes névlista truncate hint mellett. */
+  hintTitle?: string
   emphasize?: 'danger' | 'warning' | 'success' | null
+  /** Micro-viz under the hint (spark / bar / ring). */
+  footer?: ReactNode
 }) {
   return (
     <Link
@@ -84,12 +90,18 @@ export function MetricCell({
         {value}
       </p>
       {hint ? (
-        <p className="mt-1 truncate text-hint text-ink-muted">{hint}</p>
+        <p
+          className="mt-1 truncate text-hint text-ink-muted"
+          title={hintTitle ?? hint}
+        >
+          {hint}
+        </p>
       ) : (
         <p className="mt-1 text-hint text-transparent select-none" aria-hidden>
           .
         </p>
       )}
+      {footer ? <div className="mt-2">{footer}</div> : null}
     </Link>
   )
 }

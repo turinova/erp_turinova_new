@@ -21,6 +21,16 @@ const LAST_7: SalesDayPoint[] = [
   { ymd: '2026-03-31', label: 'K 31', gross: 4_286_500, count: 125 }
 ]
 
+const LAPSZAB_7: SalesDayPoint[] = [
+  { ymd: '2026-03-25', label: 'Sze 25', gross: 420_000, count: 2 },
+  { ymd: '2026-03-26', label: 'Cs 26', gross: 0, count: 0 },
+  { ymd: '2026-03-27', label: 'P 27', gross: 910_000, count: 3 },
+  { ymd: '2026-03-28', label: 'Szo 28', gross: 180_000, count: 1 },
+  { ymd: '2026-03-29', label: 'V 29', gross: 0, count: 0 },
+  { ymd: '2026-03-30', label: 'H 30', gross: 650_000, count: 2 },
+  { ymd: '2026-03-31', label: 'K 31', gross: 1_842_000, count: 7 }
+]
+
 function hourlyIn(): number[] {
   const h = Array.from({ length: 24 }, () => 0)
   // Nyitvatartás 8–17, csúcs 10–11
@@ -64,23 +74,32 @@ export const HOME_DASHBOARD_FIXTURE = {
     sales: {
       todayGross: 4_286_500,
       todaySaleCount: 125,
-      openQuoteCount: 38,
-      expiringQuoteCount: 5,
-      todayReturnCount: 0,
-      todayReturnGross: 0,
-      openPurchaseOrderCount: 9,
-      overduePurchaseOrderCount: 2,
+      monthGross: 48_200_000,
+      monthSaleCount: 1_840,
+      priorMonthGross: 41_500_000,
+      monthLabel: 'Már',
+      todayReturnCount: 2,
+      todayReturnGross: 42_000,
+      openDue: 1_240_000,
+      openInvoiceGross: 2_100_000,
+      openInvoiceCount: 11,
       last7Days: LAST_7
     },
     jelenlet: {
       present: 8,
       expectedToday: 11,
-      late: 1,
+      late: 2,
       vacation: 1,
       sick: 1,
       otherAway: 0,
       missingDayCount: 2,
-      awayNames: ['Nagy Péter']
+      awayNames: ['Nagy Péter'],
+      lateNames: ['Kovács Anna', 'Szabó Gábor']
+    },
+    lapszabaszat: {
+      todayGross: 1_842_000,
+      todayCount: 7,
+      last7Days: LAPSZAB_7
     }
   } satisfies HomeKpiBundle,
 

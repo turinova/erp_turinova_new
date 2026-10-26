@@ -2,6 +2,11 @@ import type { ReactNode } from 'react'
 import { Home, ShoppingCart, Users } from 'lucide-react'
 
 import { BelepokLiveIndicator } from '@/components/footcounter/belepok-live-indicator'
+import {
+  MonthProgressBar,
+  OpenDueRing,
+  ReturnRatioBar
+} from '@/components/home/home-kpi-micro'
 import { MarketingAppChrome } from '@/components/marketing/marketing-app-chrome'
 import { MarketingSalesSpark } from '@/components/marketing/marketing-home-static-charts'
 import { formatHoursLabel } from '@/lib/footcounter/open-hours'
@@ -33,12 +38,14 @@ function MetricCell({
   label,
   value,
   hint,
-  emphasize
+  emphasize,
+  footer
 }: {
   label: string
   value: string
   hint?: string
   emphasize?: 'danger' | 'warning' | 'success' | null
+  footer?: ReactNode
 }) {
   return (
     <div className="min-w-0 px-3 py-3">
@@ -61,6 +68,7 @@ function MetricCell({
           .
         </p>
       )}
+      {footer ? <div className="mt-2">{footer}</div> : null}
     </div>
   )
 }
@@ -134,7 +142,7 @@ export function HomeDashboardMockup({ className }: { className?: string }) {
               <FakeLink className="ml-auto">Összes →</FakeLink>
             </div>
             <div className="rounded-md border border-border bg-surface">
-              <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3 lg:grid-cols-5 lg:divide-y-0">
+              <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3 lg:grid-cols-6 lg:divide-y-0">
                 <div className="col-span-2 px-3 py-3 sm:col-span-3 lg:col-span-2">
                   <p className="text-hint text-ink-secondary">Mai forgalom</p>
                   <p className="mt-1 text-[1.5rem] font-semibold tabular-nums leading-none tracking-tight text-ink">
@@ -148,21 +156,54 @@ export function HomeDashboardMockup({ className }: { className?: string }) {
                   </div>
                 </div>
                 <MetricCell
-                  label="Nyitott ajánlat"
-                  value={String(sales.openQuoteCount)}
+                  label="Mai lapszabászat"
+                  value={`${formatMoneyFt(f.kpis.lapszabaszat!.todayGross)} Ft`}
+                  hint={`${f.kpis.lapszabaszat!.todayCount} megrendelés`}
+                  emphasize="success"
+                  footer={
+                    <MarketingSalesSpark
+                      data={f.kpis.lapszabaszat!.last7Days.map((d) => ({
+                        ...d
+                      }))}
+                      height={28}
+                      gradientId="mktLapszabSpark"
+                    />
+                  }
+                />
+                <MetricCell
+                  label="Havi forgalom"
+                  value={`${formatMoneyFt(sales.monthGross)} Ft`}
+                  hint={`${sales.monthLabel} · ${sales.monthSaleCount} eladás`}
+                  footer={
+                    <MonthProgressBar
+                      current={sales.monthGross}
+                      prior={sales.priorMonthGross}
+                    />
+                  }
+                />
+                <MetricCell
+                  label="Mai visszáru"
+                  value={`${formatMoneyFt(sales.todayReturnGross)} Ft`}
+                  hint={`${sales.todayReturnCount} tétel`}
+                  emphasize="danger"
+                  footer={
+                    <ReturnRatioBar
+                      returnGross={sales.todayReturnGross}
+                      todayGross={sales.todayGross}
+                    />
+                  }
+                />
+                <MetricCell
+                  label="Kinnlevő"
+                  value={`${formatMoneyFt(sales.openDue)} Ft`}
+                  hint={`${sales.openInvoiceCount} számla`}
                   emphasize="warning"
-                />
-                <MetricCell
-                  label="Lejáró ajánlat"
-                  value={String(sales.expiringQuoteCount)}
-                  hint="Ma / lejárt"
-                  emphasize="danger"
-                />
-                <MetricCell
-                  label="Beszerzés"
-                  value={String(sales.openPurchaseOrderCount)}
-                  hint={`${sales.overduePurchaseOrderCount} késik`}
-                  emphasize="danger"
+                  footer={
+                    <OpenDueRing
+                      openDue={sales.openDue}
+                      openInvoiceGross={sales.openInvoiceGross}
+                    />
+                  }
                 />
               </div>
             </div>
@@ -190,7 +231,7 @@ export function HomeDashboardMockup({ className }: { className?: string }) {
                 <MetricCell
                   label="Nincs itt"
                   value={String(jelenlet.late)}
-                  hint="Elvárt, nincs érkezés"
+                  hint={jelenlet.lateNames.join(', ')}
                   emphasize="danger"
                 />
                 <MetricCell
