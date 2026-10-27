@@ -3,6 +3,8 @@ import Link from 'next/link'
 
 import { SmsSettingsForm } from '@/components/sms/sms-settings-form'
 import { getSessionUser } from '@/lib/auth/session'
+import { getTenantCompany } from '@/lib/company/queries'
+import type { OrderStatusPreviewCompany } from '@/lib/order-status/sample'
 import { tenantHasQuoteReadySms } from '@/lib/sms/entitlement'
 import { getTenantSmsTemplate } from '@/lib/sms/templates'
 import {
@@ -26,24 +28,42 @@ export default async function SmsSettingsPage() {
   let showCso = false
   let quoteBody = defaultSmsBody(QUOTE_READY_TEMPLATE_KEY)
   let csoBody = defaultSmsBody(CSO_READY_TEMPLATE_KEY)
+  let company: OrderStatusPreviewCompany | null = null
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (!supabase) {
       loadError = 'Az adatbázis kapcsolat nem elérhető.'
     } else {
-      const [hasQuote, csoEnt] = await Promise.all([
+      const [hasQuote, csoEnt, companyRow] = await Promise.all([
         tenantHasQuoteReadySms(supabase, user.tenantId),
         supabase
           .from('tenant_entitlements')
           .select('feature_key')
           .eq('tenant_id', user.tenantId)
           .eq('feature_key', 'customer_special_orders')
-          .maybeSingle()
+          .maybeSingle(),
+        getTenantCompany(supabase, user.tenantId).catch(() => null)
       ])
       const hasCso = Boolean(csoEnt.data)
       showQuote = hasQuote
       showCso = hasCso || hasQuote
+      if (companyRow) {
+        company = {
+          name: companyRow.name,
+          logoUrl: companyRow.logo_url,
+          phone: companyRow.phone_number,
+          email: companyRow.email,
+          addressLine: [
+            [companyRow.postal_code, companyRow.city]
+              .filter(Boolean)
+              .join(' '),
+            companyRow.address
+          ]
+            .filter((p) => p && String(p).trim())
+            .join(', ')
+        }
+      }
 
       if (!showQuote && !showCso) {
         missingAccess = true
@@ -129,6 +149,7 @@ export default async function SmsSettingsPage() {
       showQuote={showQuote}
       showCso={showCso}
       canWrite={canWrite}
+      company={company}
     />
   )
 }

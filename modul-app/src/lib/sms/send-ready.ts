@@ -12,6 +12,7 @@ import {
   smsSegments
 } from '@/lib/sms/text'
 import { sendTwilioSms } from '@/lib/sms/twilio'
+import { ensureOrderShareLink } from '@/lib/order-status/links'
 import {
   QUOTE_READY_TEMPLATE_KEY,
   type QuoteReadySmsCandidate,
@@ -326,17 +327,25 @@ export async function sendQuoteReadySms(input: {
     return { status: 'skipped', reason: 'bad_phone' }
   }
 
-  const [template, materials, companyName] = await Promise.all([
+  const [template, materials, companyName, share] = await Promise.all([
     getTenantSmsTemplate(supabase, tenantId),
     loadMaterialNames(supabase, quoteId),
-    loadCompanyName(supabase, tenantId, input.tenantName)
+    loadCompanyName(supabase, tenantId, input.tenantName),
+    ensureOrderShareLink({
+      supabase,
+      tenantId,
+      kind: 'quote',
+      refId: quoteId,
+      userId: input.userId
+    })
   ])
 
   const body = renderSmsTemplate(template, {
     customer_name: customer.name,
     order_number: (quote.order_number as string) || '',
     company_name: companyName,
-    material_name: joinMaterialNames(materials)
+    material_name: joinMaterialNames(materials),
+    status_url: share?.url ?? ''
   })
 
   if (!body.trim()) {

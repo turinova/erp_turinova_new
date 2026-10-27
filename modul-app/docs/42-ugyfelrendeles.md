@@ -64,7 +64,8 @@ Szerveroldali lapozás (limit 25). Nincs szabad státuszflip — csak státuszg�
 2. **Beérkezés** — sync → `itt_van` + foglalás. SMS **nem** auto.
 3. **Kézi „Megérkezett”** — kivétel (polc / nincs PO).
 4. **Átadás = értékesítés** — `itt_van` → `create_sale` (KP default / utalás) → stock OUT **csak** sale → `atadva` + linkek. Nincs külön CSO stock out. Részleges átadás = újabb sale. Előleg = discount (első átadáskor). Due=0 / utalás: ügyfél snapshotból biztosítva, ha hiányzik.
-5. **SMS (opcionális)** — `cso_ready` sablon; nem blokkolja az átadást. Várólista `?notify=pending` = még nem SMS-ezett átvehetők.
+5. **SMS (opcionális)** — `cso_ready` sablon; nem blokkolja az átadást. Várólista `?notify=pending` = még nem SMS-ezett átvehetők.  
+   Küldéskor `order_share_links` token + `{status_url}` → publikus mobil státusz `/r/{token}` (átvehető / még úton / fizetendő). Lejárat 30 nap.
 
 ### UI összekötés
 

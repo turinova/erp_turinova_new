@@ -63,6 +63,7 @@ Clear → vissza `ordered`.
 - Detail **Megrendelés infó:** `SMS: elküldve …` / `még nem ment ki` (add-on mellett).
 - Secondary gomb (Átadás mellett / Értesítés): **„SMS az ügyfélnek”** vagy **„SMS újraküldése”** (`force`) — nem kapu, nincs nested ⋯.
 - Készre állításkor továbbra is opcionális SMS a meglévő dialógusban.
+- SMS `{status_url}` → közös publikus státuszoldal `/r/{token}` (CSO-val azonos shell; quote adapter).
 
 ---
 

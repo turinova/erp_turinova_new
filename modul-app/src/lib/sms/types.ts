@@ -3,10 +3,10 @@ export const QUOTE_READY_TEMPLATE_KEY = 'quote_ready' as const
 export const CSO_READY_TEMPLATE_KEY = 'cso_ready' as const
 
 export const DEFAULT_QUOTE_READY_SMS_BODY =
-  'Kedves {customer_name}! A rendelese elkeszult es atveheto. Anyagok: {material_name} Udvozlettel, {company_name}'
+  'Kedves {customer_name}! {order_number} kesz, atveheto. Reszletek: {status_url}'
 
 export const DEFAULT_CSO_READY_SMS_BODY =
-  'Kedves {customer_name}! A(z) {order_number} rendelesed megerkezett, atveheted. Vegosszeg: {total_amount} Ft. Udvozlettel, {company_name}'
+  'Kedves {customer_name}! {order_number}: {ready_count} tetel atveheto. Reszletek: {status_url}'
 
 export type SmsTemplateKey =
   | typeof QUOTE_READY_TEMPLATE_KEY

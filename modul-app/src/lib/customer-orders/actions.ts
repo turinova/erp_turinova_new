@@ -42,6 +42,7 @@ import {
 } from '@/lib/sales/payment-kind'
 import { hungarianCashRound } from '@/lib/sales/totals'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
+import { ensureOrderShareLink } from '@/lib/order-status/links'
 import { ensureDefaultWarehouse } from '@/lib/warehouses/queries'
 
 export type CsoActionResult =
@@ -2381,13 +2382,20 @@ async function buildCsoReadySmsCandidate(
   }, 0)
 
   const mobile = normalizeE164(order.customer_mobile as string)
+  const share = await ensureOrderShareLink({
+    supabase,
+    tenantId,
+    kind: 'cso',
+    refId: orderId
+  })
   const previewBody = renderSmsTemplate(template, {
     customer_name: (order.customer_name as string) || '',
     order_number: (order.order_number as string) || '',
     company_name: companyName,
     ready_count: readyCount,
     waiting_count: waitingCount,
-    total_amount: formatSmsAmount(totalAmount)
+    total_amount: formatSmsAmount(totalAmount),
+    status_url: share?.url ?? ''
   })
 
   let skipReason: SmsSkipReason | null = null
@@ -2472,9 +2480,16 @@ async function trySendReadySms(
     return 'SMS kihagyva: érvénytelen telefonszám.'
   }
 
-  const [template, companyName] = await Promise.all([
+  const [template, companyName, share] = await Promise.all([
     getTenantSmsTemplate(supabase, tenantId, CSO_READY_TEMPLATE_KEY),
-    loadCompanyNameForSms(supabase, tenantId)
+    loadCompanyNameForSms(supabase, tenantId),
+    ensureOrderShareLink({
+      supabase,
+      tenantId,
+      kind: 'cso',
+      refId: orderId,
+      userId: opts.userId
+    })
   ])
 
   const body = renderSmsTemplate(template, {
@@ -2483,7 +2498,8 @@ async function trySendReadySms(
     company_name: companyName,
     ready_count: ready,
     waiting_count: waiting,
-    total_amount: formatSmsAmount(totalAmount)
+    total_amount: formatSmsAmount(totalAmount),
+    status_url: share?.url ?? ''
   })
 
   if (!body.trim()) {

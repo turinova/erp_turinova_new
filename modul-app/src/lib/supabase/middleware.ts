@@ -120,7 +120,8 @@ function isPublicMarketingPath(pathname: string) {
     pathname === STAFF_LOGIN_ON_PARTNER_HOST ||
     pathname === '/impresszum' ||
     pathname === '/aszf' ||
-    pathname === '/adatkezelesi-tajekoztato'
+    pathname === '/adatkezelesi-tajekoztato' ||
+    pathname.startsWith('/r/')
   )
 }
 
