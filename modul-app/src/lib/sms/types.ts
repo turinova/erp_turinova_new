@@ -6,7 +6,7 @@ export const DEFAULT_QUOTE_READY_SMS_BODY =
   'Kedves {customer_name}! {order_number} kesz, atveheto. Reszletek: {status_url}'
 
 export const DEFAULT_CSO_READY_SMS_BODY =
-  'Kedves {customer_name}! {order_number}: {ready_count} tetel atveheto. Reszletek: {status_url}'
+  'Kedves {customer_name}! {order_number} atveheto ({ready_count} tetel). Reszletek: {status_url}'
 
 export type SmsTemplateKey =
   | typeof QUOTE_READY_TEMPLATE_KEY

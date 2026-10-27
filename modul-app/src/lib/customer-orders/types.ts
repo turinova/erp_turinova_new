@@ -470,7 +470,7 @@ export type CustomerSpecialOrderDetail = {
 }
 
 export type CsoNextAlso = {
-  kind: 'lead' | 'blocked' | 'sms'
+  kind: 'lead' | 'blocked'
   count: number
   /** Rövid ige+tárgy a másodlagos sorhoz. */
   label: string
@@ -484,20 +484,20 @@ export type CsoNextStep = {
   href?: string
   hrefLabel?: string
   /**
-   * `sms` legacy — a compute már nem adja vissza primaryként;
-   * átvehetőnél mindig `handover`, SMS opcionális (`suggestSms` / also).
+   * `sms` legacy a kind unióban — a compute primaryként nem adja;
+   * átvehetőnél mindig `handover`, SMS = `suggestSms` secondary.
    */
   kind: 'lead' | 'send_po' | 'receive' | 'sms' | 'handover' | 'done' | 'blocked'
   /** blocked primary: első hiányos tétel. */
   focusItemId?: string
   /**
    * Másodlagos teendő vegyes státusznál (pl. úton + még listázható).
-   * Nem primary — a UI secondary gombbal jeleníti meg.
+   * Nem primary — a UI secondary gombbal jeleníti meg. SMS nem ide tartozik.
    */
   also?: CsoNextAlso
   /**
-   * Átvehető + SMS még nem ment → UI secondary „SMS” gomb
-   * (akkor is, ha az `also` lead/blocked).
+   * Átvehető + SMS még nem ment → egy secondary „SMS (opcionális)” gomb
+   * az Átadás mellett (akkor is, ha az `also` lead/blocked).
    */
   suggestSms?: boolean
 }
@@ -584,25 +584,16 @@ export function csoComputeNextStep(input: {
 
   const ready = active.filter((i) => i.status === 'itt_van')
   if (ready.length > 0) {
-    const alsoLeadOrBlocked = buildAlso(leadable, blocked)
     const needsSms = !input.smsSentAt
-    // SMS soha nem kapu: primary mindig átadás. SMS = also (ha nincs más) vagy suggestSms.
-    const also =
-      alsoLeadOrBlocked ??
-      (needsSms
-        ? {
-            kind: 'sms' as const,
-            count: 1,
-            label: 'SMS még nem ment — csak ha a vevő nincs itt'
-          }
-        : undefined)
+    // SMS soha nem kapu: primary = átadás; egy secondary (`suggestSms`).
+    // Emellett csak lead/blocked — ne duplázd az SMS CTA-t.
     return {
       kind: 'handover',
       title: 'Következő: átadás a vevőnek',
       body: needsSms
         ? `${ready.length} tétel átvehető. Add át + fizess — SMS csak akkor kell, ha a vevő még nincs itt.`
         : `${ready.length} tétel vár átadásra. Fizetés / előleg a pulton.`,
-      also,
+      also: buildAlso(leadable, blocked),
       suggestSms: needsSms
     }
   }

@@ -110,15 +110,29 @@ export async function listOrders(
   if (q) {
     const safe = q.replace(/[%_,]/g, '')
     if (safe) {
-      const { data: customerMatches } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('tenant_id', params.tenantId)
-        .is('deleted_at', null)
-        .ilike('name', `%${safe}%`)
-        .limit(100)
+      const [{ data: customerMatches }, { data: materialMatches }] =
+        await Promise.all([
+          supabase
+            .from('customers')
+            .select('id')
+            .eq('tenant_id', params.tenantId)
+            .is('deleted_at', null)
+            .ilike('name', `%${safe}%`)
+            .limit(100),
+          // Bútorlap / anyagnév az ajánlat snapshotján (RLS → tenant).
+          supabase
+            .from('quote_material_lines')
+            .select('quote_id')
+            .ilike('material_name', `%${safe}%`)
+            .limit(200)
+        ])
 
-      const customerIds = (customerMatches ?? []).map((c) => c.id)
+      const customerIds = (customerMatches ?? []).map((c) => c.id as string)
+      const materialQuoteIds = [
+        ...new Set(
+          (materialMatches ?? []).map((r) => r.quote_id as string).filter(Boolean)
+        )
+      ]
       const parts = [
         `order_number.ilike.%${safe}%`,
         `quote_number.ilike.%${safe}%`,
@@ -127,6 +141,9 @@ export async function listOrders(
       ]
       if (customerIds.length > 0) {
         parts.push(`customer_id.in.(${customerIds.join(',')})`)
+      }
+      if (materialQuoteIds.length > 0) {
+        parts.push(`id.in.(${materialQuoteIds.join(',')})`)
       }
       query = query.or(parts.join(','))
     }

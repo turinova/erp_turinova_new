@@ -28,6 +28,12 @@ function qtyLabel(qty: number, unit: string): string {
   return `${q} ${u}`
 }
 
+function panelHasEdging(row: Record<string, unknown>): boolean {
+  return Boolean(
+    row.edge_a_id || row.edge_b_id || row.edge_c_id || row.edge_d_id
+  )
+}
+
 async function loadCompany(
   admin: NonNullable<ReturnType<typeof createServiceClient>>,
   tenantId: string
@@ -92,37 +98,48 @@ async function loadCsoView(
     .filter((i) => !i.deleted_at)
     .sort((a, b) => Number(a.sort_order) - Number(b.sort_order))
 
-  const toLine = (i: Record<string, unknown>): OrderStatusLineItem => {
+  const lineAmount = (i: Record<string, unknown>): number => {
     const qty = Number(i.qty)
     const price =
       i.unit_price_gross != null ? Number(i.unit_price_gross) : null
+    if (price == null || !Number.isFinite(qty)) return 0
+    return Math.round(price * qty)
+  }
+
+  const toLine = (
+    i: Record<string, unknown>,
+    withPrice: boolean
+  ): OrderStatusLineItem => {
+    const qty = Number(i.qty)
+    const unitShort = String(i.unit_shortform ?? 'db').trim() || 'db'
+    const unit =
+      i.unit_price_gross != null ? Number(i.unit_price_gross) : null
     const amount =
-      price != null && Number.isFinite(qty)
-        ? Math.round(price * qty)
+      withPrice && unit != null && Number.isFinite(qty)
+        ? Math.round(unit * qty)
         : null
     return {
       id: String(i.id),
       name: String(i.name ?? 'Tétel'),
-      qtyLabel: qtyLabel(qty, String(i.unit_shortform ?? 'db')),
+      qtyLabel: qtyLabel(qty, unitShort),
+      unitPriceGross: withPrice && unit != null ? unit : null,
+      unitShort: withPrice ? unitShort : null,
       amountGross: amount
     }
   }
 
-  const readyItems = items
-    .filter((i) => i.status === 'itt_van')
-    .map(toLine)
-  const waitingItems = items
-    .filter((i) => i.status === 'felveve' || i.status === 'rendelve')
-    .map(toLine)
+  const readyRaw = items.filter((i) => i.status === 'itt_van')
+  const waitingRaw = items.filter(
+    (i) => i.status === 'felveve' || i.status === 'rendelve'
+  )
+  const readyItems = readyRaw.map((i) => toLine(i, true))
+  const waitingItems = waitingRaw.map((i) => toLine(i, false))
   const allDone =
     items.length > 0 &&
     items.every((i) => i.status === 'atadva' || i.status === 'torolve') &&
     items.some((i) => i.status === 'atadva')
 
-  const readyGross = readyItems.reduce(
-    (s, i) => s + (i.amountGross ?? 0),
-    0
-  )
+  const readyGross = readyRaw.reduce((s, i) => s + lineAmount(i), 0)
   const deposit =
     data.deposit_amount != null ? Number(data.deposit_amount) : null
   const dueNow =
@@ -132,7 +149,6 @@ async function loadCsoView(
 
   let statusLabel = 'Feldolgozás alatt'
   let statusTone: CustomerOrderStatusView['statusTone'] = 'info'
-  let statusBody = ''
 
   if (allDone) {
     statusLabel = 'Átadva'
@@ -140,7 +156,6 @@ async function loadCsoView(
   } else if (readyItems.length > 0 && waitingItems.length > 0) {
     statusLabel = 'Részben átvehető'
     statusTone = 'warning'
-    statusBody = `${readyItems.length} tétel kész, ${waitingItems.length} még úton.`
   } else if (readyItems.length > 0) {
     statusLabel = 'Átvehető'
     statusTone = 'success'
@@ -151,27 +166,99 @@ async function loadCsoView(
 
   const company = await loadCompany(admin, tenantId)
 
+  let dueHint: string | null = null
+  if (readyItems.length > 0) {
+    if (deposit && deposit > 0) dueHint = 'Előleg beszámítva'
+    else if (waitingItems.length > 0) dueHint = 'Csak a kész tételek'
+  }
+
   return {
     kind: 'cso',
     orderNumber: String(data.order_number ?? '—'),
     customerFirstName: firstNameFromFull(data.customer_name as string),
     statusLabel,
     statusTone,
-    statusBody,
+    statusBody: '',
     dueNowGross: dueNow,
-    dueHint:
-      deposit && deposit > 0 && readyItems.length > 0
-        ? `Csak a kész tételek · előleg beszámítva (${formatStatusFt(deposit)})`
-        : readyItems.length > 0 && waitingItems.length > 0
-          ? 'Csak a kész tételek'
-          : null,
+    dueHint,
     depositGross: deposit && deposit > 0 ? deposit : null,
+    summaryLine:
+      readyItems.length >= 2
+        ? `Összesen ${readyItems.length} tétel`
+        : null,
     company,
     readyItems,
-    waitingItems: waitingItems.map((i) => ({ ...i, amountGross: null })),
+    waitingItems,
     steps: [],
     updatedAt: (data.updated_at as string | null) ?? null
   }
+}
+
+/**
+ * Ügyfélnyelv: anyagonként panel db (nem tábla / m²).
+ * Élzárás: bármely él oldal ki van töltve, vagy material edge_length > 0.
+ */
+function buildQuotePanelLines(
+  panels: Array<Record<string, unknown>>,
+  materialEdgeByName: Map<string, boolean>
+): { lines: OrderStatusLineItem[]; totalQty: number } {
+  type Acc = {
+    id: string
+    name: string
+    qty: number
+    hasEdging: boolean
+  }
+  const byKey = new Map<string, Acc>()
+
+  for (const p of panels) {
+    const sheet = p.sheet_materials as
+      | { name?: string }
+      | { name?: string }[]
+      | null
+    const materialName = Array.isArray(sheet)
+      ? sheet[0]?.name
+      : sheet?.name
+    const name = String(materialName || 'Bútorlap').trim() || 'Bútorlap'
+    const materialId = p.sheet_material_id ? String(p.sheet_material_id) : name
+    const key = materialId
+    const qty = Number(p.quantity ?? 0)
+    const edged =
+      panelHasEdging(p) || Boolean(materialEdgeByName.get(name.toLowerCase()))
+
+    const prev = byKey.get(key)
+    if (prev) {
+      prev.qty += Number.isFinite(qty) ? qty : 0
+      prev.hasEdging = prev.hasEdging || edged
+    } else {
+      byKey.set(key, {
+        id: key,
+        name,
+        qty: Number.isFinite(qty) ? qty : 0,
+        hasEdging: edged
+      })
+    }
+  }
+
+  const lines: OrderStatusLineItem[] = [...byKey.values()]
+    .filter((g) => g.qty > 0)
+    .sort((a, b) => a.name.localeCompare(b.name, 'hu'))
+    .map((g) => {
+      const base = qtyLabel(g.qty, 'db')
+      return {
+        id: g.id,
+        name: g.name,
+        qtyLabel: g.hasEdging ? `${base} · élzárás` : base,
+        unitPriceGross: null,
+        unitShort: null,
+        amountGross: null
+      }
+    })
+
+  const totalQty = [...byKey.values()]
+    .filter((g) => g.qty > 0)
+    .reduce((s, g) => s + g.qty, 0)
+
+  return { lines, totalQty }
 }
 
 async function loadQuoteView(
@@ -186,7 +273,12 @@ async function loadQuoteView(
       id, order_number, quote_number, status, payment_status,
       final_total_gross, total_gross, updated_at,
       customers ( name ),
-      quote_material_lines ( id, material_name, boards_charged, charged_sqm )
+      quote_material_lines ( id, material_name, edge_length_m ),
+      quote_panels (
+        id, quantity, sheet_material_id,
+        edge_a_id, edge_b_id, edge_c_id, edge_d_id,
+        sheet_materials ( name )
+      )
     `
     )
     .eq('tenant_id', tenantId)
@@ -210,8 +302,6 @@ async function loadQuoteView(
   const status = String(data.status ?? 'ordered')
   const gross = Number(data.final_total_gross ?? data.total_gross ?? 0)
 
-  // total_paid: lean query — payment_status + remaining helper needs paid;
-  // fetch sum from quote_payments if needed. Use remaining via simple select.
   const { data: payRows } = await admin
     .from('quote_payments')
     .select('amount, void_reason, deleted_at')
@@ -225,22 +315,20 @@ async function loadQuoteView(
 
   const remaining = quoteRemainingGross(gross, totalPaid)
 
-  const materials = (
-    (data.quote_material_lines ?? []) as Array<Record<string, unknown>>
-  ).map((m, idx) => {
-    const boards = Number(m.boards_charged ?? 0)
-    const sqm = Number(m.charged_sqm ?? 0)
-    const parts = [
-      boards > 0 ? `${boards} db` : null,
-      sqm > 0 ? `${sqm.toFixed(2)} m²` : null
-    ].filter(Boolean)
-    return {
-      id: String(m.id ?? idx),
-      name: String(m.material_name ?? 'Anyag'),
-      qtyLabel: parts.join(' · ') || '—',
-      amountGross: null as number | null
-    }
-  })
+  const materialEdgeByName = new Map<string, boolean>()
+  for (const m of (data.quote_material_lines ?? []) as Array<
+    Record<string, unknown>
+  >) {
+    const name = String(m.material_name ?? '')
+      .trim()
+      .toLowerCase()
+    if (!name) continue
+    const edged = Number(m.edge_length_m ?? 0) > 0
+    if (edged) materialEdgeByName.set(name, true)
+  }
+
+  const panels = (data.quote_panels ?? []) as Array<Record<string, unknown>>
+  const { lines, totalQty } = buildQuotePanelLines(panels, materialEdgeByName)
 
   let statusLabel = 'Feldolgozás alatt'
   let statusTone: CustomerOrderStatusView['statusTone'] = 'info'
@@ -266,6 +354,7 @@ async function loadQuoteView(
     '—'
 
   const showMoney = status === 'ready' || status === 'finished'
+  const showItems = status === 'ready'
 
   return {
     kind: 'quote',
@@ -280,8 +369,12 @@ async function loadQuoteView(
         ? `Rendelés összesen: ${formatStatusFt(gross)}`
         : null,
     depositGross: null,
+    summaryLine:
+      showItems && totalQty > 0 && lines.length >= 2
+        ? `Összesen ${totalQty} db`
+        : null,
     company,
-    readyItems: status === 'ready' ? materials : [],
+    readyItems: showItems ? lines : [],
     waitingItems: [],
     steps: [],
     updatedAt: (data.updated_at as string | null) ?? null

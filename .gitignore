@@ -53,6 +53,9 @@ raspberry-pi-footcounter/
 __pycache__/
 *.py[cod]
 
+# NAV Online Számla exports (sensitive invoice XML; do not commit)
+nav-exports/
+
 # Local planning notes (do not commit)
 hiros-ablak/_notes/
 

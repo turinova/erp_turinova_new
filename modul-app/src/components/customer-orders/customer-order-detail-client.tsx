@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition, type ReactNode } from 'react'
 import {
+  ArrowLeft,
   ExternalLink,
-  MoreHorizontal,
   Pencil,
   Plus,
   RotateCcw,
@@ -18,6 +18,7 @@ import {
   CsoHeaderEditDialog,
   CsoItemEditDialog
 } from '@/components/customer-orders/cso-detail-dialogs'
+import { CsoJourneyStepper } from '@/components/customer-orders/cso-journey-stepper'
 import { CsoLeadOrderDialog } from '@/components/customer-orders/cso-lead-order-dialog'
 import { CsoReadySmsDialog } from '@/components/customer-orders/cso-ready-sms-dialog'
 import {
@@ -360,13 +361,13 @@ export function CustomerOrderDetailClient({
     activeItems.some((i) => i.status === 'atadva') &&
     order.saleLinks.length === 0
 
-  /** ⋯ menü: csak SMS újraküldés (első küldés a Következő sávban). */
-  const showSmsResendInMenu =
+  /** Átvehető + SMS már ment → újraküldés a Következő sávban (nem overflow). */
+  const showSmsResend =
     canWrite && readyCount > 0 && order.smsSentAt != null
 
-  const showOverflowMenu =
-    canWrite &&
-    (showSmsResendInMenu || fullyCancelled || canCancelOrder)
+  /** Primary lefedi az összes ilyet → soron ne ismételd. */
+  const hideRowLeadCta = nextStep?.kind === 'lead'
+  const hideRowHandoverCta = nextStep?.kind === 'handover'
 
   const headerMeta = [
     order.customerName,
@@ -402,96 +403,177 @@ export function CustomerOrderDetailClient({
       ? Math.max(0, totalGross - order.depositAmount)
       : null
 
+  const stepperNextLabel =
+    order.status === 'torolve'
+      ? null
+      : nextStep?.kind === 'done'
+        ? null
+        : nextStep
+          ? nextStep.title.replace(/^Következő:\s*/i, '')
+          : null
+
+  const summaryBlock = (
+    <div className="rounded-md border border-border bg-subtle/60 px-3 py-2.5">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <p className="text-body font-semibold text-ink">Összegzés</p>
+          <p className="text-body text-ink-secondary">
+            <span className="font-semibold tabular-nums text-ink">
+              {activeItems.length}
+            </span>{' '}
+            tétel
+            {csoQtyByUnit(activeItems).length > 0 ? (
+              <span>
+                {' '}
+                ·{' '}
+                {csoQtyByUnit(activeItems)
+                  .map((q) => `${fmtQty(q.qty)} ${q.unit}`)
+                  .join(' + ')}
+              </span>
+            ) : null}
+          </p>
+        </div>
+        <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 text-right text-body">
+          <dt className="text-left text-ink-secondary">Összesen (bruttó)</dt>
+          <dd className="font-semibold tabular-nums text-ink">
+            {formatMoneyFt(totalGross)} Ft
+          </dd>
+          {order.depositAmount != null && order.depositAmount > 0 ? (
+            <>
+              <dt className="text-left text-ink-secondary">Előleg</dt>
+              <dd className="tabular-nums text-ink">
+                −{formatMoneyFt(order.depositAmount)} Ft
+              </dd>
+              <dt className="text-left font-semibold text-ink">
+                Átvételkor fizet
+              </dt>
+              <dd className="font-semibold tabular-nums text-ink">
+                {formatMoneyFt(depositDue ?? 0)} Ft
+              </dd>
+            </>
+          ) : null}
+        </dl>
+      </div>
+      {missingPriceCount > 0 ? (
+        <p className="mt-2 text-body font-semibold text-warning-ink">
+          {missingPriceCount} tételnél hiányzik az ár.
+        </p>
+      ) : null}
+      <p className="mt-1 text-hint text-ink-muted">Az árak bruttók (ÁFA-val).</p>
+    </div>
+  )
+
   return (
     <div className="space-y-4">
-      <PageHeader
-        title={order.orderNumber}
-        description={headerMeta.join(' · ')}
-        actions={
-          <div className="flex flex-wrap items-center gap-1.5">
-            <StatusBadge
-              tone={csoStatusTone(order.status as CsoItemStatus)}
-              variant="soft"
-            >
-              {CSO_STATUS_LABEL[order.status as CsoItemStatus]}
-            </StatusBadge>
+      <div className="space-y-2">
+        <div className="space-y-1">
+          <Link
+            href="/ugyfelrendelesek"
+            className="inline-flex items-center gap-1 text-body text-ink-secondary no-underline hover:text-ink"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
+            Ügyfélrendelések
+          </Link>
+          <PageHeader
+            title={order.orderNumber}
+            description={headerMeta.join(' · ')}
+            className="mb-0"
+            actions={
+              <StatusBadge
+                tone={csoStatusTone(order.status as CsoItemStatus)}
+                variant="soft"
+              >
+                {CSO_STATUS_LABEL[order.status as CsoItemStatus]}
+              </StatusBadge>
+            }
+          />
+        </div>
+        {order.status === 'torolve' ? (
+          <p className="text-body text-danger-ink" role="status">
+            Lemondva — nincs további lépés.
+          </p>
+        ) : (
+          <CsoJourneyStepper
+            steps={journey}
+            nextLabel={stepperNextLabel}
+            footer={
+              nextStep?.kind === 'done'
+                ? 'Lezárva — nincs további lépés.'
+                : null
+            }
+          />
+        )}
+      </div>
+
+      {fullyCancelled ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-subtle px-3 py-3">
+          <p className="text-body text-ink-secondary">
+            Ez a rendelés le van mondva. Visszaállíthatod a tételeket, vagy
+            elrejtheted a listáról.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
             <Button
               type="button"
               variant="secondary"
-              onClick={() => router.push('/ugyfelrendelesek')}
+              size="sm"
+              disabled={pending}
+              onClick={() =>
+                run(() => restoreSpecialOrderAction({ orderId: order.id }))
+              }
             >
-              Vissza a listához
+              <RotateCcw className="size-3.5" aria-hidden />
+              Összes tétel visszaállítása
             </Button>
-            {showOverflowMenu ? (
-              <details className="relative">
-                <summary
-                  className={cn(
-                    buttonVariants({ variant: 'ghost', size: 'md' }),
-                    'list-none [&::-webkit-details-marker]:hidden'
-                  )}
-                >
-                  <MoreHorizontal className="size-3.5" aria-hidden />
-                  Műveletek
-                </summary>
-                <div
-                  role="menu"
-                  className="absolute right-0 z-40 mt-1 w-56 rounded-md border border-border bg-surface p-1 shadow-elev2"
-                >
-                  {showSmsResendInMenu ? (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body text-ink hover:bg-subtle"
-                      disabled={pending}
-                      onClick={openSmsDialog}
-                    >
-                      SMS újraküldése
-                    </button>
-                  ) : null}
-                  {fullyCancelled ? (
-                    <>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body text-ink hover:bg-subtle"
-                        disabled={pending}
-                        onClick={() =>
-                          run(() =>
-                            restoreSpecialOrderAction({ orderId: order.id })
-                          )
-                        }
-                      >
-                        <RotateCcw className="size-3.5" aria-hidden />
-                        Összes tétel visszaállítása
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body text-ink hover:bg-subtle"
-                        disabled={pending}
-                        onClick={() => setConfirm({ kind: 'hide-order' })}
-                      >
-                        Elrejtés a listáról
-                      </button>
-                    </>
-                  ) : null}
-                  {canCancelOrder ? (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-body text-danger-ink hover:bg-subtle"
-                      disabled={pending}
-                      onClick={() => setConfirm({ kind: 'cancel-order' })}
-                    >
-                      Rendelés lemondása
-                    </button>
-                  ) : null}
-                </div>
-              </details>
-            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              onClick={() => setConfirm({ kind: 'hide-order' })}
+            >
+              Elrejtés a listáról
+            </Button>
           </div>
-        }
-      />
+        </div>
+      ) : null}
+
+      {canWrite ? (
+        <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
+                Megjegyzés
+              </p>
+              {order.note?.trim() ? (
+                <p className="mt-1 whitespace-pre-wrap break-words text-body text-ink-secondary">
+                  {order.note.trim()}
+                </p>
+              ) : (
+                <p className="mt-1 text-body text-ink-muted">Nincs megjegyzés.</p>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setHeaderOpen(true)}
+            >
+              <Pencil className="size-3.5" aria-hidden />
+              Szerkesztés
+            </Button>
+          </div>
+        </div>
+      ) : order.note?.trim() ? (
+        <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+          <p className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
+            Megjegyzés
+          </p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-body text-ink-secondary">
+            {order.note.trim()}
+          </p>
+        </div>
+      ) : null}
 
       {canWrite && nextStep && nextStep.kind !== 'done' ? (
         <div
@@ -503,24 +585,14 @@ export function CustomerOrderDetailClient({
           )}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p
-                className={cn(
-                  'text-label font-semibold',
-                  nextStepUrgent ? 'text-warning-ink' : 'text-ink'
-                )}
-              >
-                {nextStep.title}
-              </p>
-              <p
-                className={cn(
-                  'mt-0.5 text-body',
-                  nextStepUrgent ? 'text-warning-ink' : 'text-ink-secondary'
-                )}
-              >
-                {nextStep.body}
-              </p>
-            </div>
+            <p
+              className={cn(
+                'min-w-0 flex-1 text-body',
+                nextStepUrgent ? 'text-warning-ink' : 'text-ink-secondary'
+              )}
+            >
+              {nextStep.body}
+            </p>
             <div className="flex shrink-0 flex-wrap gap-1.5">
               {nextStep.href ? (
                 <Link
@@ -558,6 +630,16 @@ export function CustomerOrderDetailClient({
                       onClick={openSmsDialog}
                     >
                       SMS (opcionális)
+                    </Button>
+                  ) : null}
+                  {showSmsResend ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={pending}
+                      onClick={openSmsDialog}
+                    >
+                      SMS újraküldése
                     </Button>
                   ) : null}
                 </>
@@ -607,17 +689,6 @@ export function CustomerOrderDetailClient({
                   onClick={() => setEditItemId(nextStep.also!.focusItemId!)}
                 >
                   Pótold a hiányt
-                </Button>
-              ) : null}
-              {nextStep.also.kind === 'sms' ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={pending}
-                  onClick={openSmsDialog}
-                >
-                  SMS küldése
                 </Button>
               ) : null}
             </div>
@@ -710,6 +781,19 @@ export function CustomerOrderDetailClient({
           {statusSummary ? (
             <p className="pt-1 text-hint text-ink-muted">{statusSummary}</p>
           ) : null}
+          {canCancelOrder ? (
+            <div className="pt-2">
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={pending}
+                onClick={() => setConfirm({ kind: 'cancel-order' })}
+              >
+                Rendelés lemondása
+              </Button>
+            </div>
+          ) : null}
         </InfoCard>
       </div>
 
@@ -721,35 +805,6 @@ export function CustomerOrderDetailClient({
           </p>
         </div>
       ) : null}
-
-      <div className="rounded-md border border-border bg-surface px-3 py-2.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-medium uppercase tracking-wide text-ink-muted">
-              Megjegyzés
-            </p>
-            {order.note?.trim() ? (
-              <p className="mt-1 whitespace-pre-wrap break-words text-body text-ink-secondary">
-                {order.note.trim()}
-              </p>
-            ) : (
-              <p className="mt-1 text-body text-ink-muted">Nincs megjegyzés.</p>
-            )}
-          </div>
-          {canWrite ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="shrink-0"
-              onClick={() => setHeaderOpen(true)}
-            >
-              <Pencil className="size-3.5" aria-hidden />
-              Szerkesztés
-            </Button>
-          ) : null}
-        </div>
-      </div>
 
       {canWrite && selectedItems.length > 0 ? (
         <div
@@ -812,8 +867,7 @@ export function CustomerOrderDetailClient({
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-        <div className="space-y-3">
+      <div className="space-y-3">
           <div className="overflow-hidden rounded-md border border-border bg-surface">
             {canWrite ? (
               <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
@@ -1026,7 +1080,9 @@ export function CustomerOrderDetailClient({
                       {canWrite ? (
                         <DataTableCell className="py-2 text-right align-top">
                           <div className="flex flex-wrap justify-end gap-1">
-                            {item.status === 'felveve' && !blocker ? (
+                            {item.status === 'felveve' &&
+                            !blocker &&
+                            !hideRowLeadCta ? (
                               <Button
                                 type="button"
                                 variant="secondary"
@@ -1037,7 +1093,8 @@ export function CustomerOrderDetailClient({
                                 Listára
                               </Button>
                             ) : null}
-                            {item.status === 'itt_van' ? (
+                            {item.status === 'itt_van' &&
+                            !hideRowHandoverCta ? (
                               <Button
                                 type="button"
                                 variant="secondary"
@@ -1118,97 +1175,8 @@ export function CustomerOrderDetailClient({
               </ul>
             </details>
           ) : null}
-        </div>
 
-        <aside className="space-y-3">
-          <div className="rounded-md border border-border bg-surface p-3">
-            <h3 className="mb-2 text-body font-semibold text-ink">Összegzés</h3>
-            <p className="text-body text-ink-secondary">
-              <span className="font-semibold tabular-nums text-ink">
-                {activeItems.length}
-              </span>{' '}
-              tétel
-              {csoQtyByUnit(activeItems).length > 0 ? (
-                <span>
-                  {' '}
-                  ·{' '}
-                  {csoQtyByUnit(activeItems)
-                    .map((q) => `${fmtQty(q.qty)} ${q.unit}`)
-                    .join(' + ')}
-                </span>
-              ) : null}
-            </p>
-            <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-right text-body">
-              <dt className="text-left text-ink-secondary">Összesen (bruttó)</dt>
-              <dd className="font-semibold tabular-nums text-ink">
-                {formatMoneyFt(totalGross)} Ft
-              </dd>
-              {order.depositAmount != null && order.depositAmount > 0 ? (
-                <>
-                  <dt className="text-left text-ink-secondary">Előleg</dt>
-                  <dd className="tabular-nums text-ink">
-                    −{formatMoneyFt(order.depositAmount)} Ft
-                  </dd>
-                  <dt className="text-left font-semibold text-ink">
-                    Átvételkor fizet
-                  </dt>
-                  <dd className="font-semibold tabular-nums text-ink">
-                    {formatMoneyFt(depositDue ?? 0)} Ft
-                  </dd>
-                </>
-              ) : null}
-            </dl>
-            {missingPriceCount > 0 ? (
-              <p className="mt-2 text-body font-semibold text-warning-ink">
-                {missingPriceCount} tételnél hiányzik az ár.
-              </p>
-            ) : null}
-            <p className="mt-2 text-hint text-ink-muted">
-              Az árak bruttók (ÁFA-val).
-            </p>
-          </div>
-
-          <div className="rounded-md border border-border bg-surface p-3">
-            <h3 className="mb-2 text-body font-semibold text-ink">
-              Rendelés útja
-            </h3>
-            <ol className="space-y-2">
-              {journey.map((step) => (
-                <li key={step.key} className="flex gap-2.5">
-                  <span
-                    className={cn(
-                      'mt-1.5 size-2 shrink-0 rounded-full',
-                      step.done ? 'bg-ink' : 'bg-border'
-                    )}
-                    aria-hidden
-                  />
-                  <div className="min-w-0">
-                    <p
-                      className={cn(
-                        'text-body',
-                        step.done
-                          ? 'font-medium text-ink'
-                          : 'text-ink-muted'
-                      )}
-                    >
-                      {step.label}
-                    </p>
-                    {step.at ? (
-                      <p className="text-hint text-ink-secondary">
-                        {fmtDateTime(step.at)}
-                      </p>
-                    ) : step.done ? null : (
-                      <p className="text-hint text-ink-muted">még nem</p>
-                    )}
-                    {step.hint ? (
-                      <p className="text-hint text-ink-muted">{step.hint}</p>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </aside>
+        {summaryBlock}
       </div>
 
       <CsoHeaderEditDialog open={headerOpen} onOpenChange={setHeaderOpen} order={order} />

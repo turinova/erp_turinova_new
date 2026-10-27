@@ -29,17 +29,19 @@ Fej státusz = leghátrább élő tétel (DB trigger). Részleges átadás OK.
 | Route | Primary CTA / szerep |
 |---|---|
 | `/ugyfelrendelesek` | Új ügyfélrendelés — rendelésfej lista |
-| `/ugyfelrendelesek/uj` | Mentés · `?accessory=` POS deep-link |
-| `/ugyfelrendelesek/[id]` | Értékesítés-szerű layout: header meta · Következő · Ügyfél/Rendelés InfoCard · megjegyzés · tételek+összegzés+**Rendelés útja** timeline |
-| `/ugyfelrendelesek/varolista` | Napi munka; `?notify=pending` = SMS nélküli átvehetők; **Megj.** ikon (fej+tétel note tooltip); rendelés megnyitás = UR# link (nincs külön Rendelés oszlop) |
+| `/ugyfelrendelesek/uj` | Mentés · `?accessory=` POS deep-link · tételkereső: `/api/cso/product-search` + `search_accessories_page` · előleg a totals sávban |
+| `/ugyfelrendelesek/[id]` | Ajánlat-ritmus: breadcrumb · **vízszintes Rendelés útja** · megjegyzés · Következő CTA · Ügyfél/Rendelés · **full-width tételek** · összegzés alul (nincs jobb aside) |
+| `/ugyfelrendelesek/varolista` | Napi munka (nav: **Beszerzés** → Beszállítói várólista); `?notify=pending` = SMS nélküli átvehetők; URL változatlan. Ügyfélrendelések lista: top-level az **Ügyfél** szekcióban. |
 
 ### Certainty-first
 
-- Részleten mindig egy **Következő lépés** sáv (lead / PO küldés / bevételezés / átadás) — **egy** primary CTA. **SMS soha nem kapu:** átvehetőnél primary = átadás; SMS secondary / Emellett (`suggestSms`). Urgent (`handover` / `blocked`): `warning-soft`; info (`lead` / PO / bevételezés): `bg-subtle`.
-- Header rövid meta (ügyfél · felvéve); részletek a Rendelés InfoCardon. ⋯ Műveletek = ritka (lemondás / SMS újraküldés / restore) — nincs „Adatok szerkesztése” (az a kártyákon van).
-- **Vegyes státusz:** ha pl. van úton lévő tétel *és* még listázható / hiányos `felveve`, a sáv **Emellett:** másodlagos sort mutat (secondary gomb: Listára / Pótold a hiányt). Preferencia: leadable > blocked.
-- **Blocked:** primary „Tétel javítása” / „Válassz beszállítót” → tétel szerkesztő (`focusItemId`).
-- **Megjegyzés:** részleten fej-note callout a Következő lépés *előtt* (teljes szöveg); várólistán StickyNote + tooltip (fej és/vagy tétel).
+- **Layout (mint `/ajanlatok/[id]`):** header → `CsoJourneyStepper` (vízszintes → chippek + „Következő: …”) → megjegyzés → CTA sáv (body + gombok) → Ügyfél/Rendelés → **full-width tételek** → összegzés. Nincs jobb Műveletek/útja aside.
+- CTA sáv: **egy** primary (lead / PO / bevételezés / átadás). **SMS soha nem kapu:** átvehetőnél primary = átadás; SMS = secondary (`suggestSms`); ha már ment → ghost „SMS újraküldése”. Emellett csak lead/blocked. Urgent: `warning-soft`; info: `bg-subtle`.
+- Header: breadcrumb „← Ügyfélrendelések” + szám + badge. **Nincs** „Műveletek” overflow. Lemondás = `danger` a **Rendelés** kártyán; lemondott = body sáv.
+- **Sor-CTA:** Listára / Átadás csak ha a primary *nem* ugyanaz (`lead` / `handover`) — különben csak Pencil.
+- **Vegyes státusz:** **Emellett:** secondary (Listára / Pótold). Preferencia: leadable > blocked.
+- **Blocked:** primary → tétel szerkesztő (`focusItemId`).
+- **Megjegyzés:** callout a CTA sáv *előtt*; várólistán StickyNote + tooltip.
 - Kézi „Megérkezett” = **kivétel** (ghost); preferált: Beérkezések.
 - Átadás dialógus: **fizetési mód (alap: KP) + értékesítés**; sikernél toast + „Eladás” link (nincs kötelező redirect).
 - POS kereső: nincs készleten → **Ügyfélrendelés** link.
@@ -65,7 +67,8 @@ Szerveroldali lapozás (limit 25). Nincs szabad státuszflip — csak státuszg�
 3. **Kézi „Megérkezett”** — kivétel (polc / nincs PO).
 4. **Átadás = értékesítés** — `itt_van` → `create_sale` (KP default / utalás) → stock OUT **csak** sale → `atadva` + linkek. Nincs külön CSO stock out. Részleges átadás = újabb sale. Előleg = discount (első átadáskor). Due=0 / utalás: ügyfél snapshotból biztosítva, ha hiányzik.
 5. **SMS (opcionális)** — `cso_ready` sablon; nem blokkolja az átadást. Várólista `?notify=pending` = még nem SMS-ezett átvehetők.  
-   Küldéskor `order_share_links` token + `{status_url}` → publikus mobil státusz `/r/{token}` (átvehető / még úton / fizetendő). Lejárat 30 nap.
+   Küldéskor `order_share_links` token + `{status_url}` → publikus mobil státusz `/r/{token}` (átvehető / még úton / fizetendő). Lejárat 30 nap.  
+   Default SMS rövid: `{order_number} atveheto ({ready_count} tetel). Reszletek: {status_url}` — részletek a linken.
 
 ### UI összekötés
 

@@ -90,14 +90,14 @@ describe('csoComputeNextStep', () => {
     assert.equal(step?.also?.count, 1)
   })
 
-  it('ready + no SMS → handover primary + suggestSms + also sms', () => {
+  it('ready + no SMS → handover primary + suggestSms, no also', () => {
     const step = csoComputeNextStep({
       smsSentAt: null,
       items: [item({ id: 'r', status: 'itt_van' })]
     })
     assert.equal(step?.kind, 'handover')
     assert.equal(step?.suggestSms, true)
-    assert.equal(step?.also?.kind, 'sms')
+    assert.equal(step?.also, undefined)
   })
 
   it('ready + leadable + no SMS → handover + also lead + suggestSms', () => {

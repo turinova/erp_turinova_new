@@ -23,8 +23,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { grossFromNet } from '@/lib/accessories/parse'
 import { createCustomerSpecialOrderAction } from '@/lib/customer-orders/actions'
+import { fetchCsoProductSearch } from '@/lib/customer-orders/product-search-client'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
-import { searchPurchaseProductsAction } from '@/lib/purchase-orders/actions'
 import type { PurchaseProductSearchItem } from '@/lib/purchase-orders/queries'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { SupplierSelectOption } from '@/lib/suppliers/queries'
@@ -97,6 +97,8 @@ export function CustomerOrderFormClient({
   const searchWrapRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchAbort = useRef<AbortController | null>(null)
+  const searchSeq = useRef(0)
 
   const supplierOptions = useMemo(
     () =>
@@ -172,21 +174,29 @@ export function CustomerOrderFormClient({
     if (searchTimer.current) clearTimeout(searchTimer.current)
     const q = searchQ.trim()
     if (q.length < 2) {
+      searchAbort.current?.abort()
       setSearchHits([])
       setSearchOpen(false)
+      setSearching(false)
       return
     }
     searchTimer.current = setTimeout(async () => {
+      searchAbort.current?.abort()
+      const ac = new AbortController()
+      searchAbort.current = ac
+      const seq = ++searchSeq.current
       setSearching(true)
-      const result = await searchPurchaseProductsAction(q)
+      const result = await fetchCsoProductSearch(q, { signal: ac.signal })
+      if (seq !== searchSeq.current || ac.signal.aborted) return
       setSearching(false)
       if (!result.ok) {
+        if (result.message === 'aborted') return
         toast.error(result.message)
         return
       }
       setSearchHits(result.rows)
       setSearchOpen(true)
-    }, 280)
+    }, 150)
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current)
     }
@@ -281,7 +291,6 @@ export function CustomerOrderFormClient({
       setFieldErrors({})
       toast.success('Ügyfélrendelés mentve.')
       router.push(`/ugyfelrendelesek/${result.id}`)
-      router.refresh()
     })
   }
 
@@ -360,21 +369,6 @@ export function CustomerOrderFormClient({
             onChange={(e) => setCustomerMobile(e.target.value)}
             autoComplete="tel"
             inputMode="tel"
-          />
-        </FormField>
-        <FormField
-          label="Előleg (Ft)"
-          htmlFor="cso-deposit"
-          optionalLabel
-          error={fieldErrors.depositAmount}
-        >
-          <Input
-            id="cso-deposit"
-            value={depositAmount}
-            disabled={!canWrite}
-            onChange={(e) => setDepositAmount(e.target.value)}
-            inputMode="decimal"
-            placeholder="0"
           />
         </FormField>
         <FormField
@@ -534,7 +528,16 @@ export function CustomerOrderFormClient({
               deposit={depositNum}
               missingPriceCount={missingPriceCount}
               missingSupplierCount={missingSupplierCount}
-              alignWithEditor={lines.length > 0}
+              depositField={
+                canWrite
+                  ? {
+                      value: depositAmount,
+                      onChange: setDepositAmount,
+                      disabled: !canWrite,
+                      error: fieldErrors.depositAmount
+                    }
+                  : undefined
+              }
             />
           </div>
         </div>

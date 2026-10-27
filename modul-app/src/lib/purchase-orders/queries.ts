@@ -471,47 +471,39 @@ export async function getPurchaseOrder(
   }
 }
 
-/** Aktív termékek keresése PO tételhez. */
+/** Aktív termékek keresése PO / CSO tételhez — `search_accessories_page` RPC. */
 export async function searchProductsForPurchaseOrder(
   supabase: SupabaseClient,
   tenantId: string,
   q: string,
   limit = 15
 ): Promise<PurchaseProductSearchItem[]> {
-  const safe = q.trim().replace(/[%_,]/g, '')
-  if (!safe) return []
+  const term = q.trim().replace(/[%_,()"\\*]/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!term) return []
 
-  const { data, error } = await supabase
-    .from('accessories')
-    .select(
-      `
-      id,
-      name,
-      sku,
-      price_net,
-      purchase_price_net,
-      tax_rate_id,
-      unit_id,
-      tax_rates ( rate_percent ),
-      units ( shortform )
-    `
-    )
-    .eq('tenant_id', tenantId)
-    .eq('active', true)
-    .is('deleted_at', null)
-    .or(
-      `name.ilike.%${safe}%,sku.ilike.%${safe}%,barcode.ilike.%${safe}%,barcode_internal.ilike.%${safe}%`
-    )
-    .order('name', { ascending: true })
-    .limit(limit)
+  const capped = Math.max(1, Math.min(limit, 25))
+  const { data, error } = await supabase.rpc('search_accessories_page', {
+    p_tenant_id: tenantId,
+    p_q: term,
+    p_limit: capped,
+    p_offset: 0
+  })
 
   if (error) {
-    console.error('searchProductsForPurchaseOrder', error.message)
-    throw new Error('Nem sikerült keresni a termékek között.')
+    console.error('searchProductsForPurchaseOrder rpc', error.message)
+    throw new Error(
+      /Could not find the function|PGRST202/i.test(error.message)
+        ? 'A termékkereső RPC nincs telepítve (search_accessories_page).'
+        : /timeout|canceling statement/i.test(error.message)
+          ? 'A keresés időtúllépés miatt megszakadt. Próbáld újra.'
+          : 'Nem sikerült keresni a termékek között.'
+    )
   }
 
-  const rows = data ?? []
-  const ids = rows.map((r) => r.id as string)
+  const rows = ((data ?? []) as Record<string, unknown>[]).filter(
+    (r) => r.active !== false
+  )
+  const ids = rows.map((r) => String(r.id))
   const primaryByAccessory = new Map<string, string>()
   if (ids.length > 0) {
     const { data: links } = await supabase
@@ -529,34 +521,19 @@ export async function searchProductsForPurchaseOrder(
     }
   }
 
-  return rows.map((row) => {
-    const taxRates = row.tax_rates as
-      | { rate_percent: number | string }
-      | { rate_percent: number | string }[]
-      | null
-    const tax = Array.isArray(taxRates) ? taxRates[0] : taxRates
-    const units = row.units as
-      | { shortform: string }
-      | { shortform: string }[]
-      | null
-    const unit = Array.isArray(units) ? units[0] : units
-
-    return {
-      id: row.id,
-      name: row.name,
-      sku: row.sku,
-      purchase_price_net:
-        row.purchase_price_net == null
-          ? null
-          : Number(row.purchase_price_net),
-      price_net: Number(row.price_net) || 0,
-      tax_rate_id: row.tax_rate_id,
-      tax_rate_percent: Number(tax?.rate_percent ?? 0),
-      unit_id: row.unit_id,
-      unit_shortform: unit?.shortform ?? 'db',
-      primary_supplier_id: primaryByAccessory.get(row.id as string) ?? null
-    }
-  })
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    sku: String(row.sku ?? ''),
+    purchase_price_net:
+      row.purchase_price_net == null ? null : Number(row.purchase_price_net),
+    price_net: Number(row.price_net) || 0,
+    tax_rate_id: String(row.tax_rate_id ?? ''),
+    tax_rate_percent: Number(row.tax_rate_percent ?? 0),
+    unit_id: String(row.unit_id ?? ''),
+    unit_shortform: String(row.unit_shortform ?? 'db'),
+    primary_supplier_id: primaryByAccessory.get(String(row.id)) ?? null
+  }))
 }
 
 /** Aktív táblás anyagok keresése anyag-PO-hoz. */

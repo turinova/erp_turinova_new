@@ -74,7 +74,7 @@ const MOCK_NAV: NavSection[] = [
     items: [
       { kind: 'link', label: 'Ügyfelek', icon: Users, accent: 'blue' },
       {
-        kind: 'group',
+        kind: 'link',
         label: 'Ügyfélrendelések',
         icon: ClipboardList,
         accent: 'blue'
@@ -93,6 +93,19 @@ const MOCK_NAV: NavSection[] = [
     ]
   },
   {
+    label: 'Gyártás',
+    items: [
+      { kind: 'group', label: 'Lapszabászat', icon: Factory, accent: 'emerald' }
+    ]
+  },
+  {
+    label: 'Beszerzés & készlet',
+    items: [
+      { kind: 'group', label: 'Beszerzés', icon: Truck, accent: 'amber' },
+      { kind: 'group', label: 'Készlet', icon: Warehouse, accent: 'cyan' }
+    ]
+  },
+  {
     label: 'Pénzügy',
     items: [
       { kind: 'link', label: 'Áttekintés', icon: Wallet, accent: 'teal' },
@@ -105,19 +118,6 @@ const MOCK_NAV: NavSection[] = [
       },
       { kind: 'link', label: 'ÁFA összesítő', icon: Percent, accent: 'teal' },
       { kind: 'link', label: 'Exportok', icon: FileText, accent: 'teal' }
-    ]
-  },
-  {
-    label: 'Gyártás',
-    items: [
-      { kind: 'group', label: 'Lapszabászat', icon: Factory, accent: 'emerald' }
-    ]
-  },
-  {
-    label: 'Beszerzés & készlet',
-    items: [
-      { kind: 'group', label: 'Beszerzés', icon: Truck, accent: 'amber' },
-      { kind: 'group', label: 'Készlet', icon: Warehouse, accent: 'cyan' }
     ]
   },
   {

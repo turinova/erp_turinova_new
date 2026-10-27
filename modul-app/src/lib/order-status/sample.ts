@@ -30,22 +30,27 @@ export function sampleCsoOrderStatusView(
     customerFirstName: 'Anna',
     statusLabel: 'Részben átvehető',
     statusTone: 'warning',
-    statusBody: '2 tétel kész, 1 még úton.',
+    statusBody: '',
     dueNowGross: 12400,
-    dueHint: 'Csak a kész tételek · előleg beszámítva',
+    dueHint: 'Előleg beszámítva',
     depositGross: 5000,
+    summaryLine: 'Összesen 2 tétel',
     company: c,
     readyItems: [
       {
         id: '1',
-        name: 'Zsanér 110°',
+        name: 'Zsanér 110° félig ráfedő, soft-close',
         qtyLabel: '2 db',
+        unitPriceGross: 2400,
+        unitShort: 'db',
         amountGross: 4800
       },
       {
         id: '2',
         name: 'Fogantyú fekete',
         qtyLabel: '4 db',
+        unitPriceGross: 1900,
+        unitShort: 'db',
         amountGross: 7600
       }
     ],
@@ -54,6 +59,8 @@ export function sampleCsoOrderStatusView(
         id: '3',
         name: 'Pánt készlet',
         qtyLabel: '1 db',
+        unitPriceGross: null,
+        unitShort: null,
         amountGross: null
       }
     ],
@@ -62,7 +69,7 @@ export function sampleCsoOrderStatusView(
   }
 }
 
-/** SMS-pillanat demo — lapszab kész. */
+/** SMS-pillanat demo — lapszab kész (panel db · élzárás). */
 export function sampleQuoteOrderStatusView(
   company?: Partial<OrderStatusPreviewCompany> | null
 ): CustomerOrderStatusView {
@@ -77,18 +84,23 @@ export function sampleQuoteOrderStatusView(
     dueNowGross: 48500,
     dueHint: null,
     depositGross: null,
+    summaryLine: 'Összesen 11 db',
     company: c,
     readyItems: [
       {
         id: '1',
-        name: 'Fehér 18 mm bútorlap',
-        qtyLabel: '3 db · 4,20 m²',
+        name: 'Fehér 18 mm',
+        qtyLabel: '8 db · élzárás',
+        unitPriceGross: null,
+        unitShort: null,
         amountGross: null
       },
       {
         id: '2',
         name: 'Antracit 18 mm',
-        qtyLabel: '1 db · 1,10 m²',
+        qtyLabel: '3 db',
+        unitPriceGross: null,
+        unitShort: null,
         amountGross: null
       }
     ],

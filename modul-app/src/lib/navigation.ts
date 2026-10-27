@@ -78,9 +78,9 @@ export type NavSection = {
 }
 
 /**
- * Top-level IA — szerep-chunkok (Pult / Ügyfél / Értékesítés / Gyártás /
- * Beszerzés & készlet / Csapat / Rendszer). Sorrend stabil; addon/entitlement rejt.
- * Pénzügy a bizonylatlista (Értékesítés és Gyártás között).
+ * Top-level IA — értékáram: Pult → Ügyfél → Értékesítés → Gyártás →
+ * Beszerzés & készlet → Pénzügy → Csapat → Rendszer.
+ * Sorrend stabil; addon/entitlement rejt.
  */
 const allNavSections: NavSection[] = [
   {
@@ -153,27 +153,11 @@ const allNavSections: NavSection[] = [
           accent: 'slate'
         },
       {
-          type: 'group',
+          type: 'link',
           label: 'Ügyfélrendelések',
+          href: '/ugyfelrendelesek',
           icon: ClipboardList,
-          accent: 'slate',
-          matchPrefix: '/ugyfelrendelesek',
-          children: [
-            {
-              type: 'link',
-              label: 'Rendelések',
-              href: '/ugyfelrendelesek',
-              icon: ClipboardList,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Beszállítói várólista',
-              href: '/ugyfelrendelesek/varolista',
-              icon: Truck,
-              accent: 'slate'
-            }
-          ]
+          accent: 'slate'
         }
     ]
   },
@@ -292,46 +276,6 @@ const allNavSections: NavSection[] = [
     ]
   },
   {
-    label: 'Pénzügy',
-    items: [
-      {
-        type: 'link',
-        label: 'Áttekintés',
-        href: '/penzugy',
-        icon: Wallet,
-        accent: 'slate'
-      },
-      {
-        type: 'link',
-        label: 'Bizonylatok',
-        href: '/szamlak',
-        icon: Receipt,
-        accent: 'slate'
-      },
-      {
-        type: 'link',
-        label: 'Kintlévőség',
-        href: '/penzugy/kintlevoseg',
-        icon: CircleDollarSign,
-        accent: 'slate'
-      },
-      {
-        type: 'link',
-        label: 'ÁFA összesítő',
-        href: '/penzugy/afa',
-        icon: Percent,
-        accent: 'slate'
-      },
-      {
-        type: 'link',
-        label: 'Exportok',
-        href: '/penzugy/exportok',
-        icon: FileText,
-        accent: 'slate'
-      }
-    ]
-  },
-  {
     label: 'Gyártás',
     items: [
       {
@@ -385,6 +329,13 @@ const allNavSections: NavSection[] = [
             },
             {
               type: 'link',
+              label: 'Beszállítói várólista',
+              href: '/ugyfelrendelesek/varolista',
+              icon: Truck,
+              accent: 'slate'
+            },
+            {
+              type: 'link',
               label: 'Beszállítók',
               href: '/beszallitok',
               icon: Building2,
@@ -422,6 +373,46 @@ const allNavSections: NavSection[] = [
             }
           ]
         }
+    ]
+  },
+  {
+    label: 'Pénzügy',
+    items: [
+      {
+        type: 'link',
+        label: 'Áttekintés',
+        href: '/penzugy',
+        icon: Wallet,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Bizonylatok',
+        href: '/szamlak',
+        icon: Receipt,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Kintlévőség',
+        href: '/penzugy/kintlevoseg',
+        icon: CircleDollarSign,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'ÁFA összesítő',
+        href: '/penzugy/afa',
+        icon: Percent,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Exportok',
+        href: '/penzugy/exportok',
+        icon: FileText,
+        accent: 'slate'
+      }
     ]
   },
   {

@@ -396,6 +396,10 @@ async function handleSession(request: NextRequest) {
     /** POS typeahead — lean skip; staff-only (not partner-shared). */
     const isPosSearchApi =
       pathname === '/api/pos/search' || pathname.startsWith('/api/pos/search/')
+    /** CSO / PO termék typeahead — lean skip; staff-only. */
+    const isCsoProductSearchApi =
+      pathname === '/api/cso/product-search' ||
+      pathname.startsWith('/api/cso/product-search/')
 
     const isPartnerSharedApi =
       pathname === '/api/optimize' ||
@@ -405,14 +409,15 @@ async function handleSession(request: NextRequest) {
       /^\/api\/ajanlatok\/[^/]+\/pdf$/.test(pathname)
 
     if (user) {
-      // Kereső / catalog barcode / POS barcode+bootstrap+search: skip membership waterfall.
-      // Az API lean auth + RLS dönt (POS: staff membership only).
+      // Kereső / catalog barcode / POS barcode+bootstrap+search / CSO product: skip membership waterfall.
+      // Az API lean auth + RLS dönt (POS/CSO: staff membership only).
       if (
         isKeresoApi ||
         isBarcodeLookupApi ||
         isPosBarcodeLookupApi ||
         isPosBootstrapApi ||
-        isPosSearchApi
+        isPosSearchApi ||
+        isCsoProductSearchApi
       ) {
         isAuthenticated = true
       } else if (partnerCtx) {

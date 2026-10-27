@@ -158,7 +158,7 @@ export function SmsSettingsForm({
           {showCso ? (
             <FormSection
               title="Ügyfélrendelés — átvehető"
-              description="Placeholderek: {customer_name}, {order_number}, {company_name}, {total_amount}, {ready_count}, {waiting_count}, {status_url}."
+              description="Rövid SMS + {status_url}. Placeholderek: {customer_name}, {order_number}, {company_name}, {total_amount}, {ready_count}, {waiting_count}, {status_url}. A waiting_count opcionális (részlegesnél)."
               columns={1}
             >
               <FormField

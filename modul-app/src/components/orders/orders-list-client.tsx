@@ -251,7 +251,7 @@ export function OrdersListClient({
             id="order-search"
             value={qDraft}
             onChange={(e) => setQDraft(e.target.value)}
-            placeholder="O-szám, ügyfél, vonalkód…"
+            placeholder="O-szám, ügyfél, anyag, vonalkód…"
             className="pl-8"
           />
         </form>

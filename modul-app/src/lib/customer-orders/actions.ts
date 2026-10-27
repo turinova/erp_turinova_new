@@ -69,6 +69,12 @@ function revalidateCso(id?: string) {
   revalidatePath('/home')
 }
 
+/** Létrehozás: keskeny invalidálás — ne várjon /home + sales + PO listára. */
+function revalidateCsoCreate(id: string) {
+  revalidatePath(LIST_PATH)
+  revalidatePath(`${LIST_PATH}/${id}`)
+}
+
 function revalidateCsoMany(orderIds: string[]) {
   revalidatePath(LIST_PATH)
   revalidatePath(`${LIST_PATH}/varolista`)
@@ -226,7 +232,7 @@ export async function createCustomerSpecialOrderAction(
     return { ok: false, message: 'Nem sikerült menteni a tételeket.' }
   }
 
-  revalidateCso(order.id)
+  revalidateCsoCreate(order.id)
   return { ok: true, id: order.id }
 }
 

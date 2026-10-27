@@ -363,11 +363,16 @@ type TotalsProps = {
   deposit: number | null
   missingPriceCount: number
   missingSupplierCount?: number
-  /** Összeg a szerkesztő rács „Sor bruttó” oszlopa alá (törlés oszlop kihagyva). */
-  alignWithEditor?: boolean
+  /** Szerkeszthető előleg a totals sávban (új rendelés). */
+  depositField?: {
+    value: string
+    onChange: (value: string) => void
+    disabled?: boolean
+    error?: string
+  }
 }
 
-/** Lista-láb: összeg a „Sor bruttó” oszlop alá igazítva. */
+/** Lista-láb: tételek + előleg + fizetendő egy helyen. */
 export function CsoTotalsFooter({
   itemCount,
   qtyByUnit,
@@ -375,7 +380,7 @@ export function CsoTotalsFooter({
   deposit,
   missingPriceCount,
   missingSupplierCount = 0,
-  alignWithEditor = false
+  depositField
 }: TotalsProps) {
   const hasDeposit = deposit != null && deposit > 0
   const due = hasDeposit ? Math.max(0, totalGross - (deposit ?? 0)) : null
@@ -385,58 +390,84 @@ export function CsoTotalsFooter({
 
   return (
     <div
-      className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 border-t border-border-strong bg-subtle px-3 py-3"
+      className="border-t border-border-strong bg-subtle px-3 py-3"
       role="status"
       aria-live="polite"
     >
-      <div className="min-w-0 space-y-0.5">
-        <p className="text-body text-ink">
-          <span className="font-semibold tabular-nums">{itemCount}</span> tétel
-          {qtyText ? (
-            <span className="text-ink-secondary"> · {qtyText}</span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-body text-ink">
+            <span className="font-semibold tabular-nums">{itemCount}</span> tétel
+            {qtyText ? (
+              <span className="text-ink-secondary"> · {qtyText}</span>
+            ) : null}
+          </p>
+          <p className="text-body text-ink-secondary">
+            Az árak bruttók (ÁFA-val).
+          </p>
+          {missingPriceCount > 0 ? (
+            <p className="text-body font-semibold text-warning-ink">
+              {missingPriceCount} tételnél hiányzik az ár.
+            </p>
           ) : null}
-        </p>
-        <p className="text-body text-ink-secondary">
-          Az árak bruttók (ÁFA-val).
-        </p>
-        {missingPriceCount > 0 ? (
-          <p className="text-body font-semibold text-warning-ink">
-            {missingPriceCount} tételnél hiányzik az ár.
-          </p>
-        ) : null}
-        {missingSupplierCount > 0 ? (
-          <p className="text-body font-semibold text-warning-ink">
-            {missingSupplierCount} tételnél nincs beszállító.
-          </p>
-        ) : null}
-      </div>
+          {missingSupplierCount > 0 ? (
+            <p className="text-body font-semibold text-warning-ink">
+              {missingSupplierCount} tételnél nincs beszállító.
+            </p>
+          ) : null}
+        </div>
 
-      <dl
-        className={cn(
-          'ml-auto grid grid-cols-[auto_auto] items-baseline gap-x-4 gap-y-1 text-right',
-          alignWithEditor && 'lg:mr-[2.75rem]'
-        )}
-      >
-        <dt className="text-body text-ink-secondary">Összesen (bruttó)</dt>
-        <dd className="whitespace-nowrap text-[20px] font-semibold tabular-nums leading-tight text-ink">
-          {formatMoneyFt(totalGross)}{' '}
-          <span className="text-body font-normal text-ink-secondary">Ft</span>
-        </dd>
-        {hasDeposit ? (
-          <>
-            <dt className="text-body text-ink-secondary">Előleg</dt>
-            <dd className="whitespace-nowrap text-body tabular-nums text-ink">
-              −{formatMoneyFt(deposit ?? 0)} Ft
+        <div className="w-full shrink-0 space-y-2 sm:w-[16rem]">
+          {depositField ? (
+            <div className="space-y-1">
+              <label
+                htmlFor="cso-deposit-footer"
+                className="text-label text-ink-secondary"
+              >
+                Előleg (Ft)
+                <span className="ml-1 font-normal text-ink-muted">opcionális</span>
+              </label>
+              <Input
+                id="cso-deposit-footer"
+                value={depositField.value}
+                disabled={depositField.disabled}
+                onChange={(e) => depositField.onChange(e.target.value)}
+                inputMode="decimal"
+                placeholder="0"
+                className="h-8 tabular-nums"
+                aria-invalid={Boolean(depositField.error)}
+              />
+              {depositField.error ? (
+                <p className="text-body text-danger-ink">{depositField.error}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <dl className="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-1">
+            <dt className="text-body text-ink-secondary">Összesen</dt>
+            <dd className="whitespace-nowrap text-right text-[20px] font-semibold tabular-nums leading-tight text-ink">
+              {formatMoneyFt(totalGross)}{' '}
+              <span className="text-body font-normal text-ink-secondary">
+                Ft
+              </span>
             </dd>
-            <dt className="text-body font-semibold text-ink">
-              Átvételkor fizet
-            </dt>
-            <dd className="whitespace-nowrap text-[15px] font-semibold tabular-nums text-ink">
-              {formatMoneyFt(due ?? 0)} Ft
-            </dd>
-          </>
-        ) : null}
-      </dl>
+            {hasDeposit ? (
+              <>
+                <dt className="text-body text-ink-secondary">Előleg</dt>
+                <dd className="whitespace-nowrap text-right text-body tabular-nums text-ink">
+                  −{formatMoneyFt(deposit ?? 0)} Ft
+                </dd>
+                <dt className="text-body font-semibold text-ink">
+                  Átvételkor fizet
+                </dt>
+                <dd className="whitespace-nowrap text-right text-[15px] font-semibold tabular-nums text-ink">
+                  {formatMoneyFt(due ?? 0)} Ft
+                </dd>
+              </>
+            ) : null}
+          </dl>
+        </div>
+      </div>
     </div>
   )
 }

@@ -16,10 +16,18 @@ export function firstNameFromFull(name: string | null | undefined): string {
 }
 
 export function appOrigin(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
-    'http://localhost:3010'
-  )
+  const fromAppUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '')
+  if (fromAppUrl) return fromAppUrl
+
+  const fromOrigin = process.env.NEXT_PUBLIC_APP_ORIGIN?.replace(/\/$/, '')
+  if (fromOrigin) return fromOrigin
+
+  const vercel = process.env.VERCEL_URL?.replace(/\/$/, '')
+  if (vercel) {
+    return vercel.startsWith('http') ? vercel : `https://${vercel}`
+  }
+
+  return 'http://localhost:3010'
 }
 
 export function orderStatusPath(token: string): string {
@@ -28,4 +36,16 @@ export function orderStatusPath(token: string): string {
 
 export function orderStatusAbsoluteUrl(token: string): string {
   return `${appOrigin()}${orderStatusPath(token)}`
+}
+
+/** Google Maps keresés a címre (API-kulcs nélkül). */
+export function googleMapsSearchUrl(address: string): string {
+  const q = encodeURIComponent(address.trim())
+  return `https://www.google.com/maps/search/?api=1&query=${q}`
+}
+
+/** Waze navigáció a címre. */
+export function wazeNavigateUrl(address: string): string {
+  const q = encodeURIComponent(address.trim())
+  return `https://waze.com/ul?q=${q}&navigate=yes`
 }

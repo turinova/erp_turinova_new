@@ -5,7 +5,13 @@ export type OrderStatusTone = 'success' | 'warning' | 'neutral' | 'info'
 export type OrderStatusLineItem = {
   id: string
   name: string
+  /** Pl. „8 db” vagy „8 db · élzárás”. */
   qtyLabel: string
+  /** Egységár bruttó (CSO kész tételeknél). */
+  unitPriceGross: number | null
+  /** Pl. db — egységár címkéhez. */
+  unitShort: string | null
+  /** Sorösszeg bruttó. */
   amountGross: number | null
 }
 
@@ -26,6 +32,8 @@ export type CustomerOrderStatusView = {
   dueNowGross: number | null
   dueHint: string | null
   depositGross: number | null
+  /** Pl. „Összesen 11 db” — lapszab panel összeg. */
+  summaryLine: string | null
   company: {
     name: string
     logoUrl: string | null

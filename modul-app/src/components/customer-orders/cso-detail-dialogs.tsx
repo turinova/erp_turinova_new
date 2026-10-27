@@ -33,7 +33,7 @@ import {
   type CustomerSpecialOrderDetail,
   type CustomerSpecialOrderItemRow
 } from '@/lib/customer-orders/types'
-import { searchPurchaseProductsAction } from '@/lib/purchase-orders/actions'
+import { fetchCsoProductSearch } from '@/lib/customer-orders/product-search-client'
 import type { PurchaseProductSearchItem } from '@/lib/purchase-orders/queries'
 import { formatMoneyFt } from '@/lib/sales/parse'
 
@@ -79,24 +79,34 @@ export function CsoProductSearch({
   const [hits, setHits] = useState<PurchaseProductSearchItem[]>([])
   const [searching, setSearching] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const seqRef = useRef(0)
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current)
     const term = q.trim()
     if (term.length < 2) {
+      abortRef.current?.abort()
       setHits([])
+      setSearching(false)
       return
     }
     timer.current = setTimeout(async () => {
+      abortRef.current?.abort()
+      const ac = new AbortController()
+      abortRef.current = ac
+      const seq = ++seqRef.current
       setSearching(true)
-      const res = await searchPurchaseProductsAction(term)
+      const res = await fetchCsoProductSearch(term, { signal: ac.signal })
+      if (seq !== seqRef.current || ac.signal.aborted) return
       setSearching(false)
       if (!res.ok) {
+        if (res.message === 'aborted') return
         toast.error(res.message)
         return
       }
       setHits(res.rows)
-    }, 280)
+    }, 150)
     return () => {
       if (timer.current) clearTimeout(timer.current)
     }
