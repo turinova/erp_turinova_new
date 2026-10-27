@@ -35,6 +35,8 @@ export type OptiEdgeMaterialOption = {
   thickness_mm: number
   favourite_priority: number | null
   manufacturer_name: string
+  /** Korpus Excel / szöveges import Azon. */
+  machine_code: string
   /** Quote */
   price_net: number
   allowance_mm: number
@@ -70,6 +72,7 @@ const EDGE_SELECT = `
   width_mm,
   thickness_mm,
   favourite_priority,
+  machine_code,
   price_net,
   allowance_mm,
   manufacturers ( name ),
@@ -232,6 +235,7 @@ export async function listOptiEdgeMaterials(
       width_mm: number | string
       thickness_mm: number | string
       favourite_priority: number | string | null
+      machine_code: string | null
       price_net: number | string
       allowance_mm: number | string
       manufacturers: { name: string } | { name: string }[] | null
@@ -252,6 +256,7 @@ export async function listOptiEdgeMaterials(
           ? null
           : Number(r.favourite_priority),
       manufacturer_name: manufacturerName(r.manufacturers),
+      machine_code: (r.machine_code ?? '').trim(),
       price_net: Number(r.price_net),
       allowance_mm: Number(r.allowance_mm ?? 0),
       vat_rate_percent: taxPercent(r.tax_rates)

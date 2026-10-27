@@ -11,6 +11,10 @@ import {
   type OptiCustomerDraft
 } from '@/components/opti/opti-customer-strip'
 import {
+  OptiPanelTextImportDialog,
+  type OptiTextImportCommitRow
+} from '@/components/opti/opti-panel-text-import-dialog'
+import {
   PartnerOptiSaveStrip,
   type PartnerOptiCustomerSnapshot
 } from '@/components/opti/partner-opti-save-strip'
@@ -124,6 +128,7 @@ export function OptiWorkspaceClient({
   const [edgeDId, setEdgeDId] = useState('')
   const [edgeAroundId, setEdgeAroundId] = useState('')
   const [errors, setErrors] = useState<FormErrors>({})
+  const [textImportOpen, setTextImportOpen] = useState(false)
   const [sessionCustomer, setSessionCustomer] =
     useState<OptiCustomerDraft | null>(null)
   const [sessionProjectName, setSessionProjectName] = useState('')
@@ -437,6 +442,36 @@ export function OptiWorkspaceClient({
     })
   }
 
+  function handleTextImportCommit(rows: OptiTextImportCommitRow[]) {
+    if (!selectedMaterial || rows.length === 0) return
+    const nextPanels = rows.map((row) =>
+      createPanelDraft({
+        sheetMaterialId: selectedMaterial.id,
+        sheetMaterialName: selectedMaterial.name,
+        grainMm: row.grainMm,
+        crossMm: row.crossMm,
+        quantity: row.quantity,
+        marking: '',
+        edgeAId,
+        edgeBId,
+        edgeCId,
+        edgeDId,
+        edgeALabel: edgeLabel(edgeAId),
+        edgeBLabel: edgeLabel(edgeBId),
+        edgeCLabel: edgeLabel(edgeCId),
+        edgeDLabel: edgeLabel(edgeDId)
+      })
+    )
+    setPanels((prev) => [...prev, ...nextPanels])
+    invalidateOpti()
+    focusGrain()
+    toast.success(
+      nextPanels.length === 1
+        ? '1 panel hozzáadva az Opti listához.'
+        : `${nextPanels.length} panel hozzáadva az Opti listához.`
+    )
+  }
+
   function handleSavePanel() {
     const nextErrors: FormErrors = {}
 
@@ -713,7 +748,7 @@ export function OptiWorkspaceClient({
               : 'order-2 rounded-md border border-dashed border-border bg-subtle p-3 opacity-70 lg:order-1'
           }
         >
-          <div className="mb-2.5 flex items-baseline justify-between gap-2">
+          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
             <div>
               <h2 className="text-h3 text-ink">
                 {editingPanelId ? 'Panel szerkesztése' : 'Panel felvitele'}
@@ -725,13 +760,25 @@ export function OptiWorkspaceClient({
                 </p>
               ) : null}
             </div>
-            {!entryEnabled ? (
-              <p className="text-hint text-ink-secondary">
-                Előbb válassz anyagot
-                <span className="hidden lg:inline"> jobbra</span>
-                <span className="lg:hidden"> felül</span>.
-              </p>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {!entryEnabled ? (
+                <p className="text-hint text-ink-secondary">
+                  Előbb válassz anyagot
+                  <span className="hidden lg:inline"> jobbra</span>
+                  <span className="lg:hidden"> felül</span>.
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={Boolean(editingPanelId)}
+                  onClick={() => setTextImportOpen(true)}
+                >
+                  Import…
+                </Button>
+              )}
+            </div>
           </div>
 
           <fieldset
@@ -1005,6 +1052,17 @@ export function OptiWorkspaceClient({
             />
           ) : null}
         </div>
+      ) : null}
+
+      {selectedMaterial ? (
+        <OptiPanelTextImportDialog
+          open={textImportOpen}
+          onOpenChange={setTextImportOpen}
+          materialLabel={selectedMaterial.name}
+          maxGrainMm={maxGrain}
+          maxCrossMm={maxCross}
+          onCommit={handleTextImportCommit}
+        />
       ) : null}
 
       <ConfirmDialog

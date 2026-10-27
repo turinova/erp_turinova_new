@@ -13,6 +13,8 @@
     "test:pos-search-policy": "npx --yes tsx --test src/lib/pos/search-policy.test.ts",
     "test:label-zpl": "npx --yes tsx --test src/lib/labels/zpl.test.ts",
     "test:label-print-policy": "npx --yes tsx --test src/lib/labels/print-policy.test.ts",
+    "test:opti-panel-text-import": "npx --yes tsx --test src/lib/opti/panel-text-import.test.ts",
+    "test:opti-panel-image": "npx --yes tsx --test src/lib/opti/parse-panel-image.test.ts",
     "clean": "rm -rf .next var",
     "speed-test": "node --env-file=.env.local scripts/speed-test.mjs",
     "speed-test:pos-barcode": "node --env-file=.env.local scripts/speed-test-pos-barcode.mjs",
@@ -23,6 +25,7 @@
     "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-slot": "^1.3.3",
     "@sparticuz/chromium": "^143.0.4",
