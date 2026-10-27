@@ -21,15 +21,19 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-/** Lapszabászat + díjak + termékek → végösszeg (≥ 0). */
+/** HUF végösszeg — egész Ft (elkerüli a 199999.8 típusú float zajt). */
+function roundFinalGross(n: number): number {
+  return Math.max(0, Math.round(n))
+}
+
+/** Lapszabászat + díjak + termékek → végösszeg (≥ 0, egész Ft). */
 export function computeFinalTotalGross(
   lapszabaszatGross: number,
   feesTotalGross: number,
   accessoriesTotalGross = 0
 ): number {
-  return Math.max(
-    0,
-    round2(lapszabaszatGross + feesTotalGross + accessoriesTotalGross)
+  return roundFinalGross(
+    lapszabaszatGross + feesTotalGross + accessoriesTotalGross
   )
 }
 

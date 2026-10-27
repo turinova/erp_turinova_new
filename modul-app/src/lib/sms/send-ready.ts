@@ -11,7 +11,7 @@ import {
   renderSmsTemplate,
   smsSegments
 } from '@/lib/sms/text'
-import { sendTwilioSms } from '@/lib/sms/twilio'
+import { sendPlatformSms } from '@/lib/sms/send'
 import { ensureOrderShareLink } from '@/lib/order-status/links'
 import {
   QUOTE_READY_TEMPLATE_KEY,
@@ -196,7 +196,7 @@ export async function listQuoteReadySmsCandidates(
 
 /**
  * Send quote-ready SMS after status→ready.
- * Never throws for Twilio failures — returns status for toast.
+ * Never throws for SMS provider failures — returns status for toast.
  */
 export async function sendQuoteReadySms(input: {
   supabase: SupabaseClient
@@ -362,22 +362,22 @@ export async function sendQuoteReadySms(input: {
     return { status: 'skipped', reason: 'empty_body' }
   }
 
-  const twilio = await sendTwilioSms({ toE164, body })
+  const sent = await sendPlatformSms({ toE164, body })
 
-  if (!twilio.ok) {
+  if (!sent.ok) {
     await insertSmsSendEvent(supabase, {
       tenantId,
       quoteId,
       customerId: customer.id,
       templateKey: QUOTE_READY_TEMPLATE_KEY,
       toE164,
-      bodyLength: twilio.bodyLength,
-      segments: twilio.segments,
+      bodyLength: sent.bodyLength,
+      segments: sent.segments,
       status: 'failed',
-      errorCode: twilio.error.slice(0, 200),
+      errorCode: sent.error.slice(0, 200),
       createdBy: input.userId
     })
-    return { status: 'failed', error: twilio.error }
+    return { status: 'failed', error: sent.error }
   }
 
   const sentAt = new Date().toISOString()
@@ -401,12 +401,12 @@ export async function sendQuoteReadySms(input: {
     customerId: customer.id,
     templateKey: QUOTE_READY_TEMPLATE_KEY,
     toE164,
-    bodyLength: twilio.bodyLength,
-    segments: twilio.segments || smsSegments(body),
-    providerSid: twilio.sid,
+    bodyLength: sent.bodyLength,
+    segments: sent.segments || smsSegments(body),
+    providerSid: sent.sid,
     status: 'sent',
     createdBy: input.userId
   })
 
-  return { status: 'sent', sid: twilio.sid }
+  return { status: 'sent', sid: sent.sid }
 }

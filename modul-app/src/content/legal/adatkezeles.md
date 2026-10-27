@@ -91,7 +91,7 @@ Ha az Ügyfél megrendelte / bekapcsolta az SMS kiegészítőt:
 - Cél: az Ügyfél ügyfelének értesítése a rendelés készre állásáról.
 - Jogalap: az Ügyfél felelőssége (jellemzően szerződés / jogos érdek / hozzájárulás — az Ügyfél állítja be az opt-int).
 - Adat: telefonszám, kapcsolódó rendelésazonosító / név a sablon szerint.
-- További adatfeldolgozó: **Twilio Inc.** (SMS kézbesítés) — https://www.twilio.com/legal/privacy
+- További adatfeldolgozó: **SimpleSMS / AppOn** (SMS kézbesítés) — https://www.simplesms.hu
 
 Szolgáltató nem küld marketing SMS-t az Ügyfél ügyfeleinek a saját nevében.
 

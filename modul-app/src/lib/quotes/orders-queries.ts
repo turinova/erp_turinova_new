@@ -200,7 +200,7 @@ export async function listOrders(
         payment_status: (row.payment_status ?? 'not_paid') as PaymentStatus,
         project_name: (row.project_name as string | null) ?? null,
         total_gross: Number(row.final_total_gross ?? row.total_gross),
-        total_paid: Math.round((paidByQuote[row.id] ?? 0) * 100) / 100,
+        total_paid: Math.round(paidByQuote[row.id] ?? 0),
         currency: row.currency,
         updated_at: row.updated_at,
         customer_name: customer?.name ?? '—',

@@ -375,12 +375,12 @@ export async function finishQuoteHandover(input: {
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
 
-  const totalPaid = (payments ?? []).reduce(
-    (sum, p) => sum + (Number(p.amount) || 0),
-    0
+  const totalPaid = Math.round(
+    (payments ?? []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
   )
-  const totalGross =
+  const totalGross = Math.round(
     Number(quote.final_total_gross ?? quote.total_gross) || 0
+  )
   const remaining = quoteRemainingGross(totalGross, totalPaid)
   let paymentCreated = false
 

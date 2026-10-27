@@ -15,7 +15,8 @@ import {
 import { recalculateQuoteFeeTotals } from '@/lib/quotes/fee-totals'
 import {
   PAYMENT_TOLERANCE_GROSS,
-  quoteRemainingGross
+  quoteRemainingGross,
+  roundQuoteMoney
 } from '@/lib/quotes/payment-labels'
 import { normalizeProjectName } from '@/lib/quotes/project-name'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
@@ -516,7 +517,7 @@ export async function addQuotePayment(input: {
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
   const tenantId = ctx.user.tenantId!
-  const amount = input.amount
+  const amount = roundQuoteMoney(input.amount)
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return { ok: false, message: 'Adj meg pozitív összeget.' }
@@ -572,12 +573,12 @@ export async function addQuotePayment(input: {
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
 
-  const totalPaid = (payments ?? []).reduce(
-    (sum, p) => sum + (Number(p.amount) || 0),
-    0
+  const totalPaid = roundQuoteMoney(
+    (payments ?? []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
   )
-  const totalGross =
+  const totalGross = roundQuoteMoney(
     Number(quote.final_total_gross ?? quote.total_gross) || 0
+  )
   const remaining = quoteRemainingGross(totalGross, totalPaid)
 
   if (amount > remaining + PAYMENT_TOLERANCE_GROSS) {

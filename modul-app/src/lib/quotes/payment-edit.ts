@@ -1,5 +1,6 @@
 import type { QuoteDetail, QuotePaymentRow } from '@/lib/quotes/queries'
 import type { QuoteStatus } from '@/lib/quotes/queries'
+import { roundQuoteMoney } from '@/lib/quotes/payment-labels'
 
 /** Befizetés szerkeszthető / érvényteleníthető? (UI + szerver kapuk). */
 export function canEditQuotePayment(input: {
@@ -22,9 +23,11 @@ export function canEditQuotePayment(input: {
 export function quotePaymentDue(
   detail: Pick<QuoteDetail, 'final_total_gross' | 'total_gross'>
 ): number {
-  return Number(detail.final_total_gross || detail.total_gross) || 0
+  return roundQuoteMoney(
+    Number(detail.final_total_gross || detail.total_gross) || 0
+  )
 }
 
 export function quoteAlivePaidSum(payments: QuotePaymentRow[]): number {
-  return payments.reduce((s, p) => s + p.amount, 0)
+  return roundQuoteMoney(payments.reduce((s, p) => s + p.amount, 0))
 }

@@ -22,6 +22,7 @@ import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { addQuotePayment } from '@/lib/quotes/actions'
 import {
   PAYMENT_TOLERANCE_GROSS,
+  formatPaymentAmountInput,
   parsePaymentAmount,
   quoteRemainingGross
 } from '@/lib/quotes/payment-labels'
@@ -60,7 +61,7 @@ export function AddPaymentDialog({
 
   useEffect(() => {
     if (!open) return
-    setAmountRaw(remaining > 0 ? String(remaining) : '')
+    setAmountRaw(formatPaymentAmountInput(remaining))
     setPaymentMethodId(paymentMethods[0]?.id ?? '')
     setComment('')
     setError(null)

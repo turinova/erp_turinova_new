@@ -15,20 +15,35 @@ export const QUOTE_PAID_TOTALS_WARNING =
 export const QUOTE_CREDIT_OVERPAY_HINT =
   'A jóváírás csökkentheti a végösszeget. Ha a befizetés nagyobb lesz a végösszegnél, a státusz Kifizetve marad (túlfizetés).'
 
-/** Hátralék a fizetendő végösszeghez (final_total_gross) képest. */
+/**
+ * Pénz kerekítés — HUF egész Ft (megegyezik formatQuotePrice-szal).
+ * Float ÁFA-zaj (pl. 199999.8) ne jelenjen meg a UI / prefill mezőben.
+ */
+export function roundQuoteMoney(amount: number): number {
+  if (!Number.isFinite(amount)) return 0
+  return Math.round(amount)
+}
+
+/** Hátralék a fizetendő végösszeghez (final_total_gross) képest — egész Ft. */
 export function quoteRemainingGross(
   finalTotalGross: number,
   totalPaid: number
 ): number {
-  return Math.max(0, Math.round((finalTotalGross - totalPaid) * 100) / 100)
+  return Math.max(0, roundQuoteMoney(finalTotalGross - totalPaid))
 }
 
-/** Túlfizetés, ha a jóváírás a végösszeget a befizetés alá viszi. */
+/** Túlfizetés, ha a jóváírás a végösszeget a befizetés alá viszi — egész Ft. */
 export function quoteOverpaidGross(
   finalTotalGross: number,
   totalPaid: number
 ): number {
-  return Math.max(0, Math.round((totalPaid - finalTotalGross) * 100) / 100)
+  return Math.max(0, roundQuoteMoney(totalPaid - finalTotalGross))
+}
+
+/** Befizetés input prefill (egész Ft, nincs „199999.8”). */
+export function formatPaymentAmountInput(amount: number): string {
+  const rounded = roundQuoteMoney(amount)
+  return rounded > 0 ? String(rounded) : ''
 }
 
 export function paymentStatusTone(

@@ -20,7 +20,11 @@ import { Textarea } from '@/components/ui/textarea'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { updateQuotePaymentAction } from '@/lib/quotes/actions'
 import { quotePaymentDue } from '@/lib/quotes/payment-edit'
-import { PAYMENT_TOLERANCE_GROSS } from '@/lib/quotes/payment-labels'
+import {
+  PAYMENT_TOLERANCE_GROSS,
+  formatPaymentAmountInput,
+  roundQuoteMoney
+} from '@/lib/quotes/payment-labels'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { QuoteDetail, QuotePaymentRow } from '@/lib/quotes/queries'
 
@@ -48,13 +52,13 @@ export function QuoteEditPaymentDialog({
     const others = detail.payments
       .filter((p) => p.id !== payment.id)
       .reduce((s, p) => s + p.amount, 0)
-    return Math.max(0.01, Math.round((due - others) * 100) / 100)
+    return Math.max(1, roundQuoteMoney(due - others))
   }, [detail.payments, payment, due])
 
   const defaultMethod = payment?.payment_method_id || paymentMethods[0]?.id || ''
   const [paymentMethodId, setPaymentMethodId] = useState(defaultMethod)
   const [amountRaw, setAmountRaw] = useState(
-    payment ? String(payment.amount) : ''
+    payment ? formatPaymentAmountInput(payment.amount) : ''
   )
   const [note, setNote] = useState('')
 
@@ -63,7 +67,7 @@ export function QuoteEditPaymentDialog({
     setPaymentMethodId(
       payment.payment_method_id || paymentMethods[0]?.id || ''
     )
-    setAmountRaw(String(payment.amount))
+    setAmountRaw(formatPaymentAmountInput(payment.amount))
     setNote('')
   }, [open, payment, paymentMethods])
 
@@ -74,7 +78,7 @@ export function QuoteEditPaymentDialog({
 
   function handleSave() {
     if (!payment) return
-    const amt = Number(amountRaw.replace(',', '.'))
+    const amt = roundQuoteMoney(Number(amountRaw.replace(',', '.')))
     if (!(amt > 0) || !Number.isFinite(amt)) {
       toast.error('Adj meg pozitív összeget.')
       return

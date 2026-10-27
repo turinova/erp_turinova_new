@@ -72,7 +72,7 @@ Hibajelzés: Ügyfél a hibát e-mailben jelzi (info@turinova.hu).
 - Egyéb hiba esetén a javítás megkezdése legfeljebb 5 munkanapon belül, a kijavítás legfeljebb 30 munkanapon belül történik.
 - Ha Szolgáltató a kritikus hibát a bejelentéstől számított 60 munkanapon belül nem javítja ki, Ügyfél azonnali hatállyal felmondhat.
 
-Szolgáltató kizárja a felelősséget harmadik fél szoftvereiből, infrastruktúrájából (ideértve a böngészőt, hálózatot, valamint a Vercel, Supabase, Twilio szolgáltatásainak kiesését) fakadó hibákért, amennyiben azok nem Szolgáltató érdekkörében merülnek fel.
+Szolgáltató kizárja a felelősséget harmadik fél szoftvereiből, infrastruktúrájából (ideértve a böngészőt, hálózatot, valamint a Vercel, Supabase, SimpleSMS szolgáltatásainak kiesését) fakadó hibákért, amennyiben azok nem Szolgáltató érdekkörében merülnek fel.
 
 Szolgáltató jogosult különbözeti díjat felszámítani túlhasználat esetén (a megrendelt csomagot / kiegészítőt meghaladó használat). Erről tájékoztatja Ügyfelet; ha Ügyfél 15 napon belül nem szünteti meg a túlhasználatot, a szerződés a ténylegesen igénybe vett szolgáltatásra módosulhat, és a különbözet visszamenőleg is felszámítható.
 
@@ -94,8 +94,8 @@ Szolgáltató nem vállal felelősséget különösen:
 - a Felhasználók magatartásáért és a felvitt adatok helyességéért,
 - rejtett elvárásokért vagy a szerződésben / tájékoztatásokban nem szereplő funkciókért,
 - harmadik felek szoftvereiért, hálózati problémákért, nem megfelelő klienskörnyezetért,
-- a Vercel, Supabase vagy Twilio szolgáltatások kieséséért vagy változásáért,
-- az SMS-küldés (Twilio) kézbesítési sikeréért, ha a hiba a hálózati szolgáltató, a címzett készüléke vagy az Ügyfél által megadott / rögzített telefonszám miatt merül fel,
+- a Vercel, Supabase vagy SimpleSMS szolgáltatások kieséséért vagy változásáért,
+- az SMS-küldés (SimpleSMS) kézbesítési sikeréért, ha a hiba a hálózati szolgáltató, a címzett készüléke vagy az Ügyfél által megadott / rögzített telefonszám miatt merül fel,
 - az Ügyfél és partnerei közötti üzleti megállapodásokért és azok következményeiért.
 
 A jelszavak és hozzáférési adatok titokban tartása a Felhasználók felelőssége. Jogosulatlan hozzáférés gyanúja esetén a jelszót haladéktalanul meg kell változtatni, és értesíteni kell a Szolgáltatót.
@@ -161,9 +161,9 @@ Szolgáltató csak Ügyfél utasításai és a szerződés szerint dolgozza fel 
 - Vercel Inc. — alkalmazás üzemeltetés / tárhely,
 - Supabase, Inc. — adatbázis,
 - KBOSS.hu Kft. (számlázz.hu) — díjbekérő és számla,
-- Twilio Inc. — SMS kézbesítés (ha az Ügyfél megrendelte / bekapcsolta az SMS kiegészítőt).
+- SimpleSMS (AppOn) — SMS kézbesítés (ha az Ügyfél megrendelte / bekapcsolta az SMS kiegészítőt).
 
-Az SMS funkció esetén az ügyfél telefonszámát és kapcsolódó adatait az Ügyfél kezeli adatkezelőként; Szolgáltató (és Twilio) adatfeldolgozóként jár el az Ügyfél utasításai szerint. Az SMS csak az Ügyfél által rögzített opt-in / beállítások mellett küldhető.
+Az SMS funkció esetén az ügyfél telefonszámát és kapcsolódó adatait az Ügyfél kezeli adatkezelőként; Szolgáltató (és SimpleSMS) adatfeldolgozóként jár el az Ügyfél utasításai szerint. Az SMS csak az Ügyfél által rögzített opt-in / beállítások mellett küldhető.
 
 ### 8.2 Incidens és támogatás
 

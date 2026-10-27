@@ -755,7 +755,9 @@ export async function getQuoteDetail(
         void_reason: p.void_reason?.trim() || null
       }
     })
-    total_paid = payments.reduce((sum, p) => sum + p.amount, 0)
+    total_paid = Math.round(
+      payments.reduce((sum, p) => sum + p.amount, 0)
+    )
 
     // Migráció előtt: tábla hiány → üres lista, ne dobjon 500-at.
     if (paymentEventsResult.error) {
@@ -973,8 +975,8 @@ export async function getQuoteDetail(
     accessories_total_net: Number(data.accessories_total_net ?? 0),
     accessories_total_vat: Number(data.accessories_total_vat ?? 0),
     accessories_total_gross: Number(data.accessories_total_gross ?? 0),
-    final_total_gross: Number(
-      data.final_total_gross ?? data.total_gross ?? 0
+    final_total_gross: Math.round(
+      Number(data.final_total_gross ?? data.total_gross ?? 0)
     ),
     comment: data.comment,
     project_name: (data.project_name as string | null) ?? null,

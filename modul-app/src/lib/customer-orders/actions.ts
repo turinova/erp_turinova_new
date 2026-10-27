@@ -30,7 +30,7 @@ import {
   renderSmsTemplate,
   smsSegments
 } from '@/lib/sms/text'
-import { sendTwilioSms } from '@/lib/sms/twilio'
+import { sendPlatformSms } from '@/lib/sms/send'
 import {
   CSO_READY_TEMPLATE_KEY,
   type CsoReadySmsCandidate,
@@ -2522,7 +2522,7 @@ async function trySendReadySms(
     return 'SMS kihagyva: üres sablon.'
   }
 
-  const res = await sendTwilioSms({ toE164: to, body })
+  const res = await sendPlatformSms({ toE164: to, body })
   if (!res.ok) {
     await insertSmsSendEvent(supabase, {
       tenantId,

@@ -45,5 +45,5 @@ export function salePaymentRemaining(
   const refundSum = detail.payments
     .filter((p) => p.kind === 'refund')
     .reduce((s, p) => s + p.amount, 0)
-  return Math.max(0, due - (paidSum - refundSum))
+  return Math.max(0, Math.round(due - (paidSum - refundSum)))
 }

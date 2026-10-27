@@ -92,7 +92,7 @@ export async function insertSmsSendEvent(
     to_e164: row.toE164 ?? null,
     body_length: row.bodyLength ?? 0,
     segments: row.segments ?? 0,
-    provider: 'twilio',
+    provider: 'simplesms',
     provider_sid: row.providerSid ?? null,
     status: row.status,
     error_code: row.errorCode ?? null,

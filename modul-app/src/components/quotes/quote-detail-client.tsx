@@ -417,12 +417,28 @@ export function QuoteDetailClient({
                 ? 'pdf'
                 : null
 
-  const staffTitle = quote.order_number
+  const projectTitle = quote.project_name?.trim() || null
+  const staffDocTitle = quote.order_number
     ? `Megrendelés: ${quote.order_number}`
     : `Árajánlat: ${quote.quote_number}`
-  const staffTitleHint = quote.order_number
-    ? `Árajánlat ${quote.quote_number}`
-    : null
+  const partnerDocTitle = isPartnerDraft
+    ? `Ajánlatom: ${quote.quote_number}`
+    : `Rendelésem: ${quote.order_number ?? quote.quote_number}`
+  const docTitle = isPartner ? partnerDocTitle : staffDocTitle
+  const docMetaParts = [
+    !isPartner && quote.order_number
+      ? `Megrendelés ${quote.order_number}`
+      : null,
+    !isPartner
+      ? quote.order_number
+        ? `Árajánlat ${quote.quote_number}`
+        : null
+      : isPartnerDraft
+        ? `Ajánlat ${quote.quote_number}`
+        : quote.order_number
+          ? `Rendelés ${quote.order_number}`
+          : `Ajánlat ${quote.quote_number}`
+  ].filter(Boolean) as string[]
 
   const statusLabel = isPartner
     ? isPartnerDraft
@@ -728,40 +744,46 @@ export function QuoteDetailClient({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-1">
           <Link
             href={listHref}
-            className="text-body text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+            className="inline-block text-body text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
           >
             ← Lista
           </Link>
-          <h1 className="text-h1 text-ink">
-            {isPartner
-              ? isPartnerDraft
-                ? `Ajánlatom: ${quote.quote_number}`
-                : `Rendelésem: ${quote.order_number ?? quote.quote_number}`
-              : staffTitle}
-          </h1>
-          {staffTitleHint && !isPartner ? (
-            <span className="text-body text-ink-secondary">{staffTitleHint}</span>
-          ) : null}
-          <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
-          {showPartnerPayment || showStaffPayment ? (
-            <StatusBadge tone={paymentStatusTone(quote.payment_status)}>
-              {PAYMENT_STATUS_LABEL[quote.payment_status]}
-            </StatusBadge>
-          ) : null}
-          {!isPartner &&
-          quote.source === 'portal' &&
-          quote.portal_submitted_at ? (
-            <StatusBadge tone="warning">Online</StatusBadge>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1
+              className="min-w-0 break-words text-h1 font-semibold text-ink"
+              title={projectTitle ?? docTitle}
+            >
+              {projectTitle ?? docTitle}
+            </h1>
+            <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
+            {showPartnerPayment || showStaffPayment ? (
+              <StatusBadge tone={paymentStatusTone(quote.payment_status)}>
+                {PAYMENT_STATUS_LABEL[quote.payment_status]}
+              </StatusBadge>
+            ) : null}
+            {!isPartner &&
+            quote.source === 'portal' &&
+            quote.portal_submitted_at ? (
+              <StatusBadge tone="warning">Online</StatusBadge>
+            ) : null}
+          </div>
+          {projectTitle ? (
+            <p className="text-body text-ink">
+              {docMetaParts.length > 0
+                ? docMetaParts.join(' · ')
+                : docTitle}
+            </p>
+          ) : !isPartner && quote.order_number ? (
+            <p className="text-body text-ink">
+              Árajánlat {quote.quote_number}
+            </p>
           ) : null}
         </div>
         {!isPartner ? (
           <QuoteStatusStepper status={quote.status} />
-        ) : null}
-        {quote.project_name ? (
-          <p className="text-body text-ink-secondary">{quote.project_name}</p>
         ) : null}
         {quote.source === 'portal' &&
         quote.portal_submitted_at &&
