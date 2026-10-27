@@ -78,6 +78,7 @@ A legtöbb vonalkódolvasó billentyűzetként viselkedik. Erre külön szabály
 - **Enter a mezőben:** exact lookup (stale-guard: ha közben továbbírt, ne ugorjon elavult partialra).
 - **Wedge path:** stale-guard **ki**; `looksLikeBarcode` **normalize-first** (all-zero / Digit0 idle ne némuljon).
 - **Alfanumerikus kód** (pl. `DT-CZ00035251`): ne abortáljon letter–letter heurisztikán; scan → UPPER; lookup **`.eq.`**; mentés UPPER; SQL `20260605`.
+- **Termék űrlap vonalkód** (`/termekek/[id]`, POS miss): `normalizeScannerBarcode` gépelés/mentés közben — HU ö/ü → 0/- (mint gyártás hozzárendelés); `normalizeStoredBarcode` ugyanezt hívja.
 - **Instant-nav (scan → ID):** `/api/barcode-lookup` = lean `resolveKeresoAuth` + middleware skip (mint kereső); `Server-Timing`; ID route `loading.tsx` + form shell előbb, készlet/bolt `Suspense` + `accessory_stock_by_warehouse` (`20260606`). Cél: lookup ≤250 ms, shell ≤0.5–0.9 s.
 - Dialógus nyitva (törlés / címke): trap pause a terméklistán.
 - **Címke nyomtatás:** előnézet mindig középen (offset csak print); soft scan-warn + „Mégis”; kód: Auto / Gyártói / Belső EAN; entitlement nélkül disabled gomb + tooltip.

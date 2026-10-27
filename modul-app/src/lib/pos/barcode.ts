@@ -95,18 +95,16 @@ export function barcodeFieldsMatch(
 }
 
 /**
- * Mentéskor: trim + ASCII UPPER (scanner normalize + btree `.eq.` index).
- * Nem remapol ö/ü — az csak wedge path.
+ * Mentéskor: HU wedge remap (ö→0, ü→-) + trim + ASCII UPPER
+ * (ugyanaz a path, mint a szkenner / gyártás vonalkód mező).
+ * Üres → null — btree `.eq.` index barát.
  */
 export function normalizeStoredBarcode(
   raw: string | null | undefined
 ): string | null {
   if (raw == null) return null
-  const t = raw.trim().replace(/\s+/g, '')
-  if (!t) return null
-  return t.replace(/[a-z]/g, (ch) =>
-    String.fromCharCode(ch.charCodeAt(0) - 32)
-  )
+  const t = normalizeScannerBarcode(raw)
+  return t || null
 }
 
 /**

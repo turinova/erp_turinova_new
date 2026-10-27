@@ -57,6 +57,8 @@ Clear → vissza `ordered`.
 | Kész (+ SMS) | ✓ | ✓ | ✓ |
 | Átadás (+ hátralék) | ✓ | ✓ | ✓ |
 
+**Opti panelfelvitel import** (szöveg / Excel / kép, Korpus él): tervezet [47](47-opti-panel-import.md).
+
 ### Kész-értesítő SMS (CSO parity — [42](42-ugyfelrendeles.md))
 
 - Stamp: `quotes.ready_notification_sent_at`; ledger: `sms_send_events.quote_id`.

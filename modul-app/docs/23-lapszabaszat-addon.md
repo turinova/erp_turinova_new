@@ -32,4 +32,5 @@ Lapszabászat kikapcsolásakor ezek is automatikusan kikapcsolódnak.
 Sidebar **Lapszabászat** csoport: Árajánlatok, Megrendelések.
 Opti és Scanner top-level menüpontok maradnak (entitlement továbbra is a Lapszabászat add-onhoz kötött).
 
-**Workflow (státusz + detail CTA):** [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md).
+**Workflow (státusz + detail CTA):** [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md).  
+**Opti panel import (tervezet):** [47-opti-panel-import.md](47-opti-panel-import.md) — szöveg / Excel / kép, Korpus élkódolás, certainty-first előnézet.

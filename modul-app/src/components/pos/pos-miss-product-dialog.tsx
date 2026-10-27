@@ -14,7 +14,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
-import { looksLikeBarcode } from '@/lib/pos/barcode'
+import {
+  looksLikeBarcode,
+  normalizeScannerBarcode
+} from '@/lib/pos/barcode'
 import {
   assignPosBarcodeAction,
   createPosQuickProductAction,
@@ -449,7 +452,9 @@ export function PosMissProductDialog({
                 <Input
                   id={barcodeId}
                   value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
+                  onChange={(e) =>
+                    setBarcode(normalizeScannerBarcode(e.target.value))
+                  }
                   autoComplete="off"
                   className={cn('min-w-0 flex-1 font-mono', ctrlH)}
                   disabled={pending || generatingBarcode}

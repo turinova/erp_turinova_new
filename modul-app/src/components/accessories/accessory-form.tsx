@@ -27,6 +27,7 @@ import {
   createAccessory,
   updateAccessory
 } from '@/lib/accessories/actions'
+import { normalizeScannerBarcode } from '@/lib/pos/barcode'
 import { generatePosInternalBarcodeAction } from '@/lib/pos/miss-product-actions'
 import {
   formatHuNumber,
@@ -117,12 +118,19 @@ export function AccessoryForm({
   )
   const [addSupplierId, setAddSupplierId] = useState('')
   const [sku, setSku] = useState(initial?.sku ?? '')
-  const [barcode, setBarcode] = useState(initial?.barcode ?? '')
-  const [barcodeInternal, setBarcodeInternal] = useState(
-    () =>
-      initial?.barcode_internal?.trim() ||
-      (mode === 'create' ? defaultBarcodeInternal?.trim() || '' : '')
+  const [barcode, setBarcode] = useState(() =>
+    normalizeScannerBarcode(initial?.barcode ?? '')
   )
+  const [barcodeInternal, setBarcodeInternal] = useState(() => {
+    const fromInitial = normalizeScannerBarcode(
+      initial?.barcode_internal?.trim() || ''
+    )
+    if (fromInitial) return fromInitial
+    if (mode === 'create') {
+      return normalizeScannerBarcode(defaultBarcodeInternal?.trim() || '')
+    }
+    return ''
+  })
   const [taxRateId, setTaxRateId] = useState(defaultTaxId)
   const [unitId, setUnitId] = useState(
     initial?.unit_id ?? defaultUnitId(units)
@@ -404,14 +412,18 @@ export function AccessoryForm({
             htmlFor="accessory-barcode"
             optionalLabel
             error={fieldErrors.barcode}
+            hint="USB olvasó vagy kézi. HU billentyűzet: ö/ü → 0/-."
           >
             <Input
               id="accessory-barcode"
               value={barcode}
-              onChange={(e) => setBarcode(e.target.value)}
+              onChange={(e) =>
+                setBarcode(normalizeScannerBarcode(e.target.value))
+              }
               maxLength={64}
               disabled={pending || !canWrite}
               autoComplete="off"
+              className="font-mono"
             />
           </FormField>
 
@@ -419,12 +431,15 @@ export function AccessoryForm({
             label="Belső vonalkód"
             htmlFor="accessory-barcode-internal"
             error={fieldErrors.barcodeInternal}
+            hint="HU billentyűzet: ö/ü → 0/-."
           >
             <div className="flex gap-2">
               <Input
                 id="accessory-barcode-internal"
                 value={barcodeInternal}
-                onChange={(e) => setBarcodeInternal(e.target.value)}
+                onChange={(e) =>
+                  setBarcodeInternal(normalizeScannerBarcode(e.target.value))
+                }
                 maxLength={64}
                 disabled={pending || !canWrite || generatingBarcode}
                 autoComplete="off"
