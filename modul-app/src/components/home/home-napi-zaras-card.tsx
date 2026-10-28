@@ -66,37 +66,38 @@ function headline(data: HomeNapiZarasSnapshot): {
   if (!data.todayIsWorkday) {
     return {
       title: 'Havi elszámolás',
-      subtitle: `${month} · ma nincs bolti munkanap`,
+      subtitle: `${month} · ma zárva van a bolt`,
       cta
     }
   }
   if (data.todayStatus === 'ok') {
     return {
       title: 'Mai zárás rendben',
-      subtitle: `${month} · pontosság és járó bónusz lent`,
+      subtitle: `${month} · a havi eredmény lent látható`,
       cta
     }
   }
   if (data.todayStatus === 'variance') {
     return {
-      title: 'Ma eltérés van',
-      subtitle: 'A gép és a bolt összege nem stimmel — ellenőrizd a zárást.',
+      title: 'Mai zárásban eltérés van',
+      subtitle:
+        'A rendszer szerinti és a megszámolt összeg nem egyezik. Nézd át a zárást.',
       cta
     }
   }
   if (data.todayStatus === 'partial') {
     return {
       title: 'Mai zárás hiányos',
-      subtitle: 'Még nincs mindhárom tender (KP / kártya / utalás) mentve.',
+      subtitle: 'Még nincs meg mindhárom összeg: készpénz, kártya, utalás.',
       cta
     }
   }
   return {
-    title: 'Mai zárás még nincs',
+    title: 'Ma még nincs zárás',
     subtitle:
       data.summary.missingPastCount > 1
-        ? `${data.summary.missingPastCount} nap vár zárásra · ${month}`
-        : `Nyisd meg a zárást, ha megvannak a nap végi számok · ${month}`,
+        ? `${data.summary.missingPastCount} nap zárása hiányzik · ${month}`
+        : `Nap végén írd be a készpénz, kártya és utalás összegét · ${month}`,
     cta
   }
 }
@@ -158,7 +159,7 @@ export function HomeNapiZarasCard({ data }: { data: HomeNapiZarasSnapshot }) {
             </p>
           </div>
           <div>
-            <p className={cn('text-hint', moodMuted[mood])}>Járó bónusz</p>
+            <p className={cn('text-hint', moodMuted[mood])}>Bónusz eddig</p>
             <p
               className={cn(
                 'mt-0.5 text-[1.35rem] font-semibold tabular-nums leading-none tracking-tight',
@@ -167,10 +168,10 @@ export function HomeNapiZarasCard({ data }: { data: HomeNapiZarasSnapshot }) {
             >
               {formatReconMoney(data.summary.bonusStaffFt)}
             </p>
-            <p className={cn('mt-1 text-hint', moodMuted[mood])}>/ fő</p>
+            <p className={cn('mt-1 text-hint', moodMuted[mood])}>fejenként</p>
           </div>
           <div>
-            <p className={cn('text-hint', moodMuted[mood])}>Sorozat</p>
+            <p className={cn('text-hint', moodMuted[mood])}>Pontos napok sorban</p>
             <p
               className={cn(
                 'mt-0.5 text-[1.35rem] font-semibold tabular-nums leading-none tracking-tight',
@@ -200,16 +201,17 @@ export function HomeNapiZarasCard({ data }: { data: HomeNapiZarasSnapshot }) {
             )}
           >
             <span>
-              {data.summary.okCount} OK · {data.summary.varianceCount} eltérés
+              {data.summary.okCount} rendben · {data.summary.varianceCount}{' '}
+              eltérés
               {data.summary.missingPastCount > 0
-                ? ` · ${data.summary.missingPastCount} hiányzik`
+                ? ` · ${data.summary.missingPastCount} nap kitöltetlen`
                 : ''}
               {data.summary.filledCount < RECON_BONUS.minFilledDays
-                ? ` · min. ${RECON_BONUS.minFilledDays} nap`
+                ? ` · legalább ${RECON_BONUS.minFilledDays} nap kell`
                 : ''}
             </span>
             <span>
-              90%→{formatReconMoney(RECON_BONUS.staff90)} · 95%→
+              90%-tól {formatReconMoney(RECON_BONUS.staff90)} · 95%-tól{' '}
               {formatReconMoney(RECON_BONUS.staff95)}
             </span>
           </div>

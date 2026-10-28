@@ -45,12 +45,12 @@ export default async function PenzugyPage() {
     <div className="space-y-4">
       <PageHeader
         title="Pénzügy"
-        description="Kinnlevőség, ÁFA egyeztetés és könyvelői export — a Számlázz.hu a jogi motor."
+        description="Kintlévőség, ÁFA egyeztetés és könyvelői export — a Számlázz.hu a jogi motor."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi
-          label="Kinnlevő"
+          label="Kintlévőség"
           value={`${formatMoneyFt(dash.aging.total)} Ft`}
           hint={`${dash.aging.count} bizonylat`}
         />

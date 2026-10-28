@@ -547,14 +547,14 @@ export function DailyReconciliationClient({
                 : `${summary.accuracyPct}%`}
             </p>
             <p className="mt-0.5 text-hint tabular-nums text-ink-secondary">
-              {summary.okCount} OK / {summary.filledCount} kitöltött
+              {summary.okCount} rendben / {summary.filledCount} kitöltött
               {summary.filledCount < RECON_BONUS.minFilledDays
-                ? ` · kapu ${RECON_BONUS.minFilledDays}`
+                ? ` · legalább ${RECON_BONUS.minFilledDays} nap kell`
                 : ''}
             </p>
           </div>
           <div className="bg-surface px-3 py-3">
-            <p className="text-hint text-ink-muted">Járó bónusz</p>
+            <p className="text-hint text-ink-muted">Bónusz eddig</p>
             <p
               className={cn(
                 'mt-0.5 text-h3 font-semibold tabular-nums',
@@ -563,10 +563,12 @@ export function DailyReconciliationClient({
             >
               {formatReconMoney(summary.bonusStaffFt)}
             </p>
-            <p className="mt-0.5 text-hint text-ink-secondary">/ fő</p>
+            <p className="mt-0.5 text-hint text-ink-secondary">fejenként</p>
           </div>
           <div className="bg-surface px-3 py-3">
-            <p className="text-hint text-ink-muted">Napok · sorozat</p>
+            <p className="text-hint text-ink-muted">
+              Kitöltött napok · pontos napok sorban
+            </p>
             <p className="mt-0.5 text-body font-semibold tabular-nums text-ink">
               {summary.filledCount}/{summary.workdayCount}
               <span className="ml-1.5 font-normal text-ink-secondary">
@@ -574,9 +576,9 @@ export function DailyReconciliationClient({
               </span>
             </p>
             <p className="mt-0.5 text-hint tabular-nums text-ink-secondary">
-              {summary.okCount} OK · {summary.varianceCount} eltérés
+              {summary.okCount} rendben · {summary.varianceCount} eltérés
               {summary.missingPastCount > 0
-                ? ` · ${summary.missingPastCount} hiányzik`
+                ? ` · ${summary.missingPastCount} nap kitöltetlen`
                 : ''}
             </p>
           </div>
@@ -639,7 +641,8 @@ export function DailyReconciliationClient({
           })}
         </div>
         <p className="text-hint text-ink-muted">
-          Zöld = OK · piros = eltérés · üres = hiányzik · mai nap keretezve
+          Zöld = rendben · piros = eltérés · üres = nincs kitöltve · a mai nap
+          keretezve
         </p>
       </section>
     </div>

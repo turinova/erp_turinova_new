@@ -77,7 +77,7 @@ export const HOME_DASHBOARD_FIXTURE = {
       monthGross: 48_200_000,
       monthSaleCount: 1_840,
       priorMonthGross: 41_500_000,
-      monthLabel: 'Már',
+      monthLabel: 'Március',
       todayReturnCount: 2,
       todayReturnGross: 42_000,
       openDue: 1_240_000,

@@ -4,7 +4,7 @@ import {
   addDaysYmd,
   budapestDayRangeIso,
   budapestTodayYmd,
-  MONTH_LABELS_HU,
+  MONTH_NAMES_HU,
   toBudapestYmdFromIso
 } from '@/lib/home/date'
 import {
@@ -285,7 +285,7 @@ export async function getHomeSalesKpis(
     monthGross: monthAgg.gross,
     monthSaleCount: monthAgg.count,
     priorMonthGross: priorAgg.gross,
-    monthLabel: MONTH_LABELS_HU[month - 1] ?? '',
+    monthLabel: MONTH_NAMES_HU[month - 1] ?? '',
     todayReturnCount: returns.length,
     todayReturnGross: returns.reduce(
       (s, r) => s + (Number(r.total_gross) || 0),

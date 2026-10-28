@@ -120,3 +120,18 @@ export const MONTH_LABELS_HU = [
   'Nov',
   'Dec'
 ] as const
+
+export const MONTH_NAMES_HU = [
+  'Január',
+  'Február',
+  'Március',
+  'Április',
+  'Május',
+  'Június',
+  'Július',
+  'Augusztus',
+  'Szeptember',
+  'Október',
+  'November',
+  'December'
+] as const

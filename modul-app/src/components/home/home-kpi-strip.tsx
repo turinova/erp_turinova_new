@@ -30,9 +30,9 @@ function SalesGlance({
   const collectedOnOpen = Math.max(0, sales.openInvoiceGross - sales.openDue)
   const paidHint =
     sales.openInvoiceCount === 0
-      ? 'Nincs kinnlevő'
+      ? 'Nincs kintlévőség'
       : sales.openInvoiceGross > 0
-        ? `${Math.round((collectedOnOpen / sales.openInvoiceGross) * 100)}% befizetve · ${sales.openInvoiceCount} számla`
+        ? `${sales.openInvoiceCount} számla · ${Math.round((collectedOnOpen / sales.openInvoiceGross) * 100)}% fizetve`
         : `${sales.openInvoiceCount} számla`
 
   return (
@@ -72,7 +72,7 @@ function SalesGlance({
               <p className="mt-1 text-hint text-ink-muted">
                 {sales.todaySaleCount === 0
                   ? 'Ma még nincs eladás'
-                  : `${sales.todaySaleCount} eladás · 7 nap`}
+                  : `${sales.todaySaleCount} eladás ma`}
               </p>
               <div className="mt-2">
                 <HomeSalesSparkChart
@@ -91,7 +91,7 @@ function SalesGlance({
               href="/megrendelesek"
               hint={
                 lapszabaszat.todayCount === 0
-                  ? 'Ma még nincs megrendelés'
+                  ? 'Még nincs rendelés'
                   : `${lapszabaszat.todayCount} megrendelés`
               }
               emphasize={lapszabaszat.todayCount > 0 ? 'success' : null}
@@ -131,7 +131,7 @@ function SalesGlance({
             href="/ertekesitesek"
             hint={
               sales.todayReturnCount === 0
-                ? 'Nincs visszáru'
+                ? 'Ma nem volt visszáru'
                 : `${sales.todayReturnCount} tétel`
             }
             emphasize={sales.todayReturnGross > 0 ? 'danger' : null}
@@ -144,7 +144,7 @@ function SalesGlance({
           />
 
           <MetricCell
-            label="Kinnlevő"
+            label="Kintlévőség"
             value={`${formatMoneyFt(sales.openDue)} Ft`}
             href="/ertekesitesek"
             hint={paidHint}
@@ -202,11 +202,11 @@ function JelenletGlance({ jelenlet }: { jelenlet: HomeJelenletKpis }) {
               : String(jelenlet.present)
           }
           href="/jelenlet"
-          hint="Ma a cégnél"
+          hint="Bent van ma"
           emphasize={jelenlet.present > 0 ? 'success' : null}
         />
         <MetricCell
-          label="Nincs itt"
+          label="Késik / nincs bent"
           value={String(jelenlet.late)}
           href="/jelenlet"
           hint={lateHint}

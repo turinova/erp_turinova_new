@@ -302,7 +302,7 @@ export function InvoicesListClient({
           className="rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink-secondary"
           role="status"
         >
-          Kinnlevő ·{' '}
+          Kintlévőség ·{' '}
           <span className="font-semibold tabular-nums text-ink">
             {formatMoneyFt(awaitingSumFt)} Ft
           </span>
@@ -324,7 +324,7 @@ export function InvoicesListClient({
             </p>
             <p className="mt-1 text-body text-ink-secondary">
               {view === 'awaiting'
-                ? 'Nincs kinnlevő tétel.'
+                ? 'Nincs kintlévőség.'
                 : emptyCtaHref.includes('ajanlat')
                   ? 'Állíts ki bizonylatot egy lapszabászati megrendelésről.'
                   : emptyCtaHref.includes('/szamlak/uj')

@@ -149,7 +149,7 @@ export function HomeDashboardMockup({ className }: { className?: string }) {
                     {formatMoneyFt(sales.todayGross)} Ft
                   </p>
                   <p className="mt-1 text-hint text-ink-muted">
-                    {sales.todaySaleCount} eladás · 7 nap
+                    {sales.todaySaleCount} eladás ma
                   </p>
                   <div className="mt-2 pointer-events-auto">
                     <MarketingSalesSpark data={sparkDays} />
@@ -194,7 +194,7 @@ export function HomeDashboardMockup({ className }: { className?: string }) {
                   }
                 />
                 <MetricCell
-                  label="Kinnlevő"
+                  label="Kintlévőség"
                   value={`${formatMoneyFt(sales.openDue)} Ft`}
                   hint={`${sales.openInvoiceCount} számla`}
                   emphasize="warning"
@@ -225,11 +225,11 @@ export function HomeDashboardMockup({ className }: { className?: string }) {
                 <MetricCell
                   label="Bent"
                   value={`${jelenlet.present}/${jelenlet.expectedToday}`}
-                  hint="Ma a cégnél"
+                  hint="Bent van ma"
                   emphasize="success"
                 />
                 <MetricCell
-                  label="Nincs itt"
+                  label="Késik / nincs bent"
                   value={String(jelenlet.late)}
                   hint={jelenlet.lateNames.join(', ')}
                   emphasize="danger"
