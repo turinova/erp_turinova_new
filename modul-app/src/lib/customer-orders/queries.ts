@@ -49,9 +49,13 @@ export async function listCustomerSpecialOrders(
   input: {
     tenantId: string
     q?: string
-    /** active = felveve|rendelve|itt_van (alap); all = minden nem rejtett; vagy egy státusz */
+    /**
+     * active = felveve|rendelve|itt_van (alap böngészés);
+     * all = minden nem soft-deleted; vagy egy státusz.
+     * Ha `q` nem üres: státuszszűrő kihagyva (globális lookup).
+     */
     status?: CsoItemStatus | 'all' | 'active'
-    /** sent = sms_sent_at not null; pending = null; all = nincs szűrés */
+    /** @deprecated Fejlista nem használja; várólista ready+notify. */
     sms?: 'all' | 'sent' | 'pending'
     page?: number
     limit?: number
@@ -90,10 +94,13 @@ export async function listCustomerSpecialOrders(
     .order('created_at', { ascending: false })
     .range(from, to)
 
-  if (statusFilter === 'active') {
-    query = query.in('status', ['felveve', 'rendelve', 'itt_van'])
-  } else if (statusFilter !== 'all') {
-    query = query.eq('status', statusFilter)
+  // Lookup: van keresőszöveg → ne szűkítsd active-ra (átadott / törölt is kell).
+  if (!q) {
+    if (statusFilter === 'active') {
+      query = query.in('status', ['felveve', 'rendelve', 'itt_van'])
+    } else if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter)
+    }
   }
   if (smsFilter === 'sent') {
     query = query.not('sms_sent_at', 'is', null)

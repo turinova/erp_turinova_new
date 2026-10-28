@@ -22,6 +22,7 @@ import { HandoverDialog } from '@/components/orders/handover-dialog'
 import { QuoteReadySmsDialog } from '@/components/orders/quote-ready-sms-dialog'
 import { AddPaymentDialog } from '@/components/quotes/add-payment-dialog'
 import { AssignProductionDialog } from '@/components/quotes/assign-production-dialog'
+import { CancelQuoteDialog } from '@/components/quotes/cancel-quote-dialog'
 import { CreateOrderDialog } from '@/components/quotes/create-order-dialog'
 import { QuoteBarcodeDisplay } from '@/components/quotes/quote-barcode-display'
 import { QuoteBillingEditDialog } from '@/components/quotes/quote-billing-edit-dialog'
@@ -100,6 +101,11 @@ import {
   markQuoteReady,
   sendQuoteReadySmsStandalone
 } from '@/lib/quotes/production-actions'
+import {
+  canCancelQuote,
+  QUOTE_CANCEL_REASON_LABEL,
+  type QuoteCancelReason
+} from '@/lib/quotes/cancel'
 import {
   QUOTE_STATUS_LABEL,
   quoteStatusTone
@@ -235,6 +241,7 @@ export function QuoteDetailClient({
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('')
   const [submitOpen, setSubmitOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
 
   const [exportTargets, setExportTargets] = useState<QuoteExportTarget[]>([])
   const [exportTargetsLoaded, setExportTargetsLoaded] = useState(false)
@@ -320,10 +327,28 @@ export function QuoteDetailClient({
   const overpaidGross = quoteOverpaidGross(amountDue, quote.total_paid)
   const hasRecordedPayments = quote.total_paid > 0
 
-  const { hasFinal: hasFinalInvoice } = useMemo(
+  const { hasFinal: hasFinalInvoice, hasProforma, hasAdvance } = useMemo(
     () => activeDocs(invoices),
     [invoices]
   )
+  const hasActiveProformaOrAdvance = hasProforma || hasAdvance
+  const cancelGate = useMemo(
+    () =>
+      canCancelQuote({
+        status: quote.status,
+        orderNumber: quote.order_number,
+        hasActiveFinalInvoice: hasFinalInvoice
+      }),
+    [quote.status, quote.order_number, hasFinalInvoice]
+  )
+  const showCancelOrderSection =
+    !isPartner &&
+    canWrite &&
+    Boolean(quote.order_number) &&
+    (quote.status === 'ordered' ||
+      quote.status === 'in_production' ||
+      quote.status === 'ready')
+  const canCancelOrder = showCancelOrderSection && cancelGate.ok
 
   const invoiceKindOptions = useMemo(
     () => resolveQuoteInvoiceKindOptions(quote.payment_status, invoices),
@@ -785,21 +810,27 @@ export function QuoteDetailClient({
         {!isPartner ? (
           <QuoteStatusStepper status={quote.status} />
         ) : null}
-        {quote.source === 'portal' &&
-        quote.portal_submitted_at &&
-        quote.preferred_payment_method_name ? (
-          <div className="mt-2 max-w-xl rounded-md border border-border bg-subtle px-3 py-2">
-            <p className="text-hint text-ink-secondary">
-              {isPartner
-                ? 'Választott fizetési mód'
-                : 'Partner által választott fizetési mód'}
+        {!isPartner && quote.status === 'cancelled' ? (
+          <div
+            className="max-w-xl rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-body text-danger-ink"
+            role="status"
+          >
+            <p className="font-medium">
+              Lemondva
+              {quote.cancelled_at
+                ? ` · ${new Date(quote.cancelled_at).toLocaleString('hu-HU')}`
+                : ''}
+              {quote.cancelled_by_label
+                ? ` · ${quote.cancelled_by_label}`
+                : ''}
             </p>
-            <p className="text-body font-medium text-ink">
-              {quote.preferred_payment_method_name}
-            </p>
-            {quote.preferred_payment_method_comment ? (
-              <p className="mt-1 text-hint text-ink">
-                {quote.preferred_payment_method_comment}
+            {quote.cancel_reason ? (
+              <p className="mt-0.5">
+                Ok:{' '}
+                {QUOTE_CANCEL_REASON_LABEL[
+                  quote.cancel_reason as QuoteCancelReason
+                ] ?? quote.cancel_reason}
+                {quote.cancel_note ? ` — ${quote.cancel_note}` : ''}
               </p>
             ) : null}
           </div>
@@ -1727,6 +1758,28 @@ export function QuoteDetailClient({
                         </Button>
                       </div>
                     ) : null}
+
+                    {showCancelOrderSection ? (
+                      <div className="space-y-1.5 border-t border-border pt-3">
+                        <Button
+                          type="button"
+                          variant="danger"
+                          className="w-full"
+                          disabled={!canCancelOrder}
+                          title={
+                            !cancelGate.ok ? cancelGate.message : undefined
+                          }
+                          onClick={() => setCancelOpen(true)}
+                        >
+                          Megrendelés lemondása
+                        </Button>
+                        {!cancelGate.ok ? (
+                          <p className="text-hint text-ink-muted">
+                            {cancelGate.message}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -1819,6 +1872,24 @@ export function QuoteDetailClient({
                       >
                         {PAYMENT_STATUS_LABEL[quote.payment_status]}
                       </StatusBadge>
+                    </dd>
+                  </div>
+                ) : null}
+                {quote.source === 'portal' &&
+                quote.portal_submitted_at &&
+                quote.preferred_payment_method_name ? (
+                  <div>
+                    <dt className="text-hint text-ink-secondary">
+                      {isPartner ? 'Választott mód' : 'Partner fizetés'}
+                    </dt>
+                    <dd className="text-ink">
+                      {quote.preferred_payment_method_name}
+                      {quote.preferred_payment_method_comment ? (
+                        <span className="text-ink-secondary">
+                          {' '}
+                          · {quote.preferred_payment_method_comment}
+                        </span>
+                      ) : null}
                     </dd>
                   </div>
                 ) : null}
@@ -2180,6 +2251,27 @@ export function QuoteDetailClient({
             invoices={invoices}
             preferredKind={invoicePreferredKind}
           />
+          {canCancelOrder ? (
+            <CancelQuoteDialog
+              open={cancelOpen}
+              onOpenChange={setCancelOpen}
+              quoteId={quote.id}
+              orderNumber={quote.order_number}
+              customerName={quote.customer.name}
+              totalGross={quote.final_total_gross}
+              currency={quote.currency}
+              status={quote.status}
+              totalPaid={quote.total_paid}
+              hasActiveProforma={hasActiveProformaOrAdvance}
+              productionHint={
+                quote.production_machine_name && quote.production_date
+                  ? `${quote.production_machine_name} · ${quote.production_date}`
+                  : quote.production_machine_name
+              }
+              smsAlreadySent={smsAlreadySent}
+              onSuccess={() => router.refresh()}
+            />
+          ) : null}
         </>
       ) : null}
 

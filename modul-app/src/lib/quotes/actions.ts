@@ -18,6 +18,12 @@ import {
   quoteRemainingGross,
   roundQuoteMoney
 } from '@/lib/quotes/payment-labels'
+import {
+  canCancelQuote,
+  parseQuoteCancelReason,
+  validateCancelNote,
+  type QuoteCancelReason
+} from '@/lib/quotes/cancel'
 import { normalizeProjectName } from '@/lib/quotes/project-name'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
@@ -304,6 +310,25 @@ export async function softDeleteQuote(
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
+  const tenantId = ctx.user.tenantId!
+  const { data: existing, error: loadErr } = await ctx.supabase
+    .from('quotes')
+    .select('id, status, order_number')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (loadErr || !existing) {
+    return { ok: false, message: 'Az árajánlat nem található.' }
+  }
+  if (existing.status !== 'draft' || existing.order_number) {
+    return {
+      ok: false,
+      message: 'Megrendelést mondj le, ne töröld. Piszkozat törölhető csak.'
+    }
+  }
+
   const { data, error } = await ctx.supabase
     .from('quotes')
     .update({
@@ -311,7 +336,9 @@ export async function softDeleteQuote(
       updated_at: new Date().toISOString()
     })
     .eq('id', id)
-    .eq('tenant_id', ctx.user.tenantId!)
+    .eq('tenant_id', tenantId)
+    .eq('status', 'draft')
+    .is('order_number', null)
     .is('deleted_at', null)
     .select('id, quote_number')
     .maybeSingle()
@@ -320,12 +347,135 @@ export async function softDeleteQuote(
     return { ok: false, message: 'Nem sikerült törölni az árajánlatot.' }
   }
   if (!data) {
-    return { ok: false, message: 'Az árajánlat nem található.' }
+    return {
+      ok: false,
+      message: 'Az árajánlat nem található, vagy már nem piszkozat.'
+    }
   }
 
   revalidatePath(LIST_PATH)
   revalidatePath(`${LIST_PATH}/${id}`)
   return { ok: true, id: data.id }
+}
+
+export type CancelQuoteInput = {
+  quoteId: string
+  reason: QuoteCancelReason | string
+  note?: string
+}
+
+export type CancelQuoteResult =
+  | { ok: true; id: string; orderNumber: string }
+  | { ok: false; message: string }
+
+/** Megrendelés lemondása → status=cancelled + audit meta. Nem soft-delete. */
+export async function cancelQuoteAction(
+  input: CancelQuoteInput
+): Promise<CancelQuoteResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const quoteId = input.quoteId.trim()
+  if (!quoteId) return { ok: false, message: 'Hiányzó megrendelés.' }
+
+  const reason = parseQuoteCancelReason(String(input.reason ?? ''))
+  if (!reason) {
+    return { ok: false, message: 'Válassz lemondási okot.' }
+  }
+  const note = (input.note ?? '').trim()
+  const noteErr = validateCancelNote(reason, note)
+  if (noteErr) return { ok: false, message: noteErr }
+
+  const { data: quote, error: quoteErr } = await ctx.supabase
+    .from('quotes')
+    .select('id, status, order_number, deleted_at')
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (quoteErr || !quote || quote.deleted_at) {
+    return { ok: false, message: 'A megrendelés nem található.' }
+  }
+
+  const { data: invoices } = await ctx.supabase
+    .from('invoices')
+    .select('id, invoice_type, is_storno_of_invoice_id')
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', 'opti_order')
+    .eq('related_source_id', quoteId)
+    .is('deleted_at', null)
+
+  const rows = invoices ?? []
+  const stornoOf = new Set(
+    rows
+      .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
+      .map((r) => r.is_storno_of_invoice_id as string)
+  )
+  const hasActiveFinalInvoice = rows.some(
+    (r) =>
+      r.invoice_type === 'szamla' &&
+      !r.is_storno_of_invoice_id &&
+      !stornoOf.has(r.id as string)
+  )
+
+  const gate = canCancelQuote({
+    status: quote.status as
+      | 'draft'
+      | 'ordered'
+      | 'in_production'
+      | 'ready'
+      | 'finished'
+      | 'cancelled',
+    orderNumber: quote.order_number,
+    deletedAt: quote.deleted_at,
+    hasActiveFinalInvoice
+  })
+  if (!gate.ok) return gate
+
+  const label =
+    ctx.user.displayName?.trim() ||
+    ctx.user.email?.trim() ||
+    'Ismeretlen'
+
+  const { data: updated, error: updateErr } = await ctx.supabase
+    .from('quotes')
+    .update({
+      status: 'cancelled',
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: ctx.user.id ?? null,
+      cancelled_by_label_snapshot: label,
+      cancel_reason: reason,
+      cancel_note: note || null,
+      production_machine_id: null,
+      production_date: null,
+      barcode: null,
+      in_production_at: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .in('status', ['ordered', 'in_production', 'ready'])
+    .is('deleted_at', null)
+    .select('id, order_number')
+    .maybeSingle()
+
+  if (updateErr) {
+    console.error('cancelQuoteAction', updateErr.message)
+    return { ok: false, message: 'Nem sikerült lemondani a megrendelést.' }
+  }
+  if (!updated || !updated.order_number) {
+    return {
+      ok: false,
+      message: 'A státusz közben megváltozott — frissítsd az oldalt.'
+    }
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath(`${LIST_PATH}/${quoteId}`)
+  revalidatePath('/megrendelesek')
+  revalidatePath('/scanner')
+  return { ok: true, id: updated.id, orderNumber: updated.order_number }
 }
 
 export type UpdateQuoteCommentResult =

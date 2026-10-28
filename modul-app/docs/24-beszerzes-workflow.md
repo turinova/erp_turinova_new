@@ -72,7 +72,7 @@ Három fogalom, négy PO-státusz, egy irreversible bevételezés. Minden edge c
 | `ordered` | Elküldve | Nem (csak note / expected_date?) | → beérkezés; → `partial` / `received`; → `cancelled` ha nincs bevételezett qty |
 | `partial` | Részben beérkezett | Nem | → további beérkezés; → `received` |
 | `received` | Beérkezett | Nem | Végállapot (javítás = új korrekciós mozgás, későbbi fázis) |
-| `cancelled` | Törölve | Nem | Végállapot |
+| `cancelled` | Visszavonva | Nem | Végállapot |
 
 **Átnevezés main-apphoz képest:** `confirmed` → **`ordered`** (UI: Elküldve). A „confirmed” félrevezető (ki igazolta?).
 
@@ -142,9 +142,15 @@ Addon / entitlement: **`beszerzes`** feature az **Alap plan** része (`20260517_
 - Készlet: termék → `stock_movements`; tábla → `sheet_stock_movements`; szálas → `linear_stock_movements`.
 - Detail: táblás/szálas anyag kártyán ugyanaz a készlet + mozgás + úton panel, mint a termékeken (anyagoknál dual qty).
 
-Lista oszlopok (sűrű, Midday): szám, beszállító, státusz (szín+szöveg), várható érkezés, tételek db, nettó.
+Lista (buyer queue, Square/Jobs sűrűség):
 
-Szűrők: státusz chip-ek + kereső (szám / beszállító). Default sort: `updated_at desc`.
+- **Default szűrő: Nyitott** (`draft` + `ordered` + `partial`). URL-ben nincs `status` param = nyitott; `status=all` = teljes lista.
+- Toolbar: debounced kereső + `MenuSelect` státusz (Nyitott / Vázlat / Elküldve / Részben / Beérkezett / Visszavonva / Mind) + számláló. Kereséskor státusz = Mind (closed/visszavont is található).
+- Kereső `q`: PO szám, beszállító név, tétel `sku_snapshot` / `name_snapshot`.
+- Oszlopok: szám (+ order_kind badge), beszállító, státusz, várható (+ **Késik** ha `expected_date` < ma és `ordered`/`partial`), tételek, nettó, **Következő** (Beérkezés CTA → `openOrCreateGoodsReceipt`).
+- Badge tone: `draft` neutral · `ordered`/`partial` warning · `received` success · `cancelled` danger.
+- Üres: semmi PO / nincs nyitott / szűrő miss — külön copy.
+- Default sort: `updated_at desc`.
 
 ### 4.3 Beérkezések
 

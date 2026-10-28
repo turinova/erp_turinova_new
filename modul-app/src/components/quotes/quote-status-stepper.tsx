@@ -23,7 +23,7 @@ export function QuoteStatusStepper({
         className={cn('text-body text-danger-ink', className)}
         role="status"
       >
-        Törölve — nincs további gyártási lépés.
+        Lemondva — nincs további gyártási lépés.
       </p>
     )
   }

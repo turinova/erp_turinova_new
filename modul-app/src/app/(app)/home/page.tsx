@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { HomeChartsDashboard } from '@/components/home/home-charts-dashboard'
 import { HomeKpiStrip } from '@/components/home/home-kpi-strip'
+import { HomeNapiZarasCard } from '@/components/home/home-napi-zaras-card'
 import { PartnerPortalInboxCard } from '@/components/home/partner-portal-inbox-card'
 import { PageHeader } from '@/components/patterns/page-header'
 import { getSessionUser } from '@/lib/auth/session'
@@ -11,6 +12,10 @@ import type { FootcounterHomeSlim } from '@/lib/footcounter/types'
 import { getHomePageData } from '@/lib/home/chart-queries'
 import { getHomeKpiBundle, type HomeKpiBundle } from '@/lib/home/kpi-queries'
 import {
+  getHomeNapiZarasSnapshot,
+  type HomeNapiZarasSnapshot
+} from '@/lib/home/napi-zaras-snapshot'
+import {
   getHomePartnerPortalInbox,
   tenantHasPartnerOrders,
   type HomePartnerPortalInboxRow
@@ -18,6 +23,7 @@ import {
 import { tenantHasJelenlet } from '@/lib/jelenlet/entitlement'
 import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
 import { findNavLinkByPath } from '@/lib/navigation'
+import { pathIsAllowed } from '@/lib/permissions/pages'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -37,8 +43,13 @@ export default async function HomePage() {
   let kpis: HomeKpiBundle | null = null
   let footcounter: FootcounterHomeSlim | null = null
   let partnerInbox: HomePartnerPortalInboxRow[] = []
+  let napiZaras: HomeNapiZarasSnapshot | null = null
   let showLapszabaszatCharts = false
   let loadError: string | null = null
+
+  const canSeeNapiZaras = Boolean(
+    user && pathIsAllowed('/ertekesitesek/napi-egyeztetes', user.allowedPages)
+  )
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
@@ -62,6 +73,17 @@ export default async function HomePage() {
           data = await getHomePageData(supabase, user.tenantId, 0)
         } catch (chartErr) {
           console.error('home charts', chartErr)
+        }
+
+        if (canSeeNapiZaras) {
+          try {
+            napiZaras = await getHomeNapiZarasSnapshot(
+              supabase,
+              user.tenantId
+            )
+          } catch (zarasErr) {
+            console.error('home napi zaras', zarasErr)
+          }
         }
 
         if (hasFootcounter) {
@@ -102,6 +124,8 @@ export default async function HomePage() {
           {loadError}
         </p>
       ) : null}
+
+      {napiZaras ? <HomeNapiZarasCard data={napiZaras} /> : null}
 
       {kpis ? <HomeKpiStrip data={kpis} /> : null}
 

@@ -29,7 +29,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 22
+export const PAGE_CATALOG_VERSION = 24
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -61,6 +61,11 @@ export const APP_PAGES: AppPageDef[] = [
   {
     key: '/ertekesitesek/muszakok',
     label: 'Műszakok',
+    category: 'Értékesítés'
+  },
+  {
+    key: '/ertekesitesek/napi-egyeztetes',
+    label: 'Napi zárás',
     category: 'Értékesítés'
   },
   { key: '/webshop', label: 'Webshop áttekintés', category: 'Webshop' },
@@ -228,14 +233,10 @@ export const APP_PAGES: AppPageDef[] = [
     key: '/beallitasok/felhasznalok',
     label: 'Felhasználók',
     category: 'Beállítások'
-  },
-  // Append-only: bitset catalog order — új kulcs mindig a lista végére
-  {
-    key: '/ertekesitesek/pos-hasznalat',
-    label: 'POS használat',
-    category: 'Értékesítés'
   }
 ]
+// Append-only: bitset catalog order — új kulcs mindig a lista végére.
+// Archivált: `/ertekesitesek/pos-hasznalat` (POS használat riport) — ne tedd vissza.
 
 export const ALL_PAGE_KEYS = APP_PAGES.map((p) => p.key)
 
@@ -288,7 +289,7 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/pos/beallitasok',
       '/pos/pda',
       '/ertekesitesek/muszakok',
-      '/ertekesitesek/pos-hasznalat',
+      '/ertekesitesek/napi-egyeztetes',
       '/szamlak',
       '/penzugy',
       '/penzugy/kintlevoseg',

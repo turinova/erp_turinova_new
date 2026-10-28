@@ -14,16 +14,27 @@ export const PO_STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
   ordered: 'Elküldve',
   partial: 'Részben beérkezett',
   received: 'Beérkezett',
-  cancelled: 'Törölve'
+  cancelled: 'Visszavonva'
 }
+
+/** Lista szűrő: Nyitott = draft + ordered + partial. */
+export type PurchaseOrderListStatusFilter =
+  | PurchaseOrderStatus
+  | 'all'
+  | 'open'
+
+export const PO_OPEN_STATUSES: PurchaseOrderStatus[] = [
+  'draft',
+  'ordered',
+  'partial'
+]
 
 export function poStatusTone(
   status: PurchaseOrderStatus
 ): 'warning' | 'success' | 'info' | 'neutral' | 'danger' {
-  if (status === 'draft') return 'warning'
-  if (status === 'ordered') return 'success'
-  if (status === 'partial') return 'info'
-  if (status === 'received') return 'neutral'
+  if (status === 'draft') return 'neutral'
+  if (status === 'ordered' || status === 'partial') return 'warning'
+  if (status === 'received') return 'success'
   return 'danger'
 }
 

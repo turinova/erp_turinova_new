@@ -43,7 +43,7 @@ Kapcsolódó: [21](21-platform-ops.md), [23](23-lapszabaszat-addon.md), [29](29-
 | Visszáru | eladás detail + POS |
 | Készlet / raktár / átadás / nyitó | `/raktarak`, `/keszlet/*` |
 | Beszerzés | `/beszallitok`, rendelés, `/beerkezesek` |
-| POS + műszakok + adoption | `/pos`, `/ertekesitesek/muszakok`, `pos-hasznalat` |
+| POS + műszakok | `/pos`, `/ertekesitesek/muszakok` (`pos-hasznalat` archiválva) |
 | Ügyfélrendelés | `/ugyfelrendelesek` |
 | Számlázás + pénzügy | `/szamlak`, `/penzugy/*`, `/beallitasok/szamlazas` |
 | Termék címke | `product_labels` |

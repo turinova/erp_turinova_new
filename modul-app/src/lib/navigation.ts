@@ -36,7 +36,6 @@ import {
   Scale,
   Store,
   Tags,
-  Target,
   Truck,
   Undo2,
   Users,
@@ -194,9 +193,9 @@ const allNavSections: NavSection[] = [
             },
             {
               type: 'link',
-              label: 'POS használat',
-              href: '/ertekesitesek/pos-hasznalat',
-              icon: Target,
+              label: 'Napi zárás',
+              href: '/ertekesitesek/napi-egyeztetes',
+              icon: Scale,
               accent: 'slate'
             }
           ]

@@ -144,11 +144,12 @@ Minden CE funkciósor leképezve. Ha nálunk nincs: `—` (nem felejtés).
 | Több raktár POS-on | ● | ● | ● | ● | ≥2 → választó; 1 → rejtett |
 | Bolti készlet → webáruház | — | — | ※ | — | |
 | Kassza / műszak nyitás-zárás | ● | ● | ● | ● | `/ertekesitesek/muszakok` |
+| Napi egyeztetés (KP/kártya/utalás) | ● | ● | ● | ● | `/ertekesitesek/napi-egyeztetes` |
 | Kezdeti KP mennyiség | ● | ● | ● | ● | |
 | Záráskor KP számolás / audit | ● | ● | ● | ● | |
 | Egyedi szolgáltatás / díj a kasszán | ● | ● | ● | ● | fee types |
 | Kedvezmény termék / kosár (% / összeg) | ● | ● | ● | ● | |
-| Több kassza / bolt kimutatás | ◐ | ◐ | ◐ | ◐ | műszak + adoption |
+| Több kassza / bolt kimutatás | ◐ | ◐ | ◐ | ◐ | műszak |
 | Belső pénzmozgás (kassza) | ◐ | ◐ | ◐ | ◐ | műszak audit |
 | Korábbi vásárlások | ● | ● | ● | ● | `/ertekesitesek` |
 | Parkoltatás / foglalás | ● | ● | ● | ● | park + handoff kód |
@@ -157,7 +158,7 @@ Minden CE funkciósor leképezve. Ha nálunk nincs: `—` (nem felejtés).
 | Teya / manuális terminál | ● | ● | ● | ● | |
 | Visszajáró numpad | ● | ● | ● | ● | |
 | POS beállítások | ● | ● | ● | ● | `/pos/beallitasok`, `?beallitasok` |
-| POS adoption / használat | ● | ● | ● | ● | `/ertekesitesek/pos-hasznalat` |
+| POS adoption / használat | — | — | — | — | archiválva (redirect `/ertekesitesek`) |
 | Visszáru POS-on | ● | ● | ● | ● | sale return + restock |
 | **PDA hub** eladás / árellenőrzés | — | ● | ● | — | `/pos/pda` |
 | PDA scan-first gombos eladás | — | ● | ● | — | |
@@ -417,7 +418,7 @@ Minden CE funkciósor leképezve. Ha nálunk nincs: `—` (nem felejtés).
 | Árbevétel / forgalom light | ● | ● | ● | ● | |
 | Kintlévőség kimutatás | ● | ● | ● | ● | `/penzugy/kintlevoseg` |
 | ÁFA összesítő | ● | ● | ● | ● | `/penzugy/afa` |
-| POS adoption riport | ● | ● | ● | ● | |
+| POS adoption riport | — | — | — | — | archiválva |
 | Footcounter chart / heatmap | — | ● | ● | — | `/belepok` |
 | Jelenlét naptár riport | — | ● | ● | — | |
 | Cash-flow / eredménykimutatás suite | — | — | ◐ light | — | |
@@ -535,7 +536,7 @@ Minden tenant app route besorolva:
 | `/ugyfelek*` | B7 |
 | `/keszlet/*` | B8, B9 |
 | `/beszallitok*`, `/beszallitoi-rendelesek*`, `/beerkezesek*` | B12, B13 |
-| `/ertekesitesek*`, `arajanlatok*`, `muszakok*`, `pos-hasznalat` | B4, B5, B15 |
+| `/ertekesitesek*`, `arajanlatok*`, `muszakok*`, `napi-egyeztetes*` | B4, B5, B15 |
 | `/pos`, `/pos/beallitasok`, `/pos/pda` | B4 |
 | `/ugyfelrendelesek*` | B5 |
 | `/szamlak*`, `/penzugy*` | B2, B18 |

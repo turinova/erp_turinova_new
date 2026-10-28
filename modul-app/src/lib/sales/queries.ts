@@ -182,6 +182,10 @@ export type SaleListResult = {
   limit: number
 }
 
+function sanitizeSaleListQ(raw: string): string {
+  return raw.trim().replace(/[%_,]/g, '')
+}
+
 export async function listSales(
   supabase: SupabaseClient,
   params: SaleListParams
@@ -190,7 +194,32 @@ export async function listSales(
   const limit = Math.min(100, Math.max(1, params.limit ?? 25))
   const from = (page - 1) * limit
   const to = from + limit - 1
-  const q = params.q?.trim() ?? ''
+  const q = sanitizeSaleListQ(params.q ?? '')
+  /** Lookup: van keresőszöveg → ne szűkítsd státuszra (visszáru / cancelled is kell). */
+  const searching = q.length > 0
+
+  let itemSaleIds: string[] = []
+  if (q.length >= 2) {
+    const { data: itemHits, error: itemErr } = await supabase
+      .from('sales_order_items')
+      .select('sales_order_id')
+      .eq('tenant_id', params.tenantId)
+      .is('deleted_at', null)
+      .or(`sku_snapshot.ilike.%${q}%,name_snapshot.ilike.%${q}%`)
+      .limit(300)
+    if (itemErr) {
+      console.error('listSales item q', itemErr.message)
+    } else {
+      // Cap URL size for PostgREST `id.in.(…)` — enough for bolti lookup.
+      itemSaleIds = [
+        ...new Set(
+          (itemHits ?? [])
+            .map((r) => r.sales_order_id as string)
+            .filter(Boolean)
+        )
+      ].slice(0, 150)
+    }
+  }
 
   let query = supabase
     .from('sales_orders')
@@ -219,15 +248,22 @@ export async function listSales(
     .order('created_at', { ascending: false })
     .range(from, to)
 
-  if (q) {
-    query = query.or(
-      `sale_number.ilike.%${q}%,customer_name_snapshot.ilike.%${q}%`
-    )
+  if (searching) {
+    const parts = [
+      `sale_number.ilike.%${q}%`,
+      `customer_name_snapshot.ilike.%${q}%`
+    ]
+    if (itemSaleIds.length > 0) {
+      parts.push(`id.in.(${itemSaleIds.join(',')})`)
+    }
+    query = query.or(parts.join(','))
   }
-  if (params.status && params.status !== 'all') {
-    query = query.eq('status', params.status)
-  } else if (params.excludeTerminalStatuses) {
-    query = query.not('status', 'in', '(cancelled,returned)')
+  if (!searching) {
+    if (params.status && params.status !== 'all') {
+      query = query.eq('status', params.status)
+    } else if (params.excludeTerminalStatuses) {
+      query = query.not('status', 'in', '(cancelled,returned)')
+    }
   }
   if (params.paymentStatus && params.paymentStatus !== 'all') {
     query = query.eq('payment_status', params.paymentStatus)

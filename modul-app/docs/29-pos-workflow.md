@@ -51,7 +51,7 @@ Jobb: kosár toolbar — **PDA** · Félrerak · Ürítés · **Visszáru** · (
 - Soft stock: 0 készlet is listázható; **Elöl a készletes** chip rendez; OOS sor muted + „Nincs készleten”.
 - **Gépelés:** mindig ranked lista (debounce) — soha auto exact-scan / mezőtörlés; üres LRU nem cache-el zero-hitet. Pure digit stub (1–3) **nem** hív RPC-t; materials csak `q.length ≥ 4`. API: lean auth + middleware skip + `Server-Timing`.
 - Zero-hit UI: tippek (szóköz, SKU, POS-eladható, alias) + **Gyors felvétel** + Keresőszavak.
-- Miss telemetria: `pos_search_events` → manager **POS használat** top miss lista (`pos_search_miss_stats`).
+- Miss telemetria: `pos_search_events` / `pos_search_miss_stats` (RPC). Manager **POS használat** oldal archiválva.
 - **Exact barcode:** wedge (`BarcodeWedgeTrap`, gap **90 ms**, `e.code` HU Digit0/Minus) vagy Enter; miss → **PosMissProductDialog** + **Beolvasva** monoszpace kód. Match: `barcodeLookupCandidates` (normalize ö/ü, **Y↔Z**, hyphen-compact) → RPC `lookup_pos_barcode` (`20260610` compact + sku); hygiene `20260605`.
 - **SKU gépelés (4–12 digit):** typeahead **+** parallel exact lookup (ne üres lista). EAN-13 / alfanumerikus CODE128 (`DT-CZ…`): exact preview, nem fuzzy.
 - **Barcode hot path (perf):** `/api/pos/barcode-lookup` = **lean staff auth** (`resolvePosLeanAuth`) + middleware skip + `Server-Timing` — **nem** nyúl a typeahead `/api/pos/search`-hez (SKU gépelésnél parallel hívás OK). Session LRU + single-flight + optimistic kosár (cache hit); stale/miss → rollback. PDA ugyanaz. Migráció: `20260610`.

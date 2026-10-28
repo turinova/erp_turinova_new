@@ -30,6 +30,19 @@
 
 ---
 
+## Lista (`/ertekesitesek`)
+
+Bolti lookup (bizonyíték-keresés), nem státusz-menedzsment.
+
+| Elem | Viselkedés |
+|---|---|
+| Layout | **1 toolbar-sor:** kereső + 3× `MenuSelect` (időszak / állapot / csatorna) + darabszám; aktív szűrő chip-ek csak ha ≠ default |
+| `q` | `sale_number` + `customer_name_snapshot` + (2+ char) tétel `sku_snapshot` / `name_snapshot`; debounce ~300 ms |
+| `q` + státusz | Kereséskor státusz **ignore** (select disabled) — visszáru / cancelled is |
+| `period` | `all` \| `today` \| `yesterday` \| `7d` \| `30d` → `created_at` ablak |
+| `channel` | `all` \| `pos` \| `manual` \| `webshop` |
+| Empty | Szűrő nélkül: „Még nincs…”; szűrővel: „Nincs találat” + törlés |
+
 ## Create UX
 
 - **Utalás:** Számlázás panel automatikus; ügyfél / utalásra váltáskor billing behúzás; adószám lookup; submit → `?issue=proforma`.
@@ -51,3 +64,20 @@ Végszámla: csak **paid + nem `confirmed`**. POS paid+fulfilled: csendes detail
 ## POS
 
 Ügyfél választás / „Számlát kér” → billing az ügyfélről. Sikeres számla: zöld sáv (összeg-first) + **PDF / Megnyitás** — **nincs** eladás-toast a pulton.
+
+## Napi zárás (`/ertekesitesek/napi-egyeztetes`)
+
+Square End Drawer + Jobs: egy nap, 3 szám, egy primary.
+
+| Elem | Viselkedés |
+|---|---|
+| Rendszer | **Külön** (összecsukva): termék `sales_payments` + lapszab `quote_payments`; egyeztetés **összesen** |
+| Bolt | 3 stacked sor: Gép szerint / Amit te számoltál / élő Δ |
+| UI | Hónap váltó · fő blokk Ma · **Havi elszámolás** kártya (pontosság · járó Ft · napok · streak/hiányzik) · napchip (H–Szo) |
+| Elszámolás | OK÷kitöltött + min. 15 nap; ≥90%→**20 e** / ≥95%→**28 e** / fő (UI); üzletvezető külön, nem a képernyőn |
+| Progressive | Termék/lapszab + megjegyzés collapsible; eltérésnél megjegyzés auto-nyílik |
+| Guard | Mentetlen váltás confirm; nagy Δ warning |
+| Küszöb | KP ±2000 · kártya ±1000 vagy 0,5% · utalás ±5000 |
+| Mentés | Upsert + snapshot; primary **Zárás mentése** |
+| Jog | `20260616_daily_reconciliation_page_access.sql` |
+| Home | Motiváló hero widget (`HomeNapiZarasCard`) — mai státusz szín + pontosság + járó Ft + streak → napi zárás |

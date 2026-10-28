@@ -6,7 +6,7 @@ export const QUOTE_STATUS_LABEL: Record<QuoteStatus, string> = {
   in_production: 'Gyártásban',
   ready: 'Kész',
   finished: 'Lezárva',
-  cancelled: 'Törölve'
+  cancelled: 'Lemondva'
 }
 
 /** Gyártási pipeline (cancelled nélkül) — detail stepper. */

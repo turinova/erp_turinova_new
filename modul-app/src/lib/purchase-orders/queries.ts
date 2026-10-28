@@ -3,9 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getReceivedQtyByPoItem } from '@/lib/goods-receipts/queries'
 import {
   lineAmounts,
+  PO_OPEN_STATUSES,
   sumOrderAmounts,
   type PurchaseOrderKind,
   type PurchaseOrderLineKind,
+  type PurchaseOrderListStatusFilter,
   type PurchaseOrderStatus
 } from '@/lib/purchase-orders/parse'
 
@@ -81,18 +83,23 @@ export type PurchaseOrderDetail = {
 export type PurchaseOrderListParams = {
   tenantId: string
   q?: string
-  status?: PurchaseOrderStatus | 'all'
+  status?: PurchaseOrderListStatusFilter
   orderKind?: PurchaseOrderKind | 'all'
   page?: number
   limit?: number
 }
+
+export type PurchaseOrderStatusCounts = Record<
+  PurchaseOrderStatus | 'all' | 'open',
+  number
+>
 
 export type PurchaseOrderListResult = {
   rows: PurchaseOrderListItem[]
   total: number
   page: number
   limit: number
-  statusCounts: Record<PurchaseOrderStatus | 'all', number>
+  statusCounts: PurchaseOrderStatusCounts
 }
 
 export type PurchaseProductSearchItem = {
@@ -172,7 +179,9 @@ export async function listPurchaseOrders(
     .eq('tenant_id', params.tenantId)
     .is('deleted_at', null)
 
-  if (params.status && params.status !== 'all') {
+  if (params.status === 'open') {
+    query = query.in('status', PO_OPEN_STATUSES)
+  } else if (params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
   }
   if (params.orderKind && params.orderKind !== 'all') {
@@ -183,21 +192,38 @@ export async function listPurchaseOrders(
   if (q) {
     const safe = q.replace(/[%_,]/g, '')
     if (safe) {
-      const { data: supplierHits } = await supabase
-        .from('suppliers')
-        .select('id')
-        .eq('tenant_id', params.tenantId)
-        .is('deleted_at', null)
-        .ilike('name', `%${safe}%`)
-        .limit(50)
+      const [{ data: supplierHits }, { data: itemHits }] = await Promise.all([
+        supabase
+          .from('suppliers')
+          .select('id')
+          .eq('tenant_id', params.tenantId)
+          .is('deleted_at', null)
+          .ilike('name', `%${safe}%`)
+          .limit(50),
+        supabase
+          .from('purchase_order_items')
+          .select('purchase_order_id')
+          .eq('tenant_id', params.tenantId)
+          .is('deleted_at', null)
+          .or(
+            `name_snapshot.ilike.%${safe}%,sku_snapshot.ilike.%${safe}%`
+          )
+          .limit(100)
+      ])
       const supplierIds = (supplierHits ?? []).map((s) => s.id)
-      if (supplierIds.length > 0) {
-        query = query.or(
-          `po_number.ilike.%${safe}%,supplier_id.in.(${supplierIds.join(',')})`
+      const poIdsFromItems = [
+        ...new Set(
+          (itemHits ?? []).map((it) => it.purchase_order_id as string)
         )
-      } else {
-        query = query.ilike('po_number', `%${safe}%`)
+      ]
+      const parts = [`po_number.ilike.%${safe}%`]
+      if (supplierIds.length > 0) {
+        parts.push(`supplier_id.in.(${supplierIds.join(',')})`)
       }
+      if (poIdsFromItems.length > 0) {
+        parts.push(`id.in.(${poIdsFromItems.join(',')})`)
+      }
+      query = query.or(parts.join(','))
     }
   }
 
@@ -265,15 +291,16 @@ export async function listPurchaseOrders(
 async function countPurchaseOrderStatuses(
   supabase: SupabaseClient,
   tenantId: string
-): Promise<Record<PurchaseOrderStatus | 'all', number>> {
+): Promise<PurchaseOrderStatusCounts> {
   const { data, error } = await supabase
     .from('purchase_orders')
     .select('status')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
 
-  const counts: Record<PurchaseOrderStatus | 'all', number> = {
+  const counts: PurchaseOrderStatusCounts = {
     all: 0,
+    open: 0,
     draft: 0,
     ordered: 0,
     partial: 0,
@@ -290,6 +317,7 @@ async function countPurchaseOrderStatuses(
     const s = row.status as PurchaseOrderStatus
     counts.all += 1
     if (s in counts) counts[s] += 1
+    if (PO_OPEN_STATUSES.includes(s)) counts.open += 1
   }
   return counts
 }

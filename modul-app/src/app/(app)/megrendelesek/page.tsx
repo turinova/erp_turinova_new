@@ -64,7 +64,10 @@ async function OrdersListLoader({
 
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
-  const status = parseStatus(params.status)
+  /** Kereséskor minden státusz (lemondott is) — ne essen el a találat. */
+  const status: OrderListStatusFilter = q
+    ? 'all'
+    : parseStatus(params.status)
   const machineId = params.machine?.trim() ?? ''
   const productionDate = params.date?.trim() ?? ''
 

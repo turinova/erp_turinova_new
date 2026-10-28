@@ -28,7 +28,7 @@ Fej státusz = leghátrább élő tétel (DB trigger). Részleges átadás OK.
 
 | Route | Primary CTA / szerep |
 |---|---|
-| `/ugyfelrendelesek` | Új ügyfélrendelés — rendelésfej lista |
+| `/ugyfelrendelesek` | Új ügyfélrendelés — rendelésfej lista; default **Aktív**; **keresés = összes** (átadott is), nincs SMS-szűrő |
 | `/ugyfelrendelesek/uj` | Mentés · `?accessory=` POS deep-link · tételkereső: `/api/cso/product-search` + `search_accessories_page` · előleg a totals sávban |
 | `/ugyfelrendelesek/[id]` | Ajánlat-ritmus: breadcrumb · **vízszintes Rendelés útja** · megjegyzés · Következő CTA · Ügyfél/Rendelés · **full-width tételek** · összegzés alul (nincs jobb aside) |
 | `/ugyfelrendelesek/varolista` | Napi munka (nav: **Beszerzés** → Beszállítói várólista); `?notify=pending` = SMS nélküli átvehetők; URL változatlan. Ügyfélrendelések lista: top-level az **Ügyfél** szekcióban. |

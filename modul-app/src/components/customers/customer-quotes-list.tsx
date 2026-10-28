@@ -72,7 +72,7 @@ const STATUS_OPTIONS: { value: QuoteStatus | 'all'; label: string }[] = [
   { value: 'in_production', label: 'Gyártásban' },
   { value: 'ready', label: 'Kész' },
   { value: 'finished', label: 'Lezárva' },
-  { value: 'cancelled', label: 'Törölve' }
+  { value: 'cancelled', label: 'Lemondva' }
 ]
 
 const PERIOD_OPTIONS: { value: CustomerQuotesPeriod; label: string }[] = [

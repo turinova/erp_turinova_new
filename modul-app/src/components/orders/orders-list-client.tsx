@@ -66,6 +66,7 @@ const STATUS_CHIPS: Array<{
   { value: 'in_production', label: 'Gyártásban' },
   { value: 'ready', label: 'Kész' },
   { value: 'finished', label: 'Lezárva' },
+  { value: 'cancelled', label: 'Lemondva' },
   { value: 'all', label: 'Összes' }
 ]
 

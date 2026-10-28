@@ -163,7 +163,7 @@ export function ScannerClient({
       return false
     }
     if (order.status === 'cancelled') {
-      showFeedback('warning', 'Ez a megrendelés visszavonva.')
+      showFeedback('warning', 'Ez a megrendelés le van mondva.')
       return false
     }
     if (rowsRef.current.some((r) => r.id === order.id)) {

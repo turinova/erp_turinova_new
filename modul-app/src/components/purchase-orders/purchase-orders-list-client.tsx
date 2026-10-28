@@ -2,11 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
-import { ClipboardList, Plus, Search } from 'lucide-react'
+import { useEffect, useState, useTransition } from 'react'
+import { ClipboardList, PackageCheck, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
   DataTable,
   DataTableBody,
@@ -19,17 +18,21 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { formatMoneyFt } from '@/lib/accessories/parse'
-import { cancelPurchaseOrder } from '@/lib/purchase-orders/actions'
+import { openOrCreateGoodsReceipt } from '@/lib/goods-receipts/actions'
 import {
   PO_ORDER_KIND_LABEL,
   PO_STATUS_LABEL,
-  PO_STATUSES,
   poOrderKindTone,
   poStatusTone,
+  type PurchaseOrderListStatusFilter,
   type PurchaseOrderStatus
 } from '@/lib/purchase-orders/parse'
-import type { PurchaseOrderListItem } from '@/lib/purchase-orders/queries'
+import type {
+  PurchaseOrderListItem,
+  PurchaseOrderStatusCounts
+} from '@/lib/purchase-orders/queries'
 import { cn } from '@/lib/utils'
 
 type PurchaseOrdersListClientProps = {
@@ -39,12 +42,49 @@ type PurchaseOrdersListClientProps = {
   limit: number
   canWrite: boolean
   initialQ: string
-  initialStatus: PurchaseOrderStatus | 'all'
-  statusCounts: Record<PurchaseOrderStatus | 'all', number>
+  initialStatus: PurchaseOrderListStatusFilter
+  statusCounts: PurchaseOrderStatusCounts
+}
+
+const STATUS_OPTIONS: { value: PurchaseOrderListStatusFilter; label: string }[] =
+  [
+    { value: 'open', label: 'Nyitott' },
+    { value: 'draft', label: 'Vázlat' },
+    { value: 'ordered', label: 'Elküldve' },
+    { value: 'partial', label: 'Részben' },
+    { value: 'received', label: 'Beérkezett' },
+    { value: 'cancelled', label: 'Visszavonva' },
+    { value: 'all', label: 'Mind' }
+  ]
+
+function todayLocalIso() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function isOverdue(
+  expected: string | null,
+  status: PurchaseOrderStatus
+): boolean {
+  if (!expected) return false
+  if (status !== 'ordered' && status !== 'partial') return false
+  return expected.slice(0, 10) < todayLocalIso()
 }
 
 function formatDate(iso: string | null) {
   if (!iso) return '—'
+  const day = iso.slice(0, 10)
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  if (m) {
+    return new Date(
+      Number(m[1]),
+      Number(m[2]) - 1,
+      Number(m[3])
+    ).toLocaleDateString('hu-HU')
+  }
   try {
     return new Date(iso).toLocaleDateString('hu-HU')
   } catch {
@@ -65,62 +105,99 @@ export function PurchaseOrdersListClient({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [qDraft, setQDraft] = useState(initialQ)
-  const [deleteTarget, setDeleteTarget] = useState<PurchaseOrderListItem | null>(
-    null
-  )
+  const [search, setSearch] = useState(initialQ)
   const [pending, startTransition] = useTransition()
+  const [receivingId, setReceivingId] = useState<string | null>(null)
+
+  const searching = Boolean(initialQ.trim())
+  const statusValue: PurchaseOrderListStatusFilter = searching
+    ? 'all'
+    : initialStatus
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
   const to = Math.min(page * limit, total)
 
-  function pushParams(patch: Record<string, string | null>) {
+  useEffect(() => {
+    setSearch(initialQ)
+  }, [initialQ])
+
+  function pushParams(patch: {
+    q?: string
+    status?: PurchaseOrderListStatusFilter | null
+    page?: number
+  }) {
     const next = new URLSearchParams(searchParams.toString())
-    for (const [key, value] of Object.entries(patch)) {
-      if (value === null || value === '') next.delete(key)
-      else next.set(key, value)
+
+    const q =
+      patch.q !== undefined ? patch.q.trim() : (next.get('q') ?? '').trim()
+
+    let status: PurchaseOrderListStatusFilter | null
+    if (q) {
+      status = 'all'
+    } else if (patch.status !== undefined) {
+      status = patch.status
+    } else if (patch.q !== undefined) {
+      status = 'open'
+    } else {
+      const raw = next.get('status')
+      status = (raw as PurchaseOrderListStatusFilter | null) ?? 'open'
     }
+
+    const p = patch.page ?? 1
+
+    if (q) next.set('q', q)
+    else next.delete('q')
+
+    if (!status || status === 'open') next.delete('status')
+    else next.set('status', status)
+
+    if (p > 1) next.set('page', String(p))
+    else next.delete('page')
+
     const qs = next.toString()
-    router.push(qs ? `${pathname}?${qs}` : pathname)
+    startTransition(() => {
+      router.push(qs ? `${pathname}?${qs}` : pathname)
+    })
   }
 
-  function handleDelete() {
-    if (!deleteTarget) return
+  useEffect(() => {
+    if (search === initialQ) return
+    const t = window.setTimeout(() => {
+      pushParams({ q: search, page: 1 })
+    }, 300)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce only on search text
+  }, [search])
+
+  function handleReceive(row: PurchaseOrderListItem) {
+    setReceivingId(row.id)
     startTransition(async () => {
-      const result = await cancelPurchaseOrder(deleteTarget.id)
+      const result = await openOrCreateGoodsReceipt(row.id)
+      setReceivingId(null)
       if (!result.ok) {
         toast.error(result.message)
+        router.refresh()
         return
       }
-      toast.success(
-        deleteTarget.status === 'draft'
-          ? `„${deleteTarget.po_number}” törölve.`
-          : `„${deleteTarget.po_number}” visszavonva.`
-      )
-      setDeleteTarget(null)
+      router.push(`/beerkezesek/${result.id}`)
       router.refresh()
     })
   }
 
-  const emptySearch = useMemo(
-    () => total === 0 && (Boolean(initialQ) || initialStatus !== 'all'),
-    [total, initialQ, initialStatus]
-  )
-
-  const chips: { key: PurchaseOrderStatus | 'all'; label: string }[] = [
-    { key: 'all', label: `Mind (${statusCounts.all})` },
-    ...PO_STATUSES.map((s) => ({
-      key: s,
-      label: `${PO_STATUS_LABEL[s]} (${statusCounts[s]})`
-    }))
-  ]
+  const trulyEmpty = statusCounts.all === 0
+  const openEmpty =
+    !trulyEmpty &&
+    total === 0 &&
+    !searching &&
+    statusValue === 'open'
+  const filteredEmpty = total === 0 && !trulyEmpty && !openEmpty
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader
         title="Beszállítói rendelések"
-        description="Termék vagy anyag (tábla + munkalap) rendelés beszállítótól."
+        description="Termék vagy anyag rendelés beszállítótól — nyitott tételek először."
         actions={
           canWrite ? (
             <Button
@@ -134,14 +211,8 @@ export function PurchaseOrdersListClient({
         }
       />
 
-      <form
-        className="flex flex-wrap items-end gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          pushParams({ q: qDraft.trim() || null, page: '1' })
-        }}
-      >
-        <div className="relative min-w-[14rem] flex-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
           <label className="sr-only" htmlFor="po-search">
             Keresés
           </label>
@@ -151,44 +222,45 @@ export function PurchaseOrdersListClient({
           />
           <Input
             id="po-search"
-            value={qDraft}
-            onChange={(e) => setQDraft(e.target.value)}
-            placeholder="Szám / beszállító…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                pushParams({ q: search, page: 1 })
+              }
+            }}
+            placeholder="Szám, beszállító, cikkszám vagy tétel…"
             className="pl-8"
           />
         </div>
-        <Button type="submit" variant="secondary">
-          Keresés
-        </Button>
-      </form>
-
-      <div className="flex flex-wrap gap-1.5">
-        {chips.map((chip) => {
-          const active = initialStatus === chip.key
-          return (
-            <button
-              key={chip.key}
-              type="button"
-              onClick={() =>
-                pushParams({
-                  status: chip.key === 'all' ? null : chip.key,
-                  page: '1'
-                })
-              }
-              className={cn(
-                'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
-                active
-                  ? 'bg-ink text-surface'
-                  : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
-              )}
-            >
-              {chip.label}
-            </button>
-          )
-        })}
+        <div className="w-[10.5rem] shrink-0">
+          <label className="sr-only" htmlFor="po-list-status">
+            Állapot
+          </label>
+          <MenuSelect
+            id="po-list-status"
+            value={statusValue}
+            options={STATUS_OPTIONS}
+            allowEmpty={false}
+            disabled={pending || searching}
+            onChange={(v) =>
+              pushParams({
+                status: v as PurchaseOrderListStatusFilter,
+                page: 1
+              })
+            }
+          />
+        </div>
+        <p className="shrink-0 text-hint tabular-nums text-ink-muted">
+          {from}–{to} / {total}
+          {!searching && statusValue === 'open' && statusCounts.open > 0
+            ? ` · ${statusCounts.open} nyitott`
+            : null}
+        </p>
       </div>
 
-      {total === 0 && !emptySearch ? (
+      {trulyEmpty ? (
         <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-8">
           <ClipboardList className="size-5 text-ink-muted" aria-hidden />
           <div>
@@ -210,9 +282,50 @@ export function PurchaseOrdersListClient({
             </Button>
           ) : null}
         </div>
-      ) : total === 0 ? (
+      ) : openEmpty ? (
+        <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-8">
+          <PackageCheck className="size-5 text-ink-muted" aria-hidden />
+          <div>
+            <p className="text-body font-medium text-ink">
+              Nincs nyitott rendelés
+            </p>
+            <p className="mt-1 text-body text-ink-secondary">
+              Minden rendelés beérkezett vagy visszavonva. Nézd meg a teljes
+              listát, vagy indíts újat.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => pushParams({ status: 'all', page: 1 })}
+            >
+              Teljes lista
+            </Button>
+            {canWrite ? (
+              <Button
+                type="button"
+                onClick={() => router.push('/beszallitoi-rendelesek/uj')}
+              >
+                <Plus className="size-3.5" aria-hidden />
+                Új rendelés
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : filteredEmpty ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-body text-ink-secondary">
           Nincs találat a szűrőkkel.
+          <button
+            type="button"
+            className="ml-2 font-medium text-ink underline-offset-2 hover:underline"
+            onClick={() => {
+              setSearch('')
+              pushParams({ q: '', status: 'open', page: 1 })
+            }}
+          >
+            Szűrők törlése
+          </button>
         </p>
       ) : (
         <DataTable>
@@ -226,22 +339,24 @@ export function PurchaseOrdersListClient({
               <DataTableHeaderCell align="right">Nettó</DataTableHeaderCell>
               {canWrite ? (
                 <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
-                  Műveletek
+                  Következő
                 </DataTableHeaderCell>
               ) : null}
             </DataTableRow>
           </DataTableHead>
           <DataTableBody>
             {rows.map((row) => {
-              const canCancel =
+              const overdue = isOverdue(row.expected_date, row.status)
+              const canReceive =
                 canWrite &&
-                (row.status === 'draft' || row.status === 'ordered')
+                (row.status === 'ordered' || row.status === 'partial')
               return (
                 <DataTableRow
                   key={row.id}
                   className={cn(
                     'cursor-pointer',
-                    row.order_kind === 'material' && 'border-l-[3px] border-l-info'
+                    row.order_kind === 'material' &&
+                      'border-l-[3px] border-l-info'
                   )}
                   onClick={() =>
                     router.push(`/beszallitoi-rendelesek/${row.id}`)
@@ -269,8 +384,20 @@ export function PurchaseOrdersListClient({
                       {PO_STATUS_LABEL[row.status]}
                     </StatusBadge>
                   </DataTableCell>
-                  <DataTableCell className="tabular-nums text-ink-secondary">
+                  <DataTableCell
+                    className={cn(
+                      'tabular-nums',
+                      overdue
+                        ? 'font-medium text-warning-ink'
+                        : 'text-ink-secondary'
+                    )}
+                  >
                     {formatDate(row.expected_date)}
+                    {overdue ? (
+                      <span className="ml-1.5 text-hint font-medium">
+                        Késik
+                      </span>
+                    ) : null}
                   </DataTableCell>
                   <DataTableCell align="right">
                     <span className="tabular-nums">{row.items_count}</span>
@@ -282,18 +409,19 @@ export function PurchaseOrdersListClient({
                   </DataTableCell>
                   {canWrite ? (
                     <DataTableCell className="text-right">
-                      {canCancel ? (
+                      {canReceive ? (
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="secondary"
                           size="sm"
-                          className="text-danger-ink hover:text-danger-ink"
+                          disabled={pending || receivingId === row.id}
                           onClick={(e) => {
                             e.stopPropagation()
-                            setDeleteTarget(row)
+                            handleReceive(row)
                           }}
                         >
-                          {row.status === 'draft' ? 'Törlés' : 'Visszavonás'}
+                          <PackageCheck className="size-3.5" aria-hidden />
+                          Beérkezés
                         </Button>
                       ) : (
                         <span className="text-hint text-ink-muted">—</span>
@@ -307,65 +435,30 @@ export function PurchaseOrdersListClient({
         </DataTable>
       )}
 
-      {total > 0 ? (
-        <div className="flex items-center justify-between gap-2 text-body text-ink-secondary">
-          <span>
-            {from}–{to} / {total}
-          </span>
-          {totalPages > 1 ? (
-            <div className="flex gap-1">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() =>
-                  pushParams({ page: String(Math.max(1, page - 1)) })
-                }
-              >
-                Előző
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() =>
-                  pushParams({
-                    page: String(Math.min(totalPages, page + 1))
-                  })
-                }
-              >
-                Következő
-              </Button>
-            </div>
-          ) : null}
+      {total > 0 && totalPages > 1 ? (
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={page <= 1 || pending}
+            onClick={() => pushParams({ page: Math.max(1, page - 1) })}
+          >
+            Előző
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={page >= totalPages || pending}
+            onClick={() =>
+              pushParams({ page: Math.min(totalPages, page + 1) })
+            }
+          >
+            Következő
+          </Button>
         </div>
       ) : null}
-
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        onOpenChange={(open) => {
-          if (!open && !pending) setDeleteTarget(null)
-        }}
-        title={
-          deleteTarget?.status === 'draft'
-            ? 'Rendelés törlése'
-            : 'Rendelés visszavonása'
-        }
-        description={
-          deleteTarget
-            ? deleteTarget.status === 'draft'
-              ? `Biztosan törlöd a(z) „${deleteTarget.po_number}” vázlatot?`
-              : `Biztosan visszavonod a(z) „${deleteTarget.po_number}” megrendelést?`
-            : ''
-        }
-        confirmLabel={
-          deleteTarget?.status === 'draft' ? 'Törlés' : 'Visszavonás'
-        }
-        loading={pending}
-        onConfirm={handleDelete}
-      />
     </div>
   )
 }

@@ -2,12 +2,20 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, useTransition, type ReactNode } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ReactNode
+} from 'react'
 import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Maximize2,
+  Minimize2,
   Users
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -443,8 +451,35 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
   const [note, setNote] = useState('')
   const [hoverTip, setHoverTip] = useState<HoverTipState | null>(null)
   const [view, setView] = useState<MainView>('calendar')
+  const [focusMode, setFocusMode] = useState(false)
 
   const glance = useMemo(() => computeGlance(data), [data])
+
+  useEffect(() => {
+    if (!focusMode) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setFocusMode(false)
+      }
+    }
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [focusMode])
+
+  function enterFocusMode() {
+    setView('calendar')
+    setFocusMode(true)
+  }
+
+  function exitFocusMode() {
+    setFocusMode(false)
+  }
   const nowYm = useMemo(() => {
     const t = budapestTodayYmd()
     return {
@@ -574,43 +609,76 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
   const monthTitle = `${data.year}. ${MONTH_NAMES[data.month - 1]}`
 
   return (
-    <div className="flex h-[calc(100dvh-6.5rem)] flex-col gap-2 print:h-auto">
-      <PageHeader
-        title="Jelenlét"
-        description={
-          glance.todoCount > 0
-            ? `${glance.todoCount} múltbeli napot még pótolni.`
-            : undefined
-        }
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {canWrite && glance.todoCount > 0 ? (
-              <Button
-                type="button"
-                onClick={() => {
-                  setView('todos')
-                  openFirstTodo()
-                }}
+    <div
+      className={cn(
+        'flex flex-col gap-2 print:h-auto',
+        focusMode
+          ? 'fixed inset-0 z-50 bg-app p-3'
+          : 'h-[calc(100dvh-6.5rem)]'
+      )}
+    >
+      {!focusMode ? (
+        <PageHeader
+          title="Jelenlét"
+          description={
+            glance.todoCount > 0
+              ? `${glance.todoCount} múltbeli napot még pótolni.`
+              : undefined
+          }
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              {canWrite && glance.todoCount > 0 ? (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setView('todos')
+                    openFirstTodo()
+                  }}
+                >
+                  Pótold ({glance.todoCount})
+                </Button>
+              ) : null}
+              {data.employees.length > 0 ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={enterFocusMode}
+                >
+                  <Maximize2 className="size-3.5" aria-hidden />
+                  Teljes naptár
+                </Button>
+              ) : null}
+              <Link
+                href="/dolgozok"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-ink-secondary hover:bg-subtle hover:text-ink"
               >
-                Pótold ({glance.todoCount})
-              </Button>
-            ) : null}
-            <Link
-              href="/dolgozok"
-              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-ink-secondary hover:bg-subtle hover:text-ink"
-            >
-              <Users className="size-3.5" aria-hidden />
-              Dolgozók
-            </Link>
-            <Link
-              href="/jelenlet/naptar"
-              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-ink-secondary hover:bg-subtle hover:text-ink"
-            >
-              Munkarend
-            </Link>
-          </div>
-        }
-      />
+                <Users className="size-3.5" aria-hidden />
+                Dolgozók
+              </Link>
+              <Link
+                href="/jelenlet/naptar"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-ink-secondary hover:bg-subtle hover:text-ink"
+              >
+                Munkarend
+              </Link>
+            </div>
+          }
+        />
+      ) : (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">
+          <p className="text-[14px] font-semibold text-ink">Jelenlét — teljes nézet</p>
+          <span className="text-[12px] text-ink-muted">Esc = kilépés</span>
+          <Button
+            type="button"
+            variant="secondary"
+            className="ml-auto"
+            onClick={exitFocusMode}
+          >
+            <Minimize2 className="size-3.5" aria-hidden />
+            Kilépés a teljes nézetből
+          </Button>
+        </div>
+      )}
 
       {data.employees.length > 0 ? (
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 print:hidden">
@@ -652,59 +720,63 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
             </Button>
           </div>
 
-          <div
-            role="tablist"
-            aria-label="Nézet"
-            className="inline-flex gap-0.5 rounded-md border border-border bg-subtle p-0.5"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'calendar'}
-              onClick={() => setView('calendar')}
-              className={cn(
-                'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
-                view === 'calendar'
-                  ? 'bg-ink text-white'
-                  : 'text-ink-secondary hover:bg-surface hover:text-ink'
-              )}
-            >
-              <CalendarDays className="size-3.5" aria-hidden />
-              Naptár
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === 'todos'}
-              onClick={() => setView('todos')}
-              className={cn(
-                'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
-                view === 'todos'
-                  ? 'bg-ink text-white'
-                  : 'text-ink-secondary hover:bg-surface hover:text-ink'
-              )}
-            >
-              <ClipboardList className="size-3.5" aria-hidden />
-              Teendők
-              {glance.todoCount > 0 ? (
-                <span className="tabular-nums opacity-90">
-                  ({glance.todoCount})
+          {!focusMode ? (
+            <>
+              <div
+                role="tablist"
+                aria-label="Nézet"
+                className="inline-flex gap-0.5 rounded-md border border-border bg-subtle p-0.5"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'calendar'}
+                  onClick={() => setView('calendar')}
+                  className={cn(
+                    'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
+                    view === 'calendar'
+                      ? 'bg-ink text-white'
+                      : 'text-ink-secondary hover:bg-surface hover:text-ink'
+                  )}
+                >
+                  <CalendarDays className="size-3.5" aria-hidden />
+                  Naptár
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'todos'}
+                  onClick={() => setView('todos')}
+                  className={cn(
+                    'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
+                    view === 'todos'
+                      ? 'bg-ink text-white'
+                      : 'text-ink-secondary hover:bg-surface hover:text-ink'
+                  )}
+                >
+                  <ClipboardList className="size-3.5" aria-hidden />
+                  Teendők
+                  {glance.todoCount > 0 ? (
+                    <span className="tabular-nums opacity-90">
+                      ({glance.todoCount})
+                    </span>
+                  ) : null}
+                </button>
+              </div>
+
+              {viewingCurrentMonth && glance.todayAway.length > 0 ? (
+                <span
+                  className="min-w-0 max-w-[16rem] truncate text-[12px] text-ink-secondary"
+                  title={todayAwayTitle}
+                >
+                  Ma szabadság / beteg:{' '}
+                  <span className="font-medium text-ink">{todayAwayNames}</span>
                 </span>
               ) : null}
-            </button>
-          </div>
-
-          {viewingCurrentMonth && glance.todayAway.length > 0 ? (
-            <span
-              className="min-w-0 max-w-[16rem] truncate text-[12px] text-ink-secondary"
-              title={todayAwayTitle}
-            >
-              Ma szabadság / beteg:{' '}
-              <span className="font-medium text-ink">{todayAwayNames}</span>
-            </span>
+            </>
           ) : null}
 
-          {view === 'calendar' ? (
+          {view === 'calendar' || focusMode ? (
             <div className="ml-auto flex flex-wrap items-center gap-x-2 gap-y-1">
               <LegendSwatch
                 className="bg-success-soft text-success-ink"
@@ -730,7 +802,10 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
               <LegendSwatch className="bg-danger text-white" label="Beteg">
                 B
               </LegendSwatch>
-              <LegendSwatch className="bg-info-soft text-info-ink" label="Távollét">
+              <LegendSwatch
+                className="bg-info-soft text-info-ink"
+                label="Távollét"
+              >
                 T
               </LegendSwatch>
             </div>

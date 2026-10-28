@@ -20,7 +20,8 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
-const PATH = '/ertekesitesek/pos-hasznalat'
+/** Cél / díj mentés után — a riport oldal archiválva; POS soft sáv frissül. */
+const PATH = '/pos'
 
 export async function logPosScanEventAction(input: {
   warehouseId: string | null

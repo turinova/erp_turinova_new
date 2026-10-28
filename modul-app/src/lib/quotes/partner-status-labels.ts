@@ -7,7 +7,7 @@ export const PARTNER_QUOTE_STATUS_LABEL: Record<QuoteStatus, string> = {
   in_production: 'Gyártásban',
   ready: 'Gyártás kész',
   finished: 'Átadva',
-  cancelled: 'Törölve'
+  cancelled: 'Lemondva'
 }
 
 /**

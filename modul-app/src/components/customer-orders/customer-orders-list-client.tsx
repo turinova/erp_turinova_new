@@ -35,7 +35,6 @@ type ListStatus =
   | CsoItemStatus
   | 'all'
   | 'active'
-type SmsFilter = 'all' | 'sent' | 'pending'
 
 type Props = {
   rows: CustomerSpecialOrderListItem[]
@@ -45,7 +44,6 @@ type Props = {
   canWrite: boolean
   initialQ: string
   initialStatus: ListStatus
-  initialSms: SmsFilter
 }
 
 const STATUS_OPTIONS: { value: ListStatus; label: string }[] = [
@@ -66,18 +64,6 @@ const STATUS_FILTER_LABEL: Record<ListStatus, string> = {
   atadva: 'Átadva',
   torolve: 'Törölve',
   all: 'Mind'
-}
-
-const SMS_OPTIONS: { value: SmsFilter; label: string }[] = [
-  { value: 'all', label: 'Mind' },
-  { value: 'pending', label: 'SMS nélkül' },
-  { value: 'sent', label: 'SMS elküldve' }
-]
-
-const SMS_FILTER_LABEL: Record<SmsFilter, string> = {
-  all: 'Mind',
-  pending: 'SMS nélkül',
-  sent: 'SMS elküldve'
 }
 
 const dateFmt = new Intl.DateTimeFormat('hu-HU', {
@@ -130,8 +116,7 @@ export function CustomerOrdersListClient({
   limit,
   canWrite,
   initialQ,
-  initialStatus,
-  initialSms
+  initialStatus
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -144,8 +129,10 @@ export function CustomerOrdersListClient({
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
   const to = Math.min(page * limit, total)
-  const statusValue: ListStatus = initialStatus || 'active'
-  const smsValue: SmsFilter = initialSms || 'all'
+  const searching = initialQ.trim().length > 0
+  const statusValue: ListStatus = searching
+    ? 'all'
+    : initialStatus || 'active'
 
   useEffect(() => {
     setSearch(initialQ)
@@ -155,22 +142,30 @@ export function CustomerOrdersListClient({
     q?: string
     page?: number
     status?: ListStatus
-    sms?: SmsFilter
   }) {
     const sp = new URLSearchParams(searchParams.toString())
     const q = next.q !== undefined ? next.q : search
     const p = next.page ?? 1
-    const nextStatus = next.status ?? statusValue
-    const nextSms = next.sms ?? smsValue
+    const qTrim = q.trim()
+    // Lookup: keresés → státusz Mind; üres keresés → Aktív (ha nem adtak mást).
+    let nextStatus: ListStatus
+    if (next.status !== undefined) {
+      nextStatus = qTrim ? 'all' : next.status
+    } else if (qTrim) {
+      nextStatus = 'all'
+    } else if (next.q !== undefined && !qTrim) {
+      nextStatus = 'active'
+    } else {
+      nextStatus = statusValue
+    }
 
-    if (q.trim()) sp.set('q', q.trim())
+    if (qTrim) sp.set('q', qTrim)
     else sp.delete('q')
 
     if (nextStatus && nextStatus !== 'active') sp.set('status', nextStatus)
     else sp.delete('status')
 
-    if (nextSms && nextSms !== 'all') sp.set('sms', nextSms)
-    else sp.delete('sms')
+    sp.delete('sms')
 
     if (p > 1) sp.set('page', String(p))
     else sp.delete('page')
@@ -195,15 +190,12 @@ export function CustomerOrdersListClient({
     pushParams({
       q: '',
       status: 'active',
-      sms: 'all',
       page: 1
     })
   }
 
   const hasFilters =
-    statusValue !== 'active' ||
-    smsValue !== 'all' ||
-    initialQ.trim().length > 0
+    (!searching && statusValue !== 'active') || searching
 
   const activeChips: { key: string; label: string; clear: () => void }[] = []
   if (initialQ.trim()) {
@@ -212,22 +204,15 @@ export function CustomerOrdersListClient({
       label: `Keresés: ${initialQ.trim()}`,
       clear: () => {
         setSearch('')
-        pushParams({ q: '', page: 1 })
+        pushParams({ q: '', status: 'active', page: 1 })
       }
     })
   }
-  if (statusValue !== 'active') {
+  if (!searching && statusValue !== 'active') {
     activeChips.push({
       key: 'status',
       label: `Státusz: ${STATUS_FILTER_LABEL[statusValue]}`,
       clear: () => pushParams({ status: 'active', page: 1 })
-    })
-  }
-  if (smsValue !== 'all') {
-    activeChips.push({
-      key: 'sms',
-      label: `SMS: ${SMS_FILTER_LABEL[smsValue]}`,
-      clear: () => pushParams({ sms: 'all', page: 1 })
     })
   }
 
@@ -294,7 +279,7 @@ export function CustomerOrdersListClient({
                 pushParams({ q: search, page: 1 })
               }
             }}
-            placeholder="Szám, név, telefon…"
+            placeholder="Összes rendelés: szám, név, telefon…"
             className="pl-8"
           />
         </div>
@@ -316,28 +301,17 @@ export function CustomerOrdersListClient({
             value={statusValue}
             options={STATUS_OPTIONS}
             allowEmpty={false}
-            disabled={pending}
+            disabled={pending || searching}
             onChange={(v) =>
               pushParams({ status: v as ListStatus, page: 1 })
             }
           />
         </div>
-        <div className="min-w-[9.5rem] flex-1 sm:flex-none sm:w-[11rem]">
-          <label
-            className="mb-1 block text-hint text-ink-muted"
-            htmlFor="cso-list-sms"
-          >
-            SMS
-          </label>
-          <MenuSelect
-            id="cso-list-sms"
-            value={smsValue}
-            options={SMS_OPTIONS}
-            allowEmpty={false}
-            disabled={pending}
-            onChange={(v) => pushParams({ sms: v as SmsFilter, page: 1 })}
-          />
-        </div>
+        {searching ? (
+          <p className="pb-1.5 text-hint text-ink-muted">
+            Keresés az összes rendelésben (átadott is).
+          </p>
+        ) : null}
       </div>
 
       {activeChips.length > 0 ? (

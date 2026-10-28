@@ -3,8 +3,10 @@ import { Suspense } from 'react'
 
 import { PurchaseOrdersListClient } from '@/components/purchase-orders/purchase-orders-list-client'
 import { getSessionUser } from '@/lib/auth/session'
-import type { PurchaseOrderStatus } from '@/lib/purchase-orders/parse'
-import { PO_STATUSES } from '@/lib/purchase-orders/parse'
+import {
+  PO_STATUSES,
+  type PurchaseOrderListStatusFilter
+} from '@/lib/purchase-orders/parse'
 import { listPurchaseOrders } from '@/lib/purchase-orders/queries'
 import { createClient } from '@/lib/supabase/server'
 
@@ -18,11 +20,13 @@ type SearchParams = Promise<{
   status?: string
 }>
 
-function parseStatus(raw?: string): PurchaseOrderStatus | 'all' {
-  if (raw && (PO_STATUSES as readonly string[]).includes(raw)) {
-    return raw as PurchaseOrderStatus
+function parseStatus(raw?: string): PurchaseOrderListStatusFilter {
+  if (!raw) return 'open'
+  if (raw === 'all' || raw === 'open') return raw
+  if ((PO_STATUSES as readonly string[]).includes(raw)) {
+    return raw as PurchaseOrderListStatusFilter
   }
-  return 'all'
+  return 'open'
 }
 
 export default async function BeszallitoiRendelesekPage({
@@ -36,7 +40,10 @@ export default async function BeszallitoiRendelesekPage({
 
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
-  const status = parseStatus(params.status)
+  // Kereséskor ne szűrjön státuszra — találat closed/visszavont PO-kra is.
+  const status: PurchaseOrderListStatusFilter = q
+    ? 'all'
+    : parseStatus(params.status)
 
   let loadError: string | null = null
   let rows: Awaited<ReturnType<typeof listPurchaseOrders>>['rows'] = []
@@ -46,6 +53,7 @@ export default async function BeszallitoiRendelesekPage({
     ReturnType<typeof listPurchaseOrders>
   >['statusCounts'] = {
     all: 0,
+    open: 0,
     draft: 0,
     ordered: 0,
     partial: 0,

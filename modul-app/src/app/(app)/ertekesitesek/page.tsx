@@ -5,6 +5,12 @@ import { getSessionUser } from '@/lib/auth/session'
 import { saleInvoiceListStatus } from '@/lib/invoicing/invoice-rules'
 import { listInvoicePeersForSources } from '@/lib/invoicing/queries'
 import type { InvoiceListItem } from '@/lib/invoicing/types'
+import {
+  parseSaleListPeriod,
+  saleListPeriodRange,
+  type SaleListPeriod
+} from '@/lib/sales/list-period'
+import type { SaleChannel, SaleStatus } from '@/lib/sales/parse'
 import { listSales, type SaleListResult } from '@/lib/sales/queries'
 import { createClient } from '@/lib/supabase/server'
 
@@ -12,25 +18,45 @@ export const metadata: Metadata = { title: 'Értékesítések' }
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
+function parseStatus(raw: string | undefined): SaleStatus | 'all' {
+  if (
+    raw === 'fulfilled' ||
+    raw === 'partially_returned' ||
+    raw === 'returned' ||
+    raw === 'cancelled' ||
+    raw === 'draft' ||
+    raw === 'confirmed'
+  ) {
+    return raw
+  }
+  return 'all'
+}
+
+function parseChannel(raw: string | undefined): SaleChannel | 'all' {
+  if (raw === 'pos' || raw === 'manual' || raw === 'webshop') return raw
+  return 'all'
+}
+
 export default async function ErtekesitesekPage({
   searchParams
 }: {
   searchParams: SearchParams
 }) {
   const sp = await searchParams
-  const q = typeof sp.q === 'string' ? sp.q : ''
+  const q = typeof sp.q === 'string' ? sp.q.trim() : ''
   const pageRaw = typeof sp.page === 'string' ? Number(sp.page) : 1
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1
-  const statusRaw = typeof sp.status === 'string' ? sp.status : 'all'
-  const status =
-    statusRaw === 'fulfilled' ||
-    statusRaw === 'partially_returned' ||
-    statusRaw === 'returned' ||
-    statusRaw === 'cancelled' ||
-    statusRaw === 'draft' ||
-    statusRaw === 'confirmed'
-      ? statusRaw
-      : ('all' as const)
+  /** Kereséskor a státusz UI-n is „Mind” — a query amúgy is ignore-olja. */
+  const status: SaleStatus | 'all' = q
+    ? 'all'
+    : parseStatus(typeof sp.status === 'string' ? sp.status : undefined)
+  const channel = parseChannel(
+    typeof sp.channel === 'string' ? sp.channel : undefined
+  )
+  const period: SaleListPeriod = parseSaleListPeriod(
+    typeof sp.period === 'string' ? sp.period : undefined
+  )
+  const { createdFrom, createdTo } = saleListPeriodRange(period)
   const shiftId =
     typeof sp.shift === 'string' && sp.shift.length > 0 ? sp.shift : undefined
 
@@ -49,6 +75,9 @@ export default async function ErtekesitesekPage({
           tenantId: user.tenantId,
           q,
           status,
+          channel,
+          createdFrom,
+          createdTo,
           page,
           limit: 25,
           posShiftId: shiftId
@@ -124,6 +153,8 @@ export default async function ErtekesitesekPage({
       limit={result.limit}
       q={q}
       status={status}
+      channel={channel}
+      period={period}
       shiftId={shiftId}
       canWrite={canWrite}
       canPos={canPos}

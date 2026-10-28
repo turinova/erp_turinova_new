@@ -2,8 +2,16 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { FileText, History, Plus, ScanBarcode, Search, ShoppingCart } from 'lucide-react'
+import { useEffect, useState, useTransition } from 'react'
+import {
+  FileText,
+  History,
+  Plus,
+  ScanBarcode,
+  Search,
+  ShoppingCart,
+  X
+} from 'lucide-react'
 
 import {
   DataTable,
@@ -17,10 +25,12 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MenuSelect } from '@/components/ui/menu-select'
 import {
   SALE_INVOICE_STATUS_LABEL,
   saleInvoiceStatusTone
 } from '@/lib/invoicing/invoice-rules'
+import type { SaleListPeriod } from '@/lib/sales/list-period'
 import {
   formatMoneyFt,
   SALE_CHANNEL_LABEL,
@@ -28,11 +38,11 @@ import {
   SALE_STATUS_LABEL,
   salePaymentTone,
   saleStatusTone,
+  type SaleChannel,
   type SalePaymentStatus,
   type SaleStatus
 } from '@/lib/sales/parse'
 import type { SaleListItem } from '@/lib/sales/queries'
-import { cn } from '@/lib/utils'
 
 type Props = {
   initialRows: SaleListItem[]
@@ -41,6 +51,8 @@ type Props = {
   limit: number
   q: string
   status: SaleStatus | 'all'
+  channel: SaleChannel | 'all'
+  period: SaleListPeriod
   shiftId?: string
   canWrite: boolean
   canPos?: boolean
@@ -55,12 +67,35 @@ function formatDate(iso: string | null) {
   }
 }
 
-const STATUS_FILTERS: { value: SaleStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'Mind' },
+const PERIOD_OPTIONS = [
+  { value: 'all', label: 'Időszak: mind' },
+  { value: 'today', label: 'Ma' },
+  { value: 'yesterday', label: 'Tegnap' },
+  { value: '7d', label: '7 nap' },
+  { value: '30d', label: '30 nap' }
+]
+
+const PERIOD_LABEL: Record<SaleListPeriod, string> = {
+  all: 'Mind',
+  today: 'Ma',
+  yesterday: 'Tegnap',
+  '7d': '7 nap',
+  '30d': '30 nap'
+}
+
+const STATUS_OPTIONS = [
+  { value: 'all', label: 'Állapot: mind' },
   { value: 'confirmed', label: 'Átadásra vár' },
   { value: 'fulfilled', label: 'Teljesítve' },
   { value: 'partially_returned', label: 'Részben visszáru' },
   { value: 'returned', label: 'Visszáru' }
+]
+
+const CHANNEL_OPTIONS = [
+  { value: 'all', label: 'Csatorna: mind' },
+  { value: 'pos', label: SALE_CHANNEL_LABEL.pos },
+  { value: 'manual', label: SALE_CHANNEL_LABEL.manual },
+  { value: 'webshop', label: SALE_CHANNEL_LABEL.webshop }
 ]
 
 export function SalesListClient({
@@ -70,47 +105,139 @@ export function SalesListClient({
   limit,
   q: initialQ,
   status: initialStatus,
+  channel: initialChannel,
+  period: initialPeriod,
   shiftId,
   canWrite,
   canPos = false
 }: Props) {
   const router = useRouter()
+  const [pending, startTransition] = useTransition()
   const [search, setSearch] = useState(initialQ)
   const totalPages = Math.max(1, Math.ceil(total / limit))
+  const searching = initialQ.trim().length > 0
+  const statusValue: SaleStatus | 'all' = searching ? 'all' : initialStatus
+  const rangeStart = total === 0 ? 0 : (page - 1) * limit + 1
+  const rangeEnd = Math.min(page * limit, total)
+  const hasFilters =
+    searching ||
+    statusValue !== 'all' ||
+    initialChannel !== 'all' ||
+    initialPeriod !== 'all' ||
+    Boolean(shiftId)
+
+  useEffect(() => {
+    setSearch(initialQ)
+  }, [initialQ])
 
   function pushParams(next: {
     q?: string
     page?: number
     status?: SaleStatus | 'all'
+    channel?: SaleChannel | 'all'
+    period?: SaleListPeriod
     clearShift?: boolean
   }) {
     const params = new URLSearchParams()
-    const q = next.q ?? search
+    const q = (next.q !== undefined ? next.q : search).trim()
     const p = next.page ?? 1
-    const status = next.status ?? initialStatus
-    if (q.trim()) params.set('q', q.trim())
+    const channel = next.channel ?? initialChannel
+    const period = next.period ?? initialPeriod
+
+    let status: SaleStatus | 'all'
+    if (q) {
+      status = 'all'
+    } else if (next.status !== undefined) {
+      status = next.status
+    } else if (next.q !== undefined && !q) {
+      status = 'all'
+    } else {
+      status = initialStatus
+    }
+
+    if (q) params.set('q', q)
     if (status && status !== 'all') params.set('status', status)
+    if (channel && channel !== 'all') params.set('channel', channel)
+    if (period && period !== 'all') params.set('period', period)
     if (shiftId && !next.clearShift) params.set('shift', shiftId)
     if (p > 1) params.set('page', String(p))
     const qs = params.toString()
-    router.push(qs ? `/ertekesitesek?${qs}` : '/ertekesitesek')
+    startTransition(() => {
+      router.push(qs ? `/ertekesitesek?${qs}` : '/ertekesitesek')
+    })
+  }
+
+  useEffect(() => {
+    if (search === initialQ) return
+    const t = window.setTimeout(() => {
+      pushParams({ q: search, page: 1 })
+    }, 300)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce only on search text
+  }, [search])
+
+  function clearAllFilters() {
+    setSearch('')
+    startTransition(() => {
+      router.push('/ertekesitesek')
+    })
+  }
+
+  const activeChips: { key: string; label: string; clear: () => void }[] = []
+  if (initialQ.trim()) {
+    activeChips.push({
+      key: 'q',
+      label: `Keresés: ${initialQ.trim()}`,
+      clear: () => {
+        setSearch('')
+        pushParams({ q: '', page: 1 })
+      }
+    })
+  }
+  if (initialPeriod !== 'all') {
+    activeChips.push({
+      key: 'period',
+      label: `Időszak: ${PERIOD_LABEL[initialPeriod]}`,
+      clear: () => pushParams({ period: 'all', page: 1 })
+    })
+  }
+  if (!searching && statusValue !== 'all') {
+    activeChips.push({
+      key: 'status',
+      label: `Állapot: ${SALE_STATUS_LABEL[statusValue] ?? statusValue}`,
+      clear: () => pushParams({ status: 'all', page: 1 })
+    })
+  }
+  if (initialChannel !== 'all') {
+    activeChips.push({
+      key: 'channel',
+      label: `Csatorna: ${SALE_CHANNEL_LABEL[initialChannel] ?? initialChannel}`,
+      clear: () => pushParams({ channel: 'all', page: 1 })
+    })
+  }
+  if (shiftId) {
+    activeChips.push({
+      key: 'shift',
+      label: 'Műszak',
+      clear: () => pushParams({ clearShift: true, page: 1 })
+    })
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <PageHeader
         title="Értékesítések"
         description="Termék eladás — pult vagy iroda."
         actions={
           <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => router.push('/ertekesitesek/arajanlatok')}
-              >
-                <FileText className="size-3.5" aria-hidden />
-                Árajánlatok
-              </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => router.push('/ertekesitesek/arajanlatok')}
+            >
+              <FileText className="size-3.5" aria-hidden />
+              Árajánlatok
+            </Button>
             {canPos ? (
               <Button
                 type="button"
@@ -146,37 +273,8 @@ export function SalesListClient({
         }
       />
 
-      {shiftId ? (
-        <p
-          className="rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink-secondary"
-          role="status"
-        >
-          Szűrve egy műszakra.{' '}
-          <button
-            type="button"
-            className="font-medium text-ink underline-offset-2 hover:underline"
-            onClick={() => pushParams({ clearShift: true, page: 1 })}
-          >
-            Szűrő törlése
-          </button>
-          {' · '}
-          <Link
-            href={`/ertekesitesek/muszakok/${shiftId}`}
-            className="font-medium text-ink underline-offset-2 hover:underline"
-          >
-            Műszak megnyitása
-          </Link>
-        </p>
-      ) : null}
-
-      <form
-        className="flex flex-wrap items-end gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          pushParams({ q: search, page: 1 })
-        }}
-      >
-        <div className="relative min-w-[14rem] flex-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[12rem] flex-1">
           <label className="sr-only" htmlFor="sales-search">
             Keresés
           </label>
@@ -188,52 +286,128 @@ export function SalesListClient({
             id="sales-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Szám / ügyfél…"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                pushParams({ q: search, page: 1 })
+              }
+            }}
+            placeholder="Szám, ügyfél, cikkszám vagy termék…"
             className="pl-8"
           />
         </div>
-        <Button type="submit" variant="secondary">
-          Keresés
-        </Button>
-      </form>
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        {STATUS_FILTERS.map((f) => {
-          const active = initialStatus === f.value
-          return (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => pushParams({ status: f.value, page: 1 })}
-              className={cn(
-                'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
-                active
-                  ? 'bg-ink text-surface'
-                  : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
-              )}
-            >
-              {f.label}
-            </button>
-          )
-        })}
-        <Link
-          href="/szamlak"
-          className="ml-auto h-7 rounded-md px-2.5 text-hint font-medium text-ink-secondary no-underline hover:bg-subtle hover:text-ink"
-        >
-          Fizetésre váró díjbekérők →
-        </Link>
+        <div className="w-[9.5rem] shrink-0">
+          <label className="sr-only" htmlFor="sales-list-period">
+            Időszak
+          </label>
+          <MenuSelect
+            id="sales-list-period"
+            value={initialPeriod}
+            options={PERIOD_OPTIONS}
+            allowEmpty={false}
+            disabled={pending}
+            onChange={(v) =>
+              pushParams({ period: v as SaleListPeriod, page: 1 })
+            }
+          />
+        </div>
+        <div className="w-[10.5rem] shrink-0">
+          <label className="sr-only" htmlFor="sales-list-status">
+            Állapot
+          </label>
+          <MenuSelect
+            id="sales-list-status"
+            value={statusValue}
+            options={STATUS_OPTIONS}
+            allowEmpty={false}
+            disabled={pending || searching}
+            onChange={(v) =>
+              pushParams({ status: v as SaleStatus | 'all', page: 1 })
+            }
+          />
+        </div>
+        <div className="w-[9.5rem] shrink-0">
+          <label className="sr-only" htmlFor="sales-list-channel">
+            Csatorna
+          </label>
+          <MenuSelect
+            id="sales-list-channel"
+            value={initialChannel}
+            options={CHANNEL_OPTIONS}
+            allowEmpty={false}
+            disabled={pending}
+            onChange={(v) =>
+              pushParams({ channel: v as SaleChannel | 'all', page: 1 })
+            }
+          />
+        </div>
+        <p className="shrink-0 text-hint tabular-nums text-ink-muted">
+          {rangeStart}–{rangeEnd} / {total}
+        </p>
       </div>
+
+      {activeChips.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {activeChips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              onClick={chip.clear}
+              className="inline-flex h-7 max-w-full items-center gap-1 rounded-md border border-border bg-surface px-2 text-hint text-ink-secondary transition-colors hover:border-ink/20 hover:text-ink"
+              aria-label={`${chip.label} szűrő törlése`}
+            >
+              <span className="truncate">{chip.label}</span>
+              <X className="size-3 shrink-0" aria-hidden />
+            </button>
+          ))}
+          {searching ? (
+            <p className="text-hint text-ink-muted">
+              Keresés minden állapotban.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={clearAllFilters}
+            className="h-7 px-1.5 text-hint font-medium text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+          >
+            Összes törlése
+          </button>
+        </div>
+      ) : searching ? (
+        <p className="text-hint text-ink-muted">Keresés minden állapotban.</p>
+      ) : null}
 
       {initialRows.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-8">
           <ShoppingCart className="size-5 text-ink-muted" aria-hidden />
           <div>
-            <p className="text-body font-medium text-ink">Még nincs értékesítés</p>
-            <p className="mt-1 text-body text-ink-secondary">
-              Rögzíts egy eladást — a készlet automatikusan csökken.
-            </p>
+            {hasFilters ? (
+              <>
+                <p className="text-body font-medium text-ink">Nincs találat</p>
+                <p className="mt-1 text-body text-ink-secondary">
+                  Próbálj másik keresést, vagy tágítsd az időszakot / szűrőket.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-body font-medium text-ink">
+                  Még nincs értékesítés
+                </p>
+                <p className="mt-1 text-body text-ink-secondary">
+                  Rögzíts egy eladást — a készlet automatikusan csökken.
+                </p>
+              </>
+            )}
           </div>
-          {canWrite ? (
+          {hasFilters ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={clearAllFilters}
+            >
+              Szűrők törlése
+            </Button>
+          ) : canWrite ? (
             <Button
               type="button"
               onClick={() => router.push('/ertekesitesek/uj')}
@@ -343,13 +517,13 @@ export function SalesListClient({
       {totalPages > 1 ? (
         <div className="flex items-center justify-between gap-2 text-body text-ink-secondary">
           <span>
-            {(page - 1) * limit + 1}–{Math.min(page * limit, total)} / {total}
+            {rangeStart}–{rangeEnd} / {total}
           </span>
           <div className="flex gap-1">
             <Button
               type="button"
               variant="secondary"
-              disabled={page <= 1}
+              disabled={page <= 1 || pending}
               onClick={() => pushParams({ page: page - 1 })}
             >
               Előző
@@ -357,7 +531,7 @@ export function SalesListClient({
             <Button
               type="button"
               variant="secondary"
-              disabled={page >= totalPages}
+              disabled={page >= totalPages || pending}
               onClick={() => pushParams({ page: page + 1 })}
             >
               Következő

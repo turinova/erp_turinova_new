@@ -4,6 +4,5 @@ export const POS_FEATURE = 'pos' as const
 export const POS_PAGE_KEYS = [
   '/pos',
   '/pos/beallitasok',
-  '/ertekesitesek/muszakok',
-  '/ertekesitesek/pos-hasznalat'
+  '/ertekesitesek/muszakok'
 ] as const

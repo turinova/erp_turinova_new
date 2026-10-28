@@ -15,11 +15,9 @@ type SearchParams = Promise<{
   q?: string
   page?: string
   status?: string
-  sms?: string
 }>
 
 type ListStatus = CsoItemStatus | 'all' | 'active'
-type SmsFilter = 'all' | 'sent' | 'pending'
 
 function asStatusFilter(raw: string | undefined): ListStatus {
   if (
@@ -36,11 +34,6 @@ function asStatusFilter(raw: string | undefined): ListStatus {
   return 'active'
 }
 
-function asSmsFilter(raw: string | undefined): SmsFilter {
-  if (raw === 'sent' || raw === 'pending') return raw
-  return 'all'
-}
-
 export default async function UgyfelrendelesekListPage({
   searchParams
 }: {
@@ -52,8 +45,10 @@ export default async function UgyfelrendelesekListPage({
 
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
-  const status = asStatusFilter(params.status)
-  const sms = asSmsFilter(params.sms)
+  /** Kereséskor a státusz UI-n is „Mind” — a query amúgy is ignore-olja. */
+  const status: ListStatus = q
+    ? 'all'
+    : asStatusFilter(params.status)
 
   let loadError: string | null = null
   let rows: Awaited<ReturnType<typeof listCustomerSpecialOrders>>['rows'] =
@@ -69,7 +64,6 @@ export default async function UgyfelrendelesekListPage({
           tenantId: user.tenantId,
           q: q || undefined,
           status,
-          sms,
           page,
           limit: 25
         })
@@ -121,7 +115,6 @@ export default async function UgyfelrendelesekListPage({
         canWrite={canWrite}
         initialQ={q}
         initialStatus={status}
-        initialSms={sms}
       />
     </Suspense>
   )
