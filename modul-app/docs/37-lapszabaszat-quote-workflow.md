@@ -21,21 +21,23 @@
 | `ordered` | Megrendelve | Gyártásba adás | Detail / lista |
 | `in_production` | Gyártásban | Készre jelöl | **Detail** / lista / scanner |
 | `ready` | Kész | Átadás | **Detail** / lista / scanner |
-| `finished` | Lezárva | — | PDF; opcionális **átvételi blokk** nyomtatás átadáskor ([43](43-atveteli-blokk.md)) |
-| `cancelled` | Lemondva | — | Detail **Megrendelés lemondása**; audit meta (`20260614`) |
+| `finished` | Lezárva | Újranyitás → `ready` | PDF; **Újranyitás** / **Archív**; átvételi blokk átadáskor ([43](43-atveteli-blokk.md)) |
+| `cancelled` | Lemondva | Archív | Detail **Megrendelés lemondása**; audit meta (`20260614`) |
 
 **Fizetés** külön tengely (`not_paid` / `partial` / `paid`) — nem váltja a gyártási státuszt. Detailen: külön `#fizetesek` szekció; a Műveletek csak deep-link.
 
-### Lemondás vs törlés
+### Lemondás vs törlés vs újranyitás vs archív
 
 | Művelet | Mikor | Hatás |
 |---|---|---|
 | **Törlés** (soft) | csak `draft`, nincs `order_number` | `deleted_at` |
 | **Lemondás** | `ordered` \| `in_production` \| `ready` | `status=cancelled` + ok/megjegyzés/ki/mikor; gyártás mezők clear |
-| Tiltott | `finished`; aktív végszámla | előbb sztornó / nem lemondható |
-| Pénz / díjbekérő | nem auto | dialógus figyelmeztet; visszatérítés / sztornó kézzel |
+| **Újranyitás** | `finished` (nem archív) | `status=ready`, `finished_at` null + reopen audit (`20260621`); **pénz / számla nem auto-törlés** |
+| **Archív** | `finished` \| `cancelled` | `archived_at` — lista defaultból rejt; Unarchive bármikor |
+| Tiltott | újranyitás aktív végszámlánál; lemondás `finished`-en | előbb sztornó / újranyitás |
+| Pénz / díjbekérő | nem auto | dialógus figyelmeztet; void / sztornó kézzel |
 
-`in_production` / `ready`: erős confirm (megrendelésszám begépelése). Lista: **Lemondva** chip; kereséskor status=`all`. Scanner: „le van mondva”.
+Erős confirm (megrendelésszám begépelése): `in_production` / `ready` lemondás; **átadás**; **újranyitás**. Scanner bulk átadás: `ÁTADÁS` szó. Lista: **Lemondva** / **Archívum** chip; kereséskor status=`all`. Scanner finished: „újranyitás a megrendelés lapon”.
 
 ---
 
@@ -67,6 +69,8 @@ Clear → vissza `ordered`.
 | Gyártásba adás | ✓ | ✓ | — |
 | Kész (+ SMS) | ✓ | ✓ | ✓ |
 | Átadás (+ hátralék) | ✓ | ✓ | ✓ |
+| Újranyitás | ✓ | ✓ | — (üzenet) |
+| Archív / Unarchive | ✓ | ✓ (Archívum filter) | — |
 
 **Opti panelfelvitel import** (szöveg / Excel / kép, Korpus él): tervezet [47](47-opti-panel-import.md).
 

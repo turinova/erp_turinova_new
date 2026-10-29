@@ -29,6 +29,7 @@ export type OrderListItem = {
   production_machine_name: string | null
   production_date: string | null
   barcode: string | null
+  archived_at: string | null
 }
 
 export type ListOrdersParams = {
@@ -37,6 +38,8 @@ export type ListOrdersParams = {
   q?: string
   machineId?: string
   productionDate?: string
+  /** false (default): aktív lista; true: csak archív. */
+  archivedOnly?: boolean
   page?: number
   limit?: number
 }
@@ -83,6 +86,7 @@ export async function listOrders(
       production_machine_id,
       production_date,
       barcode,
+      archived_at,
       customers ( name, email, mobile ),
       production_machines ( name )
     `,
@@ -91,6 +95,12 @@ export async function listOrders(
     .eq('tenant_id', params.tenantId)
     .is('deleted_at', null)
     .not('order_number', 'is', null)
+
+  if (params.archivedOnly) {
+    query = query.not('archived_at', 'is', null)
+  } else {
+    query = query.is('archived_at', null)
+  }
 
   if (status === 'all') {
     query = query.in('status', ORDER_STATUSES)
@@ -209,7 +219,8 @@ export async function listOrders(
         production_machine_id: row.production_machine_id ?? null,
         production_machine_name: machine?.name ?? null,
         production_date: row.production_date ?? null,
-        barcode: row.barcode ?? null
+        barcode: row.barcode ?? null,
+        archived_at: (row.archived_at as string | null) ?? null
       }
     })
 

@@ -23,6 +23,7 @@ type SearchParams = Promise<{
   status?: string
   machine?: string
   date?: string
+  archived?: string
 }>
 
 const STATUS_VALUES: OrderListStatusFilter[] = [
@@ -64,8 +65,9 @@ async function OrdersListLoader({
 
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
+  const archivedOnly = params.archived === '1'
   /** Kereséskor minden státusz (lemondott is) — ne essen el a találat. */
-  const status: OrderListStatusFilter = q
+  const status: OrderListStatusFilter = q || archivedOnly
     ? 'all'
     : parseStatus(params.status)
   const machineId = params.machine?.trim() ?? ''
@@ -91,6 +93,7 @@ async function OrdersListLoader({
               q: q || undefined,
               machineId: machineId || undefined,
               productionDate: productionDate || undefined,
+              archivedOnly,
               page,
               limit: 25
             }),
@@ -157,6 +160,7 @@ async function OrdersListLoader({
       initialStatus={status}
       initialMachineId={machineId}
       initialProductionDate={productionDate}
+      initialArchivedOnly={archivedOnly}
       machines={machines}
       paymentMethods={paymentMethods}
     />

@@ -34,3 +34,12 @@ Opti és Scanner top-level menüpontok maradnak (entitlement továbbra is a Laps
 
 **Workflow (státusz + detail CTA):** [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md).  
 **Opti panel import (tervezet):** [47-opti-panel-import.md](47-opti-panel-import.md) — szöveg / Excel / kép, Korpus élkódolás, certainty-first előnézet.
+
+### Opti billentyű (műhely)
+
+| Billentyű | Hatás |
+|---|---|
+| **Enter** méret / darab / jelölés / pánthely / zárt él-select | Panel hozzáadása (vagy mentés szerkesztéskor) |
+| **Space** / **↓** / katt él-selecten | Lista nyitás |
+| **Enter** nyitott él-listában | Élzáró kiválasztása (nem ment panel) |
+| **Ctrl/⌘+Enter** | Optimalizálás (ha van panel; sticky sáv gomb) |

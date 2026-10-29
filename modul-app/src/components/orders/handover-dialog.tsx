@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { prepareHandoverSlipPrint } from '@/lib/handover-slip/actions'
 import { printHandoverSlip } from '@/lib/handover-slip/print'
@@ -21,6 +22,7 @@ import { requestUsbPrinter } from '@/lib/handover-slip/webusb'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { finishQuoteHandover } from '@/lib/quotes/production-actions'
+import { orderNumbersMatch } from '@/lib/quotes/reopen'
 
 type HandoverDialogProps = {
   open: boolean
@@ -47,16 +49,19 @@ export function HandoverDialog({
 }: HandoverDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [paymentMethodId, setPaymentMethodId] = useState('')
+  const [confirmNumber, setConfirmNumber] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loadingSettle, setLoadingSettle] = useState(false)
   const [loadingSkip, setLoadingSkip] = useState(false)
 
   const hasRemaining = remaining > 0
   const loading = loadingSettle || loadingSkip
+  const confirmOk = orderNumbersMatch(confirmNumber, orderNumber)
 
   useEffect(() => {
     if (!open) return
     setPaymentMethodId(paymentMethods[0]?.id ?? '')
+    setConfirmNumber('')
     setError(null)
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
@@ -64,6 +69,10 @@ export function HandoverDialog({
 
   async function runHandover(settleRemaining: boolean) {
     setError(null)
+    if (!confirmOk) {
+      setError(`Írd be pontosan: ${orderNumber}`)
+      return
+    }
     if (settleRemaining) {
       if (!paymentMethodId) {
         setError(
@@ -143,55 +152,79 @@ export function HandoverDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {hasRemaining ? (
-          <div className="space-y-3">
-            <p className="rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink">
-              Hátralék:{' '}
-              <span className="font-semibold tabular-nums">
-                {formatQuotePrice(remaining, currency)}
-              </span>
-            </p>
-            <FormField label="Fizetési mód" htmlFor="handover-payment-method">
-              <MenuSelect
-                id="handover-payment-method"
-                value={paymentMethodId}
-                disabled={loading || paymentMethods.length === 0}
-                allowEmpty={false}
-                portal={false}
-                placeholder={
-                  paymentMethods.length === 0
-                    ? 'Nincs aktív mód'
-                    : 'Válassz fizetési módot…'
-                }
-                options={paymentMethods.map((m) => ({
-                  value: m.id,
-                  label: m.name
-                }))}
-                onChange={setPaymentMethodId}
-              />
-            </FormField>
-            {paymentMethods.length === 0 ? (
-              <p className="text-hint text-ink-secondary">
-                <Link
-                  href="/torzsadatok/rendszer/fizetesi-modok"
-                  className="underline"
-                >
-                  Fizetési módok
-                </Link>
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-body text-ink-secondary">
-            A megrendelés ki van fizetve. Átadod a megrendelőnek?
+        <div className="space-y-3">
+          <p
+            className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-body text-warning-ink"
+            role="status"
+          >
+            Lezárás után csak újranyitással vonható vissza.
           </p>
-        )}
 
-        {error ? (
-          <p className="text-body text-danger-ink" role="alert">
-            {error}
-          </p>
-        ) : null}
+          {hasRemaining ? (
+            <>
+              <p className="rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink">
+                Hátralék:{' '}
+                <span className="font-semibold tabular-nums">
+                  {formatQuotePrice(remaining, currency)}
+                </span>
+              </p>
+              <FormField label="Fizetési mód" htmlFor="handover-payment-method">
+                <MenuSelect
+                  id="handover-payment-method"
+                  value={paymentMethodId}
+                  disabled={loading || paymentMethods.length === 0}
+                  allowEmpty={false}
+                  portal={false}
+                  placeholder={
+                    paymentMethods.length === 0
+                      ? 'Nincs aktív mód'
+                      : 'Válassz fizetési módot…'
+                  }
+                  options={paymentMethods.map((m) => ({
+                    value: m.id,
+                    label: m.name
+                  }))}
+                  onChange={setPaymentMethodId}
+                />
+              </FormField>
+              {paymentMethods.length === 0 ? (
+                <p className="text-hint text-ink-secondary">
+                  <Link
+                    href="/torzsadatok/rendszer/fizetesi-modok"
+                    className="underline"
+                  >
+                    Fizetési módok
+                  </Link>
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-body text-ink-secondary">
+              A megrendelés ki van fizetve. Átadod a megrendelőnek?
+            </p>
+          )}
+
+          <FormField
+            label={`Írd be: ${orderNumber}`}
+            htmlFor="handover-confirm"
+            required
+          >
+            <Input
+              id="handover-confirm"
+              value={confirmNumber}
+              onChange={(e) => setConfirmNumber(e.target.value)}
+              autoComplete="off"
+              disabled={loading}
+              placeholder={orderNumber}
+            />
+          </FormField>
+
+          {error ? (
+            <p className="text-body text-danger-ink" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
 
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
@@ -207,7 +240,7 @@ export function HandoverDialog({
             <Button
               type="button"
               variant="ghost"
-              disabled={loading}
+              disabled={loading || !confirmOk}
               loading={loadingSkip}
               onClick={() => void runHandover(false)}
             >
@@ -217,7 +250,7 @@ export function HandoverDialog({
           <Button
             type="button"
             variant="primary"
-            disabled={loading}
+            disabled={loading || !confirmOk}
             loading={hasRemaining ? loadingSettle : loadingSkip}
             onClick={() => void runHandover(hasRemaining)}
           >

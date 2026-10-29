@@ -62,6 +62,7 @@ export type QuoteListItem = {
   customer_email: string | null
   customer_mobile: string | null
   panel_quantity: number
+  archived_at: string | null
 }
 
 export type QuoteDetail = {
@@ -108,6 +109,13 @@ export type QuoteDetail = {
   cancelled_by_label: string | null
   cancel_reason: string | null
   cancel_note: string | null
+  finished_at: string | null
+  reopened_at: string | null
+  reopened_by_label: string | null
+  reopen_reason: string | null
+  reopen_note: string | null
+  archived_at: string | null
+  archived_by_label: string | null
   customer: {
     id: string
     name: string
@@ -193,6 +201,11 @@ export type QuoteListParams = {
    * Explicit status szűrő felülírja.
    */
   excludeCancelled?: boolean
+  /**
+   * false (default): csak nem archív.
+   * true: csak archív.
+   */
+  archivedOnly?: boolean
   page?: number
   limit?: number
 }
@@ -238,6 +251,7 @@ export async function listQuotes(
       final_total_gross,
       currency,
       updated_at,
+      archived_at,
       customers ( name, email, mobile ),
       quote_panels ( quantity )
     `,
@@ -247,6 +261,12 @@ export async function listQuotes(
     .is('deleted_at', null)
     // Partner portal: unsubmitted drafts stay hidden from staff until submit
     .or('source.neq.portal,portal_submitted_at.not.is.null')
+
+  if (params.archivedOnly) {
+    query = query.not('archived_at', 'is', null)
+  } else {
+    query = query.is('archived_at', null)
+  }
 
   if (params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
@@ -337,7 +357,8 @@ export async function listQuotes(
       customer_name: customer?.name ?? '—',
       customer_email: customer?.email ?? null,
       customer_mobile: customer?.mobile ?? null,
-      panel_quantity: panelQuantity
+      panel_quantity: panelQuantity,
+      archived_at: (row.archived_at as string | null) ?? null
     }
   })
 
@@ -368,6 +389,7 @@ export async function getCustomerQuotesSummary(
     .eq('tenant_id', params.tenantId)
     .eq('customer_id', params.customerId)
     .is('deleted_at', null)
+    .is('archived_at', null)
     .neq('status', 'cancelled')
     .or('source.neq.portal,portal_submitted_at.not.is.null')
 
@@ -488,6 +510,13 @@ export async function getQuoteDetail(
       cancelled_by_label_snapshot,
       cancel_reason,
       cancel_note,
+      finished_at,
+      reopened_at,
+      reopened_by_label_snapshot,
+      reopen_reason,
+      reopen_note,
+      archived_at,
+      archived_by_label_snapshot,
       portal_submitted_at,
       preferred_payment_method_id,
       preferred_payment_method_name,
@@ -595,6 +624,13 @@ export async function getQuoteDetail(
       cancelled_by_label_snapshot,
       cancel_reason,
       cancel_note,
+      finished_at,
+      reopened_at,
+      reopened_by_label_snapshot,
+      reopen_reason,
+      reopen_note,
+      archived_at,
+      archived_by_label_snapshot,
       portal_submitted_at,
       preferred_payment_method_id,
       preferred_payment_method_name,
@@ -1080,6 +1116,15 @@ export async function getQuoteDetail(
       (data.cancelled_by_label_snapshot as string | null) ?? null,
     cancel_reason: (data.cancel_reason as string | null) ?? null,
     cancel_note: (data.cancel_note as string | null) ?? null,
+    finished_at: (data.finished_at as string | null) ?? null,
+    reopened_at: (data.reopened_at as string | null) ?? null,
+    reopened_by_label:
+      (data.reopened_by_label_snapshot as string | null) ?? null,
+    reopen_reason: (data.reopen_reason as string | null) ?? null,
+    reopen_note: (data.reopen_note as string | null) ?? null,
+    archived_at: (data.archived_at as string | null) ?? null,
+    archived_by_label:
+      (data.archived_by_label_snapshot as string | null) ?? null,
     production_machine_name: (() => {
       const m = data.production_machines as
         | { name: string }

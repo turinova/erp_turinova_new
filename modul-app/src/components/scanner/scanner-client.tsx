@@ -159,7 +159,10 @@ export function ScannerClient({
 
   function validateForList(order: ScannerLookupOrder): boolean {
     if (order.status === 'finished') {
-      showFeedback('warning', 'Ez a megrendelés már lezárva.')
+      showFeedback(
+        'warning',
+        'Le van zárva — újranyitás a megrendelés lapon.'
+      )
       return false
     }
     if (order.status === 'cancelled') {

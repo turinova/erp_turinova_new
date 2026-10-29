@@ -58,6 +58,16 @@ type MenuSelectProps = {
    * false: abszolút a trigger alá — Dialog / RemoveScroll belsejében scrollolható.
    */
   portal?: boolean
+  /**
+   * Zárt triggeren Enter → ezt hívja (pl. Opti panel mentés).
+   * Lista nyitás: Space / ↓ / kattintás. Nyitott listában Enter továbbra is opció választás.
+   */
+  submitOnEnter?: () => void
+  /**
+   * Lista bezárása után (választás / Escape / kívül katt) — fókusz cél.
+   * Ha nincs megadva: vissza a triggerre.
+   */
+  focusAfterClose?: () => void
   onChange: (value: string) => void
 }
 
@@ -103,12 +113,17 @@ export function MenuSelect({
   wrap = false,
   triggerClassName,
   portal = true,
+  submitOnEnter,
+  focusAfterClose,
   onChange
 }: MenuSelectProps) {
   const listId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const focusAfterCloseRef = useRef(focusAfterClose)
+  focusAfterCloseRef.current = focusAfterClose
   const [open, setOpen] = useState(false)
   const [highlight, setHighlight] = useState(0)
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null)
@@ -238,6 +253,11 @@ export function MenuSelect({
       const t = e.target as Node
       if (rootRef.current?.contains(t) || menuRef.current?.contains(t)) return
       setOpen(false)
+      // Kívül katt → fókusz vissza (Opti: Panel hozzáadása), ne vesszen el.
+      requestAnimationFrame(() => {
+        if (focusAfterCloseRef.current) focusAfterCloseRef.current()
+        else triggerRef.current?.focus()
+      })
     }
     document.addEventListener('mousedown', onPointerDown)
     return () => document.removeEventListener('mousedown', onPointerDown)
@@ -261,14 +281,31 @@ export function MenuSelect({
     setHighlight(idx >= 0 ? idx : 0)
   }, [filteredOptions, open, value])
 
+  function restoreFocusAfterClose() {
+    // Portal menu unmount után — következő frame.
+    requestAnimationFrame(() => {
+      if (focusAfterCloseRef.current) {
+        focusAfterCloseRef.current()
+        return
+      }
+      triggerRef.current?.focus()
+    })
+  }
+
   function selectValue(next: string) {
     onChange(next)
     setOpen(false)
     setQuery('')
+    restoreFocusAfterClose()
   }
 
   function onTriggerKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
     if (disabled) return
+    if (e.key === 'Enter' && submitOnEnter) {
+      e.preventDefault()
+      submitOnEnter()
+      return
+    }
     if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       setOpen(true)
@@ -279,6 +316,7 @@ export function MenuSelect({
     if (e.key === 'Escape') {
       e.preventDefault()
       setOpen(false)
+      restoreFocusAfterClose()
       return
     }
     if (e.key === 'ArrowDown') {
@@ -295,6 +333,9 @@ export function MenuSelect({
       e.preventDefault()
       const opt = filteredOptions[highlight]
       if (opt) selectValue(opt.value)
+      else if (allowEmpty && !query.trim()) {
+        selectValue('')
+      }
     }
   }
 
@@ -435,6 +476,7 @@ export function MenuSelect({
   return (
     <div ref={rootRef} className={cn('relative min-w-0', className)}>
       <button
+        ref={triggerRef}
         type="button"
         id={id}
         disabled={disabled}

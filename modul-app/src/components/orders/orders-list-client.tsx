@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 
 import { AssignProductionDialog } from '@/components/quotes/assign-production-dialog'
 import { HandoverDialog } from '@/components/orders/handover-dialog'
+import { ReopenQuoteDialog } from '@/components/quotes/reopen-quote-dialog'
 import {
   DataTable,
   DataTableBody,
@@ -16,6 +17,7 @@ import {
   DataTableHeaderCell,
   DataTableRow
 } from '@/components/patterns/data-table'
+import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -23,6 +25,10 @@ import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
+import {
+  archiveQuoteAction,
+  unarchiveQuoteAction
+} from '@/lib/quotes/actions'
 import {
   PAYMENT_STATUS_LABEL,
   paymentStatusTone,
@@ -54,6 +60,7 @@ type OrdersListClientProps = {
   initialStatus: OrderListStatusFilter
   initialMachineId: string
   initialProductionDate: string
+  initialArchivedOnly: boolean
   machines: ProductionMachineOption[]
   paymentMethods: PaymentMethodOption[]
 }
@@ -113,6 +120,7 @@ export function OrdersListClient({
   initialStatus,
   initialMachineId,
   initialProductionDate,
+  initialArchivedOnly,
   machines,
   paymentMethods
 }: OrdersListClientProps) {
@@ -125,6 +133,13 @@ export function OrdersListClient({
   const [handoverTarget, setHandoverTarget] = useState<OrderListItem | null>(
     null
   )
+  const [reopenTarget, setReopenTarget] = useState<OrderListItem | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<OrderListItem | null>(
+    null
+  )
+  const [unarchiveTarget, setUnarchiveTarget] =
+    useState<OrderListItem | null>(null)
+  const [archivePending, setArchivePending] = useState(false)
   const [smsDialogOpen, setSmsDialogOpen] = useState(false)
   const [smsCandidates, setSmsCandidates] = useState<QuoteReadySmsCandidate[]>(
     []
@@ -199,8 +214,16 @@ export function OrdersListClient({
       (Boolean(initialQ) ||
         Boolean(initialMachineId) ||
         Boolean(initialProductionDate) ||
+        initialArchivedOnly ||
         initialStatus !== 'ordered'),
-    [total, initialQ, initialMachineId, initialProductionDate, initialStatus]
+    [
+      total,
+      initialQ,
+      initialMachineId,
+      initialProductionDate,
+      initialArchivedOnly,
+      initialStatus
+    ]
   )
 
   return (
@@ -212,7 +235,7 @@ export function OrdersListClient({
 
       <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Státusz szűrő">
         {STATUS_CHIPS.map((chip) => {
-          const active = initialStatus === chip.value
+          const active = !initialArchivedOnly && initialStatus === chip.value
           return (
             <button
               key={chip.value}
@@ -220,6 +243,7 @@ export function OrdersListClient({
               onClick={() =>
                 pushParams({
                   status: chip.value === 'ordered' ? null : chip.value,
+                  archived: null,
                   page: '1'
                 })
               }
@@ -234,6 +258,24 @@ export function OrdersListClient({
             </button>
           )
         })}
+        <button
+          type="button"
+          onClick={() =>
+            pushParams({
+              archived: '1',
+              status: 'all',
+              page: '1'
+            })
+          }
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
+            initialArchivedOnly
+              ? 'border-ink bg-ink text-white'
+              : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
+          )}
+        >
+          Archívum
+        </button>
       </div>
 
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-end">
@@ -346,10 +388,23 @@ export function OrdersListClient({
               {rows.map((row) => {
                 const canProduce =
                   canWrite &&
+                  !row.archived_at &&
                   (row.status === 'ordered' || row.status === 'in_production')
                 const canReady =
-                  canWrite && row.status === 'in_production'
-                const canHandover = canWrite && row.status === 'ready'
+                  canWrite &&
+                  !row.archived_at &&
+                  row.status === 'in_production'
+                const canHandover =
+                  canWrite && !row.archived_at && row.status === 'ready'
+                const canReopen =
+                  canWrite &&
+                  !row.archived_at &&
+                  row.status === 'finished'
+                const canArchiveRow =
+                  canWrite &&
+                  !row.archived_at &&
+                  (row.status === 'finished' || row.status === 'cancelled')
+                const canUnarchiveRow = canWrite && Boolean(row.archived_at)
                 const productionLabel = [
                   row.production_machine_name,
                   row.production_date ? formatDate(row.production_date) : null
@@ -375,6 +430,9 @@ export function OrdersListClient({
                         <p className="text-hint text-ink-secondary">
                           {row.project_name}
                         </p>
+                      ) : null}
+                      {row.archived_at ? (
+                        <p className="text-hint text-ink-muted">Archív</p>
                       ) : null}
                     </DataTableCell>
                     <DataTableCell className="text-ink">
@@ -411,7 +469,7 @@ export function OrdersListClient({
                     </DataTableCell>
                     <DataTableCell className="text-right">
                       <div
-                        className="flex items-center justify-end gap-1"
+                        className="flex flex-wrap items-center justify-end gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {canProduce ? (
@@ -444,6 +502,36 @@ export function OrdersListClient({
                             onClick={() => setHandoverTarget(row)}
                           >
                             Átadás
+                          </Button>
+                        ) : null}
+                        {canReopen ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setReopenTarget(row)}
+                          >
+                            Újranyitás
+                          </Button>
+                        ) : null}
+                        {canArchiveRow ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setArchiveTarget(row)}
+                          >
+                            Archív
+                          </Button>
+                        ) : null}
+                        {canUnarchiveRow ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setUnarchiveTarget(row)}
+                          >
+                            Vissza
                           </Button>
                         ) : null}
                       </div>
@@ -527,6 +615,81 @@ export function OrdersListClient({
           }}
         />
       ) : null}
+
+      {reopenTarget ? (
+        <ReopenQuoteDialog
+          open={Boolean(reopenTarget)}
+          onOpenChange={(open) => {
+            if (!open) setReopenTarget(null)
+          }}
+          quoteId={reopenTarget.id}
+          orderNumber={reopenTarget.order_number}
+          customerName={reopenTarget.customer_name}
+          totalGross={reopenTarget.total_gross}
+          currency={reopenTarget.currency}
+          totalPaid={reopenTarget.total_paid}
+          onSuccess={() => {
+            setReopenTarget(null)
+            router.refresh()
+          }}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        onOpenChange={(open) => {
+          if (!open) setArchiveTarget(null)
+        }}
+        title="Archívumba helyezés"
+        description={`${archiveTarget?.order_number ?? ''} eltűnik a normál listából. Bármikor visszahozható.`}
+        confirmLabel="Archívumba"
+        variant="primary"
+        loading={archivePending}
+        onConfirm={() => {
+          if (!archiveTarget) return
+          setArchivePending(true)
+          void archiveQuoteAction(archiveTarget.id).then((result) => {
+            setArchivePending(false)
+            if (!result.ok) {
+              toast.error(result.message)
+              return
+            }
+            toast.success(
+              `Megrendelés ${result.orderNumber} az archívumban.`
+            )
+            setArchiveTarget(null)
+            router.refresh()
+          })
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(unarchiveTarget)}
+        onOpenChange={(open) => {
+          if (!open) setUnarchiveTarget(null)
+        }}
+        title="Archívumból vissza"
+        description={`${unarchiveTarget?.order_number ?? ''} újra megjelenik a normál listában.`}
+        confirmLabel="Visszaállítás"
+        variant="primary"
+        loading={archivePending}
+        onConfirm={() => {
+          if (!unarchiveTarget) return
+          setArchivePending(true)
+          void unarchiveQuoteAction(unarchiveTarget.id).then((result) => {
+            setArchivePending(false)
+            if (!result.ok) {
+              toast.error(result.message)
+              return
+            }
+            toast.success(
+              `Megrendelés ${result.orderNumber} vissza az aktív listába.`
+            )
+            setUnarchiveTarget(null)
+            router.refresh()
+          })
+        }}
+      />
 
       <QuoteReadySmsDialog
         open={smsDialogOpen}

@@ -59,6 +59,7 @@ import {
   type OptiSheetMaterialOption
 } from '@/lib/opti/queries'
 import type { QuoteForOptiEdit } from '@/lib/quotes/opti-edit'
+import { cn } from '@/lib/utils'
 
 type OptiWorkspaceClientProps = {
   tenantId: string
@@ -98,6 +99,7 @@ export function OptiWorkspaceClient({
   description
 }: OptiWorkspaceClientProps) {
   const grainInputRef = useRef<HTMLInputElement>(null)
+  const addPanelButtonRef = useRef<HTMLButtonElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
   const shouldScrollToResultsRef = useRef(false)
   const sessionHydratedRef = useRef(false)
@@ -119,7 +121,6 @@ export function OptiWorkspaceClient({
     isEditMode ? initialEdit!.panels : []
   )
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<OptiPanelDraft | null>(null)
   const [clearListOpen, setClearListOpen] = useState(false)
   const [optiResult, setOptiResult] = useState<OptiRunResult | null>(null)
   const [isOptimizing, setIsOptimizing] = useState(false)
@@ -403,6 +404,31 @@ export function OptiWorkspaceClient({
     }, 0)
   }
 
+  function focusAddPanelButton() {
+    window.setTimeout(() => {
+      addPanelButtonRef.current?.focus()
+    }, 0)
+  }
+
+  function focusFirstEntryError(nextErrors: FormErrors) {
+    const order: Array<[keyof FormErrors, string]> = [
+      ['grain', 'opti-grain'],
+      ['cross', 'opti-cross'],
+      ['quantity', 'opti-qty'],
+      ['marking', 'opti-mark'],
+      ['panthely', 'opti-panthely']
+    ]
+    for (const [key, id] of order) {
+      if (nextErrors[key]) {
+        window.setTimeout(() => {
+          const el = document.getElementById(id)
+          if (el instanceof HTMLElement) el.focus()
+        }, 0)
+        return
+      }
+    }
+  }
+
   function resolveAroundId(a: string, b: string, c: string, d: string) {
     if (a && a === b && a === c && a === d) return a
     return ''
@@ -580,6 +606,7 @@ export function OptiWorkspaceClient({
 
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
+      focusFirstEntryError(nextErrors)
       return
     }
 
@@ -634,18 +661,19 @@ export function OptiWorkspaceClient({
     focusGrain()
   }
 
-  function handleDelete() {
-    if (!deleteTarget) return
-    if (editingPanelId === deleteTarget.id) {
+  function handleDeletePanel(panel: OptiPanelDraft) {
+    if (editingPanelId === panel.id) {
       setEditingPanelId(null)
       clearDimensionAndEdges()
     }
-    setPanels((prev) => prev.filter((p) => p.id !== deleteTarget.id))
-    setDeleteTarget(null)
+    setPanels((prev) => prev.filter((p) => p.id !== panel.id))
     invalidateOpti()
+    toast.message(
+      `Panel törölve (${panel.grainMm} × ${panel.crossMm} mm).`
+    )
   }
 
-  async function handleOptimize() {
+  const handleOptimize = useCallback(async () => {
     if (panels.length === 0 || isOptimizing) return
     setIsOptimizing(true)
     setOptiError(null)
@@ -691,13 +719,32 @@ export function OptiWorkspaceClient({
     } finally {
       setIsOptimizing(false)
     }
-  }
+  }, [panels, sheetMaterials, isOptimizing])
 
   function handleEntryKeyDown(e: React.KeyboardEvent) {
     if (e.key !== 'Enter') return
+    if (e.ctrlKey || e.metaKey) return
     e.preventDefault()
     handleSavePanel()
   }
+
+  useEffect(() => {
+    function onWindowKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'Enter') return
+      if (panels.length === 0 || isOptimizing) return
+      const target = e.target
+      if (
+        target instanceof HTMLElement &&
+        target.closest('[data-menu-select]')
+      ) {
+        return
+      }
+      e.preventDefault()
+      void handleOptimize()
+    }
+    window.addEventListener('keydown', onWindowKeyDown)
+    return () => window.removeEventListener('keydown', onWindowKeyDown)
+  }, [panels.length, isOptimizing, handleOptimize])
 
   if (sheetMaterials.length === 0) {
     return (
@@ -732,7 +779,9 @@ export function OptiWorkspaceClient({
   const entryEnabled = Boolean(selectedMaterial) && !changingMaterial
 
   return (
-    <div className="space-y-3">
+    <div
+      className={cn('space-y-3', panels.length > 0 && 'pb-24')}
+    >
       <PageHeader
         title="Opti"
         description={headerDescription}
@@ -973,6 +1022,8 @@ export function OptiWorkspaceClient({
                   options={edgeOptions}
                   disabled={edgeMaterials.length === 0}
                   onChange={(v) => setEdge('a', v)}
+                  submitOnEnter={handleSavePanel}
+                  focusAfterClose={focusAddPanelButton}
                 />
                 <EdgeSelect
                   id="opti-edge-c"
@@ -981,6 +1032,8 @@ export function OptiWorkspaceClient({
                   options={edgeOptions}
                   disabled={edgeMaterials.length === 0}
                   onChange={(v) => setEdge('c', v)}
+                  submitOnEnter={handleSavePanel}
+                  focusAfterClose={focusAddPanelButton}
                 />
                 <EdgeSelect
                   id="opti-edge-d"
@@ -989,6 +1042,8 @@ export function OptiWorkspaceClient({
                   options={edgeOptions}
                   disabled={edgeMaterials.length === 0}
                   onChange={(v) => setEdge('d', v)}
+                  submitOnEnter={handleSavePanel}
+                  focusAfterClose={focusAddPanelButton}
                 />
                 <EdgeSelect
                   id="opti-edge-b"
@@ -997,6 +1052,8 @@ export function OptiWorkspaceClient({
                   options={edgeOptions}
                   disabled={edgeMaterials.length === 0}
                   onChange={(v) => setEdge('b', v)}
+                  submitOnEnter={handleSavePanel}
+                  focusAfterClose={focusAddPanelButton}
                 />
               </div>
             </div>
@@ -1018,6 +1075,8 @@ export function OptiWorkspaceClient({
                   searchable
                   searchPlaceholder="Keresés élzáró…"
                   onChange={handleAroundChange}
+                  submitOnEnter={handleSavePanel}
+                  focusAfterClose={focusAddPanelButton}
                 />
               </FormField>
             </div>
@@ -1062,6 +1121,7 @@ export function OptiWorkspaceClient({
                     }
                     title={`0 = nincs; ${PANTHELY_MIN}–${PANTHELY_MAX} db / panel`}
                     className="h-8 w-14 tabular-nums"
+                    onKeyDown={handleEntryKeyDown}
                     onChange={(e) => {
                       setPanthelyRaw(e.target.value)
                       if (errors.panthely) {
@@ -1086,23 +1146,29 @@ export function OptiWorkspaceClient({
               ) : null}
             </div>
 
-            <div className="flex justify-end gap-2 pt-0.5">
-              {editingPanelId ? (
+            <div className="flex flex-col items-end gap-1 pt-0.5">
+              <div className="flex justify-end gap-2">
+                {editingPanelId ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={cancelEdit}
+                  >
+                    Mégse
+                  </Button>
+                ) : null}
                 <Button
+                  ref={addPanelButtonRef}
                   type="button"
-                  variant="secondary"
-                  onClick={cancelEdit}
+                  onClick={handleSavePanel}
+                  disabled={!entryEnabled}
                 >
-                  Mégse
+                  {editingPanelId ? 'Panel mentése' : 'Panel hozzáadása'}
                 </Button>
-              ) : null}
-              <Button
-                type="button"
-                onClick={handleSavePanel}
-                disabled={!entryEnabled}
-              >
-                {editingPanelId ? 'Panel mentése' : 'Panel hozzáadása'}
-              </Button>
+              </div>
+              <p className="text-hint text-ink-muted">
+                Enter ment · él után a fókusz ide jön · lista: Space / ↓
+              </p>
             </div>
           </fieldset>
         </section>
@@ -1114,33 +1180,18 @@ export function OptiWorkspaceClient({
             panels={panels}
             editingPanelId={editingPanelId}
             onEdit={loadPanelForEdit}
-            onDelete={(panel) => setDeleteTarget(panel)}
+            onDelete={handleDeletePanel}
             onClearAll={() => setClearListOpen(true)}
           />
 
-          <div className="flex flex-col items-center gap-2">
-            {optiError ? (
-              <p
-                className="max-w-lg rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-center text-body text-danger-ink"
-                role="alert"
-              >
-                {optiError}
-              </p>
-            ) : null}
-            <Button
-              type="button"
-              onClick={handleOptimize}
-              disabled={panels.length === 0}
-              loading={isOptimizing}
-              className="min-w-[10rem]"
+          {optiError ? (
+            <p
+              className="mx-auto max-w-lg rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-center text-body text-danger-ink"
+              role="alert"
             >
-              {isOptimizing
-                ? 'Optimalizálás…'
-                : optiResult
-                  ? 'Újraoptimalizálás'
-                  : 'Optimalizálás'}
-            </Button>
-          </div>
+              {optiError}
+            </p>
+          ) : null}
         </>
       ) : null}
 
@@ -1199,6 +1250,42 @@ export function OptiWorkspaceClient({
         </div>
       ) : null}
 
+      {panels.length > 0 ? (
+        <div
+          className={cn(
+            'fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 px-3 py-2.5',
+            'backdrop-blur-sm supports-[backdrop-filter]:bg-surface/90',
+            'md:left-[var(--sidebar-width)]'
+          )}
+        >
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
+            <p className="text-body text-ink-secondary">
+              <span className="font-medium tabular-nums text-ink">
+                {panels.length}
+              </span>{' '}
+              panel a listában
+              <span className="ml-2 text-hint text-ink-muted">
+                Ctrl/⌘+Enter
+              </span>
+            </p>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => void handleOptimize()}
+              disabled={isOptimizing}
+              loading={isOptimizing}
+              className="min-w-[10rem]"
+            >
+              {isOptimizing
+                ? 'Optimalizálás…'
+                : optiResult
+                  ? 'Újraoptimalizálás'
+                  : 'Optimalizálás'}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {selectedMaterial ? (
         <OptiPanelTextImportDialog
           open={textImportOpen}
@@ -1209,21 +1296,6 @@ export function OptiWorkspaceClient({
           onCommit={handleTextImportCommit}
         />
       ) : null}
-
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
-        }}
-        title="Panel törlése"
-        description={
-          deleteTarget
-            ? `Biztosan törlöd a(z) ${deleteTarget.grainMm} × ${deleteTarget.crossMm} mm panelt?`
-            : ''
-        }
-        confirmLabel="Törlés"
-        onConfirm={handleDelete}
-      />
 
       <ConfirmDialog
         open={clearListOpen}
@@ -1247,7 +1319,9 @@ function EdgeSelect({
   value,
   options,
   disabled,
-  onChange
+  onChange,
+  submitOnEnter,
+  focusAfterClose
 }: {
   id: string
   label: string
@@ -1255,6 +1329,8 @@ function EdgeSelect({
   options: Array<{ value: string; label: string; hint?: string }>
   disabled?: boolean
   onChange: (value: string) => void
+  submitOnEnter?: () => void
+  focusAfterClose?: () => void
 }) {
   return (
     <FormField label={label} htmlFor={id} optionalLabel>
@@ -1268,6 +1344,8 @@ function EdgeSelect({
         searchable
         searchPlaceholder="Keresés élzáró…"
         onChange={onChange}
+        submitOnEnter={submitOnEnter}
+        focusAfterClose={focusAfterClose}
       />
     </FormField>
   )

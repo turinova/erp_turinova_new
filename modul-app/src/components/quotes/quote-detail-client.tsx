@@ -24,6 +24,7 @@ import { AddPaymentDialog } from '@/components/quotes/add-payment-dialog'
 import { AssignProductionDialog } from '@/components/quotes/assign-production-dialog'
 import { CancelQuoteDialog } from '@/components/quotes/cancel-quote-dialog'
 import { CreateOrderDialog } from '@/components/quotes/create-order-dialog'
+import { ReopenQuoteDialog } from '@/components/quotes/reopen-quote-dialog'
 import { QuoteBarcodeDisplay } from '@/components/quotes/quote-barcode-display'
 import { QuoteBillingEditDialog } from '@/components/quotes/quote-billing-edit-dialog'
 import { QuoteEditPaymentDialog } from '@/components/quotes/quote-edit-payment-dialog'
@@ -68,7 +69,12 @@ import {
 } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import type { ProductionMachineOption } from '@/lib/production-machines/queries'
-import { updateQuoteComment, updateQuoteProjectName } from '@/lib/quotes/actions'
+import {
+  archiveQuoteAction,
+  unarchiveQuoteAction,
+  updateQuoteComment,
+  updateQuoteProjectName
+} from '@/lib/quotes/actions'
 import {
   loadPaymentMethodsAction,
   loadProductionMachinesAction,
@@ -106,6 +112,13 @@ import {
   QUOTE_CANCEL_REASON_LABEL,
   type QuoteCancelReason
 } from '@/lib/quotes/cancel'
+import {
+  canArchiveQuote,
+  canReopenFinishedQuote,
+  canUnarchiveQuote,
+  QUOTE_REOPEN_REASON_LABEL,
+  type QuoteReopenReason
+} from '@/lib/quotes/reopen'
 import {
   QUOTE_STATUS_LABEL,
   quoteStatusTone
@@ -242,6 +255,10 @@ export function QuoteDetailClient({
   const [submitOpen, setSubmitOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
+  const [reopenOpen, setReopenOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [unarchiveOpen, setUnarchiveOpen] = useState(false)
+  const [archivePending, setArchivePending] = useState(false)
 
   const [exportTargets, setExportTargets] = useState<QuoteExportTarget[]>([])
   const [exportTargetsLoaded, setExportTargetsLoaded] = useState(false)
@@ -341,6 +358,37 @@ export function QuoteDetailClient({
       }),
     [quote.status, quote.order_number, hasFinalInvoice]
   )
+  const reopenGate = useMemo(
+    () =>
+      canReopenFinishedQuote({
+        status: quote.status,
+        orderNumber: quote.order_number,
+        archivedAt: quote.archived_at,
+        hasActiveFinalInvoice: hasFinalInvoice
+      }),
+    [
+      quote.status,
+      quote.order_number,
+      quote.archived_at,
+      hasFinalInvoice
+    ]
+  )
+  const archiveGate = useMemo(
+    () =>
+      canArchiveQuote({
+        status: quote.status,
+        orderNumber: quote.order_number,
+        archivedAt: quote.archived_at
+      }),
+    [quote.status, quote.order_number, quote.archived_at]
+  )
+  const unarchiveGate = useMemo(
+    () =>
+      canUnarchiveQuote({
+        archivedAt: quote.archived_at
+      }),
+    [quote.archived_at]
+  )
   const showCancelOrderSection =
     !isPartner &&
     canWrite &&
@@ -349,6 +397,19 @@ export function QuoteDetailClient({
       quote.status === 'in_production' ||
       quote.status === 'ready')
   const canCancelOrder = showCancelOrderSection && cancelGate.ok
+  const showFinishedOpsSection =
+    !isPartner &&
+    canWrite &&
+    Boolean(quote.order_number) &&
+    (quote.status === 'finished' ||
+      quote.status === 'cancelled' ||
+      Boolean(quote.archived_at))
+  const canReopenOrder =
+    showFinishedOpsSection &&
+    quote.status === 'finished' &&
+    reopenGate.ok
+  const canArchiveOrder = showFinishedOpsSection && archiveGate.ok
+  const canUnarchiveOrder = showFinishedOpsSection && unarchiveGate.ok
 
   const invoiceKindOptions = useMemo(
     () => resolveQuoteInvoiceKindOptions(quote.payment_status, invoices),
@@ -810,6 +871,20 @@ export function QuoteDetailClient({
         {!isPartner ? (
           <QuoteStatusStepper status={quote.status} />
         ) : null}
+        {!isPartner && quote.archived_at ? (
+          <div
+            className="max-w-xl rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink-secondary"
+            role="status"
+          >
+            <p className="font-medium text-ink">
+              Archívumban
+              {` · ${new Date(quote.archived_at).toLocaleString('hu-HU')}`}
+              {quote.archived_by_label
+                ? ` · ${quote.archived_by_label}`
+                : ''}
+            </p>
+          </div>
+        ) : null}
         {!isPartner && quote.status === 'cancelled' ? (
           <div
             className="max-w-xl rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-body text-danger-ink"
@@ -831,6 +906,31 @@ export function QuoteDetailClient({
                   quote.cancel_reason as QuoteCancelReason
                 ] ?? quote.cancel_reason}
                 {quote.cancel_note ? ` — ${quote.cancel_note}` : ''}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        {!isPartner &&
+        quote.status === 'ready' &&
+        quote.reopened_at ? (
+          <div
+            className="max-w-xl rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-body text-warning-ink"
+            role="status"
+          >
+            <p className="font-medium">
+              Újranyitva
+              {` · ${new Date(quote.reopened_at).toLocaleString('hu-HU')}`}
+              {quote.reopened_by_label
+                ? ` · ${quote.reopened_by_label}`
+                : ''}
+            </p>
+            {quote.reopen_reason ? (
+              <p className="mt-0.5">
+                Ok:{' '}
+                {QUOTE_REOPEN_REASON_LABEL[
+                  quote.reopen_reason as QuoteReopenReason
+                ] ?? quote.reopen_reason}
+                {quote.reopen_note ? ` — ${quote.reopen_note}` : ''}
               </p>
             ) : null}
           </div>
@@ -1832,6 +1932,53 @@ export function QuoteDetailClient({
                         ) : null}
                       </div>
                     ) : null}
+
+                    {showFinishedOpsSection ? (
+                      <div className="space-y-1.5 border-t border-border pt-3">
+                        {quote.status === 'finished' ? (
+                          <>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="w-full"
+                              disabled={!canReopenOrder}
+                              title={
+                                !reopenGate.ok
+                                  ? reopenGate.message
+                                  : undefined
+                              }
+                              onClick={() => setReopenOpen(true)}
+                            >
+                              Újranyitás
+                            </Button>
+                            {!reopenGate.ok ? (
+                              <p className="text-hint text-ink-muted">
+                                {reopenGate.message}
+                              </p>
+                            ) : null}
+                          </>
+                        ) : null}
+                        {canUnarchiveOrder ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="w-full"
+                            onClick={() => setUnarchiveOpen(true)}
+                          >
+                            Archívumból vissza
+                          </Button>
+                        ) : canArchiveOrder ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="w-full"
+                            onClick={() => setArchiveOpen(true)}
+                          >
+                            Archívumba
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -2324,6 +2471,67 @@ export function QuoteDetailClient({
               onSuccess={() => router.refresh()}
             />
           ) : null}
+          {canReopenOrder ? (
+            <ReopenQuoteDialog
+              open={reopenOpen}
+              onOpenChange={setReopenOpen}
+              quoteId={quote.id}
+              orderNumber={quote.order_number}
+              customerName={quote.customer.name}
+              totalGross={quote.final_total_gross}
+              currency={quote.currency}
+              totalPaid={quote.total_paid}
+              onSuccess={() => router.refresh()}
+            />
+          ) : null}
+          <ConfirmDialog
+            open={archiveOpen}
+            onOpenChange={setArchiveOpen}
+            title="Archívumba helyezés"
+            description={`${quote.order_number} eltűnik a normál listából. Bármikor visszahozható.`}
+            confirmLabel="Archívumba"
+            variant="primary"
+            loading={archivePending}
+            onConfirm={() => {
+              setArchivePending(true)
+              void archiveQuoteAction(quote.id).then((result) => {
+                setArchivePending(false)
+                if (!result.ok) {
+                  toast.error(result.message)
+                  return
+                }
+                toast.success(
+                  `Megrendelés ${result.orderNumber} az archívumban.`
+                )
+                setArchiveOpen(false)
+                router.refresh()
+              })
+            }}
+          />
+          <ConfirmDialog
+            open={unarchiveOpen}
+            onOpenChange={setUnarchiveOpen}
+            title="Archívumból vissza"
+            description={`${quote.order_number} újra megjelenik a normál listában.`}
+            confirmLabel="Visszaállítás"
+            variant="primary"
+            loading={archivePending}
+            onConfirm={() => {
+              setArchivePending(true)
+              void unarchiveQuoteAction(quote.id).then((result) => {
+                setArchivePending(false)
+                if (!result.ok) {
+                  toast.error(result.message)
+                  return
+                }
+                toast.success(
+                  `Megrendelés ${result.orderNumber} vissza az aktív listába.`
+                )
+                setUnarchiveOpen(false)
+                router.refresh()
+              })
+            }}
+          />
         </>
       ) : null}
 

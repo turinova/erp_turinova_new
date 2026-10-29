@@ -26,6 +26,15 @@ import {
   type QuoteCancelReason
 } from '@/lib/quotes/cancel'
 import { normalizeProjectName } from '@/lib/quotes/project-name'
+import {
+  canArchiveQuote,
+  canReopenFinishedQuote,
+  canUnarchiveQuote,
+  orderNumbersMatch,
+  parseQuoteReopenReason,
+  validateReopenNote,
+  type QuoteReopenReason
+} from '@/lib/quotes/reopen'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 export type SaveOptiQuoteCustomer = {
@@ -478,6 +487,276 @@ export async function cancelQuoteAction(
   if (updateErr) {
     console.error('cancelQuoteAction', updateErr.message)
     return { ok: false, message: 'Nem sikerült lemondani a megrendelést.' }
+  }
+  if (!updated || !updated.order_number) {
+    return {
+      ok: false,
+      message: 'A státusz közben megváltozott — frissítsd az oldalt.'
+    }
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath(`${LIST_PATH}/${quoteId}`)
+  revalidatePath('/megrendelesek')
+  revalidatePath('/scanner')
+  return { ok: true, id: updated.id, orderNumber: updated.order_number }
+}
+
+export type ReopenFinishedQuoteInput = {
+  quoteId: string
+  reason: QuoteReopenReason | string
+  note?: string
+  orderNumberConfirm: string
+}
+
+export type ReopenFinishedQuoteResult =
+  | { ok: true; id: string; orderNumber: string }
+  | { ok: false; message: string }
+
+/**
+ * Lezárt megrendelés újranyitása → status=ready.
+ * Befizetéseket / számlákat nem bántja.
+ */
+export async function reopenFinishedQuoteAction(
+  input: ReopenFinishedQuoteInput
+): Promise<ReopenFinishedQuoteResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const quoteId = input.quoteId.trim()
+  if (!quoteId) return { ok: false, message: 'Hiányzó megrendelés.' }
+
+  const reason = parseQuoteReopenReason(String(input.reason ?? ''))
+  if (!reason) {
+    return { ok: false, message: 'Válassz újranyitási okot.' }
+  }
+  const note = (input.note ?? '').trim()
+  const noteErr = validateReopenNote(reason, note)
+  if (noteErr) return { ok: false, message: noteErr }
+
+  const { data: quote, error: quoteErr } = await ctx.supabase
+    .from('quotes')
+    .select('id, status, order_number, deleted_at, archived_at')
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (quoteErr || !quote || quote.deleted_at) {
+    return { ok: false, message: 'A megrendelés nem található.' }
+  }
+
+  if (!orderNumbersMatch(input.orderNumberConfirm, quote.order_number)) {
+    return {
+      ok: false,
+      message: `Írd be pontosan: ${quote.order_number ?? ''}`
+    }
+  }
+
+  const { data: invoices } = await ctx.supabase
+    .from('invoices')
+    .select('id, invoice_type, is_storno_of_invoice_id')
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', 'opti_order')
+    .eq('related_source_id', quoteId)
+    .is('deleted_at', null)
+
+  const rows = invoices ?? []
+  const stornoOf = new Set(
+    rows
+      .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
+      .map((r) => r.is_storno_of_invoice_id as string)
+  )
+  const hasActiveFinalInvoice = rows.some(
+    (r) =>
+      r.invoice_type === 'szamla' &&
+      !r.is_storno_of_invoice_id &&
+      !stornoOf.has(r.id as string)
+  )
+
+  const gate = canReopenFinishedQuote({
+    status: quote.status as
+      | 'draft'
+      | 'ordered'
+      | 'in_production'
+      | 'ready'
+      | 'finished'
+      | 'cancelled',
+    orderNumber: quote.order_number,
+    deletedAt: quote.deleted_at,
+    archivedAt: quote.archived_at,
+    hasActiveFinalInvoice
+  })
+  if (!gate.ok) return gate
+
+  const label =
+    ctx.user.displayName?.trim() ||
+    ctx.user.email?.trim() ||
+    'Ismeretlen'
+
+  const { data: updated, error: updateErr } = await ctx.supabase
+    .from('quotes')
+    .update({
+      status: 'ready',
+      finished_at: null,
+      reopened_at: new Date().toISOString(),
+      reopened_by: ctx.user.id ?? null,
+      reopened_by_label_snapshot: label,
+      reopen_reason: reason,
+      reopen_note: note || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .eq('status', 'finished')
+    .is('deleted_at', null)
+    .is('archived_at', null)
+    .select('id, order_number')
+    .maybeSingle()
+
+  if (updateErr) {
+    console.error('reopenFinishedQuoteAction', updateErr.message)
+    return { ok: false, message: 'Nem sikerült újranyitni a megrendelést.' }
+  }
+  if (!updated || !updated.order_number) {
+    return {
+      ok: false,
+      message: 'A státusz közben megváltozott — frissítsd az oldalt.'
+    }
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath(`${LIST_PATH}/${quoteId}`)
+  revalidatePath('/megrendelesek')
+  revalidatePath('/scanner')
+  return { ok: true, id: updated.id, orderNumber: updated.order_number }
+}
+
+export type ArchiveQuoteResult =
+  | { ok: true; id: string; orderNumber: string }
+  | { ok: false; message: string }
+
+/** Soft archív — lista defaultból rejt. */
+export async function archiveQuoteAction(
+  quoteIdRaw: string
+): Promise<ArchiveQuoteResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const quoteId = quoteIdRaw.trim()
+  if (!quoteId) return { ok: false, message: 'Hiányzó megrendelés.' }
+
+  const { data: quote, error: quoteErr } = await ctx.supabase
+    .from('quotes')
+    .select('id, status, order_number, deleted_at, archived_at')
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (quoteErr || !quote || quote.deleted_at) {
+    return { ok: false, message: 'A megrendelés nem található.' }
+  }
+
+  const gate = canArchiveQuote({
+    status: quote.status as
+      | 'draft'
+      | 'ordered'
+      | 'in_production'
+      | 'ready'
+      | 'finished'
+      | 'cancelled',
+    orderNumber: quote.order_number,
+    deletedAt: quote.deleted_at,
+    archivedAt: quote.archived_at
+  })
+  if (!gate.ok) return gate
+
+  const label =
+    ctx.user.displayName?.trim() ||
+    ctx.user.email?.trim() ||
+    'Ismeretlen'
+
+  const { data: updated, error: updateErr } = await ctx.supabase
+    .from('quotes')
+    .update({
+      archived_at: new Date().toISOString(),
+      archived_by: ctx.user.id ?? null,
+      archived_by_label_snapshot: label,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .in('status', ['finished', 'cancelled'])
+    .is('deleted_at', null)
+    .is('archived_at', null)
+    .select('id, order_number')
+    .maybeSingle()
+
+  if (updateErr) {
+    console.error('archiveQuoteAction', updateErr.message)
+    return { ok: false, message: 'Nem sikerült archiválni.' }
+  }
+  if (!updated || !updated.order_number) {
+    return {
+      ok: false,
+      message: 'A státusz közben megváltozott — frissítsd az oldalt.'
+    }
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath(`${LIST_PATH}/${quoteId}`)
+  revalidatePath('/megrendelesek')
+  revalidatePath('/scanner')
+  return { ok: true, id: updated.id, orderNumber: updated.order_number }
+}
+
+/** Archívum visszavonása. */
+export async function unarchiveQuoteAction(
+  quoteIdRaw: string
+): Promise<ArchiveQuoteResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const quoteId = quoteIdRaw.trim()
+  if (!quoteId) return { ok: false, message: 'Hiányzó megrendelés.' }
+
+  const { data: quote, error: quoteErr } = await ctx.supabase
+    .from('quotes')
+    .select('id, order_number, deleted_at, archived_at')
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (quoteErr || !quote || quote.deleted_at) {
+    return { ok: false, message: 'A megrendelés nem található.' }
+  }
+
+  const gate = canUnarchiveQuote({
+    archivedAt: quote.archived_at,
+    deletedAt: quote.deleted_at
+  })
+  if (!gate.ok) return gate
+
+  const { data: updated, error: updateErr } = await ctx.supabase
+    .from('quotes')
+    .update({
+      archived_at: null,
+      archived_by: null,
+      archived_by_label_snapshot: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .not('archived_at', 'is', null)
+    .select('id, order_number')
+    .maybeSingle()
+
+  if (updateErr) {
+    console.error('unarchiveQuoteAction', updateErr.message)
+    return { ok: false, message: 'Nem sikerült visszavonni az archívumot.' }
   }
   if (!updated || !updated.order_number) {
     return {

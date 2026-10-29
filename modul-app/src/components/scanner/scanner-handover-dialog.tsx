@@ -13,12 +13,17 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { prepareHandoverSlipPrint } from '@/lib/handover-slip/actions'
 import { printHandoverSlip } from '@/lib/handover-slip/print'
 import { requestUsbPrinter } from '@/lib/handover-slip/webusb'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
+import {
+  HANDOVER_BULK_CONFIRM_WORD,
+  orderNumbersMatch
+} from '@/lib/quotes/reopen'
 import { finishQuotesHandoverBulk } from '@/lib/scanner/actions'
 
 export type ScannerHandoverItem = {
@@ -49,6 +54,7 @@ export function ScannerHandoverDialog({
 }: ScannerHandoverDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [paymentMethodId, setPaymentMethodId] = useState('')
+  const [confirmText, setConfirmText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loadingSettle, setLoadingSettle] = useState(false)
   const [loadingSkip, setLoadingSkip] = useState(false)
@@ -58,10 +64,19 @@ export function ScannerHandoverDialog({
   const hasRemaining = totalRemaining > 0
   const loading = loadingSettle || loadingSkip
   const count = items.length
+  const singleOrderNumber = count === 1 ? (items[0]?.orderNumber ?? '') : ''
+  const confirmExpected =
+    count === 1 ? singleOrderNumber : HANDOVER_BULK_CONFIRM_WORD
+  const confirmOk =
+    count === 1
+      ? orderNumbersMatch(confirmText, singleOrderNumber)
+      : confirmText.trim().toLocaleUpperCase('hu-HU') ===
+        HANDOVER_BULK_CONFIRM_WORD
 
   useEffect(() => {
     if (!open) return
     setPaymentMethodId(paymentMethods[0]?.id ?? '')
+    setConfirmText('')
     setError(null)
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
@@ -69,6 +84,10 @@ export function ScannerHandoverDialog({
 
   async function runHandover(settleRemaining: boolean) {
     setError(null)
+    if (!confirmOk) {
+      setError(`Írd be pontosan: ${confirmExpected}`)
+      return
+    }
     if (settleRemaining) {
       if (!paymentMethodId) {
         setError(
@@ -158,60 +177,84 @@ export function ScannerHandoverDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {hasRemaining ? (
-          <div className="space-y-3">
-            <p className="rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink">
-              Összes hátralék ({unpaid.length} rendelés):{' '}
-              <span className="font-semibold tabular-nums">
-                {formatQuotePrice(totalRemaining, currency)}
-              </span>
-            </p>
-            <FormField
-              label="Fizetési mód (minden hátralékhoz)"
-              htmlFor="scanner-handover-payment-method"
-            >
-              <MenuSelect
-                id="scanner-handover-payment-method"
-                value={paymentMethodId}
-                disabled={loading || paymentMethods.length === 0}
-                allowEmpty={false}
-                portal={false}
-                placeholder={
-                  paymentMethods.length === 0
-                    ? 'Nincs aktív mód'
-                    : 'Válassz fizetési módot…'
-                }
-                options={paymentMethods.map((m) => ({
-                  value: m.id,
-                  label: m.name
-                }))}
-                onChange={setPaymentMethodId}
-              />
-            </FormField>
-            {paymentMethods.length === 0 ? (
-              <p className="text-hint text-ink-secondary">
-                <Link
-                  href="/torzsadatok/rendszer/fizetesi-modok"
-                  className="underline"
-                >
-                  Fizetési módok
-                </Link>
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-body text-ink-secondary">
-            {count === 1
-              ? 'A megrendelés ki van fizetve. Átadod a megrendelőnek?'
-              : 'A kijelölt rendelések ki vannak fizetve. Átadod őket?'}
+        <div className="space-y-3">
+          <p
+            className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-body text-warning-ink"
+            role="status"
+          >
+            Lezárás után csak újranyitással vonható vissza.
           </p>
-        )}
 
-        {error ? (
-          <p className="text-body text-danger-ink" role="alert">
-            {error}
-          </p>
-        ) : null}
+          {hasRemaining ? (
+            <>
+              <p className="rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink">
+                Összes hátralék ({unpaid.length} rendelés):{' '}
+                <span className="font-semibold tabular-nums">
+                  {formatQuotePrice(totalRemaining, currency)}
+                </span>
+              </p>
+              <FormField
+                label="Fizetési mód (minden hátralékhoz)"
+                htmlFor="scanner-handover-payment-method"
+              >
+                <MenuSelect
+                  id="scanner-handover-payment-method"
+                  value={paymentMethodId}
+                  disabled={loading || paymentMethods.length === 0}
+                  allowEmpty={false}
+                  portal={false}
+                  placeholder={
+                    paymentMethods.length === 0
+                      ? 'Nincs aktív mód'
+                      : 'Válassz fizetési módot…'
+                  }
+                  options={paymentMethods.map((m) => ({
+                    value: m.id,
+                    label: m.name
+                  }))}
+                  onChange={setPaymentMethodId}
+                />
+              </FormField>
+              {paymentMethods.length === 0 ? (
+                <p className="text-hint text-ink-secondary">
+                  <Link
+                    href="/torzsadatok/rendszer/fizetesi-modok"
+                    className="underline"
+                  >
+                    Fizetési módok
+                  </Link>
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-body text-ink-secondary">
+              {count === 1
+                ? 'A megrendelés ki van fizetve. Átadod a megrendelőnek?'
+                : 'A kijelölt rendelések ki vannak fizetve. Átadod őket?'}
+            </p>
+          )}
+
+          <FormField
+            label={`Írd be: ${confirmExpected}`}
+            htmlFor="scanner-handover-confirm"
+            required
+          >
+            <Input
+              id="scanner-handover-confirm"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              autoComplete="off"
+              disabled={loading}
+              placeholder={confirmExpected}
+            />
+          </FormField>
+
+          {error ? (
+            <p className="text-body text-danger-ink" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
 
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
@@ -227,7 +270,7 @@ export function ScannerHandoverDialog({
             <Button
               type="button"
               variant="ghost"
-              disabled={loading}
+              disabled={loading || !confirmOk}
               loading={loadingSkip}
               onClick={() => void runHandover(false)}
             >
@@ -237,7 +280,7 @@ export function ScannerHandoverDialog({
           <Button
             type="button"
             variant="primary"
-            disabled={loading}
+            disabled={loading || !confirmOk}
             loading={hasRemaining ? loadingSettle : loadingSkip}
             onClick={() => void runHandover(hasRemaining)}
           >
