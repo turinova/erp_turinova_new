@@ -47,13 +47,34 @@ export function optiSessionKey(
 function isPanelShape(value: unknown): value is OptiPanelDraft {
   if (!value || typeof value !== 'object') return false
   const p = value as Record<string, unknown>
+  if (
+    typeof p.id !== 'string' ||
+    typeof p.sheetMaterialId !== 'string' ||
+    typeof p.sheetMaterialName !== 'string' ||
+    typeof p.grainMm !== 'number' ||
+    typeof p.crossMm !== 'number' ||
+    typeof p.quantity !== 'number'
+  ) {
+    return false
+  }
+  // Régi session: hiányzó flag / qty → default
+  if (p.duplungolas == null) p.duplungolas = false
+  if (p.szogvagas == null) p.szogvagas = false
+  if (p.panthelyfurasQuantity == null) p.panthelyfurasQuantity = 0
+  const panthely = Number(p.panthelyfurasQuantity)
+  if (
+    !Number.isFinite(panthely) ||
+    panthely < 0 ||
+    (panthely > 0 && (panthely < 2 || panthely > 20))
+  ) {
+    p.panthelyfurasQuantity = 0
+  } else {
+    p.panthelyfurasQuantity = Math.round(panthely)
+  }
   return (
-    typeof p.id === 'string' &&
-    typeof p.sheetMaterialId === 'string' &&
-    typeof p.sheetMaterialName === 'string' &&
-    typeof p.grainMm === 'number' &&
-    typeof p.crossMm === 'number' &&
-    typeof p.quantity === 'number'
+    typeof p.duplungolas === 'boolean' &&
+    typeof p.szogvagas === 'boolean' &&
+    typeof p.panthelyfurasQuantity === 'number'
   )
 }
 

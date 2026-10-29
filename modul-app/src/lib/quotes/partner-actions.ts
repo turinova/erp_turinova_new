@@ -25,7 +25,8 @@ import {
   edgeLinesFromPricing,
   materialLineFromPricing,
   panelsToInserts,
-  quotePricingMode
+  quotePricingMode,
+  serviceLinesFromPricing
 } from '@/lib/quotes/snapshot'
 import { recalculateQuoteFeeTotals } from '@/lib/quotes/fee-totals'
 import { allocatePartnerQuoteNumber } from '@/lib/quotes/partner-quote-number'
@@ -153,9 +154,9 @@ export async function savePartnerOptiQuote(
         project_name: projectName,
         pricing_mode: quotePricingMode(input.quote),
         currency: input.quote.currency || 'HUF',
-        total_net: Math.round(input.quote.grand_total_net * 100) / 100,
-        total_vat: Math.round(input.quote.grand_total_vat * 100) / 100,
-        total_gross: Math.round(input.quote.grand_total_gross * 100) / 100,
+        total_net: Math.round(input.quote.grand_total_net),
+        total_vat: Math.round(input.quote.grand_total_vat),
+        total_gross: Math.round(input.quote.grand_total_gross),
         updated_at: new Date().toISOString()
       })
       .eq('id', quoteId)
@@ -201,9 +202,9 @@ export async function savePartnerOptiQuote(
         project_name: projectName,
         pricing_mode: quotePricingMode(input.quote),
         currency: input.quote.currency || 'HUF',
-        total_net: Math.round(input.quote.grand_total_net * 100) / 100,
-        total_vat: Math.round(input.quote.grand_total_vat * 100) / 100,
-        total_gross: Math.round(input.quote.grand_total_gross * 100) / 100,
+        total_net: Math.round(input.quote.grand_total_net),
+        total_vat: Math.round(input.quote.grand_total_vat),
+        total_gross: Math.round(input.quote.grand_total_gross),
         created_by: session.id
       })
       .select('id')
@@ -252,6 +253,20 @@ export async function savePartnerOptiQuote(
       if (edgeError) {
         console.error('partner quote_edge_lines', edgeError.message)
         return { ok: false, message: 'Nem sikerült menteni az élzáró bontást.' }
+      }
+    }
+
+    const services = serviceLinesFromPricing(lineRow.id, material)
+    if (services.length > 0) {
+      const { error: serviceError } = await supabase
+        .from('quote_service_lines')
+        .insert(services)
+      if (serviceError) {
+        console.error('partner quote_service_lines', serviceError.message)
+        return {
+          ok: false,
+          message: 'Nem sikerült menteni a megmunkálás tételeket.'
+        }
       }
     }
   }

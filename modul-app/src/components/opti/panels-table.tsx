@@ -18,12 +18,14 @@ export function PanelsTable({
   panels,
   editingPanelId,
   onEdit,
-  onDelete
+  onDelete,
+  onClearAll
 }: {
   panels: OptiPanelDraft[]
   editingPanelId: string | null
   onEdit: (panel: OptiPanelDraft) => void
   onDelete: (panel: OptiPanelDraft) => void
+  onClearAll?: () => void
 }) {
   const totalPieces = panels.reduce((sum, p) => sum + p.quantity, 0)
 
@@ -51,12 +53,27 @@ export function PanelsTable({
 
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-h3 text-ink">Hozzáadott panelek</h2>
-        <p className="text-hint text-ink-secondary">
-          {panels.length} panel · {totalPieces} darab · {groups.length} anyag
-          <span className="text-ink-muted"> · kattints a sorra a szerkesztéshez</span>
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0 space-y-0.5">
+          <h2 className="text-h3 text-ink">Hozzáadott panelek</h2>
+          <p className="text-hint text-ink-secondary">
+            {panels.length} panel · {totalPieces} darab · {groups.length} anyag
+            <span className="text-ink-muted">
+              {' '}
+              · kattints a sorra a szerkesztéshez
+            </span>
+          </p>
+        </div>
+        {onClearAll ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onClearAll}
+          >
+            Lista ürítése
+          </Button>
+        ) : null}
       </div>
 
       <div className="space-y-4">
@@ -87,6 +104,7 @@ export function PanelsTable({
                     </DataTableHeaderCell>
                     <DataTableHeaderCell align="right">Darab</DataTableHeaderCell>
                     <DataTableHeaderCell>Jelölés</DataTableHeaderCell>
+                    <DataTableHeaderCell>Megmunkálás</DataTableHeaderCell>
                     <DataTableHeaderCell>Hosszú felső</DataTableHeaderCell>
                     <DataTableHeaderCell>Hosszú alsó</DataTableHeaderCell>
                     <DataTableHeaderCell>Széles bal</DataTableHeaderCell>
@@ -128,6 +146,31 @@ export function PanelsTable({
                         </DataTableCell>
                         <DataTableCell className="text-ink-secondary">
                           {panel.marking || '—'}
+                        </DataTableCell>
+                        <DataTableCell>
+                          {panel.duplungolas ||
+                          panel.szogvagas ||
+                          panel.panthelyfurasQuantity > 0 ? (
+                            <span className="flex flex-wrap gap-1">
+                              {panel.duplungolas ? (
+                                <span className="rounded border border-border bg-subtle px-1.5 py-0.5 text-hint text-ink">
+                                  Duplung
+                                </span>
+                              ) : null}
+                              {panel.szogvagas ? (
+                                <span className="rounded border border-border bg-subtle px-1.5 py-0.5 text-hint text-ink">
+                                  Szög
+                                </span>
+                              ) : null}
+                              {panel.panthelyfurasQuantity > 0 ? (
+                                <span className="rounded border border-border bg-subtle px-1.5 py-0.5 text-hint text-ink">
+                                  Pánthely {panel.panthelyfurasQuantity}
+                                </span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            <span className="text-ink-muted">—</span>
+                          )}
                         </DataTableCell>
                         <DataTableCell className="max-w-[10rem] truncate text-hint text-ink-secondary">
                           {panel.edgeALabel || '—'}

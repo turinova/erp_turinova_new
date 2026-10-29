@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { upsertCuttingFee } from '@/lib/cutting-fees/actions'
-import { netToGross, type PricingMode } from '@/lib/cutting-fees/parse'
+import { type PricingMode } from '@/lib/cutting-fees/parse'
 import type {
   CuttingFeeRow,
   TaxRateOption
@@ -89,16 +89,9 @@ function defaultTaxRateId(
   return def?.id ?? taxRates[0]?.id ?? ''
 }
 
-function initialGross(
-  initial: CuttingFeeRow | null,
-  taxRates: TaxRateOption[],
-  taxRateId: string
-): string {
+function initialGross(initial: CuttingFeeRow | null): string {
   if (!initial) return ''
-  const rate =
-    taxRates.find((t) => t.id === taxRateId)?.rate_percent ??
-    initial.tax_rate_percent
-  return String(netToGross(initial.fee_per_meter, rate))
+  return String(Math.round(initial.fee_per_meter_gross))
 }
 
 export function OptiSettingsForm({
@@ -110,8 +103,21 @@ export function OptiSettingsForm({
   const [taxRateId, setTaxRateId] = useState(() =>
     defaultTaxRateId(initial, taxRates)
   )
-  const [grossRaw, setGrossRaw] = useState(() =>
-    initialGross(initial, taxRates, defaultTaxRateId(initial, taxRates))
+  const [grossRaw, setGrossRaw] = useState(() => initialGross(initial))
+  const [duplungGrossRaw, setDuplungGrossRaw] = useState(() =>
+    initial
+      ? String(Math.round(initial.duplungolas_fee_per_sqm_gross))
+      : '0'
+  )
+  const [szogGrossRaw, setSzogGrossRaw] = useState(() =>
+    initial
+      ? String(Math.round(initial.szogvagas_fee_per_panel_gross))
+      : '0'
+  )
+  const [panthelyGrossRaw, setPanthelyGrossRaw] = useState(() =>
+    initial
+      ? String(Math.round(initial.panthelyfuras_fee_per_hole_gross))
+      : '0'
   )
   const [pricingMode, setPricingMode] = useState<PricingMode>(
     () => initial?.pricing_mode ?? 'standard'
@@ -141,6 +147,9 @@ export function OptiSettingsForm({
     startTransition(async () => {
       const result = await upsertCuttingFee({
         feePerMeterGrossRaw: grossRaw,
+        duplungolasFeePerSqmGrossRaw: duplungGrossRaw,
+        szogvagasFeePerPanelGrossRaw: szogGrossRaw,
+        panthelyfurasFeePerHoleGrossRaw: panthelyGrossRaw,
         taxRateId,
         pricingMode
       })
@@ -158,7 +167,7 @@ export function OptiSettingsForm({
     <div className="space-y-3">
       <PageHeader
         title="Opti beállítások"
-        description="Vágási díj, ÁFA és lapanyag árazási mód."
+        description="Vágási díj, megmunkálás (duplung / szög / pánthely), ÁFA és lapanyag árazási mód."
         actions={
           canWrite ? (
             <Button
@@ -197,7 +206,7 @@ export function OptiSettingsForm({
 
       <FormSection
         title="Vágási díj"
-        description="A bruttó Ft/m-t tároljuk nettóként az ÁFA kulccsal."
+        description="A beírt bruttó Ft a forrásigazság (ÁFA round-trip). Nettó az ÁFA-bázis."
         columns={2}
       >
         <FormField
@@ -253,6 +262,84 @@ export function OptiSettingsForm({
                 setFieldErrors((prev) => {
                   const next = { ...prev }
                   delete next.taxRateId
+                  return next
+                })
+              }
+            }}
+          />
+        </FormField>
+      </FormSection>
+
+      <FormSection
+        title="Megmunkálás díjai"
+        description="Duplung, szög, pánthely — beírt bruttó Ft marad (nem kerekül át 599-re). 0 Ft OK. Ugyanaz az ÁFA, mint a vágásnál."
+        columns={2}
+      >
+        <FormField
+          label="Duplungolási díj (bruttó)"
+          htmlFor="opti-duplung-gross"
+          error={fieldErrors.duplungolasFeePerSqmGross}
+          hint="Ft/m² (bruttó). Bekapcsoláskor az Opti a darabszámot megduplázza."
+        >
+          <Input
+            id="opti-duplung-gross"
+            inputMode="decimal"
+            value={duplungGrossRaw}
+            disabled={!canWrite || pending}
+            onChange={(e) => {
+              setDuplungGrossRaw(e.target.value)
+              if (fieldErrors.duplungolasFeePerSqmGross) {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.duplungolasFeePerSqmGross
+                  return next
+                })
+              }
+            }}
+          />
+        </FormField>
+
+        <FormField
+          label="Szögvágási díj (bruttó)"
+          htmlFor="opti-szog-gross"
+          error={fieldErrors.szogvagasFeePerPanelGross}
+          hint="Ft/panel-darab (bruttó)."
+        >
+          <Input
+            id="opti-szog-gross"
+            inputMode="decimal"
+            value={szogGrossRaw}
+            disabled={!canWrite || pending}
+            onChange={(e) => {
+              setSzogGrossRaw(e.target.value)
+              if (fieldErrors.szogvagasFeePerPanelGross) {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.szogvagasFeePerPanelGross
+                  return next
+                })
+              }
+            }}
+          />
+        </FormField>
+
+        <FormField
+          label="Pánthelyfúrás díj (bruttó)"
+          htmlFor="opti-panthely-gross"
+          error={fieldErrors.panthelyfurasFeePerHoleGross}
+          hint="Ft/lyuk (bruttó). Optiban min. 2 db / panel."
+        >
+          <Input
+            id="opti-panthely-gross"
+            inputMode="decimal"
+            value={panthelyGrossRaw}
+            disabled={!canWrite || pending}
+            onChange={(e) => {
+              setPanthelyGrossRaw(e.target.value)
+              if (fieldErrors.panthelyfurasFeePerHoleGross) {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.panthelyfurasFeePerHoleGross
                   return next
                 })
               }

@@ -1,4 +1,4 @@
-/** Opti panel — local draft (nincs DB mentés). */
+/** Opti panel — local draft (nincs DB mentés, amíg árajánlat nem készül). */
 
 export type OptiPanelDraft = {
   id: string
@@ -16,6 +16,27 @@ export type OptiPanelDraft = {
   edgeBLabel: string
   edgeCLabel: string
   edgeDLabel: string
+  /** Duplungolás: megmunkálás flag; a darabszám a formon ×2. */
+  duplungolas: boolean
+  /** Szögvágás: megmunkálás flag. */
+  szogvagas: boolean
+  /** Pánthely lyuk / panel (0 = nincs; 2–20). */
+  panthelyfurasQuantity: number
+}
+
+export const PANTHELY_MIN = 2
+export const PANTHELY_MAX = 20
+
+/** 0 = off; különben 2–20 egész. Invalid → null. */
+export function parsePanthelyQuantity(raw: string): number | null {
+  const trimmed = raw.trim()
+  if (!trimmed || trimmed === '0') return 0
+  const n = Number(trimmed.replace(',', '.'))
+  if (!Number.isFinite(n)) return null
+  const whole = Math.round(n)
+  if (whole === 0) return 0
+  if (whole < PANTHELY_MIN || whole > PANTHELY_MAX) return null
+  return whole
 }
 
 export function createPanelDraft(input: {
@@ -33,7 +54,17 @@ export function createPanelDraft(input: {
   edgeBLabel: string
   edgeCLabel: string
   edgeDLabel: string
+  duplungolas?: boolean
+  szogvagas?: boolean
+  panthelyfurasQuantity?: number
 }): OptiPanelDraft {
+  const panthely = Number(input.panthelyfurasQuantity) || 0
+  const panthelySafe =
+    panthely === 0
+      ? 0
+      : panthely >= PANTHELY_MIN && panthely <= PANTHELY_MAX
+        ? Math.round(panthely)
+        : 0
   return {
     id: crypto.randomUUID(),
     sheetMaterialId: input.sheetMaterialId,
@@ -49,7 +80,10 @@ export function createPanelDraft(input: {
     edgeALabel: input.edgeALabel,
     edgeBLabel: input.edgeBLabel,
     edgeCLabel: input.edgeCLabel,
-    edgeDLabel: input.edgeDLabel
+    edgeDLabel: input.edgeDLabel,
+    duplungolas: Boolean(input.duplungolas),
+    szogvagas: Boolean(input.szogvagas),
+    panthelyfurasQuantity: panthelySafe
   }
 }
 

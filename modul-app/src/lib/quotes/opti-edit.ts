@@ -87,6 +87,9 @@ export async function getQuoteForOptiEdit(
         quantity,
         label,
         sort_index,
+        duplungolas,
+        szogvagas,
+        panthelyfuras_quantity,
         edge_a_id,
         edge_b_id,
         edge_c_id,
@@ -173,6 +176,9 @@ export async function getQuoteForOptiEdit(
       quantity: number
       label: string | null
       sort_index: number
+      duplungolas?: boolean | null
+      szogvagas?: boolean | null
+      panthelyfuras_quantity?: number | null
       edge_a_id: string | null
       edge_b_id: string | null
       edge_c_id: string | null
@@ -230,7 +236,10 @@ export async function getQuoteForOptiEdit(
       edgeALabel: edgeLabel(edgeA, edgeMaterials),
       edgeBLabel: edgeLabel(edgeB, edgeMaterials),
       edgeCLabel: edgeLabel(edgeC, edgeMaterials),
-      edgeDLabel: edgeLabel(edgeD, edgeMaterials)
+      edgeDLabel: edgeLabel(edgeD, edgeMaterials),
+      duplungolas: Boolean(row.duplungolas),
+      szogvagas: Boolean(row.szogvagas),
+      panthelyfurasQuantity: Number(row.panthelyfuras_quantity) || 0
     })
   })
 

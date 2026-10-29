@@ -73,6 +73,9 @@ export async function getQuoteForPdf(
         quantity,
         label,
         sort_index,
+        duplungolas,
+        szogvagas,
+        panthelyfuras_quantity,
         sheet_materials ( name, machine_code ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
         edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
@@ -99,6 +102,15 @@ export async function getQuoteForPdf(
         quote_edge_lines (
           edge_name,
           length_m,
+          gross_price
+        ),
+        quote_service_lines (
+          service_type,
+          quantity,
+          unit,
+          unit_price_net,
+          net_price,
+          vat_amount,
           gross_price
         )
       )
@@ -162,6 +174,9 @@ export async function getQuoteForPdf(
     quantity: number
     label: string | null
     sort_index: number
+    duplungolas?: boolean | null
+    szogvagas?: boolean | null
+    panthelyfuras_quantity?: number | null
     sheet_materials:
       | { name: string; machine_code: string | null }
       | { name: string; machine_code: string | null }[]
@@ -188,9 +203,9 @@ export async function getQuoteForPdf(
         edge_c_code: edgeCode(p.edge_c),
         edge_b_code: edgeCode(p.edge_b),
         edge_d_code: edgeCode(p.edge_d),
-        duplungolas: false,
-        panthelyfuras_quantity: 0,
-        szogvagas: false
+        duplungolas: Boolean(p.duplungolas),
+        panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0,
+        szogvagas: Boolean(p.szogvagas)
       }
     })
 
@@ -214,6 +229,15 @@ export async function getQuoteForPdf(
     quote_edge_lines: Array<{
       edge_name: string
       length_m: number
+      gross_price: number
+    }> | null
+    quote_service_lines: Array<{
+      service_type: string
+      quantity: number
+      unit: string
+      unit_price_net: number
+      net_price: number
+      vat_amount: number
       gross_price: number
     }> | null
   }>
@@ -240,12 +264,12 @@ export async function getQuoteForPdf(
       total_length_m: Number(e.length_m) || 0,
       gross_price: Number(e.gross_price) || 0
     })),
-    quote_services_breakdown: [] as Array<{
-      service_type: string
-      quantity: number
-      gross_price: number
-      net_price?: number
-    }>
+    quote_services_breakdown: (line.quote_service_lines ?? []).map((s) => ({
+      service_type: s.service_type,
+      quantity: Number(s.quantity) || 0,
+      gross_price: Number(s.gross_price) || 0,
+      net_price: Number(s.net_price) || 0
+    }))
   }))
 
   const totalNet = Number(data.total_net) || 0

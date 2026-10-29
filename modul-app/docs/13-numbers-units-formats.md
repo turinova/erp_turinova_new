@@ -69,6 +69,14 @@ Szabályok:
 - Az összesítés és a részletek ne mondjanak ellent egymásnak
 - A UI-ban kijelzett érték ne okozzon számlázási vagy ügyfélvitát
 
+### Lapszabászat / Opti ajánlat — Ft forrásigazság
+
+- Mentett ajánlaton a **sor bruttó/nettó = DB snapshot** (`quote_material_pricing`, `quote_service_lines`, accessories, fees).
+- Detail, PDF és Számlázz **ugyanazt** a sort mutatja / számlázza — **tilos** `egységár × mennyiség` újraszámolás a kijelzett összeghez (egységár csak info).
+- **Egész Ft a számításnál** (anyag tábla / él / szabás / megmunkálás): `gross = round(netRaw×(1+ÁFA))`, net/ÁFA back-calc; összesítő = Σ egész sorok — nincs ±1 Ft `round(sum)` vs `sum(round)` eltérés.
+- **Opti díjak (`cutting_fees`):** beírt bruttó = forrásigazság (`fee_per_meter_gross`, `*_fee_*_gross`); nettó ÁFA-bázis. Opti egységár a tárolt bruttóból — ne `round(net×1.27)` (pl. 600 Ft ne legyen 599). Migráció: `20260619_cutting_fees_gross.sql`.
+- Végösszeg: `quotes.final_total_gross`. Számlázz: ±2 Ft eltérés abszorbeálható az utolsó tételbe; nagyobb eltérés → egyösszegű fallback.
+
 ## 7. Beviteli tolerancia
 
 Példák, amiket érdemes elfogadni:

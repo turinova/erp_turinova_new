@@ -27,6 +27,7 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { Switch } from '@/components/ui/switch'
 import type { OptiCuttingFeeConfig } from '@/lib/cutting-fees/queries'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import { buildOptiQuote } from '@/lib/opti/build-opti-quote'
@@ -42,7 +43,13 @@ import {
   writeOptiSession,
   type OptiSessionCustomer
 } from '@/lib/opti/opti-session'
-import { createPanelDraft, type OptiPanelDraft } from '@/lib/opti/panel-draft'
+import {
+  createPanelDraft,
+  parsePanthelyQuantity,
+  PANTHELY_MAX,
+  PANTHELY_MIN,
+  type OptiPanelDraft
+} from '@/lib/opti/panel-draft'
 import type { OptimizationResult } from '@/lib/opti/optimization-types'
 import {
   formatEdgeMaterialLabel,
@@ -74,6 +81,7 @@ type FormErrors = {
   cross?: string
   quantity?: string
   marking?: string
+  panthely?: string
 }
 
 export function OptiWorkspaceClient({
@@ -112,6 +120,7 @@ export function OptiWorkspaceClient({
   )
   const [editingPanelId, setEditingPanelId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<OptiPanelDraft | null>(null)
+  const [clearListOpen, setClearListOpen] = useState(false)
   const [optiResult, setOptiResult] = useState<OptiRunResult | null>(null)
   const [isOptimizing, setIsOptimizing] = useState(false)
   const [optiError, setOptiError] = useState<string | null>(null)
@@ -127,6 +136,10 @@ export function OptiWorkspaceClient({
   const [edgeCId, setEdgeCId] = useState('')
   const [edgeDId, setEdgeDId] = useState('')
   const [edgeAroundId, setEdgeAroundId] = useState('')
+  const [duplungolas, setDuplungolas] = useState(false)
+  const [szogvagas, setSzogvagas] = useState(false)
+  const [panthelyRaw, setPanthelyRaw] = useState('')
+  const qtyBeforeDuplungRef = useRef<number | null>(null)
   const [errors, setErrors] = useState<FormErrors>({})
   const [textImportOpen, setTextImportOpen] = useState(false)
   const [sessionCustomer, setSessionCustomer] =
@@ -200,11 +213,31 @@ export function OptiWorkspaceClient({
     isPartner
   ])
 
-  function handleSessionClearedAfterSave() {
-    if (!tenantId) return
-    clearOptiSession(tenantId, sessionMode)
+  function resetOptiWorkspace() {
+    setPanels([])
+    setOptiResult(null)
+    setOptiError(null)
+    setEditingPanelId(null)
+    setDeleteTarget(null)
+    setClearListOpen(false)
+    clearDimensionAndEdges()
     setSessionCustomer(null)
     setSessionProjectName('')
+    if (persistSession && tenantId) {
+      clearOptiSession(tenantId, sessionMode)
+    }
+  }
+
+  function handleSessionClearedAfterSave() {
+    resetOptiWorkspace()
+  }
+
+  function handleClearListConfirm() {
+    const count = panels.length
+    resetOptiWorkspace()
+    toast.message(
+      count === 1 ? 'Lista ürítve (1 panel).' : `Lista ürítve (${count} panel).`
+    )
   }
 
   const handleSessionCustomerChange = useCallback(
@@ -335,7 +368,32 @@ export function OptiWorkspaceClient({
     setEdgeCId('')
     setEdgeDId('')
     setEdgeAroundId('')
+    setDuplungolas(false)
+    setSzogvagas(false)
+    setPanthelyRaw('')
+    qtyBeforeDuplungRef.current = null
     setErrors({})
+  }
+
+  function handleDuplungolasChange(checked: boolean) {
+    const qty = Number.parseInt(quantityRaw, 10)
+    if (checked) {
+      if (Number.isFinite(qty) && qty >= 1) {
+        qtyBeforeDuplungRef.current = qty
+        setQuantityRaw(String(qty * 2))
+        toast.message(`Darabszám megduplázva: ${qty} → ${qty * 2}`)
+      }
+      setDuplungolas(true)
+      return
+    }
+    const base = qtyBeforeDuplungRef.current
+    if (base != null && Number.isFinite(qty) && qty === base * 2) {
+      setQuantityRaw(String(base))
+    } else if (Number.isFinite(qty) && qty >= 2 && qty % 2 === 0) {
+      setQuantityRaw(String(qty / 2))
+    }
+    qtyBeforeDuplungRef.current = null
+    setDuplungolas(false)
   }
 
   function focusGrain() {
@@ -370,6 +428,17 @@ export function OptiWorkspaceClient({
         panel.edgeDId ?? ''
       )
     )
+    setDuplungolas(Boolean(panel.duplungolas))
+    setSzogvagas(Boolean(panel.szogvagas))
+    setPanthelyRaw(
+      panel.panthelyfurasQuantity > 0
+        ? String(panel.panthelyfurasQuantity)
+        : ''
+    )
+    qtyBeforeDuplungRef.current =
+      panel.duplungolas && panel.quantity >= 2 && panel.quantity % 2 === 0
+        ? panel.quantity / 2
+        : null
     setErrors({})
     focusGrain()
   }
@@ -504,12 +573,17 @@ export function OptiWorkspaceClient({
       nextErrors.marking = 'A jelölés legfeljebb 50 karakter.'
     }
 
+    const panthely = parsePanthelyQuantity(panthelyRaw)
+    if (panthely == null) {
+      nextErrors.panthely = `Pánthely: 0 (nincs) vagy ${PANTHELY_MIN}–${PANTHELY_MAX} db.`
+    }
+
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       return
     }
 
-    if (!selectedMaterial) return
+    if (!selectedMaterial || panthely == null) return
 
     const payload = {
       sheetMaterialId: selectedMaterial.id,
@@ -525,7 +599,10 @@ export function OptiWorkspaceClient({
       edgeALabel: edgeLabel(edgeAId),
       edgeBLabel: edgeLabel(edgeBId),
       edgeCLabel: edgeLabel(edgeCId),
-      edgeDLabel: edgeLabel(edgeDId)
+      edgeDLabel: edgeLabel(edgeDId),
+      duplungolas,
+      szogvagas,
+      panthelyfurasQuantity: panthely
     }
 
     if (editingPanelId) {
@@ -539,7 +616,10 @@ export function OptiWorkspaceClient({
                 edgeBId: payload.edgeBId || null,
                 edgeCId: payload.edgeCId || null,
                 edgeDId: payload.edgeDId || null,
-                marking: payload.marking.trim()
+                marking: payload.marking.trim(),
+                duplungolas: payload.duplungolas,
+                szogvagas: payload.szogvagas,
+                panthelyfurasQuantity: payload.panthelyfurasQuantity
               }
             : p
         )
@@ -942,6 +1022,61 @@ export function OptiWorkspaceClient({
               </FormField>
             </div>
 
+            <div className="space-y-2 border-t border-border pt-3">
+              <p className="text-hint font-medium text-ink-secondary">
+                Megmunkálás
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+                <Switch
+                  id="opti-duplungolas"
+                  checked={duplungolas}
+                  onCheckedChange={handleDuplungolasChange}
+                  disabled={!entryEnabled}
+                  label="Duplungolás"
+                  description="Bekapcsoláskor a darabszám ×2 (kikapcsoláskor vissza)."
+                />
+                <Switch
+                  id="opti-szogvagas"
+                  checked={szogvagas}
+                  onCheckedChange={setSzogvagas}
+                  disabled={!entryEnabled}
+                  label="Szögvágás"
+                />
+              </div>
+              <FormField
+                label="Pánthely (db)"
+                htmlFor="opti-panthely"
+                error={errors.panthely}
+                hint={
+                  !errors.panthely
+                    ? `0 = nincs; min. ${PANTHELY_MIN}, max. ${PANTHELY_MAX} / panel.`
+                    : undefined
+                }
+              >
+                <Input
+                  id="opti-panthely"
+                  inputMode="numeric"
+                  value={panthelyRaw}
+                  disabled={!entryEnabled}
+                  placeholder="0"
+                  className="max-w-[8rem]"
+                  onChange={(e) => {
+                    setPanthelyRaw(e.target.value)
+                    if (errors.panthely) {
+                      setErrors((prev) => {
+                        const next = { ...prev }
+                        delete next.panthely
+                        return next
+                      })
+                    }
+                  }}
+                />
+              </FormField>
+              <p className="text-hint text-ink-muted">
+                Díjak: Beállítások → Opti (0 Ft is OK).
+              </p>
+            </div>
+
             <div className="flex justify-end gap-2 pt-0.5">
               {editingPanelId ? (
                 <Button
@@ -971,6 +1106,7 @@ export function OptiWorkspaceClient({
             editingPanelId={editingPanelId}
             onEdit={loadPanelForEdit}
             onDelete={(panel) => setDeleteTarget(panel)}
+            onClearAll={() => setClearListOpen(true)}
           />
 
           <div className="flex flex-col items-center gap-2">
@@ -1078,6 +1214,19 @@ export function OptiWorkspaceClient({
         }
         confirmLabel="Törlés"
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={clearListOpen}
+        onOpenChange={setClearListOpen}
+        title="Lista ürítése"
+        description={
+          isEditMode
+            ? `Biztosan törlöd a(z) ${panels.length} panelt? Az optimalizálás eredménye is elveszik. A mentett árajánlatot ez nem törli — csak az Opti listát.`
+            : `Biztosan törlöd a(z) ${panels.length} panelt? Az optimalizálás eredménye is elveszik. A félkész munka a böngészőből is törlődik.`
+        }
+        confirmLabel="Lista ürítése"
+        onConfirm={handleClearListConfirm}
       />
     </div>
   )

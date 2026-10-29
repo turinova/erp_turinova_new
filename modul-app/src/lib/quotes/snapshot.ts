@@ -18,6 +18,20 @@ export type QuotePanelInsert = {
   edge_c_id: string | null
   edge_d_id: string | null
   sort_index: number
+  duplungolas: boolean
+  szogvagas: boolean
+  panthelyfuras_quantity: number
+}
+
+export type QuoteServiceLineInsert = {
+  quote_material_line_id: string
+  service_type: 'duplungolas' | 'szogvagas' | 'panthelyfuras'
+  quantity: number
+  unit: string
+  unit_price_net: number
+  net_price: number
+  vat_amount: number
+  gross_price: number
 }
 
 export type QuoteMaterialLineInsert = {
@@ -66,6 +80,11 @@ function round2(n: number) {
   return Math.round(n * 100) / 100
 }
 
+/** HUF sorösszegek — egész Ft (calc már így adja; mentésnél is). */
+function roundMoney(n: number) {
+  return Math.round(n)
+}
+
 function round4(n: number) {
   return Math.round(n * 10000) / 10000
 }
@@ -96,7 +115,26 @@ export function panelsToInserts(
     edge_b_id: panel.edgeBId,
     edge_c_id: panel.edgeCId,
     edge_d_id: panel.edgeDId,
-    sort_index: index
+    sort_index: index,
+    duplungolas: Boolean(panel.duplungolas),
+    szogvagas: Boolean(panel.szogvagas),
+    panthelyfuras_quantity: Number(panel.panthelyfurasQuantity) || 0
+  }))
+}
+
+export function serviceLinesFromPricing(
+  materialLineId: string,
+  material: MaterialPricing
+): QuoteServiceLineInsert[] {
+  return (material.additional_services ?? []).map((s) => ({
+    quote_material_line_id: materialLineId,
+    service_type: s.service_type,
+    quantity: round4(s.quantity),
+    unit: s.unit,
+    unit_price_net: round2(s.unit_price),
+    net_price: roundMoney(s.net_price),
+    vat_amount: roundMoney(s.vat_amount),
+    gross_price: roundMoney(s.gross_price)
   }))
 }
 
@@ -135,22 +173,22 @@ export function materialLineFromPricing(
     boards_charged: boardsCharged,
     charged_sqm: round4(chargedSqm),
     pricing_method: pricingMethodOf(material),
-    material_net: round2(material.total_material_net),
-    material_vat: round2(material.total_material_vat),
-    material_gross: round2(material.total_material_gross),
+    material_net: roundMoney(material.total_material_net),
+    material_vat: roundMoney(material.total_material_vat),
+    material_gross: roundMoney(material.total_material_gross),
     edge_length_m: round4(edgeLengthM),
-    edge_net: round2(material.total_edge_net),
-    edge_vat: round2(material.total_edge_vat),
-    edge_gross: round2(material.total_edge_gross),
+    edge_net: roundMoney(material.total_edge_net),
+    edge_vat: roundMoney(material.total_edge_vat),
+    edge_gross: roundMoney(material.total_edge_gross),
     cutting_length_m: round4(
       material.cutting_cost?.total_cutting_length_m ?? 0
     ),
-    cutting_net: round2(material.total_cutting_net),
-    cutting_vat: round2(material.total_cutting_vat),
-    cutting_gross: round2(material.total_cutting_gross),
-    total_net: round2(material.total_net),
-    total_vat: round2(material.total_vat),
-    total_gross: round2(material.total_gross)
+    cutting_net: roundMoney(material.total_cutting_net),
+    cutting_vat: roundMoney(material.total_cutting_vat),
+    cutting_gross: roundMoney(material.total_cutting_gross),
+    total_net: roundMoney(material.total_net),
+    total_vat: roundMoney(material.total_vat),
+    total_gross: roundMoney(material.total_gross)
   }
 }
 
@@ -164,9 +202,9 @@ export function edgeLinesFromPricing(
     edge_name: edge.edge_material_name,
     length_m: round4(edge.length_with_overhang_m),
     price_per_m: edge.price_per_m,
-    net_price: round2(edge.net_price),
-    vat_amount: round2(edge.vat_amount),
-    gross_price: round2(edge.gross_price)
+    net_price: roundMoney(edge.net_price),
+    vat_amount: roundMoney(edge.vat_amount),
+    gross_price: roundMoney(edge.gross_price)
   }))
 }
 

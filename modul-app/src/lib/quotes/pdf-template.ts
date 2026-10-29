@@ -260,8 +260,8 @@ export default function generateQuotePdfHtml({
   const barcodeSafe = barcodeValue.replace(/[^\x20-\x7E]/g, '') || barcodeValue
   const barcodeSvgId = `barcode-${quote.id}`
 
-  // Build items array: materials + fees + services
-  // Item rows use recalculated unit×qty for display; final summary uses DB totals.
+  // Tételek + lábléc: DB snapshot Ft (egész). Egységár csak info (bruttó/qty).
+  // Ne unit×qty újraszámolás — az ellentmondana az összesítőnek / Számlázznak.
 
   // 1. Materials from pricing
   const materialRows = quote.pricing.map((pricing) => {
@@ -271,27 +271,18 @@ export default function generateQuotePdfHtml({
     const boardsUsed = pricing.boards_used || 0
     const boardLengthMm = pricing.board_length_mm || 0
     const boardWidthMm = pricing.board_width_mm || 0
-    
-    // Mennyiség: charged_sqm / waste_multi m² + boards_used db
+
     const displaySqm = chargedSqm / wasteMulti
     const quantityDisplay = `${displaySqm.toFixed(2)} m² / ${boardsUsed} db`
-    
-    // Calculate total charged area: full boards area + panel charged area
-    // boards_used = boardsSold (count of full boards only, per documentation)
-    // charged_sqm = panel area charged areas (with waste multiplier already included)
+
     const boardAreaM2 = (boardLengthMm * boardWidthMm) / 1000000
-    const totalBoardsArea = boardAreaM2 * boardsUsed  // Full boards charged area
-    const totalArea = totalBoardsArea + chargedSqm  // Total charged area (full boards + panel area)
-    
-    // Calculate unit price (gross per m²) with 2 decimal precision
-    const unitPriceGross = totalArea > 0 ? pricing.material_gross / totalArea : 0
-    const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
-    
-    // Recalculate total from rounded unit price (2 decimals) so math is consistent
-    const recalculatedTotalGross = roundedUnitPriceGross * totalArea
+    const totalArea = boardAreaM2 * boardsUsed + chargedSqm
+    const lineGross = Math.round(Number(pricing.material_gross) || 0)
+    const unitPriceGross =
+      totalArea > 0 ? Math.round((lineGross / totalArea) * 100) / 100 : 0
 
     const dimensions = `${pricing.board_length_mm}×${pricing.board_width_mm}×${pricing.thickness_mm} mm`
-    
+
     return `
       <tr>
         <td>
@@ -305,31 +296,30 @@ export default function generateQuotePdfHtml({
           <span class="chip">Laptermék</span>
         </td>
         <td class="text-right nowrap">${quantityDisplay}</td>
-        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(unitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(lineGross)} Ft</td>
       </tr>
     `
   }).join('')
-  
+
   // 2. Services from pricing breakdowns
   const serviceRows: string[] = []
-  
-  // Aggregate cutting costs - use stored totals from pricing table
+
   let totalCuttingLength = 0
   let totalCuttingGross = 0
-  quote.pricing.forEach(p => {
+  quote.pricing.forEach((p) => {
     if (p.cutting_gross > 0) {
       totalCuttingLength += p.cutting_length_m || 0
-      totalCuttingGross += p.cutting_gross  // Use stored total from pricing table
+      totalCuttingGross += p.cutting_gross
     }
   })
-  
+
   if (totalCuttingGross > 0) {
-    // Calculate unit price with 2 decimal precision
-    const unitPriceGross = totalCuttingLength > 0 ? totalCuttingGross / totalCuttingLength : 0
-    const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
-    // Recalculate total from rounded unit price (2 decimals) so math is consistent
-    const recalculatedTotalGross = roundedUnitPriceGross * totalCuttingLength
+    const lineGross = Math.round(totalCuttingGross)
+    const unitPriceGross =
+      totalCuttingLength > 0
+        ? Math.round((lineGross / totalCuttingLength) * 100) / 100
+        : 0
 
     serviceRows.push(`
       <tr>
@@ -341,34 +331,31 @@ export default function generateQuotePdfHtml({
           <span class="chip">Díj</span>
         </td>
         <td class="text-right nowrap">${totalCuttingLength.toFixed(2)} m</td>
-        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(unitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(lineGross)} Ft</td>
       </tr>
     `)
   }
-  
-  // Aggregate edge materials for services section - use stored totals from pricing table
+
   let totalEdgeLengthForService = 0
   let totalEdgeGross = 0
-  quote.pricing.forEach(p => {
-    // Use stored totals from pricing table (not breakdown)
+  quote.pricing.forEach((p) => {
     if (p.edge_materials_gross > 0) {
-      totalEdgeGross += p.edge_materials_gross  // Use stored total from pricing table
-      // Sum length from breakdown for display quantity only
+      totalEdgeGross += p.edge_materials_gross
       if (p.quote_edge_materials_breakdown) {
-        p.quote_edge_materials_breakdown.forEach(edge => {
+        p.quote_edge_materials_breakdown.forEach((edge) => {
           totalEdgeLengthForService += edge.total_length_m
         })
       }
     }
   })
-  
+
   if (totalEdgeGross > 0) {
-    // Calculate unit price with 2 decimal precision
-    const unitPriceGross = totalEdgeLengthForService > 0 ? totalEdgeGross / totalEdgeLengthForService : 0
-    const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
-    // Recalculate total from rounded unit price (2 decimals) so math is consistent
-    const recalculatedTotalGross = roundedUnitPriceGross * totalEdgeLengthForService
+    const lineGross = Math.round(totalEdgeGross)
+    const unitPriceGross =
+      totalEdgeLengthForService > 0
+        ? Math.round((lineGross / totalEdgeLengthForService) * 100) / 100
+        : 0
 
     serviceRows.push(`
       <tr>
@@ -380,17 +367,19 @@ export default function generateQuotePdfHtml({
           <span class="chip">Díj</span>
         </td>
         <td class="text-right nowrap">${totalEdgeLengthForService.toFixed(2)} m</td>
-        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(unitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(lineGross)} Ft</td>
       </tr>
     `)
   }
-  
-  // Aggregate other services
-  const servicesMap = new Map<string, { quantity: number; gross: number; net: number }>()
-  quote.pricing.forEach(p => {
+
+  const servicesMap = new Map<
+    string,
+    { quantity: number; gross: number; net: number }
+  >()
+  quote.pricing.forEach((p) => {
     if (p.quote_services_breakdown) {
-      p.quote_services_breakdown.forEach(service => {
+      p.quote_services_breakdown.forEach((service) => {
         const existing = servicesMap.get(service.service_type)
         if (existing) {
           existing.quantity += service.quantity
@@ -406,13 +395,17 @@ export default function generateQuotePdfHtml({
       })
     }
   })
-  
+
   servicesMap.forEach((data, serviceType) => {
     const serviceName = getServiceName(serviceType)
     const unit = getServiceUnit(serviceType)
-    const unitPriceGross = data.quantity > 0 ? data.gross / data.quantity : 0
-    const roundedUnitPriceGross = Math.round(unitPriceGross)
-    const recalculatedTotalGross = roundedUnitPriceGross * data.quantity
+    const lineGross = Math.round(data.gross)
+    const unitPriceGross =
+      data.quantity > 0 ? Math.round(lineGross / data.quantity) : 0
+    const qtyLabel =
+      unit === 'm²'
+        ? `${data.quantity.toFixed(3)} ${unit}`
+        : `${Math.round(data.quantity)} ${unit}`
 
     serviceRows.push(`
       <tr>
@@ -423,42 +416,43 @@ export default function generateQuotePdfHtml({
         <td>
           <span class="chip">Díj</span>
         </td>
-        <td class="text-right nowrap">${data.quantity} ${unit}</td>
-        <td class="text-right nowrap">${formatCurrencyPdf(roundedUnitPriceGross)} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+        <td class="text-right nowrap">${qtyLabel}</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(unitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(lineGross)} Ft</td>
       </tr>
     `)
   })
 
-  // 3. Accessories (termékek) from quote_accessories table
+  // 3. Accessories — DB gross_price / total_gross
   const accessoryRows = (quote.accessories || []).map((acc) => {
     const name = acc.accessories?.name || acc.accessory_name || ''
-    const unitPriceGross = acc.quantity > 0 ? acc.total_gross / acc.quantity : 0
-    const roundedUnitPriceGross = Math.round(unitPriceGross)
-    const recalculatedTotalGross = roundedUnitPriceGross * acc.quantity
-    const unitLabel = acc.units?.shortform || acc.units?.name || acc.unit_name || 'db'
+    const lineGross = Math.round(Number(acc.total_gross) || 0)
+    const qty = Number(acc.quantity) || 1
+    const unitPriceGross = qty > 0 ? Math.round(lineGross / qty) : 0
+    const unitLabel =
+      acc.units?.shortform || acc.units?.name || acc.unit_name || 'db'
     return `
       <tr>
         <td>
           <div style="font-weight: 500;">${escapeHtml(name)}</div>
-          ${acc.sku || (acc.accessories?.sku) ? `<div style="font-size: 9px; color: #757575; margin-top: 0.25em;">${escapeHtml(acc.accessories?.sku || acc.sku || '')}</div>` : ''}
+          ${acc.sku || acc.accessories?.sku ? `<div style="font-size: 9px; color: #757575; margin-top: 0.25em;">${escapeHtml(acc.accessories?.sku || acc.sku || '')}</div>` : ''}
         </td>
         <td></td>
         <td>
           <span class="chip">Termék</span>
         </td>
         <td class="text-right nowrap">${acc.quantity} ${escapeHtml(unitLabel)}</td>
-        <td class="text-right nowrap">${formatCurrencyPdf(roundedUnitPriceGross)} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(unitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(lineGross)} Ft</td>
       </tr>
     `
   }).join('')
-  
-  // 4. Fees from quote_fees table
+
+  // 4. Fees — DB gross_price
   const feeRows = quote.fees.map((fee) => {
-    const unitPriceGross = fee.quantity > 0 ? fee.gross_price / fee.quantity : 0
-    const roundedUnitPriceGross = Math.round(unitPriceGross)
-    const recalculatedTotalGross = roundedUnitPriceGross * fee.quantity
+    const lineGross = Math.round(Number(fee.gross_price) || 0)
+    const qty = Number(fee.quantity) || 1
+    const unitPriceGross = qty > 0 ? Math.round(lineGross / qty) : 0
     const chip =
       fee.kind === 'credit' || fee.gross_price < 0 ? 'Jóváírás' : 'Díj'
 
@@ -472,17 +466,15 @@ export default function generateQuotePdfHtml({
           <span class="chip">${chip}</span>
         </td>
         <td class="text-right nowrap">${fee.quantity} ${escapeHtml(fee.unit_shortform || 'db')}</td>
-        <td class="text-right nowrap">${formatCurrencyPdf(Math.abs(roundedUnitPriceGross))} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(Math.abs(unitPriceGross))} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(lineGross)} Ft</td>
       </tr>
     `
   }).join('')
-  
+
   const itemsRows = materialRows + serviceRows.join('') + accessoryRows + feeRows
 
-  // Use database summary totals for final summary (matching order detail page)
-  // The item rows show recalculated values for display consistency, but the final total
-  // should match the authoritative database value from the order detail page
+  // Lábléc = DB summary (detail „Végösszeg” / final_total_gross)
   const beforeDiscountRows = (Number(discountAmount) || 0) > 0 ? `
     <tr class="summary-row">
       <td colspan="5" style="border-top: 2px solid #000000; border-bottom: 1px solid #000000;">Nettó összesen:</td>

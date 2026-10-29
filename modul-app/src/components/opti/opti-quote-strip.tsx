@@ -278,7 +278,7 @@ function MaterialQuoteBlock({
                   'Vágási díj',
                   `${material.cutting_cost.total_cutting_length_m.toFixed(2)} m`,
                   formatQuotePrice(
-                    material.cutting_cost.fee_per_meter,
+                    material.cutting_cost.fee_per_meter_gross,
                     material.cutting_cost.currency
                   ),
                   formatQuotePrice(
@@ -294,6 +294,53 @@ function MaterialQuoteBlock({
                     material.cutting_cost.currency
                   )
                 ]
+              ]}
+            />
+          ) : null}
+
+          {(material.additional_services?.length ?? 0) > 0 ? (
+            <QuoteTable
+              title="Megmunkálás"
+              headers={[
+                'Tétel',
+                'Mennyiség',
+                'Egységár (bruttó)',
+                'Nettó',
+                'ÁFA',
+                'Bruttó'
+              ]}
+              rows={material.additional_services.map((s) => {
+                // Egységár bruttó = sor bruttó / qty (tárolt bruttó × qty alapú)
+                const unitGross =
+                  s.quantity > 0
+                    ? Math.round(s.gross_price / s.quantity)
+                    : Math.round(s.unit_price * (1 + s.vat_rate))
+                return [
+                  s.service_type === 'duplungolas'
+                    ? 'Duplungolás'
+                    : s.service_type === 'szogvagas'
+                      ? 'Szögvágás'
+                      : 'Pánthelyfúrás',
+                  s.unit === 'm²'
+                    ? `${s.quantity.toFixed(3)} m²`
+                    : `${Math.round(s.quantity)} db`,
+                  formatQuotePrice(unitGross, s.currency) +
+                    (s.unit === 'm²' ? '/m²' : '/db'),
+                  formatQuotePrice(s.net_price, s.currency),
+                  formatQuotePrice(s.vat_amount, s.currency),
+                  formatQuotePrice(s.gross_price, s.currency)
+                ]
+              })}
+              footer={[
+                'Megmunkálás összesen',
+                '',
+                '',
+                formatQuotePrice(material.total_services_net, material.currency),
+                formatQuotePrice(material.total_services_vat, material.currency),
+                formatQuotePrice(
+                  material.total_services_gross,
+                  material.currency
+                )
               ]}
             />
           ) : null}

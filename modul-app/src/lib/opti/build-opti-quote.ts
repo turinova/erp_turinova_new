@@ -82,22 +82,48 @@ export function buildOptiQuote(input: {
   const cuttingFeeInfo: CuttingFeeInfo | null = cuttingFee
     ? {
         fee_per_meter: cuttingFee.fee_per_meter,
+        fee_per_meter_gross: cuttingFee.fee_per_meter_gross,
+        duplungolas_fee_per_sqm: cuttingFee.duplungolas_fee_per_sqm,
+        duplungolas_fee_per_sqm_gross: cuttingFee.duplungolas_fee_per_sqm_gross,
+        szogvagas_fee_per_panel: cuttingFee.szogvagas_fee_per_panel,
+        szogvagas_fee_per_panel_gross: cuttingFee.szogvagas_fee_per_panel_gross,
+        panthelyfuras_fee_per_hole: cuttingFee.panthelyfuras_fee_per_hole,
+        panthelyfuras_fee_per_hole_gross:
+          cuttingFee.panthelyfuras_fee_per_hole_gross,
         vat_rate: cuttingFee.tax_rate_percent / 100,
         currency: 'HUF',
         pricing_mode: cuttingFee.pricing_mode
       }
     : {
         fee_per_meter: 0,
+        fee_per_meter_gross: 0,
+        duplungolas_fee_per_sqm: 0,
+        duplungolas_fee_per_sqm_gross: 0,
+        szogvagas_fee_per_panel: 0,
+        szogvagas_fee_per_panel_gross: 0,
+        panthelyfuras_fee_per_hole: 0,
+        panthelyfuras_fee_per_hole_gross: 0,
         vat_rate: 0,
         currency: 'HUF',
         pricing_mode: 'standard'
       }
+
+  const panelsWithServices = panels.map((p) => ({
+    sheet_material_id: p.sheetMaterialId,
+    grain_mm: p.grainMm,
+    cross_mm: p.crossMm,
+    quantity: p.quantity,
+    duplungolas: p.duplungolas,
+    szogvagas: p.szogvagas,
+    panthelyfuras_quantity: p.panthelyfurasQuantity
+  }))
 
   return calculateQuote(
     optiResult.materials,
     materialInfos,
     panelEdgesByMaterial,
     edgeMap,
-    cuttingFeeInfo
+    cuttingFeeInfo,
+    panelsWithServices
   )
 }

@@ -6,6 +6,20 @@ export type PricingMode =
   | 'always_full_board'
   | 'always_panel_area'
 
+export type OptiServiceType = 'duplungolas' | 'szogvagas' | 'panthelyfuras'
+
+export interface ServiceLinePricing {
+  service_type: OptiServiceType
+  quantity: number
+  unit: string
+  unit_price: number
+  net_price: number
+  vat_rate: number
+  vat_amount: number
+  gross_price: number
+  currency: string
+}
+
 export interface MaterialPricing {
   material_id: string
   material_name: string
@@ -14,6 +28,8 @@ export interface MaterialPricing {
   boards: BoardPricing[]
   edge_materials: EdgeMaterialPricing[]
   cutting_cost: CuttingCostPricing | null
+  /** Duplung / szög — 0 Ft díjnál is lehet sor (jelölés). */
+  additional_services: ServiceLinePricing[]
   total_material_net: number
   total_material_vat: number
   total_material_gross: number
@@ -23,6 +39,9 @@ export interface MaterialPricing {
   total_cutting_net: number
   total_cutting_vat: number
   total_cutting_gross: number
+  total_services_net: number
+  total_services_vat: number
+  total_services_gross: number
   total_net: number
   total_vat: number
   total_gross: number
@@ -55,7 +74,10 @@ export interface EdgeMaterialPricing {
 
 export interface CuttingCostPricing {
   total_cutting_length_m: number
+  /** Nettó Ft/m (ÁFA-bázis). */
   fee_per_meter: number
+  /** Bruttó Ft/m — forrásigazság a megjelenítéshez. */
+  fee_per_meter_gross: number
   net_price: number
   vat_rate: number
   vat_amount: number
@@ -102,21 +124,59 @@ export interface PanelEdge {
 
 export interface CuttingFeeInfo {
   fee_per_meter: number
+  fee_per_meter_gross: number
+  duplungolas_fee_per_sqm: number
+  duplungolas_fee_per_sqm_gross: number
+  szogvagas_fee_per_panel: number
+  szogvagas_fee_per_panel_gross: number
+  panthelyfuras_fee_per_hole: number
+  panthelyfuras_fee_per_hole_gross: number
   vat_rate: number
   currency: string
   pricing_mode: PricingMode
 }
 
+/** Panel megmunkálás a quote calc-hez (anyag szerinti bontás). */
+export type PanelWithServices = {
+  sheet_material_id: string
+  grain_mm: number
+  cross_mm: number
+  quantity: number
+  duplungolas: boolean
+  szogvagas: boolean
+  panthelyfuras_quantity: number
+}
+
+/** HUF: egész Ft — sorösszeg = végösszeg (nincs ±1 Ft round-sum eltérés). */
+export function roundMoneyFt(n: number): number {
+  return Math.round(n)
+}
+
 /**
- * Opti árajánlat — main-app quoteCalculations parity + pricing_mode.
- * V1: nincs pánthely / duplung / szögvágás.
+ * Nettó alap → egész bruttó, majd nettó/ÁFA back-calc.
+ * gross = round(netRaw × (1+vat)); net = round(gross / (1+vat)); vat = gross − net.
+ */
+function moneyFromNet(
+  netRaw: number,
+  vatRate: number
+): { net: number; vat: number; gross: number } {
+  const gross = roundMoneyFt(netRaw * (1 + vatRate))
+  const net =
+    vatRate > 0 ? roundMoneyFt(gross / (1 + vatRate)) : gross
+  return { net, vat: gross - net, gross }
+}
+
+/**
+ * Opti árajánlat — main-app parity + pricing_mode + duplung/szög.
+ * Pánthely később. Pénz: egész Ft a számításnál.
  */
 export function calculateQuote(
   optimizationResults: OptimizationResult[],
   materials: MaterialInfo[],
   panelEdgesByMaterial: Map<string, PanelEdge[]>,
   edgeMaterials: Map<string, EdgeMaterialInfo>,
-  cuttingFeeInfo: CuttingFeeInfo | null = null
+  cuttingFeeInfo: CuttingFeeInfo | null = null,
+  panelsWithServices: PanelWithServices[] = []
 ): QuoteResult {
   const materialPricings: MaterialPricing[] = []
   let grandTotalNet = 0
@@ -129,13 +189,17 @@ export function calculateQuote(
     if (!material) continue
 
     const materialEdges = panelEdgesByMaterial.get(result.material_id) || []
+    const materialPanels = panelsWithServices.filter(
+      (p) => p.sheet_material_id === result.material_id
+    )
     const materialPricing = calculateMaterialPricing(
       result,
       material,
       materialEdges,
       edgeMaterials,
       cuttingFeeInfo,
-      pricingMode
+      pricingMode,
+      materialPanels
     )
     materialPricings.push(materialPricing)
 
@@ -162,7 +226,8 @@ function calculateMaterialPricing(
   panelEdges: PanelEdge[],
   edgeMaterials: Map<string, EdgeMaterialInfo>,
   cuttingFeeInfo: CuttingFeeInfo | null,
-  pricingMode: PricingMode
+  pricingMode: PricingMode,
+  panels: PanelWithServices[]
 ): MaterialPricing {
   const boardArea = (material.width_mm * material.length_mm) / 1_000_000
   const boards: BoardPricing[] = []
@@ -193,19 +258,34 @@ function calculateMaterialPricing(
     const actualUsagePercentage =
       denom > 0 ? (actualUsedArea / denom) * 100 : 0
 
-    const netPrice = totalBoardArea * material.price_per_sqm
-    const vatAmount = netPrice * material.vat_rate
-    const grossPrice = netPrice + vatAmount
-
+    const money = moneyFromNet(
+      totalBoardArea * material.price_per_sqm,
+      material.vat_rate
+    )
+    // Egész Ft szétosztás: első n−1 floor, utolsó a maradék (Σ = money).
+    let allocatedGross = 0
+    let allocatedNet = 0
     for (let i = 1; i <= boardsUsed; i++) {
+      const isLast = i === boardsUsed
+      const gross = isLast
+        ? money.gross - allocatedGross
+        : Math.floor(money.gross / boardsUsed)
+      const net = isLast
+        ? money.net - allocatedNet
+        : material.vat_rate > 0
+          ? roundMoneyFt(gross / (1 + material.vat_rate))
+          : gross
+      const vat = gross - net
+      allocatedGross += gross
+      allocatedNet += net
       boards.push({
         board_id: i,
         usage_percentage: actualUsagePercentage,
         area_m2: actualUsedArea / 1_000_000,
         charged_area_m2: boardArea,
-        net_price: netPrice / boardsUsed,
-        vat_amount: vatAmount / boardsUsed,
-        gross_price: grossPrice / boardsUsed,
+        net_price: net,
+        vat_amount: vat,
+        gross_price: gross,
         pricing_method: 'full_board'
       })
     }
@@ -224,30 +304,34 @@ function calculateMaterialPricing(
         !forcePanel && boardUsagePercentage >= material.usage_limit
 
       if (overLimit) {
-        const netPrice = boardArea * material.price_per_sqm
-        const vatAmount = netPrice * material.vat_rate
+        const money = moneyFromNet(
+          boardArea * material.price_per_sqm,
+          material.vat_rate
+        )
         boards.push({
           board_id: boardId,
           usage_percentage: boardUsagePercentage * 100,
           area_m2: panelAreaM2,
           charged_area_m2: boardArea,
-          net_price: netPrice,
-          vat_amount: vatAmount,
-          gross_price: netPrice + vatAmount,
+          net_price: money.net,
+          vat_amount: money.vat,
+          gross_price: money.gross,
           pricing_method: 'full_board'
         })
       } else {
         const chargedAreaM2 = panelAreaM2 * material.waste_multi
-        const netPrice = chargedAreaM2 * material.price_per_sqm
-        const vatAmount = netPrice * material.vat_rate
+        const money = moneyFromNet(
+          chargedAreaM2 * material.price_per_sqm,
+          material.vat_rate
+        )
         boards.push({
           board_id: boardId,
           usage_percentage: boardUsagePercentage * 100,
           area_m2: panelAreaM2,
           charged_area_m2: chargedAreaM2,
-          net_price: netPrice,
-          vat_amount: vatAmount,
-          gross_price: netPrice + vatAmount,
+          net_price: money.net,
+          vat_amount: money.vat,
+          gross_price: money.gross,
           pricing_method: 'panel_area'
         })
       }
@@ -270,6 +354,19 @@ function calculateMaterialPricing(
   const totalCuttingVat = cuttingCostPricing?.vat_amount || 0
   const totalCuttingGross = cuttingCostPricing?.gross_price || 0
 
+  const additionalServices = cuttingFeeInfo
+    ? calculateAdditionalServices(panels, cuttingFeeInfo)
+    : []
+  const totalServicesNet = additionalServices.reduce((s, x) => s + x.net_price, 0)
+  const totalServicesVat = additionalServices.reduce(
+    (s, x) => s + x.vat_amount,
+    0
+  )
+  const totalServicesGross = additionalServices.reduce(
+    (s, x) => s + x.gross_price,
+    0
+  )
+
   return {
     material_id: material.id,
     material_name: material.name,
@@ -278,6 +375,7 @@ function calculateMaterialPricing(
     boards,
     edge_materials: edgePricings,
     cutting_cost: cuttingCostPricing,
+    additional_services: additionalServices,
     total_material_net: totalMaterialNet,
     total_material_vat: totalMaterialVat,
     total_material_gross: totalMaterialGross,
@@ -287,11 +385,103 @@ function calculateMaterialPricing(
     total_cutting_net: totalCuttingNet,
     total_cutting_vat: totalCuttingVat,
     total_cutting_gross: totalCuttingGross,
-    total_net: totalMaterialNet + totalEdgeNet + totalCuttingNet,
-    total_vat: totalMaterialVat + totalEdgeVat + totalCuttingVat,
-    total_gross: totalMaterialGross + totalEdgeGross + totalCuttingGross,
+    total_services_net: totalServicesNet,
+    total_services_vat: totalServicesVat,
+    total_services_gross: totalServicesGross,
+    total_net:
+      totalMaterialNet + totalEdgeNet + totalCuttingNet + totalServicesNet,
+    total_vat:
+      totalMaterialVat + totalEdgeVat + totalCuttingVat + totalServicesVat,
+    total_gross:
+      totalMaterialGross +
+      totalEdgeGross +
+      totalCuttingGross +
+      totalServicesGross,
     currency: material.currency
   }
+}
+
+function calculateAdditionalServices(
+  panels: PanelWithServices[],
+  feeInfo: CuttingFeeInfo
+): ServiceLinePricing[] {
+  let duplungArea = 0
+  let szogPanels = 0
+  let panthelyHoles = 0
+
+  for (const panel of panels) {
+    if (panel.duplungolas) {
+      duplungArea +=
+        ((panel.grain_mm * panel.cross_mm) / 1_000_000) * panel.quantity
+    }
+    if (panel.szogvagas) {
+      szogPanels += panel.quantity
+    }
+    const holes = Number(panel.panthelyfuras_quantity) || 0
+    if (holes >= 2) {
+      panthelyHoles += holes * panel.quantity
+    }
+  }
+
+  const lines: ServiceLinePricing[] = []
+  const vat = feeInfo.vat_rate
+
+  if (duplungArea > 0) {
+    const unitNet = feeInfo.duplungolas_fee_per_sqm
+    // Tárolt bruttó egységár × m² (ne nettóból számold vissza)
+    const unitGross = Math.round(feeInfo.duplungolas_fee_per_sqm_gross)
+    const gross = Math.round(unitGross * duplungArea)
+    const net = Math.round(gross / (1 + vat))
+    lines.push({
+      service_type: 'duplungolas',
+      quantity: duplungArea,
+      unit: 'm²',
+      unit_price: unitNet,
+      net_price: net,
+      vat_rate: vat,
+      vat_amount: gross - net,
+      gross_price: gross,
+      currency: feeInfo.currency
+    })
+  }
+
+  if (szogPanels > 0) {
+    const unitNet = feeInfo.szogvagas_fee_per_panel
+    const unitGross = Math.round(feeInfo.szogvagas_fee_per_panel_gross)
+    const gross = unitGross * szogPanels
+    const net = Math.round(gross / (1 + vat))
+    lines.push({
+      service_type: 'szogvagas',
+      quantity: szogPanels,
+      unit: 'db',
+      unit_price: unitNet,
+      net_price: net,
+      vat_rate: vat,
+      vat_amount: gross - net,
+      gross_price: gross,
+      currency: feeInfo.currency
+    })
+  }
+
+  if (panthelyHoles > 0) {
+    const unitNet = feeInfo.panthelyfuras_fee_per_hole
+    const unitGross = Math.round(feeInfo.panthelyfuras_fee_per_hole_gross)
+    const gross = unitGross * panthelyHoles
+    const net = Math.round(gross / (1 + vat))
+    lines.push({
+      service_type: 'panthelyfuras',
+      quantity: panthelyHoles,
+      unit: 'db',
+      unit_price: unitNet,
+      net_price: net,
+      vat_rate: vat,
+      vat_amount: gross - net,
+      gross_price: gross,
+      currency: feeInfo.currency
+    })
+  }
+
+  return lines
 }
 
 function calculateEdgeMaterialPricing(
@@ -322,9 +512,10 @@ function calculateEdgeMaterialPricing(
     const overhangLengthMm = totalQuantity * edgeInfo.overhang_mm
     const lengthWithOverhangM = (totalLengthMm + overhangLengthMm) / 1000
 
-    const netPrice = lengthWithOverhangM * edgeInfo.price_per_m
-    const vatAmount = netPrice * edgeInfo.vat_rate
-    const grossPrice = netPrice + vatAmount
+    const money = moneyFromNet(
+      lengthWithOverhangM * edgeInfo.price_per_m,
+      edgeInfo.vat_rate
+    )
 
     result.push({
       edge_material_id: edgeId,
@@ -332,10 +523,10 @@ function calculateEdgeMaterialPricing(
       length_m: lengthM,
       length_with_overhang_m: lengthWithOverhangM,
       price_per_m: edgeInfo.price_per_m,
-      net_price: netPrice,
+      net_price: money.net,
       vat_rate: edgeInfo.vat_rate,
-      vat_amount: vatAmount,
-      gross_price: grossPrice,
+      vat_amount: money.vat,
+      gross_price: money.gross,
       currency: edgeInfo.currency
     })
   }
@@ -349,18 +540,19 @@ function calculateCuttingCost(
 ): CuttingCostPricing {
   const totalCuttingLengthMm = result.metrics.total_cut_length_mm || 0
   const totalCuttingLengthM = totalCuttingLengthMm / 1000
-
-  const netPrice = totalCuttingLengthM * cuttingFeeInfo.fee_per_meter
-  const vatAmount = netPrice * cuttingFeeInfo.vat_rate
-  const grossPrice = netPrice + vatAmount
+  const vat = cuttingFeeInfo.vat_rate
+  const unitGross = Math.round(cuttingFeeInfo.fee_per_meter_gross)
+  const gross = Math.round(unitGross * totalCuttingLengthM)
+  const net = vat > 0 ? Math.round(gross / (1 + vat)) : gross
 
   return {
     total_cutting_length_m: totalCuttingLengthM,
     fee_per_meter: cuttingFeeInfo.fee_per_meter,
-    net_price: netPrice,
-    vat_rate: cuttingFeeInfo.vat_rate,
-    vat_amount: vatAmount,
-    gross_price: grossPrice,
+    fee_per_meter_gross: unitGross,
+    net_price: net,
+    vat_rate: vat,
+    vat_amount: gross - net,
+    gross_price: gross,
     currency: cuttingFeeInfo.currency
   }
 }

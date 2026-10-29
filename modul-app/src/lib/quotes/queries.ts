@@ -135,6 +135,9 @@ export type QuoteDetail = {
     edge_b_code: string | null
     edge_c_code: string | null
     edge_d_code: string | null
+    duplungolas: boolean
+    szogvagas: boolean
+    panthelyfuras_quantity: number
   }>
   material_lines: Array<{
     id: string
@@ -157,6 +160,15 @@ export type QuoteDetail = {
     edges: Array<{
       edge_name: string
       length_m: number
+      gross_price: number
+    }>
+    services: Array<{
+      service_type: 'duplungolas' | 'szogvagas' | 'panthelyfuras'
+      quantity: number
+      unit: string
+      unit_price_net: number
+      net_price: number
+      vat_amount: number
       gross_price: number
     }>
   }>
@@ -509,6 +521,9 @@ export async function getQuoteDetail(
         quantity,
         label,
         sort_index,
+        duplungolas,
+        szogvagas,
+        panthelyfuras_quantity,
         sheet_materials ( name, machine_code ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
         edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
@@ -536,6 +551,15 @@ export async function getQuoteDetail(
         quote_edge_lines (
           edge_name,
           length_m,
+          gross_price
+        ),
+        quote_service_lines (
+          service_type,
+          quantity,
+          unit,
+          unit_price_net,
+          net_price,
+          vat_amount,
           gross_price
         )
       )
@@ -605,6 +629,9 @@ export async function getQuoteDetail(
         quantity,
         label,
         sort_index,
+        duplungolas,
+        szogvagas,
+        panthelyfuras_quantity,
         sheet_materials ( name, machine_code ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
         edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
@@ -632,6 +659,15 @@ export async function getQuoteDetail(
         quote_edge_lines (
           edge_name,
           length_m,
+          gross_price
+        ),
+        quote_service_lines (
+          service_type,
+          quantity,
+          unit,
+          unit_price_net,
+          net_price,
+          vat_amount,
           gross_price
         )
       )
@@ -870,6 +906,9 @@ export async function getQuoteDetail(
     quantity: number
     label: string | null
     sort_index: number
+    duplungolas?: boolean | null
+    szogvagas?: boolean | null
+    panthelyfuras_quantity?: number | null
     sheet_materials:
       | { name: string; machine_code: string }
       | { name: string; machine_code: string }[]
@@ -898,7 +937,10 @@ export async function getQuoteDetail(
         edge_a_code: edgeCode(p.edge_a),
         edge_b_code: edgeCode(p.edge_b),
         edge_c_code: edgeCode(p.edge_c),
-        edge_d_code: edgeCode(p.edge_d)
+        edge_d_code: edgeCode(p.edge_d),
+        duplungolas: Boolean(p.duplungolas),
+        szogvagas: Boolean(p.szogvagas),
+        panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0
       }
     })
 
@@ -927,6 +969,15 @@ export async function getQuoteDetail(
       length_m: number
       gross_price: number
     }> | null
+    quote_service_lines: Array<{
+      service_type: string
+      quantity: number
+      unit: string
+      unit_price_net: number
+      net_price: number
+      vat_amount: number
+      gross_price: number
+    }> | null
   }>
 
   const material_lines = linesRaw.map((line) => ({
@@ -951,7 +1002,26 @@ export async function getQuoteDetail(
       edge_name: e.edge_name,
       length_m: Number(e.length_m),
       gross_price: Number(e.gross_price)
-    }))
+    })),
+    services: (line.quote_service_lines ?? [])
+      .filter(
+        (s) =>
+          s.service_type === 'duplungolas' ||
+          s.service_type === 'szogvagas' ||
+          s.service_type === 'panthelyfuras'
+      )
+      .map((s) => ({
+        service_type: s.service_type as
+          | 'duplungolas'
+          | 'szogvagas'
+          | 'panthelyfuras',
+        quantity: Number(s.quantity),
+        unit: s.unit || (s.service_type === 'duplungolas' ? 'm²' : 'db'),
+        unit_price_net: Number(s.unit_price_net),
+        net_price: Number(s.net_price),
+        vat_amount: Number(s.vat_amount),
+        gross_price: Number(s.gross_price)
+      }))
   }))
 
   const edge_summary = material_lines.flatMap((line) =>

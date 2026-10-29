@@ -106,7 +106,25 @@ Busy: *„Kiolvassuk a méreteket… Ellenőrizd, mielőtt az Opti listára ker�
 
 ---
 
-## 6. Explicit NEM V1
+## 6. Félkész munka (session) + listaürítés
+
+- Új Opti: panelek / megrendelő / projektnév → `sessionStorage` (`modul-opti:v1:{tenant}:{staff|partner}`), **fülélet** (nincs napos TTL). Optimalizálás eredménye nincs sessionben.
+- **Lista ürítése** (panel lista fejléc): confirm → panelek + opti eredmény + megrendelő session törlése; anyagválasztás megmarad.
+- Árajánlat mentés után ugyanaz a reset — visszatéréskor üres lista (ne jöjjön vissza a régi munka).
+
+## 7. Megmunkálás (duplung + szög + pánthely)
+
+- **Duplungolás:** switch; ON → beírt db ×2 (OFF visszafordítja); flag a panelen; díj Ft/m² (`cutting_fees.duplungolas_fee_per_sqm`, default **0**).
+- **Szögvágás:** switch; díj Ft/panel-darab (`szogvagas_fee_per_panel`, default **0**).
+- **Pánthelyfúrás:** szám mező (db / panel); **0** = nincs; **2–20**; díj Ft/lyuk (`panthelyfuras_fee_per_hole`, default **0**). Nincs oldal (hosszú/rövid). Díj qty = `lyuk × panel.quantity`.
+- Beállítás: `/beallitasok/opti`. Beírt **bruttó** Ft tárolva (`*_gross`); nettó ÁFA-bázis. Opti egységár = tárolt bruttó (nem nettó→bruttó round-trip). ÁFA = vágási díj ÁFÁ-ja. 0 Ft OK.
+- Snapshot: `quote_panels` flag/qty + `quote_service_lines` anyagonként.
+- Detail / PDF / Számlázz: megmunkálás sor a `quote_service_lines` Ft-jából (DB truth — lásd [13](13-numbers-units-formats.md) §6, [37](37-lapszabaszat-quote-workflow.md) §7).
+- Árazás: egész Ft / sor (anyag, él, szabás, megmunkálás); Σ sor = Opti / detail / PDF végösszeg.
+
+Migráció: `20260617_…`, `20260618_opti_panthelyfuras.sql`, `20260619_cutting_fees_gross.sql`.
+
+## 8. Explicit NEM V1
 
 - Él / jelölés import (szöveg és kép)
 - PDF multipage
@@ -114,3 +132,5 @@ Busy: *„Kiolvassuk a méreteket… Ellenőrizd, mielőtt az Opti listára ker�
 - Import = auto optimize
 - Kliens Anthropic kulcs
 - Külön route `/opti/import`
+- localStorage / napos TTL a félkész Optira
+- Pánthely oldal (hosszú/rövid) / CNC pozíció

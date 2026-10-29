@@ -108,7 +108,8 @@ Kapcsolat: [36](36-szamlazas-workflow.md). Forrás: `related_source_type = opti_
 | Végszámla guard | Csak **paid** (unpaid végszámla tilt — mint sale) |
 | Díjbekérő | Unpaid + 0 doksi; paid mellett **tilt** |
 | Előleg | Unpaid; összeg ≤ hátralék |
-| Tételek | Default **összesített**; **Részletes** = anyagonként. Mennyiség = `boards×boardArea + charged_sqm/waste` **m²** (hulladék **nem** a qty-ban, hanem az egységárban) |
+| Tételek | Default **összesített**; **Részletes** = anyagonként. Mennyiség = `boards×boardArea + charged_sqm/waste` **m²** (hulladék **nem** a qty-ban, hanem az egységárban). Megmunkálás (`duplungolas` / `szogvagas` / `panthelyfuras`) a `quote_service_lines` DB Ft-jából. |
+| Sor Ft | **DB snapshot** (`material_*` / `cutting_*` / `edge_*` / service / accessory / fee gross) — tilos unit×qty újraszámolás detail / PDF / Számlázz között. Opti calc + mentés: **egész Ft**; Σ sor = végösszeg. Végösszeg = `final_total_gross` (±2 Ft abszorpció díj/termék után). |
 | Billing | `quotes.billing_*_snapshot` |
 | UX | 6a — Pénzügy secondary; gyártás primary érintetlen |
 | Fizetési mód | Díjbekérő = **csak átutalás**; előleg/számla = KP/kártya/utalás |

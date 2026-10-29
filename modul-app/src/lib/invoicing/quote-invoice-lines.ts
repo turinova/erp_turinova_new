@@ -95,6 +95,88 @@ function materialQtyUnit(ml: MaterialLine): {
   return { quantity: 1, unit: 'm²' }
 }
 
+function serviceLabel(
+  serviceType: string,
+  materialName?: string
+): string {
+  const base =
+    serviceType === 'duplungolas'
+      ? 'Duplungolás'
+      : serviceType === 'szogvagas'
+        ? 'Szögvágás'
+        : serviceType === 'panthelyfuras'
+          ? 'Pánthelyfúrás'
+          : serviceType
+  if (materialName?.trim()) return `${base} — ${materialName.trim()}`
+  return base
+}
+
+function pushMegmunkalasLines(
+  detail: QuoteDetail,
+  lines: QuoteInvoiceLine[],
+  mode: 'summary' | 'by_material'
+) {
+  if (mode === 'by_material') {
+    for (const ml of detail.material_lines) {
+      const matName = ml.material_name?.trim() || 'Táblás anyag'
+      for (const svc of ml.services ?? []) {
+        const qtyRaw = Number(svc.quantity) || 0
+        const unit = svc.unit || (svc.service_type === 'duplungolas' ? 'm²' : 'db')
+        const qty =
+          unit === 'm²'
+            ? roundQty(qtyRaw)
+            : Math.max(1, Math.round(qtyRaw) || 1)
+        const line = lineFromGross(
+          serviceLabel(svc.service_type, matName),
+          Number(svc.gross_price) || 0,
+          Number(svc.net_price) || 0,
+          { quantity: qty >= 0.01 ? qty : 1, unit }
+        )
+        if (line) lines.push(line)
+      }
+    }
+    return
+  }
+
+  const agg = new Map<
+    string,
+    { quantity: number; unit: string; net: number; gross: number }
+  >()
+  for (const ml of detail.material_lines) {
+    for (const svc of ml.services ?? []) {
+      const key = svc.service_type
+      const unit = svc.unit || (svc.service_type === 'duplungolas' ? 'm²' : 'db')
+      const existing = agg.get(key)
+      if (existing) {
+        existing.quantity += Number(svc.quantity) || 0
+        existing.net += Number(svc.net_price) || 0
+        existing.gross += Number(svc.gross_price) || 0
+      } else {
+        agg.set(key, {
+          quantity: Number(svc.quantity) || 0,
+          unit,
+          net: Number(svc.net_price) || 0,
+          gross: Number(svc.gross_price) || 0
+        })
+      }
+    }
+  }
+
+  for (const [serviceType, data] of agg) {
+    const qty =
+      data.unit === 'm²'
+        ? roundQty(data.quantity)
+        : Math.max(1, Math.round(data.quantity) || 1)
+    const line = lineFromGross(
+      serviceLabel(serviceType),
+      data.gross,
+      data.net,
+      { quantity: qty >= 0.01 ? qty : 1, unit: data.unit }
+    )
+    if (line) lines.push(line)
+  }
+}
+
 function pushAccessoriesAndFees(
   detail: QuoteDetail,
   lines: QuoteInvoiceLine[]
@@ -317,10 +399,11 @@ function absorbGrossDiff(
 }
 
 /**
- * Számla tételek.
- * - summary: anyag összesítve (m², hulladék nélkül) + szabás + él + termékek + díjak
- * - by_material: anyagonként név + m² (tábla + panel/waste) + szabás/él m
+ * Számla tételek — sor Ft = DB snapshot (ne unit×qty újraszámolás).
+ * - summary: anyag + szabás + él + megmunkálás + termékek + díjak
+ * - by_material: anyagonként név + m² + szabás/él/megmunkálás
  * Mennyiség soha nem waste-szel növelt charged_sqm — a hulladék az egységárban van.
+ * Végösszeg: `final_total_gross`; ±2 Ft abszorpció utolsó tételbe.
  */
 export function mapQuoteInvoiceLines(
   detail: QuoteDetail,
@@ -332,6 +415,7 @@ export function mapQuoteInvoiceLines(
       ? mapByMaterialLines(detail)
       : mapSummaryMaterialLines(detail)
 
+  pushMegmunkalasLines(detail, lines, detailLevel)
   pushAccessoriesAndFees(detail, lines)
   return reconcileToDue(detail, lines)
 }

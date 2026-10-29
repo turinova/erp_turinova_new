@@ -998,26 +998,12 @@ export function QuoteDetailClient({
                       </DataTableRow>
                     ) : (
                       quote.material_lines.map((line) => {
-                        const boardAreaM2 =
-                          (line.board_grain_mm * line.board_cross_mm) /
-                          1_000_000
                         const boardsUsed = line.boards_charged || 0
                         const chargedSqm = line.charged_sqm || 0
                         const wasteMulti = line.waste_multi || 1
-                        const totalBoardsArea = boardAreaM2 * boardsUsed
-                        const totalArea = totalBoardsArea + chargedSqm
-                        const unitPriceGross =
-                          totalArea > 0 ? line.material_gross / totalArea : 0
-                        const roundedUnitPriceGross =
-                          Math.round(unitPriceGross * 100) / 100
-                        const recalculatedTotalGross =
-                          roundedUnitPriceGross * totalArea
-                        const recalculatedTotalNet =
-                          line.material_gross > 0
-                            ? line.material_net *
-                              (recalculatedTotalGross / line.material_gross)
-                            : line.material_net
                         const displaySqm = chargedSqm / wasteMulti
+                        // Forrásigazság: DB snapshot Ft — ne unit×qty újraszámolás
+                        // (Számlázz / PDF / összesítő ugyanazt a sort követi).
 
                         return (
                           <DataTableRow key={line.id}>
@@ -1034,13 +1020,13 @@ export function QuoteDetailClient({
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
                               {formatQuotePrice(
-                                Math.round(recalculatedTotalNet),
+                                Math.round(line.material_net),
                                 quote.currency
                               )}
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
                               {formatQuotePrice(
-                                Math.round(recalculatedTotalGross),
+                                Math.round(line.material_gross),
                                 quote.currency
                               )}
                             </DataTableCell>
@@ -1052,7 +1038,7 @@ export function QuoteDetailClient({
                 </DataTable>
               </div>
 
-              {/* 2) Szolgáltatások — szabás + élzárás (main struktúra, V1: nincs pánthely…) */}
+              {/* 2) Szolgáltatások — szabás + élzárás + megmunkálás */}
               <div className="mb-3 overflow-hidden rounded-md border border-border bg-subtle/40">
                 <DataTable className="rounded-none border-0">
                   <DataTableHead>
@@ -1094,19 +1080,45 @@ export function QuoteDetailClient({
                         }
                       }
 
+                      const serviceAgg = new Map<
+                        string,
+                        {
+                          label: string
+                          quantity: number
+                          unit: string
+                          net: number
+                          gross: number
+                        }
+                      >()
+                      for (const line of quote.material_lines) {
+                        for (const svc of line.services ?? []) {
+                          const key = svc.service_type
+                          const label =
+                            svc.service_type === 'duplungolas'
+                              ? 'Duplungolás'
+                              : svc.service_type === 'szogvagas'
+                                ? 'Szögvágás'
+                                : 'Pánthelyfúrás'
+                          const existing = serviceAgg.get(key)
+                          if (existing) {
+                            existing.quantity += svc.quantity
+                            existing.net += svc.net_price
+                            existing.gross += svc.gross_price
+                          } else {
+                            serviceAgg.set(key, {
+                              label,
+                              quantity: svc.quantity,
+                              unit: svc.unit,
+                              net: svc.net_price,
+                              gross: svc.gross_price
+                            })
+                          }
+                        }
+                      }
+
                       const rows: React.ReactNode[] = []
 
-                      if (totalCuttingGross > 0) {
-                        const unit =
-                          totalCuttingLength > 0
-                            ? totalCuttingGross / totalCuttingLength
-                            : 0
-                        const rounded = Math.round(unit * 100) / 100
-                        const gross = rounded * totalCuttingLength
-                        const net =
-                          totalCuttingGross > 0
-                            ? totalCuttingNet * (gross / totalCuttingGross)
-                            : totalCuttingNet
+                      if (totalCuttingGross > 0 || totalCuttingNet > 0) {
                         rows.push(
                           <DataTableRow key="cutting">
                             <DataTableCell className="text-ink">
@@ -1116,11 +1128,14 @@ export function QuoteDetailClient({
                               {totalCuttingLength.toFixed(2)} m
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
-                              {formatQuotePrice(Math.round(net), quote.currency)}
+                              {formatQuotePrice(
+                                Math.round(totalCuttingNet),
+                                quote.currency
+                              )}
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
                               {formatQuotePrice(
-                                Math.round(gross),
+                                Math.round(totalCuttingGross),
                                 quote.currency
                               )}
                             </DataTableCell>
@@ -1128,17 +1143,7 @@ export function QuoteDetailClient({
                         )
                       }
 
-                      if (totalEdgeGross > 0) {
-                        const unit =
-                          totalEdgeLength > 0
-                            ? totalEdgeGross / totalEdgeLength
-                            : 0
-                        const rounded = Math.round(unit * 100) / 100
-                        const gross = rounded * totalEdgeLength
-                        const net =
-                          totalEdgeGross > 0
-                            ? totalEdgeNet * (gross / totalEdgeGross)
-                            : totalEdgeNet
+                      if (totalEdgeGross > 0 || totalEdgeNet > 0) {
                         rows.push(
                           <DataTableRow key="edge">
                             <DataTableCell className="text-ink">
@@ -1148,11 +1153,43 @@ export function QuoteDetailClient({
                               {totalEdgeLength.toFixed(2)} m
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
-                              {formatQuotePrice(Math.round(net), quote.currency)}
+                              {formatQuotePrice(
+                                Math.round(totalEdgeNet),
+                                quote.currency
+                              )}
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
                               {formatQuotePrice(
-                                Math.round(gross),
+                                Math.round(totalEdgeGross),
+                                quote.currency
+                              )}
+                            </DataTableCell>
+                          </DataTableRow>
+                        )
+                      }
+
+                      for (const [key, svc] of serviceAgg) {
+                        const qtyLabel =
+                          svc.unit === 'm²'
+                            ? `${svc.quantity.toFixed(3)} m²`
+                            : `${Math.round(svc.quantity)} db`
+                        rows.push(
+                          <DataTableRow key={`svc-${key}`}>
+                            <DataTableCell className="text-ink">
+                              {svc.label}
+                            </DataTableCell>
+                            <DataTableCell className="text-right tabular-nums text-ink">
+                              {qtyLabel}
+                            </DataTableCell>
+                            <DataTableCell className="text-right tabular-nums text-ink">
+                              {formatQuotePrice(
+                                Math.round(svc.net),
+                                quote.currency
+                              )}
+                            </DataTableCell>
+                            <DataTableCell className="text-right tabular-nums text-ink">
+                              {formatQuotePrice(
+                                Math.round(svc.gross),
                                 quote.currency
                               )}
                             </DataTableCell>
@@ -1200,7 +1237,10 @@ export function QuoteDetailClient({
                 <div className="flex justify-between text-body font-semibold text-ink">
                   <span>Lapszabászat:</span>
                   <span className="tabular-nums">
-                    {formatQuotePrice(quote.total_gross, quote.currency)}
+                    {formatQuotePrice(
+                      Math.round(quote.total_gross),
+                      quote.currency
+                    )}
                   </span>
                 </div>
                 {quote.accessories_total_gross !== 0 ? (
@@ -1361,7 +1401,19 @@ export function QuoteDetailClient({
                         {panel.edge_d_code || ''}
                       </DataTableCell>
                       <DataTableCell className="text-center text-ink-secondary">
-                        —
+                        {panel.duplungolas ||
+                        panel.szogvagas ||
+                        panel.panthelyfuras_quantity > 0
+                          ? [
+                              panel.duplungolas ? 'Duplung' : null,
+                              panel.szogvagas ? 'Szög' : null,
+                              panel.panthelyfuras_quantity > 0
+                                ? `Pánthely ${panel.panthelyfuras_quantity}`
+                                : null
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')
+                          : '—'}
                       </DataTableCell>
                     </DataTableRow>
                   ))}
