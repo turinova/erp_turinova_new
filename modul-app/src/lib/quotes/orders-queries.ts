@@ -92,6 +92,33 @@ const ORDER_LIST_SELECT = `
   production_machines ( name )
 `
 
+/**
+ * TS2589: nested embed + feltételes FilterBuilder-újraassign unió → depth overflow.
+ * A select után erre a vékony felületre castolunk (nem `any`); a sorok lent
+ * `OrderListItem`-re mapelődnek.
+ */
+type OrdersListQuery = {
+  eq: (column: string, value: unknown) => OrdersListQuery
+  is: (column: string, value: null) => OrdersListQuery
+  not: (column: string, operator: string, value: unknown) => OrdersListQuery
+  in: (column: string, values: readonly string[]) => OrdersListQuery
+  lte: (column: string, value: string) => OrdersListQuery
+  gte: (column: string, value: string) => OrdersListQuery
+  or: (filters: string) => OrdersListQuery
+  order: (
+    column: string,
+    options: { ascending: boolean }
+  ) => OrdersListQuery
+  range: (
+    from: number,
+    to: number
+  ) => PromiseLike<{
+    data: unknown[] | null
+    error: { message: string } | null
+    count: number | null
+  }>
+}
+
 export async function listOrders(
   supabase: SupabaseClient,
   params: ListOrdersParams
@@ -102,19 +129,9 @@ export async function listOrders(
   const to = from + limit - 1
   const status = params.status ?? 'ordered'
 
-  /**
-   * TS2589 gyökérok (nem „rossz filter”):
-   * 1) Nested embed (`customers`, `production_machines`) → mély PostgREST Result generic.
-   * 2) Feltételes `query = query.not|is|in|eq…` → FilterBuilder-változatok uniója;
-   *    minden további láncszem az unió minden tagján instantiál → depth overflow.
-   *    (Elmaradás / archív / status ágak együtt billentették át.)
-   * Megoldás: a select után azonnal elvágni a builder típusát; a sorokat lent
-   * `OrderListItem`-re mapeljük (típusos határ a runtime után).
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see TS2589 note above
-  let query: any = supabase
+  let query = supabase
     .from('quotes')
-    .select(ORDER_LIST_SELECT, { count: 'estimated' }) as any
+    .select(ORDER_LIST_SELECT, { count: 'estimated' }) as unknown as OrdersListQuery
 
   query = query
     .eq('tenant_id', params.tenantId)
@@ -207,7 +224,32 @@ export async function listOrders(
     throw new Error('Nem sikerült betölteni a megrendeléseket.')
   }
 
-  const rawRows = (data ?? []).filter((row) => Boolean(row.order_number))
+  type OrderListDbRow = {
+    id: string
+    quote_number: string
+    order_number: string | null
+    status: string
+    payment_status: string | null
+    project_name: string | null
+    total_gross: number
+    final_total_gross: number | null
+    currency: string
+    updated_at: string
+    customer_id: string | null
+    production_machine_id: string | null
+    production_date: string | null
+    barcode: string | null
+    archived_at: string | null
+    customers:
+      | { name: string; email: string | null; mobile: string | null }
+      | { name: string; email: string | null; mobile: string | null }[]
+      | null
+    production_machines: { name: string } | { name: string }[] | null
+  }
+
+  const rawRows = ((data ?? []) as OrderListDbRow[]).filter((row) =>
+    Boolean(row.order_number)
+  )
   const quoteIds = rawRows.map((row) => row.id)
   const paidByQuote: Record<string, number> = {}
 
@@ -230,39 +272,33 @@ export async function listOrders(
   }
 
   const rows: OrderListItem[] = rawRows.map((row) => {
-      const customers = row.customers as
-        | { name: string; email: string | null; mobile: string | null }
-        | { name: string; email: string | null; mobile: string | null }[]
-        | null
-      const customer = Array.isArray(customers) ? customers[0] : customers
-      const machines = row.production_machines as
-        | { name: string }
-        | { name: string }[]
-        | null
-      const machine = Array.isArray(machines) ? machines[0] : machines
+    const customers = row.customers
+    const customer = Array.isArray(customers) ? customers[0] : customers
+    const machines = row.production_machines
+    const machine = Array.isArray(machines) ? machines[0] : machines
 
-      return {
-        id: row.id,
-        quote_number: row.quote_number,
-        order_number: row.order_number as string,
-        status: row.status as QuoteStatus,
-        payment_status: (row.payment_status ?? 'not_paid') as PaymentStatus,
-        project_name: (row.project_name as string | null) ?? null,
-        total_gross: Number(row.final_total_gross ?? row.total_gross),
-        total_paid: Math.round(paidByQuote[row.id] ?? 0),
-        currency: row.currency,
-        updated_at: row.updated_at,
-        customer_id: (row.customer_id as string | null) ?? null,
-        customer_name: customer?.name ?? '—',
-        customer_email: customer?.email ?? null,
-        customer_mobile: customer?.mobile ?? null,
-        production_machine_id: row.production_machine_id ?? null,
-        production_machine_name: machine?.name ?? null,
-        production_date: row.production_date ?? null,
-        barcode: row.barcode ?? null,
-        archived_at: (row.archived_at as string | null) ?? null
-      }
-    })
+    return {
+      id: row.id,
+      quote_number: row.quote_number,
+      order_number: row.order_number as string,
+      status: row.status as QuoteStatus,
+      payment_status: (row.payment_status ?? 'not_paid') as PaymentStatus,
+      project_name: row.project_name ?? null,
+      total_gross: Number(row.final_total_gross ?? row.total_gross),
+      total_paid: Math.round(paidByQuote[row.id] ?? 0),
+      currency: row.currency,
+      updated_at: row.updated_at,
+      customer_id: row.customer_id ?? null,
+      customer_name: customer?.name ?? '—',
+      customer_email: customer?.email ?? null,
+      customer_mobile: customer?.mobile ?? null,
+      production_machine_id: row.production_machine_id ?? null,
+      production_machine_name: machine?.name ?? null,
+      production_date: row.production_date ?? null,
+      barcode: row.barcode ?? null,
+      archived_at: row.archived_at ?? null
+    }
+  })
 
   return { rows, total: count ?? 0, page, limit }
 }
