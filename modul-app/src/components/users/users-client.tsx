@@ -42,11 +42,25 @@ import {
   getMembershipPageAccess,
   removeTenantMember,
   setMembershipDisabled,
+  setTenantUserPassword,
   updateMemberDisplayName,
   updateMembershipPageAccess,
   updateMembershipRole,
   type TenantUserListItem
 } from '@/lib/users/actions'
+
+const TEMP_PASSWORD_ALPHABET =
+  'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+
+function generateTempPasswordClient(): string {
+  const bytes = new Uint8Array(14)
+  crypto.getRandomValues(bytes)
+  let out = ''
+  for (const b of bytes) {
+    out += TEMP_PASSWORD_ALPHABET[b % TEMP_PASSWORD_ALPHABET.length]
+  }
+  return `${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8, 12)}-${out.slice(12)}`
+}
 
 type UsersClientProps = {
   rows: TenantUserListItem[]
@@ -455,6 +469,14 @@ function EditMemberDialog({
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [confirmDisable, setConfirmDisable] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [passwordOpen, setPasswordOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [revealedPassword, setRevealedPassword] = useState<{
+    password: string
+    email: string
+    multiTenant: boolean
+  } | null>(null)
 
   const isSelf = user.userId === currentUserId
   const isDisabled = user.status === 'disabled'
@@ -468,6 +490,10 @@ function EditMemberDialog({
     setShowAdvanced(false)
     setConfirmDisable(false)
     setConfirmRemove(false)
+    setPasswordOpen(false)
+    setNewPassword('')
+    setConfirmPassword('')
+    setRevealedPassword(null)
     setFetching(true)
     void getMembershipPageAccess(user.membershipId).then((result) => {
       if (result.error) {
@@ -621,6 +647,224 @@ function EditMemberDialog({
       setLoading(false)
       setConfirmRemove(false)
     }
+  }
+
+  async function handleSetPassword() {
+    if (newPassword.length < 8) {
+      setError('A jelszó legalább 8 karakter legyen.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError('A két jelszó nem egyezik.')
+      return
+    }
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await setTenantUserPassword({
+        membershipId: user.membershipId,
+        newPassword
+      })
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
+      setPasswordOpen(false)
+      setRevealedPassword({
+        password: newPassword,
+        email: result.email || user.email,
+        multiTenant: result.multiTenant
+      })
+      setNewPassword('')
+      setConfirmPassword('')
+      toast.success('Új jelszó beállítva.')
+      if (isSelf) {
+        toast.message('Saját jelszavad változott — hamarosan újra be kell lépned.')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (revealedPassword) {
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) {
+            setRevealedPassword(null)
+            onOpenChange(false)
+            onSuccess()
+          }
+        }}
+      >
+        <DialogContent className="max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Új jelszó</DialogTitle>
+            <DialogDescription>
+              Másold ki most — később nem lesz újra látható:{' '}
+              {revealedPassword.email}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="rounded-md border border-border bg-subtle px-3 py-2 font-mono text-body text-ink">
+            {revealedPassword.password}
+          </p>
+          {revealedPassword.multiTenant ? (
+            <p className="text-body text-warning-ink" role="status">
+              Ez a fiók több céghez is tartozik — az új jelszó mindegyiknél
+              érvényes.
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(revealedPassword.password)
+                  .then(() => toast.success('Vágólapra másolva.'))
+                  .catch(() =>
+                    toast.message('Másold ki kézzel a jelszót.')
+                  )
+              }}
+            >
+              Másolás
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                setRevealedPassword(null)
+                onOpenChange(false)
+                onSuccess()
+              }}
+            >
+              Kész
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  if (passwordOpen) {
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) {
+            setPasswordOpen(false)
+            setNewPassword('')
+            setConfirmPassword('')
+            setError(null)
+            onOpenChange(false)
+          }
+        }}
+      >
+        <DialogContent
+          className="max-w-[420px]"
+          onOpenAutoFocus={(e) => {
+            e.preventDefault()
+            cancelRef.current?.focus()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Új jelszó beállítása</DialogTitle>
+            <DialogDescription>
+              <strong className="font-medium text-ink">
+                {personLabel(user)}
+              </strong>
+              {' · '}
+              {user.email}. Azonnal érvényes; a felhasználónak újra be kell
+              lépnie. Az új jelszót csak most mutatjuk.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {isDisabled ? (
+              <p className="text-body text-ink-secondary" role="status">
+                A belépés jelenleg ki van kapcsolva — a jelszó beállítható, de
+                belépéshez előbb engedd engedélyezni.
+              </p>
+            ) : null}
+
+            <FormField label="Új jelszó" htmlFor="set-user-password" required>
+              <Input
+                id="set-user-password"
+                type="text"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                disabled={loading}
+                placeholder="Legalább 8 karakter"
+              />
+            </FormField>
+
+            <FormField
+              label="Jelszó mégegyszer"
+              htmlFor="set-user-password-confirm"
+              required
+            >
+              <Input
+                id="set-user-password-confirm"
+                type="text"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={loading}
+              />
+            </FormField>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={loading}
+              onClick={() => {
+                const generated = generateTempPasswordClient()
+                setNewPassword(generated)
+                setConfirmPassword(generated)
+                setError(null)
+              }}
+            >
+              Generálás
+            </Button>
+
+            {error ? (
+              <p className="text-body text-danger-ink" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button
+              ref={cancelRef}
+              type="button"
+              variant="secondary"
+              disabled={loading}
+              onClick={() => {
+                setPasswordOpen(false)
+                setNewPassword('')
+                setConfirmPassword('')
+                setError(null)
+              }}
+            >
+              Mégse
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              loading={loading}
+              disabled={serviceRoleMissing}
+              onClick={() => void handleSetPassword()}
+            >
+              Jelszó beállítása
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   if (confirmDisable) {
@@ -814,23 +1058,36 @@ function EditMemberDialog({
                 ? 'Jelenleg nem léphet be a cégbe.'
                 : 'Beléphet a cégbe.'}
               {isSelf
-                ? ' (Saját magadnál ez nem állítható.)'
+                ? ' (Saját magadnál a kikapcsolás nem állítható.)'
                 : null}
             </p>
-            {!isSelf ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="mt-2"
                 disabled={loading || serviceRoleMissing}
-                onClick={() => setConfirmDisable(true)}
+                onClick={() => {
+                  setError(null)
+                  setPasswordOpen(true)
+                }}
               >
-                {isDisabled
-                  ? 'Belépés engedélyezése'
-                  : 'Belépés kikapcsolása'}
+                Új jelszó beállítása
               </Button>
-            ) : null}
+              {!isSelf ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={loading || serviceRoleMissing}
+                  onClick={() => setConfirmDisable(true)}
+                >
+                  {isDisabled
+                    ? 'Belépés engedélyezése'
+                    : 'Belépés kikapcsolása'}
+                </Button>
+              ) : null}
+            </div>
           </div>
 
           <div>

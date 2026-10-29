@@ -535,6 +535,102 @@ export async function updateMembershipRole(input: {
   return { ok: true }
 }
 
+export type SetTenantUserPasswordResult =
+  | { ok: true; email: string; multiTenant: boolean }
+  | { ok: false; message: string }
+
+/**
+ * Tenant admin: meglévő tag jelszavának beállítása (Auth admin update).
+ * Session revoke — újra be kell lépnie.
+ */
+export async function setTenantUserPassword(input: {
+  membershipId: string
+  newPassword: string
+}): Promise<SetTenantUserPasswordResult> {
+  const ctx = await requireUserManager()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  if (!isServiceRoleConfigured()) {
+    return {
+      ok: false,
+      message: 'Most nem lehet jelszót állítani. Írj a supportnak.'
+    }
+  }
+
+  const password = input.newPassword
+  if (password.length < 8) {
+    return { ok: false, message: 'A jelszó legalább 8 karakter legyen.' }
+  }
+
+  const admin = createServiceClient()
+  if (!admin) {
+    return { ok: false, message: 'Service role kliens nem elérhető.' }
+  }
+
+  const tenantId = ctx.user.tenantId!
+  const { data: membership, error } = await admin
+    .from('tenant_memberships')
+    .select('id, user_id, role, status')
+    .eq('id', input.membershipId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (error || !membership) {
+    return { ok: false, message: 'A felhasználó nem található.' }
+  }
+
+  if (membership.role === 'owner' && ctx.user.role !== 'owner') {
+    return {
+      ok: false,
+      message: 'Tulajdonos jelszavát csak tulajdonos állíthatja.'
+    }
+  }
+
+  const { data: partnerRow } = await admin
+    .from('partner_profiles')
+    .select('user_id')
+    .eq('user_id', membership.user_id)
+    .maybeSingle()
+  if (partnerRow) {
+    return {
+      ok: false,
+      message:
+        'Ez az email partner fiókhoz tartozik — céges jelszó innen nem állítható.'
+    }
+  }
+
+  const { data: authUser, error: authError } =
+    await admin.auth.admin.getUserById(membership.user_id)
+  if (authError || !authUser.user) {
+    console.error('setTenantUserPassword getUser', authError?.message)
+    return { ok: false, message: 'A Auth fiók nem található.' }
+  }
+
+  const { error: pwError } = await admin.auth.admin.updateUserById(
+    membership.user_id,
+    { password }
+  )
+  if (pwError) {
+    console.error('setTenantUserPassword', pwError.message)
+    return { ok: false, message: 'Nem sikerült beállítani a jelszót.' }
+  }
+
+  await endImpersonationsForUser(admin, membership.user_id)
+  await revokeAppSessionForUser(membership.user_id)
+
+  const { count: tenantCount } = await admin
+    .from('tenant_memberships')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', membership.user_id)
+
+  revalidatePath(USERS_PATH)
+  return {
+    ok: true,
+    email: authUser.user.email ?? '',
+    multiTenant: (tenantCount ?? 0) > 1
+  }
+}
+
 export async function removeTenantMember(input: {
   membershipId: string
 }): Promise<ActionResult> {

@@ -1,10 +1,10 @@
 'use server'
 
-import { randomBytes } from 'crypto'
 import { revalidatePath } from 'next/cache'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { generateTempPassword } from '@/lib/auth/temp-password'
 import {
   DEFAULT_TRIAL_DAYS,
   extendAccessUntil,
@@ -578,16 +578,6 @@ export async function refreshTenantOnboardingFlags(
   revalidatePath(TENANTS_PATH)
   revalidatePath(PLATFORM_PATH)
   return { ok: true }
-}
-
-function generateTempPassword(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-  const bytes = randomBytes(14)
-  let out = ''
-  for (const b of bytes) {
-    out += alphabet[b % alphabet.length]
-  }
-  return `${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8, 12)}-${out.slice(12)}`
 }
 
 export type ResetPasswordResult =
