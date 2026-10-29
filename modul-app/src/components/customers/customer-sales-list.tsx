@@ -79,7 +79,7 @@ const STATUS_OPTIONS = [
   { value: 'fulfilled', label: 'Teljesítve' },
   { value: 'partially_returned', label: 'Részben visszáru' },
   { value: 'returned', label: 'Visszáru' },
-  { value: 'cancelled', label: 'Törölve' }
+  { value: 'cancelled', label: 'Lemondva' }
 ]
 
 const PERIOD_OPTIONS: { value: CustomerSalesPeriod; label: string }[] = [

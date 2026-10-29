@@ -21,6 +21,7 @@ export type SaleListItem = {
   created_at: string
   created_by_label: string | null
   pos_shift_id: string | null
+  archived_at: string | null
   /** Lista: számlázási állapot (peer bizonylatokból). */
   invoice_status: SaleInvoiceListStatus
   /** Ügyfélrendelés-átadásból jött. */
@@ -130,6 +131,12 @@ export type SaleDetail = {
   fulfilled_at: string | null
   created_at: string
   created_by_label: string | null
+  cancelled_at: string | null
+  cancelled_by_label: string | null
+  cancel_reason: string | null
+  cancel_note: string | null
+  archived_at: string | null
+  archived_by_label: string | null
   pos_shift_id: string | null
   /** null = nincs műszak; true = nyitott (fizetés edit OK) */
   pos_shift_open: boolean | null
@@ -158,6 +165,8 @@ export type SaleListParams = {
    * Explicit status szűrő felülírja.
    */
   excludeTerminalStatuses?: boolean
+  /** true → csak archív; default false → archived_at is null. */
+  archivedOnly?: boolean
   /** Inclusive lower bound on created_at (ISO). */
   createdFrom?: string
   /** Inclusive upper bound on created_at (ISO). */
@@ -236,6 +245,7 @@ export async function listSales(
       created_at,
       created_by_label_snapshot,
       pos_shift_id,
+      archived_at,
       customer_special_order_id,
       warehouses ( name ),
       customer_special_orders!sales_orders_customer_special_order_id_fkey ( order_number ),
@@ -247,6 +257,12 @@ export async function listSales(
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .range(from, to)
+
+  if (params.archivedOnly) {
+    query = query.not('archived_at', 'is', null)
+  } else {
+    query = query.is('archived_at', null)
+  }
 
   if (searching) {
     const parts = [
@@ -319,6 +335,7 @@ export async function listSales(
       created_at: row.created_at,
       created_by_label: row.created_by_label_snapshot ?? null,
       pos_shift_id: row.pos_shift_id ?? null,
+      archived_at: (row.archived_at as string | null) ?? null,
       invoice_status: 'none',
       customer_special_order_id:
         (row.customer_special_order_id as string | null) ?? null,
@@ -350,6 +367,7 @@ export async function getCustomerSalesSummary(
     .eq('tenant_id', params.tenantId)
     .eq('customer_id', params.customerId)
     .is('deleted_at', null)
+    .is('archived_at', null)
     .not('status', 'in', '(cancelled,returned)')
 
   if (error) {
@@ -460,6 +478,12 @@ export async function getSale(
       fulfilled_at,
       created_at,
       created_by_label_snapshot,
+      cancelled_at,
+      cancelled_by_label_snapshot,
+      cancel_reason,
+      cancel_note,
+      archived_at,
+      archived_by_label_snapshot,
       pos_shift_id,
       customer_special_order_id,
       warehouses ( name ),
@@ -836,6 +860,20 @@ export async function getSale(
     created_by_label:
       (data as { created_by_label_snapshot?: string | null })
         .created_by_label_snapshot ?? null,
+    cancelled_at:
+      (data as { cancelled_at?: string | null }).cancelled_at ?? null,
+    cancelled_by_label:
+      (data as { cancelled_by_label_snapshot?: string | null })
+        .cancelled_by_label_snapshot ?? null,
+    cancel_reason:
+      (data as { cancel_reason?: string | null }).cancel_reason ?? null,
+    cancel_note:
+      (data as { cancel_note?: string | null }).cancel_note ?? null,
+    archived_at:
+      (data as { archived_at?: string | null }).archived_at ?? null,
+    archived_by_label:
+      (data as { archived_by_label_snapshot?: string | null })
+        .archived_by_label_snapshot ?? null,
     pos_shift_id: posShiftId,
     pos_shift_open: posShiftOpen,
     customer_special_order_id:

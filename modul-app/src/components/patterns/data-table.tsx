@@ -76,13 +76,14 @@ export function DataTableCell({
   children,
   className,
   align = 'left',
-  colSpan
+  colSpan,
+  ...props
 }: {
   children: React.ReactNode
   className?: string
   align?: 'left' | 'right'
   colSpan?: number
-}) {
+} & HTMLAttributes<HTMLTableCellElement>) {
   return (
     <td
       colSpan={colSpan}
@@ -91,6 +92,7 @@ export function DataTableCell({
         align === 'right' && 'text-right tabular-nums',
         className
       )}
+      {...props}
     >
       {children}
     </td>

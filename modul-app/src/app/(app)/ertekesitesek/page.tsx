@@ -59,6 +59,7 @@ export default async function ErtekesitesekPage({
   const { createdFrom, createdTo } = saleListPeriodRange(period)
   const shiftId =
     typeof sp.shift === 'string' && sp.shift.length > 0 ? sp.shift : undefined
+  const archivedOnly = sp.archived === '1'
 
   const user = await getSessionUser()
   const canWrite = Boolean(user?.role && user.role !== 'viewer')
@@ -74,13 +75,14 @@ export default async function ErtekesitesekPage({
         result = await listSales(supabase, {
           tenantId: user.tenantId,
           q,
-          status,
+          status: archivedOnly ? 'all' : status,
           channel,
           createdFrom,
           createdTo,
           page,
           limit: 25,
-          posShiftId: shiftId
+          posShiftId: shiftId,
+          archivedOnly
         })
 
         if (result.rows.length > 0) {
@@ -152,10 +154,11 @@ export default async function ErtekesitesekPage({
       page={result.page}
       limit={result.limit}
       q={q}
-      status={status}
+      status={archivedOnly ? 'all' : status}
       channel={channel}
       period={period}
       shiftId={shiftId}
+      archivedOnly={archivedOnly}
       canWrite={canWrite}
       canPos={canPos}
     />

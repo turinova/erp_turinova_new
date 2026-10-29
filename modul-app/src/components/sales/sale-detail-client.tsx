@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
+  Archive,
   ArrowLeft,
   Download,
   ExternalLink,
@@ -16,6 +17,7 @@ import { toast } from 'sonner'
 import { InvoiceIssueDialog } from '@/components/invoicing/invoice-issue-dialog'
 import { SourceInvoicesSection } from '@/components/invoicing/source-invoices-section'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
+import { CancelSaleDialog } from '@/components/sales/cancel-sale-dialog'
 import {
   DataTable,
   DataTableBody,
@@ -47,7 +49,17 @@ import {
   type InvoiceListItem
 } from '@/lib/invoicing/types'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
-import { fulfillSaleAction } from '@/lib/sales/actions'
+import {
+  archiveSaleAction,
+  fulfillSaleAction,
+  unarchiveSaleAction
+} from '@/lib/sales/actions'
+import { canArchiveSale, canUnarchiveSale } from '@/lib/sales/archive'
+import {
+  canCancelSale,
+  SALE_CANCEL_REASON_LABEL,
+  type SaleCancelReason
+} from '@/lib/sales/cancel'
 import { salePaymentRemaining } from '@/lib/sales/payment-edit'
 import type { SalePaymentRow } from '@/lib/sales/queries'
 import {
@@ -183,6 +195,10 @@ export function SaleDetailClient({
   const [fulfillOpen, setFulfillOpen] = useState(false)
   const [fulfillPending, startFulfill] = useTransition()
   const [openInvoiceAfterFulfill, setOpenInvoiceAfterFulfill] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [unarchiveOpen, setUnarchiveOpen] = useState(false)
+  const [archivePending, setArchivePending] = useState(false)
 
   const stornoOfIds = useMemo(() => stornoTargetIds(invoices), [invoices])
 
@@ -202,17 +218,22 @@ export function SaleDetailClient({
   const customer = detail.customer
   const billingFilled = hasBilling(customer)
   const canEditBilling =
-    canWrite && detail.status !== 'cancelled' && !hasFinalInvoice
+    canWrite &&
+    detail.status !== 'cancelled' &&
+    !detail.archived_at &&
+    !hasFinalInvoice
   const canAssignCustomer = canEditBilling
 
   const isConfirmed = detail.status === 'confirmed'
-  const canFulfill = canWrite && isConfirmed && !hasFinalInvoice
+  const canFulfill =
+    canWrite && isConfirmed && !hasFinalInvoice && !detail.archived_at
 
   const isUnpaidLike =
     detail.payment_status === 'unpaid' || detail.payment_status === 'partial'
   const needsProformaCta =
     canWrite &&
     detail.status !== 'cancelled' &&
+    !detail.archived_at &&
     isUnpaidLike &&
     !hasProforma &&
     !hasFinalInvoice
@@ -222,6 +243,7 @@ export function SaleDetailClient({
     canWrite &&
     detail.status !== 'cancelled' &&
     detail.status !== 'returned' &&
+    !detail.archived_at &&
     !hasFinalInvoice &&
     (detail.payment_status === 'unpaid' || detail.payment_status === 'partial')
 
@@ -236,6 +258,7 @@ export function SaleDetailClient({
   const canIssueInvoiceDoc =
     canWrite &&
     detail.status !== 'cancelled' &&
+    !detail.archived_at &&
     Boolean(hasAgentKey) &&
     billingFilled &&
     invoiceKind.options.length > 0
@@ -268,11 +291,37 @@ export function SaleDetailClient({
 
   const canReturn =
     canWrite &&
+    !detail.archived_at &&
     canStartSaleReturn(detail.status as SaleStatus) &&
     detail.items.some((it) => {
       const rem = it.quantity - (detail.returnedQtyByItemId[it.id] ?? 0)
       return rem > 0.0001
     })
+
+  const cancelGate = useMemo(
+    () =>
+      canCancelSale({
+        status: detail.status as SaleStatus,
+        archivedAt: detail.archived_at,
+        hasActiveFinalInvoice: hasFinalInvoice
+      }),
+    [detail.status, detail.archived_at, hasFinalInvoice]
+  )
+  const archiveGate = useMemo(
+    () =>
+      canArchiveSale({
+        status: detail.status as SaleStatus,
+        archivedAt: detail.archived_at
+      }),
+    [detail.status, detail.archived_at]
+  )
+  const unarchiveGate = useMemo(
+    () => canUnarchiveSale({ archivedAt: detail.archived_at }),
+    [detail.archived_at]
+  )
+  const canCancel = canWrite && cancelGate.ok
+  const canArchive = canWrite && archiveGate.ok
+  const canUnarchive = canWrite && unarchiveGate.ok
 
   useEffect(() => {
     if (searchParams.get('return') === '1' && canReturn) {
@@ -381,6 +430,11 @@ export function SaleDetailClient({
             >
               {SALE_STATUS_LABEL[detail.status as SaleStatus] ?? detail.status}
             </StatusBadge>
+            {detail.archived_at ? (
+              <StatusBadge tone="neutral" variant="soft">
+                Archívum
+              </StatusBadge>
+            ) : null}
             {detail.pos_shift_id ? (
               <Button
                 type="button"
@@ -413,9 +467,69 @@ export function SaleDetailClient({
                 Visszáru indítása
               </Button>
             ) : null}
+            {canCancel ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setCancelOpen(true)}
+              >
+                Eladást lemond
+              </Button>
+            ) : null}
+            {canArchive ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setArchiveOpen(true)}
+              >
+                <Archive className="size-3.5" aria-hidden />
+                Archívumba
+              </Button>
+            ) : null}
+            {canUnarchive ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setUnarchiveOpen(true)}
+              >
+                Archívumból vissza
+              </Button>
+            ) : null}
           </div>
         }
       />
+
+      {detail.status === 'cancelled' ? (
+        <div className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2.5 text-body text-danger-ink">
+          <p className="font-medium">Lemondva</p>
+          <p className="mt-0.5 text-hint">
+            {[
+              detail.cancelled_at
+                ? formatDateTime(detail.cancelled_at)
+                : null,
+              detail.cancelled_by_label,
+              detail.cancel_reason
+                ? SALE_CANCEL_REASON_LABEL[
+                    detail.cancel_reason as SaleCancelReason
+                  ] ?? detail.cancel_reason
+                : null,
+              detail.cancel_note
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </p>
+        </div>
+      ) : null}
+
+      {detail.archived_at ? (
+        <div className="rounded-md border border-border bg-subtle px-3 py-2.5 text-body text-ink-secondary">
+          Archívumban
+          {` · ${formatDateTime(detail.archived_at)}`}
+          {detail.archived_by_label
+            ? ` · ${detail.archived_by_label}`
+            : ''}
+        </div>
+      ) : null}
 
       {nextStep === 'proforma' ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/35 bg-warning-soft px-3 py-2.5">
@@ -978,6 +1092,66 @@ export function SaleDetailClient({
             if (wantInvoice) {
               router.push(`/ertekesitesek/${detail.id}?issue=normal`)
             }
+            router.refresh()
+          })
+        }}
+      />
+
+      {canCancel ? (
+        <CancelSaleDialog
+          open={cancelOpen}
+          onOpenChange={setCancelOpen}
+          saleId={detail.id}
+          saleNumber={detail.sale_number}
+          customerName={detail.customer_name}
+          totalGross={detail.total_gross}
+          hasPayments={detail.payments.length > 0}
+          linkedCso={Boolean(detail.customer_special_order_id)}
+          onSuccess={() => router.refresh()}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
+        title="Archívumba helyezés"
+        description={`${detail.sale_number} eltűnik a normál listából és a KPI-kból. Készlet / fizetés nem változik. Bármikor visszahozható.`}
+        confirmLabel="Archívumba"
+        variant="primary"
+        loading={archivePending}
+        onConfirm={() => {
+          setArchivePending(true)
+          void archiveSaleAction(detail.id).then((result) => {
+            setArchivePending(false)
+            if (!result.ok) {
+              toast.error(result.message)
+              return
+            }
+            toast.success(`${result.saleNumber} archiválva.`)
+            setArchiveOpen(false)
+            router.refresh()
+          })
+        }}
+      />
+
+      <ConfirmDialog
+        open={unarchiveOpen}
+        onOpenChange={setUnarchiveOpen}
+        title="Archívumból vissza"
+        description={`${detail.sale_number} újra megjelenik a normál listában.`}
+        confirmLabel="Archívumból vissza"
+        variant="primary"
+        loading={archivePending}
+        onConfirm={() => {
+          setArchivePending(true)
+          void unarchiveSaleAction(detail.id).then((result) => {
+            setArchivePending(false)
+            if (!result.ok) {
+              toast.error(result.message)
+              return
+            }
+            toast.success(`${result.saleNumber} visszakerült.`)
+            setUnarchiveOpen(false)
             router.refresh()
           })
         }}

@@ -16,6 +16,17 @@ import {
   type ReturnDateWindow
 } from '@/lib/sales/return-search'
 import {
+  canArchiveSale,
+  canUnarchiveSale,
+  SALE_BULK_MAX
+} from '@/lib/sales/archive'
+import {
+  canCancelSale,
+  parseSaleCancelReason,
+  validateSaleCancelNote,
+  type SaleCancelReason
+} from '@/lib/sales/cancel'
+import {
   assignSaleCustomerSchema,
   recordSalePaymentSchema,
   saleFormSchema,
@@ -28,6 +39,7 @@ import {
   type RecordSalePaymentInput,
   type SaleFormInput,
   type SaleReturnFormInput,
+  type SaleStatus,
   type UpdateSaleBillingInput,
   type UpdateSaleNoteInput,
   type UpdateSalePaymentInput,
@@ -926,4 +938,449 @@ export async function getSaleForReturnAction(
         e instanceof Error ? e.message : 'Nem sikerült betölteni az eladást.'
     }
   }
+}
+
+async function saleHasActiveFinalInvoice(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+  saleId: string
+): Promise<boolean> {
+  if (!supabase) return false
+  const { data: invoices } = await supabase
+    .from('invoices')
+    .select('id, invoice_type, is_storno_of_invoice_id')
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', 'sale')
+    .eq('related_source_id', saleId)
+    .is('deleted_at', null)
+
+  const rows = invoices ?? []
+  const stornoOf = new Set(
+    rows
+      .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
+      .map((r) => r.is_storno_of_invoice_id as string)
+  )
+  return rows.some(
+    (r) =>
+      r.invoice_type === 'szamla' &&
+      !r.is_storno_of_invoice_id &&
+      !stornoOf.has(r.id as string)
+  )
+}
+
+export type CancelSaleInput = {
+  saleId: string
+  reason: SaleCancelReason | string
+  note?: string
+}
+
+export type CancelSaleResult =
+  | { ok: true; id: string; saleNumber: string }
+  | { ok: false; message: string }
+
+export async function cancelSaleAction(
+  input: CancelSaleInput
+): Promise<CancelSaleResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const saleId = input.saleId.trim()
+  if (!saleId) return { ok: false, message: 'Hiányzó eladás.' }
+
+  const reason = parseSaleCancelReason(String(input.reason ?? ''))
+  if (!reason) {
+    return { ok: false, message: 'Válassz lemondási okot.' }
+  }
+  const note = (input.note ?? '').trim()
+  const noteErr = validateSaleCancelNote(reason, note)
+  if (noteErr) return { ok: false, message: noteErr }
+
+  const { data: sale, error: saleErr } = await ctx.supabase
+    .from('sales_orders')
+    .select('id, status, sale_number, deleted_at, archived_at')
+    .eq('id', saleId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (saleErr || !sale || sale.deleted_at) {
+    return { ok: false, message: 'Az eladás nem található.' }
+  }
+
+  const hasActiveFinalInvoice = await saleHasActiveFinalInvoice(
+    ctx.supabase,
+    tenantId,
+    saleId
+  )
+
+  const gate = canCancelSale({
+    status: sale.status as SaleStatus,
+    deletedAt: sale.deleted_at,
+    archivedAt: sale.archived_at,
+    hasActiveFinalInvoice
+  })
+  if (!gate.ok) return gate
+
+  const label =
+    ctx.user.displayName?.trim() ||
+    ctx.user.email?.trim() ||
+    'Ismeretlen'
+
+  const { data: updated, error: updateErr } = await ctx.supabase
+    .from('sales_orders')
+    .update({
+      status: 'cancelled',
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: ctx.user.id ?? null,
+      cancelled_by_label_snapshot: label,
+      cancel_reason: reason,
+      cancel_note: note || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', saleId)
+    .eq('tenant_id', tenantId)
+    .in('status', ['draft', 'confirmed'])
+    .is('deleted_at', null)
+    .is('archived_at', null)
+    .select('id, sale_number')
+    .maybeSingle()
+
+  if (updateErr) {
+    console.error('cancelSaleAction', updateErr.message)
+    return { ok: false, message: 'Nem sikerült lemondani az eladást.' }
+  }
+  if (!updated) {
+    return {
+      ok: false,
+      message: 'A státusz közben megváltozott — frissítsd az oldalt.'
+    }
+  }
+
+  revalidateSalePaths(updated.id)
+  revalidatePath('/')
+  return { ok: true, id: updated.id, saleNumber: updated.sale_number }
+}
+
+export type ArchiveSaleResult =
+  | { ok: true; id: string; saleNumber: string }
+  | { ok: false; message: string }
+
+export async function archiveSaleAction(
+  saleIdRaw: string
+): Promise<ArchiveSaleResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const saleId = saleIdRaw.trim()
+  if (!saleId) return { ok: false, message: 'Hiányzó eladás.' }
+
+  const { data: sale, error: saleErr } = await ctx.supabase
+    .from('sales_orders')
+    .select('id, status, sale_number, deleted_at, archived_at')
+    .eq('id', saleId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (saleErr || !sale || sale.deleted_at) {
+    return { ok: false, message: 'Az eladás nem található.' }
+  }
+
+  const gate = canArchiveSale({
+    status: sale.status as SaleStatus,
+    deletedAt: sale.deleted_at,
+    archivedAt: sale.archived_at
+  })
+  if (!gate.ok) return gate
+
+  const label =
+    ctx.user.displayName?.trim() ||
+    ctx.user.email?.trim() ||
+    'Ismeretlen'
+
+  const { data: updated, error: updateErr } = await ctx.supabase
+    .from('sales_orders')
+    .update({
+      archived_at: new Date().toISOString(),
+      archived_by: ctx.user.id ?? null,
+      archived_by_label_snapshot: label,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', saleId)
+    .eq('tenant_id', tenantId)
+    .in('status', [
+      'cancelled',
+      'returned',
+      'fulfilled',
+      'partially_returned'
+    ])
+    .is('deleted_at', null)
+    .is('archived_at', null)
+    .select('id, sale_number')
+    .maybeSingle()
+
+  if (updateErr) {
+    console.error('archiveSaleAction', updateErr.message)
+    return { ok: false, message: 'Nem sikerült archiválni.' }
+  }
+  if (!updated) {
+    return {
+      ok: false,
+      message: 'A státusz közben megváltozott — frissítsd az oldalt.'
+    }
+  }
+
+  revalidateSalePaths(updated.id)
+  revalidatePath('/')
+  return { ok: true, id: updated.id, saleNumber: updated.sale_number }
+}
+
+export async function unarchiveSaleAction(
+  saleIdRaw: string
+): Promise<ArchiveSaleResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const saleId = saleIdRaw.trim()
+  if (!saleId) return { ok: false, message: 'Hiányzó eladás.' }
+
+  const { data: sale, error: saleErr } = await ctx.supabase
+    .from('sales_orders')
+    .select('id, sale_number, deleted_at, archived_at')
+    .eq('id', saleId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (saleErr || !sale || sale.deleted_at) {
+    return { ok: false, message: 'Az eladás nem található.' }
+  }
+
+  const gate = canUnarchiveSale({
+    archivedAt: sale.archived_at,
+    deletedAt: sale.deleted_at
+  })
+  if (!gate.ok) return gate
+
+  const { data: updated, error: updateErr } = await ctx.supabase
+    .from('sales_orders')
+    .update({
+      archived_at: null,
+      archived_by: null,
+      archived_by_label_snapshot: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', saleId)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .not('archived_at', 'is', null)
+    .select('id, sale_number')
+    .maybeSingle()
+
+  if (updateErr) {
+    console.error('unarchiveSaleAction', updateErr.message)
+    return { ok: false, message: 'Nem sikerült visszavonni az archívumot.' }
+  }
+  if (!updated) {
+    return {
+      ok: false,
+      message: 'A státusz közben megváltozott — frissítsd az oldalt.'
+    }
+  }
+
+  revalidateSalePaths(updated.id)
+  revalidatePath('/')
+  return { ok: true, id: updated.id, saleNumber: updated.sale_number }
+}
+
+export type BulkSaleResult =
+  | { ok: true; done: number; skipped: number; errors: string[] }
+  | { ok: false; message: string }
+
+function normalizeBulkIds(ids: string[]): string[] {
+  return [...new Set(ids.map((id) => id.trim()).filter(Boolean))].slice(
+    0,
+    SALE_BULK_MAX
+  )
+}
+
+/** Bulk archív — csak archíválható státuszok; vegyes kijelölésnél skip. */
+export async function bulkArchiveSalesAction(
+  idsRaw: string[]
+): Promise<BulkSaleResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const ids = normalizeBulkIds(idsRaw)
+  if (ids.length === 0) {
+    return { ok: false, message: 'Nincs kijelölt eladás.' }
+  }
+
+  const tenantId = ctx.user.tenantId!
+  const { data: rows, error } = await ctx.supabase
+    .from('sales_orders')
+    .select('id, status, sale_number, deleted_at, archived_at')
+    .eq('tenant_id', tenantId)
+    .in('id', ids)
+    .is('deleted_at', null)
+
+  if (error) {
+    console.error('bulkArchiveSalesAction', error.message)
+    return { ok: false, message: 'Nem sikerült betölteni a kijelölést.' }
+  }
+
+  const label =
+    ctx.user.displayName?.trim() ||
+    ctx.user.email?.trim() ||
+    'Ismeretlen'
+  const now = new Date().toISOString()
+
+  let done = 0
+  let skipped = 0
+  const errors: string[] = []
+
+  for (const row of rows ?? []) {
+    const gate = canArchiveSale({
+      status: row.status as SaleStatus,
+      deletedAt: row.deleted_at,
+      archivedAt: row.archived_at
+    })
+    if (!gate.ok) {
+      skipped += 1
+      continue
+    }
+    const { data: updated, error: updateErr } = await ctx.supabase
+      .from('sales_orders')
+      .update({
+        archived_at: now,
+        archived_by: ctx.user.id ?? null,
+        archived_by_label_snapshot: label,
+        updated_at: now
+      })
+      .eq('id', row.id)
+      .eq('tenant_id', tenantId)
+      .in('status', [
+        'cancelled',
+        'returned',
+        'fulfilled',
+        'partially_returned'
+      ])
+      .is('deleted_at', null)
+      .is('archived_at', null)
+      .select('id')
+      .maybeSingle()
+
+    if (updateErr) {
+      errors.push(`${row.sale_number}: ${updateErr.message}`)
+      continue
+    }
+    if (!updated) {
+      skipped += 1
+      continue
+    }
+    done += 1
+    revalidatePath(`${LIST_PATH}/${row.id}`)
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath('/')
+  return { ok: true, done, skipped, errors }
+}
+
+/** Bulk lemondás — csak draft/confirmed; vegyesnél skip. */
+export async function bulkCancelSalesAction(input: {
+  ids: string[]
+  reason: SaleCancelReason | string
+  note?: string
+}): Promise<BulkSaleResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const ids = normalizeBulkIds(input.ids)
+  if (ids.length === 0) {
+    return { ok: false, message: 'Nincs kijelölt eladás.' }
+  }
+
+  const reason = parseSaleCancelReason(String(input.reason ?? ''))
+  if (!reason) {
+    return { ok: false, message: 'Válassz lemondási okot.' }
+  }
+  const note = (input.note ?? '').trim()
+  const noteErr = validateSaleCancelNote(reason, note)
+  if (noteErr) return { ok: false, message: noteErr }
+
+  const tenantId = ctx.user.tenantId!
+  const { data: rows, error } = await ctx.supabase
+    .from('sales_orders')
+    .select('id, status, sale_number, deleted_at, archived_at')
+    .eq('tenant_id', tenantId)
+    .in('id', ids)
+    .is('deleted_at', null)
+
+  if (error) {
+    console.error('bulkCancelSalesAction', error.message)
+    return { ok: false, message: 'Nem sikerült betölteni a kijelölést.' }
+  }
+
+  const label =
+    ctx.user.displayName?.trim() ||
+    ctx.user.email?.trim() ||
+    'Ismeretlen'
+  const now = new Date().toISOString()
+
+  let done = 0
+  let skipped = 0
+  const errors: string[] = []
+
+  for (const row of rows ?? []) {
+    const hasActiveFinalInvoice = await saleHasActiveFinalInvoice(
+      ctx.supabase,
+      tenantId,
+      row.id
+    )
+    const gate = canCancelSale({
+      status: row.status as SaleStatus,
+      deletedAt: row.deleted_at,
+      archivedAt: row.archived_at,
+      hasActiveFinalInvoice
+    })
+    if (!gate.ok) {
+      skipped += 1
+      continue
+    }
+
+    const { data: updated, error: updateErr } = await ctx.supabase
+      .from('sales_orders')
+      .update({
+        status: 'cancelled',
+        cancelled_at: now,
+        cancelled_by: ctx.user.id ?? null,
+        cancelled_by_label_snapshot: label,
+        cancel_reason: reason,
+        cancel_note: note || null,
+        updated_at: now
+      })
+      .eq('id', row.id)
+      .eq('tenant_id', tenantId)
+      .in('status', ['draft', 'confirmed'])
+      .is('deleted_at', null)
+      .is('archived_at', null)
+      .select('id')
+      .maybeSingle()
+
+    if (updateErr) {
+      errors.push(`${row.sale_number}: ${updateErr.message}`)
+      continue
+    }
+    if (!updated) {
+      skipped += 1
+      continue
+    }
+    done += 1
+    revalidatePath(`${LIST_PATH}/${row.id}`)
+  }
+
+  revalidatePath(LIST_PATH)
+  revalidatePath('/')
+  return { ok: true, done, skipped, errors }
 }

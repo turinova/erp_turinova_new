@@ -5,7 +5,7 @@ export const SALE_STATUS_LABEL = {
   confirmed: 'Átadásra vár',
   fulfilled: 'Teljesítve',
   partially_returned: 'Részben visszáru',
-  cancelled: 'Törölve',
+  cancelled: 'Lemondva',
   returned: 'Visszáru'
 } as const
 

@@ -1,8 +1,8 @@
 # 28 — Értékesítés workflow (Sale)
 
-**Státusz:** S1 + S1.5 + billing/díjbekérő UX.  
+**Státusz:** S1 + S1.5 + billing/díjbekérő UX + lemondás/archív.  
 **Route:** `/ertekesitesek`  
-**Migráció:** `20260509` … **`20260528_sale_confirmed_fulfill.sql`**  
+**Migráció:** `20260509` … **`20260528_sale_confirmed_fulfill.sql`** + **`20260622_sale_cancel_archive.sql`**  
 **Kapcsolat:** [36](36-szamlazas-workflow.md), web B2C channel: [38](38-agent-commerce.md)
 
 ---
@@ -42,6 +42,18 @@ Bolti lookup (bizonyíték-keresés), nem státusz-menedzsment.
 | `period` | `all` \| `today` \| `yesterday` \| `7d` \| `30d` → `created_at` ablak |
 | `channel` | `all` \| `pos` \| `manual` \| `webshop` |
 | Empty | Szűrő nélkül: „Még nincs…”; szűrővel: „Nincs találat” + törlés |
+| Archívum | `?archived=1` — default lista: `archived_at is null`; chip + gomb |
+| Bulk | Oldal kijelölés (max 50); **Eladásokat lemond** (csak draft/confirmed) · **Eladásokat archivál** |
+| `cancelled` label | **Lemondva** (nem „Törölve”) |
+
+## Lemondás / archív
+
+| Művelet | Engedett | Hatás |
+|---|---|---|
+| Lemondás | `draft` \| `confirmed` (nincs stock out); aktív végszámla tilt | `status=cancelled` + audit (`cancel_reason`/`note`); fizetés/számla **marad** |
+| Archív | `cancelled` \| `returned` \| `fulfilled` \| `partially_returned` | `archived_at` — lista + home KPI + ügyfél summary defaultból rejt |
+| Unarchive | bármely archív | `archived_at` clear |
+| Explicit NEM (P0) | fulfilled stock-reverse cancel; payment auto-void; hard delete | — |
 
 ## Create UX
 

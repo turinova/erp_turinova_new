@@ -153,6 +153,7 @@ export async function getHomeSalesKpis(
         .select('id, total_gross, status, fulfilled_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
+        .is('archived_at', null)
         .neq('status', 'cancelled')
         .gte('fulfilled_at', rangeStart)
         .lt('fulfilled_at', rangeEnd),
@@ -161,6 +162,7 @@ export async function getHomeSalesKpis(
         .select('id, total_gross, status, fulfilled_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
+        .is('archived_at', null)
         .in('status', ['fulfilled', 'partially_returned', 'returned'])
         .is('fulfilled_at', null)
         .gte('created_at', rangeStart)
@@ -177,6 +179,7 @@ export async function getHomeSalesKpis(
         .select('id, total_gross, cash_rounding_amount, payment_status')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
+        .is('archived_at', null)
         .not('status', 'in', '(cancelled,returned)')
         .in('payment_status', ['unpaid', 'partial'])
     ])
