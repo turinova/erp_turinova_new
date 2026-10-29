@@ -137,7 +137,6 @@ export default async function HomePage() {
           initialCutting={data.weeklyCutting}
           initialEdge={data.weeklyEdge}
           yearlyAvg={data.yearlyAvg}
-          orders={data.orders}
           footcounter={footcounter}
           showLapszabaszatCharts={showLapszabaszatCharts}
         />

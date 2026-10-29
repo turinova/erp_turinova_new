@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
@@ -22,7 +23,6 @@ import {
   emptyContactInput,
   emptyOrderChannelInput,
   formatCompanyRegNumber,
-  formatPhoneNumber,
   formatTaxNumber,
   HU_PHONE_EXAMPLE,
   SUPPLIER_CURRENCIES,
@@ -283,16 +283,11 @@ export function SupplierForm({
             error={fieldErrors.phone}
             hint={!fieldErrors.phone ? `pl. ${HU_PHONE_EXAMPLE}` : undefined}
           >
-            <Input
+            <PhoneInput
               id="supplier-phone"
               value={form.phone}
               disabled={!canWrite}
-              onChange={(e) =>
-                patch({ phone: formatPhoneNumber(e.target.value) })
-              }
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder={HU_PHONE_EXAMPLE}
+              onValueChange={(phone) => patch({ phone })}
             />
           </FormField>
 
@@ -812,15 +807,13 @@ export function SupplierForm({
                     htmlFor={`contact-phone-${index}`}
                     optionalLabel
                   >
-                    <Input
+                    <PhoneInput
                       id={`contact-phone-${index}`}
                       value={contact.phone}
                       disabled={!canWrite}
-                      onChange={(e) =>
+                      onValueChange={(phone) =>
                         patch({
-                          contacts: updateContact(form, index, {
-                            phone: formatPhoneNumber(e.target.value)
-                          })
+                          contacts: updateContact(form, index, { phone })
                         })
                       }
                     />

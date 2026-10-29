@@ -7,6 +7,7 @@ import { CompanyLogoField } from '@/components/company/company-logo-field'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { upsertTenantCompany } from '@/lib/company/actions'
@@ -16,6 +17,7 @@ import {
   formatTaxNumber
 } from '@/lib/company/parse'
 import type { TenantCompanyRow } from '@/lib/company/queries'
+import { HU_PHONE_EXAMPLE } from '@/lib/customers/parse'
 
 type CompanySettingsFormProps = {
   initial: TenantCompanyRow
@@ -31,7 +33,9 @@ export function CompanySettingsForm({
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState(initial.name)
   const [email, setEmail] = useState(initial.email ?? '')
-  const [phoneNumber, setPhoneNumber] = useState(initial.phone_number ?? '')
+  const [phoneNumber, setPhoneNumber] = useState(
+    () => formatPhoneNumber(initial.phone_number ?? '')
+  )
   const [website, setWebsite] = useState(initial.website ?? '')
   const [country, setCountry] = useState(initial.country || 'Magyarország')
   const [city, setCity] = useState(initial.city ?? '')
@@ -136,17 +140,14 @@ export function CompanySettingsForm({
           optionalLabel
           error={fieldErrors.phoneNumber}
           hint={
-            !fieldErrors.phoneNumber ? 'pl. +36 30 999 2800' : undefined
+            !fieldErrors.phoneNumber ? `pl. ${HU_PHONE_EXAMPLE}` : undefined
           }
         >
-          <Input
+          <PhoneInput
             id="company-phone"
             value={phoneNumber}
             disabled={!canWrite || pending}
-            placeholder="+36 30 999 2800"
-            autoComplete="tel"
-            inputMode="tel"
-            onChange={(e) => setPhoneNumber(formatPhoneNumber(e.target.value))}
+            onValueChange={setPhoneNumber}
           />
         </FormField>
         <FormField

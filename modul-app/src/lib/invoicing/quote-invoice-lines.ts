@@ -1,3 +1,4 @@
+import { formatQuoteFeeLabel } from '@/lib/quotes/fee-totals'
 import type { QuoteDetail } from '@/lib/quotes/queries'
 
 export type QuoteInvoiceLine = {
@@ -202,7 +203,9 @@ function pushAccessoriesAndFees(
     const gross = sign * (Number(fee.gross_price) || 0)
     const net = sign * (Number(fee.unit_price_net) || 0) * qty
     const line = lineFromGross(
-      fee.kind === 'credit' ? `Jóváírás: ${fee.fee_name}` : fee.fee_name,
+      formatQuoteFeeLabel(fee.fee_name, fee.comment, {
+        creditPrefix: fee.kind === 'credit'
+      }),
       gross,
       net,
       {

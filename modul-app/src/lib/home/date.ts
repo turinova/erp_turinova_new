@@ -1,5 +1,8 @@
 /** Budapest dátum segédek a home chartokhoz. */
 
+/** Elmaradás KPI / lista: ennél régebbi gyártási nap kiesik a glance ablakból. */
+export const BACKLOG_MAX_AGE_DAYS = 90
+
 export function budapestTodayYmd(): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Budapest',
@@ -42,16 +45,26 @@ export function mondayOfWeek(ymd: string, weekOffset = 0): string {
   return utc.toISOString().slice(0, 10)
 }
 
+/** Gyártási hét vége = péntek (H–P). */
+export function fridayOfWeek(mondayYmd: string): string {
+  return addDaysYmd(mondayYmd, 4)
+}
+
+/** @deprecated Prefer fridayOfWeek — home chartok H–P. */
 export function saturdayOfWeek(mondayYmd: string): string {
   return addDaysYmd(mondayYmd, 5)
 }
 
-/** 0=Hétfő … 5=Szombat; vasárnap → null. YMD mint UTC dél. */
+/**
+ * 0=Hétfő … 4=Péntek (gyártási nap).
+ * Szombat / vasárnap → null.
+ */
 export function mondayIndexFromYmd(ymd: string): number | null {
   const [y, m, d] = ymd.split('-').map(Number)
   const utc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
   const dow = utc.getUTCDay()
-  if (dow === 0) return null
+  // Sun=0, Sat=6 → nincs gyártás a home heti charton
+  if (dow === 0 || dow === 6) return null
   return dow - 1
 }
 
@@ -97,14 +110,16 @@ export function budapestDayRangeIso(ymd: string): { startIso: string; endIso: st
   }
 }
 
+/** Gyártási hétnapok (H–P) — home heti szabás / élzárás. */
 export const WEEKDAY_LABELS_HU = [
   'Hétfő',
   'Kedd',
   'Szerda',
   'Csütörtök',
-  'Péntek',
-  'Szombat'
+  'Péntek'
 ] as const
+
+export const WORKDAYS_PER_WEEK = WEEKDAY_LABELS_HU.length
 
 export const MONTH_LABELS_HU = [
   'Jan',

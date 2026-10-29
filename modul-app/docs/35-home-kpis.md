@@ -30,10 +30,38 @@
 Jelenlét     [ Bent x/y | Nincs itt | Szabadság | Beteg | Hiányzó nap ]
 Belépők      [ Belépő | Kilépő | Csúcs | Nettó ] + heatmap  ← footcounter
 Elmaradás    [ Szabás m | Élzarás m | Megrendelés db ]   ← lapszabászat, heti szabás felett
-(+ heti chartok ugyanazzal a header+hairline kerettel)
+Heti szabás  H–P · gépenként külön oszlop (grouped) · erős színek · Mai % / Hátra
+Heti élzárás H–P · élanyag stack (top 5 + Egyéb) · 700 m kapacitás vonal
 ```
 
 Grid: lapszabászat ON → `lg:grid-cols-6`, OFF → `lg:grid-cols-5`.
+
+### Elmaradás KPI
+
+| Szabály | Részlet |
+|---|---|
+| Definíció | Lejárt gyártási nap (`production_date` ≤ tegnap BP), még nem kész |
+| Status | csak `ordered` \| `in_production` |
+| Ablak | max **90 nap** (`BACKLOG_MAX_AGE_DAYS`) — régebbi → `staleOrderCount` hint, nem méter |
+| Méter + db | **egy** query (`getBacklogMeters`) |
+| Kizár | `cancelled`, **archív** (`archived_at`), soft-delete; `ready_at`/`finished_at` ha mégis van |
+| Link | `/megrendelesek?overdue=1` (lista chip: Elmaradás) |
+| Copy | „Lejárt gyártási nap, még nem kész” |
+| Query / UI | `chart-queries.ts` · `backlog-meters-card.tsx` |
+
+### Heti gyártás chartok (ügyvezetői glance)
+
+| Szabály | Részlet |
+|---|---|
+| Hét | **H–P** (szombat nincs gyártás) |
+| Szabás | `production_date` + gép; `cutting_length_m`; **nem stacked** — gépenként saját oszlop / nap |
+| Színek | `chart-colors.ts` erős hue (kék/narancs/zöld/lila…) — nem charcoal skála |
+| Glance | Mai terhelés % (Σ m / Σ limit), Hátra m, status mondat |
+| Limit | dashed ReferenceLine = max géplimit; legend: `Név · N m` |
+| Élzárás | `quote_edge_lines` (fallback material `edge_length_m`); top 5 + **Egyéb** |
+| Query | `src/lib/home/chart-queries.ts` · UI: `weekly-*-chart.tsx` |
+| Archív | **minden** home quote-stat: `archived_at IS NULL` (heti szabás/él, gépátlag, elmaradás, lapszabászat KPI) |
+| Lista | **nincs** „Lapszabászati megrendelések” tábla a homeon — részletek: `/megrendelesek`; actionable inbox: partner portal |
 
 ### Definíciók
 

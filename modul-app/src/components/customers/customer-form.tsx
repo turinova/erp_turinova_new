@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import {
   DocumentBillingFields,
   type DocumentBillingState
@@ -54,7 +55,9 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
 
   const [name, setName] = useState(initial?.name ?? '')
   const [email, setEmail] = useState(initial?.email ?? '')
-  const [mobile, setMobile] = useState(initial?.mobile ?? '')
+  const [mobile, setMobile] = useState(
+    () => formatPhoneNumber(initial?.mobile ?? '')
+  )
   const [smsNotification, setSmsNotification] = useState(
     Boolean(initial?.sms_notification)
   )
@@ -171,14 +174,11 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
             error={fieldErrors.mobile}
             hint={!fieldErrors.mobile ? `pl. ${HU_PHONE_EXAMPLE}` : undefined}
           >
-            <Input
+            <PhoneInput
               id="customer-mobile"
               value={mobile}
               disabled={!canWrite}
-              onChange={(e) => setMobile(formatPhoneNumber(e.target.value))}
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder={HU_PHONE_EXAMPLE}
+              onValueChange={setMobile}
             />
           </FormField>
 

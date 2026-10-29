@@ -60,6 +60,7 @@ type OrdersListClientProps = {
   initialStatus: OrderListStatusFilter
   initialMachineId: string
   initialProductionDate: string
+  initialOverdueOnly: boolean
   initialArchivedOnly: boolean
   machines: ProductionMachineOption[]
   paymentMethods: PaymentMethodOption[]
@@ -120,6 +121,7 @@ export function OrdersListClient({
   initialStatus,
   initialMachineId,
   initialProductionDate,
+  initialOverdueOnly,
   initialArchivedOnly,
   machines,
   paymentMethods
@@ -214,6 +216,7 @@ export function OrdersListClient({
       (Boolean(initialQ) ||
         Boolean(initialMachineId) ||
         Boolean(initialProductionDate) ||
+        initialOverdueOnly ||
         initialArchivedOnly ||
         initialStatus !== 'ordered'),
     [
@@ -221,6 +224,7 @@ export function OrdersListClient({
       initialQ,
       initialMachineId,
       initialProductionDate,
+      initialOverdueOnly,
       initialArchivedOnly,
       initialStatus
     ]
@@ -235,7 +239,10 @@ export function OrdersListClient({
 
       <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Státusz szűrő">
         {STATUS_CHIPS.map((chip) => {
-          const active = !initialArchivedOnly && initialStatus === chip.value
+          const active =
+            !initialArchivedOnly &&
+            !initialOverdueOnly &&
+            initialStatus === chip.value
           return (
             <button
               key={chip.value}
@@ -244,6 +251,7 @@ export function OrdersListClient({
                 pushParams({
                   status: chip.value === 'ordered' ? null : chip.value,
                   archived: null,
+                  overdue: null,
                   page: '1'
                 })
               }
@@ -262,8 +270,29 @@ export function OrdersListClient({
           type="button"
           onClick={() =>
             pushParams({
+              overdue: '1',
+              archived: null,
+              status: null,
+              date: null,
+              page: '1'
+            })
+          }
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
+            initialOverdueOnly
+              ? 'border-danger bg-danger-soft text-danger-ink'
+              : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
+          )}
+        >
+          Elmaradás
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            pushParams({
               archived: '1',
               status: 'all',
+              overdue: null,
               page: '1'
             })
           }
@@ -337,19 +366,25 @@ export function OrdersListClient({
               onChange={(e) =>
                 pushParams({
                   date: e.target.value || null,
+                  overdue: null,
                   page: '1'
                 })
               }
             />
           </div>
-          {initialMachineId || initialProductionDate ? (
+          {initialMachineId || initialProductionDate || initialOverdueOnly ? (
             <div className="flex items-end">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  pushParams({ machine: null, date: null, page: '1' })
+                  pushParams({
+                    machine: null,
+                    date: null,
+                    overdue: null,
+                    page: '1'
+                  })
                 }
               >
                 Szűrők törlése

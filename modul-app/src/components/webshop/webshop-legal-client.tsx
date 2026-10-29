@@ -9,11 +9,16 @@ import { toast } from 'sonner'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import {
+  formatPhoneNumber,
+  HU_PHONE_EXAMPLE
+} from '@/lib/customers/parse'
 import { saveWebshopLegalSettings } from '@/lib/webshop/legal-actions'
 import { COUNTIES, COUNTY_CODES } from '@/lib/webshop/legal/constants'
 import type { SellerDefaults } from '@/lib/webshop/legal/context'
@@ -76,7 +81,10 @@ export function WebshopLegalClient({
   const erpValue = (k: SellerKey): string => (k === 'sellerName' ? defaults.sellerName : defaults[k]) ?? ''
   const [seller, setSeller] = useState<Record<SellerKey, string>>(() => {
     const out = {} as Record<SellerKey, string>
-    for (const f of SELLER_FIELDS) out[f.key] = legal[f.key] ?? erpValue(f.key)
+    for (const f of SELLER_FIELDS) {
+      const raw = legal[f.key] ?? erpValue(f.key)
+      out[f.key] = f.key === 'phone' ? formatPhoneNumber(raw) : raw
+    }
     return out
   })
   const [county, setCounty] = useState<string>(legal.county ?? '')
@@ -201,24 +209,48 @@ export function WebshopLegalClient({
         >
           {SELLER_FIELDS.map((f) => {
             const erp = erpValue(f.key)
-            const fromErp = Boolean(erp) && seller[f.key].trim() === erp
+            const erpCompare =
+              f.key === 'phone' ? formatPhoneNumber(erp) : erp
+            const fromErp =
+              Boolean(erpCompare) && seller[f.key].trim() === erpCompare.trim()
             return (
               <FormField
                 key={f.key}
                 label={f.label}
                 htmlFor={`lg-${f.key}`}
                 optionalLabel={f.key === 'vatId'}
-                hint={fromErp ? 'A Cégadatokból' : erp ? `Cégadatokban: ${erp}` : undefined}
+                hint={
+                  f.key === 'phone' && !fromErp
+                    ? `pl. ${HU_PHONE_EXAMPLE}`
+                    : fromErp
+                      ? 'A Cégadatokból'
+                      : erp
+                        ? `Cégadatokban: ${erp}`
+                        : undefined
+                }
                 className={f.span === 2 ? 'sm:col-span-2' : f.span === 4 ? 'col-span-full' : undefined}
                 error={errors[f.key]}
               >
-                <Input
-                  id={`lg-${f.key}`}
-                  type={f.type ?? 'text'}
-                  value={seller[f.key]}
-                  onChange={(e) => setSeller((s) => ({ ...s, [f.key]: e.target.value }))}
-                  disabled={disabled}
-                />
+                {f.key === 'phone' ? (
+                  <PhoneInput
+                    id={`lg-${f.key}`}
+                    value={seller.phone}
+                    disabled={disabled}
+                    onValueChange={(phone) =>
+                      setSeller((s) => ({ ...s, phone }))
+                    }
+                  />
+                ) : (
+                  <Input
+                    id={`lg-${f.key}`}
+                    type={f.type ?? 'text'}
+                    value={seller[f.key]}
+                    onChange={(e) =>
+                      setSeller((s) => ({ ...s, [f.key]: e.target.value }))
+                    }
+                    disabled={disabled}
+                  />
+                )}
               </FormField>
             )
           })}

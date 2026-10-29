@@ -24,6 +24,8 @@ type SearchParams = Promise<{
   machine?: string
   date?: string
   archived?: string
+  /** Home Elmaradás KPI — ordered|in_production, lejárt gyártási nap, max 90 nap. */
+  overdue?: string
 }>
 
 const STATUS_VALUES: OrderListStatusFilter[] = [
@@ -66,12 +68,12 @@ async function OrdersListLoader({
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
   const archivedOnly = params.archived === '1'
+  const overdueOnly = params.overdue === '1' && !archivedOnly
   /** Kereséskor minden státusz (lemondott is) — ne essen el a találat. */
-  const status: OrderListStatusFilter = q || archivedOnly
-    ? 'all'
-    : parseStatus(params.status)
+  const status: OrderListStatusFilter =
+    q || archivedOnly ? 'all' : parseStatus(params.status)
   const machineId = params.machine?.trim() ?? ''
-  const productionDate = params.date?.trim() ?? ''
+  const productionDate = overdueOnly ? '' : (params.date?.trim() ?? '')
 
   let loadError: string | null = null
   let rows: Awaited<ReturnType<typeof listOrders>>['rows'] = []
@@ -93,6 +95,7 @@ async function OrdersListLoader({
               q: q || undefined,
               machineId: machineId || undefined,
               productionDate: productionDate || undefined,
+              overdueOnly,
               archivedOnly,
               page,
               limit: 25
@@ -160,6 +163,7 @@ async function OrdersListLoader({
       initialStatus={status}
       initialMachineId={machineId}
       initialProductionDate={productionDate}
+      initialOverdueOnly={overdueOnly}
       initialArchivedOnly={archivedOnly}
       machines={machines}
       paymentMethods={paymentMethods}

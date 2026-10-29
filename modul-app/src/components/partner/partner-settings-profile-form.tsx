@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -98,16 +99,12 @@ export function PartnerSettingsProfileForm({ profile, email }: Props) {
           hint={!fe.mobile ? `pl. ${HU_PHONE_EXAMPLE}` : undefined}
           error={fe.mobile}
         >
-          <Input
+          <PhoneInput
             id="settings-mobile"
             name="mobile"
-            type="tel"
             required
             value={mobile}
-            onChange={(e) => setMobile(formatPhoneNumber(e.target.value))}
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder={HU_PHONE_EXAMPLE}
+            onValueChange={setMobile}
           />
         </FormField>
 

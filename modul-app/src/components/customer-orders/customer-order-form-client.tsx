@@ -18,12 +18,17 @@ import {
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { grossFromNet } from '@/lib/accessories/parse'
 import { createCustomerSpecialOrderAction } from '@/lib/customer-orders/actions'
 import { fetchCsoProductSearch } from '@/lib/customer-orders/product-search-client'
+import {
+  formatPhoneNumber,
+  HU_PHONE_EXAMPLE
+} from '@/lib/customers/parse'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { PurchaseProductSearchItem } from '@/lib/purchase-orders/queries'
 import { formatMoneyFt } from '@/lib/sales/parse'
@@ -206,7 +211,7 @@ export function CustomerOrderFormClient({
     setCustomerId(id)
     if (!id || !c) return
     setCustomerName(c.name)
-    setCustomerMobile(c.mobile ?? '')
+    setCustomerMobile(formatPhoneNumber(c.mobile ?? ''))
   }
 
   function addCatalogProduct(p: PurchaseProductSearchItem) {
@@ -360,15 +365,14 @@ export function CustomerOrderFormClient({
           htmlFor="cso-mobile"
           required
           error={fieldErrors.customerMobile}
+          hint={!fieldErrors.customerMobile ? `pl. ${HU_PHONE_EXAMPLE}` : undefined}
           className="sm:col-span-2"
         >
-          <Input
+          <PhoneInput
             id="cso-mobile"
             value={customerMobile}
             disabled={!canWrite}
-            onChange={(e) => setCustomerMobile(e.target.value)}
-            autoComplete="tel"
-            inputMode="tel"
+            onValueChange={setCustomerMobile}
           />
         </FormField>
         <FormField

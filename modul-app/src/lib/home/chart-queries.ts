@@ -1,22 +1,30 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import {
+  BACKLOG_MAX_AGE_DAYS,
   MONTH_LABELS_HU,
   WEEKDAY_LABELS_HU,
+  WORKDAYS_PER_WEEK,
+  addDaysYmd,
   budapestTodayYmd,
   budapestYear,
   budapestYesterdayYmd,
+  fridayOfWeek,
   isMondayToFridayYmd,
   mondayIndexFromYmd,
   mondayOfWeek,
-  saturdayOfWeek,
   toBudapestYmdFromIso
 } from '@/lib/home/date'
-import type { QuoteStatus } from '@/lib/quotes/queries'
+
+export { BACKLOG_MAX_AGE_DAYS }
 
 export type BacklogMeters = {
   cuttingM: number
   edgeM: number
+  /** Nyitott megrendelés a 90 napos ablakban (ordered | in_production). */
+  orderCount: number
+  /** Nyitott, de a 90 napos ablakon kívül — nem része a méternek. */
+  staleOrderCount: number
 }
 
 export type WeeklyCuttingData = {
@@ -62,24 +70,25 @@ export type YearlyMachineAvgData = {
   }>
 }
 
-export type HomeOrderRow = {
-  id: string
-  order_number: string
-  status: QuoteStatus
-  customer_name: string
-  production_machine_name: string | null
-  production_date: string | null
-  bucket: 'overdue' | 'today' | 'upcoming' | 'undated'
-}
-
 const EDGE_CAPACITY_PER_DAY_M = 700
 
 function round1(n: number) {
   return Math.round(n * 10) / 10
 }
 
+function emptyWorkweek(): number[] {
+  return Array.from({ length: WORKDAYS_PER_WEEK }, () => 0)
+}
+
 function isDone(readyAt: string | null, finishedAt: string | null) {
   return Boolean(readyAt || finishedAt)
+}
+
+/** Nap index a gyártási héten (0–4); külföldi / hétvége → null. */
+function workdayIndex(ymd: string): number | null {
+  const idx = mondayIndexFromYmd(ymd)
+  if (idx === null || idx >= WORKDAYS_PER_WEEK) return null
+  return idx
 }
 
 async function sumMetersForQuotes(
@@ -108,22 +117,31 @@ async function sumMetersForQuotes(
   return map
 }
 
-/** Elmaradás: gyártási dátum ≤ tegnap, még nincs ready/finished. */
+/**
+ * Elmaradás (ügyvezetői glance):
+ * - status ∈ ordered | in_production
+ * - production_date ≤ tegnap (mai nap nem elmaradás)
+ * - archív / soft-delete ki
+ * - méter + db: csak az utolsó BACKLOG_MAX_AGE_DAYS nap
+ * - staleOrderCount: régebbi zombik (külön hint)
+ */
 export async function getBacklogMeters(
   supabase: SupabaseClient,
   tenantId: string
 ): Promise<BacklogMeters> {
-  const before = budapestYesterdayYmd()
+  const yesterday = budapestYesterdayYmd()
+  const windowStart = addDaysYmd(budapestTodayYmd(), -BACKLOG_MAX_AGE_DAYS)
 
   const { data, error } = await supabase
     .from('quotes')
-    .select('id, ready_at, finished_at')
+    .select('id, ready_at, finished_at, production_date')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
+    .is('archived_at', null)
     .not('order_number', 'is', null)
     .not('production_date', 'is', null)
-    .lte('production_date', before)
-    .neq('status', 'cancelled')
+    .lte('production_date', yesterday)
+    .in('status', ['ordered', 'in_production'])
 
   if (error) {
     console.error('getBacklogMeters', error.message)
@@ -133,9 +151,15 @@ export async function getBacklogMeters(
   const open = (data ?? []).filter(
     (q) => !isDone(q.ready_at as string | null, q.finished_at as string | null)
   )
+  const inWindow = open.filter((q) => {
+    const d = q.production_date as string
+    return d >= windowStart
+  })
+  const staleOrderCount = open.length - inWindow.length
+
   const meters = await sumMetersForQuotes(
     supabase,
-    open.map((q) => q.id)
+    inWindow.map((q) => q.id)
   )
 
   let cuttingM = 0
@@ -145,7 +169,12 @@ export async function getBacklogMeters(
     edgeM += m.edge
   }
 
-  return { cuttingM: round1(cuttingM), edgeM: round1(edgeM) }
+  return {
+    cuttingM: round1(cuttingM),
+    edgeM: round1(edgeM),
+    orderCount: inWindow.length,
+    staleOrderCount
+  }
 }
 
 export async function getWeeklyCutting(
@@ -154,7 +183,7 @@ export async function getWeeklyCutting(
   weekOffset = 0
 ): Promise<WeeklyCuttingData> {
   const monday = mondayOfWeek(budapestTodayYmd(), weekOffset)
-  const saturday = saturdayOfWeek(monday)
+  const friday = fridayOfWeek(monday)
 
   const { data: weeklyData, error } = await supabase
     .from('quotes')
@@ -170,10 +199,11 @@ export async function getWeeklyCutting(
     )
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
+    .is('archived_at', null)
     .neq('status', 'cancelled')
     .not('production_machine_id', 'is', null)
     .gte('production_date', monday)
-    .lte('production_date', saturday)
+    .lte('production_date', friday)
 
   if (error) {
     console.error('getWeeklyCutting', error.message)
@@ -250,16 +280,16 @@ export async function getWeeklyCutting(
 
   const seriesData: Record<string, number[]> = {}
   for (const id of machineIds) {
-    seriesData[id] = [0, 0, 0, 0, 0, 0]
+    seriesData[id] = emptyWorkweek()
   }
 
   for (const [dateStr, machineData] of sourceMap) {
-    const idx = mondayIndexFromYmd(dateStr)
-    if (idx === null || idx > 5) continue
+    const idx = workdayIndex(dateStr)
+    if (idx === null) continue
     for (const [machineId, val] of machineData) {
       if (seriesData[machineId]) {
         seriesData[machineId][idx] = useDb
-          ? (seriesData[machineId][idx] + val)
+          ? seriesData[machineId][idx] + val
           : round1(seriesData[machineId][idx] + val)
       }
     }
@@ -267,27 +297,27 @@ export async function getWeeklyCutting(
 
   const series = machineIds.map((machineId) => ({
     name: machineMap.get(machineId)?.name ?? `Gép ${machineId.slice(0, 8)}`,
-    data: seriesData[machineId] ?? [0, 0, 0, 0, 0, 0]
+    data: seriesData[machineId] ?? emptyWorkweek()
   }))
 
-  const dailyTotals = [0, 0, 0, 0, 0, 0]
+  const dailyTotals = emptyWorkweek()
   for (const data of Object.values(seriesData)) {
     data.forEach((v, i) => {
       dailyTotals[i] += v
     })
   }
 
-  const doneTotals = [0, 0, 0, 0, 0, 0]
-  const remainingTotals = [0, 0, 0, 0, 0, 0]
+  const doneTotals = emptyWorkweek()
+  const remainingTotals = emptyWorkweek()
   if (!useDb) {
     for (const [dateStr, val] of doneByDate) {
-      const idx = mondayIndexFromYmd(dateStr)
-      if (idx === null || idx > 5) continue
+      const idx = workdayIndex(dateStr)
+      if (idx === null) continue
       doneTotals[idx] += val
     }
     for (const [dateStr, val] of remainingByDate) {
-      const idx = mondayIndexFromYmd(dateStr)
-      if (idx === null || idx > 5) continue
+      const idx = workdayIndex(dateStr)
+      if (idx === null) continue
       remainingTotals[idx] += val
     }
   }
@@ -306,7 +336,7 @@ export async function getWeeklyCutting(
     doneTotals: doneTotals.map(round1),
     remainingTotals: remainingTotals.map(round1),
     weekStart: monday,
-    weekEnd: saturday,
+    weekEnd: friday,
     weekOffset,
     orderCount: quotes.length,
     unit: useDb ? 'db' : 'm'
@@ -319,17 +349,18 @@ export async function getWeeklyEdge(
   weekOffset = 0
 ): Promise<WeeklyEdgeData> {
   const monday = mondayOfWeek(budapestTodayYmd(), weekOffset)
-  const saturday = saturdayOfWeek(monday)
+  const friday = fridayOfWeek(monday)
 
   const { data: weeklyQuotes, error } = await supabase
     .from('quotes')
     .select('id, production_date, status')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
+    .is('archived_at', null)
     .neq('status', 'cancelled')
     .not('production_date', 'is', null)
     .gte('production_date', monday)
-    .lte('production_date', saturday)
+    .lte('production_date', friday)
 
   if (error) {
     console.error('getWeeklyEdge', error.message)
@@ -341,7 +372,7 @@ export async function getWeeklyEdge(
 
   // Élanyag szerinti bontás
   const edgeByName = new Map<string, number[]>()
-  const dailyTotals = [0, 0, 0, 0, 0, 0]
+  const dailyTotals = emptyWorkweek()
 
   if (quoteIds.length > 0) {
     const { data: materialLines } = await supabase
@@ -369,12 +400,12 @@ export async function getWeeklyEdge(
         if (!quoteId) continue
         const date = quoteDate.get(quoteId)
         if (!date) continue
-        const idx = mondayIndexFromYmd(date)
-        if (idx === null || idx > 5) continue
+        const idx = workdayIndex(date)
+        if (idx === null) continue
 
         const name = (edge.edge_name as string) || 'Élzáró'
         if (!edgeByName.has(name)) {
-          edgeByName.set(name, [0, 0, 0, 0, 0, 0])
+          edgeByName.set(name, emptyWorkweek())
         }
         const arr = edgeByName.get(name)!
         const len = Number(edge.length_m) || 0
@@ -386,11 +417,11 @@ export async function getWeeklyEdge(
     // Fallback: ha nincs edge line, material line edge_length_m
     if (edgeByName.size === 0) {
       const meters = await sumMetersForQuotes(supabase, quoteIds)
-      const seriesData = [0, 0, 0, 0, 0, 0]
+      const seriesData = emptyWorkweek()
       for (const q of quotes) {
         const date = q.production_date as string
-        const idx = mondayIndexFromYmd(date)
-        if (idx === null || idx > 5) continue
+        const idx = workdayIndex(date)
+        if (idx === null) continue
         const m = meters.get(q.id)?.edge ?? 0
         seriesData[idx] = round1(seriesData[idx] + m)
         dailyTotals[idx] = seriesData[idx]
@@ -402,11 +433,11 @@ export async function getWeeklyEdge(
 
     // Ha még mindig 0 m, db / nap
     if (edgeByName.size === 0 && quotes.length > 0) {
-      const seriesData = [0, 0, 0, 0, 0, 0]
+      const seriesData = emptyWorkweek()
       for (const q of quotes) {
         const date = q.production_date as string
-        const idx = mondayIndexFromYmd(date)
-        if (idx === null || idx > 5) continue
+        const idx = workdayIndex(date)
+        if (idx === null) continue
         seriesData[idx] += 1
         dailyTotals[idx] = seriesData[idx]
       }
@@ -414,10 +445,30 @@ export async function getWeeklyEdge(
     }
   }
 
-  const series = [...edgeByName.entries()]
-    .sort(([a], [b]) => a.localeCompare(b, 'hu'))
-    .slice(0, 12)
-    .map(([name, data]) => ({ name, data }))
+  // Top 5 élanyag + Egyéb (glance: ne legyen 12 szürke stack)
+  const ranked = [...edgeByName.entries()].sort((a, b) => {
+    const sumA = a[1].reduce((s, v) => s + v, 0)
+    const sumB = b[1].reduce((s, v) => s + v, 0)
+    return sumB - sumA
+  })
+  const TOP = 5
+  let series: Array<{ name: string; data: number[] }>
+  if (ranked.length <= TOP) {
+    series = ranked.map(([name, data]) => ({ name, data }))
+  } else {
+    const top = ranked.slice(0, TOP)
+    const rest = ranked.slice(TOP)
+    const other = emptyWorkweek()
+    for (const [, data] of rest) {
+      data.forEach((v, i) => {
+        other[i] = round1(other[i] + v)
+      })
+    }
+    series = [
+      ...top.map(([name, data]) => ({ name, data })),
+      { name: 'Egyéb', data: other }
+    ]
+  }
 
   const resolvedUnit: 'm' | 'db' =
     series.length === 1 && series[0]?.name === 'Megrendelés' ? 'db' : 'm'
@@ -428,7 +479,7 @@ export async function getWeeklyEdge(
     dailyTotals,
     capacityPerDayM: EDGE_CAPACITY_PER_DAY_M,
     weekStart: monday,
-    weekEnd: saturday,
+    weekEnd: friday,
     weekOffset,
     orderCount: quotes.length,
     unit: resolvedUnit
@@ -457,6 +508,7 @@ export async function getYearlyMachineAvg(
     )
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
+    .is('archived_at', null)
     .neq('status', 'cancelled')
     .not('ready_at', 'is', null)
     .not('production_machine_id', 'is', null)
@@ -540,83 +592,11 @@ export async function getYearlyMachineAvg(
   return { year: y, categories, series }
 }
 
-export async function getHomeOrdersTable(
-  supabase: SupabaseClient,
-  tenantId: string,
-  limit = 25
-): Promise<HomeOrderRow[]> {
-  const today = budapestTodayYmd()
-
-  const { data, error } = await supabase
-    .from('quotes')
-    .select(
-      `
-      id,
-      order_number,
-      status,
-      production_date,
-      customers ( name ),
-      production_machines ( name )
-    `
-    )
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .not('order_number', 'is', null)
-    .in('status', ['ordered', 'in_production'])
-
-  if (error) {
-    console.error('getHomeOrdersTable', error.message)
-    throw new Error('Megrendeléslista betöltése sikertelen.')
-  }
-
-  const rank = { overdue: 0, today: 1, upcoming: 2, undated: 3 } as const
-
-  const rows: HomeOrderRow[] = (data ?? []).map((row) => {
-    const customers = row.customers as
-      | { name: string }
-      | { name: string }[]
-      | null
-    const customer = Array.isArray(customers) ? customers[0] : customers
-    const machines = row.production_machines as
-      | { name: string }
-      | { name: string }[]
-      | null
-    const machine = Array.isArray(machines) ? machines[0] : machines
-    const production_date = row.production_date as string | null
-    let bucket: HomeOrderRow['bucket'] = 'undated'
-    if (production_date) {
-      if (production_date < today) bucket = 'overdue'
-      else if (production_date === today) bucket = 'today'
-      else bucket = 'upcoming'
-    }
-    return {
-      id: row.id,
-      order_number: row.order_number as string,
-      status: row.status as QuoteStatus,
-      customer_name: customer?.name ?? '—',
-      production_machine_name: machine?.name ?? null,
-      production_date,
-      bucket
-    }
-  })
-
-  rows.sort((a, b) => {
-    const br = rank[a.bucket] - rank[b.bucket]
-    if (br !== 0) return br
-    return (a.production_date ?? '9999').localeCompare(
-      b.production_date ?? '9999'
-    )
-  })
-
-  return rows.slice(0, limit)
-}
-
 export type HomePageData = {
   backlog: BacklogMeters
   weeklyCutting: WeeklyCuttingData
   weeklyEdge: WeeklyEdgeData
   yearlyAvg: YearlyMachineAvgData
-  orders: HomeOrderRow[]
   today: string
 }
 
@@ -625,21 +605,18 @@ export async function getHomePageData(
   tenantId: string,
   weekOffset = 0
 ): Promise<HomePageData> {
-  const [backlog, weeklyCutting, weeklyEdge, yearlyAvg, orders] =
-    await Promise.all([
-      getBacklogMeters(supabase, tenantId),
-      getWeeklyCutting(supabase, tenantId, weekOffset),
-      getWeeklyEdge(supabase, tenantId, weekOffset),
-      getYearlyMachineAvg(supabase, tenantId),
-      getHomeOrdersTable(supabase, tenantId)
-    ])
+  const [backlog, weeklyCutting, weeklyEdge, yearlyAvg] = await Promise.all([
+    getBacklogMeters(supabase, tenantId),
+    getWeeklyCutting(supabase, tenantId, weekOffset),
+    getWeeklyEdge(supabase, tenantId, weekOffset),
+    getYearlyMachineAvg(supabase, tenantId)
+  ])
 
   return {
     backlog,
     weeklyCutting,
     weeklyEdge,
     yearlyAvg,
-    orders,
     today: budapestTodayYmd()
   }
 }

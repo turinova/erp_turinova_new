@@ -304,6 +304,7 @@ export async function getQuoteForPdf(
   const fees = feeRows.map((f) => ({
     id: f.id,
     fee_name: f.fee_name,
+    comment: f.comment,
     quantity: f.quantity,
     unit_shortform: f.unit_shortform || 'db',
     unit_price_net: f.unit_price_net,

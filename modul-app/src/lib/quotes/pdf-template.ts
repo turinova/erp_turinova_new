@@ -1,6 +1,8 @@
 // Plain HTML template function for Quote PDF (no React)
 // Ported 1:1 from main-app quotes PDF template.
 
+import { formatQuoteFeeLabel } from '@/lib/quotes/fee-totals'
+
 export type QuotePdfPricingLine = {
   id: string
   material_name: string
@@ -36,6 +38,7 @@ export type QuotePdfPricingLine = {
 export type QuotePdfFee = {
   id: string
   fee_name: string
+  comment?: string | null
   quantity: number
   unit_shortform?: string
   unit_price_net: number
@@ -448,18 +451,19 @@ export default function generateQuotePdfHtml({
     `
   }).join('')
 
-  // 4. Fees — DB gross_price
+  // 4. Fees — DB gross_price; megjegyzés zárójelben a név után
   const feeRows = quote.fees.map((fee) => {
     const lineGross = Math.round(Number(fee.gross_price) || 0)
     const qty = Number(fee.quantity) || 1
     const unitPriceGross = qty > 0 ? Math.round(lineGross / qty) : 0
     const chip =
       fee.kind === 'credit' || fee.gross_price < 0 ? 'Jóváírás' : 'Díj'
+    const feeLabel = formatQuoteFeeLabel(fee.fee_name, fee.comment)
 
     return `
       <tr>
         <td>
-          <div style="font-weight: 500;">${escapeHtml(fee.fee_name)}</div>
+          <div style="font-weight: 500;">${escapeHtml(feeLabel)}</div>
         </td>
         <td></td>
         <td>

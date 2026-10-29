@@ -2,7 +2,6 @@ import { DEFAULT_FOOTCOUNTER_OPEN_HOURS } from '@/lib/footcounter/open-hours'
 import type { FootcounterHomeSlim } from '@/lib/footcounter/types'
 import type {
   BacklogMeters,
-  HomeOrderRow,
   WeeklyCuttingData,
   WeeklyEdgeData,
   YearlyMachineAvgData
@@ -116,36 +115,38 @@ export const HOME_DASHBOARD_FIXTURE = {
 
   backlog: {
     cuttingM: 48.2,
-    edgeM: 126.5
+    edgeM: 126.5,
+    orderCount: 3,
+    staleOrderCount: 0
   } satisfies BacklogMeters,
 
   cutting: {
-    categories: ['H', 'K', 'Sze', 'Cs', 'P', 'Szo'],
+    categories: ['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek'],
     series: [
-      { name: 'Homag 1', data: [42, 38, 55, 48, 61, 12] },
-      { name: 'SCM', data: [28, 31, 22, 35, 40, 0] }
+      { name: 'Homag 1', data: [42, 38, 55, 48, 61] },
+      { name: 'SCM', data: [28, 31, 22, 35, 40] }
     ],
     machineLimits: [
       { machineId: 'm1', machineName: 'Homag 1', limit: 80 },
       { machineId: 'm2', machineName: 'SCM', limit: 50 }
     ],
-    dailyTotals: [70, 69, 77, 83, 101, 12],
-    doneTotals: [52, 48, 40, 30, 18, 0],
-    remainingTotals: [18, 21, 37, 53, 83, 12],
+    dailyTotals: [70, 69, 77, 83, 101],
+    doneTotals: [52, 48, 40, 30, 18],
+    remainingTotals: [18, 21, 37, 53, 83],
     weekStart: '2026-03-30',
-    weekEnd: '2026-04-04',
+    weekEnd: '2026-04-03',
     weekOffset: 0,
     orderCount: 14,
     unit: 'm' as const
   } satisfies WeeklyCuttingData,
 
   edge: {
-    categories: ['H', 'K', 'Sze', 'Cs', 'P', 'Szo'],
-    series: [{ name: 'Élzáró', data: [420, 380, 510, 460, 580, 90] }],
-    dailyTotals: [420, 380, 510, 460, 580, 90],
+    categories: ['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek'],
+    series: [{ name: 'Élzáró', data: [420, 380, 510, 460, 580] }],
+    dailyTotals: [420, 380, 510, 460, 580],
     capacityPerDayM: 700,
     weekStart: '2026-03-30',
-    weekEnd: '2026-04-04',
+    weekEnd: '2026-04-03',
     weekOffset: 0,
     orderCount: 14,
     unit: 'm' as const
@@ -168,44 +169,5 @@ export const HOME_DASHBOARD_FIXTURE = {
         data: [34, 38, 41, 0, 0, 0]
       }
     ]
-  } satisfies YearlyMachineAvgData,
-
-  orders: [
-    {
-      id: 'q1',
-      order_number: 'O-2026-0842',
-      status: 'in_production',
-      customer_name: 'Kovács Asztalos Kft.',
-      production_machine_name: 'Homag 1',
-      production_date: '2026-03-28',
-      bucket: 'overdue'
-    },
-    {
-      id: 'q2',
-      order_number: 'O-2026-0851',
-      status: 'ordered',
-      customer_name: 'Bútorház Bt.',
-      production_machine_name: 'SCM',
-      production_date: '2026-03-31',
-      bucket: 'today'
-    },
-    {
-      id: 'q3',
-      order_number: 'O-2026-0855',
-      status: 'in_production',
-      customer_name: 'Design Studio',
-      production_machine_name: 'Homag 1',
-      production_date: '2026-04-01',
-      bucket: 'upcoming'
-    },
-    {
-      id: 'q4',
-      order_number: 'O-2026-0860',
-      status: 'ready',
-      customer_name: 'Lakberendezés Plus',
-      production_machine_name: 'SCM',
-      production_date: '2026-03-30',
-      bucket: 'upcoming'
-    }
-  ] satisfies HomeOrderRow[]
+  } satisfies YearlyMachineAvgData
 } as const

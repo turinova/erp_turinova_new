@@ -17,6 +17,17 @@ export type QuoteFeeRow = {
   comment: string | null
 }
 
+/** PDF / számla tételnév: „Díj név (megjegyzés)” ha van comment. */
+export function formatQuoteFeeLabel(
+  feeName: string,
+  comment?: string | null,
+  opts?: { creditPrefix?: boolean }
+): string {
+  const note = (comment ?? '').trim()
+  const base = note ? `${feeName} (${note})` : feeName
+  return opts?.creditPrefix ? `Jóváírás: ${base}` : base
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }

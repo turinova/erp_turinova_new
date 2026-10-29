@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useActionState, useEffect, useMemo, useState } from 'react'
 
 import { FormField } from '@/components/patterns/form-field'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
@@ -17,7 +18,6 @@ import type { PartnerCompanyOption } from '@/lib/partner/companies'
 import { getPartnerLegalUrls } from '@/lib/partner/legal-urls'
 import {
   formatCompanyRegNumber,
-  formatPhoneNumber,
   formatTaxNumber,
   HU_PHONE_EXAMPLE,
   validatePartnerAccountStep,
@@ -241,18 +241,12 @@ export function PartnerRegisterWizard() {
                 }
                 error={mergedErrors.mobile}
               >
-                <Input
+                <PhoneInput
                   id="partner-mobile"
                   name="mobile"
-                  type="tel"
                   value={draft.mobile}
-                  onChange={(e) =>
-                    patch('mobile', formatPhoneNumber(e.target.value))
-                  }
-                  autoComplete="tel"
+                  onValueChange={(v) => patch('mobile', v)}
                   required
-                  inputMode="tel"
-                  placeholder={HU_PHONE_EXAMPLE}
                 />
               </FormField>
               <FormField

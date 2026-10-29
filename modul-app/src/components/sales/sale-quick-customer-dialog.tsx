@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -15,10 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { createCustomer } from '@/lib/customers/actions'
-import {
-  formatPhoneNumber,
-  HU_PHONE_EXAMPLE
-} from '@/lib/customers/parse'
+import { HU_PHONE_EXAMPLE } from '@/lib/customers/parse'
 
 type Props = {
   open: boolean
@@ -169,11 +167,10 @@ export function SaleQuickCustomerDialog({
             hint={`Opcionális · pl. ${HU_PHONE_EXAMPLE}`}
             error={mobileError ?? undefined}
           >
-            <Input
+            <PhoneInput
               id="sale-qc-mobile"
               value={mobile}
-              onChange={(e) => setMobile(formatPhoneNumber(e.target.value))}
-              inputMode="tel"
+              onValueChange={setMobile}
               disabled={pending}
             />
           </FormField>

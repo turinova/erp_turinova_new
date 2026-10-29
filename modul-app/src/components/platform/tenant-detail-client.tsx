@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { MonthlyBillSummary } from '@/components/billing/monthly-bill-summary'
+import { formatPhoneNumber, HU_PHONE_EXAMPLE } from '@/lib/customers/parse'
 import {
   DataTable,
   DataTableBody,
@@ -195,7 +197,9 @@ export function TenantDetailClient({
   const [internalNotes, setInternalNotes] = useState(
     tenant.internal_notes ?? ''
   )
-  const [contactPhone, setContactPhone] = useState(tenant.contact_phone ?? '')
+  const [contactPhone, setContactPhone] = useState(
+    () => formatPhoneNumber(tenant.contact_phone ?? '')
+  )
   const [contactEmail, setContactEmail] = useState(tenant.contact_email ?? '')
 
   const [addOpen, setAddOpen] = useState(false)
@@ -288,7 +292,7 @@ export function TenantDetailClient({
     setAccessUntil(toDateOnly(tenant.access_until) ?? '')
     setBillingNotes(tenant.billing_notes ?? '')
     setInternalNotes(tenant.internal_notes ?? '')
-    setContactPhone(tenant.contact_phone ?? '')
+    setContactPhone(formatPhoneNumber(tenant.contact_phone ?? ''))
     setContactEmail(tenant.contact_email ?? '')
   }, [tenant])
 
@@ -971,11 +975,12 @@ export function TenantDetailClient({
                 >
                   Kapcsolat telefon
                 </label>
-                <Input
+                <PhoneInput
                   id="contact-phone"
                   value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
+                  onValueChange={setContactPhone}
                   disabled={pending}
+                  placeholder={HU_PHONE_EXAMPLE}
                 />
               </div>
               <div>

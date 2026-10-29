@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -35,6 +36,10 @@ import {
 } from '@/lib/customer-orders/types'
 import { fetchCsoProductSearch } from '@/lib/customer-orders/product-search-client'
 import type { PurchaseProductSearchItem } from '@/lib/purchase-orders/queries'
+import {
+  formatPhoneNumber,
+  HU_PHONE_EXAMPLE
+} from '@/lib/customers/parse'
 import { formatMoneyFt } from '@/lib/sales/parse'
 
 function parseMoney(raw: string): number | null {
@@ -191,7 +196,9 @@ export function CsoHeaderEditDialog({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState(order.customerName)
-  const [mobile, setMobile] = useState(order.customerMobile)
+  const [mobile, setMobile] = useState(
+    () => formatPhoneNumber(order.customerMobile)
+  )
   const [deposit, setDeposit] = useState('')
   const [promised, setPromised] = useState('')
   const [note, setNote] = useState('')
@@ -200,14 +207,15 @@ export function CsoHeaderEditDialog({
   useEffect(() => {
     if (!open) return
     setName(order.customerName)
-    setMobile(order.customerMobile)
+    setMobile(formatPhoneNumber(order.customerMobile))
     setDeposit(order.depositAmount != null ? String(order.depositAmount) : '')
     setPromised(order.promisedDate ?? '')
     setNote(order.note ?? '')
     setErrors({})
   }, [open, order])
 
-  const mobileChanged = mobile.trim() !== order.customerMobile
+  const mobileChanged =
+    formatPhoneNumber(mobile) !== formatPhoneNumber(order.customerMobile)
 
   function save() {
     startTransition(async () => {
@@ -258,13 +266,13 @@ export function CsoHeaderEditDialog({
             htmlFor="cso-h-mobile"
             required
             error={errors.customerMobile}
+            hint={!errors.customerMobile ? `pl. ${HU_PHONE_EXAMPLE}` : undefined}
             className="sm:col-span-2"
           >
-            <Input
+            <PhoneInput
               id="cso-h-mobile"
               value={mobile}
-              inputMode="tel"
-              onChange={(e) => setMobile(e.target.value)}
+              onValueChange={setMobile}
             />
           </FormField>
           {mobileChanged && order.smsSentAt ? (

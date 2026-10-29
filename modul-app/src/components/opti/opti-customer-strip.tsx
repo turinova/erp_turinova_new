@@ -6,9 +6,14 @@ import { ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
+import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
+import {
+  formatPhoneNumber,
+  HU_PHONE_EXAMPLE
+} from '@/lib/customers/parse'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { OptiPanelDraft } from '@/lib/opti/panel-draft'
 import type { QuoteResult } from '@/lib/opti/quote-calculations'
@@ -52,7 +57,7 @@ function draftFromCustomer(row: OptiCustomerOption): OptiCustomerDraft {
     customerId: row.id,
     name: row.name,
     email: row.email ?? '',
-    mobile: row.mobile ?? '',
+    mobile: formatPhoneNumber(row.mobile ?? ''),
     billingName: row.billing_name ?? '',
     billingCountry: row.billing_country || 'Magyarország',
     billingCity: row.billing_city ?? '',
@@ -96,7 +101,12 @@ export function OptiCustomerStrip({
   const isEdit = Boolean(quoteId)
   const [draft, setDraft] = useState<OptiCustomerDraft>(() => {
     if (initialCustomer) return draftFromCustomer(initialCustomer)
-    if (initialDraft?.name?.trim()) return initialDraft
+    if (initialDraft?.name?.trim()) {
+      return {
+        ...initialDraft,
+        mobile: formatPhoneNumber(initialDraft.mobile)
+      }
+    }
     return EMPTY_DRAFT
   })
   const [projectName, setProjectName] = useState(
@@ -289,12 +299,12 @@ export function OptiCustomerStrip({
             label="Telefon"
             htmlFor="opti-customer-mobile"
             optionalLabel
+            hint={`pl. ${HU_PHONE_EXAMPLE}`}
           >
-            <Input
+            <PhoneInput
               id="opti-customer-mobile"
               value={draft.mobile}
-              autoComplete="tel"
-              onChange={(e) => patch({ mobile: e.target.value })}
+              onValueChange={(mobile) => patch({ mobile })}
             />
           </FormField>
         </div>

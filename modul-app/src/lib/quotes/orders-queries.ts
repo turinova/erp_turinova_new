@@ -1,5 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import {
+  BACKLOG_MAX_AGE_DAYS,
+  addDaysYmd,
+  budapestTodayYmd,
+  budapestYesterdayYmd
+} from '@/lib/home/date'
 import type { PaymentStatus } from '@/lib/quotes/payment-labels'
 import type { QuoteStatus } from '@/lib/quotes/queries'
 
@@ -38,6 +44,12 @@ export type ListOrdersParams = {
   q?: string
   machineId?: string
   productionDate?: string
+  /**
+   * Home Elmaradás KPI-val egyező ablak:
+   * ordered|in_production, production_date ≤ tegnap, max BACKLOG_MAX_AGE_DAYS.
+   * Felülírja a status / date szűrőt.
+   */
+  overdueOnly?: boolean
   /** false (default): aktív lista; true: csak archív. */
   archivedOnly?: boolean
   page?: number
@@ -102,7 +114,15 @@ export async function listOrders(
     query = query.is('archived_at', null)
   }
 
-  if (status === 'all') {
+  if (params.overdueOnly) {
+    const yesterday = budapestYesterdayYmd()
+    const windowStart = addDaysYmd(budapestTodayYmd(), -BACKLOG_MAX_AGE_DAYS)
+    query = query
+      .in('status', ['ordered', 'in_production'])
+      .not('production_date', 'is', null)
+      .lte('production_date', yesterday)
+      .gte('production_date', windowStart)
+  } else if (status === 'all') {
     query = query.in('status', ORDER_STATUSES)
   } else {
     query = query.eq('status', status)
@@ -112,7 +132,11 @@ export async function listOrders(
     query = query.eq('production_machine_id', params.machineId)
   }
 
-  if (params.productionDate && /^\d{4}-\d{2}-\d{2}$/.test(params.productionDate)) {
+  if (
+    !params.overdueOnly &&
+    params.productionDate &&
+    /^\d{4}-\d{2}-\d{2}$/.test(params.productionDate)
+  ) {
     query = query.eq('production_date', params.productionDate)
   }
 
@@ -159,9 +183,11 @@ export async function listOrders(
     }
   }
 
-  const { data, error, count } = await query
-    .order('updated_at', { ascending: false })
-    .range(from, to)
+  const ordered = params.overdueOnly
+    ? query.order('production_date', { ascending: true })
+    : query.order('updated_at', { ascending: false })
+
+  const { data, error, count } = await ordered.range(from, to)
 
   if (error) {
     console.error('listOrders', error.message)

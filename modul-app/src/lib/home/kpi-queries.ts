@@ -485,6 +485,7 @@ export async function getHomeLapszabaszatKpis(
     .select('final_total_gross, total_gross, ordered_at')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
+    .is('archived_at', null)
     .not('order_number', 'is', null)
     .neq('status', 'cancelled')
     .gte('ordered_at', rangeStart)
