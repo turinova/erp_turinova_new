@@ -82,7 +82,9 @@ export async function listOrders(
   const to = from + limit - 1
   const status = params.status ?? 'ordered'
 
-  let query = supabase
+  // Nested joins + hosszú filter-lánc → TS2589 (excessively deep). Any query builder.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgREST generic depth
+  let query: any = supabase
     .from('quotes')
     .select(
       `
@@ -110,11 +112,9 @@ export async function listOrders(
     .is('deleted_at', null)
     .not('order_number', 'is', null)
 
-  if (params.archivedOnly) {
-    query = query.not('archived_at', 'is', null)
-  } else {
-    query = query.is('archived_at', null)
-  }
+  query = params.archivedOnly
+    ? query.not('archived_at', 'is', null)
+    : query.is('archived_at', null)
 
   if (params.overdueOnly) {
     const yesterday = budapestYesterdayYmd()
