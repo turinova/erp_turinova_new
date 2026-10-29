@@ -4,8 +4,7 @@ import { Home, ShoppingCart, Users } from 'lucide-react'
 import { BelepokLiveIndicator } from '@/components/footcounter/belepok-live-indicator'
 import {
   MonthProgressBar,
-  OpenDueRing,
-  ReturnRatioBar
+  OpenDueRing
 } from '@/components/home/home-kpi-micro'
 import { MarketingAppChrome } from '@/components/marketing/marketing-app-chrome'
 import { MarketingSalesSpark } from '@/components/marketing/marketing-home-static-charts'
@@ -182,19 +181,7 @@ export function HomeDashboardMockup({ className }: { className?: string }) {
                   }
                 />
                 <MetricCell
-                  label="Mai visszáru"
-                  value={`${formatMoneyFt(sales.todayReturnGross)} Ft`}
-                  hint={`${sales.todayReturnCount} tétel`}
-                  emphasize="danger"
-                  footer={
-                    <ReturnRatioBar
-                      returnGross={sales.todayReturnGross}
-                      todayGross={sales.todayGross}
-                    />
-                  }
-                />
-                <MetricCell
-                  label="Kintlévőség"
+                  label="Eladás kintlévő"
                   value={`${formatMoneyFt(sales.openDue)} Ft`}
                   hint={`${sales.openInvoiceCount} számla`}
                   emphasize="warning"
@@ -202,6 +189,18 @@ export function HomeDashboardMockup({ className }: { className?: string }) {
                     <OpenDueRing
                       openDue={sales.openDue}
                       openInvoiceGross={sales.openInvoiceGross}
+                    />
+                  }
+                />
+                <MetricCell
+                  label="Lapszab. kintlévő"
+                  value={`${formatMoneyFt(f.kpis.lapszabaszat!.openDue)} Ft`}
+                  hint={`${f.kpis.lapszabaszat!.openOrderCount} megrendelés`}
+                  emphasize="warning"
+                  footer={
+                    <OpenDueRing
+                      openDue={f.kpis.lapszabaszat!.openDue}
+                      openInvoiceGross={f.kpis.lapszabaszat!.openOrderGross}
                     />
                   }
                 />

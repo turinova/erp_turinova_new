@@ -34,9 +34,9 @@ export type HomeSalesKpis = {
   monthLabel: string
   todayReturnCount: number
   todayReturnGross: number
-  /** Unpaid/partial remaining (sales_payments nettó). */
+  /** Eladás kintlévő: unpaid/partial remaining (sales_payments nettó). */
   openDue: number
-  /** Unpaid/partial számlák bruttó összege (ring nevező). */
+  /** Unpaid/partial eladások bruttó összege (ring nevező). */
   openInvoiceGross: number
   openInvoiceCount: number
   last7Days: SalesDayPoint[]
@@ -58,11 +58,103 @@ export type HomeJelenletKpis = {
   lateNames: string[]
 }
 
-/** Mai + 7 nap lapszabászat megrendelés-intake (`ordered_at`). */
+/** Mai + 7 nap lapszabászat megrendelés-intake (`ordered_at`) + kintlévő. */
 export type HomeLapszabaszatKpis = {
   todayGross: number
   todayCount: number
   last7Days: SalesDayPoint[]
+  /** Megrendelés kintlévő: not_paid/partial remaining (quote_payments). */
+  openDue: number
+  /** Nyitott megrendelések bruttó (ring nevező). */
+  openOrderGross: number
+  openOrderCount: number
+}
+
+function emptyLapszabaszatKpis(today: string): HomeLapszabaszatKpis {
+  return {
+    todayGross: 0,
+    todayCount: 0,
+    last7Days: Array.from({ length: 7 }, (_, i) => {
+      const ymd = addDaysYmd(today, -6 + i)
+      return { ymd, label: dayLabel(ymd), gross: 0, count: 0 }
+    }),
+    openDue: 0,
+    openOrderGross: 0,
+    openOrderCount: 0
+  }
+}
+
+/**
+ * Lapszabászat kintlévő — csak megrendelés (van order_number), nem draft/cancelled/archív.
+ * Mirrors getCustomerQuotesSummary, tenant-szinten.
+ */
+async function getHomeLapszabaszatOpenDue(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<{
+  openDue: number
+  openOrderGross: number
+  openOrderCount: number
+}> {
+  const { data: quotes, error } = await supabase
+    .from('quotes')
+    .select('id, final_total_gross, total_gross, payment_status')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .is('archived_at', null)
+    .not('order_number', 'is', null)
+    .neq('status', 'cancelled')
+    .neq('status', 'draft')
+    .in('payment_status', ['not_paid', 'partial'])
+    .or('source.neq.portal,portal_submitted_at.not.is.null')
+
+  if (error) {
+    console.error('getHomeLapszabaszatOpenDue', error.message)
+    return { openDue: 0, openOrderGross: 0, openOrderCount: 0 }
+  }
+
+  const rows = (quotes ?? []) as {
+    id: string
+    final_total_gross: number | null
+    total_gross: number | null
+  }[]
+
+  if (rows.length === 0) {
+    return { openDue: 0, openOrderGross: 0, openOrderCount: 0 }
+  }
+
+  const paidByQuote = new Map<string, number>()
+  const { data: payments, error: payErr } = await supabase
+    .from('quote_payments')
+    .select('quote_id, amount')
+    .in(
+      'quote_id',
+      rows.map((r) => r.id)
+    )
+    .is('deleted_at', null)
+
+  if (payErr) {
+    console.error('getHomeLapszabaszatOpenDue payments', payErr.message)
+  } else {
+    for (const p of payments ?? []) {
+      const id = p.quote_id as string
+      paidByQuote.set(id, (paidByQuote.get(id) ?? 0) + (Number(p.amount) || 0))
+    }
+  }
+
+  let openDue = 0
+  let openOrderGross = 0
+  for (const r of rows) {
+    const gross = Math.round(Number(r.final_total_gross ?? r.total_gross) || 0)
+    openOrderGross += gross
+    openDue += Math.max(0, gross - (paidByQuote.get(r.id) ?? 0))
+  }
+
+  return {
+    openDue: Math.round(openDue),
+    openOrderGross: Math.round(openOrderGross),
+    openOrderCount: rows.length
+  }
 }
 
 export type HomeKpiBundle = {
@@ -480,27 +572,25 @@ export async function getHomeLapszabaszatKpis(
   const { startIso: rangeStart } = budapestDayRangeIso(start7)
   const { endIso: rangeEnd } = budapestDayRangeIso(today)
 
-  const { data, error } = await supabase
-    .from('quotes')
-    .select('final_total_gross, total_gross, ordered_at')
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .is('archived_at', null)
-    .not('order_number', 'is', null)
-    .neq('status', 'cancelled')
-    .gte('ordered_at', rangeStart)
-    .lt('ordered_at', rangeEnd)
+  const [intakeRes, open] = await Promise.all([
+    supabase
+      .from('quotes')
+      .select('final_total_gross, total_gross, ordered_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .is('archived_at', null)
+      .not('order_number', 'is', null)
+      .neq('status', 'cancelled')
+      .gte('ordered_at', rangeStart)
+      .lt('ordered_at', rangeEnd),
+    getHomeLapszabaszatOpenDue(supabase, tenantId)
+  ])
+
+  const { data, error } = intakeRes
 
   if (error) {
     console.error('getHomeLapszabaszatKpis', error.message)
-    return {
-      todayGross: 0,
-      todayCount: 0,
-      last7Days: Array.from({ length: 7 }, (_, i) => {
-        const ymd = addDaysYmd(today, -6 + i)
-        return { ymd, label: dayLabel(ymd), gross: 0, count: 0 }
-      })
-    }
+    return { ...emptyLapszabaszatKpis(today), ...open }
   }
 
   const byDay = new Map<string, { gross: number; count: number }>()
@@ -534,7 +624,8 @@ export async function getHomeLapszabaszatKpis(
   return {
     todayGross: todayPoint.gross,
     todayCount: todayPoint.count,
-    last7Days
+    last7Days,
+    ...open
   }
 }
 

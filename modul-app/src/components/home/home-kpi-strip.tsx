@@ -5,8 +5,7 @@ import { ShoppingCart, Users } from 'lucide-react'
 
 import {
   MonthProgressBar,
-  OpenDueRing,
-  ReturnRatioBar
+  OpenDueRing
 } from '@/components/home/home-kpi-micro'
 import { HomeSalesSparkChart } from '@/components/home/home-sales-spark-chart'
 import { MetricCell, MetricRow } from '@/components/home/home-metric-row'
@@ -27,13 +26,24 @@ function SalesGlance({
   lapszabaszat: HomeLapszabaszatKpis | null
 }) {
   const showLapszab = lapszabaszat != null
-  const collectedOnOpen = Math.max(0, sales.openInvoiceGross - sales.openDue)
-  const paidHint =
+  const salesCollected = Math.max(0, sales.openInvoiceGross - sales.openDue)
+  const salesPaidHint =
     sales.openInvoiceCount === 0
-      ? 'Nincs kintlévőség'
+      ? 'Nincs eladás kintlévő'
       : sales.openInvoiceGross > 0
-        ? `${sales.openInvoiceCount} számla · ${Math.round((collectedOnOpen / sales.openInvoiceGross) * 100)}% fizetve`
+        ? `${sales.openInvoiceCount} számla · ${Math.round((salesCollected / sales.openInvoiceGross) * 100)}% fizetve`
         : `${sales.openInvoiceCount} számla`
+
+  const lapszabCollected = lapszabaszat
+    ? Math.max(0, lapszabaszat.openOrderGross - lapszabaszat.openDue)
+    : 0
+  const lapszabPaidHint = !lapszabaszat
+    ? undefined
+    : lapszabaszat.openOrderCount === 0
+      ? 'Nincs lapszabászat kintlévő'
+      : lapszabaszat.openOrderGross > 0
+        ? `${lapszabaszat.openOrderCount} megrendelés · ${Math.round((lapszabCollected / lapszabaszat.openOrderGross) * 100)}% fizetve`
+        : `${lapszabaszat.openOrderCount} megrendelés`
 
   return (
     <section className="space-y-2">
@@ -52,7 +62,7 @@ function SalesGlance({
         <div
           className={cn(
             'grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-3 lg:divide-y-0',
-            showLapszab ? 'lg:grid-cols-6' : 'lg:grid-cols-5'
+            showLapszab ? 'lg:grid-cols-6' : 'lg:grid-cols-4'
           )}
         >
           <div className="col-span-2 sm:col-span-3 lg:col-span-2">
@@ -126,28 +136,10 @@ function SalesGlance({
           />
 
           <MetricCell
-            label="Mai visszáru"
-            value={`${formatMoneyFt(sales.todayReturnGross)} Ft`}
-            href="/ertekesitesek"
-            hint={
-              sales.todayReturnCount === 0
-                ? 'Ma nem volt visszáru'
-                : `${sales.todayReturnCount} tétel`
-            }
-            emphasize={sales.todayReturnGross > 0 ? 'danger' : null}
-            footer={
-              <ReturnRatioBar
-                returnGross={sales.todayReturnGross}
-                todayGross={sales.todayGross}
-              />
-            }
-          />
-
-          <MetricCell
-            label="Kintlévőség"
+            label={showLapszab ? 'Eladás kintlévő' : 'Kintlévőség'}
             value={`${formatMoneyFt(sales.openDue)} Ft`}
             href="/ertekesitesek"
-            hint={paidHint}
+            hint={salesPaidHint}
             emphasize={sales.openDue > 0 ? 'warning' : null}
             footer={
               <OpenDueRing
@@ -156,6 +148,22 @@ function SalesGlance({
               />
             }
           />
+
+          {lapszabaszat ? (
+            <MetricCell
+              label="Lapszab. kintlévő"
+              value={`${formatMoneyFt(lapszabaszat.openDue)} Ft`}
+              href="/megrendelesek"
+              hint={lapszabPaidHint}
+              emphasize={lapszabaszat.openDue > 0 ? 'warning' : null}
+              footer={
+                <OpenDueRing
+                  openDue={lapszabaszat.openDue}
+                  openInvoiceGross={lapszabaszat.openOrderGross}
+                />
+              }
+            />
+          ) : null}
         </div>
       </div>
     </section>

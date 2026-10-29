@@ -23,8 +23,8 @@
   [ Mai forgalom+spark (2col)
   | Mai lapszabászat + mini spark   ← lapszabászat entitlement
   | Havi forgalom + progress vs előző hó
-  | Mai visszáru + ratio bar
-  | Kinnlevő + paid ring ]
+  | Eladás kintlévő + paid ring     ← sales_orders (entitlement OFF: „Kintlévőség”)
+  | Lapszab. kintlévő + paid ring   ← quotes megrendelés; csak lapszabászat ON ]
 
 Új partner rendelések  (lista inbox)  ← partner_orders; üresen rejtve
 Jelenlét     [ Bent x/y | Nincs itt | Szabadság | Beteg | Hiányzó nap ]
@@ -34,7 +34,7 @@ Heti szabás  H–P · gépenként külön oszlop (grouped) · erős színek · 
 Heti élzárás H–P · élanyag stack (top 5 + Egyéb) · 700 m kapacitás vonal
 ```
 
-Grid: lapszabászat ON → `lg:grid-cols-6`, OFF → `lg:grid-cols-5`.
+Grid: lapszabászat ON → `lg:grid-cols-6`, OFF → `lg:grid-cols-4`.
 
 ### Elmaradás KPI
 
@@ -70,8 +70,8 @@ Grid: lapszabászat ON → `lg:grid-cols-6`, OFF → `lg:grid-cols-5`.
 | Mai forgalom | `sales_orders` fulfilled (7 nap spark) | area spark |
 | Mai lapszabászat | `quotes.ordered_at` ma + 7 nap; nem cancelled; status-független | mini spark |
 | Havi forgalom | MTD gross; progress = MTD / előző hó 1…D | progress bar |
-| Mai visszáru | `sales_returns` ma | return / mai forgalom bar |
-| Kinnlevő | unpaid+partial remaining (`sales_payments` nettó) | ring = befizetett hányad a nyitott számlákon |
+| Eladás kintlévő | `sales_orders` unpaid+partial remaining (`sales_payments` nettó); link `/ertekesitesek` | ring |
+| Lapszab. kintlévő | `quotes` megrendelés (`order_number`), not_paid+partial (`quote_payments`); kizár: draft/cancelled/archív/soft-delete; portal draft szűrő mint `getCustomerQuotesSummary`; link `/megrendelesek` | ring |
 
 Közös UI: `src/components/home/home-metric-row.tsx` (`MetricRow` / `MetricCell` + `footer`).  
 Micro-viz: `src/components/home/home-kpi-micro.tsx`.

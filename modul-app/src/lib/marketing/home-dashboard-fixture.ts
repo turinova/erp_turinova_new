@@ -98,7 +98,10 @@ export const HOME_DASHBOARD_FIXTURE = {
     lapszabaszat: {
       todayGross: 1_842_000,
       todayCount: 7,
-      last7Days: LAPSZAB_7
+      last7Days: LAPSZAB_7,
+      openDue: 680_000,
+      openOrderGross: 1_150_000,
+      openOrderCount: 4
     }
   } satisfies HomeKpiBundle,
 
