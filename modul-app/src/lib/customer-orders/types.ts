@@ -166,6 +166,7 @@ export function csoItemEditRules(
 export type CustomerSpecialOrderListItem = {
   id: string
   orderNumber: string
+  customerId: string | null
   customerName: string
   customerMobile: string
   status: CsoItemStatus

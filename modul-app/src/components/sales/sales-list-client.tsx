@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 
 import { CancelSaleDialog } from '@/components/sales/cancel-sale-dialog'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
+import { CustomerListCell } from '@/components/patterns/customer-list-cell'
 import {
   DataTable,
   DataTableBody,
@@ -714,8 +715,13 @@ export function SalesListClient({
                       ) : null}
                     </div>
                   </DataTableCell>
-                  <DataTableCell className="text-ink-secondary">
-                    {row.customer_name ?? 'Vendég'}
+                  <DataTableCell>
+                    <CustomerListCell
+                      name={row.customer_name}
+                      customerId={row.customer_id}
+                      mobile={row.customer_mobile}
+                      emptyLabel="Vendég"
+                    />
                   </DataTableCell>
                   <DataTableCell className="text-ink-secondary">
                     {row.created_by_label ?? '—'}

@@ -58,6 +58,7 @@ export type QuoteListItem = {
   total_gross: number
   currency: string
   updated_at: string
+  customer_id: string | null
   customer_name: string
   customer_email: string | null
   customer_mobile: string | null
@@ -252,6 +253,7 @@ export async function listQuotes(
       currency,
       updated_at,
       archived_at,
+      customer_id,
       customers ( name, email, mobile ),
       quote_panels ( quantity )
     `,
@@ -354,6 +356,7 @@ export async function listQuotes(
       total_gross: Number(row.final_total_gross ?? row.total_gross),
       currency: row.currency,
       updated_at: row.updated_at,
+      customer_id: (row.customer_id as string | null) ?? null,
       customer_name: customer?.name ?? '—',
       customer_email: customer?.email ?? null,
       customer_mobile: customer?.mobile ?? null,

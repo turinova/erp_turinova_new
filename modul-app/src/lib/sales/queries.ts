@@ -13,7 +13,9 @@ export type SaleListItem = {
   channel: SaleChannel
   status: SaleStatus
   payment_status: SalePaymentStatus
+  customer_id: string | null
   customer_name: string | null
+  customer_mobile: string | null
   warehouse_name: string
   total_gross: number
   items_count: number
@@ -239,7 +241,9 @@ export async function listSales(
       channel,
       status,
       payment_status,
+      customer_id,
       customer_name_snapshot,
+      customer_mobile_snapshot,
       total_gross,
       fulfilled_at,
       created_at,
@@ -327,7 +331,9 @@ export async function listSales(
       channel: row.channel as SaleChannel,
       status: row.status as SaleStatus,
       payment_status: row.payment_status as SalePaymentStatus,
+      customer_id: (row.customer_id as string | null) ?? null,
       customer_name: row.customer_name_snapshot,
+      customer_mobile: (row.customer_mobile_snapshot as string | null) ?? null,
       warehouse_name: whOne?.name ?? '—',
       total_gross: Number(row.total_gross),
       items_count: items.filter((i) => !i.deleted_at).length,

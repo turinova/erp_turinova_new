@@ -18,6 +18,7 @@ import {
   DataTableRow
 } from '@/components/patterns/data-table'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
+import { CustomerListCell } from '@/components/patterns/customer-list-cell'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -470,8 +471,12 @@ export function OrdersListClient({
                         <p className="text-hint text-ink-muted">Archív</p>
                       ) : null}
                     </DataTableCell>
-                    <DataTableCell className="text-ink">
-                      {row.customer_name}
+                    <DataTableCell>
+                      <CustomerListCell
+                        name={row.customer_name}
+                        customerId={row.customer_id}
+                        mobile={row.customer_mobile}
+                      />
                     </DataTableCell>
                     <DataTableCell className="text-right tabular-nums font-medium text-ink">
                       {formatQuotePrice(row.total_gross, row.currency)}

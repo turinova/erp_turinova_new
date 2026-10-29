@@ -7,6 +7,7 @@ import { FileText, ScanSearch, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
+import { CustomerListCell } from '@/components/patterns/customer-list-cell'
 import {
   DataTable,
   DataTableBody,
@@ -41,10 +42,6 @@ function formatUpdatedAt(iso: string) {
   } catch {
     return iso
   }
-}
-
-function customerHint(row: QuoteListItem) {
-  return [row.customer_email, row.customer_mobile].filter(Boolean).join(' · ')
 }
 
 export function QuotesListClient({
@@ -159,7 +156,6 @@ export function QuotesListClient({
             </DataTableHead>
             <DataTableBody>
               {rows.map((row) => {
-                const hint = customerHint(row)
                 return (
                   <DataTableRow key={row.id}>
                     <DataTableCell>
@@ -182,12 +178,11 @@ export function QuotesListClient({
                       ) : null}
                     </DataTableCell>
                     <DataTableCell>
-                      <div className="min-w-0">
-                        <p className="text-ink">{row.customer_name}</p>
-                        {hint ? (
-                          <p className="text-hint text-ink-secondary">{hint}</p>
-                        ) : null}
-                      </div>
+                      <CustomerListCell
+                        name={row.customer_name}
+                        customerId={row.customer_id}
+                        mobile={row.customer_mobile}
+                      />
                     </DataTableCell>
                     <DataTableCell className="text-right tabular-nums text-ink">
                       {row.panel_quantity}

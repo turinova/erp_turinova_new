@@ -78,7 +78,7 @@ export async function listCustomerSpecialOrders(
     .from('customer_special_orders')
     .select(
       `
-      id, order_number, customer_name, customer_mobile, status,
+      id, order_number, customer_id, customer_name, customer_mobile, status,
       created_at, promised_date, deposit_amount, sms_sent_at,
       customer_special_order_items (
         id, name, qty, unit_shortform, status,
@@ -145,6 +145,7 @@ export async function listCustomerSpecialOrders(
     return {
       id: r.id as string,
       orderNumber: r.order_number as string,
+      customerId: (r.customer_id as string | null) ?? null,
       customerName: r.customer_name as string,
       customerMobile: r.customer_mobile as string,
       status: asStatus(r.status),

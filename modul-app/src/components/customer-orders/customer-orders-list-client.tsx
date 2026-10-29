@@ -7,6 +7,7 @@ import { ClipboardList, Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
+import { CustomerListCell } from '@/components/patterns/customer-list-cell'
 import {
   DataTable,
   DataTableBody,
@@ -373,7 +374,6 @@ export function CustomerOrdersListClient({
               <DataTableRow>
                 <DataTableHeaderCell>Szám</DataTableHeaderCell>
                 <DataTableHeaderCell>Ügyfél</DataTableHeaderCell>
-                <DataTableHeaderCell>Telefon</DataTableHeaderCell>
                 <DataTableHeaderCell>Státusz</DataTableHeaderCell>
                 <DataTableHeaderCell>SMS</DataTableHeaderCell>
                 <DataTableHeaderCell className="text-right">
@@ -400,9 +400,12 @@ export function CustomerOrdersListClient({
                         {row.orderNumber}
                       </Link>
                     </DataTableCell>
-                    <DataTableCell>{row.customerName}</DataTableCell>
-                    <DataTableCell className="tabular-nums text-ink-secondary">
-                      {row.customerMobile}
+                    <DataTableCell>
+                      <CustomerListCell
+                        name={row.customerName}
+                        customerId={row.customerId}
+                        mobile={row.customerMobile}
+                      />
                     </DataTableCell>
                     <DataTableCell>
                       <StatusBadge

@@ -28,6 +28,7 @@ export type OrderListItem = {
   total_paid: number
   currency: string
   updated_at: string
+  customer_id: string | null
   customer_name: string
   customer_email: string | null
   customer_mobile: string | null
@@ -95,6 +96,7 @@ export async function listOrders(
       final_total_gross,
       currency,
       updated_at,
+      customer_id,
       production_machine_id,
       production_date,
       barcode,
@@ -239,6 +241,7 @@ export async function listOrders(
         total_paid: Math.round(paidByQuote[row.id] ?? 0),
         currency: row.currency,
         updated_at: row.updated_at,
+        customer_id: (row.customer_id as string | null) ?? null,
         customer_name: customer?.name ?? '—',
         customer_email: customer?.email ?? null,
         customer_mobile: customer?.mobile ?? null,

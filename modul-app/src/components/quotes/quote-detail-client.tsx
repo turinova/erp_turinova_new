@@ -996,7 +996,16 @@ export function QuoteDetailClient({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <InfoCard title="Ügyfél adatok">
-                <p className="font-medium text-ink">{quote.customer.name}</p>
+                {quote.customer.id ? (
+                  <Link
+                    href={`/ugyfelek/${quote.customer.id}`}
+                    className="font-medium text-ink no-underline hover:underline"
+                  >
+                    {quote.customer.name}
+                  </Link>
+                ) : (
+                  <p className="font-medium text-ink">{quote.customer.name}</p>
+                )}
                 {quote.customer.email ? <p>{quote.customer.email}</p> : null}
                 {quote.customer.mobile ? <p>{quote.customer.mobile}</p> : null}
               </InfoCard>

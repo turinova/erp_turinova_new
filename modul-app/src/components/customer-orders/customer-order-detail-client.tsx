@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition, type ReactNode } from 'react'
 import {
   ArrowLeft,
-  ExternalLink,
   Pencil,
   Plus,
   RotateCcw,
@@ -698,7 +697,16 @@ export function CustomerOrderDetailClient({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <InfoCard title="Ügyfél">
-          <p className="font-medium text-ink">{order.customerName}</p>
+          {order.customerId ? (
+            <Link
+              href={`/ugyfelek/${order.customerId}`}
+              className="font-medium text-ink no-underline hover:underline"
+            >
+              {order.customerName}
+            </Link>
+          ) : (
+            <p className="font-medium text-ink">{order.customerName}</p>
+          )}
           <p>
             <a
               href={`tel:${order.customerMobile.replace(/\s/g, '')}`}
@@ -707,17 +715,6 @@ export function CustomerOrderDetailClient({
               {order.customerMobile}
             </a>
           </p>
-          {order.customerId ? (
-            <div className="pt-2">
-              <Link
-                href={`/ugyfelek/${order.customerId}`}
-                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-hint font-medium text-ink-secondary no-underline hover:bg-subtle hover:text-ink"
-              >
-                <ExternalLink className="size-3.5" aria-hidden />
-                Ügyfél megnyitása
-              </Link>
-            </div>
-          ) : null}
           {canWrite ? (
             <div className="pt-2">
               <Button
