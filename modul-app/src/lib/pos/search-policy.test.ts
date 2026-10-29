@@ -293,6 +293,26 @@ describe('barcodeLookupCandidates (HU wedge / hyphen)', () => {
     const c = barcodeLookupCandidates('5991234567890')
     assert.ok(c.includes('5991234567890'))
   })
+
+  it('UPC-A 12 digit → EAN-13 leading-0 pad (valid check)', () => {
+    // DB: 0502167061448 — scanner often sends 502167061448
+    const c = barcodeLookupCandidates('502167061448')
+    assert.ok(
+      c.includes('0502167061448'),
+      `expected padded EAN in ${c.join(',')}`
+    )
+    assert.ok(c.includes('502167061448'))
+  })
+
+  it('12 digit without valid EAN pad is not forced', () => {
+    const c = barcodeLookupCandidates('111111111111')
+    assert.ok(c.includes('111111111111'))
+    assert.equal(
+      c.includes('0111111111111'),
+      false,
+      'invalid EAN-13 pad must not be a candidate'
+    )
+  })
 })
 
 describe('looksLikeBarcode / isSkuTypeaheadQuery matrix', () => {

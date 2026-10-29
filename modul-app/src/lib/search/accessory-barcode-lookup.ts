@@ -3,10 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   barcodeExactOrFilter,
   barcodeFieldsMatch,
+  barcodeLookupCandidates,
   looksLikeBarcode,
+  normalizeScannerBarcode,
   prepareBarcodeQuery
 } from '@/lib/pos/barcode'
-import { normalizeScannerBarcode } from '@/lib/scanner/normalize-wedge'
 
 export type AccessoryBarcodeHit = {
   id: string
@@ -30,21 +31,19 @@ type Row = {
 
 /**
  * Exact match: barcode | barcode_internal | sku
- * (normalized + raw kandidátusok — HU wedge remap).
+ * (barcodeLookupCandidates — HU wedge + UPC-A→EAN-13).
  */
 export async function lookupAccessoryByBarcode(
   supabase: SupabaseClient,
   tenantId: string,
   code: string
 ): Promise<AccessoryBarcodeLookupResult> {
-  const { raw, normalized } = prepareBarcodeQuery(code)
-  const candidates = [...new Set([normalized, raw].filter(Boolean))]
+  const candidates = barcodeLookupCandidates(code)
   if (candidates.length === 0) {
     return { ok: false, message: 'Üres vonalkód.', notFound: true }
   }
 
-  for (const c of candidates) {
-    const safe = c.replace(/[%_,]/g, '')
+  for (const safe of candidates) {
     if (!safe) continue
 
     const { data, error } = await supabase
