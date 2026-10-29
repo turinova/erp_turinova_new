@@ -21,12 +21,15 @@ import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { convertQuoteToOrder } from '@/lib/quotes/actions'
 import {
+  formatPaymentAmountInput,
   parsePaymentAmount,
   PAYMENT_STATUS_LABEL,
   PAYMENT_TOLERANCE_GROSS,
   quoteRemainingGross,
+  roundQuoteMoney,
   type PaymentStatus
 } from '@/lib/quotes/payment-labels'
+import { cn } from '@/lib/utils'
 
 type CreateOrderDialogProps = {
   open: boolean
@@ -83,6 +86,31 @@ export function CreateOrderDialog({
     if (amount === null) return null
     return previewStatus(amount, totalGross)
   }, [amount, totalGross])
+
+  const amountChips = useMemo(() => {
+    const gross = roundQuoteMoney(totalGross)
+    if (gross <= 0) {
+      return [{ label: '0 Ft', value: 0 }]
+    }
+    const chips: { label: string; value: number }[] = [
+      { label: '0 Ft', value: 0 },
+      { label: '30%', value: roundQuoteMoney(gross * 0.3) },
+      { label: '50%', value: roundQuoteMoney(gross * 0.5) },
+      { label: 'Teljes', value: gross }
+    ]
+    const seen = new Set<number>()
+    return chips.filter((c) => {
+      if (c.value < 0 || c.value > gross) return false
+      if (seen.has(c.value)) return false
+      seen.add(c.value)
+      return true
+    })
+  }, [totalGross])
+
+  function applyAmountChip(value: number) {
+    setAmountRaw(value <= 0 ? '0' : formatPaymentAmountInput(value))
+    setError(null)
+  }
 
   async function handleConfirm() {
     if (amount === null) {
@@ -162,7 +190,7 @@ export function CreateOrderDialog({
             label="Befizetett összeg"
             htmlFor="create-order-amount"
             required
-            hint="Adj meg 0-t, ha nincs előleg."
+            hint="0 Ft = nincs előleg. Gyorsválasztó: 30% / 50% / teljes."
             error={error && amount === null ? error : undefined}
           >
             <div className="relative">
@@ -182,6 +210,34 @@ export function CreateOrderDialog({
                 Ft
               </span>
             </div>
+            {amountChips.length > 0 ? (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {amountChips.map((chip) => {
+                  const current = amount ?? 0
+                  const active =
+                    amountRaw === ''
+                      ? chip.value === 0
+                      : Math.abs(current - chip.value) <
+                        PAYMENT_TOLERANCE_GROSS
+                  return (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      disabled={loading}
+                      onClick={() => applyAmountChip(chip.value)}
+                      className={cn(
+                        'rounded-md border border-border px-2 py-1 text-hint font-medium text-ink-secondary',
+                        'hover:bg-subtle hover:text-ink',
+                        'disabled:cursor-not-allowed disabled:opacity-50',
+                        active && 'border-ink bg-subtle text-ink'
+                      )}
+                    >
+                      {chip.label}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
           </FormField>
 
           {(amount ?? 0) > 0 ? (

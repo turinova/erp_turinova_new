@@ -24,8 +24,10 @@ import {
   PAYMENT_TOLERANCE_GROSS,
   formatPaymentAmountInput,
   parsePaymentAmount,
-  quoteRemainingGross
+  quoteRemainingGross,
+  roundQuoteMoney
 } from '@/lib/quotes/payment-labels'
+import { cn } from '@/lib/utils'
 
 type AddPaymentDialogProps = {
   open: boolean
@@ -70,6 +72,28 @@ export function AddPaymentDialog({
   }, [open, paymentMethods, remaining])
 
   const amount = useMemo(() => parsePaymentAmount(amountRaw), [amountRaw])
+
+  const amountChips = useMemo(() => {
+    if (remaining <= 0) return []
+    const chips: { label: string; value: number }[] = [
+      { label: '30%', value: roundQuoteMoney(remaining * 0.3) },
+      { label: '50%', value: roundQuoteMoney(remaining * 0.5) },
+      { label: 'Teljes', value: remaining }
+    ]
+    // Hide duplicate % chips when they collapse to the same Ft (tiny remaining)
+    const seen = new Set<number>()
+    return chips.filter((c) => {
+      if (c.value <= 0 || c.value > remaining) return false
+      if (seen.has(c.value)) return false
+      seen.add(c.value)
+      return true
+    })
+  }, [remaining])
+
+  function applyAmountChip(value: number) {
+    setAmountRaw(formatPaymentAmountInput(value))
+    setError(null)
+  }
 
   async function handleConfirm() {
     if (amount === null || amount <= 0) {
@@ -173,6 +197,31 @@ export function AddPaymentDialog({
                 Ft
               </span>
             </div>
+            {amountChips.length > 0 ? (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {amountChips.map((chip) => {
+                  const active =
+                    amount !== null &&
+                    Math.abs(amount - chip.value) < PAYMENT_TOLERANCE_GROSS
+                  return (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      disabled={loading || remaining <= 0}
+                      onClick={() => applyAmountChip(chip.value)}
+                      className={cn(
+                        'rounded-md border border-border px-2 py-1 text-hint font-medium text-ink-secondary',
+                        'hover:bg-subtle hover:text-ink',
+                        'disabled:cursor-not-allowed disabled:opacity-50',
+                        active && 'border-ink bg-subtle text-ink'
+                      )}
+                    >
+                      {chip.label}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
           </FormField>
 
           <FormField label="Fizetési mód" htmlFor="add-payment-method" required>
