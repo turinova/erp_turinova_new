@@ -72,6 +72,26 @@ const ORDER_STATUSES: QuoteStatus[] = [
   'cancelled'
 ]
 
+const ORDER_LIST_SELECT = `
+  id,
+  quote_number,
+  order_number,
+  status,
+  payment_status,
+  project_name,
+  total_gross,
+  final_total_gross,
+  currency,
+  updated_at,
+  customer_id,
+  production_machine_id,
+  production_date,
+  barcode,
+  archived_at,
+  customers ( name, email, mobile ),
+  production_machines ( name )
+`
+
 export async function listOrders(
   supabase: SupabaseClient,
   params: ListOrdersParams
@@ -82,39 +102,30 @@ export async function listOrders(
   const to = from + limit - 1
   const status = params.status ?? 'ordered'
 
-  // Nested joins + hosszú filter-lánc → TS2589 (excessively deep). Any query builder.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- PostgREST generic depth
+  /**
+   * TS2589 gyökérok (nem „rossz filter”):
+   * 1) Nested embed (`customers`, `production_machines`) → mély PostgREST Result generic.
+   * 2) Feltételes `query = query.not|is|in|eq…` → FilterBuilder-változatok uniója;
+   *    minden további láncszem az unió minden tagján instantiál → depth overflow.
+   *    (Elmaradás / archív / status ágak együtt billentették át.)
+   * Megoldás: a select után azonnal elvágni a builder típusát; a sorokat lent
+   * `OrderListItem`-re mapeljük (típusos határ a runtime után).
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see TS2589 note above
   let query: any = supabase
     .from('quotes')
-    .select(
-      `
-      id,
-      quote_number,
-      order_number,
-      status,
-      payment_status,
-      project_name,
-      total_gross,
-      final_total_gross,
-      currency,
-      updated_at,
-      customer_id,
-      production_machine_id,
-      production_date,
-      barcode,
-      archived_at,
-      customers ( name, email, mobile ),
-      production_machines ( name )
-    `,
-      { count: 'estimated' }
-    )
+    .select(ORDER_LIST_SELECT, { count: 'estimated' }) as any
+
+  query = query
     .eq('tenant_id', params.tenantId)
     .is('deleted_at', null)
     .not('order_number', 'is', null)
 
-  query = params.archivedOnly
-    ? query.not('archived_at', 'is', null)
-    : query.is('archived_at', null)
+  if (params.archivedOnly) {
+    query = query.not('archived_at', 'is', null)
+  } else {
+    query = query.is('archived_at', null)
+  }
 
   if (params.overdueOnly) {
     const yesterday = budapestYesterdayYmd()
