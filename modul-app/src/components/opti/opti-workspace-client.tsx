@@ -219,7 +219,6 @@ export function OptiWorkspaceClient({
     setOptiResult(null)
     setOptiError(null)
     setEditingPanelId(null)
-    setDeleteTarget(null)
     setClearListOpen(false)
     clearDimensionAndEdges()
     setSessionCustomer(null)
