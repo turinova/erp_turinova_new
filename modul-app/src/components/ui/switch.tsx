@@ -9,6 +9,9 @@ type SwitchProps = {
   disabled?: boolean
   label: string
   description?: string
+  /** Hover / native tooltip (pl. rövid help description helyett). */
+  title?: string
+  className?: string
 }
 
 export function Switch({
@@ -17,19 +20,25 @@ export function Switch({
   onCheckedChange,
   disabled,
   label,
-  description
+  description,
+  title,
+  className
 }: SwitchProps) {
   return (
-    <div className="flex items-start gap-3">
+    <div
+      className={cn('flex items-center gap-2', className)}
+      title={title}
+    >
       <button
         id={id}
         type="button"
         role="switch"
         aria-checked={checked}
         disabled={disabled}
+        title={title}
         onClick={() => onCheckedChange(!checked)}
         className={cn(
-          'relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors duration-fast',
+          'relative h-5 w-9 shrink-0 rounded-full border transition-colors duration-fast',
           checked
             ? 'border-primary bg-primary'
             : 'border-border bg-subtle',

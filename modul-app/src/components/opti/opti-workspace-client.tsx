@@ -1022,18 +1022,18 @@ export function OptiWorkspaceClient({
               </FormField>
             </div>
 
-            <div className="space-y-2 border-t border-border pt-3">
+            <div className="space-y-1.5 border-t border-border pt-3">
               <p className="text-hint font-medium text-ink-secondary">
                 Megmunkálás
               </p>
-              <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <Switch
                   id="opti-duplungolas"
                   checked={duplungolas}
                   onCheckedChange={handleDuplungolasChange}
                   disabled={!entryEnabled}
-                  label="Duplungolás"
-                  description="Bekapcsoláskor a darabszám ×2 (kikapcsoláskor vissza)."
+                  label="Duplung"
+                  title="Bekapcsoláskor a darabszám ×2 (kikapcsoláskor vissza)."
                 />
                 <Switch
                   id="opti-szogvagas"
@@ -1042,39 +1042,48 @@ export function OptiWorkspaceClient({
                   disabled={!entryEnabled}
                   label="Szögvágás"
                 />
-              </div>
-              <FormField
-                label="Pánthely (db)"
-                htmlFor="opti-panthely"
-                error={errors.panthely}
-                hint={
-                  !errors.panthely
-                    ? `0 = nincs; min. ${PANTHELY_MIN}, max. ${PANTHELY_MAX} / panel.`
-                    : undefined
-                }
-              >
-                <Input
-                  id="opti-panthely"
-                  inputMode="numeric"
-                  value={panthelyRaw}
-                  disabled={!entryEnabled}
-                  placeholder="0"
-                  className="max-w-[8rem]"
-                  onChange={(e) => {
-                    setPanthelyRaw(e.target.value)
-                    if (errors.panthely) {
-                      setErrors((prev) => {
-                        const next = { ...prev }
-                        delete next.panthely
-                        return next
-                      })
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="opti-panthely"
+                    className="text-label text-ink"
+                    title={`0 = nincs; ${PANTHELY_MIN}–${PANTHELY_MAX} db / panel`}
+                  >
+                    Pánthely
+                  </label>
+                  <Input
+                    id="opti-panthely"
+                    inputMode="numeric"
+                    value={panthelyRaw}
+                    disabled={!entryEnabled}
+                    placeholder="0"
+                    aria-invalid={Boolean(errors.panthely)}
+                    aria-describedby={
+                      errors.panthely ? 'opti-panthely-error' : undefined
                     }
-                  }}
-                />
-              </FormField>
-              <p className="text-hint text-ink-muted">
-                Díjak: Beállítások → Opti (0 Ft is OK).
-              </p>
+                    title={`0 = nincs; ${PANTHELY_MIN}–${PANTHELY_MAX} db / panel`}
+                    className="h-8 w-14 tabular-nums"
+                    onChange={(e) => {
+                      setPanthelyRaw(e.target.value)
+                      if (errors.panthely) {
+                        setErrors((prev) => {
+                          const next = { ...prev }
+                          delete next.panthely
+                          return next
+                        })
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              {errors.panthely ? (
+                <p
+                  id="opti-panthely-error"
+                  className="text-hint text-danger-ink"
+                  role="alert"
+                >
+                  {errors.panthely}
+                </p>
+              ) : null}
             </div>
 
             <div className="flex justify-end gap-2 pt-0.5">
