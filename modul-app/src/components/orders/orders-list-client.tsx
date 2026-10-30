@@ -24,28 +24,23 @@ import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
-import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import {
   archiveQuoteAction,
   unarchiveQuoteAction
 } from '@/lib/quotes/actions'
-import {
-  PAYMENT_STATUS_LABEL,
-  paymentStatusTone,
-  quoteRemainingGross
-} from '@/lib/quotes/payment-labels'
+import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
 import type {
   OrderListItem,
   OrderListStatusFilter
 } from '@/lib/quotes/orders-queries'
 import { QuoteReadySmsDialog } from '@/components/orders/quote-ready-sms-dialog'
+import { SchedulerKpiStrip } from '@/components/orders/scheduler-kpi-strip'
 import { markQuoteReady } from '@/lib/quotes/production-actions'
-import {
-  QUOTE_STATUS_LABEL,
-  quoteStatusTone
-} from '@/lib/quotes/status-labels'
+import type { SchedulerKpis } from '@/lib/orders/scheduler-kpi-queries'
+import { QUOTE_STATUS_LABEL } from '@/lib/quotes/status-labels'
 import type { ProductionMachineOption } from '@/lib/production-machines/queries'
+import { budapestTodayYmd } from '@/lib/home/date'
 import { previewQuoteReadySms } from '@/lib/scanner/actions'
 import type { QuoteReadySmsCandidate } from '@/lib/sms/types'
 import { cn } from '@/lib/utils'
@@ -62,9 +57,12 @@ type OrdersListClientProps = {
   initialMachineId: string
   initialProductionDate: string
   initialOverdueOnly: boolean
+  initialUnscheduledOnly: boolean
+  initialTodayOnly: boolean
   initialArchivedOnly: boolean
   machines: ProductionMachineOption[]
   paymentMethods: PaymentMethodOption[]
+  schedulerKpis: SchedulerKpis | null
 }
 
 const STATUS_CHIPS: Array<{
@@ -88,6 +86,149 @@ function formatDate(iso: string | null) {
   } catch {
     return iso
   }
+}
+
+/** YYYY-MM-DD a date input / production_date mezőből (ISO prefix). */
+function productionYmd(iso: string | null): string | null {
+  if (!iso) return null
+  return iso.slice(0, 10)
+}
+
+function formatMeter(n: number): string {
+  return new Intl.NumberFormat('hu-HU', { maximumFractionDigits: 1 }).format(n)
+}
+
+/** Gép chip színek — nav soft tokenek, stabil hash az id/név alapján. */
+const MACHINE_CHIP_STYLES = [
+  'bg-nav-blue-soft text-nav-blue-ink',
+  'bg-nav-teal-soft text-nav-teal-ink',
+  'bg-nav-violet-soft text-nav-violet-ink',
+  'bg-nav-amber-soft text-nav-amber-ink',
+  'bg-nav-rose-soft text-nav-rose-ink',
+  'bg-nav-emerald-soft text-nav-emerald-ink',
+  'bg-nav-cyan-soft text-nav-cyan-ink'
+] as const
+
+function machineChipClass(key: string): string {
+  let h = 0
+  for (let i = 0; i < key.length; i++) {
+    h = (h * 31 + key.charCodeAt(i)) >>> 0
+  }
+  return MACHINE_CHIP_STYLES[h % MACHINE_CHIP_STYLES.length]!
+}
+
+function MachineChip({
+  id,
+  name
+}: {
+  id: string | null
+  name: string | null
+}) {
+  if (!name) {
+    return <span className="text-ink-muted">—</span>
+  }
+  return (
+    <span
+      className={cn(
+        'inline-flex max-w-full truncate rounded-sm px-1.5 py-0.5 text-hint font-semibold',
+        machineChipClass(id || name)
+      )}
+      title={name}
+    >
+      {name}
+    </span>
+  )
+}
+
+/** Szabás = info soft; él = amber soft — két külön chip, ne egy szürke string. */
+function LoadMetersCell({
+  cutting,
+  edge
+}: {
+  cutting: number
+  edge: number
+}) {
+  if (cutting <= 0 && edge <= 0) {
+    return <span className="text-ink-muted">—</span>
+  }
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      {cutting > 0 ? (
+        <span className="inline-flex items-center rounded-sm bg-info-soft px-1.5 py-0.5 text-hint font-semibold tabular-nums text-info-ink">
+          {formatMeter(cutting)} m
+          <span className="ml-1 font-medium opacity-80">szabás</span>
+        </span>
+      ) : null}
+      {edge > 0 ? (
+        <span className="inline-flex items-center rounded-sm bg-nav-amber-soft px-1.5 py-0.5 text-hint font-semibold tabular-nums text-nav-amber-ink">
+          {formatMeter(edge)} m
+          <span className="ml-1 font-medium opacity-80">él</span>
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+function DateStateCell({
+  productionDate,
+  ymd,
+  isOverdue,
+  isToday,
+  needsSchedule
+}: {
+  productionDate: string | null
+  ymd: string | null
+  isOverdue: boolean
+  isToday: boolean
+  needsSchedule: boolean
+}) {
+  if (needsSchedule) {
+    return (
+      <DataTableCell className="border-l-[3px] border-l-warning bg-warning-soft/80">
+        <span className="text-hint font-semibold text-warning-ink">
+          Ütemezendő
+        </span>
+      </DataTableCell>
+    )
+  }
+
+  if (isOverdue) {
+    return (
+      <DataTableCell className="border-l-[3px] border-l-danger bg-danger-soft">
+        <span className="tabular-nums text-[13px] font-semibold text-danger-ink">
+          {formatDate(productionDate)}
+        </span>
+        <div className="mt-0.5">
+          <StatusBadge tone="danger" variant="soft">
+            Lejárt
+          </StatusBadge>
+        </div>
+      </DataTableCell>
+    )
+  }
+
+  if (isToday) {
+    return (
+      <DataTableCell className="border-l-[3px] border-l-ink bg-primary-soft">
+        <span className="tabular-nums text-[13px] font-semibold text-ink">
+          {formatDate(productionDate)}
+        </span>
+        <div className="mt-0.5">
+          <StatusBadge tone="neutral" variant="soft">
+            Ma
+          </StatusBadge>
+        </div>
+      </DataTableCell>
+    )
+  }
+
+  return (
+    <DataTableCell>
+      <span className="tabular-nums font-medium text-ink">
+        {ymd ? formatDate(productionDate) : '—'}
+      </span>
+    </DataTableCell>
+  )
 }
 
 function toastAfterReady(
@@ -123,13 +264,24 @@ export function OrdersListClient({
   initialMachineId,
   initialProductionDate,
   initialOverdueOnly,
+  initialUnscheduledOnly,
+  initialTodayOnly,
   initialArchivedOnly,
   machines,
-  paymentMethods
+  paymentMethods,
+  schedulerKpis
 }: OrdersListClientProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const todayYmd = budapestTodayYmd()
+  /** Vegyes listán soft státusz a O-szám alatt — külön oszlop nincs. */
+  const showStatusHint =
+    initialStatus === 'all' ||
+    initialArchivedOnly ||
+    initialOverdueOnly ||
+    initialUnscheduledOnly ||
+    initialTodayOnly
   const [qDraft, setQDraft] = useState(initialQ)
   const [productionTarget, setProductionTarget] =
     useState<OrderListItem | null>(null)
@@ -218,6 +370,8 @@ export function OrdersListClient({
         Boolean(initialMachineId) ||
         Boolean(initialProductionDate) ||
         initialOverdueOnly ||
+        initialUnscheduledOnly ||
+        initialTodayOnly ||
         initialArchivedOnly ||
         initialStatus !== 'ordered'),
     [
@@ -226,6 +380,8 @@ export function OrdersListClient({
       initialMachineId,
       initialProductionDate,
       initialOverdueOnly,
+      initialUnscheduledOnly,
+      initialTodayOnly,
       initialArchivedOnly,
       initialStatus
     ]
@@ -235,14 +391,26 @@ export function OrdersListClient({
     <div>
       <PageHeader
         title="Megrendelések"
-        description="Gyártás szervezése: gép, dátum, vonalkód. A részletek az árajánlat oldalon."
+        description="Gyártás: nap → gép → terhelés. A következő lépés mindig jobbra."
       />
+
+      {schedulerKpis && !initialArchivedOnly ? (
+        <SchedulerKpiStrip
+          data={schedulerKpis}
+          activeToday={initialTodayOnly}
+          activeOverdue={initialOverdueOnly}
+          activeUnscheduled={initialUnscheduledOnly}
+          activeMachineId={initialMachineId}
+        />
+      ) : null}
 
       <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Státusz szűrő">
         {STATUS_CHIPS.map((chip) => {
           const active =
             !initialArchivedOnly &&
             !initialOverdueOnly &&
+            !initialUnscheduledOnly &&
+            !initialTodayOnly &&
             initialStatus === chip.value
           return (
             <button
@@ -253,6 +421,9 @@ export function OrdersListClient({
                   status: chip.value === 'ordered' ? null : chip.value,
                   archived: null,
                   overdue: null,
+                  unscheduled: null,
+                  today: null,
+                  date: null,
                   page: '1'
                 })
               }
@@ -271,8 +442,32 @@ export function OrdersListClient({
           type="button"
           onClick={() =>
             pushParams({
+              today: '1',
+              date: null,
+              status: null,
+              overdue: null,
+              unscheduled: null,
+              archived: null,
+              page: '1'
+            })
+          }
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
+            initialTodayOnly
+              ? 'border-ink bg-ink text-white'
+              : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
+          )}
+        >
+          Ma
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            pushParams({
               overdue: '1',
               archived: null,
+              unscheduled: null,
+              today: null,
               status: null,
               date: null,
               page: '1'
@@ -291,9 +486,34 @@ export function OrdersListClient({
           type="button"
           onClick={() =>
             pushParams({
+              unscheduled: '1',
+              overdue: null,
+              today: null,
+              archived: null,
+              status: null,
+              date: null,
+              page: '1'
+            })
+          }
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
+            initialUnscheduledOnly
+              ? 'border-warning bg-warning-soft text-warning-ink'
+              : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
+          )}
+        >
+          Nincs ütemezve
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            pushParams({
               archived: '1',
               status: 'all',
               overdue: null,
+              unscheduled: null,
+              today: null,
+              date: null,
               page: '1'
             })
           }
@@ -368,12 +588,18 @@ export function OrdersListClient({
                 pushParams({
                   date: e.target.value || null,
                   overdue: null,
+                  unscheduled: null,
+                  today: null,
                   page: '1'
                 })
               }
             />
           </div>
-          {initialMachineId || initialProductionDate || initialOverdueOnly ? (
+          {initialMachineId ||
+          initialProductionDate ||
+          initialOverdueOnly ||
+          initialUnscheduledOnly ||
+          initialTodayOnly ? (
             <div className="flex items-end">
               <Button
                 type="button"
@@ -384,6 +610,8 @@ export function OrdersListClient({
                     machine: null,
                     date: null,
                     overdue: null,
+                    unscheduled: null,
+                    today: null,
                     page: '1'
                   })
                 }
@@ -406,17 +634,13 @@ export function OrdersListClient({
           <DataTable>
             <DataTableHead>
               <DataTableRow>
+                <DataTableHeaderCell>Gyártás napja</DataTableHeaderCell>
+                <DataTableHeaderCell>Gép</DataTableHeaderCell>
                 <DataTableHeaderCell>Megrendelés</DataTableHeaderCell>
+                <DataTableHeaderCell>Terhelés</DataTableHeaderCell>
                 <DataTableHeaderCell>Ügyfél</DataTableHeaderCell>
-                <DataTableHeaderCell className="text-right">
-                  Bruttó
-                </DataTableHeaderCell>
-                <DataTableHeaderCell>Fizetés</DataTableHeaderCell>
-                <DataTableHeaderCell>Státusz</DataTableHeaderCell>
-                <DataTableHeaderCell>Vonalkód</DataTableHeaderCell>
-                <DataTableHeaderCell>Gyártás</DataTableHeaderCell>
                 <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
-                  Műveletek
+                  Következő
                 </DataTableHeaderCell>
               </DataTableRow>
             </DataTableHead>
@@ -433,20 +657,20 @@ export function OrdersListClient({
                 const canHandover =
                   canWrite && !row.archived_at && row.status === 'ready'
                 const canReopen =
-                  canWrite &&
-                  !row.archived_at &&
-                  row.status === 'finished'
+                  canWrite && !row.archived_at && row.status === 'finished'
                 const canArchiveRow =
                   canWrite &&
                   !row.archived_at &&
                   (row.status === 'finished' || row.status === 'cancelled')
                 const canUnarchiveRow = canWrite && Boolean(row.archived_at)
-                const productionLabel = [
-                  row.production_machine_name,
-                  row.production_date ? formatDate(row.production_date) : null
-                ]
-                  .filter(Boolean)
-                  .join(' · ')
+                const ymd = productionYmd(row.production_date)
+                const isOpenProduction =
+                  row.status === 'ordered' || row.status === 'in_production'
+                const isOverdue =
+                  Boolean(ymd) && isOpenProduction && ymd! < todayYmd
+                const isToday =
+                  Boolean(ymd) && isOpenProduction && ymd === todayYmd
+                const needsSchedule = isOpenProduction && !ymd
 
                 return (
                   <DataTableRow
@@ -454,23 +678,62 @@ export function OrdersListClient({
                     className="cursor-pointer hover:bg-subtle"
                     onClick={() => router.push(`/ajanlatok/${row.id}`)}
                   >
+                    <DateStateCell
+                      productionDate={row.production_date}
+                      ymd={ymd}
+                      isOverdue={isOverdue}
+                      isToday={isToday}
+                      needsSchedule={needsSchedule}
+                    />
+
                     <DataTableCell>
+                      <MachineChip
+                        id={row.production_machine_id}
+                        name={row.production_machine_name}
+                      />
+                    </DataTableCell>
+
+                    <DataTableCell>
+                      {row.project_name ? (
+                        <Link
+                          href={`/ajanlatok/${row.id}`}
+                          className="block truncate text-[14px] font-semibold text-ink no-underline hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                          title={row.project_name}
+                        >
+                          {row.project_name}
+                        </Link>
+                      ) : null}
                       <Link
                         href={`/ajanlatok/${row.id}`}
-                        className="font-medium text-ink no-underline hover:underline"
+                        className={cn(
+                          'font-mono text-hint text-ink-muted no-underline hover:underline',
+                          !row.project_name &&
+                            'text-[14px] font-semibold text-ink'
+                        )}
                         onClick={(e) => e.stopPropagation()}
                       >
                         {row.order_number}
                       </Link>
-                      {row.project_name ? (
-                        <p className="text-hint text-ink-secondary">
-                          {row.project_name}
-                        </p>
-                      ) : null}
                       {row.archived_at ? (
                         <p className="text-hint text-ink-muted">Archív</p>
                       ) : null}
+                      {showStatusHint ? (
+                        <div className="mt-0.5">
+                          <StatusBadge tone="neutral" variant="outline">
+                            {QUOTE_STATUS_LABEL[row.status] ?? row.status}
+                          </StatusBadge>
+                        </div>
+                      ) : null}
                     </DataTableCell>
+
+                    <DataTableCell>
+                      <LoadMetersCell
+                        cutting={row.cutting_length_m}
+                        edge={row.edge_length_m}
+                      />
+                    </DataTableCell>
+
                     <DataTableCell>
                       <CustomerListCell
                         name={row.customer_name}
@@ -478,55 +741,26 @@ export function OrdersListClient({
                         mobile={row.customer_mobile}
                       />
                     </DataTableCell>
-                    <DataTableCell className="text-right tabular-nums font-medium text-ink">
-                      {formatQuotePrice(row.total_gross, row.currency)}
-                    </DataTableCell>
-                    <DataTableCell>
-                      <StatusBadge tone={paymentStatusTone(row.payment_status)}>
-                        {PAYMENT_STATUS_LABEL[row.payment_status]}
-                      </StatusBadge>
-                    </DataTableCell>
-                    <DataTableCell>
-                      <StatusBadge tone={quoteStatusTone(row.status)}>
-                        {QUOTE_STATUS_LABEL[row.status] ?? row.status}
-                      </StatusBadge>
-                    </DataTableCell>
-                    <DataTableCell className="max-w-[7.5rem]">
-                      <span
-                        className="block truncate font-mono text-hint text-ink"
-                        title={row.barcode ?? undefined}
-                      >
-                        {row.barcode || '—'}
-                      </span>
-                    </DataTableCell>
-                    <DataTableCell className="max-w-[10rem]">
-                      <span
-                        className="block truncate text-ink"
-                        title={productionLabel || undefined}
-                      >
-                        {productionLabel || '—'}
-                      </span>
-                    </DataTableCell>
+
                     <DataTableCell className="text-right">
                       <div
-                        className="flex flex-wrap items-center justify-end gap-1"
+                        className="flex min-w-[9.5rem] flex-nowrap items-center justify-end gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {canProduce ? (
+                        {canReady && canProduce ? (
                           <Button
                             type="button"
                             variant="secondary"
                             size="sm"
                             onClick={() => setProductionTarget(row)}
                           >
-                            <Factory className="size-3.5" aria-hidden />
-                            Gyártás
+                            Átütemez
                           </Button>
                         ) : null}
                         {canReady ? (
                           <Button
                             type="button"
-                            variant="secondary"
+                            variant="primary"
                             size="sm"
                             disabled={pending}
                             onClick={() => handleMarkReady(row)}
@@ -534,10 +768,21 @@ export function OrdersListClient({
                             Kész
                           </Button>
                         ) : null}
+                        {canProduce && !canReady ? (
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            onClick={() => setProductionTarget(row)}
+                          >
+                            <Factory className="size-3.5" aria-hidden />
+                            Gyártásba
+                          </Button>
+                        ) : null}
                         {canHandover ? (
                           <Button
                             type="button"
-                            variant="secondary"
+                            variant="primary"
                             size="sm"
                             onClick={() => setHandoverTarget(row)}
                           >
@@ -547,7 +792,7 @@ export function OrdersListClient({
                         {canReopen ? (
                           <Button
                             type="button"
-                            variant="secondary"
+                            variant="primary"
                             size="sm"
                             onClick={() => setReopenTarget(row)}
                           >
@@ -557,7 +802,7 @@ export function OrdersListClient({
                         {canArchiveRow ? (
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant={canReopen ? 'ghost' : 'primary'}
                             size="sm"
                             onClick={() => setArchiveTarget(row)}
                           >
@@ -567,7 +812,7 @@ export function OrdersListClient({
                         {canUnarchiveRow ? (
                           <Button
                             type="button"
-                            variant="secondary"
+                            variant="primary"
                             size="sm"
                             onClick={() => setUnarchiveTarget(row)}
                           >

@@ -100,3 +100,67 @@ export function OpenDueRing({
     </div>
   )
 }
+
+/**
+ * Kapacitás / arány ring — monokróm charcoal (Midday).
+ * tone: ink default; warning ≥85%; danger túlterhelés / elmaradás.
+ */
+export function CapacityRing({
+  ratio,
+  size = 36,
+  strokeWidth = 3,
+  tone = 'ink'
+}: {
+  /** 0…1+ (1 = teljes kör; >1 továbbra is full + danger javasolt) */
+  ratio: number
+  size?: number
+  strokeWidth?: number
+  tone?: 'ink' | 'warning' | 'danger' | 'success'
+}) {
+  const r = (size - strokeWidth) / 2 - 1
+  const c = 2 * Math.PI * r
+  const clamped = Math.min(1, Math.max(0, ratio))
+  const dash = clamped * c
+  const cx = size / 2
+  const toneClass =
+    tone === 'danger'
+      ? 'text-danger'
+      : tone === 'warning'
+        ? 'text-warning'
+        : tone === 'success'
+          ? 'text-success'
+          : 'text-ink'
+
+  return (
+    <div className="flex items-center justify-start" aria-hidden>
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="shrink-0"
+      >
+        <circle
+          cx={cx}
+          cy={cx}
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          className="text-border"
+        />
+        <circle
+          cx={cx}
+          cy={cx}
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${c - dash}`}
+          transform={`rotate(-90 ${cx} ${cx})`}
+          className={toneClass}
+        />
+      </svg>
+    </div>
+  )
+}

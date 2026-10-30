@@ -37,6 +37,10 @@ export type OrderListItem = {
   production_date: string | null
   barcode: string | null
   archived_at: string | null
+  /** Σ quote_material_lines.cutting_length_m */
+  cutting_length_m: number
+  /** Σ quote_material_lines.edge_length_m */
+  edge_length_m: number
 }
 
 export type ListOrdersParams = {
@@ -51,10 +55,49 @@ export type ListOrdersParams = {
    * Felülírja a status / date szűrőt.
    */
   overdueOnly?: boolean
+  /**
+   * Nincs gyártási nap: ordered|in_production + production_date IS NULL.
+   * Felülírja a status / date szűrőt.
+   */
+  unscheduledOnly?: boolean
+  /**
+   * Mai gyártási nap (BP): ordered|in_production + production_date = ma.
+   * Felülírja a status / date szűrőt.
+   */
+  todayOnly?: boolean
   /** false (default): aktív lista; true: csak archív. */
   archivedOnly?: boolean
   page?: number
   limit?: number
+}
+
+const SHOP_FLOOR_STATUSES: QuoteStatus[] = ['ordered', 'in_production']
+
+async function sumMetersForQuotes(
+  supabase: SupabaseClient,
+  quoteIds: string[]
+): Promise<Map<string, { cutting: number; edge: number }>> {
+  const map = new Map<string, { cutting: number; edge: number }>()
+  if (quoteIds.length === 0) return map
+
+  const { data, error } = await supabase
+    .from('quote_material_lines')
+    .select('quote_id, cutting_length_m, edge_length_m')
+    .in('quote_id', quoteIds)
+
+  if (error) {
+    console.error('listOrders meters', error.message)
+    return map
+  }
+
+  for (const row of data ?? []) {
+    const id = row.quote_id as string
+    const prev = map.get(id) ?? { cutting: 0, edge: 0 }
+    prev.cutting += Number(row.cutting_length_m) || 0
+    prev.edge += Number(row.edge_length_m) || 0
+    map.set(id, prev)
+  }
+  return map
 }
 
 export type ListOrdersResult = {
@@ -107,7 +150,7 @@ type OrdersListQuery = {
   or: (filters: string) => OrdersListQuery
   order: (
     column: string,
-    options: { ascending: boolean }
+    options: { ascending: boolean; nullsFirst?: boolean }
   ) => OrdersListQuery
   range: (
     from: number,
@@ -148,10 +191,18 @@ export async function listOrders(
     const yesterday = budapestYesterdayYmd()
     const windowStart = addDaysYmd(budapestTodayYmd(), -BACKLOG_MAX_AGE_DAYS)
     query = query
-      .in('status', ['ordered', 'in_production'])
+      .in('status', SHOP_FLOOR_STATUSES)
       .not('production_date', 'is', null)
       .lte('production_date', yesterday)
       .gte('production_date', windowStart)
+  } else if (params.unscheduledOnly) {
+    query = query
+      .in('status', SHOP_FLOOR_STATUSES)
+      .is('production_date', null)
+  } else if (params.todayOnly) {
+    query = query
+      .in('status', SHOP_FLOOR_STATUSES)
+      .eq('production_date', budapestTodayYmd())
   } else if (status === 'all') {
     query = query.in('status', ORDER_STATUSES)
   } else {
@@ -164,6 +215,8 @@ export async function listOrders(
 
   if (
     !params.overdueOnly &&
+    !params.unscheduledOnly &&
+    !params.todayOnly &&
     params.productionDate &&
     /^\d{4}-\d{2}-\d{2}$/.test(params.productionDate)
   ) {
@@ -213,8 +266,18 @@ export async function listOrders(
     }
   }
 
-  const ordered = params.overdueOnly
-    ? query.order('production_date', { ascending: true })
+  const shopFloorSort =
+    params.overdueOnly ||
+    params.unscheduledOnly ||
+    params.todayOnly ||
+    status === 'ordered' ||
+    status === 'in_production'
+
+  // Gyártás nézet: nap ASC (üres végén), majd frissítés. Iroda: updated_at DESC.
+  const ordered = shopFloorSort
+    ? query
+        .order('production_date', { ascending: true, nullsFirst: false })
+        .order('updated_at', { ascending: false })
     : query.order('updated_at', { ascending: false })
 
   const { data, error, count } = await ordered.range(from, to)
@@ -252,19 +315,24 @@ export async function listOrders(
   )
   const quoteIds = rawRows.map((row) => row.id)
   const paidByQuote: Record<string, number> = {}
+  let metersByQuote = new Map<string, { cutting: number; edge: number }>()
 
   if (quoteIds.length > 0) {
-    const { data: paymentRows, error: paymentError } = await supabase
-      .from('quote_payments')
-      .select('quote_id, amount')
-      .eq('tenant_id', params.tenantId)
-      .in('quote_id', quoteIds)
-      .is('deleted_at', null)
+    const [paymentsRes, meters] = await Promise.all([
+      supabase
+        .from('quote_payments')
+        .select('quote_id, amount')
+        .eq('tenant_id', params.tenantId)
+        .in('quote_id', quoteIds)
+        .is('deleted_at', null),
+      sumMetersForQuotes(supabase, quoteIds)
+    ])
+    metersByQuote = meters
 
-    if (paymentError) {
-      console.error('listOrders payments', paymentError.message)
+    if (paymentsRes.error) {
+      console.error('listOrders payments', paymentsRes.error.message)
     } else {
-      for (const p of paymentRows ?? []) {
+      for (const p of paymentsRes.data ?? []) {
         paidByQuote[p.quote_id] =
           (paidByQuote[p.quote_id] ?? 0) + (Number(p.amount) || 0)
       }
@@ -276,6 +344,7 @@ export async function listOrders(
     const customer = Array.isArray(customers) ? customers[0] : customers
     const machines = row.production_machines
     const machine = Array.isArray(machines) ? machines[0] : machines
+    const meters = metersByQuote.get(row.id) ?? { cutting: 0, edge: 0 }
 
     return {
       id: row.id,
@@ -296,7 +365,9 @@ export async function listOrders(
       production_machine_name: machine?.name ?? null,
       production_date: row.production_date ?? null,
       barcode: row.barcode ?? null,
-      archived_at: row.archived_at ?? null
+      archived_at: row.archived_at ?? null,
+      cutting_length_m: Math.round(meters.cutting * 10) / 10,
+      edge_length_m: Math.round(meters.edge * 10) / 10
     }
   })
 

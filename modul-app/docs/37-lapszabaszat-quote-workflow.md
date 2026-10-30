@@ -72,6 +72,31 @@ Clear → vissza `ordered`.
 | Újranyitás | ✓ | ✓ | — (üzenet) |
 | Archív / Unarchive | ✓ | ✓ (Archívum filter) | — |
 
+### Megrendelések lista — egy layout + szín-szeparáció
+
+Mindig ugyanaz a tábla (chip csak szűr). Nincs bruttó / fizetés / vonalkód.
+
+| Oszlop | Stílus |
+|---|---|
+| Gyártás napja | **Lejárt** = `danger-soft` + 3px sáv + soft chip; **Ma** = `primary-soft` + ink sáv + „Ma” chip; **Ütemezendő** = `warning-soft`; egyéb nap = semleges tabular |
+| Gép | `font-medium` / muted „—” |
+| Megrendelés | O-szám 14px semibold; projekt muted; vegyes szűrőnél outline státusz |
+| Terhelés | **két chip**: szabás `info-soft` / él `nav-amber-soft` (0 → ne írd) |
+| Ügyfél | név + telefon |
+| Következő | fix slot: 1 primary; gyártásban Átütemez secondary + **Kész** |
+
+Gyors chip: **Ma** / **Elmaradás** / **Nincs ütemezve**. Sort: `production_date ASC NULLS LAST`.
+
+### Ütemező KPI strip (lista felett)
+
+| Cella | Adat | Viz | Link |
+|---|---|---|---|
+| Mai terhelés | Σ szabás / Σ limit | szám + full-width `h-3` progress (nem donut) | `?today=1` |
+| Gépek ma | max 3 gép | `h-3` charcoal sáv; `+N további` | `?today=1&machine=` |
+| Elmaradás / Ütemezetlen | db + fm | szám; sáv csak ha count > 0 (0 → nincs viz) | overdue / unscheduled |
+
+Nincs pie/radial a stripben — horizontal fill, kevés white space. Query: `scheduler-kpi-queries.ts`.
+
 **Opti panelfelvitel import** (szöveg / Excel / kép, Korpus él): tervezet [47](47-opti-panel-import.md).
 
 ### Kész-értesítő SMS (CSO parity — [42](42-ugyfelrendeles.md))

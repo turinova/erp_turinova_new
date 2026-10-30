@@ -5,6 +5,7 @@ import { ListPageSkeleton } from '@/components/patterns/list-page-skeleton'
 import { OrdersListClient } from '@/components/orders/orders-list-client'
 import { getSessionUser } from '@/lib/auth/session'
 import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
+import { getSchedulerKpis } from '@/lib/orders/scheduler-kpi-queries'
 import {
   listOrders,
   type OrderListStatusFilter
@@ -26,6 +27,10 @@ type SearchParams = Promise<{
   archived?: string
   /** Home Elmaradás KPI — ordered|in_production, lejárt gyártási nap, max 90 nap. */
   overdue?: string
+  /** ordered|in_production, production_date IS NULL. */
+  unscheduled?: string
+  /** ordered|in_production, production_date = ma (BP). */
+  today?: string
 }>
 
 const STATUS_VALUES: OrderListStatusFilter[] = [
@@ -69,11 +74,21 @@ async function OrdersListLoader({
   const page = Math.max(1, Number(params.page) || 1)
   const archivedOnly = params.archived === '1'
   const overdueOnly = params.overdue === '1' && !archivedOnly
+  const unscheduledOnly =
+    params.unscheduled === '1' && !archivedOnly && !overdueOnly
+  const todayOnly =
+    params.today === '1' &&
+    !archivedOnly &&
+    !overdueOnly &&
+    !unscheduledOnly
   /** Kereséskor minden státusz (lemondott is) — ne essen el a találat. */
   const status: OrderListStatusFilter =
     q || archivedOnly ? 'all' : parseStatus(params.status)
   const machineId = params.machine?.trim() ?? ''
-  const productionDate = overdueOnly ? '' : (params.date?.trim() ?? '')
+  const productionDate =
+    overdueOnly || unscheduledOnly || todayOnly
+      ? ''
+      : (params.date?.trim() ?? '')
 
   let loadError: string | null = null
   let rows: Awaited<ReturnType<typeof listOrders>>['rows'] = []
@@ -82,12 +97,13 @@ async function OrdersListLoader({
   let machines: Awaited<ReturnType<typeof listActiveProductionMachines>> = []
   let paymentMethods: Awaited<ReturnType<typeof listActivePaymentMethods>> = []
   let hasSmsAddon = false
+  let schedulerKpis: Awaited<ReturnType<typeof getSchedulerKpis>> | null = null
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        const [ordersResult, machineRows, methodRows, smsAddon] =
+        const [ordersResult, machineRows, methodRows, smsAddon, kpis] =
           await Promise.all([
             listOrders(supabase, {
               tenantId: user.tenantId,
@@ -96,13 +112,16 @@ async function OrdersListLoader({
               machineId: machineId || undefined,
               productionDate: productionDate || undefined,
               overdueOnly,
+              unscheduledOnly,
+              todayOnly,
               archivedOnly,
               page,
               limit: 25
             }),
             listActiveProductionMachines(supabase, user.tenantId),
             listActivePaymentMethods(supabase, user.tenantId),
-            tenantHasQuoteReadySms(supabase, user.tenantId)
+            tenantHasQuoteReadySms(supabase, user.tenantId),
+            getSchedulerKpis(supabase, user.tenantId)
           ])
         rows = ordersResult.rows
         total = ordersResult.total
@@ -110,6 +129,7 @@ async function OrdersListLoader({
         machines = machineRows
         paymentMethods = methodRows
         hasSmsAddon = smsAddon
+        schedulerKpis = kpis
       } catch (err) {
         loadError =
           err instanceof Error
@@ -164,9 +184,12 @@ async function OrdersListLoader({
       initialMachineId={machineId}
       initialProductionDate={productionDate}
       initialOverdueOnly={overdueOnly}
+      initialUnscheduledOnly={unscheduledOnly}
+      initialTodayOnly={todayOnly}
       initialArchivedOnly={archivedOnly}
       machines={machines}
       paymentMethods={paymentMethods}
+      schedulerKpis={schedulerKpis}
     />
   )
 }
