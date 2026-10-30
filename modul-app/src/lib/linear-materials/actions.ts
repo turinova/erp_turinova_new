@@ -183,6 +183,42 @@ export async function updateLinearMaterial(
   return { ok: true, id: data.id }
 }
 
+/** Lista inline képforgatás — csak `image_url`. */
+export async function updateLinearMaterialImageUrl(
+  id: string,
+  imageUrl: string
+): Promise<LinearMaterialActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const url = imageUrl.trim()
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return { ok: false, message: 'Érvénytelen kép URL.' }
+  }
+
+  const { data, error } = await ctx.supabase
+    .from('linear_materials')
+    .update({
+      image_url: url,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .eq('tenant_id', ctx.user.tenantId!)
+    .is('deleted_at', null)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false, message: 'Nem sikerült menteni a forgatott képet.' }
+  }
+  if (!data) {
+    return { ok: false, message: 'A szálas anyag nem található.' }
+  }
+
+  revalidateLinearPaths(data.id)
+  return { ok: true, id: data.id }
+}
+
 export async function softDeleteLinearMaterial(
   id: string
 ): Promise<LinearMaterialActionResult> {

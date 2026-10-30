@@ -95,6 +95,7 @@ export default async function TablasAnyagokListPage({
         page={page}
         limit={limit}
         canWrite={canWrite}
+        tenantId={user?.tenantId && !user.isDevSession ? user.tenantId : null}
         initialQ={q}
         initialActive={active}
       />

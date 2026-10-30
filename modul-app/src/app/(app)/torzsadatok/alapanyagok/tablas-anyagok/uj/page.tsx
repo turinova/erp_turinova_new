@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 
 import { SheetMaterialForm } from '@/components/sheet-materials/sheet-material-form'
 import { getSessionUser } from '@/lib/auth/session'
@@ -29,13 +30,15 @@ export default async function NewTablasAnyagPage() {
   ])
 
   return (
-    <SheetMaterialForm
-      mode="create"
-      tenantId={user.tenantId}
-      manufacturers={manufacturers}
-      taxRates={taxRates}
-      equipment={equipment}
-      canWrite={canWrite}
-    />
+    <Suspense fallback={null}>
+      <SheetMaterialForm
+        mode="create"
+        tenantId={user.tenantId}
+        manufacturers={manufacturers}
+        taxRates={taxRates}
+        equipment={equipment}
+        canWrite={canWrite}
+      />
+    </Suspense>
   )
 }

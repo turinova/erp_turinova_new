@@ -10,6 +10,7 @@ export type SheetMaterialListItem = {
   active: boolean
   on_stock: boolean
   image_url: string | null
+  grain_direction: boolean
   manufacturer_id: string
   tax_rate_id: string
   manufacturer_name: string
@@ -71,6 +72,7 @@ const LIST_SELECT = `
   active,
   on_stock,
   image_url,
+  grain_direction,
   manufacturer_id,
   tax_rate_id,
   updated_at,
@@ -88,6 +90,7 @@ function mapListRow(row: {
   active: boolean
   on_stock: boolean
   image_url: string | null
+  grain_direction: boolean | null
   manufacturer_id: string
   tax_rate_id: string
   updated_at: string
@@ -112,6 +115,7 @@ function mapListRow(row: {
     active: row.active,
     on_stock: row.on_stock,
     image_url: row.image_url,
+    grain_direction: Boolean(row.grain_direction),
     manufacturer_id: row.manufacturer_id,
     tax_rate_id: row.tax_rate_id,
     manufacturer_name: manufacturer?.name ?? '—',

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 
 import { SheetMaterialForm } from '@/components/sheet-materials/sheet-material-form'
 import { getSessionUser } from '@/lib/auth/session'
@@ -75,15 +76,17 @@ export default async function EditTablasAnyagPage({
   }
 
   return (
-    <SheetMaterialForm
-      mode="edit"
-      initial={sheet}
-      tenantId={user.tenantId}
-      manufacturers={manufacturers}
-      taxRates={taxRates}
-      equipment={equipment}
-      canWrite={canWrite}
-      procurementStock={procurementStock}
-    />
+    <Suspense fallback={null}>
+      <SheetMaterialForm
+        mode="edit"
+        initial={sheet}
+        tenantId={user.tenantId}
+        manufacturers={manufacturers}
+        taxRates={taxRates}
+        equipment={equipment}
+        canWrite={canWrite}
+        procurementStock={procurementStock}
+      />
+    </Suspense>
   )
 }

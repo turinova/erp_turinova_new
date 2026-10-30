@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { Suspense } from 'react'
 
 import { LinearMaterialForm } from '@/components/linear-materials/linear-material-form'
 import { getSessionUser } from '@/lib/auth/session'
@@ -72,14 +73,16 @@ export default async function EditSzalasAnyagPage({
   }
 
   return (
-    <LinearMaterialForm
-      mode="edit"
-      initial={row}
-      tenantId={user.tenantId}
-      manufacturers={manufacturers}
-      taxRates={taxRates}
-      canWrite={canWrite}
-      procurementStock={procurementStock}
-    />
+    <Suspense fallback={null}>
+      <LinearMaterialForm
+        mode="edit"
+        initial={row}
+        tenantId={user.tenantId}
+        manufacturers={manufacturers}
+        taxRates={taxRates}
+        canWrite={canWrite}
+        procurementStock={procurementStock}
+      />
+    </Suspense>
   )
 }

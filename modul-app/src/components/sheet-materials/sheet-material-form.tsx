@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
@@ -39,6 +39,12 @@ import {
   ORPHAN_EQUIPMENT_MESSAGE,
   resolveAliveEquipmentId
 } from '@/lib/equipment/resolve-alive'
+import {
+  hrefWithListReturn,
+  listHrefFromReturn
+} from '@/lib/navigation/list-return'
+
+const LIST_PATH = '/torzsadatok/alapanyagok/tablas-anyagok'
 
 type Option = { id: string; name: string }
 type OptionTaxRate = {
@@ -70,6 +76,8 @@ export function SheetMaterialForm({
   procurementStock = null
 }: SheetMaterialFormProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const listHref = listHrefFromReturn(LIST_PATH, searchParams)
   const [pending, startTransition] = useTransition()
 
   const defaultTaxId =
@@ -259,7 +267,9 @@ export function SheetMaterialForm({
         mode === 'edit' ? 'Táblás anyag mentve.' : 'Táblás anyag létrehozva.'
       )
       setFieldErrors({})
-      router.push(`/torzsadatok/alapanyagok/tablas-anyagok/${result.id}`)
+      router.push(
+        hrefWithListReturn(`${LIST_PATH}/${result.id}`, searchParams)
+      )
       router.refresh()
     })
   }
@@ -279,9 +289,7 @@ export function SheetMaterialForm({
             <Button
               type="button"
               variant="secondary"
-              onClick={() =>
-                router.push('/torzsadatok/alapanyagok/tablas-anyagok')
-              }
+              onClick={() => router.push(listHref)}
             >
               Vissza a listához
             </Button>
@@ -900,9 +908,7 @@ export function SheetMaterialForm({
               type="button"
               variant="secondary"
               disabled={pending}
-              onClick={() =>
-                router.push('/torzsadatok/alapanyagok/tablas-anyagok')
-              }
+              onClick={() => router.push(listHref)}
             >
               Mégse
             </Button>

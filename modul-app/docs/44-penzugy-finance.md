@@ -3,13 +3,15 @@
 **Státusz:** P0 + P0b + soft-lock.  
 **Route:** `/penzugy` · `/szamlak` · `/szamlak/uj` · `/penzugy/kintlevoseg` · `/penzugy/afa` · `/penzugy/exportok`  
 **Migráció:** `20260566_penzugy_finance.sql`, `20260567_penzugy_page_access.sql`, `20260568_manual_invoice_source.sql`, `20260588_invoice_source_links.sql`  
-**Kapcsolat:** [36](36-szamlazas-workflow.md) Számlázz Agent
+**Kapcsolat:** [36](36-szamlazas-workflow.md) Számlázz Agent · **bejövő AP backlog:** [48](48-nav-inbound-ap.md)
 
 ---
 
 ## 0. Egy mondat
 
 > A **Számlázz.hu Agent** a jogi kiállítás + NAV; az Optinova **Pénzügy** a kintlévőség, ÁFA-egyeztetés és könyvelői export — mert az Agent **nem listáz időszakot**.
+
+Bejövő (NAV INBOUND) számla inbox / match: **nincs shipped** — lásd [48](48-nav-inbound-ap.md).
 
 ---
 

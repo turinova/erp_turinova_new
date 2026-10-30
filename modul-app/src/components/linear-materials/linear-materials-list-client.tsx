@@ -6,6 +6,8 @@ import { useMemo, useRef, useState, useTransition } from 'react'
 import { Download, RectangleHorizontal, Plus, Search, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { ListMaterialThumb } from '@/components/materials/list-material-thumb'
+import { MaterialImagePreviewDialog } from '@/components/materials/material-image-preview-dialog'
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
   DataTable,
@@ -28,7 +30,10 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
-import { softDeleteLinearMaterial } from '@/lib/linear-materials/actions'
+import {
+  softDeleteLinearMaterial,
+  updateLinearMaterialImageUrl
+} from '@/lib/linear-materials/actions'
 import type { LinearImportPreviewResult } from '@/lib/linear-materials/import-plan'
 import {
   formatHuNumber,
@@ -37,6 +42,9 @@ import {
 } from '@/lib/linear-materials/parse'
 import type { LinearMaterialListItem } from '@/lib/linear-materials/queries'
 import { materialTypeLabel } from '@/lib/linear-materials/queries'
+import { hrefWithListReturn } from '@/lib/navigation/list-return'
+
+const LIST_BASE = '/torzsadatok/alapanyagok/szalas-anyagok'
 
 type LinearMaterialsListClientProps = {
   rows: LinearMaterialListItem[]
@@ -44,6 +52,7 @@ type LinearMaterialsListClientProps = {
   page: number
   limit: number
   canWrite: boolean
+  tenantId: string | null
   initialQ: string
   initialActive: 'all' | 'active' | 'inactive'
 }
@@ -54,6 +63,7 @@ export function LinearMaterialsListClient({
   page,
   limit,
   canWrite,
+  tenantId,
   initialQ,
   initialActive
 }: LinearMaterialsListClientProps) {
@@ -65,6 +75,9 @@ export function LinearMaterialsListClient({
     useState<LinearMaterialListItem | null>(null)
   const [previewTarget, setPreviewTarget] =
     useState<LinearMaterialListItem | null>(null)
+  const [imageOverrides, setImageOverrides] = useState<Record<string, string>>(
+    {}
+  )
   const [pending, startTransition] = useTransition()
   const [exportBusy, setExportBusy] = useState(false)
   const [importBusy, setImportBusy] = useState(false)
@@ -72,6 +85,14 @@ export function LinearMaterialsListClient({
   const [importPreview, setImportPreview] =
     useState<LinearImportPreviewResult | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+
+  function detailHref(id: string) {
+    return hrefWithListReturn(`${LIST_BASE}/${id}`, searchParams)
+  }
+
+  function createHref() {
+    return hrefWithListReturn(`${LIST_BASE}/uj`, searchParams)
+  }
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
@@ -284,7 +305,7 @@ export function LinearMaterialsListClient({
                 <Button
                   type="button"
                   onClick={() =>
-                    router.push('/torzsadatok/alapanyagok/szalas-anyagok/uj')
+                    router.push(createHref())
                   }
                 >
                   <Plus className="size-3.5" aria-hidden />
@@ -341,7 +362,7 @@ export function LinearMaterialsListClient({
         <EmptyLinears
           canWrite={canWrite}
           onCreate={() =>
-            router.push('/torzsadatok/alapanyagok/szalas-anyagok/uj')
+            router.push(createHref())
           }
         />
       ) : total === 0 ? (
@@ -370,35 +391,28 @@ export function LinearMaterialsListClient({
             <DataTableBody>
               {rows.map((row) => {
                 const gross = grossFromNet(row.price_net, row.tax_rate_percent)
+                const imageUrl = imageOverrides[row.id] ?? row.image_url
                 return (
                   <DataTableRow key={row.id}>
                     <DataTableCell>
-                      {row.image_url ? (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewTarget(row)}
-                          className="block rounded-md border border-border p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                          aria-label={`${row.name} képének megnyitása`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={row.image_url}
-                            alt=""
-                            className="size-12 rounded-[5px] object-cover"
-                          />
-                        </button>
-                      ) : (
-                        <span
-                          className="flex size-12 items-center justify-center rounded-md border border-dashed border-border text-ink-muted"
-                          aria-hidden
-                        >
-                          <RectangleHorizontal className="size-5" />
-                        </span>
-                      )}
+                      <ListMaterialThumb
+                        name={row.name}
+                        imageUrl={imageUrl}
+                        showGrainHint={Boolean(imageUrl)}
+                        onPreview={
+                          imageUrl
+                            ? () =>
+                                setPreviewTarget({
+                                  ...row,
+                                  image_url: imageUrl
+                                })
+                            : undefined
+                        }
+                      />
                     </DataTableCell>
                     <DataTableCell>
                       <Link
-                        href={`/torzsadatok/alapanyagok/szalas-anyagok/${row.id}`}
+                        href={detailHref(row.id)}
                         className="font-medium text-ink no-underline hover:underline"
                       >
                         {row.name}
@@ -431,11 +445,7 @@ export function LinearMaterialsListClient({
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() =>
-                            router.push(
-                              `/torzsadatok/alapanyagok/szalas-anyagok/${row.id}`
-                            )
-                          }
+                          onClick={() => router.push(detailHref(row.id))}
                         >
                           Megnyitás
                         </Button>
@@ -505,56 +515,56 @@ export function LinearMaterialsListClient({
         onConfirm={handleDelete}
       />
 
-      <Dialog
+      <MaterialImagePreviewDialog
         open={Boolean(previewTarget?.image_url)}
         onOpenChange={(open) => {
           if (!open) setPreviewTarget(null)
         }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{previewTarget?.name ?? 'Kép'}</DialogTitle>
-            <DialogDescription>
-              {previewTarget
-                ? `${previewTarget.manufacturer_name} · ${previewTarget.length_mm} × ${previewTarget.width_mm} × ${formatHuNumber(previewTarget.thickness_mm)} mm`
-                : null}
-            </DialogDescription>
-          </DialogHeader>
-          {previewTarget?.image_url ? (
-            <div className="overflow-hidden rounded-md border border-border bg-app">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={previewTarget.image_url}
-                alt={previewTarget.name}
-                className="mx-auto max-h-[60vh] w-full object-contain"
-              />
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setPreviewTarget(null)}
-            >
-              Bezárás
-            </Button>
-            {previewTarget ? (
-              <Button
-                type="button"
-                onClick={() => {
-                  const id = previewTarget.id
-                  setPreviewTarget(null)
-                  router.push(
-                    `/torzsadatok/alapanyagok/szalas-anyagok/${id}`
-                  )
-                }}
-              >
-                Anyag megnyitása
-              </Button>
-            ) : null}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={previewTarget?.name ?? 'Kép'}
+        description={
+          previewTarget
+            ? `${previewTarget.manufacturer_name} · ${previewTarget.length_mm} × ${previewTarget.width_mm} × ${formatHuNumber(previewTarget.thickness_mm)} mm`
+            : null
+        }
+        imageUrl={
+          previewTarget
+            ? (imageOverrides[previewTarget.id] ?? previewTarget.image_url)
+            : null
+        }
+        tenantId={tenantId}
+        canWrite={canWrite}
+        showGrainHint
+        onImageSaved={(nextUrl) => {
+          if (!previewTarget) return
+          const id = previewTarget.id
+          setImageOverrides((prev) => ({ ...prev, [id]: nextUrl }))
+          setPreviewTarget((prev) =>
+            prev?.id === id ? { ...prev, image_url: nextUrl } : prev
+          )
+          router.refresh()
+        }}
+        persistImageUrl={async (nextUrl) => {
+          if (!previewTarget) {
+            return { ok: false, message: 'Nincs kiválasztott anyag.' }
+          }
+          const result = await updateLinearMaterialImageUrl(
+            previewTarget.id,
+            nextUrl
+          )
+          return result.ok
+            ? { ok: true }
+            : { ok: false, message: result.message }
+        }}
+        onOpenMaterial={
+          previewTarget
+            ? () => {
+                const id = previewTarget.id
+                setPreviewTarget(null)
+                router.push(detailHref(id))
+              }
+            : undefined
+        }
+      />
 
       <Dialog
         open={Boolean(importPreview)}

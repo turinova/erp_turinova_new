@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
@@ -35,6 +35,12 @@ import {
 import { linearDualQtyOpts } from '@/lib/sales/material-qty'
 import type { LinearMaterialDetail } from '@/lib/linear-materials/queries'
 import type { ProcurementStockPanel } from '@/lib/stock/material-panel'
+import {
+  hrefWithListReturn,
+  listHrefFromReturn
+} from '@/lib/navigation/list-return'
+
+const LIST_PATH = '/torzsadatok/alapanyagok/szalas-anyagok'
 
 type Option = { id: string; name: string }
 type OptionTaxRate = {
@@ -64,6 +70,8 @@ export function LinearMaterialForm({
   procurementStock = null
 }: LinearMaterialFormProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const listHref = listHrefFromReturn(LIST_PATH, searchParams)
   const [pending, startTransition] = useTransition()
 
   const defaultTaxId =
@@ -170,7 +178,9 @@ export function LinearMaterialForm({
       toast.success(
         mode === 'edit' ? 'Szálas anyag mentve.' : 'Szálas anyag létrehozva.'
       )
-      router.push(`/torzsadatok/alapanyagok/szalas-anyagok/${result.id}`)
+      router.push(
+        hrefWithListReturn(`${LIST_PATH}/${result.id}`, searchParams)
+      )
       router.refresh()
     })
   }
@@ -185,9 +195,7 @@ export function LinearMaterialForm({
             <Button
               type="button"
               variant="secondary"
-              onClick={() =>
-                router.push('/torzsadatok/alapanyagok/szalas-anyagok')
-              }
+              onClick={() => router.push(listHref)}
             >
               Vissza a listához
             </Button>
@@ -544,9 +552,7 @@ export function LinearMaterialForm({
               type="button"
               variant="secondary"
               disabled={pending}
-              onClick={() =>
-                router.push('/torzsadatok/alapanyagok/szalas-anyagok')
-              }
+              onClick={() => router.push(listHref)}
             >
               Mégse
             </Button>
