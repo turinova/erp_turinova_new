@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import { Toaster } from 'sonner'
 
 import { AppQueryProvider } from '@/components/providers/app-query-provider'
@@ -46,6 +47,7 @@ export default function RootLayout({
         <AppQueryProvider>
           {children}
           <Toaster position="bottom-right" richColors closeButton />
+          <SpeedInsights />
         </AppQueryProvider>
       </body>
     </html>

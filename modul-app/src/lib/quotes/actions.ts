@@ -99,6 +99,7 @@ async function resolveCustomerId(
     name,
     email: emptyToNull(customer.email),
     mobile: emptyToNull(customer.mobile),
+    sms_notification: true,
     billing_name: emptyToNull(customer.billingName),
     billing_country: customer.billingCountry.trim() || 'Magyarország',
     billing_city: emptyToNull(customer.billingCity),

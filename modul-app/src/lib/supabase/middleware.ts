@@ -400,6 +400,10 @@ async function handleSession(request: NextRequest) {
     const isCsoProductSearchApi =
       pathname === '/api/cso/product-search' ||
       pathname.startsWith('/api/cso/product-search/')
+    /** A4 vonalkód lap termék typeahead — lean skip; staff-only. */
+    const isA4SheetProductSearchApi =
+      pathname === '/api/vonalkod-lap/product-search' ||
+      pathname.startsWith('/api/vonalkod-lap/product-search/')
 
     const isPartnerSharedApi =
       pathname === '/api/optimize' ||
@@ -417,7 +421,8 @@ async function handleSession(request: NextRequest) {
         isPosBarcodeLookupApi ||
         isPosBootstrapApi ||
         isPosSearchApi ||
-        isCsoProductSearchApi
+        isCsoProductSearchApi ||
+        isA4SheetProductSearchApi
       ) {
         isAuthenticated = true
       } else if (partnerCtx) {

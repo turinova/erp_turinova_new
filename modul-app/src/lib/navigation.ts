@@ -16,6 +16,7 @@ import {
   Home,
   ImageIcon,
   Layers,
+  LayoutGrid,
   CalendarDays,
   CalendarRange,
   MessageSquare,
@@ -499,6 +500,13 @@ const allNavSections: NavSection[] = [
                   label: 'Termékek',
                   href: '/torzsadatok/alapanyagok/termekek',
                   icon: Package,
+                  accent: 'slate'
+                },
+                {
+                  type: 'link',
+                  label: 'Vonalkód lap',
+                  href: '/torzsadatok/vonalkod-lap',
+                  icon: LayoutGrid,
                   accent: 'slate'
                 }
               ]

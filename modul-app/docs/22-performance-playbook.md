@@ -11,6 +11,7 @@ Kapcsolódó:
 | [01-stack.md](01-stack.md) | shadcn + TanStack — ne MUI/Ant |
 | `scripts/speed-test.mjs` | Mérhető baseline |
 | `bench/RESULTS.md` | UI lib bench (shadcn vs MUI/Ant) |
+| Vercel Speed Insights | RUM (LCP/INP/CLS) — `<SpeedInsights />` a root `app/layout.tsx`-ben |
 
 ---
 
@@ -190,6 +191,8 @@ npm run speed-test
 ```
 
 Kereső API böngészőben: Network → `/api/kereso` → **Server-Timing**: `auth`, `search`, `total`.
+
+**RUM (production / preview):** Vercel projekt → **Speed Insights**. Local `next dev` általában nem küld. Nincs külön env — a `@vercel/speed-insights` a deploy projecthez kötődik.
 
 ---
 

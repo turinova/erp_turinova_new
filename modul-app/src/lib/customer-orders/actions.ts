@@ -168,7 +168,8 @@ export async function createCustomerSpecialOrderAction(
         .insert({
           tenant_id: tenantId,
           name: d.customerName,
-          mobile: d.customerMobile
+          mobile: d.customerMobile,
+          sms_notification: true
         })
         .select('id')
         .single()
@@ -1527,7 +1528,8 @@ export async function handOverSpecialOrderItemsAction(input: {
         .insert({
           tenant_id: tenantId,
           name,
-          mobile: mobile || null
+          mobile: mobile || null,
+          sms_notification: true
         })
         .select('id')
         .single()

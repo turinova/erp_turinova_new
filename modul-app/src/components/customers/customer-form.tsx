@@ -59,7 +59,9 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
     () => formatPhoneNumber(initial?.mobile ?? '')
   )
   const [smsNotification, setSmsNotification] = useState(
-    Boolean(initial?.sms_notification)
+    mode === 'edit'
+      ? Boolean(initial?.sms_notification)
+      : true
   )
   const [billing, setBilling] = useState<DocumentBillingState>(() =>
     billingFromInitial(initial)

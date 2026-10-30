@@ -29,7 +29,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 24
+export const PAGE_CATALOG_VERSION = 25
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -147,6 +147,11 @@ export const APP_PAGES: AppPageDef[] = [
   {
     key: '/torzsadatok/alapanyagok/termekek',
     label: 'Termékek',
+    category: 'Törzs — alapanyagok'
+  },
+  {
+    key: '/torzsadatok/vonalkod-lap',
+    label: 'Vonalkód lap',
     category: 'Törzs — alapanyagok'
   },
   {

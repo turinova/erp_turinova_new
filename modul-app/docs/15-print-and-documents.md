@@ -76,6 +76,17 @@ Zárolt döntések:
 - **Gép / USB:** Browser Print + default ZD220; HTTPS `9101/ssl_support`; media kalibráció. **Minden nyomtatás előtt re-probe**; tab focus / visibility → re-probe; hibaállapotnál **Újracsatlakozás**; USB kihúzás → clerk-facing hiba (`mapBrowserPrintError`).
 - Preview + print truth: `generateLabelZpl` → `zpl-preview.ts` / Browser Print `write`.
 
+### 6b. Vonalkód lap (A4) — irodai nyomtató
+
+Külön feature a 33×25 ZPL-től — lásd [`49-vonalkod-lap.md`](49-vonalkod-lap.md).
+
+- **Primary:** kliens **PDF** (`pdf-lib` + JsBarcode), nem Browser Print / ZPL.
+- **Előnézet:** ugyanaz a PDF → PNG (`pdf.js` a `/public/pdfjs/`-ből, webpackIgnore — Next nem bundle-eli) — print truth.
+- **Cella layout:** `layout.ts` + `barcode-render.ts` — quiet zone, integer modul, barH floor; per-cell név/ár/`Ft/{egység}` (címke modal UX); **nincs HRI**.
+- **Policy:** `lib/a4-barcode-sheets/print-policy.ts` — cellaszélesség szerinti fit; **ne** hívd vakon a 33×25 `resolvePrintableBarcode` blocked eredményét.
+- **Kódpreferencia:** érvényes belső EAN-13, ha van (ugyanaz a szellem, mint a címkén).
+- **Nyomtatás:** irodai nyomtató, **tényleges méret / 100%**; soft margin miatt default ~5 mm.
+
 ## 7. PDF kontra HTML print
 
 Ajánlott szemlélet:
