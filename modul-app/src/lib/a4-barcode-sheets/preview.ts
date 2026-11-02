@@ -10,7 +10,8 @@ import {
 } from '@/lib/a4-barcode-sheets/pdf'
 import type { A4SheetCellDraft } from '@/lib/a4-barcode-sheets/types'
 
-const WORKER_SRC = '/pdfjs/pdf.worker.min.mjs'
+/** Boot file polyfills Map.getOrInsert* then loads pdf.worker.min.mjs. */
+const WORKER_SRC = '/pdfjs/pdf.worker-boot.mjs'
 
 type PdfjsLib = {
   getDocument: (src: {
@@ -36,8 +37,38 @@ type PdfPageProxy = {
 
 let pdfjsPromise: Promise<PdfjsLib> | null = null
 
+/**
+ * pdf.js 5.6+ uses Map.getOrInsert / getOrInsertComputed (Chrome 145+ / Safari 26.2+).
+ * Main-thread polyfill — worker scope is covered by /pdfjs/pdf.worker-boot.mjs.
+ */
+function ensureMapGetOrInsert(): void {
+  const proto = Map.prototype as Map<unknown, unknown> & {
+    getOrInsert?: (key: unknown, value: unknown) => unknown
+    getOrInsertComputed?: (
+      key: unknown,
+      callback: (key: unknown) => unknown
+    ) => unknown
+  }
+  if (typeof proto.getOrInsert !== 'function') {
+    proto.getOrInsert = function (key, value) {
+      if (this.has(key)) return this.get(key)
+      this.set(key, value)
+      return value
+    }
+  }
+  if (typeof proto.getOrInsertComputed !== 'function') {
+    proto.getOrInsertComputed = function (key, callback) {
+      if (this.has(key)) return this.get(key)
+      const value = callback(key)
+      this.set(key, value)
+      return value
+    }
+  }
+}
+
 async function loadPdfjs(): Promise<PdfjsLib> {
   if (!pdfjsPromise) {
+    ensureMapGetOrInsert()
     // Literal path required for webpackIgnore (do not use a variable).
     // Public ESM — not resolved via node_modules (see /public/pdfjs/).
     pdfjsPromise = (
