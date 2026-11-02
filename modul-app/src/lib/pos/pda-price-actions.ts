@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { netFromGross } from '@/lib/accessories/parse'
+import { PDA_ACCESSORY_NAME_MAX } from '@/lib/pos/pda-constants'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 import { revalidateShopProduct } from '@/lib/webshop/revalidate-product'
 
@@ -108,4 +109,61 @@ export async function updateAccessorySellGrossFromPdaAction(input: {
     marginFactor,
     unitPriceGross: gross
   }
+}
+
+export type UpdatePdaNameResult =
+  | { ok: true; name: string }
+  | { ok: false; message: string }
+
+/**
+ * PDA árellenőrzés: termék név mentése (accessories.name).
+ */
+export async function updateAccessoryNameFromPdaAction(input: {
+  accessoryId: string
+  name: string
+}): Promise<UpdatePdaNameResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const accessoryId = input.accessoryId?.trim()
+  if (!accessoryId) {
+    return { ok: false, message: 'Hiányzó termék.' }
+  }
+
+  const name = String(input.name ?? '').trim()
+  if (!name) {
+    return { ok: false, message: 'Add meg a termék nevét.' }
+  }
+  if (name.length > PDA_ACCESSORY_NAME_MAX) {
+    return {
+      ok: false,
+      message: `A név legfeljebb ${PDA_ACCESSORY_NAME_MAX} karakter.`
+    }
+  }
+
+  const { data: updated, error: updErr } = await ctx.supabase
+    .from('accessories')
+    .update({
+      name,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', accessoryId)
+    .eq('tenant_id', ctx.user.tenantId!)
+    .is('deleted_at', null)
+    .select('id')
+    .maybeSingle()
+
+  if (updErr) {
+    console.error('updateAccessoryNameFromPda update', updErr.message)
+    return { ok: false, message: 'Nem sikerült menteni a nevet.' }
+  }
+  if (!updated) {
+    return { ok: false, message: 'A termék nem található.' }
+  }
+
+  revalidatePath(ACCESSORY_LIST)
+  revalidatePath(`${ACCESSORY_LIST}/${accessoryId}`)
+  await revalidateShopProduct(ctx.supabase, ctx.user.tenantId!, accessoryId)
+
+  return { ok: true, name }
 }

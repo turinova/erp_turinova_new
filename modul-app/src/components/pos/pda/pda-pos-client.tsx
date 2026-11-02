@@ -19,6 +19,10 @@ import { PdaDock } from '@/components/pos/pda/pda-dock'
 import { PdaHandoffSuccess } from '@/components/pos/pda/pda-handoff-success'
 import { PdaProductSearch } from '@/components/pos/pda/pda-product-search'
 import { PdaScroll, PdaShell } from '@/components/pos/pda/pda-shell'
+import {
+  PdaSoftKeyboard,
+  type PdaKbLayer
+} from '@/components/pos/pda/pda-soft-keyboard'
 import { PosShiftGate } from '@/components/pos/pos-shift-gate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,7 +36,11 @@ import {
   peekPosBarcodeCache
 } from '@/lib/pos/pos-barcode-client'
 import { createPosCartHandoffAction } from '@/lib/pos/handoff-actions'
-import { updateAccessorySellGrossFromPdaAction } from '@/lib/pos/pda-price-actions'
+import { PDA_ACCESSORY_NAME_MAX } from '@/lib/pos/pda-constants'
+import {
+  updateAccessoryNameFromPdaAction,
+  updateAccessorySellGrossFromPdaAction
+} from '@/lib/pos/pda-price-actions'
 import { loadPosQuickProductsAction } from '@/lib/pos/quick-items-actions'
 import type { PosCartLine } from '@/lib/pos/session'
 import { getOpenPosShiftAction } from '@/lib/pos/shift-actions'
@@ -73,6 +81,8 @@ function adjustGrossRaw(raw: string, delta: number): string {
 }
 
 type View = 'hub' | 'check' | 'sell' | 'handoff_ok'
+/** Árellenőrzés: egyszerre egy szerkesztő (ár VAGY név). */
+type CheckEditMode = 'none' | 'price' | 'name'
 
 type WarehousePick = { id: string; name: string; code?: string | null }
 
@@ -133,9 +143,13 @@ export function PdaPosClient({
     null
   )
   const [checkMsg, setCheckMsg] = useState<string | null>(null)
-  const [checkPriceEditing, setCheckPriceEditing] = useState(false)
+  const [checkEdit, setCheckEdit] = useState<CheckEditMode>('none')
   const [checkGrossRaw, setCheckGrossRaw] = useState('0')
-  const [checkPricePending, setCheckPricePending] = useState(false)
+  const [checkNameRaw, setCheckNameRaw] = useState('')
+  const [checkNameBaseline, setCheckNameBaseline] = useState('')
+  const [checkKbLayer, setCheckKbLayer] = useState<PdaKbLayer>('lower')
+  const [checkSavePending, setCheckSavePending] = useState(false)
+  const [nameDiscardOpen, setNameDiscardOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [payMode, setPayMode] = useState<PosPayMode>('cash')
   const [pending, startTransition] = useTransition()
@@ -177,6 +191,10 @@ export function PdaPosClient({
     [lines]
   )
 
+  const checkEditing = checkEdit !== 'none'
+  const nameDirty =
+    checkEdit === 'name' && checkNameRaw.trim() !== checkNameBaseline.trim()
+
   const scannerPaused =
     view === 'hub' ||
     view === 'handoff_ok' ||
@@ -184,7 +202,8 @@ export function PdaPosClient({
     customerSheetOpen ||
     searchFocused ||
     discEditing ||
-    checkPriceEditing
+    checkEditing ||
+    nameDiscardOpen
 
   useEffect(() => {
     if (!registerId) {
@@ -279,7 +298,12 @@ export function PdaPosClient({
         setCheckProduct(product)
         setCheckMsg(null)
         setFlash(null)
-        setCheckPriceEditing(false)
+        setCheckEdit('none')
+        setCheckGrossRaw('0')
+        setCheckNameRaw('')
+        setCheckNameBaseline('')
+        setCheckKbLayer('lower')
+        setNameDiscardOpen(false)
         return
       }
       addProduct(product)
@@ -492,6 +516,13 @@ export function PdaPosClient({
                 setFlash(null)
                 setCheckProduct(null)
                 setCheckMsg(null)
+                setCheckEdit('none')
+                setCheckGrossRaw('0')
+                setCheckNameRaw('')
+                setCheckNameBaseline('')
+                setCheckKbLayer('lower')
+                setCheckSavePending(false)
+                setNameDiscardOpen(false)
                 setView('check')
               }}
               className="flex min-h-[7.5rem] flex-col items-start justify-center gap-1 rounded-lg border border-border bg-surface px-5 py-4 text-left active:bg-subtle"
@@ -543,13 +574,34 @@ export function PdaPosClient({
       {view === 'check' ? (
         <>
           <PdaTopbar
-            title="Árellenőrzés"
+            title={
+              checkEdit === 'name'
+                ? 'Termék neve'
+                : checkEdit === 'price'
+                  ? 'Bruttó ár'
+                  : 'Árellenőrzés'
+            }
             onBack={() => {
-              setCheckPriceEditing(false)
+              if (checkEdit === 'name') {
+                if (nameDirty) {
+                  setNameDiscardOpen(true)
+                  return
+                }
+                setCheckEdit('none')
+                setCheckNameRaw('')
+                setCheckNameBaseline('')
+                setCheckKbLayer('lower')
+                return
+              }
+              if (checkEdit === 'price') {
+                setCheckEdit('none')
+                setCheckGrossRaw('0')
+                return
+              }
               setView('hub')
             }}
           />
-          {!checkPriceEditing ? (
+          {checkEdit === 'none' ? (
             <div className="shrink-0 space-y-2 border-b border-border px-4 py-3">
               <p className="text-hint text-emerald-700">Szkenner aktív</p>
               <PdaProductSearch
@@ -558,7 +610,7 @@ export function PdaPosClient({
                   setCheckProduct(p)
                   setCheckMsg(null)
                   setFlash(null)
-                  setCheckPriceEditing(false)
+                  setCheckEdit('none')
                 }}
                 onBarcodeFallback={(code) => {
                   void handleScan(code)
@@ -567,188 +619,399 @@ export function PdaPosClient({
               />
             </div>
           ) : null}
-          <PdaScroll>
-            {flash && checkProduct ? (
-              <p
-                className="mb-2 rounded-md border border-border bg-surface px-3 py-2 text-body text-ink"
-                role="status"
-              >
-                {flash}
-              </p>
-            ) : null}
-            {flash && !checkProduct ? (
-              <p className="mb-2 text-body text-danger-ink" role="alert">
-                {flash}
-              </p>
-            ) : null}
-            {checkMsg ? (
-              <p className="text-body text-danger-ink" role="alert">
-                {checkMsg}
-              </p>
-            ) : null}
-            {checkProduct ? (
-              <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-surface p-3">
-                <p className="break-words text-[16px] font-semibold leading-snug text-ink">
-                  {checkProduct.display_name?.trim() || checkProduct.name}
-                </p>
-                <p className="mt-0.5 truncate text-hint text-ink-muted">
+
+          {checkEdit === 'name' && checkProduct ? (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="shrink-0 border-b border-border px-4 py-2">
+                <p className="truncate text-hint text-ink-muted">
                   {checkProduct.sku}
+                  <span className="text-ink-secondary"> · </span>
+                  <span className="tabular-nums text-ink">
+                    {formatMoneyFt(saleItemShelfGross(checkProduct))} Ft
+                  </span>
                 </p>
-                {checkPriceEditing ? (
-                  <div className="mt-3 space-y-2.5">
-                    <p className="text-hint font-medium text-ink-secondary">
-                      Bruttó ár
-                    </p>
-                    <p className="text-[28px] font-semibold tabular-nums tracking-tight text-ink">
-                      {formatMoneyFt(Number(checkGrossRaw) || 0)}{' '}
-                      <span className="text-[16px] font-medium text-ink-secondary">
-                        Ft
+              </div>
+              <PdaScroll className="flex-1">
+                {flash ? (
+                  <p
+                    className="mb-2 rounded-md border border-border bg-surface px-3 py-2 text-body text-danger-ink"
+                    role="alert"
+                  >
+                    {flash}
+                  </p>
+                ) : null}
+                <div className="rounded-lg border border-border bg-surface px-3 py-3">
+                  <p className="min-h-[4.5rem] break-words text-[17px] font-semibold leading-snug text-ink">
+                    {checkNameRaw || (
+                      <span className="font-medium text-ink-muted">
+                        Írd be a termék nevét…
                       </span>
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {PRICE_STEP_CHIPS.map((delta) => (
-                        <button
-                          key={delta}
-                          type="button"
-                          disabled={checkPricePending}
-                          className="min-h-9 min-w-[3.25rem] rounded-md border border-border bg-subtle px-2 text-[13px] font-semibold tabular-nums text-ink active:bg-border/60 disabled:opacity-50"
-                          onClick={() =>
-                            setCheckGrossRaw((raw) =>
-                              adjustGrossRaw(raw, delta)
-                            )
-                          }
-                        >
-                          {delta > 0 ? `+${delta}` : delta}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {PRICE_NUMPAD.map((key) => (
-                        <button
-                          key={key}
-                          type="button"
-                          disabled={checkPricePending}
-                          className="flex h-11 items-center justify-center rounded-md border border-border bg-surface text-[16px] font-semibold tabular-nums text-ink active:bg-subtle disabled:opacity-50"
-                          onClick={() => {
-                            if (key === 'C') {
-                              setCheckGrossRaw('0')
-                              return
-                            }
-                            if (key === '⌫') {
+                    )}
+                    <span
+                      className="ml-0.5 inline-block h-[1.1em] w-0.5 animate-pulse bg-ink align-[-0.1em]"
+                      aria-hidden
+                    />
+                  </p>
+                  <p
+                    className={cn(
+                      'mt-2 text-hint tabular-nums',
+                      checkNameRaw.length >= PDA_ACCESSORY_NAME_MAX
+                        ? 'text-danger-ink'
+                        : checkNameRaw.length >= 160
+                          ? 'text-amber-700'
+                          : 'text-ink-muted'
+                    )}
+                  >
+                    {checkNameRaw.length}/{PDA_ACCESSORY_NAME_MAX}
+                    {checkNameRaw.length >= 160
+                      ? ' · Hosszú név — címkén vágódhat'
+                      : null}
+                  </p>
+                </div>
+              </PdaScroll>
+              <div className="shrink-0 space-y-2 border-t border-border bg-subtle/40 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
+                <PdaSoftKeyboard
+                  layer={checkKbLayer}
+                  onLayerChange={setCheckKbLayer}
+                  disabled={checkSavePending}
+                  onKey={(key) => {
+                    setCheckNameRaw((prev) => {
+                      if (prev.length >= PDA_ACCESSORY_NAME_MAX) return prev
+                      return prev + key
+                    })
+                  }}
+                  onBackspace={() => {
+                    setCheckNameRaw((prev) => prev.slice(0, -1))
+                  }}
+                />
+                <div className="flex gap-2 px-1">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-11 flex-1"
+                    disabled={checkSavePending}
+                    onClick={() => {
+                      if (nameDirty) {
+                        setNameDiscardOpen(true)
+                        return
+                      }
+                      setCheckEdit('none')
+                      setCheckNameRaw('')
+                      setCheckNameBaseline('')
+                      setCheckKbLayer('lower')
+                    }}
+                  >
+                    Mégse
+                  </Button>
+                  <Button
+                    type="button"
+                    className="h-11 flex-1"
+                    disabled={
+                      checkSavePending || !checkNameRaw.trim()
+                    }
+                    loading={checkSavePending}
+                    onClick={() => {
+                      const next = checkNameRaw.trim()
+                      if (!next) {
+                        setFlash('Add meg a termék nevét.')
+                        return
+                      }
+                      if (next === checkNameBaseline.trim()) {
+                        setCheckEdit('none')
+                        setCheckNameRaw('')
+                        setCheckNameBaseline('')
+                        setCheckKbLayer('lower')
+                        return
+                      }
+                      setCheckSavePending(true)
+                      setFlash(null)
+                      void updateAccessoryNameFromPdaAction({
+                        accessoryId: checkProduct.id,
+                        name: next
+                      }).then((res) => {
+                        setCheckSavePending(false)
+                        if (!res.ok) {
+                          setFlash(res.message)
+                          return
+                        }
+                        setCheckProduct((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                name: res.name,
+                                display_name: res.name
+                              }
+                            : prev
+                        )
+                        setCheckEdit('none')
+                        setCheckNameRaw('')
+                        setCheckNameBaseline('')
+                        setCheckKbLayer('lower')
+                        setFlash('Név mentve')
+                      })
+                    }}
+                  >
+                    Mentés
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <PdaScroll>
+              {flash && checkProduct ? (
+                <p
+                  className="mb-2 rounded-md border border-border bg-surface px-3 py-2 text-body text-ink"
+                  role="status"
+                >
+                  {flash}
+                </p>
+              ) : null}
+              {flash && !checkProduct ? (
+                <p className="mb-2 text-body text-danger-ink" role="alert">
+                  {flash}
+                </p>
+              ) : null}
+              {checkMsg ? (
+                <p className="text-body text-danger-ink" role="alert">
+                  {checkMsg}
+                </p>
+              ) : null}
+              {checkProduct ? (
+                <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-surface p-3">
+                  <p className="break-words text-[16px] font-semibold leading-snug text-ink">
+                    {checkProduct.display_name?.trim() || checkProduct.name}
+                  </p>
+                  <p className="mt-0.5 truncate text-hint text-ink-muted">
+                    {checkProduct.sku}
+                  </p>
+                  {checkEdit === 'price' ? (
+                    <div className="mt-3 space-y-2.5">
+                      <p className="text-hint font-medium text-ink-secondary">
+                        Bruttó ár
+                      </p>
+                      <p className="text-[28px] font-semibold tabular-nums tracking-tight text-ink">
+                        {formatMoneyFt(Number(checkGrossRaw) || 0)}{' '}
+                        <span className="text-[16px] font-medium text-ink-secondary">
+                          Ft
+                        </span>
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {PRICE_STEP_CHIPS.map((delta) => (
+                          <button
+                            key={delta}
+                            type="button"
+                            disabled={checkSavePending}
+                            className="min-h-9 min-w-[3.25rem] rounded-md border border-border bg-subtle px-2 text-[13px] font-semibold tabular-nums text-ink active:bg-border/60 disabled:opacity-50"
+                            onClick={() =>
                               setCheckGrossRaw((raw) =>
-                                raw.length <= 1 ? '0' : raw.slice(0, -1)
+                                adjustGrossRaw(raw, delta)
                               )
-                              return
                             }
-                            setCheckGrossRaw((raw) =>
-                              appendGrossDigit(raw, key)
-                            )
+                          >
+                            {delta > 0 ? `+${delta}` : delta}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {PRICE_NUMPAD.map((key) => (
+                          <button
+                            key={key}
+                            type="button"
+                            disabled={checkSavePending}
+                            className="flex h-11 items-center justify-center rounded-md border border-border bg-surface text-[16px] font-semibold tabular-nums text-ink active:bg-subtle disabled:opacity-50"
+                            onClick={() => {
+                              if (key === 'C') {
+                                setCheckGrossRaw('0')
+                                return
+                              }
+                              if (key === '⌫') {
+                                setCheckGrossRaw((raw) =>
+                                  raw.length <= 1 ? '0' : raw.slice(0, -1)
+                                )
+                                return
+                              }
+                              setCheckGrossRaw((raw) =>
+                                appendGrossDigit(raw, key)
+                              )
+                            }}
+                          >
+                            {key}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2 pt-0.5">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="h-11 flex-1"
+                          disabled={checkSavePending}
+                          onClick={() => {
+                            setCheckEdit('none')
+                            setCheckGrossRaw('0')
                           }}
                         >
-                          {key}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 pt-0.5">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="h-11 flex-1"
-                        disabled={checkPricePending}
-                        onClick={() => setCheckPriceEditing(false)}
-                      >
-                        Mégse
-                      </Button>
-                      <Button
-                        type="button"
-                        className="h-11 flex-1"
-                        disabled={checkPricePending}
-                        loading={checkPricePending}
-                        onClick={() => {
-                          if (
-                            checkProduct.kind &&
-                            checkProduct.kind !== 'product'
-                          ) {
-                            setFlash('Ár szerkesztés csak terméknél.')
-                            return
-                          }
-                          const n = Math.round(Number(checkGrossRaw))
-                          if (!Number.isFinite(n) || n < 0) {
-                            setFlash('Érvénytelen bruttó ár.')
-                            return
-                          }
-                          setCheckPricePending(true)
-                          setFlash(null)
-                          void updateAccessorySellGrossFromPdaAction({
-                            accessoryId: checkProduct.id,
-                            unitPriceGross: n
-                          }).then((res) => {
-                            setCheckPricePending(false)
-                            if (!res.ok) {
-                              setFlash(res.message)
+                          Mégse
+                        </Button>
+                        <Button
+                          type="button"
+                          className="h-11 flex-1"
+                          disabled={checkSavePending}
+                          loading={checkSavePending}
+                          onClick={() => {
+                            if (
+                              checkProduct.kind &&
+                              checkProduct.kind !== 'product'
+                            ) {
+                              setFlash('Ár szerkesztés csak terméknél.')
                               return
                             }
-                            setCheckProduct((prev) =>
-                              prev
-                                ? {
-                                    ...prev,
-                                    price_net: res.priceNet,
-                                    price_gross: res.unitPriceGross
-                                  }
-                                : prev
-                            )
-                            setCheckPriceEditing(false)
-                            setFlash(
-                              `Ár mentve · ${formatMoneyFt(res.unitPriceGross)} Ft`
-                            )
-                          })
-                        }}
-                      >
-                        Mentés
-                      </Button>
+                            const n = Math.round(Number(checkGrossRaw))
+                            if (!Number.isFinite(n) || n < 0) {
+                              setFlash('Érvénytelen bruttó ár.')
+                              return
+                            }
+                            setCheckSavePending(true)
+                            setFlash(null)
+                            void updateAccessorySellGrossFromPdaAction({
+                              accessoryId: checkProduct.id,
+                              unitPriceGross: n
+                            }).then((res) => {
+                              setCheckSavePending(false)
+                              if (!res.ok) {
+                                setFlash(res.message)
+                                return
+                              }
+                              setCheckProduct((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      price_net: res.priceNet,
+                                      price_gross: res.unitPriceGross
+                                    }
+                                  : prev
+                              )
+                              setCheckEdit('none')
+                              setCheckGrossRaw('0')
+                              setFlash(
+                                `Ár mentve · ${formatMoneyFt(res.unitPriceGross)} Ft`
+                              )
+                            })
+                          }}
+                        >
+                          Mentés
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <>
-                    <p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight text-ink">
-                      {formatMoneyFt(saleItemShelfGross(checkProduct))}{' '}
-                      <span className="text-[16px] font-medium text-ink-secondary">
-                        Ft
-                      </span>
-                    </p>
-                    <p className="mt-2 text-body text-ink-secondary">
-                      Készlet:{' '}
-                      <span className="font-semibold tabular-nums text-ink">
-                        {checkProduct.on_hand}
-                      </span>{' '}
-                      {checkProduct.unit_shortform || 'db'}
-                    </p>
-                    {canWrite &&
-                    (!checkProduct.kind || checkProduct.kind === 'product') ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="mt-3 h-11 w-full"
-                        onClick={() => {
-                          setCheckGrossRaw(
-                            String(saleItemShelfGross(checkProduct))
-                          )
-                          setCheckPriceEditing(true)
-                          setFlash(null)
-                        }}
-                      >
-                        Bruttó ár szerkesztése
-                      </Button>
-                    ) : null}
-                  </>
-                )}
+                  ) : (
+                    <>
+                      <p className="mt-2 text-[28px] font-semibold tabular-nums tracking-tight text-ink">
+                        {formatMoneyFt(saleItemShelfGross(checkProduct))}{' '}
+                        <span className="text-[16px] font-medium text-ink-secondary">
+                          Ft
+                        </span>
+                      </p>
+                      <p className="mt-2 text-body text-ink-secondary">
+                        Készlet:{' '}
+                        <span className="font-semibold tabular-nums text-ink">
+                          {checkProduct.on_hand}
+                        </span>{' '}
+                        {checkProduct.unit_shortform || 'db'}
+                      </p>
+                      {canWrite &&
+                      (!checkProduct.kind ||
+                        checkProduct.kind === 'product') ? (
+                        <div className="mt-3 space-y-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-11 w-full"
+                            onClick={() => {
+                              setCheckGrossRaw(
+                                String(saleItemShelfGross(checkProduct))
+                              )
+                              setCheckEdit('price')
+                              setFlash(null)
+                            }}
+                          >
+                            Bruttó ár szerkesztése
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-11 w-full"
+                            onClick={() => {
+                              const base =
+                                checkProduct.display_name?.trim() ||
+                                checkProduct.name ||
+                                ''
+                              setCheckNameRaw(base)
+                              setCheckNameBaseline(base)
+                              setCheckKbLayer('lower')
+                              setCheckEdit('name')
+                              setFlash(null)
+                            }}
+                          >
+                            Termék neve szerkesztése
+                          </Button>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              ) : (
+                <p className="text-body text-ink-muted">
+                  Olvasd be a vonalkódot, vagy keress névre / SKU-ra.
+                </p>
+              )}
+            </PdaScroll>
+          )}
+
+          {nameDiscardOpen ? (
+            <div
+              className="absolute inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pda-name-discard-title"
+            >
+              <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-4 shadow-lg">
+                <h2
+                  id="pda-name-discard-title"
+                  className="text-[16px] font-semibold text-ink"
+                >
+                  Eldobod a módosítást?
+                </h2>
+                <p className="mt-1 text-body text-ink-secondary">
+                  A nem mentett név elvész.
+                </p>
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-11 flex-1"
+                    autoFocus
+                    onClick={() => setNameDiscardOpen(false)}
+                  >
+                    Mégse
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    className="h-11 flex-1"
+                    onClick={() => {
+                      setNameDiscardOpen(false)
+                      setCheckEdit('none')
+                      setCheckNameRaw('')
+                      setCheckNameBaseline('')
+                      setCheckKbLayer('lower')
+                      setFlash(null)
+                    }}
+                  >
+                    Eldobom
+                  </Button>
+                </div>
               </div>
-            ) : (
-              <p className="text-body text-ink-muted">
-                Olvasd be a vonalkódot, vagy keress névre / SKU-ra.
-              </p>
-            )}
-          </PdaScroll>
+            </div>
+          ) : null}
         </>
       ) : null}
 

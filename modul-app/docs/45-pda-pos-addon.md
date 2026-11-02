@@ -37,7 +37,7 @@
 |---|---|
 | `/pos/pda` hub | Eladás · Árellenőrzés (nagy csempék) |
 | Eladás | Scan + gyorscikk gombok + kosár + KP/kártya → `create_sale` |
-| Árellenőrzés | Scan → név, SKU, bruttó ár, készlet |
+| Árellenőrzés | Scan → név, SKU, bruttó ár, készlet; írható: **bruttó ár** + **termék név** (in-app soft KB, wedge-safe) |
 
 **Nem P0:** PIN, vegyes split UI, számla, Teya terminál lépés, Micra, offline queue, anyag m² dialógus (később).
 
@@ -67,6 +67,7 @@ Page catalog: `APP_PAGES` + `PAGE_CATALOG_VERSION` bump.
 - **Kétcsatornás capture:** rejtett wedge sink + globális key buffer (`usePdaScanner`) **és** látható kereső (név / SKU / `web_mpn` / barcode).
 - Ügyfél chip → teljes képernyős sheet (`CustomerMenuSelect`); vendég = partial tilos (RPC guard).
 - Certainty-first: egy primary / képernyő; ige+tárgy CTA.
+- **Árellenőrzés szerkesztés:** `editMode` = `none` \| `price` \| `name` (egyszerre egy). Ár = numpad; név = in-app HU soft keyboard (`PdaSoftKeyboard`) — **nem** OS SIP (wedge HID elnyomná). Szerkesztés alatt scanner paused + kereső elrejtve. Dirty név ← / Mégse → „Eldobod a módosítást?” (default fókusz Mégse). Mentés: `updateAccessorySellGrossFromPdaAction` / `updateAccessoryNameFromPdaAction` (max 200 char). Viewer / nem-termék: gombok rejtve.
 
 ### A2HS (Add to Home Screen)
 
@@ -118,6 +119,9 @@ Shared műszak: ugyanaz a nyitott shift, mint a pulton (vagy dedikált „Mobil�
 - [ ] Addon ki → `/pos/pda` 404 / nincs jog  
 - [ ] Addon be + POS Alap → hub látszik login után  
 - [ ] Árellenőrzés: barcode + név/SKU/MPN keresés  
+- [ ] Árellenőrzés: bruttó ár mentés (numpad) + termék név mentés (HU soft KB)  
+- [ ] Név szerkesztés közben wedge nem ír a névbe; dirty back confirm  
+ 
 - [ ] Scan qty gomb fókusz mellett is bekerül  
 - [ ] Dock mindig látszik (hosszú kosár)  
 - [ ] Ügyfél sheet → `create_sale` customerId  
