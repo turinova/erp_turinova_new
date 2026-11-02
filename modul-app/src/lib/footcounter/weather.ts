@@ -216,6 +216,20 @@ export async function loadFootcounterWeatherByDay(
   const out = new Map<string, FootcounterDayWeather>()
   if (unique.length === 0) return out
 
+  type WeatherRow = {
+    day: string | null
+    temp_max_c: number | null
+    temp_min_c: number | null
+    precipitation_mm: number | null
+    precip_open_hours_mm: number | null
+    rain_hours_open: number | null
+    is_significant_rain_open: boolean | null
+    wind_speed_10m_max_kmh: number | null
+    wind_speed_open_max_kmh: number | null
+    is_significant_wind_open: boolean | null
+  }
+
+  // Tábla még nincs a generált Database típusban — explicit cast.
   const { data, error } = await supabase
     .from('footcounter_daily_weather')
     .select(
@@ -245,7 +259,8 @@ export async function loadFootcounterWeatherByDay(
     return out
   }
 
-  for (const row of data ?? []) {
+  const rows = (data ?? []) as unknown as WeatherRow[]
+  for (const row of rows) {
     const dayKey = String(row.day ?? '').slice(0, 10)
     if (!dayKey) continue
     const precipOpen =
