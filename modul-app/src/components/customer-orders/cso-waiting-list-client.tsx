@@ -2,14 +2,15 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import {
   ClipboardList,
   MessageSquare,
   PackageCheck,
   Search,
   StickyNote,
-  Truck
+  Truck,
+  X
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -135,6 +136,7 @@ export function CsoWaitingListClient({
   const searchParams = useSearchParams()
   const [qDraft, setQDraft] = useState(initialQ)
   const [pending, startTransition] = useTransition()
+  const searching = initialQ.trim().length > 0
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [leadOpen, setLeadOpen] = useState(false)
   const [arriveOpen, setArriveOpen] = useState(false)
@@ -197,6 +199,19 @@ export function CsoWaitingListClient({
       router.push(qs ? `${pathname}?${qs}` : pathname)
     })
   }
+
+  useEffect(() => {
+    setQDraft(initialQ)
+  }, [initialQ])
+
+  useEffect(() => {
+    if (qDraft === initialQ) return
+    const t = window.setTimeout(() => {
+      pushParams({ q: qDraft.trim() || null, page: null })
+    }, 300)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce only on draft text
+  }, [qDraft])
 
   function toggleAll() {
     if (rows.length === 0) return
@@ -266,8 +281,9 @@ export function CsoWaitingListClient({
     })
   }
 
-  const emptyHint =
-    initialView === 'todo'
+  const emptyHint = searching
+    ? 'Nincs találat ezzel a kereséssel.'
+    : initialView === 'todo'
       ? 'Minden a beszerzésben van, vagy nincs teendő. Új felvétel az Ügyfélrendeléseknél.'
       : initialView === 'on_way'
         ? 'Nincs tétel beszerzés alatt.'
@@ -291,25 +307,30 @@ export function CsoWaitingListClient({
 
       <div className="flex flex-wrap items-center gap-1.5">
         {CSO_WAITING_VIEWS.map((view) => {
-          const active = initialView === view
+          const active = !searching && initialView === view
           const n = counts[view]
           return (
             <button
               key={view}
               type="button"
               disabled={pending}
-              onClick={() =>
+              onClick={() => {
+                setQDraft('')
                 pushParams({
                   view,
                   page: null,
-                  notify: null
+                  notify: null,
+                  // Chip = nézet munka; keresést töröljük (CSO lista mintájára).
+                  q: null
                 })
-              }
+              }}
               className={cn(
                 'inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] transition-colors',
                 active
                   ? 'border-ink bg-ink text-white'
-                  : 'border-border bg-white text-ink-secondary hover:bg-subtle'
+                  : searching
+                    ? 'border-border bg-white text-ink-secondary'
+                    : 'border-border bg-white text-ink-secondary hover:bg-subtle'
               )}
             >
               {CSO_WAITING_VIEW_LABEL[view]}
@@ -324,7 +345,7 @@ export function CsoWaitingListClient({
             </button>
           )
         })}
-        {initialView === 'ready' ? (
+        {initialView === 'ready' && !searching ? (
           <button
             type="button"
             disabled={pending}
@@ -347,12 +368,9 @@ export function CsoWaitingListClient({
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
-        <form
+        <div
           className="flex min-w-[220px] flex-1 items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            pushParams({ q: qDraft.trim() || null, page: null })
-          }}
+          role="search"
         >
           <div className="relative flex-1">
             <Search
@@ -362,15 +380,25 @@ export function CsoWaitingListClient({
             <Input
               value={qDraft}
               onChange={(e) => setQDraft(e.target.value)}
-              placeholder="Ügyfél, UR#, termék, SKU…"
-              className="h-8 pl-8"
-              aria-label="Keresés"
+              placeholder="Ügyfél, telefon, UR#, termék, SKU, vonalkód…"
+              className="h-8 pl-8 pr-8"
+              aria-label="Keresés a várólistán"
             />
+            {qDraft.trim() ? (
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-muted hover:bg-subtle hover:text-ink"
+                aria-label="Keresés törlése"
+                onClick={() => {
+                  setQDraft('')
+                  pushParams({ q: null, page: null })
+                }}
+              >
+                <X className="size-3.5" aria-hidden />
+              </button>
+            ) : null}
           </div>
-          <Button type="submit" size="sm" variant="secondary" disabled={pending}>
-            Keresés
-          </Button>
-        </form>
+        </div>
         <div className="w-[200px]">
           <label className="mb-1 block text-[12px] text-ink-muted">
             Beszállító
@@ -394,6 +422,34 @@ export function CsoWaitingListClient({
           </Select>
         </div>
       </div>
+
+      {searching ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-subtle px-2 py-1 text-[12px] text-ink-secondary">
+            Keresés: {initialQ.trim()}
+            <button
+              type="button"
+              className="rounded p-0.5 hover:bg-surface"
+              aria-label="Keresés törlése"
+              onClick={() => {
+                setQDraft('')
+                pushParams({ q: null, page: null })
+              }}
+            >
+              <X className="size-3" aria-hidden />
+            </button>
+          </span>
+          <p className="text-[12px] text-ink-muted">
+            Találatok minden státuszban · a chip számai a keresésre vonatkoznak
+          </p>
+          <Link
+            href={`/ugyfelrendelesek?q=${encodeURIComponent(initialQ.trim())}`}
+            className="text-[12px] text-ink-secondary underline-offset-2 hover:underline"
+          >
+            Fejléc listán is →
+          </Link>
+        </div>
+      ) : null}
 
       {canWrite && selectedItems.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-subtle/50 px-3 py-2">
@@ -475,7 +531,27 @@ export function CsoWaitingListClient({
       {rows.length === 0 ? (
         <div className="rounded-md border border-dashed border-border px-4 py-10 text-center">
           <p className="text-[14px] text-ink-secondary">{emptyHint}</p>
-          {initialView === 'todo' ? (
+          {searching ? (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setQDraft('')
+                  pushParams({ q: null, page: null })
+                }}
+              >
+                Keresés törlése
+              </Button>
+              <Link
+                href={`/ugyfelrendelesek?q=${encodeURIComponent(initialQ.trim())}`}
+                className={buttonVariants({ size: 'sm', variant: 'ghost' })}
+              >
+                Ügyfélrendelések lista
+              </Link>
+            </div>
+          ) : initialView === 'todo' ? (
             <Link
               href="/ugyfelrendelesek/uj"
               className={cn(

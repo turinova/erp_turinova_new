@@ -190,9 +190,13 @@ export async function listPurchaseOrders(
 
   const q = params.q?.trim()
   if (q) {
-    const safe = q.replace(/[%_,]/g, '')
+    const safe = q.replace(/[%_,]/g, '').slice(0, 80)
     if (safe) {
-      const [{ data: supplierHits }, { data: itemHits }] = await Promise.all([
+      const [
+        { data: supplierHits },
+        { data: itemHits },
+        { data: accessoryHits }
+      ] = await Promise.all([
         supabase
           .from('suppliers')
           .select('id')
@@ -208,6 +212,20 @@ export async function listPurchaseOrders(
           .or(
             `name_snapshot.ilike.%${safe}%,sku_snapshot.ilike.%${safe}%`
           )
+          .limit(100),
+        supabase
+          .from('accessories')
+          .select('id')
+          .eq('tenant_id', params.tenantId)
+          .is('deleted_at', null)
+          .or(
+            [
+              `sku.ilike.%${safe}%`,
+              `barcode.ilike.%${safe}%`,
+              `barcode_internal.ilike.%${safe}%`,
+              `name.ilike.%${safe}%`
+            ].join(',')
+          )
           .limit(100)
       ])
       const supplierIds = (supplierHits ?? []).map((s) => s.id)
@@ -216,12 +234,31 @@ export async function listPurchaseOrders(
           (itemHits ?? []).map((it) => it.purchase_order_id as string)
         )
       ]
+      const accessoryIds = (accessoryHits ?? []).map((a) => a.id as string)
+      let poIdsFromAccessory: string[] = []
+      if (accessoryIds.length > 0) {
+        const { data: accItems } = await supabase
+          .from('purchase_order_items')
+          .select('purchase_order_id')
+          .eq('tenant_id', params.tenantId)
+          .is('deleted_at', null)
+          .in('accessory_id', accessoryIds)
+          .limit(100)
+        poIdsFromAccessory = [
+          ...new Set(
+            (accItems ?? []).map((it) => it.purchase_order_id as string)
+          )
+        ]
+      }
+      const poIds = [
+        ...new Set([...poIdsFromItems, ...poIdsFromAccessory])
+      ]
       const parts = [`po_number.ilike.%${safe}%`]
       if (supplierIds.length > 0) {
         parts.push(`supplier_id.in.(${supplierIds.join(',')})`)
       }
-      if (poIdsFromItems.length > 0) {
-        parts.push(`id.in.(${poIdsFromItems.join(',')})`)
+      if (poIds.length > 0) {
+        parts.push(`id.in.(${poIds.join(',')})`)
       }
       query = query.or(parts.join(','))
     }

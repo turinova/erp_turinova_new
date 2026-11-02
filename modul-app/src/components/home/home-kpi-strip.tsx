@@ -5,7 +5,7 @@ import { ShoppingCart, Users } from 'lucide-react'
 
 import {
   MonthProgressBar,
-  OpenDueRing
+  OpenDueStackBar
 } from '@/components/home/home-kpi-micro'
 import { HomeSalesSparkChart } from '@/components/home/home-sales-spark-chart'
 import { MetricCell, MetricRow } from '@/components/home/home-metric-row'
@@ -142,7 +142,7 @@ function SalesGlance({
             hint={salesPaidHint}
             emphasize={sales.openDue > 0 ? 'warning' : null}
             footer={
-              <OpenDueRing
+              <OpenDueStackBar
                 openDue={sales.openDue}
                 openInvoiceGross={sales.openInvoiceGross}
               />
@@ -157,7 +157,7 @@ function SalesGlance({
               hint={lapszabPaidHint}
               emphasize={lapszabaszat.openDue > 0 ? 'warning' : null}
               footer={
-                <OpenDueRing
+                <OpenDueStackBar
                   openDue={lapszabaszat.openDue}
                   openInvoiceGross={lapszabaszat.openOrderGross}
                 />

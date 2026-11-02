@@ -35,8 +35,11 @@ export default async function BeerkezesekPage({
   searchParams: SearchParams
 }) {
   const sp = await searchParams
-  const q = typeof sp.q === 'string' ? sp.q : ''
-  const status = parseStatus(typeof sp.status === 'string' ? sp.status : undefined)
+  const q = typeof sp.q === 'string' ? sp.q.trim() : ''
+  // Kereséskor ne szűrjön státuszra — PO / termék / barcode találat closed-ra is.
+  const status: GoodsReceiptStatus | 'all' = q
+    ? 'all'
+    : parseStatus(typeof sp.status === 'string' ? sp.status : undefined)
   const pageRaw = typeof sp.page === 'string' ? Number(sp.page) : 1
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1
 

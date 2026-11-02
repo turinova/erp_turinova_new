@@ -247,18 +247,115 @@ export async function listGoodsReceipts(
     .eq('tenant_id', params.tenantId)
     .is('deleted_at', null)
 
-  if (params.status && params.status !== 'all') {
+  const q = params.q?.trim() ?? ''
+  const safe = q.replace(/[%_,]/g, '').slice(0, 80)
+  // Keresés → minden státusz (beszerző: PO / doboz / beszállító lookup).
+  const searchAll = Boolean(safe)
+  if (!searchAll && params.status && params.status !== 'all') {
     query = query.eq('status', params.status)
   }
 
-  const q = params.q?.trim()
-  if (q) {
-    const safe = q.replace(/[%_,]/g, '')
-    if (safe) {
-      query = query.or(
-        `receipt_number.ilike.%${safe}%`
-      )
+  if (safe) {
+    const [
+      { data: supplierHits },
+      { data: poHits },
+      { data: itemHits },
+      { data: accessoryHits }
+    ] = await Promise.all([
+      supabase
+        .from('suppliers')
+        .select('id')
+        .eq('tenant_id', params.tenantId)
+        .is('deleted_at', null)
+        .ilike('name', `%${safe}%`)
+        .limit(50),
+      supabase
+        .from('purchase_orders')
+        .select('id')
+        .eq('tenant_id', params.tenantId)
+        .is('deleted_at', null)
+        .ilike('po_number', `%${safe}%`)
+        .limit(50),
+      supabase
+        .from('goods_receipt_items')
+        .select('goods_receipt_id')
+        .eq('tenant_id', params.tenantId)
+        .is('deleted_at', null)
+        .or(
+          `name_snapshot.ilike.%${safe}%,sku_snapshot.ilike.%${safe}%`
+        )
+        .limit(100),
+      supabase
+        .from('accessories')
+        .select('id')
+        .eq('tenant_id', params.tenantId)
+        .is('deleted_at', null)
+        .or(
+          [
+            `sku.ilike.%${safe}%`,
+            `barcode.ilike.%${safe}%`,
+            `barcode_internal.ilike.%${safe}%`,
+            `name.ilike.%${safe}%`
+          ].join(',')
+        )
+        .limit(100)
+    ])
+
+    const supplierIds = (supplierHits ?? []).map((s) => s.id as string)
+    let poIdsFromSupplier: string[] = []
+    if (supplierIds.length > 0) {
+      const { data: supplierPos } = await supabase
+        .from('purchase_orders')
+        .select('id')
+        .eq('tenant_id', params.tenantId)
+        .is('deleted_at', null)
+        .in('supplier_id', supplierIds)
+        .limit(100)
+      poIdsFromSupplier = (supplierPos ?? []).map((p) => p.id as string)
     }
+
+    const poIds = [
+      ...new Set([
+        ...(poHits ?? []).map((p) => p.id as string),
+        ...poIdsFromSupplier
+      ])
+    ]
+
+    const receiptIdsFromItems = [
+      ...new Set(
+        (itemHits ?? []).map((it) => it.goods_receipt_id as string)
+      )
+    ]
+
+    const accessoryIds = (accessoryHits ?? []).map((a) => a.id as string)
+    let receiptIdsFromAccessory: string[] = []
+    if (accessoryIds.length > 0) {
+      const { data: accItems } = await supabase
+        .from('goods_receipt_items')
+        .select('goods_receipt_id')
+        .eq('tenant_id', params.tenantId)
+        .is('deleted_at', null)
+        .in('accessory_id', accessoryIds)
+        .limit(100)
+      receiptIdsFromAccessory = [
+        ...new Set(
+          (accItems ?? []).map((it) => it.goods_receipt_id as string)
+        )
+      ]
+    }
+
+    const receiptIds = [
+      ...new Set([...receiptIdsFromItems, ...receiptIdsFromAccessory])
+    ]
+
+    const parts = [`receipt_number.ilike.%${safe}%`]
+    if (poIds.length > 0) {
+      parts.push(`purchase_order_id.in.(${poIds.join(',')})`)
+    }
+    if (receiptIds.length > 0) {
+      parts.push(`id.in.(${receiptIds.join(',')})`)
+    }
+    query = query.or(parts.join(','))
   }
 
   const { data, error, count } = await query

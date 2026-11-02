@@ -54,8 +54,89 @@ export function ReturnRatioBar({
 }
 
 /**
- * Kinnlevő ring: befizetett hányad a nyitott számlákon
- * (openInvoiceGross − openDue) / openInvoiceGross.
+ * Kinnlevő dual-sáv + címkék (látványosabb, mégis alacsony).
+ * paid (soft) | due (warning); arány a nyitott gross-hoz.
+ */
+export function OpenDueStackBar({
+  openDue,
+  openInvoiceGross
+}: {
+  openDue: number
+  openInvoiceGross: number
+}) {
+  const paid = Math.max(0, openInvoiceGross - openDue)
+  const total = Math.max(0, openInvoiceGross)
+  const due = Math.max(0, openDue)
+
+  if (total <= 0) {
+    return (
+      <div className="space-y-1" aria-hidden>
+        <div className="h-2.5 w-full rounded-full bg-subtle" />
+        <p className="text-[10px] leading-none text-ink-muted">Nincs kintlévő</p>
+      </div>
+    )
+  }
+
+  const paidPct = (paid / total) * 100
+  const duePct = (due / total) * 100
+  const paidLabel = `${Math.round(paidPct)}%`
+  const dueLabel = `${Math.round(duePct)}%`
+
+  return (
+    <div className="space-y-1">
+      <div
+        className="flex h-2.5 w-full overflow-hidden rounded-full bg-subtle"
+        role="img"
+        aria-label={`Befizetve ${paidLabel}, hátralévő ${dueLabel}`}
+      >
+        {paidPct > 0 ? (
+          <div
+            className="h-full bg-ink-muted"
+            style={{ width: `${paidPct}%` }}
+          />
+        ) : null}
+        {duePct > 0 ? (
+          <div
+            className="h-full bg-warning"
+            style={{ width: `${duePct}%` }}
+          />
+        ) : null}
+      </div>
+      <div className="flex items-center justify-between gap-2 text-[10px] leading-none text-ink-secondary">
+        <span className="inline-flex min-w-0 items-center gap-1 truncate">
+          <span
+            className="size-1.5 shrink-0 rounded-sm bg-ink-muted"
+            aria-hidden
+          />
+          Befizetve{' '}
+          <span className="tabular-nums text-ink-muted">{paidLabel}</span>
+        </span>
+        <span className="inline-flex min-w-0 items-center gap-1 truncate">
+          <span
+            className={cn(
+              'size-1.5 shrink-0 rounded-sm',
+              due > 0 ? 'bg-warning' : 'bg-border'
+            )}
+            aria-hidden
+          />
+          Hátralévő{' '}
+          <span
+            className={cn(
+              'tabular-nums',
+              due > 0 ? 'text-warning-ink' : 'text-ink-muted'
+            )}
+          >
+            {dueLabel}
+          </span>
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * @deprecated Prefer OpenDueStackBar (home KPI). Kept for marketing mockup.
+ * Kinnlevő ring: befizetett hányad a nyitott számlákon.
  */
 export function OpenDueRing({
   openDue,

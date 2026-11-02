@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
-import { PackageCheck, Search } from 'lucide-react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
+import { PackageCheck, Search, X } from 'lucide-react'
 
 import {
   DataTable,
@@ -64,10 +64,17 @@ export function GoodsReceiptsListClient({
 }: GoodsReceiptsListClientProps) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
+  const [pending, startTransition] = useTransition()
+  const searching = Boolean(initialQ.trim())
+  const statusValue: StatusFilter = searching ? 'all' : initialStatus
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
   const to = Math.min(page * limit, total)
+
+  useEffect(() => {
+    setSearch(initialQ)
+  }, [initialQ])
 
   function pushParams(next: {
     q?: string
@@ -75,19 +82,45 @@ export function GoodsReceiptsListClient({
     page?: number
   }) {
     const params = new URLSearchParams()
-    const q = next.q ?? search
-    const status = next.status ?? initialStatus
+    const qRaw = next.q !== undefined ? next.q : search
+    const q = qRaw.trim()
+    let status: StatusFilter
+    if (q) {
+      status = 'all'
+    } else if (next.status !== undefined) {
+      status = next.status
+    } else if (next.q !== undefined) {
+      status = 'all'
+    } else {
+      status = initialStatus
+    }
     const p = next.page ?? 1
-    if (q.trim()) params.set('q', q.trim())
+    if (q) params.set('q', q)
     if (status !== 'all') params.set('status', status)
     if (p > 1) params.set('page', String(p))
     const qs = params.toString()
-    router.push(qs ? `/beerkezesek?${qs}` : '/beerkezesek')
+    startTransition(() => {
+      router.push(qs ? `/beerkezesek?${qs}` : '/beerkezesek')
+    })
   }
+
+  useEffect(() => {
+    if (search === initialQ) return
+    const t = window.setTimeout(() => {
+      pushParams({ q: search, page: 1 })
+    }, 300)
+    return () => window.clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce only on search text
+  }, [search])
 
   const emptyHint = useMemo(() => {
     return initialRows.length === 0 && !initialQ && initialStatus === 'all'
   }, [initialRows.length, initialQ, initialStatus])
+
+  function clearSearch() {
+    setSearch('')
+    pushParams({ q: '', status: 'all', page: 1 })
+  }
 
   return (
     <div className="space-y-4">
@@ -96,13 +129,7 @@ export function GoodsReceiptsListClient({
         description="Számold meg a megérkezett árut, majd vedd készletre."
       />
 
-      <form
-        className="flex flex-wrap items-end gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          pushParams({ q: search, page: 1 })
-        }}
-      >
+      <div className="flex flex-wrap items-center gap-2" role="search">
         <div className="relative min-w-[14rem] flex-1">
           <label className="sr-only" htmlFor="receipt-search">
             Keresés
@@ -115,34 +142,78 @@ export function GoodsReceiptsListClient({
             id="receipt-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Szám…"
-            className="pl-8"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                pushParams({ q: search, page: 1 })
+              }
+            }}
+            placeholder="Szám, PO, beszállító, cikkszám, termék, vonalkód…"
+            className="pl-8 pr-8"
+            disabled={pending}
           />
+          {search.trim() ? (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-muted hover:bg-subtle hover:text-ink"
+              aria-label="Keresés törlése"
+              onClick={clearSearch}
+            >
+              <X className="size-3.5" aria-hidden />
+            </button>
+          ) : null}
         </div>
-        <Button type="submit" variant="secondary">
-          Keresés
-        </Button>
-      </form>
+      </div>
+
+      {searching ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-subtle px-2 py-1 text-[12px] text-ink-secondary">
+            Keresés: {initialQ.trim()}
+            <button
+              type="button"
+              className="rounded p-0.5 hover:bg-surface"
+              aria-label="Keresés törlése"
+              onClick={clearSearch}
+            >
+              <X className="size-3" aria-hidden />
+            </button>
+          </span>
+          <p className="text-[12px] text-ink-muted">
+            Találatok minden státuszban
+          </p>
+          <Link
+            href={`/beszallitoi-rendelesek?q=${encodeURIComponent(initialQ.trim())}`}
+            className="text-[12px] text-ink-secondary underline-offset-2 hover:underline"
+          >
+            PO listán is →
+          </Link>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-1.5">
         {STATUS_CHIPS.map((chip) => {
           const count = statusCounts[chip.value] ?? 0
-          const active = initialStatus === chip.value
+          const active = !searching && statusValue === chip.value
           return (
             <button
               key={chip.value}
               type="button"
-              onClick={() =>
+              disabled={pending || searching}
+              onClick={() => {
+                setSearch('')
                 pushParams({
+                  q: '',
                   status: chip.value,
                   page: 1
                 })
-              }
+              }}
               className={cn(
                 'h-7 rounded-md px-2.5 text-hint font-medium transition-colors',
                 active
                   ? 'bg-ink text-surface'
-                  : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
+                  : searching
+                    ? 'bg-subtle text-ink-muted'
+                    : 'bg-subtle text-ink-secondary hover:bg-border/60 hover:text-ink'
               )}
             >
               {chip.label} ({count})
@@ -170,7 +241,16 @@ export function GoodsReceiptsListClient({
         </div>
       ) : initialRows.length === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-subtle px-4 py-8 text-body text-ink-secondary">
-          Nincs találat a szűrőkkel.
+          {searching
+            ? 'Nincs találat ezzel a kereséssel.'
+            : 'Nincs találat a szűrőkkel.'}
+          <button
+            type="button"
+            className="ml-2 font-medium text-ink underline-offset-2 hover:underline"
+            onClick={clearSearch}
+          >
+            Szűrők törlése
+          </button>
         </p>
       ) : (
         <DataTable>
@@ -240,7 +320,7 @@ export function GoodsReceiptsListClient({
                 type="button"
                 size="sm"
                 variant="secondary"
-                disabled={page <= 1}
+                disabled={page <= 1 || pending}
                 onClick={() => pushParams({ page: page - 1 })}
               >
                 Előző
@@ -249,7 +329,7 @@ export function GoodsReceiptsListClient({
                 type="button"
                 size="sm"
                 variant="secondary"
-                disabled={page >= totalPages}
+                disabled={page >= totalPages || pending}
                 onClick={() => pushParams({ page: page + 1 })}
               >
                 Következő

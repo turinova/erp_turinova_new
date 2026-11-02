@@ -86,7 +86,8 @@ export default async function CsoWaitingListPage({
             countCustomerSpecialOrderItemsWaiting(
               supabase,
               user.tenantId,
-              supplierId || undefined
+              supplierId || undefined,
+              q || undefined
             ),
             listSuppliers(supabase, {
               tenantId: user.tenantId,

@@ -18,6 +18,11 @@ import {
 
 const LIST_LIMIT = 25
 
+/** PostgREST ilike — %, _ és vessző kiszűrése. */
+function sanitizeWaitingSearch(raw: string): string {
+  return raw.trim().replace(/[%_,]/g, '').slice(0, 80)
+}
+
 type PoJoin = {
   po_number: string
   status: string
@@ -424,6 +429,64 @@ const WAITING_ITEM_SELECT = `
   )
 `
 
+/**
+ * Kereső: ügyfél / UR# / telefon + tétel név / sku_snapshot +
+ * katalógus SKU / barcode / barcode_internal → accessory_id.
+ */
+async function resolveWaitingSearchIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  rawQ: string
+): Promise<{ orderIds: string[]; accessoryIds: string[]; safe: string }> {
+  const safe = sanitizeWaitingSearch(rawQ)
+  if (!safe) return { orderIds: [], accessoryIds: [], safe: '' }
+
+  const [ordersRes, accessoriesRes] = await Promise.all([
+    supabase
+      .from('customer_special_orders')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .or(
+        `order_number.ilike.%${safe}%,customer_name.ilike.%${safe}%,customer_mobile.ilike.%${safe}%`
+      )
+      .limit(200),
+    supabase
+      .from('accessories')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .or(
+        [
+          `sku.ilike.%${safe}%`,
+          `barcode.ilike.%${safe}%`,
+          `barcode_internal.ilike.%${safe}%`,
+          `name.ilike.%${safe}%`
+        ].join(',')
+      )
+      .limit(100)
+  ])
+
+  return {
+    safe,
+    orderIds: (ordersRes.data ?? []).map((o) => o.id as string),
+    accessoryIds: (accessoriesRes.data ?? []).map((a) => a.id as string)
+  }
+}
+
+function waitingSearchOrFilter(
+  safe: string,
+  orderIds: string[],
+  accessoryIds: string[]
+): string {
+  const parts = [`name.ilike.%${safe}%`, `sku_snapshot.ilike.%${safe}%`]
+  if (orderIds.length) parts.push(`order_id.in.(${orderIds.join(',')})`)
+  if (accessoryIds.length) {
+    parts.push(`accessory_id.in.(${accessoryIds.join(',')})`)
+  }
+  return parts.join(',')
+}
+
 /** Tételszintű beszállítói várólista — szerveroldali lapozás, beszállító szerint rendezve. */
 export async function listCustomerSpecialOrderItemsWaiting(
   supabase: SupabaseClient,
@@ -442,6 +505,8 @@ export async function listCustomerSpecialOrderItemsWaiting(
   total: number
   page: number
   limit: number
+  /** true = keresés minden státuszban (view csak URL / chip). */
+  searchAllStatuses: boolean
 }> {
   const limit = Math.min(50, Math.max(1, input.limit ?? LIST_LIMIT))
   const page = Math.max(1, input.page ?? 1)
@@ -449,22 +514,17 @@ export async function listCustomerSpecialOrderItemsWaiting(
   const to = from + limit - 1
   const view = input.view ?? 'todo'
   const status = waitingViewToStatus(view)
-  const q = input.q?.trim() ?? ''
-  const notifyPending = Boolean(input.notifyPending && view === 'ready')
-
-  let orderIdsForQ: string[] = []
-  if (q) {
-    const { data: orders } = await supabase
-      .from('customer_special_orders')
-      .select('id')
-      .eq('tenant_id', input.tenantId)
-      .is('deleted_at', null)
-      .or(
-        `order_number.ilike.%${q}%,customer_name.ilike.%${q}%,customer_mobile.ilike.%${q}%`
-      )
-      .limit(200)
-    orderIdsForQ = (orders ?? []).map((o) => o.id as string)
-  }
+  const resolved = await resolveWaitingSearchIds(
+    supabase,
+    input.tenantId,
+    input.q ?? ''
+  )
+  const q = resolved.safe
+  const searchAllStatuses = Boolean(q)
+  // Kereséskor ne szűkíts SMS-pending-re (kereszt-státusz lookup).
+  const notifyPending = Boolean(
+    input.notifyPending && view === 'ready' && !searchAllStatuses
+  )
 
   let notifyOrderIds: string[] | null = null
   if (notifyPending) {
@@ -476,7 +536,13 @@ export async function listCustomerSpecialOrderItemsWaiting(
       .is('sms_sent_at', null)
     notifyOrderIds = (pendingOrders ?? []).map((o) => o.id as string)
     if (notifyOrderIds.length === 0) {
-      return { rows: [], total: 0, page, limit }
+      return {
+        rows: [],
+        total: 0,
+        page,
+        limit,
+        searchAllStatuses
+      }
     }
   }
 
@@ -484,11 +550,15 @@ export async function listCustomerSpecialOrderItemsWaiting(
     .from('customer_special_order_items')
     .select(WAITING_ITEM_SELECT, { count: 'exact' })
     .eq('tenant_id', input.tenantId)
-    .eq('status', status)
     .is('deleted_at', null)
     .is('customer_special_orders.deleted_at', null)
     .order('created_at', { ascending: true })
     .range(from, to)
+
+  // Üres keresés → nézet státusz; van q → minden státusz (bolti „hol van?”).
+  if (!searchAllStatuses) {
+    query = query.eq('status', status)
+  }
 
   if (input.supplierId) {
     query = query.eq('supplier_id', input.supplierId)
@@ -499,14 +569,9 @@ export async function listCustomerSpecialOrderItemsWaiting(
   }
 
   if (q) {
-    const parts = [
-      `name.ilike.%${q}%`,
-      `sku_snapshot.ilike.%${q}%`
-    ]
-    if (orderIdsForQ.length) {
-      parts.push(`order_id.in.(${orderIdsForQ.join(',')})`)
-    }
-    query = query.or(parts.join(','))
+    query = query.or(
+      waitingSearchOrFilter(q, resolved.orderIds, resolved.accessoryIds)
+    )
   }
 
   const { data, error, count } = await query
@@ -519,7 +584,9 @@ export async function listCustomerSpecialOrderItemsWaiting(
     (data ?? []).map((r) => mapWaitingRow(r as Record<string, unknown>))
   )
 
-  if (view === 'on_way' || view === 'ready') {
+  const needPoReceived =
+    searchAllStatuses || view === 'on_way' || view === 'ready'
+  if (needPoReceived) {
     const receivedMap = await getReceivedQtyForPoItemIds(
       supabase,
       input.tenantId,
@@ -535,7 +602,7 @@ export async function listCustomerSpecialOrderItemsWaiting(
     }))
   }
 
-  return { rows, total: count ?? 0, page, limit }
+  return { rows, total: count ?? 0, page, limit, searchAllStatuses }
 }
 
 function sortWaitingBySupplier(rows: CsoWaitingListItem[]): CsoWaitingListItem[] {
@@ -550,11 +617,12 @@ function sortWaitingBySupplier(rows: CsoWaitingListItem[]): CsoWaitingListItem[]
   })
 }
 
-/** Lean státusz darabszámok a chip szűrőkhöz. */
+/** Lean státusz darabszámok a chip szűrőkhöz (opcionális q = keresés szerinti count). */
 export async function countCustomerSpecialOrderItemsWaiting(
   supabase: SupabaseClient,
   tenantId: string,
-  supplierId?: string
+  supplierId?: string,
+  searchQ?: string
 ): Promise<CsoWaitingCounts> {
   const views: CsoWaitingView[] = [
     'todo',
@@ -571,6 +639,13 @@ export async function countCustomerSpecialOrderItemsWaiting(
     cancelled: 0
   }
 
+  const resolved = await resolveWaitingSearchIds(
+    supabase,
+    tenantId,
+    searchQ ?? ''
+  )
+  const safe = resolved.safe
+
   await Promise.all(
     views.map(async (view) => {
       let q = supabase
@@ -584,6 +659,11 @@ export async function countCustomerSpecialOrderItemsWaiting(
         .is('deleted_at', null)
         .is('customer_special_orders.deleted_at', null)
       if (supplierId) q = q.eq('supplier_id', supplierId)
+      if (safe) {
+        q = q.or(
+          waitingSearchOrFilter(safe, resolved.orderIds, resolved.accessoryIds)
+        )
+      }
       const { count, error } = await q
       if (error) {
         console.error('countWaiting', view, error.message)

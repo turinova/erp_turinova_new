@@ -145,8 +145,8 @@ Addon / entitlement: **`beszerzes`** feature az **Alap plan** része (`20260517_
 Lista (buyer queue, Square/Jobs sűrűség):
 
 - **Default szűrő: Nyitott** (`draft` + `ordered` + `partial`). URL-ben nincs `status` param = nyitott; `status=all` = teljes lista.
-- Toolbar: debounced kereső + `MenuSelect` státusz (Nyitott / Vázlat / Elküldve / Részben / Beérkezett / Visszavonva / Mind) + számláló. Kereséskor státusz = Mind (closed/visszavont is található).
-- Kereső `q`: PO szám, beszállító név, tétel `sku_snapshot` / `name_snapshot`.
+- Toolbar: debounced kereső (~300 ms) + clear chip + `MenuSelect` státusz (Nyitott / Vázlat / Elküldve / Részben / Beérkezett / Visszavonva / Mind) + számláló. Kereséskor státusz = Mind (closed/visszavont is található).
+- Kereső `q`: PO szám, beszállító név, tétel `sku_snapshot` / `name_snapshot`, **katalógus SKU / barcode / barcode_internal** → `accessory_id`.
 - Oszlopok: szám (+ order_kind badge), beszállító, státusz, várható (+ **Késik** ha `expected_date` < ma és `ordered`/`partial`), tételek, nettó, **Következő** (Beérkezés CTA → `openOrCreateGoodsReceipt`).
 - Badge tone: `draft` neutral · `ordered`/`partial` warning · `received` success · `cancelled` danger.
 - Üres: semmi PO / nincs nyitott / szűrő miss — külön copy.
@@ -156,7 +156,8 @@ Lista (buyer queue, Square/Jobs sűrűség):
 
 - **Implementálva:** `/beerkezesek` — lista + detail (`20260504_goods_receipts_and_stock.sql`). Lásd [26-beerkezesek.md](26-beerkezesek.md).
 - Lista: szám, PO szám, beszállító, státusz, dátum, tételek.
-- Empty: „Még nincs beérkezés. Nyiss egy rendelést, és kattints az Áru megérkezett gombra.”
+- Kereső `q` (debounce ~300 ms): bevételezés szám, **PO szám**, beszállító, tétel név/SKU, **katalógus barcode/SKU**; q → státusz Mind + clear chip.
+- Empty: „Még nincs beérkezés…“ / keresés miss + Szűrők törlése.
 - PO `ordered`/`partial` primary CTA: **Áru megérkezett** → create-or-open.
 
 ---

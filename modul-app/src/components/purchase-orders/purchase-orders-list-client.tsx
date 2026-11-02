@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
-import { ClipboardList, PackageCheck, Plus, Search } from 'lucide-react'
+import { ClipboardList, PackageCheck, Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import {
@@ -211,7 +211,7 @@ export function PurchaseOrdersListClient({
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2" role="search">
         <div className="relative min-w-[12rem] flex-1">
           <label className="sr-only" htmlFor="po-search">
             Keresés
@@ -230,9 +230,23 @@ export function PurchaseOrdersListClient({
                 pushParams({ q: search, page: 1 })
               }
             }}
-            placeholder="Szám, beszállító, cikkszám vagy tétel…"
-            className="pl-8"
+            placeholder="Szám, beszállító, cikkszám, termék, vonalkód…"
+            className="pl-8 pr-8"
+            disabled={pending}
           />
+          {search.trim() ? (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-ink-muted hover:bg-subtle hover:text-ink"
+              aria-label="Keresés törlése"
+              onClick={() => {
+                setSearch('')
+                pushParams({ q: '', status: 'open', page: 1 })
+              }}
+            >
+              <X className="size-3.5" aria-hidden />
+            </button>
+          ) : null}
         </div>
         <div className="w-[10.5rem] shrink-0">
           <label className="sr-only" htmlFor="po-list-status">
@@ -259,6 +273,34 @@ export function PurchaseOrdersListClient({
             : null}
         </p>
       </div>
+
+      {searching ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-subtle px-2 py-1 text-[12px] text-ink-secondary">
+            Keresés: {initialQ.trim()}
+            <button
+              type="button"
+              className="rounded p-0.5 hover:bg-surface"
+              aria-label="Keresés törlése"
+              onClick={() => {
+                setSearch('')
+                pushParams({ q: '', status: 'open', page: 1 })
+              }}
+            >
+              <X className="size-3" aria-hidden />
+            </button>
+          </span>
+          <p className="text-[12px] text-ink-muted">
+            Találatok minden státuszban
+          </p>
+          <Link
+            href={`/beerkezesek?q=${encodeURIComponent(initialQ.trim())}`}
+            className="text-[12px] text-ink-secondary underline-offset-2 hover:underline"
+          >
+            Beérkezéseken is →
+          </Link>
+        </div>
+      ) : null}
 
       {trulyEmpty ? (
         <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-8">
