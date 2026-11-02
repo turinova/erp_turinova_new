@@ -56,6 +56,14 @@ export function forgetPosBarcodeHit(code: string, warehouseId: string) {
   cache.delete(cacheKey(code, warehouseId))
 }
 
+/** Drop all cached barcode hits for an accessory (after PDA price/name edit). */
+export function forgetPosBarcodeHitsForAccessory(accessoryId: string) {
+  if (!accessoryId) return
+  for (const [key, entry] of cache) {
+    if (entry.product.id === accessoryId) cache.delete(key)
+  }
+}
+
 export function clearPosBarcodeCache() {
   cache.clear()
   inflight.clear()

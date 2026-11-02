@@ -171,6 +171,8 @@ export async function getA4BarcodeSheet(
     const snapPrice =
       c.price_snap == null ? null : Number(c.price_snap)
     const livePrice = aid ? priceById.get(aid) ?? null : null
+    // Print snapshot wins — edited name/price on the sheet must not be
+    // overwritten by live accessory price on reload (docs/49).
     return {
       row: Number(c.row_i),
       col: Number(c.col_i),
@@ -179,7 +181,7 @@ export async function getA4BarcodeSheet(
       barcodeSource: (c.barcode_source as A4BarcodeSource) || 'auto',
       nameSnap: String(c.name_snap ?? ''),
       skuSnap: String(c.sku_snap ?? ''),
-      priceGross: livePrice ?? snapPrice,
+      priceGross: snapPrice ?? livePrice,
       unitSnap: String(c.unit_snap ?? '').trim() || 'db',
       showName: c.show_name !== false,
       showSku: Boolean(c.show_sku),

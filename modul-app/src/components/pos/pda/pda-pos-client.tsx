@@ -33,6 +33,7 @@ import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { prepareBarcodeQuery } from '@/lib/pos/barcode'
 import {
   fetchPosBarcodeLookupCached,
+  forgetPosBarcodeHitsForAccessory,
   peekPosBarcodeCache
 } from '@/lib/pos/pos-barcode-client'
 import { createPosCartHandoffAction } from '@/lib/pos/handoff-actions'
@@ -734,6 +735,7 @@ export function PdaPosClient({
                           setFlash(res.message)
                           return
                         }
+                        forgetPosBarcodeHitsForAccessory(checkProduct.id)
                         setCheckProduct((prev) =>
                           prev
                             ? {
@@ -881,6 +883,7 @@ export function PdaPosClient({
                                 setFlash(res.message)
                                 return
                               }
+                              forgetPosBarcodeHitsForAccessory(checkProduct.id)
                               setCheckProduct((prev) =>
                                 prev
                                   ? {

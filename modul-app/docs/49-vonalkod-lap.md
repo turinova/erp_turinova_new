@@ -15,7 +15,8 @@ Boltban sok cikkre nem praktikus hőcímke → dolgozó A4-re nyomtat több kód
 | Előnézet | ugyanaz a PDF → **PNG** (`pdf.js`); nem CSS mock |
 | Cella layout | %-súlyok újraoszlanak az **ON** mezők között; barcode min ~22% |
 | Mezők | **cellánként** (show name/sku/price/barcode); sheet switch = új cella default |
-| Megjelenített név / ár / egység | `name_snap`, `price_snap`, `unit_snap` — mint címke modal; PDF: `Ft/{unit}` |
+| Megjelenített név / ár / egység | `name_snap`, `price_snap`, `unit_snap` — mint címke modal; PDF: `Ft/{unit}`; betöltéskor snap > élő ár |
+| Cella „Mentés a cellába” | edit lapon azonnal DB mentés; create-nél local + „mentsd a lapot” |
 | Vonalkód | sharp PNG (integer modul + quiet); min ~10 mm bar; nincs HRI |
 | Cella pack | szöveg felül sűrűn (név→SKU→ár), vonalkód a maradék; középre igazított |
 | Cella modal | élő JPEG előnézet (print-truth PDF → jpg), mint címke ZPL preview |

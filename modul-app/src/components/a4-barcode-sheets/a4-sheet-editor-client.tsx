@@ -194,7 +194,8 @@ export function A4SheetEditorClient({
     setPicker({ open: true, row, col, existing: next })
   }
 
-  function buildPayload() {
+  function buildPayload(cellsOverride?: A4SheetCellDraft[]) {
+    const list = cellsOverride ?? cells
     return {
       name,
       cols,
@@ -203,7 +204,7 @@ export function A4SheetEditorClient({
       showName,
       showSku,
       showPrice,
-      cells: cells.map((c) => ({
+      cells: list.map((c) => ({
         row: c.row,
         col: c.col,
         accessoryId: c.accessoryId,
@@ -221,11 +222,14 @@ export function A4SheetEditorClient({
     }
   }
 
-  function handleSave() {
+  function persistSheet(
+    cellsOverride: A4SheetCellDraft[] | undefined,
+    successMessage: string
+  ) {
     if (!canWrite) return
     setFieldErrors({})
     startTransition(async () => {
-      const payload = buildPayload()
+      const payload = buildPayload(cellsOverride)
       const res =
         mode === 'edit' && sheetId
           ? await updateA4BarcodeSheet(sheetId, payload)
@@ -235,13 +239,36 @@ export function A4SheetEditorClient({
         toast.error(res.message)
         return
       }
-      toast.success('Lap mentve.')
+      toast.success(successMessage)
       if (mode === 'create') {
         router.replace(`${A4_PAGE_KEY}/${res.id}`)
       } else {
         router.refresh()
       }
     })
+  }
+
+  function handleSave() {
+    persistSheet(undefined, 'Lap mentve.')
+  }
+
+  /** Apply cell draft into local state; on edit sheets also persist to DB. */
+  function commitCellUpdate(cell: A4SheetCellDraft) {
+    const next: A4SheetCellDraft = {
+      ...cell,
+      nameSnap: truncateA4(cell.nameSnap, nameCap)
+    }
+    const nextCells = [
+      ...cells.filter((c) => !(c.row === next.row && c.col === next.col)),
+      next
+    ]
+    setCells(nextCells)
+    setPicker({ open: false })
+    if (mode === 'edit' && sheetId && canWrite) {
+      persistSheet(nextCells, 'Cella mentve.')
+    } else {
+      toast.success('Cella frissítve — mentsd a lapot.')
+    }
   }
 
   async function handlePdf() {
@@ -390,14 +417,7 @@ export function A4SheetEditorClient({
         onClose={() => setPicker({ open: false })}
         onClear={clearCell}
         onPick={placeProduct}
-        onUpdateCell={(cell) => {
-          upsertCell({
-            ...cell,
-            nameSnap: truncateA4(cell.nameSnap, nameCap)
-          })
-          setPicker({ open: false })
-          toast.success('Cella frissítve.')
-        }}
+        onUpdateCell={commitCellUpdate}
       />
     </div>
   )
