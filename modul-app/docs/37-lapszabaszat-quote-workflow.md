@@ -24,7 +24,7 @@
 | `finished` | Lezárva | Újranyitás → `ready` | PDF; **Újranyitás** / **Archív**; átvételi blokk átadáskor ([43](43-atveteli-blokk.md)) |
 | `cancelled` | Lemondva | Archív | Detail **Megrendelés lemondása**; audit meta (`20260614`) |
 
-**Fizetés** külön tengely (`not_paid` / `partial` / `paid`) — nem váltja a gyártási státuszt. Detailen: külön `#fizetesek` szekció; a Műveletek csak deep-link.
+**Fizetés** külön tengely (`not_paid` / `partial` / `paid`) — nem váltja a gyártási státuszt. Lista: **Fizetés** oszlop (`StatusBadge` solid unpaid/partial, soft paid + hátralék hint). Detailen: külön `#fizetesek` szekció; a Műveletek csak deep-link.
 
 ### Lemondás vs törlés vs újranyitás vs archív
 

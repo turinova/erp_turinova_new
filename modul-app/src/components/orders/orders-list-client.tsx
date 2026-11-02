@@ -29,7 +29,12 @@ import {
   archiveQuoteAction,
   unarchiveQuoteAction
 } from '@/lib/quotes/actions'
-import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
+import { formatQuotePrice } from '@/lib/opti/quote-calculations'
+import {
+  PAYMENT_STATUS_LABEL,
+  paymentStatusTone,
+  quoteRemainingGross
+} from '@/lib/quotes/payment-labels'
 import type {
   OrderListItem,
   OrderListStatusFilter
@@ -639,6 +644,7 @@ export function OrdersListClient({
                 <DataTableHeaderCell>Megrendelés</DataTableHeaderCell>
                 <DataTableHeaderCell>Terhelés</DataTableHeaderCell>
                 <DataTableHeaderCell>Ügyfél</DataTableHeaderCell>
+                <DataTableHeaderCell>Fizetés</DataTableHeaderCell>
                 <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
                   Következő
                 </DataTableHeaderCell>
@@ -671,6 +677,10 @@ export function OrdersListClient({
                 const isToday =
                   Boolean(ymd) && isOpenProduction && ymd === todayYmd
                 const needsSchedule = isOpenProduction && !ymd
+                const paymentRemaining = quoteRemainingGross(
+                  row.total_gross,
+                  row.total_paid
+                )
 
                 return (
                   <DataTableRow
@@ -740,6 +750,27 @@ export function OrdersListClient({
                         customerId={row.customer_id}
                         mobile={row.customer_mobile}
                       />
+                    </DataTableCell>
+
+                    <DataTableCell>
+                      <div className="min-w-[7.5rem]">
+                        <StatusBadge
+                          tone={paymentStatusTone(row.payment_status)}
+                          variant={
+                            row.payment_status === 'paid' ? 'soft' : 'solid'
+                          }
+                        >
+                          {PAYMENT_STATUS_LABEL[row.payment_status]}
+                        </StatusBadge>
+                        {(row.payment_status === 'not_paid' ||
+                          row.payment_status === 'partial') &&
+                        paymentRemaining > 0 ? (
+                          <p className="mt-0.5 text-hint tabular-nums text-ink-secondary">
+                            {formatQuotePrice(paymentRemaining, row.currency)}{' '}
+                            hátra
+                          </p>
+                        ) : null}
+                      </div>
                     </DataTableCell>
 
                     <DataTableCell className="text-right">
