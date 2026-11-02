@@ -176,6 +176,7 @@ export default async function BelepokPage({
         monthDays={dashboard.monthDays}
         weekdayProfile={dashboard.weekdayProfile}
         season={dashboard.season}
+        weatherImpact={dashboard.weatherImpact}
       />
 
       <section className="rounded-md border border-border bg-surface p-4">

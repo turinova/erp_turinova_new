@@ -13,6 +13,16 @@ import type {
   FootcounterWeekdayBar
 } from '@/lib/footcounter/chart-types'
 import {
+  buildWeatherImpact,
+  formatTodayWeatherLine,
+  loadFootcounterWeatherByDay,
+  mergeWeatherOntoMonthDays,
+  monthDayKeys,
+  weatherMapByDayNumber,
+  type FootcounterWeatherImpact
+} from '@/lib/footcounter/weather'
+import { ensureFootcounterWeatherCoverage } from '@/lib/footcounter/weather-sync'
+import {
   DEFAULT_FOOTCOUNTER_OPEN_HOURS,
   isHourClosed,
   peakHourInRange,
@@ -424,8 +434,16 @@ export type FootcounterDashboardBundle = {
   /** Előző naptári hónap összes IN — MoM glance. */
   prevMonthTotalIn: number
   openHours: FootcounterOpenHours
+  weatherImpact: FootcounterWeatherImpact
   /** RPC hiba (pl. migráció hiányzik). */
   loadError?: string
+}
+
+const EMPTY_WEATHER_IMPACT: FootcounterWeatherImpact = {
+  buckets: [],
+  headline: null,
+  monthAvgIn: 0,
+  hasAnyWeather: false
 }
 
 /**
@@ -437,11 +455,26 @@ export async function getFootcounterDashboard(
   year: number,
   month: number
 ): Promise<FootcounterDashboardBundle> {
-  const [live, agg, openHours] = await Promise.all([
+  const todayKeyEarly = budapestDayKey(new Date())
+  const weatherKeys = [...monthDayKeys(year, month), todayKeyEarly]
+  // Modul-app saját DB — Open-Meteo lazy sync (üres / stale tábla).
+  // Lookback: legalább 120 nap, vagy a kiválasztott hónap elejétől máig.
+  const monthStartMs = Date.UTC(year, month - 1, 1)
+  const todayMs = Date.parse(`${todayKeyEarly}T12:00:00Z`)
+  const daysFromMonth =
+    Number.isFinite(todayMs) && todayMs >= monthStartMs
+      ? Math.ceil((todayMs - monthStartMs) / 86_400_000) + 3
+      : 120
+  await ensureFootcounterWeatherCoverage(
+    Math.min(365, Math.max(120, daysFromMonth))
+  )
+  const [live, agg, openHours, weatherByKey] = await Promise.all([
     getFootcounterLiveStatus(supabase, tenantId),
     rpcDashboardAgg(supabase, tenantId, year, month),
-    getFootcounterOpenHours(supabase, tenantId)
+    getFootcounterOpenHours(supabase, tenantId),
+    loadFootcounterWeatherByDay(supabase, weatherKeys)
   ])
+  const weatherByDayNum = weatherMapByDayNumber(weatherByKey)
   const emptyToday = buildEmptyTodayPanel(live.status === 'live', openHours)
   const emptyDays: FootcounterMonthDayBar[] = Array.from(
     { length: daysInMonth(year, month) },
@@ -471,7 +504,8 @@ export async function getFootcounterDashboard(
     monthPeakHour: null,
     monthPeakHourIn: 0,
     prevMonthTotalIn: 0,
-    openHours
+    openHours,
+    weatherImpact: EMPTY_WEATHER_IMPACT
   }
 
   if (!agg) {
@@ -557,7 +591,7 @@ export async function getFootcounterDashboard(
     }
   }
 
-  const monthDays: FootcounterMonthDayBar[] = Array.from(
+  const monthDaysRaw: FootcounterMonthDayBar[] = Array.from(
     { length: dim },
     (_, i) => {
       const day = i + 1
@@ -572,6 +606,8 @@ export async function getFootcounterDashboard(
       }
     }
   )
+  const monthDays = mergeWeatherOntoMonthDays(monthDaysRaw, weatherByDayNum)
+  const weatherImpact = buildWeatherImpact(monthDays)
 
   const weekdayProfile: FootcounterWeekdayBar[] =
     FOOTCOUNTER_WEEKDAY_LABELS.map((label, weekday) => {
@@ -672,6 +708,9 @@ export async function getFootcounterDashboard(
     weekday: 'long'
   }).format(new Date())
 
+  const todayWeatherRow = weatherByKey.get(todayKey) ?? null
+  const todayWeatherLine = formatTodayWeatherLine(todayWeatherRow)
+
   const today: FootcounterTodayPanelData = {
     label: todayLabel,
     todayIn,
@@ -682,7 +721,14 @@ export async function getFootcounterDashboard(
     weekdayAvg,
     weekdayAvgLabel: `${FOOTCOUNTER_WEEKDAY_LABELS[todayDow] ?? 'Napi'} átlag`,
     hourly,
-    live: live.status === 'live'
+    live: live.status === 'live',
+    weather: todayWeatherLine
+      ? {
+          line: todayWeatherLine,
+          rainSignificant: Boolean(todayWeatherRow?.rainSignificant),
+          windSignificant: Boolean(todayWeatherRow?.windSignificant)
+        }
+      : null
   }
 
   let monthPeakHour: number | null = null
@@ -704,7 +750,8 @@ export async function getFootcounterDashboard(
     monthPeakHour,
     monthPeakHourIn,
     prevMonthTotalIn: Number(agg.prev_month_total_in) || 0,
-    openHours
+    openHours,
+    weatherImpact
   }
 }
 

@@ -40,6 +40,8 @@ Body példa:
 
 `/belepok` — mai Be/Ki óránkénti chart, havi / hét napja / szezon tabok, hét×óra heatmap. A vizuális nyelv a marketing `/beleposzamlalo` chartokkal közös (`components/footcounter/charts/`).
 
+**Időjárás:** `footcounter_daily_weather` (Open-Meteo, Kecskemét; `FOOTCOUNTER_WEATHER_LAT` / `_LON`). Migráció: `20260630_footcounter_daily_weather.sql`. `/belepok` lazy sync (`ensureFootcounterWeatherCoverage`, service role) + manuális `POST /api/footcounter/weather?days=120`. Mai sor, hónap sáv eső/szél, „Látogatottság időjárás szerint” bucket Δ%.
+
 ## Demo seed (Pi nélkül)
 
 Teljes **2026** synthetic crossings (main-app mintázat: H–P ~150–220 belépő, Szerda/Csütörtök csúcs, Szombat gyengébb, Vasárnap zárva):

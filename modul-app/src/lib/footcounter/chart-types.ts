@@ -12,6 +12,13 @@ export type FootcounterMonthDayBar = {
   closed: boolean
   /** Csúcs / kiemelt nap. */
   highlight?: boolean
+  /** Open-Meteo napi snapshot (opcionális). */
+  tempMinC?: number | null
+  tempMaxC?: number | null
+  precipOpenMm?: number | null
+  rainSignificant?: boolean
+  windSignificant?: boolean
+  windMaxKmh?: number | null
 }
 
 export type FootcounterWeekdayBar = {
@@ -42,6 +49,12 @@ export type FootcounterHeatmapRow = {
   closed: boolean
 }
 
+export type FootcounterTodayWeatherStrip = {
+  line: string
+  rainSignificant: boolean
+  windSignificant: boolean
+}
+
 export type FootcounterTodayPanelData = {
   label: string
   todayIn: number
@@ -53,4 +66,5 @@ export type FootcounterTodayPanelData = {
   weekdayAvgLabel: string
   hourly: FootcounterTodayHourBar[]
   live: boolean
+  weather?: FootcounterTodayWeatherStrip | null
 }

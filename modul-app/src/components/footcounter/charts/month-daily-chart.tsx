@@ -1,9 +1,37 @@
+import { CloudRain, Wind } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 import {
   FOOTCOUNTER_CHART,
   formatChartCount
 } from '@/lib/footcounter/chart-tokens'
 import type { FootcounterMonthDayBar } from '@/lib/footcounter/chart-types'
+
+function dayTitle(d: FootcounterMonthDayBar): string {
+  if (d.closed) return `${d.day}. · zárva`
+  const parts = [`${d.day}. · ${formatChartCount(d.inCount)} belépő`]
+  if (d.tempMinC != null && d.tempMaxC != null) {
+    parts.push(`${Math.round(d.tempMinC)}–${Math.round(d.tempMaxC)} °C`)
+  } else if (d.tempMaxC != null) {
+    parts.push(`max ${Math.round(d.tempMaxC)} °C`)
+  }
+  if (d.precipOpenMm != null && d.precipOpenMm > 0) {
+    parts.push(
+      `${d.precipOpenMm.toLocaleString('hu-HU', { maximumFractionDigits: 1 })} mm`
+    )
+  }
+  if (d.windMaxKmh != null && d.windMaxKmh > 0) {
+    parts.push(`${Math.round(d.windMaxKmh)} km/h`)
+  }
+  return parts.join(' · ')
+}
+
+function barColor(d: FootcounterMonthDayBar): string {
+  if (d.highlight) return FOOTCOUNTER_CHART.strong
+  if (d.rainSignificant) return FOOTCOUNTER_CHART.rain
+  if (d.windSignificant) return FOOTCOUNTER_CHART.wind
+  return FOOTCOUNTER_CHART.mid
+}
 
 export function MonthDailyChart({
   days,
@@ -19,6 +47,9 @@ export function MonthDailyChart({
   const maxIn = Math.max(1, ...days.map((d) => d.inCount))
   const avgPct = maxIn > 0 ? (avgIn / maxIn) * 100 : 0
   const empty = days.every((d) => d.closed || d.inCount <= 0)
+  const showWeatherLegend = days.some(
+    (d) => !d.closed && (d.rainSignificant || d.windSignificant)
+  )
 
   if (empty) {
     return (
@@ -60,6 +91,7 @@ export function MonthDailyChart({
                   <div
                     key={d.day}
                     className="flex h-full min-w-0 flex-1 items-end justify-center"
+                    title={dayTitle(d)}
                   >
                     <div className="h-[3px] w-full rounded-sm bg-border" />
                   </div>
@@ -69,6 +101,7 @@ export function MonthDailyChart({
                 <div
                   key={d.day}
                   className="flex h-full min-w-0 flex-1 flex-col justify-end"
+                  title={dayTitle(d)}
                 >
                   {d.highlight ? (
                     <span className="mb-1 text-center text-[10px] font-semibold tabular-nums text-ink">
@@ -82,9 +115,7 @@ export function MonthDailyChart({
                     )}
                     style={{
                       height: `${Math.max(pct, 2)}%`,
-                      backgroundColor: d.highlight
-                        ? FOOTCOUNTER_CHART.strong
-                        : FOOTCOUNTER_CHART.mid
+                      backgroundColor: barColor(d)
                     }}
                   />
                 </div>
@@ -97,7 +128,23 @@ export function MonthDailyChart({
               <div
                 key={d.day}
                 className="flex min-w-0 flex-1 flex-col items-center gap-0.5"
+                title={dayTitle(d)}
               >
+                <span className="flex h-3 items-center justify-center">
+                  {!d.closed && d.rainSignificant ? (
+                    <CloudRain
+                      className="size-3 text-ink-muted"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  ) : !d.closed && d.windSignificant ? (
+                    <Wind
+                      className="size-3 text-ink-muted"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  ) : null}
+                </span>
                 <span
                   className={cn(
                     'text-[9.5px] tabular-nums',
@@ -131,6 +178,26 @@ export function MonthDailyChart({
           />
           Nyitvatartási nap
         </span>
+        {showWeatherLegend ? (
+          <>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="size-2.5 rounded-sm"
+                style={{ backgroundColor: FOOTCOUNTER_CHART.rain }}
+                aria-hidden
+              />
+              Esős
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="size-2.5 rounded-sm"
+                style={{ backgroundColor: FOOTCOUNTER_CHART.wind }}
+                aria-hidden
+              />
+              Szeles
+            </span>
+          </>
+        ) : null}
         <span className="inline-flex items-center gap-1.5">
           <span className="h-[3px] w-3 rounded-sm bg-border" aria-hidden />
           Zárva

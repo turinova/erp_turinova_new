@@ -7,12 +7,14 @@ import { SeasonChart } from '@/components/footcounter/charts/season-chart'
 import { WeekdayProfileChart } from '@/components/footcounter/charts/weekday-profile-chart'
 import { BelepokMonthKpis } from '@/components/footcounter/belepok-hero'
 import { BelepokMonthStepper } from '@/components/footcounter/belepok-month-stepper'
+import { BelepokWeatherImpact } from '@/components/footcounter/belepok-weather-impact'
 import type {
   FootcounterMonthDayBar,
   FootcounterSeasonBar,
   FootcounterWeekdayBar
 } from '@/lib/footcounter/chart-types'
 import type { FootcounterMonthGlance } from '@/lib/footcounter/summary'
+import type { FootcounterWeatherImpact } from '@/lib/footcounter/weather'
 import { cn } from '@/lib/utils'
 
 type TabKey = 'month' | 'weekday' | 'season'
@@ -30,7 +32,8 @@ export function BelepokAnalysisTabs({
   glance,
   monthDays,
   weekdayProfile,
-  season
+  season,
+  weatherImpact
 }: {
   year: number
   month: number
@@ -39,6 +42,7 @@ export function BelepokAnalysisTabs({
   monthDays: FootcounterMonthDayBar[]
   weekdayProfile: FootcounterWeekdayBar[]
   season: FootcounterSeasonBar[]
+  weatherImpact: FootcounterWeatherImpact
 }) {
   const [active, setActive] = useState<TabKey>('month')
 
@@ -78,6 +82,10 @@ export function BelepokAnalysisTabs({
             days={monthDays}
             avgIn={glance.avgPerActiveDay}
             ariaLabel={`${monthLabel} napi belépésszáma`}
+          />
+          <BelepokWeatherImpact
+            impact={weatherImpact}
+            monthLabel={monthLabel}
           />
         </div>
       ) : null}
