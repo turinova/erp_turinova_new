@@ -13,17 +13,12 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { prepareHandoverSlipPrint } from '@/lib/handover-slip/actions'
 import { printHandoverSlip } from '@/lib/handover-slip/print'
 import { requestUsbPrinter } from '@/lib/handover-slip/webusb'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
-import {
-  HANDOVER_BULK_CONFIRM_WORD,
-  orderNumbersMatch
-} from '@/lib/quotes/reopen'
 import { finishQuotesHandoverBulk } from '@/lib/scanner/actions'
 
 export type ScannerHandoverItem = {
@@ -54,7 +49,6 @@ export function ScannerHandoverDialog({
 }: ScannerHandoverDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [paymentMethodId, setPaymentMethodId] = useState('')
-  const [confirmText, setConfirmText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loadingSettle, setLoadingSettle] = useState(false)
   const [loadingSkip, setLoadingSkip] = useState(false)
@@ -64,19 +58,10 @@ export function ScannerHandoverDialog({
   const hasRemaining = totalRemaining > 0
   const loading = loadingSettle || loadingSkip
   const count = items.length
-  const singleOrderNumber = count === 1 ? (items[0]?.orderNumber ?? '') : ''
-  const confirmExpected =
-    count === 1 ? singleOrderNumber : HANDOVER_BULK_CONFIRM_WORD
-  const confirmOk =
-    count === 1
-      ? orderNumbersMatch(confirmText, singleOrderNumber)
-      : confirmText.trim().toLocaleUpperCase('hu-HU') ===
-        HANDOVER_BULK_CONFIRM_WORD
 
   useEffect(() => {
     if (!open) return
     setPaymentMethodId(paymentMethods[0]?.id ?? '')
-    setConfirmText('')
     setError(null)
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
@@ -84,10 +69,6 @@ export function ScannerHandoverDialog({
 
   async function runHandover(settleRemaining: boolean) {
     setError(null)
-    if (!confirmOk) {
-      setError(`Írd be pontosan: ${confirmExpected}`)
-      return
-    }
     if (settleRemaining) {
       if (!paymentMethodId) {
         setError(
@@ -234,21 +215,6 @@ export function ScannerHandoverDialog({
             </p>
           )}
 
-          <FormField
-            label={`Írd be: ${confirmExpected}`}
-            htmlFor="scanner-handover-confirm"
-            required
-          >
-            <Input
-              id="scanner-handover-confirm"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              autoComplete="off"
-              disabled={loading}
-              placeholder={confirmExpected}
-            />
-          </FormField>
-
           {error ? (
             <p className="text-body text-danger-ink" role="alert">
               {error}
@@ -270,7 +236,7 @@ export function ScannerHandoverDialog({
             <Button
               type="button"
               variant="ghost"
-              disabled={loading || !confirmOk}
+              disabled={loading}
               loading={loadingSkip}
               onClick={() => void runHandover(false)}
             >
@@ -280,7 +246,7 @@ export function ScannerHandoverDialog({
           <Button
             type="button"
             variant="primary"
-            disabled={loading || !confirmOk}
+            disabled={loading}
             loading={hasRemaining ? loadingSettle : loadingSkip}
             onClick={() => void runHandover(hasRemaining)}
           >
