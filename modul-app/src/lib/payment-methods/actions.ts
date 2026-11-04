@@ -204,7 +204,7 @@ export async function updatePaymentMethod(input: {
     return { ok: false, message: 'A fizetési mód nem található.' }
   }
 
-  let isDefault = input.isDefault
+  const isDefault = input.isDefault
   let active = input.active
 
   if (current.is_default && !isDefault) {
