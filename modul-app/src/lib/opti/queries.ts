@@ -6,6 +6,8 @@ import { fetchAllPages } from '@/lib/supabase/fetch-all'
 export type OptiSheetMaterialOption = {
   id: string
   name: string
+  /** Export / kereső gépkód (pl. HDF). */
+  machine_code: string
   length_mm: number
   width_mm: number
   thickness_mm: number
@@ -46,6 +48,7 @@ export type OptiEdgeMaterialOption = {
 const SHEET_SELECT = `
   id,
   name,
+  machine_code,
   length_mm,
   width_mm,
   thickness_mm,
@@ -152,6 +155,7 @@ export async function listOptiSheetMaterials(
     const r = row as {
       id: string
       name: string
+      machine_code: string | null
       length_mm: number | string
       width_mm: number | string
       thickness_mm: number | string
@@ -177,6 +181,7 @@ export async function listOptiSheetMaterials(
     return {
       id: r.id,
       name: r.name,
+      machine_code: (r.machine_code ?? '').trim(),
       length_mm: Number(r.length_mm),
       width_mm: Number(r.width_mm),
       thickness_mm: Number(r.thickness_mm),

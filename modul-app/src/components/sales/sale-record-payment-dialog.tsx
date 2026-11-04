@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { recordSalePaymentAction } from '@/lib/sales/actions'
 import { isDeferredPaymentMethodName } from '@/lib/sales/payment-kind'
@@ -35,18 +36,6 @@ type Props = {
   hasFinalInvoice?: boolean
   /** Teljes kiegyenlítés után: fulfill dialógus vagy végszámla */
   afterPayNavigate?: 'fulfill' | 'final' | null
-}
-
-function pickDefaultPaymentMethodId(
-  methods: PaymentMethodOption[],
-  preferTransfer: boolean
-): string {
-  if (methods.length === 0) return ''
-  if (preferTransfer) {
-    const transfer = methods.find((m) => isDeferredPaymentMethodName(m.name))
-    if (transfer) return transfer.id
-  }
-  return methods[0]?.id ?? ''
 }
 
 export function SaleRecordPaymentDialog({
@@ -69,7 +58,10 @@ export function SaleRecordPaymentDialog({
     detail.payment_status === 'partial'
 
   const defaultMethod = useMemo(
-    () => pickDefaultPaymentMethodId(paymentMethods, preferTransfer),
+    () =>
+      pickDefaultPaymentMethodId(paymentMethods, {
+        preferTransfer
+      }),
     [paymentMethods, preferTransfer]
   )
 

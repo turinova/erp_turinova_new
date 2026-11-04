@@ -27,6 +27,7 @@ import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
 import type { OptiCustomerOption } from '@/lib/customers/queries'
 import type { FeeTypeListItem } from '@/lib/fee-types/queries'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import {
   createSaleAction,
@@ -144,7 +145,7 @@ export function SaleCreateClient({
   const [fees, setFees] = useState<FeeLine[]>([])
   const [globalDiscPct, setGlobalDiscPct] = useState(0)
   const [paymentMethodId, setPaymentMethodId] = useState(
-    paymentMethods[0]?.id ?? ''
+    pickDefaultPaymentMethodId(paymentMethods)
   )
   const [splitPay, setSplitPay] = useState(false)
   const [pay2MethodId, setPay2MethodId] = useState('')
@@ -1160,7 +1161,8 @@ export function SaleCreateClient({
             billing_postal_code: null as string | null,
             billing_street: null as string | null,
             billing_house_number: null as string | null,
-            billing_tax_number: null as string | null
+            billing_tax_number: null as string | null,
+            is_favorite: false
           }
           applyCustomer(c.id, opt)
         }}

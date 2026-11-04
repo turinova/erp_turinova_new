@@ -23,6 +23,7 @@ import {
   isCashPaymentMethodName,
   type ReturnableLine
 } from '@/lib/sales/totals'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 
 type LineState = {
@@ -108,18 +109,13 @@ export function SaleReturnDialog({
     setLines(next)
     setReason('')
     setConfirmOpen(false)
-    const cash = paymentMethods.find((p) => isCashPaymentMethodName(p.name))
-    const card = paymentMethods.find((p) => {
-      const n = p.name.toLowerCase()
-      return n.includes('kártya') || n.includes('kartya') || n.includes('card')
-    })
     // Prefer original payment method if recognizable
     const orig = detail.payments.find((p) => p.kind === 'payment')
     const matchOrig = orig
       ? paymentMethods.find((p) => p.name === orig.payment_method_name)
       : null
     setPaymentMethodId(
-      matchOrig?.id ?? cash?.id ?? card?.id ?? paymentMethods[0]?.id ?? ''
+      matchOrig?.id ?? pickDefaultPaymentMethodId(paymentMethods)
     )
   }, [open, returnableLines, paymentMethods, detail.payments, preferItemId])
 

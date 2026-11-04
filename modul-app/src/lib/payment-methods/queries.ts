@@ -5,6 +5,7 @@ export type PaymentMethodListItem = {
   name: string
   comment: string | null
   active: boolean
+  is_default: boolean
   created_at: string
   updated_at: string
 }
@@ -12,6 +13,7 @@ export type PaymentMethodListItem = {
 export type PaymentMethodOption = {
   id: string
   name: string
+  is_default: boolean
 }
 
 /** Partner beküldés dialógus — aktív mód + comment. */
@@ -19,6 +21,7 @@ export type PartnerPaymentMethodOption = {
   id: string
   name: string
   comment: string | null
+  is_default: boolean
 }
 
 export async function listPaymentMethods(
@@ -27,9 +30,10 @@ export async function listPaymentMethods(
 ): Promise<PaymentMethodListItem[]> {
   const { data, error } = await supabase
     .from('payment_methods')
-    .select('id, name, comment, active, created_at, updated_at')
+    .select('id, name, comment, active, is_default, created_at, updated_at')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
+    .order('is_default', { ascending: false })
     .order('name', { ascending: true })
 
   if (error) {
@@ -37,7 +41,10 @@ export async function listPaymentMethods(
     throw new Error('Nem sikerült betölteni a fizetési módokat.')
   }
 
-  return data ?? []
+  return ((data ?? []) as PaymentMethodListItem[]).map((row) => ({
+    ...row,
+    is_default: Boolean(row.is_default)
+  }))
 }
 
 /** Aktív módok a megrendelés / befizetés selecthez. */
@@ -47,10 +54,11 @@ export async function listActivePaymentMethods(
 ): Promise<PaymentMethodOption[]> {
   const { data, error } = await supabase
     .from('payment_methods')
-    .select('id, name')
+    .select('id, name, is_default')
     .eq('tenant_id', tenantId)
     .eq('active', true)
     .is('deleted_at', null)
+    .order('is_default', { ascending: false })
     .order('name', { ascending: true })
 
   if (error) {
@@ -58,7 +66,10 @@ export async function listActivePaymentMethods(
     throw new Error('Nem sikerült betölteni a fizetési módokat.')
   }
 
-  return data ?? []
+  return ((data ?? []) as PaymentMethodOption[]).map((row) => ({
+    ...row,
+    is_default: Boolean(row.is_default)
+  }))
 }
 
 /** Partner: kapcsolt cég aktív módjai (+ comment a beküldés UI-hoz). */
@@ -68,10 +79,11 @@ export async function listActivePaymentMethodsForPartner(
 ): Promise<PartnerPaymentMethodOption[]> {
   const { data, error } = await supabase
     .from('payment_methods')
-    .select('id, name, comment')
+    .select('id, name, comment, is_default')
     .eq('tenant_id', tenantId)
     .eq('active', true)
     .is('deleted_at', null)
+    .order('is_default', { ascending: false })
     .order('name', { ascending: true })
 
   if (error) {
@@ -82,6 +94,7 @@ export async function listActivePaymentMethodsForPartner(
   return (data ?? []).map((row) => ({
     id: row.id as string,
     name: row.name as string,
-    comment: (row.comment as string | null) ?? null
+    comment: (row.comment as string | null) ?? null,
+    is_default: Boolean(row.is_default)
   }))
 }

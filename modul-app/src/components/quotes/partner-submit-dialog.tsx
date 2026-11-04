@@ -12,6 +12,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import {
   listPartnerPaymentMethodsForSubmit,
   type PartnerSubmitPaymentMethod
@@ -51,9 +52,7 @@ export function PartnerSubmitDialog({
           return
         }
         setMethods(result.methods)
-        if (result.methods.length === 1) {
-          setPaymentMethodId(result.methods[0].id)
-        }
+        setPaymentMethodId(pickDefaultPaymentMethodId(result.methods))
       })
       .finally(() => setLoadingMethods(false))
   }, [open])

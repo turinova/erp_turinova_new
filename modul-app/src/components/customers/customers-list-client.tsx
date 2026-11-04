@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
-import { Plus, Search, Users } from 'lucide-react'
+import { Plus, Search, Star, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
@@ -18,8 +18,12 @@ import {
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { softDeleteCustomer } from '@/lib/customers/actions'
+import {
+  softDeleteCustomer,
+  toggleCustomerFavorite
+} from '@/lib/customers/actions'
 import type { CustomerListItem } from '@/lib/customers/queries'
+import { cn } from '@/lib/utils'
 
 type CustomersListClientProps = {
   rows: CustomerListItem[]
@@ -46,6 +50,9 @@ export function CustomersListClient({
     null
   )
   const [pending, startTransition] = useTransition()
+  const [favoritePendingId, setFavoritePendingId] = useState<string | null>(
+    null
+  )
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
   const from = total === 0 ? 0 : (page - 1) * limit + 1
@@ -71,6 +78,26 @@ export function CustomersListClient({
       }
       toast.success(`„${deleteTarget.name}” törölve.`)
       setDeleteTarget(null)
+      router.refresh()
+    })
+  }
+
+  function handleToggleFavorite(row: CustomerListItem) {
+    if (!canWrite || favoritePendingId) return
+    const next = !row.is_favorite
+    setFavoritePendingId(row.id)
+    startTransition(async () => {
+      const result = await toggleCustomerFavorite(row.id, next)
+      setFavoritePendingId(null)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(
+        next
+          ? `„${row.name}” kedvencnek jelölve.`
+          : `„${row.name}” már nem kedvenc.`
+      )
       router.refresh()
     })
   }
@@ -147,6 +174,9 @@ export function CustomersListClient({
         <DataTable>
           <DataTableHead>
             <DataTableRow>
+              <DataTableHeaderCell className="w-10">
+                <span className="sr-only">Kedvenc</span>
+              </DataTableHeaderCell>
               <DataTableHeaderCell>Név</DataTableHeaderCell>
               <DataTableHeaderCell>Telefon</DataTableHeaderCell>
               <DataTableHeaderCell>E-mail</DataTableHeaderCell>
@@ -165,6 +195,35 @@ export function CustomersListClient({
                 className="cursor-pointer"
                 onClick={() => router.push(`/ugyfelek/${row.id}`)}
               >
+                <DataTableCell>
+                  <button
+                    type="button"
+                    className={cn(
+                      'inline-flex size-7 items-center justify-center rounded-md text-ink-muted',
+                      canWrite && 'hover:bg-subtle hover:text-ink',
+                      row.is_favorite && 'text-warning-ink',
+                      (!canWrite || favoritePendingId === row.id) &&
+                        'pointer-events-none opacity-70'
+                    )}
+                    disabled={!canWrite || favoritePendingId === row.id}
+                    aria-label={
+                      row.is_favorite
+                        ? `Kedvenc eltávolítása: ${row.name}`
+                        : `Kedvencnek jelölés: ${row.name}`
+                    }
+                    aria-pressed={row.is_favorite}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleToggleFavorite(row)
+                    }}
+                  >
+                    <Star
+                      className="size-3.5"
+                      fill={row.is_favorite ? 'currentColor' : 'none'}
+                      aria-hidden
+                    />
+                  </button>
+                </DataTableCell>
                 <DataTableCell>
                   <Link
                     href={`/ugyfelek/${row.id}`}

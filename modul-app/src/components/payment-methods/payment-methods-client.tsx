@@ -26,9 +26,11 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   createPaymentMethod,
+  setDefaultPaymentMethod,
   softDeletePaymentMethod,
   updatePaymentMethod
 } from '@/lib/payment-methods/actions'
@@ -55,8 +57,14 @@ export function PaymentMethodsClient({
   const [name, setName] = useState('')
   const [comment, setComment] = useState('')
   const [active, setActive] = useState(true)
+  const [isDefault, setIsDefault] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [pending, startTransition] = useTransition()
+
+  const activeCount = useMemo(
+    () => initialRows.filter((r) => r.active).length,
+    [initialRows]
+  )
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -69,10 +77,16 @@ export function PaymentMethodsClient({
     })
   }, [initialRows, search])
 
+  const editingDefaultOnly =
+    editor.mode === 'edit' &&
+    editor.row.is_default &&
+    activeCount <= 1
+
   function openCreate() {
     setName('')
     setComment('')
     setActive(true)
+    setIsDefault(activeCount === 0)
     setFieldErrors({})
     setEditor({ mode: 'create' })
   }
@@ -81,6 +95,7 @@ export function PaymentMethodsClient({
     setName(row.name)
     setComment(row.comment ?? '')
     setActive(row.active)
+    setIsDefault(row.is_default)
     setFieldErrors({})
     setEditor({ mode: 'edit', row })
   }
@@ -99,9 +114,15 @@ export function PaymentMethodsClient({
               id: editor.row.id,
               name,
               comment,
-              active
+              active,
+              isDefault
             })
-          : await createPaymentMethod({ name, comment, active })
+          : await createPaymentMethod({
+              name,
+              comment,
+              active,
+              isDefault
+            })
 
       if (!result.ok) {
         setFieldErrors(result.fieldErrors ?? {})
@@ -116,6 +137,18 @@ export function PaymentMethodsClient({
       )
       setEditor({ mode: 'closed' })
       setFieldErrors({})
+    })
+  }
+
+  function handleSetDefault(row: PaymentMethodListItem) {
+    if (!canWrite || row.is_default || pending) return
+    startTransition(async () => {
+      const result = await setDefaultPaymentMethod(row.id)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(`„${row.name}” az alapértelmezett.`)
     })
   }
 
@@ -138,7 +171,7 @@ export function PaymentMethodsClient({
     <div>
       <PageHeader
         title="Fizetési módok"
-        description="Előleg és megrendelés befizetésekhez."
+        description="Előleg, megrendelés és átadás befizetésekhez. Egy alapértelmezett mód a selectekben elöl jelenik meg."
         actions={
           canWrite ? (
             <Button type="button" onClick={openCreate}>
@@ -190,7 +223,12 @@ export function PaymentMethodsClient({
             {filtered.map((row) => (
               <DataTableRow key={row.id}>
                 <DataTableCell>
-                  <span className="font-medium">{row.name}</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-medium">{row.name}</span>
+                    {row.is_default ? (
+                      <StatusBadge tone="info">Alap</StatusBadge>
+                    ) : null}
+                  </div>
                 </DataTableCell>
                 <DataTableCell className="max-w-[280px] truncate text-ink-secondary">
                   {row.comment || '—'}
@@ -204,6 +242,17 @@ export function PaymentMethodsClient({
                   <div className="flex items-center justify-end gap-1">
                     {canWrite ? (
                       <>
+                        {!row.is_default ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => handleSetDefault(row)}
+                          >
+                            Alapnak
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="ghost"
@@ -217,6 +266,12 @@ export function PaymentMethodsClient({
                           variant="ghost"
                           size="sm"
                           className="text-danger-ink hover:text-danger-ink"
+                          disabled={row.is_default}
+                          title={
+                            row.is_default
+                              ? 'Előbb jelölj ki másik alapértelmezettet.'
+                              : undefined
+                          }
                           onClick={() => setDeleteTarget(row)}
                         >
                           Törlés
@@ -284,16 +339,48 @@ export function PaymentMethodsClient({
               />
             </FormField>
 
-            <label className="flex items-center gap-2 text-body text-ink">
-              <input
-                type="checkbox"
-                className="size-3.5 rounded border-border"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
-                disabled={pending}
-              />
-              Aktív (választható megrendeléskor)
-            </label>
+            <Switch
+              id="payment-method-active"
+              checked={active}
+              disabled={pending || (isDefault && editingDefaultOnly)}
+              onCheckedChange={(next) => {
+                setActive(next)
+                if (!next) setIsDefault(false)
+              }}
+              label="Aktív"
+              description="Választható megrendeléskor és befizetésnél."
+            />
+            {fieldErrors.active ? (
+              <p className="text-hint text-danger-ink" role="alert">
+                {fieldErrors.active}
+              </p>
+            ) : null}
+
+            <Switch
+              id="payment-method-default"
+              checked={isDefault}
+              disabled={
+                pending ||
+                (editor.mode === 'edit' && editor.row.is_default)
+              }
+              onCheckedChange={(next) => {
+                setIsDefault(next)
+                if (next) setActive(true)
+              }}
+              label="Alapértelmezett"
+              description="Megrendelés, befizetés és átadás selectjeiben ez az első választás."
+            />
+            {fieldErrors.isDefault ? (
+              <p className="text-hint text-danger-ink" role="alert">
+                {fieldErrors.isDefault}
+              </p>
+            ) : null}
+            {editor.mode === 'edit' && editor.row.is_default ? (
+              <p className="text-hint text-ink-muted">
+                Az alapjelölést úgy veszed le, hogy a listán egy másik módnál
+                az „Alapnak” gombra kattintasz.
+              </p>
+            ) : null}
           </div>
 
           <DialogFooter>
@@ -350,7 +437,8 @@ function EmptyPaymentMethods({
         <p className="text-body font-medium text-ink">Még nincs fizetési mód</p>
         <p className="max-w-sm text-body text-ink-secondary">
           Add hozzá legalább a készpénzt, utalást és bankkártyát, mielőtt
-          megrendelést rögzítesz előleggel.
+          megrendelést rögzítesz előleggel. Az első aktív mód lesz az
+          alapértelmezett.
         </p>
       </div>
       {canWrite ? (

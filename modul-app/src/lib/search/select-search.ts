@@ -22,6 +22,7 @@ export async function searchCustomersForSelect(
 
   return ((data ?? []) as OptiCustomerOption[]).map((row) => ({
     ...row,
+    is_favorite: Boolean(row.is_favorite),
     billing_country: row.billing_country || 'Magyarország'
   }))
 }
@@ -29,6 +30,7 @@ export async function searchCustomersForSelect(
 type SheetRpcRow = {
   id: string
   name: string
+  machine_code?: string | null
   length_mm: number | string
   width_mm: number | string
   thickness_mm: number | string
@@ -68,6 +70,7 @@ export async function searchSheetMaterialsForOpti(
   return ((data ?? []) as SheetRpcRow[]).map((r) => ({
     id: r.id,
     name: r.name,
+    machine_code: (r.machine_code ?? '').trim(),
     length_mm: Number(r.length_mm),
     width_mm: Number(r.width_mm),
     thickness_mm: Number(r.thickness_mm),

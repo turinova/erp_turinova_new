@@ -127,6 +127,8 @@ export function OptiWorkspaceClient({
   const [optiError, setOptiError] = useState<string | null>(null)
 
   const [sheetMaterialId, setSheetMaterialId] = useState('')
+  /** Async keresőből választott anyagok, amik nincsenek az SSR listában. */
+  const [extraSheets, setExtraSheets] = useState<OptiSheetMaterialOption[]>([])
   const [changingMaterial, setChangingMaterial] = useState(false)
   const [grainRaw, setGrainRaw] = useState('')
   const [crossRaw, setCrossRaw] = useState('')
@@ -137,6 +139,9 @@ export function OptiWorkspaceClient({
   const [edgeCId, setEdgeCId] = useState('')
   const [edgeDId, setEdgeDId] = useState('')
   const [edgeAroundId, setEdgeAroundId] = useState('')
+  /** Session: utoljára választott élzáró — következő él-select listáján elöl („Most”). */
+  const [lastEdgeId, setLastEdgeId] = useState('')
+  const edgeFocusAfterRef = useRef<(() => void) | null>(null)
   const [duplungolas, setDuplungolas] = useState(false)
   const [szogvagas, setSzogvagas] = useState(false)
   const [panthelyRaw, setPanthelyRaw] = useState('')
@@ -248,9 +253,19 @@ export function OptiWorkspaceClient({
     []
   )
 
+  const allSheetMaterials = useMemo(() => {
+    if (extraSheets.length === 0) return sheetMaterials
+    const byId = new Map<string, OptiSheetMaterialOption>()
+    for (const m of sheetMaterials) byId.set(m.id, m)
+    for (const m of extraSheets) {
+      if (!byId.has(m.id)) byId.set(m.id, m)
+    }
+    return [...byId.values()]
+  }, [sheetMaterials, extraSheets])
+
   const selectedMaterial = useMemo(
-    () => sheetMaterials.find((m) => m.id === sheetMaterialId) ?? null,
-    [sheetMaterials, sheetMaterialId]
+    () => allSheetMaterials.find((m) => m.id === sheetMaterialId) ?? null,
+    [allSheetMaterials, sheetMaterialId]
   )
 
   const quoteResult = useMemo(() => {
@@ -258,11 +273,11 @@ export function OptiWorkspaceClient({
     return buildOptiQuote({
       optiResult,
       panels,
-      sheetMaterials,
+      sheetMaterials: allSheetMaterials,
       edgeMaterials,
       cuttingFee
     })
-  }, [optiResult, panels, sheetMaterials, edgeMaterials, cuttingFee])
+  }, [optiResult, panels, allSheetMaterials, edgeMaterials, cuttingFee])
 
   useEffect(() => {
     if (!optiResult || !shouldScrollToResultsRef.current) return
@@ -275,17 +290,6 @@ export function OptiWorkspaceClient({
       block: 'start'
     })
   }, [optiResult])
-
-  const sheetsByManufacturer = useMemo(() => {
-    const map = new Map<string, OptiSheetMaterialOption[]>()
-    for (const material of sheetMaterials) {
-      const key = material.manufacturer_name
-      const list = map.get(key)
-      if (list) list.push(material)
-      else map.set(key, [material])
-    }
-    return Array.from(map.entries())
-  }, [sheetMaterials])
 
   const maxGrain = selectedMaterial ? maxGrainMm(selectedMaterial) : null
   const maxCross = selectedMaterial ? maxCrossMm(selectedMaterial) : null
@@ -327,18 +331,45 @@ export function OptiWorkspaceClient({
   }
 
   const edgeOptions = useMemo(() => {
-    const hasFavourites = edgeMaterials.some((e) => e.favourite_priority !== null)
-    return edgeMaterials.map((edge) => ({
-      value: edge.id,
-      label: `${edge.favourite_priority !== null ? '★ ' : ''}${formatEdgeMaterialLabel(edge)}`,
-      ...(hasFavourites
-        ? {
-            group:
-              edge.favourite_priority !== null ? 'Kedvencek' : 'Többi élzáró'
-          }
-        : {})
-    }))
-  }, [edgeMaterials])
+    const hasFavourites = edgeMaterials.some(
+      (e) => e.favourite_priority !== null
+    )
+    const pinned =
+      lastEdgeId && edgeMaterials.some((e) => e.id === lastEdgeId)
+        ? lastEdgeId
+        : ''
+
+    function toOption(
+      edge: OptiEdgeMaterialOption,
+      group?: string
+    ): { value: string; label: string; group?: string } {
+      const star = edge.favourite_priority !== null ? '★ ' : ''
+      return {
+        value: edge.id,
+        label: `${star}${formatEdgeMaterialLabel(edge)}`,
+        ...(group ? { group } : {})
+      }
+    }
+
+    const options: Array<{ value: string; label: string; group?: string }> = []
+    if (pinned) {
+      const edge = edgeMaterials.find((e) => e.id === pinned)
+      if (edge) options.push(toOption(edge, 'Most'))
+    }
+
+    for (const edge of edgeMaterials) {
+      if (edge.id === pinned) continue
+      const group = hasFavourites
+        ? edge.favourite_priority !== null
+          ? 'Kedvencek'
+          : 'Többi élzáró'
+        : pinned
+          ? 'Többi élzáró'
+          : undefined
+      options.push(toOption(edge, group))
+    }
+    return options
+  }, [edgeMaterials, lastEdgeId])
 
   const grainMm = Number.parseInt(grainRaw, 10)
   const crossMm = Number.parseInt(crossRaw, 10)
@@ -474,13 +505,25 @@ export function OptiWorkspaceClient({
     focusGrain()
   }
 
-  function selectMaterial(id: string) {
+  function selectMaterial(
+    id: string,
+    picked: OptiSheetMaterialOption | null = null
+  ) {
     const prevId = sheetMaterialId
+    if (picked && !sheetMaterials.some((m) => m.id === picked.id)) {
+      setExtraSheets((prev) =>
+        prev.some((m) => m.id === picked.id) ? prev : [...prev, picked]
+      )
+    }
     setSheetMaterialId(id)
     setChangingMaterial(false)
     setErrors((prev) => ({ ...prev, material: undefined }))
 
-    const material = sheetMaterials.find((m) => m.id === id) ?? null
+    const material =
+      picked ??
+      allSheetMaterials.find((m) => m.id === id) ??
+      sheetMaterials.find((m) => m.id === id) ??
+      null
 
     if (id && id !== prevId && !editingPanelId) {
       clearDimensionAndEdges()
@@ -506,27 +549,29 @@ export function OptiWorkspaceClient({
       setEdgeBId(value)
       setEdgeCId(value)
       setEdgeDId(value)
+      setLastEdgeId(value)
     }
+    edgeFocusAfterRef.current = () => focusAddPanelButton()
   }
 
-  function setEdge(
-    side: 'a' | 'b' | 'c' | 'd',
-    value: string
-  ) {
+  function setEdge(side: 'a' | 'b' | 'c' | 'd', value: string) {
     if (side === 'a') setEdgeAId(value)
     if (side === 'b') setEdgeBId(value)
     if (side === 'c') setEdgeCId(value)
     if (side === 'd') setEdgeDId(value)
 
+    if (value) setLastEdgeId(value)
+
+    const next = {
+      a: side === 'a' ? value : edgeAId,
+      b: side === 'b' ? value : edgeBId,
+      c: side === 'c' ? value : edgeCId,
+      d: side === 'd' ? value : edgeDId
+    }
+
     // Egyedi él → Körbe helper ne legyen félrevezető
     setEdgeAroundId((around) => {
       if (!around) return around
-      const next = {
-        a: side === 'a' ? value : edgeAId,
-        b: side === 'b' ? value : edgeBId,
-        c: side === 'c' ? value : edgeCId,
-        d: side === 'd' ? value : edgeDId
-      }
       const allSame =
         next.a === around &&
         next.b === around &&
@@ -534,6 +579,38 @@ export function OptiWorkspaceClient({
         next.d === around
       return allSame ? around : ''
     })
+
+    // Választás után: következő üres él (vizuális sorrend), különben Add.
+    // Clear (X) nem hív focusAfterClose-t — ez csak listaválasztáskor fut.
+    const order = ['a', 'c', 'd', 'b'] as const
+    const start = order.indexOf(side)
+    let focusId: string | null = null
+    if (value) {
+      for (let i = 1; i <= order.length; i++) {
+        const s = order[(start + i) % order.length]
+        if (!next[s]) {
+          focusId = `opti-edge-${s}`
+          break
+        }
+      }
+    }
+    edgeFocusAfterRef.current = () => {
+      if (focusId) {
+        const el = document.getElementById(focusId)
+        if (el instanceof HTMLElement) {
+          el.focus()
+          return
+        }
+      }
+      focusAddPanelButton()
+    }
+  }
+
+  function focusAfterEdgeClose() {
+    const fn = edgeFocusAfterRef.current
+    edgeFocusAfterRef.current = null
+    if (fn) fn()
+    else focusAddPanelButton()
   }
 
   function handleTextImportCommit(rows: OptiTextImportCommitRow[]) {
@@ -677,7 +754,7 @@ export function OptiWorkspaceClient({
     setIsOptimizing(true)
     setOptiError(null)
     try {
-      const body = buildOptimizeRequest(panels, sheetMaterials)
+      const body = buildOptimizeRequest(panels, allSheetMaterials)
       if (body.materials.length === 0) {
         setOptiError(
           'Nincs érvényes táblás anyag a panelekhez. Válassz újra anyagot.'
@@ -718,7 +795,7 @@ export function OptiWorkspaceClient({
     } finally {
       setIsOptimizing(false)
     }
-  }, [panels, sheetMaterials, isOptimizing])
+  }, [panels, allSheetMaterials, isOptimizing])
 
   function handleEntryKeyDown(e: React.KeyboardEvent) {
     if (e.key !== 'Enter') return
@@ -855,7 +932,9 @@ export function OptiWorkspaceClient({
           className="order-1 lg:order-2 lg:sticky lg:top-14 lg:self-start"
           sheetMaterialId={sheetMaterialId}
           selectedMaterial={selectedMaterial}
-          sheetsByManufacturer={sheetsByManufacturer}
+          seedMaterials={
+            selectedMaterial ? [selectedMaterial] : []
+          }
           changing={changingMaterial}
           materialError={errors.material}
           grainMm={previewGrain}
@@ -1022,7 +1101,7 @@ export function OptiWorkspaceClient({
                   disabled={edgeMaterials.length === 0}
                   onChange={(v) => setEdge('a', v)}
                   submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAddPanelButton}
+                  focusAfterClose={focusAfterEdgeClose}
                 />
                 <EdgeSelect
                   id="opti-edge-c"
@@ -1032,7 +1111,7 @@ export function OptiWorkspaceClient({
                   disabled={edgeMaterials.length === 0}
                   onChange={(v) => setEdge('c', v)}
                   submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAddPanelButton}
+                  focusAfterClose={focusAfterEdgeClose}
                 />
                 <EdgeSelect
                   id="opti-edge-d"
@@ -1042,7 +1121,7 @@ export function OptiWorkspaceClient({
                   disabled={edgeMaterials.length === 0}
                   onChange={(v) => setEdge('d', v)}
                   submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAddPanelButton}
+                  focusAfterClose={focusAfterEdgeClose}
                 />
                 <EdgeSelect
                   id="opti-edge-b"
@@ -1052,7 +1131,7 @@ export function OptiWorkspaceClient({
                   disabled={edgeMaterials.length === 0}
                   onChange={(v) => setEdge('b', v)}
                   submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAddPanelButton}
+                  focusAfterClose={focusAfterEdgeClose}
                 />
               </div>
             </div>
@@ -1075,7 +1154,7 @@ export function OptiWorkspaceClient({
                   searchPlaceholder="Keresés élzáró…"
                   onChange={handleAroundChange}
                   submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAddPanelButton}
+                  focusAfterClose={focusAfterEdgeClose}
                 />
               </FormField>
             </div>
@@ -1166,7 +1245,8 @@ export function OptiWorkspaceClient({
                 </Button>
               </div>
               <p className="text-hint text-ink-muted">
-                Enter ment · él után a fókusz ide jön · lista: Space / ↓
+                Enter ment · él után következő üres él · lista: Space / ↓ · X
+                töröl
               </p>
             </div>
           </fieldset>
@@ -1198,7 +1278,7 @@ export function OptiWorkspaceClient({
         <div ref={resultsRef} className="space-y-4 scroll-mt-4">
           <OptiResultsStrip
             result={optiResult}
-            sheetMaterials={sheetMaterials}
+            sheetMaterials={allSheetMaterials}
           />
           {quoteResult ? <OptiQuoteStrip quote={quoteResult} /> : null}
           {quoteResult && isPartner && partnerCustomer ? (
@@ -1207,7 +1287,7 @@ export function OptiWorkspaceClient({
               companyLabel={companyLabel}
               panels={panels}
               quote={quoteResult}
-              sheetMaterials={sheetMaterials}
+              sheetMaterials={allSheetMaterials}
               quoteId={editingQuoteId}
               initialProjectName={
                 isEditMode ? initialEdit?.project_name ?? null : null
@@ -1228,7 +1308,7 @@ export function OptiWorkspaceClient({
               customers={customers}
               panels={panels}
               quote={quoteResult}
-              sheetMaterials={sheetMaterials}
+              sheetMaterials={allSheetMaterials}
               quoteId={editingQuoteId}
               initialCustomer={isEditMode ? initialEdit?.customer ?? null : null}
               initialProjectName={
@@ -1325,7 +1405,7 @@ function EdgeSelect({
   id: string
   label: string
   value: string
-  options: Array<{ value: string; label: string; hint?: string }>
+  options: Array<{ value: string; label: string; hint?: string; group?: string }>
   disabled?: boolean
   onChange: (value: string) => void
   submitOnEnter?: () => void
@@ -1339,6 +1419,7 @@ function EdgeSelect({
         options={options}
         placeholder="Nincs"
         emptyLabel="Nincs"
+        clearable
         disabled={disabled}
         searchable
         searchPlaceholder="Keresés élzáró…"

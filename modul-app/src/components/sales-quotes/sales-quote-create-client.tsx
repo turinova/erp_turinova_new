@@ -711,7 +711,8 @@ export function SalesQuoteCreateClient({
             billing_postal_code: null as string | null,
             billing_street: null as string | null,
             billing_house_number: null as string | null,
-            billing_tax_number: null as string | null
+            billing_tax_number: null as string | null,
+            is_favorite: false
           }
           setCustomers((prev) => {
             if (prev.some((x) => x.id === c.id)) return prev

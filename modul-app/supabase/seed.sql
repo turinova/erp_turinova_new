@@ -276,16 +276,16 @@ where t.slug = 'demo'
     where tc.tenant_id = t.id
   );
 
--- Példa fizetési módok
-insert into public.payment_methods (tenant_id, name, active)
-select t.id, v.name, true
+-- Példa fizetési módok (Készpénz = alapértelmezett)
+insert into public.payment_methods (tenant_id, name, active, is_default)
+select t.id, v.name, true, v.is_default
 from public.tenants t
 cross join (
   values
-    ('Készpénz'),
-    ('Utalás'),
-    ('Bankkártya')
-) as v(name)
+    ('Készpénz', true),
+    ('Utalás', false),
+    ('Bankkártya', false)
+) as v(name, is_default)
 where t.slug = 'demo'
   and not exists (
     select 1

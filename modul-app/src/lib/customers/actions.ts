@@ -49,6 +49,7 @@ function rowFromParsed(data: CustomerFormValues) {
     email: data.email,
     mobile: data.mobile,
     sms_notification: data.smsNotification,
+    is_favorite: data.isFavorite,
     billing_name: data.billingName,
     billing_country: data.billingCountry,
     billing_city: data.billingCity,
@@ -65,6 +66,7 @@ export type CustomerFormInput = {
   email: string
   mobile: string
   smsNotification: boolean
+  isFavorite: boolean
   billingName: string
   billingCountry: string
   billingCity: string
@@ -183,5 +185,37 @@ export async function softDeleteCustomer(
   }
 
   revalidateCustomerPaths(data.id)
+  return { ok: true, id: data.id }
+}
+
+export async function toggleCustomerFavorite(
+  id: string,
+  isFavorite: boolean
+): Promise<CustomerActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data, error } = await ctx.supabase
+    .from('customers')
+    .update({
+      is_favorite: isFavorite,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', id)
+    .eq('tenant_id', ctx.user.tenantId!)
+    .is('deleted_at', null)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    return { ok: false, message: 'Nem sikerült frissíteni a kedvencet.' }
+  }
+
+  if (!data) {
+    return { ok: false, message: 'Az ügyfél nem található.' }
+  }
+
+  revalidateCustomerPaths(data.id)
+  revalidatePath('/opti')
   return { ok: true, id: data.id }
 }

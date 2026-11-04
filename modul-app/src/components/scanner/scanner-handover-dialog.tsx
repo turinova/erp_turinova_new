@@ -18,6 +18,7 @@ import { prepareHandoverSlipPrint } from '@/lib/handover-slip/actions'
 import { printHandoverSlip } from '@/lib/handover-slip/print'
 import { requestUsbPrinter } from '@/lib/handover-slip/webusb'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { finishQuotesHandoverBulk } from '@/lib/scanner/actions'
 
@@ -61,7 +62,7 @@ export function ScannerHandoverDialog({
 
   useEffect(() => {
     if (!open) return
-    setPaymentMethodId(paymentMethods[0]?.id ?? '')
+    setPaymentMethodId(pickDefaultPaymentMethodId(paymentMethods))
     setError(null)
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)

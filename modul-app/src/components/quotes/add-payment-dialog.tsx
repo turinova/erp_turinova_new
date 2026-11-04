@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { addQuotePayment } from '@/lib/quotes/actions'
 import {
@@ -64,7 +65,7 @@ export function AddPaymentDialog({
   useEffect(() => {
     if (!open) return
     setAmountRaw(formatPaymentAmountInput(remaining))
-    setPaymentMethodId(paymentMethods[0]?.id ?? '')
+    setPaymentMethodId(pickDefaultPaymentMethodId(paymentMethods))
     setComment('')
     setError(null)
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)

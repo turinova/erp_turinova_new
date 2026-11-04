@@ -86,6 +86,7 @@ export function SaleQuickCustomerDialog({
         email: emailTrimmed,
         mobile,
         smsNotification: true,
+        isFavorite: false,
         billingName: '',
         billingCountry: 'Magyarország',
         billingCity: '',

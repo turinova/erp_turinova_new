@@ -63,6 +63,7 @@ import {
   type CustomerSpecialOrderDetail,
   type CustomerSpecialOrderItemRow
 } from '@/lib/customer-orders/types'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import {
   isCashPaymentMethodName,
@@ -178,10 +179,9 @@ export function CustomerOrderDetailClient({
   const [smsOpen, setSmsOpen] = useState(false)
   const [smsCandidates, setSmsCandidates] = useState<CsoReadySmsCandidate[]>([])
   const [smsLoading, setSmsLoading] = useState(false)
-  const [paymentMethodId, setPaymentMethodId] = useState(() => {
-    const cash = paymentMethods.find((p) => isCashPaymentMethodName(p.name))
-    return cash?.id ?? paymentMethods[0]?.id ?? ''
-  })
+  const [paymentMethodId, setPaymentMethodId] = useState(() =>
+    pickDefaultPaymentMethodId(paymentMethods)
+  )
 
   const supplierOptions = useMemo(
     () => suppliers.map((s) => ({ value: s.id, label: s.name })),

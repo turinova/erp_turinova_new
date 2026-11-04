@@ -289,6 +289,7 @@ export type PartnerSubmitPaymentMethod = {
   id: string
   name: string
   comment: string | null
+  is_default: boolean
 }
 
 export type ListPartnerPaymentMethodsResult =

@@ -55,7 +55,7 @@ Létrehoz:
 - `edge_materials` (tenant-scoped élzárók + RLS)
 - `sheet_materials` (táblás anyagok + RLS; **nincs** élzáró hozzárendelés)
 - Storage bucket `sheet-materials` (tenant mappa prefix, max 2 MB kép)
-- `customers` (ügyfelek + RLS; **nincs** kedvezmény / SMS / kedvenc)
+- `customers` (ügyfelek + RLS; SMS: `sms_notification`; kedvenc: `is_favorite`; **nincs** ügyfél-szintű kedvezmény)
 - `cutting_fees` (Opti vágási díj + pricing_mode)
 - `quotes`, `quote_panels`, `quote_material_lines`, `quote_edge_lines` + `generate_quote_number(tenant_id)`
 - `tenant_companies` (cégprofil 1:1) + bucket `tenant-company-logos`

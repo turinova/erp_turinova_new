@@ -115,14 +115,21 @@ export function CustomerMenuSelect({
         cacheRef.current.get(value) ?? seed.find((c) => c.id === value)
       if (selected) byId.set(selected.id, selected)
     }
-    return [...byId.values()].map((c) => ({
-      value: c.id,
-      label: c.name,
-      hint:
-        [c.billing_name && c.billing_name !== c.name ? c.billing_name : null, c.mobile, c.email]
-          .filter(Boolean)
-          .join(' · ') || undefined
-    }))
+    return [...byId.values()]
+      .sort((a, b) => {
+        const af = Boolean(a.is_favorite)
+        const bf = Boolean(b.is_favorite)
+        if (af !== bf) return af ? -1 : 1
+        return a.name.localeCompare(b.name, 'hu')
+      })
+      .map((c) => ({
+        value: c.id,
+        label: c.is_favorite ? `★ ${c.name}` : c.name,
+        hint:
+          [c.billing_name && c.billing_name !== c.name ? c.billing_name : null, c.mobile, c.email]
+            .filter(Boolean)
+            .join(' · ') || undefined
+      }))
   }, [rows, value, seed])
 
   return (

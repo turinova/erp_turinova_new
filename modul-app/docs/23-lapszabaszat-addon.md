@@ -42,4 +42,16 @@ Opti és Scanner top-level menüpontok maradnak (entitlement továbbra is a Laps
 | **Enter** méret / darab / jelölés / pánthely / zárt él-select | Panel hozzáadása (vagy mentés szerkesztéskor) |
 | **Space** / **↓** / katt él-selecten | Lista nyitás |
 | **Enter** nyitott él-listában | Élzáró kiválasztása (nem ment panel) |
+| **X** / **Delete** / **Backspace** zárt él-selecten | Él ürítése (marad a mezőn) |
+| Él választás után | Fókusz a következő üres élre (felső→alsó→bal→jobb), majd Add |
 | **Ctrl/⌘+Enter** | Optimalizálás (ha van panel; sticky sáv gomb) |
+
+**Élzáró „Most”:** az utoljára választott élzáró a többi él-select listáján felül („Most” csoport) — Enterrel gyorsan ugyanaz az él másik oldalra.
+
+### Opti táblás anyagkereső
+
+Async typeahead (`/api/opti/sheet-materials` → `search_sheet_materials_for_opti`): **csak** `sheet_materials.name` + `machine_code` ILIKE (gyártó nem keresési feltétel). Migráció: `20260631_search_sheet_materials_opti_machine_code.sql`.
+
+### Opti ügyfélkereső — kedvencek
+
+`customers.is_favorite` (tenant-szintű). `search_customers_for_select` + lista seed: kedvencek előrébb, label `★ Név`. Kapcsoló: `/ugyfelek` lista csillag + űrlap Switch. Migráció: `20260632_customers_is_favorite.sql`.

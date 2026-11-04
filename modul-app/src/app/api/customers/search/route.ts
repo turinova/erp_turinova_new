@@ -48,7 +48,8 @@ export async function GET(request: Request) {
           billing_postal_code,
           billing_street,
           billing_house_number,
-          billing_tax_number
+          billing_tax_number,
+          is_favorite
         `
         )
         .eq('tenant_id', user.tenantId)
@@ -59,6 +60,7 @@ export async function GET(request: Request) {
       const row: OptiCustomerOption | null = data
         ? {
             ...data,
+            is_favorite: Boolean(data.is_favorite),
             billing_country: data.billing_country || 'Magyarország'
           }
         : null

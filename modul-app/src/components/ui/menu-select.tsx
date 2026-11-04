@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, Search, X } from 'lucide-react'
 import {
   useEffect,
   useId,
@@ -9,7 +9,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent
 } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -32,6 +33,11 @@ type MenuSelectProps = {
   emptyLabel?: string
   /** false = nincs „Nincs” sor (kötelező választás, pl. anyag) */
   allowEmpty?: boolean
+  /**
+   * Triggeren X + Delete/Backspace ürítés (csak ha van value és allowEmpty).
+   * Default: allowEmpty. Clear nem hív focusAfterClose-t.
+   */
+  clearable?: boolean
   disabled?: boolean
   className?: string
   /**
@@ -103,6 +109,7 @@ export function MenuSelect({
   placeholder = 'Válassz…',
   emptyLabel = 'Nincs',
   allowEmpty = true,
+  clearable,
   disabled = false,
   className,
   searchable = false,
@@ -129,6 +136,8 @@ export function MenuSelect({
   const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null)
   const [query, setQuery] = useState('')
   const [mounted, setMounted] = useState(false)
+  const canClear =
+    (clearable ?? allowEmpty) && allowEmpty && Boolean(value) && !disabled
 
   useEffect(() => {
     setMounted(true)
@@ -299,8 +308,28 @@ export function MenuSelect({
     restoreFocusAfterClose()
   }
 
+  function clearValue(e?: ReactMouseEvent) {
+    e?.preventDefault()
+    e?.stopPropagation()
+    if (!canClear) return
+    onChange('')
+    setOpen(false)
+    setQuery('')
+    // Clear: maradj a triggeren — ne ugorjon focusAfterClose célra (Opti Add).
+    requestAnimationFrame(() => triggerRef.current?.focus())
+  }
+
   function onTriggerKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
     if (disabled) return
+    if (
+      canClear &&
+      !open &&
+      (e.key === 'Backspace' || e.key === 'Delete')
+    ) {
+      e.preventDefault()
+      clearValue()
+      return
+    }
     if (e.key === 'Enter' && submitOnEnter) {
       e.preventDefault()
       submitOnEnter()
@@ -486,7 +515,8 @@ export function MenuSelect({
         onClick={() => setOpen((o) => !o)}
         onKeyDown={onTriggerKeyDown}
         className={cn(
-          'flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 text-left text-body text-ink transition-colors duration-fast',
+          'flex w-full min-w-0 items-center rounded-md border border-border bg-surface pl-2.5 text-left text-body text-ink transition-colors duration-fast',
+          canClear ? 'pr-14' : 'pr-8',
           wrap ? 'min-h-8 py-1' : 'h-8',
           'hover:border-border-strong',
           'disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-disabled',
@@ -503,14 +533,33 @@ export function MenuSelect({
         >
           {triggerText}
         </span>
-        <ChevronDown
-          className={cn(
-            'size-3.5 shrink-0 text-ink-muted transition-transform',
-            open && 'rotate-180'
-          )}
-          aria-hidden
-        />
       </button>
+      {canClear ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Kiválasztás törlése"
+          className={cn(
+            'absolute right-7 top-1/2 z-[1] inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-ink-muted',
+            'hover:bg-subtle hover:text-ink'
+          )}
+          onClick={clearValue}
+          onMouseDown={(e) => {
+            // Ne a trigger toggle / outside-close nyerjen.
+            e.preventDefault()
+            e.stopPropagation()
+          }}
+        >
+          <X className="size-3.5" aria-hidden />
+        </button>
+      ) : null}
+      <ChevronDown
+        className={cn(
+          'pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted transition-transform',
+          open && 'rotate-180'
+        )}
+        aria-hidden
+      />
       {menu}
     </div>
   )

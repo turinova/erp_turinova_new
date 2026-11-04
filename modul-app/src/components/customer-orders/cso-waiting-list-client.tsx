@@ -52,8 +52,8 @@ import {
   type CsoWaitingListItem,
   type CsoWaitingView
 } from '@/lib/customer-orders/types'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
-import { isCashPaymentMethodName } from '@/lib/sales/payment-kind'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { CsoReadySmsCandidate } from '@/lib/sms/types'
 import { cn } from '@/lib/utils'
@@ -144,10 +144,9 @@ export function CsoWaitingListClient({
   const [smsOpen, setSmsOpen] = useState(false)
   const [smsCandidates, setSmsCandidates] = useState<CsoReadySmsCandidate[]>([])
   const [smsLoading, setSmsLoading] = useState(false)
-  const [paymentMethodId, setPaymentMethodId] = useState(() => {
-    const cash = paymentMethods.find((p) => isCashPaymentMethodName(p.name))
-    return cash?.id ?? paymentMethods[0]?.id ?? ''
-  })
+  const [paymentMethodId, setPaymentMethodId] = useState(() =>
+    pickDefaultPaymentMethodId(paymentMethods)
+  )
   const paymentOptions = useMemo(
     () => paymentMethods.map((p) => ({ value: p.id, label: p.name })),
     [paymentMethods]

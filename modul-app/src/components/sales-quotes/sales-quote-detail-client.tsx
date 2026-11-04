@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import type { SaleTotalsResult } from '@/lib/sales/totals'
@@ -149,7 +150,9 @@ export function SalesQuoteDetailClient({
   const [lostOpen, setLostOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
-  const [payId, setPayId] = useState(paymentMethods[0]?.id ?? '')
+  const [payId, setPayId] = useState(
+    pickDefaultPaymentMethodId(paymentMethods)
+  )
   const [payInFull, setPayInFull] = useState(true)
   const [lostReason, setLostReason] = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
@@ -691,7 +694,8 @@ export function SalesQuoteDetailClient({
                 startTransition(async () => {
                   const r = await convertSalesQuoteToSaleAction({
                     quoteId: detail.id,
-                    paymentMethodId: payId || paymentMethods[0]?.id || '',
+                    paymentMethodId:
+                      payId || pickDefaultPaymentMethodId(paymentMethods) || '',
                     payInFull
                   })
                   if (!r.ok) {

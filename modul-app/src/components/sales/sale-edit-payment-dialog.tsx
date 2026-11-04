@@ -17,6 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { updateSalePaymentAction } from '@/lib/sales/actions'
 import { formatMoneyFt } from '@/lib/sales/parse'
@@ -53,7 +54,10 @@ export function SaleEditPaymentDialog({
     return Math.max(1, due - others)
   }, [detail.payments, payment, due])
 
-  const defaultMethod = payment?.payment_method_id || paymentMethods[0]?.id || ''
+  const defaultMethod =
+    payment?.payment_method_id ||
+    pickDefaultPaymentMethodId(paymentMethods) ||
+    ''
   const [paymentMethodId, setPaymentMethodId] = useState(defaultMethod)
   const [amount, setAmount] = useState(payment?.amount ?? 0)
   const [note, setNote] = useState('')
@@ -61,7 +65,9 @@ export function SaleEditPaymentDialog({
   useEffect(() => {
     if (!open || !payment) return
     setPaymentMethodId(
-      payment.payment_method_id || paymentMethods[0]?.id || ''
+      payment.payment_method_id ||
+        pickDefaultPaymentMethodId(paymentMethods) ||
+        ''
     )
     setAmount(payment.amount)
     setNote('')

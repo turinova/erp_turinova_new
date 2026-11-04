@@ -265,7 +265,7 @@ export async function syncQuoteBillingToCustomerAction(
   const { data: live, error: liveErr } = await ctx.supabase
     .from('customers')
     .select(
-      'name, email, mobile, sms_notification, billing_company_reg_number'
+      'name, email, mobile, sms_notification, is_favorite, billing_company_reg_number'
     )
     .eq('id', detail.customer_id)
     .eq('tenant_id', ctx.user.tenantId!)
@@ -282,6 +282,7 @@ export async function syncQuoteBillingToCustomerAction(
     email: live.email ?? '',
     mobile: live.mobile ?? '',
     smsNotification: Boolean(live.sms_notification),
+    isFavorite: Boolean(live.is_favorite),
     billingName: detail.billing_name ?? '',
     billingCountry: detail.billing_country || 'Magyarország',
     billingCity: detail.billing_city ?? '',

@@ -63,6 +63,9 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
       ? Boolean(initial?.sms_notification)
       : true
   )
+  const [isFavorite, setIsFavorite] = useState(
+    Boolean(initial?.is_favorite)
+  )
   const [billing, setBilling] = useState<DocumentBillingState>(() =>
     billingFromInitial(initial)
   )
@@ -79,6 +82,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
         email,
         mobile,
         smsNotification,
+        isFavorite,
         billingName: billing.billingName,
         billingCountry: billing.billingCountry,
         billingCity: billing.billingCity,
@@ -184,7 +188,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
             />
           </FormField>
 
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 space-y-3">
             <Switch
               id="customer-sms"
               checked={smsNotification}
@@ -192,6 +196,14 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
               onCheckedChange={setSmsNotification}
               label="SMS értesítés"
               description="Készre állításkor SMS küldhető, ha a cégnek van SMS add-onja."
+            />
+            <Switch
+              id="customer-favorite"
+              checked={isFavorite}
+              disabled={!canWrite}
+              onCheckedChange={setIsFavorite}
+              label="Kedvenc ügyfél"
+              description="Az Opti és a többi ügyfélválasztóban előre kerül."
             />
           </div>
         </FormSection>

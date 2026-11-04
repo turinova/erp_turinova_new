@@ -242,6 +242,8 @@ export type Customer = {
   name: string
   email: string | null
   mobile: string | null
+  sms_notification: boolean
+  is_favorite: boolean
   billing_name: string | null
   billing_country: string
   billing_city: string | null
@@ -740,6 +742,7 @@ export type PaymentMethod = {
   name: string
   comment: string | null
   active: boolean
+  is_default: boolean
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -1051,6 +1054,8 @@ export type Database = {
           name: string
           email?: string | null
           mobile?: string | null
+          sms_notification?: boolean
+          is_favorite?: boolean
           billing_name?: string | null
           billing_country?: string
           billing_city?: string | null
@@ -1511,6 +1516,7 @@ export type Database = {
           name: string
           comment?: string | null
           active?: boolean
+          is_default?: boolean
           created_at?: string
           updated_at?: string
           deleted_at?: string | null

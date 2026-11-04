@@ -828,7 +828,7 @@ export function QuoteDetailClient({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-20 lg:pb-0">
       <div className="space-y-2">
         <div className="space-y-1">
           <Link
@@ -1341,11 +1341,11 @@ export function QuoteDetailClient({
                 hasRecordedPayments={hasRecordedPayments}
               />
 
-              {/* 3) Összesítők */}
+              {/* 3) Összesítők — részletek muted; fizetendő tipóhierarchia (nem soft szín) */}
               <div className="mb-2 space-y-1 rounded-md border border-border bg-subtle/60 px-3 py-2.5">
-                <div className="flex justify-between text-body font-semibold text-ink">
-                  <span>Lapszabászat:</span>
-                  <span className="tabular-nums">
+                <div className="flex justify-between text-body text-ink-secondary">
+                  <span>Lapszabászat</span>
+                  <span className="tabular-nums text-ink">
                     {formatQuotePrice(
                       Math.round(quote.total_gross),
                       quote.currency
@@ -1353,9 +1353,9 @@ export function QuoteDetailClient({
                   </span>
                 </div>
                 {quote.accessories_total_gross !== 0 ? (
-                  <div className="flex justify-between text-body font-semibold text-ink">
-                    <span>Termékek:</span>
-                    <span className="tabular-nums">
+                  <div className="flex justify-between text-body text-ink-secondary">
+                    <span>Termékek</span>
+                    <span className="tabular-nums text-ink">
                       {formatQuotePrice(
                         Math.round(quote.accessories_total_gross),
                         quote.currency
@@ -1364,13 +1364,13 @@ export function QuoteDetailClient({
                   </div>
                 ) : null}
                 {quote.fees_total_gross !== 0 ? (
-                  <div className="flex justify-between text-body font-semibold text-ink">
+                  <div className="flex justify-between text-body text-ink-secondary">
                     <span>
                       {quote.fees_total_gross < 0
-                        ? 'Díjak / jóváírások:'
-                        : 'Egyéb díjak:'}
+                        ? 'Díjak / jóváírások'
+                        : 'Egyéb díjak'}
                     </span>
-                    <span className="tabular-nums">
+                    <span className="tabular-nums text-ink">
                       {formatQuotePrice(
                         Math.round(quote.fees_total_gross),
                         quote.currency
@@ -1380,20 +1380,22 @@ export function QuoteDetailClient({
                 ) : null}
               </div>
 
-              <div className="space-y-2 rounded-md border border-border bg-subtle/40 px-3 py-2.5">
-                <div className="flex justify-between text-body font-bold text-ink">
-                  <span>Részösszeg:</span>
-                  <span className="tabular-nums">
-                    {formatQuotePrice(amountDue, quote.currency)}
-                  </span>
-                </div>
-                <div className="border-t border-border pt-2">
-                  <div className="flex items-center justify-between rounded-md border border-border bg-subtle px-2.5 py-2 text-body font-bold text-ink">
-                    <span>Végösszeg:</span>
-                    <span className="tabular-nums">
-                      {formatQuotePrice(amountDue, quote.currency)}
-                    </span>
+              <div className="rounded-md border border-border-strong bg-surface px-3 py-3">
+                <div className="flex items-end justify-between gap-3 border-t-2 border-ink pt-3">
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-medium text-ink-secondary">
+                      Fizetendő (bruttó)
+                    </p>
+                    {remainingGross > 0 ? (
+                      <p className="mt-0.5 text-hint text-warning-ink">
+                        Hátralék{' '}
+                        {formatQuotePrice(remainingGross, quote.currency)}
+                      </p>
+                    ) : null}
                   </div>
+                  <p className="shrink-0 text-[22px] font-bold leading-none tracking-tight tabular-nums text-ink sm:text-[24px]">
+                    {formatQuotePrice(amountDue, quote.currency)}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1532,9 +1534,30 @@ export function QuoteDetailClient({
           </section>
         </div>
 
-        {/* Right: actions */}
+        {/* Right: due amount (sticky) + actions */}
         <aside className="lg:col-span-3">
           <div className="space-y-3 lg:sticky lg:top-14">
+            <section
+              className="hidden rounded-lg border border-border-strong bg-surface p-3 shadow-sm lg:block"
+              aria-label="Fizetendő összeg"
+            >
+              <p className="text-[12px] font-medium text-ink-secondary">
+                Fizetendő (bruttó)
+              </p>
+              <p className="mt-1 text-[26px] font-semibold leading-none tracking-tight tabular-nums text-ink">
+                {formatQuotePrice(amountDue, quote.currency)}
+              </p>
+              {remainingGross > 0 ? (
+                <p className="mt-2 rounded-md border border-warning/35 bg-warning-soft px-2 py-1 text-hint font-semibold tabular-nums text-warning-ink">
+                  Hátralék {formatQuotePrice(remainingGross, quote.currency)}
+                </p>
+              ) : hasRecordedPayments ? (
+                <p className="mt-2 text-hint font-medium text-ink-secondary">
+                  Kifizetve
+                </p>
+              ) : null}
+            </section>
+
             <section className="rounded-lg border border-border-strong bg-surface p-3 shadow-sm">
               <h2 className="mb-3 text-h3 text-ink">Műveletek</h2>
               <div className="flex flex-col gap-3">
@@ -1821,7 +1844,7 @@ export function QuoteDetailClient({
                       <Button
                         type="button"
                         variant="secondary"
-                        className="w-full justify-start"
+                        className="w-full justify-start border-transparent bg-info text-white hover:bg-info/90 hover:text-white"
                         disabled={isExportingExcel || exportTargetsLoading}
                         loading={isExportingExcel || exportTargetsLoading}
                         title={
@@ -2202,6 +2225,29 @@ export function QuoteDetailClient({
           }}
         />
       ) : null}
+
+      {/* Keskeny / alacsony viewport: sticky fizetendő — desktopon a jobb rail elég */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border-strong bg-surface px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:left-[var(--sidebar-width)] lg:hidden"
+        role="status"
+        aria-label="Fizetendő összeg"
+      >
+        <div className="mx-auto flex max-w-5xl items-end justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[12px] font-medium text-ink-secondary">
+              Fizetendő (bruttó)
+            </p>
+            {remainingGross > 0 ? (
+              <p className="text-hint font-semibold tabular-nums text-warning-ink">
+                Hátralék {formatQuotePrice(remainingGross, quote.currency)}
+              </p>
+            ) : null}
+          </div>
+          <p className="shrink-0 text-[24px] font-semibold leading-none tracking-tight tabular-nums text-ink">
+            {formatQuotePrice(amountDue, quote.currency)}
+          </p>
+        </div>
+      </div>
 
       <Dialog open={commentOpen} onOpenChange={setCommentOpen}>
         <DialogContent className="max-w-md">

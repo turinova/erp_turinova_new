@@ -6,6 +6,7 @@ export type CustomerListItem = {
   email: string | null
   mobile: string | null
   billing_city: string | null
+  is_favorite: boolean
   updated_at: string
 }
 
@@ -15,6 +16,7 @@ export type CustomerDetail = {
   email: string | null
   mobile: string | null
   sms_notification: boolean
+  is_favorite: boolean
   billing_name: string | null
   billing_country: string
   billing_city: string | null
@@ -53,7 +55,7 @@ export async function listCustomers(
   let query = supabase
     .from('customers')
     .select(
-      'id, name, email, mobile, billing_city, updated_at',
+      'id, name, email, mobile, billing_city, is_favorite, updated_at',
       { count: 'exact' }
     )
     .eq('tenant_id', params.tenantId)
@@ -70,6 +72,7 @@ export async function listCustomers(
   }
 
   const { data, error, count } = await query
+    .order('is_favorite', { ascending: false })
     .order('name', { ascending: true })
     .range(from, to)
 
@@ -79,7 +82,10 @@ export async function listCustomers(
   }
 
   return {
-    rows: (data ?? []) as CustomerListItem[],
+    rows: ((data ?? []) as CustomerListItem[]).map((row) => ({
+      ...row,
+      is_favorite: Boolean(row.is_favorite)
+    })),
     total: count ?? 0,
     page,
     limit
@@ -100,6 +106,7 @@ export async function getCustomer(
       email,
       mobile,
       sms_notification,
+      is_favorite,
       billing_name,
       billing_country,
       billing_city,
@@ -127,6 +134,7 @@ export async function getCustomer(
   return {
     ...data,
     sms_notification: Boolean(data.sms_notification),
+    is_favorite: Boolean(data.is_favorite),
     billing_country: data.billing_country || 'Magyarország'
   }
 }
@@ -144,6 +152,7 @@ export type OptiCustomerOption = {
   billing_street: string | null
   billing_house_number: string | null
   billing_tax_number: string | null
+  is_favorite: boolean
 }
 
 /** Opti / select seed — max 25 (typeahead: CustomerMenuSelect + RPC). */
@@ -165,11 +174,13 @@ export async function listCustomersForSelect(
       billing_postal_code,
       billing_street,
       billing_house_number,
-      billing_tax_number
+      billing_tax_number,
+      is_favorite
     `
     )
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
+    .order('is_favorite', { ascending: false })
     .order('name', { ascending: true })
     .limit(25)
 
@@ -180,7 +191,7 @@ export async function listCustomersForSelect(
 
   return (data ?? []).map((row) => ({
     ...row,
+    is_favorite: Boolean(row.is_favorite),
     billing_country: row.billing_country || 'Magyarország'
   }))
 }
-

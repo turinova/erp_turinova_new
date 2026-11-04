@@ -216,7 +216,8 @@ export function SaleAssignCustomerDialog({
                     billing_postal_code: null,
                     billing_street: null,
                     billing_house_number: null,
-                    billing_tax_number: null
+                    billing_tax_number: null,
+                    is_favorite: false
                   },
                   ...prev
                 ]

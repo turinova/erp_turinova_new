@@ -111,6 +111,7 @@ export const customerFormSchema = z.object({
     ),
   mobile: optionalHuPhone,
   smsNotification: z.boolean(),
+  isFavorite: z.boolean(),
   billingName: z.string().trim().max(160).transform(emptyToNull),
   billingCountry: z
     .string()

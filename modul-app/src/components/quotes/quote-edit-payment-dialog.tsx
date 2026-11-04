@@ -17,6 +17,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
+import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { updateQuotePaymentAction } from '@/lib/quotes/actions'
 import { quotePaymentDue } from '@/lib/quotes/payment-edit'
@@ -55,7 +56,10 @@ export function QuoteEditPaymentDialog({
     return Math.max(1, roundQuoteMoney(due - others))
   }, [detail.payments, payment, due])
 
-  const defaultMethod = payment?.payment_method_id || paymentMethods[0]?.id || ''
+  const defaultMethod =
+    payment?.payment_method_id ||
+    pickDefaultPaymentMethodId(paymentMethods) ||
+    ''
   const [paymentMethodId, setPaymentMethodId] = useState(defaultMethod)
   const [amountRaw, setAmountRaw] = useState(
     payment ? formatPaymentAmountInput(payment.amount) : ''
@@ -65,7 +69,9 @@ export function QuoteEditPaymentDialog({
   useEffect(() => {
     if (!open || !payment) return
     setPaymentMethodId(
-      payment.payment_method_id || paymentMethods[0]?.id || ''
+      payment.payment_method_id ||
+        pickDefaultPaymentMethodId(paymentMethods) ||
+        ''
     )
     setAmountRaw(formatPaymentAmountInput(payment.amount))
     setNote('')

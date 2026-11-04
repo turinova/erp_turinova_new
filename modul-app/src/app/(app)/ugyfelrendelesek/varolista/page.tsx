@@ -13,7 +13,10 @@ import {
   type CsoWaitingView
 } from '@/lib/customer-orders/types'
 import { createClient } from '@/lib/supabase/server'
-import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
+import {
+  listActivePaymentMethods,
+  type PaymentMethodOption
+} from '@/lib/payment-methods/queries'
 import { listSuppliers } from '@/lib/suppliers/queries'
 
 export const metadata: Metadata = {
@@ -66,7 +69,7 @@ export default async function CsoWaitingListPage({
   let limit = 25
   let counts = EMPTY_COUNTS
   let suppliers: { id: string; name: string }[] = []
-  let paymentMethods: { id: string; name: string }[] = []
+  let paymentMethods: PaymentMethodOption[] = []
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()

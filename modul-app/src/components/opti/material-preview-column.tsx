@@ -2,10 +2,10 @@
 
 import { useMemo } from 'react'
 
+import { SheetMaterialMenuSelect } from '@/components/opti/sheet-material-menu-select'
 import { FormField } from '@/components/patterns/form-field'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
-import { MenuSelect } from '@/components/ui/menu-select'
 import { edgeMaterialColor } from '@/lib/opti/panel-draft'
 import {
   maxCrossMm,
@@ -17,7 +17,8 @@ import { cn } from '@/lib/utils'
 type MaterialPreviewColumnProps = {
   sheetMaterialId: string
   selectedMaterial: OptiSheetMaterialOption | null
-  sheetsByManufacturer: Array<[string, OptiSheetMaterialOption[]]>
+  /** Kiválasztott / ismert anyagok a typeahead seedhez. */
+  seedMaterials?: OptiSheetMaterialOption[]
   changing: boolean
   materialError?: string
   grainMm: number | null
@@ -26,7 +27,10 @@ type MaterialPreviewColumnProps = {
   edgeBId: string
   edgeCId: string
   edgeDId: string
-  onChangeMaterialId: (id: string) => void
+  onChangeMaterialId: (
+    id: string,
+    material: OptiSheetMaterialOption | null
+  ) => void
   onStartChange: () => void
   onCancelChange: () => void
   className?: string
@@ -50,7 +54,7 @@ function materialFillColor(name: string): string {
 export function MaterialPreviewColumn({
   sheetMaterialId,
   selectedMaterial,
-  sheetsByManufacturer,
+  seedMaterials = [],
   changing,
   materialError,
   grainMm,
@@ -71,18 +75,12 @@ export function MaterialPreviewColumn({
     ? materialFillColor(selectedMaterial.name)
     : '#e8eaed'
 
-  const sheetOptions = useMemo(
-    () =>
-      sheetsByManufacturer.flatMap(([manufacturer, materials]) =>
-        materials.map((m) => ({
-          value: m.id,
-          label: m.name,
-          hint: `${m.thickness_mm} mm`,
-          group: manufacturer
-        }))
-      ),
-    [sheetsByManufacturer]
-  )
+  const pickerSeed = useMemo(() => {
+    const byId = new Map<string, OptiSheetMaterialOption>()
+    for (const m of seedMaterials) byId.set(m.id, m)
+    if (selectedMaterial) byId.set(selectedMaterial.id, selectedMaterial)
+    return [...byId.values()]
+  }, [seedMaterials, selectedMaterial])
 
   const hasDims =
     grainMm !== null &&
@@ -151,16 +149,13 @@ export function MaterialPreviewColumn({
             error={materialError}
             className="min-w-0 flex-1"
           >
-            <MenuSelect
+            <SheetMaterialMenuSelect
               id="opti-sheet"
               value={sheetMaterialId}
-              options={sheetOptions}
+              seed={pickerSeed}
               placeholder="Válassz anyagot…"
-              allowEmpty={false}
-              searchable
-              searchPlaceholder="Keresés név / gyártó…"
               onChange={onChangeMaterialId}
-              className={
+              selectClassName={
                 highlightPicker
                   ? '[&>button]:border-ink [&>button]:ring-1 [&>button]:ring-ink/20'
                   : undefined

@@ -73,6 +73,12 @@ Végszámla: csak **paid + nem `confirmed`**. POS paid+fulfilled: csendes detail
 
 `/ugyfelek` számlázás: `DocumentBillingFields` + taxpayer lookup (üres mezőket tölt).
 
+Kedvenc (`is_favorite`): lista csillag / űrlap Switch — Opti/POS/számla typeahead-ben előrébb; **nem** befolyásolja a számlázási snapshotot.
+
+## Fizetési mód alapértelmezés
+
+Törzs: `/torzsadatok/rendszer/fizetesi-modok` — egy `is_default` / tenant. Megrendelés / befizetés / átadás select: `pickDefaultPaymentMethodId`. Részletek: [48](48-fizetesi-modok-default.md).
+
 ## POS
 
 Ügyfél választás / „Számlát kér” → billing az ügyfélről. Sikeres számla: zöld sáv (összeg-first) + **PDF / Megnyitás** — **nincs** eladás-toast a pulton.
