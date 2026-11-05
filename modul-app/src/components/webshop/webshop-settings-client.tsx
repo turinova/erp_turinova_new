@@ -1,32 +1,118 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
-import { Button } from '@/components/ui/button'
+import { PhoneInput } from '@/components/patterns/phone-input'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
+import { WebshopChannelsClient } from '@/components/webshop/webshop-channels-client'
 import {
-  CARRIER_CODES,
-  CARRIERS,
+  formatPhoneNumber,
+  HU_PHONE_EXAMPLE
+} from '@/lib/customers/parse'
+import type { DomainView } from '@/lib/storefront/domains/types'
+import { saveWebshopLegalSettings } from '@/lib/webshop/legal-actions'
+import {
+  COUNTIES,
+  COUNTY_CODES,
   DEFAULT_TRANSFER_HOLD_DAYS,
-  PAYMENT_CODES,
   PAYMENT_METHODS
 } from '@/lib/webshop/legal/constants'
-import type { CarrierCode, PaymentCode } from '@/lib/webshop/legal/types'
-import type { StorefrontSettings } from '@/lib/webshop/settings'
+import type { SellerDefaults } from '@/lib/webshop/legal/context'
+import type {
+  CarrierCode,
+  CountyCode,
+  PaymentCode,
+  WebshopLegalSettings
+} from '@/lib/webshop/legal/types'
+import {
+  STATUTORY_RETURN_DAYS,
+  type StorefrontSettings
+} from '@/lib/webshop/settings'
 import { saveStorefrontSettings } from '@/lib/webshop/storefront-actions'
+import { cn } from '@/lib/utils'
+
+/** W1: rögzített sorrend — csak ezek a fizetési módok. */
+const W1_PAYMENT_CODES: PaymentCode[] = [
+  'pickup_cash',
+  'pickup_card',
+  'card',
+  'transfer',
+  'cod'
+]
+
+type TabKey =
+  | 'altalanos'
+  | 'megjelenes'
+  | 'kereskedelem'
+  | 'szallitas'
+  | 'fizetes'
+  | 'domain'
+  | 'jogi'
+
+const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: 'altalanos', label: 'Általános' },
+  { key: 'megjelenes', label: 'Megjelenés' },
+  { key: 'kereskedelem', label: 'Kereskedelem' },
+  { key: 'szallitas', label: 'Szállítás' },
+  { key: 'fizetes', label: 'Fizetés' },
+  { key: 'domain', label: 'Domain' },
+  { key: 'jogi', label: 'Jogi' }
+]
+
+type SellerKey =
+  | 'sellerName'
+  | 'taxNumber'
+  | 'registrationNumber'
+  | 'vatId'
+  | 'postalCode'
+  | 'city'
+  | 'address'
+  | 'email'
+  | 'phone'
+
+const SELLER_FIELDS: {
+  key: SellerKey
+  label: string
+  span?: 2
+  type?: string
+}[] = [
+  { key: 'sellerName', label: 'Cégnév', span: 2 },
+  { key: 'taxNumber', label: 'Adószám' },
+  { key: 'registrationNumber', label: 'Cégjegyzékszám / nyilvántartási szám' },
+  { key: 'postalCode', label: 'Irányítószám' },
+  { key: 'city', label: 'Város' },
+  { key: 'address', label: 'Utca, házszám', span: 2 },
+  { key: 'email', label: 'E-mail (vásárlóknak)', type: 'email', span: 2 },
+  { key: 'phone', label: 'Telefon (vásárlóknak)' },
+  { key: 'vatId', label: 'Közösségi adószám' }
+]
+
+export type WebshopSettingsDomainProps = {
+  primaryUrl: string
+  primaryIsCustom: boolean
+  subdomainUrl: string | null
+  indexNowLive: boolean
+  domains: DomainView[]
+}
 
 type Props = {
   initial: StorefrontSettings
+  legal: WebshopLegalSettings
+  defaults: SellerDefaults
+  autoCounty: CountyCode | null
+  logoUrl: string | null
   canWrite: boolean
+  domain: WebshopSettingsDomainProps
+  liveProductCount: number
 }
 
 function toRaw(v: number | null): string {
@@ -40,413 +126,964 @@ function parseIntRaw(raw: string): number | null {
   return Number.isFinite(n) ? n : NaN
 }
 
-export function WebshopSettingsClient({ initial, canWrite }: Props) {
+function tabFromSearch(raw: string | null): TabKey {
+  if (
+    raw === 'altalanos' ||
+    raw === 'megjelenes' ||
+    raw === 'kereskedelem' ||
+    raw === 'szallitas' ||
+    raw === 'fizetes' ||
+    raw === 'domain' ||
+    raw === 'jogi'
+  ) {
+    return raw
+  }
+  return 'altalanos'
+}
+
+function displayUrl(url: string): string {
+  return url.replace(/^https?:\/\//, '').replace(/\/$/, '')
+}
+
+export function WebshopSettingsClient({
+  initial,
+  legal,
+  defaults,
+  autoCounty,
+  logoUrl,
+  canWrite,
+  domain,
+  liveProductCount
+}: Props) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const active = tabFromSearch(searchParams.get('tab'))
   const [pending, startTransition] = useTransition()
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const [shippingFee, setShippingFee] = useState(toRaw(initial.shippingFeeGross))
-  const [freeFrom, setFreeFrom] = useState(
-    toRaw(initial.freeShippingThresholdGross)
+  const erpValue = (k: SellerKey): string =>
+    (k === 'sellerName' ? defaults.sellerName : defaults[k]) ?? ''
+
+  const [seller, setSeller] = useState<Record<SellerKey, string>>(() => {
+    const out = {} as Record<SellerKey, string>
+    for (const f of SELLER_FIELDS) {
+      const raw = legal[f.key] ?? erpValue(f.key)
+      out[f.key] = f.key === 'phone' ? formatPhoneNumber(raw) : raw
+    }
+    return out
+  })
+  const [county, setCounty] = useState(legal.county ?? '')
+  const [serviceAddress, setServiceAddress] = useState(legal.serviceAddress ?? '')
+  const [supportHours, setSupportHours] = useState(legal.supportHours ?? '')
+
+  const [glsEnabled, setGlsEnabled] = useState(
+    initial.shippingCarriers.includes('gls') ||
+      initial.shippingFeeGross != null ||
+      initial.deliveryDaysMin != null
   )
+  const [shippingFee, setShippingFee] = useState(toRaw(initial.shippingFeeGross))
   const [daysMin, setDaysMin] = useState(toRaw(initial.deliveryDaysMin))
   const [daysMax, setDaysMax] = useState(toRaw(initial.deliveryDaysMax))
   const [pickupEnabled, setPickupEnabled] = useState(initial.pickupEnabled)
   const [pickupLabel, setPickupLabel] = useState(initial.pickupLabel ?? '')
-  const [returnDays, setReturnDays] = useState(toRaw(initial.returnDays))
-  const [warranty, setWarranty] = useState(toRaw(initial.warrantyMonths))
-  const [returnText, setReturnText] = useState(initial.returnPolicyText ?? '')
-  const [lowStock, setLowStock] = useState(String(initial.lowStockThreshold))
-  const [showSold, setShowSold] = useState(initial.showSoldCount)
-  const [reviewsEnabled, setReviewsEnabled] = useState(initial.reviewsEnabled)
-  const [allowAiTraining, setAllowAiTraining] = useState(initial.allowAiTraining)
-  const [portraitImages, setPortraitImages] = useState(initial.imageAspect === 'portrait')
-  const [showNetPrice, setShowNetPrice] = useState(initial.showNetPrice)
-  const [carriers, setCarriers] = useState<CarrierCode[]>(initial.shippingCarriers)
-  const [payments, setPayments] = useState<PaymentCode[]>(initial.paymentMethods)
+  const [payments, setPayments] = useState<PaymentCode[]>(
+    W1_PAYMENT_CODES.filter((c) => initial.paymentMethods.includes(c))
+  )
   const [bankAccount, setBankAccount] = useState(initial.bankAccount ?? '')
   const [holdDays, setHoldDays] = useState(toRaw(initial.transferHoldDays))
-  const [returnPaidBy, setReturnPaidBy] = useState(initial.returnShippingPaidBy)
+
+  const [imageAspect, setImageAspect] = useState<'square' | 'portrait'>(
+    initial.imageAspect
+  )
+  const [showNetPrice, setShowNetPrice] = useState(initial.showNetPrice)
+  const [showSoldCount, setShowSoldCount] = useState(initial.showSoldCount)
+  const [reviewsEnabled, setReviewsEnabled] = useState(initial.reviewsEnabled)
+
+  const [lowStock, setLowStock] = useState(toRaw(initial.lowStockThreshold))
+  const [returnDays, setReturnDays] = useState(toRaw(initial.returnDays))
+  const [returnPaidBy, setReturnPaidBy] = useState<'customer' | 'seller'>(
+    initial.returnShippingPaidBy
+  )
+  const [warrantyMonths, setWarrantyMonths] = useState(toRaw(initial.warrantyMonths))
+  const [returnPolicyText, setReturnPolicyText] = useState(
+    initial.returnPolicyText ?? ''
+  )
+  const [allowAiTraining, setAllowAiTraining] = useState(initial.allowAiTraining)
+  const [audience, setAudience] = useState(legal.audience)
+  const [madeToOrder, setMadeToOrder] = useState(legal.madeToOrder)
+  const [mandatoryWarranty, setMandatoryWarranty] = useState(legal.mandatoryWarranty)
+  const [newsletter, setNewsletter] = useState(legal.newsletter)
+  const [microEnterprise, setMicroEnterprise] = useState(legal.microEnterprise)
 
   const disabled = !canWrite || pending
+  const showSave =
+    active === 'altalanos' ||
+    active === 'megjelenes' ||
+    active === 'kereskedelem' ||
+    active === 'szallitas' ||
+    active === 'fizetes'
+
+  const setTab = useCallback(
+    (key: TabKey) => {
+      const sp = new URLSearchParams(searchParams.toString())
+      if (key === 'altalanos') sp.delete('tab')
+      else sp.set('tab', key)
+      const q = sp.toString()
+      router.replace(q ? `?${q}` : '?', { scroll: false })
+    },
+    [router, searchParams]
+  )
+
+  function storefrontPayload(overrides?: {
+    fee: number | null
+    dMin: number | null
+    dMax: number | null
+    hold: number | null
+    low: number
+    retDays: number | null
+    warranty: number | null
+  }) {
+    const fee = overrides?.fee ?? (glsEnabled ? parseIntRaw(shippingFee) : null)
+    const dMin = overrides?.dMin ?? (glsEnabled ? parseIntRaw(daysMin) : null)
+    const dMax = overrides?.dMax ?? (glsEnabled ? parseIntRaw(daysMax) : null)
+    const hold =
+      overrides?.hold ?? (payments.includes('transfer') ? parseIntRaw(holdDays) : null)
+    const low = overrides?.low ?? parseIntRaw(lowStock)
+    const retDays = overrides?.retDays ?? parseIntRaw(returnDays)
+    const warranty = overrides?.warranty ?? parseIntRaw(warrantyMonths)
+
+    return {
+      shippingFeeGross: glsEnabled ? fee : null,
+      freeShippingThresholdGross: null as number | null,
+      deliveryDaysMin: glsEnabled ? dMin : null,
+      deliveryDaysMax: glsEnabled ? dMax : null,
+      pickupEnabled,
+      pickupLabel: pickupEnabled ? pickupLabel : null,
+      shippingCarriers: (glsEnabled ? ['gls'] : []) as CarrierCode[],
+      paymentMethods: W1_PAYMENT_CODES.filter((c) => payments.includes(c)),
+      bankAccount: payments.includes('transfer') ? bankAccount : null,
+      transferHoldDays: payments.includes('transfer') ? hold : null,
+      returnDays: retDays,
+      warrantyMonths: warranty,
+      returnPolicyText: returnPolicyText.trim() ? returnPolicyText : null,
+      lowStockThreshold: typeof low === 'number' && !Number.isNaN(low) ? low : initial.lowStockThreshold,
+      showSoldCount,
+      reviewsEnabled,
+      returnShippingPaidBy: returnPaidBy,
+      allowAiTraining,
+      imageAspect,
+      showNetPrice
+    }
+  }
+
+  function legalPayload() {
+    return {
+      ...seller,
+      county: (county || null) as CountyCode | null,
+      serviceAddress,
+      supportHours,
+      audience,
+      madeToOrder,
+      mandatoryWarranty,
+      newsletter,
+      microEnterprise,
+      termsUrl: legal.termsUrl ?? '',
+      privacyUrl: legal.privacyUrl ?? ''
+    }
+  }
+
+  function validateShippingPayment(): Record<string, string> {
+    const local: Record<string, string> = {}
+    const fee = parseIntRaw(shippingFee)
+    const dMin = parseIntRaw(daysMin)
+    const dMax = parseIntRaw(daysMax)
+    const hold = parseIntRaw(holdDays)
+
+    if (!glsEnabled && !pickupEnabled) {
+      local._shipping = 'Kapcsold be a GLS szállítást vagy a személyes átvételt.'
+    }
+    if (glsEnabled) {
+      if (fee == null || Number.isNaN(fee)) {
+        local.shippingFeeGross = 'Add meg a GLS szállítási díjat (Ft).'
+      }
+      if (dMin == null || Number.isNaN(dMin)) {
+        local.deliveryDaysMin = 'Add meg a szállítási időt (nap).'
+      }
+      if (dMax == null || Number.isNaN(dMax)) {
+        local.deliveryDaysMax = 'Add meg a szállítási időt (nap).'
+      }
+      if (
+        dMin != null &&
+        dMax != null &&
+        !Number.isNaN(dMin) &&
+        !Number.isNaN(dMax) &&
+        dMax < dMin
+      ) {
+        local.deliveryDaysMax = 'A max nem lehet kisebb a minnél.'
+      }
+    }
+    if (payments.includes('transfer') && !bankAccount.trim()) {
+      local.bankAccount = 'Átutaláshoz add meg a bankszámlaszámot.'
+    }
+    if (hold != null && Number.isNaN(hold)) {
+      local.transferHoldDays = 'Számot adj meg.'
+    }
+    return local
+  }
+
+  function validateCommerce(): Record<string, string> {
+    const local: Record<string, string> = {}
+    const low = parseIntRaw(lowStock)
+    const ret = parseIntRaw(returnDays)
+    const war = parseIntRaw(warrantyMonths)
+    if (low == null || Number.isNaN(low) || low < 0) {
+      local.lowStockThreshold = '0 vagy nagyobb egész szám.'
+    }
+    if (ret != null && !Number.isNaN(ret) && ret < STATUTORY_RETURN_DAYS) {
+      local.returnDays = `Legalább ${STATUTORY_RETURN_DAYS} nap.`
+    }
+    if (ret != null && Number.isNaN(ret)) {
+      local.returnDays = 'Számot adj meg.'
+    }
+    if (war != null && Number.isNaN(war)) {
+      local.warrantyMonths = 'Számot adj meg.'
+    }
+    return local
+  }
 
   function handleSave() {
-    const numbers = {
-      shippingFeeGross: parseIntRaw(shippingFee),
-      freeShippingThresholdGross: parseIntRaw(freeFrom),
-      deliveryDaysMin: parseIntRaw(daysMin),
-      deliveryDaysMax: parseIntRaw(daysMax),
-      returnDays: parseIntRaw(returnDays),
-      warrantyMonths: parseIntRaw(warranty),
-      transferHoldDays: parseIntRaw(holdDays)
-    }
-    const local: Record<string, string> = {}
-    for (const [k, v] of Object.entries(numbers)) {
-      if (Number.isNaN(v)) local[k] = 'Számot adj meg.'
-    }
-    const low = parseIntRaw(lowStock)
-    if (low == null || Number.isNaN(low)) local.lowStockThreshold = 'Számot adj meg.'
-    if (Object.keys(local).length > 0) {
-      setErrors(local)
-      toast.error('Ellenőrizd a megadott adatokat.')
+    if (active === 'altalanos') {
+      startTransition(async () => {
+        const result = await saveWebshopLegalSettings(legalPayload())
+        if (!result.ok) {
+          setErrors(result.fieldErrors ?? {})
+          toast.error(Object.values(result.fieldErrors ?? {})[0] || result.message)
+          return
+        }
+        setErrors({})
+        toast.success('Általános beállítások mentve.')
+        router.refresh()
+      })
       return
     }
 
-    startTransition(async () => {
-      const result = await saveStorefrontSettings({
-        ...numbers,
-        pickupEnabled,
-        pickupLabel,
-        returnPolicyText: returnText,
-        lowStockThreshold: low ?? 10,
-        showSoldCount: showSold,
-        reviewsEnabled,
-        shippingCarriers: carriers,
-        paymentMethods: payments,
-        bankAccount,
-        returnShippingPaidBy: returnPaidBy,
-        allowAiTraining,
-        imageAspect: portraitImages ? 'portrait' : 'square',
-        showNetPrice
-      })
-      if (!result.ok) {
-        setErrors(result.fieldErrors ?? {})
-        toast.error(Object.values(result.fieldErrors ?? {})[0] || result.message)
+    if (
+      active === 'megjelenes' ||
+      active === 'kereskedelem' ||
+      active === 'szallitas' ||
+      active === 'fizetes'
+    ) {
+      const needShipPay = active === 'szallitas' || active === 'fizetes'
+      const shipPay = needShipPay ? validateShippingPayment() : {}
+      const commerce = active === 'kereskedelem' ? validateCommerce() : {}
+      const local = { ...shipPay, ...commerce }
+
+      if (Object.keys(local).length > 0) {
+        setErrors(local)
+        if (
+          local._shipping ||
+          local.shippingFeeGross ||
+          local.deliveryDaysMin ||
+          local.deliveryDaysMax
+        ) {
+          if (active !== 'szallitas') setTab('szallitas')
+          toast.error(local._shipping || 'Ellenőrizd a szállítási adatokat.')
+        } else if (local.bankAccount || local.transferHoldDays) {
+          if (active !== 'fizetes') setTab('fizetes')
+          toast.error('Ellenőrizd a fizetési adatokat.')
+        } else {
+          toast.error('Ellenőrizd a megadott adatokat.')
+        }
         return
       }
-      setErrors({})
-      toast.success('Bolt beállítások mentve.')
-      router.refresh()
-    })
+
+      const fee = glsEnabled ? parseIntRaw(shippingFee) : null
+      const dMin = glsEnabled ? parseIntRaw(daysMin) : null
+      const dMax = glsEnabled ? parseIntRaw(daysMax) : null
+      const hold = payments.includes('transfer') ? parseIntRaw(holdDays) : null
+      const low = parseIntRaw(lowStock)
+      const retDays = parseIntRaw(returnDays)
+      const warranty = parseIntRaw(warrantyMonths)
+
+      startTransition(async () => {
+        const sf = await saveStorefrontSettings(
+          storefrontPayload({
+            fee,
+            dMin,
+            dMax,
+            hold,
+            low: low ?? initial.lowStockThreshold,
+            retDays,
+            warranty
+          })
+        )
+        if (!sf.ok) {
+          setErrors(sf.fieldErrors ?? {})
+          toast.error(Object.values(sf.fieldErrors ?? {})[0] || sf.message)
+          return
+        }
+
+        if (active === 'kereskedelem') {
+          const lg = await saveWebshopLegalSettings(legalPayload())
+          if (!lg.ok) {
+            setErrors(lg.fieldErrors ?? {})
+            toast.error(Object.values(lg.fieldErrors ?? {})[0] || lg.message)
+            return
+          }
+        }
+
+        setErrors({})
+        toast.success('Bolt beállítások mentve.')
+        router.refresh()
+      })
+    }
   }
 
   return (
     <div className="pb-14">
       <PageHeader
         title="Bolt beállítások"
-        description="Ezek jelennek meg a termékoldalon a vásárlás gomb mellett."
+        description="Általános, megjelenés, kereskedelem, szállítás, fizetés, domain, jogi."
         actions={
-          canWrite ? (
+          canWrite && showSave ? (
             <Button type="button" loading={pending} onClick={handleSave}>
-              Beállítások mentése
+              Mentés
             </Button>
           ) : null
         }
       />
 
-      <div className="space-y-3">
-        <FormSection
-          id="szallitas"
-          title="Szállítás és átvétel"
-          description="A teljes költséget a vásárló már a termékoldalon látja. A választott futárszolgálatok a jogi oldalakon (ÁSZF, adatkezelés) is megjelennek."
-          columns={4}
+      <div
+        role="tablist"
+        aria-label="Bolt beállítás szekciók"
+        className="mb-3 flex flex-wrap gap-1 rounded-lg border border-border bg-subtle p-1"
+      >
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={active === tab.key}
+            id={`webshop-settings-tab-${tab.key}`}
+            aria-controls={`webshop-settings-panel-${tab.key}`}
+            onClick={() => setTab(tab.key)}
+            className={cn(
+              'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
+              active === tab.key
+                ? 'bg-ink text-white'
+                : 'text-ink-secondary hover:bg-surface hover:text-ink'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {active === 'altalanos' ? (
+        <div
+          role="tabpanel"
+          id="webshop-settings-panel-altalanos"
+          aria-labelledby="webshop-settings-tab-altalanos"
+          className="space-y-4"
         >
-          <fieldset className="col-span-full" disabled={disabled}>
-            <legend className="mb-1.5 text-label text-ink">Szállítási módok</legend>
-            <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-4">
-              {CARRIER_CODES.map((code) => (
-                <CheckItem
-                  key={code}
-                  id={`sf-carrier-${code}`}
-                  label={CARRIERS[code].label}
-                  checked={carriers.includes(code)}
-                  onChange={(on) => setCarriers((list) => toggle(list, code, on, CARRIER_CODES))}
-                />
-              ))}
+          <FormSection title="Áttekintés" columns={2}>
+            <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+              <p className="text-hint text-ink-secondary">Bolt címe</p>
+              <p className="mt-0.5 truncate text-body font-medium text-ink">
+                {displayUrl(domain.primaryUrl)}
+              </p>
+              <a
+                href={domain.primaryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'mt-2')}
+              >
+                Bolt megnyitása
+              </a>
             </div>
-          </fieldset>
-          <FormField
-            label="Szállítási díj (bruttó Ft)"
-            htmlFor="sf-fee"
-            optionalLabel
-            error={errors.shippingFeeGross}
+            <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+              <p className="text-hint text-ink-secondary">Live termékek</p>
+              <p className="mt-0.5 text-h2 tabular-nums text-ink">{liveProductCount}</p>
+              <Link
+                href="/webshop/katalogus?filter=in_shop"
+                className="mt-2 inline-block text-hint font-medium text-ink underline underline-offset-2"
+              >
+                Katalógus megnyitása
+              </Link>
+            </div>
+          </FormSection>
+
+          <FormSection
+            title="Eladó a boltban"
+            description="Alap: Cégadatok. Ha a webáruházban mást mutatsz, itt felülírod — az ERP nem változik."
+            columns={4}
           >
-            <Input
-              id="sf-fee"
-              value={shippingFee}
-              onChange={(e) => setShippingFee(e.target.value)}
-              inputMode="numeric"
-              disabled={disabled}
-              placeholder="1590"
-            />
-          </FormField>
-          <FormField
-            label="Ingyenes szállítás ettől (bruttó Ft)"
-            htmlFor="sf-free"
-            optionalLabel
-            error={errors.freeShippingThresholdGross}
-          >
-            <Input
-              id="sf-free"
-              value={freeFrom}
-              onChange={(e) => setFreeFrom(e.target.value)}
-              inputMode="numeric"
-              disabled={disabled}
-              placeholder="25000"
-            />
-          </FormField>
-          <FormField
-            label="Szállítási idő – legalább (munkanap)"
-            htmlFor="sf-dmin"
-            optionalLabel
-            error={errors.deliveryDaysMin}
-          >
-            <Input
-              id="sf-dmin"
-              value={daysMin}
-              onChange={(e) => setDaysMin(e.target.value)}
-              inputMode="numeric"
-              disabled={disabled}
-              placeholder="1"
-            />
-          </FormField>
-          <FormField
-            label="Szállítási idő – legfeljebb (munkanap)"
-            htmlFor="sf-dmax"
-            optionalLabel
-            error={errors.deliveryDaysMax}
-          >
-            <Input
-              id="sf-dmax"
-              value={daysMax}
-              onChange={(e) => setDaysMax(e.target.value)}
-              inputMode="numeric"
-              disabled={disabled}
-              placeholder="3"
-            />
-          </FormField>
-          <div className="col-span-full">
-            <Switch
-              id="sf-pickup"
-              checked={pickupEnabled}
-              disabled={disabled}
-              onCheckedChange={setPickupEnabled}
-              label="Személyes átvétel a boltban"
-              description="Raktáron lévő terméknél „Átvehető a boltban” jelenik meg."
-            />
-          </div>
-          {pickupEnabled ? (
+            {SELLER_FIELDS.map((f) => {
+              const erp = erpValue(f.key)
+              const erpCompare = f.key === 'phone' ? formatPhoneNumber(erp) : erp
+              const fromErp =
+                Boolean(erpCompare) && seller[f.key].trim() === erpCompare.trim()
+              return (
+                <FormField
+                  key={f.key}
+                  label={f.label}
+                  htmlFor={`ws-${f.key}`}
+                  optionalLabel={f.key === 'vatId'}
+                  hint={
+                    f.key === 'phone' && !fromErp
+                      ? `pl. ${HU_PHONE_EXAMPLE}`
+                      : fromErp
+                        ? 'A Cégadatokból'
+                        : erp
+                          ? `Cégadatokban: ${erp}`
+                          : undefined
+                  }
+                  className={f.span === 2 ? 'sm:col-span-2' : undefined}
+                  error={errors[f.key]}
+                >
+                  {f.key === 'phone' ? (
+                    <PhoneInput
+                      id={`ws-${f.key}`}
+                      value={seller.phone}
+                      disabled={disabled}
+                      onValueChange={(phone) =>
+                        setSeller((s) => ({ ...s, phone }))
+                      }
+                    />
+                  ) : (
+                    <Input
+                      id={`ws-${f.key}`}
+                      type={f.type ?? 'text'}
+                      value={seller[f.key]}
+                      onChange={(e) =>
+                        setSeller((s) => ({ ...s, [f.key]: e.target.value }))
+                      }
+                      disabled={disabled}
+                    />
+                  )}
+                </FormField>
+              )
+            })}
             <FormField
-              label="Átvételi hely"
-              htmlFor="sf-pickup-label"
-              optionalLabel
-              hint="Pl. Budapest, Fő utca 1. · H–P 8–17"
+              label="Székhely vármegyéje"
+              htmlFor="ws-county"
+              hint="Békéltető testület / cégbíróság"
               className="sm:col-span-2"
-              error={errors.pickupLabel}
+              error={errors.county}
+            >
+              <Select
+                id="ws-county"
+                value={county}
+                onChange={(e) => setCounty(e.target.value)}
+                disabled={disabled}
+              >
+                <option value="">
+                  {autoCounty
+                    ? `Automatikus: ${COUNTIES[autoCounty].label}`
+                    : 'Válassz vármegyét'}
+                </option>
+                {COUNTY_CODES.map((c) => (
+                  <option key={c} value={c}>
+                    {COUNTIES[c].label}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            <p className="col-span-full text-hint text-ink-secondary">
+              Logo és ERP cégadat:{' '}
+              <Link
+                href="/beallitasok/cegadatok"
+                className="font-medium text-ink underline underline-offset-2"
+              >
+                Cégadatok
+              </Link>
+              .
+            </p>
+          </FormSection>
+
+          <FormSection
+            title="Ügyfélszolgálat"
+            description="Panasz / elállás tájékoztatóban jelenik meg."
+            columns={4}
+          >
+            <FormField
+              label="Levelezési, visszaküldési cím"
+              htmlFor="ws-service"
+              optionalLabel
+              hint="Ha eltér a székhelytől"
+              className="sm:col-span-2"
+              error={errors.serviceAddress}
             >
               <Input
-                id="sf-pickup-label"
-                value={pickupLabel}
-                onChange={(e) => setPickupLabel(e.target.value)}
+                id="ws-service"
+                value={serviceAddress}
+                onChange={(e) => setServiceAddress(e.target.value)}
+                maxLength={300}
+                disabled={disabled}
+              />
+            </FormField>
+            <FormField
+              label="Elérhetőség ideje"
+              htmlFor="ws-hours"
+              optionalLabel
+              hint="Pl. H–P 8–16"
+              className="sm:col-span-2"
+              error={errors.supportHours}
+            >
+              <Input
+                id="ws-hours"
+                value={supportHours}
+                onChange={(e) => setSupportHours(e.target.value)}
                 maxLength={160}
                 disabled={disabled}
               />
             </FormField>
-          ) : null}
-        </FormSection>
+          </FormSection>
+        </div>
+      ) : null}
 
-        <FormSection
-          id="fizetes"
-          title="Fizetés"
-          description="A pénztárban választható módok. Az ÁSZF és a Szállítás és fizetés oldal ebből készül."
-          columns={4}
+      {active === 'megjelenes' ? (
+        <div
+          role="tabpanel"
+          id="webshop-settings-panel-megjelenes"
+          aria-labelledby="webshop-settings-tab-megjelenes"
+          className="space-y-4"
         >
-          <fieldset className="col-span-full" disabled={disabled}>
-            <legend className="mb-1.5 text-label text-ink">Fizetési módok</legend>
-            <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-2">
-              {PAYMENT_CODES.map((code) => (
-                <CheckItem
-                  key={code}
-                  id={`sf-pay-${code}`}
-                  label={PAYMENT_METHODS[code].label}
-                  description={PAYMENT_METHODS[code].hint}
-                  checked={payments.includes(code)}
-                  onChange={(on) => setPayments((list) => toggle(list, code, on, PAYMENT_CODES))}
+          <FormSection
+            title="Arculat"
+            description="A bolt fejlécében megjelenő logo a Cégadatokból jön."
+            columns={2}
+          >
+            <div className="flex items-center gap-3 rounded-md border border-border bg-surface px-3 py-2.5">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logoUrl}
+                  alt=""
+                  className="size-12 rounded-md border border-border object-contain bg-white"
                 />
-              ))}
+              ) : (
+                <div className="flex size-12 items-center justify-center rounded-md border border-dashed border-border text-hint text-ink-muted">
+                  —
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-body font-medium text-ink">
+                  {logoUrl ? 'Logo beállítva' : 'Nincs logo'}
+                </p>
+                <Link
+                  href="/beallitasok/cegadatok"
+                  className="text-hint font-medium text-ink underline underline-offset-2"
+                >
+                  Cégadatok megnyitása
+                </Link>
+              </div>
             </div>
-          </fieldset>
-          {payments.includes('transfer') ? (
-            <>
-              <FormField
-                label="Bankszámlaszám"
-                htmlFor="sf-bank"
-                required
-                hint="A díjbekérőn és az ÁSZF-ben jelenik meg"
-                className="sm:col-span-2"
-                error={errors.bankAccount}
-              >
-                <Input
-                  id="sf-bank"
-                  value={bankAccount}
-                  onChange={(e) => setBankAccount(e.target.value)}
-                  maxLength={80}
-                  disabled={disabled}
-                  placeholder="12345678-12345678-12345678"
-                />
-              </FormField>
-              <FormField
-                label="Foglalás a jóváírásig (munkanap)"
-                htmlFor="sf-hold"
-                optionalLabel
-                hint={`Utána a rendelést töröljük. Alapérték: ${DEFAULT_TRANSFER_HOLD_DAYS}`}
-                error={errors.transferHoldDays}
-              >
-                <Input
-                  id="sf-hold"
-                  value={holdDays}
-                  onChange={(e) => setHoldDays(e.target.value)}
-                  inputMode="numeric"
-                  disabled={disabled}
-                  placeholder={String(DEFAULT_TRANSFER_HOLD_DAYS)}
-                />
-              </FormField>
-            </>
-          ) : null}
-        </FormSection>
+          </FormSection>
 
-        <FormSection
-          title="Csere, visszaküldés, garancia"
-          description="Konkrét ígéret a gomb alatt — ez csökkenti a vásárló kockázatérzetét."
-          columns={4}
+          <FormSection title="Termékképek és ár" columns={2}>
+            <FormField label="Képarány" htmlFor="ws-aspect">
+              <Select
+                id="ws-aspect"
+                value={imageAspect}
+                onChange={(e) =>
+                  setImageAspect(e.target.value === 'portrait' ? 'portrait' : 'square')
+                }
+                disabled={disabled}
+              >
+                <option value="square">1:1 (négyzet)</option>
+                <option value="portrait">4:5 (álló)</option>
+              </Select>
+            </FormField>
+            <div className="space-y-2 sm:col-span-2">
+              <Switch
+                id="ws-net"
+                checked={showNetPrice}
+                disabled={disabled}
+                onCheckedChange={setShowNetPrice}
+                label="Nettó ár mutatása"
+                description="B2B: a bruttó alatt a nettó is látszik."
+              />
+              <Switch
+                id="ws-sold"
+                checked={showSoldCount}
+                disabled={disabled}
+                onCheckedChange={setShowSoldCount}
+                label="Eladott darabszám a termékoldalon"
+              />
+              <Switch
+                id="ws-reviews"
+                checked={reviewsEnabled}
+                disabled={disabled}
+                onCheckedChange={setReviewsEnabled}
+                label="Értékelések engedélyezve"
+              />
+            </div>
+          </FormSection>
+        </div>
+      ) : null}
+
+      {active === 'kereskedelem' ? (
+        <div
+          role="tabpanel"
+          id="webshop-settings-panel-kereskedelem"
+          aria-labelledby="webshop-settings-tab-kereskedelem"
+          className="space-y-4"
         >
-          <FormField
-            label="Visszaküldés (nap)"
-            htmlFor="sf-return"
-            optionalLabel
-            hint={!errors.returnDays ? 'Legalább 14 (törvényes elállás)' : undefined}
-            error={errors.returnDays}
-          >
-            <Input
-              id="sf-return"
-              value={returnDays}
-              onChange={(e) => setReturnDays(e.target.value)}
-              inputMode="numeric"
-              disabled={disabled}
-              placeholder="14"
-            />
-          </FormField>
-          <FormField
-            label="Visszaküldés költsége"
-            htmlFor="sf-return-paid"
-            className="sm:col-span-2"
-          >
-            <Select
-              id="sf-return-paid"
-              value={returnPaidBy}
-              onChange={(e) => setReturnPaidBy(e.target.value === 'seller' ? 'seller' : 'customer')}
-              disabled={disabled}
+          <FormSection title="Készlet és visszaküldés" columns={4}>
+            <FormField
+              label="Alacsony készlet küszöb (db)"
+              htmlFor="ws-low"
+              error={errors.lowStockThreshold}
             >
-              <option value="customer">A vásárlót terheli</option>
-              <option value="seller">Mi álljuk</option>
-            </Select>
-          </FormField>
-          <FormField
-            label="Önkéntes jótállás (hónap)"
-            htmlFor="sf-warranty"
-            optionalLabel
-            hint={!errors.warrantyMonths ? 'A törvényes 2 év kellékszavatosságon felül' : undefined}
-            error={errors.warrantyMonths}
-          >
-            <Input
-              id="sf-warranty"
-              value={warranty}
-              onChange={(e) => setWarranty(e.target.value)}
-              inputMode="numeric"
-              disabled={disabled}
-              placeholder="24"
-            />
-          </FormField>
-          <FormField
-            label="Visszaküldési feltételek"
-            htmlFor="sf-return-text"
-            optionalLabel
-            hint="Rövid, érthető szöveg a „Szállítás és visszaküldés” fülbe"
-            className="col-span-full"
-            error={errors.returnPolicyText}
-          >
-            <Textarea
-              id="sf-return-text"
-              value={returnText}
-              onChange={(e) => setReturnText(e.target.value)}
-              rows={3}
-              maxLength={1500}
-              disabled={disabled}
-            />
-          </FormField>
-        </FormSection>
+              <Input
+                id="ws-low"
+                value={lowStock}
+                onChange={(e) => setLowStock(e.target.value)}
+                inputMode="numeric"
+                disabled={disabled}
+              />
+            </FormField>
+            <FormField
+              label="Elállás / visszaküldés (nap)"
+              htmlFor="ws-return"
+              optionalLabel
+              hint={`Törvényes minimum: ${STATUTORY_RETURN_DAYS}`}
+              error={errors.returnDays}
+            >
+              <Input
+                id="ws-return"
+                value={returnDays}
+                onChange={(e) => setReturnDays(e.target.value)}
+                inputMode="numeric"
+                disabled={disabled}
+                placeholder={String(STATUTORY_RETURN_DAYS)}
+              />
+            </FormField>
+            <FormField label="Visszaküldés költségét viseli" htmlFor="ws-paidby">
+              <Select
+                id="ws-paidby"
+                value={returnPaidBy}
+                onChange={(e) =>
+                  setReturnPaidBy(e.target.value === 'seller' ? 'seller' : 'customer')
+                }
+                disabled={disabled}
+              >
+                <option value="customer">Vásárló</option>
+                <option value="seller">Eladó</option>
+              </Select>
+            </FormField>
+            <FormField
+              label="Önkéntes jótállás (hó)"
+              htmlFor="ws-warranty"
+              optionalLabel
+              error={errors.warrantyMonths}
+            >
+              <Input
+                id="ws-warranty"
+                value={warrantyMonths}
+                onChange={(e) => setWarrantyMonths(e.target.value)}
+                inputMode="numeric"
+                disabled={disabled}
+              />
+            </FormField>
+            <FormField
+              label="Visszaküldési tájékoztató (rövid)"
+              htmlFor="ws-policy"
+              optionalLabel
+              className="sm:col-span-2"
+              error={errors.returnPolicyText}
+            >
+              <Input
+                id="ws-policy"
+                value={returnPolicyText}
+                onChange={(e) => setReturnPolicyText(e.target.value)}
+                maxLength={1500}
+                disabled={disabled}
+              />
+            </FormField>
+          </FormSection>
 
-        <FormSection
-          title="Készlet és vásárlói visszajelzés"
-          description="Csak valós adat jelenik meg — nincs kitalált szűkösség."
-          columns={4}
+          <FormSection
+            title="Értékesítés típusa"
+            description="A tájékoztatók és a bolt szövegei ehhez igazodnak."
+            columns={2}
+          >
+            <FormField label="Kiknek értékesítesz?" htmlFor="ws-audience">
+              <Select
+                id="ws-audience"
+                value={audience}
+                onChange={(e) =>
+                  setAudience(e.target.value === 'business' ? 'business' : 'consumer')
+                }
+                disabled={disabled}
+              >
+                <option value="consumer">Magánszemélyeknek is (B2C)</option>
+                <option value="business">Csak cégeknek (B2B)</option>
+              </Select>
+            </FormField>
+            <div className="col-span-full space-y-2">
+              <Switch
+                id="ws-made"
+                checked={madeToOrder}
+                disabled={disabled}
+                onCheckedChange={setMadeToOrder}
+                label="Egyedi méretre gyártott / vágott termékek"
+                description="Ezekre nem vonatkozik a fogyasztói elállás."
+              />
+              <Switch
+                id="ws-mandatory"
+                checked={mandatoryWarranty}
+                disabled={disabled}
+                onCheckedChange={setMandatoryWarranty}
+                label="Kötelező jótállás alá tartozó termékek"
+              />
+              <Switch
+                id="ws-newsletter"
+                checked={newsletter}
+                disabled={disabled}
+                onCheckedChange={setNewsletter}
+                label="Hírlevelet küldök"
+              />
+              <Switch
+                id="ws-micro"
+                checked={microEnterprise}
+                disabled={disabled}
+                onCheckedChange={setMicroEnterprise}
+                label="Mikrovállalkozás vagyunk"
+              />
+              <Switch
+                id="ws-ai"
+                checked={allowAiTraining}
+                disabled={disabled}
+                onCheckedChange={setAllowAiTraining}
+                label="AI botok taníthatnak a tartalomból"
+                description="GPTBot / Google-Extended — a keresés ettől független."
+              />
+            </div>
+          </FormSection>
+        </div>
+      ) : null}
+
+      {active === 'szallitas' ? (
+        <div
+          role="tabpanel"
+          id="webshop-settings-panel-szallitas"
+          aria-labelledby="webshop-settings-tab-szallitas"
         >
-          <FormField
-            label="Pontos darabszám ennyi alatt"
-            htmlFor="sf-low"
-            hint="Felette csak „Raktáron” látszik"
-            error={errors.lowStockThreshold}
+          <FormSection
+            title="GLS és átvétel"
+            description="Csak GLS házhoz és/vagy személyes átvétel. Az átfutást itt adod meg."
+            columns={4}
           >
-            <Input
-              id="sf-low"
-              value={lowStock}
-              onChange={(e) => setLowStock(e.target.value)}
-              inputMode="numeric"
-              disabled={disabled}
-            />
-          </FormField>
-          <div className="col-span-full space-y-2">
-            <Switch
-              id="sf-sold"
-              checked={showSold}
-              disabled={disabled}
-              onCheckedChange={setShowSold}
-              label="Eladott darabszám mutatása"
-              description="Az elmúlt 30 nap valós eladásaiból (bolt + webshop), ha legalább 5 db."
-            />
-            <Switch
-              id="sf-reviews"
-              checked={reviewsEnabled}
-              disabled={disabled}
-              onCheckedChange={setReviewsEnabled}
-              label="Vásárlói értékelések"
-              description="Új értékelés csak jóváhagyás után jelenik meg (Webshop → Értékelések)."
-            />
-            <Switch
-              id="sf-ai-training"
-              checked={allowAiTraining}
-              disabled={disabled}
-              onCheckedChange={setAllowAiTraining}
-              label="AI modellek taníthatnak a bolt tartalmából"
-              description="Kikapcsolva is megtalálnak és ajánlanak a ChatGPT, Perplexity és Google AI keresők — csak a modelltanítást (GPTBot, Google-Extended, CCBot) tiltjuk."
-            />
-            <Switch
-              id="sf-portrait"
-              checked={portraitImages}
-              disabled={disabled}
-              onCheckedChange={setPortraitImages}
-              label="Álló termékképek (4:5)"
-              description="Divat, kozmetikum, italok: a képek nem kerülnek négyzetbe. Kikapcsolva 1:1."
-            />
-            <Switch
-              id="sf-net-price"
-              checked={showNetPrice}
-              disabled={disabled}
-              onCheckedChange={setShowNetPrice}
-              label="Nettó ár mutatása"
-              description="Céges vevőknek: a bruttó ár alatt kisebb betűvel a nettó ár is látszik."
-            />
-          </div>
-        </FormSection>
+            <div className="col-span-full">
+              <Switch
+                id="sf-gls"
+                checked={glsEnabled}
+                disabled={disabled}
+                onCheckedChange={setGlsEnabled}
+                label="GLS házhozszállítás"
+                description="A termékoldalon és a kosárban GLS-ként jelenik meg."
+              />
+            </div>
+            {glsEnabled ? (
+              <>
+                <FormField
+                  label="GLS díj (bruttó Ft)"
+                  htmlFor="sf-fee"
+                  required
+                  error={errors.shippingFeeGross}
+                >
+                  <Input
+                    id="sf-fee"
+                    value={shippingFee}
+                    onChange={(e) => setShippingFee(e.target.value)}
+                    inputMode="numeric"
+                    disabled={disabled}
+                    placeholder="1990"
+                  />
+                </FormField>
+                <FormField
+                  label="Átfutás – min. (munkanap)"
+                  htmlFor="sf-dmin"
+                  required
+                  error={errors.deliveryDaysMin}
+                >
+                  <Input
+                    id="sf-dmin"
+                    value={daysMin}
+                    onChange={(e) => setDaysMin(e.target.value)}
+                    inputMode="numeric"
+                    disabled={disabled}
+                    placeholder="1"
+                  />
+                </FormField>
+                <FormField
+                  label="Átfutás – max. (munkanap)"
+                  htmlFor="sf-dmax"
+                  required
+                  error={errors.deliveryDaysMax}
+                >
+                  <Input
+                    id="sf-dmax"
+                    value={daysMax}
+                    onChange={(e) => setDaysMax(e.target.value)}
+                    inputMode="numeric"
+                    disabled={disabled}
+                    placeholder="3"
+                  />
+                </FormField>
+              </>
+            ) : null}
 
-        <p className="text-hint text-ink-secondary">
-          Az eladó adatai, az ÁSZF, az adatkezelési tájékoztató és a többi kötelező oldal:{' '}
-          <Link href="/webshop/jogi" className="text-ink underline underline-offset-2">
-            Webshop → Jogi oldalak
-          </Link>
-          .
-        </p>
-      </div>
+            <div className="col-span-full border-t border-border pt-3">
+              <Switch
+                id="sf-pickup"
+                checked={pickupEnabled}
+                disabled={disabled}
+                onCheckedChange={setPickupEnabled}
+                label="Személyes átvétel"
+                description="Raktáron lévő terméknél „Átvehető a boltban” jelenik meg."
+              />
+            </div>
+            {pickupEnabled ? (
+              <FormField
+                label="Átvételi hely"
+                htmlFor="sf-pickup-label"
+                optionalLabel
+                hint="Pl. Kecskemét, Mindszenti krt. 10. · H–P 8–16"
+                className="sm:col-span-2"
+                error={errors.pickupLabel}
+              >
+                <Input
+                  id="sf-pickup-label"
+                  value={pickupLabel}
+                  onChange={(e) => setPickupLabel(e.target.value)}
+                  maxLength={160}
+                  disabled={disabled}
+                />
+              </FormField>
+            ) : null}
+          </FormSection>
+        </div>
+      ) : null}
+
+      {active === 'fizetes' ? (
+        <div
+          role="tabpanel"
+          id="webshop-settings-panel-fizetes"
+          aria-labelledby="webshop-settings-tab-fizetes"
+        >
+          <FormSection
+            title="Fizetési módok"
+            description="Pipáld, amit a pénztárban kínálsz."
+            columns={4}
+          >
+            <fieldset className="col-span-full" disabled={disabled}>
+              <legend className="sr-only">Fizetési módok</legend>
+              <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-2">
+                {W1_PAYMENT_CODES.map((code) => (
+                  <CheckItem
+                    key={code}
+                    id={`sf-pay-${code}`}
+                    label={PAYMENT_METHODS[code].label}
+                    description={PAYMENT_METHODS[code].hint}
+                    checked={payments.includes(code)}
+                    onChange={(on) =>
+                      setPayments((list) => toggle(list, code, on, W1_PAYMENT_CODES))
+                    }
+                  />
+                ))}
+              </div>
+            </fieldset>
+            {payments.includes('transfer') ? (
+              <>
+                <FormField
+                  label="Bankszámlaszám"
+                  htmlFor="sf-bank"
+                  required
+                  hint="A díjbekérőn jelenik meg"
+                  className="sm:col-span-2"
+                  error={errors.bankAccount}
+                >
+                  <Input
+                    id="sf-bank"
+                    value={bankAccount}
+                    onChange={(e) => setBankAccount(e.target.value)}
+                    maxLength={80}
+                    disabled={disabled}
+                    placeholder="12345678-12345678-12345678"
+                  />
+                </FormField>
+                <FormField
+                  label="Foglalás a jóváírásig (munkanap)"
+                  htmlFor="sf-hold"
+                  optionalLabel
+                  hint={`Alapérték: ${DEFAULT_TRANSFER_HOLD_DAYS}`}
+                  error={errors.transferHoldDays}
+                >
+                  <Input
+                    id="sf-hold"
+                    value={holdDays}
+                    onChange={(e) => setHoldDays(e.target.value)}
+                    inputMode="numeric"
+                    disabled={disabled}
+                    placeholder={String(DEFAULT_TRANSFER_HOLD_DAYS)}
+                  />
+                </FormField>
+              </>
+            ) : null}
+          </FormSection>
+        </div>
+      ) : null}
+
+      {active === 'domain' ? (
+        <div
+          role="tabpanel"
+          id="webshop-settings-panel-domain"
+          aria-labelledby="webshop-settings-tab-domain"
+        >
+          <WebshopChannelsClient
+            embedded
+            canWrite={canWrite}
+            primaryUrl={domain.primaryUrl}
+            primaryIsCustom={domain.primaryIsCustom}
+            subdomainUrl={domain.subdomainUrl}
+            indexNowLive={domain.indexNowLive}
+            domains={domain.domains}
+          />
+        </div>
+      ) : null}
+
+      {active === 'jogi' ? (
+        <div
+          role="tabpanel"
+          id="webshop-settings-panel-jogi"
+          aria-labelledby="webshop-settings-tab-jogi"
+        >
+          <FormSection
+            title="Fogyasztó Barát"
+            description="ÁSZF és adatkezelés külső szolgáltatással — nem saját szövegszerkesztő."
+            columns={1}
+          >
+            <div className="col-span-full rounded-md border border-border bg-subtle/40 px-3 py-2.5">
+              <p className="text-body text-ink">
+                A kötelező fogyasztóvédelmi dokumentumokat a{' '}
+                <a
+                  href="https://fogyasztobarat.hu/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline underline-offset-2"
+                >
+                  Fogyasztó Barát
+                </a>{' '}
+                szolgáltatással kötjük be (PDF + beágyazás). Nincs saját ÁSZF-szerkesztő — a
+                bekötő mezők hamarosan ezen a fülön lesznek.
+              </p>
+            </div>
+          </FormSection>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -480,7 +1117,9 @@ function CheckItem({
       />
       <label htmlFor={id} className="min-w-0 cursor-pointer text-body text-ink">
         {label}
-        {description ? <span className="block text-hint text-ink-secondary">{description}</span> : null}
+        {description ? (
+          <span className="block text-hint text-ink-secondary">{description}</span>
+        ) : null}
       </label>
     </div>
   )

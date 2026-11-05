@@ -160,12 +160,13 @@ export const CARRIERS: Record<CarrierCode, LegalCarrier> = {
 
 export const CARRIER_CODES = Object.keys(CARRIERS) as [CarrierCode, ...CarrierCode[]]
 
+/** W1 bolt beállítások: csak ezek a módok (sorrend a UI-n külön). */
 export const PAYMENT_METHODS: Record<PaymentCode, { label: string; hint: string }> = {
-  card: { label: 'Bankkártya, Apple Pay, Google Pay', hint: 'Online, a rendelés leadásakor' },
-  transfer: { label: 'Banki átutalás', hint: 'Díjbekérő alapján, jóváírás után postázunk' },
-  cod: { label: 'Utánvét', hint: 'A futárnak fizet átvételkor' },
   pickup_cash: { label: 'Készpénz személyes átvételkor', hint: 'Csak személyes átvételnél' },
-  pickup_card: { label: 'Bankkártya személyes átvételkor', hint: 'Csak személyes átvételnél' }
+  pickup_card: { label: 'Bankkártya személyes átvételkor', hint: 'Csak személyes átvételnél' },
+  card: { label: 'Bankkártya (online)', hint: 'A rendelés leadásakor' },
+  transfer: { label: 'Átutalás', hint: 'Díjbekérő alapján, jóváírás után postázunk' },
+  cod: { label: 'Utánvét', hint: 'A futárnak fizet átvételkor' }
 }
 
 export const PAYMENT_CODES = Object.keys(PAYMENT_METHODS) as [PaymentCode, ...PaymentCode[]]

@@ -83,9 +83,25 @@ Lista szűrő `incomplete` = Live-on van, de még nem „kész a boltra” (comp
 ## 4. Admin UX W1
 
 - Flag: `WEBSHOP_ENABLED = true`
-- Meglévő `/webshop/*` marad; **kötelező onboard** = Áttekintő + Katalógus + Beállítások
-- Kategóriák / tulajdonságok / értékelések / csatornák = Haladó (későbbi nav lean)
+- **Nav:** önálló szekció **Webshop** (Értékesítés után) — flat: Áttekintés · Katalógus · Értékelések · Elállások · Beállítások. Kategóriák/Jellemzők route marad, navból W1-ben ki.
+- Kötelező onboard = Áttekintő + Katalógus + Beállítások
 - Termék: Live kapcsoló könnyű; Agent checklist = AI-készség panel (feed)
+
+### 4.1 `/webshop/beallitasok` (lean + szegmens tab)
+
+**IA:** horizontális szegmens-tab + Mentés (Általános / Megjelenés / Kereskedelem / Szállítás / Fizetés). URL: `?tab=altalanos|megjelenes|kereskedelem|szallitas|fizetes|domain|jogi`.
+
+| Tab | Tartalom |
+|---|---|
+| **Általános** | Bolt URL + Live db; eladó (ERP előtöltés + `legal_*` override); ügyfélszolgálat (`service_address`, `support_hours`). |
+| **Megjelenés** | Logo (Cégadatok); képarány; nettó ár; eladott db; értékelések. |
+| **Kereskedelem** | Készletküszöb; elállás/visszaküldés; jótállás; B2C/B2B + mikro/hírlevél/egyedi; AI tanítás. |
+| **Szállítás** | GLS díj + átfutás; személyes átvétel. Nincs ingyenes szállítás / más futár. |
+| **Fizetés** | 5 pipa (+ bankszámla ha átutalás). |
+| **Domain** | Korábbi Csatornák UI. `/webshop/csatornak` → redirect ide. |
+| **Jogi** | Fogyasztó Barát stub (bekötés P1). `/webshop/jogi` → redirect ide. |
+
+Validációs hiba → hibás fül. Mentéskor a többi fül state-je is átmegy (storefront upsert), hogy ne írjuk felül üresre.
 
 ---
 

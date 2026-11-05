@@ -126,6 +126,7 @@ export async function saveWebshopLegalSettings(input: WebshopLegalInput): Promis
     return { ok: false, message: 'Nem sikerült menteni a jogi adatokat.' }
   }
 
+  revalidatePath('/webshop/beallitasok')
   revalidatePath('/webshop/jogi')
   revalidatePath('/webshop')
   await revalidateStorefrontTenant(tenantId)

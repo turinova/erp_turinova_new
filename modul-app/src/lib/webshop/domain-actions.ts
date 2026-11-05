@@ -19,7 +19,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 import { tenantHasWebshop } from '@/lib/webshop/entitlement'
 
-const PAGE = '/webshop/csatornak'
+const PAGE = '/webshop/beallitasok'
 const RECHECK_MIN_MS = 5000
 
 export type DomainActionResult =

@@ -10,7 +10,6 @@ import {
   Cog,
   Factory,
   FileText,
-  Globe,
   Handshake,
   History,
   Home,
@@ -200,79 +199,47 @@ const allNavSections: NavSection[] = [
               accent: 'slate'
             }
           ]
-        },
-      {
-          type: 'group',
-          label: 'Webshop',
-          icon: Store,
-          accent: 'slate',
-          matchPrefix: '/webshop',
-          children: [
-            {
-              type: 'link',
-              label: 'Áttekintés',
-              href: '/webshop',
-              icon: Store,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Bolt katalógus',
-              href: '/webshop/katalogus',
-              icon: Package,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Kategóriák',
-              href: '/webshop/kategoriak',
-              icon: Layers,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Jellemzők',
-              href: '/webshop/tulajdonsagok',
-              icon: Tags,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Értékelések',
-              href: '/webshop/ertekelesek',
-              icon: MessageSquare,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Elállások',
-              href: '/webshop/elallasok',
-              icon: Undo2,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Csatornák',
-              href: '/webshop/csatornak',
-              icon: Globe,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Jogi oldalak',
-              href: '/webshop/jogi',
-              icon: Scale,
-              accent: 'slate'
-            },
-            {
-              type: 'link',
-              label: 'Bolt beállítások',
-              href: '/webshop/beallitasok',
-              icon: Settings2,
-              accent: 'slate'
-            }
-          ]
         }
+    ]
+  },
+  {
+    label: 'Webshop',
+    items: [
+      {
+        type: 'link',
+        label: 'Áttekintés',
+        href: '/webshop',
+        icon: Store,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Katalógus',
+        href: '/webshop/katalogus',
+        icon: Package,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Értékelések',
+        href: '/webshop/ertekelesek',
+        icon: MessageSquare,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Elállások',
+        href: '/webshop/elallasok',
+        icon: Undo2,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Beállítások',
+        href: '/webshop/beallitasok',
+        icon: Settings2,
+        accent: 'slate'
+      }
     ]
   },
   {
@@ -680,6 +647,10 @@ function topLevelAccent(node: NavNode): NavAccent {
     case '/ertekesitesek':
       return 'teal'
     case '/webshop':
+    case '/webshop/katalogus':
+    case '/webshop/ertekelesek':
+    case '/webshop/elallasok':
+    case '/webshop/beallitasok':
       return 'violet'
     case '/beszallitoi-rendelesek':
       return 'amber'
@@ -712,15 +683,10 @@ function paintNavTree(nodes: NavNode[], inherited?: NavAccent): NavNode[] {
 
 function paintSections(sections: NavSection[]): NavSection[] {
   return sections
+    .filter((section) => WEBSHOP_ENABLED || section.label !== 'Webshop')
     .map((section) => ({
       ...section,
-      items: paintNavTree(
-        section.items.filter(
-          (node) =>
-            WEBSHOP_ENABLED ||
-            !(node.type === 'group' && node.matchPrefix === '/webshop')
-        )
-      )
+      items: paintNavTree(section.items)
     }))
     .filter((section) => section.items.length > 0)
 }

@@ -20,6 +20,8 @@ type Props = {
   subdomainUrl: string | null
   indexNowLive: boolean
   domains: DomainView[]
+  /** Beállítások Domain fülén: nincs saját PageHeader. */
+  embedded?: boolean
 }
 
 function displayUrl(url: string): string {
@@ -32,7 +34,8 @@ export function WebshopChannelsClient({
   primaryIsCustom,
   subdomainUrl,
   indexNowLive,
-  domains
+  domains,
+  embedded = false
 }: Props) {
   const router = useRouter()
   const [wizard, setWizard] = useState<{ open: boolean; domain: DomainView | null }>({
@@ -71,22 +74,32 @@ export function WebshopChannelsClient({
     })
   }
 
-  return (
-    <div className="max-w-3xl">
-      <PageHeader
-        title="Csatornák"
-        description="Hol éri el a vevő a boltodat, és kik kapnak róla automatikusan jelzést."
-        actions={
-          canWrite && !custom ? (
-            <Button type="button" onClick={() => setWizard({ open: true, domain: null })}>
-              <Plus className="size-3.5" aria-hidden />
-              Saját domaint kötök
-            </Button>
-          ) : null
-        }
-      />
+  const addDomainBtn =
+    canWrite && !custom ? (
+      <Button type="button" onClick={() => setWizard({ open: true, domain: null })}>
+        <Plus className="size-3.5" aria-hidden />
+        Saját domaint kötök
+      </Button>
+    ) : null
 
-      <section aria-labelledby="bolt-cime" className="mt-4 rounded-lg border border-border bg-surface">
+  return (
+    <div className={embedded ? undefined : 'max-w-3xl'}>
+      {embedded ? (
+        addDomainBtn ? (
+          <div className="mb-3 flex justify-end">{addDomainBtn}</div>
+        ) : null
+      ) : (
+        <PageHeader
+          title="Csatornák"
+          description="Hol éri el a vevő a boltodat, és kik kapnak róla automatikusan jelzést."
+          actions={addDomainBtn}
+        />
+      )}
+
+      <section
+        aria-labelledby="bolt-cime"
+        className={embedded ? 'rounded-lg border border-border bg-surface' : 'mt-4 rounded-lg border border-border bg-surface'}
+      >
         <h2 id="bolt-cime" className="border-b border-border px-4 py-2.5 text-label text-ink">
           A boltod címe
         </h2>

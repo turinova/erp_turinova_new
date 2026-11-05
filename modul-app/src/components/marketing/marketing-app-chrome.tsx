@@ -51,7 +51,7 @@ type NavSection = {
   items: NavItem[]
 }
 
-/** Sorrend / címkék = `navigation.ts` mainNavSections (WEBSHOP_ENABLED=false). */
+/** Sorrend / címkék ≈ `navigation.ts` mainNavSections (marketing demo; Webshop szekció nélkül). */
 const MOCK_NAV: NavSection[] = [
   {
     label: null,

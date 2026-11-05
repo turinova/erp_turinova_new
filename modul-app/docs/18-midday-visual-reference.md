@@ -6,7 +6,7 @@
 > **Sűrűség / tipó / „tool” hangulat:** Linear **light** mód.  
 > **Shell arányok:** Midday-szerű ritmus (minta, nem kód).  
 > **Primary:** Midday charcoal `#18181B` (nem kék). Light-first, magyar copy.  
-> **Nav IA:** feliratos szekciók (Pult / Ügyfél / Értékesítés / **Pénzügy** / Gyártás / Beszerzés & készlet / Csapat / Rendszer) — Linear-szerű chunking; üres szekció entitlementnél elrejtve. Pénzügy: Áttekintés, Bizonylatok, Kintlévőség, ÁFA, Exportok.  
+> **Nav IA:** feliratos szekciók (Pult / Ügyfél / Értékesítés / **Webshop** / Gyártás / Beszerzés & készlet / **Pénzügy** / Csapat / Rendszer) — Linear-szerű chunking; üres szekció entitlementnél elrejtve. Webshop (add-on): Áttekintés, Katalógus, Értékelések, Elállások, Beállítások — flat linkek, nem az Értékesítés alatt. Pénzügy: Áttekintés, Bizonylatok, Kintlévőség, ÁFA, Exportok.  
 > **Nav szín:** domain accent — **minden top-level** tintelt ikon (hue); label neutrális idle-ben. Aktív = soft + ink + bal sáv. Child örököl. **Tilos** idle soft háttér és leaf-rainbow. Kezdőlap / Beállítások: slate.  
 > **Licenc:** nincs Midday commercial fee; **tilos** Midday/Cal/Dub product UI forráskód átvétele (AGPL kockázat). Linearnak nincs publikus repo — nem másolható kódból.
 

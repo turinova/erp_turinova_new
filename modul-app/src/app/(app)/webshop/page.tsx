@@ -58,19 +58,19 @@ export default async function WebshopPage() {
   const missingOn = (prefix: string) => legal.missing.filter((m) => m.href.startsWith(prefix))
   const launch: LaunchItem[] = [
     {
-      label: 'Eladó adatai (cégnév, székhely, adószám, elérhetőség)',
-      missing: missingOn('/webshop/jogi').map((m) => m.label),
-      href: '/webshop/jogi#elado'
+      label: 'Fogyasztó Barát (ÁSZF / adatkezelés)',
+      missing: [],
+      href: '/webshop/beallitasok?tab=jogi'
     },
     {
       label: 'Szállítási mód és díj',
       missing: missingOn('/webshop/beallitasok#szallitas').map((m) => m.label),
-      href: '/webshop/beallitasok#szallitas'
+      href: '/webshop/beallitasok?tab=szallitas'
     },
     {
       label: 'Fizetési mód',
       missing: missingOn('/webshop/beallitasok#fizetes').map((m) => m.label),
-      href: '/webshop/beallitasok#fizetes'
+      href: '/webshop/beallitasok?tab=fizetes'
     },
     {
       label: 'Legalább egy termék a boltban',

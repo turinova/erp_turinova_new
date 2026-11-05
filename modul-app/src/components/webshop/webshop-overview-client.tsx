@@ -259,19 +259,19 @@ export function WebshopOverviewClient({ stats, stockNotify, launch, openWithdraw
           type="button"
           variant="secondary"
           size="sm"
-          onClick={() => router.push('/webshop/jogi')}
+          onClick={() => router.push('/webshop/beallitasok?tab=domain')}
         >
-          <Scale className="size-3.5" aria-hidden />
-          Jogi oldalak
+          <Globe className="size-3.5" aria-hidden />
+          Domain
         </Button>
         <Button
           type="button"
           variant="secondary"
           size="sm"
-          onClick={() => router.push('/webshop/csatornak')}
+          onClick={() => router.push('/webshop/beallitasok?tab=jogi')}
         >
-          <Globe className="size-3.5" aria-hidden />
-          Csatornák
+          <Scale className="size-3.5" aria-hidden />
+          Jogi
         </Button>
         <Button
           type="button"
