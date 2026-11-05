@@ -45,12 +45,10 @@ export function useNavigation() {
           if (
             item.href === '/home' ||
             item.href === '/opti' ||
-            item.href === '/nettfront' ||
             item.href === '/saved' ||
             item.href === '/orders' ||
             item.href === '/search' ||
-            item.href === '/settings' ||
-            item.href === '/ugyfel-ajanlat'
+            item.href === '/settings'
           ) {
             return true
           }

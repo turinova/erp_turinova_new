@@ -43,6 +43,8 @@ import Filter2Icon from '@mui/icons-material/Filter2'
 import ContentCutIcon from '@mui/icons-material/ContentCut'
 import { toast } from 'react-toastify'
 import CommentModal from './CommentModal'
+import { MigrationDeadlineNotice } from '@/components/migration/MigrationDeadlineBanner'
+import type { MigrationNotice } from '@/lib/migration-notice'
 
 interface PortalQuoteData {
   id: string
@@ -179,12 +181,14 @@ interface PortalQuoteDetailClientProps {
   initialQuoteData: PortalQuoteData
   companyInfo: CompanyInfo | null
   companyPaymentMethods: CompanyPaymentMethod[]
+  migrationNotice: MigrationNotice
 }
 
 export default function PortalQuoteDetailClient({ 
   initialQuoteData,
   companyInfo,
-  companyPaymentMethods
+  companyPaymentMethods,
+  migrationNotice
 }: PortalQuoteDetailClientProps) {
   const router = useRouter()
   const [quoteData, setQuoteData] = useState<PortalQuoteData>(initialQuoteData)
@@ -1048,6 +1052,12 @@ export default function PortalQuoteDetailClient({
               >
                 {isGeneratingPdf ? 'Letöltés…' : 'Kapott árajánlat'}
               </Button>
+
+              {quoteData.status === 'draft' && (
+                <Box sx={{ mb: 2 }}>
+                  <MigrationDeadlineNotice notice={migrationNotice} variant="standard" />
+                </Box>
+              )}
 
               {/* Submit Quote Button - Enabled for draft quotes */}
               <Button

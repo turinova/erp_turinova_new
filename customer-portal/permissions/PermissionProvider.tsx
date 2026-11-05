@@ -34,7 +34,7 @@ async function fetchAllowedPaths(userId: string): Promise<string[]> {
     '/settings',
     '/ugyfel-ajanlat',
     '/quotes'
-    // Add more customer-facing routes as needed
+    // NETTFRONT / Ügyfélajánlat: nincs a menüben; deep link / Mentések még él.
   ]
 }
 

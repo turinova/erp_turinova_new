@@ -29,7 +29,9 @@ import Typography from '@mui/material/Typography'
 import { Delete as DeleteIcon, Home as HomeIcon, Search as SearchIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
+import { MigrationDeadlineNotice } from '@/components/migration/MigrationDeadlineBanner'
 import { PortalTypeChip } from '@/components/portal-list/PortalTypeChip'
+import type { MigrationNotice } from '@/lib/migration-notice'
 import { QuoteCommentIcon } from '@/components/portal-list/QuoteCommentIcon'
 import {
   formatPortalCurrency,
@@ -52,6 +54,7 @@ interface SavedQuotesClientProps {
   totalPages: number
   currentPage: number
   initialSearchTerm: string
+  migrationNotice: MigrationNotice
 }
 
 export default function SavedQuotesClient({
@@ -59,7 +62,8 @@ export default function SavedQuotesClient({
   totalCount,
   totalPages,
   currentPage,
-  initialSearchTerm
+  initialSearchTerm,
+  migrationNotice
 }: SavedQuotesClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -219,6 +223,10 @@ export default function SavedQuotesClient({
             Kijelöltek törlése ({selectedQuotes.length})
           </Button>
         )}
+      </Box>
+
+      <Box sx={{ mt: 2 }}>
+        <MigrationDeadlineNotice notice={migrationNotice} />
       </Box>
 
       <Box component="form" onSubmit={handleSearch} sx={{ mb: 3, mt: 2, maxWidth: 520 }}>

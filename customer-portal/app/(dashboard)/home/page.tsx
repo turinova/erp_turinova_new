@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase-server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import HomeClient from './HomeClient'
 import { getCompanyInfo } from '@/lib/company-data-server'
+import { getMigrationNotice } from '@/lib/migration-notice'
 
 export const metadata = {
   title: 'Kezdőlap - Turinova Ügyfélportál',
@@ -120,6 +121,7 @@ export default async function HomePage() {
         inProgressCount={inProgressCount}
         finishedCount={finishedCount}
         companyInfo={companyInfo}
+        migrationNotice={getMigrationNotice()}
       />
     )
   } catch (error) {

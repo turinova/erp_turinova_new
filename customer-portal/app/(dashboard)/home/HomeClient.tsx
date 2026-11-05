@@ -30,8 +30,8 @@ import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import BusinessIcon from '@mui/icons-material/Business'
 import Paper from '@mui/material/Paper'
 import { toast } from 'react-toastify'
-import WhatsNewSection from '@/components/portal-whats-new/WhatsNewSection'
-
+import { MigrationDeadlineBanner } from '@/components/migration/MigrationDeadlineBanner'
+import type { MigrationNotice } from '@/lib/migration-notice'
 interface TenantCompanyInfo {
   name?: string | null
   country?: string | null
@@ -53,6 +53,7 @@ interface HomeClientProps {
   inProgressCount: number
   finishedCount: number
   companyInfo?: TenantCompanyInfo | null
+  migrationNotice: MigrationNotice
 }
 
 export default function HomeClient({
@@ -62,7 +63,8 @@ export default function HomeClient({
   totalOrdersCount,
   inProgressCount,
   finishedCount,
-  companyInfo = null
+  companyInfo = null,
+  migrationNotice
 }: HomeClientProps) {
   const [suggestionText, setSuggestionText] = useState('')
   const [rating, setRating] = useState<number | null>(null)
@@ -130,7 +132,7 @@ export default function HomeClient({
 
   return (
     <div className='flex flex-col gap-6'>
-      <WhatsNewSection />
+      <MigrationDeadlineBanner notice={migrationNotice} draftCount={savedQuotesCount} />
 
       <Grid container spacing={6} alignItems='stretch'>
         <Grid item xs={12} md={companyInfo ? 6 : 12}>

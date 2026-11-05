@@ -1,6 +1,7 @@
 import React from 'react'
 import { getPortalQuoteById } from '@/lib/supabase-server'
 import { getCompanyInfo, getCompanyPaymentMethods } from '@/lib/company-data-server'
+import { getMigrationNotice } from '@/lib/migration-notice'
 import PortalQuoteDetailClient from './PortalQuoteDetailClient'
 
 interface PageProps {
@@ -65,6 +66,7 @@ export default async function PortalQuoteDetailPage({ params }: PageProps) {
       initialQuoteData={quoteData}
       companyInfo={companyInfo}
       companyPaymentMethods={companyPaymentMethods}
+      migrationNotice={getMigrationNotice()}
     />
   )
 }

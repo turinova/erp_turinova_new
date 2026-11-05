@@ -1,5 +1,6 @@
 import React from 'react'
 import { getUnifiedSavedQuotes } from '@/lib/supabase-server'
+import { getMigrationNotice } from '@/lib/migration-notice'
 import SavedQuotesClient from './SavedQuotesClient'
 
 interface PageProps {
@@ -28,6 +29,7 @@ export default async function SavedQuotesPage({ searchParams }: PageProps) {
       totalPages={quotesData.totalPages}
       currentPage={quotesData.currentPage}
       initialSearchTerm={searchTerm}
+      migrationNotice={getMigrationNotice()}
     />
   )
 }
