@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
-import { Lock, Search } from 'lucide-react'
+import { Barcode, ChevronDown, Lock, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
@@ -41,6 +41,7 @@ import {
   HU_PHONE_EXAMPLE
 } from '@/lib/customers/parse'
 import { formatMoneyFt } from '@/lib/sales/parse'
+import { cn } from '@/lib/utils'
 
 function parseMoney(raw: string): number | null {
   const t = raw.trim()
@@ -664,9 +665,10 @@ export function CsoAddItemDialog({
   const [unit, setUnit] = useState(defaultUnit)
   const [price, setPrice] = useState('')
   const [supplierId, setSupplierId] = useState('')
+  const [showSku, setShowSku] = useState(false)
+  const [searchKey, setSearchKey] = useState(0)
 
-  useEffect(() => {
-    if (!open) return
+  function resetForm() {
     setAccessoryId(null)
     setName('')
     setSku('')
@@ -674,6 +676,14 @@ export function CsoAddItemDialog({
     setUnit(defaultUnit)
     setPrice('')
     setSupplierId('')
+    setShowSku(false)
+    setSearchKey((k) => k + 1)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    resetForm()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultUnit])
 
   function pick(p: PurchaseProductSearchItem) {
@@ -686,7 +696,7 @@ export function CsoAddItemDialog({
     setSupplierId(p.primary_supplier_id ?? '')
   }
 
-  function save() {
+  function save(keepOpen: boolean) {
     const q = parseQty(qty)
     if (!name.trim()) {
       toast.error('Add meg a termék nevét.')
@@ -716,23 +726,33 @@ export function CsoAddItemDialog({
         toast.error(res.message)
         return
       }
-      toast.success(res.message ?? 'Tétel hozzáadva.')
-      onOpenChange(false)
+      toast.success(`${name.trim()} hozzáadva és mentve.`)
       router.refresh()
+      if (keepOpen) {
+        resetForm()
+        return
+      }
+      onOpenChange(false)
     })
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg gap-0 p-0">
-        <DialogHeader className="border-b border-border px-4 py-3 pr-10">
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col gap-0 p-0">
+        <DialogHeader className="shrink-0 border-b border-border px-4 py-3 pr-10">
           <DialogTitle>Tétel hozzáadása</DialogTitle>
           <DialogDescription className="mt-1">
-            Keress a katalógusban, vagy írd be szabad tételként.
+            Keress a katalógusban, vagy írd be szabad tételként. Mentéskor
+            azonnal a rendelésre kerül.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3 px-4 py-3">
-          <CsoProductSearch id="cso-add-search" onPick={pick} autoFocus />
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+          <CsoProductSearch
+            key={searchKey}
+            id="cso-add-search"
+            onPick={pick}
+            autoFocus
+          />
 
           {accessoryId ? (
             <div className="flex items-start justify-between gap-2 rounded-md border border-border bg-subtle p-2.5">
@@ -755,62 +775,107 @@ export function CsoAddItemDialog({
                   setSku('')
                   setPrice('')
                   setSupplierId('')
+                  setShowSku(false)
                 }}
               >
                 Másik termék
               </Button>
             </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-              <FormField label="Név (szabad tétel)" htmlFor="cso-add-name">
-                <Input
-                  id="cso-add-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </FormField>
-              <FormField label="SKU" htmlFor="cso-add-sku" optionalLabel>
-                <Input
-                  id="cso-add-sku"
-                  value={sku}
-                  className="font-mono"
-                  onChange={(e) => setSku(e.target.value)}
-                />
-              </FormField>
-            </div>
+            <FormField label="Termék neve" htmlFor="cso-add-name" required>
+              <div className="space-y-1">
+                <div className="relative">
+                  <Input
+                    id="cso-add-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Mit kér a vevő?"
+                    className={cn('font-semibold', !showSku && 'pr-8')}
+                  />
+                  {!showSku ? (
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      title="SKU megadása"
+                      aria-label="SKU megadása"
+                      className="absolute right-1 top-1/2 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-sm text-ink-muted hover:bg-subtle hover:text-ink"
+                      onClick={() => setShowSku(true)}
+                    >
+                      <Barcode className="size-3.5" aria-hidden />
+                    </button>
+                  ) : null}
+                </div>
+                {showSku ? (
+                  <Input
+                    id="cso-add-sku"
+                    value={sku}
+                    aria-label="SKU"
+                    className="h-7 max-w-[12rem] font-mono"
+                    onChange={(e) => setSku(e.target.value)}
+                    placeholder="SKU"
+                    autoFocus
+                  />
+                ) : null}
+              </div>
+            </FormField>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-[8rem_7rem_1fr]">
+          <div className="grid grid-cols-[7.5rem_8rem] items-end gap-3">
             <FormField label="Mennyiség" htmlFor="cso-add-qty">
-              <Input
-                id="cso-add-qty"
-                value={qty}
-                inputMode="decimal"
-                className="tabular-nums"
-                onChange={(e) => setQty(e.target.value)}
-              />
-            </FormField>
-            <FormField label="Egység" htmlFor="cso-add-unit">
-              {accessoryId ? (
-                <p className="pt-1.5 text-body text-ink">{unit}</p>
-              ) : (
-                <MenuSelect
-                  id="cso-add-unit"
-                  value={unit}
-                  onChange={(v) => v && setUnit(v)}
-                  allowEmpty={false}
-                  options={unitOptions}
+              <div className="flex h-8 items-stretch overflow-hidden rounded-md border border-border bg-surface hover:border-border-strong focus-within:border-border-strong focus-within:ring-1 focus-within:ring-primary/25">
+                <input
+                  id="cso-add-qty"
+                  value={qty}
+                  inputMode="decimal"
+                  maxLength={5}
+                  className="w-[3.25rem] min-w-0 bg-transparent px-2 text-right text-body tabular-nums text-ink outline-none"
+                  onChange={(e) =>
+                    setQty(e.target.value.replace(/[^\d.,]/g, ''))
+                  }
                 />
-              )}
+                <div className="relative flex-1 border-l border-border">
+                  {accessoryId || unitOptions.length === 0 ? (
+                    <span className="flex h-full items-center bg-subtle px-2 text-body text-ink-secondary">
+                      {unit || 'db'}
+                    </span>
+                  ) : (
+                    <>
+                      <select
+                        id="cso-add-unit"
+                        value={unit}
+                        aria-label="Mennyiségi egység"
+                        onChange={(e) => setUnit(e.target.value)}
+                        className="h-full w-full cursor-pointer appearance-none bg-transparent pl-2 pr-6 text-body text-ink outline-none"
+                      >
+                        {unitOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        className="pointer-events-none absolute right-1.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
+                        aria-hidden
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
             </FormField>
-            <FormField label="Bruttó ár / egység (Ft)" htmlFor="cso-add-price">
-              <Input
-                id="cso-add-price"
-                value={price}
-                inputMode="decimal"
-                className="tabular-nums"
-                onChange={(e) => setPrice(e.target.value)}
-              />
+            <FormField label="Bruttó / egység" htmlFor="cso-add-price">
+              <div className="relative">
+                <Input
+                  id="cso-add-price"
+                  value={price}
+                  inputMode="decimal"
+                  placeholder="Bruttó ár"
+                  className="pr-7 text-right tabular-nums"
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-body text-ink-secondary">
+                  Ft
+                </span>
+              </div>
             </FormField>
           </div>
 
@@ -821,24 +886,34 @@ export function CsoAddItemDialog({
               onChange={setSupplierId}
               allowEmpty
               emptyLabel="Nincs beszállító"
+              placeholder="—"
               searchable={supplierSearchable}
               options={supplierOptions}
-              wrap
             />
           </FormField>
         </div>
-        <DialogFooter className="border-t border-border px-4 py-3">
+        <DialogFooter className="shrink-0 items-center border-t border-border px-4 py-3 sm:justify-between">
           <Button
             type="button"
-            variant="secondary"
+            variant="ghost"
             disabled={pending}
             onClick={() => onOpenChange(false)}
           >
             Mégse
           </Button>
-          <Button type="button" loading={pending} onClick={save}>
-            Tétel hozzáadása
-          </Button>
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={pending}
+              onClick={() => save(true)}
+            >
+              Mentés és újabb
+            </Button>
+            <Button type="button" loading={pending} onClick={() => save(false)}>
+              Tétel hozzáadása
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

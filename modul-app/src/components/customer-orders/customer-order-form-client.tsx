@@ -7,9 +7,10 @@ import { toast } from 'sonner'
 
 import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
 import {
+  CsoAddFreeLineRow,
   CsoLineEditorRow,
   CsoLineListHeader,
-  CsoTotalsFooter,
+  CsoSummaryFooter,
   csoHasPrice,
   csoLineGross,
   csoQtyByUnit,
@@ -94,6 +95,8 @@ export function CustomerOrderFormClient({
   const [lines, setLines] = useState<CsoDraftLine[]>(() =>
     initialLines?.length ? initialLines : []
   )
+  /** Új szabad tétel névmező autofocus. */
+  const [focusLineKey, setFocusLineKey] = useState<string | null>(null)
 
   const [searchQ, setSearchQ] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -252,7 +255,11 @@ export function CustomerOrderFormClient({
   }
 
   function addBlankLine() {
-    setLines((prev) => [...prev, newLine(units)])
+    const row = newLine(units, {
+      supplierId: lines[lines.length - 1]?.supplierId ?? null
+    })
+    setLines((prev) => [...prev, row])
+    setFocusLineKey(row.key)
   }
 
   function updateLine(key: string, patch: Partial<CsoDraftLine>) {
@@ -508,24 +515,33 @@ export function CustomerOrderFormClient({
             ) : (
               <>
                 <CsoLineListHeader />
-                {lines.map((line, idx) => (
-                  <CsoLineEditorRow
-                    key={line.key}
-                    index={idx}
-                    line={line}
-                    canWrite={canWrite}
-                    supplierOptions={supplierOptions}
-                    supplierSearchable={suppliers.length > 8}
-                    unitOptions={unitOptions}
-                    nameError={fieldErrors[`items.${idx}.name`]}
-                    onChange={(patch) => updateLine(line.key, patch)}
-                    onRemove={() => removeLine(line.key)}
-                  />
-                ))}
+                <div className="divide-y divide-border">
+                  {lines.map((line, idx) => (
+                    <CsoLineEditorRow
+                      key={line.key}
+                      index={idx}
+                      line={line}
+                      canWrite={canWrite}
+                      supplierOptions={supplierOptions}
+                      supplierSearchable={suppliers.length > 8}
+                      unitOptions={unitOptions}
+                      nameError={fieldErrors[`items.${idx}.name`]}
+                      autoFocusName={focusLineKey === line.key}
+                      onChange={(patch) => updateLine(line.key, patch)}
+                      onRemove={() => removeLine(line.key)}
+                      onEnterNext={
+                        canWrite && idx === lines.length - 1
+                          ? addBlankLine
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+                {canWrite ? <CsoAddFreeLineRow onAdd={addBlankLine} /> : null}
               </>
             )}
 
-            <CsoTotalsFooter
+            <CsoSummaryFooter
               itemCount={filledLines.length}
               qtyByUnit={csoQtyByUnit(filledLines)}
               totalGross={totalGross}

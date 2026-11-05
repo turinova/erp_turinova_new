@@ -1,8 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { getReceivedQtyForPoItemIds } from '@/lib/goods-receipts/queries'
+import {
+  looksLikeBarcode,
+  normalizeScannerBarcode
+} from '@/lib/pos/barcode'
 import type {
   CsoItemStatus,
+  CsoListCounts,
+  CsoListStatus,
   CsoPoStatus,
   CsoWaitingCounts,
   CsoWaitingListItem,
@@ -49,19 +55,169 @@ function asStatus(raw: unknown): CsoItemStatus {
   return 'felveve'
 }
 
+const CSO_ACTIVE_STATUSES = ['felveve', 'rendelve', 'itt_van'] as const
+/** `id.in.(…)` URL-hossz korlát a keresési találatokhoz. */
+const SEARCH_ID_CAP = 150
+
+/** PostgREST `or()` — a foglalt karakterek (vessző, zárójel, %, _) nem mehetnek bele. */
+function sanitizeListSearch(raw: string): string {
+  return raw
+    .replace(/[%_,()"\\*:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
+
+/**
+ * Telefon-szerű keresés → regex, ami a tárolt formázás (`+36 30 123 4567`)
+ * szóközeit átugorja. `06…` / `0036…` → `36…`.
+ */
+function phoneSearchRegex(q: string): string | null {
+  let digits = q.replace(/[\s+\-/.]/g, '')
+  if (!/^\d{4,}$/.test(digits)) return null
+  if (digits.startsWith('00')) digits = digits.slice(2)
+  if (digits.startsWith('06')) digits = `36${digits.slice(2)}`
+  return digits.split('').join('[^0-9]*')
+}
+
+function firstEmbed<T>(raw: T | T[] | null | undefined): T | null {
+  return Array.isArray(raw) ? (raw[0] ?? null) : (raw ?? null)
+}
+
+function uniq(ids: Array<string | null | undefined>): string[] {
+  return [...new Set(ids.filter((v): v is string => Boolean(v)))]
+}
+
+/** Keresőszóra illeszkedő rendelés-azonosítók (telefon, tétel neve / SKU, vonalkód). */
+async function csoSearchOrderIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+  safe: string
+): Promise<string[]> {
+  const phoneRegex = phoneSearchRegex(safe)
+  const barcode = looksLikeBarcode(safe) ? normalizeScannerBarcode(safe) : null
+  const [phoneRes, itemRes, accRes] = await Promise.all([
+    phoneRegex
+      ? supabase
+          .from('customer_special_orders')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+          .filter('customer_mobile', 'match', phoneRegex)
+          .limit(SEARCH_ID_CAP)
+      : Promise.resolve({ data: [] as { id: string }[], error: null }),
+    supabase
+      .from('customer_special_order_items')
+      .select('order_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .or(`name.ilike.%${safe}%,sku_snapshot.ilike.%${safe}%`)
+      .limit(SEARCH_ID_CAP),
+    // Név + SKU a tétel snapshotjában van; a katalógus csak vonalkódhoz kell,
+    // pontos egyezéssel (btree index) — `%…%` a teljes táblán timeoutol.
+    barcode
+      ? supabase
+          .from('accessories')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .or(`barcode.eq.${barcode},barcode_internal.eq.${barcode}`)
+          .limit(20)
+      : Promise.resolve({ data: [] as { id: string }[], error: null })
+  ])
+  if (phoneRes.error) console.error('csoSearch phone', phoneRes.error.message)
+  if (itemRes.error) console.error('csoSearch items', itemRes.error.message)
+  if (accRes.error) console.error('csoSearch accessories', accRes.error.message)
+
+  const accessoryIds = uniq((accRes.data ?? []).map((a) => a.id as string))
+  let accOrderIds: string[] = []
+  if (accessoryIds.length > 0) {
+    const { data, error } = await supabase
+      .from('customer_special_order_items')
+      .select('order_id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .in('accessory_id', accessoryIds)
+      .limit(SEARCH_ID_CAP)
+    if (error) console.error('csoSearch accessory items', error.message)
+    accOrderIds = (data ?? []).map((r) => r.order_id as string)
+  }
+
+  return uniq([
+    ...(phoneRes.data ?? []).map((r) => r.id as string),
+    ...(itemRes.data ?? []).map((r) => r.order_id as string),
+    ...accOrderIds
+  ]).slice(0, SEARCH_ID_CAP)
+}
+
+/**
+ * Rendelés-lekérdezés közös alapja. `ready` / `supplierId` szűrés a tételeken
+ * külön aliasolt `!inner` beágyazással, hogy a tétellista teljes maradjon.
+ */
+function csoOrdersQuery(
+  supabase: SupabaseClient,
+  tenantId: string,
+  opts: {
+    select: string
+    head?: boolean
+    ready?: boolean
+    supplierId?: string | null
+  }
+) {
+  const parts = [opts.select]
+  if (opts.ready) {
+    parts.push('ready_items:customer_special_order_items!inner(id)')
+  }
+  if (opts.supplierId) {
+    parts.push('sup_items:customer_special_order_items!inner(id)')
+  }
+  let query = supabase
+    .from('customer_special_orders')
+    .select(
+      parts.join(', '),
+      opts.head ? { count: 'exact', head: true } : { count: 'exact' }
+    )
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+  if (opts.ready) {
+    query = query
+      .eq('ready_items.status', 'itt_van')
+      .is('ready_items.deleted_at', null)
+  }
+  if (opts.supplierId) {
+    query = query
+      .eq('sup_items.supplier_id', opts.supplierId)
+      .is('sup_items.deleted_at', null)
+      .neq('sup_items.status', 'torolve')
+  }
+  return query
+}
+
+async function headCount(
+  label: string,
+  query: PromiseLike<{ count: number | null; error: { message: string } | null }>
+): Promise<number> {
+  const { count, error } = await query
+  if (error) {
+    console.error(`csoListCounts ${label}`, error.message)
+    return 0
+  }
+  return count ?? 0
+}
+
 export async function listCustomerSpecialOrders(
   supabase: SupabaseClient,
   input: {
     tenantId: string
     q?: string
     /**
-     * active = felveve|rendelve|itt_van (alap böngészés);
-     * all = minden nem soft-deleted; vagy egy státusz.
-     * Ha `q` nem üres: státuszszűrő kihagyva (globális lookup).
+     * active = felveve|rendelve|itt_van; itt_van = van átvehető tétel
+     * (részben átvehető is); all = minden. Keresésnél kihagyva.
      */
-    status?: CsoItemStatus | 'all' | 'active'
-    /** @deprecated Fejlista nem használja; várólista ready+notify. */
-    sms?: 'all' | 'sent' | 'pending'
+    status?: CsoListStatus
+    /** Van átvehető tétel, de nem ment SMS. Keresésnél kihagyva. */
+    nosms?: boolean
+    /** Van ilyen beszállítójú élő tétel. Keresésnél is él. */
+    supplierId?: string | null
     page?: number
     limit?: number
   }
@@ -70,83 +226,165 @@ export async function listCustomerSpecialOrders(
   total: number
   page: number
   limit: number
+  counts: CsoListCounts
 }> {
   const limit = Math.min(50, Math.max(1, input.limit ?? LIST_LIMIT))
   const page = Math.max(1, input.page ?? 1)
   const from = (page - 1) * limit
   const to = from + limit - 1
-  const q = input.q?.trim() ?? ''
-  const statusFilter = input.status ?? 'active'
-  const smsFilter = input.sms ?? 'all'
+  const safe = sanitizeListSearch(input.q ?? '')
+  const searching = safe.length > 0
+  const status = input.status ?? 'active'
+  const nosms = !searching && Boolean(input.nosms)
+  const supplierId = input.supplierId || null
+  const tenantId = input.tenantId
 
-  let query = supabase
-    .from('customer_special_orders')
-    .select(
-      `
+  const countBase = (ready = false) =>
+    csoOrdersQuery(supabase, tenantId, {
+      select: 'id',
+      head: true,
+      ready,
+      supplierId
+    })
+
+  const countsPromise = Promise.all([
+    headCount(
+      'active',
+      countBase().in('status', [...CSO_ACTIVE_STATUSES])
+    ),
+    headCount('felveve', countBase().eq('status', 'felveve')),
+    headCount('rendelve', countBase().eq('status', 'rendelve')),
+    headCount('itt_van', countBase(true)),
+    headCount('nosms', countBase(true).is('sms_sent_at', null))
+  ]).then(
+    ([active, felveve, rendelve, itt_van, nosmsCount]) => ({
+      active,
+      felveve,
+      rendelve,
+      itt_van,
+      nosms: nosmsCount
+    })
+  )
+
+  const searchIds =
+    safe.length >= 2 ? await csoSearchOrderIds(supabase, tenantId, safe) : []
+
+  let query = csoOrdersQuery(supabase, tenantId, {
+    select: `
       id, order_number, customer_id, customer_name, customer_mobile, status,
-      created_at, promised_date, deposit_amount, sms_sent_at,
+      created_at, deposit_amount, sms_sent_at, sales_order_id,
+      cso_sale_links ( sales_order_id ),
       customer_special_order_items (
-        id, name, qty, unit_shortform, status,
-        purchase_order_items (
-          purchase_orders ( po_number, status )
-        )
+        name, sku_snapshot, qty, unit_price_gross, status, sort_order, deleted_at,
+        accessory_id, supplier_id,
+        suppliers ( name ),
+        purchase_order_items ( purchase_orders ( po_number ) )
       )
     `,
-      { count: 'exact' }
-    )
-    .eq('tenant_id', input.tenantId)
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .range(from, to)
+    ready: !searching && (status === 'itt_van' || nosms),
+    supplierId
+  })
 
-  // Lookup: van keresőszöveg → ne szűkítsd active-ra (átadott / törölt is kell).
-  if (!q) {
-    if (statusFilter === 'active') {
-      query = query.in('status', ['felveve', 'rendelve', 'itt_van'])
-    } else if (statusFilter !== 'all') {
-      query = query.eq('status', statusFilter)
+  if (searching) {
+    const parts = [
+      `order_number.ilike.%${safe}%`,
+      `customer_name.ilike.%${safe}%`,
+      `customer_mobile.ilike.%${safe}%`
+    ]
+    if (searchIds.length > 0) parts.push(`id.in.(${searchIds.join(',')})`)
+    query = query.or(parts.join(','))
+  } else {
+    if (status === 'active') {
+      query = query.in('status', [...CSO_ACTIVE_STATUSES])
+    } else if (status !== 'all' && status !== 'itt_van') {
+      query = query.eq('status', status)
     }
-  }
-  if (smsFilter === 'sent') {
-    query = query.not('sms_sent_at', 'is', null)
-  } else if (smsFilter === 'pending') {
-    query = query.is('sms_sent_at', null)
-  }
-  if (q) {
-    query = query.or(
-      `order_number.ilike.%${q}%,customer_name.ilike.%${q}%,customer_mobile.ilike.%${q}%`
-    )
+    if (nosms) query = query.is('sms_sent_at', null)
   }
 
-  const { data, error, count } = await query
+  query = query.order('created_at', { ascending: false })
+
+  const [{ data, error, count }, counts] = await Promise.all([
+    query.range(from, to),
+    countsPromise
+  ])
   if (error) {
     console.error('listCustomerSpecialOrders', error.message)
     throw new Error('Nem sikerült betölteni az ügyfélrendeléseket.')
   }
 
-  const rows: CustomerSpecialOrderListItem[] = (data ?? []).map((r) => {
+  const needle = safe.toLocaleLowerCase('hu-HU')
+  const rows: CustomerSpecialOrderListItem[] = (
+    (data ?? []) as unknown as Array<Record<string, unknown>>
+  ).map((r) => {
     const rawItems = (r.customer_special_order_items ?? []) as Array<
       Record<string, unknown>
     >
-    const live = rawItems.filter((i) => i.status !== 'torolve')
-    const cancelLines = live.map((i) => {
-      const poiRaw = i.purchase_order_items as
-        | { purchase_orders: PoJoin | PoJoin[] | null }
-        | { purchase_orders: PoJoin | PoJoin[] | null }[]
-        | null
-      const poi = Array.isArray(poiRaw) ? (poiRaw[0] ?? null) : poiRaw
-      const poRaw = poi?.purchase_orders ?? null
-      const po = Array.isArray(poRaw) ? (poRaw[0] ?? null) : poRaw
-      return {
-        id: String(i.id),
-        name: String(i.name),
-        qty: Number(i.qty),
-        unitShortform: String(i.unit_shortform ?? 'db'),
-        status: asStatus(i.status),
-        poNumber: po?.po_number ?? null,
-        poStatus: (po?.status as CsoPoStatus | undefined) ?? null
+    const live = rawItems
+      .filter((i) => !i.deleted_at && i.status !== 'torolve')
+      .sort((a, b) => Number(a.sort_order) - Number(b.sort_order))
+    const open = live.filter((i) => i.status !== 'atadva')
+    const handedCount = live.length - open.length
+    const readyCount = live.filter((i) => i.status === 'itt_van').length
+    const supplierNames = uniq(
+      open.map(
+        (i) =>
+          firstEmbed(i.suppliers as { name?: string } | { name?: string }[])
+            ?.name
+      )
+    )
+    const poNumbers = uniq(
+      open
+        .filter((i) => i.status === 'rendelve')
+        .map((i) => {
+          const poi = firstEmbed(
+            i.purchase_order_items as
+              | { purchase_orders: PoJoin | PoJoin[] | null }
+              | { purchase_orders: PoJoin | PoJoin[] | null }[]
+          )
+          return firstEmbed(poi?.purchase_orders)?.po_number
+        })
+    )
+    const missingSupplier = open.some(
+      (i) => i.status === 'felveve' && i.accessory_id && !i.supplier_id
+    )
+
+    let remainingGross = 0
+    let dueIncomplete = false
+    for (const i of open) {
+      const price = i.unit_price_gross != null ? Number(i.unit_price_gross) : null
+      if (price == null || !Number.isFinite(price) || price <= 0) {
+        dueIncomplete = true
+        continue
       }
-    })
+      remainingGross += Math.round(price * Number(i.qty))
+    }
+    const saleLinks = (r.cso_sale_links ?? []) as unknown[]
+    const hasSale = saleLinks.length > 0 || Boolean(r.sales_order_id)
+    const deposit = r.deposit_amount != null ? Number(r.deposit_amount) : 0
+    const depositLeft = hasSale ? 0 : deposit
+    const dueAtPickup = Math.max(0, remainingGross - depositLeft)
+
+    const headerHit =
+      needle.length > 0 &&
+      [r.order_number, r.customer_name].some((v) =>
+        String(v ?? '')
+          .toLocaleLowerCase('hu-HU')
+          .includes(needle)
+      )
+    const matchedItem =
+      needle.length > 0 && !headerHit
+        ? rawItems.find(
+            (i) =>
+              !i.deleted_at &&
+              [i.name, i.sku_snapshot].some((v) =>
+                String(v ?? '')
+                  .toLocaleLowerCase('hu-HU')
+                  .includes(needle)
+              )
+          )
+        : undefined
+
     return {
       id: r.id as string,
       orderNumber: r.order_number as string,
@@ -156,15 +394,21 @@ export async function listCustomerSpecialOrders(
       status: asStatus(r.status),
       itemCount: live.length,
       createdAt: r.created_at as string,
-      promisedDate: (r.promised_date as string | null) ?? null,
-      depositAmount:
-        r.deposit_amount != null ? Number(r.deposit_amount) : null,
+      depositAmount: r.deposit_amount != null ? Number(r.deposit_amount) : null,
       smsSentAt: (r.sms_sent_at as string | null) ?? null,
-      cancelLines
+      itemNames: live.map((i) => String(i.name)),
+      readyCount,
+      handedCount,
+      supplierNames,
+      poNumbers,
+      missingSupplier,
+      matchedItemName: matchedItem ? String(matchedItem.name) : null,
+      dueAtPickup,
+      dueIncomplete: open.length > 0 && dueIncomplete
     }
   })
 
-  return { rows, total: count ?? 0, page, limit }
+  return { rows, total: count ?? 0, page, limit, counts }
 }
 
 export async function getCustomerSpecialOrder(

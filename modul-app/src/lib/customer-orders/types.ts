@@ -172,19 +172,34 @@ export type CustomerSpecialOrderListItem = {
   status: CsoItemStatus
   itemCount: number
   createdAt: string
-  promisedDate: string | null
   depositAmount: number | null
   smsSentAt: string | null
-  /** Élő tételek a lemondás dialógushoz. */
-  cancelLines: Array<{
-    id: string
-    name: string
-    qty: number
-    unitShortform: string
-    status: CsoItemStatus
-    poNumber: string | null
-    poStatus: CsoPoStatus | null
-  }>
+  /** Élő (nem lemondott) tételek neve, rendezve. */
+  itemNames: string[]
+  readyCount: number
+  handedCount: number
+  /** Még át nem adott tételek beszállítói (egyedi). */
+  supplierNames: string[]
+  /** Beszerzés alatti tételek PO-számai (egyedi). */
+  poNumbers: string[]
+  /** Felvéve katalógus tétel beszállító nélkül. */
+  missingSupplier: boolean
+  /** Keresésnél: a keresőszóra illeszkedő tétel neve (ha nem a fejre illett). */
+  matchedItemName: string | null
+  /** Még át nem adott tételek bruttója − előleg (ha még nincs eladás). */
+  dueAtPickup: number
+  /** Van ár nélküli, még át nem adott tétel. */
+  dueIncomplete: boolean
+}
+
+export type CsoListStatus = CsoItemStatus | 'all' | 'active'
+
+export type CsoListCounts = {
+  active: number
+  felveve: number
+  rendelve: number
+  itt_van: number
+  nosms: number
 }
 
 /** Teljes rendelés lemondható, ha van élő tétel és egyik sem átadva. */

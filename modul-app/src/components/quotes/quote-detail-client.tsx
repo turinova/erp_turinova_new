@@ -45,6 +45,10 @@ import {
   DataTableHeaderCell,
   DataTableRow
 } from '@/components/patterns/data-table'
+import {
+  DueAmountBar as SharedDueAmountBar,
+  DueAmountCard as SharedDueAmountCard
+} from '@/components/patterns/due-amount'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -2592,6 +2596,28 @@ export function QuoteDetailClient({
 }
 
 /** Jobb rail: végösszeg fókusz, success hang, hátralék max egy halk sor. */
+function QuoteDueFootnote({
+  remainingGross,
+  hasRecordedPayments,
+  currency
+}: {
+  remainingGross: number
+  hasRecordedPayments: boolean
+  currency: string
+}) {
+  if (remainingGross > 0) {
+    return (
+      <p className="tabular-nums text-warning-ink">
+        Hátralék {formatQuotePrice(remainingGross, currency)}
+      </p>
+    )
+  }
+  if (hasRecordedPayments) {
+    return <p className="font-medium text-success-ink">Kifizetve</p>
+  }
+  return null
+}
+
 function DueAmountCard({
   amountDue,
   remainingGross,
@@ -2606,27 +2632,18 @@ function DueAmountCard({
   className?: string
 }) {
   return (
-    <section
-      className={cn(
-        'rounded-lg border border-border-strong bg-surface p-3 shadow-sm',
-        className
-      )}
-      aria-label="Fizetendő összeg"
-    >
-      <p className="text-[12px] font-medium text-ink-secondary">
-        Fizetendő (bruttó)
-      </p>
-      <p className="mt-1.5 text-[32px] font-bold leading-none tracking-tight tabular-nums text-success-ink">
-        {formatQuotePrice(amountDue, currency)}
-      </p>
-      {remainingGross > 0 ? (
-        <p className="mt-1.5 text-hint tabular-nums text-warning-ink">
-          Hátralék {formatQuotePrice(remainingGross, currency)}
-        </p>
-      ) : hasRecordedPayments ? (
-        <p className="mt-1.5 text-hint font-medium text-success-ink">Kifizetve</p>
-      ) : null}
-    </section>
+    <SharedDueAmountCard
+      className={className}
+      label="Fizetendő (bruttó)"
+      amount={formatQuotePrice(amountDue, currency)}
+      footnote={
+        <QuoteDueFootnote
+          remainingGross={remainingGross}
+          hasRecordedPayments={hasRecordedPayments}
+          currency={currency}
+        />
+      }
+    />
   )
 }
 
@@ -2642,28 +2659,16 @@ function DueAmountBar({
   currency: string
 }) {
   return (
-    <div
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border-strong bg-surface px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.06)] md:left-[var(--sidebar-width)] lg:hidden"
-      role="status"
-      aria-label="Fizetendő összeg"
-    >
-      <div className="mx-auto flex max-w-5xl items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[12px] font-medium text-ink-secondary">
-            Fizetendő (bruttó)
-          </p>
-          {remainingGross > 0 ? (
-            <p className="text-hint tabular-nums text-warning-ink">
-              Hátralék {formatQuotePrice(remainingGross, currency)}
-            </p>
-          ) : hasRecordedPayments ? (
-            <p className="text-hint font-medium text-success-ink">Kifizetve</p>
-          ) : null}
-        </div>
-        <p className="shrink-0 text-[30px] font-bold leading-none tracking-tight tabular-nums text-success-ink">
-          {formatQuotePrice(amountDue, currency)}
-        </p>
-      </div>
-    </div>
+    <SharedDueAmountBar
+      label="Fizetendő (bruttó)"
+      amount={formatQuotePrice(amountDue, currency)}
+      footnote={
+        <QuoteDueFootnote
+          remainingGross={remainingGross}
+          hasRecordedPayments={hasRecordedPayments}
+          currency={currency}
+        />
+      }
+    />
   )
 }
