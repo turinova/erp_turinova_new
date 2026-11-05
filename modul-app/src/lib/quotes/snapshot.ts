@@ -21,6 +21,7 @@ export type QuotePanelInsert = {
   duplungolas: boolean
   szogvagas: boolean
   panthelyfuras_quantity: number
+  panthelyfuras_oldal: 'hosszu' | 'rovid' | null
 }
 
 export type QuoteServiceLineInsert = {
@@ -104,22 +105,27 @@ export function panelsToInserts(
   quoteId: string,
   panels: OptiPanelDraft[]
 ): QuotePanelInsert[] {
-  return panels.map((panel, index) => ({
-    quote_id: quoteId,
-    sheet_material_id: panel.sheetMaterialId,
-    grain_mm: panel.grainMm,
-    cross_mm: panel.crossMm,
-    quantity: panel.quantity,
-    label: panel.marking.trim() || null,
-    edge_a_id: panel.edgeAId,
-    edge_b_id: panel.edgeBId,
-    edge_c_id: panel.edgeCId,
-    edge_d_id: panel.edgeDId,
-    sort_index: index,
-    duplungolas: Boolean(panel.duplungolas),
-    szogvagas: Boolean(panel.szogvagas),
-    panthelyfuras_quantity: Number(panel.panthelyfurasQuantity) || 0
-  }))
+  return panels.map((panel, index) => {
+    const panthely = Number(panel.panthelyfurasQuantity) || 0
+    return {
+      quote_id: quoteId,
+      sheet_material_id: panel.sheetMaterialId,
+      grain_mm: panel.grainMm,
+      cross_mm: panel.crossMm,
+      quantity: panel.quantity,
+      label: panel.marking.trim() || null,
+      edge_a_id: panel.edgeAId,
+      edge_b_id: panel.edgeBId,
+      edge_c_id: panel.edgeCId,
+      edge_d_id: panel.edgeDId,
+      sort_index: index,
+      duplungolas: Boolean(panel.duplungolas),
+      szogvagas: Boolean(panel.szogvagas),
+      panthelyfuras_quantity: panthely,
+      panthelyfuras_oldal:
+        panthely > 0 ? (panel.panthelyfurasOldal ?? 'hosszu') : null
+    }
+  })
 }
 
 export function serviceLinesFromPricing(

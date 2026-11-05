@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import {
+  normalizePanthelyOldal,
+  type PanthelyOldal
+} from '@/lib/opti/panel-draft'
 import type { PricingMode } from '@/lib/opti/quote-calculations'
 import { listQuoteFees, type QuoteFeeRow } from '@/lib/quotes/fee-totals'
 import {
@@ -147,6 +151,7 @@ export type QuoteDetail = {
     duplungolas: boolean
     szogvagas: boolean
     panthelyfuras_quantity: number
+    panthelyfuras_oldal: PanthelyOldal | null
   }>
   material_lines: Array<{
     id: string
@@ -556,6 +561,7 @@ export async function getQuoteDetail(
         duplungolas,
         szogvagas,
         panthelyfuras_quantity,
+        panthelyfuras_oldal,
         sheet_materials ( name, machine_code ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
         edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
@@ -671,6 +677,7 @@ export async function getQuoteDetail(
         duplungolas,
         szogvagas,
         panthelyfuras_quantity,
+        panthelyfuras_oldal,
         sheet_materials ( name, machine_code ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
         edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
@@ -948,6 +955,7 @@ export async function getQuoteDetail(
     duplungolas?: boolean | null
     szogvagas?: boolean | null
     panthelyfuras_quantity?: number | null
+    panthelyfuras_oldal?: string | null
     sheet_materials:
       | { name: string; machine_code: string }
       | { name: string; machine_code: string }[]
@@ -979,7 +987,8 @@ export async function getQuoteDetail(
         edge_d_code: edgeCode(p.edge_d),
         duplungolas: Boolean(p.duplungolas),
         szogvagas: Boolean(p.szogvagas),
-        panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0
+        panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0,
+        panthelyfuras_oldal: normalizePanthelyOldal(p.panthelyfuras_oldal)
       }
     })
 

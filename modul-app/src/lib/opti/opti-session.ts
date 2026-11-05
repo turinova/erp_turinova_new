@@ -71,6 +71,13 @@ function isPanelShape(value: unknown): value is OptiPanelDraft {
   } else {
     p.panthelyfurasQuantity = Math.round(panthely)
   }
+  const oldal = p.panthelyfurasOldal
+  p.panthelyfurasOldal =
+    (p.panthelyfurasQuantity as number) > 0
+      ? oldal === 'hosszu' || oldal === 'rovid'
+        ? oldal
+        : 'hosszu'
+      : null
   return (
     typeof p.duplungolas === 'boolean' &&
     typeof p.szogvagas === 'boolean' &&

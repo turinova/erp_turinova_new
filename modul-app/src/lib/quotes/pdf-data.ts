@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { TenantCompanyRow } from '@/lib/company/queries'
+import { normalizePanthelyOldal } from '@/lib/opti/panel-draft'
 import { listQuoteFees } from '@/lib/quotes/fee-totals'
 import { listQuoteAccessories } from '@/lib/quotes/accessory-totals'
 import type {
@@ -76,6 +77,7 @@ export async function getQuoteForPdf(
         duplungolas,
         szogvagas,
         panthelyfuras_quantity,
+        panthelyfuras_oldal,
         sheet_materials ( name, machine_code ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
         edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
@@ -177,6 +179,7 @@ export async function getQuoteForPdf(
     duplungolas?: boolean | null
     szogvagas?: boolean | null
     panthelyfuras_quantity?: number | null
+    panthelyfuras_oldal?: string | null
     sheet_materials:
       | { name: string; machine_code: string | null }
       | { name: string; machine_code: string | null }[]
@@ -205,6 +208,7 @@ export async function getQuoteForPdf(
         edge_d_code: edgeCode(p.edge_d),
         duplungolas: Boolean(p.duplungolas),
         panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0,
+        panthelyfuras_oldal: normalizePanthelyOldal(p.panthelyfuras_oldal),
         szogvagas: Boolean(p.szogvagas)
       }
     })

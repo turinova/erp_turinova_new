@@ -419,7 +419,11 @@ function calculateAdditionalServices(
     }
     const holes = Number(panel.panthelyfuras_quantity) || 0
     if (holes >= 2) {
-      panthelyHoles += holes * panel.quantity
+      // Duplungnál a ragasztott párból csak az egyik darabot fúrják.
+      const drilledPieces = panel.duplungolas
+        ? Math.ceil(panel.quantity / 2)
+        : panel.quantity
+      panthelyHoles += holes * drilledPieces
     }
   }
 

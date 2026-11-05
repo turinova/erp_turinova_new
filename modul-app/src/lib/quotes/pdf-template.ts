@@ -1,6 +1,7 @@
 // Plain HTML template function for Quote PDF (no React)
 // Ported 1:1 from main-app quotes PDF template.
 
+import { panthelyEdgeMm, panthelySideText } from '@/lib/opti/panel-draft'
 import { formatQuoteFeeLabel } from '@/lib/quotes/fee-totals'
 
 export type QuotePdfPricingLine = {
@@ -77,6 +78,7 @@ export type QuotePdfPanel = {
   edge_d_code: string | null
   duplungolas: boolean
   panthelyfuras_quantity: number
+  panthelyfuras_oldal: 'hosszu' | 'rovid' | null
   szogvagas: boolean
 }
 
@@ -932,7 +934,19 @@ export default function generateQuotePdfHtml({
             ${quote.panels.map((panel) => {
               const services = []
               if (panel.panthelyfuras_quantity > 0) {
-                services.push(`Pánthelyfúrás (${panel.panthelyfuras_quantity})`)
+                services.push(
+                  panel.panthelyfuras_oldal
+                    ? `Pánthelyfúrás ${panel.panthelyfuras_quantity} db – ${panthelySideText(
+                        panel.panthelyfuras_oldal,
+                        panel.width_mm,
+                        panel.height_mm
+                      )} (${panthelyEdgeMm(
+                        panel.width_mm,
+                        panel.height_mm,
+                        panel.panthelyfuras_oldal
+                      )} mm)`
+                    : `Pánthelyfúrás (${panel.panthelyfuras_quantity})`
+                )
               }
               if (panel.duplungolas) {
                 services.push('Duplungolás')

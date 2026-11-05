@@ -43,12 +43,17 @@ import {
   writeOptiSession,
   type OptiSessionCustomer
 } from '@/lib/opti/opti-session'
+import { PanthelyOldalPicker } from '@/components/opti/panthely-oldal-picker'
 import {
   createPanelDraft,
   parsePanthelyQuantity,
+  PANTHELY_DEFAULT_OLDAL,
   PANTHELY_MAX,
   PANTHELY_MIN,
-  type OptiPanelDraft
+  panthelyEdgeMm,
+  panthelySideText,
+  type OptiPanelDraft,
+  type PanthelyOldal
 } from '@/lib/opti/panel-draft'
 import type { OptimizationResult } from '@/lib/opti/optimization-types'
 import {
@@ -145,6 +150,9 @@ export function OptiWorkspaceClient({
   const [duplungolas, setDuplungolas] = useState(false)
   const [szogvagas, setSzogvagas] = useState(false)
   const [panthelyRaw, setPanthelyRaw] = useState('')
+  const [panthelyOldal, setPanthelyOldal] = useState<PanthelyOldal>(
+    PANTHELY_DEFAULT_OLDAL
+  )
   const qtyBeforeDuplungRef = useRef<number | null>(null)
   const [errors, setErrors] = useState<FormErrors>({})
   const [textImportOpen, setTextImportOpen] = useState(false)
@@ -377,6 +385,14 @@ export function OptiWorkspaceClient({
     Number.isFinite(grainMm) && grainMm > 0 ? grainMm : null
   const previewCross =
     Number.isFinite(crossMm) && crossMm > 0 ? crossMm : null
+  const panthelyPreviewQty = parsePanthelyQuantity(panthelyRaw) ?? 0
+  const panthelyActive = panthelyPreviewQty >= PANTHELY_MIN
+  const panthelySquare =
+    previewGrain != null && previewGrain === previewCross
+  const panthelyEdgePreviewMm =
+    previewGrain != null && previewCross != null
+      ? panthelyEdgeMm(previewGrain, previewCross, panthelyOldal)
+      : null
 
   function edgeLabel(id: string): string {
     if (!id) return ''
@@ -402,6 +418,7 @@ export function OptiWorkspaceClient({
     setDuplungolas(false)
     setSzogvagas(false)
     setPanthelyRaw('')
+    setPanthelyOldal(PANTHELY_DEFAULT_OLDAL)
     qtyBeforeDuplungRef.current = null
     setErrors({})
   }
@@ -491,6 +508,7 @@ export function OptiWorkspaceClient({
         ? String(panel.panthelyfurasQuantity)
         : ''
     )
+    setPanthelyOldal(panel.panthelyfurasOldal ?? PANTHELY_DEFAULT_OLDAL)
     qtyBeforeDuplungRef.current =
       panel.duplungolas && panel.quantity >= 2 && panel.quantity % 2 === 0
         ? panel.quantity / 2
@@ -705,7 +723,8 @@ export function OptiWorkspaceClient({
       edgeDLabel: edgeLabel(edgeDId),
       duplungolas,
       szogvagas,
-      panthelyfurasQuantity: panthely
+      panthelyfurasQuantity: panthely,
+      panthelyfurasOldal: panthely > 0 ? panthelyOldal : null
     }
 
     if (editingPanelId) {
@@ -722,7 +741,8 @@ export function OptiWorkspaceClient({
                 marking: payload.marking.trim(),
                 duplungolas: payload.duplungolas,
                 szogvagas: payload.szogvagas,
-                panthelyfurasQuantity: payload.panthelyfurasQuantity
+                panthelyfurasQuantity: payload.panthelyfurasQuantity,
+                panthelyfurasOldal: payload.panthelyfurasOldal
               }
             : p
         )
@@ -943,6 +963,11 @@ export function OptiWorkspaceClient({
           edgeBId={edgeBId}
           edgeCId={edgeCId}
           edgeDId={edgeDId}
+          panthely={
+            panthelyActive
+              ? { count: panthelyPreviewQty, oldal: panthelyOldal }
+              : null
+          }
           onChangeMaterialId={selectMaterial}
           onStartChange={() => setChangingMaterial(true)}
           onCancelChange={() => setChangingMaterial(false)}
@@ -1179,11 +1204,10 @@ export function OptiWorkspaceClient({
                   disabled={!entryEnabled}
                   label="Szögvágás"
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <label
                     htmlFor="opti-panthely"
                     className="text-label text-ink"
-                    title={`0 = nincs; ${PANTHELY_MIN}–${PANTHELY_MAX} db / panel`}
                   >
                     Pánthely
                   </label>
@@ -1195,9 +1219,10 @@ export function OptiWorkspaceClient({
                     placeholder="0"
                     aria-invalid={Boolean(errors.panthely)}
                     aria-describedby={
-                      errors.panthely ? 'opti-panthely-error' : undefined
+                      errors.panthely
+                        ? 'opti-panthely-error'
+                        : 'opti-panthely-hint'
                     }
-                    title={`0 = nincs; ${PANTHELY_MIN}–${PANTHELY_MAX} db / panel`}
                     className="h-8 w-14 tabular-nums"
                     onKeyDown={handleEntryKeyDown}
                     onChange={(e) => {
@@ -1211,8 +1236,33 @@ export function OptiWorkspaceClient({
                       }
                     }}
                   />
+                  <PanthelyOldalPicker
+                    value={panthelyOldal}
+                    square={panthelySquare}
+                    disabled={!entryEnabled || !panthelyActive}
+                    onChange={setPanthelyOldal}
+                    onEnter={handleSavePanel}
+                  />
+                  <span
+                    className="text-hint tabular-nums text-ink-secondary"
+                    aria-live="polite"
+                  >
+                    {panthelyActive && panthelyEdgePreviewMm != null
+                      ? `${panthelySideText(
+                          panthelyOldal,
+                          previewGrain ?? undefined,
+                          previewCross ?? undefined
+                        ).replace(/^./, (ch) => ch.toUpperCase())}: ${panthelyEdgePreviewMm} mm`
+                      : null}
+                  </span>
                 </div>
               </div>
+              <p id="opti-panthely-hint" className="text-hint text-ink-muted">
+                Pánthely: 0 = nincs, {PANTHELY_MIN}–{PANTHELY_MAX} db / panel ·
+                {panthelySquare
+                  ? ' négyzetnél a szálirányú vagy a keresztirányú él'
+                  : ' oldal a panel hosszabb vagy rövidebb oldala'}
+              </p>
               {errors.panthely ? (
                 <p
                   id="opti-panthely-error"

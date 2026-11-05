@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { OptiCustomerOption } from '@/lib/customers/queries'
-import { createPanelDraft, type OptiPanelDraft } from '@/lib/opti/panel-draft'
+import {
+  createPanelDraft,
+  normalizePanthelyOldal,
+  type OptiPanelDraft
+} from '@/lib/opti/panel-draft'
 import {
   formatEdgeMaterialLabel,
   type OptiEdgeMaterialOption,
@@ -90,6 +94,7 @@ export async function getQuoteForOptiEdit(
         duplungolas,
         szogvagas,
         panthelyfuras_quantity,
+        panthelyfuras_oldal,
         edge_a_id,
         edge_b_id,
         edge_c_id,
@@ -179,6 +184,7 @@ export async function getQuoteForOptiEdit(
       duplungolas?: boolean | null
       szogvagas?: boolean | null
       panthelyfuras_quantity?: number | null
+      panthelyfuras_oldal?: string | null
       edge_a_id: string | null
       edge_b_id: string | null
       edge_c_id: string | null
@@ -239,7 +245,8 @@ export async function getQuoteForOptiEdit(
       edgeDLabel: edgeLabel(edgeD, edgeMaterials),
       duplungolas: Boolean(row.duplungolas),
       szogvagas: Boolean(row.szogvagas),
-      panthelyfurasQuantity: Number(row.panthelyfuras_quantity) || 0
+      panthelyfurasQuantity: Number(row.panthelyfuras_quantity) || 0,
+      panthelyfurasOldal: normalizePanthelyOldal(row.panthelyfuras_oldal)
     })
   })
 

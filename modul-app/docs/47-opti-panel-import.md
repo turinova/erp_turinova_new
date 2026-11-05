@@ -116,13 +116,14 @@ Busy: *„Kiolvassuk a méreteket… Ellenőrizd, mielőtt az Opti listára ker�
 
 - **Duplungolás:** switch; ON → beírt db ×2 (OFF visszafordítja); flag a panelen; díj Ft/m² (`cutting_fees.duplungolas_fee_per_sqm`, default **0**).
 - **Szögvágás:** switch; díj Ft/panel-darab (`szogvagas_fee_per_panel`, default **0**).
-- **Pánthelyfúrás:** szám mező (db / panel); **0** = nincs; **2–20**; díj Ft/lyuk (`panthelyfuras_fee_per_hole`, default **0**). Nincs oldal (hosszú/rövid). Díj qty = `lyuk × panel.quantity`.
+- **Pánthelyfúrás:** szám mező (db / panel); **0** = nincs; **2–20**; díj Ft/lyuk (`panthelyfuras_fee_per_hole`, default **0**). Díj qty = `lyuk × panel.quantity`; **duplungnál** `lyuk × ceil(quantity / 2)` (a ragasztott párból csak az egyiket fúrják).
+- **Pánthely oldal:** `Hosszú | Rövid` választó a darabszám mellett (default **Hosszú**), `quote_panels.panthelyfuras_oldal` (`hosszu` / `rovid`, régi sor: null). **Geometriai** hosszabb / rövidebb oldal (`max` / `min` a szál- és keresztirányból), **nem** a szálirányú „Hosszú felső/alsó” él. Mellette élő mm („Hosszú oldal: 720 mm”). **Négyzetnél** a szálirány dönt: a választó `Szálirány | Kereszt` (DB-ben ugyanaz: `hosszu` = szálirányú él, `rovid` = keresztirányú él), felirat „szálirányú / keresztirányú él”; előnézeten pöttyök (végeken 100 mm, közbülsők egyenletesen). Nincs méret-validáció. Megjelenés: lista `Pánthely 3 · hosszú`, detail `… (720 mm)`, PDF szabásjegyzék `Pánthelyfúrás 3 db – hosszú oldal (720 mm)`. Összesítő / szolgáltatássor változatlan.
 - Beállítás: `/beallitasok/opti`. Beírt **bruttó** Ft tárolva (`*_gross`); nettó ÁFA-bázis. Opti egységár = tárolt bruttó (nem nettó→bruttó round-trip). ÁFA = vágási díj ÁFÁ-ja. 0 Ft OK.
 - Snapshot: `quote_panels` flag/qty + `quote_service_lines` anyagonként.
 - Detail / PDF / Számlázz: megmunkálás sor a `quote_service_lines` Ft-jából (DB truth — lásd [13](13-numbers-units-formats.md) §6, [37](37-lapszabaszat-quote-workflow.md) §7).
 - Árazás: egész Ft / sor (anyag, él, szabás, megmunkálás); Σ sor = Opti / detail / PDF végösszeg.
 
-Migráció: `20260617_…`, `20260618_opti_panthelyfuras.sql`, `20260619_cutting_fees_gross.sql`.
+Migráció: `20260617_…`, `20260618_opti_panthelyfuras.sql`, `20260619_cutting_fees_gross.sql`, `20260634_opti_panthelyfuras_oldal.sql`.
 
 ## 8. Explicit NEM V1
 
@@ -133,4 +134,4 @@ Migráció: `20260617_…`, `20260618_opti_panthelyfuras.sql`, `20260619_cutting
 - Kliens Anthropic kulcs
 - Külön route `/opti/import`
 - localStorage / napos TTL a félkész Optira
-- Pánthely oldal (hosszú/rövid) / CNC pozíció
+- Pánthely CNC pozíció (pontos mm-távolságok, melyik konkrét él a kettőből)

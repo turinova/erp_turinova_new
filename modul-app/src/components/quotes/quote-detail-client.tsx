@@ -68,6 +68,7 @@ import {
 } from '@/lib/auth/surface'
 import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { TenantCompanyRow } from '@/lib/company/queries'
+import { panthelyLabel } from '@/lib/opti/panel-draft'
 import {
   formatQuotePrice
 } from '@/lib/opti/quote-calculations'
@@ -1527,7 +1528,13 @@ export function QuoteDetailClient({
                               panel.duplungolas ? 'Duplung' : null,
                               panel.szogvagas ? 'Szög' : null,
                               panel.panthelyfuras_quantity > 0
-                                ? `Pánthely ${panel.panthelyfuras_quantity}`
+                                ? panthelyLabel({
+                                    quantity: panel.panthelyfuras_quantity,
+                                    oldal: panel.panthelyfuras_oldal,
+                                    grainMm: panel.grain_mm,
+                                    crossMm: panel.cross_mm,
+                                    withMm: true
+                                  })
                                 : null
                             ]
                               .filter(Boolean)

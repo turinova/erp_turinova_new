@@ -6,7 +6,13 @@ import { SheetMaterialMenuSelect } from '@/components/opti/sheet-material-menu-s
 import { FormField } from '@/components/patterns/form-field'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
-import { edgeMaterialColor } from '@/lib/opti/panel-draft'
+import {
+  edgeMaterialColor,
+  panthelyEdgeIsHorizontal,
+  panthelyEdgeMm,
+  panthelyPositionsMm,
+  type PanthelyOldal
+} from '@/lib/opti/panel-draft'
 import {
   maxCrossMm,
   maxGrainMm,
@@ -27,6 +33,7 @@ type MaterialPreviewColumnProps = {
   edgeBId: string
   edgeCId: string
   edgeDId: string
+  panthely?: { count: number; oldal: PanthelyOldal } | null
   onChangeMaterialId: (
     id: string,
     material: OptiSheetMaterialOption | null
@@ -63,6 +70,7 @@ export function MaterialPreviewColumn({
   edgeBId,
   edgeCId,
   edgeDId,
+  panthely = null,
   onChangeMaterialId,
   onStartChange,
   onCancelChange,
@@ -101,6 +109,21 @@ export function MaterialPreviewColumn({
     const height = Math.min(maxHeight, maxWidth / aspectRatio)
     return { width: height * aspectRatio, height }
   }, [grainMm, crossMm, hasDims])
+
+  const hingeDots = useMemo(() => {
+    if (!hasDims || !panthely || panthely.count < 2) return []
+    const g = grainMm as number
+    const c = crossMm as number
+    const horizontal = panthelyEdgeIsHorizontal(g, c, panthely.oldal)
+    const edgeMm = panthelyEdgeMm(g, c, panthely.oldal)
+    const pxPerMm = horizontal ? size.width / g : size.height / c
+    const inset = Math.max(7, 22.5 * (size.width / g))
+    return panthelyPositionsMm(edgeMm, panthely.count).map((mm) =>
+      horizontal
+        ? { left: mm * pxPerMm, top: inset }
+        : { left: inset, top: size.height - mm * pxPerMm }
+    )
+  }, [hasDims, panthely, grainMm, crossMm, size])
 
   const colorA = edgeMaterialColor(edgeAId || null)
   const colorB = edgeMaterialColor(edgeBId || null)
@@ -280,6 +303,15 @@ export function MaterialPreviewColumn({
               aria-hidden
             />
           ) : null}
+
+          {hingeDots.map((dot, i) => (
+            <span
+              key={i}
+              className="absolute z-[4] size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-ink bg-surface"
+              style={{ left: dot.left, top: dot.top }}
+              aria-hidden
+            />
+          ))}
         </div>
       </div>
 

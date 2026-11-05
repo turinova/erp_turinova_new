@@ -11,7 +11,7 @@ import {
   DataTableRow
 } from '@/components/patterns/data-table'
 import { Button } from '@/components/ui/button'
-import type { OptiPanelDraft } from '@/lib/opti/panel-draft'
+import { panthelyLabel, type OptiPanelDraft } from '@/lib/opti/panel-draft'
 import { cn } from '@/lib/utils'
 
 export function PanelsTable({
@@ -164,7 +164,12 @@ export function PanelsTable({
                               ) : null}
                               {panel.panthelyfurasQuantity > 0 ? (
                                 <span className="rounded border border-border bg-subtle px-1.5 py-0.5 text-hint text-ink">
-                                  Pánthely {panel.panthelyfurasQuantity}
+                                  {panthelyLabel({
+                                    quantity: panel.panthelyfurasQuantity,
+                                    oldal: panel.panthelyfurasOldal,
+                                    grainMm: panel.grainMm,
+                                    crossMm: panel.crossMm
+                                  })}
                                 </span>
                               ) : null}
                             </span>
