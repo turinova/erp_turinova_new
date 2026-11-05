@@ -10,20 +10,50 @@ import {
   PARTNER_SEARCH_PATH,
   PARTNER_SETTINGS_PATH
 } from '@/lib/auth/surface'
+import { openStatus } from '@/lib/opening-hours'
+import { getArchiveNotice } from '@/lib/partner/archive-notice'
 import { loadPartnerHomeData } from '@/lib/partner/home-queries'
 
 export const metadata: Metadata = {
   title: 'Kezdőlap'
 }
 
-export default async function PartnerHomePage() {
-  const session = await getPartnerSession()
-  const home = await loadPartnerHomeData(
-    session?.id ?? '',
-    session?.selectedTenantId ?? null
+function budapestHour(now: Date): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Budapest',
+      hour: '2-digit',
+      hourCycle: 'h23'
+    }).format(now)
   )
+}
 
-  const [settings, search, opti, quotes, orders] = await Promise.all([
+/** Magyar névsorrend: „Mező Dávid” → „Dávid”. */
+function firstName(name: string | null | undefined): string | null {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0 || parts[0]!.includes('@')) return null
+  return parts[parts.length - 1]!
+}
+
+function greetingFor(now: Date, name: string | null | undefined): string {
+  const hour = budapestHour(now)
+  const salute =
+    hour >= 5 && hour < 9
+      ? 'Jó reggelt'
+      : hour >= 9 && hour < 18
+        ? 'Jó napot'
+        : 'Jó estét'
+  const first = firstName(name)
+  return first ? `${salute}, ${first}!` : `${salute}!`
+}
+
+export default async function PartnerHomePage() {
+  const now = new Date()
+  const session = await getPartnerSession()
+  const selectedTenantId = session?.selectedTenantId ?? null
+
+  const [data, settings, search, opti, quotes, orders] = await Promise.all([
+    loadPartnerHomeData(session?.id ?? '', selectedTenantId),
     partnerServerHref(PARTNER_SETTINGS_PATH),
     partnerServerHref(PARTNER_SEARCH_PATH),
     partnerServerHref(PARTNER_OPTI_PATH),
@@ -33,11 +63,11 @@ export default async function PartnerHomePage() {
 
   return (
     <PartnerHome
-      name={session?.name ?? 'Partner'}
-      companyLabel={home.companyLabel}
-      contact={home.contact}
-      draftCount={home.draftCount}
-      submittedCount={home.submittedCount}
+      greeting={greetingFor(now, session?.name)}
+      selectedTenantId={selectedTenantId}
+      data={data}
+      openStatus={data.openingHours ? openStatus(data.openingHours, now) : null}
+      archiveVisible={getArchiveNotice(now).visible}
       hrefs={{ settings, search, opti, quotes, orders }}
     />
   )

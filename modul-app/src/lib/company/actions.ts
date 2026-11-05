@@ -6,6 +6,11 @@ import {
   companyFormSchema,
   type CompanyFormInput
 } from '@/lib/company/parse'
+import {
+  draftToOpeningHours,
+  type DayKey,
+  type OpeningHoursDraft
+} from '@/lib/opening-hours'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 export type CompanyActionResult =
@@ -88,5 +93,63 @@ export async function upsertTenantCompany(
 
   revalidatePath(PAGE_PATH)
   revalidatePath('/home')
+  return { ok: true }
+}
+
+export type OpeningHoursActionResult =
+  | { ok: true }
+  | {
+      ok: false
+      message: string
+      dayErrors?: Partial<Record<DayKey, string>>
+    }
+
+const OPENING_NOTE_MAX = 300
+
+export async function updateTenantOpeningHours(input: {
+  draft: OpeningHoursDraft
+  note: string
+}): Promise<OpeningHoursActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const parsed = draftToOpeningHours(input.draft)
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      message: 'Ellenőrizd a nyitvatartást.',
+      dayErrors: parsed.errors
+    }
+  }
+  const note = input.note.trim()
+  if (note.length > OPENING_NOTE_MAX) {
+    return {
+      ok: false,
+      message: `A megjegyzés legfeljebb ${OPENING_NOTE_MAX} karakter lehet.`
+    }
+  }
+
+  const tenantId = ctx.user.tenantId!
+  const { error } = await ctx.supabase
+    .from('tenant_companies')
+    .update({
+      opening_hours: parsed.value,
+      opening_hours_note: note || null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('tenant_id', tenantId)
+
+  if (error) {
+    console.error('updateTenantOpeningHours', error.message)
+    return {
+      ok: false,
+      message: error.message.includes('opening_hours')
+        ? 'A nyitvatartás mentéséhez futtasd a 20260635 migrációt.'
+        : 'Nem sikerült menteni a nyitvatartást.'
+    }
+  }
+
+  revalidatePath(PAGE_PATH)
+  revalidatePath('/partner/home')
   return { ok: true }
 }

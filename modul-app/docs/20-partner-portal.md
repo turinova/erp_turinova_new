@@ -168,6 +168,17 @@ Local (staff host, pl. `localhost:3010`):
 5. Tone: `ready` = success, `ordered` = info
 6. `quotes.project_name` — Opti + detail szerkesztés; lista a szám alatt; PDF V1-ben nem
 7. Partner megrendelés detail: befizetés lista (összeg, dátum, mód) + fizetve/hátralék; belső comment rejtve
+8. Partner listák (`partner-quotes-list-client.tsx`):
+   - **Beküldött rendeléseim:** KPI sáv (Elvihető · Gyártásban · Fizetendő hátralék · Idén beküldve; kattintható szűrők) + URL `status` chip (`open` default · `ready` · `in_production` · `due` · `closed` · `all`; keresésnél mindig `all`). Oszlopok: Rendelés · Állapot (badge + következő lépés mondat) · Fizetendő · Összeg · „Részletek”.
+   - **Ajánlataim:** KPI (beküldetlen db · összérték · legrégebbi). Sorakció: „Szerkesztés” (Opti) + „Beküldés…” (`PartnerSubmitDialog` a listából).
+   - Egy kapcsolt cég egyszerre, de váltás után régi sorok más céghez tartozhatnak → „Cég: X” csak eltérő cégnél; másik cég draftja nem küldhető be / szerkeszthető („Cég váltása” link).
+   - Az egész sor kattintható → detail.
+9. Partner kezdőlap (`components/partner/home/*`), célcsoport: 50+ asztalos, kevés IT rutin:
+   - Sorrend: archívum sáv (customer-portal régi adatok, `lib/partner/archive-notice.ts`, nem bezárható, `ARCHIVE_UNTIL_ISO` után eltűnik) → napszakos üdvözlés + „Cég váltása” → 4 teli csempe (Új rendelés = egyetlen primary, Ajánlataim, Rendeléseim, Anyagkereső) → Legutóbbi rendeléseim (5) + Kapcsolat (telefon „Hívás”, útvonal, nyitvatartás „Most nyitva / Zárva”) → „Hogyan működik?” (nyitva, ha nincs beküldött rendelés) → GYIK (csukva).
+   - **Szándékos kivétel a `02`/`18` sűrűség alól, csak ezen az oldalon:** 15px törzs, 26px H1, 44px fő gombok; teli színes csempék (`--tile-*` token, nav domain hue, fehér szövegre ≥4.5:1). Gradiens / glow továbbra is tilos.
+   - Nincs „teendő” blokk (döntés). Időfüggő szöveg (napszak, nyitva, archívum) szerveren számolva → nincs hydration eltérés.
+   - Edge: nincs kapcsolt cég → „Cég kiválasztása” kártya a csempék helyén; cég nem fogad rendelést → szürke Opti csempe + telefon; hiányzó elérhetőség / nyitvatartás → sorok elrejtve.
+   - Nyitvatartás: `tenant_companies.opening_hours` (jsonb, `mon..sun → [{from,to}]`) + `opening_hours_note` — migráció `20260635`, szerkesztő: staff Cégadatok → Nyitvatartás. Logika + teszt: `lib/opening-hours.ts`.
 
 ### Fázis 8 — Platform KPI + partnerek
 

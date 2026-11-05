@@ -4,31 +4,45 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { CompanyLogoField } from '@/components/company/company-logo-field'
+import { OpeningHoursEditor } from '@/components/company/opening-hours-editor'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { upsertTenantCompany } from '@/lib/company/actions'
+import {
+  updateTenantOpeningHours,
+  upsertTenantCompany
+} from '@/lib/company/actions'
 import {
   formatCompanyRegNumber,
   formatPhoneNumber,
   formatTaxNumber
 } from '@/lib/company/parse'
-import type { TenantCompanyRow } from '@/lib/company/queries'
+import type {
+  TenantCompanyRow,
+  TenantOpeningHours
+} from '@/lib/company/queries'
 import { HU_PHONE_EXAMPLE } from '@/lib/customers/parse'
+import {
+  openingHoursToDraft,
+  type DayKey,
+  type OpeningHoursDraft
+} from '@/lib/opening-hours'
 
 type CompanySettingsFormProps = {
   initial: TenantCompanyRow
   tenantId: string
   canWrite: boolean
+  openingHours: TenantOpeningHours
 }
 
 export function CompanySettingsForm({
   initial,
   tenantId,
-  canWrite
+  canWrite,
+  openingHours
 }: CompanySettingsFormProps) {
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState(initial.name)
@@ -51,11 +65,19 @@ export function CompanySettingsForm({
     String(initial.quote_validity_days ?? 14)
   )
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [hoursDraft, setHoursDraft] = useState<OpeningHoursDraft>(() =>
+    openingHoursToDraft(openingHours.hours)
+  )
+  const [hoursNote, setHoursNote] = useState(openingHours.note ?? '')
+  const [hoursErrors, setHoursErrors] = useState<
+    Partial<Record<DayKey, string>>
+  >({})
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!canWrite) return
     setFieldErrors({})
+    setHoursErrors({})
 
     startTransition(async () => {
       const result = await upsertTenantCompany({
@@ -78,6 +100,18 @@ export function CompanySettingsForm({
         if (result.fieldErrors) setFieldErrors(result.fieldErrors)
         toast.error(result.message)
         return
+      }
+
+      if (openingHours.available) {
+        const hoursResult = await updateTenantOpeningHours({
+          draft: hoursDraft,
+          note: hoursNote
+        })
+        if (!hoursResult.ok) {
+          if (hoursResult.dayErrors) setHoursErrors(hoursResult.dayErrors)
+          toast.error(hoursResult.message)
+          return
+        }
       }
 
       toast.success('Cégadatok mentve.')
@@ -220,6 +254,31 @@ export function CompanySettingsForm({
             onChange={(e) => setAddress(e.target.value)}
           />
         </FormField>
+      </FormSection>
+
+      <FormSection
+        title="Nyitvatartás"
+        description="A partnerek kezdőlapján jelenik meg („Most nyitva / Zárva”). Ha minden nap zárva, nem jelenik meg."
+        columns={1}
+      >
+        {openingHours.available ? (
+          <OpeningHoursEditor
+            draft={hoursDraft}
+            onChange={setHoursDraft}
+            note={hoursNote}
+            onNoteChange={setHoursNote}
+            errors={hoursErrors}
+            disabled={!canWrite || pending}
+          />
+        ) : (
+          <p className="text-body text-ink-secondary">
+            A nyitvatartáshoz futtasd a{' '}
+            <code className="text-hint">
+              20260635_tenant_company_opening_hours.sql
+            </code>{' '}
+            migrációt.
+          </p>
+        )}
       </FormSection>
 
       <FormSection title="Adó- és nyilvántartási adatok" columns={2}>

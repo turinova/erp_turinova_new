@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+import { getPartnerSession } from '@/lib/auth/partner-session'
 import { getSessionUser } from '@/lib/auth/session'
 import { searchSheetMaterialsForOpti } from '@/lib/search/select-search'
 import { createClient } from '@/lib/supabase/server'
@@ -7,8 +8,14 @@ import { createClient } from '@/lib/supabase/server'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
+  // Staff vagy partner (partner: csak a kapcsolt cég anyagai).
   const user = await getSessionUser()
-  if (!user?.tenantId) {
+  let tenantId = user?.tenantId ?? null
+  if (!tenantId) {
+    const partner = await getPartnerSession()
+    tenantId = partner?.selectedTenantId ?? null
+  }
+  if (!tenantId) {
     return NextResponse.json({ error: 'Nincs belépés.' }, { status: 401 })
   }
 
@@ -27,7 +34,7 @@ export async function GET(request: Request) {
   try {
     const rows = await searchSheetMaterialsForOpti(
       supabase,
-      user.tenantId,
+      tenantId,
       q,
       limit
     )

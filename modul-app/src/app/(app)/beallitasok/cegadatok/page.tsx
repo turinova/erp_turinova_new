@@ -2,7 +2,11 @@ import type { Metadata } from 'next'
 
 import { CompanySettingsForm } from '@/components/company/company-settings-form'
 import { getSessionUser } from '@/lib/auth/session'
-import { getOrCreateTenantCompany } from '@/lib/company/queries'
+import {
+  getOrCreateTenantCompany,
+  getTenantOpeningHours,
+  type TenantOpeningHours
+} from '@/lib/company/queries'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -16,6 +20,11 @@ export default async function CompanySettingsPage() {
   let loadError: string | null = null
   let company: Awaited<ReturnType<typeof getOrCreateTenantCompany>> | null =
     null
+  let openingHours: TenantOpeningHours = {
+    hours: null,
+    note: null,
+    available: false
+  }
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
@@ -27,7 +36,9 @@ export default async function CompanySettingsPage() {
           user.companyName,
           { createIfMissing: canWrite }
         )
-        if (!company) {
+        if (company) {
+          openingHours = await getTenantOpeningHours(supabase, user.tenantId)
+        } else {
           loadError =
             'Még nincsenek cégadatok. Egy írási jogú felhasználónak kell először megnyitnia az oldalt.'
         }
@@ -73,6 +84,7 @@ export default async function CompanySettingsPage() {
       initial={company}
       tenantId={user.tenantId}
       canWrite={canWrite}
+      openingHours={openingHours}
     />
   )
 }

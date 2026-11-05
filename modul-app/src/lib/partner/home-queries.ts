@@ -1,6 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { getTenantOpeningHours } from '@/lib/company/queries'
+import type { OpeningHours } from '@/lib/opening-hours'
 import { resolvePartnerCompanyLabel } from '@/lib/partner/company-label'
+import {
+  listPartnerSubmittedQuotes,
+  type PartnerQuoteListItem
+} from '@/lib/partner/quotes-queries'
 import { createClient } from '@/lib/supabase/server'
 
 export type PartnerHomeContact = {
@@ -12,29 +18,35 @@ export type PartnerHomeContact = {
 
 export type PartnerHomeData = {
   companyLabel: string | null
+  companyName: string | null
   contact: PartnerHomeContact | null
+  openingHours: OpeningHours | null
+  openingHoursNote: string | null
   draftCount: number
+  openOrderCount: number
   submittedCount: number
+  /** null = betöltési hiba (a kártya hibasort mutat). */
+  recentOrders: PartnerQuoteListItem[] | null
+  /** null = nincs kapcsolt cég / nem ellenőrizhető. */
+  acceptsOrders: boolean | null
 }
 
 function buildAddressLine(row: {
-  country: string | null
   postal_code: string | null
   city: string | null
   address: string | null
 }): string | null {
   const cityLine = [row.postal_code, row.city].filter(Boolean).join(' ').trim()
-  const parts = [row.country, cityLine || null, row.address]
+  const parts = [cityLine || null, row.address]
     .map((p) => p?.trim())
     .filter(Boolean) as string[]
-  return parts.length > 0 ? parts.join(' · ') : null
+  return parts.length > 0 ? parts.join(', ') : null
 }
 
 function contactFromRow(row: {
   phone_number: string | null
   email: string | null
   website: string | null
-  country: string
   postal_code: string | null
   city: string | null
   address: string | null
@@ -50,7 +62,7 @@ function contactFromRow(row: {
 async function countPartnerQuotes(
   supabase: SupabaseClient,
   partnerId: string,
-  kind: 'draft' | 'submitted'
+  kind: 'draft' | 'submitted' | 'open'
 ): Promise<number> {
   let query = supabase
     .from('quotes')
@@ -63,6 +75,9 @@ async function countPartnerQuotes(
     query = query.is('portal_submitted_at', null).eq('status', 'draft')
   } else {
     query = query.not('portal_submitted_at', 'is', null)
+    if (kind === 'open') {
+      query = query.in('status', ['draft', 'ordered', 'in_production', 'ready'])
+    }
   }
 
   const { count, error } = await query
@@ -73,31 +88,66 @@ async function countPartnerQuotes(
   return count ?? 0
 }
 
+async function tenantAcceptsOrders(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<boolean | null> {
+  const { data, error } = await supabase.rpc('partner_can_read_tenant_catalog', {
+    p_tenant_id: tenantId
+  })
+  if (error) {
+    console.error('tenantAcceptsOrders', error.message)
+    return null
+  }
+  return Boolean(data)
+}
+
 export async function loadPartnerHomeData(
   partnerId: string,
   selectedTenantId: string | null
 ): Promise<PartnerHomeData> {
   const companyLabel = await resolvePartnerCompanyLabel(selectedTenantId)
 
-  const supabase = await createClient()
-  if (!supabase) {
-    return {
-      companyLabel,
-      contact: null,
-      draftCount: 0,
-      submittedCount: 0
-    }
+  const empty: PartnerHomeData = {
+    companyLabel,
+    companyName: null,
+    contact: null,
+    openingHours: null,
+    openingHoursNote: null,
+    draftCount: 0,
+    openOrderCount: 0,
+    submittedCount: 0,
+    recentOrders: null,
+    acceptsOrders: null
   }
 
-  const [draftCount, submittedCount, companyRow] = await Promise.all([
+  const supabase = await createClient()
+  if (!supabase || !partnerId) return empty
+
+  const [
+    draftCount,
+    submittedCount,
+    openOrderCount,
+    recentOrders,
+    companyRow,
+    opening,
+    acceptsOrders
+  ] = await Promise.all([
     countPartnerQuotes(supabase, partnerId, 'draft'),
     countPartnerQuotes(supabase, partnerId, 'submitted'),
+    countPartnerQuotes(supabase, partnerId, 'open'),
+    listPartnerSubmittedQuotes(supabase, {
+      partnerId,
+      filter: 'all',
+      page: 1,
+      limit: 5
+    })
+      .then((r) => r.rows)
+      .catch(() => null),
     selectedTenantId
       ? supabase
           .from('tenant_companies')
-          .select(
-            'phone_number, email, website, country, postal_code, city, address'
-          )
+          .select('name, phone_number, email, website, postal_code, city, address')
           .eq('tenant_id', selectedTenantId)
           .maybeSingle()
           .then(({ data, error }) => {
@@ -107,13 +157,25 @@ export async function loadPartnerHomeData(
             }
             return data
           })
+      : Promise.resolve(null),
+    selectedTenantId
+      ? getTenantOpeningHours(supabase, selectedTenantId)
+      : Promise.resolve(null),
+    selectedTenantId
+      ? tenantAcceptsOrders(supabase, selectedTenantId)
       : Promise.resolve(null)
   ])
 
   return {
     companyLabel,
+    companyName: companyRow?.name?.trim() || null,
     contact: companyRow ? contactFromRow(companyRow) : null,
+    openingHours: opening?.hours ?? null,
+    openingHoursNote: opening?.note ?? null,
     draftCount,
-    submittedCount
+    openOrderCount,
+    submittedCount,
+    recentOrders,
+    acceptsOrders
   }
 }

@@ -6,14 +6,20 @@ import { PartnerQuotesListClient } from '@/components/partner/partner-quotes-lis
 import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { PARTNER_SETTINGS_PATH } from '@/lib/auth/surface'
-import { listPartnerSubmittedQuotes } from '@/lib/partner/quotes-queries'
+import {
+  getPartnerOrderKpis,
+  listPartnerSubmittedQuotes,
+  parsePartnerOrderFilter,
+  type PartnerOrderKpis
+} from '@/lib/partner/quotes-queries'
 import { createClient } from '@/lib/supabase/server'
 
-export const metadata: Metadata = { title: 'Rendeléseim' }
+export const metadata: Metadata = { title: 'Beküldött rendeléseim' }
 
 type SearchParams = Promise<{
   q?: string
   page?: string
+  status?: string
 }>
 
 export default async function PartnerMegrendelesekPage({
@@ -25,11 +31,12 @@ export default async function PartnerMegrendelesekPage({
   const session = await getPartnerSession()
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
+  const filter = q ? 'all' : parsePartnerOrderFilter(params.status)
 
   if (!session) {
     return (
       <div className="space-y-3">
-        <h1 className="text-h1 text-ink">Megrendelések</h1>
+        <h1 className="text-h1 text-ink">Beküldött rendeléseim</h1>
         <p className="text-body text-ink-secondary">Nincs bejelentkezve.</p>
       </div>
     )
@@ -57,21 +64,27 @@ export default async function PartnerMegrendelesekPage({
   let rows: Awaited<ReturnType<typeof listPartnerSubmittedQuotes>>['rows'] = []
   let total = 0
   let limit = 25
+  let kpis: PartnerOrderKpis | null = null
 
   const supabase = await createClient()
   if (!supabase) {
     loadError = 'Az adatbázis kapcsolat nem elérhető.'
   } else {
     try {
-      const result = await listPartnerSubmittedQuotes(supabase, {
-        partnerId: session.id,
-        q: q || undefined,
-        page,
-        limit: 25
-      })
+      const [result, kpiResult] = await Promise.all([
+        listPartnerSubmittedQuotes(supabase, {
+          partnerId: session.id,
+          q: q || undefined,
+          filter,
+          page,
+          limit: 25
+        }),
+        getPartnerOrderKpis(supabase, session.id).catch(() => null)
+      ])
       rows = result.rows
       total = result.total
       limit = result.limit
+      kpis = kpiResult
     } catch (err) {
       loadError =
         err instanceof Error
@@ -83,7 +96,7 @@ export default async function PartnerMegrendelesekPage({
   if (loadError) {
     return (
       <div className="space-y-3">
-        <h1 className="text-h1 text-ink">Megrendelések</h1>
+        <h1 className="text-h1 text-ink">Beküldött rendeléseim</h1>
         <p
           className="max-w-xl rounded-md border border-danger/30 bg-danger-soft p-3 text-body text-danger-ink"
           role="alert"
@@ -103,6 +116,9 @@ export default async function PartnerMegrendelesekPage({
         page={page}
         limit={limit}
         initialQ={q}
+        initialFilter={filter}
+        selectedTenantId={session.selectedTenantId}
+        orderKpis={kpis}
       />
     </Suspense>
   )

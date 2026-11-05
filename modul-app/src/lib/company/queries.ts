@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { normalizeOpeningHours, type OpeningHours } from '@/lib/opening-hours'
+
 export type TenantCompanyRow = {
   tenant_id: string
   name: string
@@ -62,6 +64,38 @@ export async function getTenantCompany(
 
   if (!data) return null
   return normalizeCompanyRow(data as TenantCompanyRow)
+}
+
+export type TenantOpeningHours = {
+  hours: OpeningHours | null
+  note: string | null
+  /** false = a 20260635 migráció még nincs lefuttatva. */
+  available: boolean
+}
+
+/** Külön select, hogy migráció előtt se törjön a cégadatok betöltése. */
+export async function getTenantOpeningHours(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<TenantOpeningHours> {
+  const { data, error } = await supabase
+    .from('tenant_companies')
+    .select('opening_hours, opening_hours_note')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (error) {
+    // 42703 = undefined_column: a migráció még nincs lefuttatva.
+    if (error.code !== '42703') {
+      console.error('getTenantOpeningHours', error.message)
+    }
+    return { hours: null, note: null, available: false }
+  }
+  return {
+    hours: normalizeOpeningHours(data?.opening_hours ?? null),
+    note: data?.opening_hours_note?.trim() || null,
+    available: true
+  }
 }
 
 /** Lekérdezés; ha nincs sor és szabad írni, létrehoz a tenants.name alapján. */

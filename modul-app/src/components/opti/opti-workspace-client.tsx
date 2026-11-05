@@ -1330,6 +1330,16 @@ export function OptiWorkspaceClient({
             result={optiResult}
             sheetMaterials={allSheetMaterials}
           />
+          {isPartner ? (
+            <p
+              role="note"
+              className="rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-body text-warning-ink"
+            >
+              <span className="font-semibold">A táblakiosztás csak tájékoztató.</span>{' '}
+              A cég saját gépe és programja szerint szab — a végleges kiosztás
+              eltérhet.
+            </p>
+          ) : null}
           {quoteResult ? <OptiQuoteStrip quote={quoteResult} /> : null}
           {quoteResult && isPartner && partnerCustomer ? (
             <PartnerOptiSaveStrip

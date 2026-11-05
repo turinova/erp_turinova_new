@@ -49,6 +49,28 @@ const config: Config = {
           soft: 'var(--active-soft)',
           ink: 'var(--active-ink)'
         },
+        tile: {
+          opti: {
+            DEFAULT: 'var(--tile-opti)',
+            hover: 'var(--tile-opti-hover)'
+          },
+          quotes: {
+            DEFAULT: 'var(--tile-quotes)',
+            hover: 'var(--tile-quotes-hover)'
+          },
+          orders: {
+            DEFAULT: 'var(--tile-orders)',
+            hover: 'var(--tile-orders-hover)'
+          },
+          search: {
+            DEFAULT: 'var(--tile-search)',
+            hover: 'var(--tile-search-hover)'
+          },
+          archive: {
+            DEFAULT: 'var(--tile-archive)',
+            hover: 'var(--tile-archive-hover)'
+          }
+        },
         nav: {
           blue: {
             DEFAULT: 'var(--nav-blue)',

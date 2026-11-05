@@ -3,9 +3,14 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 
 import { PartnerQuotesListClient } from '@/components/partner/partner-quotes-list-client'
+import { partnerServerHref } from '@/lib/auth/partner-href-server'
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import { PARTNER_SETTINGS_PATH } from '@/lib/auth/surface'
-import { listPartnerDraftQuotes } from '@/lib/partner/quotes-queries'
+import {
+  getPartnerDraftKpis,
+  listPartnerDraftQuotes,
+  type PartnerDraftKpis
+} from '@/lib/partner/quotes-queries'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = { title: 'Ajánlataim' }
@@ -28,21 +33,22 @@ export default async function PartnerAjanlatokPage({
   if (!session) {
     return (
       <div className="space-y-3">
-        <h1 className="text-h1 text-ink">Ajánlatok</h1>
+        <h1 className="text-h1 text-ink">Ajánlataim</h1>
         <p className="text-body text-ink-secondary">Nincs bejelentkezve.</p>
       </div>
     )
   }
 
   if (!session.selectedTenantId) {
+    const settingsHref = await partnerServerHref(PARTNER_SETTINGS_PATH)
     return (
       <div className="space-y-3">
-        <h1 className="text-h1 text-ink">Ajánlatok</h1>
+        <h1 className="text-h1 text-ink">Ajánlataim</h1>
         <p className="rounded-md border border-warning/30 bg-warning-soft p-3 text-body text-warning-ink">
           Nincs kapcsolt cég. Válassz céget a Beállításokban.
         </p>
         <Link
-          href={PARTNER_SETTINGS_PATH}
+          href={settingsHref}
           className="text-hint text-ink no-underline hover:underline"
         >
           Beállítások → Kapcsolt cég
@@ -55,21 +61,26 @@ export default async function PartnerAjanlatokPage({
   let rows: Awaited<ReturnType<typeof listPartnerDraftQuotes>>['rows'] = []
   let total = 0
   let limit = 25
+  let kpis: PartnerDraftKpis | null = null
 
   const supabase = await createClient()
   if (!supabase) {
     loadError = 'Az adatbázis kapcsolat nem elérhető.'
   } else {
     try {
-      const result = await listPartnerDraftQuotes(supabase, {
-        partnerId: session.id,
-        q: q || undefined,
-        page,
-        limit: 25
-      })
+      const [result, kpiResult] = await Promise.all([
+        listPartnerDraftQuotes(supabase, {
+          partnerId: session.id,
+          q: q || undefined,
+          page,
+          limit: 25
+        }),
+        getPartnerDraftKpis(supabase, session.id).catch(() => null)
+      ])
       rows = result.rows
       total = result.total
       limit = result.limit
+      kpis = kpiResult
     } catch (err) {
       loadError =
         err instanceof Error
@@ -81,7 +92,7 @@ export default async function PartnerAjanlatokPage({
   if (loadError) {
     return (
       <div className="space-y-3">
-        <h1 className="text-h1 text-ink">Ajánlatok</h1>
+        <h1 className="text-h1 text-ink">Ajánlataim</h1>
         <p
           className="max-w-xl rounded-md border border-danger/30 bg-danger-soft p-3 text-body text-danger-ink"
           role="alert"
@@ -101,6 +112,9 @@ export default async function PartnerAjanlatokPage({
         page={page}
         limit={limit}
         initialQ={q}
+        initialFilter="all"
+        selectedTenantId={session.selectedTenantId}
+        draftKpis={kpis}
       />
     </Suspense>
   )
