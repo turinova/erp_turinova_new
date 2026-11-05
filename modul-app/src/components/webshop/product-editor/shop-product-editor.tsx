@@ -539,7 +539,7 @@ export function ShopProductEditor({
           )}
           <details className="mt-2">
             <summary className="cursor-pointer text-hint text-ink-secondary">
-              Részletek: termékoldal-minőség {pdp.score}/100 · AI-készség {ai.score}/100
+              Részletek: termékoldal-minőség {pdp.score}/100 · Agent Top {ai.score}/100
             </summary>
             <div className="mt-2 grid gap-2.5 lg:grid-cols-2">
               <PdpQualityPanel result={pdp} />

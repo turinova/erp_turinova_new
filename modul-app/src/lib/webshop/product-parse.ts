@@ -162,8 +162,11 @@ export type ShopProductInput = z.input<typeof shopProductSchema>
 export type ShopRequirementIssue = { field: string; message: string; label: string }
 
 /**
- * Ami nélkül a termék nem tehető ki a boltba. Az alap termék adatai (név, kép, ár, aktív)
- * az alapadatoknál szerkeszthetők — ezért külön kontextusként jönnek.
+ * Live kapu (W1): ami nélkül a termék nem tehető ki a boltba.
+ * Kategória / hosszú leírás / AI-készség → Agent Top (feed), nem Live.
+ * Az alap termék adatai (név, kép, ár, aktív) az alapadatoknál szerkeszthetők.
+ *
+ * @see docs/50-webshop-w1.md
  */
 export function shopRequirementIssues(
   data: Pick<
@@ -184,22 +187,6 @@ export function shopRequirementIssues(
   }
   if (!core.active) {
     out.push({ field: 'active', label: 'Aktív', message: 'A termék legyen aktív az alapadatoknál.' })
-  }
-  if (!data.webCategoryId && !data.webProductType?.trim()) {
-    out.push({ field: 'webCategoryId', label: 'Kategória', message: 'Válaszd ki, hol legyen a boltban.' })
-  }
-  if ((data.webDescriptionLong?.trim().length ?? 0) < SHOP_DESCRIPTION_MIN) {
-    out.push({
-      field: 'webDescriptionLong',
-      label: 'Leírás',
-      message: `Írj legalább ${SHOP_DESCRIPTION_MIN} karakteres leírást a vásárlónak.`
-    })
-  } else if ((data.webDescriptionShort?.trim().length ?? 0) < SHOP_SHORT_DESCRIPTION_MIN) {
-    out.push({
-      field: 'webDescriptionLong',
-      label: 'Leírás',
-      message: `A leírás eleje legyen legalább ${SHOP_SHORT_DESCRIPTION_MIN} karakter (ebből lesz a rövid szöveg).`
-    })
   }
   return out
 }

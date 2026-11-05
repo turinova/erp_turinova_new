@@ -81,7 +81,7 @@ Minden CE funkciósor leképezve. Ha nálunk nincs: `—` (nem felejtés).
 | Jogi / elállás / értékelések | — | — | ※ | — | |
 | Publikus storefront `/s/.../bolt` | — | — | ※ | — | jégelt |
 
-**Edge:** `WEBSHOP_ENABLED = false` — Pro webshopot **ne** add el élő ígéretként ([39](39-webshop-addon.md)).
+**Edge:** Webshop W1a be (`WEBSHOP_ENABLED`); Pro „élő bolt” pitch csak Stripe után ([50](50-webshop-w1.md), [39](39-webshop-addon.md)).
 
 ---
 

@@ -11,7 +11,7 @@ export function AiReadinessPanel({ result }: { result: AiReadiness }) {
     <div className="col-span-full rounded-md border border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-2.5 py-2">
         <p className="text-label font-semibold text-ink">
-          AI-készség{' '}
+          Agent Top{' '}
           <span className="font-normal tabular-nums text-ink-secondary">
             {result.score}/100
           </span>
@@ -29,12 +29,12 @@ export function AiReadinessPanel({ result }: { result: AiReadiness }) {
           )}
           {result.feedEligible
             ? 'Bekerül a Google és ChatGPT feedbe'
-            : 'Kimarad a feedekből, amíg a pirosakat nem javítod'}
+            : 'Kimarad a feedekből — a boltban ettől még lehet Live'}
         </p>
       </div>
       {failing.length === 0 ? (
         <p className="px-2.5 py-2 text-hint text-ink-secondary">
-          Minden ellenőrzés rendben — az AI keresők pontosan tudják ajánlani.
+          Agent Top kész — a keresők és LLM-ek ajánlhatják a terméket.
         </p>
       ) : (
         <ul className="divide-y divide-border">

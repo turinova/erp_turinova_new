@@ -1,6 +1,7 @@
 /**
  * Webshop / agent feed readiness — doc 38.
- * Szintek: blocked → indexable → competitive → agent_excellent
+ * Szintek (W1): blocked (Live hiány) → indexable (Live OK / Agent hiány) → competitive → agent_excellent
+ * @see docs/50-webshop-w1.md
  */
 
 export type WebKv = { key: string; value: string }
@@ -152,16 +153,17 @@ export function evaluateShopReady(row: ShopReadyInput): {
     (Boolean(brand) && nonEmpty(row.web_mpn)) ||
     row.web_identifier_exists === false
 
+  // Live (W1): slug + cím + kép + ár + aktív — kategória/leírás = Agent Top
   if (!nonEmpty(row.web_slug)) missing.push('Slug')
   if (!nonEmpty(title)) missing.push('Cím')
   if (!row.image_url?.trim()) missing.push('Fő kép')
   if (!(row.price_net > 0)) missing.push('Ár')
   if (!row.active) missing.push('Aktív')
 
-  const blocked = missing.length > 0
-  if (shortLen < 80) missing.push('Rövid leírás (≥80)')
-  if (longLen < 200) missing.push('Részletes leírás (≥200)')
-  if (!nonEmpty(brand)) missing.push('Márka')
+  const liveBlocked = missing.length > 0
+  const descLen = Math.max(shortLen, longLen)
+  if (descLen < 80) missing.push('Leírás (≥80, feed)')
+  if (!nonEmpty(brand)) missing.push('Márka (feed)')
   if (!nonEmpty(row.web_product_type)) missing.push('Kategória (product type)')
 
   let score = 0
@@ -185,18 +187,14 @@ export function evaluateShopReady(row: ShopReadyInput): {
   if (row.web_search_aliases.length > 0) score += 3
   if (score > 100) score = 100
 
-  if (blocked) {
+  if (liveBlocked) {
     return { level: 'blocked', score, missing }
   }
 
-  const indexable =
-    shortLen >= 80 &&
-    longLen >= 200 &&
-    nonEmpty(brand) &&
-    nonEmpty(row.web_product_type)
-
-  if (!indexable) {
-    return { level: 'blocked', score, missing }
+  // Agent Top minimum (OpenAI discovery): márka + tényszerű leírás
+  const agentTop = descLen >= 80 && nonEmpty(brand)
+  if (!agentTop) {
+    return { level: 'indexable', score, missing }
   }
 
   const competitive =

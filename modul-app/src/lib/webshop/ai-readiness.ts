@@ -1,7 +1,12 @@
 /**
- * AI-készség kapu: mennyire tudja egy ChatGPT / Google AI / Perplexity ügynök
- * biztosan ajánlani a terméket. Blokkoló hiba esetén a termék kimarad a feedekből.
+ * Agent Top / AI-készség kapu (W1): OpenAI ACP discovery 9 mező + adatminőség.
+ * Blokkoló hiba → kimarad a Google / ChatGPT feedből (`is_eligible_search`).
+ * Live bolt kapu külön: `shopRequirementIssues` (kép + ár + aktív + cím).
+ *
+ * @see docs/50-webshop-w1.md
  */
+
+import { SHOP_SHORT_DESCRIPTION_MIN } from '@/lib/webshop/product-parse'
 
 export type AiReadinessInput = {
   title: string
@@ -105,37 +110,44 @@ export function evaluateAiReadiness(input: AiReadinessInput): AiReadiness {
       fix: 'Válassz gyártót, vagy add meg a márkát.'
     },
     {
+      id: 'description',
+      ok: descLen >= SHOP_SHORT_DESCRIPTION_MIN,
+      severity: 'blocker',
+      label: `Tényszerű leírás (≥${SHOP_SHORT_DESCRIPTION_MIN} karakter)`,
+      fix: 'Írd le röviden, mi ez és mire való — ez kell a ChatGPT / Google feedhez.'
+    },
+    {
+      id: 'conflict',
+      ok: !titleConflict && !descConflict,
+      severity: 'blocker',
+      label: 'Név, leírás és kulcsadat egyezik',
+      fix: input.primarySpec
+        ? `A ${titleConflict ? 'névben' : 'leírásban'} ${fmtMm(titleConflict ?? descConflict ?? [])} szerepel, a „${input.primarySpec.name}” kulcsadat más. Javítsd, ami téves.`
+        : 'Ellenőrizd a méreteket.'
+    },
+    {
       id: 'identifier',
       ok: hasId || !input.identifierExists,
-      severity: 'blocker',
+      severity: 'warn',
       label: 'Termékazonosító (EAN vagy gyártói cikkszám)',
       fix: 'Add meg az EAN-t vagy az MPN-t — vagy jelöld: „Nincs vonalkódja és gyártói cikkszáma”.'
     },
     {
       id: 'category',
       ok: input.hasCategory,
-      severity: 'blocker',
+      severity: 'warn',
       label: 'Bolt kategória',
-      fix: 'Válaszd ki, hol van a boltban.'
+      fix: 'Válaszd ki, hol van a boltban — segít a keresőknek.'
     },
     {
       id: 'keyspecs',
       ok: input.keySpecsTotal === 0 || input.keySpecsFilled >= input.keySpecsTotal,
-      severity: 'blocker',
+      severity: 'warn',
       label:
         input.keySpecsTotal > 0
           ? `Kulcsadatok ${input.keySpecsFilled}/${input.keySpecsTotal}`
           : 'Kulcsadatok',
-      fix: 'Töltsd ki az összes kulcsadatot — ezek alapján dönti el az AI, hogy passzol-e.'
-    },
-    {
-      id: 'conflict',
-      ok: !titleConflict && !descConflict,
-      severity: 'warn',
-      label: 'Név, leírás és kulcsadat egyezik',
-      fix: input.primarySpec
-        ? `A ${titleConflict ? 'névben' : 'leírásban'} ${fmtMm(titleConflict ?? descConflict ?? [])} szerepel, a „${input.primarySpec.name}” kulcsadat más. Javítsd, ami téves.`
-        : 'Ellenőrizd a méreteket.'
+      fix: 'Töltsd ki a kulcsadatokat — ezek alapján dönti el az AI, hogy passzol-e.'
     },
     {
       id: 'gallery',
@@ -152,10 +164,10 @@ export function evaluateAiReadiness(input: AiReadinessInput): AiReadiness {
       fix: 'Írd be minden képnél, mit mutat (pl. „hátoldal, furatok 160 mm”).'
     },
     {
-      id: 'description',
+      id: 'description_rich',
       ok: descLen >= 200,
       severity: 'warn',
-      label: 'Leírás legalább ~200 karakter',
+      label: 'Részletesebb leírás (≥200 karakter)',
       fix: 'Írd le, mire való, mihez illik, mi van a dobozban.'
     },
     {

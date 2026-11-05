@@ -1,6 +1,6 @@
 # 40 — Storefront katalógus + AI-olvashatóság (F1–F3)
 
-> **JEGELVE — 2026-09-28.** A bolt ki van kapcsolva (`WEBSHOP_ENABLED = false`). Részletek és visszakapcsolás: [39](39-webshop-addon.md).
+> **W1 — 2026-11-05.** Bolt flag be (`WEBSHOP_ENABLED`). Live vs Agent Top / feed kapu: [50](50-webshop-w1.md). Add-on: [39](39-webshop-addon.md).
 
 Cél: a vásárló (és az AI ügynök) **egy lépésben** eljusson a pontos alkatrészhez,
 és a gép **ugyanazt** lássa, amit az ember. Migráció: `20260543_storefront_catalog.sql`.

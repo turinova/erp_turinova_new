@@ -1,6 +1,7 @@
 /**
  * Közös termék-feed forrás: Google Merchant XML + OpenAI (ChatGPT) JSONL.
- * Csak az AI-kapun átmenő termékek kerülnek ki (ai-readiness blokkolók nélkül).
+ * Csak Agent Top (`evaluateAiReadiness.feedEligible`) — OpenAI discovery 9 mező + konfliktus nélkül.
+ * Live bolt (`sellable_web`) ettől független — docs/50-webshop-w1.md.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'

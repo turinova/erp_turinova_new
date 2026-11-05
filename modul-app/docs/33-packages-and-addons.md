@@ -31,7 +31,7 @@ Kapcsolódó: [21](21-platform-ops.md), [23](23-lapszabaszat-addon.md), [29](29-
 | Belépőkamera (footcounter) | listaár **H** | Szoftver a Bolt+/Pro-ban |
 | SMS | **89 Ft/db** | Usage; lapszab / ügyfélrendelés |
 
-※ Webshop: `WEBSHOP_ENABLED = false` — Pro webshopot **ne** hirdess élő nélkül ([39](39-webshop-addon.md)).
+※ Webshop: `WEBSHOP_ENABLED = true` (W1a). Pro / marketing „élő webshop” ígéret csak Stripe (W1b) után — [50](50-webshop-w1.md), [39](39-webshop-addon.md).
 
 ---
 

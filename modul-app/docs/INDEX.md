@@ -42,8 +42,8 @@
 | [36-szamlazas-workflow.md](36-szamlazas-workflow.md) | **Számlázás** — Számlázz.hu Agent, `/szamlak` (Alap) |
 | [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md) | **Lapszabászat ajánlat→gyártás** — státusz, detail CTA, hol mit |
 | [38-agent-commerce.md](38-agent-commerce.md) | **Agent-ready B2C bolt** — PDP + checkout, Stripe wallet, feed/LLM adat |
-| [39-webshop-addon.md](39-webshop-addon.md) | **Webshop add-on — JEGELVE 2026-09-28** (`WEBSHOP_ENABLED`, archív: `archive/webshop`) — 12 900 Ft, kategória/attr törzs, shop-ready UI |
-| [40-storefront-catalog-ai.md](40-storefront-catalog-ai.md) | **Storefront katalógus + AI** — `/bolt`, kereső, szűrők, JSON-LD graph, feedek, AI-készség kapu |
+| [39-webshop-addon.md](39-webshop-addon.md) | **Webshop add-on** — W1 aktív (`WEBSHOP_ENABLED`); részletek [50](50-webshop-w1.md); archív kereső v2: `archive/webshop` |
+| [40-storefront-catalog-ai.md](40-storefront-catalog-ai.md) | **Storefront katalógus + AI** — `/bolt`, kereső, szűrők, JSON-LD graph, feedek, Agent Top kapu |
 | [41-webshop-legal.md](41-webshop-legal.md) | **Webshop jogi oldalak** — generált ÁSZF/adatkezelés/elállás…, online elállás, verziók, Webshop → Jogi oldalak / Elállások |
 | [42-ugyfelrendeles.md](42-ugyfelrendeles.md) | **Ügyfélrendelés** — special order, 4 státusz, PO + foglalás + SMS (Alap) |
 | [43-atveteli-blokk.md](43-atveteli-blokk.md) | **Átvételi blokk** — Opti hőnyomtató elismervény, Lapszabászat ajándék |
@@ -52,5 +52,6 @@
 | [47-opti-panel-import.md](47-opti-panel-import.md) | **Opti panel import** — szöveg + Anthropic kép; csak Szál/Kereszt/Db; certainty UI |
 | [48-nav-inbound-ap.md](48-nav-inbound-ap.md) | **NAV bejövő AP** — backlog ötlet: inbox, match, spend/ár (később) |
 | [49-vonalkod-lap.md](49-vonalkod-lap.md) | **Vonalkód lap** — A4 PDF rács (irodai nyomtató); nem ZPL 33×25 |
+| [50-webshop-w1.md](50-webshop-w1.md) | **Webshop W1** — plug-and-play Live + Agent Top (OpenAI 9), Stripe/W2/W3 fázisok |
 
-**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok ár: **`33`**. Funkció mátrix: **`46`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**. Agent commerce: **`38`**. Webshop add-on: **`39`**. Ügyfélrendelés: **`42`**. Átvételi blokk: **`43`**. Opti panel import: **`47`**. NAV bejövő AP (backlog): **`48`**. Vonalkód lap (A4 PDF): **`49`**.
+**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok ár: **`33`**. Funkció mátrix: **`46`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**. Agent commerce: **`38`**. Webshop add-on: **`39`** + W1 **`50`**. Ügyfélrendelés: **`42`**. Átvételi blokk: **`43`**. Opti panel import: **`47`**. NAV bejövő AP (backlog): **`48`**. Vonalkód lap (A4 PDF): **`49`**.

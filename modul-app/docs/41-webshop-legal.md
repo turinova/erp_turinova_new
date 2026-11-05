@@ -1,6 +1,6 @@
 # 41 — Webshop jogi oldalak (generált)
 
-> **JEGELVE — 2026-09-28.** A webshop ki van kapcsolva (`WEBSHOP_ENABLED = false`); a `20260551` migrációt jegelés alatt ne futtasd. Részletek: [39](39-webshop-addon.md).
+> **W1 — 2026-11-05.** Webshop flag be; jogi oldalak a Live/Agent Top részei. Migráció `20260551` kell a generált oldalakhoz. Kapu: [50](50-webshop-w1.md), add-on: [39](39-webshop-addon.md).
 
 A bolt kötelező jogi oldalai **egy kontextusból generálódnak** — nincs kézzel írt ÁSZF. A webshop külön fizetős modul, ezért **minden bemenet a Webshop menüben** él, és a webshop saját táblájában (`tenant_webshop_settings`) tárolódik. Az ERP cégadat (`tenant_companies`) csak **olvasott alapérték**; a webshopban felülírható, az ERP-t nem módosítja.
 

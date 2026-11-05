@@ -28,7 +28,7 @@ export const PLAN_BUNDLED_ADDON_KEYS: Record<string, readonly string[]> = {
   bolt: [],
   bolt_plus: ['pda_pos', 'jelenlet', 'footcounter'],
   muhely: ['lapszabaszat', 'partner_orders', 'quote_ready_sms'],
-  /** Webshop※ külön — amíg WEBSHOP_ENABLED=false, ne auto-enable. */
+  /** Webshop※ külön — W1b (Stripe) előtt ne auto-enable Pro bundelben. */
   pro: ['pda_pos', 'jelenlet', 'footcounter']
 }
 

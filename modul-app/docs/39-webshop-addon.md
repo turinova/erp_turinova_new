@@ -1,35 +1,22 @@
 # 39 — Webshop add-on (B2C online bolt)
 
-> **JEGELVE — 2026-09-28.** A modul ki van kapcsolva: `WEBSHOP_ENABLED = false` (`src/lib/webshop/enabled.ts`).
-> A kód a `main`-en marad, az adatok a DB-ben; felhasználó nem lát belőle semmit, futás közben nem csinál semmit.
+> **W1 aktív — 2026-11-05.** `WEBSHOP_ENABLED = true`. Lean Live + Agent Top kapuk: **[50-webshop-w1.md](50-webshop-w1.md)**.
 >
-> **Archív állapot:** tag `webshop-archive-2026-09-28` és branch `archive/webshop`. A branch tartalmazza a befejezetlen kereső v2-t
-> (`20260552_storefront_search.sql`, `lib/storefront/search/`, `/webshop/kereses`), ami a `main`-en **nincs**.
+> **Korábbi jegelés (2026-09-28):** flag false volt; archív: tag `webshop-archive-2026-09-28`, branch `archive/webshop` (kereső v2 — **ne merge** W1-be, ne futtasd `20260552`).
 >
-> **Mit kapcsol ki a flag:**
-> - `tenantHasWebshop` → mindig `false` (termék törzs: nincs Bolt kártya / szűrő / „Boltban” jelvény).
-> - Middleware: nincs storefront host-feloldás (nincs RPC kérésenként); `/bolt`, `/p/`, `/info/`, feedek, `llms.txt`, `/api/storefront/*`, `/api/webshop/*`, `/s/*` → 404.
-> - `/webshop/*` admin oldalak → 404 (`app/(app)/webshop/layout.tsx`); Webshop menücsoport rejtve.
-> - Platform: a `webshop` add-on **bekapcsolása** tiltott (kikapcsolás + publish freeze működik).
-> - `revalidateShopProduct` no-op; `cron/storefront-domains` azonnal visszatér.
-> - Jogosultság: Irodai sablonban nincs `/webshop*`; a felhasználó-szerkesztő elrejti a Webshop kategóriát (a meglévő page_access sorok megmaradnak).
-> - Marketing: árlista add-on kártya, bento „Webshop kapcsolat”, hogyan-működik szekció rejtve.
+> **Ops:**
+> 1. Vercel: `STOREFRONT_ROOT_DOMAIN` + (opcionális) `STOREFRONT_DEMO_TENANT_SLUG`.
+> 2. Cron: `storefront-domains` (saját domain W2; subdomainhez is hasznos).
+> 3. Platform → tenant → Webshop add-on be (`seed_webshop_defaults_for_tenant`).
+> 4. Marketing / Pro „élő webshop” ígéret: csak Stripe (W1b) után — addig belső / pilot.
 >
-> **Érintetlen (szándékosan):** tenant létrehozás (a webshop nem része az Alap plannak), `sales.channel = 'webshop'` enum, DB táblák és triggerek (`accessory_web_on_soft_delete`, `accessories_track_price`).
->
-> **Jegelés alatt NE futtasd:** `20260550`, `20260551`, **különösen** `20260552` (ERP táblákra — `accessories`, `manufacturers`, attribútumok — tesz triggert).
->
-> **Visszakapcsolás:**
-> 1. `WEBSHOP_ENABLED = true`, deploy.
-> 2. A kereső v2 kell? `git checkout archive/webshop -- <fájlok>` vagy merge; utána migrációk sorban (`20260550` → `20260552`).
-> 3. Vercel: `STOREFRONT_ROOT_DOMAIN` env vissza, `storefront-domains` cron vissza.
-> 4. Platform → tenant → Webshop add-on be (page access + `seed_webshop_defaults_for_tenant`).
+> **Érintetlen:** `sales.channel = 'webshop'`, DB táblák / triggerek.
 
-**Státusz:** P0 + PDP preview (fázis B); Stripe/checkout P1  
+**Státusz:** W1a (Live + Agent Top kapu) · Stripe W1b · lásd [50](50-webshop-w1.md)  
 **Key:** `webshop`  
 **Ár:** **12 900 Ft** nettó/hó  
 **Migráció:** `20260536_webshop_addon.sql` (+ mezők: `20260535_accessory_webshop.sql`; taxonomy: `20260537`; no-default-attrs: `20260538`; auto-enrich: `20260539`)  
-**Kapcsolat:** [33](33-packages-and-addons.md), [38](38-agent-commerce.md)
+**Kapcsolat:** [33](33-packages-and-addons.md), [38](38-agent-commerce.md), [50](50-webshop-w1.md)
 
 ---
 
