@@ -31,6 +31,7 @@ import BusinessIcon from '@mui/icons-material/Business'
 import Paper from '@mui/material/Paper'
 import { toast } from 'react-toastify'
 import { MigrationDeadlineBanner } from '@/components/migration/MigrationDeadlineBanner'
+import { ArchiveHostBanner } from '@/components/migration/ArchiveHostBanner'
 import type { MigrationNotice } from '@/lib/migration-notice'
 interface TenantCompanyInfo {
   name?: string | null
@@ -54,6 +55,7 @@ interface HomeClientProps {
   finishedCount: number
   companyInfo?: TenantCompanyInfo | null
   migrationNotice: MigrationNotice
+  isArchiveHost?: boolean
 }
 
 export default function HomeClient({
@@ -64,7 +66,8 @@ export default function HomeClient({
   inProgressCount,
   finishedCount,
   companyInfo = null,
-  migrationNotice
+  migrationNotice,
+  isArchiveHost = false
 }: HomeClientProps) {
   const [suggestionText, setSuggestionText] = useState('')
   const [rating, setRating] = useState<number | null>(null)
@@ -132,6 +135,7 @@ export default function HomeClient({
 
   return (
     <div className='flex flex-col gap-6'>
+      {isArchiveHost ? <ArchiveHostBanner /> : null}
       <MigrationDeadlineBanner notice={migrationNotice} draftCount={savedQuotesCount} />
 
       <Grid container spacing={6} alignItems='stretch'>

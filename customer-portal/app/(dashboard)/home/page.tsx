@@ -3,6 +3,8 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import HomeClient from './HomeClient'
 import { getCompanyInfo } from '@/lib/company-data-server'
 import { getMigrationNotice } from '@/lib/migration-notice'
+import { isArchiveHost } from '@/lib/archive-host'
+import { headers } from 'next/headers'
 
 export const metadata = {
   title: 'Kezdőlap - Turinova Ügyfélportál',
@@ -112,6 +114,8 @@ export default async function HomePage() {
 
     console.log(`[Home SSR] Stats - Saved: ${savedQuotesCount}, Total Orders: ${totalOrders}, In Progress: ${inProgressCount}, Finished: ${finishedCount}`)
 
+    const host = (await headers()).get('host')
+
     return (
       <HomeClient
         customerName={customer.name}
@@ -122,6 +126,7 @@ export default async function HomePage() {
         finishedCount={finishedCount}
         companyInfo={companyInfo}
         migrationNotice={getMigrationNotice()}
+        isArchiveHost={isArchiveHost(host)}
       />
     )
   } catch (error) {

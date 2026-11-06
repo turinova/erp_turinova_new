@@ -41,10 +41,17 @@ import {
   REGISTRATION_CLOSED_MESSAGE,
   REGISTRATION_CLOSED_TITLE
 } from '@/lib/migration-notice'
+import { isArchiveHost } from '@/lib/archive-host'
+import { ArchiveHostBanner } from '@/components/migration/ArchiveHostBanner'
 
 const LoginV2 = ({ mode }: { mode: Mode }) => {
   // States
   const [isPasswordShown, setIsPasswordShown] = useState(false)
+  const [onArchiveHost, setOnArchiveHost] = useState(false)
+
+  useEffect(() => {
+    setOnArchiveHost(isArchiveHost(window.location.host))
+  }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -207,8 +214,13 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
         <div className='flex flex-col gap-5 is-full sm:is-auto md:is-full sm:max-is-[400px] md:max-is-[unset] mbs-11 sm:mbs-14 md:mbs-0'>
           <div>
             <Typography variant='h4'>{`Üdvözöljük a ${themeConfig.templateName} rendszerben! 👋🏻`}</Typography>
-            <Typography className='mbs-1'>Kérjük, jelentkezzen be a fiókjába</Typography>
+            <Typography className='mbs-1'>
+              {onArchiveHost
+                ? 'Archívum — jelentkezzen be a régi jelszavával'
+                : 'Kérjük, jelentkezzen be a fiókjába'}
+            </Typography>
           </div>
+          {onArchiveHost ? <ArchiveHostBanner /> : null}
           <form
             noValidate
             autoComplete='off'

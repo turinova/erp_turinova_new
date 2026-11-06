@@ -8,6 +8,10 @@ export const NEW_SYSTEM_URL = 'https://turinova.hu'
 export const NEW_SYSTEM_LABEL = 'turinova.hu'
 export const ARCHIVE_URL = 'https://archiv.turinova.hu'
 export const ARCHIVE_LABEL = 'archiv.turinova.hu'
+/** Hostname only (no protocol). Canonical archive host — not `archive.`. */
+export const ARCHIVE_HOST = 'archiv.turinova.hu'
+/** English typo host → redirect to ARCHIVE_HOST in middleware when DNS exists. */
+export const ARCHIVE_HOST_TYPO = 'archive.turinova.hu'
 
 export const SUPPORT_PHONE_LABEL = '06 30 999 2800'
 export const SUPPORT_PHONE_TEL = '+36309992800'

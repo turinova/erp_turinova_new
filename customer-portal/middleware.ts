@@ -2,10 +2,21 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 import { createServerClient } from '@supabase/ssr'
+import { ARCHIVE_HOST, isArchiveTypoHost, normalizeHost } from '@/lib/archive-host'
 
 // Permission checks are now handled client-side by the PermissionProvider
 
 export async function middleware(req: NextRequest) {
+  // English typo host → canonical archiv. (Phase 1: only if DNS points here)
+  const requestHost = normalizeHost(req.headers.get('host') ?? req.headers.get('x-forwarded-host'))
+  if (isArchiveTypoHost(requestHost)) {
+    const dest = new URL(req.url)
+    dest.protocol = 'https:'
+    dest.hostname = ARCHIVE_HOST
+    dest.port = ''
+    return NextResponse.redirect(dest, 308)
+  }
+
   // Skip middleware for API routes
   if (req.nextUrl.pathname.startsWith('/api/')) {
     return NextResponse.next()
