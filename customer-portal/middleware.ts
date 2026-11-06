@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 import { createServerClient } from '@supabase/ssr'
-import { ARCHIVE_HOST, isArchiveTypoHost, normalizeHost } from '@/lib/archive-host'
+import {
+  ARCHIVE_HOST,
+  isArchiveHost,
+  isArchiveTypoHost,
+  normalizeHost
+} from '@/lib/archive-host'
 
 // Permission checks are now handled client-side by the PermissionProvider
 
@@ -14,6 +19,13 @@ export async function middleware(req: NextRequest) {
     dest.protocol = 'https:'
     dest.hostname = ARCHIVE_HOST
     dest.port = ''
+    return NextResponse.redirect(dest, 308)
+  }
+
+  // Archive host: landing `/` → login (partner CTA / bookmarks)
+  if (isArchiveHost(requestHost) && req.nextUrl.pathname === '/') {
+    const dest = req.nextUrl.clone()
+    dest.pathname = '/login'
     return NextResponse.redirect(dest, 308)
   }
 

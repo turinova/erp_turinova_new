@@ -35,7 +35,7 @@ export function ArchiveBanner() {
         rel="noopener noreferrer"
         className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-white px-4 text-[15px] font-semibold text-tile-archive no-underline transition-colors hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
       >
-        Régi rendeléseim megnyitása
+        Belépés az archívumba
         <ExternalLink className="size-4" aria-hidden />
         <span className="sr-only">(új lapon nyílik)</span>
       </a>

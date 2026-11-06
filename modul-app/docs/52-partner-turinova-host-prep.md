@@ -51,4 +51,4 @@ Site URL: Nov 9-ig maradhat az aktuális partner origin (`https://optinova.hu`).
 - [ ] `https://turinova.hu/login` partner (nem staff)
 - [ ] Migráns: jelszó beállítás / recovery
 - [ ] `https://app.optinova.hu/login` staff változatlan
-- [ ] `https://archiv.turinova.hu/login` régi portal
+- [ ] `https://archiv.turinova.hu/login` régi portal (CTA / FAQ ezt a pathot használja)

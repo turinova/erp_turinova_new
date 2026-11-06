@@ -25,7 +25,7 @@ Tisztelt Partnerünk!
 
 **Korábbi megrendelései** még kb. 3 hónapig megtekinthetők:
 
-➡️ **https://archiv.turinova.hu**  
+➡️ **https://archiv.turinova.hu/login**  
 (ott a **régi** e-mail + **régi** jelszó kell)
 
 Fontos:
@@ -41,7 +41,7 @@ Turinova / Hírös-Ablak
 
 ## SMS (rövid)
 
-Nov 9-től új megrendelés: turinova.hu/login (ugyanaz az email, új jelszó). Régi rendelések: archiv.turinova.hu (régi jelszó). Tel: 06 30 999 2800
+Nov 9-től új megrendelés: turinova.hu/login (ugyanaz az email, új jelszó). Régi rendelések: archiv.turinova.hu/login (régi jelszó). Tel: 06 30 999 2800
 
 ---
 

@@ -55,6 +55,7 @@ A Fázis 1 kód (archív banner, typo redirect) legyen a customer-portal `main`-
 
 ## 5. Smoke checklist
 
+- [ ] `https://archiv.turinova.hu/` → 308 `/login`
 - [ ] `https://archiv.turinova.hu/login` betölt, **Archívum** info banner látszik
 - [ ] Régi email + **régi** jelszó → `/home`, archív banner a kezdőlapon
 - [ ] Mentett ajánlat / rendelés lista OK

@@ -6,7 +6,10 @@ export const MIGRATION_SWITCH_LABEL = 'November 9-től'
 
 export const NEW_SYSTEM_URL = 'https://turinova.hu'
 export const NEW_SYSTEM_LABEL = 'turinova.hu'
-export const ARCHIVE_URL = 'https://archiv.turinova.hu'
+export const ARCHIVE_ORIGIN = 'https://archiv.turinova.hu'
+export const ARCHIVE_LOGIN_PATH = '/login'
+/** Belépő link — gyökér landing helyett /login. */
+export const ARCHIVE_URL = `${ARCHIVE_ORIGIN}${ARCHIVE_LOGIN_PATH}`
 export const ARCHIVE_LABEL = 'archiv.turinova.hu'
 /** Hostname only (no protocol). Canonical archive host — not `archive.`. */
 export const ARCHIVE_HOST = 'archiv.turinova.hu'
