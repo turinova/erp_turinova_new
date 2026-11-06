@@ -27,6 +27,11 @@ import { useIntersection } from '@/hooks/useIntersection'
 
 // Component Imports
 import DropdownMenu from './DropdownMenu'
+import {
+  REGISTRATION_CLOSED,
+  REGISTRATION_CLOSED_MESSAGE,
+  REGISTRATION_CLOSED_TITLE
+} from '@/lib/migration-notice'
 
 type Props = {
   mode: Mode
@@ -66,16 +71,34 @@ const Wrapper = (props: WrapperProps) => {
           {children}
           <Divider sx={{ my: 2 }} />
           <div className='flex flex-col gap-3'>
-            <Button
-              component={Link}
-              href='/register'
-              variant='contained'
-              color='primary'
-              fullWidth
-              onClick={() => setIsDrawerOpen(false)}
-            >
-              Regisztráció
-            </Button>
+            {REGISTRATION_CLOSED ? (
+              <>
+                <Typography variant='body2' color='text.secondary'>
+                  <strong>{REGISTRATION_CLOSED_TITLE}.</strong> {REGISTRATION_CLOSED_MESSAGE}
+                </Typography>
+                <Button
+                  component={Link}
+                  href='/login'
+                  variant='contained'
+                  color='primary'
+                  fullWidth
+                  onClick={() => setIsDrawerOpen(false)}
+                >
+                  Bejelentkezés
+                </Button>
+              </>
+            ) : (
+              <Button
+                component={Link}
+                href='/register'
+                variant='contained'
+                color='primary'
+                fullWidth
+                onClick={() => setIsDrawerOpen(false)}
+              >
+                Regisztráció
+              </Button>
+            )}
           </div>
         </div>
       </Drawer>

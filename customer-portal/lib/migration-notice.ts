@@ -12,6 +12,14 @@ export const ARCHIVE_LABEL = 'archiv.turinova.hu'
 export const SUPPORT_PHONE_LABEL = '06 30 999 2800'
 export const SUPPORT_PHONE_TEL = '+36309992800'
 
+/** Új fiók létrehozása a régi portálon zárva Nov 9-ig (átállás). */
+export const REGISTRATION_CLOSED = true
+export const REGISTRATION_CLOSED_TITLE = 'A regisztráció átmenetileg szünetel'
+export const REGISTRATION_CLOSED_MESSAGE =
+  'Új fiókot jelenleg nem lehet létrehozni. November 9-től az új rendszerben (turinova.hu) újra megnyílik a regisztráció.'
+export const REGISTRATION_CLOSED_API_ERROR =
+  'A regisztráció átmenetileg szünetel. November 9-től újra megnyílik az új rendszerben (turinova.hu).'
+
 export type MigrationPhase = 'before' | 'lastDay' | 'after'
 
 export interface MigrationNotice {

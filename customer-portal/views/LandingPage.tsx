@@ -7,12 +7,19 @@ import Link from 'next/link'
 import Button from '@mui/material/Button'
 import Typography from '@mui/material/Typography'
 import Box from '@mui/material/Box'
+import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
 
 // Type Imports
 import type { Mode } from '@core/types'
 
 // Hook Imports
 import { useImageVariant } from '@core/hooks/useImageVariant'
+import {
+  REGISTRATION_CLOSED,
+  REGISTRATION_CLOSED_MESSAGE,
+  REGISTRATION_CLOSED_TITLE
+} from '@/lib/migration-notice'
 
 const LandingPage = ({ mode }: { mode: Mode }) => {
   // Vars
@@ -27,9 +34,9 @@ const LandingPage = ({ mode }: { mode: Mode }) => {
       <div className='flex items-center flex-col text-center gap-10'>
         {/* Logo */}
         <Box sx={{ mb: 2 }}>
-          <img 
-            src='/images/turinova-logo.png' 
-            alt='Turinova Logo' 
+          <img
+            src='/images/turinova-logo.png'
+            alt='Turinova Logo'
             style={{ height: '80px', width: 'auto', objectFit: 'contain' }}
           />
         </Box>
@@ -44,22 +51,45 @@ const LandingPage = ({ mode }: { mode: Mode }) => {
           </Typography>
         </div>
 
-        {/* Register Button */}
-        <Button 
-          href='/register' 
-          component={Link} 
-          variant='contained' 
-          color='success'
-          size='large'
-          sx={{ 
-            px: 6, 
-            py: 2,
-            fontSize: '1.1rem',
-            fontWeight: 600
-          }}
-        >
-          Regisztráció
-        </Button>
+        {REGISTRATION_CLOSED ? (
+          <Box sx={{ maxWidth: 480, width: '100%' }}>
+            <Alert severity='warning' variant='outlined' sx={{ textAlign: 'left', mb: 3 }}>
+              <AlertTitle>{REGISTRATION_CLOSED_TITLE}</AlertTitle>
+              {REGISTRATION_CLOSED_MESSAGE}
+            </Alert>
+            <Button
+              href='/login'
+              component={Link}
+              variant='contained'
+              color='primary'
+              size='large'
+              sx={{
+                px: 6,
+                py: 2,
+                fontSize: '1.1rem',
+                fontWeight: 600
+              }}
+            >
+              Bejelentkezés
+            </Button>
+          </Box>
+        ) : (
+          <Button
+            href='/register'
+            component={Link}
+            variant='contained'
+            color='success'
+            size='large'
+            sx={{
+              px: 6,
+              py: 2,
+              fontSize: '1.1rem',
+              fontWeight: 600
+            }}
+          >
+            Regisztráció
+          </Button>
+        )}
       </div>
       <img src={miscBackground} className='absolute bottom-0 z-[-1] is-full max-md:hidden' />
     </div>

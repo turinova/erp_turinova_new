@@ -14,6 +14,8 @@ import InputAdornment from '@mui/material/InputAdornment'
 import Checkbox from '@mui/material/Checkbox'
 import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
+import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
 
 // Third-party Imports
 import classnames from 'classnames'
@@ -34,6 +36,11 @@ import themeConfig from '@configs/themeConfig'
 // Hook Imports
 import { useImageVariant } from '@core/hooks/useImageVariant'
 import { useSettings } from '@core/hooks/useSettings'
+import {
+  REGISTRATION_CLOSED,
+  REGISTRATION_CLOSED_MESSAGE,
+  REGISTRATION_CLOSED_TITLE
+} from '@/lib/migration-notice'
 
 const LoginV2 = ({ mode }: { mode: Mode }) => {
   // States
@@ -255,17 +262,21 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             >
               {isLoading ? 'Bejelentkezés...' : 'Bejelentkezés megrendelőknek'}
             </Button>
-            <div className='flex justify-center items-center flex-wrap gap-2'>
-              <Typography>Még nincs fiókom, regisztrálok!</Typography>
-            </div>
-            <Button 
-              fullWidth 
-              variant='outlined' 
-              component={Link} 
-              href='/register'
-            >
-              Regisztráció
-            </Button>
+            {REGISTRATION_CLOSED ? (
+              <Alert severity='warning' variant='outlined'>
+                <AlertTitle>{REGISTRATION_CLOSED_TITLE}</AlertTitle>
+                {REGISTRATION_CLOSED_MESSAGE}
+              </Alert>
+            ) : (
+              <>
+                <div className='flex justify-center items-center flex-wrap gap-2'>
+                  <Typography>Még nincs fiókom, regisztrálok!</Typography>
+                </div>
+                <Button fullWidth variant='outlined' component={Link} href='/register'>
+                  Regisztráció
+                </Button>
+              </>
+            )}
           </form>
         </div>
       </div>

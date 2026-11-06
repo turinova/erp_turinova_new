@@ -1,25 +1,33 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase-server'
+import {
+  REGISTRATION_CLOSED,
+  REGISTRATION_CLOSED_API_ERROR
+} from '@/lib/migration-notice'
 
 export async function POST(request: NextRequest) {
+  if (REGISTRATION_CLOSED) {
+    return NextResponse.json({ error: REGISTRATION_CLOSED_API_ERROR }, { status: 403 })
+  }
+
   try {
     const body = await request.json()
-    const { 
-      name, 
-      email, 
-      mobile, 
-      password, 
-      billing_name, 
-      billing_country, 
-      billing_city, 
-      billing_postal_code, 
-      billing_street, 
-      billing_house_number, 
-      billing_tax_number, 
-      billing_company_reg_number, 
-      selected_company_id, 
-      sms_notification 
+    const {
+      name,
+      email,
+      mobile,
+      password,
+      billing_name,
+      billing_country,
+      billing_city,
+      billing_postal_code,
+      billing_street,
+      billing_house_number,
+      billing_tax_number,
+      billing_company_reg_number,
+      selected_company_id,
+      sms_notification
     } = body
 
     if (!name || !email || !mobile || !password || !selected_company_id) {
@@ -96,11 +104,13 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Customer registered successfully:', customerData.email)
-    return NextResponse.json({ 
-      message: 'Sikeres regisztráció!', 
-      user: customerData
-    }, { status: 200 })
-
+    return NextResponse.json(
+      {
+        message: 'Sikeres regisztráció!',
+        user: customerData
+      },
+      { status: 200 }
+    )
   } catch (error: any) {
     console.error('Unexpected registration error:', error)
     return NextResponse.json({ error: 'Váratlan hiba történt a regisztráció során.' }, { status: 500 })
