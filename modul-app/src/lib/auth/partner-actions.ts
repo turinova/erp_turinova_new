@@ -281,7 +281,7 @@ export async function partnerRegisterAction(
     ) {
       return {
         error:
-          'Ez az email már foglalt. Ha céges fiókod van, az app.optinova.hu-n lépj be. Ha asztalos vagy, jelentkezz be.'
+          'Ez az email már foglalt. Ha céges fiókod van, az app.optinova.hu-n lépj be. Ha asztalos vagy, a turinova.hu-n jelentkezz be.'
       }
     }
     if (msg.includes('rate limit') || msg.includes('email rate')) {
@@ -308,7 +308,7 @@ export async function partnerRegisterAction(
     if ((memRows?.length ?? 0) > 0) {
       return {
         error:
-          'Ez az email céges (tenant) fiókhoz tartozik. Partner regisztráció nem lehetséges — lépj be az app.optinova.hu-n.'
+          'Ez az email céges (tenant) fiókhoz tartozik. Partner regisztráció nem lehetséges — lépj be az app.optinova.hu-n (céges felület).'
       }
     }
 
@@ -329,7 +329,7 @@ export async function partnerRegisterAction(
   if (!data.session && identities.length === 0) {
     return {
       error:
-        'Ez az email már foglalt. Ha céges fiókod van, az app.optinova.hu-n lépj be. Ha asztalos vagy, jelentkezz be.'
+        'Ez az email már foglalt. Ha céges fiókod van, az app.optinova.hu-n lépj be. Ha asztalos vagy, a turinova.hu-n jelentkezz be.'
     }
   }
 

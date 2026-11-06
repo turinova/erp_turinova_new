@@ -11,6 +11,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { archiveWriteLockedResponse, isArchiveWriteLocked } = await import(
+    '@/lib/archive-write-lock'
+  )
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     const { id } = await params
     const body = await request.json()

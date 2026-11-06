@@ -86,8 +86,8 @@ export function MigrationDeadlineBanner({ notice, draftCount }: MigrationDeadlin
       <Stack spacing={2}>
         {after ? (
           <Typography variant='body1' color='inherit'>
-            Új megrendeléseit már az új, gyorsabb és átláthatóbb rendszerben adhatja le. Korábbi megrendelései még 3
-            hónapig megtekinthetők az archívumban.
+            Új megrendeléseit már az új rendszerben adhatja le. Ezen a felületen mentés és beküldés le van zárva —
+            korábbi megrendelései még 3 hónapig megtekinthetők az archívumban.
           </Typography>
         ) : (
           <>

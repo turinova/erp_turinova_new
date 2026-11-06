@@ -8,6 +8,11 @@ import { getPortalAuthContext } from '@/lib/nettfront-portal-auth'
  * Body: { quoteIds: string[] } — only own drafts preferred; any own quotes ok.
  */
 export async function DELETE(request: NextRequest) {
+  const { archiveWriteLockedResponse, isArchiveWriteLocked } = await import(
+    '@/lib/archive-write-lock'
+  )
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     const ctx = await getPortalAuthContext()
     if ('error' in ctx) {

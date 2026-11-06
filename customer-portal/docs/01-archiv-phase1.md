@@ -70,7 +70,7 @@ A Fázis 1 kód (archív banner, typo redirect) legyen a customer-portal `main`-
 1. `turinova.hu` (+ www) → modul-app (partner)
 2. customer-portal publikus host: csak `archiv.turinova.hu`
 3. Régi Supabase Site URL → `https://archiv.turinova.hu`
-4. Opcionális: write-lock (submit/save tiltás)
+4. Write-lock: `lib/archive-write-lock.ts` — `MIGRATION_DEADLINE` után mentés/submit/opti/nettfront **403** (login + böngészés OK)
 
 ---
 

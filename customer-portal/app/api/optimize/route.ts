@@ -19,6 +19,11 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
+  const { archiveWriteLockedResponse, isArchiveWriteLocked } = await import(
+    '@/lib/archive-write-lock'
+  )
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   const apiStartTime = performance.now()
 
   try {

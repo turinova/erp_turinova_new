@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import {
+  archiveWriteLockedResponse,
+  isArchiveWriteLocked
+} from '@/lib/archive-write-lock'
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     const { id: quoteId } = await params
     const body = await request.json()

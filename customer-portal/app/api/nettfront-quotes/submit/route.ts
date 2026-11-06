@@ -118,6 +118,11 @@ async function findOrCreateTenantCustomer(
  * Body: { quoteId, paymentMethodId }
  */
 export async function POST(request: NextRequest) {
+  const { archiveWriteLockedResponse, isArchiveWriteLocked } = await import(
+    '@/lib/archive-write-lock'
+  )
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     const body = await request.json()
     const { quoteId, paymentMethodId } = body

@@ -50,7 +50,7 @@ export function PartnerSettingsForm({
     <div className="space-y-6">
       <PageHeader
         title="Online partner"
-        description="Ezek a beállítások az optinova.hu-s asztalos partnereket érintik."
+        description="Ezek a beállítások a turinova.hu-s asztalos partnereket érintik."
       />
 
       <FormSection

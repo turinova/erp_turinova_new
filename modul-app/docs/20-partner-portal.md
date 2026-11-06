@@ -9,7 +9,8 @@ Legacy ötletforrás (nem kód): `customer-portal` — regisztráció, cégvála
 
 ## 1. Egy mondatos döntés
 
-> **Asztalosok (partnerek) az `optinova.hu`-n regisztrálnak, nem tenant seat-ek; a kiválasztott cég anyagával/árával Optiznak; első draft mentéskor létrejön a cég ügyféltörzsében a linked customer; beküldés = draft + `portal_submitted_at`, staff az `app.optinova.hu`-n Online jelzéssel látja.** A tenant ezt **add-onként** kapcsolja.
+> **Asztalosok (partnerek) a `turinova.hu`-n regisztrálnak (Nov 9+; addig / legacy: `optinova.hu`), nem tenant seat-ek; a kiválasztott cég anyagával/árával Optiznak; első draft mentéskor létrejön a cég ügyféltörzsében a linked customer; beküldés = draft + `portal_submitted_at`, staff az `app.optinova.hu`-n Online jelzéssel látja (staff domain egyelőre nem költözik).** A tenant ezt **add-onként** kapcsolja.  
+> Host előkészítés: [52-partner-turinova-host-prep.md](52-partner-turinova-host-prep.md).
 
 ---
 
@@ -17,8 +18,9 @@ Legacy ötletforrás (nem kód): `customer-portal` — regisztráció, cégvála
 
 | Host | Ki | Auth | Publikus URL |
 |------|-----|------|----------------|
-| `app.optinova.hu` | Tenant staff | `tenant_memberships` + seat/session | `/login`, `/home`, … |
-| `optinova.hu` | Partner (asztalos) | `partner_profiles` — **nem** membership, **nem** seat | `/login`, `/home`, `/opti`, … (tiszta; belső rewrite → `/partner/*`) |
+| `app.optinova.hu` | Tenant staff | `tenant_memberships` + seat/session | `/login`, `/home`, … (**marad**; nem `app.turinova` most) |
+| `turinova.hu` (+ `www`) | Partner (asztalos) — **prod Nov 9+** | `partner_profiles` — **nem** membership, **nem** seat | `/login`, `/home`, `/opti`, … (tiszta; belső rewrite → `/partner/*`) |
+| `optinova.hu` (+ `www`) | Partner — legacy / dev alias | ugyanaz | ugyanaz, amíg a forgalom át nem megy |
 
 Staff single-login kick / logout: `staffLoginPath(surface)` — partner hoston **`/ceges-belepes`**, soha partner `/login` (path-ambiguity).
 

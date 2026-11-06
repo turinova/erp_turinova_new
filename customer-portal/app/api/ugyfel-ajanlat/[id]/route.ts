@@ -5,6 +5,11 @@ import { deletePortalCustomerQuote } from '@/lib/supabase-server'
 type Ctx = { params: Promise<{ id: string }> }
 
 export async function DELETE(_request: NextRequest, ctx: Ctx) {
+  const { archiveWriteLockedResponse, isArchiveWriteLocked } = await import(
+    '@/lib/archive-write-lock'
+  )
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     const { id } = await ctx.params
     const quoteId = String(id || '').trim()

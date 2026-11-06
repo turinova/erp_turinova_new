@@ -2,12 +2,18 @@ import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import {
+  archiveWriteLockedResponse,
+  isArchiveWriteLocked
+} from '@/lib/archive-write-lock'
 
 /**
  * DELETE - Bulk delete portal quotes
  * Customer portal version - deletes quotes for authenticated portal customer
  */
 export async function DELETE(request: NextRequest) {
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     console.log('[Portal Quotes Bulk Delete] Starting deletion...')
     

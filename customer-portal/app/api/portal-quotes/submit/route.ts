@@ -256,6 +256,11 @@ const findOrCreatePortalCustomer = async ({
  * 7. Link portal quote to company quote
  */
 export async function POST(request: NextRequest) {
+  const { archiveWriteLockedResponse, isArchiveWriteLocked } = await import(
+    '@/lib/archive-write-lock'
+  )
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     console.log('[Portal Quote Submit] Starting submission...')
     

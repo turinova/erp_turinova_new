@@ -24,6 +24,7 @@
 | [19-supabase-setup.md](19-supabase-setup.md) | **Supabase auth + tenancy** setup (env, SQL, seed) |
 | [20-session-snapshot.md](20-session-snapshot.md) | **P2 session snapshot** — aláírt cookie, lean middleware |
 | [20-partner-portal.md](20-partner-portal.md) | **Partner portal** — online asztalos, add-on, fázisok |
+| [52-partner-turinova-host-prep.md](52-partner-turinova-host-prep.md) | Partner host `turinova.hu` előkészítés (staff marad app.optinova) |
 | [21-platform-ops.md](21-platform-ops.md) | **Platform ops** — 1–2 fős üzem, P0 döntések, admin host |
 | [22-performance-playbook.md](22-performance-playbook.md) | **Lightning-fast fenntartás** — P0–P2 döntések, mérés, regresszió |
 | [23-lapszabaszat-addon.md](23-lapszabaszat-addon.md) | Lapszabászat add-on — entitlements, nav, deps |

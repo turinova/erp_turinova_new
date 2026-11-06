@@ -35,6 +35,11 @@ type CustomerPayload = {
  * Body: { quoteId?, customerData, inomatLines }
  */
 export async function POST(request: NextRequest) {
+  const { archiveWriteLockedResponse, isArchiveWriteLocked } = await import(
+    '@/lib/archive-write-lock'
+  )
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     const body = await request.json()
     const {

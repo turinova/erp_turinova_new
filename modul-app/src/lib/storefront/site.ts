@@ -109,6 +109,8 @@ function isAppHost(host: string, root: string | null): boolean {
   }
   if (host.endsWith('.localhost')) return true
   if (host === 'optinova.hu' || host.endsWith('.optinova.hu')) return true
+  // Partner apex (Nov 9+) + www — ne storefront tenant hostként kezelje
+  if (host === 'turinova.hu' || host === 'www.turinova.hu') return true
   return false
 }
 

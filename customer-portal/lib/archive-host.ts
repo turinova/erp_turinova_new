@@ -27,4 +27,4 @@ export function isArchiveTypoHost(hostHeader: string | null | undefined): boolea
 
 export const ARCHIVE_HOST_BANNER_TITLE = 'Archívum felület'
 export const ARCHIVE_HOST_BANNER_BODY =
-  'Ez a régi megrendelői portál archív címe. Új megrendelést az új rendszerben adjon le; itt a korábbi adatok megtekintéséhez jelentkezzen be a régi jelszavával.'
+  'Ez a régi megrendelői portál archív címe. Új megrendelést az új rendszerben adjon le; itt a korábbi adatok megtekintéséhez jelentkezzen be a régi jelszavával. November 9-től mentés és beküldés nem lehetséges.'

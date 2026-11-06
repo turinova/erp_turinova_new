@@ -5,6 +5,11 @@ import { persistBuiltCustomerQuote } from '@/lib/persist-customer-quote'
 
 /** Mentés PDF / Puppeteer nélkül. */
 export async function POST(request: NextRequest) {
+  const { archiveWriteLockedResponse, isArchiveWriteLocked } = await import(
+    '@/lib/archive-write-lock'
+  )
+  if (isArchiveWriteLocked()) return archiveWriteLockedResponse()
+
   try {
     const body = await request.json().catch(() => ({}))
     const built = await buildEmptyCustomerFacingHtml(body, { preview: false })

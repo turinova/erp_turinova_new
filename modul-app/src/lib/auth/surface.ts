@@ -1,15 +1,20 @@
 /**
- * Staff (app.) vs Partner (optinova.hu) vs Platform admin (admin.).
+ * Staff (app.optinova.hu) vs Partner (turinova.hu; optinova.hu = legacy/dev) vs Platform (admin.).
  *
  * Partner host: tiszta URL-ek → rewrite /partner/*
  * Platform host: tiszta URL-ek → rewrite /platform/*
  * Localhost staff: partner /platform path-mode; admin.localhost = platform host.
+ *
+ * Nov 9 cutover: partner production host = turinova.hu. Staff stays app.optinova.hu (not moved yet).
  */
 
 export type AuthSurface = 'staff' | 'partner' | 'platform'
 
 export const STAFF_HOST_LABEL = 'app.optinova.hu'
-export const PARTNER_HOST_LABEL = 'optinova.hu'
+/** Canonical partner host (user-facing). */
+export const PARTNER_HOST_LABEL = 'turinova.hu'
+/** Legacy / dev partner host — still resolves as partner until traffic moves. */
+export const PARTNER_HOST_LEGACY = 'optinova.hu'
 export const PLATFORM_HOST_LABEL = 'admin.optinova.hu'
 
 export function normalizeHostname(hostHeader: string | null): string {
@@ -37,13 +42,16 @@ export function resolveAuthSurface(hostname: string): AuthSurface {
     return 'platform'
   }
 
+  // Staff: explicit app.optinova + any app.* (app.turinova not in use yet — keep rule for safety)
   if (host === 'app.optinova.hu' || host.startsWith('app.')) {
     return 'staff'
   }
 
   if (
-    host === 'optinova.hu' ||
-    host === 'www.optinova.hu' ||
+    host === 'turinova.hu' ||
+    host === 'www.turinova.hu' ||
+    host === PARTNER_HOST_LEGACY ||
+    host === `www.${PARTNER_HOST_LEGACY}` ||
     host === 'partner.localhost' ||
     host.endsWith('.partner.localhost')
   ) {
@@ -79,7 +87,7 @@ export function isPlatformContext(
   )
 }
 
-/** Tiszta publikus pathok (optinova.hu címsáv). */
+/** Tiszta publikus pathok (partner host címsáv: turinova.hu). */
 export const PARTNER_LOGIN_PATH = '/login'
 export const PARTNER_REGISTER_PATH = '/register'
 export const PARTNER_FORGOT_PASSWORD_PATH = '/elfelejtett-jelszo'
