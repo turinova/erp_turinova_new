@@ -9,13 +9,17 @@ import { toast } from 'sonner'
 import { AccessoryRelatedSection } from '@/components/accessories/accessory-related-section'
 import { AiReadinessPanel } from '@/components/accessories/ai-readiness-panel'
 import { PdpQualityPanel } from '@/components/accessories/pdp-quality-panel'
+import { FormField } from '@/components/patterns/form-field'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { formatMoneyFt } from '@/lib/accessories/parse'
 import {
   evaluateShopReady,
+  suggestWebDescriptionShort,
   SHOP_READY_LABEL,
   shopReadyTone
 } from '@/lib/accessories/web-shop'
@@ -24,7 +28,10 @@ import { parseSpecNumber } from '@/lib/webshop/key-specs'
 import { evaluateAiReadiness } from '@/lib/webshop/ai-readiness'
 import type { WebshopShippingDefaults } from '@/lib/webshop/enrich'
 import { saveShopProduct } from '@/lib/webshop/product-actions'
-import { shopRequirementIssues } from '@/lib/webshop/product-parse'
+import {
+  SHOP_SHORT_DESCRIPTION_MIN,
+  shopRequirementIssues
+} from '@/lib/webshop/product-parse'
 import type { ShopProductDetail } from '@/lib/webshop/product-queries'
 import { evaluatePdpQuality } from '@/lib/webshop/pdp-quality'
 import type { ProductAttributeRow, WebCategoryRow } from '@/lib/webshop/types'
@@ -71,16 +78,16 @@ const GROUP_IDS: GroupId[] = [
   'halado'
 ]
 
-/** 'alap' = az alap termékadat (kép, ár, aktív) — azt az alapadatoknál kell javítani. */
-type TodoTarget = GroupId | 'alap'
+/** 'alap' = ERP alapadat; 'agent' = Agent Top panel (#agent). */
+type TodoTarget = GroupId | 'alap' | 'agent'
 
 const FIELD_GROUP: Record<string, TodoTarget> = {
   imageUrl: 'alap',
   priceNet: 'alap',
   active: 'alap',
   webCategoryId: 'alapok',
-  webDescriptionLong: 'alapok',
-  webDescriptionShort: 'alapok',
+  webDescriptionLong: 'agent',
+  webDescriptionShort: 'agent',
   webNetQuantity: 'kiszereles',
   webMultipack: 'kiszereles',
   webPriceTiers: 'kiszereles',
@@ -95,7 +102,7 @@ const FIELD_GROUP: Record<string, TodoTarget> = {
   webGroupId: 'valtozatok',
   webSlug: 'halado',
   webTitle: 'halado',
-  webBrand: 'halado',
+  webBrand: 'agent',
   webMpn: 'halado',
   webGoogleCategory: 'halado'
 }
@@ -108,7 +115,7 @@ function groupForField(field: string): TodoTarget {
 
 const PDP_GROUP: Record<string, TodoTarget> = {
   images: 'alap',
-  description: 'alapok',
+  description: 'agent',
   benefits: 'kerdesek',
   'key-specs': 'jellemzok',
   'net-content': 'kiszereles',
@@ -122,13 +129,13 @@ const PDP_GROUP: Record<string, TodoTarget> = {
 const AI_GROUP: Record<string, TodoTarget> = {
   image: 'alap',
   gallery: 'alap',
-  brand: 'halado',
+  brand: 'agent',
   identifier: 'halado',
   category: 'alapok',
   keyspecs: 'jellemzok',
   conflict: 'jellemzok',
   alt: 'media',
-  description: 'alapok',
+  description: 'agent',
   measure: 'meretek',
   dimensions: 'meretek'
 }
@@ -170,7 +177,8 @@ export function ShopProductEditor({
   const [alts, setAlts] = useState<Record<string, string>>(() => detail.web.web_image_alts)
   const [saved, setSaved] = useState(() => snapshot(webFormStateFromShop(detail), detail.web.web_image_alts))
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
-  const [open, setOpen] = useState<Set<GroupId>>(() => new Set(detail.exists ? [] : ['alapok']))
+  const [open, setOpen] = useState<Set<GroupId>>(() => new Set())
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const disabled = pending || !canWrite
   const dirty = snapshot(web, alts) !== saved
@@ -180,8 +188,14 @@ export function ShopProductEditor({
   )
 
   useEffect(() => {
-    const id = window.location.hash.replace('#csoport-', '') as GroupId
+    const hash = window.location.hash.replace(/^#/, '')
+    if (hash === 'agent') {
+      requestAnimationFrame(() => document.getElementById('agent')?.scrollIntoView())
+      return
+    }
+    const id = hash.replace('csoport-', '') as GroupId
     if (GROUP_IDS.includes(id)) {
+      setAdvancedOpen(true)
       setOpen((prev) => new Set(prev).add(id))
       requestAnimationFrame(() => document.getElementById(groupDomId(id))?.scrollIntoView())
     }
@@ -203,7 +217,15 @@ export function ShopProductEditor({
     })
   }
 
-  function reveal(id: GroupId) {
+  function reveal(id: GroupId | 'agent') {
+    if (id === 'agent') {
+      window.history.replaceState(null, '', '#agent')
+      requestAnimationFrame(() =>
+        document.getElementById('agent')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      )
+      return
+    }
+    setAdvancedOpen(true)
     setOpen((prev) => new Set(prev).add(id))
     window.history.replaceState(null, '', `#${groupDomId(id)}`)
     requestAnimationFrame(() =>
@@ -370,6 +392,8 @@ export function ShopProductEditor({
           .filter(([u, a]) => a && imageSet.has(u))
       )
     }
+    const wantLive = web.sellableWeb
+    const agentOk = ai.feedEligible
     startTransition(async () => {
       const result = await saveShopProduct(core.id, input)
       if (!result.ok) {
@@ -385,7 +409,13 @@ export function ShopProductEditor({
       }
       setFieldErrors({})
       setSaved(snapshot(web, alts))
-      toast.success(web.sellableWeb ? 'Bolt adatok mentve.' : 'Bolt adatok mentve — a termék nincs kint a boltban.')
+      toast.success(
+        wantLive
+          ? agentOk
+            ? 'Mentve — Live és Agent Top rendben.'
+            : 'Mentve — Live be. Agent Tophoz még hiányzik adat.'
+          : 'Mentve — nincs Live (nem látszik a boltban).'
+      )
       router.refresh()
     })
   }
@@ -423,11 +453,15 @@ export function ShopProductEditor({
 
   const groupProps = { web, patch, disabled, fieldErrors }
 
+  const liveOnly = issues.slice(0, TODO_LIMIT)
+  const descLen = web.webDescriptionLong.trim().length
+  const descLeft = SHOP_SHORT_DESCRIPTION_MIN - descLen
+
   return (
     <div>
       <PageHeader
         title={core.name}
-        description="Webshop → Bolt katalógus → bolt adatok"
+        description="Live = bolt · Agent Top = feed / LLM. Az ERP ár és kép az alapadatoknál."
         actions={
           <Button type="button" variant="secondary" onClick={() => router.push(CATALOG_PATH)}>
             Vissza a katalógushoz
@@ -445,237 +479,329 @@ export function ShopProductEditor({
       ) : null}
 
       <div className="w-full max-w-5xl space-y-2.5">
-        <div className="grid gap-2.5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <section className="flex gap-3 rounded-md border border-border bg-surface p-3.5">
-            <div className="size-16 shrink-0 overflow-hidden rounded border border-border bg-subtle">
-              {core.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={core.image_url} alt="" className="size-full object-cover" />
-              ) : (
-                <span className="flex size-full items-center justify-center text-ink-muted">
-                  <ImageOff className="size-5" aria-label="Nincs kép" />
-                </span>
-              )}
-            </div>
-            <div className="min-w-0 flex-1 space-y-0.5">
-              <p className="truncate text-body font-medium text-ink">{core.name}</p>
-              <p className="text-hint text-ink-secondary">
-                {core.sku} · {formatMoneyFt(core.price_gross)} / {core.unit_shortform} ·{' '}
-                {core.active ? 'Aktív' : 'Inaktív'} · {images.length} kép
-              </p>
-              <Link
-                href={`${CORE_PATH}/${core.id}`}
-                className="inline-flex items-center gap-1 text-hint text-ink underline underline-offset-2"
-              >
-                Név, ár, képek szerkesztése az alapadatoknál
-                <ArrowRight className="size-3" aria-hidden />
-              </Link>
-            </div>
-          </section>
-
-          <section className="space-y-2 rounded-md border border-border bg-surface p-3.5">
-            <div className="flex items-start justify-between gap-2">
-              <Switch
-                id="shop-sellable"
-                checked={web.sellableWeb}
-                disabled={disabled}
-                onCheckedChange={(v) => patch({ sellableWeb: v })}
-                label="Elérhető az online boltban"
-                description="Mentéskor lép életbe. A pult (POS) ettől független."
-              />
-              <StatusBadge tone={shopReadyTone(ready.level)}>{SHOP_READY_LABEL[ready.level]}</StatusBadge>
-            </div>
-            {web.sellableWeb && issues.length > 0 ? (
-              <p className="flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning-soft px-2.5 py-2 text-hint text-warning-ink" role="status">
-                <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-                Így nem menthető bekapcsolva — előbb pótold a lenti teendőket.
-              </p>
-            ) : null}
-          </section>
-        </div>
-
-        <section className="rounded-md border border-border bg-surface p-3.5">
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <h2 className="text-h3 text-ink">
-              {issues.length > 0 && !web.sellableWeb ? 'Ami kell a bekapcsoláshoz' : 'Teendők'}
-            </h2>
-            {todos.length > TODO_LIMIT ? (
-              <span className="text-hint text-ink-secondary">
-                {TODO_LIMIT} / {todos.length} látszik
+        <section className="flex gap-3 rounded-md border border-border bg-surface p-3.5">
+          <div className="size-16 shrink-0 overflow-hidden rounded border border-border bg-subtle">
+            {core.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={core.image_url} alt="" className="size-full object-cover" />
+            ) : (
+              <span className="flex size-full items-center justify-center text-ink-muted">
+                <ImageOff className="size-5" aria-label="Nincs kép" />
               </span>
-            ) : null}
+            )}
           </div>
-          {todos.length === 0 ? (
-            <p className="text-hint text-success-ink">Minden fontos adat megvan. Szép munka!</p>
-          ) : (
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="truncate text-body font-medium text-ink">{core.name}</p>
+            <p className="text-hint text-ink-secondary">
+              {core.sku} · {formatMoneyFt(core.price_gross)} / {core.unit_shortform} ·{' '}
+              {core.active ? 'Aktív' : 'Inaktív'} · {images.length} kép
+            </p>
+            <Link
+              href={`${CORE_PATH}/${core.id}`}
+              className="inline-flex items-center gap-1 text-hint text-ink underline underline-offset-2"
+            >
+              Név, ár, képek — alapadatok
+              <ArrowRight className="size-3" aria-hidden />
+            </Link>
+          </div>
+        </section>
+
+        <section className="space-y-2 rounded-md border border-border bg-surface p-3.5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <Switch
+              id="shop-sellable"
+              checked={web.sellableWeb}
+              disabled={disabled}
+              onCheckedChange={(v) => patch({ sellableWeb: v })}
+              label="Live a boltban"
+              description="Mentéskor lép életbe. A pult (POS) ettől független."
+            />
+            <StatusBadge tone={shopReadyTone(ready.level)}>{SHOP_READY_LABEL[ready.level]}</StatusBadge>
+          </div>
+          {web.sellableWeb && issues.length > 0 ? (
+            <p
+              className="flex items-start gap-1.5 rounded-md border border-warning/30 bg-warning-soft px-2.5 py-2 text-hint text-warning-ink"
+              role="status"
+            >
+              <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+              Live nem menthető bekapcsolva — pótold a hiányokat.
+            </p>
+          ) : null}
+          {liveOnly.length > 0 ? (
             <ol className="divide-y divide-border rounded-md border border-border">
-              {todos.slice(0, TODO_LIMIT).map((t) => (
-                <li key={t.key}>
-                  {t.target === 'alap' ? (
-                    <Link
-                      href={`${CORE_PATH}/${core.id}`}
-                      className="flex min-h-10 items-center gap-2 px-2.5 py-2 text-body text-ink hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
-                    >
-                      <TodoMark blocking={t.blocking} />
-                      <span className="min-w-0 flex-1">{t.text}</span>
-                      <span className="shrink-0 text-hint text-ink-secondary">Alapadatok</span>
-                      <ArrowRight className="size-3.5 shrink-0 text-ink-muted" aria-hidden />
-                    </Link>
-                  ) : (
+              {liveOnly.map((i) => {
+                const isCore =
+                  i.field === 'imageUrl' || i.field === 'priceNet' || i.field === 'active'
+                if (isCore) {
+                  return (
+                    <li key={i.field}>
+                      <Link
+                        href={`${CORE_PATH}/${core.id}`}
+                        className="flex min-h-9 items-center gap-2 px-2.5 py-1.5 text-body text-ink hover:bg-subtle"
+                      >
+                        <TodoMark blocking />
+                        <span className="min-w-0 flex-1">{i.message}</span>
+                        <span className="shrink-0 text-hint text-ink-secondary">Alapadatok</span>
+                        <ArrowRight className="size-3.5 shrink-0 text-ink-muted" aria-hidden />
+                      </Link>
+                    </li>
+                  )
+                }
+                return (
+                  <li key={i.field}>
                     <button
                       type="button"
-                      onClick={() => reveal(t.target as GroupId)}
-                      className="flex min-h-10 w-full items-center gap-2 px-2.5 py-2 text-left text-body text-ink hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      onClick={() => {
+                        const t = groupForField(i.field)
+                        if (t === 'alap') return
+                        reveal(t)
+                      }}
+                      className="flex min-h-9 w-full items-center gap-2 px-2.5 py-1.5 text-left text-body text-ink hover:bg-subtle"
                     >
-                      <TodoMark blocking={t.blocking} />
-                      <span className="min-w-0 flex-1">{t.text}</span>
+                      <TodoMark blocking />
+                      <span className="min-w-0 flex-1">{i.message}</span>
                       <span className="shrink-0 text-hint text-ink-secondary">Megnyitás</span>
                       <ArrowRight className="size-3.5 shrink-0 text-ink-muted" aria-hidden />
                     </button>
-                  )}
+                  </li>
+                )
+              })}
+            </ol>
+          ) : null}
+        </section>
+
+        <section
+          id="agent"
+          className="scroll-mt-16 space-y-2.5 rounded-md border border-border bg-surface p-3.5"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-h3 text-ink">Agent Top</h2>
+            <StatusBadge tone={ai.feedEligible ? 'success' : web.sellableWeb ? 'warning' : 'neutral'}>
+              {ai.feedEligible ? 'Kész' : web.sellableWeb ? 'Hiányzik' : 'Live után'}
+            </StatusBadge>
+          </div>
+          {!web.sellableWeb ? (
+            <p className="text-hint text-ink-secondary">
+              Először kapcsold be a Live-ot — utána érdemes az Agent Top mezőket kitölteni.
+            </p>
+          ) : null}
+          <div className="grid gap-x-3 gap-y-2.5 sm:grid-cols-2">
+            <FormField
+              label="Márka"
+              htmlFor="shop-brand-agent"
+              optionalLabel
+              hint="Ha üres, a gyártó neve. Feedhez kell."
+              error={fieldErrors.webBrand}
+            >
+              <Input
+                id="shop-brand-agent"
+                value={web.webBrand}
+                onChange={(e) => patch({ webBrand: e.target.value })}
+                maxLength={120}
+                disabled={disabled}
+                placeholder={core.manufacturer_name ?? undefined}
+              />
+            </FormField>
+            <div className="hidden sm:block" />
+            <FormField
+              label="Leírás (Agent Top)"
+              htmlFor="shop-description-agent"
+              error={fieldErrors.webDescriptionLong}
+              hint={
+                descLeft > 0
+                  ? `${descLen} karakter — még legalább ${descLeft} kell a feedhez.`
+                  : `${descLen} karakter — elég az Agent Tophoz.`
+              }
+              className="sm:col-span-2"
+            >
+              <Textarea
+                id="shop-description-agent"
+                value={web.webDescriptionLong}
+                onChange={(e) =>
+                  patch({
+                    webDescriptionLong: e.target.value,
+                    webDescriptionShort: suggestWebDescriptionShort(e.target.value)
+                  })
+                }
+                rows={5}
+                maxLength={5000}
+                disabled={disabled}
+                placeholder="Tényszerűen: mi ez, mire való, fő méret / anyag."
+              />
+            </FormField>
+          </div>
+          {ai.blockers.length > 0 ? (
+            <ul className="space-y-1 text-hint text-warning-ink">
+              {ai.blockers.slice(0, 4).map((c) => (
+                <li key={c.id} className="flex gap-1.5">
+                  <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  <span>
+                    <span className="font-medium">{c.label}.</span> {c.fix}
+                  </span>
                 </li>
               ))}
-            </ol>
+            </ul>
+          ) : (
+            <p className="text-hint text-success-ink">Agent Top checklist OK — mehet a feedbe.</p>
           )}
-          <details className="mt-2">
+          <details className="mt-1">
             <summary className="cursor-pointer text-hint text-ink-secondary">
-              Részletek: termékoldal-minőség {pdp.score}/100 · Agent Top {ai.score}/100
+              Részletek: Agent {ai.score}/100 · termékoldal {pdp.score}/100
             </summary>
             <div className="mt-2 grid gap-2.5 lg:grid-cols-2">
-              <PdpQualityPanel result={pdp} />
               <AiReadinessPanel result={ai} />
+              <PdpQualityPanel result={pdp} />
             </div>
           </details>
         </section>
 
-        <EditorGroup
-          id="alapok"
-          title="Alapok"
-          summary={`${categoryLabel ?? 'Nincs kategória'} · ${web.webDescriptionLong.trim().length} karakter leírás`}
-          status={statusOf(todoCount('alapok'), hasCategory && web.webDescriptionLong.trim().length > 0)}
-          open={open.has('alapok')}
-          onToggle={toggle}
+        <details
+          className="rounded-md border border-border bg-surface"
+          open={advancedOpen}
+          onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
         >
-          <BasicsGroup {...groupProps} categories={categories} />
-        </EditorGroup>
+          <summary className="cursor-pointer px-3.5 py-2.5 text-body font-medium text-ink">
+            Haladó mezők
+            <span className="ml-2 text-hint font-normal text-ink-secondary">
+              kategória, kulcsadat, GYIK, méret, média…
+            </span>
+          </summary>
+          <div className="space-y-2.5 border-t border-border p-2.5 pt-2">
+            <EditorGroup
+              id="alapok"
+              title="Kategória a boltban"
+              summary={`${categoryLabel ?? 'Nincs kategória'}`}
+              status={statusOf(todoCount('alapok'), hasCategory)}
+              open={open.has('alapok')}
+              onToggle={toggle}
+            >
+              <BasicsGroup {...groupProps} categories={categories} />
+            </EditorGroup>
 
-        <EditorGroup
-          id="jellemzok"
-          title="Kulcsadatok és jellemzők"
-          summary={
-            model.keyAttrs.length > 0
-              ? `${model.keyFilled}/${model.keyAttrs.length} kulcsadat kitöltve`
-              : 'A kategóriának nincs kulcsadata'
-          }
-          status={
-            model.keyAttrs.length === 0
-              ? { kind: 'optional' }
-              : statusOf(model.keyAttrs.length - model.keyFilled, true)
-          }
-          open={open.has('jellemzok')}
-          onToggle={toggle}
-        >
-          <SpecsGroup {...groupProps} attributes={attributes} model={model} productName={core.name} />
-        </EditorGroup>
+            <EditorGroup
+              id="jellemzok"
+              title="Kulcsadatok és jellemzők"
+              summary={
+                model.keyAttrs.length > 0
+                  ? `${model.keyFilled}/${model.keyAttrs.length} kulcsadat`
+                  : 'Nincs kulcsadat'
+              }
+              status={
+                model.keyAttrs.length === 0
+                  ? { kind: 'optional' }
+                  : statusOf(model.keyAttrs.length - model.keyFilled, true)
+              }
+              open={open.has('jellemzok')}
+              onToggle={toggle}
+            >
+              <SpecsGroup
+                {...groupProps}
+                attributes={attributes}
+                model={model}
+                productName={core.name}
+              />
+            </EditorGroup>
 
-        <EditorGroup
-          id="kerdesek"
-          title="Amit a vásárló kérdez"
-          summary={`${useCaseCount} előny · ${faqCount} kérdés-válasz`}
-          status={statusOf(todoCount('kerdesek'), useCaseCount > 0 || faqCount > 0)}
-          open={open.has('kerdesek')}
-          onToggle={toggle}
-        >
-          <QuestionsGroup {...groupProps} />
-        </EditorGroup>
+            <EditorGroup
+              id="kerdesek"
+              title="Amit a vásárló kérdez"
+              summary={`${useCaseCount} előny · ${faqCount} Q&A`}
+              status={statusOf(todoCount('kerdesek'), useCaseCount > 0 || faqCount > 0)}
+              open={open.has('kerdesek')}
+              onToggle={toggle}
+            >
+              <QuestionsGroup {...groupProps} />
+            </EditorGroup>
 
-        <EditorGroup
-          id="kiszereles"
-          title="Kiszerelés és mennyiségi ár"
-          summary={packagingBits.length > 0 ? packagingBits.join(' · ') : 'Nincs megadva'}
-          status={statusOf(todoCount('kiszereles'), packagingBits.length > 0)}
-          open={open.has('kiszereles')}
-          onToggle={toggle}
-        >
-          <PackagingGroup {...groupProps} unitShortform={core.unit_shortform} />
-        </EditorGroup>
+            <EditorGroup
+              id="kiszereles"
+              title="Kiszerelés és mennyiségi ár"
+              summary={packagingBits.length > 0 ? packagingBits.join(' · ') : 'Nincs'}
+              status={statusOf(todoCount('kiszereles'), packagingBits.length > 0)}
+              open={open.has('kiszereles')}
+              onToggle={toggle}
+            >
+              <PackagingGroup {...groupProps} unitShortform={core.unit_shortform} />
+            </EditorGroup>
 
-        <EditorGroup
-          id="meretek"
-          title="Méretek és szállítás"
-          summary={dims.length > 0 ? `${dims.join(' × ')} cm` : 'Nincs megadva'}
-          status={statusOf(0, dims.length > 0 || Boolean(web.dimensionImageUrl))}
-          open={open.has('meretek')}
-          onToggle={toggle}
-        >
-          <DimensionsGroup {...groupProps} tenantId={tenantId} />
-        </EditorGroup>
+            <EditorGroup
+              id="meretek"
+              title="Méretek és szállítás"
+              summary={dims.length > 0 ? `${dims.join(' × ')} cm` : 'Nincs'}
+              status={statusOf(0, dims.length > 0 || Boolean(web.dimensionImageUrl))}
+              open={open.has('meretek')}
+              onToggle={toggle}
+            >
+              <DimensionsGroup {...groupProps} tenantId={tenantId} />
+            </EditorGroup>
 
-        <EditorGroup
-          id="osszetetel"
-          title="Összetétel, eredet, biztonság"
-          summary={compositionBits.length > 0 ? compositionBits.join(' · ') : 'Nincs megadva'}
-          status={statusOf(todoCount('osszetetel'), compositionBits.length > 0)}
-          open={open.has('osszetetel')}
-          onToggle={toggle}
-        >
-          <CompositionGroup {...groupProps} />
-        </EditorGroup>
+            <EditorGroup
+              id="osszetetel"
+              title="Összetétel, eredet, biztonság"
+              summary={compositionBits.length > 0 ? compositionBits.join(' · ') : 'Nincs'}
+              status={statusOf(todoCount('osszetetel'), compositionBits.length > 0)}
+              open={open.has('osszetetel')}
+              onToggle={toggle}
+            >
+              <CompositionGroup {...groupProps} />
+            </EditorGroup>
 
-        <EditorGroup
-          id="media"
-          title="Képleírás, videó, dokumentumok"
-          summary={`${imagesWithAlt}/${images.length} képleírás · ${web.videoUrl.trim() ? 'van videó' : 'nincs videó'}`}
-          status={statusOf(0, imagesWithAlt > 0 || Boolean(web.videoUrl.trim()))}
-          open={open.has('media')}
-          onToggle={toggle}
-        >
-          <MediaGroup
-            {...groupProps}
-            images={images}
-            alts={alts}
-            onAltsChange={setAlts}
-            accessoryId={core.id}
-            tenantId={tenantId}
-          />
-        </EditorGroup>
+            <EditorGroup
+              id="media"
+              title="Képleírás, videó, dokumentumok"
+              summary={`${imagesWithAlt}/${images.length} alt`}
+              status={statusOf(0, imagesWithAlt > 0 || Boolean(web.videoUrl.trim()))}
+              open={open.has('media')}
+              onToggle={toggle}
+            >
+              <MediaGroup
+                {...groupProps}
+                images={images}
+                alts={alts}
+                onAltsChange={setAlts}
+                accessoryId={core.id}
+                tenantId={tenantId}
+              />
+            </EditorGroup>
 
-        <EditorGroup
-          id="kapcsolodo"
-          title="Kapcsolódó termékek"
-          summary="Ami kell hozzá, ami illik hozzá, ami helyettesítheti"
-          status={{ kind: 'instant' }}
-          open={open.has('kapcsolodo')}
-          onToggle={toggle}
-        >
-          <AccessoryRelatedSection accessoryId={core.id} disabled={disabled} embedded />
-        </EditorGroup>
+            <EditorGroup
+              id="kapcsolodo"
+              title="Kapcsolódó termékek"
+              summary="Kell hozzá / illik / helyettesít"
+              status={{ kind: 'instant' }}
+              open={open.has('kapcsolodo')}
+              onToggle={toggle}
+            >
+              <AccessoryRelatedSection accessoryId={core.id} disabled={disabled} embedded />
+            </EditorGroup>
 
-        <EditorGroup
-          id="valtozatok"
-          title="Változatok"
-          summary={web.webGroupId.trim() ? `Csoport: ${web.webGroupId.trim()}` : 'Nincs csoportban'}
-          status={statusOf(0, Boolean(web.webGroupId.trim()))}
-          open={open.has('valtozatok')}
-          onToggle={toggle}
-        >
-          <VariantsGroup {...groupProps} accessoryId={core.id} />
-        </EditorGroup>
+            <EditorGroup
+              id="valtozatok"
+              title="Változatok"
+              summary={web.webGroupId.trim() ? `Csoport: ${web.webGroupId.trim()}` : 'Nincs'}
+              status={statusOf(0, Boolean(web.webGroupId.trim()))}
+              open={open.has('valtozatok')}
+              onToggle={toggle}
+            >
+              <VariantsGroup {...groupProps} accessoryId={core.id} />
+            </EditorGroup>
 
-        <EditorGroup
-          id="halado"
-          title="Haladó"
-          summary={`Webcím: /p/${payload.webSlug ?? '…'}`}
-          status={statusOf(fieldErrors.webSlug ? 1 : 0, false)}
-          open={open.has('halado')}
-          onToggle={toggle}
-        >
-          <AdvancedGroup
-            {...groupProps}
-            productName={core.name}
-            manufacturerName={core.manufacturer_name}
-          />
-        </EditorGroup>
+            <EditorGroup
+              id="halado"
+              title="Slug, cím, MPN…"
+              summary={`/p/${payload.webSlug ?? '…'}`}
+              status={statusOf(fieldErrors.webSlug ? 1 : 0, false)}
+              open={open.has('halado')}
+              onToggle={toggle}
+            >
+              <AdvancedGroup
+                {...groupProps}
+                productName={core.name}
+                manufacturerName={core.manufacturer_name}
+              />
+            </EditorGroup>
+          </div>
+        </details>
       </div>
 
       {canWrite ? (
@@ -690,7 +816,7 @@ export function ShopProductEditor({
               </Button>
             ) : null}
             <Button type="button" loading={pending} disabled={!dirty} onClick={handleSave}>
-              Bolt adatok mentése
+              Mentés
             </Button>
           </div>
         </div>

@@ -6,11 +6,13 @@ import { createClient } from '@/lib/supabase/server'
 import { tenantHasWebshop } from '@/lib/webshop/entitlement'
 import {
   listShopCatalog,
-  SHOP_CATALOG_FILTERS,
-  type ShopCatalogFilter
+  normalizeShopCatalogFilter
 } from '@/lib/webshop/product-queries'
 
 export const metadata: Metadata = { title: 'Bolt katalógus' }
+
+/** Gyártó szerinti tömeges hozzáadás server action (~40 s budget). */
+export const maxDuration = 60
 
 type PageProps = {
   searchParams: Promise<{ filter?: string; q?: string; page?: string }>
@@ -18,11 +20,7 @@ type PageProps = {
 
 export default async function WebshopKatalogusPage({ searchParams }: PageProps) {
   const sp = await searchParams
-  const filter = (
-    SHOP_CATALOG_FILTERS as readonly string[]
-  ).includes(sp.filter ?? '')
-    ? (sp.filter as ShopCatalogFilter)
-    : 'all'
+  const filter = normalizeShopCatalogFilter(sp.filter)
   const q = (sp.q ?? '').slice(0, 80)
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1)
 

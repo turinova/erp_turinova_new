@@ -63,13 +63,13 @@ export type ShopReadyLevel =
   | 'competitive'
   | 'agent_excellent'
 
-/** Emberi UI label (lista + űrlap badge) — ne feed/ACP zsargon. */
+/** Emberi UI label (lista + űrlap badge) — Live / Agent Top szókincs (doc 50). */
 export const SHOP_READY_LABEL: Record<ShopReadyLevel, string> = {
-  off: 'Nincs a boltban',
-  blocked: 'Majdnem kész',
-  indexable: 'Alapból kész',
-  competitive: 'Kész a boltra',
-  agent_excellent: 'Szuper kitöltés'
+  off: 'Nincs Live',
+  blocked: 'Live-hoz hiányzik',
+  indexable: 'Live · Agent hiányos',
+  competitive: 'Live · Agent kész',
+  agent_excellent: 'Live · Agent kész+'
 }
 
 export type ShopReadyTone =
@@ -129,9 +129,11 @@ export function evaluateShopReady(row: ShopReadyInput): {
   level: ShopReadyLevel
   score: number
   missing: string[]
+  /** W1 Agent Top (lista/feed közelítés): márka + ≥80 kar. leírás, Live kapu OK. */
+  agentTop: boolean
 } {
   if (!row.sellable_web) {
-    return { level: 'off', score: 0, missing: [] }
+    return { level: 'off', score: 0, missing: [], agentTop: false }
   }
 
   const missing: string[] = []
@@ -187,14 +189,15 @@ export function evaluateShopReady(row: ShopReadyInput): {
   if (row.web_search_aliases.length > 0) score += 3
   if (score > 100) score = 100
 
+  // Agent Top minimum (OpenAI discovery): márka + tényszerű leírás
+  const agentTop = !liveBlocked && descLen >= 80 && nonEmpty(brand)
+
   if (liveBlocked) {
-    return { level: 'blocked', score, missing }
+    return { level: 'blocked', score, missing, agentTop: false }
   }
 
-  // Agent Top minimum (OpenAI discovery): márka + tényszerű leírás
-  const agentTop = descLen >= 80 && nonEmpty(brand)
   if (!agentTop) {
-    return { level: 'indexable', score, missing }
+    return { level: 'indexable', score, missing, agentTop: false }
   }
 
   const competitive =
@@ -214,7 +217,7 @@ export function evaluateShopReady(row: ShopReadyInput): {
     if (row.shipping_weight_kg == null || row.shipping_weight_kg <= 0) {
       soft.push('Csomag súly')
     }
-    return { level: 'indexable', score, missing: soft }
+    return { level: 'indexable', score, missing: soft, agentTop: true }
   }
 
   const excellent =
@@ -232,11 +235,12 @@ export function evaluateShopReady(row: ShopReadyInput): {
           ? ['FAQ vagy felhasználási eset']
           : []),
         ...(row.web_search_aliases.length === 0 ? ['Kereső szinonimák'] : [])
-      ]
+      ],
+      agentTop: true
     }
   }
 
-  return { level: 'agent_excellent', score, missing: [] }
+  return { level: 'agent_excellent', score, missing: [], agentTop: true }
 }
 
 export function parseLinesToList(raw: string): string[] {

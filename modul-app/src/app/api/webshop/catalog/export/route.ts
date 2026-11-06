@@ -6,8 +6,7 @@ import { guardRead, serverError, today, xlsxResponse } from '@/lib/webshop/excel
 import { buildShopWorkbook, type ShopExportMode } from '@/lib/webshop/excel/write'
 import {
   listShopCatalogIds,
-  SHOP_CATALOG_FILTERS,
-  type ShopCatalogFilter
+  normalizeShopCatalogFilter
 } from '@/lib/webshop/product-queries'
 
 export const maxDuration = 120
@@ -26,8 +25,8 @@ export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams
     const mode = (MODES as string[]).includes(sp.get('mode') ?? '') ? (sp.get('mode') as ShopExportMode) : 'simple'
-    const filter = (SHOP_CATALOG_FILTERS as readonly string[]).includes(sp.get('filter') ?? '')
-      ? (sp.get('filter') as ShopCatalogFilter)
+    const filter = sp.get('filter')
+      ? normalizeShopCatalogFilter(sp.get('filter'))
       : 'all'
     const q = (sp.get('q') ?? '').slice(0, 80)
     const sheets = parseSheets(sp.get('sheets'))
@@ -35,10 +34,9 @@ export async function GET(request: NextRequest) {
     const guard = await guardRead()
     if (!guard.ok) return guard.response
 
-    const [ctx, ids] = await Promise.all([
-      loadShopXContext(guard.supabase, guard.tenantId),
-      mode === 'template' ? Promise.resolve([] as string[]) : listShopCatalogIds(guard.supabase, guard.tenantId, { filter, q })
-    ])
+    const ids =
+      mode === 'template' ? [] : await listShopCatalogIds(guard.supabase, guard.tenantId, { filter, q })
+    const ctx = await loadShopXContext(guard.supabase, guard.tenantId, { ids })
     const products = ids.map((id) => ctx.byId.get(id)).filter((p) => p != null)
     const buffer = await buildShopWorkbook(ctx, products, mode, { sheets })
     const name = mode === 'template' ? 'bolt_sablon.xlsx' : `bolt_${mode === 'simple' ? 'egyszeru' : 'teljes'}_${today()}.xlsx`

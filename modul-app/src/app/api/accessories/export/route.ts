@@ -3,14 +3,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { buildAccessoriesWorkbook, type AccessoryExcelLists } from '@/lib/accessories/excel-workbook'
 import { XLSX_TYPE } from '@/lib/accessories/import-route'
 import {
-  listAccessories,
+  ACCESSORY_EXPORT_MAX_ROWS,
+  ACCESSORY_WEB_FILTERS,
+  AccessoryExportNeedsFilterError,
+  AccessoryExportTooLargeError,
+  listAccessoriesForExport,
   listAccessoryManufacturerOptions,
   listAccessoryTaxOptions,
-  listAccessoryUnitOptions
+  listAccessoryUnitOptions,
+  type AccessoryExportScope,
+  type AccessoryWebFilter
 } from '@/lib/accessories/queries'
 import { getSessionUser } from '@/lib/auth/session'
-import { mapPublicUrlsToFilenames } from '@/lib/media/queries'
 import { createClient } from '@/lib/supabase/server'
+import { tenantHasWebshop } from '@/lib/webshop/entitlement'
 
 export const maxDuration = 60
 
@@ -21,6 +27,17 @@ function xlsx(buffer: Buffer, filename: string): NextResponse {
       'Content-Disposition': `attachment; filename="${filename}"`
     }
   })
+}
+
+function parseWeb(raw: string | null): AccessoryWebFilter {
+  if (raw && (ACCESSORY_WEB_FILTERS as readonly string[]).includes(raw)) {
+    return raw as AccessoryWebFilter
+  }
+  return 'all'
+}
+
+function parseScope(raw: string | null): AccessoryExportScope {
+  return raw === 'all' ? 'all' : 'hits'
 }
 
 export async function GET(request: NextRequest) {
@@ -58,14 +75,24 @@ export async function GET(request: NextRequest) {
       return xlsx(await buildAccessoriesWorkbook([], lists, { template: true }), 'termekek_sablon.xlsx')
     }
 
-    const [rows, urlToName] = await Promise.all([
-      listAccessories(supabase, user.tenantId),
-      mapPublicUrlsToFilenames(supabase, user.tenantId)
-    ])
+    const q = (request.nextUrl.searchParams.get('q') ?? '').slice(0, 80)
+    const web = parseWeb(request.nextUrl.searchParams.get('web'))
+    const scope = parseScope(request.nextUrl.searchParams.get('scope'))
+    const hasWebshop = await tenantHasWebshop(supabase, user.tenantId)
+
+    const { rows, truncated } = await listAccessoriesForExport(supabase, user.tenantId, {
+      q,
+      web,
+      hasWebshop,
+      scope,
+      maxRows: ACCESSORY_EXPORT_MAX_ROWS
+    })
+
+    // Kép-fájlnevek nélkül (gyors): üres Kep = importnál „nem változik”.
     const buffer = await buildAccessoriesWorkbook(
       rows.map((r) => ({
         id: r.id,
-        manufacturerName: r.manufacturer_name,
+        manufacturerName: r.manufacturer_name === '—' ? '' : r.manufacturer_name,
         name: r.name,
         sku: r.sku,
         barcode: r.barcode,
@@ -76,15 +103,26 @@ export async function GET(request: NextRequest) {
         taxRateName: r.tax_rate_name,
         unitLabel: r.unit_shortform,
         active: r.active,
-        imageFilename: r.image_url ? (urlToName.get(r.image_url.split('?')[0]) ?? null) : null,
-        gallery: r.web_gallery.map((url) => urlToName.get(url.split('?')[0]) ?? url)
+        imageFilename: null,
+        gallery: []
       })),
       lists,
       { template: false }
     )
-    return xlsx(buffer, `termekek_${date}.xlsx`)
+    const suffix = scope === 'hits' ? 'talalat' : truncated ? 'reszlet' : 'osszes'
+    return xlsx(buffer, `termekek_${suffix}_${date}.xlsx`)
   } catch (err) {
+    if (err instanceof AccessoryExportTooLargeError || err instanceof AccessoryExportNeedsFilterError) {
+      return NextResponse.json({ error: err.message }, { status: 400 })
+    }
     console.error('accessories export', err)
-    return NextResponse.json({ error: 'A letöltés nem sikerült. Próbáld újra.' }, { status: 500 })
+    const message =
+      err instanceof Error && err.message && !err.message.startsWith('Nem sikerült')
+        ? err.message
+        : 'A letöltés nem sikerült. Próbáld újra.'
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    )
   }
 }

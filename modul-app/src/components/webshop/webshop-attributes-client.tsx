@@ -97,6 +97,18 @@ export function WebshopAttributesClient({ initialRows, canWrite }: Props) {
     setEditor({ mode: 'edit', row })
   }
 
+  function suggestCode(fromName: string): string {
+    return (
+      fromName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 40) || 'jellemzo'
+    )
+  }
+
   function handleSave() {
     startTransition(async () => {
       const common = {
@@ -109,7 +121,10 @@ export function WebshopAttributesClient({ initialRows, canWrite }: Props) {
       const result =
         editor.mode === 'edit'
           ? await updateProductAttribute({ ...common, id: editor.row.id })
-          : await createProductAttribute({ ...common, code })
+          : await createProductAttribute({
+              ...common,
+              code: code.trim() || suggestCode(name)
+            })
       if (!result.ok) {
         setFieldErrors(result.fieldErrors ?? {})
         toast.error(result.message)
@@ -128,12 +143,12 @@ export function WebshopAttributesClient({ initialRows, canWrite }: Props) {
     <div>
       <PageHeader
         title="Jellemzők"
-        description="A terméken ezeket töltöd ki. Szám / tartomány típusnál rögzített mértékegység van (pl. mm). A kategóriánál választod ki, melyik a kulcsadat a termékoldal „Kulcsadatok” blokkjába."
+        description="Újrafelhasználható mezők (szín, furattáv…). A kategóriánál jelölöd, melyik a kulcsadat."
         actions={
           canWrite ? (
             <Button type="button" onClick={openCreate}>
               <Plus className="size-3.5" aria-hidden />
-              Új adat
+              Új jellemző
             </Button>
           ) : null
         }
@@ -302,28 +317,16 @@ export function WebshopAttributesClient({ initialRows, canWrite }: Props) {
               <Input
                 id="attr-name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setName(next)
+                  if (editor.mode === 'create') setCode(suggestCode(next))
+                }}
                 placeholder="pl. Furattávolság"
                 disabled={pending}
+                autoFocus
               />
             </FormField>
-            {editor.mode === 'create' ? (
-              <FormField
-                label="Kód"
-                htmlFor="attr-code"
-                required
-                error={fieldErrors.code}
-                hint="Angol betű — color / size / material = Google feed mező. Később nem módosítható."
-              >
-                <Input
-                  id="attr-code"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="hole_spacing"
-                  disabled={pending}
-                />
-              </FormField>
-            ) : null}
             <FormField
               label="Érték típusa"
               htmlFor="attr-type"
@@ -361,7 +364,7 @@ export function WebshopAttributesClient({ initialRows, canWrite }: Props) {
                 />
               </FormField>
             ) : null}
-            {valueType === 'list' ? (
+            {editor.mode === 'edit' && valueType === 'list' ? (
               <Switch
                 id="attr-multi"
                 checked={allowMultiple}
@@ -371,21 +374,32 @@ export function WebshopAttributesClient({ initialRows, canWrite }: Props) {
                 description="Pl. kombi furatú fogantyú, több ráütéshez jó zsanér"
               />
             ) : null}
-            <FormField
-              label="Hogyan mérd le?"
-              htmlFor="attr-hint"
-              optionalLabel
-              hint="Egy mondat a vásárlónak — a kulcsadat-kártya alatt jelenik meg"
-            >
-              <Input
-                id="attr-hint"
-                value={measureHint}
-                onChange={(e) => setMeasureHint(e.target.value)}
-                maxLength={300}
-                placeholder="pl. A két csavarfurat közepe közötti távolság."
-                disabled={pending}
-              />
-            </FormField>
+            {editor.mode === 'edit' ? (
+              <FormField
+                label="Hogyan mérd le?"
+                htmlFor="attr-hint"
+                optionalLabel
+                hint="Egy mondat a vásárlónak — a kulcsadat-kártya alatt jelenik meg"
+              >
+                <Input
+                  id="attr-hint"
+                  value={measureHint}
+                  onChange={(e) => setMeasureHint(e.target.value)}
+                  maxLength={300}
+                  placeholder="pl. A két csavarfurat közepe közötti távolság."
+                  disabled={pending}
+                />
+              </FormField>
+            ) : (
+              <p className="text-hint text-ink-secondary">
+                A kód automatikus a névből
+                {code ? ` (${code})` : ''}. Listaértékeket a létrehozás után adhatsz
+                hozzá.
+              </p>
+            )}
+            {fieldErrors.code ? (
+              <p className="text-hint text-danger-ink">{fieldErrors.code}</p>
+            ) : null}
           </div>
           <DialogFooter>
             <Button

@@ -120,7 +120,7 @@ export const ACCESSORY_EXCEL_GUIDE_LINES = [
   'Termékek feltöltése Excelből',
   '',
   'Így működik',
-  '1. Töltsd le a meglévő termékeket (Letöltöm Excelben) vagy az üres sablont.',
+  '1. Töltsd le a listán szűrt találatot (Letöltöm Excelben → Aktuális találat) vagy az üres sablont. A teljes katalógus egyszerre timeoutolhat — max. 10 000 sor.',
   '2. Írd át vagy írd be a sorokat a „Termekek” lapon. Egy sor = egy termék.',
   '3. Töltsd fel. Előbb megmutatjuk, mi fog történni — addig semmi nem mentődik.',
   '4. Ha valami hibás, azt a sort kihagyjuk, a többi mentődik. A hibás sorokat letöltheted, javíthatod és újra feltöltheted.',

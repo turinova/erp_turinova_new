@@ -1,7 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { ACCESSORY_IMPORT_MAX_ROWS } from '@/lib/accessories/excel-columns'
 import { displayGrossFromStored } from '@/lib/accessories/parse'
 import { fetchAllPages } from '@/lib/supabase/fetch-all'
+
+/** Export soft-cap = import limit (Vercel / fájlméret). */
+export const ACCESSORY_EXPORT_MAX_ROWS = ACCESSORY_IMPORT_MAX_ROWS
+/** search_accessories_page RPC felső korlátja. */
+const ACCESSORY_SEARCH_RPC_PAGE = 50
+
+export const ACCESSORY_WEB_FILTERS = ['all', 'web', 'not_web'] as const
+export type AccessoryWebFilter = (typeof ACCESSORY_WEB_FILTERS)[number]
+
+/** A PostgREST `or()` szintaxisát megtörő karakterek nélkül. */
+function safeSearch(q: string): string {
+  return q.trim().replace(/[%_,()"\\*]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
+}
 
 export type AccessoryListItem = {
   id: string
@@ -157,7 +171,7 @@ function mapAccessoryRow(row: Record<string, unknown>): AccessoryListItem {
 
 const LIST_ALL_MAX = 50000
 
-/** Minden élő termék, lapozva (a PostgREST kérésenként max 1000 sort ad). Exporthoz. */
+/** Minden élő termék, lapozva (a PostgREST kérésenként max 1000 sort ad). Legacy full dump. */
 export async function listAccessories(
   supabase: SupabaseClient,
   tenantId: string
@@ -186,20 +200,264 @@ export async function listAccessories(
   return data.map((row) => mapAccessoryRow(row))
 }
 
+export type AccessoryExportScope = 'hits' | 'all'
+
+export type AccessoryExportPage = {
+  rows: AccessoryListItem[]
+  /** Találatok száma a szűrővel (csonkolás előtt). */
+  total: number
+  truncated: boolean
+}
+
+export class AccessoryExportTooLargeError extends Error {
+  readonly total: number
+  readonly max: number
+  constructor(total: number, max: number) {
+    super(
+      `Túl sok találat (${total.toLocaleString('hu-HU')}). Egy fájlban legfeljebb ${max.toLocaleString('hu-HU')} termék lehet — szűkítsd a keresőt.`
+    )
+    this.name = 'AccessoryExportTooLargeError'
+    this.total = total
+    this.max = max
+  }
+}
+
+export class AccessoryExportNeedsFilterError extends Error {
+  constructor() {
+    super(
+      'Az „aktuális találat” exporthoz írj keresőt (pl. SKU-előtag), vagy válaszd a legfeljebb 10 000 termék opciót.'
+    )
+    this.name = 'AccessoryExportNeedsFilterError'
+  }
+}
+
+function rpcExportError(message: string): Error {
+  if (/Could not find the function|PGRST202/i.test(message)) {
+    return new Error(
+      'A terméklista kereső RPC nincs telepítve (search_accessories_page). Futtasd a migrációt.'
+    )
+  }
+  if (/timeout|canceling statement/i.test(message)) {
+    return new Error(
+      'A termékexport időtúllépés miatt megszakadt. Szűkítsd a keresőt, és próbáld újra.'
+    )
+  }
+  return new Error('Nem sikerült betölteni a termékeket az exporthoz.')
+}
+
+/**
+ * Excel-export: ugyanaz a kereső, mint a Termékek lista.
+ * `hits` = aktuális q/web (kötelező szűrő); `all` = legfeljebb ACCESSORY_EXPORT_MAX_ROWS.
+ */
+export async function listAccessoriesForExport(
+  supabase: SupabaseClient,
+  tenantId: string,
+  opts: {
+    q: string
+    web: AccessoryWebFilter
+    hasWebshop: boolean
+    scope: AccessoryExportScope
+    maxRows?: number
+  }
+): Promise<AccessoryExportPage> {
+  const maxRows = Math.min(
+    Math.max(1, opts.maxRows ?? ACCESSORY_EXPORT_MAX_ROWS),
+    ACCESSORY_EXPORT_MAX_ROWS
+  )
+  const web = opts.hasWebshop ? opts.web : 'all'
+  const term = safeSearch(opts.q)
+  const hasFilter = Boolean(term) || web !== 'all'
+
+  if (opts.scope === 'hits' && !hasFilter) {
+    throw new AccessoryExportNeedsFilterError()
+  }
+
+  if (web === 'all') {
+    return listAccessoriesForExportRpc(supabase, tenantId, term, maxRows, opts.scope)
+  }
+
+  return listAccessoriesForExportWeb(supabase, tenantId, {
+    term,
+    web,
+    maxRows,
+    scope: opts.scope
+  })
+}
+
+async function listAccessoriesForExportRpc(
+  supabase: SupabaseClient,
+  tenantId: string,
+  term: string,
+  maxRows: number,
+  scope: AccessoryExportScope
+): Promise<AccessoryExportPage> {
+  const { data: first, error: firstErr } = await supabase.rpc('search_accessories_page', {
+    p_tenant_id: tenantId,
+    p_q: term,
+    p_limit: ACCESSORY_SEARCH_RPC_PAGE,
+    p_offset: 0
+  })
+
+  if (firstErr) {
+    console.error('listAccessoriesForExport rpc', firstErr.message, firstErr.code)
+    throw rpcExportError(firstErr.message)
+  }
+
+  const firstRows = (first ?? []) as Record<string, unknown>[]
+  const total =
+    firstRows.length > 0 ? Number(firstRows[0].total_count ?? 0) : 0
+
+  if (scope === 'hits' && total > maxRows) {
+    throw new AccessoryExportTooLargeError(total, maxRows)
+  }
+
+  if (total === 0) {
+    return { rows: [], total: 0, truncated: false }
+  }
+
+  const out: AccessoryListItem[] = firstRows.map((r) => mapRpcAccessoryRow(r))
+  let offset = firstRows.length
+
+  while (out.length < Math.min(total, maxRows) && offset < total) {
+    const { data, error } = await supabase.rpc('search_accessories_page', {
+      p_tenant_id: tenantId,
+      p_q: term,
+      p_limit: ACCESSORY_SEARCH_RPC_PAGE,
+      p_offset: offset
+    })
+    if (error) {
+      console.error('listAccessoriesForExport rpc page', error.message)
+      throw rpcExportError(error.message)
+    }
+    const batch = (data ?? []) as Record<string, unknown>[]
+    if (batch.length === 0) break
+    for (const row of batch) {
+      if (out.length >= maxRows) break
+      out.push(mapRpcAccessoryRow(row))
+    }
+    offset += batch.length
+    if (batch.length < ACCESSORY_SEARCH_RPC_PAGE) break
+  }
+
+  return {
+    rows: out,
+    total,
+    truncated: total > out.length
+  }
+}
+
+async function listAccessoriesForExportWeb(
+  supabase: SupabaseClient,
+  tenantId: string,
+  opts: {
+    term: string
+    web: 'web' | 'not_web'
+    maxRows: number
+    scope: AccessoryExportScope
+  }
+): Promise<AccessoryExportPage> {
+  const embed =
+    opts.web === 'web'
+      ? ', sw:accessory_web!inner ( sellable_web )'
+      : ', sw:accessory_web ( sellable_web )'
+
+  let manufacturerIds: string[] = []
+  if (opts.term) {
+    const { data: mfr } = await supabase
+      .from('manufacturers')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .ilike('name', `%${opts.term}%`)
+      .limit(50)
+    manufacturerIds = (mfr ?? []).map((m) => m.id as string)
+  }
+
+  const orFilter = opts.term
+    ? [
+        `name.ilike.%${opts.term}%`,
+        `sku.ilike.%${opts.term}%`,
+        `barcode.ilike.%${opts.term}%`,
+        `barcode_internal.ilike.%${opts.term}%`,
+        ...(manufacturerIds.length > 0
+          ? [`manufacturer_id.in.(${manufacturerIds.join(',')})`]
+          : [])
+      ].join(',')
+    : null
+
+  let countQuery = supabase.from('accessories').select(
+    opts.web === 'web'
+      ? 'id, sw:accessory_web!inner(sellable_web)'
+      : 'id, sw:accessory_web(sellable_web)',
+    { count: 'exact', head: true }
+  )
+  countQuery = countQuery.eq('tenant_id', tenantId).is('deleted_at', null)
+  if (opts.web === 'web') countQuery = countQuery.eq('sw.sellable_web', true)
+  if (opts.web === 'not_web') {
+    countQuery = countQuery.eq('sw.sellable_web', true).is('sw', null)
+  }
+  if (orFilter) countQuery = countQuery.or(orFilter)
+
+  const { count, error: countErr } = await countQuery
+  if (countErr) {
+    console.error('listAccessoriesForExport web count', countErr.message)
+    throw new Error('Nem sikerült betölteni a termékeket az exporthoz.')
+  }
+  const total = count ?? 0
+
+  if (opts.scope === 'hits' && total > opts.maxRows) {
+    throw new AccessoryExportTooLargeError(total, opts.maxRows)
+  }
+
+  if (total === 0) {
+    return { rows: [], total: 0, truncated: false }
+  }
+
+  const { data, error } = await fetchAllPages<Record<string, unknown>>(
+    (from, to) => {
+      let q = supabase
+        .from('accessories')
+        .select(`${ACCESSORY_LIST_SELECT}${embed}`)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+      if (opts.web === 'web') q = q.eq('sw.sellable_web', true)
+      if (opts.web === 'not_web') q = q.eq('sw.sellable_web', true).is('sw', null)
+      if (orFilter) q = q.or(orFilter)
+      return q
+        .order('name', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{
+        data: Record<string, unknown>[] | null
+        error: { message: string } | null
+      }>
+    },
+    Math.min(total, opts.maxRows)
+  )
+
+  if (error) {
+    console.error('listAccessoriesForExport web', error)
+    throw new Error('Nem sikerült betölteni a termékeket az exporthoz.')
+  }
+
+  const rows = data.map((raw) => {
+    const row = raw as unknown as Record<string, unknown>
+    return { ...mapAccessoryRow(row), web_gallery: [] as string[] }
+  })
+
+  return {
+    rows,
+    total,
+    truncated: total > rows.length
+  }
+}
+
 export const ACCESSORY_PAGE_SIZE = 25
-export const ACCESSORY_WEB_FILTERS = ['all', 'web', 'not_web'] as const
-export type AccessoryWebFilter = (typeof ACCESSORY_WEB_FILTERS)[number]
 
 export type AccessoryListPage = {
   rows: (AccessoryListItem & { in_shop: boolean })[]
   total: number
   page: number
   pageCount: number
-}
-
-/** A PostgREST `or()` szintaxisát megtörő karakterek nélkül. */
-function safeSearch(q: string): string {
-  return q.trim().replace(/[%_,()"\\*]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
 }
 
 export async function listAccessoriesPage(

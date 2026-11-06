@@ -353,15 +353,21 @@ export async function createProductAttribute(
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
   const name = input.name.trim()
-  const code = input.code.trim().toLowerCase().replace(/\s+/g, '_')
-  if (!name || !code) {
+  const code =
+    input.code.trim().toLowerCase().replace(/\s+/g, '_') ||
+    name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 40) ||
+    'jellemzo'
+  if (!name) {
     return {
       ok: false,
       message: 'Ellenőrizd a megadott adatokat.',
-      fieldErrors: {
-        ...(name ? {} : { name: 'A név kötelező.' }),
-        ...(code ? {} : { code: 'A kód kötelező.' })
-      }
+      fieldErrors: { name: 'A név kötelező.' }
     }
   }
   const valueType = VALUE_TYPES.includes(input.valueType ?? 'list')

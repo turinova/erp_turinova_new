@@ -126,7 +126,10 @@ function fakeContext(): ShopXContext {
     mediaByUrl: new Map(media.map((m) => [m.url, m])),
     groups: new Map(),
     mappings: new Map(),
-    bulkReady: true
+    bulkReady: true,
+    slugOwners: new Map(products.filter((p) => p.web?.web_slug).map((p) => [p.web!.web_slug!, p.id])),
+    categoryCounts: new Map(),
+    complete: true
   }
 }
 

@@ -192,10 +192,15 @@ export function WebshopOverviewClient({ stats, stockNotify, launch, openWithdraw
       <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {(
           [
-            ['Live (kint van)', stats.sellableWeb, 'text-ink', 'in_shop'],
-            ['Agent Top hiányos', stats.sellableWeb - stats.ready, 'text-warning-ink', 'incomplete'],
-            ['Agent Top kész', stats.ready, 'text-success-ink', 'in_shop'],
-            ['Szuper kitöltés', stats.excellent, 'text-info-ink', 'in_shop']
+            ['Live (kint van)', stats.sellableWeb, 'text-ink', 'live'],
+            [
+              'Agent Top hiányos',
+              Math.max(0, stats.sellableWeb - stats.ready),
+              'text-warning-ink',
+              'incomplete'
+            ],
+            ['Agent Top kész', stats.ready, 'text-success-ink', 'agent_ok'],
+            ['Szuper kitöltés', stats.excellent, 'text-info-ink', 'agent_ok']
           ] as const
         ).map(([label, value, tone, filter]) => (
           <Link

@@ -220,9 +220,8 @@ export function AdvancedGroup({
   patch,
   disabled,
   fieldErrors,
-  productName,
-  manufacturerName
-}: GroupProps & { productName: string; manufacturerName: string | null }) {
+  productName
+}: GroupProps & { productName: string; manufacturerName?: string | null }) {
   return (
     <div className="space-y-3">
       <p className="text-hint text-ink-secondary">
@@ -260,16 +259,6 @@ export function AdvancedGroup({
             maxLength={150}
             disabled={disabled}
             placeholder={productName}
-          />
-        </FormField>
-        <FormField label="Márka" htmlFor="shop-brand" optionalLabel hint="Ha üres, a gyártó neve.">
-          <Input
-            id="shop-brand"
-            value={web.webBrand}
-            onChange={(e) => patch({ webBrand: e.target.value })}
-            maxLength={120}
-            disabled={disabled}
-            placeholder={manufacturerName ?? undefined}
           />
         </FormField>
         <FormField

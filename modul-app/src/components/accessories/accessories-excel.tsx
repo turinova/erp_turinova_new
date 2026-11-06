@@ -26,6 +26,7 @@ import {
   type AccessoryImportResult,
   type AccessoryImportStatus
 } from '@/lib/accessories/import-types'
+import type { AccessoryExportScope, AccessoryWebFilter } from '@/lib/accessories/queries'
 import { cn } from '@/lib/utils'
 
 const TABLE_LIMIT = 200
@@ -98,12 +99,29 @@ async function errorOf(response: Response, fallback: string): Promise<string> {
   return data?.error || fallback
 }
 
-export function AccessoriesExcel({ canWrite }: { canWrite: boolean }) {
+type ExportKind = 'hits' | 'all' | 'template'
+
+export function AccessoriesExcel({
+  canWrite,
+  q = '',
+  web = 'all',
+  total = 0
+}: {
+  canWrite: boolean
+  /** Aktív lista-kereső (URL `q`). */
+  q?: string
+  web?: AccessoryWebFilter
+  /** Lista total (találatszám). */
+  total?: number
+}) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const hasFilter = Boolean(q.trim()) || web !== 'all'
+  const hitsTooLarge = hasFilter && total > ACCESSORY_IMPORT_MAX_ROWS
+
   const [exportOpen, setExportOpen] = useState(false)
-  const [exportMode, setExportMode] = useState<'data' | 'template'>('data')
+  const [exportKind, setExportKind] = useState<ExportKind>(hasFilter ? 'hits' : 'all')
   const [exportBusy, setExportBusy] = useState(false)
 
   const [file, setFile] = useState<File | null>(null)
@@ -116,29 +134,60 @@ export function AccessoriesExcel({ canWrite }: { canWrite: boolean }) {
 
   const open = Boolean(preview || result)
 
-  function download(mode: 'data' | 'template', after?: () => void) {
-    // Blob nélkül: a böngésző maga tölti le (Safari-biztos).
-    const a = document.createElement('a')
-    a.href = `/api/accessories/export?mode=${mode}`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    after?.()
-    return true
+  function openExport() {
+    setExportKind(hasFilter ? 'hits' : 'all')
+    setExportOpen(true)
   }
 
-  function runExport() {
+  async function runExport() {
+    if (exportKind === 'hits') {
+      if (!hasFilter) {
+        toast.error('Előbb keress (pl. SKU-előtag), vagy válaszd a legfeljebb 10 000 termék opciót.')
+        return
+      }
+      if (hitsTooLarge) {
+        toast.error(
+          `Túl sok találat (${n(total)}). Egy fájlban legfeljebb ${n(ACCESSORY_IMPORT_MAX_ROWS)} termék — szűkítsd a keresőt.`
+        )
+        return
+      }
+      if (total === 0) {
+        toast.error('Nincs exportálható találat.')
+        return
+      }
+    }
+
     setExportBusy(true)
-    download(exportMode)
-    toast.success(
-      exportMode === 'template'
-        ? 'A sablon letöltése elindult.'
-        : 'A fájl készül, a letöltés pár másodperc múlva magától elindul. Írd át, majd töltsd fel.'
-    )
-    setTimeout(() => {
-      setExportBusy(false)
+    try {
+      const sp = new URLSearchParams()
+      if (exportKind === 'template') {
+        sp.set('mode', 'template')
+      } else {
+        sp.set('mode', 'data')
+        sp.set('scope', exportKind as AccessoryExportScope)
+        if (q.trim()) sp.set('q', q.trim())
+        if (web !== 'all') sp.set('web', web)
+      }
+
+      const res = await fetch(`/api/accessories/export?${sp.toString()}`)
+      if (!res.ok) {
+        toast.error(await errorOf(res, 'A letöltés nem sikerült.'))
+        return
+      }
+      await saveBlob(res, exportKind === 'template' ? 'termekek_sablon.xlsx' : 'termekek.xlsx')
+      toast.success(
+        exportKind === 'template'
+          ? 'A sablon letöltése kész.'
+          : exportKind === 'hits'
+            ? `${n(total)} termék letöltve. Írd át a gyártót, majd töltsd fel.`
+            : `Legfeljebb ${n(ACCESSORY_IMPORT_MAX_ROWS)} termék letöltve. Írd át, majd töltsd fel.`
+      )
       setExportOpen(false)
-    }, 1500)
+    } catch {
+      toast.error('A letöltés nem sikerült. Próbáld újra.')
+    } finally {
+      setExportBusy(false)
+    }
   }
 
   async function requestPreview(f: File, d: AccessoryImportDecisions) {
@@ -216,12 +265,25 @@ export function AccessoriesExcel({ canWrite }: { canWrite: boolean }) {
     }
   }
 
-  function downloadBackup() {
+  async function downloadBackup() {
     setBusy('backup')
-    download('data')
-    setBackedUp(true)
-    toast.success('A mostani állapot letöltése elindult. Ezt visszatöltve visszaállíthatod.')
-    setTimeout(() => setBusy(null), 1500)
+    try {
+      const sp = new URLSearchParams({ mode: 'data', scope: 'all' })
+      if (q.trim()) sp.set('q', q.trim())
+      if (web !== 'all') sp.set('web', web)
+      const res = await fetch(`/api/accessories/export?${sp.toString()}`)
+      if (!res.ok) {
+        toast.error(await errorOf(res, 'A biztonsági mentés nem sikerült.'))
+        return
+      }
+      await saveBlob(res, 'termekek_mentes.xlsx')
+      setBackedUp(true)
+      toast.success('A mostani állapot letöltve. Ezt visszatöltve visszaállíthatod.')
+    } catch {
+      toast.error('A biztonsági mentés nem sikerült.')
+    } finally {
+      setBusy(null)
+    }
   }
 
   async function downloadProblems() {
@@ -270,7 +332,7 @@ export function AccessoriesExcel({ canWrite }: { canWrite: boolean }) {
 
   return (
     <>
-      <Button type="button" variant="secondary" onClick={() => setExportOpen(true)}>
+      <Button type="button" variant="secondary" onClick={openExport}>
         <Download className="size-3.5" aria-hidden />
         Letöltöm Excelben
       </Button>
@@ -300,43 +362,64 @@ export function AccessoriesExcel({ canWrite }: { canWrite: boolean }) {
           <DialogHeader>
             <DialogTitle>Termékek letöltése Excelben</DialogTitle>
             <DialogDescription>
-              Írd át Excelben, majd töltsd fel itt. Egy fájlban legfeljebb {n(ACCESSORY_IMPORT_MAX_ROWS)} termék lehet.
+              Írd át (pl. gyártó), majd töltsd fel ide. Egy fájlban legfeljebb{' '}
+              {n(ACCESSORY_IMPORT_MAX_ROWS)} termék lehet.
             </DialogDescription>
           </DialogHeader>
           <fieldset className="space-y-2">
             <legend className="sr-only">Mit töltesz le?</legend>
             {(
               [
-                ['data', 'Minden termék', 'A mostani termékek, szerkeszthető formában. Ebből tudsz árat, nevet, vonalkódot tömegesen módosítani.'],
+                [
+                  'hits',
+                  hasFilter
+                    ? `Aktuális találat (${n(total)})`
+                    : 'Aktuális találat',
+                  hasFilter
+                    ? hitsTooLarge
+                      ? `Túl sok találat — szűkíts ${n(ACCESSORY_IMPORT_MAX_ROWS)} alá.`
+                      : 'A listán látható szűrt termékek (pl. q=f00). Gyártó tömeges kitöltéshez.'
+                    : 'Előbb keress a listán (SKU, név…), utána ez az opció él.'
+                ],
+                [
+                  'all',
+                  `Legfeljebb ${n(ACCESSORY_IMPORT_MAX_ROWS)} termék`,
+                  'Nem a teljes katalógus egyszerre — timeout elkerülésére csonkolt. Nagy listánál inkább szűrj.'
+                ],
                 ['template', 'Üres sablon', 'Egy mintasorral. Új termékek felviteléhez.']
               ] as const
-            ).map(([value, label, hint]) => (
-              <label
-                key={value}
-                className={cn(
-                  'flex cursor-pointer gap-2 rounded-md border px-3 py-2',
-                  exportMode === value ? 'border-primary bg-subtle' : 'border-border'
-                )}
-              >
-                <input
-                  type="radio"
-                  name="accessory-export-mode"
-                  className="mt-0.5 size-4 accent-primary"
-                  checked={exportMode === value}
-                  onChange={() => setExportMode(value)}
-                />
-                <span>
-                  <span className="block text-body font-medium text-ink">{label}</span>
-                  <span className="block text-hint text-ink-secondary">{hint}</span>
-                </span>
-              </label>
-            ))}
+            ).map(([value, label, hint]) => {
+              const disabled = value === 'hits' && (!hasFilter || hitsTooLarge || total === 0)
+              return (
+                <label
+                  key={value}
+                  className={cn(
+                    'flex gap-2 rounded-md border px-3 py-2',
+                    disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                    exportKind === value ? 'border-primary bg-subtle' : 'border-border'
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="accessory-export-mode"
+                    className="mt-0.5 size-4 accent-primary"
+                    checked={exportKind === value}
+                    disabled={disabled}
+                    onChange={() => setExportKind(value)}
+                  />
+                  <span>
+                    <span className="block text-body font-medium text-ink">{label}</span>
+                    <span className="block text-hint text-ink-secondary">{hint}</span>
+                  </span>
+                </label>
+              )
+            })}
           </fieldset>
           <DialogFooter className="gap-2">
             <Button type="button" variant="secondary" disabled={exportBusy} onClick={() => setExportOpen(false)}>
               Mégse
             </Button>
-            <Button type="button" loading={exportBusy} onClick={runExport}>
+            <Button type="button" loading={exportBusy} onClick={() => void runExport()}>
               Letöltöm
             </Button>
           </DialogFooter>
@@ -418,7 +501,7 @@ export function AccessoriesExcel({ canWrite }: { canWrite: boolean }) {
                     variant="ghost"
                     loading={busy === 'backup'}
                     disabled={busy !== null}
-                    onClick={downloadBackup}
+                    onClick={() => void downloadBackup()}
                   >
                     Jelenlegi állapot letöltése
                   </Button>

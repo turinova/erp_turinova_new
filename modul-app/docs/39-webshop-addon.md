@@ -31,9 +31,9 @@
 | Route | Job |
 |---|---|
 | `/webshop` | Áttekintés — shop-ready számok |
-| `/webshop/katalogus` | Bolt katalógus (sellable_web / hiányos) |
-| `/webshop/kategoriak` | Bolt kategória-fa |
-| `/webshop/tulajdonsagok` | Műszaki adatok (szín, nyílásszög… egyenrangú) |
+| `/webshop/katalogus` | Bolt munkalista (`accessory_web` tagok) — Live / Készül / Agent; „Termék hozzáadása” (lásd [50](50-webshop-w1.md) §4) |
+| `/webshop/kategoriak` | Bolt kategória-fa + kulcsadat-sablon (nav: Kategóriák) |
+| `/webshop/tulajdonsagok` | Jellemzők — újrafelhasználható mezők (szín, furattáv…) |
 | `/webshop/ertekelesek` | Értékelés moderálás (függő / jóváhagyott / elutasított, eladói válasz), 25/oldal |
 | `/webshop/beallitasok` | Bolt beállítások: szállítási díj, ingyenes küszöb, átfutás, átvétel, visszaküldés, garancia, alacsony készlet küszöb, eladott db / értékelések kapcsoló |
 
@@ -112,7 +112,7 @@ A webshop ki-be kapcsolható modul: az alap termék nem tud róla, csak egy kár
 | Alap (Törzsadatok → Termékek) | Webshop modul |
 |---|---|
 | `accessories`: név, gyártó, SKU, vonalkód, ár, adó, egység, aktív, `sellable_pos`, `image_url`, `web_gallery` (Képek kártya — a név történeti) | `accessory_web` (1:1): `sellable_web`, `web_slug`, kategória, leírások, kulcsadatok, méretek, kiszerelés, összetétel, videó, képleírások (`web_image_alts`), változatcsoport |
-| Űrlap: Azonosítás · Árazás · Képek · Készlet · **Online bolt kártya** (csak ha a modul be van kapcsolva) | `/webshop/katalogus` munkalista + `/webshop/katalogus/[id]` szerkesztő |
+| Űrlap: Azonosítás · Árazás · Képek · Készlet · **Online bolt kártya** (csak ha a modul be van kapcsolva) | `/webshop/katalogus` (Live + Agent Top) + `/webshop/katalogus/[id]` (Live → Agent Top → Haladó) |
 | Mentés csak alap mezőket ír | Saját mentés (`saveShopProduct`), kiegészítés + attribútumok itt |
 | — | `accessory_attribute_values/inputs`, `accessory_related`, `accessory_documents` szerkesztése |
 
@@ -121,7 +121,7 @@ A webshop ki-be kapcsolható modul: az alap termék nem tud róla, csak egy kár
 - **Bekapcsolás feltétele** (`shopRequirementIssues`): fő kép, ár > 0, aktív, kategória, leírás ≥ 200 karakter (az eleje ≥ 80 → rövid szöveg). Hiányzó webcím automatikusan, egyedien képződik (`nev`, `nev-2`…).
 - **Szerkesztő:** fent alap összefoglaló (csak olvasható, link az alapadatokhoz) + kapcsoló + **Teendők** (max. 5, kötelező előbb; kattintásra lenyitja és odagörget; kép/ár/aktív → alapadatok). Pontszámok a „Részletek” alatt. 10 lenyíló csoport, mindegyik egysoros összefoglalóval és szöveges állapottal (Kész / n teendő / Nem kötelező / Azonnal mentődik): Alapok · Kulcsadatok és jellemzők · Amit a vásárló kérdez · Kiszerelés és mennyiségi ár · Méretek és szállítás · Összetétel, eredet, biztonság · Képleírás, videó, dokumentumok · Kapcsolódó termékek · Változatok · Haladó. Mélylink: `#csoport-<id>`. Mentés: egyetlen elsődleges gomb a ragadós alsó sávban (Elvetés csak változáskor), kilépéskor figyelmeztet.
 - **Beviteli elemek:** listák soronként (Enter = új sor, vessző az elem része marad), mennyiségi ár darabtól + ár párokban, méretrajz a médiatárból, változatcsoport testvér termék kereséssel. Szövegmezők legfeljebb 2 oszlopban.
-- **Munkalista:** URL szűrők `?filter=` `in_shop` · `incomplete` (kint van, de nem „Kész a boltra”) · `not_in_shop` · `no_category` · `no_description` · `no_image`, `?q=`, `?page=` (25/oldal), darabszám szűrőnként, soronként „Következő lépés” mélylinkkel, tömeges „Kiteszem a boltba” / „Leveszem a boltból” (max. 100; ami nem tehető ki, listázva). Az állapotot szerveroldalon számoljuk minden termékre (max. 20 000), a kliens csak az oldalt kapja.
+- **Munkalista:** csak bolt-tagok (`accessory_web`). URL `?filter=` `live` (default) · `draft` · `incomplete` · `agent_ok` (+ legacy `in_shop`/`not_in_shop`), `?q=`, `?page=` (25). Primary: Termék hozzáadása (egy termék / gyártó szerint tömeges tagság — lásd [50](50-webshop-w1.md) §3–4). Live switch + Agent badge + következő lépés. Tömeges Live max. 100. **Nem** tölti az egész ERP accessories listát.
 - **Kategória darabszám** a boltban: RPC `storefront_category_counts` (nem sorokból).
 
 Egy termékigazság: **nincs** második termék-CRUD.

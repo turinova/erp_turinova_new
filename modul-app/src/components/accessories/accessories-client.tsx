@@ -315,7 +315,12 @@ export function AccessoriesClient({
         description="Eladható termékek törzse — szkenner fókusz nélkül azonnal a terméklapra (vonalkód / SKU)."
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <AccessoriesExcel canWrite={canWrite} />
+            <AccessoriesExcel
+              canWrite={canWrite}
+              q={activeQ}
+              web={web}
+              total={data.total}
+            />
             {canWrite ? (
               <Button type="button" onClick={() => router.push(`${LIST_PATH}/uj`)}>
                 <Plus className="size-3.5" aria-hidden />

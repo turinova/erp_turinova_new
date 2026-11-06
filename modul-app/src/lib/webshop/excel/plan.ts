@@ -1831,8 +1831,7 @@ export function buildShopImportPlan(ctx: ShopXContext, wb: ShopXWorkbook, decisi
   }
 
   // --- Termékenként: származtatott mezők, bolt állapot, webcím ------------
-  const slugOwner = new Map<string, string>()
-  for (const p of ctx.products) if (p.web?.web_slug) slugOwner.set(p.web.web_slug, p.id)
+  const slugOwner = new Map(ctx.slugOwners)
   const takeSlug = (base: string, ownId: string): string => {
     const root = base || 'termek'
     const free = (s: string) => {

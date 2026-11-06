@@ -1,4 +1,4 @@
-import { Mail, Phone, Undo2 } from 'lucide-react'
+import { Mail, Undo2 } from 'lucide-react'
 import Link from 'next/link'
 
 import { CartButton, CategoryMenu, type MenuCategory } from '@/components/storefront/header-actions'
@@ -25,9 +25,6 @@ const FOOTER_DOCS: LegalDocKind[] = [
   'sutik',
   'akadalymentesseg'
 ]
-
-const iconBtn =
-  'inline-flex size-11 cursor-pointer items-center justify-center rounded-full text-ink hover:bg-stone-100'
 
 const footerLink = 'cursor-pointer hover:text-ink hover:underline'
 
@@ -74,15 +71,6 @@ export function StorefrontHeader({
         </div>
         <div className='flex shrink-0 items-center'>
           <StorefrontSearchOverlay popular={popular} />
-          {seller.phone ? (
-            <a
-              href={`tel:${seller.phone}`}
-              className={cn(iconBtn, 'max-[379px]:hidden')}
-              aria-label={`Hívás: ${seller.phone}`}
-            >
-              <Phone className='size-[18px]' aria-hidden />
-            </a>
-          ) : null}
           <CartButton />
         </div>
       </div>
@@ -123,7 +111,7 @@ export function StorefrontFooter({
     seller.vatId ? `Közösségi adószám: ${seller.vatId}` : null
   ].filter((l): l is string => Boolean(l))
 
-  const hasContact = Boolean(seller.phone || seller.email)
+  const hasContact = Boolean(seller.email)
 
   return (
     <footer
@@ -141,15 +129,6 @@ export function StorefrontFooter({
             </h2>
             <p className='mt-0.5'>Termék, szállítás, rendelés — kérdezz bátran.</p>
             <div className='mt-3 flex flex-col gap-2 sm:flex-row'>
-              {seller.phone ? (
-                <a
-                  href={`tel:${seller.phone}`}
-                  className='inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-stone-200 bg-white px-3 text-[14px] font-medium text-ink hover:border-stone-400'
-                >
-                  <Phone className='size-4' aria-hidden />
-                  {seller.phone}
-                </a>
-              ) : null}
               {seller.email ? (
                 <a
                   href={`mailto:${seller.email}`}

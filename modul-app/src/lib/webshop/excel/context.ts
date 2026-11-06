@@ -7,7 +7,7 @@ import {
   mapAccessoryWebFields,
   type AccessoryWebFields
 } from '@/lib/accessories/web-shop'
-import { fetchAllPages } from '@/lib/supabase/fetch-all'
+import { fetchAllPages, fetchByIds } from '@/lib/supabase/fetch-all'
 import { asValueType, mapAttributeInputRow } from '@/lib/webshop/queries'
 import type {
   AttributeInput,
@@ -17,6 +17,7 @@ import type {
 } from '@/lib/webshop/types'
 
 import type { DocumentKind } from '@/lib/webshop/excel/columns'
+import type { ShopXWorkbook } from '@/lib/webshop/excel/read'
 
 const MAX_PRODUCTS = 50000
 const MAX_LINKS = 400000
@@ -119,7 +120,16 @@ export type ShopXContext = {
   mappings: Map<string, string>
   /** A 20260549 migráció lefutott (tömeges mentés, visszavonás, csoportok). */
   bulkReady: boolean
+  /** Az összes bolt sor webcíme (ütközésvizsgálat a szűkített betöltésnél is). */
+  slugOwners: Map<string, string>
+  /** Kategória id → hány bolt sor van benne. */
+  categoryCounts: Map<string, number>
+  /** false = csak a fájlban / listában érintett termékek vannak betöltve (a `usage` részleges). */
+  complete: boolean
 }
+
+/** Csak ezeket a termékeket (és a hivatkozottakat) töltjük be — nagy katalógusnál kötelező. */
+export type ShopXScope = { skus?: string[]; ids?: string[]; groupCodes?: string[] }
 
 export const PACK_AXIS = '__pack'
 
@@ -152,55 +162,33 @@ function categoryPaths(rows: Omit<ShopXCategory, 'path'>[]): ShopXCategory[] {
 }
 
 type Page<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+type Row = Record<string, unknown>
+type Loaded<T> = { data: T[]; error: string | null }
 
-export async function loadShopXContext(
-  supabase: SupabaseClient,
-  tenantId: string
-): Promise<ShopXContext> {
-  const [cats, tpl, attrs, values, products, deleted, links, inputs, related, docs, media, groups, mappings] = await Promise.all([
-    (async () => {
-      const cols = 'id, name, parent_id, active, google_taxonomy_id, measure_image_url'
-      const q = (c: string) =>
-        supabase.from('web_categories').select(c).eq('tenant_id', tenantId).is('deleted_at', null)
-      const res = await q(`${cols}, intro, cover_accessory_id`)
-      // 20260550 előtt nincs intro / cover_accessory_id.
-      const out = res.error?.code === '42703' ? await q(cols) : res
-      return { data: out.data as unknown as Record<string, unknown>[] | null, error: out.error }
-    })(),
-    supabase
-      .from('web_category_attributes')
-      .select('category_id, attribute_id, role, sort_order')
-      .eq('tenant_id', tenantId),
-    supabase
-      .from('product_attributes')
-      .select('id, name, code, value_type, unit, allow_multiple, is_variant_axis, active, sort_order')
-      .eq('tenant_id', tenantId)
-      .is('deleted_at', null),
-    fetchAllPages<Record<string, unknown>>(
-      (from, to) =>
-        supabase
-          .from('attribute_values')
-          .select('id, attribute_id, label, active')
-          .eq('tenant_id', tenantId)
-          .is('deleted_at', null)
-          .order('id', { ascending: true })
-          .range(from, to) as unknown as Page<Record<string, unknown>>,
-      MAX_LINKS,
-      PARALLEL
-    ),
-    fetchAllPages<Record<string, unknown>>(
+const PRODUCT_SELECT = `id, sku, name, barcode, image_url, price_net, active,
+  manufacturers ( name ), tax_rates ( rate_percent ),
+  accessory_web ( ${ACCESSORY_WEB_COLUMNS}, updated_at )`
+
+type ProductSet = {
+  products: Loaded<Row>
+  deleted: Loaded<{ sku: string }>
+  links: Loaded<{ accessory_id: string; attribute_value_id: string }>
+  inputs: Loaded<Row>
+  related: Loaded<Row>
+  docs: Loaded<Row>
+}
+
+async function loadAllProducts(supabase: SupabaseClient, tenantId: string): Promise<ProductSet> {
+  const [products, deleted, links, inputs, related, docs] = await Promise.all([
+    fetchAllPages<Row>(
       (from, to) =>
         supabase
           .from('accessories')
-          .select(
-            `id, sku, name, barcode, image_url, price_net, active,
-             manufacturers ( name ), tax_rates ( rate_percent ),
-             accessory_web ( ${ACCESSORY_WEB_COLUMNS}, updated_at )`
-          )
+          .select(PRODUCT_SELECT)
           .eq('tenant_id', tenantId)
           .is('deleted_at', null)
           .order('id', { ascending: true })
-          .range(from, to) as unknown as Page<Record<string, unknown>>,
+          .range(from, to) as unknown as Page<Row>,
       MAX_PRODUCTS,
       PARALLEL
     ),
@@ -227,7 +215,7 @@ export async function loadShopXContext(
       MAX_LINKS,
       PARALLEL
     ),
-    fetchAllPages<Record<string, unknown>>(
+    fetchAllPages<Row>(
       (from, to) =>
         supabase
           .from('accessory_attribute_inputs')
@@ -235,11 +223,11 @@ export async function loadShopXContext(
           .eq('tenant_id', tenantId)
           .order('accessory_id', { ascending: true })
           .order('attribute_id', { ascending: true })
-          .range(from, to) as unknown as Page<Record<string, unknown>>,
+          .range(from, to) as unknown as Page<Row>,
       MAX_LINKS,
       PARALLEL
     ),
-    fetchAllPages<Record<string, unknown>>(
+    fetchAllPages<Row>(
       (from, to) =>
         supabase
           .from('accessory_related')
@@ -247,29 +235,223 @@ export async function loadShopXContext(
           .eq('tenant_id', tenantId)
           .order('accessory_id', { ascending: true })
           .order('related_id', { ascending: true })
-          .range(from, to) as unknown as Page<Record<string, unknown>>,
+          .range(from, to) as unknown as Page<Row>,
       MAX_LINKS,
       PARALLEL
     ),
-    fetchAllPages<Record<string, unknown>>(
+    fetchAllPages<Row>(
       (from, to) =>
         supabase
           .from('accessory_documents')
           .select('accessory_id, media_id, kind, title, language, sort_order')
           .eq('tenant_id', tenantId)
           .order('id', { ascending: true })
-          .range(from, to) as unknown as Page<Record<string, unknown>>,
+          .range(from, to) as unknown as Page<Row>,
+      MAX_LINKS,
+      PARALLEL
+    )
+  ])
+  return { products, deleted, links, inputs, related, docs }
+}
+
+/**
+ * Csak a megadott termékek + amire hivatkoznak (kapcsolt termék, csoporttárs, csoport fő termék,
+ * kategória borító). Minden lekérdezés id/sku listára szűr — a teljes katalógust nem lapozzuk végig.
+ */
+async function loadScopedProducts(
+  supabase: SupabaseClient,
+  tenantId: string,
+  scope: ShopXScope,
+  extraIds: string[]
+): Promise<ProductSet> {
+  const productsBy = (col: 'id' | 'sku', values: string[]) =>
+    fetchByIds<Row>(values, (chunk, from, to) =>
+      supabase
+        .from('accessories')
+        .select(PRODUCT_SELECT)
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .in(col, chunk)
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as Page<Row>
+    )
+  const relatedOf = (ids: string[]) =>
+    fetchByIds<Row>(ids, (chunk, from, to) =>
+      supabase
+        .from('accessory_related')
+        .select('accessory_id, related_id, kind, sort_order')
+        .eq('tenant_id', tenantId)
+        .in('accessory_id', chunk)
+        .order('accessory_id', { ascending: true })
+        .order('related_id', { ascending: true })
+        .range(from, to) as unknown as Page<Row>
+    )
+
+  const skuVariants = [...new Set((scope.skus ?? []).flatMap((s) => [s.trim(), s.trim().toUpperCase()]))].filter(Boolean)
+  const [bySku, byId, deleted] = await Promise.all([
+    skuVariants.length > 0 ? productsBy('sku', skuVariants) : Promise.resolve<Loaded<Row>>({ data: [], error: null }),
+    (scope.ids?.length ?? 0) > 0 ? productsBy('id', scope.ids!) : Promise.resolve<Loaded<Row>>({ data: [], error: null }),
+    fetchByIds<{ sku: string }>(skuVariants, (chunk, from, to) =>
+      supabase
+        .from('accessories')
+        .select('sku')
+        .eq('tenant_id', tenantId)
+        .not('deleted_at', 'is', null)
+        .in('sku', chunk)
+        .order('id', { ascending: true })
+        .range(from, to)
+    )
+  ])
+  const firstError = bySku.error ?? byId.error ?? deleted.error
+  const empty = { data: [], error: firstError }
+  if (firstError) return { products: empty, deleted, links: empty, inputs: empty, related: empty, docs: empty }
+
+  const rows = new Map<string, Row>()
+  for (const r of [...bySku.data, ...byId.data]) rows.set(String(r.id), r)
+
+  const groupCodes = new Set((scope.groupCodes ?? []).map((c) => c.trim()).filter(Boolean))
+  for (const r of rows.values()) {
+    const code = (one<Row>(r.accessory_web)?.web_group_id as string | null | undefined)?.trim()
+    if (code) groupCodes.add(code)
+  }
+  const [members, related] = await Promise.all([
+    fetchByIds<{ accessory_id: string }>([...groupCodes], (chunk, from, to) =>
+      supabase
+        .from('accessory_web')
+        .select('accessory_id')
+        .eq('tenant_id', tenantId)
+        .in('web_group_id', chunk)
+        .order('accessory_id', { ascending: true })
+        .range(from, to)
+    ),
+    relatedOf([...rows.keys()])
+  ])
+  if (members.error || related.error) {
+    const error = members.error ?? related.error
+    return { products: { data: [], error }, deleted, links: empty, inputs: empty, related, docs: empty }
+  }
+
+  const extra = new Set<string>(extraIds)
+  for (const m of members.data) extra.add(m.accessory_id)
+  for (const r of related.data) extra.add(String(r.related_id))
+  const missing = [...extra].filter((id) => !rows.has(id))
+  if (missing.length > 0) {
+    const [more, moreRelated] = await Promise.all([productsBy('id', missing), relatedOf(missing)])
+    if (more.error || moreRelated.error) {
+      const error = more.error ?? moreRelated.error
+      return { products: { data: [], error }, deleted, links: empty, inputs: empty, related, docs: empty }
+    }
+    for (const r of more.data) rows.set(String(r.id), r)
+    related.data.push(...moreRelated.data)
+  }
+
+  const ids = [...rows.keys()]
+  const [links, inputs, docs] = await Promise.all([
+    fetchByIds<{ accessory_id: string; attribute_value_id: string }>(ids, (chunk, from, to) =>
+      supabase
+        .from('accessory_attribute_values')
+        .select('accessory_id, attribute_value_id')
+        .eq('tenant_id', tenantId)
+        .in('accessory_id', chunk)
+        .order('accessory_id', { ascending: true })
+        .order('attribute_value_id', { ascending: true })
+        .range(from, to)
+    ),
+    fetchByIds<Row>(ids, (chunk, from, to) =>
+      supabase
+        .from('accessory_attribute_inputs')
+        .select('accessory_id, attribute_id, value_num, value_max, value_bool')
+        .eq('tenant_id', tenantId)
+        .in('accessory_id', chunk)
+        .order('accessory_id', { ascending: true })
+        .order('attribute_id', { ascending: true })
+        .range(from, to) as unknown as Page<Row>
+    ),
+    fetchByIds<Row>(ids, (chunk, from, to) =>
+      supabase
+        .from('accessory_documents')
+        .select('accessory_id, media_id, kind, title, language, sort_order')
+        .eq('tenant_id', tenantId)
+        .in('accessory_id', chunk)
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as Page<Row>
+    )
+  ])
+  return { products: { data: [...rows.values()], error: null }, deleted, links, inputs, related, docs }
+}
+
+/** A fájlban hivatkozott SKU-k. null = a teljes katalógus kell (Tulajdonságok lap: típusváltáshoz pontos használat). */
+export function shopWorkbookScope(wb: ShopXWorkbook): ShopXScope | null {
+  if ((wb.attributes?.rows.length ?? 0) > 0) return null
+  const skus = new Set<string>()
+  const add = (v: string | undefined) => {
+    const s = v?.trim()
+    if (s) skus.add(s)
+  }
+  for (const r of wb.products?.rows ?? []) add(r.cells.sku)
+  for (const r of wb.specs?.rows ?? []) add(r.cells.sku)
+  for (const r of wb.faq?.rows ?? []) add(r.cells.sku)
+  for (const r of wb.documents?.rows ?? []) add(r.cells.sku)
+  for (const r of wb.related?.rows ?? []) {
+    add(r.cells.sku)
+    add(r.cells.relatedSku)
+  }
+  for (const r of wb.groups?.rows ?? []) add(r.cells.main)
+  for (const r of wb.categories?.rows ?? []) add(r.cells.cover)
+  const groupCodes = new Set<string>()
+  for (const r of wb.products?.rows ?? []) if (r.cells.group?.trim()) groupCodes.add(r.cells.group.trim())
+  for (const r of wb.groups?.rows ?? []) if (r.cells.code?.trim()) groupCodes.add(r.cells.code.trim())
+  return { skus: [...skus], groupCodes: [...groupCodes] }
+}
+
+/**
+ * `scope` nélkül a teljes katalógust tölti (kis tenant / Tulajdonságok lap).
+ * `scope`-pal csak az érintett termékeket — 30k+ terméknél a teljes lapozás statement timeoutba fut.
+ */
+export async function loadShopXContext(
+  supabase: SupabaseClient,
+  tenantId: string,
+  scope?: ShopXScope | null
+): Promise<ShopXContext> {
+  const [cats, tpl, attrs, values, media, groups, mappings, webIndex] = await Promise.all([
+    (async () => {
+      const cols = 'id, name, parent_id, active, google_taxonomy_id, measure_image_url'
+      const q = (c: string) =>
+        supabase.from('web_categories').select(c).eq('tenant_id', tenantId).is('deleted_at', null)
+      const res = await q(`${cols}, intro, cover_accessory_id`)
+      // 20260550 előtt nincs intro / cover_accessory_id.
+      const out = res.error?.code === '42703' ? await q(cols) : res
+      return { data: out.data as unknown as Row[] | null, error: out.error }
+    })(),
+    supabase
+      .from('web_category_attributes')
+      .select('category_id, attribute_id, role, sort_order')
+      .eq('tenant_id', tenantId),
+    supabase
+      .from('product_attributes')
+      .select('id, name, code, value_type, unit, allow_multiple, is_variant_axis, active, sort_order')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null),
+    fetchAllPages<Row>(
+      (from, to) =>
+        supabase
+          .from('attribute_values')
+          .select('id, attribute_id, label, active')
+          .eq('tenant_id', tenantId)
+          .is('deleted_at', null)
+          .order('id', { ascending: true })
+          .range(from, to) as unknown as Page<Row>,
       MAX_LINKS,
       PARALLEL
     ),
-    fetchAllPages<Record<string, unknown>>(
+    fetchAllPages<Row>(
       (from, to) =>
         supabase
           .from('media_files')
           .select('id, original_filename, public_url, mime_type')
           .eq('tenant_id', tenantId)
           .order('id', { ascending: true })
-          .range(from, to) as unknown as Page<Record<string, unknown>>,
+          .range(from, to) as unknown as Page<Row>,
       MAX_MEDIA,
       PARALLEL
     ),
@@ -282,20 +464,42 @@ export async function loadShopXContext(
       .from('webshop_import_mappings')
       .select('kind, source_key, target_id')
       .eq('tenant_id', tenantId)
-      .limit(50000)
+      .limit(50000),
+    fetchAllPages<{ accessory_id: string; web_slug: string | null; web_category_id: string | null }>(
+      (from, to) =>
+        supabase
+          .from('accessory_web')
+          .select('accessory_id, web_slug, web_category_id')
+          .eq('tenant_id', tenantId)
+          .order('accessory_id', { ascending: true })
+          .range(from, to),
+      MAX_PRODUCTS,
+      PARALLEL
+    )
   ])
 
-  const firstError =
-    cats.error?.message ??
-    tpl.error?.message ??
-    attrs.error?.message ??
-    values.error ??
-    products.error ??
-    links.error ??
-    inputs.error ??
-    related.error ??
-    docs.error ??
-    media.error
+  const sharedError =
+    cats.error?.message ?? tpl.error?.message ?? attrs.error?.message ?? values.error ?? media.error ?? webIndex.error
+  if (sharedError) {
+    console.error('loadShopXContext', sharedError)
+    throw new Error('Nem sikerült betölteni a bolt adatait.')
+  }
+
+  let set: ProductSet
+  if (scope) {
+    const extraIds: string[] = []
+    const scopedCodes = new Set((scope.groupCodes ?? []).map(foldKey))
+    for (const g of groups.data ?? []) {
+      if (g.main_accessory_id && scopedCodes.has(foldKey(String(g.code ?? '')))) extraIds.push(g.main_accessory_id as string)
+    }
+    for (const c of cats.data ?? []) if (c.cover_accessory_id) extraIds.push(c.cover_accessory_id as string)
+    set = await loadScopedProducts(supabase, tenantId, scope, extraIds)
+  } else {
+    set = await loadAllProducts(supabase, tenantId)
+  }
+  const { products, deleted, links, inputs, related, docs } = set
+
+  const firstError = products.error ?? deleted.error ?? links.error ?? inputs.error ?? related.error ?? docs.error
   if (firstError) {
     console.error('loadShopXContext', firstError)
     throw new Error('Nem sikerült betölteni a bolt adatait.')
@@ -451,6 +655,13 @@ export async function loadShopXContext(
   })
   list.sort((a, b) => a.name.localeCompare(b.name, 'hu'))
 
+  const slugOwners = new Map<string, string>()
+  const categoryCounts = new Map<string, number>()
+  for (const w of webIndex.data) {
+    if (w.web_slug) slugOwners.set(w.web_slug, w.accessory_id)
+    if (w.web_category_id) categoryCounts.set(w.web_category_id, (categoryCounts.get(w.web_category_id) ?? 0) + 1)
+  }
+
   return {
     categories,
     categoryById: new Map(categories.map((c) => [c.id, c])),
@@ -468,6 +679,9 @@ export async function loadShopXContext(
     mediaByUrl: new Map(mediaList.map((m) => [m.url.split('?')[0], m])),
     groups: groupMap,
     mappings: mappingMap,
-    bulkReady
+    bulkReady,
+    slugOwners,
+    categoryCounts,
+    complete: !scope
   }
 }

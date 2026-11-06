@@ -76,16 +76,29 @@ OpenAI ACP discovery **9 kötelező** mező → nálunk `evaluateAiReadiness` + 
 | `indexable` | Live OK; Agent Top még hiányos **vagy** soft hiányok |
 | `competitive` / `agent_excellent` | Agent Top + extra minőség |
 
-Lista szűrő `incomplete` = Live-on van, de még nem „kész a boltra” (competitive+).
+Lista szűrő (csak **bolt-tagok** = van `accessory_web` sor):
+- `live` (default) = `sellable_web` — amit a vevő lát
+- `draft` = bolt-tag, de nincs Live
+- `incomplete` = Live + **nincs** Agent Top (márka + ≥80 karakter leírás)
+- `agent_ok` = Live + Agent Top OK  
+Legacy URL: `in_shop`→`live`, `not_in_shop`→`draft`.
+
+**Nem** listázza az egész ERP-t (30k+). Hozzáadás: „Termék hozzáadása” dialógus —
+- **Egy termék:** kereső (`search_accessories_page` + `ensureShopProduct`) → szerkesztő.
+- **Gyártó szerint:** előnézet (`webshop_add_preview`) + set-based tagság (`webshop_add_by_manufacturer`, Live ki, chunk ≤2000, ~40 s budget + Folytatom). Migráció: `20260923_webshop_add_by_manufacturer.sql`. Siker után lista → **Készül**.
 
 ---
 
 ## 4. Admin UX W1
 
 - Flag: `WEBSHOP_ENABLED = true`
-- **Nav:** önálló szekció **Webshop** (Értékesítés után) — flat: Áttekintés · Katalógus · Értékelések · Elállások · Beállítások. Kategóriák/Jellemzők route marad, navból W1-ben ki.
+- **Nav:** önálló szekció **Webshop** (Értékesítés után) — flat: Áttekintés · Katalógus · **Kategóriák** · **Jellemzők** · Értékelések · Elállások · Beállítások.
+  - Kategóriák: fa + kulcsadat-sablon (max 4). Új = név (+ szülő); Google/intro/borító a Szerkeszt-ben.
+  - Jellemzők: újrafelhasználható mezők. Új = név + típus (+ egység); kód a névből; listaértékek a kártyán.
 - Kötelező onboard = Áttekintő + Katalógus + Beállítások
-- Termék: Live kapcsoló könnyű; Agent checklist = AI-készség panel (feed)
+- **Katalógus:** web-first munkalista; primary **Termék hozzáadása** (egy termék / gyártó szerint tömeges tagság); Live switch; Agent badge; chip: Live / Készül / Agent hiányos / Agent kész. Limit 25. Kereső = Termékek minta: `search_shop_catalog_page` RPC + `/api/webshop/katalogus` + TanStack Query (`history.replaceState`, nem RSC `router.replace`). Migráció: `20260636_search_shop_catalog_page.sql` + `20260923_webshop_add_by_manufacturer.sql`.
+- **Szerkesztő** (`/webshop/katalogus/[id]`): **Live** → **Agent Top** (`#agent`) → **Haladó**. ERP ár/kép = alapadatok.
+- **ERP Online bolt kártya:** ha nincs web sor → „Hozzáadás a bolthoz”; ha van → Live kapcsoló.
 
 ### 4.1 `/webshop/beallitasok` (lean + szegmens tab)
 
@@ -96,8 +109,8 @@ Lista szűrő `incomplete` = Live-on van, de még nem „kész a boltra” (comp
 | **Általános** | Bolt URL + Live db; eladó (ERP előtöltés + `legal_*` override); ügyfélszolgálat (`service_address`, `support_hours`). |
 | **Megjelenés** | Logo (Cégadatok); képarány; nettó ár; eladott db; értékelések. |
 | **Kereskedelem** | Készletküszöb; elállás/visszaküldés; jótállás; B2C/B2B + mikro/hírlevél/egyedi; AI tanítás. |
-| **Szállítás** | GLS díj + átfutás; személyes átvétel. Nincs ingyenes szállítás / más futár. |
-| **Fizetés** | 5 pipa (+ bankszámla ha átutalás). |
+| **Szállítás** | Buyer promise: házhoz (díj + átfutás) + személyes átvétel. GLS = belső default carrier (nem checkout brand). Nincs multi-carrier / ingyenes küszöb UI W1-ben. |
+| **Fizetés** | 3 buyer opció: bankkártya · átutalás · személyesen (átvételkor). COD nincs. Személyesen csak ha átvétel be van. Átutalás → bankszámla + foglalás. |
 | **Domain** | Korábbi Csatornák UI. `/webshop/csatornak` → redirect ide. |
 | **Jogi** | Fogyasztó Barát stub (bekötés P1). `/webshop/jogi` → redirect ide. |
 

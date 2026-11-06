@@ -185,7 +185,7 @@ export function WebshopCategoriesClient({
     <div>
       <PageHeader
         title="Bolt kategóriák"
-        description="Ezekből választasz a terméken — nem szabad szöveg."
+        description="Hova sorolod a boltos termékeket. A kulcsadatok a kategóriához tartoznak."
         actions={
           canWrite ? (
             <Button type="button" onClick={openCreate}>
@@ -321,7 +321,9 @@ export function WebshopCategoriesClient({
                 id="cat-name"
                 value={name}
                 onChange={(e) => onNameChange(e.target.value)}
+                placeholder="pl. Fogantyúk"
                 disabled={pending}
+                autoFocus
               />
             </FormField>
             <FormField label="Szülő" htmlFor="cat-parent" optionalLabel>
@@ -335,75 +337,84 @@ export function WebshopCategoriesClient({
                 disabled={pending}
               />
             </FormField>
-            <FormField
-              label="Google kategória"
-              htmlFor="cat-google"
-              optionalLabel
-              hint={
-                selectedTaxonomy
-                  ? selectedTaxonomy.path
-                  : 'Üresen a név vagy a szülő alapján töltjük (Merchant ID)'
-              }
-            >
-              <MenuSelect
-                id="cat-google"
-                value={googleTaxonomyId}
-                allowEmpty
-                searchable
-                searchPlaceholder="Keresés (pl. zsanér, fogantyú)…"
-                placeholder="Automatikus / válassz…"
-                options={taxonomyOptions}
-                onChange={setGoogleTaxonomyId}
-                disabled={pending}
-              />
-            </FormField>
-            <FormField
-              label="Bevezető"
-              htmlFor="cat-intro"
-              optionalLabel
-              error={fieldErrors.intro}
-              hint={`${intro.trim().length}/300 · üresen a bolt a termékadatokból ír összefoglalót`}
-            >
-              <Textarea
-                id="cat-intro"
-                value={intro}
-                onChange={(e) => setIntro(e.target.value)}
-                rows={3}
-                maxLength={300}
-                disabled={pending}
-              />
-            </FormField>
-            <FormField
-              label="Borítókép (termék SKU)"
-              htmlFor="cat-cover"
-              optionalLabel
-              error={fieldErrors.coverSku}
-              hint="Üresen a legtöbbet rendelt raktáron lévő termék képe"
-            >
-              <Input
-                id="cat-cover"
-                value={coverSku}
-                onChange={(e) => setCoverSku(e.target.value)}
-                autoComplete="off"
-                disabled={pending}
-              />
-            </FormField>
-            <FormField label="Sorrend" htmlFor="cat-sort" optionalLabel>
-              <Input
-                id="cat-sort"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value)}
-                inputMode="numeric"
-                disabled={pending}
-              />
-            </FormField>
-            <Switch
-              id="cat-active"
-              checked={active}
-              onCheckedChange={setActive}
-              disabled={pending}
-              label="Aktív"
-            />
+            {editor.mode === 'edit' ? (
+              <>
+                <FormField
+                  label="Google kategória"
+                  htmlFor="cat-google"
+                  optionalLabel
+                  hint={
+                    selectedTaxonomy
+                      ? selectedTaxonomy.path
+                      : 'Üresen a név vagy a szülő alapján töltjük (Merchant ID)'
+                  }
+                >
+                  <MenuSelect
+                    id="cat-google"
+                    value={googleTaxonomyId}
+                    allowEmpty
+                    searchable
+                    searchPlaceholder="Keresés (pl. zsanér, fogantyú)…"
+                    placeholder="Automatikus / válassz…"
+                    options={taxonomyOptions}
+                    onChange={setGoogleTaxonomyId}
+                    disabled={pending}
+                  />
+                </FormField>
+                <FormField
+                  label="Bevezető"
+                  htmlFor="cat-intro"
+                  optionalLabel
+                  error={fieldErrors.intro}
+                  hint={`${intro.trim().length}/300 · üresen a bolt a termékadatokból ír összefoglalót`}
+                >
+                  <Textarea
+                    id="cat-intro"
+                    value={intro}
+                    onChange={(e) => setIntro(e.target.value)}
+                    rows={3}
+                    maxLength={300}
+                    disabled={pending}
+                  />
+                </FormField>
+                <FormField
+                  label="Borítókép (termék SKU)"
+                  htmlFor="cat-cover"
+                  optionalLabel
+                  error={fieldErrors.coverSku}
+                  hint="Üresen a legtöbbet rendelt raktáron lévő termék képe"
+                >
+                  <Input
+                    id="cat-cover"
+                    value={coverSku}
+                    onChange={(e) => setCoverSku(e.target.value)}
+                    autoComplete="off"
+                    disabled={pending}
+                  />
+                </FormField>
+                <FormField label="Sorrend" htmlFor="cat-sort" optionalLabel>
+                  <Input
+                    id="cat-sort"
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value)}
+                    inputMode="numeric"
+                    disabled={pending}
+                  />
+                </FormField>
+                <Switch
+                  id="cat-active"
+                  checked={active}
+                  onCheckedChange={setActive}
+                  disabled={pending}
+                  label="Aktív"
+                />
+              </>
+            ) : (
+              <p className="text-hint text-ink-secondary">
+                Google kategória, bevezető és kulcsadatok később a Szerkeszt / Kulcsadatok
+                gombokkal.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -415,7 +426,7 @@ export function WebshopCategoriesClient({
               Mégse
             </Button>
             <Button type="button" loading={pending} onClick={handleSave}>
-              Mentés
+              {editor.mode === 'edit' ? 'Mentés' : 'Létrehozás'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -5,12 +5,12 @@ import {
   CircleAlert,
   CircleCheck,
   FileText,
-  MessageCircle,
   Package,
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
-  Store
+  Store,
+  Truck
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -25,7 +25,7 @@ import { Stars, StorefrontPdpReviews } from '@/components/storefront/pdp-reviews
 import { PdpSection, SECTION_TITLE } from '@/components/storefront/pdp-section'
 import { StorefrontPdpVariants } from '@/components/storefront/pdp-variants'
 import { PdpVideo } from '@/components/storefront/pdp-video'
-import { ProductRail, type RailCard } from '@/components/storefront/product-grid'
+import { ProductRail } from '@/components/storefront/product-grid'
 import { RecentlyViewedRail, RecordProductView } from '@/components/storefront/recently-viewed'
 import { StorefrontFrame } from '@/components/storefront/storefront-chrome'
 import { DetailsHashOpener } from '@/components/storefront/storefront-scroll'
@@ -224,26 +224,9 @@ export function StorefrontPdpView({
         }
       : null
 
-  const seriesCards: RailCard[] = product.variants
-    .filter((v) => !v.current)
-    .map((v) => ({
-      id: v.id,
-      slug: v.slug,
-      title: v.title,
-      imageUrl: v.imageUrl,
-      priceGross: v.priceGross,
-      inStock: v.inStock,
-      unitPrice: unitPriceLabel(v.priceGross, v.netContent)
-    }))
-
   const description = product.descriptionLong || product.descriptionShort
   const benefits = product.useCases.slice(0, 4)
   const variantLabel = product.variantLabel
-  const contactHref = seller.phone
-    ? `tel:${seller.phone}`
-    : seller.email
-      ? `mailto:${seller.email}?subject=${encodeURIComponent(`Kérdés: ${product.title}`)}`
-      : null
   const home = { label: seller.name, href: STOREFRONT_HOME }
   const parent = chain[chain.length - 1] ?? null
   const hasManufacturerInfo = Boolean(product.manufacturer || product.safetyInfo)
@@ -286,8 +269,9 @@ export function StorefrontPdpView({
           />
         </div>
 
+        {/* Fold: galéria + sticky buy (Vilgain ritmus). Buy sticky a bal tartalom mellett (row-span); mobilon buy a galéria után. */}
         <div className="lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-start lg:gap-12">
-          <div className="lg:sticky lg:top-[76px]">
+          <div className="min-w-0">
             <StorefrontPdpGallery
               images={images}
               alt={product.title}
@@ -297,7 +281,7 @@ export function StorefrontPdpView({
             />
           </div>
 
-          <div className="px-4 pt-3 lg:px-0 lg:pt-0">
+          <aside className="px-4 pt-3 lg:col-start-2 lg:row-span-2 lg:sticky lg:top-[76px] lg:self-start lg:px-0 lg:pt-0">
             {/* Mi ez? */}
             <div className="space-y-1">
               {product.brand || product.isBundle ? (
@@ -400,11 +384,17 @@ export function StorefrontPdpView({
                   axes={product.variantAxes}
                   variants={product.variants}
                   fitAnchor={hasFit ? FIT_ANCHOR : null}
+                  reviews={
+                    reviews.enabled && reviews.count > 0
+                      ? { average: reviews.average, count: reviews.count }
+                      : null
+                  }
                 />
               </div>
             ) : null}
 
-            {largerPack.length > 0 ? (
+            {/* Pack tengelynél a chip-választó az igazság — ne legyen párhuzamos ár-lista. */}
+            {!packIsAxis && largerPack.length > 0 ? (
               <ul className="mt-3 space-y-1" aria-label="Nagyobb kiszerelés">
                 {largerPack.map((c) => (
                   <li key={c.id}>
@@ -428,33 +418,8 @@ export function StorefrontPdpView({
               </ul>
             ) : null}
 
-            {/* Mikor és mennyiért kapom meg? — egy sor */}
-            <p className="mt-4 flex gap-2 text-[14px] leading-snug">
-              {product.inStock ? (
-                <CircleCheck className="mt-0.5 size-4 shrink-0 text-green-700" aria-hidden />
-              ) : (
-                <CircleAlert className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />
-              )}
-              <span>
-                <span className={cn('font-medium', product.inStock ? 'text-green-700' : 'text-ink')}>
-                  {product.inStock ? 'Raktáron' : 'Jelenleg nincs készleten'}
-                </span>
-                {lowStock ? (
-                  <span className="text-ink-secondary"> — még {product.onHand} db</span>
-                ) : null}
-                {availabilityParts.length > 0 ? (
-                  <span className="text-ink-secondary"> · {availabilityParts.join(' · ')}</span>
-                ) : null}
-              </span>
-            </p>
-            {product.expectedArrival ? (
-              <p className="mt-1 flex gap-2 text-[14px] leading-snug text-ink">
-                <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden />
-                Várható érkezés: {arrivalLabel(product.expectedArrival)}
-              </p>
-            ) : null}
-
-            <div className="mt-3">
+            {/* Kosár → készlet → szállítás → forgalmazó → elállás (Vilgain ritmus) */}
+            <div className="mt-4">
               <StorefrontPdpBuyBox
                 accessoryId={product.id}
                 slug={product.slug}
@@ -476,40 +441,59 @@ export function StorefrontPdpView({
 
             {alternative ? <AlternativeCard alt={alternative} /> : null}
 
-            {/* Kockázatcsökkentés a gomb alatt — egy sor */}
-            <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[13px] text-ink">
-              <li>
+            <div className="mt-4 space-y-1.5">
+              <p className="flex gap-2 text-[14px] leading-snug">
+                {product.inStock ? (
+                  <CircleCheck className="mt-0.5 size-4 shrink-0 text-green-700" aria-hidden />
+                ) : (
+                  <CircleAlert className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />
+                )}
+                <span>
+                  <span className={cn('font-medium', product.inStock ? 'text-green-700' : 'text-ink')}>
+                    {product.inStock ? 'Raktáron' : 'Jelenleg nincs készleten'}
+                  </span>
+                  {lowStock ? (
+                    <span className="text-ink-secondary"> — még {product.onHand} db</span>
+                  ) : null}
+                </span>
+              </p>
+              {product.expectedArrival ? (
+                <p className="flex gap-2 text-[14px] leading-snug text-ink">
+                  <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  Várható érkezés: {arrivalLabel(product.expectedArrival)}
+                </p>
+              ) : null}
+              {availabilityParts.length > 0 ? (
+                <p className="flex gap-2 text-[14px] leading-snug text-ink-secondary">
+                  <Truck className="mt-0.5 size-4 shrink-0 text-ink" aria-hidden />
+                  <span>{availabilityParts.join(' · ')}</span>
+                </p>
+              ) : null}
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-secondary">
                 <a
                   href={`#${SHIPPING_ANCHOR}`}
-                  className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 hover:underline"
+                  className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 hover:text-ink hover:underline"
                 >
-                  <RotateCcw className="size-4 shrink-0" aria-hidden />
+                  <RotateCcw className="size-3.5 shrink-0" aria-hidden />
                   {returnDays} nap elállás
                 </a>
-              </li>
-              {settings.warrantyMonths != null && settings.warrantyMonths > 0 ? (
-                <li className="inline-flex min-h-8 items-center gap-1.5">
-                  <ShieldCheck className="size-4 shrink-0" aria-hidden />
-                  {settings.warrantyMonths} hónap jótállás
-                </li>
-              ) : null}
-              {contactHref ? (
-                <li>
-                  <a
-                    href={contactHref}
-                    className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 underline underline-offset-2"
-                  >
-                    <MessageCircle className="size-4 shrink-0" aria-hidden />
-                    Kérdezz tőlünk
-                  </a>
-                </li>
-              ) : null}
-            </ul>
+                {settings.warrantyMonths != null && settings.warrantyMonths > 0 ? (
+                  <span className="inline-flex min-h-8 items-center gap-1.5">
+                    <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
+                    {settings.warrantyMonths} hónap jótállás
+                  </span>
+                ) : null}
+              </p>
+            </div>
 
             <SellerLine seller={seller} />
+          </aside>
 
+          <div className="min-w-0 lg:col-start-1">
+            {/* Részletek — grid 1. oszlop; sticky aside row-span-2 mellett */}
+            <div className="mt-8 space-y-8 px-4 lg:mt-12 lg:px-0">
             {related.required.length > 0 ? (
-              <div className="-mx-4 mt-8 lg:mx-0">
+              <div className="-mx-4 lg:mx-0">
                 <ProductRail title="Kell hozzá" items={related.required} />
               </div>
             ) : null}
@@ -518,7 +502,7 @@ export function StorefrontPdpView({
               <section
                 id={FIT_ANCHOR}
                 aria-labelledby="kulcsadatok-title"
-                className="mt-8 scroll-mt-4 space-y-3"
+                className="scroll-mt-20 space-y-3"
               >
                 <h2 id="kulcsadatok-title" className={SECTION_TITLE}>
                   Kulcsadatok
@@ -588,28 +572,22 @@ export function StorefrontPdpView({
                     </ul>
                   </div>
                 ) : null}
-                {seller.phone || seller.email ? (
+                {seller.email ? (
                   <p className="text-[13px] leading-snug text-ink-secondary">
                     Nem vagy biztos benne?{' '}
-                    {seller.phone ? (
-                      <a href={`tel:${seller.phone}`} className={linkCls}>
-                        Hívj, segítünk választani
-                      </a>
-                    ) : (
-                      <a
-                        href={`mailto:${seller.email}?subject=${encodeURIComponent(`Kérdés: ${product.title}`)}`}
-                        className={linkCls}
-                      >
-                        Írj nekünk
-                      </a>
-                    )}
+                    <a
+                      href={`mailto:${seller.email}?subject=${encodeURIComponent(`Kérdés: ${product.title}`)}`}
+                      className={linkCls}
+                    >
+                      Írj nekünk
+                    </a>
                   </p>
                 ) : null}
               </section>
             ) : null}
 
             {/* Részletek — egységes, összecsukható szekciók; üres szekció nincs */}
-            <div className="mt-8 border-y border-stone-200">
+            <div className="border-y border-stone-200">
               {description || benefits.length > 0 ? (
                 <PdpSection title="Leírás" defaultOpen>
                   <div className="space-y-4">
@@ -760,27 +738,6 @@ export function StorefrontPdpView({
                 </div>
               </PdpSection>
 
-              {reviews.enabled && reviews.count > 0 ? (
-                <PdpSection
-                  id={REVIEWS_ANCHOR}
-                  title="Értékelések"
-                  count={reviews.count}
-                  aside={
-                    <span className="inline-flex items-center gap-1">
-                      <Stars value={reviews.average} />
-                      <span className="tabular-nums">{formatAverage(reviews.average)}</span>
-                    </span>
-                  }
-                >
-                  <StorefrontPdpReviews
-                    accessoryId={product.id}
-                    variantLabel={variantLabel}
-                    reviews={reviews}
-                    privacyUrl={settings.privacyUrl}
-                  />
-                </PdpSection>
-              ) : null}
-
               {product.faq.length > 0 ? (
                 <PdpSection title="Gyakori kérdések" count={product.faq.length}>
                   <ul className="space-y-4">
@@ -867,9 +824,10 @@ export function StorefrontPdpView({
               </PdpSection>
             </div>
 
-            {reviews.enabled && reviews.count === 0 ? (
-              <div id={REVIEWS_ANCHOR} className="scroll-mt-4 pt-3">
+            {reviews.enabled ? (
+              <div className="mt-10 border-t border-stone-200 pt-8">
                 <StorefrontPdpReviews
+                  id={REVIEWS_ANCHOR}
                   accessoryId={product.id}
                   variantLabel={variantLabel}
                   reviews={reviews}
@@ -877,14 +835,13 @@ export function StorefrontPdpView({
                 />
               </div>
             ) : null}
+            </div>
           </div>
         </div>
 
-        <div className="mt-10 space-y-10 lg:mt-16">
-          <ProductRail title="Ugyanebből a termékből" items={seriesCards} />
+        <div className="mt-10 space-y-10 px-4 lg:mt-16 lg:px-0">
+          <ProductRail title="Mások ezt is megvették" items={boughtTogether} />
           <ProductRail title="Tartozékok" items={related.accessory} />
-          <ProductRail title="Helyette ezt is ajánljuk" items={related.alternative} />
-          <ProductRail title="Gyakran együtt vásárolt" items={boughtTogether} />
           <ProductRail
             title="Hasonló termékek"
             items={similar}
@@ -923,7 +880,7 @@ function AlternativeCard({ alt }: { alt: Alternative }) {
   )
 }
 
-/** „Ki árul?” — kis boltnál a bizalom forrása a látható, elérhető eladó. */
+/** „Ki árul?” — név + város; telefon szándékosan nincs (sok boltnak nincs hangos CS). */
 function SellerLine({ seller }: { seller: StorefrontSeller }) {
   const city = cityOf(seller.address)
   return (
@@ -932,14 +889,6 @@ function SellerLine({ seller }: { seller: StorefrontSeller }) {
       <span>
         Forgalmazza: <span className="font-medium text-ink">{seller.name}</span>
         {city ? ` · ${city}` : ''}
-        {seller.phone ? (
-          <>
-            {' · '}
-            <a href={`tel:${seller.phone}`} className="cursor-pointer tabular-nums text-ink underline underline-offset-2">
-              {seller.phone}
-            </a>
-          </>
-        ) : null}
       </span>
     </p>
   )

@@ -4,6 +4,7 @@ import { Star } from 'lucide-react'
 import { useState, useTransition } from 'react'
 
 import { buttonVariants } from '@/components/ui/button'
+import { SECTION_TITLE } from '@/components/storefront/pdp-section'
 import type { PublicPdpReviews } from '@/lib/storefront/pdp'
 import { submitProductReview } from '@/lib/storefront/review-actions'
 import { cn } from '@/lib/utils'
@@ -13,6 +14,8 @@ type Props = {
   variantLabel: string | null
   reviews: PublicPdpReviews
   privacyUrl: string | null
+  /** Oldalon belüli horgony (pl. #ertekelesek). */
+  id?: string
 }
 
 export function Stars({
@@ -87,7 +90,7 @@ function ReviewForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4 rounded-md border border-stone-200 p-4" noValidate>
+    <form onSubmit={submit} className="space-y-4 rounded-md border border-stone-200 bg-white p-4" noValidate>
       <fieldset>
         <legend className="text-[14px] font-semibold text-ink">
           Értékelésed <span className="text-danger-ink">*</span>
@@ -243,62 +246,88 @@ function ReviewForm({
   )
 }
 
+function authorInitial(name: string): string {
+  const t = name.trim()
+  if (!t) return '?'
+  return t.slice(0, 1).toLocaleUpperCase('hu')
+}
+
+/**
+ * Vilgain-szerű nyitott vélemények blokk: összegző + lista + CTA.
+ * Nem accordion — scrollozható, sticky buy mellett látszik.
+ */
 export function StorefrontPdpReviews({
   accessoryId,
   variantLabel,
   reviews,
-  privacyUrl
+  privacyUrl,
+  id
 }: Props) {
   const [formOpen, setFormOpen] = useState(false)
   const [sent, setSent] = useState(false)
 
   if (!reviews.enabled) return null
 
-  if (reviews.count === 0 && !formOpen && !sent) {
-    return (
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[14px] text-ink-secondary">
-        Vásároltál már ilyet?
-        <button
-          type="button"
-          onClick={() => setFormOpen(true)}
-          className="inline-flex min-h-11 cursor-pointer items-center font-medium text-ink underline underline-offset-2"
-        >
-          Írd meg a véleményed
-        </button>
-      </p>
-    )
-  }
-
   const max = Math.max(1, ...reviews.distribution)
+  const avgLabel = reviews.average.toLocaleString('hu-HU', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1
+  })
 
   return (
-    <div className="space-y-5 text-ink">
+    <section id={id} aria-labelledby="velemenyek-title" className="scroll-mt-20 space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="velemenyek-title" className={SECTION_TITLE}>
+          Vélemények
+          {reviews.count > 0 ? (
+            <span className="font-normal tabular-nums text-ink-secondary">
+              {' '}
+              ({reviews.count})
+            </span>
+          ) : null}
+        </h2>
+        {!formOpen && !sent ? (
+          <button
+            type="button"
+            onClick={() => setFormOpen(true)}
+            className={cn(
+              buttonVariants({ variant: 'secondary', size: 'sm' }),
+              'h-9 shrink-0 cursor-pointer px-3 text-[13px] font-medium'
+            )}
+          >
+            Írj véleményt
+          </button>
+        ) : null}
+      </div>
+
       {reviews.count > 0 ? (
-        <div className="grid gap-5 sm:grid-cols-[auto_1fr] sm:items-center">
-          <div className="space-y-1">
-            <p className="text-[36px] font-semibold leading-none tabular-nums text-ink">
-              {reviews.average.toLocaleString('hu-HU', { minimumFractionDigits: 1 })}
+        <div className="grid gap-5 rounded-lg border border-stone-200 bg-stone-50 p-4 sm:grid-cols-[minmax(0,9rem)_1fr] sm:items-center sm:gap-8 sm:p-5">
+          <div className="flex flex-col items-center text-center sm:items-start sm:text-left">
+            <p className="text-[40px] font-semibold leading-none tabular-nums tracking-tight text-ink">
+              {avgLabel}
             </p>
-            <Stars value={reviews.average} size="md" />
-            <p className="text-[13px] text-ink-secondary">
+            <div className="mt-2">
+              <Stars value={reviews.average} size="md" />
+            </div>
+            <p className="mt-1.5 text-[13px] text-ink-secondary">
               {reviews.count} értékelés alapján
             </p>
           </div>
-          <ul className="space-y-1.5" aria-label="Értékelések megoszlása">
+          <ul className="w-full space-y-1.5" aria-label="Értékelések megoszlása">
             {reviews.distribution.map((n, i) => {
               const stars = 5 - i
               return (
                 <li key={stars} className="flex items-center gap-2 text-[13px]">
-                  <span className="w-12 shrink-0 tabular-nums text-ink-secondary">
+                  <span className="w-14 shrink-0 tabular-nums text-ink-secondary">
                     {stars} csillag
                   </span>
-                  <span className="h-2 flex-1 overflow-hidden rounded-full bg-stone-100">
+                  <span className="h-2 flex-1 overflow-hidden rounded-full bg-stone-200">
                     <span
                       className="block h-full rounded-full bg-ink"
                       style={{ width: `${(n / max) * 100}%` }}
                     />
                   </span>
-                  <span className="w-8 shrink-0 text-right tabular-nums text-ink-secondary">
+                  <span className="w-7 shrink-0 text-right tabular-nums text-ink-secondary">
                     {n}
                   </span>
                 </li>
@@ -307,8 +336,9 @@ export function StorefrontPdpReviews({
           </ul>
         </div>
       ) : !formOpen && !sent ? (
-        <p className="text-[14px] text-ink-secondary">
-          Még nincs értékelés. Ha vásároltál már ilyet, segíts a többieknek.
+        <p className="rounded-md border border-dashed border-stone-300 bg-stone-50 px-4 py-5 text-center text-[14px] text-ink-secondary">
+          Még nincs vélemény. Ha használtad, segíts a többieknek — írd meg a
+          tapasztalatod.
         </p>
       ) : null}
 
@@ -334,54 +364,61 @@ export function StorefrontPdpReviews({
       ) : null}
 
       {reviews.items.length > 0 ? (
-        <ul className="divide-y divide-stone-200 border-y border-stone-200">
+        <ul className="space-y-3">
           {reviews.items.map((r) => (
-            <li key={r.id} className="space-y-2 py-4">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Stars value={r.rating} />
-                <span className="sr-only">{r.rating} / 5 csillag</span>
-                {r.title ? (
-                  <p className="text-[14px] font-semibold text-ink">{r.title}</p>
-                ) : null}
-              </div>
-              <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
-                {r.body}
-              </p>
-              <p className="text-[12px] text-ink-muted">
-                {r.authorName} ·{' '}
-                {new Date(r.createdAt).toLocaleDateString('hu-HU')}
-                {r.variantLabel ? ` · ${r.variantLabel}` : ''}
-              </p>
-              {r.sellerReply ? (
-                <div className="rounded-r-md border-l-2 border-ink bg-stone-50 px-3 py-2.5">
-                  <p className="text-[12px] font-semibold text-ink">Az eladó válasza</p>
-                  <p className="mt-1 whitespace-pre-wrap text-[14px] text-ink-secondary">
-                    {r.sellerReply}
+            <li
+              key={r.id}
+              className="rounded-md border border-stone-200 bg-white p-4"
+            >
+              <div className="flex gap-3">
+                <span
+                  aria-hidden
+                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-stone-100 text-[14px] font-semibold text-ink"
+                >
+                  {authorInitial(r.authorName)}
+                </span>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <p className="text-[14px] font-semibold text-ink">{r.authorName}</p>
+                    <time
+                      dateTime={r.createdAt}
+                      className="text-[12px] tabular-nums text-ink-muted"
+                    >
+                      {new Date(r.createdAt).toLocaleDateString('hu-HU')}
+                    </time>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <Stars value={r.rating} />
+                    <span className="sr-only">{r.rating} / 5 csillag</span>
+                    {r.variantLabel ? (
+                      <span className="text-[12px] text-ink-secondary">{r.variantLabel}</span>
+                    ) : null}
+                  </div>
+                  {r.title ? (
+                    <p className="text-[15px] font-semibold text-ink">{r.title}</p>
+                  ) : null}
+                  <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
+                    {r.body}
                   </p>
+                  {r.sellerReply ? (
+                    <div className="mt-2 rounded-r-md border-l-2 border-ink bg-stone-50 px-3 py-2.5">
+                      <p className="text-[12px] font-semibold text-ink">Az eladó válasza</p>
+                      <p className="mt-1 whitespace-pre-wrap text-[14px] text-ink-secondary">
+                        {r.sellerReply}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
+              </div>
             </li>
           ))}
         </ul>
-      ) : null}
-
-      {!formOpen && !sent ? (
-        <button
-          type="button"
-          onClick={() => setFormOpen(true)}
-          className={cn(
-            buttonVariants({ variant: 'secondary', size: 'lg' }),
-            'h-11 w-full px-4 text-[14px] font-medium sm:w-auto'
-          )}
-        >
-          Értékelés írása
-        </button>
       ) : null}
 
       <p className="text-[12px] leading-snug text-ink-muted">
         Minden termékről szóló, nem sértő véleményt közzéteszünk. A vásárlást
         nem ellenőrizzük.
       </p>
-    </div>
+    </section>
   )
 }

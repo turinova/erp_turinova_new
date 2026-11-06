@@ -385,8 +385,7 @@ export async function buildShopWorkbook(
 
   if (categories) {
     styleHeader(categories, CATEGORY_COLUMNS)
-    const counts = new Map<string, number>()
-    for (const p of ctx.products) if (p.categoryId) counts.set(p.categoryId, (counts.get(p.categoryId) ?? 0) + 1)
+    const counts = ctx.categoryCounts
     const names = (ids: string[]) =>
       joinList(ids.map((id) => ctx.attributeById.get(id)?.name).filter((x): x is string => Boolean(x))) || null
     for (const c of ctx.categories) {

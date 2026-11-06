@@ -67,12 +67,16 @@ async function loadCore(
   )
 }
 
-/** Szabad webcím: `alap`, `alap-2`, `alap-3` … (a saját sorát nem számolja foglaltnak). */
+/**
+ * Szabad webcím: `alap`, `alap-2`, `alap-3` … (a saját sorát nem számolja foglaltnak).
+ * `reserved` = ugyanazon kötegben már kiosztott slugok (tömeges Live / ensure).
+ */
 async function uniqueSlug(
   supabase: SupabaseClient,
   tenantId: string,
   base: string,
-  ownId: string
+  ownId: string,
+  reserved?: Set<string>
 ): Promise<string> {
   const root = base || 'termek'
   const { data } = await supabase
@@ -83,12 +87,19 @@ async function uniqueSlug(
   const taken = new Set(
     (data ?? []).filter((r) => r.accessory_id !== ownId).map((r) => r.web_slug as string)
   )
-  if (!taken.has(root)) return root
+  if (reserved) {
+    for (const s of reserved) taken.add(s)
+  }
+  const pick = (slug: string) => {
+    reserved?.add(slug)
+    return slug
+  }
+  if (!taken.has(root)) return pick(root)
   for (let i = 2; i < 1000; i++) {
     const candidate = `${root.slice(0, 115)}-${i}`
-    if (!taken.has(candidate)) return candidate
+    if (!taken.has(candidate)) return pick(candidate)
   }
-  return `${root.slice(0, 110)}-${Date.now().toString(36)}`
+  return pick(`${root.slice(0, 110)}-${Date.now().toString(36)}`)
 }
 
 function mapDbError(message: string): { field?: string; message: string } {
@@ -275,9 +286,277 @@ export async function saveShopProduct(
 
 const MAX_BULK = 100
 
+export type EnsureShopProductResult =
+  | { ok: true; created: boolean; accessoryId: string }
+  | { ok: false; message: string }
+
+/**
+ * Bolt-tagság: `accessory_web` sor (Live ki). Idempotens.
+ */
+export async function ensureShopProduct(
+  accessoryId: string
+): Promise<EnsureShopProductResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  const tenantId = ctx.user.tenantId!
+  if (!(await tenantHasWebshop(ctx.supabase, tenantId))) {
+    return { ok: false, message: NOT_ENTITLED }
+  }
+
+  const cores = await loadCore(ctx.supabase, tenantId, [accessoryId])
+  const core = cores.get(accessoryId)
+  if (!core) return { ok: false, message: 'A termék nem található.' }
+
+  const { data: existing } = await ctx.supabase
+    .from('accessory_web')
+    .select('accessory_id')
+    .eq('tenant_id', tenantId)
+    .eq('accessory_id', accessoryId)
+    .maybeSingle()
+
+  if (existing) {
+    revalidateAdmin([accessoryId])
+    return { ok: true, created: false, accessoryId }
+  }
+
+  const slug = await uniqueSlug(ctx.supabase, tenantId, suggestWebSlug(core.name), accessoryId)
+  const { error } = await ctx.supabase.from('accessory_web').insert({
+    accessory_id: accessoryId,
+    tenant_id: tenantId,
+    sellable_web: false,
+    web_slug: slug,
+    updated_at: new Date().toISOString()
+  })
+  if (error) {
+    console.error('ensureShopProduct', error.message)
+    return { ok: false, message: mapDbError(error.message).message }
+  }
+  revalidateAdmin([accessoryId])
+  return { ok: true, created: true, accessoryId }
+}
+
+export type ShopAddSearchHit = {
+  id: string
+  name: string
+  sku: string
+  price_gross: number
+  in_shop: boolean
+}
+
+/** Lean ERP kereső a „Termék hozzáadása” dialógushoz — ugyanaz az RPC, mint a Termékek lista. */
+export async function searchProductsForShopAdd(
+  q: string
+): Promise<{ ok: true; rows: ShopAddSearchHit[] } | { ok: false; message: string }> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  const tenantId = ctx.user.tenantId!
+  if (!(await tenantHasWebshop(ctx.supabase, tenantId))) {
+    return { ok: false, message: NOT_ENTITLED }
+  }
+
+  const term = q.trim().replace(/[%_,()"\\*]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
+  if (term.length < 2) return { ok: true, rows: [] }
+
+  const { data, error } = await ctx.supabase.rpc('search_accessories_page', {
+    p_tenant_id: tenantId,
+    p_q: term,
+    p_limit: 25,
+    p_offset: 0
+  })
+
+  if (error) {
+    console.error('searchProductsForShopAdd rpc', error.message, error.code)
+    return {
+      ok: false,
+      message: /Could not find the function|PGRST202/i.test(error.message)
+        ? 'A termékkereső RPC nincs telepítve (search_accessories_page).'
+        : /timeout|canceling statement/i.test(error.message)
+          ? 'A keresés időtúllépés miatt megszakadt. Próbáld újra.'
+          : 'Nem sikerült keresni a termékek között.'
+    }
+  }
+
+  const rows = ((data ?? []) as Record<string, unknown>[]).filter(
+    (r) => r.id != null && r.active !== false
+  )
+  const ids = rows.map((r) => String(r.id))
+  const inShop = new Set<string>()
+  if (ids.length > 0) {
+    const { data: web } = await ctx.supabase
+      .from('accessory_web')
+      .select('accessory_id')
+      .eq('tenant_id', tenantId)
+      .in('accessory_id', ids)
+    for (const r of web ?? []) inShop.add(r.accessory_id as string)
+  }
+
+  return {
+    ok: true,
+    rows: rows.map((r) => ({
+      id: String(r.id),
+      name: String(r.name ?? ''),
+      sku: String(r.sku ?? ''),
+      price_gross: Number(r.price_gross ?? 0),
+      in_shop: inShop.has(String(r.id))
+    }))
+  }
+}
+
+export type ShopAddManufacturerHit = { id: string; name: string }
+
+export type ShopAddByManufacturerPreview = {
+  manufacturerId: string
+  manufacturerName: string
+  total: number
+  inShop: number
+  toAdd: number
+  inactive: number
+  sample: string[]
+}
+
+const MANUFACTURER_ADD_BUDGET_MS = 40_000
+const MANUFACTURER_ADD_CHUNK = 2000
+
+function mapManufacturerAddRpcError(message: string): string {
+  if (/Could not find the function|PGRST202/i.test(message)) {
+    return 'A gyártó szerinti hozzáadás nincs telepítve (webshop_add_by_manufacturer).'
+  }
+  if (/timeout|canceling statement/i.test(message)) {
+    return 'A művelet időtúllépés miatt megszakadt. Próbáld újra a Folytatom gombbal.'
+  }
+  if (/P0002|nem található/i.test(message)) return 'A gyártó nem található.'
+  if (/42501|jogosultság/i.test(message)) return 'Nincs jogosultság ehhez a művelethez.'
+  return 'Nem sikerült a termékeket a bolthoz adni.'
+}
+
+/** Gyártó kereső a „Termék hozzáadása → Gyártó szerint” fülhöz. */
+export async function searchManufacturersForShopAdd(
+  q: string
+): Promise<{ ok: true; rows: ShopAddManufacturerHit[] } | { ok: false; message: string }> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  const tenantId = ctx.user.tenantId!
+  if (!(await tenantHasWebshop(ctx.supabase, tenantId))) {
+    return { ok: false, message: NOT_ENTITLED }
+  }
+
+  const term = q.trim().replace(/[%_]/g, '').slice(0, 80)
+  if (term.length < 1) return { ok: true, rows: [] }
+
+  const { data, error } = await ctx.supabase
+    .from('manufacturers')
+    .select('id, name')
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .ilike('name', `%${term}%`)
+    .order('name', { ascending: true })
+    .limit(20)
+
+  if (error) {
+    console.error('searchManufacturersForShopAdd', error.message)
+    return { ok: false, message: 'Nem sikerült keresni a gyártók között.' }
+  }
+
+  return {
+    ok: true,
+    rows: (data ?? []).map((r) => ({
+      id: r.id as string,
+      name: String(r.name ?? '')
+    }))
+  }
+}
+
+/** Gyártó szerinti tömeges hozzáadás előnézete. */
+export async function previewShopAddByManufacturer(
+  manufacturerId: string
+): Promise<
+  { ok: true; preview: ShopAddByManufacturerPreview } | { ok: false; message: string }
+> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  const tenantId = ctx.user.tenantId!
+  if (!(await tenantHasWebshop(ctx.supabase, tenantId))) {
+    return { ok: false, message: NOT_ENTITLED }
+  }
+  if (!manufacturerId) return { ok: false, message: 'Válassz gyártót.' }
+
+  const { data, error } = await ctx.supabase.rpc('webshop_add_preview', {
+    p_tenant: tenantId,
+    p_manufacturer_id: manufacturerId
+  })
+
+  if (error) {
+    console.error('previewShopAddByManufacturer', error.message, error.code)
+    return { ok: false, message: mapManufacturerAddRpcError(error.message) }
+  }
+
+  const row = (data ?? {}) as Record<string, unknown>
+  const sampleRaw = row.sample
+  const sample = Array.isArray(sampleRaw)
+    ? sampleRaw.map((s) => String(s)).filter(Boolean)
+    : []
+
+  return {
+    ok: true,
+    preview: {
+      manufacturerId: String(row.manufacturer_id ?? manufacturerId),
+      manufacturerName: String(row.manufacturer_name ?? ''),
+      total: Number(row.total ?? 0),
+      inShop: Number(row.in_shop ?? 0),
+      toAdd: Number(row.to_add ?? 0),
+      inactive: Number(row.inactive ?? 0),
+      sample
+    }
+  }
+}
+
+/**
+ * Gyártó összes (még nem bolt-tag) aktív termékének tagsága.
+ * Chunkolt RPC; ~40 s után megáll — a UI „Folytatom” gombbal folytat.
+ */
+export async function addShopProductsByManufacturer(
+  manufacturerId: string
+): Promise<
+  { ok: true; added: number; remaining: number } | { ok: false; message: string }
+> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  const tenantId = ctx.user.tenantId!
+  if (!(await tenantHasWebshop(ctx.supabase, tenantId))) {
+    return { ok: false, message: NOT_ENTITLED }
+  }
+  if (!manufacturerId) return { ok: false, message: 'Válassz gyártót.' }
+
+  const deadline = Date.now() + MANUFACTURER_ADD_BUDGET_MS
+  let added = 0
+  let remaining = 0
+
+  do {
+    const { data, error } = await ctx.supabase.rpc('webshop_add_by_manufacturer', {
+      p_tenant: tenantId,
+      p_manufacturer_id: manufacturerId,
+      p_limit: MANUFACTURER_ADD_CHUNK
+    })
+    if (error) {
+      console.error('addShopProductsByManufacturer', error.message, error.code)
+      return { ok: false, message: mapManufacturerAddRpcError(error.message) }
+    }
+    const row = (data ?? {}) as Record<string, unknown>
+    const chunkAdded = Number(row.added ?? 0)
+    remaining = Number(row.remaining ?? 0)
+    added += chunkAdded
+    if (chunkAdded === 0) break
+  } while (remaining > 0 && Date.now() < deadline)
+
+  revalidatePath('/webshop')
+  revalidatePath('/webshop/katalogus')
+  return { ok: true, added, remaining }
+}
+
 /**
  * Bekapcsolásnál csak az a termék kerül ki, amelyiknél minden kötelező megvan;
  * a többit visszaadjuk a hiánylistával.
+ * Hiányzó `accessory_web` sor → előbb tagság (ensure), majd Live kapu.
  */
 export async function setShopAvailability(
   accessoryIds: string[],
@@ -291,6 +570,44 @@ export async function setShopAvailability(
   }
   const ids = [...new Set(accessoryIds)].slice(0, MAX_BULK)
   if (ids.length === 0) return { ok: true, updated: 0, blocked: [] }
+
+  const cores = await loadCore(ctx.supabase, tenantId, ids)
+
+  if (on) {
+    const missing = ids.filter((id) => cores.has(id))
+    const { data: existingWeb } = await ctx.supabase
+      .from('accessory_web')
+      .select('accessory_id')
+      .eq('tenant_id', tenantId)
+      .in('accessory_id', missing)
+    const have = new Set((existingWeb ?? []).map((r) => r.accessory_id as string))
+    const toInsert = missing.filter((id) => !have.has(id))
+    if (toInsert.length > 0) {
+      const reserved = new Set<string>()
+      const rows = []
+      for (const id of toInsert) {
+        const core = cores.get(id)!
+        rows.push({
+          accessory_id: id,
+          tenant_id: tenantId,
+          sellable_web: false,
+          web_slug: await uniqueSlug(
+            ctx.supabase,
+            tenantId,
+            suggestWebSlug(core.name),
+            id,
+            reserved
+          ),
+          updated_at: new Date().toISOString()
+        })
+      }
+      const { error: insErr } = await ctx.supabase.from('accessory_web').insert(rows)
+      if (insErr) {
+        console.error('setShopAvailability ensure', insErr.message)
+        return { ok: false, message: 'Nem sikerült a termékeket a bolthoz adni.' }
+      }
+    }
+  }
 
   const { data: webRows } = await ctx.supabase
     .from('accessory_web')
@@ -315,9 +632,9 @@ export async function setShopAvailability(
     return { ok: true, updated: webById.size, blocked: [] }
   }
 
-  const cores = await loadCore(ctx.supabase, tenantId, ids)
   const blocked: { id: string; name: string; issues: ShopRequirementIssue[] }[] = []
   const slugs: string[] = []
+  const reserved = new Set<string>()
   let updated = 0
 
   for (const id of ids) {
@@ -339,9 +656,11 @@ export async function setShopAvailability(
       blocked.push({ id, name: core.name, issues })
       continue
     }
+    const existingSlug = (w?.web_slug as string | null) || null
     const slug =
-      (w?.web_slug as string | null) ||
-      (await uniqueSlug(ctx.supabase, tenantId, suggestWebSlug(core.name), id))
+      existingSlug ||
+      (await uniqueSlug(ctx.supabase, tenantId, suggestWebSlug(core.name), id, reserved))
+    if (existingSlug) reserved.add(existingSlug)
     const { error } = await ctx.supabase
       .from('accessory_web')
       .update({ sellable_web: true, web_slug: slug, updated_at: new Date().toISOString() })

@@ -6,7 +6,7 @@ import { enrichWebProductFields } from '@/lib/webshop/enrich'
 import { resolveGoogleTaxonomyId } from '@/lib/webshop/google-taxonomy'
 import { getTenantWebshopSettings } from '@/lib/webshop/settings'
 
-import { foldKey, loadShopXContext, type ShopXContext } from '@/lib/webshop/excel/context'
+import { foldKey, loadShopXContext, shopWorkbookScope, type ShopXContext } from '@/lib/webshop/excel/context'
 import {
   buildShopImportPlan,
   PLACEHOLDER,
@@ -53,7 +53,7 @@ export async function planShopImport(
   decisions: ShopXDecisions,
   ctx?: ShopXContext
 ): Promise<{ plan: ShopXPlan; ctx: ShopXContext }> {
-  const context = ctx ?? (await loadShopXContext(supabase, tenantId))
+  const context = ctx ?? (await loadShopXContext(supabase, tenantId, shopWorkbookScope(wb)))
   return { plan: buildShopImportPlan(context, wb, decisions), ctx: context }
 }
 

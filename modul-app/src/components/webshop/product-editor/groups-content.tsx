@@ -8,8 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Textarea } from '@/components/ui/textarea'
-import { suggestWebDescriptionShort } from '@/lib/accessories/web-shop'
-import { SHOP_DESCRIPTION_MIN } from '@/lib/webshop/product-parse'
 import type { ProductAttributeRow, WebCategoryRow } from '@/lib/webshop/types'
 
 import {
@@ -29,6 +27,7 @@ export type GroupProps = {
 
 const FAQ_MAX = 5
 
+/** Haladó: csak bolt kategória. Leírás / márka → Agent Top panel. */
 export function BasicsGroup({
   web,
   patch,
@@ -36,9 +35,6 @@ export function BasicsGroup({
   fieldErrors,
   categories
 }: GroupProps & { categories: WebCategoryRow[] }) {
-  const length = web.webDescriptionLong.trim().length
-  const left = SHOP_DESCRIPTION_MIN - length
-
   function onCategoryChange(id: string) {
     const cat = categories.find((c) => c.id === id)
     const path = cat ? (cat.parentName ? `${cat.parentName} > ${cat.name}` : cat.name) : ''
@@ -54,9 +50,9 @@ export function BasicsGroup({
       <FormField
         label="Hol legyen a boltban"
         htmlFor="shop-category"
-        required
+        optionalLabel
         error={fieldErrors.webCategoryId}
-        hint="Ebből jön a Google kategória és a kulcsadatok listája is."
+        hint="Agent Top / feedhez. Google kategória és kulcsadatok innen jönnek."
       >
         <MenuSelect
           id="shop-category"
@@ -72,34 +68,6 @@ export function BasicsGroup({
               value: c.id,
               label: c.parentName ? `${c.parentName} › ${c.name}` : c.name
             }))}
-        />
-      </FormField>
-      <div className="hidden sm:block" />
-      <FormField
-        label="Leírás a vásárlónak"
-        htmlFor="shop-description"
-        required
-        error={fieldErrors.webDescriptionLong}
-        hint={
-          left > 0
-            ? `${length} karakter — még legalább ${left} kell. Írd le, mire való és miben jó.`
-            : `${length} karakter. Az első mondatokból lesz a rövid szöveg a listában.`
-        }
-        className="sm:col-span-2"
-      >
-        <Textarea
-          id="shop-description"
-          value={web.webDescriptionLong}
-          onChange={(e) =>
-            patch({
-              webDescriptionLong: e.target.value,
-              webDescriptionShort: suggestWebDescriptionShort(e.target.value)
-            })
-          }
-          rows={7}
-          maxLength={5000}
-          disabled={disabled}
-          placeholder="Pl. Fehér bútorzsanér konyhaszekrény-ajtókhoz. Acél, csendesen záródik, 110°-ban nyílik."
         />
       </FormField>
     </div>

@@ -284,7 +284,7 @@ export type WebshopOverviewStats = {
 export async function getWebshopOverviewStats(
   supabase: SupabaseClient,
   tenantId: string,
-  levels: { sellable_web: boolean; shop_ready_level: string }[]
+  levels: { sellable_web: boolean; shop_ready_level: string; agent_top?: boolean }[]
 ): Promise<WebshopOverviewStats> {
   const { count: catCount } = await supabase
     .from('web_categories')
@@ -306,12 +306,12 @@ export async function getWebshopOverviewStats(
     if (!row.sellable_web) continue
     sellableWeb += 1
     if (row.shop_ready_level === 'blocked') blocked += 1
-    if (
+    // Agent Top = márka + leírás (W1); fallback: competitive+
+    const agentOk =
+      row.agent_top === true ||
       row.shop_ready_level === 'competitive' ||
       row.shop_ready_level === 'agent_excellent'
-    ) {
-      ready += 1
-    }
+    if (agentOk) ready += 1
     if (row.shop_ready_level === 'agent_excellent') excellent += 1
   }
 

@@ -10,6 +10,7 @@ import {
   Cog,
   Factory,
   FileText,
+  FolderTree,
   Handshake,
   History,
   Home,
@@ -217,6 +218,20 @@ const allNavSections: NavSection[] = [
         label: 'Katalógus',
         href: '/webshop/katalogus',
         icon: Package,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Kategóriák',
+        href: '/webshop/kategoriak',
+        icon: FolderTree,
+        accent: 'slate'
+      },
+      {
+        type: 'link',
+        label: 'Jellemzők',
+        href: '/webshop/tulajdonsagok',
+        icon: Tags,
         accent: 'slate'
       },
       {
@@ -648,6 +663,8 @@ function topLevelAccent(node: NavNode): NavAccent {
       return 'teal'
     case '/webshop':
     case '/webshop/katalogus':
+    case '/webshop/kategoriak':
+    case '/webshop/tulajdonsagok':
     case '/webshop/ertekelesek':
     case '/webshop/elallasok':
     case '/webshop/beallitasok':

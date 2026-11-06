@@ -40,14 +40,30 @@ import {
 import { saveStorefrontSettings } from '@/lib/webshop/storefront-actions'
 import { cn } from '@/lib/utils'
 
-/** W1: rögzített sorrend — csak ezek a fizetési módok. */
-const W1_PAYMENT_CODES: PaymentCode[] = [
-  'pickup_cash',
-  'pickup_card',
-  'card',
-  'transfer',
-  'cod'
-]
+/** W1 buyer promise: kártya · átutalás · személyesen (COD / külön POS mód nincs). */
+const W1_PAYMENT_CODES: PaymentCode[] = ['card', 'transfer', 'pickup_cash']
+
+function paymentsFromInitial(methods: PaymentCode[]): PaymentCode[] {
+  const out: PaymentCode[] = []
+  if (methods.includes('card')) out.push('card')
+  if (methods.includes('transfer')) out.push('transfer')
+  if (methods.includes('pickup_cash') || methods.includes('pickup_card')) {
+    out.push('pickup_cash')
+  }
+  return out
+}
+
+/** Mentés: személyesen csak ha az átvétel be van kapcsolva; COD / pickup_card nem megy ki. */
+function paymentsForSave(
+  selected: PaymentCode[],
+  pickupFulfillment: boolean
+): PaymentCode[] {
+  return W1_PAYMENT_CODES.filter((c) => {
+    if (!selected.includes(c)) return false
+    if (c === 'pickup_cash' && !pickupFulfillment) return false
+    return true
+  })
+}
 
 type TabKey =
   | 'altalanos'
@@ -176,7 +192,7 @@ export function WebshopSettingsClient({
   const [serviceAddress, setServiceAddress] = useState(legal.serviceAddress ?? '')
   const [supportHours, setSupportHours] = useState(legal.supportHours ?? '')
 
-  const [glsEnabled, setGlsEnabled] = useState(
+  const [homeDeliveryEnabled, setHomeDeliveryEnabled] = useState(
     initial.shippingCarriers.includes('gls') ||
       initial.shippingFeeGross != null ||
       initial.deliveryDaysMin != null
@@ -186,8 +202,8 @@ export function WebshopSettingsClient({
   const [daysMax, setDaysMax] = useState(toRaw(initial.deliveryDaysMax))
   const [pickupEnabled, setPickupEnabled] = useState(initial.pickupEnabled)
   const [pickupLabel, setPickupLabel] = useState(initial.pickupLabel ?? '')
-  const [payments, setPayments] = useState<PaymentCode[]>(
-    W1_PAYMENT_CODES.filter((c) => initial.paymentMethods.includes(c))
+  const [payments, setPayments] = useState<PaymentCode[]>(() =>
+    paymentsFromInitial(initial.paymentMethods)
   )
   const [bankAccount, setBankAccount] = useState(initial.bankAccount ?? '')
   const [holdDays, setHoldDays] = useState(toRaw(initial.transferHoldDays))
@@ -243,9 +259,9 @@ export function WebshopSettingsClient({
     retDays: number | null
     warranty: number | null
   }) {
-    const fee = overrides?.fee ?? (glsEnabled ? parseIntRaw(shippingFee) : null)
-    const dMin = overrides?.dMin ?? (glsEnabled ? parseIntRaw(daysMin) : null)
-    const dMax = overrides?.dMax ?? (glsEnabled ? parseIntRaw(daysMax) : null)
+    const fee = overrides?.fee ?? (homeDeliveryEnabled ? parseIntRaw(shippingFee) : null)
+    const dMin = overrides?.dMin ?? (homeDeliveryEnabled ? parseIntRaw(daysMin) : null)
+    const dMax = overrides?.dMax ?? (homeDeliveryEnabled ? parseIntRaw(daysMax) : null)
     const hold =
       overrides?.hold ?? (payments.includes('transfer') ? parseIntRaw(holdDays) : null)
     const low = overrides?.low ?? parseIntRaw(lowStock)
@@ -253,14 +269,14 @@ export function WebshopSettingsClient({
     const warranty = overrides?.warranty ?? parseIntRaw(warrantyMonths)
 
     return {
-      shippingFeeGross: glsEnabled ? fee : null,
+      shippingFeeGross: homeDeliveryEnabled ? fee : null,
       freeShippingThresholdGross: null as number | null,
-      deliveryDaysMin: glsEnabled ? dMin : null,
-      deliveryDaysMax: glsEnabled ? dMax : null,
+      deliveryDaysMin: homeDeliveryEnabled ? dMin : null,
+      deliveryDaysMax: homeDeliveryEnabled ? dMax : null,
       pickupEnabled,
       pickupLabel: pickupEnabled ? pickupLabel : null,
-      shippingCarriers: (glsEnabled ? ['gls'] : []) as CarrierCode[],
-      paymentMethods: W1_PAYMENT_CODES.filter((c) => payments.includes(c)),
+      shippingCarriers: (homeDeliveryEnabled ? ['gls'] : []) as CarrierCode[],
+      paymentMethods: paymentsForSave(payments, pickupEnabled),
       bankAccount: payments.includes('transfer') ? bankAccount : null,
       transferHoldDays: payments.includes('transfer') ? hold : null,
       returnDays: retDays,
@@ -299,12 +315,13 @@ export function WebshopSettingsClient({
     const dMax = parseIntRaw(daysMax)
     const hold = parseIntRaw(holdDays)
 
-    if (!glsEnabled && !pickupEnabled) {
-      local._shipping = 'Kapcsold be a GLS szállítást vagy a személyes átvételt.'
+    if (!homeDeliveryEnabled && !pickupEnabled) {
+      local._shipping =
+        'Kapcsold be a házhozszállítást vagy a személyes átvételt.'
     }
-    if (glsEnabled) {
+    if (homeDeliveryEnabled) {
       if (fee == null || Number.isNaN(fee)) {
-        local.shippingFeeGross = 'Add meg a GLS szállítási díjat (Ft).'
+        local.shippingFeeGross = 'Add meg a szállítási díjat (Ft).'
       }
       if (dMin == null || Number.isNaN(dMin)) {
         local.deliveryDaysMin = 'Add meg a szállítási időt (nap).'
@@ -397,9 +414,9 @@ export function WebshopSettingsClient({
         return
       }
 
-      const fee = glsEnabled ? parseIntRaw(shippingFee) : null
-      const dMin = glsEnabled ? parseIntRaw(daysMin) : null
-      const dMax = glsEnabled ? parseIntRaw(daysMax) : null
+      const fee = homeDeliveryEnabled ? parseIntRaw(shippingFee) : null
+      const dMin = homeDeliveryEnabled ? parseIntRaw(daysMin) : null
+      const dMax = homeDeliveryEnabled ? parseIntRaw(daysMax) : null
       const hold = payments.includes('transfer') ? parseIntRaw(holdDays) : null
       const low = parseIntRaw(lowStock)
       const retDays = parseIntRaw(returnDays)
@@ -505,7 +522,7 @@ export function WebshopSettingsClient({
               <p className="text-hint text-ink-secondary">Live termékek</p>
               <p className="mt-0.5 text-h2 tabular-nums text-ink">{liveProductCount}</p>
               <Link
-                href="/webshop/katalogus?filter=in_shop"
+                href="/webshop/katalogus?filter=live"
                 className="mt-2 inline-block text-hint font-medium text-ink underline underline-offset-2"
               >
                 Katalógus megnyitása
@@ -872,24 +889,24 @@ export function WebshopSettingsClient({
           aria-labelledby="webshop-settings-tab-szallitas"
         >
           <FormSection
-            title="GLS és átvétel"
-            description="Csak GLS házhoz és/vagy személyes átvétel. Az átfutást itt adod meg."
+            title="Házhoz és átvétel"
+            description="A vásárló fulfillment opciót lát (díj + idő / átvétel) — nem futárválasztót."
             columns={4}
           >
             <div className="col-span-full">
               <Switch
-                id="sf-gls"
-                checked={glsEnabled}
+                id="sf-home"
+                checked={homeDeliveryEnabled}
                 disabled={disabled}
-                onCheckedChange={setGlsEnabled}
-                label="GLS házhozszállítás"
-                description="A termékoldalon és a kosárban GLS-ként jelenik meg."
+                onCheckedChange={setHomeDeliveryEnabled}
+                label="Házhozszállítás"
+                description="A termékoldalon és a kosárban megjelenik a díj és az átfutás."
               />
             </div>
-            {glsEnabled ? (
+            {homeDeliveryEnabled ? (
               <>
                 <FormField
-                  label="GLS díj (bruttó Ft)"
+                  label="Házhoz díj (bruttó Ft)"
                   htmlFor="sf-fee"
                   required
                   error={errors.shippingFeeGross}
@@ -933,6 +950,9 @@ export function WebshopSettingsClient({
                     placeholder="3"
                   />
                 </FormField>
+                <p className="col-span-full text-hint text-ink-secondary">
+                  A feladást jelenleg GLS-sel intézzük.
+                </p>
               </>
             ) : null}
 
@@ -976,24 +996,35 @@ export function WebshopSettingsClient({
         >
           <FormSection
             title="Fizetési módok"
-            description="Pipáld, amit a pénztárban kínálsz."
+            description="Három buyer opció — nem futár-utánvét, nem külön készpénz/terminál a weben."
             columns={4}
           >
             <fieldset className="col-span-full" disabled={disabled}>
               <legend className="sr-only">Fizetési módok</legend>
-              <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-2">
-                {W1_PAYMENT_CODES.map((code) => (
-                  <CheckItem
-                    key={code}
-                    id={`sf-pay-${code}`}
-                    label={PAYMENT_METHODS[code].label}
-                    description={PAYMENT_METHODS[code].hint}
-                    checked={payments.includes(code)}
-                    onChange={(on) =>
-                      setPayments((list) => toggle(list, code, on, W1_PAYMENT_CODES))
-                    }
-                  />
-                ))}
+              <div className="grid gap-x-3 gap-y-1.5 sm:grid-cols-1">
+                {W1_PAYMENT_CODES.map((code) => {
+                  const pickupOnly = code === 'pickup_cash'
+                  const blocked = pickupOnly && !pickupEnabled
+                  return (
+                    <CheckItem
+                      key={code}
+                      id={`sf-pay-${code}`}
+                      label={PAYMENT_METHODS[code].label}
+                      description={
+                        blocked
+                          ? 'Kapcsold be a személyes átvételt a Szállítás fülön.'
+                          : PAYMENT_METHODS[code].hint
+                      }
+                      checked={payments.includes(code) && !blocked}
+                      disabled={blocked}
+                      onChange={(on) =>
+                        setPayments((list) =>
+                          toggle(list, code, on, W1_PAYMENT_CODES)
+                        )
+                      }
+                    />
+                  )
+                })}
               </div>
             </fieldset>
             {payments.includes('transfer') ? (
@@ -1098,24 +1129,33 @@ function CheckItem({
   label,
   description,
   checked,
-  onChange
+  onChange,
+  disabled
 }: {
   id: string
   label: string
   description?: string
   checked: boolean
   onChange: (checked: boolean) => void
+  disabled?: boolean
 }) {
   return (
-    <div className="flex items-start gap-2">
+    <div className={cn('flex items-start gap-2', disabled && 'opacity-60')}>
       <input
         id={id}
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[#18181B] disabled:cursor-not-allowed"
       />
-      <label htmlFor={id} className="min-w-0 cursor-pointer text-body text-ink">
+      <label
+        htmlFor={id}
+        className={cn(
+          'min-w-0 text-body text-ink',
+          disabled ? 'cursor-not-allowed' : 'cursor-pointer'
+        )}
+      >
         {label}
         {description ? (
           <span className="block text-hint text-ink-secondary">{description}</span>
