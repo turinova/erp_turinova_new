@@ -5,7 +5,8 @@ import { PlatformPartnersClient } from '@/components/platform/platform-partners-
 import { requirePlatformAdmin } from '@/lib/platform/auth'
 import {
   getPlatformPartnersSummary,
-  listPlatformPartners
+  listPlatformPartners,
+  type PlatformPartnerView
 } from '@/lib/platform/partner-queries'
 
 export const metadata: Metadata = {
@@ -15,11 +16,17 @@ export const metadata: Metadata = {
 type SearchParams = Promise<{
   q?: string
   page?: string
-  link?: string
+  view?: string
   status?: string
-  password?: string
   tenant?: string
 }>
+
+function parseView(raw: string | undefined): PlatformPartnerView {
+  if (raw === 'new' || raw === 'legacy' || raw === 'all' || raw === 'live') {
+    return raw
+  }
+  return 'live'
+}
 
 export default async function PlatformPartnersPage({
   searchParams
@@ -39,21 +46,16 @@ export default async function PlatformPartnersPage({
   const page = Math.max(1, Number(params.page) || 1)
   const q = params.q?.trim() ?? ''
   const tenantId = params.tenant?.trim() || undefined
-  const linkRaw = params.link
-  const link =
-    linkRaw === 'linked' || linkRaw === 'unlinked' ? linkRaw : 'all'
+  const view = parseView(params.view)
   const statusRaw = params.status
   const status =
     statusRaw === 'active' || statusRaw === 'disabled' ? statusRaw : 'all'
-  const passwordRaw = params.password
-  const password = passwordRaw === 'must_set' ? 'must_set' : 'all'
 
   const [result, summary] = await Promise.all([
     listPlatformPartners(ctx.admin, {
       q,
-      link,
+      view,
       status,
-      password,
       tenantId,
       page,
       limit: 25
@@ -88,9 +90,8 @@ export default async function PlatformPartnersPage({
         limit={result.limit}
         summary={summary}
         initialQ={q}
-        initialLink={link}
+        initialView={view}
         initialStatus={status}
-        initialPassword={password}
         tenantFilterId={tenantId ?? null}
         tenantFilterName={tenantName}
       />

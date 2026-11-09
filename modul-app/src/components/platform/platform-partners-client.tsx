@@ -17,16 +17,15 @@ import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
-import { formatPlatformHuf } from '@/lib/platform/partner-overview'
 import type {
   PlatformPartnerListItem,
-  PlatformPartnersSummary
+  PlatformPartnersSummary,
+  PlatformPartnerView
 } from '@/lib/platform/partner-queries'
 import { usePlatformHref } from '@/lib/platform/use-platform-href'
+import { cn } from '@/lib/utils'
 
-type LinkFilter = 'all' | 'linked' | 'unlinked'
 type StatusFilter = 'all' | 'active' | 'disabled'
-type PasswordFilter = 'all' | 'must_set'
 
 type Props = {
   rows: PlatformPartnerListItem[]
@@ -35,27 +34,24 @@ type Props = {
   limit: number
   summary: PlatformPartnersSummary
   initialQ: string
-  initialLink: LinkFilter
+  initialView: PlatformPartnerView
   initialStatus: StatusFilter
-  initialPassword: PasswordFilter
   tenantFilterId?: string | null
   tenantFilterName?: string | null
 }
 
-function formatDate(iso: string | null) {
+function formatRelative(iso: string | null) {
   if (!iso) return '—'
-  try {
-    return new Intl.DateTimeFormat('hu-HU', {
-      dateStyle: 'short',
-      timeStyle: 'short'
-    }).format(new Date(iso))
-  } catch {
-    return iso
-  }
-}
-
-function formatDay(iso: string | null) {
-  if (!iso) return '—'
+  const t = new Date(iso).getTime()
+  if (!Number.isFinite(t)) return '—'
+  const diffMs = Date.now() - t
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 1) return 'most'
+  if (mins < 60) return `${mins} perce`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours} órája`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days} napja`
   try {
     return new Intl.DateTimeFormat('hu-HU', { dateStyle: 'short' }).format(
       new Date(iso)
@@ -65,6 +61,39 @@ function formatDay(iso: string | null) {
   }
 }
 
+function activityLabel(row: PlatformPartnerListItem) {
+  const signIn = row.lastSignInAt ? new Date(row.lastSignInAt).getTime() : 0
+  const submit = row.lastSubmittedAt
+    ? new Date(row.lastSubmittedAt).getTime()
+    : 0
+  if (!signIn && !submit) return { primary: '—', secondary: null as string | null }
+  if (submit >= signIn) {
+    return {
+      primary: `Beküldés ${formatRelative(row.lastSubmittedAt)}`,
+      secondary: row.lastSignInAt
+        ? `Belépés ${formatRelative(row.lastSignInAt)}`
+        : null
+    }
+  }
+  return {
+    primary: `Belépés ${formatRelative(row.lastSignInAt)}`,
+    secondary: row.lastSubmittedAt
+      ? `Beküldés ${formatRelative(row.lastSubmittedAt)}`
+      : null
+  }
+}
+
+const VIEWS: {
+  id: PlatformPartnerView
+  label: string
+  hint: string
+}[] = [
+  { id: 'live', label: 'Élő', hint: 'Belépett vagy beküldött (nem migrált)' },
+  { id: 'new', label: 'Új', hint: 'Organikus regisztrációk' },
+  { id: 'legacy', label: 'Migrált', hint: 'Régi portalról áthozva' },
+  { id: 'all', label: 'Mind', hint: 'Teljes lista' }
+]
+
 export function PlatformPartnersClient({
   rows,
   total,
@@ -72,9 +101,8 @@ export function PlatformPartnersClient({
   limit,
   summary,
   initialQ,
-  initialLink,
+  initialView,
   initialStatus,
-  initialPassword,
   tenantFilterId = null,
   tenantFilterName = null
 }: Props) {
@@ -103,43 +131,36 @@ export function PlatformPartnersClient({
     pushParams({ q: qDraft.trim() || null, page: null })
   }
 
+  const viewCount = (id: PlatformPartnerView) => {
+    if (id === 'live') return summary.live
+    if (id === 'new') return summary.organic
+    if (id === 'legacy') return summary.legacy
+    return summary.organic + summary.legacy
+  }
+
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-h1 text-ink">Partnerek</h1>
-          <p className="mt-1 text-body text-ink-secondary">
-            Online asztalosok — aktivitás, onboarding és support műveletek.
-          </p>
-        </div>
+      <div className="mb-4">
+        <h1 className="text-h1 text-ink">Partnerek</h1>
+        <p className="mt-1 text-body text-ink-secondary">
+          Élő partnerek elöl — a migrált tömeg külön fülön.
+        </p>
       </div>
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-        <Kpi
-          label="Aktív"
-          value={String(summary.active)}
-          hint={
-            summary.disabled > 0 ? `${summary.disabled} kikapcsolva` : undefined
-          }
-        />
-        <Kpi
-          label="Cég nélkül"
-          value={String(summary.unlinked)}
-          hint="Aktív, nincs selected cég"
-        />
-        <Kpi
-          label="Jelszó vár"
-          value={String(summary.mustSetPassword)}
-          hint="must_set_password"
-        />
-        <Kpi
-          label="Migrált"
-          value={String(summary.legacy)}
-          hint="legacy portal id"
-        />
-        <Kpi label="Élő draft" value={String(summary.draftsAlive)} />
-        <Kpi label="Beküldés 7 nap" value={String(summary.submits7d)} />
-        <Kpi label="GMV 7 nap" value={formatPlatformHuf(summary.gmv7d)} />
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-hint text-ink-secondary">
+        <span>
+          Élő: <span className="font-medium tabular-nums text-ink">{summary.live}</span>
+        </span>
+        <span aria-hidden>·</span>
+        <span>
+          Új (7 nap):{' '}
+          <span className="font-medium tabular-nums text-ink">{summary.new7d}</span>
+        </span>
+        <span aria-hidden>·</span>
+        <span>
+          Migrált:{' '}
+          <span className="font-medium tabular-nums text-ink">{summary.legacy}</span>
+        </span>
       </div>
 
       {tenantFilterId ? (
@@ -168,7 +189,48 @@ export function PlatformPartnersClient({
         </div>
       ) : null}
 
-      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
+      <div
+        role="tablist"
+        aria-label="Partner nézet"
+        className="mb-3 flex flex-wrap gap-0.5 rounded-md border border-border bg-subtle p-0.5"
+      >
+        {VIEWS.map((v) => {
+          const active = initialView === v.id
+          return (
+            <button
+              key={v.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              title={v.hint}
+              onClick={() =>
+                pushParams({
+                  view: v.id === 'live' ? null : v.id,
+                  page: null
+                })
+              }
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
+                active
+                  ? 'bg-ink text-white'
+                  : 'text-ink-secondary hover:bg-surface hover:text-ink'
+              )}
+            >
+              {v.label}
+              <span
+                className={cn(
+                  'tabular-nums',
+                  active ? 'text-white/80' : 'text-ink-muted'
+                )}
+              >
+                {viewCount(v.id)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <form onSubmit={handleSearch} className="relative max-w-sm flex-1">
           <label className="sr-only" htmlFor="platform-partner-search">
             Keresés
@@ -185,60 +247,34 @@ export function PlatformPartnersClient({
             className="pl-8"
           />
         </form>
-        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto lg:min-w-[28rem]">
-          <MenuSelect
-            id="platform-partner-link-filter"
-            value={initialLink}
-            allowEmpty={false}
-            options={[
-              { value: 'all', label: 'Kapcsolat: összes' },
-              { value: 'linked', label: 'Kapcsolt céggel' },
-              { value: 'unlinked', label: 'Cég nélkül' }
-            ]}
-            onChange={(v) =>
-              pushParams({
-                link: v === 'all' ? null : v,
-                page: null
-              })
-            }
-          />
-          <MenuSelect
-            id="platform-partner-status-filter"
-            value={initialStatus}
-            allowEmpty={false}
-            options={[
-              { value: 'all', label: 'Státusz: összes' },
-              { value: 'active', label: 'Aktív' },
-              { value: 'disabled', label: 'Kikapcsolva' }
-            ]}
-            onChange={(v) =>
-              pushParams({
-                status: v === 'all' ? null : v,
-                page: null
-              })
-            }
-          />
-          <MenuSelect
-            id="platform-partner-password-filter"
-            value={initialPassword}
-            allowEmpty={false}
-            options={[
-              { value: 'all', label: 'Jelszó: összes' },
-              { value: 'must_set', label: 'Jelszó beállítás kell' }
-            ]}
-            onChange={(v) =>
-              pushParams({
-                password: v === 'all' ? null : v,
-                page: null
-              })
-            }
-          />
-        </div>
+        <MenuSelect
+          id="platform-partner-status-filter"
+          value={initialStatus}
+          allowEmpty={false}
+          className="w-full sm:w-44"
+          options={[
+            { value: 'all', label: 'Státusz: összes' },
+            { value: 'active', label: 'Aktív' },
+            { value: 'disabled', label: 'Kikapcsolva' }
+          ]}
+          onChange={(v) =>
+            pushParams({
+              status: v === 'all' ? null : v,
+              page: null
+            })
+          }
+        />
       </div>
 
       {total === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
-          Nincs partner a szűrésre.
+          {initialView === 'live'
+            ? 'Még nincs élő (belépett / beküldött) organikus partner.'
+            : initialView === 'new'
+              ? 'Nincs organikus regisztráció a szűrésre.'
+              : initialView === 'legacy'
+                ? 'Nincs migrált partner a szűrésre.'
+                : 'Nincs partner a szűrésre.'}
         </p>
       ) : (
         <>
@@ -248,82 +284,70 @@ export function PlatformPartnersClient({
                 <DataTableHeaderCell>Név</DataTableHeaderCell>
                 <DataTableHeaderCell>Státusz</DataTableHeaderCell>
                 <DataTableHeaderCell>Cég</DataTableHeaderCell>
+                <DataTableHeaderCell>Aktivitás</DataTableHeaderCell>
                 <DataTableHeaderCell className="text-right">
                   Draft / Beküldés
-                </DataTableHeaderCell>
-                <DataTableHeaderCell className="text-right">
-                  7 nap
-                </DataTableHeaderCell>
-                <DataTableHeaderCell>Utolsó beküldés</DataTableHeaderCell>
-                <DataTableHeaderCell>Utolsó belépés</DataTableHeaderCell>
-                <DataTableHeaderCell className="w-[1%] text-right">
-                  Műveletek
                 </DataTableHeaderCell>
               </DataTableRow>
             </DataTableHead>
             <DataTableBody>
-              {rows.map((row) => (
-                <DataTableRow key={row.userId}>
-                  <DataTableCell>
-                    <Link
-                      href={href(`/partnerek/${row.userId}`)}
-                      className="font-medium text-ink no-underline hover:underline"
-                    >
-                      {row.name}
-                    </Link>
-                    <p className="text-hint text-ink-secondary">{row.email}</p>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {row.mustSetPassword ? (
-                        <StatusBadge tone="warning">Jelszó kell</StatusBadge>
+              {rows.map((row) => {
+                const activity = activityLabel(row)
+                return (
+                  <DataTableRow key={row.userId}>
+                    <DataTableCell>
+                      <Link
+                        href={href(`/partnerek/${row.userId}`)}
+                        className="font-medium text-ink no-underline hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                      <p className="text-hint text-ink-secondary">{row.email}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {row.mustSetPassword ? (
+                          <StatusBadge tone="warning">Jelszó kell</StatusBadge>
+                        ) : null}
+                        {!row.selectedTenantId && row.status === 'active' ? (
+                          <StatusBadge tone="neutral">Cég nélkül</StatusBadge>
+                        ) : null}
+                        {initialView === 'all' && row.isLegacy ? (
+                          <StatusBadge tone="neutral" variant="outline">
+                            Migrált
+                          </StatusBadge>
+                        ) : null}
+                        {initialView === 'all' && !row.isLegacy ? (
+                          <StatusBadge tone="info" variant="outline">
+                            Új
+                          </StatusBadge>
+                        ) : null}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell>
+                      <StatusBadge
+                        tone={row.status === 'disabled' ? 'danger' : 'success'}
+                      >
+                        {row.status === 'disabled' ? 'Kikapcsolva' : 'Aktív'}
+                      </StatusBadge>
+                    </DataTableCell>
+                    <DataTableCell className="text-ink">
+                      {row.companyName ?? (
+                        <span className="text-ink-muted">—</span>
+                      )}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <p className="text-[13px] text-ink">{activity.primary}</p>
+                      {activity.secondary ? (
+                        <p className="text-hint text-ink-secondary">
+                          {activity.secondary}
+                        </p>
                       ) : null}
-                      {row.isLegacy ? (
-                        <StatusBadge tone="neutral">Migrált</StatusBadge>
-                      ) : null}
-                    </div>
-                  </DataTableCell>
-                  <DataTableCell>
-                    <StatusBadge
-                      tone={row.status === 'disabled' ? 'danger' : 'success'}
-                    >
-                      {row.status === 'disabled' ? 'Kikapcsolva' : 'Aktív'}
-                    </StatusBadge>
-                  </DataTableCell>
-                  <DataTableCell className="text-ink">
-                    {row.companyName ?? (
-                      <span className="text-ink-muted">—</span>
-                    )}
-                  </DataTableCell>
-                  <DataTableCell className="text-right tabular-nums text-ink">
-                    {row.draftCount} / {row.submittedCount}
-                  </DataTableCell>
-                  <DataTableCell className="text-right text-ink">
-                    <p className="tabular-nums">{row.submitted7d} db</p>
-                    {row.gmv7d > 0 ? (
-                      <p className="text-hint text-ink-secondary tabular-nums">
-                        {formatPlatformHuf(row.gmv7d)}
-                      </p>
-                    ) : null}
-                  </DataTableCell>
-                  <DataTableCell className="text-hint text-ink-secondary">
-                    {formatDay(row.lastSubmittedAt)}
-                  </DataTableCell>
-                  <DataTableCell className="text-hint text-ink-secondary">
-                    {formatDate(row.lastSignInAt)}
-                  </DataTableCell>
-                  <DataTableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        router.push(href(`/partnerek/${row.userId}`))
-                      }
-                    >
-                      Megnyitás
-                    </Button>
-                  </DataTableCell>
-                </DataTableRow>
-              ))}
+                    </DataTableCell>
+                    <DataTableCell className="text-right tabular-nums text-ink">
+                      {row.draftCount} / {row.submittedCount}
+                    </DataTableCell>
+                  </DataTableRow>
+                )
+              })}
             </DataTableBody>
           </DataTable>
 
@@ -357,28 +381,6 @@ export function PlatformPartnersClient({
           </div>
         </>
       )}
-    </div>
-  )
-}
-
-function Kpi({
-  label,
-  value,
-  hint
-}: {
-  label: string
-  value: string
-  hint?: string
-}) {
-  return (
-    <div className="rounded-md border border-border bg-surface px-3 py-2.5">
-      <p className="text-hint text-ink-secondary">{label}</p>
-      <p className="mt-0.5 text-body font-semibold tabular-nums text-ink">
-        {value}
-      </p>
-      {hint ? (
-        <p className="mt-0.5 text-[11px] text-ink-muted">{hint}</p>
-      ) : null}
     </div>
   )
 }

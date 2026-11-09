@@ -23,15 +23,16 @@ export type PlatformPartnerListItem = {
   gmv7d: number
 }
 
+export type PlatformPartnerView = 'live' | 'new' | 'legacy' | 'all'
+
+/** Fülek számai — triage, nem teljesítmény KPI. */
 export type PlatformPartnersSummary = {
-  active: number
-  disabled: number
-  unlinked: number
-  mustSetPassword: number
+  live: number
+  /** Organikus (nem migrált) összesen */
+  organic: number
+  /** Organikus regisztráció az utolsó 7 napban */
+  new7d: number
   legacy: number
-  draftsAlive: number
-  submits7d: number
-  gmv7d: number
 }
 
 export type PlatformPartnerRecentQuote = {
@@ -80,78 +81,91 @@ export type PlatformPartnerDetail = {
   recentQuotes: PlatformPartnerRecentQuote[]
 }
 
+async function loadOrganicActivity(
+  admin: SupabaseClient,
+  organicIds: string[]
+): Promise<{
+  liveIds: Set<string>
+  lastActivityAt: Map<string, number>
+}> {
+  const liveIds = new Set<string>()
+  const lastActivityAt = new Map<string, number>()
+  if (organicIds.length === 0) return { liveIds, lastActivityAt }
+
+  const submittedIds = new Set<string>()
+  // PostgREST .in limit — darabolás
+  for (let i = 0; i < organicIds.length; i += 100) {
+    const chunk = organicIds.slice(i, i + 100)
+    const { data: quotes } = await admin
+      .from('quotes')
+      .select('partner_profile_id, portal_submitted_at')
+      .eq('source', 'portal')
+      .is('deleted_at', null)
+      .not('portal_submitted_at', 'is', null)
+      .in('partner_profile_id', chunk)
+    for (const row of quotes ?? []) {
+      const pid = row.partner_profile_id as string | null
+      const at = row.portal_submitted_at as string | null
+      if (!pid || !at) continue
+      submittedIds.add(pid)
+      const t = new Date(at).getTime()
+      const prev = lastActivityAt.get(pid) ?? 0
+      if (t > prev) lastActivityAt.set(pid, t)
+    }
+  }
+
+  const authById = await getAuthUsersByIds(admin, organicIds)
+  for (const id of organicIds) {
+    const signIn = authById.get(id)?.lastSignInAt
+    if (signIn) {
+      const t = new Date(signIn).getTime()
+      const prev = lastActivityAt.get(id) ?? 0
+      if (t > prev) lastActivityAt.set(id, t)
+    }
+    if (signIn || submittedIds.has(id)) liveIds.add(id)
+  }
+
+  return { liveIds, lastActivityAt }
+}
+
 export async function getPlatformPartnersSummary(
   admin: SupabaseClient
 ): Promise<PlatformPartnersSummary> {
   const since7 = new Date(Date.now() - 7 * MS_DAY).toISOString()
 
   const [
-    { count: active },
-    { count: disabled },
-    { count: unlinked },
-    { count: mustSetPassword },
     { count: legacy },
-    { count: draftsAlive },
-    { count: submits7d },
-    { data: gmv7dRows }
+    { count: organic },
+    { count: new7d },
+    { data: organicRows }
   ] = await Promise.all([
-    admin
-      .from('partner_profiles')
-      .select('user_id', { count: 'exact', head: true })
-      .eq('status', 'active'),
-    admin
-      .from('partner_profiles')
-      .select('user_id', { count: 'exact', head: true })
-      .eq('status', 'disabled'),
-    admin
-      .from('partner_profiles')
-      .select('user_id', { count: 'exact', head: true })
-      .is('selected_tenant_id', null)
-      .eq('status', 'active'),
-    admin
-      .from('partner_profiles')
-      .select('user_id', { count: 'exact', head: true })
-      .eq('must_set_password', true),
     admin
       .from('partner_profiles')
       .select('user_id', { count: 'exact', head: true })
       .not('legacy_portal_customer_id', 'is', null),
     admin
-      .from('quotes')
-      .select('id', { count: 'exact', head: true })
-      .eq('source', 'portal')
-      .is('portal_submitted_at', null)
-      .is('deleted_at', null),
+      .from('partner_profiles')
+      .select('user_id', { count: 'exact', head: true })
+      .is('legacy_portal_customer_id', null),
     admin
-      .from('quotes')
-      .select('id', { count: 'exact', head: true })
-      .eq('source', 'portal')
-      .is('deleted_at', null)
-      .not('portal_submitted_at', 'is', null)
-      .gte('portal_submitted_at', since7),
+      .from('partner_profiles')
+      .select('user_id', { count: 'exact', head: true })
+      .is('legacy_portal_customer_id', null)
+      .gte('created_at', since7),
     admin
-      .from('quotes')
-      .select('total_gross')
-      .eq('source', 'portal')
-      .is('deleted_at', null)
-      .not('portal_submitted_at', 'is', null)
-      .gte('portal_submitted_at', since7)
+      .from('partner_profiles')
+      .select('user_id')
+      .is('legacy_portal_customer_id', null)
   ])
 
-  let gmv7d = 0
-  for (const row of gmv7dRows ?? []) {
-    gmv7d += Number(row.total_gross) || 0
-  }
+  const organicIds = (organicRows ?? []).map((r) => r.user_id as string)
+  const { liveIds } = await loadOrganicActivity(admin, organicIds)
 
   return {
-    active: active ?? 0,
-    disabled: disabled ?? 0,
-    unlinked: unlinked ?? 0,
-    mustSetPassword: mustSetPassword ?? 0,
-    legacy: legacy ?? 0,
-    draftsAlive: draftsAlive ?? 0,
-    submits7d: submits7d ?? 0,
-    gmv7d: Math.round(gmv7d * 100) / 100
+    live: liveIds.size,
+    organic: organic ?? 0,
+    new7d: new7d ?? 0,
+    legacy: legacy ?? 0
   }
 }
 
@@ -159,9 +173,8 @@ export async function listPlatformPartners(
   admin: SupabaseClient,
   params: {
     q?: string
-    link?: 'all' | 'linked' | 'unlinked'
+    view?: PlatformPartnerView
     status?: 'all' | 'active' | 'disabled'
-    password?: 'all' | 'must_set'
     /** Csak akiknek selected_tenant_id = ez. */
     tenantId?: string
     page?: number
@@ -175,44 +188,189 @@ export async function listPlatformPartners(
 }> {
   const page = Math.max(1, params.page ?? 1)
   const limit = Math.min(50, Math.max(1, params.limit ?? 25))
-  const from = (page - 1) * limit
-  const to = from + limit - 1
-  const link = params.link ?? 'all'
+  const view = params.view ?? 'live'
   const status = params.status ?? 'all'
-  const password = params.password ?? 'all'
   const since7 = Date.now() - 7 * MS_DAY
+
+  const profileSelect =
+    'user_id, name, email, mobile, selected_tenant_id, status, created_at, must_set_password, legacy_portal_customer_id'
+
+  // PostgREST builder típus túl mély a TS-nek — any a filter láncra.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function applyCommonFilters(query: any) {
+    let q = query
+    if (params.tenantId) {
+      q = q.eq('selected_tenant_id', params.tenantId)
+    }
+    if (status === 'active' || status === 'disabled') {
+      q = q.eq('status', status)
+    }
+    const search = params.q?.trim()
+    if (search) {
+      const safe = search.replace(/[%_,]/g, '')
+      if (safe) {
+        q = q.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`)
+      }
+    }
+    return q
+  }
+
+  async function enrichRows(
+    rowsRaw: Record<string, unknown>[]
+  ): Promise<PlatformPartnerListItem[]> {
+    const tenantIds = [
+      ...new Set(
+        rowsRaw
+          .map((r) => r.selected_tenant_id as string | null)
+          .filter((id): id is string => Boolean(id))
+      )
+    ]
+    const partnerIds = rowsRaw.map((r) => r.user_id as string)
+
+    const companyByTenant = new Map<string, string>()
+    if (tenantIds.length > 0) {
+      const { data: tenants } = await admin
+        .from('tenants')
+        .select('id, name')
+        .in('id', tenantIds)
+      for (const t of tenants ?? []) {
+        companyByTenant.set(t.id, t.name)
+      }
+    }
+
+    type Agg = {
+      draft: number
+      submitted: number
+      lastSubmittedAt: string | null
+      submitted7d: number
+      gmv7d: number
+    }
+    const aggByPartner = new Map<string, Agg>()
+
+    if (partnerIds.length > 0) {
+      for (let i = 0; i < partnerIds.length; i += 100) {
+        const chunk = partnerIds.slice(i, i + 100)
+        const { data: quotes } = await admin
+          .from('quotes')
+          .select('partner_profile_id, portal_submitted_at, total_gross')
+          .eq('source', 'portal')
+          .in('partner_profile_id', chunk)
+          .is('deleted_at', null)
+
+        for (const qrow of quotes ?? []) {
+          const pid = qrow.partner_profile_id as string | null
+          if (!pid) continue
+          let agg = aggByPartner.get(pid)
+          if (!agg) {
+            agg = {
+              draft: 0,
+              submitted: 0,
+              lastSubmittedAt: null,
+              submitted7d: 0,
+              gmv7d: 0
+            }
+            aggByPartner.set(pid, agg)
+          }
+          if (qrow.portal_submitted_at) {
+            agg.submitted += 1
+            const submittedAt = qrow.portal_submitted_at as string
+            if (
+              !agg.lastSubmittedAt ||
+              new Date(submittedAt).getTime() >
+                new Date(agg.lastSubmittedAt).getTime()
+            ) {
+              agg.lastSubmittedAt = submittedAt
+            }
+            if (new Date(submittedAt).getTime() >= since7) {
+              agg.submitted7d += 1
+              agg.gmv7d += Number(qrow.total_gross) || 0
+            }
+          } else {
+            agg.draft += 1
+          }
+        }
+      }
+    }
+
+    const authById = await getAuthUsersByIds(admin, partnerIds)
+
+    return rowsRaw.map((r) => {
+      const uid = r.user_id as string
+      const agg = aggByPartner.get(uid)
+      const tenantId = r.selected_tenant_id as string | null
+      return {
+        userId: uid,
+        name: r.name as string,
+        email: r.email as string,
+        mobile: (r.mobile as string | null) ?? null,
+        selectedTenantId: tenantId,
+        companyName: tenantId ? (companyByTenant.get(tenantId) ?? null) : null,
+        status: ((r.status as 'active' | 'disabled') ?? 'active') as
+          | 'active'
+          | 'disabled',
+        mustSetPassword: Boolean(r.must_set_password),
+        isLegacy: Boolean(r.legacy_portal_customer_id),
+        createdAt: r.created_at as string,
+        lastSignInAt: authById.get(uid)?.lastSignInAt ?? null,
+        submittedCount: agg?.submitted ?? 0,
+        draftCount: agg?.draft ?? 0,
+        lastSubmittedAt: agg?.lastSubmittedAt ?? null,
+        submitted7d: agg?.submitted7d ?? 0,
+        gmv7d: Math.round((agg?.gmv7d ?? 0) * 100) / 100
+      }
+    })
+  }
+
+  // Élő: organikus + belépett vagy beküldött — memóriában lapozva (organikus lista kicsi)
+  if (view === 'live' && !params.tenantId) {
+    let organicQuery = admin.from('partner_profiles').select(profileSelect)
+    organicQuery = applyCommonFilters(organicQuery)
+    organicQuery = organicQuery.is('legacy_portal_customer_id', null)
+
+    const { data, error } = await organicQuery.order('created_at', {
+      ascending: false
+    })
+    if (error) {
+      console.error('listPlatformPartners live', error.message)
+      throw new Error('Nem sikerült betölteni a partnereket.')
+    }
+
+    const organicRows = (data ?? []) as Record<string, unknown>[]
+    const organicIds = organicRows.map((r) => r.user_id as string)
+    const { liveIds, lastActivityAt } = await loadOrganicActivity(
+      admin,
+      organicIds
+    )
+    const liveRaw = organicRows.filter((r) =>
+      liveIds.has(r.user_id as string)
+    )
+    liveRaw.sort((a, b) => {
+      const ta = lastActivityAt.get(a.user_id as string) ?? 0
+      const tb = lastActivityAt.get(b.user_id as string) ?? 0
+      return tb - ta
+    })
+    const total = liveRaw.length
+    const slice = liveRaw.slice((page - 1) * limit, page * limit)
+    const rows = await enrichRows(slice)
+    return { rows, total, page, limit }
+  }
 
   let query = admin
     .from('partner_profiles')
-    .select(
-      'user_id, name, email, mobile, selected_tenant_id, status, created_at, must_set_password, legacy_portal_customer_id',
-      { count: 'exact' }
-    )
+    .select(profileSelect, { count: 'exact' })
+  query = applyCommonFilters(query)
 
-  if (params.tenantId) {
-    query = query.eq('selected_tenant_id', params.tenantId)
-  } else if (link === 'linked') {
-    query = query.not('selected_tenant_id', 'is', null)
-  } else if (link === 'unlinked') {
-    query = query.is('selected_tenant_id', null)
+  if (view === 'new') {
+    query = query.is('legacy_portal_customer_id', null)
+  } else if (view === 'legacy') {
+    query = query.not('legacy_portal_customer_id', 'is', null)
+  } else if (view === 'live' && params.tenantId) {
+    // tenant szűrőnél élő = organikus a cégnél (aktivitás a lapozás után)
+    query = query.is('legacy_portal_customer_id', null)
   }
 
-  if (status === 'active' || status === 'disabled') {
-    query = query.eq('status', status)
-  }
-
-  if (password === 'must_set') {
-    query = query.eq('must_set_password', true)
-  }
-
-  const q = params.q?.trim()
-  if (q) {
-    const safe = q.replace(/[%_,]/g, '')
-    if (safe) {
-      query = query.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`)
-    }
-  }
-
+  const from = (page - 1) * limit
+  const to = from + limit - 1
   const { data, error, count } = await query
     .order('created_at', { ascending: false })
     .range(from, to)
@@ -222,106 +380,13 @@ export async function listPlatformPartners(
     throw new Error('Nem sikerült betölteni a partnereket.')
   }
 
-  const rowsRaw = data ?? []
-  const tenantIds = [
-    ...new Set(
-      rowsRaw
-        .map((r) => r.selected_tenant_id)
-        .filter((id): id is string => Boolean(id))
+  let rows = await enrichRows((data ?? []) as Record<string, unknown>[])
+
+  if (view === 'live' && params.tenantId) {
+    rows = rows.filter(
+      (r) => Boolean(r.lastSignInAt) || r.submittedCount > 0
     )
-  ]
-  const partnerIds = rowsRaw.map((r) => r.user_id)
-
-  const companyByTenant = new Map<string, string>()
-  if (tenantIds.length > 0) {
-    const { data: tenants } = await admin
-      .from('tenants')
-      .select('id, name')
-      .in('id', tenantIds)
-    for (const t of tenants ?? []) {
-      companyByTenant.set(t.id, t.name)
-    }
   }
-
-  type Agg = {
-    draft: number
-    submitted: number
-    lastSubmittedAt: string | null
-    submitted7d: number
-    gmv7d: number
-  }
-  const aggByPartner = new Map<string, Agg>()
-
-  if (partnerIds.length > 0) {
-    const { data: quotes } = await admin
-      .from('quotes')
-      .select('partner_profile_id, portal_submitted_at, total_gross')
-      .eq('source', 'portal')
-      .in('partner_profile_id', partnerIds)
-      .is('deleted_at', null)
-
-    for (const qrow of quotes ?? []) {
-      const pid = qrow.partner_profile_id as string | null
-      if (!pid) continue
-      let agg = aggByPartner.get(pid)
-      if (!agg) {
-        agg = {
-          draft: 0,
-          submitted: 0,
-          lastSubmittedAt: null,
-          submitted7d: 0,
-          gmv7d: 0
-        }
-        aggByPartner.set(pid, agg)
-      }
-      if (qrow.portal_submitted_at) {
-        agg.submitted += 1
-        const submittedAt = qrow.portal_submitted_at as string
-        if (
-          !agg.lastSubmittedAt ||
-          new Date(submittedAt).getTime() >
-            new Date(agg.lastSubmittedAt).getTime()
-        ) {
-          agg.lastSubmittedAt = submittedAt
-        }
-        if (new Date(submittedAt).getTime() >= since7) {
-          agg.submitted7d += 1
-          agg.gmv7d += Number(qrow.total_gross) || 0
-        }
-      } else {
-        agg.draft += 1
-      }
-    }
-  }
-
-  const authById = await getAuthUsersByIds(
-    admin,
-    rowsRaw.map((r) => r.user_id)
-  )
-
-  const rows: PlatformPartnerListItem[] = rowsRaw.map((r) => {
-    const agg = aggByPartner.get(r.user_id)
-    return {
-      userId: r.user_id,
-      name: r.name,
-      email: r.email,
-      mobile: r.mobile,
-      selectedTenantId: r.selected_tenant_id,
-      companyName: r.selected_tenant_id
-        ? (companyByTenant.get(r.selected_tenant_id) ?? null)
-        : null,
-      status: (r.status as 'active' | 'disabled') ?? 'active',
-      mustSetPassword: Boolean(r.must_set_password),
-      isLegacy: Boolean(r.legacy_portal_customer_id),
-      createdAt: r.created_at,
-      lastSignInAt: authById.get(r.user_id)?.lastSignInAt ?? null,
-      submittedCount: agg?.submitted ?? 0,
-      draftCount: agg?.draft ?? 0,
-      lastSubmittedAt: agg?.lastSubmittedAt ?? null,
-      submitted7d: agg?.submitted7d ?? 0,
-      gmv7d: Math.round((agg?.gmv7d ?? 0) * 100) / 100
-    }
-  })
 
   return { rows, total: count ?? 0, page, limit }
 }
