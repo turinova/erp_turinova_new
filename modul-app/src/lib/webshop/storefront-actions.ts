@@ -33,6 +33,12 @@ const optionalText = (max: number) =>
     })
     .refine((v) => v == null || v.length <= max, `Legfeljebb ${max} karakter.`)
 
+const optionalHttpsUrl = (label: string) =>
+  optionalText(300).refine(
+    (v) => v == null || /^https:\/\//i.test(v),
+    `${label}: https:// címmel kezdődjön.`
+  )
+
 const settingsSchema = z
   .object({
     shippingFeeGross: optionalNonNegInt('Szállítási díj', 1_000_000),
@@ -61,7 +67,12 @@ const settingsSchema = z
     returnShippingPaidBy: z.enum(['customer', 'seller']).default('customer'),
     allowAiTraining: z.boolean().default(false),
     imageAspect: z.enum(['square', 'portrait']).default('square'),
-    showNetPrice: z.boolean().default(false)
+    showNetPrice: z.boolean().default(false),
+    socialFacebook: optionalHttpsUrl('Facebook'),
+    socialInstagram: optionalHttpsUrl('Instagram'),
+    socialYoutube: optionalHttpsUrl('YouTube'),
+    socialTiktok: optionalHttpsUrl('TikTok'),
+    socialLinkedin: optionalHttpsUrl('LinkedIn')
   })
   .superRefine((d, ctx) => {
     if (d.returnDays != null && d.returnDays < STATUTORY_RETURN_DAYS) {
@@ -152,6 +163,11 @@ export async function saveStorefrontSettings(
       allow_ai_training: d.allowAiTraining,
       image_aspect: d.imageAspect,
       show_net_price: d.showNetPrice,
+      social_facebook: d.socialFacebook,
+      social_instagram: d.socialInstagram,
+      social_youtube: d.socialYoutube,
+      social_tiktok: d.socialTiktok,
+      social_linkedin: d.socialLinkedin,
       updated_at: new Date().toISOString()
     },
     { onConflict: 'tenant_id' }
@@ -160,7 +176,11 @@ export async function saveStorefrontSettings(
   if (error) {
     console.error('saveStorefrontSettings', error.message)
     if (error.code === '42703') {
-      return { ok: false, message: 'Hiányzik a 20260551 migráció (szállítási és fizetési módok). Futtasd, majd mentsd újra.' }
+      return {
+        ok: false,
+        message:
+          'Hiányzik egy adatbázis frissítés (szállítás/fizetés vagy social linkek). Futtasd a legújabb migrációkat, majd mentsd újra.'
+      }
     }
     return { ok: false, message: 'Nem sikerült menteni a beállításokat.' }
   }

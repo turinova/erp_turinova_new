@@ -35,7 +35,7 @@ A bolt élőben renderel, `sha256(JSON)` ujjlenyomattal. Ha eltér a legutóbbi 
 
 ## Online elállás (45/2014. 22. § (1a)–(1c))
 
-- Felirat: „Elállás a szerződéstől” (lábléc gomb, mindig látható), megerősítő gomb: „Elállás megerősítése”. Regisztráció nélkül.
+- Felirat: „Elállás a szerződéstől” (lábléc **Vásárlás** oszlop + `/info/elallas#urlap`), megerősítő gomb az űrlapon: „Elállás megerősítése”. Regisztráció nélkül.
 - `lib/storefront/withdrawal-actions.ts`: zod, honeypot, IP-hash alapú óránkénti limit (5), `webshop_withdrawals` beszúrás service role-lal, azonnali e-mail a vásárlónak (tartalom + dátum, idő) és értesítés az eladónak.
 - A nyilatkozat tartalma trigger-védett (nem módosítható, nincs törlés); csak a kezelési / kézbesítési mezők írhatók.
 - E-mail: Resend REST (`lib/email/send.ts`), env `RESEND_API_KEY`, `EMAIL_FROM`. Ha nincs beállítva: `receipt_error` rögzül, a vásárló a képernyőn kapja a visszaigazolást, az admin lista jelzi.

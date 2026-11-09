@@ -1,7 +1,7 @@
 # 50 — Webshop W1 (plug-and-play + Agent Top)
 
-**Állapot:** 2026-11-05 — aktiválás / lean újraindítás  
-**Kapcsolat:** [38](38-agent-commerce.md), [39](39-webshop-addon.md), [40](40-storefront-catalog-ai.md)  
+**Állapot:** 2026-11-05 aktiválás · **2026-11-06 továbbfejlesztés jegelve** — handoff: [51-webshop-dev-pause.md](51-webshop-dev-pause.md)  
+**Kapcsolat:** [38](38-agent-commerce.md), [39](39-webshop-addon.md), [40](40-storefront-catalog-ai.md), [51](51-webshop-dev-pause.md)  
 **Nem W1:** kereső v2 (`archive/webshop` / `20260552`), ACP Instant Checkout API, UCP native checkout, saját domain kötelező
 
 ---
@@ -107,7 +107,7 @@ Legacy URL: `in_shop`→`live`, `not_in_shop`→`draft`.
 | Tab | Tartalom |
 |---|---|
 | **Általános** | Bolt URL + Live db; eladó (ERP előtöltés + `legal_*` override); ügyfélszolgálat (`service_address`, `support_hours`). |
-| **Megjelenés** | Logo (Cégadatok); képarány; nettó ár; eladott db; értékelések. |
+| **Megjelenés** | Logo (Cégadatok); képarány; nettó ár; eladott db; értékelések; **social URL-ek** (FB/IG/YouTube/TikTok/LinkedIn → storefront footer). |
 | **Kereskedelem** | Készletküszöb; elállás/visszaküldés; jótállás; B2C/B2B + mikro/hírlevél/egyedi; AI tanítás. |
 | **Szállítás** | Buyer promise: házhoz (díj + átfutás) + személyes átvétel. GLS = belső default carrier (nem checkout brand). Nincs multi-carrier / ingyenes küszöb UI W1-ben. |
 | **Fizetés** | 3 buyer opció: bankkártya · átutalás · személyesen (átvételkor). COD nincs. Személyesen csak ha átvétel be van. Átutalás → bankszámla + foglalás. |
@@ -148,9 +148,11 @@ Teljes edge lista: brainstorm / [38](38-agent-commerce.md) + commerce docs össz
 
 ## 7. Visszakapcsolás checklist
 
-1. Migrációk `20260535`–`20260551` (nem `20260552`)  
-2. `WEBSHOP_ENABLED = true`  
-3. `STOREFRONT_ROOT_DOMAIN` + demo/pilot tenant  
-4. Platform → tenant webshop add-on  
-5. Smoke: `/webshop`, `/bolt`, `/p/…`, feedek  
-6. Marketing / Pro ígéret csak W1b után  
+1. Olvasd a szünet-handoffot: [51-webshop-dev-pause.md](51-webshop-dev-pause.md)  
+2. Migrációk `20260535`–`20260551` (nem `20260552`) + [51](51-webshop-dev-pause.md) §2 (`20260923`, `20260924`, `20260636`)  
+3. `WEBSHOP_ENABLED = true`  
+4. `STOREFRONT_ROOT_DOMAIN` + demo/pilot tenant  
+5. Platform → tenant webshop add-on  
+6. Smoke: `/webshop`, `/bolt` footer+social, `/p/…`, Excel scoped import, feedek  
+7. Marketing / Pro ígéret csak W1b után  
+

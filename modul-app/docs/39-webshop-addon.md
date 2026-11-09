@@ -1,6 +1,6 @@
 # 39 — Webshop add-on (B2C online bolt)
 
-> **W1 aktív — 2026-11-05.** `WEBSHOP_ENABLED = true`. Lean Live + Agent Top kapuk: **[50-webshop-w1.md](50-webshop-w1.md)**.
+> **W1a aktív, továbbfejlesztés jegelve — 2026-11-06.** `WEBSHOP_ENABLED = true`. Lean Live + Agent Top: **[50](50-webshop-w1.md)**. Mit csináltunk / hol folytasd: **[51-webshop-dev-pause.md](51-webshop-dev-pause.md)**.
 >
 > **Korábbi jegelés (2026-09-28):** flag false volt; archív: tag `webshop-archive-2026-09-28`, branch `archive/webshop` (kereső v2 — **ne merge** W1-be, ne futtasd `20260552`).
 >
@@ -9,14 +9,15 @@
 > 2. Cron: `storefront-domains` (saját domain W2; subdomainhez is hasznos).
 > 3. Platform → tenant → Webshop add-on be (`seed_webshop_defaults_for_tenant`).
 > 4. Marketing / Pro „élő webshop” ígéret: csak Stripe (W1b) után — addig belső / pilot.
+> 5. Hiányzó migrációk (social / gyártó add): lásd [51](51-webshop-dev-pause.md) §2.
 >
 > **Érintetlen:** `sales.channel = 'webshop'`, DB táblák / triggerek.
 
-**Státusz:** W1a (Live + Agent Top kapu) · Stripe W1b · lásd [50](50-webshop-w1.md)  
+**Státusz:** W1a (Live + Agent Top) · fejlesztés szünet · handoff [51](51-webshop-dev-pause.md) · Stripe W1b · [50](50-webshop-w1.md)  
 **Key:** `webshop`  
 **Ár:** **12 900 Ft** nettó/hó  
 **Migráció:** `20260536_webshop_addon.sql` (+ mezők: `20260535_accessory_webshop.sql`; taxonomy: `20260537`; no-default-attrs: `20260538`; auto-enrich: `20260539`)  
-**Kapcsolat:** [33](33-packages-and-addons.md), [38](38-agent-commerce.md), [50](50-webshop-w1.md)
+**Kapcsolat:** [33](33-packages-and-addons.md), [38](38-agent-commerce.md), [50](50-webshop-w1.md), [51](51-webshop-dev-pause.md)
 
 ---
 

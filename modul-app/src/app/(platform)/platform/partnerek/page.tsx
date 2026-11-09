@@ -3,7 +3,10 @@ import { Suspense } from 'react'
 
 import { PlatformPartnersClient } from '@/components/platform/platform-partners-client'
 import { requirePlatformAdmin } from '@/lib/platform/auth'
-import { listPlatformPartners } from '@/lib/platform/partner-queries'
+import {
+  getPlatformPartnersSummary,
+  listPlatformPartners
+} from '@/lib/platform/partner-queries'
 
 export const metadata: Metadata = {
   title: 'Partnerek'
@@ -13,6 +16,8 @@ type SearchParams = Promise<{
   q?: string
   page?: string
   link?: string
+  status?: string
+  password?: string
   tenant?: string
 }>
 
@@ -37,14 +42,24 @@ export default async function PlatformPartnersPage({
   const linkRaw = params.link
   const link =
     linkRaw === 'linked' || linkRaw === 'unlinked' ? linkRaw : 'all'
+  const statusRaw = params.status
+  const status =
+    statusRaw === 'active' || statusRaw === 'disabled' ? statusRaw : 'all'
+  const passwordRaw = params.password
+  const password = passwordRaw === 'must_set' ? 'must_set' : 'all'
 
-  const result = await listPlatformPartners(ctx.admin, {
-    q,
-    link,
-    tenantId,
-    page,
-    limit: 25
-  })
+  const [result, summary] = await Promise.all([
+    listPlatformPartners(ctx.admin, {
+      q,
+      link,
+      status,
+      password,
+      tenantId,
+      page,
+      limit: 25
+    }),
+    getPlatformPartnersSummary(ctx.admin)
+  ])
 
   let tenantName: string | null = null
   if (tenantId) {
@@ -71,8 +86,11 @@ export default async function PlatformPartnersPage({
         total={result.total}
         page={result.page}
         limit={result.limit}
+        summary={summary}
         initialQ={q}
         initialLink={link}
+        initialStatus={status}
+        initialPassword={password}
         tenantFilterId={tenantId ?? null}
         tenantFilterName={tenantName}
       />

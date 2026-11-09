@@ -231,9 +231,11 @@ Report: `scripts/import-reports/portal_partners_*.csv` (gitignore).
 
 ### First-login UX
 
-1. Partner `/login`: ha az emailhez `must_set_password = true` (blur vagy hibás jelszó) → soft szöveg + **Jelszó beállítása** (Supabase recovery email).
-2. Link → `/partner/uj-jelszo` → új jelszó → `must_set_password = false` → home (Hírös már `selected_tenant_id`).
-3. Nincs „Hibás jelszó” elsődleges üzenet migrált fióknál.
+1. Partner `/login`: ha az emailhez `must_set_password = true` (blur vagy hibás jelszó) → soft szöveg + **claim űrlap** (új jelszó + megerősítés; ha van mobil a profilban → utolsó 4 számjegy).
+2. `partnerClaimPasswordAction`: service-role `updateUserById` (password + email_confirm) → `must_set_password = false` → `signInWithPassword` → home. **Nincs recovery email** az első belépéshez.
+3. Rate limit: email + IP, max 5 / óra / instance. Staff membership → tiltva. `disabled` → tiltva.
+4. Tartalék: „Elfelejtetted a jelszavad?” továbbra is recovery email (`redirectTo` apex `https`, www stripelve).
+5. Nincs „Hibás jelszó” elsődleges üzenet migrált fióknál.
 
 ### Explicit NEM (P0)
 
@@ -241,3 +243,4 @@ Report: `scripts/import-reports/portal_partners_*.csv` (gitignore).
 - NETTFRONT / portal quote történet
 - Workshop logo data URL
 - Tömeges jelszó-email
+- First-login primary path = Supabase PKCE recovery email (törékeny mobil/www)

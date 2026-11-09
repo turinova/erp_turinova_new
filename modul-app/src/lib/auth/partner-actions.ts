@@ -5,6 +5,10 @@ import { redirect } from 'next/navigation'
 
 import { isSupabaseConfigured } from '@/lib/auth/config'
 import {
+  allowPartnerPasswordClaim,
+  partnerClaimRateLimitMessage
+} from '@/lib/auth/partner-claim-rate-limit'
+import {
   userHasPartnerProfile,
   userHasTenantMembership
 } from '@/lib/auth/partner-session'
@@ -26,22 +30,91 @@ export type PartnerAuthState = {
   fieldErrors?: Record<string, string>
   /** Migrált fiók — első belépéskor jelszó-beállítás kell */
   needsPasswordSetup?: boolean
+  /** Claim UI: mobil utolsó 4 számjegy kell */
+  requireMobileLast4?: boolean
+}
+
+type ClaimablePartner = {
+  userId: string
+  email: string
+  status: string
+  mobile: string | null
+  mustSetPassword: boolean
+  mobileLast4: string | null
+}
+
+function digitsOnly(value: string): string {
+  return value.replace(/\D/g, '')
+}
+
+function mobileLast4FromProfile(mobile: string | null | undefined): string | null {
+  const digits = digitsOnly(mobile ?? '')
+  if (digits.length < 4) return null
+  return digits.slice(-4)
+}
+
+async function clientIpKey(): Promise<string> {
+  const h = await headers()
+  const forwarded = h.get('x-forwarded-for')
+  if (forwarded) {
+    return forwarded.split(',')[0]?.trim() || 'unknown'
+  }
+  return h.get('x-real-ip')?.trim() || 'unknown'
+}
+
+async function loadClaimablePartner(
+  email: string
+): Promise<ClaimablePartner | null> {
+  const normalized = email.trim().toLowerCase()
+  if (!normalized) return null
+  const admin = createServiceClient()
+  if (!admin) return null
+
+  const ilikeEmail = normalized.replace(/([\\%_])/g, '\\$1')
+  const { data, error } = await admin
+    .from('partner_profiles')
+    .select('user_id, email, status, mobile, must_set_password')
+    .ilike('email', ilikeEmail)
+    .maybeSingle()
+
+  if (error) {
+    console.error('loadClaimablePartner', error.message)
+    return null
+  }
+  if (!data?.user_id) return null
+
+  return {
+    userId: data.user_id as string,
+    email: String(data.email ?? normalized).toLowerCase(),
+    status: String(data.status ?? 'active'),
+    mobile: (data.mobile as string | null) ?? null,
+    mustSetPassword: Boolean(data.must_set_password),
+    mobileLast4: mobileLast4FromProfile(data.mobile as string | null)
+  }
 }
 
 async function partnerEmailNeedsPasswordSetup(
   email: string
 ): Promise<boolean> {
-  const normalized = email.trim().toLowerCase()
-  if (!normalized) return false
+  const row = await loadClaimablePartner(email)
+  return Boolean(row?.mustSetPassword && row.status !== 'disabled')
+}
+
+async function userIdHasStaffMembershipAdmin(
+  userId: string
+): Promise<boolean> {
   const admin = createServiceClient()
   if (!admin) return false
-  const { data } = await admin
-    .from('partner_profiles')
-    .select('must_set_password')
-    .ilike('email', normalized)
-    .eq('must_set_password', true)
-    .maybeSingle()
-  return Boolean(data?.must_set_password)
+  const { data, error } = await admin
+    .from('tenant_memberships')
+    .select('id')
+    .eq('user_id', userId)
+    .limit(1)
+  if (error) {
+    console.error('userIdHasStaffMembershipAdmin', error.message)
+    return true // fail closed for claim
+  }
+  return (data?.length ?? 0) > 0
 }
 
 export async function clearPartnerMustSetPassword(
@@ -60,13 +133,198 @@ export async function clearPartnerMustSetPassword(
 /** Email blur / login soft CTA: kell-e első jelszó-beállítás. */
 export async function checkPartnerMustSetPasswordAction(
   email: string
-): Promise<{ needsPasswordSetup: boolean }> {
+): Promise<{ needsPasswordSetup: boolean; requireMobileLast4: boolean }> {
   if (!isSupabaseConfigured()) {
-    return { needsPasswordSetup: false }
+    return { needsPasswordSetup: false, requireMobileLast4: false }
   }
+  const row = await loadClaimablePartner(email)
+  const needs =
+    Boolean(row?.mustSetPassword) && row?.status !== 'disabled'
   return {
-    needsPasswordSetup: await partnerEmailNeedsPasswordSetup(email)
+    needsPasswordSetup: needs,
+    requireMobileLast4: Boolean(needs && row?.mobileLast4)
   }
+}
+
+/**
+ * Migrált partner first-login: új jelszó beállítása email nélkül,
+ * majd azonnali beléptetés. Csak must_set_password = true esetén.
+ */
+export async function partnerClaimPasswordAction(
+  _prev: PartnerAuthState,
+  formData: FormData
+): Promise<PartnerAuthState> {
+  const email = String(formData.get('email') || '')
+    .trim()
+    .toLowerCase()
+  const password = String(formData.get('password') || '')
+  const confirm = String(formData.get('confirm_password') || '')
+  const mobileLast4Input = String(formData.get('mobile_last4') || '')
+    .trim()
+    .replace(/\D/g, '')
+
+  if (!email) {
+    return {
+      needsPasswordSetup: true,
+      error: 'Add meg az emailedet.',
+      fieldErrors: { email: 'Kötelező.' }
+    }
+  }
+
+  if (password.length < 8) {
+    const row = await loadClaimablePartner(email)
+    return {
+      needsPasswordSetup: true,
+      requireMobileLast4: Boolean(row?.mobileLast4),
+      error: 'Az új jelszó legyen legalább 8 karakter.',
+      fieldErrors: { password: 'Legalább 8 karakter.' }
+    }
+  }
+
+  if (password !== confirm) {
+    const row = await loadClaimablePartner(email)
+    return {
+      needsPasswordSetup: true,
+      requireMobileLast4: Boolean(row?.mobileLast4),
+      error: 'A két jelszó nem egyezik.',
+      fieldErrors: { confirm_password: 'Nem egyezik.' }
+    }
+  }
+
+  if (!isSupabaseConfigured()) {
+    return {
+      needsPasswordSetup: true,
+      error: 'A jelszóbeállítás most nem működik. Próbáld újra később.'
+    }
+  }
+
+  const admin = createServiceClient()
+  if (!admin) {
+    return {
+      needsPasswordSetup: true,
+      error: 'A jelszóbeállítás most nem elérhető. Próbáld újra később.'
+    }
+  }
+
+  const profile = await loadClaimablePartner(email)
+  if (!profile?.mustSetPassword) {
+    return {
+      error:
+        'Ehhez az emailhez nincs első jelszó-beállítás. Próbálj belépni, vagy használd az „Elfelejtetted a jelszavad?” linket.'
+    }
+  }
+
+  if (profile.status === 'disabled') {
+    return {
+      error: 'A fiókod ki van kapcsolva. Ha szerinted ez hiba, írj nekünk.'
+    }
+  }
+
+  if (await userIdHasStaffMembershipAdmin(profile.userId)) {
+    return {
+      error:
+        'Ez a fiók a céges belépéshez való. Itt csak a rendelős fiókkal lehet belépni.'
+    }
+  }
+
+  const ip = await clientIpKey()
+  if (!allowPartnerPasswordClaim([`email:${email}`, `ip:${ip}`])) {
+    return {
+      needsPasswordSetup: true,
+      requireMobileLast4: Boolean(profile.mobileLast4),
+      error: partnerClaimRateLimitMessage()
+    }
+  }
+
+  if (profile.mobileLast4) {
+    if (mobileLast4Input.length !== 4) {
+      return {
+        needsPasswordSetup: true,
+        requireMobileLast4: true,
+        error: 'Add meg a telefonszámod utolsó 4 számjegyét.',
+        fieldErrors: { mobile_last4: '4 számjegy kell.' }
+      }
+    }
+    if (mobileLast4Input !== profile.mobileLast4) {
+      return {
+        needsPasswordSetup: true,
+        requireMobileLast4: true,
+        error: 'A telefonszám utolsó 4 számjegye nem egyezik.',
+        fieldErrors: { mobile_last4: 'Nem egyezik.' }
+      }
+    }
+  }
+
+  const { error: updateErr } = await admin.auth.admin.updateUserById(
+    profile.userId,
+    {
+      password,
+      email_confirm: true
+    }
+  )
+
+  if (updateErr) {
+    console.error('partnerClaimPasswordAction updateUser', updateErr.message)
+    return {
+      needsPasswordSetup: true,
+      requireMobileLast4: Boolean(profile.mobileLast4),
+      error: 'Nem sikerült menteni az új jelszót. Próbáld újra.'
+    }
+  }
+
+  const { data: cleared, error: clearErr } = await admin
+    .from('partner_profiles')
+    .update({ must_set_password: false, updated_at: new Date().toISOString() })
+    .eq('user_id', profile.userId)
+    .eq('must_set_password', true)
+    .select('user_id')
+
+  if (clearErr) {
+    console.error('partnerClaimPasswordAction clear flag', clearErr.message)
+  }
+
+  // Race: másik claim már lenullázta — jelszó akkor is frissült; beléptetünk.
+  if (!cleared?.length && !clearErr) {
+    console.warn(
+      'partnerClaimPasswordAction: must_set_password already false',
+      profile.userId
+    )
+  }
+
+  const supabase = await createClient()
+  if (!supabase) {
+    return {
+      error:
+        'A jelszó megvan, de a belépés most nem elérhető. Próbálj belépni az új jelszóval.'
+    }
+  }
+
+  const { data: signedIn, error: signErr } =
+    await supabase.auth.signInWithPassword({
+      email: profile.email,
+      password
+    })
+
+  if (signErr || !signedIn.user) {
+    console.error(
+      'partnerClaimPasswordAction signIn',
+      signErr?.message ?? 'no user'
+    )
+    return {
+      error:
+        'A jelszó megvan. Lépj be vele a Belépés gombbal (Van már jelszavam).'
+    }
+  }
+
+  if (await userHasTenantMembership(signedIn.user.id)) {
+    await supabase.auth.signOut()
+    return {
+      error:
+        'Ez a fiók a céges belépéshez való. Itt csak a rendelős fiókkal lehet belépni.'
+    }
+  }
+
+  redirect(await partnerServerHref(PARTNER_HOME_PATH))
 }
 
 export async function partnerLoginAction(
@@ -105,10 +363,12 @@ export async function partnerLoginAction(
       }
     }
     if (await partnerEmailNeedsPasswordSetup(email)) {
+      const row = await loadClaimablePartner(email)
       return {
         needsPasswordSetup: true,
+        requireMobileLast4: Boolean(row?.mobileLast4),
         error:
-          'Egyszer be kell állítanod a jelszavad az új felülethez. Küldünk egy linket az emailedre.'
+          'Egyszer be kell állítanod a jelszavad az új felülethez — email nélkül, itt a képernyőn.'
       }
     }
     if (msg.includes('invalid login')) {
@@ -457,8 +717,20 @@ export async function partnerResetPasswordAction(
 
 async function buildPartnerPasswordResetRedirect(): Promise<string> {
   const h = await headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3010'
-  const proto = h.get('x-forwarded-proto') ?? 'http'
+  let host = (h.get('x-forwarded-host') ?? h.get('host') ?? 'turinova.hu')
+    .split(',')[0]
+    ?.trim()
+    .toLowerCase()
+  if (!host) host = 'turinova.hu'
+  // Apex kanonikus — www cookie/PKCE szakadás elkerülése
+  if (host.startsWith('www.')) host = host.slice(4)
+  const isLocal =
+    host.includes('localhost') ||
+    host.startsWith('127.') ||
+    host.endsWith('.local')
+  const proto = isLocal
+    ? (h.get('x-forwarded-proto') ?? 'http')
+    : 'https'
   const origin = `${proto}://${host}`
   const nextPath = await partnerServerHref(PARTNER_RESET_PASSWORD_PATH)
   return `${origin}/auth/confirm?next=${encodeURIComponent(nextPath)}`

@@ -17,18 +17,27 @@ import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
-import type { PlatformPartnerListItem } from '@/lib/platform/partner-queries'
+import { formatPlatformHuf } from '@/lib/platform/partner-overview'
+import type {
+  PlatformPartnerListItem,
+  PlatformPartnersSummary
+} from '@/lib/platform/partner-queries'
 import { usePlatformHref } from '@/lib/platform/use-platform-href'
 
 type LinkFilter = 'all' | 'linked' | 'unlinked'
+type StatusFilter = 'all' | 'active' | 'disabled'
+type PasswordFilter = 'all' | 'must_set'
 
 type Props = {
   rows: PlatformPartnerListItem[]
   total: number
   page: number
   limit: number
+  summary: PlatformPartnersSummary
   initialQ: string
   initialLink: LinkFilter
+  initialStatus: StatusFilter
+  initialPassword: PasswordFilter
   tenantFilterId?: string | null
   tenantFilterName?: string | null
 }
@@ -45,13 +54,27 @@ function formatDate(iso: string | null) {
   }
 }
 
+function formatDay(iso: string | null) {
+  if (!iso) return '—'
+  try {
+    return new Intl.DateTimeFormat('hu-HU', { dateStyle: 'short' }).format(
+      new Date(iso)
+    )
+  } catch {
+    return iso
+  }
+}
+
 export function PlatformPartnersClient({
   rows,
   total,
   page,
   limit,
+  summary,
   initialQ,
   initialLink,
+  initialStatus,
+  initialPassword,
   tenantFilterId = null,
   tenantFilterName = null
 }: Props) {
@@ -86,10 +109,37 @@ export function PlatformPartnersClient({
         <div>
           <h1 className="text-h1 text-ink">Partnerek</h1>
           <p className="mt-1 text-body text-ink-secondary">
-            Online asztalosok — nem tenant seat. Disable / unlink a partner
-            részletezőn.
+            Online asztalosok — aktivitás, onboarding és support műveletek.
           </p>
         </div>
+      </div>
+
+      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+        <Kpi
+          label="Aktív"
+          value={String(summary.active)}
+          hint={
+            summary.disabled > 0 ? `${summary.disabled} kikapcsolva` : undefined
+          }
+        />
+        <Kpi
+          label="Cég nélkül"
+          value={String(summary.unlinked)}
+          hint="Aktív, nincs selected cég"
+        />
+        <Kpi
+          label="Jelszó vár"
+          value={String(summary.mustSetPassword)}
+          hint="must_set_password"
+        />
+        <Kpi
+          label="Migrált"
+          value={String(summary.legacy)}
+          hint="legacy portal id"
+        />
+        <Kpi label="Élő draft" value={String(summary.draftsAlive)} />
+        <Kpi label="Beküldés 7 nap" value={String(summary.submits7d)} />
+        <Kpi label="GMV 7 nap" value={formatPlatformHuf(summary.gmv7d)} />
       </div>
 
       {tenantFilterId ? (
@@ -118,7 +168,7 @@ export function PlatformPartnersClient({
         </div>
       ) : null}
 
-      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
         <form onSubmit={handleSearch} className="relative max-w-sm flex-1">
           <label className="sr-only" htmlFor="platform-partner-search">
             Keresés
@@ -135,22 +185,50 @@ export function PlatformPartnersClient({
             className="pl-8"
           />
         </form>
-        <div className="w-full sm:w-44">
-          <label className="sr-only" htmlFor="platform-partner-link-filter">
-            Kapcsolat szűrő
-          </label>
+        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto lg:min-w-[28rem]">
           <MenuSelect
             id="platform-partner-link-filter"
             value={initialLink}
             allowEmpty={false}
             options={[
-              { value: 'all', label: 'Összes' },
+              { value: 'all', label: 'Kapcsolat: összes' },
               { value: 'linked', label: 'Kapcsolt céggel' },
               { value: 'unlinked', label: 'Cég nélkül' }
             ]}
             onChange={(v) =>
               pushParams({
                 link: v === 'all' ? null : v,
+                page: null
+              })
+            }
+          />
+          <MenuSelect
+            id="platform-partner-status-filter"
+            value={initialStatus}
+            allowEmpty={false}
+            options={[
+              { value: 'all', label: 'Státusz: összes' },
+              { value: 'active', label: 'Aktív' },
+              { value: 'disabled', label: 'Kikapcsolva' }
+            ]}
+            onChange={(v) =>
+              pushParams({
+                status: v === 'all' ? null : v,
+                page: null
+              })
+            }
+          />
+          <MenuSelect
+            id="platform-partner-password-filter"
+            value={initialPassword}
+            allowEmpty={false}
+            options={[
+              { value: 'all', label: 'Jelszó: összes' },
+              { value: 'must_set', label: 'Jelszó beállítás kell' }
+            ]}
+            onChange={(v) =>
+              pushParams({
+                password: v === 'all' ? null : v,
                 page: null
               })
             }
@@ -173,6 +251,10 @@ export function PlatformPartnersClient({
                 <DataTableHeaderCell className="text-right">
                   Draft / Beküldés
                 </DataTableHeaderCell>
+                <DataTableHeaderCell className="text-right">
+                  7 nap
+                </DataTableHeaderCell>
+                <DataTableHeaderCell>Utolsó beküldés</DataTableHeaderCell>
                 <DataTableHeaderCell>Utolsó belépés</DataTableHeaderCell>
                 <DataTableHeaderCell className="w-[1%] text-right">
                   Műveletek
@@ -190,6 +272,14 @@ export function PlatformPartnersClient({
                       {row.name}
                     </Link>
                     <p className="text-hint text-ink-secondary">{row.email}</p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {row.mustSetPassword ? (
+                        <StatusBadge tone="warning">Jelszó kell</StatusBadge>
+                      ) : null}
+                      {row.isLegacy ? (
+                        <StatusBadge tone="neutral">Migrált</StatusBadge>
+                      ) : null}
+                    </div>
                   </DataTableCell>
                   <DataTableCell>
                     <StatusBadge
@@ -205,6 +295,17 @@ export function PlatformPartnersClient({
                   </DataTableCell>
                   <DataTableCell className="text-right tabular-nums text-ink">
                     {row.draftCount} / {row.submittedCount}
+                  </DataTableCell>
+                  <DataTableCell className="text-right text-ink">
+                    <p className="tabular-nums">{row.submitted7d} db</p>
+                    {row.gmv7d > 0 ? (
+                      <p className="text-hint text-ink-secondary tabular-nums">
+                        {formatPlatformHuf(row.gmv7d)}
+                      </p>
+                    ) : null}
+                  </DataTableCell>
+                  <DataTableCell className="text-hint text-ink-secondary">
+                    {formatDay(row.lastSubmittedAt)}
                   </DataTableCell>
                   <DataTableCell className="text-hint text-ink-secondary">
                     {formatDate(row.lastSignInAt)}
@@ -256,6 +357,28 @@ export function PlatformPartnersClient({
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+function Kpi({
+  label,
+  value,
+  hint
+}: {
+  label: string
+  value: string
+  hint?: string
+}) {
+  return (
+    <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+      <p className="text-hint text-ink-secondary">{label}</p>
+      <p className="mt-0.5 text-body font-semibold tabular-nums text-ink">
+        {value}
+      </p>
+      {hint ? (
+        <p className="mt-0.5 text-[11px] text-ink-muted">{hint}</p>
+      ) : null}
     </div>
   )
 }

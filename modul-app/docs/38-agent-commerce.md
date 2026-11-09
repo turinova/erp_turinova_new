@@ -140,7 +140,7 @@ Helper: `src/lib/accessories/web-shop.ts` → `evaluateShopReady`.
 | `condition` = new | Feed konstans |
 | Szállítás: ország, díj, SLA | Tenant setting |
 | Return / privacy / ÁSZF URL | Tenant (`terms_url`, `privacy_url`) |
-| Tárhely-szolgáltató, panaszkezelés / békéltető | Tenant (`hosting_provider_*`, `complaint_info`) — lábléc (Ekertv. 4. §) |
+| Tárhely-szolgáltató, panaszkezelés / békéltető | Impresszum + Panaszkezelés `/info/*` (Ekertv. 4. §); lábléc csak a linkeket mutatja ([41](41-webshop-legal.md)) |
 | `seller_name`, `seller_url` | = tenant cég |
 
 ### 4.5 Amit büntet / kerülni

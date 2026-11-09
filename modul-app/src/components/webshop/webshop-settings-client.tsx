@@ -214,6 +214,11 @@ export function WebshopSettingsClient({
   const [showNetPrice, setShowNetPrice] = useState(initial.showNetPrice)
   const [showSoldCount, setShowSoldCount] = useState(initial.showSoldCount)
   const [reviewsEnabled, setReviewsEnabled] = useState(initial.reviewsEnabled)
+  const [socialFacebook, setSocialFacebook] = useState(initial.socialFacebook ?? '')
+  const [socialInstagram, setSocialInstagram] = useState(initial.socialInstagram ?? '')
+  const [socialYoutube, setSocialYoutube] = useState(initial.socialYoutube ?? '')
+  const [socialTiktok, setSocialTiktok] = useState(initial.socialTiktok ?? '')
+  const [socialLinkedin, setSocialLinkedin] = useState(initial.socialLinkedin ?? '')
 
   const [lowStock, setLowStock] = useState(toRaw(initial.lowStockThreshold))
   const [returnDays, setReturnDays] = useState(toRaw(initial.returnDays))
@@ -288,7 +293,12 @@ export function WebshopSettingsClient({
       returnShippingPaidBy: returnPaidBy,
       allowAiTraining,
       imageAspect,
-      showNetPrice
+      showNetPrice,
+      socialFacebook: socialFacebook.trim() || null,
+      socialInstagram: socialInstagram.trim() || null,
+      socialYoutube: socialYoutube.trim() || null,
+      socialTiktok: socialTiktok.trim() || null,
+      socialLinkedin: socialLinkedin.trim() || null
     }
   }
 
@@ -736,6 +746,88 @@ export function WebshopSettingsClient({
                 label="Értékelések engedélyezve"
               />
             </div>
+          </FormSection>
+
+          <FormSection
+            title="Közösségi oldalak"
+            description="A bolt láblécében jelennek meg. Üresen hagyva a link nem látszik. Csak https:// címet írj."
+            columns={2}
+          >
+            <FormField
+              label="Facebook"
+              htmlFor="ws-social-fb"
+              error={errors.socialFacebook}
+            >
+              <Input
+                id="ws-social-fb"
+                type="url"
+                inputMode="url"
+                placeholder="https://facebook.com/…"
+                value={socialFacebook}
+                disabled={disabled}
+                onChange={(e) => setSocialFacebook(e.target.value)}
+              />
+            </FormField>
+            <FormField
+              label="Instagram"
+              htmlFor="ws-social-ig"
+              error={errors.socialInstagram}
+            >
+              <Input
+                id="ws-social-ig"
+                type="url"
+                inputMode="url"
+                placeholder="https://instagram.com/…"
+                value={socialInstagram}
+                disabled={disabled}
+                onChange={(e) => setSocialInstagram(e.target.value)}
+              />
+            </FormField>
+            <FormField
+              label="YouTube"
+              htmlFor="ws-social-yt"
+              error={errors.socialYoutube}
+            >
+              <Input
+                id="ws-social-yt"
+                type="url"
+                inputMode="url"
+                placeholder="https://youtube.com/…"
+                value={socialYoutube}
+                disabled={disabled}
+                onChange={(e) => setSocialYoutube(e.target.value)}
+              />
+            </FormField>
+            <FormField
+              label="TikTok"
+              htmlFor="ws-social-tt"
+              error={errors.socialTiktok}
+            >
+              <Input
+                id="ws-social-tt"
+                type="url"
+                inputMode="url"
+                placeholder="https://tiktok.com/@…"
+                value={socialTiktok}
+                disabled={disabled}
+                onChange={(e) => setSocialTiktok(e.target.value)}
+              />
+            </FormField>
+            <FormField
+              label="LinkedIn"
+              htmlFor="ws-social-li"
+              error={errors.socialLinkedin}
+            >
+              <Input
+                id="ws-social-li"
+                type="url"
+                inputMode="url"
+                placeholder="https://linkedin.com/company/…"
+                value={socialLinkedin}
+                disabled={disabled}
+                onChange={(e) => setSocialLinkedin(e.target.value)}
+              />
+            </FormField>
           </FormSection>
         </div>
       ) : null}

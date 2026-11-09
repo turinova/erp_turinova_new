@@ -1,6 +1,6 @@
 # 40 — Storefront katalógus + AI-olvashatóság (F1–F3)
 
-> **W1 — 2026-11-05.** Bolt flag be (`WEBSHOP_ENABLED`). Live vs Agent Top / feed kapu: [50](50-webshop-w1.md). Add-on: [39](39-webshop-addon.md).
+> **W1 — 2026-11-05.** Bolt flag be (`WEBSHOP_ENABLED`). Live vs Agent Top / feed: [50](50-webshop-w1.md). Add-on: [39](39-webshop-addon.md). **Fejlesztés jegelve 2026-11-06** — handoff: [51](51-webshop-dev-pause.md).
 
 Cél: a vásárló (és az AI ügynök) **egy lépésben** eljusson a pontos alkatrészhez,
 és a gép **ugyanazt** lássa, amit az ember. Migráció: `20260543_storefront_catalog.sql`.
@@ -63,7 +63,7 @@ Forrás: Baymard 2026 PDP benchmark + „Vertically Collapsed Sections”, stick
 - **Tipográfia:** storefront törzs 15px / 400; egyetlen H2 méret (`SECTION_TITLE`, 17px/600); szekciócím 16px/600; ár 24px/700 `tabular-nums`.
 - **Ragadós sáv:** csak ha a fő gomb nincs a képen **és** a lábléc sem; kép + ár + ugyanaz a művelet. Soha két azonos gomb egyszerre.
 - **Elfogyott termék:** egy elsődleges „Szólj, ha megérkezik” (`storefront_stock_notify_requests`, admin: Webshop áttekintő lista, „Értesítettem” lezárás); raktáron lévő testvér-variánsra link.
-- **Lábléc (mobil):** „Segítünk választani” kapcsolatblokk → összecsukható Kategóriák / Vásárlói információk / Cégadatok → jogi sor. Desktopon 3 oszlop, nyitva. A Vásárlói információk a generált `/info/*` oldalakra mutat, mindig látható „Elállás a szerződéstől” gombbal és a tárhely-szolgáltatóval ([41](41-webshop-legal.md)).
+- **Lábléc (minden tenant ugyanaz, tágas):** 2–3 oszlop — **Eladó** (cégnév, székhely, email, telefon), **Vásárlás** (Szállítás és fizetés, Elállás, Panaszkezelés), opcionális **Kövess minket** (Facebook / Instagram / YouTube / TikTok / LinkedIn — Beállítások → Megjelenés). Alatta **Fizetés** jelek (Visa / Mastercard / Apple Pay / Google Pay ha kártya; Átutalás; Személyes átvétel). Alsó sáv: © + ÁSZF / Adatkezelés / Impresszum / Sütik / Akadálymentesség. Cégjegyzékszám / tárhely csak az Impresszumban ([41](41-webshop-legal.md)).
 - **Képek:** fehér hátterű fotó `mix-blend-multiply` a `stone-100` felületen.
 
 ## 3c. Címek és csatornák (zárolt)

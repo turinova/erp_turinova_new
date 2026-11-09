@@ -48,4 +48,5 @@ supabase/.temp/
 
 # partner migration PII + reports
 scripts/data/portal_customers.csv
+scripts/sql/*partner_delta*
 scripts/import-reports/

@@ -39,6 +39,12 @@ export type StorefrontSettings = {
   imageAspect: 'square' | 'portrait'
   /** B2B: nettó ár a bruttó alatt. */
   showNetPrice: boolean
+  /** Bolt lábléc social linkek (https). */
+  socialFacebook: string | null
+  socialInstagram: string | null
+  socialYoutube: string | null
+  socialTiktok: string | null
+  socialLinkedin: string | null
 }
 
 /** Fttv. / Ptk. — rövidebb elállási idő nem ígérhető. */
@@ -66,8 +72,16 @@ export const DEFAULT_STOREFRONT_SETTINGS: StorefrontSettings = {
   returnShippingPaidBy: 'customer',
   allowAiTraining: false,
   imageAspect: 'square',
-  showNetPrice: false
+  showNetPrice: false,
+  socialFacebook: null,
+  socialInstagram: null,
+  socialYoutube: null,
+  socialTiktok: null,
+  socialLinkedin: null
 }
+
+const SOCIAL_COLUMNS =
+  'social_facebook, social_instagram, social_youtube, social_tiktok, social_linkedin'
 
 const LEGAL_COLUMNS = `
   terms_url,
@@ -149,6 +163,7 @@ export async function getStorefrontSettings(
 ): Promise<StorefrontSettings> {
   // Régebbi sémán (migráció előtt) a hiányzó oszlopcsoport nélkül olvasunk.
   const selects = [
+    `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training, image_aspect, show_net_price, ${COMMERCE_COLUMNS}, ${SOCIAL_COLUMNS}`,
     `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training, image_aspect, show_net_price, ${COMMERCE_COLUMNS}`,
     `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training, image_aspect, show_net_price`,
     `${STOREFRONT_COLUMNS}, ${LEGAL_COLUMNS}, allow_ai_training`,
@@ -197,6 +212,11 @@ export async function getStorefrontSettings(
     returnShippingPaidBy: row.return_shipping_paid_by === 'seller' ? 'seller' : 'customer',
     allowAiTraining: row.allow_ai_training === true,
     imageAspect: row.image_aspect === 'portrait' ? 'portrait' : 'square',
-    showNetPrice: row.show_net_price === true
+    showNetPrice: row.show_net_price === true,
+    socialFacebook: textOrNull(row.social_facebook),
+    socialInstagram: textOrNull(row.social_instagram),
+    socialYoutube: textOrNull(row.social_youtube),
+    socialTiktok: textOrNull(row.social_tiktok),
+    socialLinkedin: textOrNull(row.social_linkedin)
   }
 }

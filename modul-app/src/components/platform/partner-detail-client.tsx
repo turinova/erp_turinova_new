@@ -153,6 +153,12 @@ export function PartnerDetailClient({ detail, companies }: Props) {
             <StatusBadge tone={detail.emailConfirmed ? 'success' : 'warning'}>
               {detail.emailConfirmed ? 'Email OK' : 'Email nem erősített'}
             </StatusBadge>
+            {p.mustSetPassword ? (
+              <StatusBadge tone="warning">Jelszó beállítás kell</StatusBadge>
+            ) : null}
+            {p.legacyPortalCustomerId ? (
+              <StatusBadge tone="neutral">Migrált</StatusBadge>
+            ) : null}
           </div>
           <p className="mt-1 text-body text-ink-secondary">{p.email}</p>
           {isDisabled && p.disabledReason ? (
@@ -186,12 +192,20 @@ export function PartnerDetailClient({ detail, companies }: Props) {
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Draft ajánlat" value={String(detail.draftCount)} />
-        <Kpi label="Beküldés" value={String(detail.submittedCount)} />
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <Kpi label="Draft" value={String(detail.draftCount)} />
+        <Kpi label="Beküldés (összes)" value={String(detail.submittedCount)} />
         <Kpi
-          label="Beküldött GMV"
+          label="GMV (összes)"
           value={formatPlatformHuf(detail.gmvSubmitted)}
+        />
+        <Kpi
+          label="Beküldés 7 nap"
+          value={`${detail.submitted7d} · ${formatPlatformHuf(detail.gmv7d)}`}
+        />
+        <Kpi
+          label="Beküldés 30 nap"
+          value={`${detail.submitted30d} · ${formatPlatformHuf(detail.gmv30d)}`}
         />
         <Kpi label="Utolsó belépés" value={formatDate(detail.lastSignInAt)} />
       </div>
@@ -203,9 +217,19 @@ export function PartnerDetailClient({ detail, companies }: Props) {
             <Row label="Telefon" value={p.mobile ?? '—'} />
             <Row label="Regisztráció" value={formatDate(p.createdAt)} />
             <Row
+              label="ÁSZF elfogadva"
+              value={formatDate(p.termsAcceptedAt)}
+            />
+            <Row
               label="Utolsó beküldés"
               value={formatDate(detail.lastSubmittedAt)}
             />
+            {p.legacyPortalCustomerId ? (
+              <Row
+                label="Legacy ID"
+                value={p.legacyPortalCustomerId.slice(0, 8) + '…'}
+              />
+            ) : null}
             {isDisabled ? (
               <Row label="Kikapcsolva" value={formatDate(p.disabledAt)} />
             ) : null}
@@ -282,6 +306,47 @@ export function PartnerDetailClient({ detail, companies }: Props) {
             <Row label="Adószám" value={p.billingTaxNumber ?? '—'} />
             <Row label="Cím" value={address || '—'} />
           </dl>
+        </section>
+
+        <section className="rounded-md border border-border bg-surface p-4 lg:col-span-2">
+          <h2 className="mb-2 text-body font-semibold text-ink">
+            Utolsó portal ajánlatok
+          </h2>
+          {detail.recentQuotes.length === 0 ? (
+            <p className="text-body text-ink-secondary">
+              Még nincs portal ajánlat.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {detail.recentQuotes.map((quote) => (
+                <li
+                  key={quote.id}
+                  className="flex flex-wrap items-baseline justify-between gap-2 py-2 text-body"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium tabular-nums text-ink">
+                      {quote.quoteNumber}
+                      {quote.projectName ? (
+                        <span className="ml-2 font-normal text-ink-secondary">
+                          {quote.projectName}
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-hint text-ink-secondary">
+                      {quote.portalSubmittedAt
+                        ? `Beküldve ${formatDate(quote.portalSubmittedAt)}`
+                        : `Draft · létrehozva ${formatDate(quote.createdAt)}`}
+                      {' · '}
+                      {quote.status}
+                    </p>
+                  </div>
+                  <p className="shrink-0 tabular-nums text-ink">
+                    {formatPlatformHuf(quote.totalGross)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
 
