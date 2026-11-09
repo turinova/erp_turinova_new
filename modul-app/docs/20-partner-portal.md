@@ -234,7 +234,10 @@ Report: `scripts/import-reports/portal_partners_*.csv` (gitignore).
 1. Partner `/login`: ha az emailhez `must_set_password = true` (blur vagy hibás jelszó) → soft szöveg + **claim űrlap** (új jelszó + megerősítés; ha van mobil a profilban → utolsó 4 számjegy).
 2. `partnerClaimPasswordAction`: service-role `updateUserById` (password + email_confirm) → `must_set_password = false` → `signInWithPassword` → home. **Nincs recovery email** az első belépéshez.
 3. Rate limit: email + IP, max 5 / óra / instance. Staff membership → tiltva. `disabled` → tiltva.
-4. Tartalék: „Elfelejtetted a jelszavad?” továbbra is recovery email (`redirectTo` apex `https`, www stripelve).
+4. Tartalék: „Elfelejtetted a jelszavad?” → recovery email. **Supabase Reset password template (kötelező SSR):**  
+   `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/uj-jelszo`  
+   (ne `{{ .ConfirmationURL }}` / PKCE — más böngészőben elbukik). Site URL = `https://turinova.hu`.  
+   `/auth/confirm` először `verifyOtp(token_hash)`, cookie a redirect response-on; `code` csak legacy.
 5. Nincs „Hibás jelszó” elsődleges üzenet migrált fióknál.
 
 ### Explicit NEM (P0)

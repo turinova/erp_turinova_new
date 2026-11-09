@@ -13,7 +13,12 @@ import {
   userHasTenantMembership
 } from '@/lib/auth/partner-session'
 import { partnerServerHref } from '@/lib/auth/partner-href-server'
-import { PARTNER_HOME_PATH, PARTNER_LOGIN_PATH, PARTNER_RESET_PASSWORD_PATH } from '@/lib/auth/surface'
+import {
+  PARTNER_HOME_PATH,
+  PARTNER_HOST_LABEL,
+  PARTNER_LOGIN_PATH,
+  PARTNER_RESET_PASSWORD_PATH
+} from '@/lib/auth/surface'
 import { partnerTenantIsAccepting } from '@/lib/partner/companies'
 import {
   billingNameOrFallback,
@@ -704,6 +709,35 @@ export async function partnerResetPasswordAction(
     }
   }
 
+  if (await userHasTenantMembership(user.id)) {
+    await supabase.auth.signOut()
+    return {
+      error:
+        'Ez a fiók a céges belépéshez való. Itt csak a rendelős fiókkal lehet belépni.'
+    }
+  }
+
+  if (!(await userHasPartnerProfile(user.id))) {
+    await supabase.auth.signOut()
+    return {
+      error:
+        'Ehhez az emailhez még nincs rendelős fiók. Előbb regisztrálj.'
+    }
+  }
+
+  const { data: statusRow } = await supabase
+    .from('partner_profiles')
+    .select('status')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (statusRow?.status === 'disabled') {
+    await supabase.auth.signOut()
+    return {
+      error: 'A fiókod ki van kapcsolva. Ha szerinted ez hiba, írj nekünk.'
+    }
+  }
+
   const { error } = await supabase.auth.updateUser({ password })
   if (error) {
     console.error('partnerResetPasswordAction', error.message)
@@ -715,25 +749,33 @@ export async function partnerResetPasswordAction(
   redirect(await partnerServerHref(PARTNER_HOME_PATH))
 }
 
+/**
+ * Tartalék redirect a resetPasswordForEmail híváshoz (RedirectTo / allowlist).
+ * A működő email link a Supabase template-ből jön:
+ * SiteURL/auth/confirm?token_hash=…&type=recovery&next=/uj-jelszo
+ */
 async function buildPartnerPasswordResetRedirect(): Promise<string> {
   const h = await headers()
-  let host = (h.get('x-forwarded-host') ?? h.get('host') ?? 'turinova.hu')
+  let host = (h.get('x-forwarded-host') ?? h.get('host') ?? PARTNER_HOST_LABEL)
     .split(',')[0]
     ?.trim()
     .toLowerCase()
-  if (!host) host = 'turinova.hu'
-  // Apex kanonikus — www cookie/PKCE szakadás elkerülése
+  if (!host) host = PARTNER_HOST_LABEL
   if (host.startsWith('www.')) host = host.slice(4)
+
   const isLocal =
     host.includes('localhost') ||
     host.startsWith('127.') ||
     host.endsWith('.local')
-  const proto = isLocal
-    ? (h.get('x-forwarded-proto') ?? 'http')
-    : 'https'
-  const origin = `${proto}://${host}`
+
+  // Prod: mindig kanonikus partner apex (ne www / ne staff host)
+  if (!isLocal) {
+    return `https://${PARTNER_HOST_LABEL}/auth/confirm?next=${encodeURIComponent(PARTNER_RESET_PASSWORD_PATH)}`
+  }
+
+  const proto = h.get('x-forwarded-proto') ?? 'http'
   const nextPath = await partnerServerHref(PARTNER_RESET_PASSWORD_PATH)
-  return `${origin}/auth/confirm?next=${encodeURIComponent(nextPath)}`
+  return `${proto}://${host}/auth/confirm?next=${encodeURIComponent(nextPath)}`
 }
 
 export async function partnerLogoutAction() {

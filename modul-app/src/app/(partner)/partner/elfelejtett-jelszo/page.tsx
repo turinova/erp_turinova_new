@@ -27,7 +27,9 @@ export default async function PartnerForgotPasswordPage({
           className="mb-3 border border-danger/30 bg-danger-soft px-2.5 py-1.5 text-hint text-danger-ink"
           role="alert"
         >
-          A link lejárt vagy hibás. Kérj újat lent.
+          A link lejárt, hibás, vagy már felhasználták. Add meg lent az
+          emailedet — küldünk egy újat. (Ha még soha nem léptél be az új
+          felületre, a Belépés oldalon állítsd be a jelszót email nélkül.)
         </p>
       ) : null}
       <PartnerForgotPasswordForm />
