@@ -117,14 +117,16 @@ export function budapestTodayYmd(now = new Date()): string {
 }
 
 /**
- * Elvárt munkanap-e (hiányzó nap számoláshoz / jelöléshez).
+ * Elvárt munkanap-e (hiányzó / üres nap számoláshoz).
  * - vasárnap soha
- * - szombat csak ha worksOnSaturday
+ * - szombat soha (worksOnSaturday = lehetőség, nem kötelezettség;
+ *   hiányos szombati rögzítést a hívó külön kezeli)
  * - ünnep/pihenő (calendarRest) soha, kivéve áthelyezett munkanap
  * - csak eltelt napok (ymd < ma), ha onlyPast === true
  */
 export function isExpectedAttendanceDay(input: {
   ymd: string
+  /** Megtartva a hívók miatt; az elvárt-nap döntést nem befolyásolja. */
   worksOnSaturday: boolean
   isCalendarRest?: boolean
   isRelocatedWork?: boolean
@@ -137,8 +139,7 @@ export function isExpectedAttendanceDay(input: {
   if (input.isCalendarRest) return false
   const d = parseYmd(input.ymd)
   const dow = d.getDay()
-  if (dow === 0) return false
-  if (dow === 6) return input.worksOnSaturday
+  if (dow === 0 || dow === 6) return false
   return true
 }
 

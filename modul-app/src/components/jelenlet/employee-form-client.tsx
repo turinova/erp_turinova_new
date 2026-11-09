@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
+import { Archive } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
@@ -15,10 +16,17 @@ import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  archiveEmployeeAction,
   softDeleteEmployeeAction,
   upsertEmployeeAction
 } from '@/lib/jelenlet/actions'
 import type { HrEmployeeRow } from '@/lib/jelenlet/queries'
+
+const ROUNDING_OPTIONS = [
+  { value: 'floor', label: 'Lefelé' },
+  { value: 'nearest', label: 'Legközelebbi' },
+  { value: 'ceil', label: 'Felfelé' }
+]
 
 type TypeOption = { id: string; name: string; isDefault: boolean }
 
@@ -66,11 +74,24 @@ export function EmployeeFormClient({
   const [overtimeDailyCapMinutes, setOvertimeDailyCapMinutes] = useState(
     String(employee?.overtimeDailyCapMinutes ?? 180)
   )
+  const ot = employee?.overtimeDetails
+  const [otRoundingMinutes, setOtRoundingMinutes] = useState(
+    String(ot?.roundingMinutes ?? 15)
+  )
+  const [otRoundingMode, setOtRoundingMode] = useState<string>(
+    ot?.roundingMode ?? 'floor'
+  )
+  const [earlyEnabled, setEarlyEnabled] = useState(ot?.earlyEnabled ?? false)
+  const [earlyTrigger, setEarlyTrigger] = useState(ot?.earlyTriggerTime ?? '07:00')
+  const [earlyPayUntil, setEarlyPayUntil] = useState(ot?.earlyPayUntilTime ?? '')
+  const [earlyMax, setEarlyMax] = useState(String(ot?.earlyMaxMinutes ?? 30))
+  const [earlyGrace, setEarlyGrace] = useState(String(ot?.earlyGraceMinutes ?? 0))
   const [pinCode, setPinCode] = useState(employee?.pinCode ?? '')
   const [rfidCardId, setRfidCardId] = useState(employee?.rfidCardId ?? '')
   const [notes, setNotes] = useState(employee?.notes ?? '')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
 
   function save() {
     if (!canWrite) return
@@ -90,6 +111,13 @@ export function EmployeeFormClient({
           overtimeEnabled,
           overtimeGraceMinutes: Number(overtimeGraceMinutes) || 0,
           overtimeDailyCapMinutes: Number(overtimeDailyCapMinutes) || 0,
+          overtimeRoundingMinutes: Number(otRoundingMinutes) || 15,
+          overtimeRoundingMode: otRoundingMode as 'floor' | 'nearest' | 'ceil',
+          earlyOvertimeEnabled: earlyEnabled,
+          earlyOvertimeTriggerTime: earlyTrigger || null,
+          earlyOvertimePayUntilTime: earlyPayUntil || null,
+          earlyOvertimeMaxMinutes: Number(earlyMax) || 0,
+          earlyOvertimeGraceMinutes: Number(earlyGrace) || 0,
           pinCode: pinCode || null,
           rfidCardId: rfidCardId || null,
           notes: notes || null
@@ -122,6 +150,20 @@ export function EmployeeFormClient({
       setDeleteOpen(false)
       toast.success('Dolgozó törölve.')
       router.push('/dolgozok')
+      router.refresh()
+    })
+  }
+
+  function confirmArchive() {
+    if (!canWrite || !employee?.id) return
+    startTransition(async () => {
+      const result = await archiveEmployeeAction({ id: employee.id })
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      setArchiveOpen(false)
+      toast.success('Dolgozó archiválva.')
       router.refresh()
     })
   }
@@ -205,8 +247,8 @@ export function EmployeeFormClient({
             checked={worksOnSaturday}
             onCheckedChange={setWorksOnSaturday}
             disabled={!canWrite}
-            label="Szombaton dolgozik"
-            description="A hiányzó napok számításánál a szombat is munkanap."
+            label="Szombaton dolgozhat"
+            description="Ha dolgozik, rögzíthető. Üres szombat nem pótolnivaló."
           />
         </div>
       </FormSection>
@@ -256,7 +298,7 @@ export function EmployeeFormClient({
 
       <FormSection
         title="Túlóra"
-        description="Egyszerű műszak utáni túlóra szabály."
+        description="Műszak utáni és korai túlóra — a belső jelenléti íven jelenik meg."
         columns={4}
       >
         <div className="sm:col-span-4">
@@ -299,6 +341,98 @@ export function EmployeeFormClient({
                 disabled={!canWrite}
               />
             </FormField>
+            <FormField
+              label="Kerekítés (perc)"
+              htmlFor="ot-round"
+              hint="A túlóra ennyi perces egységekben számít."
+            >
+              <Input
+                id="ot-round"
+                type="number"
+                min={1}
+                max={120}
+                value={otRoundingMinutes}
+                onChange={(e) => setOtRoundingMinutes(e.target.value)}
+                disabled={!canWrite}
+              />
+            </FormField>
+            <FormField label="Kerekítés iránya" htmlFor="ot-round-mode">
+              <MenuSelect
+                id="ot-round-mode"
+                value={otRoundingMode}
+                options={ROUNDING_OPTIONS}
+                allowEmpty={false}
+                onChange={setOtRoundingMode}
+                disabled={!canWrite}
+              />
+            </FormField>
+            <div className="sm:col-span-4">
+              <Switch
+                id="emp-early-ot"
+                checked={earlyEnabled}
+                onCheckedChange={setEarlyEnabled}
+                disabled={!canWrite}
+                label="Korai túlóra (műszak előtt)"
+                description="Ha a dolgozó a megadott időnél korábban érkezik, a műszak előtti rész túlórának számít."
+              />
+            </div>
+            {earlyEnabled ? (
+              <>
+                <FormField
+                  label="Ennél korábbi érkezés"
+                  htmlFor="early-trigger"
+                  hint="Pl. 07:00 — utána érkezve nincs korai túlóra."
+                >
+                  <Input
+                    id="early-trigger"
+                    type="time"
+                    value={earlyTrigger}
+                    onChange={(e) => setEarlyTrigger(e.target.value)}
+                    disabled={!canWrite}
+                  />
+                </FormField>
+                <FormField
+                  label="Fizetett eddig"
+                  htmlFor="early-until"
+                  optionalLabel
+                  hint="Üresen: a műszak kezdetéig."
+                >
+                  <Input
+                    id="early-until"
+                    type="time"
+                    value={earlyPayUntil}
+                    onChange={(e) => setEarlyPayUntil(e.target.value)}
+                    disabled={!canWrite}
+                  />
+                </FormField>
+                <FormField label="Maximum (perc)" htmlFor="early-max">
+                  <Input
+                    id="early-max"
+                    type="number"
+                    min={0}
+                    max={480}
+                    value={earlyMax}
+                    onChange={(e) => setEarlyMax(e.target.value)}
+                    disabled={!canWrite}
+                  />
+                </FormField>
+                <FormField
+                  label="Türelmi idő (perc)"
+                  htmlFor="early-grace"
+                  hint="Ennyi perc korai érkezés még nem túlóra."
+                >
+                  <Input
+                    id="early-grace"
+                    type="number"
+                    min={0}
+                    max={240}
+                    value={earlyGrace}
+                    onChange={(e) => setEarlyGrace(e.target.value)}
+                    disabled={!canWrite}
+                  />
+                </FormField>
+              </>
+            ) : null}
           </>
         ) : null}
       </FormSection>
@@ -366,17 +500,28 @@ export function EmployeeFormClient({
 
       {canWrite ? (
         <div className="sticky bottom-0 z-10 flex items-center justify-between gap-1.5 border-t border-border bg-app/95 py-3 backdrop-blur-sm">
-          <div>
+          <div className="flex gap-1.5">
             {isEdit ? (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={pending}
-                className="text-danger-ink hover:bg-danger-soft"
-                onClick={() => setDeleteOpen(true)}
-              >
-                Dolgozó törlése
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={() => setArchiveOpen(true)}
+                >
+                  <Archive className="size-3.5" aria-hidden />
+                  Dolgozó archiválása
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pending}
+                  className="text-danger-ink hover:bg-danger-soft"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  Dolgozó törlése
+                </Button>
+              </>
             ) : null}
           </div>
           <div className="flex gap-1.5">
@@ -407,7 +552,7 @@ export function EmployeeFormClient({
           if (!open && !pending) setDeleteOpen(false)
         }}
         title="Dolgozó törlése"
-        description={`Biztosan törlöd „${employee?.name ?? 'ezt a dolgozót'}”? A listáról és a jelenléti naptárból eltűnik; a múltbeli jelenlét adatok megmaradnak.`}
+        description={`Biztosan törlöd „${employee?.name ?? 'ezt a dolgozót'}”? Mindenhonnan eltűnik, jelenléti ív sem készíthető róla. Kilépett dolgozónál inkább archiváld.`}
         confirmLabel="Törlés"
         cancelLabel="Mégse"
         variant="danger"
@@ -416,11 +561,29 @@ export function EmployeeFormClient({
       />
     ) : null
 
+  const archiveDialog =
+    isEdit && canWrite ? (
+      <ConfirmDialog
+        open={archiveOpen}
+        onOpenChange={(open) => {
+          if (!open && !pending) setArchiveOpen(false)
+        }}
+        title="Dolgozó archiválása"
+        description={`„${employee?.name ?? 'A dolgozó'}” kikerül a listából, a naptárból és a terminálról; PIN és RFID kártya felszabadul. A jelenlét, a távollétek és a jelenléti ív megmarad, és bármikor visszaállítható.`}
+        confirmLabel="Dolgozó archiválása"
+        cancelLabel="Mégse"
+        variant="primary"
+        loading={pending}
+        onConfirm={confirmArchive}
+      />
+    ) : null
+
   if (embedded) {
     return (
       <>
         {formBody}
         {deleteDialog}
+        {archiveDialog}
       </>
     )
   }
@@ -460,6 +623,7 @@ export function EmployeeFormClient({
       />
       {formBody}
       {deleteDialog}
+      {archiveDialog}
     </div>
   )
 }

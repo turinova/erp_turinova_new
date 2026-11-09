@@ -21,7 +21,9 @@ export default async function DolgozokPage({
   const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1
   const activeRaw = typeof sp.active === 'string' ? sp.active : 'all'
   const active =
-    activeRaw === 'active' || activeRaw === 'inactive' ? activeRaw : 'all'
+    activeRaw === 'active' || activeRaw === 'inactive' || activeRaw === 'archived'
+      ? activeRaw
+      : 'all'
 
   const now = budapestYearMonth()
   const yearRaw = typeof sp.year === 'string' ? Number(sp.year) : now.year

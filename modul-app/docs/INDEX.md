@@ -39,6 +39,7 @@
 | [46-csomagok-funkcio-matrix.md](46-csomagok-funkcio-matrix.md) | **Funkció×csomag mátrix** — CloudERP-mélység, route + edge |
 | [34-jelenlet-addon.md](34-jelenlet-addon.md) | **Jelenlét** — dolgozók, naptár, távollét, Pi terminál |
 | [jelenlet-pi.md](jelenlet-pi.md) | Jelenlét terminál sync (platform-managed) |
+| [53-jelenlet-pi-modul-atallas.md](53-jelenlet-pi-modul-atallas.md) | **Terv:** Pi átállítása a modul-appra (3 végpont + Pi adatréteg csere, tenanthoz kötött eszköz) |
 | [35-home-kpis.md](35-home-kpis.md) | **Home KPI-k** — jégelt lista (kereskedő Alap + addonok) |
 | [36-szamlazas-workflow.md](36-szamlazas-workflow.md) | **Számlázás** — Számlázz.hu Agent, `/szamlak` (Alap) |
 | [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md) | **Lapszabászat ajánlat→gyártás** — státusz, detail CTA, hol mit |

@@ -30,6 +30,31 @@ export type HrEmployeeRow = {
   pinCode: string | null
   rfidCardId: string | null
   notes: string | null
+  /** Kilépett dolgozó — listában csak az „Archivált” szűrőn. */
+  archivedAt: string | null
+  /** Csak `getEmployee` tölti (űrlap + ív). */
+  overtimeDetails?: EmployeeOvertimeDetails
+}
+
+export type OvertimeRoundingMode = 'floor' | 'nearest' | 'ceil'
+
+export type EmployeeOvertimeDetails = {
+  roundingMinutes: number
+  roundingMode: OvertimeRoundingMode
+  earlyEnabled: boolean
+  earlyTriggerTime: string | null
+  earlyPayUntilTime: string | null
+  earlyMaxMinutes: number
+  earlyGraceMinutes: number
+}
+
+function numOr(value: unknown, fallback: number): number {
+  const n = Number(value)
+  return value === null || value === undefined || !Number.isFinite(n) ? fallback : n
+}
+
+function roundingModeOf(value: unknown): OvertimeRoundingMode {
+  return value === 'nearest' || value === 'ceil' ? value : 'floor'
 }
 
 export type EmployeeListItem = HrEmployeeRow & {
@@ -59,23 +84,26 @@ function mapEmployee(row: Record<string, unknown>): HrEmployeeRow {
     lunchEnd: normalizeTime(row.lunch_end as string | null),
     worksOnSaturday: Boolean(row.works_on_saturday),
     overtimeEnabled: Boolean(row.overtime_enabled),
-    overtimeGraceMinutes: Number(row.overtime_grace_minutes) || 15,
-    overtimeDailyCapMinutes: Number(row.overtime_daily_cap_minutes) || 180,
+    overtimeGraceMinutes: numOr(row.overtime_grace_minutes, 15),
+    overtimeDailyCapMinutes: numOr(row.overtime_daily_cap_minutes, 180),
     pinCode: (row.pin_code as string | null) || null,
     rfidCardId: (row.rfid_card_id as string | null) || null,
-    notes: (row.notes as string | null) ?? null
+    notes: (row.notes as string | null) ?? null,
+    archivedAt: (row.archived_at as string | null) ?? null
   }
 }
 
 const EMPLOYEE_SELECT =
-  'id, name, code, employee_type_id, active, shift_start, shift_end, lunch_start, lunch_end, works_on_saturday, overtime_enabled, overtime_grace_minutes, overtime_daily_cap_minutes, pin_code, rfid_card_id, notes, hr_employee_types ( name )'
+  'id, name, code, employee_type_id, active, shift_start, shift_end, lunch_start, lunch_end, works_on_saturday, overtime_enabled, overtime_grace_minutes, overtime_daily_cap_minutes, pin_code, rfid_card_id, notes, archived_at, hr_employee_types ( name )'
+
+export type EmployeeListFilter = 'all' | 'active' | 'inactive' | 'archived'
 
 export async function listEmployees(
   supabase: SupabaseClient,
   input: {
     tenantId: string
     q?: string
-    active?: 'all' | 'active' | 'inactive'
+    active?: EmployeeListFilter
     page?: number
     limit?: number
     year: number
@@ -91,11 +119,17 @@ export async function listEmployees(
     .select(EMPLOYEE_SELECT, { count: 'exact' })
     .eq('tenant_id', input.tenantId)
     .is('deleted_at', null)
-    .order('name', { ascending: true })
-    .range(from, from + limit - 1)
 
-  if (input.active === 'active') query = query.eq('active', true)
-  if (input.active === 'inactive') query = query.eq('active', false)
+  if (input.active === 'archived') {
+    query = query
+      .not('archived_at', 'is', null)
+      .order('archived_at', { ascending: false })
+  } else {
+    query = query.is('archived_at', null).order('active', { ascending: false })
+    if (input.active === 'active') query = query.eq('active', true)
+    if (input.active === 'inactive') query = query.eq('active', false)
+  }
+  query = query.order('name', { ascending: true }).range(from, from + limit - 1)
   if (input.q?.trim()) {
     const q = input.q.trim()
     query = query.or(`name.ilike.%${q}%,code.ilike.%${q}%`)
@@ -125,6 +159,9 @@ export async function listEmployees(
   }
 }
 
+const OVERTIME_DETAILS_SELECT =
+  'overtime_rounding_minutes, overtime_rounding_mode, early_overtime_enabled, early_overtime_trigger_time, early_overtime_pay_until_time, early_overtime_max_minutes, early_overtime_grace_minutes'
+
 export async function getEmployee(
   supabase: SupabaseClient,
   tenantId: string,
@@ -132,7 +169,7 @@ export async function getEmployee(
 ): Promise<HrEmployeeRow | null> {
   const { data, error } = await supabase
     .from('hr_employees')
-    .select(EMPLOYEE_SELECT)
+    .select(`${EMPLOYEE_SELECT}, ${OVERTIME_DETAILS_SELECT}`)
     .eq('tenant_id', tenantId)
     .eq('id', id)
     .is('deleted_at', null)
@@ -140,7 +177,19 @@ export async function getEmployee(
 
   if (error) throw new Error(error.message)
   if (!data) return null
-  return mapEmployee(data as Record<string, unknown>)
+  const row = data as Record<string, unknown>
+  return {
+    ...mapEmployee(row),
+    overtimeDetails: {
+      roundingMinutes: numOr(row.overtime_rounding_minutes, 15),
+      roundingMode: roundingModeOf(row.overtime_rounding_mode),
+      earlyEnabled: Boolean(row.early_overtime_enabled),
+      earlyTriggerTime: normalizeTime(row.early_overtime_trigger_time as string | null),
+      earlyPayUntilTime: normalizeTime(row.early_overtime_pay_until_time as string | null),
+      earlyMaxMinutes: numOr(row.early_overtime_max_minutes, 30),
+      earlyGraceMinutes: numOr(row.early_overtime_grace_minutes, 0)
+    }
+  }
 }
 
 function expectedWorkDays(
@@ -254,6 +303,7 @@ async function getMonthlyAttention(
       todayYmd
     )
     const map = attByEmp.get(emp.id) ?? new Map()
+    const expectedSet = new Set(expected)
     let empty = 0
     let incomplete = 0
     for (const ymd of expected) {
@@ -264,6 +314,13 @@ async function getMonthlyAttention(
         continue
       }
       if (!day.a || !day.d) incomplete += 1
+    }
+    // Opcionális napok (pl. szombat): üres nem számít, hiányos igen.
+    for (const [ymd, day] of map) {
+      if (expectedSet.has(ymd)) continue
+      if (ymd >= todayYmd) continue
+      if (onAbsence(emp.id, ymd)) continue
+      if ((day.a || day.d) && (!day.a || !day.d)) incomplete += 1
     }
     out[emp.id] = { empty, incomplete }
   }
@@ -291,6 +348,7 @@ export async function listAbsences(
     .eq('tenant_id', tenantId)
     .eq('employee_id', employeeId)
     .order('start_date', { ascending: false })
+    .limit(200)
 
   if (error) throw new Error(error.message)
   return (data ?? []).map((r) => ({
@@ -326,6 +384,16 @@ export type CalendarCell = {
   /** hr_attendance_days.source — csak work celláknál */
   source: 'manual' | 'import' | 'terminal' | null
   manuallyEdited: boolean
+  arrivalSource: AttendanceTimeSource | null
+  departureSource: AttendanceTimeSource | null
+}
+
+export type AttendanceTimeSource = 'rfid' | 'pin' | 'manual' | 'import'
+
+export function toTimeSource(raw: unknown): AttendanceTimeSource | null {
+  return raw === 'rfid' || raw === 'pin' || raw === 'manual' || raw === 'import'
+    ? raw
+    : null
 }
 
 export type CalendarMonthData = {
@@ -356,7 +424,7 @@ export async function getCalendarMonth(
       supabase
         .from('hr_attendance_days')
         .select(
-          'employee_id, work_date, arrival_time, departure_time, lunch_start, lunch_end, source, manually_edited'
+          'employee_id, work_date, arrival_time, departure_time, lunch_start, lunch_end, source, manually_edited, arrival_source, departure_source'
         )
         .eq('tenant_id', input.tenantId)
         .gte('work_date', start)
@@ -401,6 +469,8 @@ export async function getCalendarMonth(
       lunchEnd: string | null
       source: 'manual' | 'import' | 'terminal' | null
       manuallyEdited: boolean
+      arrivalSource: AttendanceTimeSource | null
+      departureSource: AttendanceTimeSource | null
     }
   >()
   for (const row of att ?? []) {
@@ -418,7 +488,9 @@ export async function getCalendarMonth(
       lunchStart: normalizeTime(row.lunch_start as string | null),
       lunchEnd: normalizeTime(row.lunch_end as string | null),
       source,
-      manuallyEdited: Boolean(row.manually_edited)
+      manuallyEdited: Boolean(row.manually_edited),
+      arrivalSource: toTimeSource(row.arrival_source),
+      departureSource: toTimeSource(row.departure_source)
     })
   }
 
@@ -461,7 +533,9 @@ export async function getCalendarMonth(
             paidMinutes: 0,
             calendarName: calDay.name || null,
             source: null,
-            manuallyEdited: false
+            manuallyEdited: false,
+            arrivalSource: null,
+            departureSource: null
           }
           continue
         }
@@ -485,7 +559,9 @@ export async function getCalendarMonth(
           paidMinutes: 0,
           calendarName: null,
           source: null,
-          manuallyEdited: false
+          manuallyEdited: false,
+          arrivalSource: null,
+          departureSource: null
         }
         continue
       }
@@ -502,7 +578,9 @@ export async function getCalendarMonth(
           paidMinutes: 0,
           calendarName: calDay?.type === 'relocated_work' ? calDay.name : null,
           source: null,
-          manuallyEdited: false
+          manuallyEdited: false,
+          arrivalSource: null,
+          departureSource: null
         }
         continue
       }
@@ -528,7 +606,9 @@ export async function getCalendarMonth(
         paidMinutes: paid,
         calendarName: null,
         source: dayAtt.source,
-        manuallyEdited: dayAtt.manuallyEdited
+        manuallyEdited: dayAtt.manuallyEdited,
+        arrivalSource: dayAtt.arrival ? dayAtt.arrivalSource : null,
+        departureSource: dayAtt.departure ? dayAtt.departureSource : null
       }
     }
   }

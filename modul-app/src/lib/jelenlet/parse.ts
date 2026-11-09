@@ -48,6 +48,13 @@ export const employeeFormSchema = z.object({
   overtimeEnabled: z.boolean(),
   overtimeGraceMinutes: z.coerce.number().int().min(0).max(240),
   overtimeDailyCapMinutes: z.coerce.number().int().min(0).max(720),
+  overtimeRoundingMinutes: z.coerce.number().int().min(1).max(120).default(15),
+  overtimeRoundingMode: z.enum(['floor', 'nearest', 'ceil']).default('floor'),
+  earlyOvertimeEnabled: z.boolean().default(false),
+  earlyOvertimeTriggerTime: timeField,
+  earlyOvertimePayUntilTime: timeField,
+  earlyOvertimeMaxMinutes: z.coerce.number().int().min(0).max(480).default(30),
+  earlyOvertimeGraceMinutes: z.coerce.number().int().min(0).max(240).default(0),
   pinCode: pinCodeField,
   rfidCardId: rfidCardField,
   notes: z.string().trim().max(2000).optional().nullable()

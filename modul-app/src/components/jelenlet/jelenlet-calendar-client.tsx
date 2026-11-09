@@ -14,15 +14,18 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  CreditCard,
+  FileUp,
+  KeyRound,
   Maximize2,
   Minimize2,
+  PencilLine,
   Users
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
-import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -40,6 +43,7 @@ import {
   WEEKDAY_SHORT_HU
 } from '@/lib/jelenlet/hours'
 import type {
+  AttendanceTimeSource,
   CalendarCell,
   CalendarMonthData
 } from '@/lib/jelenlet/queries'
@@ -154,20 +158,104 @@ function isExpectedWorkDay(
   })
 }
 
-function sourceLabel(cell: CalendarCell | undefined): string | null {
+const TIME_SOURCE_LABEL: Record<AttendanceTimeSource, string> = {
+  rfid: 'kártya',
+  pin: 'PIN',
+  manual: 'kézi',
+  import: 'import'
+}
+
+/** Kézi idő jelölése: alak (szaggatott aláhúzás), nem csak szín. */
+const MANUAL_TIME_CLASS =
+  'underline decoration-dashed decoration-1 underline-offset-[3px]'
+
+function timeWithSource(
+  time: string | null,
+  source: AttendanceTimeSource | null
+): string {
+  if (!time) return '—'
+  return source ? `${time.slice(0, 5)} · ${TIME_SOURCE_LABEL[source]}` : time.slice(0, 5)
+}
+
+function cellHasManualTime(cell: CalendarCell | undefined): boolean {
+  if (!cell || (cell.kind !== 'complete' && cell.kind !== 'incomplete')) return false
+  return cell.arrivalSource === 'manual' || cell.departureSource === 'manual'
+}
+
+function TimePart({
+  time,
+  source
+}: {
+  time: string
+  source: AttendanceTimeSource | null
+}) {
+  return (
+    <span className={source === 'manual' ? MANUAL_TIME_CLASS : undefined}>
+      {time.slice(0, 5)}
+    </span>
+  )
+}
+
+function cellTimeContent(cell: CalendarCell | undefined): ReactNode | null {
   if (!cell) return null
-  if (
-    cell.kind === 'vacation' ||
-    cell.kind === 'sick' ||
-    cell.kind === 'other_absence'
-  ) {
-    return null
+  if (cell.kind === 'complete' && cell.arrival && cell.departure) {
+    return (
+      <>
+        <TimePart time={cell.arrival} source={cell.arrivalSource} />–
+        <TimePart time={cell.departure} source={cell.departureSource} />
+      </>
+    )
   }
-  if (cell.kind === 'empty' || cell.kind === 'rest') return null
-  if (cell.manuallyEdited || cell.source === 'manual') return 'Kézi bevitel'
-  if (cell.source === 'terminal') return 'Eszköz (RFID / PIN)'
-  if (cell.source === 'import') return 'Import'
+  if (cell.kind === 'incomplete') {
+    if (cell.arrival) {
+      return (
+        <>
+          <TimePart time={cell.arrival} source={cell.arrivalSource} /> · ?
+        </>
+      )
+    }
+    if (cell.departure) {
+      return (
+        <>
+          ? · <TimePart time={cell.departure} source={cell.departureSource} />
+        </>
+      )
+    }
+  }
   return null
+}
+
+function TimeSourceTag({ source }: { source: AttendanceTimeSource | null }) {
+  if (!source) return null
+  const Icon =
+    source === 'rfid'
+      ? CreditCard
+      : source === 'pin'
+        ? KeyRound
+        : source === 'import'
+          ? FileUp
+          : PencilLine
+  const label =
+    source === 'rfid'
+      ? 'Kártya'
+      : source === 'pin'
+        ? 'PIN'
+        : source === 'import'
+          ? 'Import'
+          : 'Kézi'
+  return (
+    <span
+      className={cn(
+        'inline-flex h-5 items-center gap-1 rounded border px-1.5 text-[11px] font-medium',
+        source === 'manual'
+          ? 'border-border bg-subtle text-ink'
+          : 'border-info/30 bg-info-soft text-info-ink'
+      )}
+    >
+      <Icon className="size-3" aria-hidden />
+      {label}
+    </span>
+  )
 }
 
 function cellHoverLines(
@@ -198,14 +286,10 @@ function cellHoverLines(
     return lines
   }
 
-  const src = sourceLabel(cell)
-  if (src) lines.push(src)
-
   switch (cell.kind) {
     case 'complete':
-      lines.push(
-        `Jelenlét: ${cell.arrival?.slice(0, 5) ?? '—'}–${cell.departure?.slice(0, 5) ?? '—'}`
-      )
+      lines.push(`Érkezés: ${timeWithSource(cell.arrival, cell.arrivalSource)}`)
+      lines.push(`Távozás: ${timeWithSource(cell.departure, cell.departureSource)}`)
       lines.push(`Fizetett: ${minutesToHoursLabel(cell.paidMinutes)} ó`)
       break
     case 'incomplete': {
@@ -215,8 +299,12 @@ function cellHoverLines(
       lines.push(
         `Hiányos rögzítés${missing.length ? ` — hiányzik: ${missing.join(', ')}` : ''}`
       )
-      if (cell.arrival) lines.push(`Érkezés: ${cell.arrival.slice(0, 5)}`)
-      if (cell.departure) lines.push(`Távozás: ${cell.departure.slice(0, 5)}`)
+      if (cell.arrival) {
+        lines.push(`Érkezés: ${timeWithSource(cell.arrival, cell.arrivalSource)}`)
+      }
+      if (cell.departure) {
+        lines.push(`Távozás: ${timeWithSource(cell.departure, cell.departureSource)}`)
+      }
       if (canWrite) lines.push('Kattints a kiegészítéshez')
       break
     }
@@ -366,18 +454,8 @@ function computeGlance(data: CalendarMonthData) {
         onlyPast: true,
         todayYmd: today
       })
-      if (!expected) continue
-      if (cell.kind === 'empty') {
-        empty += 1
-        rowAttention[emp.id]!.empty += 1
-        todos.push({
-          employeeId: emp.id,
-          name: emp.name,
-          ymd,
-          kind: 'empty',
-          detail: 'Nincs rögzítve'
-        })
-      } else if (cell.kind === 'incomplete') {
+      // Üres szombat nem teendő (lehetőség); hiányos rögzítés igen.
+      if (cell.kind === 'incomplete' && ymd < today) {
         incomplete += 1
         rowAttention[emp.id]!.incomplete += 1
         const missing: string[] = []
@@ -391,6 +469,19 @@ function computeGlance(data: CalendarMonthData) {
           detail: missing.length
             ? `Hiányzik: ${missing.join(', ')}`
             : 'Hiányos rögzítés'
+        })
+        continue
+      }
+      if (!expected) continue
+      if (cell.kind === 'empty') {
+        empty += 1
+        rowAttention[emp.id]!.empty += 1
+        todos.push({
+          employeeId: emp.id,
+          name: emp.name,
+          ymd,
+          kind: 'empty',
+          detail: 'Nincs rögzítve'
         })
       }
     }
@@ -505,7 +596,25 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
   const openCellData = employeeId
     ? data.cells[`${employeeId}|${workDate}`]
     : undefined
-  const openSource = sourceLabel(openCellData)
+  const liveSource = (
+    value: string,
+    original: string | null | undefined,
+    originalSource: AttendanceTimeSource | null | undefined
+  ): AttendanceTimeSource | null => {
+    if (!value) return null
+    if (original && value === original.slice(0, 5)) return originalSource ?? 'manual'
+    return 'manual'
+  }
+  const arrivalLiveSource = liveSource(
+    arrival,
+    openCellData?.arrival,
+    openCellData?.arrivalSource
+  )
+  const departureLiveSource = liveSource(
+    departure,
+    openCellData?.departure,
+    openCellData?.departureSource
+  )
   const openEmployee = data.employees.find((e) => e.id === employeeId)
   const empName = openEmployee?.name ?? 'Dolgozó'
   const defaultShiftArrival = timeHm(
@@ -620,11 +729,7 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
       {!focusMode ? (
         <PageHeader
           title="Jelenlét"
-          description={
-            glance.todoCount > 0
-              ? `${glance.todoCount} múltbeli napot még pótolni.`
-              : undefined
-          }
+          className="mb-0 sm:items-center"
           actions={
             <div className="flex flex-wrap items-center gap-2">
               {canWrite && glance.todoCount > 0 ? (
@@ -769,46 +874,11 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                   className="min-w-0 max-w-[16rem] truncate text-[12px] text-ink-secondary"
                   title={todayAwayTitle}
                 >
-                  Ma szabadság / beteg:{' '}
+                  Ma távol:{' '}
                   <span className="font-medium text-ink">{todayAwayNames}</span>
                 </span>
               ) : null}
             </>
-          ) : null}
-
-          {view === 'calendar' || focusMode ? (
-            <div className="ml-auto flex flex-wrap items-center gap-x-2 gap-y-1">
-              <LegendSwatch
-                className="bg-success-soft text-success-ink"
-                label="Kész"
-              >
-                8–16
-              </LegendSwatch>
-              <LegendSwatch
-                className="bg-warning-soft text-warning-ink ring-1 ring-warning/40"
-                label="Hiányos"
-              >
-                ?
-              </LegendSwatch>
-              <LegendSwatch
-                className="border border-dashed border-warning/50 bg-warning-soft/50 text-warning-ink"
-                label="Pótolni"
-              >
-                —
-              </LegendSwatch>
-              <LegendSwatch className="bg-success text-white" label="Szabadság">
-                Szab.
-              </LegendSwatch>
-              <LegendSwatch className="bg-danger text-white" label="Beteg">
-                B
-              </LegendSwatch>
-              <LegendSwatch
-                className="bg-info-soft text-info-ink"
-                label="Távollét"
-              >
-                T
-              </LegendSwatch>
-            </div>
           ) : null}
         </div>
       ) : null}
@@ -1007,6 +1077,8 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                       const dow = dowOf(ymd)
                       const isHoliday = holidayByDate.has(ymd)
                       const disp = cellDisplay(cell)
+                      const timeContent = cellTimeContent(cell)
+                      const manualMark = cellHasManualTime(cell)
                       const isPast = ymd < glance.today
                       const scheduleExpected = isExpectedWorkDay(
                         ymd,
@@ -1064,7 +1136,7 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                               openCell(emp.id, ymd)
                             }}
                             className={cn(
-                              'flex w-full items-center justify-center px-0.5 tabular-nums',
+                              'relative flex w-full items-center justify-center px-0.5 tabular-nums',
                               ROW_H,
                               disp.className,
                               emptyWork &&
@@ -1080,8 +1152,14 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                                 —
                               </span>
                             ) : (
-                              disp.text
+                              (timeContent ?? disp.text)
                             )}
+                            {manualMark ? (
+                              <PencilLine
+                                className="absolute right-0.5 top-0.5 size-2.5 opacity-60"
+                                aria-hidden
+                              />
+                            ) : null}
                           </button>
                         </td>
                       )
@@ -1094,6 +1172,45 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
         </div>
       )}
 
+      {data.employees.length > 0 && (view === 'calendar' || focusMode) ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 print:hidden">
+          <LegendSwatch
+            className="bg-success-soft text-success-ink"
+            label="Kész"
+          >
+            8–16
+          </LegendSwatch>
+          <LegendSwatch
+            className="bg-warning-soft text-warning-ink ring-1 ring-warning/40"
+            label="Hiányos"
+          >
+            ?
+          </LegendSwatch>
+          <LegendSwatch
+            className="border border-dashed border-warning/50 bg-warning-soft/50 text-warning-ink"
+            label="Pótolni"
+          >
+            —
+          </LegendSwatch>
+          <LegendSwatch className="bg-success text-white" label="Szabadság">
+            Szab.
+          </LegendSwatch>
+          <LegendSwatch className="bg-danger text-white" label="Beteg">
+            B
+          </LegendSwatch>
+          <LegendSwatch className="bg-info-soft text-info-ink" label="Távollét">
+            T
+          </LegendSwatch>
+          <LegendSwatch
+            className="relative bg-success-soft pr-2 text-success-ink"
+            label="Kézi bevitel"
+          >
+            <span className={MANUAL_TIME_CLASS}>8</span>
+            <PencilLine className="absolute right-0 top-0 size-2" aria-hidden />
+          </LegendSwatch>
+        </div>
+      ) : null}
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -1105,18 +1222,6 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
             </DialogTitle>
           </DialogHeader>
 
-          {openSource ? (
-            <StatusBadge
-              tone={openSource.startsWith('Eszköz') ? 'info' : 'neutral'}
-              variant="outline"
-            >
-              {openSource}
-              {openCellData?.manuallyEdited &&
-              openCellData.source === 'terminal'
-                ? ' · kézzel módosítva'
-                : null}
-            </StatusBadge>
-          ) : null}
 
           <div className="grid grid-cols-2 gap-2">
             {(
@@ -1185,6 +1290,9 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                     value={arrival}
                     onChange={(e) => setArrival(e.target.value)}
                   />
+                  <div className="min-h-5" aria-live="polite">
+                    <TimeSourceTag source={arrivalLiveSource} />
+                  </div>
                 </FormField>
                 <FormField label="Távozás" htmlFor="dep" required>
                   <Input
@@ -1193,6 +1301,9 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                     value={departure}
                     onChange={(e) => setDeparture(e.target.value)}
                   />
+                  <div className="min-h-5" aria-live="polite">
+                    <TimeSourceTag source={departureLiveSource} />
+                  </div>
                 </FormField>
               </div>
               <Button

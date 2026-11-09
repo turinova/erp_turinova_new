@@ -10,6 +10,8 @@ import {
   type AttendanceDayFormInput,
   type EmployeeFormInput
 } from '@/lib/jelenlet/parse'
+import { normalizeTime } from '@/lib/jelenlet/hours'
+import { toTimeSource, type AttendanceTimeSource } from '@/lib/jelenlet/queries'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 export type JelenletActionResult =
@@ -80,6 +82,15 @@ export async function upsertEmployeeAction(input: {
     overtime_enabled: d.overtimeEnabled,
     overtime_grace_minutes: d.overtimeGraceMinutes,
     overtime_daily_cap_minutes: d.overtimeDailyCapMinutes,
+    overtime_rounding_minutes: d.overtimeRoundingMinutes,
+    overtime_rounding_mode: d.overtimeRoundingMode,
+    early_overtime_enabled: d.earlyOvertimeEnabled,
+    early_overtime_trigger_time: d.earlyOvertimeEnabled ? d.earlyOvertimeTriggerTime : null,
+    early_overtime_pay_until_time: d.earlyOvertimeEnabled
+      ? d.earlyOvertimePayUntilTime
+      : null,
+    early_overtime_max_minutes: d.earlyOvertimeMaxMinutes,
+    early_overtime_grace_minutes: d.earlyOvertimeGraceMinutes,
     pin_code: d.pinCode,
     rfid_card_id: d.rfidCardId,
     notes: d.notes || null,
@@ -93,6 +104,7 @@ export async function upsertEmployeeAction(input: {
       .eq('id', input.id)
       .eq('tenant_id', ctx.user.tenantId!)
       .is('deleted_at', null)
+      .is('archived_at', null)
     if (error) {
       if (error.message.includes('hr_employees_tenant_code')) {
         return { ok: false, message: 'Ez a dolgozói kód már foglalt.' }
@@ -180,6 +192,59 @@ export async function softDeleteEmployeeAction(input: {
     .is('deleted_at', null)
 
   if (error) return { ok: false, message: error.message }
+  revalidateHr(input.id)
+  return { ok: true, id: input.id }
+}
+
+/** Kilépett dolgozó: kikerül a listából, adatai és íve megmarad; PIN/RFID felszabadul. */
+export async function archiveEmployeeAction(input: {
+  id: string
+}): Promise<JelenletActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const now = new Date().toISOString()
+  const { data, error } = await ctx.supabase
+    .from('hr_employees')
+    .update({
+      archived_at: now,
+      active: false,
+      pin_code: null,
+      rfid_card_id: null,
+      updated_at: now
+    })
+    .eq('id', input.id)
+    .eq('tenant_id', ctx.user.tenantId!)
+    .is('deleted_at', null)
+    .is('archived_at', null)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { ok: false, message: error.message }
+  if (!data) return { ok: false, message: 'Dolgozó nem található vagy már archivált.' }
+  revalidateHr(input.id)
+  return { ok: true, id: input.id }
+}
+
+/** Visszaállítás inaktívként — PIN/RFID újra megadandó. */
+export async function restoreEmployeeAction(input: {
+  id: string
+}): Promise<JelenletActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const { data, error } = await ctx.supabase
+    .from('hr_employees')
+    .update({ archived_at: null, updated_at: new Date().toISOString() })
+    .eq('id', input.id)
+    .eq('tenant_id', ctx.user.tenantId!)
+    .is('deleted_at', null)
+    .not('archived_at', 'is', null)
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { ok: false, message: error.message }
+  if (!data) return { ok: false, message: 'Dolgozó nem található.' }
   revalidateHr(input.id)
   return { ok: true, id: input.id }
 }
@@ -340,6 +405,37 @@ export async function saveAttendanceDayAction(
     d.lunchEnd ??
     (emp.lunch_end ? String(emp.lunch_end).slice(0, 5) : null)
 
+  const { data: existing } = await ctx.supabase
+    .from('hr_attendance_days')
+    .select('arrival_time, departure_time, arrival_source, departure_source, source')
+    .eq('tenant_id', tenantId)
+    .eq('employee_id', d.employeeId)
+    .eq('work_date', d.workDate)
+    .maybeSingle()
+
+  const fieldSource = (
+    next: string | null,
+    prevTime: unknown,
+    prevSource: unknown
+  ): AttendanceTimeSource | null => {
+    if (!next) return null
+    if (normalizeTime(prevTime as string | null) === next) {
+      return toTimeSource(prevSource) ?? 'manual'
+    }
+    return 'manual'
+  }
+  const arrivalSource = fieldSource(
+    d.arrivalTime,
+    existing?.arrival_time,
+    existing?.arrival_source
+  )
+  const departureSource = fieldSource(
+    d.departureTime,
+    existing?.departure_time,
+    existing?.departure_source
+  )
+  const anyManual = arrivalSource === 'manual' || departureSource === 'manual'
+
   const { error } = await ctx.supabase.from('hr_attendance_days').upsert(
     {
       tenant_id: tenantId,
@@ -349,8 +445,10 @@ export async function saveAttendanceDayAction(
       departure_time: d.departureTime,
       lunch_start: lunchStart,
       lunch_end: lunchEnd,
-      source: 'manual',
-      manually_edited: true,
+      source: (existing?.source as string | null) ?? 'manual',
+      manually_edited: anyManual,
+      arrival_source: arrivalSource,
+      departure_source: departureSource,
       note: d.note || null,
       updated_at: new Date().toISOString()
     },

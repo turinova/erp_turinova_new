@@ -165,7 +165,7 @@ export async function processJelenletTerminalScan(
   const { data: day } = await admin
     .from('hr_attendance_days')
     .select(
-      'id, arrival_time, departure_time, manually_edited, lunch_start, lunch_end'
+      'id, arrival_time, departure_time, manually_edited, lunch_start, lunch_end, arrival_source, departure_source'
     )
     .eq('tenant_id', tenantId)
     .eq('employee_id', employeeId)
@@ -187,16 +187,21 @@ export async function processJelenletTerminalScan(
     ? String(day.departure_time).slice(0, 5)
     : null
 
+  const scanSource = pin ? 'pin' : 'rfid'
   let scanType: TerminalScanType
   let arrivalTime = arrivalExisting
   let departureTime = departureExisting
+  let arrivalSource = (day?.arrival_source as string | null) ?? null
+  let departureSource = (day?.departure_source as string | null) ?? null
 
   if (!arrivalExisting) {
     scanType = 'arrival'
     arrivalTime = nowHm
+    arrivalSource = scanSource
   } else if (!departureExisting) {
     scanType = 'departure'
     departureTime = nowHm
+    departureSource = scanSource
     if (departureTime <= arrivalExisting) {
       return {
         ok: false,
@@ -236,6 +241,8 @@ export async function processJelenletTerminalScan(
       lunch_end: lunchEnd,
       source: 'terminal',
       manually_edited: false,
+      arrival_source: arrivalSource,
+      departure_source: departureSource,
       updated_at: new Date().toISOString()
     },
     { onConflict: 'employee_id,work_date' }

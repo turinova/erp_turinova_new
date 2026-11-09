@@ -1,10 +1,10 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useState } from 'react'
 import { CalendarDays, FileDown, Plus, Search, Users } from 'lucide-react'
-import { toast } from 'sonner'
 
 import {
   DataTable,
@@ -14,22 +14,20 @@ import {
   DataTableHeaderCell,
   DataTableRow
 } from '@/components/patterns/data-table'
-import { FormField } from '@/components/patterns/form-field'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { MenuSelect } from '@/components/ui/menu-select'
-import type { EmployeeListItem } from '@/lib/jelenlet/queries'
+import type { EmployeeListFilter, EmployeeListItem } from '@/lib/jelenlet/queries'
 import { cn } from '@/lib/utils'
+
+const SheetExportWizard = dynamic(
+  () =>
+    import('@/components/jelenlet/sheet-export-wizard').then(
+      (m) => m.SheetExportWizard
+    ),
+  { ssr: false }
+)
 
 type Props = {
   rows: EmployeeListItem[]
@@ -37,7 +35,7 @@ type Props = {
   page: number
   limit: number
   q: string
-  active: 'all' | 'active' | 'inactive'
+  active: EmployeeListFilter
   year: number
   month: number
   canWrite: boolean
@@ -58,11 +56,6 @@ const MONTH_NAMES = [
   'December'
 ]
 
-const MONTH_OPTIONS = MONTH_NAMES.map((label, i) => ({
-  value: String(i + 1),
-  label
-}))
-
 export function EmployeesListClient({
   rows,
   total,
@@ -76,24 +69,14 @@ export function EmployeesListClient({
 }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState(initialQ)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  /** id → név; oldalváltáson át megmarad, a varázsló ebből listáz. */
+  const [selected, setSelected] = useState<Map<string, string>>(new Map())
   const [exportOpen, setExportOpen] = useState(false)
-  const [exportYear, setExportYear] = useState(String(year))
-  const [exportMonth, setExportMonth] = useState(String(month))
-  const [pending, startTransition] = useTransition()
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
   const allSelected =
     rows.length > 0 && rows.every((r) => selected.has(r.id))
   const someSelected = rows.some((r) => selected.has(r.id))
-
-  const yearOptions = useMemo(() => {
-    const y = new Date().getFullYear()
-    return [y - 1, y, y + 1].map((v) => ({
-      value: String(v),
-      label: String(v)
-    }))
-  }, [])
 
   function push(next: {
     q?: string
@@ -116,87 +99,33 @@ export function EmployeesListClient({
     router.push(`/dolgozok?${params.toString()}`)
   }
 
-  function toggleOne(id: string) {
+  function toggleOne(row: EmployeeListItem) {
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      const next = new Map(prev)
+      if (next.has(row.id)) next.delete(row.id)
+      else next.set(row.id, row.name)
       return next
     })
   }
 
   function togglePage() {
     setSelected((prev) => {
-      const next = new Set(prev)
-      if (allSelected) {
-        for (const r of rows) next.delete(r.id)
-      } else {
-        for (const r of rows) next.add(r.id)
+      const next = new Map(prev)
+      for (const r of rows) {
+        if (allSelected) next.delete(r.id)
+        else next.set(r.id, r.name)
       }
       return next
     })
   }
 
-  function openExport() {
-    if (selected.size === 0) {
-      toast.error('Válassz ki legalább egy dolgozót.')
-      return
-    }
-    setExportYear(String(year))
-    setExportMonth(String(month))
-    setExportOpen(true)
-  }
-
-  function runExport() {
-    const ids = Array.from(selected)
-    if (ids.length === 0) return
-    startTransition(async () => {
-      try {
-        const res = await fetch('/api/jelenlet/hivatalos-pdf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            employeeIds: ids,
-            year: Number(exportYear),
-            month: Number(exportMonth)
-          })
-        })
-
-        if (!res.ok) {
-          const data = (await res.json().catch(() => null)) as {
-            error?: string
-          } | null
-          throw new Error(data?.error || 'PDF generálás sikertelen.')
-        }
-
-        const blob = await res.blob()
-        const cd = res.headers.get('Content-Disposition') || ''
-        const match = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"/.exec(cd)
-        const rawName = match?.[1] || match?.[2] || 'jelenleti-iv.pdf'
-        const filename = decodeURIComponent(rawName)
-
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        URL.revokeObjectURL(url)
-
-        toast.success(
-          ids.length === 1
-            ? 'Hivatalos jelenléti ív letöltve.'
-            : `Hivatalos jelenléti ívek letöltve (${ids.length} dolgozó).`
-        )
-        setExportOpen(false)
-      } catch (e) {
-        toast.error(
-          e instanceof Error ? e.message : 'PDF generálás sikertelen.'
-        )
-      }
-    })
-  }
+  const selectedList = useMemo(
+    () =>
+      Array.from(selected, ([id, name]) => ({ id, name })).sort((a, b) =>
+        a.name.localeCompare(b.name, 'hu')
+      ),
+    [selected]
+  )
 
   return (
     <div className="space-y-4">
@@ -214,9 +143,13 @@ export function EmployeesListClient({
               Jelenlét naptár
             </Button>
             {selected.size > 0 ? (
-              <Button type="button" variant="secondary" onClick={openExport}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setExportOpen(true)}
+              >
                 <FileDown className="size-3.5" aria-hidden />
-                Hivatalos PDF ({selected.size})
+                Jelenléti ív ({selected.size})
               </Button>
             ) : null}
             {canWrite ? (
@@ -256,7 +189,8 @@ export function EmployeesListClient({
           [
             { value: 'all', label: 'Mind' },
             { value: 'active', label: 'Aktív' },
-            { value: 'inactive', label: 'Inaktív' }
+            { value: 'inactive', label: 'Inaktív' },
+            { value: 'archived', label: 'Archivált' }
           ] as const
         ).map((f) => (
           <button
@@ -281,12 +215,25 @@ export function EmployeesListClient({
             <Users className="size-4" aria-hidden />
           </div>
           <div>
-            <p className="text-body font-medium text-ink">Még nincs dolgozó.</p>
-            <p className="mt-0.5 text-hint text-ink-secondary">
-              Add hozzá az elsőt, majd töltsd a jelenléti naptárat.
-            </p>
+            {initialActive === 'archived' ? (
+              <>
+                <p className="text-body font-medium text-ink">Nincs archivált dolgozó.</p>
+                <p className="mt-0.5 text-hint text-ink-secondary">
+                  Kilépett dolgozót a dolgozó oldalán archiválhatsz — az adatai megmaradnak.
+                </p>
+              </>
+            ) : initialQ || initialActive !== 'all' ? (
+              <p className="text-body font-medium text-ink">Nincs a szűrésnek megfelelő dolgozó.</p>
+            ) : (
+              <>
+                <p className="text-body font-medium text-ink">Még nincs dolgozó.</p>
+                <p className="mt-0.5 text-hint text-ink-secondary">
+                  Add hozzá az elsőt, majd töltsd a jelenléti naptárat.
+                </p>
+              </>
+            )}
           </div>
-          {canWrite ? (
+          {canWrite && initialActive !== 'archived' ? (
             <Button type="button" onClick={() => router.push('/dolgozok/uj')}>
               <Plus className="size-3.5" aria-hidden />
               Új dolgozó
@@ -327,11 +274,16 @@ export function EmployeesListClient({
                       type="checkbox"
                       className="size-3.5 rounded border-border"
                       checked={selected.has(row.id)}
-                      onChange={() => toggleOne(row.id)}
+                      onChange={() => toggleOne(row)}
                       aria-label={`${row.name} kijelölése`}
                     />
                   </DataTableCell>
-                  <DataTableCell className="font-medium text-ink">
+                  <DataTableCell
+                    className={cn(
+                      'font-medium',
+                      row.active ? 'text-ink' : 'text-ink-secondary'
+                    )}
+                  >
                     {row.name}
                   </DataTableCell>
                   <DataTableCell className="text-ink-secondary">
@@ -339,9 +291,15 @@ export function EmployeesListClient({
                   </DataTableCell>
                   <DataTableCell>{row.employeeTypeName}</DataTableCell>
                   <DataTableCell>
-                    <StatusBadge tone={row.active ? 'success' : 'neutral'}>
-                      {row.active ? 'Aktív' : 'Inaktív'}
-                    </StatusBadge>
+                    {row.archivedAt ? (
+                      <StatusBadge tone="neutral" variant="outline">
+                        Archivált
+                      </StatusBadge>
+                    ) : (
+                      <StatusBadge tone={row.active ? 'success' : 'neutral'}>
+                        {row.active ? 'Aktív' : 'Inaktív'}
+                      </StatusBadge>
+                    )}
                   </DataTableCell>
                   <DataTableCell>
                     {row.emptyDays > 0 ? (
@@ -401,61 +359,22 @@ export function EmployeesListClient({
         </>
       )}
 
-      <Dialog
-        open={exportOpen}
-        onOpenChange={(open) => {
-          if (!pending) setExportOpen(open)
-        }}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Hivatalos jelenléti ív</DialogTitle>
-            <DialogDescription>
-              {selected.size} dolgozó · aláírásra alkalmas PDF
-              {selected.size > 1 ? ' (ZIP)' : ''}. Céglogo a fejlécben, Turinova
-              a láblécben — mint az ajánlaton.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid grid-cols-2 gap-3">
-            <FormField label="Év" htmlFor="export-year">
-              <MenuSelect
-                id="export-year"
-                value={exportYear}
-                options={yearOptions}
-                allowEmpty={false}
-                onChange={setExportYear}
-                disabled={pending}
-              />
-            </FormField>
-            <FormField label="Hónap" htmlFor="export-month">
-              <MenuSelect
-                id="export-month"
-                value={exportMonth}
-                options={MONTH_OPTIONS}
-                allowEmpty={false}
-                onChange={setExportMonth}
-                disabled={pending}
-              />
-            </FormField>
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={pending}
-              onClick={() => setExportOpen(false)}
-            >
-              Mégse
-            </Button>
-            <Button type="button" loading={pending} onClick={runExport}>
-              <FileDown className="size-3.5" aria-hidden />
-              Letöltés
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {exportOpen ? (
+        <SheetExportWizard
+          open={exportOpen}
+          onOpenChange={setExportOpen}
+          employees={selectedList}
+          onRemoveEmployee={(id) =>
+            setSelected((prev) => {
+              const next = new Map(prev)
+              next.delete(id)
+              return next
+            })
+          }
+          year={year}
+          month={month}
+        />
+      ) : null}
     </div>
   )
 }
