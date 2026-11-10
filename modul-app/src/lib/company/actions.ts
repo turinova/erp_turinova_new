@@ -3,6 +3,11 @@
 import { revalidatePath } from 'next/cache'
 
 import {
+  generateGoogleReviewCode,
+  googleReviewInputError,
+  parseGoogleReviewInput
+} from '@/lib/company/google-profile'
+import {
   companyFormSchema,
   type CompanyFormInput
 } from '@/lib/company/parse'
@@ -152,4 +157,74 @@ export async function updateTenantOpeningHours(input: {
   revalidatePath(PAGE_PATH)
   revalidatePath('/partner/home')
   return { ok: true }
+}
+
+export type GoogleProfileActionResult =
+  | { ok: true; code: string | null }
+  | { ok: false; message: string; fieldError?: string }
+
+/** Értékelő link mentése; az első mentéskor egyszer generál rövid link kódot. */
+export async function updateTenantGoogleProfile(input: {
+  reviewUrl: string
+}): Promise<GoogleProfileActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const parsed = parseGoogleReviewInput(input.reviewUrl)
+  const inputError = googleReviewInputError(parsed)
+  if (inputError) {
+    return { ok: false, message: 'Ellenőrizd a Google értékelő linket.', fieldError: inputError }
+  }
+
+  const tenantId = ctx.user.tenantId!
+  const { data: current, error: readError } = await ctx.supabase
+    .from('tenant_companies')
+    .select('google_review_url, google_review_code')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+
+  if (readError) {
+    console.error('updateTenantGoogleProfile read', readError.message)
+    return {
+      ok: false,
+      message:
+        readError.code === '42703'
+          ? 'A Google cégprofil mentéséhez futtasd a 20261003 migrációt.'
+          : 'Nem sikerült menteni a Google cégprofilt.'
+    }
+  }
+
+  const unchanged = (current?.google_review_url ?? null) === parsed.reviewUrl
+  let code: string | null = current?.google_review_code ?? null
+  if (unchanged && (code || !parsed.reviewUrl)) return { ok: true, code }
+
+  const now = new Date().toISOString()
+  const needsCode = !code && parsed.reviewUrl !== null
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const nextCode = needsCode ? generateGoogleReviewCode() : code
+    const { error } = await ctx.supabase
+      .from('tenant_companies')
+      .update({
+        google_review_url: parsed.reviewUrl,
+        google_place_id: parsed.placeId,
+        google_review_code: nextCode,
+        google_profile_updated_at: now,
+        updated_at: now
+      })
+      .eq('tenant_id', tenantId)
+
+    if (!error) {
+      code = nextCode
+      revalidatePath(PAGE_PATH)
+      return { ok: true, code }
+    }
+    // 23505 = unique_violation: ritka kódütközés, új kóddal újra
+    if (!(needsCode && error.code === '23505')) {
+      console.error('updateTenantGoogleProfile', error.message)
+      return { ok: false, message: 'Nem sikerült menteni a Google cégprofilt.' }
+    }
+  }
+
+  return { ok: false, message: 'Nem sikerült rövid linket generálni. Próbáld újra.' }
 }

@@ -19,3 +19,22 @@ export async function tenantHasQuoteReadySms(
   }
   return Boolean(data)
 }
+
+/** Bármely SMS-küldő jogosultság (készre jelentés add-on vagy ügyfélrendelés). */
+export async function tenantHasAnySms(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('tenant_entitlements')
+    .select('feature_key')
+    .eq('tenant_id', tenantId)
+    .in('feature_key', [QUOTE_READY_SMS_FEATURE, 'customer_special_orders'])
+    .limit(1)
+
+  if (error) {
+    console.error('tenantHasAnySms', error.message)
+    return false
+  }
+  return (data ?? []).length > 0
+}

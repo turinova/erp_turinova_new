@@ -3,7 +3,11 @@ import type { Metadata } from 'next'
 import { HandoverSlipSettingsClient } from '@/components/handover-slip/handover-slip-settings-client'
 import { getSessionUser } from '@/lib/auth/session'
 import { ensureHandoverSlipSettingsRow } from '@/lib/handover-slip/queries'
-import { DEFAULT_HANDOVER_SLIP_SETTINGS } from '@/lib/handover-slip/types'
+import {
+  DEFAULT_HANDOVER_SLIP_SETTINGS,
+  type HandoverSlipReviewQr
+} from '@/lib/handover-slip/types'
+import { loadHandoverReviewQr } from '@/lib/reviews/handover-qr'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -16,12 +20,16 @@ export default async function HandoverSlipSettingsPage() {
 
   let initial = { ...DEFAULT_HANDOVER_SLIP_SETTINGS }
   let loadError: string | null = null
+  let reviewQr: HandoverSlipReviewQr | null = null
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        initial = await ensureHandoverSlipSettingsRow(supabase, user.tenantId)
+        ;[initial, reviewQr] = await Promise.all([
+          ensureHandoverSlipSettingsRow(supabase, user.tenantId),
+          loadHandoverReviewQr(supabase, user.tenantId)
+        ])
       } catch (err) {
         loadError =
           err instanceof Error
@@ -51,6 +59,10 @@ export default async function HandoverSlipSettingsPage() {
   }
 
   return (
-    <HandoverSlipSettingsClient initial={initial} canWrite={canWrite} />
+    <HandoverSlipSettingsClient
+      initial={initial}
+      canWrite={canWrite}
+      reviewQr={reviewQr}
+    />
   )
 }

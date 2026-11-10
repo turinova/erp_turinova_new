@@ -1,8 +1,10 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useMemo } from 'react'
 
 import { formatMaterialQty } from '@/lib/handover-slip/build-data'
+import { qrSvgMarkup } from '@/lib/handover-slip/qr-svg'
 import type {
   HandoverSlipCopyType,
   HandoverSlipData,
@@ -31,6 +33,8 @@ export function HandoverSlipPreview({
   copyType,
   className
 }: HandoverSlipPreviewProps) {
+  const qrUrl = data.reviewQr?.url ?? null
+  const reviewQrSvg = useMemo(() => (qrUrl ? qrSvgMarkup(qrUrl, 96) : ''), [qrUrl])
   return (
     <div
       className={cn(
@@ -139,6 +143,17 @@ export function HandoverSlipPreview({
             <p>Átadó munkatárs neve:</p>
             <div className="mt-4 border-b border-dashed border-ink/50" />
           </div>
+        </div>
+      ) : null}
+
+      {copyType === 'customer' && reviewQrSvg ? (
+        <div className="mt-3 flex flex-col items-center">
+          <p className="text-center text-[11px] font-semibold">{data.reviewQr!.text}</p>
+          <div
+            className="mt-1"
+            // Csak a qrSvgMarkup kimenete kerülhet ide (nem felhasználói HTML).
+            dangerouslySetInnerHTML={{ __html: reviewQrSvg }}
+          />
         </div>
       ) : null}
 

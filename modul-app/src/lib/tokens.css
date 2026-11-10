@@ -88,6 +88,12 @@
   --tile-search-hover: #115e59;
   --tile-archive: #b45309;
   --tile-archive-hover: #92400e;
+  /* Partner szoftver-visszajelzés — charcoal + arany csillag (docs/54) */
+  --tile-feedback: #18181b;
+  --tile-feedback-hover: #27272a;
+  --tile-feedback-star: #fbbf24;
+  --tile-feedback-soft: #fef3c7;
+  --tile-feedback-ink: #b45309;
 
   --elev-0: none;
   --elev-1: 0 1px 2px rgba(0, 0, 0, 0.04);

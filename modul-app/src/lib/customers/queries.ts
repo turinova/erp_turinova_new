@@ -16,6 +16,8 @@ export type CustomerDetail = {
   email: string | null
   mobile: string | null
   sms_notification: boolean
+  /** null = a 20261004 migráció még nincs lefuttatva. */
+  review_sms_consent: boolean | null
   is_favorite: boolean
   billing_name: string | null
   billing_country: string
@@ -97,10 +99,11 @@ export async function getCustomer(
   tenantId: string,
   id: string
 ): Promise<CustomerDetail | null> {
-  const { data, error } = await supabase
-    .from('customers')
-    .select(
-      `
+  const [{ data, error }, consentRes] = await Promise.all([
+    supabase
+      .from('customers')
+      .select(
+        `
       id,
       name,
       email,
@@ -118,11 +121,19 @@ export async function getCustomer(
       created_at,
       updated_at
     `
-    )
-    .eq('tenant_id', tenantId)
-    .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle()
+      )
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle(),
+    // Külön select, hogy migráció előtt se törjön az ügyfél oldal.
+    supabase
+      .from('customers')
+      .select('review_sms_consent')
+      .eq('tenant_id', tenantId)
+      .eq('id', id)
+      .maybeSingle()
+  ])
 
   if (error) {
     console.error('getCustomer', error.message)
@@ -134,6 +145,9 @@ export async function getCustomer(
   return {
     ...data,
     sms_notification: Boolean(data.sms_notification),
+    review_sms_consent: consentRes.error
+      ? null
+      : Boolean(consentRes.data?.review_sms_consent),
     is_favorite: Boolean(data.is_favorite),
     billing_country: data.billing_country || 'Magyarország'
   }

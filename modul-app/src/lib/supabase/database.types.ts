@@ -549,8 +549,26 @@ export type PartnerProfile = {
   terms_accepted_at: string | null
   must_set_password: boolean
   legacy_portal_customer_id: string | null
+  product_feedback_dismissed_at: string | null
+  product_feedback_dismiss_count: number
   created_at: string
   updated_at: string
+}
+
+export type PartnerProductFeedback = {
+  id: string
+  partner_user_id: string | null
+  tenant_id: string | null
+  kind: 'nps' | 'suggestion'
+  score: number | null
+  comment: string | null
+  tags: string[]
+  prompt_variant: 'low' | 'mid' | 'high' | null
+  source: string
+  user_agent: string | null
+  created_at: string
+  updated_at: string
+  reviewed_at: string | null
 }
 
 export type CuttingFee = {
@@ -732,6 +750,10 @@ export type TenantCompany = {
   vat_id: string | null
   logo_url: string | null
   quote_validity_days: number
+  google_review_url?: string | null
+  google_place_id?: string | null
+  google_review_code?: string | null
+  google_profile_updated_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -1578,10 +1600,31 @@ export type Database = {
           terms_accepted_at?: string | null
           must_set_password?: boolean
           legacy_portal_customer_id?: string | null
+          product_feedback_dismissed_at?: string | null
+          product_feedback_dismiss_count?: number
           created_at?: string
           updated_at?: string
         }
         Update: Partial<Omit<PartnerProfile, 'user_id'>>
+      }
+      partner_product_feedback: {
+        Row: PartnerProductFeedback
+        Insert: {
+          id?: string
+          partner_user_id: string
+          tenant_id?: string | null
+          kind?: 'nps' | 'suggestion'
+          score?: number | null
+          comment?: string | null
+          tags?: string[]
+          prompt_variant?: 'low' | 'mid' | 'high' | null
+          source?: string
+          user_agent?: string | null
+          created_at?: string
+          updated_at?: string
+          reviewed_at?: string | null
+        }
+        Update: Partial<PartnerProductFeedback>
       }
     }
     Functions: {

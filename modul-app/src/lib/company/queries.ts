@@ -98,6 +98,59 @@ export async function getTenantOpeningHours(
   }
 }
 
+export type TenantGoogleProfile = {
+  reviewUrl: string | null
+  placeId: string | null
+  code: string | null
+  /** Rövid link kattintások az utolsó 30 napban (botok nélkül). */
+  clicks30d: number
+  /** false = a 20261003 migráció még nincs lefuttatva. */
+  available: boolean
+}
+
+/** Külön select, hogy migráció előtt se törjön a cégadatok betöltése. */
+export async function getTenantGoogleProfile(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<TenantGoogleProfile> {
+  const empty: TenantGoogleProfile = {
+    reviewUrl: null,
+    placeId: null,
+    code: null,
+    clicks30d: 0,
+    available: false
+  }
+
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const [profileRes, clicksRes] = await Promise.all([
+    supabase
+      .from('tenant_companies')
+      .select('google_review_url, google_place_id, google_review_code')
+      .eq('tenant_id', tenantId)
+      .maybeSingle(),
+    supabase
+      .from('google_review_link_clicks')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .gte('clicked_at', since)
+  ])
+
+  if (profileRes.error) {
+    if (profileRes.error.code !== '42703') {
+      console.error('getTenantGoogleProfile', profileRes.error.message)
+    }
+    return empty
+  }
+
+  return {
+    reviewUrl: profileRes.data?.google_review_url ?? null,
+    placeId: profileRes.data?.google_place_id ?? null,
+    code: profileRes.data?.google_review_code ?? null,
+    clicks30d: clicksRes.error ? 0 : (clicksRes.count ?? 0),
+    available: true
+  }
+}
+
 /** Lekérdezés; ha nincs sor és szabad írni, létrehoz a tenants.name alapján. */
 export async function getOrCreateTenantCompany(
   supabase: SupabaseClient,

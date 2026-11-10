@@ -1,3 +1,5 @@
+import { cache } from 'react'
+
 import { createServiceClient } from '@/lib/supabase/service'
 import {
   firstNameFromFull,
@@ -9,6 +11,7 @@ import type {
   OrderStatusLineItem
 } from '@/lib/order-status/types'
 import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
+import { loadStatusReview } from '@/lib/reviews/status-review'
 
 function companyAddress(row: {
   postal_code: string | null
@@ -67,16 +70,18 @@ async function loadCompany(
   }
 }
 
+type LoadedView = { view: CustomerOrderStatusView; customerId: string | null }
+
 async function loadCsoView(
   admin: NonNullable<ReturnType<typeof createServiceClient>>,
   tenantId: string,
   orderId: string
-): Promise<CustomerOrderStatusView | null> {
+): Promise<LoadedView | null> {
   const { data, error } = await admin
     .from('customer_special_orders')
     .select(
       `
-      id, order_number, customer_name, deposit_amount, status, updated_at,
+      id, order_number, customer_id, customer_name, deposit_amount, status, updated_at,
       customer_special_order_items (
         id, name, qty, unit_shortform, unit_price_gross, status, deleted_at, sort_order
       )
@@ -172,7 +177,7 @@ async function loadCsoView(
     else if (waitingItems.length > 0) dueHint = 'Csak a kész tételek'
   }
 
-  return {
+  const view: CustomerOrderStatusView = {
     kind: 'cso',
     orderNumber: String(data.order_number ?? '—'),
     customerFirstName: firstNameFromFull(data.customer_name as string),
@@ -192,6 +197,7 @@ async function loadCsoView(
     steps: [],
     updatedAt: (data.updated_at as string | null) ?? null
   }
+  return { view, customerId: (data.customer_id as string | null) ?? null }
 }
 
 /**
@@ -265,12 +271,12 @@ async function loadQuoteView(
   admin: NonNullable<ReturnType<typeof createServiceClient>>,
   tenantId: string,
   quoteId: string
-): Promise<CustomerOrderStatusView | null> {
+): Promise<LoadedView | null> {
   const { data, error } = await admin
     .from('quotes')
     .select(
       `
-      id, order_number, quote_number, status, payment_status,
+      id, order_number, quote_number, status, payment_status, customer_id,
       final_total_gross, total_gross, updated_at,
       customers ( name ),
       quote_material_lines ( id, material_name, edge_length_m ),
@@ -356,7 +362,7 @@ async function loadQuoteView(
   const showMoney = status === 'ready' || status === 'finished'
   const showItems = status === 'ready'
 
-  return {
+  const view: CustomerOrderStatusView = {
     kind: 'quote',
     orderNumber: String(orderNumber),
     customerFirstName: firstNameFromFull(customerName),
@@ -379,9 +385,13 @@ async function loadQuoteView(
     steps: [],
     updatedAt: (data.updated_at as string | null) ?? null
   }
+  return { view, customerId: (data.customer_id as string | null) ?? null }
 }
 
-export async function loadCustomerOrderStatusByToken(
+/** Egy kérésen belül (metadata + oldal) egyszer fut. */
+export const loadCustomerOrderStatusByToken = cache(loadByToken)
+
+async function loadByToken(
   token: string
 ): Promise<CustomerOrderStatusView | null> {
   const clean = token.trim()
@@ -396,7 +406,7 @@ export async function loadCustomerOrderStatusByToken(
   const { data: link, error } = await admin
     .from('order_share_links')
     .select(
-      'tenant_id, kind, customer_special_order_id, quote_id, expires_at, revoked_at'
+      'id, tenant_id, kind, customer_special_order_id, quote_id, expires_at, revoked_at'
     )
     .eq('token', clean)
     .maybeSingle()
@@ -411,11 +421,26 @@ export async function loadCustomerOrderStatusByToken(
   const kind = link.kind as OrderShareKind
   const tenantId = link.tenant_id as string
 
-  if (kind === 'cso' && link.customer_special_order_id) {
-    return loadCsoView(admin, tenantId, link.customer_special_order_id as string)
-  }
-  if (kind === 'quote' && link.quote_id) {
-    return loadQuoteView(admin, tenantId, link.quote_id as string)
-  }
-  return null
+  const orderId =
+    kind === 'cso'
+      ? (link.customer_special_order_id as string | null)
+      : (link.quote_id as string | null)
+  if (!orderId) return null
+
+  const loaded =
+    kind === 'cso'
+      ? await loadCsoView(admin, tenantId, orderId)
+      : await loadQuoteView(admin, tenantId, orderId)
+  if (!loaded) return null
+
+  const review = await loadStatusReview(admin, {
+    tenantId,
+    linkId: link.id as string,
+    token: clean,
+    kind,
+    orderId,
+    customerId: loaded.customerId,
+    tone: loaded.view.statusTone
+  })
+  return { ...loaded.view, review }
 }

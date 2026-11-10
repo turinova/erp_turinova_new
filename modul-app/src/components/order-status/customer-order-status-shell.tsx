@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { AlertTriangle, Check, Clock, Phone } from 'lucide-react'
 
+import { OrderStatusReviewCard } from '@/components/order-status/order-status-review-card'
 import {
   formatStatusFt,
   googleMapsSearchUrl,
@@ -34,6 +35,9 @@ export function CustomerOrderStatusShell({
   const showPay = !isDone && due != null && due > 0
   const showPaid = !isDone && due === 0
   const showPickup = !isDone || Boolean(phoneHref || mapsHref)
+  const reviewOnTop = Boolean(view.review && isDone)
+  /** Átadva + értékelés: egy sötét gomb legyen az oldalon (az értékelésé). */
+  const callSecondary = reviewOnTop && view.review?.mode === 'primary'
 
   return (
     <div
@@ -74,6 +78,11 @@ export function CustomerOrderStatusShell({
               : view.statusBody || null
           }
         />
+
+        {/* Átadva: értékelés-kérés kiemelve, közvetlenül az állapot alatt */}
+        {reviewOnTop ? (
+          <OrderStatusReviewCard review={view.review!} disabled={isPreview} />
+        ) : null}
 
         {/* 2. Mi készült el? */}
         {showReady && !isDone ? (
@@ -132,7 +141,10 @@ export function CustomerOrderStatusShell({
                   href={isPreview ? undefined : phoneHref}
                   aria-disabled={isPreview || undefined}
                   className={cn(
-                    'flex h-11 flex-1 items-center justify-center gap-2 rounded-md bg-ink text-body font-medium text-white',
+                    'flex h-11 flex-1 items-center justify-center gap-2 rounded-md text-body font-medium',
+                    callSecondary
+                      ? 'border border-border bg-surface text-ink'
+                      : 'bg-ink text-white',
                     isPreview && 'pointer-events-none opacity-80'
                   )}
                 >
@@ -178,6 +190,11 @@ export function CustomerOrderStatusShell({
               ) : null}
             </div>
           </section>
+        ) : null}
+
+        {/* Kész, átvehető: értékelés-kérés az oldal alján — az átvétel az elsődleges */}
+        {view.review && !reviewOnTop ? (
+          <OrderStatusReviewCard review={view.review} disabled={isPreview} />
         ) : null}
       </div>
     </div>

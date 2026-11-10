@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { getAuthUsersByIds } from '@/lib/platform/auth-users'
+import {
+  getAuthUsersByIds,
+  lastSignInMap,
+  listAllAuthUsersCached
+} from '@/lib/platform/auth-users'
 
 const MS_DAY = 24 * 60 * 60 * 1000
 
@@ -27,12 +31,17 @@ export type PlatformPartnerView = 'live' | 'new' | 'legacy' | 'all'
 
 /** Fülek számai — triage, nem teljesítmény KPI. */
 export type PlatformPartnersSummary = {
+  /** Belépett vagy beküldött — organikus és claimelt migrált is */
   live: number
-  /** Organikus (nem migrált) összesen */
-  organic: number
-  /** Organikus regisztráció az utolsó 7 napban */
+  /**
+   * Friss / Új: organikus created_at ≤7nap, vagy claimelt migrált
+   * lastSignIn ≤7nap.
+   */
   new7d: number
+  /** Migrált várólista: must_set_password vagy soha nem lépett be */
   legacy: number
+  /** Összes partner */
+  all: number
 }
 
 export type PlatformPartnerRecentQuote = {
@@ -81,21 +90,28 @@ export type PlatformPartnerDetail = {
   recentQuotes: PlatformPartnerRecentQuote[]
 }
 
-async function loadOrganicActivity(
-  admin: SupabaseClient,
-  organicIds: string[]
-): Promise<{
+type PartnerActivity = {
   liveIds: Set<string>
   lastActivityAt: Map<string, number>
-}> {
+  lastSignInAt: Map<string, string | null>
+  submittedIds: Set<string>
+}
+
+async function loadPartnerActivity(
+  admin: SupabaseClient,
+  partnerIds: string[]
+): Promise<PartnerActivity> {
   const liveIds = new Set<string>()
   const lastActivityAt = new Map<string, number>()
-  if (organicIds.length === 0) return { liveIds, lastActivityAt }
-
+  const lastSignInAt = new Map<string, string | null>()
   const submittedIds = new Set<string>()
+  if (partnerIds.length === 0) {
+    return { liveIds, lastActivityAt, lastSignInAt, submittedIds }
+  }
+
   // PostgREST .in limit — darabolás
-  for (let i = 0; i < organicIds.length; i += 100) {
-    const chunk = organicIds.slice(i, i + 100)
+  for (let i = 0; i < partnerIds.length; i += 100) {
+    const chunk = partnerIds.slice(i, i + 100)
     const { data: quotes } = await admin
       .from('quotes')
       .select('partner_profile_id, portal_submitted_at')
@@ -114,58 +130,110 @@ async function loadOrganicActivity(
     }
   }
 
-  const authById = await getAuthUsersByIds(admin, organicIds)
-  for (const id of organicIds) {
-    const signIn = authById.get(id)?.lastSignInAt
-    if (signIn) {
-      const t = new Date(signIn).getTime()
-      const prev = lastActivityAt.get(id) ?? 0
-      if (t > prev) lastActivityAt.set(id, t)
+  // Sok partner esetén listUsers cache gyorsabb, mint N× getUserById
+  if (partnerIds.length > 40) {
+    const users = await listAllAuthUsersCached(admin)
+    const signIns = lastSignInMap(users)
+    for (const id of partnerIds) {
+      const signIn = signIns.get(id) ?? null
+      lastSignInAt.set(id, signIn)
+      if (signIn) {
+        const t = new Date(signIn).getTime()
+        const prev = lastActivityAt.get(id) ?? 0
+        if (t > prev) lastActivityAt.set(id, t)
+      }
+      if (signIn || submittedIds.has(id)) liveIds.add(id)
     }
-    if (signIn || submittedIds.has(id)) liveIds.add(id)
+  } else {
+    const authById = await getAuthUsersByIds(admin, partnerIds)
+    for (const id of partnerIds) {
+      const signIn = authById.get(id)?.lastSignInAt ?? null
+      lastSignInAt.set(id, signIn)
+      if (signIn) {
+        const t = new Date(signIn).getTime()
+        const prev = lastActivityAt.get(id) ?? 0
+        if (t > prev) lastActivityAt.set(id, t)
+      }
+      if (signIn || submittedIds.has(id)) liveIds.add(id)
+    }
   }
 
-  return { liveIds, lastActivityAt }
+  return { liveIds, lastActivityAt, lastSignInAt, submittedIds }
+}
+
+function isFreshPartner(opts: {
+  isLegacy: boolean
+  mustSetPassword: boolean
+  createdAt: string
+  lastSignInAt: string | null
+  since7Ms: number
+}): boolean {
+  if (!opts.isLegacy) {
+    return new Date(opts.createdAt).getTime() >= opts.since7Ms
+  }
+  if (opts.mustSetPassword || !opts.lastSignInAt) return false
+  return new Date(opts.lastSignInAt).getTime() >= opts.since7Ms
+}
+
+function isLegacyPending(opts: {
+  isLegacy: boolean
+  mustSetPassword: boolean
+  lastSignInAt: string | null
+}): boolean {
+  if (!opts.isLegacy) return false
+  return opts.mustSetPassword || !opts.lastSignInAt
 }
 
 export async function getPlatformPartnersSummary(
   admin: SupabaseClient
 ): Promise<PlatformPartnersSummary> {
-  const since7 = new Date(Date.now() - 7 * MS_DAY).toISOString()
+  const since7Ms = Date.now() - 7 * MS_DAY
 
-  const [
-    { count: legacy },
-    { count: organic },
-    { count: new7d },
-    { data: organicRows }
-  ] = await Promise.all([
-    admin
-      .from('partner_profiles')
-      .select('user_id', { count: 'exact', head: true })
-      .not('legacy_portal_customer_id', 'is', null),
-    admin
-      .from('partner_profiles')
-      .select('user_id', { count: 'exact', head: true })
-      .is('legacy_portal_customer_id', null),
-    admin
-      .from('partner_profiles')
-      .select('user_id', { count: 'exact', head: true })
-      .is('legacy_portal_customer_id', null)
-      .gte('created_at', since7),
-    admin
-      .from('partner_profiles')
-      .select('user_id')
-      .is('legacy_portal_customer_id', null)
-  ])
+  const { data: rows, error } = await admin
+    .from('partner_profiles')
+    .select('user_id, created_at, must_set_password, legacy_portal_customer_id')
 
-  const organicIds = (organicRows ?? []).map((r) => r.user_id as string)
-  const { liveIds } = await loadOrganicActivity(admin, organicIds)
+  if (error) {
+    console.error('getPlatformPartnersSummary', error.message)
+    throw new Error('Nem sikerült betölteni a partner összesítőt.')
+  }
+
+  const profiles = rows ?? []
+  const ids = profiles.map((r) => r.user_id as string)
+  const activity = await loadPartnerActivity(admin, ids)
+
+  let live = 0
+  let new7d = 0
+  let legacy = 0
+
+  for (const r of profiles) {
+    const id = r.user_id as string
+    const isLegacy = Boolean(r.legacy_portal_customer_id)
+    const mustSet = Boolean(r.must_set_password)
+    const signIn = activity.lastSignInAt.get(id) ?? null
+
+    if (activity.liveIds.has(id)) live += 1
+    if (
+      isFreshPartner({
+        isLegacy,
+        mustSetPassword: mustSet,
+        createdAt: r.created_at as string,
+        lastSignInAt: signIn,
+        since7Ms
+      })
+    ) {
+      new7d += 1
+    }
+    if (isLegacyPending({ isLegacy, mustSetPassword: mustSet, lastSignInAt: signIn })) {
+      legacy += 1
+    }
+  }
 
   return {
-    live: liveIds.size,
-    organic: organic ?? 0,
-    new7d: new7d ?? 0,
-    legacy: legacy ?? 0
+    live,
+    new7d,
+    legacy,
+    all: profiles.length
   }
 }
 
@@ -321,36 +389,73 @@ export async function listPlatformPartners(
     })
   }
 
-  // Élő: organikus + belépett vagy beküldött — memóriában lapozva (organikus lista kicsi)
-  if (view === 'live' && !params.tenantId) {
-    let organicQuery = admin.from('partner_profiles').select(profileSelect)
-    organicQuery = applyCommonFilters(organicQuery)
-    organicQuery = organicQuery.is('legacy_portal_customer_id', null)
+  // Élő / Új / Migrált: aktivitás-alapú osztályozás — memóriában lapozva
+  if (view === 'live' || view === 'new' || view === 'legacy') {
+    let classifiedQuery = admin.from('partner_profiles').select(profileSelect)
+    classifiedQuery = applyCommonFilters(classifiedQuery)
 
-    const { data, error } = await organicQuery.order('created_at', {
+    const { data, error } = await classifiedQuery.order('created_at', {
       ascending: false
     })
     if (error) {
-      console.error('listPlatformPartners live', error.message)
+      console.error(`listPlatformPartners ${view}`, error.message)
       throw new Error('Nem sikerült betölteni a partnereket.')
     }
 
-    const organicRows = (data ?? []) as Record<string, unknown>[]
-    const organicIds = organicRows.map((r) => r.user_id as string)
-    const { liveIds, lastActivityAt } = await loadOrganicActivity(
-      admin,
-      organicIds
-    )
-    const liveRaw = organicRows.filter((r) =>
-      liveIds.has(r.user_id as string)
-    )
-    liveRaw.sort((a, b) => {
-      const ta = lastActivityAt.get(a.user_id as string) ?? 0
-      const tb = lastActivityAt.get(b.user_id as string) ?? 0
-      return tb - ta
+    const allRaw = (data ?? []) as Record<string, unknown>[]
+    const partnerIds = allRaw.map((r) => r.user_id as string)
+    const activity = await loadPartnerActivity(admin, partnerIds)
+    const since7Ms = Date.now() - 7 * MS_DAY
+
+    let filtered = allRaw.filter((r) => {
+      const id = r.user_id as string
+      const isLegacy = Boolean(r.legacy_portal_customer_id)
+      const mustSet = Boolean(r.must_set_password)
+      const signIn = activity.lastSignInAt.get(id) ?? null
+
+      if (view === 'live') return activity.liveIds.has(id)
+      if (view === 'new') {
+        return isFreshPartner({
+          isLegacy,
+          mustSetPassword: mustSet,
+          createdAt: r.created_at as string,
+          lastSignInAt: signIn,
+          since7Ms
+        })
+      }
+      return isLegacyPending({
+        isLegacy,
+        mustSetPassword: mustSet,
+        lastSignInAt: signIn
+      })
     })
-    const total = liveRaw.length
-    const slice = liveRaw.slice((page - 1) * limit, page * limit)
+
+    if (view === 'live') {
+      filtered.sort((a, b) => {
+        const ta = activity.lastActivityAt.get(a.user_id as string) ?? 0
+        const tb = activity.lastActivityAt.get(b.user_id as string) ?? 0
+        return tb - ta
+      })
+    } else if (view === 'new') {
+      filtered.sort((a, b) => {
+        const idA = a.user_id as string
+        const idB = b.user_id as string
+        const signA = activity.lastSignInAt.get(idA)
+        const signB = activity.lastSignInAt.get(idB)
+        const ta = Math.max(
+          new Date(a.created_at as string).getTime(),
+          signA ? new Date(signA).getTime() : 0
+        )
+        const tb = Math.max(
+          new Date(b.created_at as string).getTime(),
+          signB ? new Date(signB).getTime() : 0
+        )
+        return tb - ta
+      })
+    }
+
+    const total = filtered.length
+    const slice = filtered.slice((page - 1) * limit, page * limit)
     const rows = await enrichRows(slice)
     return { rows, total, page, limit }
   }
@@ -359,15 +464,6 @@ export async function listPlatformPartners(
     .from('partner_profiles')
     .select(profileSelect, { count: 'exact' })
   query = applyCommonFilters(query)
-
-  if (view === 'new') {
-    query = query.is('legacy_portal_customer_id', null)
-  } else if (view === 'legacy') {
-    query = query.not('legacy_portal_customer_id', 'is', null)
-  } else if (view === 'live' && params.tenantId) {
-    // tenant szűrőnél élő = organikus a cégnél (aktivitás a lapozás után)
-    query = query.is('legacy_portal_customer_id', null)
-  }
 
   const from = (page - 1) * limit
   const to = from + limit - 1
@@ -380,14 +476,7 @@ export async function listPlatformPartners(
     throw new Error('Nem sikerült betölteni a partnereket.')
   }
 
-  let rows = await enrichRows((data ?? []) as Record<string, unknown>[])
-
-  if (view === 'live' && params.tenantId) {
-    rows = rows.filter(
-      (r) => Boolean(r.lastSignInAt) || r.submittedCount > 0
-    )
-  }
-
+  const rows = await enrichRows((data ?? []) as Record<string, unknown>[])
   return { rows, total: count ?? 0, page, limit }
 }
 

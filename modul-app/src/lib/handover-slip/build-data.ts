@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { loadHandoverReviewQr } from '@/lib/reviews/handover-qr'
 import type {
   HandoverSlipData,
   HandoverSlipMaterialLine,
@@ -17,7 +18,7 @@ export async function buildHandoverSlipData(
   tenantId: string,
   quoteId: string
 ): Promise<HandoverSlipData | null> {
-  const [{ data: quote, error: qErr }, { data: company, error: cErr }] =
+  const [{ data: quote, error: qErr }, { data: company, error: cErr }, reviewQr] =
     await Promise.all([
       supabase
         .from('quotes')
@@ -56,7 +57,8 @@ export async function buildHandoverSlipData(
         `
         )
         .eq('tenant_id', tenantId)
-        .maybeSingle()
+        .maybeSingle(),
+      loadHandoverReviewQr(supabase, tenantId)
     ])
 
   if (qErr) {
@@ -119,7 +121,8 @@ export async function buildHandoverSlipData(
     materials,
     services,
     feeLines: [],
-    accessoryLines: []
+    accessoryLines: [],
+    reviewQr
   }
 }
 

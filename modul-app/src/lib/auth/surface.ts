@@ -149,6 +149,8 @@ const PLATFORM_CLEAN_TO_INTERNAL: Record<string, string> = {
   '/': PLATFORM_INTERNAL_PREFIX,
   '/tenants': `${PLATFORM_INTERNAL_PREFIX}/tenants`,
   '/partnerek': `${PLATFORM_INTERNAL_PREFIX}/partnerek`,
+  '/visszajelzesek': `${PLATFORM_INTERNAL_PREFIX}/visszajelzesek`,
+  '/katalogus': `${PLATFORM_INTERNAL_PREFIX}/katalogus`,
   '/csomagok': `${PLATFORM_INTERNAL_PREFIX}/csomagok`,
   '/add-onok': `${PLATFORM_INTERNAL_PREFIX}/add-onok`,
   '/health': `${PLATFORM_INTERNAL_PREFIX}/health`

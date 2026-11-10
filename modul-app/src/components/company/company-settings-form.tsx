@@ -11,10 +11,13 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { GoogleProfileField } from '@/components/company/google-profile-field'
 import {
+  updateTenantGoogleProfile,
   updateTenantOpeningHours,
   upsertTenantCompany
 } from '@/lib/company/actions'
+import { parseGoogleReviewInput } from '@/lib/company/google-profile'
 import {
   formatCompanyRegNumber,
   formatPhoneNumber,
@@ -22,6 +25,7 @@ import {
 } from '@/lib/company/parse'
 import type {
   TenantCompanyRow,
+  TenantGoogleProfile,
   TenantOpeningHours
 } from '@/lib/company/queries'
 import { HU_PHONE_EXAMPLE } from '@/lib/customers/parse'
@@ -36,13 +40,17 @@ type CompanySettingsFormProps = {
   tenantId: string
   canWrite: boolean
   openingHours: TenantOpeningHours
+  googleProfile: TenantGoogleProfile
+  shortLinkOrigin: string
 }
 
 export function CompanySettingsForm({
   initial,
   tenantId,
   canWrite,
-  openingHours
+  openingHours,
+  googleProfile,
+  shortLinkOrigin
 }: CompanySettingsFormProps) {
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState(initial.name)
@@ -69,6 +77,9 @@ export function CompanySettingsForm({
     openingHoursToDraft(openingHours.hours)
   )
   const [hoursNote, setHoursNote] = useState(openingHours.note ?? '')
+  const [googleReviewUrl, setGoogleReviewUrl] = useState(
+    googleProfile.reviewUrl ?? ''
+  )
   const [hoursErrors, setHoursErrors] = useState<
     Partial<Record<DayKey, string>>
   >({})
@@ -112,6 +123,20 @@ export function CompanySettingsForm({
           toast.error(hoursResult.message)
           return
         }
+      }
+
+      if (googleProfile.available) {
+        const googleResult = await updateTenantGoogleProfile({
+          reviewUrl: googleReviewUrl
+        })
+        if (!googleResult.ok) {
+          if (googleResult.fieldError) {
+            setFieldErrors({ googleReviewUrl: googleResult.fieldError })
+          }
+          toast.error(googleResult.message)
+          return
+        }
+        setGoogleReviewUrl(parseGoogleReviewInput(googleReviewUrl).reviewUrl ?? '')
       }
 
       toast.success('Cégadatok mentve.')
@@ -275,6 +300,40 @@ export function CompanySettingsForm({
             A nyitvatartáshoz futtasd a{' '}
             <code className="text-hint">
               20260635_tenant_company_opening_hours.sql
+            </code>{' '}
+            migrációt.
+          </p>
+        )}
+      </FormSection>
+
+      <FormSection
+        title="Google cégprofil"
+        description="Az értékelő linkkel a vevő egy koppintással a Google-értékeléshez jut."
+        columns={1}
+      >
+        {googleProfile.available ? (
+          <GoogleProfileField
+            value={googleReviewUrl}
+            onChange={(v) => {
+              setGoogleReviewUrl(v)
+              if (fieldErrors.googleReviewUrl) {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.googleReviewUrl
+                  return next
+                })
+              }
+            }}
+            saved={googleProfile}
+            shortLinkOrigin={shortLinkOrigin}
+            disabled={!canWrite || pending}
+            error={fieldErrors.googleReviewUrl}
+          />
+        ) : (
+          <p className="text-body text-ink-secondary">
+            A Google cégprofilhoz futtasd a{' '}
+            <code className="text-hint">
+              20261003_tenant_company_google_profile.sql
             </code>{' '}
             migrációt.
           </p>

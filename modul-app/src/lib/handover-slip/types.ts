@@ -101,6 +101,13 @@ export type HandoverSlipData = {
   services: HandoverSlipServiceLine[]
   feeLines: Array<{ name: string; qty: number }>
   accessoryLines: Array<{ name: string; qty: number }>
+  /** Google értékelés QR — csak a vevői példányon (docs/55). */
+  reviewQr?: HandoverSlipReviewQr | null
+}
+
+export type HandoverSlipReviewQr = {
+  url: string
+  text: string
 }
 
 /** Mely példányokat nyomtatjuk a settings alapján. */

@@ -29,7 +29,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 25
+export const PAGE_CATALOG_VERSION = 26
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -237,6 +237,11 @@ export const APP_PAGES: AppPageDef[] = [
   {
     key: '/beallitasok/felhasznalok',
     label: 'Felhasználók',
+    category: 'Beállítások'
+  },
+  {
+    key: '/beallitasok/google-ertekelesek',
+    label: 'Google értékelések',
     category: 'Beállítások'
   }
 ]

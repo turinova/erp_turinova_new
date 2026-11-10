@@ -30,6 +30,7 @@ import {
   Settings2,
   ShoppingCart,
   SquareStack,
+  Star,
   RectangleHorizontal,
   Package,
   PackageCheck,
@@ -614,6 +615,13 @@ const allNavSections: NavSection[] = [
               label: 'SMS sablonok',
               href: '/beallitasok/sms',
               icon: MessageSquare,
+              accent: 'slate'
+            },
+            {
+              type: 'link',
+              label: 'Google értékelések',
+              href: '/beallitasok/google-ertekelesek',
+              icon: Star,
               accent: 'slate'
             },
             {

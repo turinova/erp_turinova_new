@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 
 import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
+import { enqueueReviewThankSms } from '@/lib/reviews/enqueue'
 import { sendQuoteReadySms } from '@/lib/sms/send-ready'
 import type { QuoteReadySmsResult } from '@/lib/sms/send-ready'
 import { normalizeScannerBarcode } from '@/lib/scanner/normalize-wedge'
@@ -440,7 +441,7 @@ export async function finishQuoteHandover(input: {
     .eq('tenant_id', tenantId)
     .eq('status', 'ready')
     .is('deleted_at', null)
-    .select('id')
+    .select('id, customer_id')
     .maybeSingle()
 
   if (updateError) {
@@ -454,6 +455,13 @@ export async function finishQuoteHandover(input: {
       message: 'A státusz közben megváltozott — frissítsd az oldalt.'
     }
   }
+
+  await enqueueReviewThankSms(ctx.supabase, {
+    tenantId,
+    customerId: (updated.customer_id as string | null) ?? null,
+    quoteId: input.quoteId,
+    userId
+  })
 
   revalidateOrderPaths(input.quoteId)
   return { ok: true, paymentCreated }

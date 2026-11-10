@@ -45,4 +45,12 @@ export type CustomerOrderStatusView = {
   waitingItems: OrderStatusLineItem[]
   steps: OrderStatusStep[]
   updatedAt: string | null
+  /** Google értékelés kérése (docs/55) — null = nem jelenik meg. */
+  review?: OrderStatusReview | null
+}
+
+export type OrderStatusReview = {
+  /** Relatív rövid link (`/g/{kód}?s=status&t={token}`). */
+  href: string
+  mode: 'first' | 'repeat' | 'primary' | 'thanks'
 }

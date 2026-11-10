@@ -63,6 +63,10 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
       ? Boolean(initial?.sms_notification)
       : true
   )
+  const consentAvailable = mode === 'create' || initial?.review_sms_consent != null
+  const [reviewSmsConsent, setReviewSmsConsent] = useState(
+    Boolean(initial?.review_sms_consent)
+  )
   const [isFavorite, setIsFavorite] = useState(
     Boolean(initial?.is_favorite)
   )
@@ -82,6 +86,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
         email,
         mobile,
         smsNotification,
+        reviewSmsConsent: consentAvailable ? reviewSmsConsent : undefined,
         isFavorite,
         billingName: billing.billingName,
         billingCountry: billing.billingCountry,
@@ -197,6 +202,16 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
               label="SMS értesítés"
               description="Készre állításkor SMS küldhető, ha a cégnek van SMS add-onja."
             />
+            {consentAvailable ? (
+              <Switch
+                id="customer-review-sms"
+                checked={reviewSmsConsent}
+                disabled={!canWrite}
+                onCheckedChange={setReviewSmsConsent}
+                label="Értékelés-kérő SMS"
+                description="Csak ha a vevő kifejezetten hozzájárult. Átadás után egy köszönő SMS-t kap a Google-értékelés linkjével."
+              />
+            ) : null}
             <Switch
               id="customer-favorite"
               checked={isFavorite}

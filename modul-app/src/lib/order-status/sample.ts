@@ -110,11 +110,42 @@ export function sampleQuoteOrderStatusView(
   }
 }
 
+export type OrderStatusPreviewStage = 'ready' | 'done'
+
 export function sampleOrderStatusView(
   kind: OrderShareKind,
-  company?: Partial<OrderStatusPreviewCompany> | null
+  company?: Partial<OrderStatusPreviewCompany> | null,
+  options?: { stage?: OrderStatusPreviewStage; reviewEnabled?: boolean }
 ): CustomerOrderStatusView {
-  return kind === 'quote'
-    ? sampleQuoteOrderStatusView(company)
-    : sampleCsoOrderStatusView(company)
+  const base =
+    kind === 'quote'
+      ? sampleQuoteOrderStatusView(company)
+      : sampleCsoOrderStatusView(company)
+  const stage = options?.stage
+  if (!stage) return base
+
+  const review = options?.reviewEnabled
+    ? { href: '#', mode: stage === 'done' ? ('primary' as const) : ('first' as const) }
+    : null
+
+  if (stage === 'done') {
+    return {
+      ...base,
+      statusLabel: 'Átadva',
+      statusTone: 'neutral',
+      dueNowGross: null,
+      dueHint: null,
+      summaryLine: null,
+      readyItems: [],
+      waitingItems: [],
+      review
+    }
+  }
+  return {
+    ...base,
+    statusLabel: kind === 'quote' ? base.statusLabel : 'Átvehető',
+    statusTone: 'success',
+    waitingItems: [],
+    review
+  }
 }

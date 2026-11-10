@@ -6,6 +6,7 @@ import {
   Building2,
   Hammer,
   Package,
+  Star,
   type LucideIcon
 } from 'lucide-react'
 import Image from 'next/image'
@@ -14,10 +15,11 @@ import type { SessionUser } from '@/lib/auth/session'
 import { usePlatformHref } from '@/lib/platform/use-platform-href'
 import { cn } from '@/lib/utils'
 
-/** Square lean ops: 3 menüpont. Áttekintés/Health/Add-onok → Cégek / Katalógus. */
+/** Lean ops + partner visszajelzés inbox. */
 const NAV: Array<{ clean: string; label: string; icon: LucideIcon }> = [
   { clean: '/tenants', label: 'Cégek', icon: Building2 },
   { clean: '/partnerek', label: 'Partnerek', icon: Hammer },
+  { clean: '/visszajelzesek', label: 'Visszajelzések', icon: Star },
   { clean: '/katalogus', label: 'Katalógus', icon: Package }
 ]
 

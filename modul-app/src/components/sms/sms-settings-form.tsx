@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
@@ -10,21 +11,65 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { Button } from '@/components/ui/button'
 import {
   saveCsoReadySmsTemplate,
-  saveQuoteReadySmsTemplate
+  saveQuoteReadySmsTemplate,
+  saveReviewThanksSmsTemplate
 } from '@/lib/sms/actions'
 import { sampleOrderStatusView } from '@/lib/order-status/sample'
-import type { OrderStatusPreviewCompany } from '@/lib/order-status/sample'
+import type {
+  OrderStatusPreviewCompany,
+  OrderStatusPreviewStage
+} from '@/lib/order-status/sample'
 import type { OrderShareKind } from '@/lib/order-status/types'
 import { smsSegments, toAsciiSmsText } from '@/lib/sms/text'
 import { cn } from '@/lib/utils'
 
+export type SmsReviewState = {
+  statusPageEnabled: boolean
+  thankSmsEnabled: boolean
+  hasLink: boolean
+}
+
 type Props = {
   quoteBody: string
   csoBody: string
+  reviewThanksBody: string
   showQuote: boolean
   showCso: boolean
   canWrite: boolean
   company?: OrderStatusPreviewCompany | null
+  review?: SmsReviewState | null
+}
+
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label
+}: {
+  value: T
+  options: { value: T; label: string }[]
+  onChange: (v: T) => void
+  label: string
+}) {
+  return (
+    <div className="flex rounded-md border border-border p-0.5" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          className={cn(
+            'rounded px-2 py-1 text-hint',
+            value === o.value ? 'bg-ink text-white' : 'text-ink-secondary hover:bg-subtle'
+          )}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function TemplatePreview({
@@ -55,21 +100,30 @@ function TemplatePreview({
 export function SmsSettingsForm({
   quoteBody: initialQuote,
   csoBody: initialCso,
+  reviewThanksBody: initialReviewThanks,
   showQuote,
   showCso,
   canWrite,
-  company = null
+  company = null,
+  review = null
 }: Props) {
   const [quoteBody, setQuoteBody] = useState(initialQuote)
   const [csoBody, setCsoBody] = useState(initialCso)
+  const [reviewThanksBody, setReviewThanksBody] = useState(initialReviewThanks)
   const [pending, startTransition] = useTransition()
   const [previewKind, setPreviewKind] = useState<OrderShareKind>(() =>
     showCso ? 'cso' : 'quote'
   )
 
+  const [previewStage, setPreviewStage] = useState<OrderStatusPreviewStage>('ready')
+  const reviewEnabled = Boolean(review?.statusPageEnabled && review.hasLink)
   const statusPreviewView = useMemo(
-    () => sampleOrderStatusView(previewKind, company),
-    [previewKind, company]
+    () =>
+      sampleOrderStatusView(previewKind, company, {
+        stage: previewStage,
+        reviewEnabled
+      }),
+    [previewKind, company, previewStage, reviewEnabled]
   )
 
   function handleSaveQuote() {
@@ -93,6 +147,18 @@ export function SmsSettingsForm({
         return
       }
       toast.success('Ügyfélrendelés SMS sablon mentve.')
+    })
+  }
+
+  function handleSaveReviewThanks() {
+    if (!canWrite) return
+    startTransition(async () => {
+      const result = await saveReviewThanksSmsTemplate(reviewThanksBody)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success('Köszönő SMS sablon mentve.')
     })
   }
 
@@ -204,6 +270,65 @@ export function SmsSettingsForm({
               ) : null}
             </FormSection>
           ) : null}
+
+          <FormSection
+            id="review-thanks"
+            title="Köszönő SMS (Google értékelés)"
+            description="Átadás után, egyszer, csak hozzájáruló vevőknek. Placeholderek: {customer_name}, {company_name}, {review_url}."
+            headerAside={
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-hint font-medium',
+                  review?.thankSmsEnabled && review.hasLink
+                    ? 'bg-success-soft text-success-ink'
+                    : 'bg-subtle text-ink-secondary'
+                )}
+              >
+                {review?.thankSmsEnabled && review.hasLink ? 'Bekapcsolva' : 'Kikapcsolva'}
+              </span>
+            }
+            columns={1}
+          >
+            <FormField label="Sablon szöveg" htmlFor="sms-review-body" required>
+              <textarea
+                id="sms-review-body"
+                value={reviewThanksBody}
+                disabled={!canWrite || pending}
+                onChange={(e) => setReviewThanksBody(e.target.value)}
+                rows={4}
+                maxLength={600}
+                className="w-full rounded-md border border-border bg-surface px-2.5 py-2 text-body text-ink outline-none focus:border-ink"
+              />
+            </FormField>
+
+            <TemplatePreview
+              body={reviewThanksBody}
+              sample={{
+                customer_name: 'Kiss Janos',
+                company_name: company?.name || 'Pelda Kft',
+                review_url: 'https://app.example/g/AbC123?s=sms'
+              }}
+            />
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Link
+                href="/beallitasok/google-ertekelesek"
+                className="text-hint font-medium text-ink hover:underline"
+              >
+                Be- és kikapcsolás, időzítés: Google értékelések →
+              </Link>
+              {canWrite ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  loading={pending}
+                  onClick={handleSaveReviewThanks}
+                >
+                  Köszönő SMS sablon mentése
+                </Button>
+              ) : null}
+            </div>
+          </FormSection>
         </div>
 
         <aside className="space-y-3 lg:sticky lg:top-16 lg:self-start">
@@ -240,12 +365,36 @@ export function SmsSettingsForm({
               </div>
             ) : null}
           </div>
-          <p className="text-hint text-ink-muted">
-            Így látja az ügyfél a SMS-ben kapott{' '}
-            <span className="font-medium text-ink-secondary">/r/…</span>{' '}
-            linket (mintaadat).
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-hint text-ink-muted">
+              Így látja az ügyfél a SMS-ben kapott{' '}
+              <span className="font-medium text-ink-secondary">/r/…</span>{' '}
+              linket (mintaadat).
+            </p>
+            <Segmented
+              label="Rendelés állapota"
+              value={previewStage}
+              onChange={setPreviewStage}
+              options={[
+                { value: 'ready', label: 'Átvehető' },
+                { value: 'done', label: 'Átadva' }
+              ]}
+            />
+          </div>
           <OrderStatusPreview view={statusPreviewView} />
+          <p className="text-hint text-ink-secondary">
+            {reviewEnabled
+              ? 'Google értékelés kérése: bekapcsolva. Átvehetőnél az oldal alján, átadás után kiemelve.'
+              : review?.hasLink
+                ? 'Google értékelés kérése a státusz oldalon: kikapcsolva.'
+                : 'Google értékelés kéréséhez add meg az értékelő linket a Cégadatokban.'}{' '}
+            <Link
+              href="/beallitasok/google-ertekelesek"
+              className="font-medium text-ink hover:underline"
+            >
+              Beállítás →
+            </Link>
+          </p>
         </aside>
       </div>
     </div>

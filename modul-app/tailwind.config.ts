@@ -69,6 +69,13 @@ const config: Config = {
           archive: {
             DEFAULT: 'var(--tile-archive)',
             hover: 'var(--tile-archive-hover)'
+          },
+          feedback: {
+            DEFAULT: 'var(--tile-feedback)',
+            hover: 'var(--tile-feedback-hover)',
+            star: 'var(--tile-feedback-star)',
+            soft: 'var(--tile-feedback-soft)',
+            ink: 'var(--tile-feedback-ink)'
           }
         },
         nav: {

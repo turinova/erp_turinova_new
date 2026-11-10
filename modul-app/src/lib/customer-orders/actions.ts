@@ -20,6 +20,7 @@ import {
   type CsoPoStatus
 } from '@/lib/customer-orders/types'
 import { createPurchaseOrder, appendItemsToDraftPurchaseOrder } from '@/lib/purchase-orders/actions'
+import { enqueueReviewThankSms } from '@/lib/reviews/enqueue'
 import {
   getTenantSmsTemplate,
   insertSmsSendEvent
@@ -1733,6 +1734,12 @@ export async function handOverSpecialOrderItemsAction(input: {
     void itemIdByKey
 
     createdSales.push({ saleId, saleNumber, orderId })
+    await enqueueReviewThankSms(supabase, {
+      tenantId,
+      customerId: customerId ?? null,
+      customerSpecialOrderId: orderId,
+      userId
+    })
     revalidatePath(`/ertekesitesek/${saleId}`)
   }
 

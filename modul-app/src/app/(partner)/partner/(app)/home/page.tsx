@@ -53,7 +53,12 @@ export default async function PartnerHomePage() {
   const selectedTenantId = session?.selectedTenantId ?? null
 
   const [data, settings, search, opti, quotes, orders] = await Promise.all([
-    loadPartnerHomeData(session?.id ?? '', selectedTenantId),
+    loadPartnerHomeData(session?.id ?? '', selectedTenantId, {
+      mustSetPassword: Boolean(session?.profile.must_set_password),
+      accountCreatedAt: session?.profile.created_at ?? null,
+      dismissedAt: session?.profile.product_feedback_dismissed_at ?? null,
+      dismissCount: session?.profile.product_feedback_dismiss_count ?? 0
+    }),
     partnerServerHref(PARTNER_SETTINGS_PATH),
     partnerServerHref(PARTNER_SEARCH_PATH),
     partnerServerHref(PARTNER_OPTI_PATH),

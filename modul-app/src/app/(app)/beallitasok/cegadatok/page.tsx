@@ -4,9 +4,12 @@ import { CompanySettingsForm } from '@/components/company/company-settings-form'
 import { getSessionUser } from '@/lib/auth/session'
 import {
   getOrCreateTenantCompany,
+  getTenantGoogleProfile,
   getTenantOpeningHours,
+  type TenantGoogleProfile,
   type TenantOpeningHours
 } from '@/lib/company/queries'
+import { appOrigin } from '@/lib/order-status/format'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -25,6 +28,13 @@ export default async function CompanySettingsPage() {
     note: null,
     available: false
   }
+  let googleProfile: TenantGoogleProfile = {
+    reviewUrl: null,
+    placeId: null,
+    code: null,
+    clicks30d: 0,
+    available: false
+  }
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
@@ -37,7 +47,10 @@ export default async function CompanySettingsPage() {
           { createIfMissing: canWrite }
         )
         if (company) {
-          openingHours = await getTenantOpeningHours(supabase, user.tenantId)
+          ;[openingHours, googleProfile] = await Promise.all([
+            getTenantOpeningHours(supabase, user.tenantId),
+            getTenantGoogleProfile(supabase, user.tenantId)
+          ])
         } else {
           loadError =
             'Még nincsenek cégadatok. Egy írási jogú felhasználónak kell először megnyitnia az oldalt.'
@@ -85,6 +98,8 @@ export default async function CompanySettingsPage() {
       tenantId={user.tenantId}
       canWrite={canWrite}
       openingHours={openingHours}
+      googleProfile={googleProfile}
+      shortLinkOrigin={appOrigin()}
     />
   )
 }

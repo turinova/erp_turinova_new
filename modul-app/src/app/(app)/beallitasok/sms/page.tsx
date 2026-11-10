@@ -1,15 +1,20 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
-import { SmsSettingsForm } from '@/components/sms/sms-settings-form'
+import {
+  SmsSettingsForm,
+  type SmsReviewState
+} from '@/components/sms/sms-settings-form'
 import { getSessionUser } from '@/lib/auth/session'
-import { getTenantCompany } from '@/lib/company/queries'
+import { getTenantCompany, getTenantGoogleProfile } from '@/lib/company/queries'
+import { getTenantReviewSettings } from '@/lib/reviews/settings'
 import type { OrderStatusPreviewCompany } from '@/lib/order-status/sample'
 import { tenantHasQuoteReadySms } from '@/lib/sms/entitlement'
 import { getTenantSmsTemplate } from '@/lib/sms/templates'
 import {
   CSO_READY_TEMPLATE_KEY,
   QUOTE_READY_TEMPLATE_KEY,
+  REVIEW_THANKS_TEMPLATE_KEY,
   defaultSmsBody
 } from '@/lib/sms/types'
 import { createClient } from '@/lib/supabase/server'
@@ -28,6 +33,8 @@ export default async function SmsSettingsPage() {
   let showCso = false
   let quoteBody = defaultSmsBody(QUOTE_READY_TEMPLATE_KEY)
   let csoBody = defaultSmsBody(CSO_READY_TEMPLATE_KEY)
+  let reviewThanksBody = defaultSmsBody(REVIEW_THANKS_TEMPLATE_KEY)
+  let review: SmsReviewState | null = null
   let company: OrderStatusPreviewCompany | null = null
 
   if (user?.tenantId && !user.isDevSession) {
@@ -92,9 +99,22 @@ export default async function SmsSettingsPage() {
           } else {
             loads.push(Promise.resolve(csoBody))
           }
-          const [q, c] = await Promise.all(loads)
+          loads.push(
+            getTenantSmsTemplate(supabase, user.tenantId, REVIEW_THANKS_TEMPLATE_KEY)
+          )
+          const [[q, c, r], reviewSettings, google] = await Promise.all([
+            Promise.all(loads),
+            getTenantReviewSettings(supabase, user.tenantId),
+            getTenantGoogleProfile(supabase, user.tenantId)
+          ])
           quoteBody = q
           csoBody = c
+          reviewThanksBody = r
+          review = {
+            statusPageEnabled: reviewSettings.settings.statusPageEnabled,
+            thankSmsEnabled: reviewSettings.settings.thankSmsEnabled,
+            hasLink: Boolean(google.reviewUrl && google.code)
+          }
         } catch (err) {
           loadError =
             err instanceof Error
@@ -146,6 +166,8 @@ export default async function SmsSettingsPage() {
     <SmsSettingsForm
       quoteBody={quoteBody}
       csoBody={csoBody}
+      reviewThanksBody={reviewThanksBody}
+      review={review}
       showQuote={showQuote}
       showCso={showCso}
       canWrite={canWrite}

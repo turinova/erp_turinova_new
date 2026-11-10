@@ -1,5 +1,6 @@
 'use server'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
 
 import {
@@ -61,11 +62,40 @@ function rowFromParsed(data: CustomerFormValues) {
   }
 }
 
+/** Értékelés-kérő SMS hozzájárulás — külön update, hogy migráció előtt se bukjon a mentés. */
+async function saveReviewSmsConsent(
+  supabase: SupabaseClient,
+  tenantId: string,
+  customerId: string,
+  consent: boolean | undefined
+) {
+  if (consent === undefined) return
+  const { data: current, error: readError } = await supabase
+    .from('customers')
+    .select('review_sms_consent')
+    .eq('id', customerId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (readError || !current) return
+  if (Boolean(current.review_sms_consent) === consent) return
+  const { error } = await supabase
+    .from('customers')
+    .update({
+      review_sms_consent: consent,
+      review_sms_consent_at: consent ? new Date().toISOString() : null
+    })
+    .eq('id', customerId)
+    .eq('tenant_id', tenantId)
+  if (error) console.error('saveReviewSmsConsent', error.message)
+}
+
 export type CustomerFormInput = {
   name: string
   email: string
   mobile: string
   smsNotification: boolean
+  /** undefined = nem módosítjuk (pl. migráció előtt). */
+  reviewSmsConsent?: boolean
   isFavorite: boolean
   billingName: string
   billingCountry: string
@@ -110,6 +140,7 @@ export async function createCustomer(
     }
   }
 
+  await saveReviewSmsConsent(ctx.supabase, ctx.user.tenantId!, data.id, input.reviewSmsConsent)
   revalidateCustomerPaths(data.id)
   return { ok: true, id: data.id }
 }
@@ -154,6 +185,7 @@ export async function updateCustomer(
     return { ok: false, message: 'Az ügyfél nem található.' }
   }
 
+  await saveReviewSmsConsent(ctx.supabase, ctx.user.tenantId!, data.id, input.reviewSmsConsent)
   revalidateCustomerPaths(data.id)
   return { ok: true, id: data.id }
 }

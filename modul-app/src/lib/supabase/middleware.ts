@@ -121,7 +121,8 @@ function isPublicMarketingPath(pathname: string) {
     pathname === '/impresszum' ||
     pathname === '/aszf' ||
     pathname === '/adatkezelesi-tajekoztato' ||
-    pathname.startsWith('/r/')
+    pathname.startsWith('/r/') ||
+    pathname.startsWith('/g/')
   )
 }
 

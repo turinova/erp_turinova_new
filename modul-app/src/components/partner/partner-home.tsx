@@ -8,6 +8,7 @@ import {
   SelectCompanyCard
 } from '@/components/partner/home/home-tiles'
 import { HowItWorks } from '@/components/partner/home/how-it-works'
+import { PartnerFeedbackArea } from '@/components/partner/home/partner-feedback-card'
 import { RecentOrdersCard } from '@/components/partner/home/recent-orders-card'
 import type { OpenStatus } from '@/lib/opening-hours'
 import type { PartnerHomeData } from '@/lib/partner/home-queries'
@@ -74,6 +75,16 @@ export function PartnerHome({
       ) : (
         <SelectCompanyCard settingsHref={hrefs.settings} />
       )}
+
+      {hasTenant &&
+      (data.reviewPrompt || data.showProductFeedback || data.showSuggestionBox) ? (
+        <PartnerFeedbackArea
+          key={selectedTenantId}
+          showNps={data.showProductFeedback}
+          showSuggestion={data.showSuggestionBox}
+          reviewPrompt={data.reviewPrompt}
+        />
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-12">
         {hasTenant ? (

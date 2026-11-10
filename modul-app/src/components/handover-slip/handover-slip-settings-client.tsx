@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
@@ -17,12 +18,14 @@ import { requestUsbPrinter } from '@/lib/handover-slip/webusb'
 import {
   resolveSlipCopyTypes,
   type HandoverSlipCopyType,
+  type HandoverSlipReviewQr,
   type HandoverSlipSettings
 } from '@/lib/handover-slip/types'
 
 type Props = {
   initial: HandoverSlipSettings
   canWrite: boolean
+  reviewQr?: HandoverSlipReviewQr | null
 }
 
 function ToggleRow({
@@ -54,12 +57,19 @@ function ToggleRow({
   )
 }
 
-export function HandoverSlipSettingsClient({ initial, canWrite }: Props) {
+export function HandoverSlipSettingsClient({
+  initial,
+  canWrite,
+  reviewQr = null
+}: Props) {
   const [settings, setSettings] = useState<HandoverSlipSettings>(initial)
   const [previewCopy, setPreviewCopy] =
     useState<HandoverSlipCopyType>('original')
   const [pending, startTransition] = useTransition()
-  const sample = useMemo(() => sampleHandoverSlipData(), [])
+  const sample = useMemo(
+    () => ({ ...sampleHandoverSlipData(), reviewQr }),
+    [reviewQr]
+  )
 
   const copyTypes = resolveSlipCopyTypes(settings)
   const effectivePreview: HandoverSlipCopyType =
@@ -327,6 +337,20 @@ export function HandoverSlipSettingsClient({ initial, canWrite }: Props) {
               disabled={disabled}
               onChange={(v) => patch({ showSignatures: v })}
             />
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-subtle px-3 py-2">
+              <p className="text-body text-ink-secondary">
+                Google értékelés QR (vevői példány):{' '}
+                <span className="font-medium text-ink">
+                  {reviewQr ? 'Be' : 'Ki'}
+                </span>
+              </p>
+              <Link
+                href="/beallitasok/google-ertekelesek"
+                className="text-hint font-medium text-ink hover:underline"
+              >
+                Beállítás →
+              </Link>
+            </div>
             <FormField label="Vevői példány felirat" htmlFor="hs-cust-label">
               <input
                 id="hs-cust-label"

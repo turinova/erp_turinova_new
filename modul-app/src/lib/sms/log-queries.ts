@@ -52,12 +52,18 @@ const SKIP_LABEL: Record<SmsSkipReason, string> = {
   user_declined: 'Nem kérték a küldést',
   no_customer: 'Nincs ügyfél',
   empty_body: 'Üres szöveg',
-  not_ready: 'Nincs átvehető tétel'
+  not_ready: 'Nincs átvehető tétel',
+  disabled: 'Kikapcsolva',
+  no_review_url: 'Nincs Google értékelő link',
+  no_review_consent: 'Nincs értékelés-kérő hozzájárulás',
+  review_capped: 'Nemrég már kapott kérést',
+  stale: 'Elavult (túl régi átadás)'
 }
 
 const TEMPLATE_LABEL: Record<string, string> = {
   quote_ready: 'Lapszabászat',
-  cso_ready: 'Ügyfélrendelés'
+  cso_ready: 'Ügyfélrendelés',
+  review_thanks: 'Köszönő SMS (értékelés)'
 }
 
 export function smsStatusLabel(status: SmsSendStatus): string {

@@ -88,9 +88,9 @@ const VIEWS: {
   label: string
   hint: string
 }[] = [
-  { id: 'live', label: 'Élő', hint: 'Belépett vagy beküldött (nem migrált)' },
-  { id: 'new', label: 'Új', hint: 'Organikus regisztrációk' },
-  { id: 'legacy', label: 'Migrált', hint: 'Régi portalról áthozva' },
+  { id: 'live', label: 'Élő', hint: 'Belépett vagy beküldött (claimelt migrált is)' },
+  { id: 'new', label: 'Új', hint: 'Friss organikus vagy aktivált migrált (7 nap)' },
+  { id: 'legacy', label: 'Migrált', hint: 'Még nem lépett be / jelszó beállítás vár' },
   { id: 'all', label: 'Mind', hint: 'Teljes lista' }
 ]
 
@@ -133,9 +133,9 @@ export function PlatformPartnersClient({
 
   const viewCount = (id: PlatformPartnerView) => {
     if (id === 'live') return summary.live
-    if (id === 'new') return summary.organic
+    if (id === 'new') return summary.new7d
     if (id === 'legacy') return summary.legacy
-    return summary.organic + summary.legacy
+    return summary.all
   }
 
   return (
@@ -143,7 +143,7 @@ export function PlatformPartnersClient({
       <div className="mb-4">
         <h1 className="text-h1 text-ink">Partnerek</h1>
         <p className="mt-1 text-body text-ink-secondary">
-          Élő partnerek elöl — a migrált tömeg külön fülön.
+          Élő: aktív partnerek. Migrált: még nem aktivált áthozott fiókok.
         </p>
       </div>
 

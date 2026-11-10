@@ -40,6 +40,8 @@
 | [34-jelenlet-addon.md](34-jelenlet-addon.md) | **Jelenlét** — dolgozók, naptár, távollét, Pi terminál |
 | [jelenlet-pi.md](jelenlet-pi.md) | Jelenlét terminál sync (platform-managed) |
 | [53-jelenlet-pi-modul-atallas.md](53-jelenlet-pi-modul-atallas.md) | **Terv:** Pi átállítása a modul-appra (3 végpont + Pi adatréteg csere, tenanthoz kötött eszköz) |
+| [54-partner-feedback-ux.md](54-partner-feedback-ux.md) | **Partner visszajelzés** — NPS 0–10 (90 naponta) + mindig elérhető javaslat + platform inbox |
+| [55-google-cegprofil.md](55-google-cegprofil.md) | **Google cégprofil** — értékelő link a Cégadatokban, saját rövid link `/g/{kód}` + kattintásnapló; SMS / partner CTA később |
 | [35-home-kpis.md](35-home-kpis.md) | **Home KPI-k** — jégelt lista (kereskedő Alap + addonok) |
 | [36-szamlazas-workflow.md](36-szamlazas-workflow.md) | **Számlázás** — Számlázz.hu Agent, `/szamlak` (Alap) |
 | [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md) | **Lapszabászat ajánlat→gyártás** — státusz, detail CTA, hol mit |
@@ -56,4 +58,4 @@
 | [49-vonalkod-lap.md](49-vonalkod-lap.md) | **Vonalkód lap** — A4 PDF rács (irodai nyomtató); nem ZPL 33×25 |
 | [50-webshop-w1.md](50-webshop-w1.md) | **Webshop W1** — plug-and-play Live + Agent Top (OpenAI 9), Stripe/W2/W3 fázisok |
 
-**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok ár: **`33`**. Funkció mátrix: **`46`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**. Agent commerce: **`38`**. Webshop add-on: **`39`** + W1 **`50`**. Ügyfélrendelés: **`42`**. Átvételi blokk: **`43`**. Opti panel import: **`47`**. NAV bejövő AP (backlog): **`48`**. Vonalkód lap (A4 PDF): **`49`**.
+**Forrásigazság sorrend:** `07-checklist` betartása = a többi doc összefoglalója. Konfliktusnál: overview → ux → **18 vizuális sűrűség** → flat 2.0 színek → stack. Tenancy / deploy: **`17`**. Auth setup: **`19`**. Partner (asztalos): **`20-partner-portal`**. Partner visszajelzés: **`54`**. Session snapshot: **`20-session-snapshot`**. Platform ops: **`21`**. Teljesítmény: **`22`** (+ `05`). Beszerzés domain: **`24`**. Csomagok ár: **`33`**. Funkció mátrix: **`46`**. Jelenlét: **`34`**. Home KPI: **`35`**. Számlázás: **`36`**. Lapszabászat quote pipeline: **`37`**. Agent commerce: **`38`**. Webshop add-on: **`39`** + W1 **`50`**. Ügyfélrendelés: **`42`**. Átvételi blokk: **`43`**. Opti panel import: **`47`**. NAV bejövő AP (backlog): **`48`**. Vonalkód lap (A4 PDF): **`49`**.

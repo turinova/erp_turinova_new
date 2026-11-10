@@ -4,9 +4,15 @@ import { getTenantOpeningHours } from '@/lib/company/queries'
 import type { OpeningHours } from '@/lib/opening-hours'
 import { resolvePartnerCompanyLabel } from '@/lib/partner/company-label'
 import {
+  shouldShowPartnerFeedbackCard,
+  shouldShowPartnerSuggestionBox
+} from '@/lib/partner/feedback-visibility'
+import {
   listPartnerSubmittedQuotes,
   type PartnerQuoteListItem
 } from '@/lib/partner/quotes-queries'
+import type { PartnerReviewPrompt } from '@/lib/partner/review-prompt'
+import { loadPartnerReviewPrompt } from '@/lib/partner/review-prompt-queries'
 import { createClient } from '@/lib/supabase/server'
 
 export type PartnerHomeContact = {
@@ -29,6 +35,12 @@ export type PartnerHomeData = {
   recentOrders: PartnerQuoteListItem[] | null
   /** null = nincs kapcsolt cég / nem ellenőrizhető. */
   acceptsOrders: boolean | null
+  /** NPS kártya (0–10, 90 naponta) — docs/54. */
+  showProductFeedback: boolean
+  /** Mindig elérhető javaslat-bedobó — docs/54. */
+  showSuggestionBox: boolean
+  /** Google értékelés kártya a kapcsolt boltnak — docs/55. Ha van, az NPS vár. */
+  reviewPrompt: PartnerReviewPrompt | null
 }
 
 function buildAddressLine(row: {
@@ -104,7 +116,13 @@ async function tenantAcceptsOrders(
 
 export async function loadPartnerHomeData(
   partnerId: string,
-  selectedTenantId: string | null
+  selectedTenantId: string | null,
+  feedbackPrompt?: {
+    mustSetPassword: boolean
+    accountCreatedAt: string | null
+    dismissedAt: string | null
+    dismissCount: number
+  }
 ): Promise<PartnerHomeData> {
   const companyLabel = await resolvePartnerCompanyLabel(selectedTenantId)
 
@@ -118,7 +136,10 @@ export async function loadPartnerHomeData(
     openOrderCount: 0,
     submittedCount: 0,
     recentOrders: null,
-    acceptsOrders: null
+    acceptsOrders: null,
+    showProductFeedback: false,
+    showSuggestionBox: false,
+    reviewPrompt: null
   }
 
   const supabase = await createClient()
@@ -131,7 +152,9 @@ export async function loadPartnerHomeData(
     recentOrders,
     companyRow,
     opening,
-    acceptsOrders
+    acceptsOrders,
+    lastFeedback,
+    reviewPromptBase
   ] = await Promise.all([
     countPartnerQuotes(supabase, partnerId, 'draft'),
     countPartnerQuotes(supabase, partnerId, 'submitted'),
@@ -163,12 +186,63 @@ export async function loadPartnerHomeData(
       : Promise.resolve(null),
     selectedTenantId
       ? tenantAcceptsOrders(supabase, selectedTenantId)
+      : Promise.resolve(null),
+    supabase
+      .from('partner_product_feedback')
+      .select('created_at')
+      .eq('partner_user_id', partnerId)
+      .eq('kind', 'nps')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          // Migráció előtt — ne törje a home-ot, és ne mutassunk működésképtelen kártyát
+          console.error('loadPartnerHomeData feedback', error.message)
+          return { failed: true as const, lastAt: null }
+        }
+        return { failed: false as const, lastAt: data?.created_at ?? null }
+      }),
+    selectedTenantId && feedbackPrompt
+      ? loadPartnerReviewPrompt(supabase, {
+          partnerId,
+          tenantId: selectedTenantId,
+          mustSetPassword: feedbackPrompt.mustSetPassword
+        })
       : Promise.resolve(null)
   ])
 
+  const hasTenant = Boolean(selectedTenantId)
+  const feedbackReady = Boolean(feedbackPrompt) && !lastFeedback.failed
+  const companyName = companyRow?.name?.trim() || null
+
+  const reviewPrompt: PartnerReviewPrompt | null =
+    reviewPromptBase && companyName ? { ...reviewPromptBase, companyName } : null
+
+  const showProductFeedback =
+    !reviewPrompt && feedbackPrompt && feedbackReady
+      ? shouldShowPartnerFeedbackCard({
+          hasTenant,
+          mustSetPassword: feedbackPrompt.mustSetPassword,
+          submittedOrderCount: submittedCount,
+          accountCreatedAt: feedbackPrompt.accountCreatedAt,
+          lastFeedbackAt: lastFeedback.lastAt,
+          dismissedAt: feedbackPrompt.dismissedAt,
+          dismissCount: feedbackPrompt.dismissCount
+        })
+      : false
+
+  const showSuggestionBox =
+    feedbackPrompt && feedbackReady
+      ? shouldShowPartnerSuggestionBox({
+          hasTenant,
+          mustSetPassword: feedbackPrompt.mustSetPassword
+        })
+      : false
+
   return {
     companyLabel,
-    companyName: companyRow?.name?.trim() || null,
+    companyName,
     contact: companyRow ? contactFromRow(companyRow) : null,
     openingHours: opening?.hours ?? null,
     openingHoursNote: opening?.note ?? null,
@@ -176,6 +250,9 @@ export async function loadPartnerHomeData(
     openOrderCount,
     submittedCount,
     recentOrders,
-    acceptsOrders
+    acceptsOrders,
+    showProductFeedback,
+    showSuggestionBox,
+    reviewPrompt
   }
 }

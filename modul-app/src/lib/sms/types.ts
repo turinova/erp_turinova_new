@@ -8,9 +8,15 @@ export const DEFAULT_QUOTE_READY_SMS_BODY =
 export const DEFAULT_CSO_READY_SMS_BODY =
   'Kedves {customer_name}! {order_number} atveheto ({ready_count} tetel). Reszletek: {status_url}'
 
+export const REVIEW_THANKS_TEMPLATE_KEY = 'review_thanks' as const
+
+export const DEFAULT_REVIEW_THANKS_SMS_BODY =
+  'Koszonjuk, hogy minket valasztottal! Irnal rolunk par szot a Google-on? {review_url} {company_name}'
+
 export type SmsTemplateKey =
   | typeof QUOTE_READY_TEMPLATE_KEY
   | typeof CSO_READY_TEMPLATE_KEY
+  | typeof REVIEW_THANKS_TEMPLATE_KEY
 
 export type SmsSendStatus = 'sent' | 'delivered' | 'failed' | 'skipped'
 
@@ -23,6 +29,11 @@ export type SmsSkipReason =
   | 'no_customer'
   | 'empty_body'
   | 'not_ready'
+  | 'disabled'
+  | 'no_review_url'
+  | 'no_review_consent'
+  | 'review_capped'
+  | 'stale'
 
 export type QuoteReadySmsCandidate = {
   quoteId: string
@@ -50,5 +61,6 @@ export type CsoReadySmsCandidate = {
 
 export function defaultSmsBody(key: SmsTemplateKey): string {
   if (key === CSO_READY_TEMPLATE_KEY) return DEFAULT_CSO_READY_SMS_BODY
+  if (key === REVIEW_THANKS_TEMPLATE_KEY) return DEFAULT_REVIEW_THANKS_SMS_BODY
   return DEFAULT_QUOTE_READY_SMS_BODY
 }

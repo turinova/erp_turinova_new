@@ -137,6 +137,30 @@ function wrapLegal(s: string, width = 40): string[] {
   return lines
 }
 
+/**
+ * Natív ESC/POS QR (GS ( k, model 2). A bájtokat az encodeCp852 7 bitesen adja át,
+ * ezért a hossz-bájt < 128 kell legyen — hosszabb linknél a QR kimarad.
+ */
+function reviewQrBlock(label: string, url: string): string {
+  const payload = url.replace(/[^\x20-\x7E]/g, '')
+  const storeLen = payload.length + 3
+  if (!payload || storeLen > 127) return ''
+  const cmd = (...bytes: number[]) => GS + '(k' + String.fromCharCode(...bytes)
+  let c = ''
+  c += feed(1)
+  c += align(1)
+  c += bold(true)
+  for (const line of wrapLegal(label, 36)) c += text(line)
+  c += bold(false)
+  c += cmd(4, 0, 49, 65, 50, 0) // model 2
+  c += cmd(3, 0, 49, 67, 6) // modul méret
+  c += cmd(3, 0, 49, 69, 49) // hibajavítás: M
+  c += GS + '(k' + String.fromCharCode(storeLen, 0, 49, 80, 48) + payload
+  c += cmd(3, 0, 49, 81, 48) // nyomtatás
+  c += feed(1)
+  return c
+}
+
 export function generateHandoverEscPos(
   data: HandoverSlipData,
   settings: HandoverSlipSettings,
@@ -296,6 +320,10 @@ export function generateHandoverEscPos(
     c += text('Átadó munkatárs neve:')
     c += feed(3)
     c += dashed()
+  }
+
+  if (copyType === 'customer' && data.reviewQr) {
+    c += reviewQrBlock(data.reviewQr.text, data.reviewQr.url)
   }
 
   if (settings.showBarcode && data.barcode?.trim()) {

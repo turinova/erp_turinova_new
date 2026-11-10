@@ -9,9 +9,10 @@ import {
 } from '@/lib/sms/templates'
 import {
   CSO_READY_TEMPLATE_KEY,
-  QUOTE_READY_TEMPLATE_KEY
+  QUOTE_READY_TEMPLATE_KEY,
+  REVIEW_THANKS_TEMPLATE_KEY
 } from '@/lib/sms/types'
-import { tenantHasQuoteReadySms } from '@/lib/sms/entitlement'
+import { tenantHasAnySms, tenantHasQuoteReadySms } from '@/lib/sms/entitlement'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 const SETTINGS_PATH = '/beallitasok/sms'
@@ -84,6 +85,29 @@ export async function saveCsoReadySmsTemplate(
     body
   })
 
+  if (!result.ok) return result
+
+  revalidatePath(SETTINGS_PATH)
+  return { ok: true }
+}
+
+export async function saveReviewThanksSmsTemplate(
+  body: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  if (!body.includes('{review_url}')) {
+    return { ok: false, message: 'A sablonban szerepelnie kell a {review_url} helyőrzőnek.' }
+  }
+  const hasSms = await tenantHasAnySms(ctx.supabase, ctx.user.tenantId!)
+  if (!hasSms) return { ok: false, message: 'Az SMS add-on nincs bekapcsolva.' }
+
+  const result = await upsertTenantSmsTemplate(ctx.supabase, {
+    tenantId: ctx.user.tenantId!,
+    templateKey: REVIEW_THANKS_TEMPLATE_KEY,
+    body
+  })
   if (!result.ok) return result
 
   revalidatePath(SETTINGS_PATH)

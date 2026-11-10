@@ -1,6 +1,7 @@
 'use client'
 
 import { formatMaterialQty } from '@/lib/handover-slip/build-data'
+import { qrSvgMarkup } from '@/lib/handover-slip/qr-svg'
 import type {
   HandoverSlipCopyType,
   HandoverSlipData,
@@ -88,6 +89,13 @@ function slipHtml(
       '<div class="sig">Átadó munkatárs neve:</div><div class="sig-line"></div>'
     )
   }
+  if (copyType === 'customer' && data.reviewQr) {
+    const svg = qrSvgMarkup(data.reviewQr.url, 120)
+    if (svg) {
+      push(`<div class="center qr-wrap"><b>${escapeHtml(data.reviewQr.text)}</b>`)
+      push(`<div class="qr">${svg}</div></div>`)
+    }
+  }
   if (settings.showBarcode && data.barcode) {
     const id = `bc-${copyType}`
     push(`<div class="center barcode-wrap"><svg id="${id}"></svg>`)
@@ -118,6 +126,8 @@ const CSS = `
   .legal { margin: 8px 0; line-height: 1.35; }
   .sig { margin-top: 12px; }
   .sig-line { border-bottom: 1px dashed #333; height: 28px; margin-bottom: 8px; }
+  .qr-wrap { margin-top: 10px; }
+  .qr { margin-top: 4px; display: flex; justify-content: center; }
   .barcode-wrap { margin-top: 10px; text-align: center; }
   .barcode-text { margin-top: 4px; letter-spacing: 0.08em; }
   hr { border: none; border-top: 1px dashed #333; margin: 6px 0; }
