@@ -12,6 +12,7 @@ Kapcsolódó:
 | `scripts/speed-test.mjs` | Mérhető baseline |
 | `bench/RESULTS.md` | UI lib bench (shadcn vs MUI/Ant) |
 | Vercel Speed Insights | RUM (LCP/INP/CLS) — `<SpeedInsights />` a root `app/layout.tsx`-ben |
+| Vercel Web Analytics | Pageview / látogatók — `<Analytics />` (`@vercel/analytics/next`) ugyanezen a layouton |
 
 ---
 
@@ -192,7 +193,7 @@ npm run speed-test
 
 Kereső API böngészőben: Network → `/api/kereso` → **Server-Timing**: `auth`, `search`, `total`.
 
-**RUM (production / preview):** Vercel projekt → **Speed Insights**. Local `next dev` általában nem küld. Nincs külön env — a `@vercel/speed-insights` a deploy projecthez kötődik.
+**RUM (production / preview):** Vercel projekt → **Speed Insights** (Core Web Vitals) és **Analytics** (pageview). Local `next dev` általában nem küld. Nincs külön env — a `@vercel/speed-insights` / `@vercel/analytics` a deploy projecthez kötődik. Az Analytics-t a Vercel UI-ban egyszer **Enable**-elni kell.
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Státusz:** terv — még nincs implementálva  
 **Cél:** a main-app megszűnik; a Pi terminál **ugyanúgy működik, mint ma**, csak a modul-appba ír, és a készülék egy **tenanthoz** van kötve.  
-Kapcsolódó: [34-jelenlet-addon.md](34-jelenlet-addon.md), [jelenlet-pi.md](jelenlet-pi.md), `docs/raspberry-pi-attendance.md` (main-app), `raspberry-pi-attendance/`
+Kapcsolódó: [34-jelenlet-addon.md](34-jelenlet-addon.md), [jelenlet-pi.md](jelenlet-pi.md), [56-jelenlet-esp32-kr602m.md](56-jelenlet-esp32-kr602m.md) (jövőbeli hardver), `docs/raspberry-pi-attendance.md` (main-app), `raspberry-pi-attendance/`
 
 ---
 

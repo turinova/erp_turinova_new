@@ -2,7 +2,8 @@
 
 Per-tenant eszköz + token **csak a platform** Cég részletezőn. Tenant UI-ban nincs eszközkezelés.
 
-**Átállás terve (main-app megszűnik):** [53-jelenlet-pi-modul-atallas.md](53-jelenlet-pi-modul-atallas.md).
+**Átállás terve (main-app megszűnik):** [53-jelenlet-pi-modul-atallas.md](53-jelenlet-pi-modul-atallas.md).  
+**Következő hardver (ESP32 + KR602M, elnapolva):** [56-jelenlet-esp32-kr602m.md](56-jelenlet-esp32-kr602m.md).
 
 **Élő Pi kiosk:** main jelenlét = közvetlen Supabase `attendance_logs` (változatlan).  
 **modul-app:** secondary best-effort POST ugyanezzel a `cardId`/`pin`-nel — lépések: `raspberry-pi-attendance/PI_CONNECT_MODUL_DUAL_WRITE.md`.

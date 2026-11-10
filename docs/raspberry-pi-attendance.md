@@ -10,6 +10,8 @@
 
 **Összefoglalva:** A visszavont / a Pi-ra másolt fájlok **nem befolyásolják** a futó ERP-t, amíg **nincsenek commitolva** ebbe a repóba. A terminál csak a **deployolt main-app** URL-jét és a **megosztott titkot** kell egyeztesse.
 
+**Jövőbeli hardver (Pi + 10″ helyett):** ESP32 + KR602M Wiegand reader — BOM, bekötés, elnapolt összeszerelés: `modul-app/docs/56-jelenlet-esp32-kr602m.md`.
+
 ---
 
 ## Szerver végpont (main-app)
