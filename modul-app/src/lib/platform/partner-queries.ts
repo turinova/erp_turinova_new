@@ -407,7 +407,7 @@ export async function listPlatformPartners(
     const activity = await loadPartnerActivity(admin, partnerIds)
     const since7Ms = Date.now() - 7 * MS_DAY
 
-    let filtered = allRaw.filter((r) => {
+    const filtered = allRaw.filter((r) => {
       const id = r.user_id as string
       const isLegacy = Boolean(r.legacy_portal_customer_id)
       const mustSet = Boolean(r.must_set_password)
