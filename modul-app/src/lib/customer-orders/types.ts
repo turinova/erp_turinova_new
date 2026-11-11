@@ -475,6 +475,8 @@ export type CustomerSpecialOrderDetail = {
   depositAmount: number | null
   promisedDate: string | null
   smsSentAt: string | null
+  /** Státusz link (/r) első valódi megnyitása — SMS után. */
+  statusLinkFirstOpenedAt: string | null
   note: string | null
   createdAt: string
   items: CustomerSpecialOrderItemRow[]

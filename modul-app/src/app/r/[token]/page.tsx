@@ -1,7 +1,10 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
+import { after } from 'next/server'
 
 import { CustomerOrderStatusShell } from '@/components/order-status/customer-order-status-shell'
 import { loadCustomerOrderStatusByToken } from '@/lib/order-status/load'
+import { recordOrderShareOpenByToken } from '@/lib/order-status/record-open'
 
 type Params = Promise<{ token: string }>
 
@@ -48,6 +51,11 @@ export default async function OrderStatusPage({
       </div>
     )
   }
+
+  const requestHeaders = await headers()
+  after(() => {
+    void recordOrderShareOpenByToken(token, requestHeaders)
+  })
 
   return <CustomerOrderStatusShell view={view} />
 }

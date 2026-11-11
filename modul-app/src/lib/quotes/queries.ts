@@ -11,6 +11,7 @@ import {
   type QuoteAccessoryRow
 } from '@/lib/quotes/accessory-totals'
 import type { PaymentStatus } from '@/lib/quotes/payment-labels'
+import { getOrderShareFirstOpenedAt } from '@/lib/order-status/record-open'
 
 export type QuoteStatus =
   | 'draft'
@@ -110,6 +111,8 @@ export type QuoteDetail = {
   production_machine_name: string | null
   /** Kész-értesítő SMS utolsó sikeres küldése (stamp). */
   ready_notification_sent_at: string | null
+  /** Státusz link (/r) első valódi megnyitása — SMS után. */
+  status_link_first_opened_at: string | null
   cancelled_at: string | null
   cancelled_by_label: string | null
   cancel_reason: string | null
@@ -771,13 +774,19 @@ export async function getQuoteDetail(
     paymentsResult,
     paymentEventsResult,
     fees,
-    accessories
+    accessories,
+    statusLinkFirstOpenedAt
   ] = await Promise.all([
     quoteQuery,
     paymentsQuery,
     paymentEventsQuery,
     feesQuery,
-    accessoriesQuery
+    accessoriesQuery,
+    getOrderShareFirstOpenedAt(supabase, {
+      tenantId,
+      kind: 'quote',
+      refId: id
+    })
   ])
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1123,6 +1132,7 @@ export async function getQuoteDetail(
     barcode: data.barcode ?? null,
     ready_notification_sent_at:
       (data.ready_notification_sent_at as string | null) ?? null,
+    status_link_first_opened_at: statusLinkFirstOpenedAt,
     cancelled_at: (data.cancelled_at as string | null) ?? null,
     cancelled_by_label:
       (data.cancelled_by_label_snapshot as string | null) ?? null,

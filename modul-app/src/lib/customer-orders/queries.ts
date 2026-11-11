@@ -21,6 +21,7 @@ import {
   csoItemLeadBlockers,
   waitingViewToStatus
 } from '@/lib/customer-orders/types'
+import { getOrderShareFirstOpenedAt } from '@/lib/order-status/record-open'
 
 const LIST_LIMIT = 25
 
@@ -416,7 +417,7 @@ export async function getCustomerSpecialOrder(
   tenantId: string,
   id: string
 ): Promise<CustomerSpecialOrderDetail | null> {
-  const { data, error } = await supabase
+  const orderQuery = supabase
     .from('customer_special_orders')
     .select(
       `
@@ -447,6 +448,15 @@ export async function getCustomerSpecialOrder(
     .eq('id', id)
     .is('deleted_at', null)
     .maybeSingle()
+
+  const [{ data, error }, statusLinkFirstOpenedAt] = await Promise.all([
+    orderQuery,
+    getOrderShareFirstOpenedAt(supabase, {
+      tenantId,
+      kind: 'cso',
+      refId: id
+    })
+  ])
 
   if (error) {
     console.error('getCustomerSpecialOrder', error.message)
@@ -586,6 +596,7 @@ export async function getCustomerSpecialOrder(
       data.deposit_amount != null ? Number(data.deposit_amount) : null,
     promisedDate: (data.promised_date as string | null) ?? null,
     smsSentAt: (data.sms_sent_at as string | null) ?? null,
+    statusLinkFirstOpenedAt,
     note: (data.note as string | null) ?? null,
     createdAt: data.created_at as string,
     items,

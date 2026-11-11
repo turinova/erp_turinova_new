@@ -68,6 +68,7 @@ import {
 } from '@/lib/auth/surface'
 import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { TenantCompanyRow } from '@/lib/company/queries'
+import { formatReadySmsInfoLine } from '@/lib/order-status/record-open'
 import { panthelyLabel } from '@/lib/opti/panel-draft'
 import {
   formatQuotePrice
@@ -2076,17 +2077,20 @@ export function QuoteDetailClient({
                   <div>
                     <dt className="text-hint text-ink-secondary">SMS</dt>
                     <dd className="text-ink">
-                      {quote.ready_notification_sent_at
-                        ? `elküldve ${new Intl.DateTimeFormat('hu-HU', {
-                            dateStyle: 'short',
-                            timeStyle: 'short'
-                          }).format(new Date(quote.ready_notification_sent_at))}`
-                        : hasSmsAddon
-                          ? quote.status === 'ready' ||
-                            quote.status === 'finished'
-                            ? 'még nem ment ki'
-                            : '—'
-                          : '—'}
+                      {quote.ready_notification_sent_at ||
+                      (hasSmsAddon &&
+                        (quote.status === 'ready' ||
+                          quote.status === 'finished'))
+                        ? formatReadySmsInfoLine({
+                            sentAt: quote.ready_notification_sent_at,
+                            firstOpenedAt: quote.status_link_first_opened_at,
+                            formatDateTime: (iso) =>
+                              new Intl.DateTimeFormat('hu-HU', {
+                                dateStyle: 'short',
+                                timeStyle: 'short'
+                              }).format(new Date(iso))
+                          })
+                        : '—'}
                     </dd>
                   </div>
                 ) : null}

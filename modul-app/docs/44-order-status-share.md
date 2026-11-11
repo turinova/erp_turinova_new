@@ -16,8 +16,9 @@ Rövid SMS (1 segment) + link: a megrendelő mobilon látja, **mi átvehető**, 
 | Token | `base64url` ~12 char |
 | TTL | 30 nap (küldéskor meghosszabbít) |
 | Aktív link | 1 / rendelés (unique partial index) |
+| Megnyitás | `first_opened_at` / `last_opened_at` / `open_count` (`20261009`) — csak valódi oldalbetöltés (`/r` page + `after`), bot/prefetch kihagyva; csak ha már ment kész SMS (`ready_notification_sent_at` / CSO `sms_sent_at`). Atomikus: `touch_order_share_open` RPC |
 
-Betöltés: service role a Next szerveren (`loadCustomerOrderStatusByToken`) — anon RLS nincs a táblán.
+Betöltés: service role a Next szerveren (`loadCustomerOrderStatusByToken`) — anon RLS nincs a táblán. **Metadata nem naplóz.**
 
 Abszolút URL: `appOrigin()` — `NEXT_PUBLIC_APP_URL` → `NEXT_PUBLIC_APP_ORIGIN` → `VERCEL_URL` → localhost. **Prod:** állítsd `NEXT_PUBLIC_APP_URL`-t.
 
@@ -40,3 +41,9 @@ Beállítások (`/beallitasok/sms`): sticky telefon-keret előnézet. Nincs tesz
 ## SMS
 
 Default sablonok: `{status_url}`. Generálás: `ensureOrderShareLink` küldés / preview előtt.
+
+## Bolti UI
+
+Megrendelés info (lapszab detail + ügyfélrendelés aside):  
+`SMS · elküldve {idő} · még nem nyitotta meg` / `… · megnyitva {idő}`.  
+Ez a **státusz oldal** megnyitása, nem az SMS előnézet és nem a Google értékelés link.

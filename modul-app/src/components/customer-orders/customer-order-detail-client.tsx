@@ -71,6 +71,7 @@ import {
   isCashPaymentMethodName,
   isDeferredPaymentMethodName
 } from '@/lib/sales/payment-kind'
+import { formatReadySmsInfoLine } from '@/lib/order-status/record-open'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import { hungarianCashRound } from '@/lib/sales/totals'
 import type { CsoReadySmsCandidate } from '@/lib/sms/types'
@@ -1022,6 +1023,20 @@ export function CustomerOrderDetailClient({
                 <div>
                   <dt className="text-hint text-ink-secondary">Felvéve</dt>
                   <dd className="text-ink">{fmtDateTime(order.createdAt)}</dd>
+                </div>
+                <div>
+                  <dt className="text-hint text-ink-secondary">SMS</dt>
+                  <dd className="text-ink">
+                    {formatReadySmsInfoLine({
+                      sentAt: order.smsSentAt,
+                      firstOpenedAt: order.statusLinkFirstOpenedAt,
+                      formatDateTime: (iso) =>
+                        new Intl.DateTimeFormat('hu-HU', {
+                          dateStyle: 'short',
+                          timeStyle: 'short'
+                        }).format(new Date(iso))
+                    })}
+                  </dd>
                 </div>
                 {order.saleLinks.length > 0 ? (
                   <div>
