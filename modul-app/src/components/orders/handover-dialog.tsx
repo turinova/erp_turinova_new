@@ -14,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { prepareHandoverSlipPrint } from '@/lib/handover-slip/actions'
 import { printHandoverSlip } from '@/lib/handover-slip/print'
@@ -23,7 +22,6 @@ import { formatQuotePrice } from '@/lib/opti/quote-calculations'
 import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import { finishQuoteHandover } from '@/lib/quotes/production-actions'
-import { orderNumbersMatch } from '@/lib/quotes/reopen'
 
 type HandoverDialogProps = {
   open: boolean
@@ -50,19 +48,16 @@ export function HandoverDialog({
 }: HandoverDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [paymentMethodId, setPaymentMethodId] = useState('')
-  const [confirmNumber, setConfirmNumber] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loadingSettle, setLoadingSettle] = useState(false)
   const [loadingSkip, setLoadingSkip] = useState(false)
 
   const hasRemaining = remaining > 0
   const loading = loadingSettle || loadingSkip
-  const confirmOk = orderNumbersMatch(confirmNumber, orderNumber)
 
   useEffect(() => {
     if (!open) return
     setPaymentMethodId(pickDefaultPaymentMethodId(paymentMethods))
-    setConfirmNumber('')
     setError(null)
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
@@ -70,10 +65,6 @@ export function HandoverDialog({
 
   async function runHandover(settleRemaining: boolean) {
     setError(null)
-    if (!confirmOk) {
-      setError(`Írd be pontosan: ${orderNumber}`)
-      return
-    }
     if (settleRemaining) {
       if (!paymentMethodId) {
         setError(
@@ -205,21 +196,6 @@ export function HandoverDialog({
             </p>
           )}
 
-          <FormField
-            label={`Írd be: ${orderNumber}`}
-            htmlFor="handover-confirm"
-            required
-          >
-            <Input
-              id="handover-confirm"
-              value={confirmNumber}
-              onChange={(e) => setConfirmNumber(e.target.value)}
-              autoComplete="off"
-              disabled={loading}
-              placeholder={orderNumber}
-            />
-          </FormField>
-
           {error ? (
             <p className="text-body text-danger-ink" role="alert">
               {error}
@@ -241,7 +217,7 @@ export function HandoverDialog({
             <Button
               type="button"
               variant="ghost"
-              disabled={loading || !confirmOk}
+              disabled={loading}
               loading={loadingSkip}
               onClick={() => void runHandover(false)}
             >
@@ -251,7 +227,7 @@ export function HandoverDialog({
           <Button
             type="button"
             variant="primary"
-            disabled={loading || !confirmOk}
+            disabled={loading}
             loading={hasRemaining ? loadingSettle : loadingSkip}
             onClick={() => void runHandover(hasRemaining)}
           >

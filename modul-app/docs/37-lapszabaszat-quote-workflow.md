@@ -37,7 +37,7 @@
 | Tiltott | újranyitás aktív végszámlánál; lemondás `finished`-en | előbb sztornó / újranyitás |
 | Pénz / díjbekérő | nem auto | dialógus figyelmeztet; void / sztornó kézzel |
 
-Erős confirm (megrendelésszám begépelése): `in_production` / `ready` lemondás; **átadás** (detail / megrendelés lap); **újranyitás**. Scanner átadás: dialógus Mégse default + gombok, **begépelés nélkül** (pult UX). Lista: **Lemondva** / **Archívum** chip; kereséskor status=`all`. Scanner finished: „újranyitás a megrendelés lapon”.
+Erős confirm (megrendelésszám begépelése): `in_production` / `ready` **lemondás**; **újranyitás**. **Átadás** (detail, lista, scanner): Mégse default fókusz, **begépelés nélkül** (pult UX). Lista: **Lemondva** / **Archívum** chip; kereséskor status=`all`. Scanner finished: „újranyitás a megrendelés lapon”.
 
 ---
 
