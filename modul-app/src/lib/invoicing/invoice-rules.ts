@@ -132,6 +132,11 @@ export function saleInvoiceCtaLabel(
   return 'Számla kiállítása'
 }
 
+export type ResolveQuoteInvoiceKindOpts = {
+  /** Ha false: csak díjbekérő (előleg/számla megrendelés után). Default true. */
+  hasOrderNumber?: boolean
+}
+
 /**
  * Lapszabászat számlázás — certainty-first (mint sale fizetés-tengely):
  * - unpaid + 0 doksi → díjbekérő (default) / előleg
@@ -139,16 +144,29 @@ export function saleInvoiceCtaLabel(
  * - paid → csak számla / végszámla
  * - végszámla unpaid mellett tiltva
  * - díjbekérő paid mellett tiltva
+ * - ajánlat (nincs order): csak díjbekérő
  */
 export function resolveQuoteInvoiceKindOptions(
   paymentStatus: string,
-  invoices: InvoiceListItem[]
+  invoices: InvoiceListItem[],
+  opts: ResolveQuoteInvoiceKindOpts = {}
 ): {
   options: { value: InvoiceIssueKind; label: string }[]
   defaultKind: InvoiceIssueKind
 } {
+  const hasOrderNumber = opts.hasOrderNumber !== false
   const { hasFinal, hasProforma, hasAdvance } = activeDocs(invoices)
   const paid = paymentStatus === 'paid'
+
+  if (!hasOrderNumber) {
+    if (hasFinal || hasProforma || hasAdvance || paid) {
+      return { options: [], defaultKind: 'proforma' }
+    }
+    return {
+      options: [{ value: 'proforma', label: 'Díjbekérő' }],
+      defaultKind: 'proforma'
+    }
+  }
 
   if (hasFinal) {
     return { options: [], defaultKind: 'normal' }
@@ -180,11 +198,13 @@ export function resolveQuoteInvoiceKindOptions(
 /** CTA felirat a quote detail Pénzügy gombhoz. */
 export function quoteInvoiceCtaLabel(
   paymentStatus: string,
-  invoices: InvoiceListItem[]
+  invoices: InvoiceListItem[],
+  opts: ResolveQuoteInvoiceKindOpts = {}
 ): string {
   const { options, defaultKind } = resolveQuoteInvoiceKindOptions(
     paymentStatus,
-    invoices
+    invoices,
+    opts
   )
   if (options.length === 0) return 'Számla PDF'
   const hit = options.find((o) => o.value === defaultKind)

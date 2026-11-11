@@ -35,6 +35,7 @@ import {
   validateReopenNote,
   type QuoteReopenReason
 } from '@/lib/quotes/reopen'
+import { softDeleteQuoteBlocker } from '@/lib/quotes/soft-delete-rules'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
 export type SaveOptiQuoteCustomer = {
@@ -338,7 +339,7 @@ export async function softDeleteQuote(
   const tenantId = ctx.user.tenantId!
   const { data: existing, error: loadErr } = await ctx.supabase
     .from('quotes')
-    .select('id, status, order_number')
+    .select('id, status, order_number, portal_submitted_at')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -347,11 +348,43 @@ export async function softDeleteQuote(
   if (loadErr || !existing) {
     return { ok: false, message: 'Az árajánlat nem található.' }
   }
-  if (existing.status !== 'draft' || existing.order_number) {
-    return {
-      ok: false,
-      message: 'Megrendelést mondj le, ne töröld. Piszkozat törölhető csak.'
-    }
+
+  const { data: invoiceRows } = await ctx.supabase
+    .from('invoices')
+    .select('id, invoice_type, is_storno_of_invoice_id, provider_invoice_number')
+    .eq('tenant_id', tenantId)
+    .eq('related_source_type', 'opti_order')
+    .eq('related_source_id', id)
+    .is('deleted_at', null)
+
+  const inv = invoiceRows ?? []
+  const stornoOf = new Set(
+    inv
+      .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
+      .map((r) => r.is_storno_of_invoice_id as string)
+  )
+  const hasActiveInvoice = inv.some(
+    (r) =>
+      r.invoice_type !== 'sztorno' &&
+      !stornoOf.has(r.id as string) &&
+      Boolean(r.provider_invoice_number)
+  )
+
+  const { count: paymentCount } = await ctx.supabase
+    .from('quote_payments')
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('quote_id', id)
+
+  const blocked = softDeleteQuoteBlocker({
+    status: existing.status,
+    orderNumber: existing.order_number,
+    portalSubmittedAt: existing.portal_submitted_at,
+    hasActiveInvoice,
+    hasPayments: (paymentCount ?? 0) > 0
+  })
+  if (blocked) {
+    return { ok: false, message: blocked }
   }
 
   const { data, error } = await ctx.supabase

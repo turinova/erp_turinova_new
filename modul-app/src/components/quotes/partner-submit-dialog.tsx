@@ -1,8 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -12,7 +13,14 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { MenuSelect } from '@/components/ui/menu-select'
+import { PARTNER_SETTINGS_PATH } from '@/lib/auth/surface'
+import { usePartnerHref } from '@/lib/auth/use-partner-href'
+import {
+  partnerBillingIncompleteMessage,
+  type PartnerBillingForProformaResult
+} from '@/lib/partner/auto-proforma-rules'
 import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
+import { isTransferPaymentMethod } from '@/lib/payment-methods/kinds'
 import {
   listPartnerPaymentMethodsForSubmit,
   type PartnerSubmitPaymentMethod
@@ -23,6 +31,8 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   quoteNumber: string
+  /** Visszatérés a Beállításokból (pl. /ajanlatok/{id}?submit=1). */
+  returnPath: string
   loading?: boolean
   onConfirm: (paymentMethodId: string) => void
 }
@@ -31,13 +41,19 @@ export function PartnerSubmitDialog({
   open,
   onOpenChange,
   quoteNumber,
+  returnPath,
   loading = false,
   onConfirm
 }: Props) {
+  const partnerHref = usePartnerHref()
   const [methods, setMethods] = useState<PartnerSubmitPaymentMethod[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loadingMethods, setLoadingMethods] = useState(false)
   const [paymentMethodId, setPaymentMethodId] = useState('')
+  const [autoProforma, setAutoProforma] = useState(false)
+  const [billingReady, setBillingReady] = useState<PartnerBillingForProformaResult>(
+    { ok: true }
+  )
 
   useEffect(() => {
     if (!open) return
@@ -52,14 +68,31 @@ export function PartnerSubmitDialog({
           return
         }
         setMethods(result.methods)
+        setAutoProforma(result.autoProformaOnTransfer)
+        setBillingReady(result.billingReady)
         setPaymentMethodId(pickDefaultPaymentMethodId(result.methods))
       })
       .finally(() => setLoadingMethods(false))
   }, [open])
 
   const selected = methods.find((m) => m.id === paymentMethodId) ?? null
+  const needsBilling =
+    Boolean(selected) &&
+    autoProforma &&
+    isTransferPaymentMethod(selected!) &&
+    !billingReady.ok
   const canSubmit =
-    Boolean(paymentMethodId) && methods.length > 0 && !loadingMethods
+    Boolean(paymentMethodId) &&
+    methods.length > 0 &&
+    !loadingMethods &&
+    !needsBilling
+
+  const settingsHref = (() => {
+    const base = partnerHref(PARTNER_SETTINGS_PATH)
+    const q = new URLSearchParams()
+    q.set('return', returnPath)
+    return `${base}?${q.toString()}#szamlazas`
+  })()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -115,6 +148,28 @@ export function PartnerSubmitDialog({
               {selected.comment}
             </p>
           ) : null}
+          {needsBilling ? (
+            <div
+              className="space-y-2 rounded-md border border-warning/40 bg-warning-soft px-3 py-2"
+              role="alert"
+            >
+              <p className="text-hint text-warning-ink">
+                {partnerBillingIncompleteMessage(billingReady)}
+              </p>
+              <Link
+                href={settingsHref}
+                className={buttonVariants({ variant: 'primary', size: 'sm' })}
+                onClick={() => onOpenChange(false)}
+              >
+                Számlázási adatok kitöltése
+              </Link>
+            </div>
+          ) : selected && autoProforma && isTransferPaymentMethod(selected) ? (
+            <p className="text-hint text-ink-secondary" role="note">
+              Beküldés után e-mailben megkapod a díjbekérőt, abban látod az
+              utalás adatait.
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -132,7 +187,7 @@ export function PartnerSubmitDialog({
             loading={loading}
             disabled={!canSubmit || loading}
             onClick={() => {
-              if (!paymentMethodId) return
+              if (!paymentMethodId || needsBilling) return
               onConfirm(paymentMethodId)
             }}
           >

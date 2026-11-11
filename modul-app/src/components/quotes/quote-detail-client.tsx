@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import {
   CheckCircle2,
   Factory,
@@ -33,6 +33,7 @@ import { QuoteAccessoriesBlock } from '@/components/quotes/quote-accessories-blo
 import { QuoteInvoiceIssueDialog } from '@/components/quotes/quote-invoice-issue-dialog'
 import { QuotePaymentsSection } from '@/components/quotes/quote-payments-section'
 import { QuoteStatusStepper } from '@/components/quotes/quote-status-stepper'
+import { AutoProformaStatusItem } from '@/components/quotes/auto-proforma-status'
 import { PartnerSubmitDialog } from '@/components/quotes/partner-submit-dialog'
 import { QuoteVoidPaymentDialog } from '@/components/quotes/quote-void-payment-dialog'
 import { SourceInvoicesSection } from '@/components/invoicing/source-invoices-section'
@@ -64,7 +65,8 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   PARTNER_OPTI_PATH,
   PARTNER_ORDERS_PATH,
-  PARTNER_QUOTES_PATH
+  PARTNER_QUOTES_PATH,
+  PARTNER_SETTINGS_PATH
 } from '@/lib/auth/surface'
 import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { TenantCompanyRow } from '@/lib/company/queries'
@@ -74,6 +76,7 @@ import {
 } from '@/lib/invoicing/quote-invoice-lines'
 import { splitGross } from '@/lib/money/vat-split'
 import { formatReadySmsInfoLine } from '@/lib/order-status/record-open'
+import { partnerAutoProformaCopy } from '@/lib/partner/auto-proforma-rules'
 import { panthelyLabel } from '@/lib/opti/panel-draft'
 import {
   formatQuotePrice
@@ -82,10 +85,12 @@ import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import type { ProductionMachineOption } from '@/lib/production-machines/queries'
 import {
   archiveQuoteAction,
+  softDeleteQuote,
   unarchiveQuoteAction,
   updateQuoteComment,
   updateQuoteProjectName
 } from '@/lib/quotes/actions'
+import { canSoftDeleteQuote } from '@/lib/quotes/soft-delete-rules'
 import {
   loadPaymentMethodsAction,
   loadProductionMachinesAction,
@@ -221,12 +226,19 @@ export function QuoteDetailClient({
   hasAgentKey = false
 }: QuoteDetailClientProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const partnerHref = usePartnerHref()
   const isPartner = surface === 'partner'
   const isPartnerDraft =
     isPartner && quote.source === 'portal' && quote.portal_submitted_at == null
   const isPartnerSubmitted =
     isPartner && quote.source === 'portal' && quote.portal_submitted_at != null
+
+  useEffect(() => {
+    if (!isPartnerDraft) return
+    if (searchParams.get('submit') !== '1') return
+    setSubmitOpen(true)
+  }, [isPartnerDraft, searchParams])
   const listHref = isPartner
     ? partnerHref(
         isPartnerSubmitted ? PARTNER_ORDERS_PATH : PARTNER_QUOTES_PATH
@@ -422,17 +434,31 @@ export function QuoteDetailClient({
   const canArchiveOrder = showFinishedOpsSection && archiveGate.ok
   const canUnarchiveOrder = showFinishedOpsSection && unarchiveGate.ok
 
+  const hasOrderNumber = Boolean(quote.order_number)
+  const invoiceKindOpts = useMemo(
+    () => ({ hasOrderNumber }),
+    [hasOrderNumber]
+  )
   const invoiceKindOptions = useMemo(
-    () => resolveQuoteInvoiceKindOptions(quote.payment_status, invoices),
-    [quote.payment_status, invoices]
+    () =>
+      resolveQuoteInvoiceKindOptions(
+        quote.payment_status,
+        invoices,
+        invoiceKindOpts
+      ),
+    [quote.payment_status, invoices, invoiceKindOpts]
   )
   const invoiceCta = useMemo(
     () => ({
-      label: quoteInvoiceCtaLabel(quote.payment_status, invoices),
+      label: quoteInvoiceCtaLabel(
+        quote.payment_status,
+        invoices,
+        invoiceKindOpts
+      ),
       preferredKind: invoiceKindOptions.defaultKind as InvoiceIssueKind,
       canIssue: invoiceKindOptions.options.length > 0
     }),
-    [quote.payment_status, invoices, invoiceKindOptions]
+    [quote.payment_status, invoices, invoiceKindOptions, invoiceKindOpts]
   )
 
   const canAddPayment =
@@ -470,22 +496,41 @@ export function QuoteDetailClient({
   const showReadySmsAction = canManageReadySms
 
   const hasInvoiceBilling = quoteHasBilling(quote)
+  /** Díjbekérő ajánlaton is; előleg/számla csak megrendelésen (kind options). */
   const canManageInvoicing =
-    !isPartner && canWrite && Boolean(quote.order_number)
+    !isPartner && canWrite && quote.status !== 'cancelled'
   const canEditBilling = canManageInvoicing && !hasFinalInvoice
   const canIssueInvoice =
     canManageInvoicing &&
     hasInvoiceBilling &&
     Boolean(hasAgentKey) &&
     invoiceCta.canIssue
+  /** Partner beküldés / díjbekérő ajánlaton: order nélkül is látszik. */
+  const showInvoicesSection =
+    !isPartner &&
+    (hasOrderNumber ||
+      invoices.length > 0 ||
+      Boolean(quote.portal_submitted_at) ||
+      canIssueInvoice ||
+      canManageInvoicing)
   const showFinanceJump =
     !isPartner &&
-    Boolean(quote.order_number) &&
     (canAddPayment ||
       hasRecordedPayments ||
       canManageInvoicing ||
       quote.payments.length > 0 ||
       quote.payment_events.length > 0)
+  const staffCanSoftDelete =
+    !isPartner &&
+    canWrite &&
+    canSoftDeleteQuote({
+      status: quote.status,
+      orderNumber: quote.order_number,
+      portalSubmittedAt: quote.portal_submitted_at,
+      hasActiveInvoice: hasProforma || hasAdvance || hasFinalInvoice,
+      hasPayments:
+        quote.payments.length > 0 || quote.payment_events.length > 0
+    })
 
   /** Egy primary / képernyő — státusz szerinti fő következő lépés. */
   const primaryAction:
@@ -549,6 +594,12 @@ export function QuoteDetailClient({
     : quoteStatusTone(quote.status)
   const showPartnerPayment = isPartnerSubmitted
   const showStaffPayment = !isPartner && quote.status !== 'draft'
+  const partnerProformaCopy = isPartner
+    ? partnerAutoProformaCopy(
+        quote.auto_proforma_status,
+        quote.auto_proforma_note
+      )
+    : null
 
   const hasBilling =
     Boolean(quote.customer.billing_name) ||
@@ -781,10 +832,41 @@ export function QuoteDetailClient({
         paymentMethodId
       })
       if (!result?.ok) {
+        if (result?.code === 'price_changed') {
+          setSubmitOpen(false)
+          toast.error(result.message, {
+            duration: 15000,
+            action: {
+              label: 'Ajánlat megnyitása',
+              onClick: () => router.push(optiHref)
+            }
+          })
+          return
+        }
+        if (result?.code === 'billing_incomplete') {
+          setSubmitOpen(false)
+          toast.error(result.message, {
+            duration: 15000,
+            action: {
+              label: 'Beállítások',
+              onClick: () =>
+                router.push(
+                  `${partnerHref(PARTNER_SETTINGS_PATH)}?return=${encodeURIComponent(
+                    `${partnerHref(PARTNER_QUOTES_PATH)}/${quote.id}?submit=1`
+                  )}#szamlazas`
+                )
+            }
+          })
+          return
+        }
         toast.error(result?.message ?? 'Nem sikerült beküldeni.')
         return
       }
-      toast.success(`Beküldve: ${result.quoteNumber}`)
+      toast.success(
+        result.autoProforma
+          ? `Beküldve: ${result.quoteNumber}. A díjbekérőt e-mailben küldjük.`
+          : `Beküldve: ${result.quoteNumber}`
+      )
       setSubmitOpen(false)
       router.push(`${partnerHref(PARTNER_ORDERS_PATH)}/${quote.id}`)
       router.refresh()
@@ -801,6 +883,20 @@ export function QuoteDetailClient({
       toast.success('Ajánlat törölve.')
       setDeleteOpen(false)
       router.push(partnerHref(PARTNER_QUOTES_PATH))
+      router.refresh()
+    })
+  }
+
+  function handleStaffDelete() {
+    startTransition(async () => {
+      const result = await softDeleteQuote(quote.id)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(`„${quote.quote_number}” törölve.`)
+      setDeleteOpen(false)
+      router.push('/ajanlatok')
       router.refresh()
     })
   }
@@ -1677,14 +1773,11 @@ export function QuoteDetailClient({
                     </div>
 
                     {isPartnerDraft ? (
-                      <div className="space-y-1.5">
-                        <p className="text-label font-semibold text-ink-secondary">
-                          Törlés
-                        </p>
+                      <div className="space-y-1.5 border-t border-border pt-3">
                         <Button
                           type="button"
-                          variant="ghost"
-                          className="w-full justify-start text-danger-ink hover:text-danger-ink"
+                          variant="danger"
+                          className="w-full"
                           onClick={() => setDeleteOpen(true)}
                         >
                           Ajánlat törlése
@@ -1957,6 +2050,19 @@ export function QuoteDetailClient({
                       </div>
                     ) : null}
 
+                    {staffCanSoftDelete ? (
+                      <div className="space-y-1.5 border-t border-border pt-3">
+                        <Button
+                          type="button"
+                          variant="danger"
+                          className="w-full"
+                          onClick={() => setDeleteOpen(true)}
+                        >
+                          Ajánlat törlése
+                        </Button>
+                      </div>
+                    ) : null}
+
                     {showCancelOrderSection ? (
                       <div className="space-y-1.5 border-t border-border pt-3">
                         <Button
@@ -2141,6 +2247,35 @@ export function QuoteDetailClient({
                     </dd>
                   </div>
                 ) : null}
+                {!isPartner && quote.auto_proforma_status ? (
+                  <AutoProformaStatusItem
+                    quoteId={quote.id}
+                    status={quote.auto_proforma_status}
+                    note={quote.auto_proforma_note}
+                    canWrite={canWrite}
+                  />
+                ) : null}
+                {partnerProformaCopy ? (
+                  <div>
+                    <dt className="text-hint text-ink-secondary">Díjbekérő</dt>
+                    <dd className="space-y-0.5">
+                      <StatusBadge tone={partnerProformaCopy.tone}>
+                        {partnerProformaCopy.badge}
+                      </StatusBadge>
+                      <p className="text-hint text-ink-secondary">
+                        {partnerProformaCopy.text}
+                      </p>
+                      {partnerProformaCopy.showSettingsLink ? (
+                        <Link
+                          href={`${partnerHref(PARTNER_SETTINGS_PATH)}#szamlazas`}
+                          className="text-hint text-ink underline-offset-2 hover:underline"
+                        >
+                          Beállítások megnyitása
+                        </Link>
+                      ) : null}
+                    </dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt className="text-hint text-ink-secondary">Bruttó</dt>
                   <dd className="font-semibold tabular-nums text-ink">
@@ -2225,14 +2360,18 @@ export function QuoteDetailClient({
         />
       ) : null}
 
-      {!isPartner && quote.order_number ? (
+      {showInvoicesSection ? (
         <SourceInvoicesSection
           invoices={invoices}
           canWrite={canWrite}
           hasAgentKey={hasAgentKey}
           listHref="/szamlak?source=opti_order"
           listLinkLabel="Bizonylatok"
-          hint="Díjbekérő, előleg, számla — ezen a megrendelésen"
+          hint={
+            hasOrderNumber
+              ? 'Díjbekérő, előleg, számla — ezen a megrendelésen'
+              : 'Díjbekérő az ajánlaton is kiállítható. Előleg és számla a megrendelés után.'
+          }
           showEmptyCta={canIssueInvoice}
           showHeaderCta={canIssueInvoice}
           emptyCtaLabel={invoiceCta.label}
@@ -2492,7 +2631,7 @@ export function QuoteDetailClient({
         }}
       />
 
-      {!isPartner && quote.order_number ? (
+      {!isPartner && canManageInvoicing ? (
         <>
           <QuoteBillingEditDialog
             open={billingOpen}
@@ -2507,6 +2646,11 @@ export function QuoteDetailClient({
             invoices={invoices}
             preferredKind={invoicePreferredKind}
           />
+        </>
+      ) : null}
+
+      {!isPartner && quote.order_number ? (
+        <>
           {canCancelOrder ? (
             <CancelQuoteDialog
               open={cancelOpen}
@@ -2593,25 +2737,27 @@ export function QuoteDetailClient({
       ) : null}
 
       {isPartnerDraft ? (
-        <>
-          <PartnerSubmitDialog
-            open={submitOpen}
-            onOpenChange={setSubmitOpen}
-            quoteNumber={quote.quote_number}
-            loading={pending}
-            onConfirm={handlePartnerSubmit}
-          />
-          <ConfirmDialog
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-            title="Ajánlat törlése"
-            description={`Biztosan törlöd a(z) ${quote.quote_number} ajánlatot?`}
-            confirmLabel="Törlés"
-            variant="danger"
-            loading={pending}
-            onConfirm={handlePartnerDelete}
-          />
-        </>
+        <PartnerSubmitDialog
+          open={submitOpen}
+          onOpenChange={setSubmitOpen}
+          quoteNumber={quote.quote_number}
+          returnPath={`${partnerHref(PARTNER_QUOTES_PATH)}/${quote.id}?submit=1`}
+          loading={pending}
+          onConfirm={handlePartnerSubmit}
+        />
+      ) : null}
+
+      {isPartnerDraft || staffCanSoftDelete ? (
+        <ConfirmDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          title="Ajánlat törlése"
+          description={`Biztosan törlöd a(z) ${quote.quote_number} ajánlatot?`}
+          confirmLabel="Törlés"
+          variant="danger"
+          loading={pending}
+          onConfirm={isPartnerDraft ? handlePartnerDelete : handleStaffDelete}
+        />
       ) : null}
     </div>
   )

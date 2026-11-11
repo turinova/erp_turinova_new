@@ -252,11 +252,40 @@ export function PartnerQuotesListClient({
         paymentMethodId
       })
       if (!result?.ok) {
+        if (result?.code === 'price_changed') {
+          setSubmitRow(null)
+          toast.error(result.message, {
+            duration: 15000,
+            action: {
+              label: 'Ajánlat megnyitása',
+              onClick: () => router.push(optiEditHref(row))
+            }
+          })
+          return
+        }
+        if (result?.code === 'billing_incomplete') {
+          setSubmitRow(null)
+          toast.error(result.message, {
+            duration: 15000,
+            action: {
+              label: 'Beállítások',
+              onClick: () =>
+                router.push(
+                  `${href(PARTNER_SETTINGS_PATH)}?return=${encodeURIComponent(
+                    `${href(PARTNER_QUOTES_PATH)}/${row.id}?submit=1`
+                  )}#szamlazas`
+                )
+            }
+          })
+          return
+        }
         toast.error(result?.message ?? 'Nem sikerült beküldeni.')
         return
       }
       toast.success(
-        `Beküldve: ${result.quoteNumber} — a Beküldött rendeléseim között követheted.`
+        result.autoProforma
+          ? `Beküldve: ${result.quoteNumber}. A díjbekérőt e-mailben küldjük.`
+          : `Beküldve: ${result.quoteNumber}. A Beküldött rendeléseim között követheted.`
       )
       setSubmitRow(null)
       router.refresh()
@@ -726,6 +755,11 @@ export function PartnerQuotesListClient({
             if (!open && !pending) setSubmitRow(null)
           }}
           quoteNumber={submitRow?.quote_number ?? ''}
+          returnPath={
+            submitRow
+              ? `${href(PARTNER_QUOTES_PATH)}/${submitRow.id}?submit=1`
+              : href(PARTNER_QUOTES_PATH)
+          }
           loading={pending}
           onConfirm={handleSubmitConfirm}
         />

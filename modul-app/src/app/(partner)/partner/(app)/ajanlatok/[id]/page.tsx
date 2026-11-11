@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
+import { Suspense } from 'react'
 
 import { QuoteDetailClient } from '@/components/quotes/quote-detail-client'
 import { partnerServerHref } from '@/lib/auth/partner-href-server'
@@ -58,11 +59,13 @@ export default async function PartnerAjanlatDetailPage({
   )
 
   return (
-    <QuoteDetailClient
-      surface="partner"
-      quote={loaded.quote}
-      company={company}
-      canWrite
-    />
+    <Suspense fallback={null}>
+      <QuoteDetailClient
+        surface="partner"
+        quote={loaded.quote}
+        company={company}
+        canWrite
+      />
+    </Suspense>
   )
 }

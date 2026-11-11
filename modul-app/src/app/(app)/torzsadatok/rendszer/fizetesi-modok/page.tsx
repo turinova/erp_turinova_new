@@ -48,7 +48,7 @@ export default async function FizetesiModokPage() {
         <p className="max-w-xl text-body text-ink-secondary">
           Futtasd a{' '}
           <code className="text-hint">
-            supabase/migrations/20260321_payment_methods.sql
+            supabase/migrations/20261010_payment_method_kinds.sql
           </code>{' '}
           fájlt a Supabase SQL Editorben, majd frissítsd az oldalt.
         </p>

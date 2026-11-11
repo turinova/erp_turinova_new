@@ -8,6 +8,9 @@ export type HomePartnerPortalInboxRow = {
   totalGross: number
   currency: string
   submittedAt: string
+  /** Automatikus díjbekérő: failed / skipped → figyelmeztetés a főoldalon. */
+  autoProformaStatus: 'pending' | 'processing' | 'issued' | 'failed' | 'skipped' | null
+  autoProformaNote: string | null
 }
 
 /** Online partner rendelés entitlement. */
@@ -49,6 +52,8 @@ export async function getHomePartnerPortalInbox(
       currency,
       portal_submitted_at,
       preferred_payment_method_name,
+      auto_proforma_status,
+      auto_proforma_note,
       customers ( name ),
       partner_profiles ( name )
     `
@@ -90,7 +95,16 @@ export async function getHomePartnerPortalInbox(
         (row.preferred_payment_method_name as string | null)?.trim() || null,
       totalGross: gross,
       currency: (row.currency as string) || 'HUF',
-      submittedAt: row.portal_submitted_at as string
+      submittedAt: row.portal_submitted_at as string,
+      autoProformaStatus:
+        row.auto_proforma_status === 'pending' ||
+        row.auto_proforma_status === 'processing' ||
+        row.auto_proforma_status === 'issued' ||
+        row.auto_proforma_status === 'failed' ||
+        row.auto_proforma_status === 'skipped'
+          ? row.auto_proforma_status
+          : null,
+      autoProformaNote: (row.auto_proforma_note as string | null) ?? null
     }
   })
 }

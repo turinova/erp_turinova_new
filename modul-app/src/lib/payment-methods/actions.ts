@@ -13,63 +13,31 @@ const PATH = '/torzsadatok/rendszer/fizetesi-modok'
 const AJANLATOK_PATH = '/ajanlatok'
 const MEGRENDELESEK_PATH = '/megrendelesek'
 const ERTEKESITESEK_PATH = '/ertekesitesek'
+const PARTNER_SETTINGS_PATH = '/beallitasok/partner'
 
 function revalidatePaymentPaths() {
   revalidatePath(PATH)
   revalidatePath(AJANLATOK_PATH)
   revalidatePath(MEGRENDELESEK_PATH)
   revalidatePath(ERTEKESITESEK_PATH)
+  revalidatePath(PARTNER_SETTINGS_PATH)
 }
 
-function mapDbError(message: string): {
-  message: string
-  field?: string
-} | null {
-  if (
-    message.includes('payment_methods_tenant_name_alive') ||
-    message.includes('duplicate key')
-  ) {
-    if (message.includes('payment_methods_one_default_alive')) {
-      return {
-        message: 'Egyszerre csak egy alapértelmezett fizetési mód lehet.'
-      }
-    }
-    return {
-      message: 'Már van ilyen nevű fizetési mód ebben a cégben.',
-      field: 'name'
-    }
-  }
+function mapDbError(message: string): string | null {
   if (message.includes('payment_methods_one_default_alive')) {
-    return {
-      message: 'Egyszerre csak egy alapértelmezett fizetési mód lehet.'
-    }
+    return 'Egyszerre csak egy alapértelmezett fizetési mód lehet.'
+  }
+  if (message.includes('payment_methods_legacy_reactivate_forbidden')) {
+    return 'Ez egy régi fizetési mód, nem kapcsolható be újra.'
+  }
+  if (
+    message.includes('payment_methods_system_name_locked') ||
+    message.includes('payment_methods_system_kind_locked') ||
+    message.includes('payment_methods_delete_forbidden')
+  ) {
+    return 'A fizetési módok neve fix, és nem törölhetők.'
   }
   return null
-}
-
-function validateName(name: string):
-  | { ok: true; name: string }
-  | {
-      ok: false
-      message: string
-      fieldErrors: Record<string, string>
-    } {
-  const trimmed = name.trim()
-  if (!trimmed) {
-    return {
-      ok: false,
-      message: 'Ellenőrizd a megadott adatokat.',
-      fieldErrors: { name: 'A név kötelező.' }
-    }
-  }
-  if (trimmed.length > 50) {
-    return {
-      ok: false,
-      message: 'Ellenőrizd a megadott adatokat.',
-      fieldErrors: { name: 'A név maximum 50 karakter lehet.' }
-    }
-  }
-  return { ok: true, name: trimmed }
 }
 
 async function clearOtherDefaults(
@@ -98,103 +66,50 @@ async function clearOtherDefaults(
   }
 }
 
-async function countAlive(
+async function countActiveOthers(
   supabase: SupabaseClient,
   tenantId: string,
-  opts?: { activeOnly?: boolean; excludeId?: string }
+  excludeId: string
 ): Promise<number> {
-  let q = supabase
+  const { count, error } = await supabase
     .from('payment_methods')
     .select('id', { count: 'exact', head: true })
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
+    .eq('active', true)
+    .neq('id', excludeId)
 
-  if (opts?.activeOnly) {
-    q = q.eq('active', true)
-  }
-  if (opts?.excludeId) {
-    q = q.neq('id', opts.excludeId)
-  }
-
-  const { count, error } = await q
   if (error) {
-    console.error('countAlivePaymentMethods', error.message)
+    console.error('countActivePaymentMethods', error.message)
     throw new Error('Nem sikerült ellenőrizni a fizetési módokat.')
   }
   return count ?? 0
 }
 
-export async function createPaymentMethod(input: {
-  name: string
+/** Fix rendszer-mód: csak megjegyzés, aktív, partner láthatóság, alapértelmezett. */
+export async function updatePaymentMethod(input: {
+  id: string
   comment: string
   active: boolean
   isDefault: boolean
+  partnerVisible: boolean
 }): Promise<PaymentMethodActionResult> {
   const ctx = await requireWritableTenant()
   if (!ctx.ok) return { ok: false, message: ctx.message }
 
-  const validated = validateName(input.name)
-  if (!validated.ok) return validated
-
   const tenantId = ctx.user.tenantId!
   const comment = input.comment.trim()
-  const activeCount = await countAlive(ctx.supabase, tenantId, {
-    activeOnly: true
-  })
-
-  let isDefault = input.isDefault
-  let active = input.active
-
-  // Első aktív mód → mindig default (certainty).
-  if (activeCount === 0 && active) {
-    isDefault = true
-  }
-
-  if (isDefault) {
-    active = true
-    await clearOtherDefaults(ctx.supabase, tenantId)
-  }
-
-  const { error } = await ctx.supabase.from('payment_methods').insert({
-    tenant_id: tenantId,
-    name: validated.name,
-    comment: comment === '' ? null : comment,
-    active,
-    is_default: isDefault
-  })
-
-  if (error) {
-    const mapped = mapDbError(error.message)
+  if (comment.length > 500) {
     return {
       ok: false,
-      message: mapped?.message ?? 'Nem sikerült létrehozni a fizetési módot.',
-      fieldErrors: mapped?.field ? { [mapped.field]: mapped.message } : undefined
+      message: 'Ellenőrizd a megadott adatokat.',
+      fieldErrors: { comment: 'A megjegyzés maximum 500 karakter lehet.' }
     }
   }
 
-  revalidatePaymentPaths()
-  return { ok: true }
-}
-
-export async function updatePaymentMethod(input: {
-  id: string
-  name: string
-  comment: string
-  active: boolean
-  isDefault: boolean
-}): Promise<PaymentMethodActionResult> {
-  const ctx = await requireWritableTenant()
-  if (!ctx.ok) return { ok: false, message: ctx.message }
-
-  const validated = validateName(input.name)
-  if (!validated.ok) return validated
-
-  const tenantId = ctx.user.tenantId!
-  const comment = input.comment.trim()
-
   const { data: current, error: loadErr } = await ctx.supabase
     .from('payment_methods')
-    .select('id, is_default, active')
+    .select('id, kind, is_default, active')
     .eq('id', input.id)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -207,22 +122,21 @@ export async function updatePaymentMethod(input: {
   const isDefault = input.isDefault
   let active = input.active
 
-  if (current.is_default && !isDefault) {
-    const others = await countAlive(ctx.supabase, tenantId, {
-      activeOnly: true,
-      excludeId: input.id
-    })
-    if (others === 0) {
-      return {
-        ok: false,
-        message:
-          'Az egyetlen aktív fizetési módnak alapértelmezettnek kell maradnia.',
-        fieldErrors: {
-          isDefault:
-            'Az egyetlen aktív módnak alapértelmezettnek kell maradnia.'
-        }
-      }
+  if (!current.kind && active && !current.active) {
+    return {
+      ok: false,
+      message: 'Ez egy régi fizetési mód, nem kapcsolható be újra.',
+      fieldErrors: { active: 'Régi mód, nem kapcsolható be.' }
     }
+  }
+  if (!current.kind && isDefault && !current.is_default) {
+    return {
+      ok: false,
+      message: 'Régi fizetési mód nem lehet alapértelmezett.'
+    }
+  }
+
+  if (current.is_default && !isDefault) {
     return {
       ok: false,
       message:
@@ -238,16 +152,17 @@ export async function updatePaymentMethod(input: {
       return {
         ok: false,
         message:
-          'Az alapértelmezett fizetési mód nem inaktiválható. Előbb jelölj ki mást.',
+          'Az alapértelmezett fizetési mód nem kapcsolható ki. Előbb jelölj ki mást.',
         fieldErrors: {
-          active: 'Az alapértelmezett mód nem inaktiválható.'
+          active: 'Az alapértelmezett mód nem kapcsolható ki.'
         }
       }
     }
-    const otherActive = await countAlive(ctx.supabase, tenantId, {
-      activeOnly: true,
-      excludeId: input.id
-    })
+    const otherActive = await countActiveOthers(
+      ctx.supabase,
+      tenantId,
+      input.id
+    )
     if (otherActive === 0) {
       return {
         ok: false,
@@ -267,10 +182,10 @@ export async function updatePaymentMethod(input: {
   const { data, error } = await ctx.supabase
     .from('payment_methods')
     .update({
-      name: validated.name,
       comment: comment === '' ? null : comment,
       active,
       is_default: isDefault,
+      partner_visible: input.partnerVisible,
       updated_at: new Date().toISOString()
     })
     .eq('id', input.id)
@@ -280,11 +195,9 @@ export async function updatePaymentMethod(input: {
     .maybeSingle()
 
   if (error) {
-    const mapped = mapDbError(error.message)
     return {
       ok: false,
-      message: mapped?.message ?? 'Nem sikerült menteni a fizetési módot.',
-      fieldErrors: mapped?.field ? { [mapped.field]: mapped.message } : undefined
+      message: mapDbError(error.message) ?? 'Nem sikerült menteni a fizetési módot.'
     }
   }
 
@@ -294,6 +207,36 @@ export async function updatePaymentMethod(input: {
 
   revalidatePaymentPaths()
   return { ok: true }
+}
+
+/** Lista sorakció: aktív ki / be egy kattintással (ugyanazok a szabályok). */
+export async function setPaymentMethodActive(
+  id: string,
+  active: boolean
+): Promise<PaymentMethodActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  const { data: current, error: loadErr } = await ctx.supabase
+    .from('payment_methods')
+    .select('id, comment, is_default, partner_visible')
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (loadErr || !current) {
+    return { ok: false, message: 'A fizetési mód nem található.' }
+  }
+
+  return updatePaymentMethod({
+    id,
+    comment: (current.comment as string | null) ?? '',
+    active,
+    isDefault: Boolean(current.is_default),
+    partnerVisible: current.partner_visible !== false
+  })
 }
 
 /** Lista „Alapnak” — másik mód defaulttá tétele egy kattintással. */
@@ -307,7 +250,7 @@ export async function setDefaultPaymentMethod(
 
   const { data: current, error: loadErr } = await ctx.supabase
     .from('payment_methods')
-    .select('id, is_default, active')
+    .select('id, kind, is_default, active')
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
@@ -319,6 +262,12 @@ export async function setDefaultPaymentMethod(
 
   if (current.is_default) {
     return { ok: true }
+  }
+  if (!current.kind) {
+    return {
+      ok: false,
+      message: 'Régi fizetési mód nem lehet alapértelmezett.'
+    }
   }
 
   await clearOtherDefaults(ctx.supabase, tenantId, id)
@@ -337,79 +286,11 @@ export async function setDefaultPaymentMethod(
     .maybeSingle()
 
   if (error) {
-    const mapped = mapDbError(error.message)
     return {
       ok: false,
       message:
-        mapped?.message ?? 'Nem sikerült beállítani az alapértelmezettet.'
+        mapDbError(error.message) ?? 'Nem sikerült beállítani az alapértelmezettet.'
     }
-  }
-
-  if (!data) {
-    return { ok: false, message: 'A fizetési mód nem található.' }
-  }
-
-  revalidatePaymentPaths()
-  return { ok: true }
-}
-
-export async function softDeletePaymentMethod(
-  id: string
-): Promise<PaymentMethodActionResult> {
-  const ctx = await requireWritableTenant()
-  if (!ctx.ok) return { ok: false, message: ctx.message }
-
-  const tenantId = ctx.user.tenantId!
-
-  const { data: current, error: loadErr } = await ctx.supabase
-    .from('payment_methods')
-    .select('id, is_default, active')
-    .eq('id', id)
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (loadErr || !current) {
-    return { ok: false, message: 'A fizetési mód nem található.' }
-  }
-
-  if (current.is_default) {
-    return {
-      ok: false,
-      message:
-        'Az alapértelmezett fizetési mód nem törölhető. Előbb jelölj ki másikat.'
-    }
-  }
-
-  if (current.active) {
-    const otherActive = await countAlive(ctx.supabase, tenantId, {
-      activeOnly: true,
-      excludeId: id
-    })
-    if (otherActive === 0) {
-      return {
-        ok: false,
-        message: 'Legalább egy aktív fizetési módnak maradnia kell.'
-      }
-    }
-  }
-
-  const { data, error } = await ctx.supabase
-    .from('payment_methods')
-    .update({
-      deleted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      active: false,
-      is_default: false
-    })
-    .eq('id', id)
-    .eq('tenant_id', tenantId)
-    .is('deleted_at', null)
-    .select('id')
-    .maybeSingle()
-
-  if (error) {
-    return { ok: false, message: 'Nem sikerült törölni a fizetési módot.' }
   }
 
   if (!data) {

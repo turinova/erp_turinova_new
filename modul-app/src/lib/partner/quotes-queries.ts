@@ -26,6 +26,14 @@ export type PartnerQuoteListItem = {
   currency: string
   updated_at: string
   portal_submitted_at: string | null
+  preferred_payment_method_name: string | null
+  auto_proforma_status:
+    | 'pending'
+    | 'processing'
+    | 'issued'
+    | 'failed'
+    | 'skipped'
+    | null
   panel_quantity: number
   material_count: number
   company_name: string | null
@@ -101,6 +109,8 @@ const SELECT = `
   currency,
   updated_at,
   portal_submitted_at,
+  preferred_payment_method_name,
+  auto_proforma_status,
   tenant_id,
   quote_panels ( quantity, sheet_material_id )
 `
@@ -120,6 +130,8 @@ type QuoteRow = {
   currency: string
   updated_at: string
   portal_submitted_at: string | null
+  preferred_payment_method_name: string | null
+  auto_proforma_status: string | null
   tenant_id: string
   quote_panels: Array<{
     quantity: number
@@ -173,6 +185,16 @@ function mapRow(
     currency: row.currency,
     updated_at: row.updated_at,
     portal_submitted_at: row.portal_submitted_at,
+    preferred_payment_method_name:
+      row.preferred_payment_method_name?.trim() || null,
+    auto_proforma_status:
+      row.auto_proforma_status === 'pending' ||
+      row.auto_proforma_status === 'processing' ||
+      row.auto_proforma_status === 'issued' ||
+      row.auto_proforma_status === 'failed' ||
+      row.auto_proforma_status === 'skipped'
+        ? row.auto_proforma_status
+        : null,
     panel_quantity,
     material_count,
     company_name: companyByTenant.get(row.tenant_id) ?? null

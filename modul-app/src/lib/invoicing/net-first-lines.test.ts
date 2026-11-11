@@ -132,6 +132,39 @@ describe('fitNetFirstLines', () => {
       assert.equal(res.lines[0]!.lineVat, 0)
     }
   })
+
+  it('does not split 1 m² Táblás anyag into 0.5+0.5 with different unit prices', () => {
+    // 5383 nem elérhető 27%-on; mohó −1 → 5382, de szabás +1 (3116) sem.
+    // Elvárt: anyag 5384 + szabás 3114, egy anyag-sor 1 m².
+    const res = fitNetFirstLines(
+      [
+        {
+          name: 'Táblás anyag',
+          quantity: 1,
+          unit: 'm²',
+          vatPercent: 27,
+          gross: 5383
+        },
+        {
+          name: 'Szabás díj',
+          quantity: 7.6,
+          unit: 'm',
+          vatPercent: 27,
+          gross: 3115
+        }
+      ],
+      8498
+    )
+    assert.ok(res.ok, res.ok ? '' : res.message)
+    if (!res.ok) return
+    assertSzamlazzValid(res.lines, 8498)
+    const materials = res.lines.filter((l) => l.name === 'Táblás anyag')
+    assert.equal(materials.length, 1)
+    assert.equal(materials[0]!.quantity, 1)
+    assert.equal(materials[0]!.unit, 'm²')
+    const cutting = res.lines.find((l) => l.name === 'Szabás díj')
+    assert.ok(cutting)
+  })
 })
 
 describe('buildAdvanceLines', () => {

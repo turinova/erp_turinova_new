@@ -1,10 +1,9 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { CreditCard, Plus, Search } from 'lucide-react'
+import { CreditCard } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import {
   DataTable,
   DataTableBody,
@@ -25,13 +24,11 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
-  createPaymentMethod,
   setDefaultPaymentMethod,
-  softDeletePaymentMethod,
+  setPaymentMethodActive,
   updatePaymentMethod
 } from '@/lib/payment-methods/actions'
 import type { PaymentMethodListItem } from '@/lib/payment-methods/queries'
@@ -41,23 +38,15 @@ type PaymentMethodsClientProps = {
   canWrite: boolean
 }
 
-type EditorState =
-  | { mode: 'closed' }
-  | { mode: 'create' }
-  | { mode: 'edit'; row: PaymentMethodListItem }
-
 export function PaymentMethodsClient({
   initialRows,
   canWrite
 }: PaymentMethodsClientProps) {
-  const [search, setSearch] = useState('')
-  const [editor, setEditor] = useState<EditorState>({ mode: 'closed' })
-  const [deleteTarget, setDeleteTarget] =
-    useState<PaymentMethodListItem | null>(null)
-  const [name, setName] = useState('')
+  const [editRow, setEditRow] = useState<PaymentMethodListItem | null>(null)
   const [comment, setComment] = useState('')
   const [active, setActive] = useState(true)
   const [isDefault, setIsDefault] = useState(false)
+  const [partnerVisible, setPartnerVisible] = useState(true)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [pending, startTransition] = useTransition()
 
@@ -66,77 +55,53 @@ export function PaymentMethodsClient({
     [initialRows]
   )
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    if (!term) return initialRows
-    return initialRows.filter((row) => {
-      return (
-        row.name.toLowerCase().includes(term) ||
-        (row.comment ?? '').toLowerCase().includes(term)
-      )
-    })
-  }, [initialRows, search])
-
-  const editingDefaultOnly =
-    editor.mode === 'edit' &&
-    editor.row.is_default &&
-    activeCount <= 1
-
-  function openCreate() {
-    setName('')
-    setComment('')
-    setActive(true)
-    setIsDefault(activeCount === 0)
-    setFieldErrors({})
-    setEditor({ mode: 'create' })
-  }
-
   function openEdit(row: PaymentMethodListItem) {
-    setName(row.name)
     setComment(row.comment ?? '')
     setActive(row.active)
     setIsDefault(row.is_default)
+    setPartnerVisible(row.partner_visible)
     setFieldErrors({})
-    setEditor({ mode: 'edit', row })
+    setEditRow(row)
   }
 
   function closeEditor() {
     if (pending) return
-    setEditor({ mode: 'closed' })
+    setEditRow(null)
     setFieldErrors({})
   }
 
   function handleSave() {
+    if (!editRow) return
     startTransition(async () => {
-      const result =
-        editor.mode === 'edit'
-          ? await updatePaymentMethod({
-              id: editor.row.id,
-              name,
-              comment,
-              active,
-              isDefault
-            })
-          : await createPaymentMethod({
-              name,
-              comment,
-              active,
-              isDefault
-            })
-
+      const result = await updatePaymentMethod({
+        id: editRow.id,
+        comment,
+        active,
+        isDefault,
+        partnerVisible
+      })
       if (!result.ok) {
         setFieldErrors(result.fieldErrors ?? {})
         toast.error(result.message)
         return
       }
-
-      toast.success(
-        editor.mode === 'edit'
-          ? 'Fizetési mód mentve.'
-          : 'Fizetési mód létrehozva.'
-      )
-      setEditor({ mode: 'closed' })
+      toast.success('Fizetési mód mentve.')
+      setEditRow(null)
       setFieldErrors({})
+    })
+  }
+
+  function handleToggleActive(row: PaymentMethodListItem) {
+    if (!canWrite || pending) return
+    startTransition(async () => {
+      const result = await setPaymentMethodActive(row.id, !row.active)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(
+        row.active ? `„${row.name}” kikapcsolva.` : `„${row.name}” bekapcsolva.`
+      )
     })
   }
 
@@ -152,67 +117,32 @@ export function PaymentMethodsClient({
     })
   }
 
-  function handleDelete() {
-    if (!deleteTarget) return
-    startTransition(async () => {
-      const result = await softDeletePaymentMethod(deleteTarget.id)
-      if (!result.ok) {
-        toast.error(result.message)
-        return
-      }
-      toast.success(`„${deleteTarget.name}” törölve.`)
-      setDeleteTarget(null)
-    })
-  }
-
-  const editorOpen = editor.mode !== 'closed'
+  const editingLegacy = Boolean(editRow && !editRow.kind)
+  const editingOnlyActive =
+    Boolean(editRow?.is_default) && activeCount <= 1
 
   return (
     <div>
       <PageHeader
         title="Fizetési módok"
-        description="Előleg, megrendelés és átadás befizetésekhez. Egy alapértelmezett mód a selectekben elöl jelenik meg."
-        actions={
-          canWrite ? (
-            <Button type="button" onClick={openCreate}>
-              <Plus className="size-3.5" aria-hidden />
-              Új fizetési mód
-            </Button>
-          ) : null
-        }
+        description="Fix lista. Kapcsold be, amit használsz. Az alapértelmezett mód a választólistákban elöl jelenik meg."
       />
 
-      <div className="mb-3">
-        <label className="sr-only" htmlFor="payment-method-search">
-          Keresés
-        </label>
-        <div className="relative max-w-sm">
-          <Search
-            className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
-            aria-hidden
-          />
-          <Input
-            id="payment-method-search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Keresés név szerint…"
-            className="pl-8"
-          />
-        </div>
-      </div>
-
       {initialRows.length === 0 ? (
-        <EmptyPaymentMethods canWrite={canWrite} onCreate={openCreate} />
-      ) : filtered.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
-          Nincs találat a „{search}” keresésre.
-        </p>
+        <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-10 text-center">
+          <CreditCard className="size-8 text-ink-secondary" aria-hidden />
+          <p className="max-w-sm text-body text-ink-secondary">
+            Még nincsenek fizetési módok ennél a cégnél. Frissítsd az oldalt,
+            vagy szólj az ügyfélszolgálatnak.
+          </p>
+        </div>
       ) : (
         <DataTable>
           <DataTableHead>
             <DataTableRow>
               <DataTableHeaderCell>Név</DataTableHeaderCell>
               <DataTableHeaderCell>Megjegyzés</DataTableHeaderCell>
+              <DataTableHeaderCell>Partner portál</DataTableHeaderCell>
               <DataTableHeaderCell>Állapot</DataTableHeaderCell>
               <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
                 Műveletek
@@ -220,121 +150,114 @@ export function PaymentMethodsClient({
             </DataTableRow>
           </DataTableHead>
           <DataTableBody>
-            {filtered.map((row) => (
-              <DataTableRow key={row.id}>
-                <DataTableCell>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-medium">{row.name}</span>
-                    {row.is_default ? (
-                      <StatusBadge tone="info">Alap</StatusBadge>
-                    ) : null}
-                  </div>
-                </DataTableCell>
-                <DataTableCell className="max-w-[280px] truncate text-ink-secondary">
-                  {row.comment || '—'}
-                </DataTableCell>
-                <DataTableCell>
-                  <StatusBadge tone={row.active ? 'success' : 'neutral'}>
-                    {row.active ? 'Aktív' : 'Inaktív'}
-                  </StatusBadge>
-                </DataTableCell>
-                <DataTableCell className="text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    {canWrite ? (
-                      <>
-                        {!row.is_default ? (
+            {initialRows.map((row) => {
+              const legacy = !row.kind
+              return (
+                <DataTableRow key={row.id}>
+                  <DataTableCell>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium">{row.name}</span>
+                      {row.is_default ? (
+                        <StatusBadge tone="info">Alap</StatusBadge>
+                      ) : null}
+                      {legacy ? (
+                        <StatusBadge tone="neutral">Régi mód</StatusBadge>
+                      ) : null}
+                    </div>
+                  </DataTableCell>
+                  <DataTableCell className="max-w-[280px] truncate text-ink-secondary">
+                    {row.comment || 'Nincs'}
+                  </DataTableCell>
+                  <DataTableCell className="text-ink-secondary">
+                    {row.partner_visible ? 'Választható' : 'Rejtett'}
+                  </DataTableCell>
+                  <DataTableCell>
+                    <StatusBadge tone={row.active ? 'success' : 'neutral'}>
+                      {row.active ? 'Aktív' : 'Kikapcsolva'}
+                    </StatusBadge>
+                  </DataTableCell>
+                  <DataTableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {canWrite ? (
+                        <>
+                          {!row.is_default && !legacy ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={pending}
+                              onClick={() => handleSetDefault(row)}
+                            >
+                              Alapnak
+                            </Button>
+                          ) : null}
+                          {row.active || !legacy ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={pending || (row.active && row.is_default)}
+                              title={
+                                row.active && row.is_default
+                                  ? 'Előbb jelölj ki másik alapértelmezettet.'
+                                  : undefined
+                              }
+                              onClick={() => handleToggleActive(row)}
+                            >
+                              {row.active ? 'Kikapcsolás' : 'Bekapcsolás'}
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            disabled={pending}
-                            onClick={() => handleSetDefault(row)}
+                            onClick={() => openEdit(row)}
                           >
-                            Alapnak
+                            Szerkesztés
                           </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEdit(row)}
-                        >
-                          Szerkesztés
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-danger-ink hover:text-danger-ink"
-                          disabled={row.is_default}
-                          title={
-                            row.is_default
-                              ? 'Előbb jelölj ki másik alapértelmezettet.'
-                              : undefined
-                          }
-                          onClick={() => setDeleteTarget(row)}
-                        >
-                          Törlés
-                        </Button>
-                      </>
-                    ) : (
-                      <span className="text-hint text-ink-secondary">
-                        Csak olvasás
-                      </span>
-                    )}
-                  </div>
-                </DataTableCell>
-              </DataTableRow>
-            ))}
+                        </>
+                      ) : (
+                        <span className="text-hint text-ink-secondary">
+                          Csak olvasás
+                        </span>
+                      )}
+                    </div>
+                  </DataTableCell>
+                </DataTableRow>
+              )
+            })}
           </DataTableBody>
         </DataTable>
       )}
 
       <Dialog
-        open={editorOpen}
+        open={Boolean(editRow)}
         onOpenChange={(open) => {
           if (!open) closeEditor()
         }}
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {editor.mode === 'edit'
-                ? 'Fizetési mód szerkesztése'
-                : 'Új fizetési mód'}
-            </DialogTitle>
+            <DialogTitle>{editRow?.name ?? 'Fizetési mód'}</DialogTitle>
             <DialogDescription>
-              A név megjelenik a megrendelés és befizetés űrlapokon.
+              A név fix. A megjegyzést, a láthatóságot és az állapotot
+              állíthatod.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <FormField
-              label="Név"
-              htmlFor="payment-method-name"
-              required
-              error={fieldErrors.name}
-            >
-              <Input
-                id="payment-method-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={50}
-                autoFocus
-                disabled={pending}
-              />
-            </FormField>
-
-            <FormField
               label="Megjegyzés"
               htmlFor="payment-method-comment"
-              hint="Opcionális belső megjegyzés."
+              hint="A partner is látja beküldéskor. Ide írhatod például a bankszámlaszámot."
+              error={fieldErrors.comment}
             >
               <Textarea
                 id="payment-method-comment"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={2}
+                maxLength={500}
                 disabled={pending}
               />
             </FormField>
@@ -342,7 +265,11 @@ export function PaymentMethodsClient({
             <Switch
               id="payment-method-active"
               checked={active}
-              disabled={pending || (isDefault && editingDefaultOnly)}
+              disabled={
+                pending ||
+                (editingLegacy && !editRow?.active) ||
+                (isDefault && editingOnlyActive)
+              }
               onCheckedChange={(next) => {
                 setActive(next)
                 if (!next) setIsDefault(false)
@@ -357,28 +284,40 @@ export function PaymentMethodsClient({
             ) : null}
 
             <Switch
+              id="payment-method-partner"
+              checked={partnerVisible}
+              disabled={pending}
+              onCheckedChange={setPartnerVisible}
+              label="Partner is választhatja"
+              description="Megjelenik a partner portálon beküldéskor, ha aktív."
+            />
+
+            <Switch
               id="payment-method-default"
               checked={isDefault}
-              disabled={
-                pending ||
-                (editor.mode === 'edit' && editor.row.is_default)
-              }
+              disabled={pending || editingLegacy || Boolean(editRow?.is_default)}
               onCheckedChange={(next) => {
                 setIsDefault(next)
                 if (next) setActive(true)
               }}
               label="Alapértelmezett"
-              description="Megrendelés, befizetés és átadás selectjeiben ez az első választás."
+              description="Megrendelés, befizetés és átadás választólistáiban ez az első."
             />
             {fieldErrors.isDefault ? (
               <p className="text-hint text-danger-ink" role="alert">
                 {fieldErrors.isDefault}
               </p>
             ) : null}
-            {editor.mode === 'edit' && editor.row.is_default ? (
+            {editRow?.is_default ? (
               <p className="text-hint text-ink-muted">
                 Az alapjelölést úgy veszed le, hogy a listán egy másik módnál
                 az „Alapnak” gombra kattintasz.
+              </p>
+            ) : null}
+            {editingLegacy ? (
+              <p className="text-hint text-ink-muted">
+                Ez egy régi, egyedi fizetési mód. Kikapcsolhatod, de újra
+                bekapcsolni már nem lehet.
               </p>
             ) : null}
           </div>
@@ -398,55 +337,11 @@ export function PaymentMethodsClient({
               loading={pending}
               onClick={handleSave}
             >
-              {editor.mode === 'edit' ? 'Mentés' : 'Létrehozás'}
+              Mentés
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <ConfirmDialog
-        open={Boolean(deleteTarget)}
-        onOpenChange={(open) => {
-          if (!open && !pending) setDeleteTarget(null)
-        }}
-        title="Fizetési mód törlése"
-        description={
-          deleteTarget
-            ? `Biztosan törlöd a(z) „${deleteTarget.name}” fizetési módot? A korábbi befizetéseken a név megmarad.`
-            : ''
-        }
-        confirmLabel="Törlés"
-        loading={pending}
-        onConfirm={handleDelete}
-      />
-    </div>
-  )
-}
-
-function EmptyPaymentMethods({
-  canWrite,
-  onCreate
-}: {
-  canWrite: boolean
-  onCreate: () => void
-}) {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-subtle px-4 py-10 text-center">
-      <CreditCard className="size-8 text-ink-secondary" aria-hidden />
-      <div className="space-y-1">
-        <p className="text-body font-medium text-ink">Még nincs fizetési mód</p>
-        <p className="max-w-sm text-body text-ink-secondary">
-          Add hozzá legalább a készpénzt, utalást és bankkártyát, mielőtt
-          megrendelést rögzítesz előleggel. Az első aktív mód lesz az
-          alapértelmezett.
-        </p>
-      </div>
-      {canWrite ? (
-        <Button type="button" onClick={onCreate}>
-          <Plus className="size-3.5" aria-hidden />
-          Új fizetési mód
-        </Button>
-      ) : null}
     </div>
   )
 }

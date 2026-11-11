@@ -403,7 +403,7 @@ function calculateMaterialPricing(
   }
 }
 
-function calculateAdditionalServices(
+export function calculateAdditionalServices(
   panels: PanelWithServices[],
   feeInfo: CuttingFeeInfo
 ): ServiceLinePricing[] {
@@ -487,7 +487,7 @@ function calculateAdditionalServices(
   return lines
 }
 
-function calculateEdgeMaterialPricing(
+export function calculateEdgeMaterialPricing(
   panelEdges: PanelEdge[],
   edgeMaterials: Map<string, EdgeMaterialInfo>
 ): EdgeMaterialPricing[] {

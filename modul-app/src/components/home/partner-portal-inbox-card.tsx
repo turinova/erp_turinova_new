@@ -54,6 +54,7 @@ export function PartnerPortalInboxCard({
             <DataTableHeaderCell>Partner</DataTableHeaderCell>
             <DataTableHeaderCell>Ajánlat</DataTableHeaderCell>
             <DataTableHeaderCell>Fizetési mód</DataTableHeaderCell>
+            <DataTableHeaderCell>Díjbekérő</DataTableHeaderCell>
             <DataTableHeaderCell className="text-right">
               Összeg
             </DataTableHeaderCell>
@@ -61,35 +62,59 @@ export function PartnerPortalInboxCard({
           </DataTableRow>
         </DataTableHead>
         <DataTableBody>
-          {rows.map((row) => (
-            <DataTableRow key={row.id} className="hover:bg-subtle">
-              <DataTableCell>
-                <Link
-                  href={`/ajanlatok/${row.id}`}
-                  className="font-medium text-ink no-underline hover:underline"
-                >
-                  {row.partnerName}
-                </Link>
-              </DataTableCell>
-              <DataTableCell>
-                <Link
-                  href={`/ajanlatok/${row.id}`}
-                  className="text-ink no-underline hover:underline"
-                >
-                  {row.quoteNumber}
-                </Link>
-              </DataTableCell>
-              <DataTableCell className="text-ink">
-                {row.paymentMethodName?.trim() || '—'}
-              </DataTableCell>
-              <DataTableCell className="text-right tabular-nums font-medium text-ink">
-                {formatMoneyFt(row.totalGross)} Ft
-              </DataTableCell>
-              <DataTableCell className="tabular-nums text-ink-secondary">
-                {formatSubmittedAt(row.submittedAt)}
-              </DataTableCell>
-            </DataTableRow>
-          ))}
+          {rows.map((row) => {
+            const proformaBad =
+              row.autoProformaStatus === 'failed' ||
+              row.autoProformaStatus === 'skipped'
+            return (
+              <DataTableRow key={row.id} className="hover:bg-subtle">
+                <DataTableCell>
+                  <Link
+                    href={`/ajanlatok/${row.id}`}
+                    className="font-medium text-ink no-underline hover:underline"
+                  >
+                    {row.partnerName}
+                  </Link>
+                </DataTableCell>
+                <DataTableCell>
+                  <Link
+                    href={`/ajanlatok/${row.id}`}
+                    className="text-ink no-underline hover:underline"
+                  >
+                    {row.quoteNumber}
+                  </Link>
+                </DataTableCell>
+                <DataTableCell className="text-ink">
+                  {row.paymentMethodName?.trim() || '—'}
+                </DataTableCell>
+                <DataTableCell>
+                  {proformaBad ? (
+                    <div className="max-w-[220px]">
+                      <StatusBadge tone="danger">Nem ment ki</StatusBadge>
+                      {row.autoProformaNote ? (
+                        <p className="mt-0.5 text-hint text-ink-secondary">
+                          {row.autoProformaNote}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : row.autoProformaStatus === 'issued' ? (
+                    <StatusBadge tone="success">Elküldve</StatusBadge>
+                  ) : row.autoProformaStatus === 'pending' ||
+                    row.autoProformaStatus === 'processing' ? (
+                    <StatusBadge tone="neutral">Folyamatban</StatusBadge>
+                  ) : (
+                    <span className="text-ink-secondary">—</span>
+                  )}
+                </DataTableCell>
+                <DataTableCell className="text-right tabular-nums font-medium text-ink">
+                  {formatMoneyFt(row.totalGross)} Ft
+                </DataTableCell>
+                <DataTableCell className="tabular-nums text-ink-secondary">
+                  {formatSubmittedAt(row.submittedAt)}
+                </DataTableCell>
+              </DataTableRow>
+            )
+          })}
         </DataTableBody>
       </DataTable>
     </section>

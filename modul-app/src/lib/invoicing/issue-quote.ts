@@ -136,6 +136,25 @@ async function loadActiveDocs(
   return { rows, stornoOf, activeFinal, activeAdvance, activeProforma }
 }
 
+/**
+ * Díjbekérő megrendelés előtt is mehet (staff piszkozat / partner beküldés).
+ * Előleg és végszámla továbbra is order_number-hez kötött.
+ */
+export function canProformaBeforeOrder(
+  detail: Pick<QuoteDetail, 'order_number' | 'status'>,
+  kind: InvoiceIssueKind
+): boolean {
+  if (kind !== 'proforma') return false
+  if (detail.order_number) return false
+  if (detail.status === 'cancelled') return false
+  return true
+}
+
+/** Számlázz rendelésszám: megrendelésszám, beküldött partner díjbekérőnél ajánlatszám. */
+function sourceNumberOf(detail: QuoteDetail): string {
+  return detail.order_number || detail.quote_number
+}
+
 function assertCanIssue(
   detail: QuoteDetail,
   kind: InvoiceIssueKind,
@@ -145,7 +164,7 @@ function assertCanIssue(
   if (detail.status === 'cancelled') {
     return { ok: false, message: 'Törölt ajánlathoz nem állítható ki számla.' }
   }
-  if (!detail.order_number) {
+  if (!detail.order_number && !canProformaBeforeOrder(detail, kind)) {
     return {
       ok: false,
       message: 'Előbb hozd létre a megrendelést, utána számlázhatsz.'
@@ -313,8 +332,8 @@ async function buildXmlForQuote(
         : undefined
 
   const orderNumber = opts.preview
-    ? `${detail.order_number}-PREVIEW`
-    : detail.order_number!
+    ? `${sourceNumberOf(detail)}-PREVIEW`
+    : sourceNumberOf(detail)
 
   try {
     const xml = buildSaleInvoiceXml({
@@ -446,7 +465,7 @@ export async function issueInvoiceFromQuote(
       invoice_type: issueKindToStoredType(input.kind),
       related_source_type: 'opti_order',
       related_source_id: input.quoteId,
-      related_source_number: detail.order_number,
+      related_source_number: sourceNumberOf(detail),
       customer_name: buyerName,
       customer_id: detail.customer.id,
       customer_email: email || null,

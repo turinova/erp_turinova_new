@@ -12,6 +12,10 @@ import {
 } from '@/lib/quotes/accessory-totals'
 import type { PaymentStatus } from '@/lib/quotes/payment-labels'
 import { getOrderShareFirstOpenedAt } from '@/lib/order-status/record-open'
+import {
+  parseAutoProformaStatus,
+  type AutoProformaStatus
+} from '@/lib/partner/auto-proforma-rules'
 
 export type QuoteStatus =
   | 'draft'
@@ -82,6 +86,9 @@ export type QuoteDetail = {
   preferred_payment_method_id: string | null
   preferred_payment_method_name: string | null
   preferred_payment_method_comment: string | null
+  /** Partner átutalás → automatikus díjbekérő állapota (staff select). */
+  auto_proforma_status: AutoProformaStatus | null
+  auto_proforma_note: string | null
   pricing_mode: PricingMode
   currency: string
   total_net: number
@@ -650,6 +657,8 @@ export async function getQuoteDetail(
       preferred_payment_method_id,
       preferred_payment_method_name,
       preferred_payment_method_comment,
+      auto_proforma_status,
+      auto_proforma_note,
       billing_name_snapshot,
       billing_country_snapshot,
       billing_city_snapshot,
@@ -1109,6 +1118,8 @@ export async function getQuoteDetail(
       (data.preferred_payment_method_name as string | null) ?? null,
     preferred_payment_method_comment:
       (data.preferred_payment_method_comment as string | null) ?? null,
+    auto_proforma_status: parseAutoProformaStatus(data.auto_proforma_status),
+    auto_proforma_note: (data.auto_proforma_note as string | null) ?? null,
     pricing_mode: data.pricing_mode as PricingMode,
     currency: data.currency,
     total_net: Number(data.total_net),

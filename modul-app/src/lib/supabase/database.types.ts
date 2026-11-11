@@ -624,6 +624,15 @@ export type Quote = {
   preferred_payment_method_id: string | null
   preferred_payment_method_name: string | null
   preferred_payment_method_comment: string | null
+  auto_proforma_status:
+    | 'pending'
+    | 'processing'
+    | 'issued'
+    | 'failed'
+    | 'skipped'
+    | null
+  auto_proforma_note: string | null
+  auto_proforma_at: string | null
   ordered_at: string | null
   created_by: string
   created_at: string
@@ -762,9 +771,11 @@ export type PaymentMethod = {
   id: string
   tenant_id: string
   name: string
+  kind: 'cash' | 'card' | 'transfer' | 'szep_card' | 'cod' | null
   comment: string | null
   active: boolean
   is_default: boolean
+  partner_visible: boolean
   created_at: string
   updated_at: string
   deleted_at: string | null

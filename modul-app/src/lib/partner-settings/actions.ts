@@ -3,7 +3,13 @@
 import { revalidatePath } from 'next/cache'
 
 import {
+  AUTO_PROFORMA_DUE_DAYS_MAX,
+  AUTO_PROFORMA_DUE_DAYS_MIN,
+  normalizeAutoProformaDueDays
+} from '@/lib/partner/auto-proforma-rules'
+import {
   defaultPartnerSearchKinds,
+  getAutoProformaReadiness,
   invalidateTenantPartnerSettingsCache,
   type PartnerSearchKinds
 } from '@/lib/partner-settings/queries'
@@ -84,6 +90,72 @@ export async function updatePartnerSearchKinds(input: {
   invalidateTenantPartnerSettingsCache(tenantId)
   revalidatePath(SETTINGS_PATH)
   revalidatePath('/partner/kereso')
+  return { ok: true }
+}
+
+/** Átutalásos partner beküldés → automatikus díjbekérő. */
+export async function updatePartnerAutoProforma(input: {
+  enabled: boolean
+  dueDays: number
+}): Promise<PartnerSettingsActionResult> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+
+  const tenantId = ctx.user.tenantId!
+  if (!(await tenantHasPartnerOrders(ctx.supabase, tenantId))) {
+    return {
+      ok: false,
+      message:
+        'Az Online partner rendelés add-on nincs bekapcsolva ennél a cégnél.'
+    }
+  }
+
+  const raw = Number(input.dueDays)
+  if (
+    !Number.isInteger(raw) ||
+    raw < AUTO_PROFORMA_DUE_DAYS_MIN ||
+    raw > AUTO_PROFORMA_DUE_DAYS_MAX
+  ) {
+    return {
+      ok: false,
+      message: `A fizetési határidő ${AUTO_PROFORMA_DUE_DAYS_MIN} és ${AUTO_PROFORMA_DUE_DAYS_MAX} nap között lehet.`
+    }
+  }
+
+  if (input.enabled) {
+    const readiness = await getAutoProformaReadiness(ctx.supabase, tenantId)
+    if (!readiness.hasAgentKey) {
+      return {
+        ok: false,
+        message:
+          'Előbb kapcsold össze a Számlázz.hu fiókot a Számlázás beállításokban.'
+      }
+    }
+    if (!readiness.transferActive) {
+      return {
+        ok: false,
+        message:
+          'Kapcsold be az Átutalás fizetési módot, és engedd a partnereknek is.'
+      }
+    }
+  }
+
+  const { error } = await ctx.supabase.from('tenant_partner_settings').upsert(
+    {
+      tenant_id: tenantId,
+      auto_proforma_on_transfer: Boolean(input.enabled),
+      auto_proforma_due_days: normalizeAutoProformaDueDays(raw),
+      updated_at: new Date().toISOString()
+    },
+    { onConflict: 'tenant_id' }
+  )
+  if (error) {
+    console.error('updatePartnerAutoProforma', error.message)
+    return { ok: false, message: 'Nem sikerült menteni a beállításokat.' }
+  }
+
+  invalidateTenantPartnerSettingsCache(tenantId)
+  revalidatePath(SETTINGS_PATH)
   return { ok: true }
 }
 

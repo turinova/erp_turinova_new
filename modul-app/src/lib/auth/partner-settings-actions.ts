@@ -7,7 +7,17 @@ import { getPartnerSession } from '@/lib/auth/partner-session'
 import { clearPartnerMustSetPassword } from '@/lib/auth/partner-actions'
 import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
 import { partnerServerHref } from '@/lib/auth/partner-href-server'
+import { getInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
+import {
+  HU_TAX_NUMBER_RE,
+  queryTaxpayerByTaxNumber,
+  type TaxpayerLookupResult
+} from '@/lib/invoicing/taxpayer'
 import { partnerTenantIsAccepting } from '@/lib/partner/companies'
+import {
+  partnerBillingForProformaReady,
+  partnerBillingIncompleteMessage
+} from '@/lib/partner/auto-proforma-rules'
 import {
   billingNameOrFallback,
   firstFieldError,
@@ -26,6 +36,103 @@ export type PartnerSettingsState = {
   ok?: boolean
   message?: string
   fieldErrors?: Record<string, string>
+  /** Mentés után vissza a beküldéshez. */
+  redirectTo?: string
+}
+
+export type PartnerTaxpayerLookupResult =
+  | { ok: true; taxpayer: TaxpayerLookupResult }
+  | { ok: false; message: string }
+
+/**
+ * Partner adószám → NAV/Számlázz címkitöltés.
+ * A kapcsolt cég Agent kulcsát használja (service role; partnernek nincs közvetlen jog).
+ */
+export async function queryPartnerTaxpayerAction(
+  taxNumber: string
+): Promise<PartnerTaxpayerLookupResult> {
+  const session = await getPartnerSession()
+  if (!session) {
+    return { ok: false, message: 'Nincs bejelentkezés.' }
+  }
+
+  const tenantId = session.selectedTenantId
+  if (!tenantId) {
+    return {
+      ok: false,
+      message: 'Válassz kapcsolt céget a lekérdezéshez.'
+    }
+  }
+
+  const clean = taxNumber.trim().replace(/\s+/g, '')
+  if (!HU_TAX_NUMBER_RE.test(clean)) {
+    return {
+      ok: false,
+      message: 'Érvényes adószám kell (pl. 12345678-1-42).'
+    }
+  }
+
+  if (!isServiceRoleConfigured()) {
+    return {
+      ok: false,
+      message: 'A lekérdezés most nem elérhető. Töltsd ki kézzel.'
+    }
+  }
+
+  const admin = createServiceClient()
+  if (!admin) {
+    return {
+      ok: false,
+      message: 'A lekérdezés most nem elérhető. Töltsd ki kézzel.'
+    }
+  }
+
+  let settings
+  try {
+    settings = await getInvoiceSettings(admin, tenantId)
+  } catch {
+    return {
+      ok: false,
+      message: 'A kapcsolt cég számlázási beállítása nem elérhető.'
+    }
+  }
+
+  if (!hasAgentKey(settings)) {
+    return {
+      ok: false,
+      message:
+        'A kapcsolt cégnél nincs Számlázz kapcsolat — töltsd ki kézzel a címet.'
+    }
+  }
+
+  const result = await queryTaxpayerByTaxNumber({
+    agentKey: settings!.agent_key!.trim(),
+    apiUrl: settings!.api_url,
+    taxNumber: clean
+  })
+  if (!result.ok) return { ok: false, message: result.error }
+  return { ok: true, taxpayer: result.taxpayer }
+}
+
+/** Csak belső, relatív partner útvonal (open redirect tilos). */
+function safePartnerReturnPath(raw: string): string | null {
+  const path = raw.trim()
+  if (!path.startsWith('/')) return null
+  if (path.startsWith('//')) return null
+  if (path.includes('://')) return null
+  if (path.includes('\\')) return null
+  // Partner clean URL-ek + belső /partner prefix.
+  if (
+    path.startsWith('/ajanlatok') ||
+    path.startsWith('/megrendelesek') ||
+    path.startsWith('/opti') ||
+    path.startsWith('/beallitasok') ||
+    path.startsWith('/home') ||
+    path.startsWith('/partner/')
+  ) {
+    return path.slice(0, 500)
+  }
+  return null
 }
 
 export async function updatePartnerProfileAction(
@@ -40,6 +147,9 @@ export async function updatePartnerProfileAction(
   const input = parsePartnerProfileFormData(formData)
   // Email a formból nem megbízható — session email
   input.email = session.email
+  const returnTo = safePartnerReturnPath(
+    String(formData.get('return_to') || '')
+  )
 
   const fieldErrors = {
     ...validatePartnerAccountStep(
@@ -51,6 +161,36 @@ export async function updatePartnerProfileAction(
   }
   // Account step may set password error if empty string — clear password key
   delete fieldErrors.password
+
+  // Beküldésről jött: díjbekérőhöz kötelező a cím (Stripe-szerű).
+  if (returnTo) {
+    const billing = partnerBillingForProformaReady({
+      name: input.name,
+      billing_name: billingNameOrFallback(input.billing_name, input.name),
+      email: input.email,
+      billing_postal_code: input.billing_postal_code,
+      billing_city: input.billing_city,
+      billing_street: input.billing_street
+    })
+    if (!billing.ok) {
+      if (billing.missing.includes('name')) {
+        fieldErrors.billing_name = 'Add meg a számlázási nevet.'
+      }
+      if (billing.missing.includes('postal')) {
+        fieldErrors.billing_postal_code = 'Add meg az irányítószámot.'
+      }
+      if (billing.missing.includes('city')) {
+        fieldErrors.billing_city = 'Add meg a várost.'
+      }
+      if (billing.missing.includes('street')) {
+        fieldErrors.billing_street = 'Add meg az utcát.'
+      }
+      return {
+        message: partnerBillingIncompleteMessage(billing),
+        fieldErrors
+      }
+    }
+  }
 
   const first = firstFieldError(fieldErrors)
   if (first) {
@@ -93,11 +233,33 @@ export async function updatePartnerProfileAction(
     return { message: 'A profil mentése sikertelen. Próbáld újra.' }
   }
 
+  // Ügyféltörzs számlázás frissítése (auto díjbekérő ebből olvas).
+  if (input.selected_tenant_id) {
+    const { error: syncErr } = await supabase.rpc('ensure_partner_customer', {
+      p_tenant_id: input.selected_tenant_id
+    })
+    if (syncErr) {
+      console.warn(
+        'updatePartnerProfileAction customer sync',
+        syncErr.message
+      )
+    }
+  }
+
   revalidatePath('/partner/beallitasok')
   revalidatePath('/partner/home')
   revalidatePath('/beallitasok')
   revalidatePath('/home')
-  return { ok: true, message: 'Profil mentve.' }
+  if (returnTo) {
+    revalidatePath(returnTo.split('?')[0]!)
+  }
+  return {
+    ok: true,
+    message: returnTo
+      ? 'Profil mentve. Folytathatod a beküldést.'
+      : 'Profil mentve.',
+    redirectTo: returnTo ?? undefined
+  }
 }
 
 export async function updatePartnerLinkedCompanyAction(

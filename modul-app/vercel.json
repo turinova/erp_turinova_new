@@ -1,6 +1,7 @@
 {
   "regions": ["dub1"],
   "crons": [
-    { "path": "/api/cron/review-sms", "schedule": "5 * * * *" }
+    { "path": "/api/cron/review-sms", "schedule": "5 * * * *" },
+    { "path": "/api/cron/auto-proforma", "schedule": "*/5 * * * *" }
   ]
 }

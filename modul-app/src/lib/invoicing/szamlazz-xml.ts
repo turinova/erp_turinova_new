@@ -1,5 +1,9 @@
 import { buildAdvanceLines } from '@/lib/invoicing/net-first-lines'
 import { escapeXml } from '@/lib/invoicing/szamlazz-agent'
+import {
+  invoiceEmailTemplate,
+  stornoEmailTemplate
+} from '@/lib/invoicing/szamlazz-email-templates'
 import { isValidVatForNet, normalizeVatPercent } from '@/lib/money/vat-split'
 import type { InvoiceIssueKind, InvoicePaymentMethod } from '@/lib/invoicing/types'
 
@@ -131,6 +135,13 @@ export function buildSaleInvoiceXml(input: SaleInvoiceXmlInput): string {
     throw new Error('Nincs számlázható tétel.')
   }
 
+  const emailTemplate = invoiceEmailTemplate({
+    kind: input.kind,
+    paid: input.kind === 'normal' && input.markAsPaid,
+    afterAdvance: input.kind === 'normal' && Boolean(input.existingAdvanceNumber),
+    paymentMethod: input.paymentMethod
+  })
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamla xmlns="http://www.szamlazz.hu/xmlszamla" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamla https://www.szamlazz.hu/szamla/docs/xsds/agent/xmlszamla.xsd">
   <beallitasok>
@@ -178,8 +189,8 @@ export function buildSaleInvoiceXml(input: SaleInvoiceXmlInput): string {
   </fejlec>
   <elado>
     ${input.seller.email ? `<emailReplyto>${escapeXml(input.seller.email)}</emailReplyto>` : ''}
-    <emailTargy>${escapeXml(`Számla - ${input.orderNumber}`)}</emailTargy>
-    <emailSzoveg>${escapeXml('Tisztelettel küldjük a számlát.')}</emailSzoveg>
+    <emailTargy>${escapeXml(emailTemplate.subject)}</emailTargy>
+    <emailSzoveg>${escapeXml(emailTemplate.body)}</emailSzoveg>
   </elado>
   <vevo>
     <nev>${escapeXml(input.buyer.name)}</nev>
@@ -204,6 +215,7 @@ export function buildStornoXml(opts: {
   const today = new Date().toISOString().split('T')[0]
   const email = String(opts.buyerEmail || '').trim()
   const shouldSend = email.length > 0
+  const emailTemplate = stornoEmailTemplate()
   return `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamlast xmlns="http://www.szamlazz.hu/xmlszamlast" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamlast https://www.szamlazz.hu/szamla/docs/xsds/agentst/xmlszamlast.xsd">
   <beallitasok>
@@ -218,8 +230,8 @@ export function buildStornoXml(opts: {
     <tipus>SS</tipus>
   </fejlec>
   <elado>
-    <emailTargy>${escapeXml(`Sztornó számla - ${opts.invoiceNumber}`)}</emailTargy>
-    <emailSzoveg>${escapeXml('Tisztelettel küldjük a sztornó számlát.')}</emailSzoveg>
+    <emailTargy>${escapeXml(emailTemplate.subject)}</emailTargy>
+    <emailSzoveg>${escapeXml(emailTemplate.body)}</emailSzoveg>
   </elado>
   <vevo>
     ${shouldSend ? `<email>${escapeXml(email)}</email>` : ''}

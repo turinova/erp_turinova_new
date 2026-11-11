@@ -4,9 +4,11 @@ import Link from 'next/link'
 import { PartnerSettingsForm } from '@/components/partner-settings/partner-settings-form'
 import { getSessionUser } from '@/lib/auth/session'
 import {
+  getPartnerAutoProformaView,
   getTenantPartnerSettings,
   invalidateTenantPartnerSettingsCache,
-  partnerSearchKindsFromSettings
+  partnerSearchKindsFromSettings,
+  type PartnerAutoProformaView
 } from '@/lib/partner-settings/queries'
 import { createClient } from '@/lib/supabase/server'
 
@@ -21,6 +23,12 @@ export default async function PartnerSettingsPage() {
   let loadError: string | null = null
   let missingAddon = false
   let initial = partnerSearchKindsFromSettings(null)
+  let autoProforma: PartnerAutoProformaView = {
+    enabled: false,
+    dueDays: 8,
+    hasAgentKey: false,
+    transferActive: false
+  }
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
@@ -55,6 +63,10 @@ export default async function PartnerSettingsPage() {
             )
             invalidateTenantPartnerSettingsCache(user.tenantId)
           }
+          autoProforma = await getPartnerAutoProformaView(
+            supabase,
+            user.tenantId
+          )
         } catch (err) {
           loadError =
             err instanceof Error
@@ -102,5 +114,11 @@ export default async function PartnerSettingsPage() {
     )
   }
 
-  return <PartnerSettingsForm initial={initial} canWrite={canWrite} />
+  return (
+    <PartnerSettingsForm
+      initial={initial}
+      autoProforma={autoProforma}
+      canWrite={canWrite}
+    />
+  )
 }

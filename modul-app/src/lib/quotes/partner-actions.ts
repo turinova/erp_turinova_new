@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 
 import { getPartnerSession } from '@/lib/auth/partner-session'
 import {
@@ -8,6 +9,33 @@ import {
   PARTNER_ORDERS_PATH,
   PARTNER_QUOTES_PATH
 } from '@/lib/auth/surface'
+import type { OptiPanelDraft } from '@/lib/opti/panel-draft'
+import type { QuoteResult } from '@/lib/opti/quote-calculations'
+import type { OptiSheetMaterialOption } from '@/lib/opti/queries'
+import {
+  markAutoProformaPending,
+  runAutoProforma,
+  shouldQueueAutoProforma
+} from '@/lib/partner/auto-proforma'
+import {
+  partnerBillingForProformaReady,
+  partnerBillingIncompleteMessage,
+  type PartnerBillingForProformaResult
+} from '@/lib/partner/auto-proforma-rules'
+import { priceCheckMessage } from '@/lib/quotes/partner-price-check'
+import { runPartnerQuotePriceCheck } from '@/lib/quotes/partner-price-check-load'
+import { recalculateQuoteFeeTotals } from '@/lib/quotes/fee-totals'
+import { allocatePartnerQuoteNumber } from '@/lib/quotes/partner-quote-number'
+import { normalizeProjectName } from '@/lib/quotes/project-name'
+import {
+  assertQuoteReady,
+  edgeLinesFromPricing,
+  materialLineFromPricing,
+  panelsToInserts,
+  quotePricingMode,
+  serviceLinesFromPricing
+} from '@/lib/quotes/snapshot'
+import { createClient } from '@/lib/supabase/server'
 
 function revalidatePartnerPaths(...cleanPaths: string[]) {
   for (const p of cleanPaths) {
@@ -17,21 +45,6 @@ function revalidatePartnerPaths(...cleanPaths: string[]) {
     }
   }
 }
-import type { OptiPanelDraft } from '@/lib/opti/panel-draft'
-import type { QuoteResult } from '@/lib/opti/quote-calculations'
-import type { OptiSheetMaterialOption } from '@/lib/opti/queries'
-import {
-  assertQuoteReady,
-  edgeLinesFromPricing,
-  materialLineFromPricing,
-  panelsToInserts,
-  quotePricingMode,
-  serviceLinesFromPricing
-} from '@/lib/quotes/snapshot'
-import { recalculateQuoteFeeTotals } from '@/lib/quotes/fee-totals'
-import { allocatePartnerQuoteNumber } from '@/lib/quotes/partner-quote-number'
-import { normalizeProjectName } from '@/lib/quotes/project-name'
-import { createClient } from '@/lib/supabase/server'
 
 export type SavePartnerOptiQuoteInput = {
   quoteId?: string | null
@@ -288,12 +301,20 @@ export async function savePartnerOptiQuote(
 export type PartnerSubmitPaymentMethod = {
   id: string
   name: string
+  kind: string | null
   comment: string | null
   is_default: boolean
 }
 
 export type ListPartnerPaymentMethodsResult =
-  | { ok: true; methods: PartnerSubmitPaymentMethod[] }
+  | {
+      ok: true
+      methods: PartnerSubmitPaymentMethod[]
+      /** Átutalásnál a cég automatikusan díjbekérőt küld. */
+      autoProformaOnTransfer: boolean
+      /** Profil alapján: díjbekérőhöz elég-e a számlázási adat. */
+      billingReady: PartnerBillingForProformaResult
+    }
   | { ok: false; message: string }
 
 /** Partner beküldés dialógus — kapcsolt cég aktív módjai. */
@@ -319,8 +340,19 @@ export async function listPartnerPaymentMethodsForSubmit(): Promise<ListPartnerP
     '@/lib/payment-methods/queries'
   )
   try {
-    const methods = await listActivePaymentMethodsForPartner(supabase, tenantId)
-    return { ok: true, methods }
+    const [methods, autoProformaOnTransfer] = await Promise.all([
+      listActivePaymentMethodsForPartner(supabase, tenantId),
+      shouldQueueAutoProforma(tenantId, { kind: 'transfer' })
+    ])
+    const billingReady = partnerBillingForProformaReady({
+      name: session.profile.name,
+      billing_name: session.profile.billing_name,
+      email: session.email,
+      billing_postal_code: session.profile.billing_postal_code,
+      billing_city: session.profile.billing_city,
+      billing_street: session.profile.billing_street
+    })
+    return { ok: true, methods, autoProformaOnTransfer, billingReady }
   } catch (err) {
     console.error('listPartnerPaymentMethodsForSubmit', err)
     return {
@@ -334,8 +366,12 @@ export async function listPartnerPaymentMethodsForSubmit(): Promise<ListPartnerP
 }
 
 export type SubmitPartnerQuoteResult =
-  | { ok: true; id: string; quoteNumber: string }
-  | { ok: false; message: string }
+  | { ok: true; id: string; quoteNumber: string; autoProforma: boolean }
+  | {
+      ok: false
+      message: string
+      code?: 'price_changed' | 'billing_incomplete'
+    }
 
 export type SoftDeletePartnerQuoteResult =
   | { ok: true; id: string }
@@ -400,10 +436,11 @@ export async function submitPartnerQuote(input: {
 
     const { data: method, error: methodError } = await supabase
       .from('payment_methods')
-      .select('id, name, comment')
+      .select('id, name, kind, comment')
       .eq('id', paymentMethodId)
       .eq('tenant_id', tenantId)
       .eq('active', true)
+      .eq('partner_visible', true)
       .is('deleted_at', null)
       .maybeSingle()
 
@@ -412,6 +449,51 @@ export async function submitPartnerQuote(input: {
         ok: false,
         message:
           'Érvénytelen vagy inaktív fizetési mód. Válassz másikat, vagy jelezd a cégnek.'
+      }
+    }
+
+    const priceCheck = await runPartnerQuotePriceCheck(
+      supabase,
+      tenantId,
+      input.quoteId
+    )
+    if (!priceCheck.ok) {
+      console.warn(
+        'submitPartnerQuote price check',
+        input.quoteId,
+        priceCheck.issue,
+        priceCheck.detail
+      )
+      return {
+        ok: false,
+        message: priceCheckMessage(priceCheck),
+        code: 'price_changed'
+      }
+    }
+
+    const autoProforma = await shouldQueueAutoProforma(tenantId, method)
+
+    // Auto díjbekérő: számlázási adat kötelező (ne skipped után derüljön ki).
+    if (autoProforma) {
+      await supabase.rpc('ensure_partner_customer', { p_tenant_id: tenantId })
+      const profileBilling = partnerBillingForProformaReady({
+        name: session.profile.name,
+        billing_name: session.profile.billing_name,
+        email: session.email,
+        billing_postal_code: session.profile.billing_postal_code,
+        billing_city: session.profile.billing_city,
+        billing_street: session.profile.billing_street
+      })
+      if (!profileBilling.ok) {
+        console.info('[auto-proforma] queue=no reason=billing_incomplete', {
+          quoteId: input.quoteId,
+          missing: profileBilling.missing
+        })
+        return {
+          ok: false,
+          message: partnerBillingIncompleteMessage(profileBilling),
+          code: 'billing_incomplete'
+        }
       }
     }
 
@@ -447,10 +529,27 @@ export async function submitPartnerQuote(input: {
     revalidatePath('/home')
     revalidatePath(`/ajanlatok/${input.quoteId}`)
 
+    let autoProformaQueued = false
+    if (autoProforma) {
+      autoProformaQueued = await markAutoProformaPending(tenantId, input.quoteId)
+      if (autoProformaQueued) {
+        after(async () => {
+          await runAutoProforma({ tenantId, quoteId: input.quoteId, mode: 'auto' })
+          try {
+            revalidatePath(`/ajanlatok/${input.quoteId}`)
+            revalidatePath('/home')
+          } catch {
+            // after() után a revalidate nem kötelező; a staff oldal frissítéskor látja.
+          }
+        })
+      }
+    }
+
     return {
       ok: true,
       id: updated.id,
-      quoteNumber: updated.quote_number
+      quoteNumber: updated.quote_number,
+      autoProforma: autoProformaQueued
     }
   } catch (err) {
     console.error('submitPartnerQuote', err)

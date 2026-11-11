@@ -45,9 +45,11 @@ Kezdőlap · Kereső · Opti · Ajánlatok · Megrendelések · Beállítások.
 2. Nyilvános listából választ tenanthoz (csak ahol add-on + `active`).
 3. Kereső / Opti = annak a tenantnak törzse + árazása.
 4. **Első draft mentés (modell A)** → `ensure_partner_customer(tenant_id)` → `customers` + `quotes` (`source=portal`, `status=draft`, `portal_submitted_at` null).
-5. **Beküldés** → kötelező fizetési mód (tenant aktív `payment_methods` + comment); snapshot: `preferred_payment_method_id/name/comment`; `portal_submitted_at = now()`; status marad `draft`; partner **nem** szerkeszthet tovább. (Szándék ≠ `quote_payments`.)
-6. Staff: Online / Új beküldés (home inbox) → meglévő convert → order / gyártás; preferred mód előválasztás / megjelenítés.
-7. Partner Megrendelések: `portal_submitted_at IS NOT NULL` (+ későbbi státuszok).
+5. **Beküldés** → kötelező fizetési mód (tenant aktív + `partner_visible` `payment_methods` + comment); **szerver árellenőrzés** a mai katalógushoz (`partner-price-check.ts`): eltérésnél a beküldés megáll („Nyisd meg és mentsd újra”). Snapshot: `preferred_payment_method_id/name/comment`; `portal_submitted_at = now()`; status marad `draft`; partner **nem** szerkeszthet tovább. (Szándék ≠ `quote_payments`.)
+6. **Automatikus díjbekérő (opcionális):** `/beallitasok/partner` → `auto_proforma_on_transfer` + `auto_proforma_due_days`. Átutalás + Agent kulcs + kapcsoló → beküldés után `after()` + service role kiállít díjbekérőt (`runAutoProforma`). Állapot: `quotes.auto_proforma_*`. Hiba / hiányos számlázási adat → `failed` / `skipped`, staff újraküldés az ajánlat detailen. Cron: `/api/cron/auto-proforma` (5 perc). Díjbekérő mehet rendelésszám nélkül is (beküldött portal quote, Számlázz rendelésszám = ajánlatszám).
+7. Staff: Online / Új beküldés (home inbox, díjbekérő oszlop) → meglévő convert → order / gyártás; preferred mód előválasztás / megjelenítés.
+8. Partner Megrendelések: `portal_submitted_at IS NOT NULL` (+ későbbi státuszok). Partner díjbekérő szöveg **csak** `quotes.auto_proforma_status`-ból (`partnerAutoProformaCopy`); átutalás önmagában nem ígér díjbekérőt. Draft + `issued` → „Fizetésre vár (díjbekérő elküldve)”; detailen badge + mondat; `failed`/`skipped` → „A díjbekérőt a cég intézi.” (belső ok nélkül).
+9. **Számlázási kapu (auto díjbekérő):** átutalás + auto ON + hiányos cím/e-mail → beküldés **tiltva**, warning + „Számlázási adatok kitöltése” → `/beallitasok?return=…#szamlazas`. Szerver: `billing_incomplete`. Mentés után `ensure_partner_customer` sync + return `?submit=1` újra nyitja a dialógust.
 
 Egy partner × egy tenant = **egy** `customers` sor (`partner_profile_id`). Másik cég = másik customer sor.
 
@@ -74,6 +76,9 @@ Egy partner × egy tenant = **egy** `customers` sor (`partner_profile_id`). Más
 | `quotes.partner_profile_id` | Ki küldte |
 | `quotes.portal_submitted_at` | Mentve vs beküldve |
 | `quotes.preferred_payment_method_*` | Beküldéskori fizetési mód + comment snapshot |
+| `quotes.auto_proforma_status/note/at` | Automatikus díjbekérő állapot (pending→processing→issued\|failed\|skipped) |
+| `tenant_partner_settings.auto_proforma_*` | Kapcsoló + fizetési határidő nap |
+| `payment_methods.kind` + `partner_visible` | Fix rendszer módok (cash/card/transfer/szep_card/cod); nincs törlés / átnevezés |
 | `ensure_partner_customer(uuid)` | Idempotens RPC (email merge, revive, insert) |
 
 RLS váz: partner saját profil; saját portal quote-ok; katalógus SELECT csak `selected_tenant` + add-on; staff policy változatlan. Production / order írás csak membership.

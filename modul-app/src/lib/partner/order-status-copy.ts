@@ -1,4 +1,5 @@
 import { toBudapestYmdFromIso } from '@/lib/home/date'
+import { partnerAutoProformaCopy } from '@/lib/partner/auto-proforma-rules'
 import type { PartnerQuoteListItem } from '@/lib/partner/quotes-queries'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -55,8 +56,16 @@ export function formatRelative(iso: string): string {
 /** Következő lépés egy mondatban a státusz badge mellett. */
 export function orderStatusHint(row: PartnerQuoteListItem): string {
   switch (row.status) {
-    case 'draft':
+    case 'draft': {
+      const proforma = partnerAutoProformaCopy(row.auto_proforma_status)
+      if (proforma) {
+        if (row.auto_proforma_status === 'issued') {
+          return 'Fizetésre vár (díjbekérő elküldve)'
+        }
+        return proforma.text.replace(/\.$/, '')
+      }
       return 'A cég még nem fogadta el'
+    }
     case 'ordered':
       return row.production_date
         ? `Gyártás napja: ${formatShortDay(row.production_date)}`

@@ -90,9 +90,13 @@ export function QuoteInvoiceIssueDialog({
   preferredKind = null
 }: Props) {
   const router = useRouter()
+  const hasOrderNumber = Boolean(quote.order_number)
   const { options, defaultKind } = useMemo(
-    () => resolveQuoteInvoiceKindOptions(quote.payment_status, invoices),
-    [quote.payment_status, invoices]
+    () =>
+      resolveQuoteInvoiceKindOptions(quote.payment_status, invoices, {
+        hasOrderNumber
+      }),
+    [quote.payment_status, invoices, hasOrderNumber]
   )
   const { hasProforma, hasFinal } = useMemo(
     () => activeDocs(invoices),

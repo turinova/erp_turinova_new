@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
 
 import { PartnerDeleteAccount } from '@/components/partner/partner-delete-account'
 import { PartnerLinkedCompanyForm } from '@/components/partner/partner-linked-company-form'
@@ -33,10 +34,12 @@ export default async function PartnerSettingsPage() {
       />
 
       <div className="grid items-start gap-3 lg:grid-cols-[1fr_340px]">
-        <PartnerSettingsProfileForm
-          profile={session.profile}
-          email={session.email}
-        />
+        <Suspense fallback={null}>
+          <PartnerSettingsProfileForm
+            profile={session.profile}
+            email={session.email}
+          />
+        </Suspense>
         <div className="flex flex-col gap-3">
           <PartnerPasswordForm />
           <PartnerDeleteAccount />
