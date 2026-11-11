@@ -116,6 +116,9 @@ export type QuotePdfInput = {
     accessories_total_net?: number
     accessories_total_vat?: number
     accessories_total_gross?: number
+    /** Számlával azonos (nettó-első) nettó / ÁFA összesen. */
+    invoice_net_total?: number | null
+    invoice_vat_total?: number | null
   }
 }
 

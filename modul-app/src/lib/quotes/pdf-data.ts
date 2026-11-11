@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import type { TenantCompanyRow } from '@/lib/company/queries'
+import { quoteNetFirstTotals } from '@/lib/invoicing/quote-invoice-lines'
 import { normalizePanthelyOldal } from '@/lib/opti/panel-draft'
 import { listQuoteFees } from '@/lib/quotes/fee-totals'
 import { listQuoteAccessories } from '@/lib/quotes/accessory-totals'
@@ -93,6 +94,7 @@ export async function getQuoteForPdf(
         charged_sqm,
         waste_multi,
         boards_charged,
+        vat_rate,
         material_net,
         material_gross,
         cutting_length_m,
@@ -222,6 +224,7 @@ export async function getQuoteForPdf(
     charged_sqm: number
     waste_multi: number
     boards_charged: number
+    vat_rate: number | string | null
     material_net: number
     material_gross: number
     cutting_length_m: number
@@ -317,6 +320,38 @@ export async function getQuoteForPdf(
     gross_price: f.gross_price,
     kind: f.kind
   }))
+  const invoiceTotals = quoteNetFirstTotals({
+    order_number: null,
+    quote_number: data.quote_number,
+    final_total_gross: finalTotal,
+    material_lines: linesRaw.map((line) => ({
+      material_name: line.material_name,
+      vat_rate: line.vat_rate == null ? null : Number(line.vat_rate),
+      boards_charged: Number(line.boards_charged) || 0,
+      charged_sqm: Number(line.charged_sqm) || 0,
+      waste_multi: Number(line.waste_multi) || 1,
+      board_grain_mm: Number(line.board_grain_mm) || 0,
+      board_cross_mm: Number(line.board_cross_mm) || 0,
+      material_net: Number(line.material_net) || 0,
+      material_gross: Number(line.material_gross) || 0,
+      cutting_length_m: Number(line.cutting_length_m) || 0,
+      cutting_net: Number(line.cutting_net) || 0,
+      cutting_gross: Number(line.cutting_gross) || 0,
+      edge_length_m: Number(line.edge_length_m) || 0,
+      edge_net: Number(line.edge_net) || 0,
+      edge_gross: Number(line.edge_gross) || 0,
+      services: (line.quote_service_lines ?? []).map((s) => ({
+        service_type: s.service_type,
+        quantity: Number(s.quantity) || 0,
+        unit: s.unit,
+        net_price: Number(s.net_price) || 0,
+        gross_price: Number(s.gross_price) || 0
+      }))
+    })),
+    accessories: accessoryRows,
+    fees: feeRows
+  })
+
   const accessories = accessoryRows.map((a) => ({
     id: a.id,
     accessory_name: a.accessory_name,
@@ -364,7 +399,9 @@ export async function getQuoteForPdf(
       fees_total_gross: feesTotalGross,
       accessories_total_net: accessoriesTotalNet,
       accessories_total_vat: accessoriesTotalVat,
-      accessories_total_gross: accessoriesTotalGross
+      accessories_total_gross: accessoriesTotalGross,
+      invoice_net_total: invoiceTotals?.net ?? null,
+      invoice_vat_total: invoiceTotals?.vat ?? null
     }
   }
 }

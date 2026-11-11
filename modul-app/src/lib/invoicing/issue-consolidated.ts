@@ -10,6 +10,7 @@ import {
 import { isFinancePeriodLocked } from '@/lib/finance/period-lock'
 import type { ConsolidateSourceType } from '@/lib/invoicing/eligible-consolidate'
 import { activeDocs } from '@/lib/invoicing/invoice-rules'
+import { mapSaleItemsNetFirst } from '@/lib/invoicing/net-first-lines'
 import {
   mapQuoteInvoiceLines,
   quoteHasBilling
@@ -87,23 +88,7 @@ function todayIso() {
 }
 
 function mapSaleLines(detail: SaleDetail): SaleInvoiceLine[] {
-  return detail.items.map((i) => {
-    const gross = Math.round(i.total_gross)
-    const vatPct = Number(i.tax_rate_percent) || 27
-    const net = Math.round(gross / (1 + vatPct / 100))
-    const vat = gross - net
-    const qty = Number(i.quantity) || 1
-    return {
-      name: i.name_snapshot,
-      quantity: qty,
-      unit: i.unit_shortform || 'db',
-      unitNet: qty > 0 ? net / qty : net,
-      vatPercent: vatPct,
-      lineNet: net,
-      lineVat: vat,
-      lineGross: gross
-    }
-  })
+  return mapSaleItemsNetFirst(detail.items)
 }
 
 function saleHasBilling(detail: SaleDetail): boolean {

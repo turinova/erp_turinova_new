@@ -1,16 +1,12 @@
+import {
+  fitNetFirstLines,
+  type GrossTargetLine,
+  type NetFirstInvoiceLine
+} from '@/lib/invoicing/net-first-lines'
+import { inferVatPercent, normalizeVatPercent } from '@/lib/money/vat-split'
 import { formatQuoteFeeLabel } from '@/lib/quotes/fee-totals'
-import type { QuoteDetail } from '@/lib/quotes/queries'
 
-export type QuoteInvoiceLine = {
-  name: string
-  quantity: number
-  unit: string
-  unitNet: number
-  vatPercent: number
-  lineNet: number
-  lineVat: number
-  lineGross: number
-}
+export type QuoteInvoiceLine = NetFirstInvoiceLine
 
 /** Összesített (default) vs anyagonkénti tételrészletezés. */
 export type QuoteInvoiceDetailLevel = 'summary' | 'by_material'
@@ -19,52 +15,85 @@ export type MapQuoteInvoiceLinesOpts = {
   detailLevel?: QuoteInvoiceDetailLevel
 }
 
-const GROSS_TOLERANCE = 2
-
-function roundMoney(n: number): number {
-  return Math.round(n)
+/** Ami a számlatételekhez kell — QuoteDetail és a PDF payload is kielégíti. */
+export type QuoteInvoiceSource = {
+  order_number: string | null
+  quote_number: string
+  final_total_gross: number
+  material_lines: Array<{
+    material_name: string
+    /** Tört (0.27); régi sornál hiányozhat → nettó/bruttóból becsült. */
+    vat_rate?: number | null
+    boards_charged: number
+    charged_sqm: number
+    waste_multi: number
+    board_grain_mm: number
+    board_cross_mm: number
+    material_net: number
+    material_gross: number
+    cutting_length_m: number
+    cutting_net: number
+    cutting_gross: number
+    edge_length_m: number
+    edge_net: number
+    edge_gross: number
+    services?: Array<{
+      service_type: string
+      quantity: number
+      unit: string
+      net_price: number
+      gross_price: number
+    }> | null
+  }>
+  accessories: Array<{
+    accessory_name: string
+    quantity: number
+    unit_shortform: string
+    tax_rate_percent: number
+    gross_price: number
+  }>
+  fees: Array<{
+    kind: 'fee' | 'credit'
+    fee_name: string
+    comment: string | null
+    quantity: number
+    unit_shortform: string
+    tax_rate_percent: number
+    gross_price: number
+  }>
 }
+
+type MaterialLine = QuoteInvoiceSource['material_lines'][number]
+
+/** Régi (±2 Ft) tizedes snapshotok elnyelése; nagyobb eltérés = adathiba. */
+const GROSS_TOLERANCE = 2
 
 function roundQty(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-function lineFromGross(
-  name: string,
-  grossRaw: number,
-  netRaw: number | null,
-  opts?: { quantity?: number; unit?: string; vatPercent?: number }
-): QuoteInvoiceLine | null {
-  const gross = roundMoney(grossRaw)
-  if (gross === 0) return null
-  // Számlázz: mennyiség > 0 kell; negatív bruttó (jóváírás) 1 db-bal megy
-  let qty = opts?.quantity && opts.quantity > 0 ? opts.quantity : 1
-  if (qty < 0.01) qty = 1
-  const unit = opts?.unit || 'db'
-  const vatPercent = opts?.vatPercent ?? 27
-  let net: number
-  if (netRaw != null && Number.isFinite(netRaw)) {
-    net = roundMoney(netRaw)
-  } else {
-    net = roundMoney(gross / (1 + vatPercent / 100))
+export function materialVatPercent(ml: MaterialLine): number {
+  const rate = Number(ml.vat_rate)
+  if (ml.vat_rate != null && Number.isFinite(rate)) {
+    return normalizeVatPercent(rate * 100)
   }
-  // Jóváírás: net ugyanolyan előjelű, mint a gross
-  if (gross < 0 && net > 0) net = -Math.abs(net)
-  if (gross > 0 && net < 0) net = Math.abs(net)
-  const vat = gross - net
-  return {
-    name,
-    quantity: qty,
-    unit,
-    unitNet: qty > 0 ? net / qty : net,
-    vatPercent,
-    lineNet: net,
-    lineVat: vat,
-    lineGross: gross
-  }
+  return inferVatPercent(ml.material_net, ml.material_gross, 27)
 }
 
-type MaterialLine = QuoteDetail['material_lines'][number]
+export function cuttingVatPercent(ml: MaterialLine): number {
+  return inferVatPercent(ml.cutting_net, ml.cutting_gross, materialVatPercent(ml))
+}
+
+export function edgeVatPercent(ml: MaterialLine): number {
+  return inferVatPercent(ml.edge_net, ml.edge_gross, materialVatPercent(ml))
+}
+
+export function serviceVatPercent(
+  ml: MaterialLine,
+  svc: { net_price: number; gross_price: number }
+): number {
+  return inferVatPercent(svc.net_price, svc.gross_price, materialVatPercent(ml))
+}
 
 /**
  * Invoice quantity = physical / customer-facing m² (not waste-inflated).
@@ -85,21 +114,11 @@ export function materialInvoiceDisplayM2(ml: MaterialLine): number {
   return boards * boardArea + panelDisplayM2
 }
 
-function materialQtyUnit(ml: MaterialLine): {
-  quantity: number
-  unit: string
-} {
-  const displayM2 = roundQty(materialInvoiceDisplayM2(ml))
-  if (displayM2 >= 0.01) {
-    return { quantity: displayM2, unit: 'm²' }
-  }
-  return { quantity: 1, unit: 'm²' }
+function qtyOrOne(qty: number): number {
+  return qty >= 0.01 ? qty : 1
 }
 
-function serviceLabel(
-  serviceType: string,
-  materialName?: string
-): string {
+function serviceLabel(serviceType: string, materialName?: string): string {
   const base =
     serviceType === 'duplungolas'
       ? 'Duplungolás'
@@ -112,318 +131,215 @@ function serviceLabel(
   return base
 }
 
-function pushMegmunkalasLines(
-  detail: QuoteDetail,
-  lines: QuoteInvoiceLine[],
-  mode: 'summary' | 'by_material'
-) {
-  if (mode === 'by_material') {
-    for (const ml of detail.material_lines) {
-      const matName = ml.material_name?.trim() || 'Táblás anyag'
-      for (const svc of ml.services ?? []) {
-        const qtyRaw = Number(svc.quantity) || 0
-        const unit = svc.unit || (svc.service_type === 'duplungolas' ? 'm²' : 'db')
-        const qty =
-          unit === 'm²'
-            ? roundQty(qtyRaw)
-            : Math.max(1, Math.round(qtyRaw) || 1)
-        const line = lineFromGross(
-          serviceLabel(svc.service_type, matName),
-          Number(svc.gross_price) || 0,
-          Number(svc.net_price) || 0,
-          { quantity: qty >= 0.01 ? qty : 1, unit }
-        )
-        if (line) lines.push(line)
-      }
-    }
-    return
-  }
+function serviceQty(unit: string, qtyRaw: number): number {
+  return unit === 'm²'
+    ? qtyOrOne(roundQty(qtyRaw))
+    : Math.max(1, Math.round(qtyRaw) || 1)
+}
 
-  const agg = new Map<
+/** Kulcs szerint csoportosított összesítő sor (vegyes ÁFA ne olvadjon össze). */
+class RateGroups {
+  private groups = new Map<
     string,
-    { quantity: number; unit: string; net: number; gross: number }
+    { name: string; unit: string; vatPercent: number; quantity: number; gross: number }
   >()
-  for (const ml of detail.material_lines) {
-    for (const svc of ml.services ?? []) {
-      const key = svc.service_type
-      const unit = svc.unit || (svc.service_type === 'duplungolas' ? 'm²' : 'db')
-      const existing = agg.get(key)
-      if (existing) {
-        existing.quantity += Number(svc.quantity) || 0
-        existing.net += Number(svc.net_price) || 0
-        existing.gross += Number(svc.gross_price) || 0
-      } else {
-        agg.set(key, {
-          quantity: Number(svc.quantity) || 0,
-          unit,
-          net: Number(svc.net_price) || 0,
-          gross: Number(svc.gross_price) || 0
-        })
-      }
+
+  add(key: string, name: string, unit: string, vatPercent: number, quantity: number, gross: number) {
+    const k = `${key}|${vatPercent}`
+    const g = this.groups.get(k)
+    if (g) {
+      g.quantity += quantity
+      g.gross += gross
+    } else {
+      this.groups.set(k, { name, unit, vatPercent, quantity, gross })
     }
   }
 
-  for (const [serviceType, data] of agg) {
-    const qty =
-      data.unit === 'm²'
-        ? roundQty(data.quantity)
-        : Math.max(1, Math.round(data.quantity) || 1)
-    const line = lineFromGross(
-      serviceLabel(serviceType),
-      data.gross,
-      data.net,
-      { quantity: qty >= 0.01 ? qty : 1, unit: data.unit }
-    )
-    if (line) lines.push(line)
+  toTargets(qtyFor: (unit: string, qty: number) => { quantity: number; unit: string }): GrossTargetLine[] {
+    return [...this.groups.values()].map((g) => ({
+      name: g.name,
+      ...qtyFor(g.unit, g.quantity),
+      vatPercent: g.vatPercent,
+      gross: g.gross
+    }))
   }
 }
 
-function pushAccessoriesAndFees(
-  detail: QuoteDetail,
-  lines: QuoteInvoiceLine[]
-) {
-  for (const acc of detail.accessories) {
-    const qty = Number(acc.quantity) || 1
-    const line = lineFromGross(
-      acc.accessory_name,
-      Number(acc.gross_price) || 0,
-      Number(acc.unit_price_net) * qty,
-      {
-        quantity: qty,
-        unit: acc.unit_shortform || 'db',
-        vatPercent: Number(acc.tax_rate_percent) || 27
-      }
-    )
-    if (line) lines.push(line)
+function lengthQty(_unit: string, qty: number) {
+  const q = roundQty(qty)
+  return q >= 0.01 ? { quantity: q, unit: 'm' } : { quantity: 1, unit: 'db' }
+}
+
+function summaryTargets(src: QuoteInvoiceSource): GrossTargetLine[] {
+  const material = new RateGroups()
+  const cutting = new RateGroups()
+  const edge = new RateGroups()
+  const services = new RateGroups()
+
+  for (const ml of src.material_lines) {
+    material.add('m', 'Táblás anyag', 'm²', materialVatPercent(ml), materialInvoiceDisplayM2(ml), Number(ml.material_gross) || 0)
+    cutting.add('c', 'Szabás díj', 'm', cuttingVatPercent(ml), Number(ml.cutting_length_m) || 0, Number(ml.cutting_gross) || 0)
+    edge.add('e', 'Élzárás', 'm', edgeVatPercent(ml), Number(ml.edge_length_m) || 0, Number(ml.edge_gross) || 0)
+    for (const svc of ml.services ?? []) {
+      const unit = svc.unit || (svc.service_type === 'duplungolas' ? 'm²' : 'db')
+      services.add(svc.service_type, serviceLabel(svc.service_type), unit, serviceVatPercent(ml, svc), Number(svc.quantity) || 0, Number(svc.gross_price) || 0)
+    }
   }
 
-  for (const fee of detail.fees) {
-    const qty = Number(fee.quantity) || 1
-    const sign = fee.kind === 'credit' ? -1 : 1
-    const gross = sign * (Number(fee.gross_price) || 0)
-    const net = sign * (Number(fee.unit_price_net) || 0) * qty
-    const line = lineFromGross(
-      formatQuoteFeeLabel(fee.fee_name, fee.comment, {
+  return [
+    ...material.toTargets((unit, qty) => ({ quantity: qtyOrOne(roundQty(qty)), unit })),
+    ...cutting.toTargets(lengthQty),
+    ...edge.toTargets(lengthQty),
+    ...services.toTargets((unit, qty) => ({ quantity: serviceQty(unit, qty), unit }))
+  ]
+}
+
+function byMaterialTargets(src: QuoteInvoiceSource): GrossTargetLine[] {
+  const targets: GrossTargetLine[] = []
+  for (const ml of src.material_lines) {
+    const name = ml.material_name?.trim() || 'Táblás anyag'
+    targets.push({
+      name,
+      quantity: qtyOrOne(roundQty(materialInvoiceDisplayM2(ml))),
+      unit: 'm²',
+      vatPercent: materialVatPercent(ml),
+      gross: Number(ml.material_gross) || 0
+    })
+    targets.push({
+      name: `Szabás — ${name}`,
+      ...lengthQty('m', Number(ml.cutting_length_m) || 0),
+      vatPercent: cuttingVatPercent(ml),
+      gross: Number(ml.cutting_gross) || 0
+    })
+    targets.push({
+      name: `Élzárás — ${name}`,
+      ...lengthQty('m', Number(ml.edge_length_m) || 0),
+      vatPercent: edgeVatPercent(ml),
+      gross: Number(ml.edge_gross) || 0
+    })
+    for (const svc of ml.services ?? []) {
+      const unit = svc.unit || (svc.service_type === 'duplungolas' ? 'm²' : 'db')
+      targets.push({
+        name: serviceLabel(svc.service_type, name),
+        quantity: serviceQty(unit, Number(svc.quantity) || 0),
+        unit,
+        vatPercent: serviceVatPercent(ml, svc),
+        gross: Number(svc.gross_price) || 0
+      })
+    }
+  }
+  return targets
+}
+
+function accessoryAndFeeTargets(src: QuoteInvoiceSource): GrossTargetLine[] {
+  const targets: GrossTargetLine[] = []
+  for (const acc of src.accessories) {
+    targets.push({
+      name: acc.accessory_name,
+      quantity: Number(acc.quantity) || 1,
+      unit: acc.unit_shortform || 'db',
+      vatPercent: normalizeVatPercent(acc.tax_rate_percent),
+      gross: Number(acc.gross_price) || 0
+    })
+  }
+  for (const fee of src.fees) {
+    // DB: credit gross_price már negatív; régi pozitív sor se forduljon díjjá.
+    const grossAbs = Math.abs(Number(fee.gross_price) || 0)
+    targets.push({
+      name: formatQuoteFeeLabel(fee.fee_name, fee.comment, {
         creditPrefix: fee.kind === 'credit'
       }),
-      gross,
-      net,
-      {
-        quantity: Math.abs(qty) || 1,
-        unit: fee.unit_shortform || 'db',
-        vatPercent: Number(fee.tax_rate_percent) || 27
-      }
-    )
-    if (line) lines.push(line)
+      quantity: Math.abs(Number(fee.quantity)) || 1,
+      unit: fee.unit_shortform || 'db',
+      vatPercent: normalizeVatPercent(fee.tax_rate_percent),
+      gross: fee.kind === 'credit' ? -grossAbs : grossAbs
+    })
   }
-}
-
-function mapSummaryMaterialLines(detail: QuoteDetail): QuoteInvoiceLine[] {
-  const lines: QuoteInvoiceLine[] = []
-
-  let materialGross = 0
-  let materialNet = 0
-  let materialDisplayM2 = 0
-  let cuttingGross = 0
-  let cuttingNet = 0
-  let cuttingLength = 0
-  let edgeGross = 0
-  let edgeNet = 0
-  let edgeLength = 0
-
-  for (const ml of detail.material_lines) {
-    materialGross += Number(ml.material_gross) || 0
-    materialNet += Number(ml.material_net) || 0
-    materialDisplayM2 += materialInvoiceDisplayM2(ml)
-    cuttingGross += Number(ml.cutting_gross) || 0
-    cuttingNet += Number(ml.cutting_net) || 0
-    cuttingLength += Number(ml.cutting_length_m) || 0
-    edgeGross += Number(ml.edge_gross) || 0
-    edgeNet += Number(ml.edge_net) || 0
-    edgeLength += Number(ml.edge_length_m) || 0
-  }
-
-  const qtyM2 = roundQty(materialDisplayM2)
-  const material = lineFromGross('Táblás anyag', materialGross, materialNet, {
-    quantity: qtyM2 >= 0.01 ? qtyM2 : 1,
-    unit: 'm²'
-  })
-  if (material) lines.push(material)
-
-  const cutQty = roundQty(cuttingLength)
-  const cutting = lineFromGross('Szabás díj', cuttingGross, cuttingNet, {
-    quantity: cutQty >= 0.01 ? cutQty : 1,
-    unit: cutQty >= 0.01 ? 'm' : 'db'
-  })
-  if (cutting) lines.push(cutting)
-
-  const edgeQty = roundQty(edgeLength)
-  const edge = lineFromGross('Élzárás', edgeGross, edgeNet, {
-    quantity: edgeQty >= 0.01 ? edgeQty : 1,
-    unit: edgeQty >= 0.01 ? 'm' : 'db'
-  })
-  if (edge) lines.push(edge)
-
-  return lines
-}
-
-function mapByMaterialLines(detail: QuoteDetail): QuoteInvoiceLine[] {
-  const lines: QuoteInvoiceLine[] = []
-
-  for (const ml of detail.material_lines) {
-    const name = ml.material_name?.trim() || 'Táblás anyag'
-    const { quantity, unit } = materialQtyUnit(ml)
-    const material = lineFromGross(
-      name,
-      Number(ml.material_gross) || 0,
-      Number(ml.material_net) || 0,
-      { quantity, unit }
-    )
-    if (material) lines.push(material)
-
-    const cutLen = roundQty(Number(ml.cutting_length_m) || 0)
-    const cutting = lineFromGross(
-      `Szabás — ${name}`,
-      Number(ml.cutting_gross) || 0,
-      Number(ml.cutting_net) || 0,
-      {
-        quantity: cutLen >= 0.01 ? cutLen : 1,
-        unit: cutLen >= 0.01 ? 'm' : 'db'
-      }
-    )
-    if (cutting) lines.push(cutting)
-
-    const edgeLen = roundQty(Number(ml.edge_length_m) || 0)
-    const edge = lineFromGross(
-      `Élzárás — ${name}`,
-      Number(ml.edge_gross) || 0,
-      Number(ml.edge_net) || 0,
-      {
-        quantity: edgeLen >= 0.01 ? edgeLen : 1,
-        unit: edgeLen >= 0.01 ? 'm' : 'db'
-      }
-    )
-    if (edge) lines.push(edge)
-  }
-
-  return lines
-}
-
-function reconcileToDue(
-  detail: QuoteDetail,
-  lines: QuoteInvoiceLine[]
-): { ok: true; lines: QuoteInvoiceLine[] } | { ok: false; message: string } {
-  const due = roundMoney(detail.final_total_gross)
-
-  if (lines.length === 0) {
-    if (due <= 0) {
-      return { ok: false, message: 'Nincs számlázható tétel az ajánlaton.' }
-    }
-    const fallback = lineFromGross(
-      `Megrendelés ${detail.order_number ?? detail.quote_number}`,
-      due,
-      null,
-      { quantity: 1, unit: 'db' }
-    )
-    if (!fallback) {
-      return { ok: false, message: 'Nincs számlázható tétel az ajánlaton.' }
-    }
-    return { ok: true, lines: [fallback] }
-  }
-
-  const sumGross = lines.reduce((s, l) => s + l.lineGross, 0)
-  const diff = due - sumGross
-  if (Math.abs(diff) > GROSS_TOLERANCE) {
-    const fallback = lineFromGross(
-      `Megrendelés ${detail.order_number ?? detail.quote_number}`,
-      due,
-      null,
-      { quantity: 1, unit: 'db' }
-    )
-    if (!fallback) {
-      return {
-        ok: false,
-        message: `A számlatételek összege (${sumGross} Ft) nem egyezik a végösszeggel (${due} Ft).`
-      }
-    }
-    return { ok: true, lines: [fallback] }
-  }
-
-  if (diff !== 0) {
-    // Absorb ±1–2 Ft into the last real line — never a visible "Kerekítés" row.
-    const targetIdx = findAbsorbTargetIndex(lines, diff)
-    if (targetIdx == null) {
-      return {
-        ok: false,
-        message: `A számlatételek összege (${sumGross} Ft) nem egyezik a végösszeggel (${due} Ft).`
-      }
-    }
-    lines[targetIdx] = absorbGrossDiff(lines[targetIdx]!, diff)
-  }
-
-  return { ok: true, lines }
-}
-
-/** Prefer last positive material/service line that can take the Ft delta. */
-function findAbsorbTargetIndex(
-  lines: QuoteInvoiceLine[],
-  diff: number
-): number | null {
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]!
-    if (line.lineGross === 0) continue
-    const next = line.lineGross + diff
-    // Don't flip a positive line to ≤0 (or negative to ≥0) for a tiny fix
-    if (line.lineGross > 0 && next <= 0) continue
-    if (line.lineGross < 0 && next >= 0) continue
-    return i
-  }
-  return null
-}
-
-function absorbGrossDiff(
-  line: QuoteInvoiceLine,
-  diff: number
-): QuoteInvoiceLine {
-  const lineGross = roundMoney(line.lineGross + diff)
-  const lineNet =
-    line.lineGross !== 0
-      ? roundMoney(line.lineNet * (lineGross / line.lineGross))
-      : roundMoney(lineGross / (1 + line.vatPercent / 100))
-  const lineVat = lineGross - lineNet
-  const qty = line.quantity > 0 ? line.quantity : 1
-  return {
-    ...line,
-    lineGross,
-    lineNet,
-    lineVat,
-    unitNet: lineNet / qty
-  }
+  return targets
 }
 
 /**
- * Számla tételek — sor Ft = DB snapshot (ne unit×qty újraszámolás).
- * - summary: anyag + szabás + él + megmunkálás + termékek + díjak
+ * Számla tételek — sor bruttó = DB snapshot; nettó/ÁFA nettó-első bontás
+ * (áfa = kerekít(nettó × kulcs / 100)), Σ bruttó = `final_total_gross` fillérre.
+ * - summary: anyag + szabás + él + megmunkálás (ÁFA kulcsonként) + termékek + díjak
  * - by_material: anyagonként név + m² + szabás/él/megmunkálás
  * Mennyiség soha nem waste-szel növelt charged_sqm — a hulladék az egységárban van.
- * Végösszeg: `final_total_gross`; ±2 Ft abszorpció utolsó tételbe.
  */
 export function mapQuoteInvoiceLines(
-  detail: QuoteDetail,
+  src: QuoteInvoiceSource,
   opts: MapQuoteInvoiceLinesOpts = {}
 ): { ok: true; lines: QuoteInvoiceLine[] } | { ok: false; message: string } {
   const detailLevel = opts.detailLevel ?? 'summary'
-  const lines =
-    detailLevel === 'by_material'
-      ? mapByMaterialLines(detail)
-      : mapSummaryMaterialLines(detail)
+  const due = Math.round(Number(src.final_total_gross) || 0)
+  const targets = [
+    ...(detailLevel === 'by_material' ? byMaterialTargets(src) : summaryTargets(src)),
+    ...accessoryAndFeeTargets(src)
+  ].filter((t) => Math.round(t.gross) !== 0)
 
-  pushMegmunkalasLines(detail, lines, detailLevel)
-  pushAccessoriesAndFees(detail, lines)
-  return reconcileToDue(detail, lines)
+  if (targets.length === 0) {
+    if (due <= 0) {
+      return { ok: false, message: 'Nincs számlázható tétel az ajánlaton.' }
+    }
+    targets.push({
+      name: `Megrendelés ${src.order_number ?? src.quote_number}`,
+      quantity: 1,
+      unit: 'db',
+      vatPercent: 27,
+      gross: due,
+      splitMode: 'keep'
+    })
+  }
+
+  const fitted = fitNetFirstLines(targets, due, { tolerance: GROSS_TOLERANCE })
+  if (!fitted.ok) {
+    return {
+      ok: false,
+      message: `${fitted.message} Ellenőrizd az ajánlat tételeit, majd mentsd újra.`
+    }
+  }
+  if (fitted.lines.length === 0) {
+    return { ok: false, message: 'Nincs számlázható tétel az ajánlaton.' }
+  }
+  return fitted
 }
 
-export function quoteHasBilling(detail: QuoteDetail): boolean {
+/** Ajánlat összesítő nettó / ÁFA — ugyanaz, mint a (summary) számlán. */
+export function quoteNetFirstTotals(
+  src: QuoteInvoiceSource
+): { net: number; vat: number; gross: number } | null {
+  const mapped = mapQuoteInvoiceLines(src, { detailLevel: 'summary' })
+  if (!mapped.ok) return null
+  return mapped.lines.reduce(
+    (acc, l) => ({
+      net: acc.net + l.lineNet,
+      vat: acc.vat + l.lineVat,
+      gross: acc.gross + l.lineGross
+    }),
+    { net: 0, vat: 0, gross: 0 }
+  )
+}
+
+/** Összesítő (summary) számlatételek nettója tételnév szerint — UI kijelzéshez. */
+export function summaryInvoiceNetByName(
+  src: QuoteInvoiceSource
+): Map<string, number> {
+  const out = new Map<string, number>()
+  const mapped = mapQuoteInvoiceLines(src, { detailLevel: 'summary' })
+  if (!mapped.ok) return out
+  for (const l of mapped.lines) {
+    out.set(l.name, (out.get(l.name) ?? 0) + l.lineNet)
+  }
+  return out
+}
+
+export function quoteHasBilling(detail: {
+  customer: {
+    billing_name: string | null
+    billing_city: string | null
+    billing_street: string | null
+    name: string | null
+  }
+}): boolean {
   const c = detail.customer
   return Boolean(
     c.billing_name?.trim() ||

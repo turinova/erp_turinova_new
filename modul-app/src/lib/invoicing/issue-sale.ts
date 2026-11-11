@@ -17,6 +17,11 @@ import {
 } from '@/lib/invoicing/szamlazz-xml'
 import { isInvoicePaymentMethodAllowed } from '@/lib/invoicing/payment-method'
 import { sourceHasActiveFinalInvoice } from '@/lib/invoicing/eligible-consolidate'
+import {
+  buildAdvanceLines,
+  dominantVatPercent,
+  mapSaleItemsNetFirst
+} from '@/lib/invoicing/net-first-lines'
 import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
 import {
   issueKindToStoredType,
@@ -54,24 +59,8 @@ function saleHasBilling(detail: SaleDetail): boolean {
   )
 }
 
-function mapSaleLines(detail: SaleDetail) {
-  return detail.items.map((i) => {
-      const gross = Math.round(i.total_gross)
-      const vatPct = Number(i.tax_rate_percent) || 27
-      const net = Math.round(gross / (1 + vatPct / 100))
-      const vat = gross - net
-      const qty = Number(i.quantity) || 1
-      return {
-        name: i.name_snapshot,
-        quantity: qty,
-        unit: i.unit_shortform || 'db',
-        unitNet: qty > 0 ? net / qty : net,
-        vatPercent: vatPct,
-        lineNet: net,
-        lineVat: vat,
-        lineGross: gross
-      }
-    })
+function mapSaleLines(detail: SaleDetail): SaleInvoiceLine[] {
+  return mapSaleItemsNetFirst(detail.items)
 }
 
 function detectPaymentMethod(detail: SaleDetail): InvoicePaymentMethod {
@@ -261,27 +250,17 @@ export async function issueInvoiceFromSale(
         : undefined
 
   const invoiceId = crypto.randomUUID()
-  const snapshotLines: SaleInvoiceLine[] =
+  const advanceLines =
     amountGross && amountGross > 0
-      ? (() => {
-          const vatRate = 27
-          const brutto = Math.round(amountGross)
-          const vat = Math.round((brutto / (100 + vatRate)) * vatRate)
-          const net = brutto - vat
-          return [
-            {
-              name: input.kind === 'advance' ? 'Előleg' : 'Díjbekérő',
-              quantity: 1,
-              unit: 'db',
-              unitNet: net,
-              vatPercent: vatRate,
-              lineNet: net,
-              lineVat: vat,
-              lineGross: brutto
-            }
-          ]
-        })()
-      : lines
+      ? buildAdvanceLines(
+          amountGross,
+          input.kind === 'advance' ? 'Előleg' : 'Díjbekérő',
+          dominantVatPercent(lines)
+        )
+      : null
+  const snapshotLines: SaleInvoiceLine[] = advanceLines?.ok
+    ? advanceLines.lines
+    : lines
   const totals = sumInvoiceLines(snapshotLines)
 
   let xml: string
@@ -310,6 +289,7 @@ export async function issueInvoiceFromSale(
       seller: { email: company?.email ?? null },
       lines,
       amountGross: amountGross && amountGross > 0 ? amountGross : null,
+      amountVatPercent: dominantVatPercent(lines),
       existingAdvanceNumber: activeAdvance?.provider_invoice_number ?? null,
       existingProformaNumber: activeProforma?.provider_invoice_number ?? null,
       externalId: invoiceId
@@ -498,6 +478,7 @@ export async function previewSaleInvoice(
       seller: { email: company?.email ?? null },
       lines,
       amountGross: amountGross && amountGross > 0 ? amountGross : null,
+      amountVatPercent: dominantVatPercent(lines),
       existingAdvanceNumber: activeAdvance?.provider_invoice_number ?? null,
       existingProformaNumber: activeProforma?.provider_invoice_number ?? null
     })

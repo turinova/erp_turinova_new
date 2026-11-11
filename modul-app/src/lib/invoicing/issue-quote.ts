@@ -13,6 +13,10 @@ import {
   type QuoteInvoiceLine
 } from '@/lib/invoicing/quote-invoice-lines'
 import { sourceHasActiveFinalInvoice } from '@/lib/invoicing/eligible-consolidate'
+import {
+  buildAdvanceLines,
+  dominantVatPercent
+} from '@/lib/invoicing/net-first-lines'
 import { getOrCreateInvoiceSettings, hasAgentKey } from '@/lib/invoicing/settings'
 import {
   postSzamlazzXml
@@ -342,6 +346,7 @@ async function buildXmlForQuote(
       seller: { email: company?.email ?? null },
       lines: mapped.lines,
       amountGross: amountGross && amountGross > 0 ? amountGross : null,
+      amountVatPercent: dominantVatPercent(mapped.lines),
       existingAdvanceNumber: docs.activeAdvance?.provider_invoice_number ?? null,
       existingProformaNumber: docs.activeProforma?.provider_invoice_number ?? null,
       externalId: opts.externalId
@@ -403,36 +408,26 @@ export async function issueInvoiceFromQuote(
     'Vevő'
   const email = (input.customerEmail || detail.customer.email || '').trim()
 
-  const snapshotLines: SaleInvoiceLine[] =
+  const advanceLines =
     amountGross && amountGross > 0
-      ? (() => {
-          const vatRate = 27
-          const brutto = Math.round(amountGross)
-          const vat = Math.round((brutto / (100 + vatRate)) * vatRate)
-          const net = brutto - vat
-          return [
-            {
-              name: input.kind === 'advance' ? 'Előleg' : 'Díjbekérő',
-              quantity: 1,
-              unit: 'db',
-              unitNet: net,
-              vatPercent: vatRate,
-              lineNet: net,
-              lineVat: vat,
-              lineGross: brutto
-            }
-          ]
-        })()
-      : built.lines.map((l) => ({
-          name: l.name,
-          quantity: l.quantity,
-          unit: l.unit,
-          unitNet: l.unitNet,
-          vatPercent: l.vatPercent,
-          lineNet: l.lineNet,
-          lineVat: l.lineVat,
-          lineGross: l.lineGross
-        }))
+      ? buildAdvanceLines(
+          amountGross,
+          input.kind === 'advance' ? 'Előleg' : 'Díjbekérő',
+          dominantVatPercent(built.lines)
+        )
+      : null
+  const snapshotLines: SaleInvoiceLine[] = advanceLines?.ok
+    ? advanceLines.lines
+    : built.lines.map((l) => ({
+        name: l.name,
+        quantity: l.quantity,
+        unit: l.unit,
+        unitNet: l.unitNet,
+        vatPercent: l.vatPercent,
+        lineNet: l.lineNet,
+        lineVat: l.lineVat,
+        lineGross: l.lineGross
+      }))
   const totals = sumInvoiceLines(snapshotLines)
   const gross =
     amountGross && amountGross > 0

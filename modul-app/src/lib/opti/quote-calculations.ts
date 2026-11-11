@@ -1,3 +1,4 @@
+import { splitGross } from '@/lib/money/vat-split'
 import type { OptimizationResult, Placement } from '@/lib/opti/optimization-types'
 
 /** Céges Opti árazási mód (Beállítások). */
@@ -153,17 +154,23 @@ export function roundMoneyFt(n: number): number {
 }
 
 /**
- * Nettó alap → egész bruttó, majd nettó/ÁFA back-calc.
- * gross = round(netRaw × (1+vat)); net = round(gross / (1+vat)); vat = gross − net.
+ * Egész bruttó (forrásigazság) → nettó/ÁFA nettó-első bontás
+ * (áfa = kerekít(nettó × kulcs), ha a bruttó így elérhető; nettó + áfa = bruttó mindig).
  */
+function moneyFromGross(
+  gross: number,
+  vatRate: number
+): { net: number; vat: number; gross: number } {
+  const split = splitGross(gross, vatRate * 100)
+  return { net: split.net, vat: split.vat, gross: split.gross }
+}
+
+/** Nettó alap → egész bruttó = round(netRaw × (1+vat)), majd nettó-első bontás. */
 function moneyFromNet(
   netRaw: number,
   vatRate: number
 ): { net: number; vat: number; gross: number } {
-  const gross = roundMoneyFt(netRaw * (1 + vatRate))
-  const net =
-    vatRate > 0 ? roundMoneyFt(gross / (1 + vatRate)) : gross
-  return { net, vat: gross - net, gross }
+  return moneyFromGross(roundMoneyFt(netRaw * (1 + vatRate)), vatRate)
 }
 
 /**
@@ -264,27 +271,20 @@ function calculateMaterialPricing(
     )
     // Egész Ft szétosztás: első n−1 floor, utolsó a maradék (Σ = money).
     let allocatedGross = 0
-    let allocatedNet = 0
     for (let i = 1; i <= boardsUsed; i++) {
       const isLast = i === boardsUsed
       const gross = isLast
         ? money.gross - allocatedGross
         : Math.floor(money.gross / boardsUsed)
-      const net = isLast
-        ? money.net - allocatedNet
-        : material.vat_rate > 0
-          ? roundMoneyFt(gross / (1 + material.vat_rate))
-          : gross
-      const vat = gross - net
+      const boardMoney = moneyFromGross(gross, material.vat_rate)
       allocatedGross += gross
-      allocatedNet += net
       boards.push({
         board_id: i,
         usage_percentage: actualUsagePercentage,
         area_m2: actualUsedArea / 1_000_000,
         charged_area_m2: boardArea,
-        net_price: net,
-        vat_amount: vat,
+        net_price: boardMoney.net,
+        vat_amount: boardMoney.vat,
         gross_price: gross,
         pricing_method: 'full_board'
       })
@@ -338,9 +338,11 @@ function calculateMaterialPricing(
     }
   }
 
-  const totalMaterialNet = boards.reduce((sum, b) => sum + b.net_price, 0)
-  const totalMaterialVat = boards.reduce((sum, b) => sum + b.vat_amount, 0)
+  // Anyag összesen = egy számlatétel → a nettó-első bontás az összegre, nem a táblák Σ-jára.
   const totalMaterialGross = boards.reduce((sum, b) => sum + b.gross_price, 0)
+  const materialMoney = moneyFromGross(totalMaterialGross, material.vat_rate)
+  const totalMaterialNet = materialMoney.net
+  const totalMaterialVat = materialMoney.vat
 
   const edgePricings = calculateEdgeMaterialPricing(panelEdges, edgeMaterials)
   const totalEdgeNet = edgePricings.reduce((sum, e) => sum + e.net_price, 0)
@@ -434,17 +436,16 @@ function calculateAdditionalServices(
     const unitNet = feeInfo.duplungolas_fee_per_sqm
     // Tárolt bruttó egységár × m² (ne nettóból számold vissza)
     const unitGross = Math.round(feeInfo.duplungolas_fee_per_sqm_gross)
-    const gross = Math.round(unitGross * duplungArea)
-    const net = Math.round(gross / (1 + vat))
+    const money = moneyFromGross(Math.round(unitGross * duplungArea), vat)
     lines.push({
       service_type: 'duplungolas',
       quantity: duplungArea,
       unit: 'm²',
       unit_price: unitNet,
-      net_price: net,
+      net_price: money.net,
       vat_rate: vat,
-      vat_amount: gross - net,
-      gross_price: gross,
+      vat_amount: money.vat,
+      gross_price: money.gross,
       currency: feeInfo.currency
     })
   }
@@ -452,17 +453,16 @@ function calculateAdditionalServices(
   if (szogPanels > 0) {
     const unitNet = feeInfo.szogvagas_fee_per_panel
     const unitGross = Math.round(feeInfo.szogvagas_fee_per_panel_gross)
-    const gross = unitGross * szogPanels
-    const net = Math.round(gross / (1 + vat))
+    const money = moneyFromGross(unitGross * szogPanels, vat)
     lines.push({
       service_type: 'szogvagas',
       quantity: szogPanels,
       unit: 'db',
       unit_price: unitNet,
-      net_price: net,
+      net_price: money.net,
       vat_rate: vat,
-      vat_amount: gross - net,
-      gross_price: gross,
+      vat_amount: money.vat,
+      gross_price: money.gross,
       currency: feeInfo.currency
     })
   }
@@ -470,17 +470,16 @@ function calculateAdditionalServices(
   if (panthelyHoles > 0) {
     const unitNet = feeInfo.panthelyfuras_fee_per_hole
     const unitGross = Math.round(feeInfo.panthelyfuras_fee_per_hole_gross)
-    const gross = unitGross * panthelyHoles
-    const net = Math.round(gross / (1 + vat))
+    const money = moneyFromGross(unitGross * panthelyHoles, vat)
     lines.push({
       service_type: 'panthelyfuras',
       quantity: panthelyHoles,
       unit: 'db',
       unit_price: unitNet,
-      net_price: net,
+      net_price: money.net,
       vat_rate: vat,
-      vat_amount: gross - net,
-      gross_price: gross,
+      vat_amount: money.vat,
+      gross_price: money.gross,
       currency: feeInfo.currency
     })
   }
@@ -546,17 +545,16 @@ function calculateCuttingCost(
   const totalCuttingLengthM = totalCuttingLengthMm / 1000
   const vat = cuttingFeeInfo.vat_rate
   const unitGross = Math.round(cuttingFeeInfo.fee_per_meter_gross)
-  const gross = Math.round(unitGross * totalCuttingLengthM)
-  const net = vat > 0 ? Math.round(gross / (1 + vat)) : gross
+  const money = moneyFromGross(Math.round(unitGross * totalCuttingLengthM), vat)
 
   return {
     total_cutting_length_m: totalCuttingLengthM,
     fee_per_meter: cuttingFeeInfo.fee_per_meter,
     fee_per_meter_gross: unitGross,
-    net_price: net,
+    net_price: money.net,
     vat_rate: vat,
-    vat_amount: gross - net,
-    gross_price: gross,
+    vat_amount: money.vat,
+    gross_price: money.gross,
     currency: cuttingFeeInfo.currency
   }
 }

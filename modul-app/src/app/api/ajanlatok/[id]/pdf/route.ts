@@ -105,16 +105,18 @@ export async function GET(
       quoteData.totals.final_total_after_discount ??
         quoteData.totals.total_gross
     )
+    const totalNet =
+      quoteData.totals.invoice_net_total ??
+      Math.round(quoteData.totals.total_net) + feesNet + accessoriesNet
+    const totalVat =
+      quoteData.totals.invoice_vat_total ??
+      Math.round(quoteData.totals.total_vat) + feesVat + accessoriesVat
     const summary = {
-      totalNetBeforeDiscount:
-        Math.round(quoteData.totals.total_net) + feesNet + accessoriesNet,
-      totalVatBeforeDiscount:
-        Math.round(quoteData.totals.total_vat) + feesVat + accessoriesVat,
+      totalNetBeforeDiscount: totalNet,
+      totalVatBeforeDiscount: totalVat,
       totalGrossBeforeDiscount: finalGross,
-      totalNetAfterDiscount:
-        Math.round(quoteData.totals.total_net) + feesNet + accessoriesNet,
-      totalVatAfterDiscount:
-        Math.round(quoteData.totals.total_vat) + feesVat + accessoriesVat,
+      totalNetAfterDiscount: totalNet,
+      totalVatAfterDiscount: totalVat,
       totalGrossAfterDiscount: finalGross
     }
 

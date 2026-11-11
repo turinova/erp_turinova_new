@@ -1,4 +1,6 @@
+import { buildAdvanceLines } from '@/lib/invoicing/net-first-lines'
 import { escapeXml } from '@/lib/invoicing/szamlazz-agent'
+import { isValidVatForNet, normalizeVatPercent } from '@/lib/money/vat-split'
 import type { InvoiceIssueKind, InvoicePaymentMethod } from '@/lib/invoicing/types'
 
 export type SaleInvoiceBuyer = {
@@ -41,6 +43,8 @@ export type SaleInvoiceXmlInput = {
   lines: SaleInvoiceLine[]
   /** Bruttó előleg / rész-díjbekérő összeg (ha kind advance/proforma partial). */
   amountGross?: number | null
+  /** Előleg / rész-díjbekérő ÁFA kulcsa (default 27). */
+  amountVatPercent?: number
   existingAdvanceNumber?: string | null
   existingProformaNumber?: string | null
   preview?: boolean
@@ -62,34 +66,34 @@ function buildLinesXml(input: SaleInvoiceXmlInput): string {
       : 0
   const isPartialProforma = input.kind === 'proforma' && amount > 0
 
+  let lines = input.lines
   if (isAdvance || isPartialProforma) {
-    const vatRate = 27
-    const brutto = amount
-    const vat = Math.round((brutto / (100 + vatRate)) * vatRate)
-    const net = brutto - vat
-    const label = isAdvance ? 'Előleg' : 'Díjbekérő'
-    return `
-      <tetel>
-        <megnevezes>${escapeXml(label)}</megnevezes>
-        <mennyiseg>1</mennyiseg>
-        <mennyisegiEgyseg>db</mennyisegiEgyseg>
-        <nettoEgysegar>${net}</nettoEgysegar>
-        <afakulcs>${vatRate}</afakulcs>
-        <nettoErtek>${net}</nettoErtek>
-        <afaErtek>${vat}</afaErtek>
-        <bruttoErtek>${brutto}</bruttoErtek>
-      </tetel>`
+    const advance = buildAdvanceLines(
+      amount,
+      isAdvance ? 'Előleg' : 'Díjbekérő',
+      input.amountVatPercent ?? 27
+    )
+    if (!advance.ok) throw new Error(advance.message)
+    lines = advance.lines
   }
 
   let xml = ''
-  for (const line of input.lines) {
+  for (const line of lines) {
     const qty = Number(line.quantity) || 0
     if (qty <= 0) continue
-    const vatRate = Math.round(Math.abs(line.vatPercent)) || 27
+    const vatRate = Math.round(normalizeVatPercent(line.vatPercent))
     const lineNet = Math.round(line.lineNet)
     const lineVat = Math.round(line.lineVat)
     const lineGross = Math.round(line.lineGross)
     if (lineGross === 0) continue
+    if (
+      lineNet + lineVat !== lineGross ||
+      !isValidVatForNet(lineNet, lineVat, vatRate)
+    ) {
+      throw new Error(
+        `A(z) „${line.name}” tétel ÁFA értéke nem felel meg a Számlázz.hu szabályának (nettó × kulcs / 100). A számlát nem küldtük el.`
+      )
+    }
     const unitNet =
       qty > 0 ? Math.round((lineNet / qty) * 1000) / 1000 : line.unitNet
     xml += `

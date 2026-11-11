@@ -73,9 +73,15 @@ Szabályok:
 
 - Mentett ajánlaton a **sor bruttó/nettó = DB snapshot** (`quote_material_pricing`, `quote_service_lines`, accessories, fees).
 - Detail, PDF és Számlázz **ugyanazt** a sort mutatja / számlázza — **tilos** `egységár × mennyiség` újraszámolás a kijelzett összeghez (egységár csak info).
-- **Egész Ft a számításnál** (anyag tábla / él / szabás / megmunkálás): `gross = round(netRaw×(1+ÁFA))`, net/ÁFA back-calc; összesítő = Σ egész sorok — nincs ±1 Ft `round(sum)` vs `sum(round)` eltérés.
+- **Egész Ft a számításnál** (anyag tábla / él / szabás / megmunkálás): `gross = round(netRaw×(1+ÁFA))` = forrásigazság; összesítő = Σ egész sorok — nincs ±1 Ft `round(sum)` vs `sum(round)` eltérés.
+- **Nettó/ÁFA bontás = nettó-első** (`lib/money/vat-split.ts` `splitGross`): `áfa = kerekít(nettó × kulcs / 100)`, `bruttó = nettó + áfa` (Számlázz 260). Tilos `áfa = bruttó − round(bruttó / 1,27)` — a bruttók ~21%-ánál 1 Ft-tal eltér, több tábla / anyag összegén több Ft-tal.
 - **Opti díjak (`cutting_fees`):** beírt bruttó = forrásigazság (`fee_per_meter_gross`, `*_fee_*_gross`); nettó ÁFA-bázis. Opti egységár a tárolt bruttóból — ne `round(net×1.27)` (pl. 600 Ft ne legyen 599). Migráció: `20260619_cutting_fees_gross.sql`.
-- Végösszeg: `quotes.final_total_gross`. Számlázz: ±2 Ft eltérés abszorbeálható az utolsó tételbe; nagyobb eltérés → egyösszegű fallback.
+- Végösszeg: `quotes.final_total_gross`. Számlázz (`lib/invoicing/net-first-lines.ts` `fitNetFirstLines`): minden tétel nettó-első szabályos, Σ bruttó = végösszeg fillérre.
+  - Ha egy tétel bruttója nettó-első módon nem érhető el, a ±1 Ft-ot másik tétel veszi át; végső esetben a tétel két azonos nevű tételre bomlik (mennyiség megosztva; Előleg / Díjbekérő: 2 × 1 db).
+  - Összesítőben ÁFA kulcsonként külön sor (vegyes kulcs nem olvad össze); 0% marad 0%.
+  - Jóváírás (`quote_fees.kind = credit`) negatív tétel; ±2 Ft-nál nagyobb eltérés → hibaüzenet, nincs csendes egyösszegű fallback.
+  - Kapuőr: `buildSaleInvoiceXml` nem küld olyan tételt, ahol `|áfa − nettó × kulcs / 100| > 0,5` vagy `nettó + áfa ≠ bruttó`.
+  - Ajánlat részletek „Nettó ár” és PDF „Nettó / Áfa összesen” ugyanebből a bontásból jön, mint a számla.
 
 ## 7. Beviteli tolerancia
 

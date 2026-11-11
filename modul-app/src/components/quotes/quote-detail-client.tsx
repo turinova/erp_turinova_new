@@ -68,6 +68,11 @@ import {
 } from '@/lib/auth/surface'
 import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { TenantCompanyRow } from '@/lib/company/queries'
+import {
+  materialVatPercent,
+  summaryInvoiceNetByName
+} from '@/lib/invoicing/quote-invoice-lines'
+import { splitGross } from '@/lib/money/vat-split'
 import { formatReadySmsInfoLine } from '@/lib/order-status/record-open'
 import { panthelyLabel } from '@/lib/opti/panel-draft'
 import {
@@ -1135,7 +1140,10 @@ export function QuoteDetailClient({
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
                               {formatQuotePrice(
-                                Math.round(line.material_net),
+                                splitGross(
+                                  line.material_gross,
+                                  materialVatPercent(line)
+                                ).net,
                                 quote.currency
                               )}
                             </DataTableCell>
@@ -1172,6 +1180,7 @@ export function QuoteDetailClient({
                   </DataTableHead>
                   <DataTableBody>
                     {(() => {
+                      const invoiceNet = summaryInvoiceNetByName(quote)
                       const totalCuttingGross = quote.material_lines.reduce(
                         (s, l) => s + l.cutting_gross,
                         0
@@ -1244,7 +1253,8 @@ export function QuoteDetailClient({
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
                               {formatQuotePrice(
-                                Math.round(totalCuttingNet),
+                                invoiceNet.get('Szabás díj') ??
+                                  Math.round(totalCuttingNet),
                                 quote.currency
                               )}
                             </DataTableCell>
@@ -1269,7 +1279,8 @@ export function QuoteDetailClient({
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
                               {formatQuotePrice(
-                                Math.round(totalEdgeNet),
+                                invoiceNet.get('Élzárás') ??
+                                  Math.round(totalEdgeNet),
                                 quote.currency
                               )}
                             </DataTableCell>
@@ -1298,7 +1309,7 @@ export function QuoteDetailClient({
                             </DataTableCell>
                             <DataTableCell className="text-right tabular-nums text-ink">
                               {formatQuotePrice(
-                                Math.round(svc.net),
+                                invoiceNet.get(svc.label) ?? Math.round(svc.net),
                                 quote.currency
                               )}
                             </DataTableCell>

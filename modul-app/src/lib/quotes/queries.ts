@@ -165,6 +165,8 @@ export type QuoteDetail = {
     waste_multi: number
     board_grain_mm: number
     board_cross_mm: number
+    /** Tört ÁFA kulcs (0.27). */
+    vat_rate: number | null
     material_net: number
     material_gross: number
     edge_length_m: number
@@ -580,6 +582,7 @@ export async function getQuoteDetail(
         waste_multi,
         board_grain_mm,
         board_cross_mm,
+        vat_rate,
         material_net,
         material_gross,
         edge_length_m,
@@ -696,6 +699,7 @@ export async function getQuoteDetail(
         waste_multi,
         board_grain_mm,
         board_cross_mm,
+        vat_rate,
         material_net,
         material_gross,
         edge_length_m,
@@ -1012,6 +1016,7 @@ export async function getQuoteDetail(
     waste_multi: number
     board_grain_mm: number
     board_cross_mm: number
+    vat_rate: number | string | null
     material_net: number
     material_gross: number
     edge_length_m: number
@@ -1046,6 +1051,7 @@ export async function getQuoteDetail(
     waste_multi: Number(line.waste_multi) || 1,
     board_grain_mm: line.board_grain_mm,
     board_cross_mm: line.board_cross_mm,
+    vat_rate: line.vat_rate == null ? null : Number(line.vat_rate),
     material_net: Number(line.material_net),
     material_gross: Number(line.material_gross),
     edge_length_m: Number(line.edge_length_m),

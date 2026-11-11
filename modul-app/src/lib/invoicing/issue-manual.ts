@@ -8,6 +8,7 @@ import {
   sumInvoiceLines
 } from '@/lib/finance/invoice-lines'
 import { isFinancePeriodLocked } from '@/lib/finance/period-lock'
+import { buildAdvanceLines } from '@/lib/invoicing/net-first-lines'
 import { postSzamlazzXml } from '@/lib/invoicing/szamlazz-agent'
 import {
   buildSaleInvoiceXml,
@@ -140,22 +141,9 @@ function amountGrossFromInput(
 }
 
 function advanceSnapshotLines(amountGross: number): SaleInvoiceLine[] {
-  const vatRate = 27
-  const brutto = Math.round(amountGross)
-  const vat = Math.round((brutto / (100 + vatRate)) * vatRate)
-  const net = brutto - vat
-  return [
-    {
-      name: 'Előleg',
-      quantity: 1,
-      unit: 'db',
-      unitNet: net,
-      vatPercent: vatRate,
-      lineNet: net,
-      lineVat: vat,
-      lineGross: brutto
-    }
-  ]
+  const built = buildAdvanceLines(amountGross, 'Előleg')
+  if (!built.ok) throw new Error(built.message)
+  return built.lines
 }
 
 async function buildXmlAndPost(
