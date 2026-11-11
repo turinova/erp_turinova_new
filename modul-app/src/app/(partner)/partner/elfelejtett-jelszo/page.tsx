@@ -28,8 +28,8 @@ export default async function PartnerForgotPasswordPage({
           role="alert"
         >
           A link lejárt, hibás, vagy már felhasználták. Add meg lent az
-          emailedet — küldünk egy újat. (Ha még soha nem léptél be az új
-          felületre, a Belépés oldalon állítsd be a jelszót email nélkül.)
+          emailedet, és küldünk egy újat. Ha még soha nem léptél be az új
+          felületre, a Belépés oldalon email nélkül is beállíthatod a jelszavad.
         </p>
       ) : null}
       <PartnerForgotPasswordForm />

@@ -87,7 +87,11 @@ export async function GET(request: NextRequest) {
       token_hash: tokenHash
     })
     if (error) {
-      console.error('auth/confirm otp', error.message)
+      console.error('auth/confirm otp', type, error.message)
+      // Levelezők gyakran előre megnyitják a linket: a cím ilyenkor már megerősített.
+      if (type !== 'recovery') {
+        return fail(`${loginPath}?reason=confirm_link`)
+      }
       return fail(`${forgotPath}?reason=link_invalid`)
     }
     return response

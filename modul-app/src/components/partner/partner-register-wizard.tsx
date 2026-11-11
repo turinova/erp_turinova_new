@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useActionState, useEffect, useMemo, useState } from 'react'
 
+import { PartnerCheckEmail } from '@/components/partner/partner-check-email'
 import { FormField } from '@/components/patterns/form-field'
 import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
@@ -12,7 +13,10 @@ import {
   partnerRegisterAction,
   type PartnerAuthState
 } from '@/lib/auth/partner-actions'
-import { PARTNER_LOGIN_PATH } from '@/lib/auth/surface'
+import {
+  PARTNER_FORGOT_PASSWORD_PATH,
+  PARTNER_LOGIN_PATH
+} from '@/lib/auth/surface'
 import { usePartnerHref } from '@/lib/auth/use-partner-href'
 import type { PartnerCompanyOption } from '@/lib/partner/companies'
 import { getPartnerLegalUrls } from '@/lib/partner/legal-urls'
@@ -93,6 +97,9 @@ export function PartnerRegisterWizard() {
   const [state, formAction, pending] = useActionState(
     partnerRegisterAction,
     initialState
+  )
+  const [dismissedState, setDismissedState] = useState<PartnerAuthState | null>(
+    null
   )
 
   useEffect(() => {
@@ -180,10 +187,25 @@ export function PartnerRegisterWizard() {
     }
   }
 
+  const resultVisible = state !== dismissedState
+
+  if (resultVisible && state.awaitingConfirmation && state.confirmEmail) {
+    return (
+      <PartnerCheckEmail
+        email={state.confirmEmail}
+        onRestart={() => {
+          setDismissedState(state)
+          setLocalErrors({})
+          setStep(1)
+        }}
+      />
+    )
+  }
+
   return (
     <div className="flex w-full flex-col gap-4">
       <p className="text-hint text-ink-secondary">
-        Lépés {step} / 3 — {meta.title}
+        Lépés {step} / 3: {meta.title}
       </p>
       <div className="mb-1 space-y-0.5">
         <h2 className="sr-only">{meta.title}</h2>
@@ -572,27 +594,34 @@ export function PartnerRegisterWizard() {
             ) : null}
           </div>
 
-          {state.error ? (
+          {resultVisible && state.error ? (
             <p
               className="border border-danger/30 bg-danger-soft px-2.5 py-1.5 text-hint text-danger-ink"
               role="alert"
             >
               {state.error}
-            </p>
-          ) : null}
-
-          {state.success ? (
-            <p
-              className="border border-success/30 bg-success-soft px-2.5 py-1.5 text-hint text-success-ink"
-              role="status"
-            >
-              {state.success}{' '}
-              <Link
-                href={href(PARTNER_LOGIN_PATH)}
-                className="font-medium text-ink underline"
-              >
-                Belépés
-              </Link>
+              {state.existingAccount ? (
+                <>
+                  {' '}
+                  <Link
+                    href={href(PARTNER_LOGIN_PATH)}
+                    className="font-medium text-ink underline"
+                  >
+                    Belépés
+                  </Link>
+                  {state.existingAccount === 'active' ? (
+                    <>
+                      {' · '}
+                      <Link
+                        href={href(PARTNER_FORGOT_PASSWORD_PATH)}
+                        className="font-medium text-ink underline"
+                      >
+                        Új jelszót kérek
+                      </Link>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
             </p>
           ) : null}
 

@@ -37,7 +37,17 @@ export type PartnerAuthState = {
   needsPasswordSetup?: boolean
   /** Claim UI: mobil utolsó 4 számjegy kell */
   requireMobileLast4?: boolean
+  /** Regisztráció kész, a megerősítő levél kiment (vagy újra kiment). */
+  awaitingConfirmation?: boolean
+  /** Erre a címre ment a megerősítő levél / ezt kell megerősíteni. */
+  confirmEmail?: string
+  /** Belépés: a fiók még nincs megerősítve → újraküldés gomb. */
+  needsEmailConfirmation?: boolean
+  /** Regisztráció: már létező fiók (migrált vagy aktív) → belépés link. */
+  existingAccount?: 'migrated' | 'active'
 }
+
+export type PartnerResendResult = { ok: boolean; message: string }
 
 type ClaimablePartner = {
   userId: string
@@ -96,6 +106,35 @@ async function loadClaimablePartner(
     mustSetPassword: Boolean(data.must_set_password),
     mobileLast4: mobileLast4FromProfile(data.mobile as string | null)
   }
+}
+
+/** Hiba esetén megerősítettnek tekintjük (ne küldjünk feleslegesen levelet). */
+async function authUserEmailConfirmed(userId: string): Promise<boolean> {
+  const admin = createServiceClient()
+  if (!admin) return true
+  const { data, error } = await admin.auth.admin.getUserById(userId)
+  if (error || !data.user) {
+    console.error('authUserEmailConfirmed', error?.message ?? 'no user')
+    return true
+  }
+  return Boolean(data.user.email_confirmed_at)
+}
+
+async function sendSignupConfirmation(
+  email: string
+): Promise<{ ok: boolean; rateLimited: boolean }> {
+  const supabase = await createClient()
+  if (!supabase) return { ok: false, rateLimited: false }
+  const { error } = await supabase.auth.resend({ type: 'signup', email })
+  if (!error) return { ok: true, rateLimited: false }
+  const msg = error.message.toLowerCase()
+  const rateLimited =
+    error.status === 429 ||
+    msg.includes('rate limit') ||
+    msg.includes('security purposes') ||
+    msg.includes('seconds')
+  if (!rateLimited) console.error('sendSignupConfirmation', error.message)
+  return { ok: false, rateLimited }
 }
 
 async function partnerEmailNeedsPasswordSetup(
@@ -363,8 +402,10 @@ export async function partnerLoginAction(
     const msg = error?.message?.toLowerCase() ?? ''
     if (msg.includes('email not confirmed')) {
       return {
+        needsEmailConfirmation: true,
+        confirmEmail: email.toLowerCase(),
         error:
-          'Előbb erősítsd meg az emailedet. Nézd meg a postaládádat (spam mappa is).'
+          'Előbb erősítsd meg az email címedet. A levelet a regisztrációkor küldtük, nézd meg a spam mappát is.'
       }
     }
     if (await partnerEmailNeedsPasswordSetup(email)) {
@@ -373,7 +414,7 @@ export async function partnerLoginAction(
         needsPasswordSetup: true,
         requireMobileLast4: Boolean(row?.mobileLast4),
         error:
-          'Egyszer be kell állítanod a jelszavad az új felülethez — email nélkül, itt a képernyőn.'
+          'Egyszer be kell állítanod a jelszavad az új felülethez. Itt a képernyőn megteheted, nem kell hozzá email.'
       }
     }
     if (msg.includes('invalid login')) {
@@ -524,6 +565,25 @@ export async function partnerRegisterAction(
     }
   }
 
+  const existing = await loadClaimablePartner(input.email)
+  if (existing) {
+    if (existing.mustSetPassword) {
+      return {
+        existingAccount: 'migrated',
+        error:
+          'Már van fiókod a régi rendszerből. Lépj be, és ott beállíthatod a jelszavad.'
+      }
+    }
+    if (await authUserEmailConfirmed(existing.userId)) {
+      return {
+        existingAccount: 'active',
+        error: 'Már van fiókod ezzel az email címmel. Lépj be, vagy kérj új jelszót.'
+      }
+    }
+    await sendSignupConfirmation(existing.email)
+    return { awaitingConfirmation: true, confirmEmail: existing.email }
+  }
+
   const supabase = await createClient()
   if (!supabase) {
     return { error: 'A regisztráció most nem elérhető. Próbáld újra később.' }
@@ -573,7 +633,7 @@ export async function partnerRegisterAction(
     if ((memRows?.length ?? 0) > 0) {
       return {
         error:
-          'Ez az email céges (tenant) fiókhoz tartozik. Partner regisztráció nem lehetséges — lépj be az app.optinova.hu-n (céges felület).'
+          'Ez az email céges (tenant) fiókhoz tartozik. Partner regisztráció nem lehetséges, lépj be az app.optinova.hu-n (céges felület).'
       }
     }
 
@@ -584,8 +644,12 @@ export async function partnerRegisterAction(
       .maybeSingle()
 
     if (existingPartner) {
+      if (!data.session) {
+        return { awaitingConfirmation: true, confirmEmail: input.email }
+      }
       return {
-        error: 'Ehhez az emailhez már van asztalos fiók. Jelentkezz be.'
+        existingAccount: 'active',
+        error: 'Már van fiókod ezzel az email címmel. Lépj be, vagy kérj új jelszót.'
       }
     }
   }
@@ -628,13 +692,47 @@ export async function partnerRegisterAction(
   }
 
   if (!data.session) {
-    return {
-      success:
-        'A fiókod kész. Ha kaptál megerősítő emailt, előbb azt nyisd meg, aztán lépj be.'
-    }
+    return { awaitingConfirmation: true, confirmEmail: input.email }
   }
 
   redirect(await partnerServerHref(PARTNER_HOME_PATH))
+}
+
+/**
+ * Megerősítő levél újraküldése. Mindig ugyanazt a választ adja,
+ * hogy ne derüljön ki, létezik-e fiók az adott címmel.
+ */
+export async function partnerResendConfirmationAction(
+  rawEmail: string
+): Promise<PartnerResendResult> {
+  const email = rawEmail.trim().toLowerCase()
+  const sent: PartnerResendResult = {
+    ok: true,
+    message: 'Elküldtük újra. Pár percen belül megérkezik.'
+  }
+  if (!email || !email.includes('@')) {
+    return { ok: false, message: 'Add meg az email címedet.' }
+  }
+  if (!isSupabaseConfigured()) {
+    return { ok: false, message: 'Ez most nem működik. Próbáld újra később.' }
+  }
+
+  const ip = await clientIpKey()
+  if (!allowPartnerPasswordClaim([`resend:${email}`, `resend-ip:${ip}`])) {
+    return {
+      ok: false,
+      message: 'Túl sok kérés. Várj egy órát, vagy írj nekünk: info@turinova.hu'
+    }
+  }
+
+  const profile = await loadClaimablePartner(email)
+  if (profile?.mustSetPassword) return sent
+
+  const result = await sendSignupConfirmation(email)
+  if (result.rateLimited) {
+    return { ok: false, message: 'Várj egy percet, aztán próbáld újra.' }
+  }
+  return sent
 }
 
 export async function partnerForgotPasswordAction(

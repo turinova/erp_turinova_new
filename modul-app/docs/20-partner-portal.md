@@ -247,3 +247,21 @@ Report: `scripts/import-reports/portal_partners_*.csv` (gitignore).
 - Workshop logo data URL
 - Tömeges jelszó-email
 - First-login primary path = Supabase PKCE recovery email (törékeny mobil/www)
+
+## 12. Email megerősítés (regisztráció)
+
+**Supabase (prod):** Confirm email = ON · Custom SMTP feladó `noreply@turinova.hu` · Site URL `https://turinova.hu` · Rate limit (emails/óra) ≥ 30.  
+**Confirm signup template:** `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=/home` (nem `ConfirmationURL`).
+
+| Eset | Viselkedés |
+|---|---|
+| Új regisztráció | `signUp` → profil insert → „Nézd meg a postaládádat” képernyő (cím, spam tipp, újraküldés 60 mp várakozással, „Kezdd újra”) |
+| Link katt | `verifyOtp` → session → `/home` (más eszközön is) |
+| Link lejárt / már használt | `/login?reason=confirm_link` — a levelezők előre megnyitják a linket, a cím ilyenkor már megerősített → „egyszerűen lépj be” |
+| Belépés megerősítés előtt | hibaüzenet + „Új levelet kérek” |
+| Újraregisztrál megerősítés előtt | nincs hiba: új levél + postaláda képernyő (az első jelszó marad; elfelejtett jelszó is megerősít) |
+| Megerősített fiók újraregisztrál | „Már van fiókod” + Belépés / Új jelszót kérek |
+| Migrált (`must_set_password`) | regisztráció helyett „Lépj be, ott beállíthatod a jelszavad”; claim flow változatlan (`email_confirm: true`, nincs levél) |
+| Recovery link hibás | változatlan: `/elfelejtett-jelszo?reason=link_invalid` |
+
+Újraküldés: `partnerResendConfirmationAction` (`auth.resend type=signup`), mindig ugyanaz a válasz (nincs fiók-felderítés), migrált fióknak nem küld; in-memory limit 5 / óra / email és IP.

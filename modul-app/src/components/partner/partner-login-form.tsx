@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useActionState, useEffect, useState, useTransition } from 'react'
 
+import { PartnerResendConfirmation } from '@/components/partner/partner-resend-confirmation'
 import { FormField } from '@/components/patterns/form-field'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -80,7 +81,7 @@ export function PartnerLoginForm() {
           role="status"
         >
           Egyszer be kell állítanod a jelszavad az új felülethez. Írd be az új
-          jelszót — utána rögtön belépsz. Nincs email-link.
+          jelszót, és utána rögtön belépsz. Ehhez nem kell email.
         </p>
 
         <FormField
@@ -185,7 +186,7 @@ export function PartnerLoginForm() {
               setRequireMobileLast4(false)
             }}
           >
-            Van már jelszavam — belépés
+            Van már jelszavam, belépek
           </button>
         </p>
 
@@ -244,6 +245,13 @@ export function PartnerLoginForm() {
         >
           {state.error}
         </p>
+      ) : null}
+
+      {state.needsEmailConfirmation && state.confirmEmail ? (
+        <PartnerResendConfirmation
+          key={state.confirmEmail}
+          email={state.confirmEmail}
+        />
       ) : null}
 
       <Button type="submit" loading={pending} className="w-full" size="md">
