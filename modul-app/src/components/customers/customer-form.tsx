@@ -65,7 +65,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
   )
   const consentAvailable = mode === 'create' || initial?.review_sms_consent != null
   const [reviewSmsConsent, setReviewSmsConsent] = useState(
-    Boolean(initial?.review_sms_consent)
+    mode === 'edit' ? Boolean(initial?.review_sms_consent) : true
   )
   const [isFavorite, setIsFavorite] = useState(
     Boolean(initial?.is_favorite)
@@ -209,7 +209,7 @@ export function CustomerForm({ mode, initial, canWrite }: CustomerFormProps) {
                 disabled={!canWrite}
                 onCheckedChange={setReviewSmsConsent}
                 label="Értékelés-kérő SMS"
-                description="Csak ha a vevő kifejezetten hozzájárult. Átadás után egy köszönő SMS-t kap a Google-értékelés linkjével."
+                description="Átadás után egy köszönő SMS-t kap a Google-értékelés linkjével. Új ügyfélnél alapból bekapcsolva, kapcsold ki, ha a vevő nem kér ilyet."
               />
             ) : null}
             <Switch

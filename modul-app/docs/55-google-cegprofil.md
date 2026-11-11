@@ -60,7 +60,7 @@ A vevő a státusz linket (`/r/{token}`) **csak a „Kész, átvehető” SMS-ko
 - `Cégadatok` — maga a Google link (marad).
 - `SMS sablonok` → `#review-thanks` — a köszönő SMS szövege (`{review_url}` kötelező), előnézet Átvehető/Átadva váltóval.
 - `Átvételi blokk` — csak állapot sor + előnézet, link a hubra.
-- `Ügyfél űrlap` — **„Értékelés-kérő SMS”** hozzájárulás, külön az „SMS értesítés”-től, alapból **ki** (`review_sms_consent`, `review_sms_consent_at`).
+- `Ügyfél űrlap` — **„Értékelés-kérő SMS”** hozzájárulás, külön az „SMS értesítés”-től (`review_sms_consent`, `review_sms_consent_at`). **Új ügyfélnél alapból be** (`20261008`: oszlop default `true` + insert trigger kitölti a `_at`-ot) minden létrehozási útvonalon: űrlap, gyors ügyfél, Opti, ügyfélrendelés, átadáskori pótlás, partner `ensure_partner_customer`. Meglévő ügyfelek nem változnak. Feltétel: a pultnál szóban megkérdezni / ÁSZF tájékoztatás, leiratkozás = kapcsoló ki.
 
 **Státusz kártya szabályai** (`lib/reviews/status-cta.ts`): csak siker/semleges státusznál; ha erről a linkről már kattintott → „Köszönjük” állapot; ha a gyakorisági kereten belül bárhonnan kattintott → nincs kártya. A kártya soha nem töri a státusz oldalt (hiba → nincs kártya). Ha a primary kártya látszik, a Hívás gomb másodlagos (egy primary/képernyő).
 
