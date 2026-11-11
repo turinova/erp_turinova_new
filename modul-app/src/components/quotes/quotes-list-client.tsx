@@ -21,8 +21,9 @@ import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatQuotePrice } from '@/lib/opti/quote-calculations'
-import { softDeleteQuote } from '@/lib/quotes/actions'
+import { archiveQuoteAction, softDeleteQuote } from '@/lib/quotes/actions'
 import type { QuoteListItem } from '@/lib/quotes/queries'
+import { cn } from '@/lib/utils'
 
 type QuotesListClientProps = {
   rows: QuoteListItem[]
@@ -31,6 +32,7 @@ type QuotesListClientProps = {
   limit: number
   canWrite: boolean
   initialQ: string
+  archivedOnly?: boolean
 }
 
 function formatUpdatedAt(iso: string) {
@@ -50,13 +52,15 @@ export function QuotesListClient({
   page,
   limit,
   canWrite,
-  initialQ
+  initialQ,
+  archivedOnly = false
 }: QuotesListClientProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [qDraft, setQDraft] = useState(initialQ)
   const [deleteTarget, setDeleteTarget] = useState<QuoteListItem | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<QuoteListItem | null>(null)
   const [pending, startTransition] = useTransition()
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -92,6 +96,20 @@ export function QuotesListClient({
     })
   }
 
+  function handleArchive() {
+    if (!archiveTarget) return
+    startTransition(async () => {
+      const result = await archiveQuoteAction(archiveTarget.id)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success(`Ajánlat ${result.orderNumber} az archívumban.`)
+      setArchiveTarget(null)
+      router.refresh()
+    })
+  }
+
   const emptySearch = useMemo(
     () => total === 0 && Boolean(initialQ),
     [total, initialQ]
@@ -101,14 +119,41 @@ export function QuotesListClient({
     <div>
       <PageHeader
         title="Árajánlatok"
-        description="Mentett piszkozatok. Újat az Optiban készíthetsz."
+        description={
+          archivedOnly
+            ? 'Archivált piszkozatok (pl. partner beküldés). Bármikor visszahozhatók a detailen.'
+            : 'Mentett piszkozatok. Újat az Optiban készíthetsz.'
+        }
         actions={
-          <Button type="button" onClick={() => router.push('/opti')}>
-            <ScanSearch className="size-3.5" aria-hidden />
-            Új Optiban
-          </Button>
+          !archivedOnly ? (
+            <Button type="button" onClick={() => router.push('/opti')}>
+              <ScanSearch className="size-3.5" aria-hidden />
+              Új Optiban
+            </Button>
+          ) : null
         }
       />
+
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() =>
+            pushParams({
+              archived: archivedOnly ? null : '1',
+              page: '1'
+            })
+          }
+          className={cn(
+            'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
+            archivedOnly
+              ? 'border-ink bg-ink text-white'
+              : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
+          )}
+          aria-pressed={archivedOnly}
+        >
+          Archívum
+        </button>
+      </div>
 
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
         <form onSubmit={handleSearchSubmit} className="relative max-w-sm flex-1">
@@ -130,7 +175,13 @@ export function QuotesListClient({
       </div>
 
       {total === 0 && !emptySearch ? (
-        <EmptyQuotes onCreate={() => router.push('/opti')} />
+        archivedOnly ? (
+          <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
+            Nincs archivált árajánlat.
+          </p>
+        ) : (
+          <EmptyQuotes onCreate={() => router.push('/opti')} />
+        )
       ) : total === 0 ? (
         <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
           Nincs találat a megadott keresésre.
@@ -156,6 +207,13 @@ export function QuotesListClient({
             </DataTableHead>
             <DataTableBody>
               {rows.map((row) => {
+                const canDeleteRow =
+                  canWrite && !archivedOnly && !row.portal_submitted_at
+                const canArchiveRow =
+                  canWrite &&
+                  !archivedOnly &&
+                  Boolean(row.portal_submitted_at) &&
+                  !row.archived_at
                 return (
                   <DataTableRow key={row.id}>
                     <DataTableCell>
@@ -169,6 +227,9 @@ export function QuotesListClient({
                         {row.source === 'portal' &&
                         row.portal_submitted_at ? (
                           <StatusBadge tone="warning">Online</StatusBadge>
+                        ) : null}
+                        {row.archived_at ? (
+                          <StatusBadge tone="neutral">Archív</StatusBadge>
                         ) : null}
                       </div>
                       {row.project_name ? (
@@ -205,7 +266,7 @@ export function QuotesListClient({
                         >
                           Megnyitás
                         </Button>
-                        {canWrite ? (
+                        {canDeleteRow ? (
                           <Button
                             type="button"
                             variant="ghost"
@@ -214,6 +275,17 @@ export function QuotesListClient({
                             onClick={() => setDeleteTarget(row)}
                           >
                             Törlés
+                          </Button>
+                        ) : null}
+                        {canArchiveRow ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-danger-ink hover:text-danger-ink"
+                            onClick={() => setArchiveTarget(row)}
+                          >
+                            Archívumba
                           </Button>
                         ) : null}
                       </div>
@@ -269,6 +341,23 @@ export function QuotesListClient({
         confirmLabel="Törlés"
         loading={pending}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        onOpenChange={(open) => {
+          if (!open && !pending) setArchiveTarget(null)
+        }}
+        title="Archívumba helyezés"
+        description={
+          archiveTarget
+            ? `„${archiveTarget.quote_number}” eltűnik az aktív listából és az inboxból. A partner továbbra is látja. Bármikor visszahozható.`
+            : ''
+        }
+        confirmLabel="Archívumba"
+        variant="primary"
+        loading={pending}
+        onConfirm={handleArchive}
       />
     </div>
   )

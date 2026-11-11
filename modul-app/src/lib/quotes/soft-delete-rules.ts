@@ -24,7 +24,7 @@ export function softDeleteQuoteBlocker(
     return 'Megrendelést mondj le, ne töröld. Piszkozat törölhető csak.'
   }
   if (input.portalSubmittedAt) {
-    return 'Beküldött partner ajánlatot ne töröld. Hozd létre a megrendelést, vagy egyeztesd a partnerrel.'
+    return 'Beküldött partner ajánlatot ne töröld — tedd archívumba. A partner így továbbra is látja.'
   }
   if (input.hasActiveInvoice) {
     return 'Van aktív bizonylat (pl. díjbekérő). Előbb sztornózd, aztán törölheted az ajánlatot.'

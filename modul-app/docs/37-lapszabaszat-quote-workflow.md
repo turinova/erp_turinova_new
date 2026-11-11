@@ -30,12 +30,12 @@
 
 | Művelet | Mikor | Hatás |
 |---|---|---|
-| **Törlés** (soft) | csak `draft`, nincs `order_number` | `deleted_at` |
+| **Törlés** (soft) | csak `draft`, nincs `order_number`, **nincs** `portal_submitted_at` | `deleted_at` |
 | **Lemondás** | `ordered` \| `in_production` \| `ready` | `status=cancelled` + ok/megjegyzés/ki/mikor; gyártás mezők clear |
 | **Újranyitás** | `finished` (nem archív) | `status=ready`, `finished_at` null + reopen audit (`20260621`); **pénz / számla nem auto-törlés** |
-| **Archív** | `finished` \| `cancelled` | `archived_at` — lista defaultból rejt; Unarchive bármikor |
-| Tiltott | újranyitás aktív végszámlánál; lemondás `finished`-en | előbb sztornó / újranyitás |
-| Pénz / díjbekérő | nem auto | dialógus figyelmeztet; void / sztornó kézzel |
+| **Archív** | `finished` \| `cancelled` **vagy** portal beküldött (`source=portal` + `portal_submitted_at`, nincs order#) | `archived_at` — staff lista / home inbox defaultból rejt; partner **megtartja**; Unarchive bármikor |
+| Tiltott | újranyitás aktív végszámlánál; lemondás `finished`-en; soft-delete beküldött portalon | előbb sztornó / újranyitás / archív |
+| Pénz / díjbekérő | nem auto | dialógus figyelmeztet; void / sztornó kézzel; archívum **nem** sztornóz |
 
 Erős confirm (megrendelésszám begépelése): `in_production` / `ready` **lemondás**; **újranyitás**. **Átadás** (detail, lista, scanner): Mégse default fókusz, **begépelés nélkül** (pult UX). Lista: **Lemondva** / **Archívum** chip; kereséskor status=`all`. Scanner finished: „újranyitás a megrendelés lapon”.
 

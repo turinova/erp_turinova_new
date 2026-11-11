@@ -605,12 +605,17 @@ export function PartnerQuotesListClient({
                       </DataTableCell>
                     ) : (
                       <DataTableCell className="py-2">
-                        <StatusBadge
-                          tone={partnerQuoteStatusTone(row.status)}
-                          variant={row.status === 'ready' ? 'solid' : 'soft'}
-                        >
-                          {partnerQuoteStatusLabel(row.status)}
-                        </StatusBadge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <StatusBadge
+                            tone={partnerQuoteStatusTone(row.status)}
+                            variant={row.status === 'ready' ? 'solid' : 'soft'}
+                          >
+                            {partnerQuoteStatusLabel(row.status)}
+                          </StatusBadge>
+                          {row.archived_at ? (
+                            <StatusBadge tone="neutral">Archív</StatusBadge>
+                          ) : null}
+                        </div>
                         <p className="mt-1 text-hint text-ink-secondary">
                           {orderStatusHint(row)}
                         </p>

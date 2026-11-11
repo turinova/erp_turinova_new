@@ -13,6 +13,7 @@ export const metadata: Metadata = {
 type SearchParams = Promise<{
   q?: string
   page?: string
+  archived?: string
 }>
 
 export default async function AjanlatokPage({
@@ -26,6 +27,7 @@ export default async function AjanlatokPage({
 
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
+  const archivedOnly = params.archived === '1'
 
   let loadError: string | null = null
   let rows: Awaited<ReturnType<typeof listQuotes>>['rows'] = []
@@ -41,7 +43,8 @@ export default async function AjanlatokPage({
           status: 'draft',
           q: q || undefined,
           page,
-          limit: 25
+          limit: 25,
+          archivedOnly
         })
         rows = result.rows
         total = result.total
@@ -92,6 +95,7 @@ export default async function AjanlatokPage({
         limit={limit}
         canWrite={canWrite}
         initialQ={q}
+        archivedOnly={archivedOnly}
       />
     </Suspense>
   )

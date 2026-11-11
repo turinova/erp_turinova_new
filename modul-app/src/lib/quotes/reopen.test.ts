@@ -78,6 +78,34 @@ describe('canArchiveQuote / canUnarchiveQuote', () => {
     )
   })
 
+  it('archives portal-submitted draft without order number', () => {
+    assert.equal(
+      canArchiveQuote({
+        status: 'draft',
+        orderNumber: null,
+        source: 'portal',
+        portalSubmittedAt: '2026-01-01'
+      }).ok,
+      true
+    )
+    assert.equal(
+      canArchiveQuote({
+        status: 'draft',
+        orderNumber: null,
+        source: 'portal',
+        portalSubmittedAt: null
+      }).ok,
+      false
+    )
+    assert.equal(
+      canArchiveQuote({
+        status: 'draft',
+        orderNumber: null
+      }).ok,
+      false
+    )
+  })
+
   it('unarchive requires archived_at', () => {
     assert.equal(canUnarchiveQuote({ archivedAt: null }).ok, false)
     assert.equal(

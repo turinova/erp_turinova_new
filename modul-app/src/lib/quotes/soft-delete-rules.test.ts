@@ -30,13 +30,13 @@ describe('softDeleteQuoteBlocker', () => {
     )
   })
 
-  it('blocks portal submitted', () => {
+  it('blocks portal submitted (archive instead)', () => {
     assert.match(
       softDeleteQuoteBlocker({
         ...base,
         portalSubmittedAt: '2026-01-01T00:00:00Z'
       }) ?? '',
-      /Beküldött partner/
+      /archívumba/
     )
   })
 

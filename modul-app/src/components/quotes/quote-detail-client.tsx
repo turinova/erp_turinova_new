@@ -401,9 +401,17 @@ export function QuoteDetailClient({
       canArchiveQuote({
         status: quote.status,
         orderNumber: quote.order_number,
-        archivedAt: quote.archived_at
+        archivedAt: quote.archived_at,
+        source: quote.source,
+        portalSubmittedAt: quote.portal_submitted_at
       }),
-    [quote.status, quote.order_number, quote.archived_at]
+    [
+      quote.status,
+      quote.order_number,
+      quote.archived_at,
+      quote.source,
+      quote.portal_submitted_at
+    ]
   )
   const unarchiveGate = useMemo(
     () =>
@@ -433,6 +441,13 @@ export function QuoteDetailClient({
     reopenGate.ok
   const canArchiveOrder = showFinishedOpsSection && archiveGate.ok
   const canUnarchiveOrder = showFinishedOpsSection && unarchiveGate.ok
+  /** Beküldött portal ajánlat — még nincs megrendelésszám. */
+  const canArchivePortalSubmitted =
+    !isPartner && canWrite && !quote.order_number && archiveGate.ok
+  const canUnarchivePortalSubmitted =
+    !isPartner && canWrite && !quote.order_number && unarchiveGate.ok
+  const archiveDisplayNumber =
+    quote.order_number?.trim() || quote.quote_number
 
   const hasOrderNumber = Boolean(quote.order_number)
   const invoiceKindOpts = useMemo(
@@ -978,18 +993,23 @@ export function QuoteDetailClient({
         {!isPartner ? (
           <QuoteStatusStepper status={quote.status} />
         ) : null}
-        {!isPartner && quote.archived_at ? (
+        {quote.archived_at ? (
           <div
             className="max-w-xl rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink-secondary"
             role="status"
           >
             <p className="font-medium text-ink">
-              Archívumban
+              {isPartner ? 'A cég archívumba tette' : 'Archívumban'}
               {` · ${new Date(quote.archived_at).toLocaleString('hu-HU')}`}
-              {quote.archived_by_label
+              {!isPartner && quote.archived_by_label
                 ? ` · ${quote.archived_by_label}`
                 : ''}
             </p>
+            {isPartner ? (
+              <p className="mt-0.5 text-hint text-ink-secondary">
+                Az ajánlat továbbra is elérhető a zárt / összes listában.
+              </p>
+            ) : null}
           </div>
         ) : null}
         {!isPartner && quote.status === 'cancelled' ? (
@@ -2063,6 +2083,38 @@ export function QuoteDetailClient({
                       </div>
                     ) : null}
 
+                    {canArchivePortalSubmitted ||
+                    canUnarchivePortalSubmitted ? (
+                      <div className="space-y-1.5 border-t border-border pt-3">
+                        {canUnarchivePortalSubmitted ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="w-full"
+                            onClick={() => setUnarchiveOpen(true)}
+                          >
+                            Archívumból vissza
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="danger"
+                            className="w-full"
+                            onClick={() => setArchiveOpen(true)}
+                          >
+                            Archívumba
+                          </Button>
+                        )}
+                        {canArchivePortalSubmitted &&
+                        hasActiveProformaOrAdvance ? (
+                          <p className="text-hint text-ink-muted">
+                            Van aktív díjbekérő — az archívum nem sztornózza
+                            automatikusan.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     {showCancelOrderSection ? (
                       <div className="space-y-1.5 border-t border-border pt-3">
                         <Button
@@ -2122,7 +2174,7 @@ export function QuoteDetailClient({
                         ) : canArchiveOrder ? (
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant="danger"
                             className="w-full"
                             onClick={() => setArchiveOpen(true)}
                           >
@@ -2685,11 +2737,24 @@ export function QuoteDetailClient({
               onSuccess={() => router.refresh()}
             />
           ) : null}
+        </>
+      ) : null}
+
+      {!isPartner &&
+      (canArchiveOrder ||
+        canUnarchiveOrder ||
+        canArchivePortalSubmitted ||
+        canUnarchivePortalSubmitted) ? (
+        <>
           <ConfirmDialog
             open={archiveOpen}
             onOpenChange={setArchiveOpen}
             title="Archívumba helyezés"
-            description={`${quote.order_number} eltűnik a normál listából. Bármikor visszahozható.`}
+            description={
+              quote.order_number
+                ? `${archiveDisplayNumber} eltűnik a normál listából. Bármikor visszahozható.`
+                : `${archiveDisplayNumber} eltűnik az aktív ajánlatokból és a főoldali inboxból. A partner továbbra is látja. Bármikor visszahozható.`
+            }
             confirmLabel="Archívumba"
             variant="primary"
             loading={archivePending}
@@ -2702,7 +2767,9 @@ export function QuoteDetailClient({
                   return
                 }
                 toast.success(
-                  `Megrendelés ${result.orderNumber} az archívumban.`
+                  quote.order_number
+                    ? `Megrendelés ${result.orderNumber} az archívumban.`
+                    : `Ajánlat ${result.orderNumber} az archívumban.`
                 )
                 setArchiveOpen(false)
                 router.refresh()
@@ -2713,7 +2780,11 @@ export function QuoteDetailClient({
             open={unarchiveOpen}
             onOpenChange={setUnarchiveOpen}
             title="Archívumból vissza"
-            description={`${quote.order_number} újra megjelenik a normál listában.`}
+            description={
+              quote.order_number
+                ? `${archiveDisplayNumber} újra megjelenik a normál listában.`
+                : `${archiveDisplayNumber} újra megjelenik az aktív ajánlatoknál és az inboxban.`
+            }
             confirmLabel="Visszaállítás"
             variant="primary"
             loading={archivePending}
@@ -2726,7 +2797,9 @@ export function QuoteDetailClient({
                   return
                 }
                 toast.success(
-                  `Megrendelés ${result.orderNumber} vissza az aktív listába.`
+                  quote.order_number
+                    ? `Megrendelés ${result.orderNumber} vissza az aktív listába.`
+                    : `Ajánlat ${result.orderNumber} vissza az aktív listába.`
                 )
                 setUnarchiveOpen(false)
                 router.refresh()

@@ -30,6 +30,7 @@ import {
   canArchiveQuote,
   canReopenFinishedQuote,
   canUnarchiveQuote,
+  isPortalSubmittedArchiveCandidate,
   orderNumbersMatch,
   parseQuoteReopenReason,
   validateReopenNote,
@@ -670,7 +671,7 @@ export type ArchiveQuoteResult =
   | { ok: true; id: string; orderNumber: string }
   | { ok: false; message: string }
 
-/** Soft archív — lista defaultból rejt. */
+/** Soft archív — lista defaultból rejt (partner beküldésnél partnernél megmarad). */
 export async function archiveQuoteAction(
   quoteIdRaw: string
 ): Promise<ArchiveQuoteResult> {
@@ -683,7 +684,9 @@ export async function archiveQuoteAction(
 
   const { data: quote, error: quoteErr } = await ctx.supabase
     .from('quotes')
-    .select('id, status, order_number, deleted_at, archived_at')
+    .select(
+      'id, status, order_number, quote_number, source, portal_submitted_at, deleted_at, archived_at'
+    )
     .eq('id', quoteId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
@@ -692,17 +695,21 @@ export async function archiveQuoteAction(
     return { ok: false, message: 'A megrendelés nem található.' }
   }
 
+  const status = quote.status as
+    | 'draft'
+    | 'ordered'
+    | 'in_production'
+    | 'ready'
+    | 'finished'
+    | 'cancelled'
+
   const gate = canArchiveQuote({
-    status: quote.status as
-      | 'draft'
-      | 'ordered'
-      | 'in_production'
-      | 'ready'
-      | 'finished'
-      | 'cancelled',
+    status,
     orderNumber: quote.order_number,
     deletedAt: quote.deleted_at,
-    archivedAt: quote.archived_at
+    archivedAt: quote.archived_at,
+    source: quote.source,
+    portalSubmittedAt: quote.portal_submitted_at
   })
   if (!gate.ok) return gate
 
@@ -711,7 +718,13 @@ export async function archiveQuoteAction(
     ctx.user.email?.trim() ||
     'Ismeretlen'
 
-  const { data: updated, error: updateErr } = await ctx.supabase
+  const portalArchive = isPortalSubmittedArchiveCandidate({
+    source: quote.source,
+    portalSubmittedAt: quote.portal_submitted_at,
+    orderNumber: quote.order_number
+  })
+
+  let updateQuery = ctx.supabase
     .from('quotes')
     .update({
       archived_at: new Date().toISOString(),
@@ -721,28 +734,44 @@ export async function archiveQuoteAction(
     })
     .eq('id', quoteId)
     .eq('tenant_id', tenantId)
-    .in('status', ['finished', 'cancelled'])
     .is('deleted_at', null)
     .is('archived_at', null)
-    .select('id, order_number')
+
+  if (portalArchive) {
+    updateQuery = updateQuery
+      .eq('source', 'portal')
+      .not('portal_submitted_at', 'is', null)
+      .is('order_number', null)
+  } else {
+    updateQuery = updateQuery.in('status', ['finished', 'cancelled'])
+  }
+
+  const { data: updated, error: updateErr } = await updateQuery
+    .select('id, order_number, quote_number')
     .maybeSingle()
 
   if (updateErr) {
     console.error('archiveQuoteAction', updateErr.message)
     return { ok: false, message: 'Nem sikerült archiválni.' }
   }
-  if (!updated || !updated.order_number) {
+  if (!updated) {
     return {
       ok: false,
       message: 'A státusz közben megváltozott — frissítsd az oldalt.'
     }
   }
 
+  const displayNumber =
+    updated.order_number?.trim() ||
+    updated.quote_number?.trim() ||
+    quote.quote_number
+
   revalidatePath(LIST_PATH)
   revalidatePath(`${LIST_PATH}/${quoteId}`)
   revalidatePath('/megrendelesek')
+  revalidatePath('/home')
   revalidatePath('/scanner')
-  return { ok: true, id: updated.id, orderNumber: updated.order_number }
+  return { ok: true, id: updated.id, orderNumber: displayNumber }
 }
 
 /** Archívum visszavonása. */
@@ -758,7 +787,7 @@ export async function unarchiveQuoteAction(
 
   const { data: quote, error: quoteErr } = await ctx.supabase
     .from('quotes')
-    .select('id, order_number, deleted_at, archived_at')
+    .select('id, order_number, quote_number, deleted_at, archived_at')
     .eq('id', quoteId)
     .eq('tenant_id', tenantId)
     .maybeSingle()
@@ -785,25 +814,31 @@ export async function unarchiveQuoteAction(
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .not('archived_at', 'is', null)
-    .select('id, order_number')
+    .select('id, order_number, quote_number')
     .maybeSingle()
 
   if (updateErr) {
     console.error('unarchiveQuoteAction', updateErr.message)
     return { ok: false, message: 'Nem sikerült visszavonni az archívumot.' }
   }
-  if (!updated || !updated.order_number) {
+  if (!updated) {
     return {
       ok: false,
       message: 'A státusz közben megváltozott — frissítsd az oldalt.'
     }
   }
 
+  const displayNumber =
+    updated.order_number?.trim() ||
+    updated.quote_number?.trim() ||
+    quote.quote_number
+
   revalidatePath(LIST_PATH)
   revalidatePath(`${LIST_PATH}/${quoteId}`)
   revalidatePath('/megrendelesek')
+  revalidatePath('/home')
   revalidatePath('/scanner')
-  return { ok: true, id: updated.id, orderNumber: updated.order_number }
+  return { ok: true, id: updated.id, orderNumber: displayNumber }
 }
 
 export type UpdateQuoteCommentResult =
@@ -961,9 +996,23 @@ export async function convertQuoteToOrder(
     return { ok: false, message: 'Nem sikerült megrendeléssé alakítani.' }
   }
 
+  // Aktív megrendelés ne maradjon archívumban (pl. portal beküldés után archivált).
+  await ctx.supabase
+    .from('quotes')
+    .update({
+      archived_at: null,
+      archived_by: null,
+      archived_by_label_snapshot: null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .not('archived_at', 'is', null)
+
   revalidatePath(LIST_PATH)
   revalidatePath(`${LIST_PATH}/${quoteId}`)
   revalidatePath('/megrendelesek')
+  revalidatePath('/home')
   revalidatePath('/opti')
 
   if (ctx.user.tenantId) {

@@ -63,6 +63,7 @@ export async function getHomePartnerPortalInbox(
     .eq('status', 'draft')
     .not('portal_submitted_at', 'is', null)
     .is('deleted_at', null)
+    .is('archived_at', null)
     .order('portal_submitted_at', { ascending: false })
     .limit(limit)
 

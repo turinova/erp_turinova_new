@@ -55,6 +55,9 @@ export function formatRelative(iso: string): string {
 
 /** Következő lépés egy mondatban a státusz badge mellett. */
 export function orderStatusHint(row: PartnerQuoteListItem): string {
+  if (row.archived_at) {
+    return 'A cég archívumba tette'
+  }
   switch (row.status) {
     case 'draft': {
       const proforma = partnerAutoProformaCopy(row.auto_proforma_status)

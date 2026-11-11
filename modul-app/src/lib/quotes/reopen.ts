@@ -66,6 +66,9 @@ export type QuoteArchiveGateInput = {
   orderNumber: string | null
   deletedAt?: string | null
   archivedAt?: string | null
+  /** Partner beküldött ajánlat (még nincs megrendelésszám). */
+  source?: string | null
+  portalSubmittedAt?: string | null
 }
 
 export type QuoteArchiveGate =
@@ -74,6 +77,20 @@ export type QuoteArchiveGate =
 
 const ARCHIVEABLE: QuoteStatus[] = ['finished', 'cancelled']
 
+/** Beküldött portal ajánlat — staff elrakhatja archívumba (partnernél megmarad). */
+export function isPortalSubmittedArchiveCandidate(
+  input: Pick<
+    QuoteArchiveGateInput,
+    'source' | 'portalSubmittedAt' | 'orderNumber'
+  >
+): boolean {
+  return (
+    input.source === 'portal' &&
+    Boolean(input.portalSubmittedAt) &&
+    !input.orderNumber
+  )
+}
+
 export function canArchiveQuote(input: QuoteArchiveGateInput): QuoteArchiveGate {
   if (input.deletedAt) {
     return { ok: false, message: 'A megrendelés már törölve van.' }
@@ -81,6 +98,11 @@ export function canArchiveQuote(input: QuoteArchiveGateInput): QuoteArchiveGate 
   if (input.archivedAt) {
     return { ok: false, message: 'Már az archívumban van.' }
   }
+
+  if (isPortalSubmittedArchiveCandidate(input)) {
+    return { ok: true }
+  }
+
   if (!input.orderNumber) {
     return {
       ok: false,

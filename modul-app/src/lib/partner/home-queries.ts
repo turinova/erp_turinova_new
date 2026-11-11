@@ -88,7 +88,9 @@ async function countPartnerQuotes(
   } else {
     query = query.not('portal_submitted_at', 'is', null)
     if (kind === 'open') {
-      query = query.in('status', ['draft', 'ordered', 'in_production', 'ready'])
+      query = query
+        .in('status', ['draft', 'ordered', 'in_production', 'ready'])
+        .is('archived_at', null)
     }
   }
 

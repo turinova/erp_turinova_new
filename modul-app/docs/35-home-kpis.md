@@ -78,10 +78,10 @@ Micro-viz: `src/components/home/home-kpi-micro.tsx`.
 
 ### Partner portál inbox
 
-- Main-app „Ügyfél árajánlatok” pár: `source=portal` + `portal_submitted_at` + `status=draft`
+- Main-app „Ügyfél árajánlatok” pár: `source=portal` + `portal_submitted_at` + `status=draft` + `archived_at IS NULL` + `deleted_at IS NULL`
 - Oszlopok: Partner · Ajánlat · Fizetési mód (+ comment hint) · Összeg · Beérkezett
 - Fizetési mód: `preferred_payment_method_name` / `_comment` snapshot
-- Link: `/ajanlatok/:id`
+- Link: `/ajanlatok/:id` (archivált: `/ajanlatok?archived=1`)
 
 ---
 

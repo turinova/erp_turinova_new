@@ -26,6 +26,7 @@ export type PartnerQuoteListItem = {
   currency: string
   updated_at: string
   portal_submitted_at: string | null
+  archived_at: string | null
   preferred_payment_method_name: string | null
   auto_proforma_status:
     | 'pending'
@@ -109,6 +110,7 @@ const SELECT = `
   currency,
   updated_at,
   portal_submitted_at,
+  archived_at,
   preferred_payment_method_name,
   auto_proforma_status,
   tenant_id,
@@ -130,6 +132,7 @@ type QuoteRow = {
   currency: string
   updated_at: string
   portal_submitted_at: string | null
+  archived_at: string | null
   preferred_payment_method_name: string | null
   auto_proforma_status: string | null
   tenant_id: string
@@ -178,6 +181,7 @@ function mapRow(
     project_name: row.project_name ?? null,
     total_gross,
     total_paid,
+    archived_at: row.archived_at ?? null,
     remaining_gross:
       paidByQuote && isPayable(row.status)
         ? quoteRemainingGross(total_gross, total_paid)
@@ -323,19 +327,24 @@ export async function listPartnerSubmittedQuotes(
 
   switch (filter) {
     case 'open':
-      query = query.in('status', OPEN_STATUSES)
+      // Archivált beküldés ne jelenjen meg „folyamatban” között.
+      query = query.in('status', OPEN_STATUSES).is('archived_at', null)
       break
     case 'ready':
     case 'in_production':
-      query = query.eq('status', filter)
+      query = query.eq('status', filter).is('archived_at', null)
       break
     case 'closed':
-      query = query.in('status', CLOSED_STATUSES)
+      // Lezárt státusz VAGY staff által archivált (pl. portal draft).
+      query = query.or(
+        `status.in.(${CLOSED_STATUSES.join(',')}),archived_at.not.is.null`
+      )
       break
     case 'due':
       query = query
         .in('status', PAYABLE_STATUSES)
         .in('payment_status', ['not_paid', 'partial'])
+        .is('archived_at', null)
       break
     default:
       break
@@ -401,7 +410,7 @@ export async function getPartnerOrderKpis(
   const { data, error } = await supabase
     .from('quotes')
     .select(
-      'id, status, payment_status, total_gross, final_total_gross, currency, portal_submitted_at, production_date'
+      'id, status, payment_status, total_gross, final_total_gross, currency, portal_submitted_at, production_date, archived_at'
     )
     .eq('partner_profile_id', partnerId)
     .eq('source', 'portal')
@@ -423,6 +432,7 @@ export async function getPartnerOrderKpis(
     currency: string
     portal_submitted_at: string
     production_date: string | null
+    archived_at: string | null
   }>
 
   const today = toBudapestYmdFromIso(new Date().toISOString())
@@ -442,12 +452,15 @@ export async function getPartnerOrderKpis(
 
   for (const row of rows) {
     const status = row.status as QuoteStatus
-    if (OPEN_STATUSES.includes(status)) counts.open += 1
-    if (CLOSED_STATUSES.includes(status)) counts.closed += 1
-    if (status === 'ready') counts.ready += 1
-    if (status === 'in_production') counts.in_production += 1
+    const archived = Boolean(row.archived_at)
+    // Chip szűrők = listPartnerSubmittedQuotes (archív csak closed/all).
+    if (!archived && OPEN_STATUSES.includes(status)) counts.open += 1
+    if (CLOSED_STATUSES.includes(status) || archived) counts.closed += 1
+    if (!archived && status === 'ready') counts.ready += 1
+    if (!archived && status === 'in_production') counts.in_production += 1
 
     if (
+      !archived &&
       isPayable(status) &&
       (row.payment_status === 'not_paid' || row.payment_status === 'partial')
     ) {
@@ -456,6 +469,7 @@ export async function getPartnerOrderKpis(
     }
 
     if (
+      !archived &&
       (status === 'ordered' || status === 'in_production') &&
       row.production_date &&
       row.production_date >= today &&
