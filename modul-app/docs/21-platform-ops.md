@@ -1,6 +1,6 @@
 # 21 — Platform ops (1–2 fős SaaS üzem)
 
-**Állapot:** 2026-10-13 — **Square lean IA**: Cégek (home + Teendők) · Partnerek · Katalógus.  
+**Állapot:** 2026-11-12 — **Square lean IA** + tenant **Riport** tab.  
 Migrációk: `20260406_platform_ops.sql`, `20260407_partner_ops.sql`, `20260600_square_plans_…`.
 
 Kapcsolódó: `17-saas-architecture.md`, `10-permissions-and-tenancy.md`, `20-partner-portal.md`, `33-packages-and-addons.md`.
@@ -65,8 +65,24 @@ Migráció: `20260427_manual_subscription_pricing.sql`, `20260428_elofizetes_own
 | **Katalógus** | `/katalogus` | 4 plan kártya; Haladó = feature/add-on szerkesztés |
 | ~~Áttekintés / Health / Csomagok / Add-onok~~ | redirect | legacy URL-ek a fentiekre |
 
-**Cég detail tabok:** Üzem (plan+billing) · Emberek · Eszközök · Haladó (onboarding, demó, danger, audit).  
+**Cég detail tabok:** **Riport** (első, default) · Üzem · Emberek · Eszközök · Haladó.  
 **Nincs** 20 partner dump az Összegzésen — Műhelynél szám + link.
+
+### Tenant Riport (addon-csoportos)
+
+Forrás: `tenant-report-queries.ts` · UI: `tenant-report-panel.tsx`.  
+**Szabály:** szekció csak ha a feature entitlement be van (vagy van releváns forgalom SMS/POS-nál).  
+**Időszak:** URL `?view=month|year&period=YYYY-MM|YYYY` (Budapest naptár). Havi / éves váltó + hónap/év választó. Delta = előző hónap / előző év.  
+**Nincs** tenant-közi összehasonlítás (peer / rang / medián).
+
+| Blokk | Entitlement | Tartalom |
+|-------|--------------|----------|
+| **Cég (közös)** | mindig | Belépett ember 7d / hely |
+| **Lapszabászat + partner** | `lapszabaszat` | Megrendelés, forgalom, chart (heti/havi), félkész/beküldés, fizetés — kiválasztott időszak |
+| **Belépőszámláló** | `footcounter` | Ma Be/Ki, időszak IN, eszköz élő — **nem** `footcounter_dashboard_agg` (tag-check); platform: service-role crossings agg |
+| **Jelenlét** | `jelenlet` | Aktív dolgozó, jelenléti nap/időszak, terminál |
+| **SMS** | `quote_ready_sms` (vagy van forgalom) | SMS db az időszakban |
+| **Bolt / POS** | `pda_pos` (vagy van eladás) | Eladás db + Ft az időszakban |
 
 ---
 

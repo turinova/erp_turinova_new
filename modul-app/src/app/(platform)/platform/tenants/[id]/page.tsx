@@ -21,9 +21,11 @@ import { JELENLET_FEATURE } from '@/lib/jelenlet/types'
 import { LAPSZABASZAT_FEATURE } from '@/lib/lapszabaszat/types'
 import { ph } from '@/lib/platform/platform-href-server'
 import { getPlatformTenantDetail } from '@/lib/platform/queries'
+import { getTenantReportMetrics } from '@/lib/platform/tenant-report-queries'
 import { platformTenantTabTitle } from '@/lib/seo/tab-titles'
 
 type Params = Promise<{ id: string }>
+type SearchParams = Promise<{ view?: string; period?: string }>
 
 export async function generateMetadata({
   params
@@ -38,11 +40,14 @@ export async function generateMetadata({
 }
 
 export default async function PlatformTenantDetailPage({
-  params
+  params,
+  searchParams
 }: {
   params: Params
+  searchParams: SearchParams
 }) {
   const { id } = await params
+  const sp = await searchParams
   const ctx = await requirePlatformAdmin()
   if (!ctx.ok) {
     return (
@@ -63,7 +68,8 @@ export default async function PlatformTenantDetailPage({
     monthlyBill,
     fcDevices,
     jlDevices,
-    hasDemoMaster
+    hasDemoMaster,
+    report
   ] = await Promise.all([
     getTenantEntitlementState(ctx.admin, id),
     listProductPlans(ctx.admin),
@@ -72,7 +78,11 @@ export default async function PlatformTenantDetailPage({
     estimateTenantMonthlyBill(ctx.admin, id),
     listFootcounterDevicesForTenant(ctx.admin, id),
     listJelenletDevicesForTenant(ctx.admin, id),
-    tenantHasDemoMasterData(ctx.admin, id)
+    tenantHasDemoMasterData(ctx.admin, id),
+    getTenantReportMetrics(ctx.admin, id, {
+      view: sp.view,
+      period: sp.period
+    })
   ])
 
   const footcounterEnabled = entitlements.entitledKeys.includes(
@@ -102,6 +112,7 @@ export default async function PlatformTenantDetailPage({
         planLabel={entitlements.plan?.name ?? null}
         hasDemoMaster={hasDemoMaster}
         showPartnerOps={showPartnerOps}
+        report={report}
         entitlementsSlot={
           <TenantEntitlementsPanel
             tenantId={id}

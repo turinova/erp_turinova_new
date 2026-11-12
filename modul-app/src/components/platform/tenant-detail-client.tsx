@@ -74,7 +74,9 @@ import type {
   PlatformTenantKpis,
   PlatformTenantMember
 } from '@/lib/platform/queries'
+import type { TenantReportMetrics } from '@/lib/platform/tenant-report-queries'
 import type { MonthlyBillEstimate } from '@/lib/billing/estimate'
+import { TenantReportPanel } from '@/components/platform/tenant-report-panel'
 import type { TenantStatus } from '@/lib/supabase/database.types'
 import { usePlatformHref } from '@/lib/platform/use-platform-href'
 import { cn } from '@/lib/utils'
@@ -101,8 +103,8 @@ const AUDIT_LABELS: Record<string, string> = {
   'user.member_remove': 'Tag eltávolítva'
 }
 
-/** Lean ops: Üzem (plan+billing) · Emberek · Eszközök · Haladó */
-type TabId = 'ops' | 'people' | 'devices' | 'advanced'
+/** Lean ops: Riport · Üzem · Emberek · Eszközök · Haladó */
+type TabId = 'report' | 'ops' | 'people' | 'devices' | 'advanced'
 
 type Props = {
   tenant: {
@@ -134,6 +136,8 @@ type Props = {
   showPartnerOps?: boolean
   /** Van-e már demó törzs (units+payment+fee+manufacturer). */
   hasDemoMaster?: boolean
+  /** Tenant Riport metrikák (első tab). */
+  report: TenantReportMetrics
 }
 
 export function TenantDetailClient({
@@ -148,11 +152,12 @@ export function TenantDetailClient({
   entitlementsSlot,
   devicesSlot,
   showPartnerOps = false,
-  hasDemoMaster = false
+  hasDemoMaster = false,
+  report
 }: Props) {
   const router = useRouter()
   const href = usePlatformHref()
-  const [tab, setTab] = useState<TabId>('ops')
+  const [tab, setTab] = useState<TabId>('report')
   const [status, setStatus] = useState(tenant.status)
   const [maxSeatsInput, setMaxSeatsInput] = useState(
     tenant.max_seats === null ? '' : String(tenant.max_seats)
@@ -642,6 +647,7 @@ export function TenantDetailClient({
   }
 
   const tabs: Array<{ id: TabId; label: string }> = [
+    { id: 'report', label: 'Riport' },
     { id: 'ops', label: 'Üzem' },
     { id: 'people', label: 'Emberek' },
     { id: 'devices', label: 'Eszközök' },
@@ -716,6 +722,10 @@ export function TenantDetailClient({
         ))}
       </div>
 
+
+      {tab === 'report' ? (
+        <TenantReportPanel report={report} />
+      ) : null}
 
       {tab === 'ops' ? (
         <div className="space-y-4">
