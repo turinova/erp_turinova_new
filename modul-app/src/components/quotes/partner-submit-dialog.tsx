@@ -169,6 +169,13 @@ export function PartnerSubmitDialog({
               Beküldés után e-mailben megkapod a díjbekérőt, abban látod az
               utalás adatait.
             </p>
+          ) : selected &&
+            !autoProforma &&
+            isTransferPaymentMethod(selected) ? (
+            <p className="text-hint text-ink-secondary" role="note">
+              Átutalásos beküldés — a díjbekérőt a cég intézi (nem megy ki
+              automatikusan).
+            </p>
           ) : null}
         </div>
 

@@ -1008,6 +1008,14 @@ export function QuoteDetailClient({
             {isPartner ? (
               <p className="mt-0.5 text-hint text-ink-secondary">
                 Az ajánlat továbbra is elérhető a zárt / összes listában.
+                {quote.auto_proforma_status === 'issued'
+                  ? ' Ha kaptál díjbekérőt, az érvényben marad, amíg a cég másképp nem jelez.'
+                  : ''}
+              </p>
+            ) : hasActiveProformaOrAdvance ? (
+              <p className="mt-0.5 text-hint text-warning-ink">
+                Van aktív díjbekérő / előleg — az archívum nem sztornózza. Ha kell,
+                sztornózd kézzel.
               </p>
             ) : null}
           </div>
@@ -2751,9 +2759,12 @@ export function QuoteDetailClient({
             onOpenChange={setArchiveOpen}
             title="Archívumba helyezés"
             description={
-              quote.order_number
+              (quote.order_number
                 ? `${archiveDisplayNumber} eltűnik a normál listából. Bármikor visszahozható.`
-                : `${archiveDisplayNumber} eltűnik az aktív ajánlatokból és a főoldali inboxból. A partner továbbra is látja. Bármikor visszahozható.`
+                : `${archiveDisplayNumber} eltűnik az aktív ajánlatokból és a főoldali inboxból. A partner továbbra is látja. Bármikor visszahozható.`) +
+              (hasActiveProformaOrAdvance
+                ? ' Figyelem: van aktív díjbekérő / előleg — az archívum nem sztornózza automatikusan.'
+                : '')
             }
             confirmLabel="Archívumba"
             variant="primary"

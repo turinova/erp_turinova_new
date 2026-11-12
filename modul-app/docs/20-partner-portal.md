@@ -3,6 +3,7 @@
 **Állapot:** Fázis 0–8 (platform áttekintés GMV/partner KPI + partnerek lista). Tovább: staff szűrők.
 
 Kapcsolódó: `17-saas-architecture.md`, `08-separation-boundaries.md`, `19-supabase-setup.md`.  
+**Bankkártya (Teya) + automatikus előleg/végszámla:** [57-partner-teya-card-payment.md](57-partner-teya-card-payment.md) — C1 credential kész; checkout/webhook/auto számla hátra.  
 Legacy ötletforrás (nem kód): `customer-portal` — regisztráció, cégválasztó, Opti → submit.
 
 ---
@@ -45,11 +46,11 @@ Kezdőlap · Kereső · Opti · Ajánlatok · Megrendelések · Beállítások.
 2. Nyilvános listából választ tenanthoz (csak ahol add-on + `active`).
 3. Kereső / Opti = annak a tenantnak törzse + árazása.
 4. **Első draft mentés (modell A)** → `ensure_partner_customer(tenant_id)` → `customers` + `quotes` (`source=portal`, `status=draft`, `portal_submitted_at` null).
-5. **Beküldés** → kötelező fizetési mód (tenant aktív + `partner_visible` `payment_methods` + comment); **szerver árellenőrzés** a mai katalógushoz (`partner-price-check.ts`): eltérésnél a beküldés megáll („Nyisd meg és mentsd újra”). Snapshot: `preferred_payment_method_id/name/comment`; `portal_submitted_at = now()`; status marad `draft`; partner **nem** szerkeszthet tovább. (Szándék ≠ `quote_payments`.)
-6. **Automatikus díjbekérő (opcionális):** `/beallitasok/partner` → `auto_proforma_on_transfer` + `auto_proforma_due_days`. Átutalás + Agent kulcs + kapcsoló → beküldés után `after()` + service role kiállít díjbekérőt (`runAutoProforma`). Állapot: `quotes.auto_proforma_*`. Hiba / hiányos számlázási adat → `failed` / `skipped`, staff újraküldés az ajánlat detailen. Cron: `/api/cron/auto-proforma` (5 perc). Díjbekérő mehet rendelésszám nélkül is (beküldött portal quote, Számlázz rendelésszám = ajánlatszám).
-7. Staff: Online / Új beküldés (home inbox, díjbekérő oszlop) → meglévő convert → order / gyártás; preferred mód előválasztás / megjelenítés. Beküldött ajánlatot **ne törölj** — **Archívumba** (`archived_at`): eltűnik az aktív `/ajanlatok` + home inboxból (`?archived=1` chip), partnernél megmarad (open szűrőből kiesik; closed/all + detail badge). Convert → order törli az archívumot.
-8. Partner Megrendelések: `portal_submitted_at IS NOT NULL` (+ későbbi státuszok). Partner díjbekérő szöveg **csak** `quotes.auto_proforma_status`-ból (`partnerAutoProformaCopy`); átutalás önmagában nem ígér díjbekérőt. Draft + `issued` → „Fizetésre vár (díjbekérő elküldve)”; detailen badge + mondat; `failed`/`skipped` → „A díjbekérőt a cég intézi.” (belső ok nélkül).
-9. **Számlázási kapu (auto díjbekérő):** átutalás + auto ON + hiányos cím/e-mail → beküldés **tiltva**, warning + „Számlázási adatok kitöltése” → `/beallitasok?return=…#szamlazas`. Szerver: `billing_incomplete`. Mentés után `ensure_partner_customer` sync + return `?submit=1` újra nyitja a dialógust.
+5. **Beküldés** → kötelező fizetési mód (tenant aktív + `partner_visible` `payment_methods` + comment); **szerver árellenőrzés** a mai katalógushoz (`partner-price-check.ts`): eltérésnél a beküldés megáll („Nyisd meg és mentsd újra”). Snapshot: `preferred_payment_method_id/name/comment`; `portal_submitted_at = now()`; status marad `draft`; **partner** nem szerkeszthet tovább; **staff** Optiban / detailen úgy kezeli, mintha saját ajánlat lenne (`draft`\|`ordered`). (Szándék ≠ `quote_payments`.)
+6. **Automatikus díjbekérő (opcionális):** `/beallitasok/partner` → `auto_proforma_on_transfer` + `auto_proforma_due_days`. Átutalás + Agent kulcs + kapcsoló → beküldés után `after()` + service role kiállít díjbekérőt (`runAutoProforma`). Állapot: `quotes.auto_proforma_*`. Hiba / hiányos számlázási adat → `failed` / `skipped`, staff újraküldés az ajánlat detailen. **Ops:** service role + `CRON_SECRET` + cron `GET /api/cron/auto-proforma` (Bearer) — pending ~2 perc után rescue, stuck processing ~10 perc → `failed`. Díjbekérő mehet rendelésszám nélkül is (beküldött portal quote, Számlázz rendelésszám = ajánlatszám).
+7. Staff: Online / Új beküldés (home inbox, díjbekérő oszlop) → meglévő convert → order / gyártás; preferred mód előválasztás / megjelenítés. Beküldött ajánlatot **ne törölj** — **Archívumba** (`archived_at`): eltűnik az aktív `/ajanlatok` + home inboxból (`?archived=1` chip), partnernél megmarad (open szűrőből kiesik; closed/all + detail badge). Convert → order törli az archívumot. Élő díjbekérőnél archívum **nem** sztornóz (confirm figyelmeztet).
+8. Partner Megrendelések: `portal_submitted_at IS NOT NULL` (+ későbbi státuszok). Partner díjbekérő szöveg **csak** `quotes.auto_proforma_status`-ból (`partnerAutoProformaCopy`); átutalás önmagában nem ígér díjbekérőt. Draft + `issued` → „Fizetésre vár (díjbekérő elküldve)”; detailen badge + mondat; `failed`/`skipped` → „A díjbekérőt a cég intézi.” (belső ok nélkül). **Manuális staff díjbekérő** portal beküldött ajánlaton szintén `auto_proforma_status=issued` (partner tábla = valóság).
+9. **Számlázási kapu (auto díjbekérő):** átutalás + auto ON + hiányos cím/e-mail → beküldés **tiltva**, warning + „Számlázási adatok kitöltése” → `/beallitasok?return=…#szamlazas`. Szerver: `billing_incomplete`. Mentés után `ensure_partner_customer` sync + quote billing snapshot + return `?submit=1` újra nyitja a dialógust. Auto futás előtt service role sync: `partner_profiles` → `customers` + quote snapshot (drift ellen).
 
 Egy partner × egy tenant = **egy** `customers` sor (`partner_profile_id`). Másik cég = másik customer sor.
 
@@ -161,10 +162,11 @@ Local (staff host, pl. `localhost:3010`):
 ### Fázis 6 — Beküldés + listák + Online
 
 1. `/partner/ajanlatok` — elküldetlen draftok; részleteken Beküldés / Törlés
-2. Beküldés → `portal_submitted_at`; partner nem szerkeszthet tovább
-3. `/partner/megrendelesek` — beküldött tételek (olvasható)
-4. Staff `/ajanlatok` — megjelenik + **Online** badge
-5. Opti mentés után redirect → partner Ajánlatok
+2. Beküldés → `portal_submitted_at`; **partner** nem szerkeszthet tovább
+3. **Staff** a beküldött portal ajánlatot Optiban (`/opti?quote_id=`) úgy szerkesztheti, mint saját draft/order-t (`draft`\|`ordered`). A `portal_submitted_at` **nem** staff-lock (`lib/quotes/portal-opti-edit.ts`, `getQuoteForOptiEdit`). Élő díjbekérő + összegváltozás → mentés confirm; aktív előleg/végszámla → mentés tiltva.
+4. `/partner/megrendelesek` — beküldött tételek (olvasható)
+5. Staff `/ajanlatok` — megjelenik + **Online** badge
+6. Opti mentés után redirect → partner Ajánlatok (partner) / staff detail
 
 ### Fázis 7 — Detail + Megrendelések követés
 

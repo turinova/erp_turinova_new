@@ -159,6 +159,22 @@ export type PartnerAutoProformaCopy = {
 }
 
 /**
+ * Manuális vagy auto díjbekérő kiállítás után: partner tábla frissíthető?
+ * Csak beküldött portal ajánlat + proforma kind.
+ */
+export function shouldSyncPortalAutoProformaIssued(input: {
+  kind: string
+  source?: string | null
+  portalSubmittedAt?: string | null
+}): boolean {
+  return (
+    input.kind === 'proforma' &&
+    input.source === 'portal' &&
+    Boolean(input.portalSubmittedAt)
+  )
+}
+
+/**
  * Partner felé: csak auto_proforma_status alapján.
  * Átutalás önmagában soha nem indokol díjbekérő szöveget (status null → null).
  */

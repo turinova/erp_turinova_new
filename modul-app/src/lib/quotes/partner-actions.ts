@@ -473,7 +473,8 @@ export async function submitPartnerQuote(input: {
 
     const autoProforma = await shouldQueueAutoProforma(tenantId, method)
 
-    // Auto díjbekérő: számlázási adat kötelező (ne skipped után derüljön ki).
+    // Auto díjbekérő: számlázási adat kötelező (profil + syncelt customer).
+    let billingSnapshots: Record<string, string | null> | null = null
     if (autoProforma) {
       await supabase.rpc('ensure_partner_customer', { p_tenant_id: tenantId })
       const profileBilling = partnerBillingForProformaReady({
@@ -495,6 +496,59 @@ export async function submitPartnerQuote(input: {
           code: 'billing_incomplete'
         }
       }
+
+      const { data: linkedCustomer } = await supabase
+        .from('customers')
+        .select(
+          'id, name, email, billing_name, billing_postal_code, billing_city, billing_street'
+        )
+        .eq('tenant_id', tenantId)
+        .eq('partner_profile_id', session.id)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+      const customerBilling = partnerBillingForProformaReady({
+        name: linkedCustomer?.name ?? session.profile.name,
+        billing_name:
+          linkedCustomer?.billing_name ?? session.profile.billing_name,
+        email: linkedCustomer?.email || session.email,
+        billing_postal_code:
+          linkedCustomer?.billing_postal_code ??
+          session.profile.billing_postal_code,
+        billing_city:
+          linkedCustomer?.billing_city ?? session.profile.billing_city,
+        billing_street:
+          linkedCustomer?.billing_street ?? session.profile.billing_street
+      })
+      if (!customerBilling.ok) {
+        console.info('[auto-proforma] queue=no reason=customer_billing_incomplete', {
+          quoteId: input.quoteId,
+          missing: customerBilling.missing
+        })
+        return {
+          ok: false,
+          message: partnerBillingIncompleteMessage(customerBilling),
+          code: 'billing_incomplete'
+        }
+      }
+
+      const billingName =
+        (session.profile.billing_name ?? '').trim() ||
+        (session.profile.name ?? '').trim() ||
+        'Online ügyfél'
+      billingSnapshots = {
+        billing_name_snapshot: billingName,
+        billing_country_snapshot:
+          session.profile.billing_country || 'Magyarország',
+        billing_city_snapshot: session.profile.billing_city ?? null,
+        billing_postal_code_snapshot:
+          session.profile.billing_postal_code ?? null,
+        billing_street_snapshot: session.profile.billing_street ?? null,
+        billing_house_number_snapshot:
+          session.profile.billing_house_number ?? null,
+        billing_tax_number_snapshot:
+          session.profile.billing_tax_number ?? null
+      }
     }
 
     const now = new Date().toISOString()
@@ -505,6 +559,7 @@ export async function submitPartnerQuote(input: {
         preferred_payment_method_id: method.id,
         preferred_payment_method_name: method.name,
         preferred_payment_method_comment: method.comment?.trim() || null,
+        ...(billingSnapshots ?? {}),
         updated_at: now
       })
       .eq('id', input.quoteId)

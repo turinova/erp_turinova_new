@@ -10,6 +10,11 @@ import {
   partnerSearchKindsFromSettings,
   type PartnerAutoProformaView
 } from '@/lib/partner-settings/queries'
+import { getTeyaOnlineSettingsPublic } from '@/lib/teya-online/queries'
+import {
+  emptyTeyaOnlineSettingsPublic,
+  type TeyaOnlineSettingsPublic
+} from '@/lib/teya-online/types'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = {
@@ -29,6 +34,7 @@ export default async function PartnerSettingsPage() {
     hasAgentKey: false,
     transferActive: false
   }
+  let teyaOnline: TeyaOnlineSettingsPublic = emptyTeyaOnlineSettingsPublic()
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
@@ -63,10 +69,10 @@ export default async function PartnerSettingsPage() {
             )
             invalidateTenantPartnerSettingsCache(user.tenantId)
           }
-          autoProforma = await getPartnerAutoProformaView(
-            supabase,
-            user.tenantId
-          )
+          ;[autoProforma, teyaOnline] = await Promise.all([
+            getPartnerAutoProformaView(supabase, user.tenantId),
+            getTeyaOnlineSettingsPublic(supabase, user.tenantId)
+          ])
         } catch (err) {
           loadError =
             err instanceof Error
@@ -118,6 +124,7 @@ export default async function PartnerSettingsPage() {
     <PartnerSettingsForm
       initial={initial}
       autoProforma={autoProforma}
+      teyaOnline={teyaOnline}
       canWrite={canWrite}
     />
   )

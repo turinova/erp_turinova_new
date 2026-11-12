@@ -11,6 +11,7 @@ import {
   partnerBillingForProformaReady,
   partnerBillingIncompleteMessage,
   shouldAutoProforma,
+  shouldSyncPortalAutoProformaIssued,
   type AutoProformaQuoteFacts
 } from '@/lib/partner/auto-proforma-rules'
 
@@ -32,6 +33,43 @@ function facts(over: Partial<AutoProformaQuoteFacts> = {}): AutoProformaQuoteFac
     ...over
   }
 }
+
+describe('shouldSyncPortalAutoProformaIssued', () => {
+  it('csak portal beküldött + proforma', () => {
+    assert.equal(
+      shouldSyncPortalAutoProformaIssued({
+        kind: 'proforma',
+        source: 'portal',
+        portalSubmittedAt: '2026-01-01'
+      }),
+      true
+    )
+    assert.equal(
+      shouldSyncPortalAutoProformaIssued({
+        kind: 'advance',
+        source: 'portal',
+        portalSubmittedAt: '2026-01-01'
+      }),
+      false
+    )
+    assert.equal(
+      shouldSyncPortalAutoProformaIssued({
+        kind: 'proforma',
+        source: 'opti',
+        portalSubmittedAt: '2026-01-01'
+      }),
+      false
+    )
+    assert.equal(
+      shouldSyncPortalAutoProformaIssued({
+        kind: 'proforma',
+        source: 'portal',
+        portalSubmittedAt: null
+      }),
+      false
+    )
+  })
+})
 
 describe('shouldAutoProforma', () => {
   it('csak átutalás + kapcsoló + Agent kulcs esetén igaz', () => {

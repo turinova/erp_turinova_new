@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
+  Fragment,
   useEffect,
   useMemo,
   useState,
@@ -36,6 +37,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { saveAttendanceDayAction } from '@/lib/jelenlet/actions'
+import { groupEmployeesByType } from '@/lib/jelenlet/employee-type-groups'
 import {
   budapestTodayYmd,
   isExpectedAttendanceDay,
@@ -545,6 +547,10 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
   const [focusMode, setFocusMode] = useState(false)
 
   const glance = useMemo(() => computeGlance(data), [data])
+  const employeeGroups = useMemo(
+    () => groupEmployeesByType(data.employees),
+    [data.employees]
+  )
 
   useEffect(() => {
     if (!focusMode) return
@@ -1033,140 +1039,178 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
               </tr>
             </thead>
             <tbody>
-              {data.employees.map((emp) => {
-                const att = glance.rowAttention[emp.id]
-                const miss = (att?.empty ?? 0) + (att?.incomplete ?? 0)
-                return (
-                  <tr key={emp.id} className="group">
+              {employeeGroups.map((group) => (
+                <Fragment key={group.typeId}>
+                  <tr>
                     <td
                       className={cn(
                         NAME_COL,
-                        'sticky left-0 z-10 border-b border-r border-border bg-surface px-2 py-0 shadow-[2px_0_0_0_var(--border)] group-hover:bg-subtle'
+                        'sticky left-0 z-[11] border-b border-r border-border bg-subtle px-2 py-1 text-left shadow-[2px_0_0_0_var(--border)]'
                       )}
                     >
-                      <div className={cn('flex items-center gap-1.5', ROW_H)}>
-                        <Link
-                          href={`/dolgozok/${emp.id}`}
-                          className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink hover:underline"
-                          title={emp.name}
-                        >
-                          {emp.name}
-                        </Link>
-                        {miss > 0 ? (
-                          <span
-                            className="inline-flex size-5 shrink-0 items-center justify-center rounded bg-warning-soft text-[11px] font-semibold text-warning-ink"
-                            title={[
-                              att!.empty > 0 ? `${att!.empty} pótolni` : null,
-                              att!.incomplete > 0
-                                ? `${att!.incomplete} hiányos`
-                                : null
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          >
-                            {miss}
-                          </span>
-                        ) : (
-                          <span className="size-5 shrink-0" aria-hidden />
-                        )}
-                      </div>
+                      <span className="text-[12px] font-semibold text-ink">
+                        {group.typeName}
+                      </span>
+                      <span className="ml-1.5 text-[11px] font-normal text-ink-muted">
+                        ({group.employees.length})
+                      </span>
                     </td>
-                    {data.dates.map((ymd) => {
-                      const cell = data.cells[`${emp.id}|${ymd}`]
-                      const isToday = ymd === glance.today
-                      const dow = dowOf(ymd)
-                      const isHoliday = holidayByDate.has(ymd)
-                      const disp = cellDisplay(cell)
-                      const timeContent = cellTimeContent(cell)
-                      const manualMark = cellHasManualTime(cell)
-                      const isPast = ymd < glance.today
-                      const scheduleExpected = isExpectedWorkDay(
-                        ymd,
-                        emp.worksOnSaturday,
-                        cell,
-                        { onlyPast: false, todayYmd: glance.today }
-                      )
-                      const emptyWork =
-                        isPast &&
-                        scheduleExpected &&
-                        (!cell || cell.kind === 'empty')
-                      const tipLines = cellHoverLines(
-                        emp.name,
-                        ymd,
-                        cell,
-                        scheduleExpected,
-                        canWrite,
-                        isPast
-                      )
-                      const statusFill =
-                        cell?.kind === 'vacation' ||
-                        cell?.kind === 'sick' ||
-                        cell?.kind === 'other_absence' ||
-                        cell?.kind === 'incomplete' ||
-                        cell?.kind === 'complete'
-
-                      return (
+                    <td
+                      colSpan={data.dates.length}
+                      className="border-b border-border bg-subtle p-0"
+                      aria-hidden
+                    />
+                  </tr>
+                  {group.employees.map((emp) => {
+                    const att = glance.rowAttention[emp.id]
+                    const miss = (att?.empty ?? 0) + (att?.incomplete ?? 0)
+                    return (
+                      <tr key={emp.id} className="group">
                         <td
-                          key={ymd}
-                          data-weekend={
-                            dow === 0 ? 'sun' : dow === 6 ? 'sat' : undefined
-                          }
-                          data-today={isToday ? 'true' : undefined}
                           className={cn(
-                            DAY_COL,
-                            'border-b border-r border-border/70 p-0',
-                            !statusFill &&
-                              columnTintClass({ dow, isToday, isHoliday }),
-                            statusFill &&
-                              (isToday ? 'bg-primary/[0.06]' : 'bg-surface'),
-                            isToday &&
-                              'border-l-[3px] border-l-primary border-r-[3px] border-r-primary'
+                            NAME_COL,
+                            'sticky left-0 z-10 border-b border-r border-border bg-surface px-2 py-0 shadow-[2px_0_0_0_var(--border)] group-hover:bg-subtle'
                           )}
                         >
-                          <button
-                            type="button"
-                            disabled={!canWrite || cell?.kind === 'rest'}
-                            aria-label={tipLines.join('. ')}
-                            onMouseEnter={(e) => showHoverTip(e, tipLines)}
-                            onMouseLeave={hideHoverTip}
-                            onFocus={(e) => showHoverTip(e, tipLines)}
-                            onBlur={hideHoverTip}
-                            onClick={() => {
-                              hideHoverTip()
-                              openCell(emp.id, ymd)
-                            }}
-                            className={cn(
-                              'relative flex w-full items-center justify-center px-0.5 tabular-nums',
-                              ROW_H,
-                              disp.className,
-                              emptyWork &&
-                                !disp.text &&
-                                'bg-warning-soft/50 ring-1 ring-inset ring-dashed ring-warning/50',
-                              canWrite &&
-                                cell?.kind !== 'rest' &&
-                                'cursor-pointer'
-                            )}
-                          >
-                            {emptyWork && !disp.text ? (
-                              <span className="text-[12px] font-semibold text-warning-ink">
-                                —
+                          <div className={cn('flex items-center gap-1.5', ROW_H)}>
+                            <Link
+                              href={`/dolgozok/${emp.id}`}
+                              className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink hover:underline"
+                              title={emp.name}
+                            >
+                              {emp.name}
+                            </Link>
+                            {miss > 0 ? (
+                              <span
+                                className="inline-flex size-5 shrink-0 items-center justify-center rounded bg-warning-soft text-[11px] font-semibold text-warning-ink"
+                                title={[
+                                  att!.empty > 0
+                                    ? `${att!.empty} pótolni`
+                                    : null,
+                                  att!.incomplete > 0
+                                    ? `${att!.incomplete} hiányos`
+                                    : null
+                                ]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              >
+                                {miss}
                               </span>
                             ) : (
-                              (timeContent ?? disp.text)
+                              <span className="size-5 shrink-0" aria-hidden />
                             )}
-                            {manualMark ? (
-                              <PencilLine
-                                className="absolute right-0.5 top-0.5 size-2.5 opacity-60"
-                                aria-hidden
-                              />
-                            ) : null}
-                          </button>
+                          </div>
                         </td>
-                      )
-                    })}
-                  </tr>
-                )
-              })}
+                        {data.dates.map((ymd) => {
+                          const cell = data.cells[`${emp.id}|${ymd}`]
+                          const isToday = ymd === glance.today
+                          const dow = dowOf(ymd)
+                          const isHoliday = holidayByDate.has(ymd)
+                          const disp = cellDisplay(cell)
+                          const timeContent = cellTimeContent(cell)
+                          const manualMark = cellHasManualTime(cell)
+                          const isPast = ymd < glance.today
+                          const scheduleExpected = isExpectedWorkDay(
+                            ymd,
+                            emp.worksOnSaturday,
+                            cell,
+                            { onlyPast: false, todayYmd: glance.today }
+                          )
+                          const emptyWork =
+                            isPast &&
+                            scheduleExpected &&
+                            (!cell || cell.kind === 'empty')
+                          const tipLines = cellHoverLines(
+                            emp.name,
+                            ymd,
+                            cell,
+                            scheduleExpected,
+                            canWrite,
+                            isPast
+                          )
+                          const statusFill =
+                            cell?.kind === 'vacation' ||
+                            cell?.kind === 'sick' ||
+                            cell?.kind === 'other_absence' ||
+                            cell?.kind === 'incomplete' ||
+                            cell?.kind === 'complete'
+
+                          return (
+                            <td
+                              key={ymd}
+                              data-weekend={
+                                dow === 0
+                                  ? 'sun'
+                                  : dow === 6
+                                    ? 'sat'
+                                    : undefined
+                              }
+                              data-today={isToday ? 'true' : undefined}
+                              className={cn(
+                                DAY_COL,
+                                'border-b border-r border-border/70 p-0',
+                                !statusFill &&
+                                  columnTintClass({
+                                    dow,
+                                    isToday,
+                                    isHoliday
+                                  }),
+                                statusFill &&
+                                  (isToday
+                                    ? 'bg-primary/[0.06]'
+                                    : 'bg-surface'),
+                                isToday &&
+                                  'border-l-[3px] border-l-primary border-r-[3px] border-r-primary'
+                              )}
+                            >
+                              <button
+                                type="button"
+                                disabled={!canWrite || cell?.kind === 'rest'}
+                                aria-label={tipLines.join('. ')}
+                                onMouseEnter={(e) =>
+                                  showHoverTip(e, tipLines)
+                                }
+                                onMouseLeave={hideHoverTip}
+                                onFocus={(e) => showHoverTip(e, tipLines)}
+                                onBlur={hideHoverTip}
+                                onClick={() => {
+                                  hideHoverTip()
+                                  openCell(emp.id, ymd)
+                                }}
+                                className={cn(
+                                  'relative flex w-full items-center justify-center px-0.5 tabular-nums',
+                                  ROW_H,
+                                  disp.className,
+                                  emptyWork &&
+                                    !disp.text &&
+                                    'bg-warning-soft/50 ring-1 ring-inset ring-dashed ring-warning/50',
+                                  canWrite &&
+                                    cell?.kind !== 'rest' &&
+                                    'cursor-pointer'
+                                )}
+                              >
+                                {emptyWork && !disp.text ? (
+                                  <span className="text-[12px] font-semibold text-warning-ink">
+                                    —
+                                  </span>
+                                ) : (
+                                  (timeContent ?? disp.text)
+                                )}
+                                {manualMark ? (
+                                  <PencilLine
+                                    className="absolute right-0.5 top-0.5 size-2.5 opacity-60"
+                                    aria-hidden
+                                  />
+                                ) : null}
+                              </button>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>

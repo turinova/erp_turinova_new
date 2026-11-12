@@ -12,6 +12,10 @@ import {
   type OptiSheetMaterialOption
 } from '@/lib/opti/queries'
 import {
+  isOptiLockedByPortalSubmit,
+  isPortalSubmittedQuote
+} from '@/lib/quotes/portal-opti-edit'
+import {
   isQuoteEditableInOpti,
   type QuoteStatus
 } from '@/lib/quotes/queries'
@@ -136,16 +140,28 @@ export async function getQuoteForOptiEdit(
   }
 
   const status = data.status as QuoteStatus
-  const submitted =
-    data.source === 'portal' && data.portal_submitted_at != null
-  const editable = isQuoteEditableInOpti(status) && !submitted
+  const partnerMode = Boolean(options?.partnerMode)
+  const submitted = isPortalSubmittedQuote({
+    source: data.source,
+    portalSubmittedAt: data.portal_submitted_at
+  })
+  const lockedBySubmit = isOptiLockedByPortalSubmit({
+    partnerMode,
+    source: data.source,
+    portalSubmittedAt: data.portal_submitted_at
+  })
+  const editable = isQuoteEditableInOpti(status) && !lockedBySubmit
   const warnings: string[] = []
 
-  if (submitted && options?.partnerMode) {
+  if (lockedBySubmit) {
     warnings.push('A beküldött ajánlatot már nem szerkesztheted.')
-  } else if (!editable) {
+  } else if (!isQuoteEditableInOpti(status)) {
     warnings.push(
       'Ez a dokumentum ebben a státuszban nem szerkeszthető Optiból (csak piszkozat vagy megrendelés).'
+    )
+  } else if (submitted && !partnerMode) {
+    warnings.push(
+      'Online partner rendelés — a módosítás a cég oldalán történik. A partner továbbra sem szerkesztheti.'
     )
   }
 
@@ -259,6 +275,50 @@ export async function getQuoteForOptiEdit(
     warnings.push(
       'Egy vagy több élzáró már nem aktív a törzsadatokban — ellenőrizd a paneleket mentés előtt.'
     )
+  }
+
+  if (submitted && !partnerMode) {
+    const { data: invRows } = await supabase
+      .from('invoices')
+      .select('id, invoice_type, is_storno_of_invoice_id, provider_invoice_number')
+      .eq('tenant_id', tenantId)
+      .eq('related_source_type', 'opti_order')
+      .eq('related_source_id', quoteId)
+      .is('deleted_at', null)
+
+    const inv = invRows ?? []
+    const stornoOf = new Set(
+      inv
+        .filter((r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id)
+        .map((r) => r.is_storno_of_invoice_id as string)
+    )
+    const hasProforma = inv.some(
+      (r) =>
+        r.invoice_type === 'dijbekero' &&
+        !stornoOf.has(r.id as string) &&
+        Boolean(r.provider_invoice_number)
+    )
+    const hasAdvance = inv.some(
+      (r) =>
+        r.invoice_type === 'elolegszamla' &&
+        !stornoOf.has(r.id as string) &&
+        Boolean(r.provider_invoice_number)
+    )
+    const hasFinal = inv.some(
+      (r) =>
+        r.invoice_type === 'szamla' &&
+        !stornoOf.has(r.id as string) &&
+        Boolean(r.provider_invoice_number)
+    )
+    if (hasAdvance || hasFinal) {
+      warnings.push(
+        'Van aktív előlegszámla vagy végszámla — mentés előtt sztornózd, különben a mentés nem engedélyezett.'
+      )
+    } else if (hasProforma) {
+      warnings.push(
+        'Van élő díjbekérő. Ha az összeg változik, mentéskor meg kell erősítened — utána sztornózd vagy állíts ki újat.'
+      )
+    }
   }
 
   return {

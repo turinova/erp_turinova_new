@@ -7,6 +7,10 @@ import {
   isExpectedAttendanceDay,
   normalizeTime
 } from '@/lib/jelenlet/hours'
+import {
+  normalizeEmployeeTypeSortOrder,
+  sortEmployeesByTypeThenName
+} from '@/lib/jelenlet/employee-type-groups'
 import type {
   AbsenceType,
   WorkCalendarDayType
@@ -18,6 +22,8 @@ export type HrEmployeeRow = {
   code: string
   employeeTypeId: string
   employeeTypeName: string
+  /** hr_employee_types.sort_order — naptár csoportosítás. */
+  employeeTypeSortOrder: number
   active: boolean
   shiftStart: string | null
   shiftEnd: string | null
@@ -64,12 +70,12 @@ export type EmployeeListItem = HrEmployeeRow & {
 
 function mapEmployee(row: Record<string, unknown>): HrEmployeeRow {
   const typeJoin = row.hr_employee_types as
-    | { name?: string }
-    | { name?: string }[]
+    | { name?: string; sort_order?: number }
+    | { name?: string; sort_order?: number }[]
     | null
-  const typeName = Array.isArray(typeJoin)
-    ? typeJoin[0]?.name
-    : typeJoin?.name
+  const typeOne = Array.isArray(typeJoin) ? typeJoin[0] : typeJoin
+  const typeName = typeOne?.name
+  const typeSort = typeOne?.sort_order
 
   return {
     id: row.id as string,
@@ -77,6 +83,9 @@ function mapEmployee(row: Record<string, unknown>): HrEmployeeRow {
     code: (row.code as string) ?? '',
     employeeTypeId: (row.employee_type_id as string) ?? '',
     employeeTypeName: typeName ?? '—',
+    employeeTypeSortOrder: row.employee_type_id
+      ? normalizeEmployeeTypeSortOrder(typeSort)
+      : 9999,
     active: Boolean(row.active),
     shiftStart: normalizeTime(row.shift_start as string | null),
     shiftEnd: normalizeTime(row.shift_end as string | null),
@@ -94,7 +103,7 @@ function mapEmployee(row: Record<string, unknown>): HrEmployeeRow {
 }
 
 const EMPLOYEE_SELECT =
-  'id, name, code, employee_type_id, active, shift_start, shift_end, lunch_start, lunch_end, works_on_saturday, overtime_enabled, overtime_grace_minutes, overtime_daily_cap_minutes, pin_code, rfid_card_id, notes, archived_at, hr_employee_types ( name )'
+  'id, name, code, employee_type_id, active, shift_start, shift_end, lunch_start, lunch_end, works_on_saturday, overtime_enabled, overtime_grace_minutes, overtime_daily_cap_minutes, pin_code, rfid_card_id, notes, archived_at, hr_employee_types ( name, sort_order )'
 
 export type EmployeeListFilter = 'all' | 'active' | 'inactive' | 'archived'
 
@@ -445,8 +454,8 @@ export async function getCalendarMonth(
 
   if (empErr) throw new Error(empErr.message)
 
-  const employees = (empRows ?? []).map((r) =>
-    mapEmployee(r as Record<string, unknown>)
+  const employees = sortEmployeesByTypeThenName(
+    (empRows ?? []).map((r) => mapEmployee(r as Record<string, unknown>))
   )
 
   const calByDate = new Map<

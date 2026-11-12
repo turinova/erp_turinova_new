@@ -7,8 +7,10 @@ import { toast } from 'sonner'
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
+import { StatusBadge } from '@/components/patterns/status-badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
 import {
   updatePartnerAutoProforma,
@@ -18,17 +20,32 @@ import type {
   PartnerAutoProformaView,
   PartnerSearchKinds
 } from '@/lib/partner-settings/queries'
+import {
+  saveTeyaOnlineSettingsAction,
+  testTeyaOnlineConnectionAction
+} from '@/lib/teya-online/actions'
+import type {
+  TeyaOnlineEnv,
+  TeyaOnlineSettingsPublic
+} from '@/lib/teya-online/types'
 import { cn } from '@/lib/utils'
+
+const TEYA_ENV_OPTIONS = [
+  { value: 'staging', label: 'Teszt' },
+  { value: 'production', label: 'Éles' }
+]
 
 type PartnerSettingsFormProps = {
   initial: PartnerSearchKinds
   autoProforma: PartnerAutoProformaView
+  teyaOnline: TeyaOnlineSettingsPublic
   canWrite: boolean
 }
 
 export function PartnerSettingsForm({
   initial,
   autoProforma,
+  teyaOnline,
   canWrite
 }: PartnerSettingsFormProps) {
   const [sheet, setSheet] = useState(initial.sheet)
@@ -36,8 +53,21 @@ export function PartnerSettingsForm({
   const [accessory, setAccessory] = useState(initial.accessory)
   const [autoEnabled, setAutoEnabled] = useState(autoProforma.enabled)
   const [dueDays, setDueDays] = useState(String(autoProforma.dueDays))
+  const [teyaEnabled, setTeyaEnabled] = useState(teyaOnline.enabled)
+  const [teyaEnv, setTeyaEnv] = useState<TeyaOnlineEnv>(teyaOnline.env)
+  const [teyaStoreId, setTeyaStoreId] = useState(teyaOnline.storeId)
+  const [teyaClientId, setTeyaClientId] = useState(teyaOnline.clientId)
+  const [teyaSecret, setTeyaSecret] = useState('')
+  const [hasStoredSecret, setHasStoredSecret] = useState(
+    teyaOnline.hasClientSecret
+  )
+  const [testStatus, setTestStatus] = useState<
+    'idle' | 'ok' | 'error'
+  >('idle')
+  const [testMessage, setTestMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const [testing, startTest] = useTransition()
 
   const autoReady = autoProforma.hasAgentKey && autoProforma.transferActive
 
@@ -50,6 +80,18 @@ export function PartnerSettingsForm({
     const days = Number(dueDays)
     if (!Number.isInteger(days) || days < 1 || days > 60) {
       setError('A fizetési határidő 1 és 60 nap között lehet.')
+      return
+    }
+    if (teyaEnabled && !teyaStoreId.trim()) {
+      setError('A Teya online bekapcsolásához kell az üzlet azonosító.')
+      return
+    }
+    if (teyaEnabled && !teyaClientId.trim()) {
+      setError('A Teya online bekapcsolásához kell a kliens azonosító.')
+      return
+    }
+    if (teyaEnabled && !hasStoredSecret && !teyaSecret.trim()) {
+      setError('A Teya online bekapcsolásához kell a titkos kulcs.')
       return
     }
 
@@ -71,7 +113,46 @@ export function PartnerSettingsForm({
         setError(auto.message)
         return
       }
+      const teya = await saveTeyaOnlineSettingsAction({
+        enabled: teyaEnabled,
+        env: teyaEnv,
+        storeId: teyaStoreId,
+        clientId: teyaClientId,
+        clientSecret: teyaSecret
+      })
+      if (!teya.ok) {
+        setError(teya.message)
+        return
+      }
+      if (teyaSecret.trim()) {
+        setHasStoredSecret(true)
+        setTeyaSecret('')
+      }
+      setTestStatus('idle')
+      setTestMessage(null)
       toast.success('Partner beállítások mentve.')
+    })
+  }
+
+  function handleTestConnection() {
+    setTestStatus('idle')
+    setTestMessage(null)
+    startTest(async () => {
+      const r = await testTeyaOnlineConnectionAction({
+        env: teyaEnv,
+        storeId: teyaStoreId,
+        clientId: teyaClientId,
+        clientSecret: teyaSecret
+      })
+      if (!r.ok) {
+        setTestStatus('error')
+        setTestMessage(r.message)
+        toast.error(r.message)
+        return
+      }
+      setTestStatus('ok')
+      setTestMessage(r.message ?? 'Kapcsolat rendben.')
+      toast.success(r.message ?? 'Kapcsolat rendben.')
     })
   }
 
@@ -194,6 +275,122 @@ export function PartnerSettingsForm({
         </div>
       </FormSection>
 
+      <FormSection
+        title="Teya online kártya"
+        description="Partner bankkártyás fizetés (webes checkout). Ez nem a pulti kártyagép — a POS Teya beállítás külön van."
+        columns={2}
+        headerAside={
+          teyaOnline.ready || testStatus === 'ok' ? (
+            <StatusBadge tone="success">Kész</StatusBadge>
+          ) : teyaEnabled ? (
+            <StatusBadge tone="warning">Hiányos</StatusBadge>
+          ) : null
+        }
+      >
+        <div className="col-span-full space-y-3 sm:col-span-2">
+          <Switch
+            id="partner-teya-online"
+            checked={teyaEnabled}
+            disabled={!canWrite || pending}
+            onCheckedChange={setTeyaEnabled}
+            label="Online kártyás fizetés engedélyezése"
+            description="A partner a rendelésnél bankkártyával is fizethet (a checkout később kapcsolódik be)."
+          />
+
+          <FormField label="Környezet" htmlFor="partner-teya-env">
+            <MenuSelect
+              id="partner-teya-env"
+              value={teyaEnv}
+              options={TEYA_ENV_OPTIONS}
+              allowEmpty={false}
+              disabled={!canWrite || pending}
+              onChange={(v) => setTeyaEnv(v as TeyaOnlineEnv)}
+            />
+          </FormField>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <FormField
+              label="Üzlet azonosító"
+              htmlFor="partner-teya-store"
+              required={teyaEnabled}
+            >
+              <Input
+                id="partner-teya-store"
+                autoComplete="off"
+                spellCheck={false}
+                value={teyaStoreId}
+                disabled={!canWrite || pending}
+                onChange={(e) => setTeyaStoreId(e.target.value)}
+              />
+            </FormField>
+            <FormField
+              label="Kliens azonosító"
+              htmlFor="partner-teya-client"
+              required={teyaEnabled}
+            >
+              <Input
+                id="partner-teya-client"
+                autoComplete="off"
+                spellCheck={false}
+                value={teyaClientId}
+                disabled={!canWrite || pending}
+                onChange={(e) => setTeyaClientId(e.target.value)}
+              />
+            </FormField>
+            <FormField
+              label="Titkos kulcs"
+              htmlFor="partner-teya-secret"
+              required={teyaEnabled && !hasStoredSecret}
+              optionalLabel={hasStoredSecret}
+              hint={
+                hasStoredSecret
+                  ? 'Már van mentett kulcs — hagyd üresen, ha nem cseréled.'
+                  : 'Ecommerce client secret a Teya fiókból (nem a pulti POS kulcs).'
+              }
+            >
+              <Input
+                id="partner-teya-secret"
+                type="password"
+                autoComplete="new-password"
+                value={teyaSecret}
+                disabled={!canWrite || pending}
+                onChange={(e) => setTeyaSecret(e.target.value)}
+                placeholder={hasStoredSecret ? '••••••••' : undefined}
+              />
+            </FormField>
+          </div>
+
+          <p className="text-hint text-ink-secondary">
+            Ezeket a Teya ecommerce / online payments regisztrációból kapod.
+            A pulti kártyagép (POS) kulcsai általában nem működnek itt.
+          </p>
+
+          {testMessage ? (
+            <p
+              className={cn(
+                'text-hint',
+                testStatus === 'ok' ? 'text-success-ink' : 'text-danger-ink'
+              )}
+              role="status"
+            >
+              {testMessage}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!canWrite || pending || testing}
+              loading={testing}
+              onClick={handleTestConnection}
+            >
+              Kapcsolat ellenőrzése
+            </Button>
+          </div>
+        </div>
+      </FormSection>
+
       {error ? (
         <p className="text-body text-danger-ink" role="alert">
           {error}
@@ -210,7 +407,7 @@ export function PartnerSettingsForm({
         <Button
           type="button"
           variant="primary"
-          disabled={!canWrite || pending}
+          disabled={!canWrite || pending || testing}
           loading={pending}
           onClick={handleSave}
           className={cn(!canWrite && 'opacity-50')}

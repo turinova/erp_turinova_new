@@ -36,6 +36,10 @@ import {
   validateReopenNote,
   type QuoteReopenReason
 } from '@/lib/quotes/reopen'
+import {
+  isPortalSubmittedQuote,
+  portalOptiSaveInvoiceGate
+} from '@/lib/quotes/portal-opti-edit'
 import { softDeleteQuoteBlocker } from '@/lib/quotes/soft-delete-rules'
 import { requireWritableTenant } from '@/lib/tenancy/writable-context'
 
@@ -60,11 +64,17 @@ export type SaveOptiQuoteInput = {
   panels: OptiPanelDraft[]
   quote: QuoteResult
   sheetMaterials: OptiSheetMaterialOption[]
+  /** Élő díjbekérő + összegváltozás megerősítése (staff portal edit). */
+  confirmStaleProforma?: boolean
 }
 
 export type SaveOptiQuoteResult =
   | { ok: true; id: string; quoteNumber: string }
-  | { ok: false; message: string }
+  | {
+      ok: false
+      message: string
+      code?: 'proforma_drift' | 'advance_or_final'
+    }
 
 const LIST_PATH = '/ajanlatok'
 
@@ -162,7 +172,9 @@ export async function saveOptiQuote(
   if (isEdit && quoteId) {
     const { data: existing, error: existingError } = await ctx.supabase
       .from('quotes')
-      .select('id, quote_number, status')
+      .select(
+        'id, quote_number, status, source, portal_submitted_at, total_gross, final_total_gross'
+      )
       .eq('id', quoteId)
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -179,6 +191,65 @@ export async function saveOptiQuote(
       }
     }
     quoteNumber = existing.quote_number
+
+    const portalSubmitted = isPortalSubmittedQuote({
+      source: existing.source,
+      portalSubmittedAt: existing.portal_submitted_at
+    })
+    if (portalSubmitted) {
+      const { data: invRows } = await ctx.supabase
+        .from('invoices')
+        .select(
+          'id, invoice_type, is_storno_of_invoice_id, provider_invoice_number'
+        )
+        .eq('tenant_id', tenantId)
+        .eq('related_source_type', 'opti_order')
+        .eq('related_source_id', quoteId)
+        .is('deleted_at', null)
+
+      const inv = invRows ?? []
+      const stornoOf = new Set(
+        inv
+          .filter(
+            (r) => r.invoice_type === 'sztorno' && r.is_storno_of_invoice_id
+          )
+          .map((r) => r.is_storno_of_invoice_id as string)
+      )
+      const hasActiveProforma = inv.some(
+        (r) =>
+          r.invoice_type === 'dijbekero' &&
+          !stornoOf.has(r.id as string) &&
+          Boolean(r.provider_invoice_number)
+      )
+      const hasActiveAdvance = inv.some(
+        (r) =>
+          r.invoice_type === 'elolegszamla' &&
+          !stornoOf.has(r.id as string) &&
+          Boolean(r.provider_invoice_number)
+      )
+      const hasActiveFinal = inv.some(
+        (r) =>
+          r.invoice_type === 'szamla' &&
+          !stornoOf.has(r.id as string) &&
+          Boolean(r.provider_invoice_number)
+      )
+      const previousGross = Number(
+        existing.final_total_gross ?? existing.total_gross ?? 0
+      )
+      const nextGross = Math.round(input.quote.grand_total_gross)
+      const gate = portalOptiSaveInvoiceGate({
+        isPortalSubmitted: true,
+        hasActiveAdvance,
+        hasActiveFinal,
+        hasActiveProforma,
+        previousGross,
+        nextGross,
+        confirmStaleProforma: Boolean(input.confirmStaleProforma)
+      })
+      if (!gate.ok) {
+        return { ok: false, message: gate.message, code: gate.code }
+      }
+    }
 
     const { error: delPanels } = await ctx.supabase
       .from('quote_panels')

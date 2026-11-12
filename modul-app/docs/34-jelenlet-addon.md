@@ -27,7 +27,7 @@ Kapcsolódó: [33-packages-and-addons.md](33-packages-and-addons.md), [jelenlet-
 
 ## Oldalak
 
-1. **Naptár** = író felület (cell dialógus).  
+1. **Naptár** = író felület (cell dialógus). Dolgozó sorok **típus szerint csoportosítva** (`hr_employee_types.sort_order` → típusnév → dolgozónév); vékony csoportfejléc.  
 2. **Munkarend** = tenant-szintű `hr_work_calendar` (minden dolgozóra).  
 3. **Dolgozók** = törzs + PIN/RFID + távollét intervallumok.  
 4. **Típusok** = szerkeszthető törzsadat (`hr_employee_types`).  

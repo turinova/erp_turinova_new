@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/patterns/confirm-dialog'
 import { FormField } from '@/components/patterns/form-field'
 import { PhoneInput } from '@/components/patterns/phone-input'
 import { Button } from '@/components/ui/button'
@@ -117,6 +118,8 @@ export function OptiCustomerStrip({
   )
   const [nameError, setNameError] = useState<string | undefined>()
   const [isPending, startTransition] = useTransition()
+  const [proformaConfirmOpen, setProformaConfirmOpen] = useState(false)
+  const [proformaConfirmMessage, setProformaConfirmMessage] = useState('')
   const sessionReady = useRef(false)
 
   useEffect(() => {
@@ -147,13 +150,7 @@ export function OptiCustomerStrip({
     setBillingOpen(true)
   }
 
-  function handleSaveClick() {
-    if (!draft.name.trim()) {
-      setNameError('A megrendelő neve kötelező a mentéshez.')
-      return
-    }
-    setNameError(undefined)
-
+  function runSave(confirmStaleProforma: boolean) {
     startTransition(async () => {
       const result = await saveOptiQuote({
         quoteId: quoteId ?? null,
@@ -173,14 +170,21 @@ export function OptiCustomerStrip({
         projectName,
         panels,
         quote,
-        sheetMaterials
+        sheetMaterials,
+        confirmStaleProforma
       })
 
       if (!result.ok) {
+        if (result.code === 'proforma_drift') {
+          setProformaConfirmMessage(result.message)
+          setProformaConfirmOpen(true)
+          return
+        }
         toast.error(result.message)
         return
       }
 
+      setProformaConfirmOpen(false)
       toast.success(
         isEdit
           ? `Árajánlat frissítve: ${result.quoteNumber}`
@@ -191,7 +195,17 @@ export function OptiCustomerStrip({
     })
   }
 
+  function handleSaveClick() {
+    if (!draft.name.trim()) {
+      setNameError('A megrendelő neve kötelező a mentéshez.')
+      return
+    }
+    setNameError(undefined)
+    runSave(false)
+  }
+
   return (
+    <>
     <section className="overflow-visible rounded-lg border border-border border-l-[3px] border-l-ink bg-surface">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-subtle px-3 py-3">
         <div className="min-w-0 space-y-0.5">
@@ -402,5 +416,21 @@ export function OptiCustomerStrip({
         </div>
       </div>
     </section>
+
+    <ConfirmDialog
+      open={proformaConfirmOpen}
+      onOpenChange={setProformaConfirmOpen}
+      title="Élő díjbekérő"
+      description={
+        proformaConfirmMessage ||
+        'Van élő díjbekérő, és az összeg változna. Ha folytatod, a díjbekérő elavult lesz.'
+      }
+      confirmLabel="Mentés így is"
+      cancelLabel="Mégse"
+      variant="danger"
+      loading={isPending}
+      onConfirm={() => runSave(true)}
+    />
+    </>
   )
 }

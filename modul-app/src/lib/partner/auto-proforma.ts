@@ -165,6 +165,95 @@ async function claim(
   return Boolean(data)
 }
 
+/**
+ * Partner profil számlázási adatai → linked customer (+ quote billing snapshot).
+ * Service role: ensure_partner_customer auth.uid()-ot vár, ezért közvetlen update.
+ */
+async function syncPartnerCustomerBillingFromProfile(
+  admin: SupabaseClient,
+  tenantId: string,
+  quoteId: string
+): Promise<void> {
+  const { data: quote, error: qErr } = await admin
+    .from('quotes')
+    .select('id, customer_id, partner_profile_id, source')
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (qErr || !quote || quote.source !== 'portal' || !quote.partner_profile_id) {
+    return
+  }
+
+  const { data: profile, error: pErr } = await admin
+    .from('partner_profiles')
+    .select(
+      'email, name, mobile, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number'
+    )
+    .eq('user_id', quote.partner_profile_id)
+    .maybeSingle()
+  if (pErr || !profile) return
+
+  let email = (profile.email ?? '').trim().toLowerCase() || null
+  if (!email) {
+    try {
+      const { data: authUser } = await admin.auth.admin.getUserById(
+        quote.partner_profile_id as string
+      )
+      email = (authUser.user?.email ?? '').trim().toLowerCase() || null
+    } catch {
+      // auth admin opcionális
+    }
+  }
+  const name = (profile.name ?? '').trim() || 'Online ügyfél'
+  const billingName = (profile.billing_name ?? '').trim() || name
+
+  if (quote.customer_id) {
+    const customerPatch: Record<string, unknown> = {
+      name,
+      mobile: profile.mobile ?? null,
+      billing_name: billingName,
+      billing_country: profile.billing_country || 'Magyarország',
+      billing_city: profile.billing_city ?? null,
+      billing_postal_code: profile.billing_postal_code ?? null,
+      billing_street: profile.billing_street ?? null,
+      billing_house_number: profile.billing_house_number ?? null,
+      billing_tax_number: profile.billing_tax_number ?? null,
+      billing_company_reg_number: profile.billing_company_reg_number ?? null,
+      updated_at: new Date().toISOString()
+    }
+    // Üres e-mail ne törölje a meglévő customer.email-t.
+    if (email) customerPatch.email = email
+
+    const { error: cErr } = await admin
+      .from('customers')
+      .update(customerPatch)
+      .eq('id', quote.customer_id)
+      .eq('tenant_id', tenantId)
+    if (cErr) {
+      console.error('syncPartnerCustomerBilling customers', cErr.message)
+    }
+  }
+
+  // Snapshot felülírás: getQuoteDetail a snapshotot részesíti előnyben.
+  const { error: snapErr } = await admin
+    .from('quotes')
+    .update({
+      billing_name_snapshot: billingName,
+      billing_country_snapshot: profile.billing_country || 'Magyarország',
+      billing_city_snapshot: profile.billing_city ?? null,
+      billing_postal_code_snapshot: profile.billing_postal_code ?? null,
+      billing_street_snapshot: profile.billing_street ?? null,
+      billing_house_number_snapshot: profile.billing_house_number ?? null,
+      billing_tax_number_snapshot: profile.billing_tax_number ?? null,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', quoteId)
+    .eq('tenant_id', tenantId)
+  if (snapErr) {
+    console.error('syncPartnerCustomerBilling snapshot', snapErr.message)
+  }
+}
+
 async function findActiveProformaNumber(
   admin: SupabaseClient,
   tenantId: string,
@@ -236,10 +325,19 @@ export async function runAutoProforma(params: {
       return finish('skipped', 'Nincs összekapcsolt Számlázz.hu fiók.')
     }
 
-    const detail = await getQuoteDetail(admin, tenantId, quoteId)
+    // Profil → ügyfélkarton sync (service role), mielőtt a blocker a customer sort nézi.
+    await syncPartnerCustomerBillingFromProfile(admin, tenantId, quoteId)
+
+    let detail = await getQuoteDetail(admin, tenantId, quoteId)
     if (!detail) return finish('failed', 'Az ajánlat nem található.')
 
-    const blocker = autoProformaBlocker(detail)
+    let blocker = autoProformaBlocker(detail)
+    if (blocker) {
+      // Még egyszer sync + reload (ritka race / elavult snapshot).
+      await syncPartnerCustomerBillingFromProfile(admin, tenantId, quoteId)
+      detail = (await getQuoteDetail(admin, tenantId, quoteId)) ?? detail
+      blocker = autoProformaBlocker(detail)
+    }
     if (blocker) return finish('skipped', blocker)
 
     const settings = await getAutoProformaSettings(admin, tenantId)

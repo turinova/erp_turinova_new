@@ -4,7 +4,7 @@
 **Route:** `/szamlak` (Pénzügy → Bizonylatok; `?source=sale|opti_order`) · `/beallitasok/szamlazas` · sale detail · quote detail · POS  
 **Legacy:** `/ajanlatok/bizonylatok` → redirect `/szamlak?source=opti_order`  
 **Migráció:** `20260526_szamlazas_alap.sql`, `20260534_quote_billing_snapshots.sql`, `20260568_manual_invoice_source.sql`, `20260588_invoice_source_links.sql`  
-**Kapcsolat:** [28](28-ertekesites-workflow.md) S3, [29](29-pos-workflow.md), [37](37-lapszabaszat-quote-workflow.md)
+**Kapcsolat:** [28](28-ertekesites-workflow.md) S3, [29](29-pos-workflow.md), [37](37-lapszabaszat-quote-workflow.md), partner kártya/előleg: [57](57-partner-teya-card-payment.md)
 
 ---
 

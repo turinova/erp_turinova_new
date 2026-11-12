@@ -33,6 +33,7 @@ import {
   type InvoiceIssueKind,
   type InvoicePaymentMethod
 } from '@/lib/invoicing/types'
+import { shouldSyncPortalAutoProformaIssued } from '@/lib/partner/auto-proforma-rules'
 import { PAYMENT_TOLERANCE_GROSS } from '@/lib/quotes/payment-labels'
 import { getQuoteDetail, type QuoteDetail } from '@/lib/quotes/queries'
 
@@ -492,6 +493,33 @@ export async function issueInvoiceFromQuote(
   }
 
   await insertInvoiceLines(supabase, tenantId, invoiceId, snapshotLines)
+
+  // Partner „tábla”: manuális díjbekérő is legyen issued (ne csak az auto path).
+  if (
+    shouldSyncPortalAutoProformaIssued({
+      kind: input.kind,
+      source: detail.source,
+      portalSubmittedAt: detail.portal_submitted_at
+    })
+  ) {
+    const { error: syncErr } = await supabase
+      .from('quotes')
+      .update({
+        auto_proforma_status: 'issued',
+        auto_proforma_note: posted.invoiceNumber.slice(0, 500),
+        auto_proforma_at: new Date().toISOString()
+      })
+      .eq('id', input.quoteId)
+      .eq('tenant_id', tenantId)
+      .eq('source', 'portal')
+      .not('portal_submitted_at', 'is', null)
+    if (syncErr) {
+      console.error(
+        'issueInvoiceFromQuote auto_proforma sync',
+        syncErr.message
+      )
+    }
+  }
 
   return {
     ok: true,
