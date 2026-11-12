@@ -245,7 +245,7 @@ export function OptiCustomerStrip({
           label="Projekt neve"
           htmlFor="opti-project-name"
           optionalLabel
-          hint="pl. Konyha – Kovács"
+          hint={`pl. Konyha – Kovács · ${projectName.length}/${PROJECT_NAME_MAX_LENGTH}`}
         >
           <Input
             id="opti-project-name"

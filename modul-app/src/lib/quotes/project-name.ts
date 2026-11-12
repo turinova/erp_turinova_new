@@ -1,5 +1,5 @@
 /** Max length for quotes.project_name (DB check + UI). */
-export const PROJECT_NAME_MAX_LENGTH = 120
+export const PROJECT_NAME_MAX_LENGTH = 40
 
 /**
  * Trim + empty→null. Returns error message if too long.

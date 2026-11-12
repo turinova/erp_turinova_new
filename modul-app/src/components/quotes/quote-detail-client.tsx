@@ -2535,8 +2535,8 @@ export function QuoteDetailClient({
           <DialogHeader>
             <DialogTitle>Projekt neve</DialogTitle>
             <DialogDescription>
-              Opcionális megnevezés — pl. Konyha – Kovács. Nem jelenik meg a
-              PDF-en.
+              Opcionális megnevezés — pl. Konyha – Kovács. Max{' '}
+              {PROJECT_NAME_MAX_LENGTH} karakter; nem jelenik meg a PDF-en.
             </DialogDescription>
           </DialogHeader>
           <Input
@@ -2546,6 +2546,9 @@ export function QuoteDetailClient({
             placeholder="pl. Konyha – Kovács"
             disabled={pending}
           />
+          <p className="text-hint tabular-nums text-ink-muted">
+            {projectDraft.length}/{PROJECT_NAME_MAX_LENGTH}
+          </p>
           <DialogFooter>
             <Button
               type="button"

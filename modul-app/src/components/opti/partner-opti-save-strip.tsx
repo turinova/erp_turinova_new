@@ -138,7 +138,7 @@ export function PartnerOptiSaveStrip({
           label="Projekt neve"
           htmlFor="partner-opti-project-name"
           optionalLabel
-          hint="pl. Konyha – Kovács"
+          hint={`pl. Konyha – Kovács · ${projectName.length}/${PROJECT_NAME_MAX_LENGTH}`}
         >
           <Input
             id="partner-opti-project-name"

@@ -72,17 +72,23 @@ Migráció: `20260427_manual_subscription_pricing.sql`, `20260428_elofizetes_own
 
 Forrás: `tenant-report-queries.ts` · UI: `tenant-report-panel.tsx`.  
 **Szabály:** szekció csak ha a feature entitlement be van (vagy van releváns forgalom SMS/POS-nál).  
-**Időszak:** URL `?view=month|year&period=YYYY-MM|YYYY` (Budapest naptár). Havi / éves váltó + hónap/év választó. Delta = előző hónap / előző év.  
-**Nincs** tenant-közi összehasonlítás (peer / rang / medián).
+**Időszak:** URL `?view=month|year&period=YYYY-MM|YYYY` (Budapest). Aktuális hónap/év = **MTD/YTD**; delta = **azonos napig** az előző időszakban (like-for-like).  
+**Nincs** tenant-közi összehasonlítás.
+
+**Fogalmak (ne keverd):**
+- **Felvett megrendelés / forgalom** = `order_number` + `ordered_at`, `status ≠ cancelled`, `deleted_at` null; **archív is beleszámít**; összeg `final_total_gross`. Nem készpénz, nem „lezárt”.
+- **Partner beküldés** = `portal_submitted_at` (még nem megrendelés). Konverzió = beküldés → van `order_number`.
+- **Rögzített befizetés** = `quote_payments` a nem-lemondott quote-on (`payment_date`).
+- PostgREST: lapszab / payment / sales **page-elve** (1000-es csonk nélkül); belépő = exact `count`.
 
 | Blokk | Entitlement | Tartalom |
 |-------|--------------|----------|
-| **Cég (közös)** | mindig | Belépett ember 7d / hely |
-| **Lapszabászat + partner** | `lapszabaszat` | Megrendelés, forgalom, chart (heti/havi), félkész/beküldés, fizetés — kiválasztott időszak |
-| **Belépőszámláló** | `footcounter` | Ma Be/Ki, időszak IN, eszköz élő — **nem** `footcounter_dashboard_agg` (tag-check); platform: service-role crossings agg |
+| **Cég (közös)** | mindig | Belépett ember **görgetett 7d** / hely (nem a report periódus) |
+| **Lapszabászat + partner** | `lapszabaszat` | Felvett megrendelés/forgalom, chart (BP hét/hó), beküldés→konverzió, félkész snapshot, rögzített befizetés |
+| **Belépőszámláló** | `footcounter` | Ma Be/Ki, időszak IN — service-role exact count |
 | **Jelenlét** | `jelenlet` | Aktív dolgozó, jelenléti nap/időszak, terminál |
 | **SMS** | `quote_ready_sms` (vagy van forgalom) | SMS db az időszakban |
-| **Bolt / POS** | `pda_pos` (vagy van eladás) | Eladás db + Ft az időszakban |
+| **Bolt / POS** | `pda_pos` (vagy van eladás) | Eladás `fulfilled_at` (hiányzik → `created_at`) |
 
 ---
 

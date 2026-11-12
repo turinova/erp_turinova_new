@@ -226,15 +226,16 @@ function PeriodControls({ report }: { report: TenantReportMetrics }) {
 }
 
 export function TenantReportPanel({ report }: Props) {
-  const draftTotal = report.portalSubmits30d + report.portalDraftsAlive
-  const submittedShare =
-    draftTotal > 0 ? (report.portalSubmits30d / draftTotal) * 100 : 0
   const showPosSection =
     report.hasPdaPos || report.salesOrders30d > 0 || report.salesGmv30d > 0
   const showSmsSection = report.hasSmsAddon || report.smsSentThisMonth > 0
   const trendTitle =
     report.trendGranularity === 'month' ? 'Havi' : 'Heti'
   const periodFoot = report.periodLabel
+  const conversionShare =
+    report.portalSubmits30d > 0
+      ? (report.portalConvertedInPeriod / report.portalSubmits30d) * 100
+      : 0
 
   return (
     <div className="space-y-5">
@@ -242,7 +243,8 @@ export function TenantReportPanel({ report }: Props) {
         <div>
           <h2 className="text-h3 text-ink">Riport</h2>
           <p className="text-hint text-ink-secondary">
-            Csak ehhez a céghez — nincs összehasonlítás más tenantokkal.
+            Csak ehhez a céghez — felvett megrendelés ≠ befizetés. Nincs
+            tenant-közi összevetés.
           </p>
         </div>
         <PeriodControls report={report} />
@@ -253,7 +255,8 @@ export function TenantReportPanel({ report }: Props) {
         <div>
           <h2 className="text-h3 text-ink">Cég (közös)</h2>
           <p className="text-hint text-ink-secondary">
-            Minden szakmánál ugyanaz — ki lépett be.
+            Minden szakmánál ugyanaz — ki lépett be (görgetett 7 nap, nem a
+            kiválasztott időszak).
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -274,8 +277,8 @@ export function TenantReportPanel({ report }: Props) {
         <div>
           <h2 className="text-h3 text-ink">Lapszabászat + partnerportál</h2>
           <p className="text-hint text-ink-secondary">
-            Opti megrendelés, partner beküldés, fizetés — csak ha a funkció be
-            van kapcsolva.
+            Felvett megrendelés (megrendelés dátuma), partner beküldés,
+            rögzített befizetés — csak ha a funkció be van kapcsolva.
           </p>
         </div>
 
@@ -288,13 +291,17 @@ export function TenantReportPanel({ report }: Props) {
             <section className="rounded-md border border-border bg-surface px-3 py-3">
               <p className="text-hint font-medium text-ink-muted">
                 {periodFoot}
+                {report.periodIsPartial
+                  ? ' · összevetés azonos napig'
+                  : null}
               </p>
               <p className="mt-1 text-body font-semibold text-ink">
                 {report.verdictLine}
               </p>
               {report.partnerGmvSharePct != null && report.gmv30d > 0 ? (
                 <p className="mt-1 text-hint text-ink-secondary">
-                  Ebből partnerportál: {formatMoneyFt(report.gmvPortal30d)} Ft (
+                  Ebből partnerportál-eredetű felvétel:{' '}
+                  {formatMoneyFt(report.gmvPortal30d)} Ft (
                   {report.partnerGmvSharePct}%).
                 </p>
               ) : null}
@@ -302,32 +309,32 @@ export function TenantReportPanel({ report }: Props) {
 
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <HeroCard
-                title="Megrendelések"
+                title="Felvett megrendelés"
                 value={String(report.orders30d)}
                 delta={report.ordersDeltaPct}
                 compareLabel={report.compareLabel}
                 footnote={`előző: ${report.ordersPrev30d}`}
               />
               <HeroCard
-                title="Forgalom"
+                title="Felvett forgalom"
                 value={`${formatMoneyFt(report.gmv30d)} Ft`}
                 delta={report.gmvDeltaPct}
                 compareLabel={report.compareLabel}
-                footnote={`előző: ${formatMoneyFt(report.gmvPrev30d)} Ft`}
+                footnote={`bruttó · előző: ${formatMoneyFt(report.gmvPrev30d)} Ft`}
               />
               <HeroCard
-                title="Partner beküldések"
+                title="Partner beküldés"
                 value={String(report.portalSubmits30d)}
                 footnote={
-                  report.portalSubmitRatePct != null
-                    ? `${report.portalDraftsAlive} félkész · arány ${report.portalSubmitRatePct}%`
+                  report.portalConversionPct != null
+                    ? `${report.portalConvertedInPeriod} lett megrendelés (${report.portalConversionPct}%) · ${report.portalDraftsAlive} félkész most`
                     : `${report.portalDraftsAlive} félkész most`
                 }
               />
               <HeroCard
-                title="Befizetések"
+                title="Rögzített befizetés"
                 value={`${formatMoneyFt(report.payments30d)} Ft`}
-                footnote={`előző: ${formatMoneyFt(report.paymentsPrev30d)} Ft`}
+                footnote={`nem lemondott rendelés · előző: ${formatMoneyFt(report.paymentsPrev30d)} Ft`}
               />
             </div>
 
@@ -337,7 +344,7 @@ export function TenantReportPanel({ report }: Props) {
                   {trendTitle} forgalom
                 </h3>
                 <p className="text-hint text-ink-secondary">
-                  Lapszabás forgalom · {periodFoot}
+                  Felvett lapszabás forgalom · {periodFoot}
                 </p>
                 <div className="mt-2">
                   <TenantReportTrendChart
@@ -352,7 +359,7 @@ export function TenantReportPanel({ report }: Props) {
                   {trendTitle} megrendelés
                 </h3>
                 <p className="text-hint text-ink-secondary">
-                  Hány lapszab rendelés indult · {periodFoot}
+                  Hány megrendelés lett felvéve · {periodFoot}
                 </p>
                 <div className="mt-2">
                   <TenantReportTrendChart
@@ -388,30 +395,32 @@ export function TenantReportPanel({ report }: Props) {
                     </p>
                   </div>
                 </div>
-                {draftTotal > 0 ? (
+                {report.portalSubmits30d > 0 ? (
                   <div className="mt-3">
                     <div className="mb-1 flex justify-between text-hint text-ink-secondary">
-                      <span>Beküldési arány</span>
+                      <span>Beküldés → megrendelés</span>
                       <span className="tabular-nums font-medium text-ink">
-                        {report.portalSubmitRatePct ?? 0}%
+                        {report.portalConvertedInPeriod}/
+                        {report.portalSubmits30d} ·{' '}
+                        {report.portalConversionPct ?? 0}%
                       </span>
                     </div>
-                    <div className="flex h-2.5 overflow-hidden rounded-full bg-warning-soft">
+                    <div className="flex h-2.5 overflow-hidden rounded-full bg-subtle">
                       <div
                         className="h-full bg-success"
                         style={{
-                          width: `${Math.min(100, submittedShare)}%`
+                          width: `${Math.min(100, conversionShare)}%`
                         }}
                       />
                     </div>
                   </div>
                 ) : (
                   <p className="mt-3 text-hint text-ink-muted">
-                    Nincs partneres ajánlat / beküldés.
+                    Nincs partner beküldés ebben az időszakban.
                   </p>
                 )}
                 <p className="mt-3 text-body text-ink-secondary">
-                  Kapcsolt partner:{' '}
+                  Most kiválasztott cég (partner profil):{' '}
                   <span className="font-semibold tabular-nums text-ink">
                     {report.linkedPartners}
                   </span>
@@ -428,20 +437,22 @@ export function TenantReportPanel({ report }: Props) {
 
               <section className="rounded-md border border-border bg-surface p-3">
                 <h3 className="text-body font-semibold text-ink">
-                  Honnan jött a forgalom?
+                  Honnan jött a felvett forgalom?
                 </h3>
                 <p className="text-hint text-ink-secondary">
-                  Ti írtátok / partner küldte · {periodFoot}
+                  Partnerportál-eredet vs cég (Opti) · {periodFoot}
                 </p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <div className="rounded-md border border-border bg-subtle px-3 py-2">
-                    <p className="text-hint text-ink-muted">Cég (ti)</p>
+                    <p className="text-hint text-ink-muted">
+                      Cég (Opti + egyéb)
+                    </p>
                     <p className="mt-1 text-[15px] font-semibold tabular-nums text-ink">
                       {formatMoneyFt(report.gmvOpti30d)} Ft
                     </p>
                   </div>
                   <div className="rounded-md border border-info/30 bg-info-soft px-3 py-2">
-                    <p className="text-hint text-info-ink">Partner</p>
+                    <p className="text-hint text-info-ink">Partnerportál</p>
                     <p className="mt-1 text-[15px] font-semibold tabular-nums text-info-ink">
                       {formatMoneyFt(report.gmvPortal30d)} Ft
                     </p>
@@ -469,7 +480,8 @@ export function TenantReportPanel({ report }: Props) {
                   Mit választott a partner?
                 </h3>
                 <p className="mb-3 text-hint text-ink-secondary">
-                  Beküldéskor megjelölt fizetési mód ({periodFoot}).
+                  Partner beküldéskor megjelölt mód ({periodFoot}) — nem a
+                  tényleges befizetés.
                 </p>
                 <MethodBars
                   rows={report.paymentPreferred.map((r) => ({
@@ -485,7 +497,7 @@ export function TenantReportPanel({ report }: Props) {
                   Miből jött be a pénz?
                 </h3>
                 <p className="mb-3 text-hint text-ink-secondary">
-                  Rögzített lapszab befizetések ({periodFoot}).
+                  Rögzített befizetés nem-lemondott megrendelésen ({periodFoot}).
                 </p>
                 <MethodBars
                   rows={report.paymentCollected.map((r) => ({
@@ -600,11 +612,13 @@ export function TenantReportPanel({ report }: Props) {
               title="Eladás"
               value={String(report.salesOrders30d)}
               footnote={
-                report.hasPdaPos ? 'POS addon bekapcsolva' : 'van eladási adat'
+                report.hasPdaPos
+                  ? 'POS · teljesítés / létrehozás dátum'
+                  : 'van eladási adat'
               }
             />
             <HeroCard
-              title="Forgalom"
+              title="Bolti forgalom"
               value={`${formatMoneyFt(report.salesGmv30d)} Ft`}
             />
           </div>
