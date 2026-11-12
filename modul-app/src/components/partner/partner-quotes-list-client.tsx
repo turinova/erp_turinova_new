@@ -283,12 +283,18 @@ export function PartnerQuotesListClient({
         return
       }
       toast.success(
-        result.autoProforma
-          ? `Beküldve: ${result.quoteNumber}. A díjbekérőt e-mailben küldjük.`
-          : `Beküldve: ${result.quoteNumber}. A Beküldött rendeléseim között követheted.`
+        result.payWithCard
+          ? `Beküldve: ${result.quoteNumber}. Most jöhet a kártyás fizetés.`
+          : result.autoProforma
+            ? `Beküldve: ${result.quoteNumber}. A díjbekérőt e-mailben küldjük.`
+            : `Beküldve: ${result.quoteNumber}. A Beküldött rendeléseim között követheted.`
       )
       setSubmitRow(null)
-      router.refresh()
+      if (result.payWithCard) {
+        router.push(`${href(PARTNER_ORDERS_PATH)}/${row.id}/fizetes`)
+      } else {
+        router.refresh()
+      }
     })
   }
 

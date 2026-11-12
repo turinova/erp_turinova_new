@@ -131,3 +131,105 @@ export async function testTeyaOnlineCredentials(
     }
   }
 }
+
+/**
+ * Online Checkout amount.value = smallest currency unit.
+ * Teya ecommerce (SecurePay migráció): HUF = Ft × 100 (nem a POS whole-Ft).
+ * @see https://developer.teya.com/partners/online-payments/migration/securepay
+ */
+export function hufToTeyaOnlineAmount(amountHuf: number): number {
+  return Math.round(amountHuf) * 100
+}
+
+export type TeyaCheckoutSessionCreated = {
+  sessionId: string
+  sessionToken: string
+  sessionStatus: string
+}
+
+function teyaOnlineErrorMessage(
+  status: number,
+  json: Record<string, unknown>
+): string {
+  const description =
+    typeof json.description === 'string' ? json.description.trim() : ''
+  const code = typeof json.code === 'string' ? json.code.trim() : ''
+  const message = typeof json.message === 'string' ? json.message.trim() : ''
+  const title = typeof json.title === 'string' ? json.title.trim() : ''
+  const error = typeof json.error === 'string' ? json.error.trim() : ''
+  const detail = typeof json.detail === 'string' ? json.detail.trim() : ''
+
+  const primary =
+    description || message || title || detail || error || null
+  if (primary && code && code !== primary) {
+    return `${primary} (${code}, HTTP ${status})`
+  }
+  if (primary) return `${primary} (HTTP ${status})`
+  if (code) return `Teya checkout session hiba: ${code} (HTTP ${status})`
+  return `Teya checkout session hiba (${status})`
+}
+
+/** Embedded Checkout session — csak szerveren, secrettel. */
+export async function createTeyaCheckoutSession(
+  creds: TeyaOnlineCredentials,
+  input: {
+    amountHuf: number
+    merchantReference: string
+    idempotencyKey: string
+    metadata?: Record<string, string>
+  }
+): Promise<TeyaCheckoutSessionCreated> {
+  const amount = hufToTeyaOnlineAmount(input.amountHuf)
+  if (!(amount > 0)) {
+    throw new Error('Érvénytelen fizetendő összeg.')
+  }
+
+  const token = await getTeyaOnlineAccessToken(creds)
+  const res = await fetch(`${API_BASE[creds.env]}/v2/checkout/sessions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'User-Agent': USER_AGENT,
+      'Idempotency-Key': input.idempotencyKey
+    },
+    body: JSON.stringify({
+      store_id: creds.storeId,
+      type: 'SALE',
+      amount: { currency: 'HUF', value: amount },
+      merchant_reference: input.merchantReference.slice(0, 128),
+      ...(input.metadata && Object.keys(input.metadata).length > 0
+        ? { metadata: input.metadata }
+        : {})
+    }),
+    cache: 'no-store'
+  })
+
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+
+  const sessionId =
+    typeof json.session_id === 'string' ? json.session_id : null
+  const sessionToken =
+    typeof json.session_token === 'string' ? json.session_token : null
+  const sessionStatus =
+    typeof json.session_status === 'string' ? json.session_status : 'ACTIVE'
+
+  if (!res.ok || !sessionToken || !sessionId) {
+    console.error('createTeyaCheckoutSession failed', {
+      status: res.status,
+      env: creds.env,
+      storeId: creds.storeId,
+      amountValue: amount,
+      currency: 'HUF',
+      body: json
+    })
+    throw new Error(teyaOnlineErrorMessage(res.status, json))
+  }
+
+  return {
+    sessionId,
+    sessionToken,
+    sessionStatus
+  }
+}

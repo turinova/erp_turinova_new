@@ -20,7 +20,10 @@ import {
   type PartnerBillingForProformaResult
 } from '@/lib/partner/auto-proforma-rules'
 import { pickDefaultPaymentMethodId } from '@/lib/payment-methods/default'
-import { isTransferPaymentMethod } from '@/lib/payment-methods/kinds'
+import {
+  isCardPaymentMethod,
+  isTransferPaymentMethod
+} from '@/lib/payment-methods/kinds'
 import {
   listPartnerPaymentMethodsForSubmit,
   type PartnerSubmitPaymentMethod
@@ -51,6 +54,7 @@ export function PartnerSubmitDialog({
   const [loadingMethods, setLoadingMethods] = useState(false)
   const [paymentMethodId, setPaymentMethodId] = useState('')
   const [autoProforma, setAutoProforma] = useState(false)
+  const [teyaOnlineReady, setTeyaOnlineReady] = useState(false)
   const [billingReady, setBillingReady] = useState<PartnerBillingForProformaResult>(
     { ok: true }
   )
@@ -70,22 +74,28 @@ export function PartnerSubmitDialog({
         setMethods(result.methods)
         setAutoProforma(result.autoProformaOnTransfer)
         setBillingReady(result.billingReady)
+        setTeyaOnlineReady(result.teyaOnlineReady)
         setPaymentMethodId(pickDefaultPaymentMethodId(result.methods))
       })
       .finally(() => setLoadingMethods(false))
   }, [open])
 
   const selected = methods.find((m) => m.id === paymentMethodId) ?? null
+  const selectedIsCard = Boolean(selected && isCardPaymentMethod(selected))
+  const selectedIsTransfer = Boolean(
+    selected && isTransferPaymentMethod(selected)
+  )
   const needsBilling =
     Boolean(selected) &&
-    autoProforma &&
-    isTransferPaymentMethod(selected!) &&
-    !billingReady.ok
+    !billingReady.ok &&
+    ((autoProforma && selectedIsTransfer) || selectedIsCard)
+  const cardNotReady = selectedIsCard && !teyaOnlineReady
   const canSubmit =
     Boolean(paymentMethodId) &&
     methods.length > 0 &&
     !loadingMethods &&
-    !needsBilling
+    !needsBilling &&
+    !cardNotReady
 
   const settingsHref = (() => {
     const base = partnerHref(PARTNER_SETTINGS_PATH)
@@ -164,14 +174,25 @@ export function PartnerSubmitDialog({
                 Számlázási adatok kitöltése
               </Link>
             </div>
-          ) : selected && autoProforma && isTransferPaymentMethod(selected) ? (
+          ) : cardNotReady ? (
+            <p
+              className="rounded-md border border-warning/40 bg-warning-soft px-3 py-2 text-hint text-warning-ink"
+              role="alert"
+            >
+              A cégnél még nincs beállítva az online kártyás fizetés. Válassz
+              átutalást, vagy jelezd nekik.
+            </p>
+          ) : selectedIsCard ? (
+            <p className="text-hint text-ink-secondary" role="note">
+              Beküldés után a biztonságos Teya fizetőfelületre viszünk — ott
+              fizethetsz bankkártyával.
+            </p>
+          ) : selected && autoProforma && selectedIsTransfer ? (
             <p className="text-hint text-ink-secondary" role="note">
               Beküldés után e-mailben megkapod a díjbekérőt, abban látod az
               utalás adatait.
             </p>
-          ) : selected &&
-            !autoProforma &&
-            isTransferPaymentMethod(selected) ? (
+          ) : selected && !autoProforma && selectedIsTransfer ? (
             <p className="text-hint text-ink-secondary" role="note">
               Átutalásos beküldés — a díjbekérőt a cég intézi (nem megy ki
               automatikusan).

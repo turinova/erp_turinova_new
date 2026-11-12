@@ -58,3 +58,10 @@ export function isTransferPaymentMethod(method: {
 }): boolean {
   return resolvePaymentMethodKind(method) === 'transfer'
 }
+
+export function isCardPaymentMethod(method: {
+  kind?: string | null
+  name?: string | null
+}): boolean {
+  return resolvePaymentMethodKind(method) === 'card'
+}

@@ -24,6 +24,7 @@ Bejövő (NAV INBOUND) számla inbox / match: **nincs shipped** — lásd [48](4
 | Kintlévőség | Aging + **Fizetés** (ERP + `action-szamla_agent_kifiz`) |
 | ÁFA összesítő | Teljesítés hónap × ÁFA kulcs (díjbekérő nélkül) |
 | Exportok | XLSX / CSV / ZIP + soft-lock + Számlázz adóhatósági deep-link |
+| **Partner fizetés útmutató** | `/penzugy/utmutato` — utalás vs kártya lépések (emberi nyelv); forrásigazság: [57](57-partner-teya-card-payment.md) |
 
 ---
 

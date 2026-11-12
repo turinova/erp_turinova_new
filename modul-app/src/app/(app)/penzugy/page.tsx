@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import {
   AlertTriangle,
+  BookOpen,
   CircleDollarSign,
   Download,
   Receipt,
@@ -111,6 +112,13 @@ export default async function PenzugyPage() {
         >
           <Download className="size-3.5" aria-hidden />
           Exportok
+        </Link>
+        <Link
+          href="/penzugy/utmutato"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-ink no-underline hover:bg-subtle"
+        >
+          <BookOpen className="size-3.5" aria-hidden />
+          Partner fizetés útmutató
         </Link>
       </div>
 

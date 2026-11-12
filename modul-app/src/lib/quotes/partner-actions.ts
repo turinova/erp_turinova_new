@@ -35,7 +35,13 @@ import {
   quotePricingMode,
   serviceLinesFromPricing
 } from '@/lib/quotes/snapshot'
+import { resolvePaymentMethodKind } from '@/lib/payment-methods/kinds'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import {
+  getTeyaOnlineSettingsRow,
+  toTeyaOnlinePublic
+} from '@/lib/teya-online/queries'
 
 function revalidatePartnerPaths(...cleanPaths: string[]) {
   for (const p of cleanPaths) {
@@ -312,8 +318,10 @@ export type ListPartnerPaymentMethodsResult =
       methods: PartnerSubmitPaymentMethod[]
       /** Átutalásnál a cég automatikusan díjbekérőt küld. */
       autoProformaOnTransfer: boolean
-      /** Profil alapján: díjbekérőhöz elég-e a számlázási adat. */
+      /** Profil alapján: díjbekérőhöz / kártyához elég-e a számlázási adat. */
       billingReady: PartnerBillingForProformaResult
+      /** Tenant Teya online ready (kártyás checkout). */
+      teyaOnlineReady: boolean
     }
   | { ok: false; message: string }
 
@@ -352,7 +360,23 @@ export async function listPartnerPaymentMethodsForSubmit(): Promise<ListPartnerP
       billing_city: session.profile.billing_city,
       billing_street: session.profile.billing_street
     })
-    return { ok: true, methods, autoProformaOnTransfer, billingReady }
+    let teyaOnlineReady = false
+    const admin = createServiceClient()
+    if (admin) {
+      try {
+        const row = await getTeyaOnlineSettingsRow(admin, tenantId)
+        teyaOnlineReady = toTeyaOnlinePublic(row).ready
+      } catch {
+        teyaOnlineReady = false
+      }
+    }
+    return {
+      ok: true,
+      methods,
+      autoProformaOnTransfer,
+      billingReady,
+      teyaOnlineReady
+    }
   } catch (err) {
     console.error('listPartnerPaymentMethodsForSubmit', err)
     return {
@@ -366,11 +390,18 @@ export async function listPartnerPaymentMethodsForSubmit(): Promise<ListPartnerP
 }
 
 export type SubmitPartnerQuoteResult =
-  | { ok: true; id: string; quoteNumber: string; autoProforma: boolean }
+  | {
+      ok: true
+      id: string
+      quoteNumber: string
+      autoProforma: boolean
+      /** Bankkártya → partner fizetés oldal. */
+      payWithCard: boolean
+    }
   | {
       ok: false
       message: string
-      code?: 'price_changed' | 'billing_incomplete'
+      code?: 'price_changed' | 'billing_incomplete' | 'teya_not_ready'
     }
 
 export type SoftDeletePartnerQuoteResult =
@@ -471,11 +502,34 @@ export async function submitPartnerQuote(input: {
       }
     }
 
+    const methodKind = resolvePaymentMethodKind(method)
+    const payWithCard = methodKind === 'card'
     const autoProforma = await shouldQueueAutoProforma(tenantId, method)
 
-    // Auto díjbekérő: számlázási adat kötelező (profil + syncelt customer).
+    if (payWithCard) {
+      const admin = createServiceClient()
+      let teyaReady = false
+      if (admin) {
+        try {
+          const row = await getTeyaOnlineSettingsRow(admin, tenantId)
+          teyaReady = toTeyaOnlinePublic(row).ready
+        } catch {
+          teyaReady = false
+        }
+      }
+      if (!teyaReady) {
+        return {
+          ok: false,
+          message:
+            'A cégnél még nincs beállítva az online kártyás fizetés. Válassz átutalást, vagy jelezd nekik.',
+          code: 'teya_not_ready'
+        }
+      }
+    }
+
+    // Auto díjbekérő / kártya: számlázási adat kötelező (profil + syncelt customer).
     let billingSnapshots: Record<string, string | null> | null = null
-    if (autoProforma) {
+    if (autoProforma || payWithCard) {
       await supabase.rpc('ensure_partner_customer', { p_tenant_id: tenantId })
       const profileBilling = partnerBillingForProformaReady({
         name: session.profile.name,
@@ -604,7 +658,8 @@ export async function submitPartnerQuote(input: {
       ok: true,
       id: updated.id,
       quoteNumber: updated.quote_number,
-      autoProforma: autoProformaQueued
+      autoProforma: autoProformaQueued,
+      payWithCard
     }
   } catch (err) {
     console.error('submitPartnerQuote', err)

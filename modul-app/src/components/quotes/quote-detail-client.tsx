@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import {
   CheckCircle2,
+  CreditCard,
   Factory,
   FileDown,
   FileText,
@@ -81,6 +82,7 @@ import { panthelyLabel } from '@/lib/opti/panel-draft'
 import {
   formatQuotePrice
 } from '@/lib/opti/quote-calculations'
+import { isCardPaymentMethod } from '@/lib/payment-methods/kinds'
 import type { PaymentMethodOption } from '@/lib/payment-methods/queries'
 import type { ProductionMachineOption } from '@/lib/production-machines/queries'
 import {
@@ -546,6 +548,14 @@ export function QuoteDetailClient({
       hasPayments:
         quote.payments.length > 0 || quote.payment_events.length > 0
     })
+  const partnerCanPayCard =
+    isPartnerSubmitted &&
+    quote.payment_status !== 'paid' &&
+    remainingGross > 0 &&
+    isCardPaymentMethod({
+      kind: null,
+      name: quote.preferred_payment_method_name
+    })
 
   /** Egy primary / képernyő — státusz szerinti fő következő lépés. */
   const primaryAction:
@@ -555,11 +565,14 @@ export function QuoteDetailClient({
     | 'handover'
     | 'opti'
     | 'submit'
+    | 'pay'
     | 'pdf'
     | null = isPartner
     ? isPartnerDraft
       ? 'submit'
-      : 'pdf'
+      : partnerCanPayCard
+        ? 'pay'
+        : 'pdf'
     : canWrite && quote.status === 'draft'
       ? 'order'
       : canWrite && quote.status === 'ordered'
@@ -878,12 +891,20 @@ export function QuoteDetailClient({
         return
       }
       toast.success(
-        result.autoProforma
-          ? `Beküldve: ${result.quoteNumber}. A díjbekérőt e-mailben küldjük.`
-          : `Beküldve: ${result.quoteNumber}`
+        result.payWithCard
+          ? `Beküldve: ${result.quoteNumber}. Most jöhet a kártyás fizetés.`
+          : result.autoProforma
+            ? `Beküldve: ${result.quoteNumber}. A díjbekérőt e-mailben küldjük.`
+            : `Beküldve: ${result.quoteNumber}`
       )
       setSubmitOpen(false)
-      router.push(`${partnerHref(PARTNER_ORDERS_PATH)}/${quote.id}`)
+      if (result.payWithCard) {
+        router.push(
+          `${partnerHref(PARTNER_ORDERS_PATH)}/${quote.id}/fizetes`
+        )
+      } else {
+        router.push(`${partnerHref(PARTNER_ORDERS_PATH)}/${quote.id}`)
+      }
       router.refresh()
     })
   }
@@ -1714,6 +1735,27 @@ export function QuoteDetailClient({
                         >
                           <Send className="size-3.5" aria-hidden />
                           Beküldés a cégnek
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    {partnerCanPayCard ? (
+                      <div className="space-y-1.5">
+                        <p className="text-label font-semibold text-ink-secondary">
+                          Fizetés
+                        </p>
+                        <Button
+                          type="button"
+                          variant="primary"
+                          className="w-full justify-start"
+                          onClick={() =>
+                            router.push(
+                              `${partnerHref(PARTNER_ORDERS_PATH)}/${quote.id}/fizetes`
+                            )
+                          }
+                        >
+                          <CreditCard className="size-3.5" aria-hidden />
+                          Fizetés bankkártyával
                         </Button>
                       </div>
                     ) : null}

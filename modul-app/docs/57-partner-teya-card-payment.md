@@ -1,9 +1,9 @@
-# 57 — Partner bankkártyás fizetés (Teya) + automatikus számlázás
+# 57 — Partner fizetés (átutalás + Teya kártya) + automatikus számlázás
 
-**Státusz:** C1 kész (credential tárolás + kapcsolat-teszt). Checkout / webhook / auto előlegszámla / auto végszámla = **hátralévő implementáció**.  
-**Kapcsolódó:** [20-partner-portal.md](20-partner-portal.md), [36-szamlazas-workflow.md](36-szamlazas-workflow.md), [29-pos-workflow.md](29-pos-workflow.md) (POSLink ≠ ecommerce), [48-fizetesi-modok-default.md](48-fizetesi-modok-default.md).  
+**Státusz:** C1 kész · **P1 kész** (Embedded UI). Autokassza/IPN · Teya webhook · auto előleg/végszámla = **hátralévő**.  
+**Kapcsolódó:** [20-partner-portal.md](20-partner-portal.md), [36-szamlazas-workflow.md](36-szamlazas-workflow.md), [44-penzugy-finance.md](44-penzugy-finance.md), [29-pos-workflow.md](29-pos-workflow.md) (POSLink ≠ ecommerce), [48-fizetesi-modok-default.md](48-fizetesi-modok-default.md).  
 **Migráció (C1):** `20261013_tenant_teya_online_settings.sql`.  
-**UI (C1):** `/beallitasok/partner` → „Teya online kártya”.
+**UI:** `/beallitasok/partner` → Teya online · **Tenant útmutató:** `/penzugy/utmutato`.
 
 > **Nem adótanácsadás.** Az alábbi magyar Áfa-logika publikus szabályok + konzervatív termékdöntés. Tenant ÁSZF + könyvelő erősíti meg. A doc a **fejlesztői forrásigazság** a flow-ra.
 
@@ -62,6 +62,7 @@
 | Token host staging | `id.teya.xyz` | `id.teya.xyz` |
 | Token host production | `id.teya.com` | `id.teya.com` |
 | Kód | `lib/pos/teya/` | `lib/teya-online/` |
+| HUF `amount` | whole Ft (POS) | **Ft × 100** (ecommerce minor unit) |
 
 ### Környezet párosítás (C1 tapasztalat)
 
@@ -110,6 +111,77 @@ Beküldés (kind=transfer)
 - Befizetés → auto `advance` job (mint auto-proforma minta).
 - Átadás / fulfill → auto végszámla.
 - SLA: `credited_at` + 15 nap hard; 10 nap warning, 14 danger.
+- Autokassza + Számlázz IPN (lásd §4b).
+
+### 4b. Autokassza + IPN — zárolt döntés **A**
+
+| Döntés | Tartalom |
+|--------|----------|
+| **A (zárolt)** | Autokassza párosít → IPN/poll → **Turinova** állít ERP paid + **előlegszámlát**. Számlázz „díjbekérő automatikus számlázása” = **KI**. |
+| B (tiltott partnerhez) | Számlázz auto számla a díjbekérőből — dual/rossz típus kockázat |
+| C | Autokassza OFF — csak staff kézi befizetés |
+
+**IPN kontrakt (hátralévő):** `POST /api/webhooks/szamlazz-ipn?token=…` · form fields `szlahu_*` · verify `action-szamla_agent_xml` · idempotens state overwrite · nincs aláírás → secret token az URL-ben · HTTP ≠200 = nincs retry.
+
+**Közlemény:** díjbekérőszám és/vagy `order_number` / `quote_number` teljes hosszon, szeparálva.
+
+---
+
+## 4c. Fejlesztői flowchart (részletes)
+
+```mermaid
+flowchart TB
+  START([Partner: Beküldés a cégnek]) --> KIND{Milyen fizetést választott?}
+
+  KIND -->|Átutalás| TGATE{Számlázási adat OK?<br/>+ Agent kulcs?<br/>+ auto díjbekérő BE?}
+  TGATE -->|Nem / kapcsoló KI| TWAIT[Beküldve · unpaid<br/>Nincs díjbekérő]
+  TGATE -->|Igen| TPRO[Auto díjbekérő · Számlázz Agent]
+  TPRO -->|Hiba| TPROERR[auto_proforma failed · cron]
+  TPRO -->|OK| TMAIL[E-mail: összeg + közlemény szám]
+  TMAIL --> TPAY[Partner utal]
+  TPAY --> TDETECT{Paid észlelés}
+  TDETECT -->|Staff| TSTAFF[ERP befizetés rögzítés]
+  TDETECT -->|Autokassza| TBANK[Bank párosít · akár 24ó]
+  TBANK --> TIPN[Számlázz IPN → modul]
+  TDETECT -->|Cron| TPOLL[agent_xml poll]
+  TSTAFF --> TLEDGER
+  TIPN --> TLEDGER
+  TPOLL --> TLEDGER
+  TLEDGER[ledger credited_at = tax_event]
+  TLEDGER --> TIDEM{Dupla ref?}
+  TIDEM -->|Igen| TSKIP[Stop]
+  TIDEM -->|Nem| TADV[Auto előlegszámla]
+  TADV --> TPROD[Gyártás / átadás]
+  TPROD --> TFIN[Auto végszámla]
+
+  KIND -->|Bankkártya| CGATE{Teya ready + számlázás?}
+  CGATE -->|Nem| CBLOCK[Tilt / más mód]
+  CGATE -->|Igen| CSUB[Beküldve · NINCS díjbekérő]
+  CSUB --> CPI[/fizetes Embedded]
+  CPI -->|fail| CFAIL[unpaid · újra]
+  CPI -->|onSuccess| CHINT[Toast · NEM ERP paid]
+  CHINT --> CWH[Teya webhook]
+  CWH --> CLEDGER[ledger paid_at = tax_event]
+  CLEDGER --> CADV[Auto előlegszámla]
+  CADV --> CPROD[Gyártás / átadás]
+  CPROD --> CFIN[Auto végszámla]
+
+  NOTE_OFF[[Számlázz auto számla díjbekérőből: TENANT OFF]]
+  NOTE_OFF -.-> TADV
+```
+
+**Tenant UI:** ugyanez emberi nyelven → `/penzugy/utmutato` (nem nyers Mermaid).
+
+### 4d. Tenant szótár (certainty)
+
+| Belső | Tenant szöveg |
+|-------|----------------|
+| Díjbekérő | Fizetési felszólító — még nem számla |
+| Előlegszámla | Számla a beérkezett pénzről (ÁFA indul) |
+| Végszámla | Záró számla, amikor a munka / áru kész |
+| Autokassza | Bank és Számlázz összekapcsolása |
+| IPN / webhook | Automatikus üzenet: megérkezett a pénz |
+| Embedded | Kártyaablak a partner oldalon (Teya) |
 
 ---
 
@@ -141,13 +213,26 @@ Beküldés (kind=card)
 | Számlázz timeout este | Job pending → cron; teljesítés dátum **marad** paid_at nap |
 | Refund | Külön PR: sztornó / helyesbítés + ERP paid vissza |
 
-### Implementációs kapuk (mai kód)
+### P1 — ami kész
+
+| Darab | Hol |
+|-------|-----|
+| Session create (API) | `lib/teya-online/client.ts` → `createTeyaCheckoutSession` |
+| Partner gate + service-role secret | `lib/teya-online/partner-checkout.ts` → `createPartnerTeyaCheckoutSession` |
+| Embedded UI | `PartnerTeyaCheckout` + `/megrendelesek/[id]/fizetes` |
+| SDK | `@teyaproduct/teya-blocks-js` (`developmentMode` csak staging) |
+| Beküldés → pay | `submitPartnerQuote` `payWithCard` → detail/list redirect `/fizetes` |
+| Rendelés CTA | „Fizetés bankkártyával” ha unpaid + card preferred |
+| Submit kapu | `PartnerSubmitDialog` card + `teyaOnlineReady` |
+
+**Fontos:** böngésző `onSuccess` **nem** állít `paid` státuszt — az P2 webhook.
+
+### Hátralévő kapuk
 
 | Kapu | Hol | Teendő |
 |------|-----|--------|
 | Előleg csak `order_number` mellett | `canProformaBeforeOrder` / `issue-quote` | Fizetéskor order létrehozás **vagy** portal submitted + paid esetén advance engedély |
-| Nincs Teya session/webhook | — | Új route + signature verify (`teya_webhook_public_key`) |
-| Nincs Embedded UI | — | Partner pay oldal + SDK |
+| Nincs Teya webhook | — | Route + signature verify (`teya_webhook_public_key`) → `paid_at` + ERP |
 | Auto csak díjbekérő transferre | `auto-proforma-rules` | Új auto-advance card path |
 
 ---
@@ -211,7 +296,7 @@ Egy motor mindkét fizetési módra:
 | Agent kulcs | Díjbekérő / előleg | Előleg |
 | Partner szöveg | `auto_proforma_*` copy | Új: „Fizetve” + előlegszámla állapot (belső hiba nélkül) |
 
-Feature flag javaslat: amíg staging / webhook nincs kész, `teya_online_enabled` lehet true a teszthez, de partner checkout UI **ki**.
+P1 UI él, ha a tenant Teya online `ready`. Éles fizetéshez kell P2 webhook — addig a partner „sikeres” toast **nem** jelent ERP „kifizetve”-t.
 
 ---
 
@@ -221,9 +306,11 @@ Feature flag javaslat: amíg staging / webhook nincs kész, `teya_online_enabled
 |----|----------|-----------|
 | **C1** | Credential tábla + UI + OAuth/API teszt | Kész |
 | **C2** | Staging/webhook public key mentés UI (ha kell); docs ÁSZF hint | Optional |
-| **P1** | Checkout session create + partner Embedded UI | Session + redirect/SDK működik |
-| **P2** | Webhook + payment ledger + idempotencia | Dupla webhook nem dupla paid |
-| **P3** | Auto előlegszámla (`advance`) + Budapest fulfillmentDate + cron rescue | Este fizet → holnap kelte, tegnap teljesítés |
+| **P1** | Checkout session create + partner Embedded UI | **Kész** |
+| **T0** | Tenant útmutató `/penzugy/utmutato` | **Kész** (lépések + színes edge case-ek) |
+| **T1** | Számlázz IPN + Autokassza bridge (döntés A) | IPN → ledger → advance job |
+| **P2** | Teya webhook + payment ledger + idempotencia | Dupla webhook nem dupla paid |
+| **P3** | Auto előlegszámla + Budapest fulfillmentDate + cron | Este fizet → holnap kelte, tegnap teljesítés |
 | **P4** | Order kapu (auto convert vagy advance portal quote-on) | Előleg mindig kiállítható paid után |
 | **P5** | Teljesítés → auto végszámla | 100% előleg után 0 Ft végszámla |
 | **P6** | Refund / sztornó | Documentált happy + sad path |
@@ -258,7 +345,10 @@ Feature flag javaslat: amíg staging / webhook nincs kész, `teya_online_enabled
 
 | Terület | Path |
 |---------|------|
-| Online Teya client | `src/lib/teya-online/client.ts` |
+| Online Teya client | `src/lib/teya-online/client.ts` (HUF `amount.value` = Ft × 100) |
+| Partner checkout session | `src/lib/teya-online/partner-checkout.ts` |
+| Embedded pay UI | `src/components/partner/partner-teya-checkout.tsx` |
+| Pay page | `src/app/(partner)/partner/(app)/megrendelesek/[id]/fizetes/page.tsx` |
 | Online settings actions | `src/lib/teya-online/actions.ts` |
 | Online queries | `src/lib/teya-online/queries.ts` |
 | Partner settings UI | `src/components/partner-settings/partner-settings-form.tsx` |
@@ -267,3 +357,4 @@ Feature flag javaslat: amíg staging / webhook nincs kész, `teya_online_enabled
 | Számlázz XML dátumok | `src/lib/invoicing/szamlazz-xml.ts` |
 | Invoice kind rules | `src/lib/invoicing/invoice-rules.ts` |
 | POS Teya (ne keverd) | `src/lib/pos/teya/client.ts` |
+| Tenant útmutató | `src/app/(app)/penzugy/utmutato/` + `partner-payment-guide.tsx` |

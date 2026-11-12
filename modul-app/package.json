@@ -41,6 +41,7 @@
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.8",
     "@tanstack/react-query": "^5.102.8",
+    "@teyaproduct/teya-blocks-js": "^0.2.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "@zebrash/browser": "^1.0.4",
