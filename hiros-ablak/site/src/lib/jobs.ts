@@ -1,8 +1,7 @@
 /**
  * Nyitott állások — Karrier oldal.
  * Fizetés nem jelenik meg a UI-n (üzleti döntés).
- * Szövegezés igazítva a Facebook / nyomtatott hirdetéshez.
- * Meta-biztos: munkáról beszélünk, nem védett tulajdonságokról.
+ * Szövegezés: hétköznapi magyar, Meta-biztos (munkáról, nem védett tulajdonságokról).
  */
 
 import { COMPANY } from "@/lib/company"
@@ -27,32 +26,33 @@ export type Job = {
 
 export const JOBS: readonly Job[] = [
   {
-    slug: "elzarogep-kezelo",
-    title: "Élzárógép-kezelő",
+    slug: "bolti-elado",
+    title: "Bolti eladó",
     short:
-      "Kecskeméti gyártóüzemünkbe keresünk élzárógép-kezelő munkatársat. Hétfő–péntek, 8–17, 1 műszak. Mindszenti krt. 10.",
+      "Kecskeméti barkácsáruházunkba keresünk bolti eladó munkatársat. Hétfő–péntek 7:30-tól 17:00-ig, egy műszak. Időnként szombat 8:00-tól 12:00-ig. Mindszenti krt. 10.",
     location: "Kecskemét, Mindszenti krt. 10.",
     employmentType: "FULL_TIME",
-    employmentLabel: "Teljes munkaidő · H–P 8–17 · 1 műszak",
-    area: "uzem",
-    experience: "tapasztalt",
-    workStyle: "gepes",
+    employmentLabel: "Teljes munkaidő, egy műszak",
+    area: "aruhaz",
+    experience: "betanitott",
+    workStyle: "emberi",
     tasks: [
-      "Bútorlap élzárása gépen",
-      "Gép kezelése, alap beállítás",
-      "Minőség figyelése, rend a munkahelyen",
+      "Vásárlók fogadása és kiszolgálása",
+      "Áru és polcok rendben tartása",
+      "Pénztár és egyszerű adminisztráció",
     ],
     perks: [
-      "Egy műszak, hétköznap 8–17 (nincs éjszaka)",
-      "Stabil, hosszú távú munka, betanítás",
-      "Modern géppark, családias üzem",
+      "Egy műszak, nincs éjszakázás",
+      "Betanítás, stabil munka",
+      "Kecskeméten, helyben",
     ],
     requirements: [
-      "Hétfő–péntek, 8–17",
-      "Precíz, megbízható munkavégzés",
-      "Faipari vagy gépkezelői tapasztalat előny — nem kötelező",
+      "Pontos érkezés reggel 7:30-ra",
+      "Munkaidő: hétfő–péntek 7:30-tól 17:00-ig",
+      "Időnként szombat délelőtt (8:00-tól 12:00-ig)",
+      "Bolti tapasztalat előny, nem kötelező",
     ],
-    datePosted: "2026-07-27",
+    datePosted: "2026-11-12",
     active: true,
   },
 ] as const

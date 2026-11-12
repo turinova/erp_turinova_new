@@ -18,14 +18,21 @@ Same pattern as `customer-portal/` (separate Vercel project, subfolder in `erp_t
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes (anon key only) |
 | `NEXT_PUBLIC_GA_ID` | Optional (GA4, consent-gated) |
 | `NEXT_PUBLIC_CLARITY_ID` | Optional (Microsoft Clarity, consent-gated) |
+| `NEXT_PUBLIC_META_PIXEL_ID` | Optional (Meta Pixel, marketing consent-gated; Lead + career funnel) |
 | `SMTP_HOST` | Yes (forms) — `mail.hirosablak.hu` |
 | `SMTP_PORT` | Yes — `465` (SSL) |
 | `SMTP_USER` | Yes — authenticated mailbox |
 | `SMTP_PASS` | Yes — mailbox password |
 | `MAIL_FROM` | Yes — same as `SMTP_USER` (e.g. `teszt@hirosablak.hu`) |
 | `MAIL_TO` | Yes — `hirosablak@hirosablak.hu` |
+| `BFL_API_KEY` | Optional — Konyhatervező (Black Forest Labs); without it the page shows a config error on generate |
+| `BFL_API_BASE` | Optional — default `https://api.eu.bfl.ai` |
+| `KONYHATERVEZO_ENGINE` | Optional — `flux2max` (default, wireframe + FLUX.2 [max], measured accurate to ±0.5 cm), `flux2` (FLUX.2 [pro], cheaper but 7–13 cm off), `kontext` (FLUX.1 Kontext) or `pro` (text-only FLUX1.1 [pro]) |
+| `KONYHATERVEZO_BETA_KEY` | Optional — if set, `/konyhatervezo?key=…` required to generate |
 
 See `.env.example`. Do not commit `.env.local`.
+
+**Konyhatervező (béta):** `/szolgaltatasok/egyedi-butorgyartas/konyhatervezo` — noindex, not in sitemap.
 
 Contact, asztalos partner and szállítóláda quote forms POST to `/api/forms` and send e-mail via Rackhost SMTP.
 

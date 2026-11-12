@@ -53,9 +53,18 @@ async function parseBody(req: Request): Promise<{
       consent: consentRaw === "true" || consentRaw === "on",
       website: String(fd.get("website") || ""),
       scheduleOk: String(fd.get("scheduleOk") || ""),
+      morningOk: String(fd.get("morningOk") || ""),
+      fullShiftOk: String(fd.get("fullShiftOk") || ""),
+      saturdayOk: String(fd.get("saturdayOk") || ""),
       experience: String(fd.get("experience") || ""),
       startWhen: String(fd.get("startWhen") || ""),
       lastJob: String(fd.get("lastJob") || ""),
+      utm_source: String(fd.get("utm_source") || ""),
+      utm_medium: String(fd.get("utm_medium") || ""),
+      utm_campaign: String(fd.get("utm_campaign") || ""),
+      utm_content: String(fd.get("utm_content") || ""),
+      utm_term: String(fd.get("utm_term") || ""),
+      cvOptional: String(fd.get("cvOptional") || ""),
     }
 
     const cv = fd.get("cv")
@@ -81,6 +90,11 @@ async function parseBody(req: Request): Promise<{
           contentType: cv.type || undefined,
         },
       }
+    }
+
+    // Alap: CV kötelező. A/B: ?cv=optional → cvOptional=true
+    if (body.form === "career" && body.cvOptional !== "true") {
+      return { body, error: "Az önéletrajz csatolása kötelező." }
     }
 
     return { body }

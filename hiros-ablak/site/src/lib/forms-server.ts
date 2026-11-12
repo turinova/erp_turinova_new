@@ -1,5 +1,4 @@
 import { sendFormEmail } from "@/lib/mail"
-import { COMPANY } from "@/lib/company"
 import { getJobBySlug } from "@/lib/jobs"
 
 export const FORM_TYPES = [
@@ -47,11 +46,12 @@ const FORM_LABELS: Record<FormType, string> = {
   felmeres: "Egyedi bútor – helyszíni felmérés",
 }
 
-/** A felmérés mindig a központi MAIL_TO-ra és erre a címre is megy. */
+/** Karrier megkeresések ide mennek. A felmérés CC ugyanez. */
+const CAREER_TO = "mezo.david@baugeneral.hu"
 const FELMERES_CC = "mezo.david@baugeneral.hu"
 
 function recipientsFor(form: FormType): string | undefined {
-  if (form === "career") return COMPANY.emails.central
+  if (form === "career") return CAREER_TO
   if (form !== "felmeres") return undefined
 
   const set = new Set(
@@ -74,13 +74,13 @@ const MAX = {
   lastJob: 160,
 } as const
 
-const CAREER_SCHEDULE = new Set(["yes", "no"])
-const CAREER_EXPERIENCE = new Set(["elzaro", "other", "none"])
+const CAREER_YES_NO = new Set(["yes", "no"])
+const CAREER_EXPERIENCE = new Set(["bolt", "ugyfel", "none"])
 const CAREER_START = new Set(["immediate", "2weeks", "1month", "later"])
 
 const CAREER_EXPERIENCE_LABELS: Record<string, string> = {
-  elzaro: "Igen, élzáró / faipari gép",
-  other: "Igen, más gyártógép",
+  bolt: "Igen, bolti vagy áruházi munka",
+  ugyfel: "Igen, más ügyfélkezelés",
   none: "Még nincs, betanulnék",
 }
 
@@ -103,9 +103,18 @@ export type RawFormBody = {
   website?: string
   /** Karrier szűrés — Meta-biztos, munkáról */
   scheduleOk?: string
+  morningOk?: string
+  fullShiftOk?: string
+  saturdayOk?: string
   experience?: string
   startWhen?: string
   lastJob?: string
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
+  utm_content?: string
+  utm_term?: string
+  cvOptional?: string
 }
 
 function isValidEmail(email: string) {
@@ -123,11 +132,26 @@ function escapeHtml(s: string) {
 export type CareerScreening = {
   scheduleOk: string
   scheduleLabel: string
+  morningOk: string
+  morningLabel: string
+  fullShiftOk: string
+  fullShiftLabel: string
+  saturdayOk: string
+  saturdayLabel: string
   experience: string
   experienceLabel: string
   startWhen: string
   startLabel: string
   lastJob: string
+  fitLabel: string
+}
+
+export type FormUtm = {
+  source?: string
+  medium?: string
+  campaign?: string
+  content?: string
+  term?: string
 }
 
 export type ParsedSubmission = {
@@ -140,6 +164,7 @@ export type ParsedSubmission = {
   topicLabel: string
   message: string
   career?: CareerScreening
+  utm?: FormUtm
 }
 
 export type ParseFormResult =
@@ -164,7 +189,16 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
   const topic = (body.topic || "").trim()
   const message = (body.message || "").trim()
   const consent = body.consent === true
-  const scheduleOk = (body.scheduleOk || "").trim()
+  const morningOk = (body.morningOk || "").trim()
+  const fullShiftOk = (body.fullShiftOk || "").trim()
+  const saturdayOk = (body.saturdayOk || "").trim()
+  const scheduleOk =
+    (body.scheduleOk || "").trim() ||
+    (morningOk === "yes" && fullShiftOk === "yes" && saturdayOk === "yes"
+      ? "yes"
+      : morningOk || fullShiftOk || saturdayOk
+        ? "no"
+        : "")
   const experience = (body.experience || "").trim()
   const startWhen = (body.startWhen || "").trim()
   const lastJob = (body.lastJob || "").trim()
@@ -234,8 +268,12 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
   let career: CareerScreening | undefined
 
   if (form === "career") {
-    if (!phone) {
-      return { kind: "error", error: "A telefonszám megadása kötelező.", status: 400 }
+    if (!phone || phone.replace(/\D/g, "").length < 9) {
+      return {
+        kind: "error",
+        error: "A telefonszám megadása kötelező (legalább 9 számjegy).",
+        status: 400,
+      }
     }
     if (!topic) {
       return { kind: "error", error: "Válassz pozíciót.", status: 400 }
@@ -244,10 +282,31 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
     if (!job && topic !== "general") {
       return { kind: "error", error: "Érvénytelen pozíció.", status: 400 }
     }
-    if (!CAREER_SCHEDULE.has(scheduleOk)) {
+    if (!CAREER_YES_NO.has(morningOk)) {
       return {
         kind: "error",
-        error: "Jelöld, neked jó-e a munkaidő (H–P 8–17, Kecskemét).",
+        error: "Jelöld, be tudsz-e érni hétköznap 7:30-ra.",
+        status: 400,
+      }
+    }
+    if (!CAREER_YES_NO.has(fullShiftOk)) {
+      return {
+        kind: "error",
+        error: "Jelöld, végig ott tudsz-e lenni 17:00-ig.",
+        status: 400,
+      }
+    }
+    if (!CAREER_YES_NO.has(saturdayOk)) {
+      return {
+        kind: "error",
+        error: "Jelöld, tudsz-e időnként szombaton 8–12 között dolgozni.",
+        status: 400,
+      }
+    }
+    if (!CAREER_YES_NO.has(scheduleOk)) {
+      return {
+        kind: "error",
+        error: "Jelöld, neked jó-e a kötött munkaidő.",
         status: 400,
       }
     }
@@ -272,14 +331,27 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
       return { kind: "error", error: "Az üzenet túl hosszú.", status: 400 }
     }
 
+    const fits =
+      morningOk === "yes" && fullShiftOk === "yes" && saturdayOk === "yes"
+
     career = {
       scheduleOk,
       scheduleLabel: scheduleOk === "yes" ? "Igen" : "Nem",
+      morningOk,
+      morningLabel: morningOk === "yes" ? "Igen" : "Nem",
+      fullShiftOk,
+      fullShiftLabel:
+        fullShiftOk === "yes"
+          ? "Igen, 17:00-ig"
+          : "Sajnos korábban kellene mennie",
+      saturdayOk,
+      saturdayLabel: saturdayOk === "yes" ? "Igen" : "Nem",
       experience,
       experienceLabel: CAREER_EXPERIENCE_LABELS[experience] || experience,
       startWhen,
       startLabel: CAREER_START_LABELS[startWhen] || startWhen,
       lastJob,
+      fitLabel: fits ? "Illik a műszakhoz" : "NEM ILLIK a műszakhoz",
     }
   }
 
@@ -320,6 +392,21 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
           ? TOPIC_LABELS[topic] || topic
           : ""
 
+  const clip = (v: string | undefined) => {
+    const t = (v || "").trim()
+    return t ? t.slice(0, 120) : undefined
+  }
+  const utm: FormUtm = {
+    source: clip(body.utm_source),
+    medium: clip(body.utm_medium),
+    campaign: clip(body.utm_campaign),
+    content: clip(body.utm_content),
+    term: clip(body.utm_term),
+  }
+  const hasUtm = Boolean(
+    utm.source || utm.medium || utm.campaign || utm.content || utm.term,
+  )
+
   return {
     kind: "ok",
     data: {
@@ -332,6 +419,7 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
       topicLabel,
       message,
       career,
+      utm: hasUtm ? utm : undefined,
     },
   }
 }
@@ -376,7 +464,10 @@ export async function deliverFormEmail(
     lines.push(
       "",
       "Szűrés:",
-      `Munkaidő H–P 8–17, Kecskemét: ${data.career.scheduleLabel}`,
+      `Illeszkedés: ${data.career.fitLabel}`,
+      `Reggel 7:30: ${data.career.morningLabel}`,
+      `Műszak 17:00-ig: ${data.career.fullShiftLabel}`,
+      `Szombat 8–12 (időnként): ${data.career.saturdayLabel}`,
       `Tapasztalat: ${data.career.experienceLabel}`,
       `Kezdés: ${data.career.startLabel}`,
     )
@@ -385,6 +476,14 @@ export async function deliverFormEmail(
     }
   }
   if (meta.attachment) lines.push(`Önéletrajz: ${meta.attachment.filename}`)
+  if (data.utm) {
+    lines.push("", "Kampány (UTM):")
+    if (data.utm.source) lines.push(`utm_source: ${data.utm.source}`)
+    if (data.utm.medium) lines.push(`utm_medium: ${data.utm.medium}`)
+    if (data.utm.campaign) lines.push(`utm_campaign: ${data.utm.campaign}`)
+    if (data.utm.content) lines.push(`utm_content: ${data.utm.content}`)
+    if (data.utm.term) lines.push(`utm_term: ${data.utm.term}`)
+  }
   if (data.message) {
     lines.push("", "Üzenet:", data.message)
   }
@@ -412,8 +511,13 @@ export async function deliverFormEmail(
           data.topicLabel,
         ]
       : null,
+    data.career ? ["Illeszkedés", data.career.fitLabel] : null,
+    data.career ? ["Reggel 7:30", data.career.morningLabel] : null,
     data.career
-      ? ["Munkaidő H–P 8–17, Kecskemét", data.career.scheduleLabel]
+      ? ["Műszak 17:00-ig", data.career.fullShiftLabel]
+      : null,
+    data.career
+      ? ["Szombat 8–12 (időnként)", data.career.saturdayLabel]
       : null,
     data.career ? ["Tapasztalat", data.career.experienceLabel] : null,
     data.career ? ["Kezdés", data.career.startLabel] : null,
@@ -421,6 +525,11 @@ export async function deliverFormEmail(
       ? ["Előző munkahely", data.career.lastJob]
       : null,
     meta.attachment ? ["Önéletrajz", meta.attachment.filename] : null,
+    data.utm?.source ? ["utm_source", data.utm.source] : null,
+    data.utm?.medium ? ["utm_medium", data.utm.medium] : null,
+    data.utm?.campaign ? ["utm_campaign", data.utm.campaign] : null,
+    data.utm?.content ? ["utm_content", data.utm.content] : null,
+    data.utm?.term ? ["utm_term", data.utm.term] : null,
   ]
     .filter(Boolean)
     .map(
@@ -440,8 +549,16 @@ ${meta.referer ? `<p style="margin-top:16px;font-size:12px;color:#666">Forrás: 
   const subjectParts =
     data.form === "felmeres"
       ? ["Felmérés", data.topicLabel, data.name].filter(Boolean)
-      : [FORM_LABELS[data.form], data.name]
-  if (data.form !== "felmeres" && data.topicLabel) {
+      : data.form === "career"
+        ? [
+            data.career?.fitLabel?.startsWith("NEM")
+              ? "Karrier [NEM ILLIK]"
+              : "Karrier",
+            data.topicLabel,
+            data.name,
+          ].filter(Boolean)
+        : [FORM_LABELS[data.form], data.name]
+  if (data.form !== "felmeres" && data.form !== "career" && data.topicLabel) {
     subjectParts.splice(1, 0, data.topicLabel)
   }
 
