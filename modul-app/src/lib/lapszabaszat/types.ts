@@ -13,6 +13,7 @@ export const LAPSZABASZAT_PAGE_KEYS = [
   '/ajanlatok',
   '/megrendelesek',
   '/scanner',
+  '/kiemelt-partnerek',
   '/torzsadatok/alapanyagok/tablas-anyagok',
   '/torzsadatok/alapanyagok/szalas-anyagok',
   '/torzsadatok/alapanyagok/elzarok',

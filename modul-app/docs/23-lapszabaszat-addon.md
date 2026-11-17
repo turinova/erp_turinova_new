@@ -11,12 +11,13 @@ Opti / ajánlat / megrendelés / anyag / gép stack — **nem** része az Alap p
 ## Mit nyit
 
 - `/opti`, `/ajanlatok`, `/megrendelesek`, `/scanner`
+- `/kiemelt-partnerek` — kedvenc ügyfelek lapszabászat riport (lista + éves chart)
 - Táblás / szálas / élzárók
 - Gyártógépek, berendezés
 - Opti beállítások
 - **Átvételi blokk** (hőnyomtató elismervény — [43](43-atveteli-blokk.md))
 
-**Nem** része: ügyfelek, gyártók, termékek, média, Belépők.
+**Nem** része: ügyfelek lista CRUD, gyártók, termékek, média, Belépők.
 
 ## A csomag részei
 
@@ -55,3 +56,7 @@ Async typeahead (`/api/opti/sheet-materials` → `search_sheet_materials_for_opt
 ### Opti ügyfélkereső — kedvencek
 
 `customers.is_favorite` (tenant-szintű). `search_customers_for_select` + lista seed: kedvencek előrébb, label `★ Név`. Kapcsoló: `/ugyfelek` lista csillag + űrlap Switch. Migráció: `20260632_customers_is_favorite.sql`.
+
+### Kiemelt partnerek (`/kiemelt-partnerek`)
+
+Ügyfél nav top-level (page_key + `LAPSZABASZAT_PAGE_KEYS`). Plain-language UI: áttekintés, éves bar („Bevétel hónapról hónapra”), kártyán érthető trend + badge. **Szabás m nincs a kártyán**, csak rendezés. Copy: `lib/kiemelt-partnerek/copy.ts`. Migrációk: `20261017` + `20261018` (entitlements nélkül a nav / jog UI nem mutatja).

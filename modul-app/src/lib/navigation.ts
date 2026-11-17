@@ -155,6 +155,13 @@ const allNavSections: NavSection[] = [
         },
       {
           type: 'link',
+          label: 'Kiemelt partnerek',
+          href: '/kiemelt-partnerek',
+          icon: Star,
+          accent: 'slate'
+        },
+      {
+          type: 'link',
           label: 'Ügyfélrendelések',
           href: '/ugyfelrendelesek',
           icon: ClipboardList,
@@ -663,6 +670,7 @@ function topLevelAccent(node: NavNode): NavAccent {
     case '/pos':
       return 'emerald'
     case '/ugyfelek':
+    case '/kiemelt-partnerek':
     case '/ugyfelrendelesek':
       return 'blue'
     case '/belepok':

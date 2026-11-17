@@ -3,8 +3,7 @@ import {
   Globe,
   Mail,
   MapPin,
-  Navigation,
-  Phone
+  Navigation
 } from 'lucide-react'
 
 import {
@@ -39,7 +38,10 @@ export function ContactCard({
   status: OpenStatus | null
 }) {
   const week = openingHours ? groupWeek(openingHours) : []
-  const nothing = !contact && !openingHours && !openingHoursNote
+  const hasVisibleContact = Boolean(
+    contact?.addressLine || contact?.email || contact?.website
+  )
+  const nothing = !hasVisibleContact && !openingHours && !openingHoursNote
 
   return (
     <section
@@ -79,24 +81,6 @@ export function ContactCard({
           <p className="text-[15px] text-ink-secondary">
             A cég még nem adta meg az elérhetőségét.
           </p>
-        ) : null}
-
-        {contact?.phone ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-success-soft px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <Phone className="size-5 text-success-ink" aria-hidden />
-              <span className="text-[19px] font-semibold tabular-nums text-ink">
-                {contact.phone}
-              </span>
-            </div>
-            <a
-              href={`tel:${contact.phone.replace(/\s/g, '')}`}
-              className="inline-flex h-11 items-center gap-2 rounded-md bg-success px-4 text-[15px] font-semibold text-white no-underline hover:bg-success-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-success"
-            >
-              <Phone className="size-4" aria-hidden />
-              Hívás
-            </a>
-          </div>
         ) : null}
 
         {contact?.addressLine ? (
