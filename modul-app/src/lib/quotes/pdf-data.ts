@@ -8,6 +8,7 @@ import { listQuoteFees } from '@/lib/quotes/fee-totals'
 import { listQuoteAccessories } from '@/lib/quotes/accessory-totals'
 import type {
   QuotePdfInput,
+  QuotePdfPanel,
   TenantCompanyPdf
 } from '@/lib/quotes/pdf-template'
 
@@ -236,7 +237,8 @@ export async function getQuoteForPdf(
     edge_ferde: EdgeRef
   }>
 
-  const panels = [...panelsRaw]
+  // Explicit QuotePdfPanel[] — nélküle TS a ternary literálokat string-re szélesíti.
+  const panels: QuotePdfPanel[] = [...panelsRaw]
     .sort((a, b) => a.sort_index - b.sort_index)
     .map((p) => {
       const sm = one(p.sheet_materials)
