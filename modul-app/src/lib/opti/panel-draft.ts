@@ -1,5 +1,7 @@
 /** Opti panel — local draft (nincs DB mentés, amíg árajánlat nem készül). */
 
+import type { SzogShapeKind, SzogTrapAxis } from '@/lib/opti/szogvagas-preview'
+
 export type OptiPanelDraft = {
   id: string
   sheetMaterialId: string
@@ -12,14 +14,21 @@ export type OptiPanelDraft = {
   edgeBId: string | null
   edgeCId: string | null
   edgeDId: string | null
+  /** Szögvágás ferde (vágott) él élzárója — session/UI. */
+  edgeFerdeId: string | null
   edgeALabel: string
   edgeBLabel: string
   edgeCLabel: string
   edgeDLabel: string
+  edgeFerdeLabel: string
   /** Duplungolás: megmunkálás flag; a darabszám a formon ×2. */
   duplungolas: boolean
   /** Szögvágás: megmunkálás flag. */
   szogvagas: boolean
+  /** Szög alak — session/UI (nincs DB oszlop). */
+  szogKind: SzogShapeKind | null
+  szogTrapShortMm: number | null
+  szogTrapAxis: SzogTrapAxis | null
   /** Pánthely lyuk / panel (0 = nincs; 2–20). */
   panthelyfurasQuantity: number
   /**
@@ -149,12 +158,17 @@ export function createPanelDraft(input: {
   edgeBId: string
   edgeCId: string
   edgeDId: string
+  edgeFerdeId?: string
   edgeALabel: string
   edgeBLabel: string
   edgeCLabel: string
   edgeDLabel: string
+  edgeFerdeLabel?: string
   duplungolas?: boolean
   szogvagas?: boolean
+  szogKind?: SzogShapeKind | null
+  szogTrapShortMm?: number | null
+  szogTrapAxis?: SzogTrapAxis | null
   panthelyfurasQuantity?: number
   panthelyfurasOldal?: PanthelyOldal | null
 }): OptiPanelDraft {
@@ -165,6 +179,21 @@ export function createPanelDraft(input: {
       : panthely >= PANTHELY_MIN && panthely <= PANTHELY_MAX
         ? Math.round(panthely)
         : 0
+  const szog = Boolean(input.szogvagas)
+  const ferdeId = szog ? input.edgeFerdeId || null : null
+  const kind =
+    szog && (input.szogKind === 'triangle' || input.szogKind === 'trapezoid')
+      ? input.szogKind
+      : null
+  const axis =
+    szog && (input.szogTrapAxis === 'grain' || input.szogTrapAxis === 'cross')
+      ? input.szogTrapAxis
+      : null
+  const shortRaw = Number(input.szogTrapShortMm)
+  const short =
+    szog && kind === 'trapezoid' && Number.isFinite(shortRaw) && shortRaw > 0
+      ? Math.round(shortRaw)
+      : null
   return {
     id: crypto.randomUUID(),
     sheetMaterialId: input.sheetMaterialId,
@@ -177,12 +206,17 @@ export function createPanelDraft(input: {
     edgeBId: input.edgeBId || null,
     edgeCId: input.edgeCId || null,
     edgeDId: input.edgeDId || null,
+    edgeFerdeId: ferdeId,
     edgeALabel: input.edgeALabel,
     edgeBLabel: input.edgeBLabel,
     edgeCLabel: input.edgeCLabel,
     edgeDLabel: input.edgeDLabel,
+    edgeFerdeLabel: ferdeId ? input.edgeFerdeLabel || '' : '',
     duplungolas: Boolean(input.duplungolas),
-    szogvagas: Boolean(input.szogvagas),
+    szogvagas: szog,
+    szogKind: kind,
+    szogTrapShortMm: short,
+    szogTrapAxis: axis ?? (szog ? 'grain' : null),
     panthelyfurasQuantity: panthelySafe,
     panthelyfurasOldal:
       panthelySafe > 0

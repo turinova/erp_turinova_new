@@ -44,6 +44,7 @@ import {
   type OptiSessionCustomer
 } from '@/lib/opti/opti-session'
 import { PanthelyOldalPicker } from '@/components/opti/panthely-oldal-picker'
+import { SzogvagasShapeFields } from '@/components/opti/szogvagas-shape-fields'
 import {
   createPanelDraft,
   parsePanthelyQuantity,
@@ -55,6 +56,19 @@ import {
   type OptiPanelDraft,
   type PanthelyOldal
 } from '@/lib/opti/panel-draft'
+import {
+  countSzogCuts,
+  defaultTrapezoidShortMm,
+  emptySzogCorners,
+  rebuildSzogCornersFromShape,
+  szogDiagonalFinishedMm,
+  szogFinishedStraightEdgesMm,
+  szogTrapParallelFullMm,
+  validateSzogShape,
+  type SzogCornerCut,
+  type SzogShapeKind,
+  type SzogTrapAxis
+} from '@/lib/opti/szogvagas-preview'
 import type { OptimizationResult } from '@/lib/opti/optimization-types'
 import {
   formatEdgeMaterialLabel,
@@ -65,6 +79,55 @@ import {
 } from '@/lib/opti/queries'
 import type { QuoteForOptiEdit } from '@/lib/quotes/opti-edit'
 import { cn } from '@/lib/utils'
+
+type EdgeSlot = 'a' | 'b' | 'c' | 'd'
+
+function livingEdgeSlots(
+  szogActive: boolean,
+  grainMm: number | null,
+  crossMm: number | null,
+  corners: SzogCornerCut[]
+): Record<EdgeSlot, boolean> {
+  if (
+    !szogActive ||
+    grainMm == null ||
+    crossMm == null ||
+    grainMm <= 0 ||
+    crossMm <= 0 ||
+    countSzogCuts(corners) === 0
+  ) {
+    return { a: true, b: true, c: true, d: true }
+  }
+  const finished = szogFinishedStraightEdgesMm(grainMm, crossMm, corners)
+  return {
+    a: finished.top > 0.5,
+    b: finished.right > 0.5,
+    c: finished.bottom > 0.5,
+    d: finished.left > 0.5
+  }
+}
+
+/** Körbe csak a létező (kész mm > 0) élekre + opcionálisan ferdére. */
+function resolveAroundId(
+  a: string,
+  b: string,
+  c: string,
+  d: string,
+  ferde = '',
+  alive: Record<EdgeSlot, boolean> = { a: true, b: true, c: true, d: true },
+  requireFerde = false
+) {
+  const ids: string[] = []
+  if (alive.a) ids.push(a)
+  if (alive.b) ids.push(b)
+  if (alive.c) ids.push(c)
+  if (alive.d) ids.push(d)
+  if (requireFerde) ids.push(ferde)
+  if (ids.length === 0) return ''
+  const first = ids[0]!
+  if (!first || ids.some((id) => id !== first)) return ''
+  return first
+}
 
 type OptiWorkspaceClientProps = {
   tenantId: string
@@ -88,6 +151,7 @@ type FormErrors = {
   quantity?: string
   marking?: string
   panthely?: string
+  szog?: string
 }
 
 export function OptiWorkspaceClient({
@@ -143,12 +207,19 @@ export function OptiWorkspaceClient({
   const [edgeBId, setEdgeBId] = useState('')
   const [edgeCId, setEdgeCId] = useState('')
   const [edgeDId, setEdgeDId] = useState('')
+  /** Szögvágás ferde (vágott) él — csak szög aktív + van ferde szakasz. */
+  const [edgeFerdeId, setEdgeFerdeId] = useState('')
   const [edgeAroundId, setEdgeAroundId] = useState('')
   /** Session: utoljára választott élzáró — következő él-select listáján elöl („Most”). */
   const [lastEdgeId, setLastEdgeId] = useState('')
   const edgeFocusAfterRef = useRef<(() => void) | null>(null)
   const [duplungolas, setDuplungolas] = useState(false)
   const [szogvagas, setSzogvagas] = useState(false)
+  /** UI-only megmunkálás alak — nest = szál × kereszt */
+  const [szogKind, setSzogKind] = useState<SzogShapeKind>('trapezoid')
+  const [szogTrapShortMm, setSzogTrapShortMm] = useState(0)
+  const [szogTrapAxis, setSzogTrapAxis] = useState<SzogTrapAxis>('grain')
+  const [szogCorners, setSzogCorners] = useState<SzogCornerCut[]>([])
   const [panthelyRaw, setPanthelyRaw] = useState('')
   const [panthelyOldal, setPanthelyOldal] = useState<PanthelyOldal>(
     PANTHELY_DEFAULT_OLDAL
@@ -394,6 +465,137 @@ export function OptiWorkspaceClient({
       ? panthelyEdgeMm(previewGrain, previewCross, panthelyOldal)
       : null
 
+  useEffect(() => {
+    if (!szogvagas) return
+    if (previewGrain == null || previewCross == null) {
+      setSzogvagas(false)
+      setSzogCorners(emptySzogCorners())
+      return
+    }
+    const full = szogTrapParallelFullMm(
+      szogTrapAxis,
+      previewGrain,
+      previewCross
+    )
+    setSzogTrapShortMm((prev) => {
+      if (prev > 0 && prev < full) return prev
+      return defaultTrapezoidShortMm(full)
+    })
+  }, [szogvagas, previewGrain, previewCross, szogTrapAxis])
+
+  useEffect(() => {
+    if (!szogvagas || previewGrain == null || previewCross == null) return
+    const full = szogTrapParallelFullMm(
+      szogTrapAxis,
+      previewGrain,
+      previewCross
+    )
+    const short =
+      szogTrapShortMm > 0 && szogTrapShortMm < full
+        ? szogTrapShortMm
+        : defaultTrapezoidShortMm(full)
+    setSzogCorners(
+      rebuildSzogCornersFromShape(
+        szogKind,
+        previewGrain,
+        previewCross,
+        short,
+        szogTrapAxis
+      )
+    )
+  }, [
+    szogvagas,
+    previewGrain,
+    previewCross,
+    szogKind,
+    szogTrapShortMm,
+    szogTrapAxis
+  ])
+
+  // Ghost él: 0 mm kész oldalra ne maradjon élzáró (ferde helyettesíti)
+  useEffect(() => {
+    if (!szogvagas || previewGrain == null || previewCross == null) return
+    if (countSzogCuts(szogCorners) === 0) return
+    const alive = livingEdgeSlots(
+      true,
+      previewGrain,
+      previewCross,
+      szogCorners
+    )
+    const nextA = alive.a ? edgeAId : ''
+    const nextB = alive.b ? edgeBId : ''
+    const nextC = alive.c ? edgeCId : ''
+    const nextD = alive.d ? edgeDId : ''
+    if (nextA !== edgeAId) setEdgeAId(nextA)
+    if (nextB !== edgeBId) setEdgeBId(nextB)
+    if (nextC !== edgeCId) setEdgeCId(nextC)
+    if (nextD !== edgeDId) setEdgeDId(nextD)
+    const nextAround = resolveAroundId(
+      nextA,
+      nextB,
+      nextC,
+      nextD,
+      edgeFerdeId,
+      alive,
+      true
+    )
+    if (nextAround !== edgeAroundId) setEdgeAroundId(nextAround)
+    // resolveAroundId stabil a renderen; élő élek + körbe szinkron
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync ghost edges to shape
+  }, [
+    szogvagas,
+    szogCorners,
+    previewGrain,
+    previewCross,
+    edgeAId,
+    edgeBId,
+    edgeCId,
+    edgeDId,
+    edgeFerdeId,
+    edgeAroundId
+  ])
+
+  function clearSzogError() {
+    if (!errors.szog) return
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next.szog
+      return next
+    })
+  }
+
+  function handleSzogvagasChange(checked: boolean) {
+    if (!checked) {
+      setSzogvagas(false)
+      setSzogCorners(emptySzogCorners())
+      setEdgeFerdeId('')
+      setEdgeAroundId((around) => {
+        if (!around) return around
+        return resolveAroundId(
+          edgeAId,
+          edgeBId,
+          edgeCId,
+          edgeDId,
+          '',
+          { a: true, b: true, c: true, d: true },
+          false
+        )
+      })
+      clearSzogError()
+      return
+    }
+    if (previewGrain == null || previewCross == null) return
+    setSzogKind('trapezoid')
+    setSzogTrapAxis('grain')
+    setSzogTrapShortMm(defaultTrapezoidShortMm(previewGrain))
+    setSzogvagas(true)
+    // Körbe eddig A–D volt — szögön a ferde is része a kész alaknak
+    if (edgeAroundId) {
+      setEdgeFerdeId(edgeAroundId)
+    }
+    clearSzogError()
+  }
+
   function edgeLabel(id: string): string {
     if (!id) return ''
     const edge = edgeMaterials.find((e) => e.id === id)
@@ -414,9 +616,11 @@ export function OptiWorkspaceClient({
     setEdgeBId('')
     setEdgeCId('')
     setEdgeDId('')
+    setEdgeFerdeId('')
     setEdgeAroundId('')
     setDuplungolas(false)
     setSzogvagas(false)
+    setSzogCorners(emptySzogCorners())
     setPanthelyRaw('')
     setPanthelyOldal(PANTHELY_DEFAULT_OLDAL)
     qtyBeforeDuplungRef.current = null
@@ -463,7 +667,8 @@ export function OptiWorkspaceClient({
       ['cross', 'opti-cross'],
       ['quantity', 'opti-qty'],
       ['marking', 'opti-mark'],
-      ['panthely', 'opti-panthely']
+      ['panthely', 'opti-panthely'],
+      ['szog', 'opti-szogvagas']
     ]
     for (const [key, id] of order) {
       if (nextErrors[key]) {
@@ -474,11 +679,6 @@ export function OptiWorkspaceClient({
         return
       }
     }
-  }
-
-  function resolveAroundId(a: string, b: string, c: string, d: string) {
-    if (a && a === b && a === c && a === d) return a
-    return ''
   }
 
   function loadPanelForEdit(panel: OptiPanelDraft) {
@@ -493,16 +693,41 @@ export function OptiWorkspaceClient({
     setEdgeBId(panel.edgeBId ?? '')
     setEdgeCId(panel.edgeCId ?? '')
     setEdgeDId(panel.edgeDId ?? '')
+    const nextSzog = Boolean(panel.szogvagas)
+    const nextFerde = nextSzog ? panel.edgeFerdeId ?? '' : ''
+    setEdgeFerdeId(nextFerde)
     setEdgeAroundId(
       resolveAroundId(
         panel.edgeAId ?? '',
         panel.edgeBId ?? '',
         panel.edgeCId ?? '',
-        panel.edgeDId ?? ''
+        panel.edgeDId ?? '',
+        nextFerde,
+        { a: true, b: true, c: true, d: true },
+        nextSzog && Boolean(nextFerde)
       )
     )
     setDuplungolas(Boolean(panel.duplungolas))
-    setSzogvagas(Boolean(panel.szogvagas))
+    setSzogvagas(nextSzog)
+    if (nextSzog) {
+      setSzogKind(
+        panel.szogKind === 'triangle' ? 'triangle' : 'trapezoid'
+      )
+      setSzogTrapAxis(
+        panel.szogTrapAxis === 'cross' ? 'cross' : 'grain'
+      )
+      setSzogTrapShortMm(
+        Number.isFinite(Number(panel.szogTrapShortMm)) &&
+          Number(panel.szogTrapShortMm) > 0
+          ? Math.round(Number(panel.szogTrapShortMm))
+          : defaultTrapezoidShortMm(panel.grainMm)
+      )
+    } else {
+      setSzogKind('trapezoid')
+      setSzogTrapAxis('grain')
+      setSzogTrapShortMm(0)
+      setSzogCorners(emptySzogCorners())
+    }
     setPanthelyRaw(
       panel.panthelyfurasQuantity > 0
         ? String(panel.panthelyfurasQuantity)
@@ -560,19 +785,61 @@ export function OptiWorkspaceClient({
     }
   }
 
+  function currentAliveEdges() {
+    return livingEdgeSlots(
+      szogvagas,
+      previewGrain,
+      previewCross,
+      szogCorners
+    )
+  }
+
   function handleAroundChange(value: string) {
     setEdgeAroundId(value)
     if (value) {
-      setEdgeAId(value)
-      setEdgeBId(value)
-      setEdgeCId(value)
-      setEdgeDId(value)
+      const alive = currentAliveEdges()
+      setEdgeAId(alive.a ? value : '')
+      setEdgeBId(alive.b ? value : '')
+      setEdgeCId(alive.c ? value : '')
+      setEdgeDId(alive.d ? value : '')
+      if (szogvagas && countSzogCuts(szogCorners) > 0) {
+        setEdgeFerdeId(value)
+      }
       setLastEdgeId(value)
     }
     edgeFocusAfterRef.current = () => focusAddPanelButton()
   }
 
-  function setEdge(side: 'a' | 'b' | 'c' | 'd', value: string) {
+  function syncAroundAfterEdges(
+    next: {
+      a: string
+      b: string
+      c: string
+      d: string
+      ferde: string
+    },
+    alive = currentAliveEdges()
+  ) {
+    setEdgeAroundId((around) => {
+      if (!around) return around
+      return resolveAroundId(
+        next.a,
+        next.b,
+        next.c,
+        next.d,
+        next.ferde,
+        alive,
+        szogvagas && countSzogCuts(szogCorners) > 0
+      ) === around
+        ? around
+        : ''
+    })
+  }
+
+  function setEdge(side: EdgeSlot, value: string) {
+    const alive = currentAliveEdges()
+    if (!alive[side]) return
+
     if (side === 'a') setEdgeAId(value)
     if (side === 'b') setEdgeBId(value)
     if (side === 'c') setEdgeCId(value)
@@ -584,32 +851,36 @@ export function OptiWorkspaceClient({
       a: side === 'a' ? value : edgeAId,
       b: side === 'b' ? value : edgeBId,
       c: side === 'c' ? value : edgeCId,
-      d: side === 'd' ? value : edgeDId
+      d: side === 'd' ? value : edgeDId,
+      ferde: edgeFerdeId
     }
+    if (!alive.a) next.a = ''
+    if (!alive.b) next.b = ''
+    if (!alive.c) next.c = ''
+    if (!alive.d) next.d = ''
 
     // Egyedi él → Körbe helper ne legyen félrevezető
-    setEdgeAroundId((around) => {
-      if (!around) return around
-      const allSame =
-        next.a === around &&
-        next.b === around &&
-        next.c === around &&
-        next.d === around
-      return allSame ? around : ''
-    })
+    syncAroundAfterEdges(next, alive)
 
-    // Választás után: következő üres él (vizuális sorrend), különben Add.
-    // Clear (X) nem hív focusAfterClose-t — ez csak listaválasztáskor fut.
-    const order = ['a', 'c', 'd', 'b'] as const
+    // Választás után: következő üres *létező* él, különben ferde / Add.
+    const order = (['a', 'c', 'd', 'b'] as const).filter((s) => alive[s])
     const start = order.indexOf(side)
     let focusId: string | null = null
-    if (value) {
+    if (value && start >= 0) {
       for (let i = 1; i <= order.length; i++) {
-        const s = order[(start + i) % order.length]
+        const s = order[(start + i) % order.length]!
         if (!next[s]) {
           focusId = `opti-edge-${s}`
           break
         }
+      }
+      if (
+        !focusId &&
+        szogvagas &&
+        countSzogCuts(szogCorners) > 0 &&
+        !next.ferde
+      ) {
+        focusId = 'opti-edge-ferde'
       }
     }
     edgeFocusAfterRef.current = () => {
@@ -622,6 +893,23 @@ export function OptiWorkspaceClient({
       }
       focusAddPanelButton()
     }
+  }
+
+  function setEdgeFerde(value: string) {
+    setEdgeFerdeId(value)
+    if (value) setLastEdgeId(value)
+    const alive = currentAliveEdges()
+    syncAroundAfterEdges(
+      {
+        a: alive.a ? edgeAId : '',
+        b: alive.b ? edgeBId : '',
+        c: alive.c ? edgeCId : '',
+        d: alive.d ? edgeDId : '',
+        ferde: value
+      },
+      alive
+    )
+    edgeFocusAfterRef.current = () => focusAddPanelButton()
   }
 
   function focusAfterEdgeClose() {
@@ -698,6 +986,27 @@ export function OptiWorkspaceClient({
       nextErrors.panthely = `Pánthely: 0 (nincs) vagy ${PANTHELY_MIN}–${PANTHELY_MAX} db.`
     }
 
+    if (
+      szogvagas &&
+      Number.isFinite(grain) &&
+      grain > 0 &&
+      Number.isFinite(cross) &&
+      cross > 0
+    ) {
+      const shapeErr = validateSzogShape(
+        szogKind,
+        grain,
+        cross,
+        szogTrapShortMm,
+        szogTrapAxis
+      )
+      if (shapeErr) {
+        nextErrors.szog = shapeErr.message
+      } else if (szogCorners.length === 0) {
+        nextErrors.szog = 'A megadott alakhoz nincs érvényes vágás.'
+      }
+    }
+
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors)
       focusFirstEntryError(nextErrors)
@@ -706,6 +1015,22 @@ export function OptiWorkspaceClient({
 
     if (!selectedMaterial || panthely == null) return
 
+    const aliveForSave = livingEdgeSlots(
+      szogvagas,
+      grain,
+      cross,
+      szogCorners
+    )
+    const ferdeForSave =
+      szogvagas && countSzogCuts(szogCorners) > 0 ? edgeFerdeId : ''
+    const edgeAForSave = aliveForSave.a ? edgeAId : ''
+    const edgeBForSave = aliveForSave.b ? edgeBId : ''
+    const edgeCForSave = aliveForSave.c ? edgeCId : ''
+    const edgeDForSave = aliveForSave.d ? edgeDId : ''
+    const szogKindForSave = szogvagas ? szogKind : null
+    const szogAxisForSave = szogvagas ? szogTrapAxis : null
+    const szogShortForSave =
+      szogvagas && szogKind === 'trapezoid' ? szogTrapShortMm : null
     const payload = {
       sheetMaterialId: selectedMaterial.id,
       sheetMaterialName: selectedMaterial.name,
@@ -713,16 +1038,21 @@ export function OptiWorkspaceClient({
       crossMm: cross,
       quantity,
       marking: marking.trim().slice(0, 50),
-      edgeAId,
-      edgeBId,
-      edgeCId,
-      edgeDId,
-      edgeALabel: edgeLabel(edgeAId),
-      edgeBLabel: edgeLabel(edgeBId),
-      edgeCLabel: edgeLabel(edgeCId),
-      edgeDLabel: edgeLabel(edgeDId),
+      edgeAId: edgeAForSave,
+      edgeBId: edgeBForSave,
+      edgeCId: edgeCForSave,
+      edgeDId: edgeDForSave,
+      edgeFerdeId: ferdeForSave,
+      edgeALabel: edgeLabel(edgeAForSave),
+      edgeBLabel: edgeLabel(edgeBForSave),
+      edgeCLabel: edgeLabel(edgeCForSave),
+      edgeDLabel: edgeLabel(edgeDForSave),
+      edgeFerdeLabel: edgeLabel(ferdeForSave),
       duplungolas,
       szogvagas,
+      szogKind: szogKindForSave,
+      szogTrapShortMm: szogShortForSave,
+      szogTrapAxis: szogAxisForSave,
       panthelyfurasQuantity: panthely,
       panthelyfurasOldal: panthely > 0 ? panthelyOldal : null
     }
@@ -738,9 +1068,14 @@ export function OptiWorkspaceClient({
                 edgeBId: payload.edgeBId || null,
                 edgeCId: payload.edgeCId || null,
                 edgeDId: payload.edgeDId || null,
+                edgeFerdeId: payload.edgeFerdeId || null,
+                edgeFerdeLabel: payload.edgeFerdeLabel,
                 marking: payload.marking.trim(),
                 duplungolas: payload.duplungolas,
                 szogvagas: payload.szogvagas,
+                szogKind: payload.szogKind,
+                szogTrapShortMm: payload.szogTrapShortMm,
+                szogTrapAxis: payload.szogTrapAxis,
                 panthelyfurasQuantity: payload.panthelyfurasQuantity,
                 panthelyfurasOldal: payload.panthelyfurasOldal
               }
@@ -873,6 +1208,22 @@ export function OptiWorkspaceClient({
   }
 
   const entryEnabled = Boolean(selectedMaterial) && !changingMaterial
+  const szogUnlocked =
+    entryEnabled && previewGrain != null && previewCross != null
+  const ferdeEdgeVisible =
+    szogvagas && szogUnlocked && countSzogCuts(szogCorners) > 0
+  const ferdeEdgeMm = ferdeEdgeVisible
+    ? Math.round(szogDiagonalFinishedMm(szogCorners))
+    : 0
+  const aliveEdges = livingEdgeSlots(
+    szogvagas && szogUnlocked,
+    previewGrain,
+    previewCross,
+    szogCorners
+  )
+  const livingEdgeCount = (
+    ['a', 'b', 'c', 'd'] as const
+  ).filter((s) => aliveEdges[s]).length
 
   return (
     <div
@@ -963,11 +1314,14 @@ export function OptiWorkspaceClient({
           edgeBId={edgeBId}
           edgeCId={edgeCId}
           edgeDId={edgeDId}
+          edgeFerdeId={edgeFerdeId}
           panthely={
             panthelyActive
               ? { count: panthelyPreviewQty, oldal: panthelyOldal }
               : null
           }
+          szogvagas={szogvagas}
+          szogCorners={szogCorners}
           onChangeMaterialId={selectMaterial}
           onStartChange={() => setChangingMaterial(true)}
           onCancelChange={() => setChangingMaterial(false)}
@@ -1117,48 +1471,82 @@ export function OptiWorkspaceClient({
             </div>
 
             <div className="border-t border-border pt-2.5">
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                <EdgeSelect
-                  id="opti-edge-a"
-                  label="Hosszú felső"
-                  value={edgeAId}
-                  options={edgeOptions}
-                  disabled={edgeMaterials.length === 0}
-                  onChange={(v) => setEdge('a', v)}
-                  submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAfterEdgeClose}
-                />
-                <EdgeSelect
-                  id="opti-edge-c"
-                  label="Hosszú alsó"
-                  value={edgeCId}
-                  options={edgeOptions}
-                  disabled={edgeMaterials.length === 0}
-                  onChange={(v) => setEdge('c', v)}
-                  submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAfterEdgeClose}
-                />
-                <EdgeSelect
-                  id="opti-edge-d"
-                  label="Széles bal"
-                  value={edgeDId}
-                  options={edgeOptions}
-                  disabled={edgeMaterials.length === 0}
-                  onChange={(v) => setEdge('d', v)}
-                  submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAfterEdgeClose}
-                />
-                <EdgeSelect
-                  id="opti-edge-b"
-                  label="Széles jobb"
-                  value={edgeBId}
-                  options={edgeOptions}
-                  disabled={edgeMaterials.length === 0}
-                  onChange={(v) => setEdge('b', v)}
-                  submitOnEnter={handleSavePanel}
-                  focusAfterClose={focusAfterEdgeClose}
-                />
+              <div
+                className={cn(
+                  'grid gap-2',
+                  livingEdgeCount <= 2
+                    ? 'sm:grid-cols-2'
+                    : 'sm:grid-cols-2 xl:grid-cols-4'
+                )}
+              >
+                {aliveEdges.a ? (
+                  <EdgeSelect
+                    id="opti-edge-a"
+                    label="Hosszú felső"
+                    value={edgeAId}
+                    options={edgeOptions}
+                    disabled={edgeMaterials.length === 0}
+                    onChange={(v) => setEdge('a', v)}
+                    submitOnEnter={handleSavePanel}
+                    focusAfterClose={focusAfterEdgeClose}
+                  />
+                ) : null}
+                {aliveEdges.c ? (
+                  <EdgeSelect
+                    id="opti-edge-c"
+                    label="Hosszú alsó"
+                    value={edgeCId}
+                    options={edgeOptions}
+                    disabled={edgeMaterials.length === 0}
+                    onChange={(v) => setEdge('c', v)}
+                    submitOnEnter={handleSavePanel}
+                    focusAfterClose={focusAfterEdgeClose}
+                  />
+                ) : null}
+                {aliveEdges.d ? (
+                  <EdgeSelect
+                    id="opti-edge-d"
+                    label="Széles bal"
+                    value={edgeDId}
+                    options={edgeOptions}
+                    disabled={edgeMaterials.length === 0}
+                    onChange={(v) => setEdge('d', v)}
+                    submitOnEnter={handleSavePanel}
+                    focusAfterClose={focusAfterEdgeClose}
+                  />
+                ) : null}
+                {aliveEdges.b ? (
+                  <EdgeSelect
+                    id="opti-edge-b"
+                    label="Széles jobb"
+                    value={edgeBId}
+                    options={edgeOptions}
+                    disabled={edgeMaterials.length === 0}
+                    onChange={(v) => setEdge('b', v)}
+                    submitOnEnter={handleSavePanel}
+                    focusAfterClose={focusAfterEdgeClose}
+                  />
+                ) : null}
               </div>
+              {ferdeEdgeVisible ? (
+                <div className="mt-2 max-w-sm">
+                  <EdgeSelect
+                    id="opti-edge-ferde"
+                    label="Ferde él"
+                    value={edgeFerdeId}
+                    options={edgeOptions}
+                    disabled={edgeMaterials.length === 0}
+                    onChange={setEdgeFerde}
+                    submitOnEnter={handleSavePanel}
+                    focusAfterClose={focusAfterEdgeClose}
+                  />
+                  <p className="mt-1 text-hint text-ink-muted">
+                    {szogKind === 'triangle'
+                      ? `Az átló élzárása · ${ferdeEdgeMm} mm`
+                      : `A ferde oldal élzárása · ${ferdeEdgeMm} mm`}
+                  </p>
+                </div>
+              ) : null}
             </div>
 
             <div className="border-t border-border pt-2.5">
@@ -1167,6 +1555,11 @@ export function OptiWorkspaceClient({
                 htmlFor="opti-edge-around"
                 optionalLabel
                 className="max-w-sm"
+                hint={
+                  ferdeEdgeVisible
+                    ? 'Kész alak összes éle, ferde is.'
+                    : undefined
+                }
               >
                 <MenuSelect
                   id="opti-edge-around"
@@ -1200,9 +1593,14 @@ export function OptiWorkspaceClient({
                 <Switch
                   id="opti-szogvagas"
                   checked={szogvagas}
-                  onCheckedChange={setSzogvagas}
-                  disabled={!entryEnabled}
+                  onCheckedChange={handleSzogvagasChange}
+                  disabled={!szogUnlocked}
                   label="Szögvágás"
+                  title={
+                    szogUnlocked
+                      ? 'Kész alak (trapéz / háromszög) — a szabás téglalap marad.'
+                      : 'Előbb add meg a szál × kereszt méretet.'
+                  }
                 />
                 <div className="flex flex-wrap items-center gap-2">
                   <label
@@ -1271,6 +1669,62 @@ export function OptiWorkspaceClient({
                 >
                   {errors.panthely}
                 </p>
+              ) : null}
+
+              {entryEnabled && !szogUnlocked ? (
+                <p className="text-hint text-ink-muted">
+                  Szögvágás: előbb add meg a szálirány és a keresztirány méretet.
+                </p>
+              ) : null}
+              {errors.szog && !(szogvagas && szogUnlocked) ? (
+                <p className="text-hint text-danger-ink" role="alert">
+                  {errors.szog}
+                </p>
+              ) : null}
+              {szogvagas && szogUnlocked && previewGrain != null && previewCross != null ? (
+                <SzogvagasShapeFields
+                  grainMm={previewGrain}
+                  crossMm={previewCross}
+                  kind={szogKind}
+                  trapShortMm={szogTrapShortMm}
+                  trapAxis={szogTrapAxis}
+                  corners={szogCorners}
+                  disabled={!entryEnabled}
+                  error={errors.szog}
+                  onKindChange={(kind) => {
+                    setSzogKind(kind)
+                    clearSzogError()
+                  }}
+                  onTrapShortChange={(raw) => {
+                    if (raw === '') {
+                      setSzogTrapShortMm(0)
+                    } else {
+                      const n = Number.parseInt(raw, 10)
+                      if (Number.isFinite(n)) setSzogTrapShortMm(n)
+                    }
+                    clearSzogError()
+                  }}
+                  onTrapAxisChange={(axis) => {
+                    setSzogTrapAxis(axis)
+                    if (
+                      szogKind === 'trapezoid' &&
+                      previewGrain != null &&
+                      previewCross != null
+                    ) {
+                      setSzogTrapShortMm(
+                        defaultTrapezoidShortMm(
+                          szogTrapParallelFullMm(
+                            axis,
+                            previewGrain,
+                            previewCross
+                          )
+                        )
+                      )
+                    }
+                    clearSzogError()
+                  }}
+                  onEnter={handleSavePanel}
+                />
               ) : null}
             </div>
 

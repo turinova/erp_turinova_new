@@ -2,6 +2,11 @@
 // Ported 1:1 from main-app quotes PDF template.
 
 import { panthelyEdgeMm, panthelySideText } from '@/lib/opti/panel-draft'
+import { szogShapeSummaryLabel } from '@/lib/opti/szogvagas-preview'
+import {
+  buildSzogPdfDiagramSvg,
+  buildSzogPdfEdgeGroups
+} from '@/lib/quotes/szog-pdf-diagram'
 import { formatQuoteFeeLabel } from '@/lib/quotes/fee-totals'
 
 export type QuotePdfPricingLine = {
@@ -68,6 +73,8 @@ export type QuotePdfPanel = {
   id: string
   material_machine_code: string
   material_name: string
+  /** sheet_materials.grain_direction — száljelölés a szög vizuálon. */
+  grain_direction: boolean
   width_mm: number
   height_mm: number
   quantity: number
@@ -76,10 +83,20 @@ export type QuotePdfPanel = {
   edge_c_code: string | null
   edge_b_code: string | null
   edge_d_code: string | null
+  edge_ferde_code: string | null
+  /** Emberi élzáró név (szög vizuál / legenda). */
+  edge_a_label: string | null
+  edge_b_label: string | null
+  edge_c_label: string | null
+  edge_d_label: string | null
+  edge_ferde_label: string | null
   duplungolas: boolean
   panthelyfuras_quantity: number
   panthelyfuras_oldal: 'hosszu' | 'rovid' | null
   szogvagas: boolean
+  szog_kind: 'trapezoid' | 'triangle' | null
+  szog_trap_short_mm: number | null
+  szog_trap_axis: 'grain' | 'cross' | null
 }
 
 export type QuotePdfInput = {
@@ -760,6 +777,96 @@ export default function generateQuotePdfHtml({
       .page-break {
         page-break-before: always;
       }
+
+      .szog-visual-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 0.5em;
+      }
+      .szog-visual-card {
+        border: 1px solid #cbd5e1;
+        border-radius: 3px;
+        padding: 10px 12px;
+        page-break-inside: avoid;
+        overflow: visible;
+      }
+      .szog-id {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .szog-id-code {
+        font-size: 12px;
+        font-weight: 700;
+        color: #18181B;
+      }
+      .szog-id-qty {
+        font-size: 12px;
+        font-weight: 700;
+        color: #18181B;
+        white-space: nowrap;
+      }
+      .szog-id-label {
+        font-size: 10px;
+        color: #64748b;
+        margin-top: -2px;
+        margin-bottom: 6px;
+      }
+      .szog-spec {
+        display: table;
+        width: 100%;
+        border-top: 1px solid #e2e8f0;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 6px 0;
+        margin-bottom: 6px;
+      }
+      .szog-spec-col {
+        display: table-cell;
+        vertical-align: top;
+        width: 42%;
+      }
+      .szog-spec-col + .szog-spec-col {
+        width: 58%;
+        padding-left: 10px;
+        border-left: 1px solid #e2e8f0;
+      }
+      .szog-block-k {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 2px;
+      }
+      .szog-block-v {
+        font-size: 11px;
+        font-weight: 600;
+        color: #18181B;
+        line-height: 1.35;
+      }
+      .szog-edges {
+        margin-bottom: 8px;
+      }
+      .szog-edge-row {
+        font-size: 11px;
+        color: #1e293b;
+        line-height: 1.4;
+        margin-top: 2px;
+      }
+      .szog-edge-mat {
+        font-weight: 600;
+        color: #18181B;
+      }
+      .szog-edge-sides {
+        color: #475569;
+      }
+      .szog-diagram {
+        text-align: center;
+        overflow: visible;
+      }
       .cutting-list-title {
         font-size: 14px;
         font-weight: 700;
@@ -926,10 +1033,11 @@ export default function generateQuotePdfHtml({
               <th class="text-right">Szélesség</th>
               <th class="text-right">Darab</th>
               <th>Jelölés</th>
-              <th>Hosszú alsó</th>
               <th>Hosszú felső</th>
+              <th>Hosszú alsó</th>
               <th>Széles bal</th>
               <th>Széles jobb</th>
+              <th>Ferde</th>
               <th class="text-center">Egyéb</th>
             </tr>
           </thead>
@@ -955,7 +1063,14 @@ export default function generateQuotePdfHtml({
                 services.push('Duplungolás')
               }
               if (panel.szogvagas) {
-                services.push('Szögvágás')
+                services.push(
+                  szogShapeSummaryLabel({
+                    szogvagas: panel.szogvagas,
+                    szogKind: panel.szog_kind,
+                    szogTrapShortMm: panel.szog_trap_short_mm,
+                    szogTrapAxis: panel.szog_trap_axis
+                  }) || 'Szögvágás'
+                )
               }
               const servicesText = services.length > 0 ? services.join(', ') : '-'
               
@@ -968,8 +1083,9 @@ export default function generateQuotePdfHtml({
                   <td class="text-left">${escapeHtml(panel.label || '-')}</td>
                   <td>${escapeHtml(panel.edge_a_code || '')}</td>
                   <td>${escapeHtml(panel.edge_c_code || '')}</td>
-                  <td>${escapeHtml(panel.edge_b_code || '')}</td>
                   <td>${escapeHtml(panel.edge_d_code || '')}</td>
+                  <td>${escapeHtml(panel.edge_b_code || '')}</td>
+                  <td>${escapeHtml(panel.edge_ferde_code || '')}</td>
                   <td class="text-center">${servicesText}</td>
                 </tr>
               `
@@ -1011,6 +1127,98 @@ export default function generateQuotePdfHtml({
       </div>
     </div>
     ` : ''}
+    ${(() => {
+      const szogPanels = (quote.panels || []).filter(
+        (p) => p.szogvagas && (p.szog_kind === 'trapezoid' || p.szog_kind === 'triangle')
+      )
+      if (szogPanels.length === 0) return ''
+      const cards = szogPanels
+        .map((panel) => {
+          const shape =
+            szogShapeSummaryLabel({
+              szogvagas: true,
+              szogKind: panel.szog_kind,
+              szogTrapShortMm: panel.szog_trap_short_mm,
+              szogTrapAxis: panel.szog_trap_axis
+            }) || 'Szögvágás'
+          const diagramInput = {
+            id: panel.id,
+            grainMm: panel.width_mm,
+            crossMm: panel.height_mm,
+            showGrain: panel.grain_direction,
+            szogKind: panel.szog_kind!,
+            szogTrapShortMm: panel.szog_trap_short_mm,
+            szogTrapAxis: panel.szog_trap_axis,
+            edgeALabel: panel.edge_a_label,
+            edgeBLabel: panel.edge_b_label,
+            edgeCLabel: panel.edge_c_label,
+            edgeDLabel: panel.edge_d_label,
+            edgeFerdeLabel: panel.edge_ferde_label
+          }
+          const svg = buildSzogPdfDiagramSvg(diagramInput)
+          const edgeGroups = buildSzogPdfEdgeGroups(diagramInput)
+          const edgesHtml =
+            edgeGroups.length === 0
+              ? ''
+              : `<div class="szog-edges">
+              <div class="szog-block-k">Élzárás</div>
+              ${edgeGroups
+                .map(
+                  (g) =>
+                    `<div class="szog-edge-row"><span class="szog-edge-mat">${escapeHtml(g.label)}</span><span class="szog-edge-sides"> — ${escapeHtml(g.sides.join(', '))}</span></div>`
+                )
+                .join('')}
+            </div>`
+          const labelHtml = panel.label
+            ? `<div class="szog-id-label">${escapeHtml(panel.label)}</div>`
+            : ''
+          return `<div class="szog-visual-card">
+            <div class="szog-id">
+              <span class="szog-id-code">${escapeHtml(panel.material_machine_code || panel.material_name || '')}</span>
+              <span class="szog-id-qty">${panel.quantity} db</span>
+            </div>
+            ${labelHtml}
+            <div class="szog-spec">
+              <div class="szog-spec-col">
+                <div class="szog-block-k">Szabás</div>
+                <div class="szog-block-v">${panel.width_mm} × ${panel.height_mm} mm</div>
+              </div>
+              <div class="szog-spec-col">
+                <div class="szog-block-k">Alak</div>
+                <div class="szog-block-v">${escapeHtml(shape)}</div>
+              </div>
+            </div>
+            ${edgesHtml}
+            <div class="szog-diagram">${svg}</div>
+          </div>`
+        })
+        .join('')
+      return `
+    <div class="page-break">
+      <div class="content-wrapper">
+        <div class="header">
+          <div class="header-row">
+            <div class="header-left">
+              ${tenantCompanyLogoBase64 ? `<img src="data:image/png;base64,${tenantCompanyLogoBase64}" alt="Company Logo" class="header-logo" />` : ''}
+            </div>
+            <div class="header-right">
+              <div class="title">AJÁNLAT</div>
+              <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="cutting-list-title">Szögvágott panelek</div>
+        <div class="szog-visual-grid">${cards}</div>
+        <div style="flex: 1;"></div>
+        <div class="footer">
+          <div class="footer-text">
+            Ez az ajánlat a Turinova Vállalatirányítási Rendszerrel készült.
+          </div>
+          ${turinovaLogoBase64 ? `<img src="data:image/png;base64,${turinovaLogoBase64}" alt="Turinova Logo" class="footer-logo" />` : ''}
+        </div>
+      </div>
+    </div>`
+    })()}
     ${barcodeSafe ? `
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     <script>

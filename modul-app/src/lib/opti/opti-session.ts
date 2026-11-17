@@ -57,9 +57,35 @@ function isPanelShape(value: unknown): value is OptiPanelDraft {
   ) {
     return false
   }
-  // Régi session: hiányzó flag / qty → default
+  // Régi session: hiányzó flag / qty / ferde él → default
   if (p.duplungolas == null) p.duplungolas = false
   if (p.szogvagas == null) p.szogvagas = false
+  if (p.edgeFerdeId == null) p.edgeFerdeId = null
+  if (p.edgeFerdeLabel == null) p.edgeFerdeLabel = ''
+  if (p.szogKind == null) {
+    p.szogKind = p.szogvagas ? 'trapezoid' : null
+  } else if (p.szogKind !== 'trapezoid' && p.szogKind !== 'triangle') {
+    p.szogKind = p.szogvagas ? 'trapezoid' : null
+  }
+  if (p.szogTrapAxis == null) {
+    p.szogTrapAxis = p.szogvagas ? 'grain' : null
+  } else if (p.szogTrapAxis !== 'grain' && p.szogTrapAxis !== 'cross') {
+    p.szogTrapAxis = p.szogvagas ? 'grain' : null
+  }
+  if (p.szogTrapShortMm == null) {
+    p.szogTrapShortMm = null
+  } else {
+    const short = Number(p.szogTrapShortMm)
+    p.szogTrapShortMm =
+      Number.isFinite(short) && short > 0 ? Math.round(short) : null
+  }
+  if (!p.szogvagas) {
+    p.szogKind = null
+    p.szogTrapShortMm = null
+    p.szogTrapAxis = null
+    p.edgeFerdeId = null
+    p.edgeFerdeLabel = ''
+  }
   if (p.panthelyfurasQuantity == null) p.panthelyfurasQuantity = 0
   const panthely = Number(p.panthelyfurasQuantity)
   if (
@@ -176,7 +202,8 @@ export function sanitizeOptiSessionPanels(
       panel.edgeAId,
       panel.edgeBId,
       panel.edgeCId,
-      panel.edgeDId
+      panel.edgeDId,
+      panel.edgeFerdeId
     ]
     if (edges.some((id) => id && !edgeIds.has(id))) {
       dropped += 1

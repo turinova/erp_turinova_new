@@ -14,6 +14,7 @@ import {
   type OptiSheetMaterialOption
 } from '@/lib/opti/queries'
 import type { OptiCuttingFeeConfig } from '@/lib/cutting-fees/queries'
+import { panelFerdeEdgeLengthMm } from '@/lib/opti/szogvagas-preview'
 
 /** Panelek + opti eredmény → árajánlat. */
 export function buildOptiQuote(input: {
@@ -59,11 +60,16 @@ export function buildOptiQuote(input: {
         quantity: panel.quantity
       })
     }
-    // A/C = szál (grain), B/D = kereszt (cross) — main parity
+    // A/C = szál (grain), B/D = kereszt (cross) — változatlan
     push(panel.edgeAId, panel.grainMm)
     push(panel.edgeBId, panel.crossMm)
     push(panel.edgeCId, panel.grainMm)
     push(panel.edgeDId, panel.crossMm)
+    // Ferde: tényleges átló / ferde hossz + ugyanaz a ráhagyás-logika
+    const ferdeMm = panelFerdeEdgeLengthMm(panel)
+    if (ferdeMm > 0.5) {
+      push(panel.edgeFerdeId, ferdeMm)
+    }
     panelEdgesByMaterial.set(panel.sheetMaterialId, edges)
   }
 

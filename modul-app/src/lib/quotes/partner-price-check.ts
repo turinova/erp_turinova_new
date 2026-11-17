@@ -7,6 +7,7 @@ import {
   type PanelWithServices,
   type PricingMode
 } from '@/lib/opti/quote-calculations'
+import { panelFerdeEdgeLengthMm } from '@/lib/opti/szogvagas-preview'
 
 /**
  * Partner beküldés: a böngészőben számolt, mentett árak egyeznek-e a mai
@@ -22,8 +23,12 @@ export type PriceCheckPanel = {
   edge_b_id: string | null
   edge_c_id: string | null
   edge_d_id: string | null
+  edge_ferde_id: string | null
   duplungolas: boolean
   szogvagas: boolean
+  szog_kind: 'trapezoid' | 'triangle' | null
+  szog_trap_short_mm: number | null
+  szog_trap_axis: 'grain' | 'cross' | null
   panthelyfuras_quantity: number
 }
 
@@ -217,6 +222,15 @@ export function checkPartnerQuotePrices(input: PriceCheckInput): PriceCheckResul
       push(p.edge_b_id, p.cross_mm)
       push(p.edge_c_id, p.grain_mm)
       push(p.edge_d_id, p.cross_mm)
+      const ferdeMm = panelFerdeEdgeLengthMm({
+        szogvagas: p.szogvagas,
+        grainMm: p.grain_mm,
+        crossMm: p.cross_mm,
+        szogKind: p.szog_kind,
+        szogTrapShortMm: p.szog_trap_short_mm,
+        szogTrapAxis: p.szog_trap_axis
+      })
+      if (ferdeMm > 0.5) push(p.edge_ferde_id, ferdeMm)
     }
     for (const pe of panelEdges) {
       if (!edgeInfos.has(pe.edge_material_id)) {

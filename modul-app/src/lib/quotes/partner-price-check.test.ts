@@ -24,8 +24,12 @@ function baseInput(over: Partial<PriceCheckInput> = {}): PriceCheckInput {
         edge_b_id: null,
         edge_c_id: null,
         edge_d_id: null,
+        edge_ferde_id: null,
         duplungolas: false,
         szogvagas: false,
+        szog_kind: null,
+        szog_trap_short_mm: null,
+        szog_trap_axis: null,
         panthelyfuras_quantity: 0
       }
     ],

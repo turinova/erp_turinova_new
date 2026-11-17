@@ -694,7 +694,15 @@ export type QuotePanel = {
   edge_b_id: string | null
   edge_c_id: string | null
   edge_d_id: string | null
+  edge_ferde_id: string | null
   sort_index: number
+  duplungolas: boolean
+  szogvagas: boolean
+  szog_kind: 'trapezoid' | 'triangle' | null
+  szog_trap_short_mm: number | null
+  szog_trap_axis: 'grain' | 'cross' | null
+  panthelyfuras_quantity: number
+  panthelyfuras_oldal: 'hosszu' | 'rovid' | null
   created_at: string
 }
 
@@ -1490,7 +1498,15 @@ export type Database = {
           edge_b_id?: string | null
           edge_c_id?: string | null
           edge_d_id?: string | null
+          edge_ferde_id?: string | null
           sort_index?: number
+          duplungolas?: boolean
+          szogvagas?: boolean
+          szog_kind?: 'trapezoid' | 'triangle' | null
+          szog_trap_short_mm?: number | null
+          szog_trap_axis?: 'grain' | 'cross' | null
+          panthelyfuras_quantity?: number
+          panthelyfuras_oldal?: 'hosszu' | 'rovid' | null
           created_at?: string
         }
         Update: Partial<QuotePanel>

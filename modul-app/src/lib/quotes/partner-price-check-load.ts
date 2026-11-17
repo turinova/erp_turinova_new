@@ -38,7 +38,7 @@ export async function runPartnerQuotePriceCheck(
     supabase
       .from('quote_panels')
       .select(
-        'sheet_material_id, grain_mm, cross_mm, quantity, edge_a_id, edge_b_id, edge_c_id, edge_d_id, duplungolas, szogvagas, panthelyfuras_quantity'
+        'sheet_material_id, grain_mm, cross_mm, quantity, edge_a_id, edge_b_id, edge_c_id, edge_d_id, edge_ferde_id, duplungolas, szogvagas, szog_kind, szog_trap_short_mm, szog_trap_axis, panthelyfuras_quantity'
       )
       .eq('quote_id', quoteId),
     supabase
@@ -69,8 +69,21 @@ export async function runPartnerQuotePriceCheck(
     edge_b_id: (p.edge_b_id as string | null) ?? null,
     edge_c_id: (p.edge_c_id as string | null) ?? null,
     edge_d_id: (p.edge_d_id as string | null) ?? null,
+    edge_ferde_id: (p.edge_ferde_id as string | null) ?? null,
     duplungolas: Boolean(p.duplungolas),
     szogvagas: Boolean(p.szogvagas),
+    szog_kind:
+      p.szog_kind === 'triangle' || p.szog_kind === 'trapezoid'
+        ? p.szog_kind
+        : null,
+    szog_trap_short_mm:
+      Number(p.szog_trap_short_mm) > 0
+        ? Math.round(Number(p.szog_trap_short_mm))
+        : null,
+    szog_trap_axis:
+      p.szog_trap_axis === 'grain' || p.szog_trap_axis === 'cross'
+        ? p.szog_trap_axis
+        : null,
     panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0
   }))
 
@@ -102,7 +115,7 @@ export async function runPartnerQuotePriceCheck(
   const edgeIds = [
     ...new Set(
       panels.flatMap((p) =>
-        [p.edge_a_id, p.edge_b_id, p.edge_c_id, p.edge_d_id].filter(
+        [p.edge_a_id, p.edge_b_id, p.edge_c_id, p.edge_d_id, p.edge_ferde_id].filter(
           (x): x is string => Boolean(x)
         )
       )

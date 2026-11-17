@@ -79,6 +79,7 @@ import { splitGross } from '@/lib/money/vat-split'
 import { formatReadySmsInfoLine } from '@/lib/order-status/record-open'
 import { partnerAutoProformaCopy } from '@/lib/partner/auto-proforma-rules'
 import { panthelyLabel } from '@/lib/opti/panel-draft'
+import { szogShapeSummaryLabel } from '@/lib/opti/szogvagas-preview'
 import {
   formatQuotePrice
 } from '@/lib/opti/quote-calculations'
@@ -1631,10 +1632,11 @@ export function QuoteDetailClient({
                       Darab
                     </DataTableHeaderCell>
                     <DataTableHeaderCell>Jelölés</DataTableHeaderCell>
-                    <DataTableHeaderCell>Hosszú alsó</DataTableHeaderCell>
                     <DataTableHeaderCell>Hosszú felső</DataTableHeaderCell>
+                    <DataTableHeaderCell>Hosszú alsó</DataTableHeaderCell>
                     <DataTableHeaderCell>Széles bal</DataTableHeaderCell>
                     <DataTableHeaderCell>Széles jobb</DataTableHeaderCell>
+                    <DataTableHeaderCell>Ferde</DataTableHeaderCell>
                     <DataTableHeaderCell className="text-center">
                       Egyéb
                     </DataTableHeaderCell>
@@ -1672,10 +1674,13 @@ export function QuoteDetailClient({
                         {panel.edge_c_code || ''}
                       </DataTableCell>
                       <DataTableCell className="tabular-nums text-ink">
+                        {panel.edge_d_code || ''}
+                      </DataTableCell>
+                      <DataTableCell className="tabular-nums text-ink">
                         {panel.edge_b_code || ''}
                       </DataTableCell>
                       <DataTableCell className="tabular-nums text-ink">
-                        {panel.edge_d_code || ''}
+                        {panel.edge_ferde_code || ''}
                       </DataTableCell>
                       <DataTableCell className="text-center text-ink-secondary">
                         {panel.duplungolas ||
@@ -1683,7 +1688,14 @@ export function QuoteDetailClient({
                         panel.panthelyfuras_quantity > 0
                           ? [
                               panel.duplungolas ? 'Duplung' : null,
-                              panel.szogvagas ? 'Szög' : null,
+                              panel.szogvagas
+                                ? szogShapeSummaryLabel({
+                                    szogvagas: panel.szogvagas,
+                                    szogKind: panel.szog_kind,
+                                    szogTrapShortMm: panel.szog_trap_short_mm,
+                                    szogTrapAxis: panel.szog_trap_axis
+                                  }) ?? 'Szög'
+                                : null,
                               panel.panthelyfuras_quantity > 0
                                 ? panthelyLabel({
                                     quantity: panel.panthelyfuras_quantity,

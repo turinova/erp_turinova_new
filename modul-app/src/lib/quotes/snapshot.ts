@@ -17,9 +17,13 @@ export type QuotePanelInsert = {
   edge_b_id: string | null
   edge_c_id: string | null
   edge_d_id: string | null
+  edge_ferde_id: string | null
   sort_index: number
   duplungolas: boolean
   szogvagas: boolean
+  szog_kind: 'trapezoid' | 'triangle' | null
+  szog_trap_short_mm: number | null
+  szog_trap_axis: 'grain' | 'cross' | null
   panthelyfuras_quantity: number
   panthelyfuras_oldal: 'hosszu' | 'rovid' | null
 }
@@ -107,6 +111,24 @@ export function panelsToInserts(
 ): QuotePanelInsert[] {
   return panels.map((panel, index) => {
     const panthely = Number(panel.panthelyfurasQuantity) || 0
+    const szog = Boolean(panel.szogvagas)
+    const kind =
+      szog && (panel.szogKind === 'triangle' || panel.szogKind === 'trapezoid')
+        ? panel.szogKind
+        : szog
+          ? 'trapezoid'
+          : null
+    const axis =
+      szog && (panel.szogTrapAxis === 'grain' || panel.szogTrapAxis === 'cross')
+        ? panel.szogTrapAxis
+        : szog && kind === 'trapezoid'
+          ? 'grain'
+          : null
+    const shortRaw = Number(panel.szogTrapShortMm)
+    const short =
+      szog && kind === 'trapezoid' && Number.isFinite(shortRaw) && shortRaw > 0
+        ? Math.round(shortRaw)
+        : null
     return {
       quote_id: quoteId,
       sheet_material_id: panel.sheetMaterialId,
@@ -118,9 +140,13 @@ export function panelsToInserts(
       edge_b_id: panel.edgeBId,
       edge_c_id: panel.edgeCId,
       edge_d_id: panel.edgeDId,
+      edge_ferde_id: szog ? panel.edgeFerdeId || null : null,
       sort_index: index,
       duplungolas: Boolean(panel.duplungolas),
-      szogvagas: Boolean(panel.szogvagas),
+      szogvagas: szog,
+      szog_kind: kind,
+      szog_trap_short_mm: short,
+      szog_trap_axis: axis,
       panthelyfuras_quantity: panthely,
       panthelyfuras_oldal:
         panthely > 0 ? (panel.panthelyfurasOldal ?? 'hosszu') : null

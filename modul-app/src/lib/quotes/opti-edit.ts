@@ -97,12 +97,16 @@ export async function getQuoteForOptiEdit(
         sort_index,
         duplungolas,
         szogvagas,
+        szog_kind,
+        szog_trap_short_mm,
+        szog_trap_axis,
         panthelyfuras_quantity,
         panthelyfuras_oldal,
         edge_a_id,
         edge_b_id,
         edge_c_id,
         edge_d_id,
+        edge_ferde_id,
         sheet_materials ( name ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey (
           id, type, decor, width_mm, thickness_mm
@@ -114,6 +118,9 @@ export async function getQuoteForOptiEdit(
           id, type, decor, width_mm, thickness_mm
         ),
         edge_d:edge_materials!quote_panels_edge_d_id_fkey (
+          id, type, decor, width_mm, thickness_mm
+        ),
+        edge_ferde:edge_materials!quote_panels_edge_ferde_id_fkey (
           id, type, decor, width_mm, thickness_mm
         )
       )
@@ -199,17 +206,22 @@ export async function getQuoteForOptiEdit(
       sort_index: number
       duplungolas?: boolean | null
       szogvagas?: boolean | null
+      szog_kind?: string | null
+      szog_trap_short_mm?: number | null
+      szog_trap_axis?: string | null
       panthelyfuras_quantity?: number | null
       panthelyfuras_oldal?: string | null
       edge_a_id: string | null
       edge_b_id: string | null
       edge_c_id: string | null
       edge_d_id: string | null
+      edge_ferde_id: string | null
       sheet_materials: { name: string } | { name: string }[] | null
       edge_a: EdgeJoin | EdgeJoin[]
       edge_b: EdgeJoin | EdgeJoin[]
       edge_c: EdgeJoin | EdgeJoin[]
       edge_d: EdgeJoin | EdgeJoin[]
+      edge_ferde: EdgeJoin | EdgeJoin[]
     }>
   ).slice().sort((a, b) => a.sort_index - b.sort_index)
 
@@ -232,7 +244,8 @@ export async function getQuoteForOptiEdit(
       row.edge_a_id,
       row.edge_b_id,
       row.edge_c_id,
-      row.edge_d_id
+      row.edge_d_id,
+      row.edge_ferde_id
     ]) {
       if (edgeId && !edgeIds.has(edgeId)) {
         missingEdges.add(edgeId)
@@ -243,6 +256,17 @@ export async function getQuoteForOptiEdit(
     const edgeB = one(row.edge_b)
     const edgeC = one(row.edge_c)
     const edgeD = one(row.edge_d)
+    const edgeFerde = one(row.edge_ferde)
+    const szog = Boolean(row.szogvagas)
+    const kind =
+      row.szog_kind === 'triangle' || row.szog_kind === 'trapezoid'
+        ? row.szog_kind
+        : null
+    if (szog && !kind) {
+      warnings.push(
+        `Panel ${sheetName}: szögvágás alak hiányzik — ellenőrizd mentés előtt.`
+      )
+    }
 
     return createPanelDraft({
       sheetMaterialId: row.sheet_material_id,
@@ -255,12 +279,25 @@ export async function getQuoteForOptiEdit(
       edgeBId: row.edge_b_id ?? '',
       edgeCId: row.edge_c_id ?? '',
       edgeDId: row.edge_d_id ?? '',
+      edgeFerdeId: row.edge_ferde_id ?? '',
       edgeALabel: edgeLabel(edgeA, edgeMaterials),
       edgeBLabel: edgeLabel(edgeB, edgeMaterials),
       edgeCLabel: edgeLabel(edgeC, edgeMaterials),
       edgeDLabel: edgeLabel(edgeD, edgeMaterials),
+      edgeFerdeLabel: edgeLabel(edgeFerde, edgeMaterials),
       duplungolas: Boolean(row.duplungolas),
-      szogvagas: Boolean(row.szogvagas),
+      szogvagas: szog,
+      szogKind: kind ?? (szog ? 'trapezoid' : null),
+      szogTrapShortMm:
+        szog && kind !== 'triangle' && Number(row.szog_trap_short_mm) > 0
+          ? Math.round(Number(row.szog_trap_short_mm))
+          : null,
+      szogTrapAxis:
+        row.szog_trap_axis === 'cross' || row.szog_trap_axis === 'grain'
+          ? row.szog_trap_axis
+          : szog
+            ? 'grain'
+            : null,
       panthelyfurasQuantity: Number(row.panthelyfuras_quantity) || 0,
       panthelyfurasOldal: normalizePanthelyOldal(row.panthelyfuras_oldal)
     })

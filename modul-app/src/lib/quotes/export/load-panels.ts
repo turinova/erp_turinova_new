@@ -28,7 +28,11 @@ export type QuoteExportLoad = {
   targets: QuoteExportTarget[]
 }
 
-/** Load panels + group by sheet equipment for Excel export picker. */
+/**
+ * Load panels + group by sheet equipment for Excel export picker.
+ * Szándékos no-op a szög/ferde mezőkre: a gépformátum nest téglalapot + A–D élkódot vár.
+ * Szög alak / ferde a szabásjegyzékben és a PDF-ben jelenik meg.
+ */
 export async function loadQuoteExportData(
   supabase: SupabaseClient,
   tenantId: string,

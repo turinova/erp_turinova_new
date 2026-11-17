@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { TenantCompanyRow } from '@/lib/company/queries'
 import { quoteNetFirstTotals } from '@/lib/invoicing/quote-invoice-lines'
 import { normalizePanthelyOldal } from '@/lib/opti/panel-draft'
+import { formatEdgeMaterialLabel } from '@/lib/opti/queries'
 import { listQuoteFees } from '@/lib/quotes/fee-totals'
 import { listQuoteAccessories } from '@/lib/quotes/accessory-totals'
 import type {
@@ -77,13 +78,27 @@ export async function getQuoteForPdf(
         sort_index,
         duplungolas,
         szogvagas,
+        szog_kind,
+        szog_trap_short_mm,
+        szog_trap_axis,
         panthelyfuras_quantity,
         panthelyfuras_oldal,
-        sheet_materials ( name, machine_code ),
-        edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
-        edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
-        edge_c:edge_materials!quote_panels_edge_c_id_fkey ( machine_code ),
-        edge_d:edge_materials!quote_panels_edge_d_id_fkey ( machine_code )
+        sheet_materials ( name, machine_code, grain_direction ),
+        edge_a:edge_materials!quote_panels_edge_a_id_fkey (
+          machine_code, type, decor, width_mm, thickness_mm
+        ),
+        edge_b:edge_materials!quote_panels_edge_b_id_fkey (
+          machine_code, type, decor, width_mm, thickness_mm
+        ),
+        edge_c:edge_materials!quote_panels_edge_c_id_fkey (
+          machine_code, type, decor, width_mm, thickness_mm
+        ),
+        edge_d:edge_materials!quote_panels_edge_d_id_fkey (
+          machine_code, type, decor, width_mm, thickness_mm
+        ),
+        edge_ferde:edge_materials!quote_panels_edge_ferde_id_fkey (
+          machine_code, type, decor, width_mm, thickness_mm
+        )
       ),
       quote_material_lines (
         id,
@@ -164,11 +179,36 @@ export async function getQuoteForPdf(
     throw new Error('Az árajánlathoz nincs ügyfél.')
   }
 
-  type EdgeRef = { machine_code: string } | { machine_code: string }[] | null
+  type EdgeRef =
+    | {
+        machine_code: string | null
+        type: string
+        decor: string
+        width_mm: number
+        thickness_mm: number
+      }
+    | {
+        machine_code: string | null
+        type: string
+        decor: string
+        width_mm: number
+        thickness_mm: number
+      }[]
+    | null
   function edgeCode(ref: EdgeRef): string | null {
     const row = one(ref)
     const code = row?.machine_code?.trim()
     return code || null
+  }
+  function edgeLabel(ref: EdgeRef): string | null {
+    const row = one(ref)
+    if (!row?.type) return null
+    return formatEdgeMaterialLabel({
+      type: row.type,
+      decor: row.decor,
+      width_mm: Number(row.width_mm) || 0,
+      thickness_mm: Number(row.thickness_mm) || 0
+    })
   }
 
   const panelsRaw = (data.quote_panels ?? []) as Array<{
@@ -180,16 +220,20 @@ export async function getQuoteForPdf(
     sort_index: number
     duplungolas?: boolean | null
     szogvagas?: boolean | null
+    szog_kind?: string | null
+    szog_trap_short_mm?: number | null
+    szog_trap_axis?: string | null
     panthelyfuras_quantity?: number | null
     panthelyfuras_oldal?: string | null
     sheet_materials:
-      | { name: string; machine_code: string | null }
-      | { name: string; machine_code: string | null }[]
+      | { name: string; machine_code: string | null; grain_direction?: boolean | null }
+      | { name: string; machine_code: string | null; grain_direction?: boolean | null }[]
       | null
     edge_a: EdgeRef
     edge_b: EdgeRef
     edge_c: EdgeRef
     edge_d: EdgeRef
+    edge_ferde: EdgeRef
   }>
 
   const panels = [...panelsRaw]
@@ -200,6 +244,7 @@ export async function getQuoteForPdf(
         id: p.id,
         material_machine_code: sm?.machine_code?.trim() || sm?.name || '',
         material_name: sm?.name ?? '',
+        grain_direction: Boolean(sm?.grain_direction),
         width_mm: Number(p.grain_mm),
         height_mm: Number(p.cross_mm),
         quantity: Number(p.quantity) || 0,
@@ -208,10 +253,28 @@ export async function getQuoteForPdf(
         edge_c_code: edgeCode(p.edge_c),
         edge_b_code: edgeCode(p.edge_b),
         edge_d_code: edgeCode(p.edge_d),
+        edge_ferde_code: edgeCode(p.edge_ferde),
+        edge_a_label: edgeLabel(p.edge_a),
+        edge_b_label: edgeLabel(p.edge_b),
+        edge_c_label: edgeLabel(p.edge_c),
+        edge_d_label: edgeLabel(p.edge_d),
+        edge_ferde_label: edgeLabel(p.edge_ferde),
         duplungolas: Boolean(p.duplungolas),
         panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0,
         panthelyfuras_oldal: normalizePanthelyOldal(p.panthelyfuras_oldal),
-        szogvagas: Boolean(p.szogvagas)
+        szogvagas: Boolean(p.szogvagas),
+        szog_kind:
+          p.szog_kind === 'triangle' || p.szog_kind === 'trapezoid'
+            ? p.szog_kind
+            : null,
+        szog_trap_short_mm:
+          Number(p.szog_trap_short_mm) > 0
+            ? Math.round(Number(p.szog_trap_short_mm))
+            : null,
+        szog_trap_axis:
+          p.szog_trap_axis === 'grain' || p.szog_trap_axis === 'cross'
+            ? p.szog_trap_axis
+            : null
       }
     })
 

@@ -158,8 +158,12 @@ export type QuoteDetail = {
     edge_b_code: string | null
     edge_c_code: string | null
     edge_d_code: string | null
+    edge_ferde_code: string | null
     duplungolas: boolean
     szogvagas: boolean
+    szog_kind: 'trapezoid' | 'triangle' | null
+    szog_trap_short_mm: number | null
+    szog_trap_axis: 'grain' | 'cross' | null
     panthelyfuras_quantity: number
     panthelyfuras_oldal: PanthelyOldal | null
   }>
@@ -572,13 +576,17 @@ export async function getQuoteDetail(
         sort_index,
         duplungolas,
         szogvagas,
+        szog_kind,
+        szog_trap_short_mm,
+        szog_trap_axis,
         panthelyfuras_quantity,
         panthelyfuras_oldal,
         sheet_materials ( name, machine_code ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
         edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
         edge_c:edge_materials!quote_panels_edge_c_id_fkey ( machine_code ),
-        edge_d:edge_materials!quote_panels_edge_d_id_fkey ( machine_code )
+        edge_d:edge_materials!quote_panels_edge_d_id_fkey ( machine_code ),
+        edge_ferde:edge_materials!quote_panels_edge_ferde_id_fkey ( machine_code )
       ),
       quote_material_lines (
         id,
@@ -691,13 +699,17 @@ export async function getQuoteDetail(
         sort_index,
         duplungolas,
         szogvagas,
+        szog_kind,
+        szog_trap_short_mm,
+        szog_trap_axis,
         panthelyfuras_quantity,
         panthelyfuras_oldal,
         sheet_materials ( name, machine_code ),
         edge_a:edge_materials!quote_panels_edge_a_id_fkey ( machine_code ),
         edge_b:edge_materials!quote_panels_edge_b_id_fkey ( machine_code ),
         edge_c:edge_materials!quote_panels_edge_c_id_fkey ( machine_code ),
-        edge_d:edge_materials!quote_panels_edge_d_id_fkey ( machine_code )
+        edge_d:edge_materials!quote_panels_edge_d_id_fkey ( machine_code ),
+        edge_ferde:edge_materials!quote_panels_edge_ferde_id_fkey ( machine_code )
       ),
       quote_material_lines (
         id,
@@ -976,6 +988,9 @@ export async function getQuoteDetail(
     sort_index: number
     duplungolas?: boolean | null
     szogvagas?: boolean | null
+    szog_kind?: string | null
+    szog_trap_short_mm?: number | null
+    szog_trap_axis?: string | null
     panthelyfuras_quantity?: number | null
     panthelyfuras_oldal?: string | null
     sheet_materials:
@@ -986,6 +1001,7 @@ export async function getQuoteDetail(
     edge_b: EdgeRef
     edge_c: EdgeRef
     edge_d: EdgeRef
+    edge_ferde: EdgeRef
   }>
 
   const panels = [...panelsRaw]
@@ -1007,8 +1023,21 @@ export async function getQuoteDetail(
         edge_b_code: edgeCode(p.edge_b),
         edge_c_code: edgeCode(p.edge_c),
         edge_d_code: edgeCode(p.edge_d),
+        edge_ferde_code: edgeCode(p.edge_ferde),
         duplungolas: Boolean(p.duplungolas),
         szogvagas: Boolean(p.szogvagas),
+        szog_kind:
+          p.szog_kind === 'triangle' || p.szog_kind === 'trapezoid'
+            ? p.szog_kind
+            : null,
+        szog_trap_short_mm:
+          Number(p.szog_trap_short_mm) > 0
+            ? Math.round(Number(p.szog_trap_short_mm))
+            : null,
+        szog_trap_axis:
+          p.szog_trap_axis === 'grain' || p.szog_trap_axis === 'cross'
+            ? p.szog_trap_axis
+            : null,
         panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0,
         panthelyfuras_oldal: normalizePanthelyOldal(p.panthelyfuras_oldal)
       }

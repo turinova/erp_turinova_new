@@ -18,6 +18,19 @@ import {
   maxGrainMm,
   type OptiSheetMaterialOption
 } from '@/lib/opti/queries'
+import {
+  countSzogCuts,
+  pointsToCssPolygon,
+  pointsToSvgPolygon,
+  szogCutSegments,
+  szogDiagonalAnnotations,
+  szogFinishedStraightEdgesMm,
+  szogShapeLabelForCorners,
+  szogStraightEdgeSegments,
+  szogvagasPolygonPoints,
+  type SzogCornerCut,
+  type SzogStraightEdgeId
+} from '@/lib/opti/szogvagas-preview'
 import { cn } from '@/lib/utils'
 
 type MaterialPreviewColumnProps = {
@@ -33,7 +46,12 @@ type MaterialPreviewColumnProps = {
   edgeBId: string
   edgeCId: string
   edgeDId: string
+  /** Szögvágás ferde (vágott) él élzárója */
+  edgeFerdeId?: string
   panthely?: { count: number; oldal: PanthelyOldal } | null
+  /** UI-only szögvágás sarok preview */
+  szogvagas?: boolean
+  szogCorners?: SzogCornerCut[]
   onChangeMaterialId: (
     id: string,
     material: OptiSheetMaterialOption | null
@@ -70,7 +88,10 @@ export function MaterialPreviewColumn({
   edgeBId,
   edgeCId,
   edgeDId,
+  edgeFerdeId = '',
   panthely = null,
+  szogvagas = false,
+  szogCorners = [],
   onChangeMaterialId,
   onStartChange,
   onCancelChange,
@@ -125,10 +146,143 @@ export function MaterialPreviewColumn({
     )
   }, [hasDims, panthely, grainMm, crossMm, size])
 
+  const szogCutCount = szogvagas ? countSzogCuts(szogCorners) : 0
+  const szogActive = szogvagas && szogCutCount > 0 && hasDims
+  const szogPoints = useMemo(() => {
+    if (!szogActive || !hasDims) return []
+    return szogvagasPolygonPoints(
+      size.width,
+      size.height,
+      grainMm as number,
+      crossMm as number,
+      szogCorners
+    )
+  }, [szogActive, szogCorners, hasDims, size, grainMm, crossMm])
+  const szogPolygon = pointsToSvgPolygon(szogPoints)
+  const szogClip = pointsToCssPolygon(szogPoints)
+  const szogSegments = useMemo(() => {
+    if (!szogActive || !hasDims) return []
+    return szogCutSegments(
+      size.width,
+      size.height,
+      grainMm as number,
+      crossMm as number,
+      szogCorners
+    )
+  }, [szogActive, szogCorners, hasDims, size, grainMm, crossMm])
+  const szogDiagonals = useMemo(() => {
+    if (!szogActive || !hasDims) return []
+    return szogDiagonalAnnotations(
+      size.width,
+      size.height,
+      grainMm as number,
+      crossMm as number,
+      szogCorners
+    )
+  }, [szogActive, szogCorners, hasDims, size, grainMm, crossMm])
+  const finishedEdges = useMemo(() => {
+    if (!hasDims) {
+      return { top: null, bottom: null, left: null, right: null }
+    }
+    if (!szogActive) {
+      return {
+        top: grainMm as number,
+        bottom: grainMm as number,
+        left: crossMm as number,
+        right: crossMm as number
+      }
+    }
+    return szogFinishedStraightEdgesMm(
+      grainMm as number,
+      crossMm as number,
+      szogCorners
+    )
+  }, [hasDims, szogActive, grainMm, crossMm, szogCorners])
+
+  const straightSegs = useMemo(() => {
+    if (!szogActive || !hasDims) return []
+    return szogStraightEdgeSegments(
+      size.width,
+      size.height,
+      grainMm as number,
+      crossMm as number,
+      szogCorners
+    )
+  }, [szogActive, hasDims, size, grainMm, crossMm, szogCorners])
+
+  const materialImage = selectedMaterial?.image_url
+    ? `url(${selectedMaterial.image_url})`
+    : undefined
+
   const colorA = edgeMaterialColor(edgeAId || null)
   const colorB = edgeMaterialColor(edgeBId || null)
   const colorC = edgeMaterialColor(edgeCId || null)
   const colorD = edgeMaterialColor(edgeDId || null)
+  const colorFerde = edgeMaterialColor(edgeFerdeId || null)
+  const ferdeEdged = Boolean(edgeFerdeId)
+
+  function edgeColorForSide(side: SzogStraightEdgeId): string {
+    switch (side) {
+      case 'top':
+        return colorA
+      case 'right':
+        return colorB
+      case 'bottom':
+        return colorC
+      case 'left':
+        return colorD
+    }
+  }
+
+  function edgeIdForSide(side: SzogStraightEdgeId): string {
+    switch (side) {
+      case 'top':
+        return edgeAId
+      case 'right':
+        return edgeBId
+      case 'bottom':
+        return edgeCId
+      case 'left':
+        return edgeDId
+    }
+  }
+
+  function edgeLabelForSide(side: SzogStraightEdgeId): string {
+    switch (side) {
+      case 'top':
+        return 'Hosszú felső'
+      case 'right':
+        return 'Széles jobb'
+      case 'bottom':
+        return 'Hosszú alsó'
+      case 'left':
+        return 'Széles bal'
+    }
+  }
+
+  const szogEdgeUi = useMemo(() => {
+    if (!szogActive) return []
+    return straightSegs.map((seg) => {
+      const edged = Boolean(edgeIdForSide(seg.side))
+      return {
+        ...seg,
+        edged,
+        color: edged ? edgeColorForSide(seg.side) : '#64748b',
+        label: edgeLabelForSide(seg.side)
+      }
+    })
+  }, [
+    szogActive,
+    straightSegs,
+    edgeAId,
+    edgeBId,
+    edgeCId,
+    edgeDId,
+    colorA,
+    colorB,
+    colorC,
+    colorD
+  ])
 
   const showMaxChip =
     selectedMaterial &&
@@ -226,16 +380,153 @@ export function MaterialPreviewColumn({
           style={{
             width: size.width,
             height: size.height,
-            border: '2px solid #64748b',
-            backgroundColor: fill,
-            backgroundImage: selectedMaterial?.image_url
-              ? `url(${selectedMaterial.image_url})`
-              : undefined,
+            border: szogActive ? '1px dashed #94a3b8' : '2px solid #64748b',
+            backgroundColor: szogActive ? '#e8eaed' : fill,
+            backgroundImage: !szogActive ? materialImage : undefined,
             backgroundSize: 'cover',
             backgroundPosition: 'center'
           }}
         >
-          {selectedMaterial?.grain_direction ? (
+          {/* Kész alak: anyagkép clipelve — nem takaró fill-réteg */}
+          {szogActive && szogClip ? (
+            <div
+              className="pointer-events-none absolute inset-0 z-[1]"
+              style={{
+                backgroundColor: fill,
+                backgroundImage: materialImage,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                clipPath: szogClip
+              }}
+              aria-hidden
+            >
+              {selectedMaterial?.grain_direction
+                ? Array.from({ length: 6 }, (_, i) => (
+                    <span
+                      key={i}
+                      className="absolute left-[8%] right-[8%] h-px bg-white/55"
+                      style={{ top: `${((i + 1) / 7) * 100}%` }}
+                    />
+                  ))
+                : null}
+            </div>
+          ) : null}
+
+          {szogActive && szogPolygon ? (
+            <svg
+              className="absolute inset-0 z-[2]"
+              width={size.width}
+              height={size.height}
+              aria-hidden
+            >
+              <polygon
+                points={szogPolygon}
+                fill="none"
+                stroke="#18181B"
+                strokeWidth={2}
+              />
+              {/* Élzárás a kész egyenes éleken */}
+              {szogEdgeUi
+                .filter((seg) => seg.edged)
+                .map((seg) => (
+                  <line
+                    key={`band-${seg.side}-${seg.a.x}-${seg.a.y}`}
+                    x1={seg.a.x}
+                    y1={seg.a.y}
+                    x2={seg.b.x}
+                    y2={seg.b.y}
+                    stroke={seg.color}
+                    strokeWidth={6}
+                    strokeLinecap="butt"
+                  />
+                ))}
+              {!ferdeEdged
+                ? szogSegments.map((seg, i) => (
+                    <line
+                      key={`cut-${i}`}
+                      x1={seg.a.x}
+                      y1={seg.a.y}
+                      x2={seg.b.x}
+                      y2={seg.b.y}
+                      stroke="#18181B"
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                    />
+                  ))
+                : null}
+              {/* Ferde élzárás a vágott élen */}
+              {ferdeEdged
+                ? szogDiagonals.map((d) => (
+                    <line
+                      key={`ferde-band-${d.corner}`}
+                      x1={d.a.x}
+                      y1={d.a.y}
+                      x2={d.b.x}
+                      y2={d.b.y}
+                      stroke={colorFerde}
+                      strokeWidth={6}
+                      strokeLinecap="butt"
+                    />
+                  ))
+                : null}
+            </svg>
+          ) : null}
+
+          {/* Ferde él címke (összevonva a régi átló-mm annotációval) */}
+          {szogActive &&
+            szogDiagonals.map((d) => (
+              <span
+                key={`ferde-lbl-${d.corner}`}
+                className={cn(
+                  'pointer-events-none absolute z-[5] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center text-[10px] font-semibold leading-tight',
+                  !ferdeEdged && 'opacity-50'
+                )}
+                style={{
+                  left: d.mid.x,
+                  top: d.mid.y,
+                  color: ferdeEdged ? colorFerde : '#64748b'
+                }}
+              >
+                <span className="block">Ferde</span>
+                <span className="block tabular-nums text-ink">
+                  {d.lengthMm} mm
+                </span>
+              </span>
+            ))}
+
+          {/* Él címkék a kész szakasz közepén (0 mm → nincs) */}
+          {szogActive &&
+            szogEdgeUi.map((seg) => {
+              const offset =
+                seg.side === 'top'
+                  ? { x: 0, y: -18 }
+                  : seg.side === 'bottom'
+                    ? { x: 0, y: 18 }
+                    : seg.side === 'left'
+                      ? { x: -22, y: 0 }
+                      : { x: 22, y: 0 }
+              return (
+                <span
+                  key={`lbl-${seg.side}`}
+                  className={cn(
+                    'pointer-events-none absolute z-[5] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center text-[10px] font-semibold leading-tight',
+                    !seg.edged && 'opacity-50'
+                  )}
+                  style={{
+                    left: seg.mid.x + offset.x,
+                    top: seg.mid.y + offset.y,
+                    color: seg.color
+                  }}
+                >
+                  <span className="block">{seg.label}</span>
+                  <span className="block tabular-nums text-ink">
+                    {Math.round(seg.lengthMm)} mm
+                  </span>
+                </span>
+              )
+            })}
+
+          {!szogActive && selectedMaterial?.grain_direction ? (
             <>
               {selectedMaterial.image_url ? (
                 <span
@@ -257,51 +548,84 @@ export function MaterialPreviewColumn({
             </>
           ) : null}
 
-          <span className="relative z-[2] rounded bg-surface/90 px-1.5 py-0.5 text-body font-medium tabular-nums text-ink shadow-sm">
-            {hasDims ? `${grainMm} × ${crossMm}` : 'X × Y'}
+          {szogActive && selectedMaterial?.grain_direction ? (
+            <span className="pointer-events-none absolute bottom-1.5 left-1/2 z-[3] -translate-x-1/2 rounded bg-surface/95 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-ink shadow-sm">
+              Szál →
+            </span>
+          ) : null}
+
+          <span className="relative z-[3] rounded bg-surface/90 px-1.5 py-0.5 text-body font-medium tabular-nums text-ink shadow-sm">
+            {hasDims
+              ? szogActive
+                ? `Szabás ${grainMm} × ${crossMm}`
+                : `${grainMm} × ${crossMm}`
+              : 'X × Y'}
           </span>
 
-          <EdgeLabel side="top" active={Boolean(edgeAId)} color={colorA}>
-            Hosszú felső
-          </EdgeLabel>
-          <EdgeLabel side="bottom" active={Boolean(edgeCId)} color={colorC}>
-            Hosszú alsó
-          </EdgeLabel>
-          <EdgeLabel side="left" active={Boolean(edgeDId)} color={colorD}>
-            Széles bal
-          </EdgeLabel>
-          <EdgeLabel side="right" active={Boolean(edgeBId)} color={colorB}>
-            Széles jobb
-          </EdgeLabel>
-
-          {/* Inset élcsíkok — nem lógnak ki, nem vágja az overflow */}
-          {edgeAId ? (
-            <span
-              className="absolute inset-x-0 top-0 z-[3] h-[5px]"
-              style={{ backgroundColor: colorA }}
-              aria-hidden
-            />
-          ) : null}
-          {edgeCId ? (
-            <span
-              className="absolute inset-x-0 bottom-0 z-[3] h-[5px]"
-              style={{ backgroundColor: colorC }}
-              aria-hidden
-            />
-          ) : null}
-          {edgeDId ? (
-            <span
-              className="absolute inset-y-0 left-0 z-[3] w-[5px]"
-              style={{ backgroundColor: colorD }}
-              aria-hidden
-            />
-          ) : null}
-          {edgeBId ? (
-            <span
-              className="absolute inset-y-0 right-0 z-[3] w-[5px]"
-              style={{ backgroundColor: colorB }}
-              aria-hidden
-            />
+          {/* Téglalap mód: bbox élcímkék + inset csíkok */}
+          {!szogActive ? (
+            <>
+              <EdgeLabel
+                side="top"
+                active={Boolean(edgeAId)}
+                color={colorA}
+                mm={finishedEdges.top}
+              >
+                Hosszú felső
+              </EdgeLabel>
+              <EdgeLabel
+                side="bottom"
+                active={Boolean(edgeCId)}
+                color={colorC}
+                mm={finishedEdges.bottom}
+              >
+                Hosszú alsó
+              </EdgeLabel>
+              <EdgeLabel
+                side="left"
+                active={Boolean(edgeDId)}
+                color={colorD}
+                mm={finishedEdges.left}
+              >
+                Széles bal
+              </EdgeLabel>
+              <EdgeLabel
+                side="right"
+                active={Boolean(edgeBId)}
+                color={colorB}
+                mm={finishedEdges.right}
+              >
+                Széles jobb
+              </EdgeLabel>
+              {edgeAId ? (
+                <span
+                  className="absolute inset-x-0 top-0 z-[3] h-[5px]"
+                  style={{ backgroundColor: colorA }}
+                  aria-hidden
+                />
+              ) : null}
+              {edgeCId ? (
+                <span
+                  className="absolute inset-x-0 bottom-0 z-[3] h-[5px]"
+                  style={{ backgroundColor: colorC }}
+                  aria-hidden
+                />
+              ) : null}
+              {edgeDId ? (
+                <span
+                  className="absolute inset-y-0 left-0 z-[3] w-[5px]"
+                  style={{ backgroundColor: colorD }}
+                  aria-hidden
+                />
+              ) : null}
+              {edgeBId ? (
+                <span
+                  className="absolute inset-y-0 right-0 z-[3] w-[5px]"
+                  style={{ backgroundColor: colorB }}
+                  aria-hidden
+                />
+              ) : null}
+            </>
           ) : null}
 
           {hingeDots.map((dot, i) => (
@@ -314,6 +638,28 @@ export function MaterialPreviewColumn({
           ))}
         </div>
       </div>
+
+      {szogvagas ? (
+        <div className="space-y-1 text-center" aria-live="polite">
+          <p className="text-hint text-ink-secondary">
+            {szogCutCount === 0
+              ? 'Szögvágás be — kész alak: trapéz vagy háromszög (szabás téglalap).'
+              : `${szogCutCount} élvágás · ${szogShapeLabelForCorners(szogCorners, grainMm as number, crossMm as number)}. Szabás: téglalap ${grainMm} × ${crossMm} mm.`}
+          </p>
+          {szogActive && finishedEdges.top != null ? (
+            <p className="text-[11px] tabular-nums text-ink-muted">
+              Kész: F {Math.round(finishedEdges.top)} · A{' '}
+              {Math.round(finishedEdges.bottom!)} · B{' '}
+              {Math.round(finishedEdges.left!)} · J{' '}
+              {Math.round(finishedEdges.right!)}
+              {szogDiagonals.length > 0
+                ? ` · Ferde ${szogDiagonals.map((d) => d.lengthMm).join(', ')}`
+                : ''}{' '}
+              mm
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {selectedMaterial ? (
         <div className="flex flex-wrap gap-1.5">
@@ -350,32 +696,37 @@ function EdgeLabel({
   side,
   color,
   active,
+  mm,
   children
 }: {
   side: 'top' | 'bottom' | 'left' | 'right'
   color: string
   active: boolean
+  mm?: number | null
   children: string
 }) {
   const position =
     side === 'top'
-      ? 'absolute -top-5 left-1/2 z-[4] -translate-x-1/2'
+      ? 'absolute -top-7 left-1/2 z-[4] -translate-x-1/2'
       : side === 'bottom'
-        ? 'absolute -bottom-5 left-1/2 z-[4] -translate-x-1/2'
+        ? 'absolute -bottom-7 left-1/2 z-[4] -translate-x-1/2'
         : side === 'left'
-          ? 'absolute -left-5 top-1/2 z-[4] -translate-y-1/2 -rotate-90'
-          : 'absolute -right-5 top-1/2 z-[4] -translate-y-1/2 rotate-90'
+          ? 'absolute -left-7 top-1/2 z-[4] -translate-y-1/2 -rotate-90'
+          : 'absolute -right-7 top-1/2 z-[4] -translate-y-1/2 rotate-90'
 
   return (
     <span
       className={cn(
-        'whitespace-nowrap text-[11px] font-semibold leading-none',
+        'whitespace-nowrap text-center text-[11px] font-semibold leading-tight',
         position,
         !active && 'opacity-50'
       )}
       style={{ color: active ? color : '#64748b' }}
     >
-      {children}
+      <span className="block">{children}</span>
+      {mm != null && Number.isFinite(mm) ? (
+        <span className="block tabular-nums text-ink">{Math.round(mm)} mm</span>
+      ) : null}
     </span>
   )
 }
