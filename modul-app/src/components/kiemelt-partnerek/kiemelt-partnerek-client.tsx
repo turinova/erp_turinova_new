@@ -30,7 +30,6 @@ import { cn } from '@/lib/utils'
 type Props = {
   data: KiemeltPartnerekPageData
   initialQ: string
-  initialYear: number
   initialSort: KiemeltSort
   initialActivity: KiemeltActivity
 }
@@ -69,7 +68,6 @@ function cardBadge(p: KiemeltPartnerCard): string | null {
 export function KiemeltPartnerekClient({
   data,
   initialQ,
-  initialYear,
   initialSort,
   initialActivity
 }: Props) {

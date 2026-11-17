@@ -99,7 +99,6 @@ export default async function KiemeltPartnerekPage({
       <KiemeltPartnerekClient
         data={data}
         initialQ={q}
-        initialYear={year}
         initialSort={sort}
         initialActivity={activity}
       />
