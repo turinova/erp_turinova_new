@@ -1,11 +1,22 @@
 import { sendFormEmail } from "@/lib/mail"
 import { getJobBySlug } from "@/lib/jobs"
+import {
+  ENERGY_LABELS,
+  EXPERIENCE_LABELS,
+  SCREENING_SCALE_VALUES,
+  SITU_MAX_CHARS,
+  SITU_MIN_CHARS,
+  START_LABELS,
+  isScreeningOpen,
+  isValidScreeningEmail,
+} from "@/lib/career-screening"
 
 export const FORM_TYPES = [
   "contact",
   "partner",
   "quote",
   "career",
+  "career_screening",
   "felmeres",
 ] as const
 export type FormType = (typeof FORM_TYPES)[number]
@@ -43,6 +54,7 @@ const FORM_LABELS: Record<FormType, string> = {
   partner: "Asztalos partner – visszahívás",
   quote: "Szállítóláda – árajánlat kérés",
   career: "Karrier – állásjelentkezés",
+  career_screening: "Karrier – szűrő kérdőív (bolti eladó)",
   felmeres: "Egyedi bútor – helyszíni felmérés",
 }
 
@@ -51,7 +63,7 @@ const CAREER_TO = "mezo.david@baugeneral.hu"
 const FELMERES_CC = "mezo.david@baugeneral.hu"
 
 function recipientsFor(form: FormType): string | undefined {
-  if (form === "career") return CAREER_TO
+  if (form === "career" || form === "career_screening") return CAREER_TO
   if (form !== "felmeres") return undefined
 
   const set = new Set(
@@ -72,7 +84,12 @@ const MAX = {
   topic: 64,
   message: 4000,
   lastJob: 160,
+  situ: SITU_MAX_CHARS,
+  salary: 12,
 } as const
+
+const SCALE_SET = new Set<string>(SCREENING_SCALE_VALUES)
+const ENERGY_SET = new Set(["up", "down"])
 
 const CAREER_YES_NO = new Set(["yes", "no"])
 const CAREER_EXPERIENCE = new Set(["bolt", "ugyfel", "none"])
@@ -109,6 +126,21 @@ export type RawFormBody = {
   experience?: string
   startWhen?: string
   lastJob?: string
+  /** 2. körös szűrő (career_screening) */
+  salaryNet?: string
+  commuteOk?: string
+  scaleCustomer?: string
+  scaleEnergy?: string
+  scalePunctual?: string
+  scaleMoney?: string
+  scaleAdmin?: string
+  scaleCalm?: string
+  scalePatience?: string
+  situTriple?: string
+  situAngry?: string
+  situCash?: string
+  situLate?: string
+  situLikeDislike?: string
   utm_source?: string
   utm_medium?: string
   utm_campaign?: string
@@ -146,6 +178,37 @@ export type CareerScreening = {
   fitLabel: string
 }
 
+export type CareerDeepScreening = {
+  salaryNet: number
+  salaryLabel: string
+  commuteOk: string
+  commuteLabel: string
+  morningOk: string
+  morningLabel: string
+  fullShiftOk: string
+  fullShiftLabel: string
+  saturdayOk: string
+  saturdayLabel: string
+  startWhen: string
+  startLabel: string
+  experience: string
+  experienceLabel: string
+  fitLabel: string
+  scaleCustomer: string
+  scaleEnergy: string
+  scaleEnergyLabel: string
+  scalePunctual: string
+  scaleMoney: string
+  scaleAdmin: string
+  scaleCalm: string
+  scalePatience: string
+  situTriple: string
+  situAngry: string
+  situCash: string
+  situLate: string
+  situLikeDislike: string
+}
+
 export type FormUtm = {
   source?: string
   medium?: string
@@ -164,6 +227,7 @@ export type ParsedSubmission = {
   topicLabel: string
   message: string
   career?: CareerScreening
+  screening?: CareerDeepScreening
   utm?: FormUtm
 }
 
@@ -207,7 +271,7 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
     return { kind: "error", error: "Érvénytelen név.", status: 400 }
   }
 
-  // Felmérés és karrier: e-mail opcionális (telefon az elsődleges).
+  // Felmérés és karrier (1. kör): e-mail opcionális. Szűrő: kötelező.
   if (form === "felmeres" || form === "career") {
     if (email && (email.length > MAX.email || !isValidEmail(email))) {
       return { kind: "error", error: "Érvénytelen e-mail cím.", status: 400 }
@@ -226,7 +290,7 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
     return {
       kind: "error",
       error:
-        form === "career"
+        form === "career" || form === "career_screening"
           ? "Fogadd el az adatkezelési tájékoztatót."
           : "Kérjük, fogadja el az adatkezelési tájékoztatót.",
       status: 400,
@@ -266,6 +330,187 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
   }
 
   let career: CareerScreening | undefined
+  let screening: CareerDeepScreening | undefined
+
+  if (form === "career_screening") {
+    if (!isScreeningOpen()) {
+      return {
+        kind: "error",
+        error: "A kérdőív határideje lejárt.",
+        status: 400,
+      }
+    }
+    if (!isValidScreeningEmail(email)) {
+      return {
+        kind: "error",
+        error: "Érvényes e-mail címet adj meg (pl. nev@email.hu).",
+        status: 400,
+      }
+    }
+    const phoneDigits = phone.replace(/\D/g, "")
+    const national =
+      phoneDigits.startsWith("36") && phoneDigits.length >= 11
+        ? phoneDigits.slice(2)
+        : phoneDigits.startsWith("06")
+          ? phoneDigits.slice(2)
+          : phoneDigits.startsWith("0")
+            ? phoneDigits.slice(1)
+            : phoneDigits
+    if (national.length < 9) {
+      return {
+        kind: "error",
+        error: "Add meg a telefonszámot (pl. +36 30 132 9999).",
+        status: 400,
+      }
+    }
+
+    const salaryRaw = (body.salaryNet || "").replace(/\D/g, "")
+    const salaryNet = Number.parseInt(salaryRaw, 10)
+    if (
+      !salaryRaw ||
+      salaryRaw.length > MAX.salary ||
+      !Number.isFinite(salaryNet) ||
+      salaryNet < 100_000 ||
+      salaryNet > 2_000_000
+    ) {
+      return {
+        kind: "error",
+        error: "Add meg a nettó havi bérigényed Ft-ban (csak szám, pl. 350 000).",
+        status: 400,
+      }
+    }
+
+    const commuteOk = (body.commuteOk || "").trim()
+    const scaleCustomer = (body.scaleCustomer || "").trim()
+    const scaleEnergy = (body.scaleEnergy || "").trim()
+    const scalePunctual = (body.scalePunctual || "").trim()
+    const scaleMoney = (body.scaleMoney || "").trim()
+    const scaleAdmin = (body.scaleAdmin || "").trim()
+    const scaleCalm = (body.scaleCalm || "").trim()
+    const scalePatience = (body.scalePatience || "").trim()
+    const situTriple = (body.situTriple || "").trim()
+    const situAngry = (body.situAngry || "").trim()
+    const situCash = (body.situCash || "").trim()
+    const situLate = (body.situLate || "").trim()
+    const situLikeDislike = (body.situLikeDislike || "").trim()
+
+    if (!CAREER_YES_NO.has(morningOk)) {
+      return {
+        kind: "error",
+        error: "Jelöld, vállalod-e a H–P 7:30 kezdést.",
+        status: 400,
+      }
+    }
+    if (!CAREER_YES_NO.has(fullShiftOk)) {
+      return {
+        kind: "error",
+        error: "Jelöld, vállalod-e a 17:00-ig tartó műszakot.",
+        status: 400,
+      }
+    }
+    if (!CAREER_YES_NO.has(saturdayOk)) {
+      return {
+        kind: "error",
+        error: "Jelöld, vállalod-e az időnkénti szombatot.",
+        status: 400,
+      }
+    }
+    if (!CAREER_YES_NO.has(commuteOk)) {
+      return {
+        kind: "error",
+        error: "Jelöld, megoldott-e a bejárás.",
+        status: 400,
+      }
+    }
+    if (!CAREER_START.has(startWhen)) {
+      return {
+        kind: "error",
+        error: "Válaszd ki, mikor tudnál kezdeni.",
+        status: 400,
+      }
+    }
+    if (!CAREER_EXPERIENCE.has(experience)) {
+      return {
+        kind: "error",
+        error: "Válaszd ki a tapasztalatot.",
+        status: 400,
+      }
+    }
+    for (const [label, value] of [
+      ["ügyfélkontakt", scaleCustomer],
+      ["pontosság", scalePunctual],
+      ["pénz/bizonylat", scaleMoney],
+      ["adminisztráció", scaleAdmin],
+      ["nyugalom", scaleCalm],
+      ["türelem", scalePatience],
+    ] as const) {
+      if (!SCALE_SET.has(value)) {
+        return {
+          kind: "error",
+          error: `Érvénytelen skála: ${label}.`,
+          status: 400,
+        }
+      }
+    }
+    if (!ENERGY_SET.has(scaleEnergy)) {
+      return {
+        kind: "error",
+        error: "Válaszd ki: feltölt vagy kimerít.",
+        status: 400,
+      }
+    }
+
+    const situFields = [
+      ["Három vásárló", situTriple],
+      ["Hangos vásárló", situAngry],
+      ["Kassza eltérés", situCash],
+      ["Késés", situLate],
+      ["Mit bírsz / nem bírsz", situLikeDislike],
+    ] as const
+    for (const [label, value] of situFields) {
+      if (value.length < SITU_MIN_CHARS || value.length > SITU_MAX_CHARS) {
+        return {
+          kind: "error",
+          error: `A(z) „${label}” válasz legyen ${SITU_MIN_CHARS}–${SITU_MAX_CHARS} karakter.`,
+          status: 400,
+        }
+      }
+    }
+
+    const fits =
+      morningOk === "yes" && fullShiftOk === "yes" && saturdayOk === "yes"
+
+    screening = {
+      salaryNet,
+      salaryLabel: `${salaryNet.toLocaleString("hu-HU")} Ft / hó (nettó)`,
+      commuteOk,
+      commuteLabel: commuteOk === "yes" ? "Igen" : "Nem",
+      morningOk,
+      morningLabel: morningOk === "yes" ? "Igen" : "Nem",
+      fullShiftOk,
+      fullShiftLabel: fullShiftOk === "yes" ? "Igen, 17:00-ig" : "Nem",
+      saturdayOk,
+      saturdayLabel: saturdayOk === "yes" ? "Igen" : "Nem",
+      startWhen,
+      startLabel: START_LABELS[startWhen] || startWhen,
+      experience,
+      experienceLabel: EXPERIENCE_LABELS[experience] || experience,
+      fitLabel: fits ? "Illik a műszakhoz" : "NEM ILLIK a műszakhoz",
+      scaleCustomer,
+      scaleEnergy,
+      scaleEnergyLabel: ENERGY_LABELS[scaleEnergy] || scaleEnergy,
+      scalePunctual,
+      scaleMoney,
+      scaleAdmin,
+      scaleCalm,
+      scalePatience,
+      situTriple,
+      situAngry,
+      situCash,
+      situLate,
+      situLikeDislike,
+    }
+  }
 
   if (form === "career") {
     if (!phone || phone.replace(/\D/g, "").length < 9) {
@@ -386,11 +631,13 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
   const topicLabel =
     form === "career"
       ? getJobBySlug(topic)?.title || TOPIC_LABELS[topic] || topic
-      : form === "felmeres"
-        ? FELMERES_LABELS[topic] || topic
-        : topic
-          ? TOPIC_LABELS[topic] || topic
-          : ""
+      : form === "career_screening"
+        ? "Bolti eladó – szűrő"
+        : form === "felmeres"
+          ? FELMERES_LABELS[topic] || topic
+          : topic
+            ? TOPIC_LABELS[topic] || topic
+            : ""
 
   const clip = (v: string | undefined) => {
     const t = (v || "").trim()
@@ -419,6 +666,7 @@ export function parseAndValidateForm(body: RawFormBody): ParseFormResult {
       topicLabel,
       message,
       career,
+      screening,
       utm: hasUtm ? utm : undefined,
     },
   }
@@ -475,6 +723,37 @@ export async function deliverFormEmail(
       lines.push(`Előző munkahely: ${data.career.lastJob}`)
     }
   }
+  if (data.screening) {
+    const s = data.screening
+    lines.push(
+      "",
+      "2. körös szűrő:",
+      `Illeszkedés: ${s.fitLabel}`,
+      `Nettó bérigény: ${s.salaryLabel}`,
+      `Kezdés: ${s.startLabel}`,
+      `Reggel 7:30: ${s.morningLabel}`,
+      `Műszak 17:00-ig: ${s.fullShiftLabel}`,
+      `Szombat 8–12: ${s.saturdayLabel}`,
+      `Bejárás: ${s.commuteLabel}`,
+      `Tapasztalat: ${s.experienceLabel}`,
+      "",
+      "Skálák (1–5):",
+      `Ügyfélkontakt: ${s.scaleCustomer}`,
+      `Beszéd energiája: ${s.scaleEnergyLabel}`,
+      `Pontosság: ${s.scalePunctual}`,
+      `Pénz/bizonylat: ${s.scaleMoney}`,
+      `Adminisztráció: ${s.scaleAdmin}`,
+      `Nyugalom: ${s.scaleCalm}`,
+      `Türelem: ${s.scalePatience}`,
+      "",
+      "Helyzetek:",
+      `Három vásárló: ${s.situTriple}`,
+      `Hangos vásárló: ${s.situAngry}`,
+      `Kassza: ${s.situCash}`,
+      `Késés: ${s.situLate}`,
+      `Bír / nem bír: ${s.situLikeDislike}`,
+    )
+  }
   if (meta.attachment) lines.push(`Önéletrajz: ${meta.attachment.filename}`)
   if (data.utm) {
     lines.push("", "Kampány (UTM):")
@@ -503,7 +782,7 @@ export async function deliverFormEmail(
       : null,
     data.topicLabel
       ? [
-          data.form === "career"
+          data.form === "career" || data.form === "career_screening"
             ? "Pozíció"
             : data.form === "felmeres"
               ? "Bútortípus"
@@ -524,6 +803,35 @@ export async function deliverFormEmail(
     data.career?.lastJob
       ? ["Előző munkahely", data.career.lastJob]
       : null,
+    data.screening ? ["Illeszkedés", data.screening.fitLabel] : null,
+    data.screening ? ["Nettó bérigény", data.screening.salaryLabel] : null,
+    data.screening ? ["Kezdés", data.screening.startLabel] : null,
+    data.screening ? ["Reggel 7:30", data.screening.morningLabel] : null,
+    data.screening
+      ? ["Műszak 17:00-ig", data.screening.fullShiftLabel]
+      : null,
+    data.screening ? ["Szombat 8–12", data.screening.saturdayLabel] : null,
+    data.screening ? ["Bejárás", data.screening.commuteLabel] : null,
+    data.screening ? ["Tapasztalat", data.screening.experienceLabel] : null,
+    data.screening
+      ? ["Ügyfélkontakt (1–5)", data.screening.scaleCustomer]
+      : null,
+    data.screening
+      ? ["Beszéd energiája", data.screening.scaleEnergyLabel]
+      : null,
+    data.screening
+      ? ["Pontosság (1–5)", data.screening.scalePunctual]
+      : null,
+    data.screening
+      ? ["Pénz/bizonylat (1–5)", data.screening.scaleMoney]
+      : null,
+    data.screening
+      ? ["Adminisztráció (1–5)", data.screening.scaleAdmin]
+      : null,
+    data.screening ? ["Nyugalom (1–5)", data.screening.scaleCalm] : null,
+    data.screening
+      ? ["Türelem (1–5)", data.screening.scalePatience]
+      : null,
     meta.attachment ? ["Önéletrajz", meta.attachment.filename] : null,
     data.utm?.source ? ["utm_source", data.utm.source] : null,
     data.utm?.medium ? ["utm_medium", data.utm.medium] : null,
@@ -538,9 +846,25 @@ export async function deliverFormEmail(
     )
     .join("")
 
+  const situHtml = data.screening
+    ? [
+        ["Három vásárló", data.screening.situTriple],
+        ["Hangos vásárló", data.screening.situAngry],
+        ["Kassza eltérés", data.screening.situCash],
+        ["Késés", data.screening.situLate],
+        ["Bír / nem bír", data.screening.situLikeDislike],
+      ]
+        .map(
+          ([k, v]) =>
+            `<p style="margin-top:14px;font-weight:600">${escapeHtml(k)}</p><p style="white-space:pre-wrap">${escapeHtml(v)}</p>`,
+        )
+        .join("")
+    : ""
+
   const html = `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;color:#111">
 <p>Új beküldés a Hírös-Ablak weboldalról.</p>
 <table>${htmlRows}</table>
+${situHtml}
 ${data.message ? `<p style="margin-top:16px;font-weight:600">Üzenet</p><p style="white-space:pre-wrap">${escapeHtml(data.message)}</p>` : ""}
 ${meta.referer ? `<p style="margin-top:16px;font-size:12px;color:#666">Forrás: ${escapeHtml(meta.referer)}</p>` : ""}
 </body></html>`
@@ -557,8 +881,21 @@ ${meta.referer ? `<p style="margin-top:16px;font-size:12px;color:#666">Forrás: 
             data.topicLabel,
             data.name,
           ].filter(Boolean)
-        : [FORM_LABELS[data.form], data.name]
-  if (data.form !== "felmeres" && data.form !== "career" && data.topicLabel) {
+        : data.form === "career_screening"
+          ? [
+              data.screening?.fitLabel?.startsWith("NEM")
+                ? "Karrier szűrés [NEM ILLIK]"
+                : "Karrier szűrés",
+              data.screening?.salaryLabel,
+              data.name,
+            ].filter(Boolean)
+          : [FORM_LABELS[data.form], data.name]
+  if (
+    data.form !== "felmeres" &&
+    data.form !== "career" &&
+    data.form !== "career_screening" &&
+    data.topicLabel
+  ) {
     subjectParts.splice(1, 0, data.topicLabel)
   }
 
