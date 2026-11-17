@@ -1004,7 +1004,8 @@ export async function getQuoteDetail(
     edge_ferde: EdgeRef
   }>
 
-  const panels = [...panelsRaw]
+  // Explicit QuoteDetail['panels'] — nélküle TS a ternary literálokat string-re szélesíti.
+  const panels: QuoteDetail['panels'] = [...panelsRaw]
     .sort((a, b) => a.sort_index - b.sort_index)
     .map((p) => {
       const sm = Array.isArray(p.sheet_materials)
