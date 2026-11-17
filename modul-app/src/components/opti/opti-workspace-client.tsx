@@ -540,8 +540,6 @@ export function OptiWorkspaceClient({
       true
     )
     if (nextAround !== edgeAroundId) setEdgeAroundId(nextAround)
-    // resolveAroundId stabil a renderen; élő élek + körbe szinkron
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync ghost edges to shape
   }, [
     szogvagas,
     szogCorners,

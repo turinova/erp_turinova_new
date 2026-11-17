@@ -61,8 +61,8 @@ function labelForSide(
 function outwardNormal(mid: Pt, boxW: number, boxH: number): Pt {
   const cx = boxW / 2
   const cy = boxH / 2
-  let dx = mid.x - cx
-  let dy = mid.y - cy
+  const dx = mid.x - cx
+  const dy = mid.y - cy
   const len = Math.hypot(dx, dy) || 1
   return { x: dx / len, y: dy / len }
 }

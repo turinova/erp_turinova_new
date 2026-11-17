@@ -68,12 +68,13 @@ export function SzogvagasEdgeFields({
   const [focused, setFocused] = useState<DraftKey | null>(null)
 
   useEffect(() => {
+    const active = new Set(corners.map((c) => c.corner))
     setDrafts((prev) => {
       const next = { ...prev }
       let changed = false
       for (const key of Object.keys(next) as DraftKey[]) {
         const corner = key.split(':')[0] as SzogCornerId
-        if (!byId.has(corner)) {
+        if (!active.has(corner)) {
           delete next[key]
           changed = true
         }
