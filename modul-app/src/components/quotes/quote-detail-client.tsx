@@ -1691,6 +1691,9 @@ export function QuoteDetailClient({
                               panel.szogvagas
                                 ? szogShapeSummaryLabel({
                                     szogvagas: panel.szogvagas,
+                                    grainMm: panel.grain_mm,
+                                    crossMm: panel.cross_mm,
+                                    szogCorners: panel.szogvagas_corners,
                                     szogKind: panel.szog_kind,
                                     szogTrapShortMm: panel.szog_trap_short_mm,
                                     szogTrapAxis: panel.szog_trap_axis

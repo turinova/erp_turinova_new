@@ -27,8 +27,10 @@ import {
   szogFinishedStraightEdgesMm,
   szogShapeLabelForCorners,
   szogStraightEdgeSegments,
+  SZOG_CORNER_LABELS,
   szogvagasPolygonPoints,
   type SzogCornerCut,
+  type SzogCornerId,
   type SzogStraightEdgeId
 } from '@/lib/opti/szogvagas-preview'
 import { cn } from '@/lib/utils'
@@ -52,6 +54,9 @@ type MaterialPreviewColumnProps = {
   /** UI-only szögvágás sarok preview */
   szogvagas?: boolean
   szogCorners?: SzogCornerCut[]
+  /** Sarok választás a preview-n (max 1). */
+  onSelectSzogCorner?: (corner: SzogCornerId) => void
+  szogCornerSelectDisabled?: boolean
   onChangeMaterialId: (
     id: string,
     material: OptiSheetMaterialOption | null
@@ -92,6 +97,8 @@ export function MaterialPreviewColumn({
   panthely = null,
   szogvagas = false,
   szogCorners = [],
+  onSelectSzogCorner,
+  szogCornerSelectDisabled = false,
   onChangeMaterialId,
   onStartChange,
   onCancelChange,
@@ -148,6 +155,12 @@ export function MaterialPreviewColumn({
 
   const szogCutCount = szogvagas ? countSzogCuts(szogCorners) : 0
   const szogActive = szogvagas && szogCutCount > 0 && hasDims
+  const activeSzogCorner: SzogCornerId | null =
+    szogCorners.find((c) => c.alongGrainMm > 0 || c.alongCrossMm > 0)?.corner ??
+    szogCorners[0]?.corner ??
+    null
+  const showSzogCornerHits =
+    Boolean(szogvagas && hasDims && onSelectSzogCorner) && !szogCornerSelectDisabled
   const szogPoints = useMemo(() => {
     if (!szogActive || !hasDims) return []
     return szogvagasPolygonPoints(
@@ -380,18 +393,20 @@ export function MaterialPreviewColumn({
           style={{
             width: size.width,
             height: size.height,
-            border: szogActive ? '1px dashed #94a3b8' : '2px solid #64748b',
+            border: szogActive ? 'none' : '2px solid #64748b',
             backgroundColor: szogActive ? '#e8eaed' : fill,
             backgroundImage: !szogActive ? materialImage : undefined,
             backgroundSize: 'cover',
             backgroundPosition: 'center'
           }}
         >
-          {/* Kész alak: anyagkép clipelve — nem takaró fill-réteg */}
+          {/* Kész alak: anyagkép clipelve — 0…W×H, ugyanaz mint az SVG nest */}
           {szogActive && szogClip ? (
             <div
-              className="pointer-events-none absolute inset-0 z-[1]"
+              className="pointer-events-none absolute left-0 top-0 z-[1]"
               style={{
+                width: size.width,
+                height: size.height,
                 backgroundColor: fill,
                 backgroundImage: materialImage,
                 backgroundSize: 'cover',
@@ -412,19 +427,35 @@ export function MaterialPreviewColumn({
             </div>
           ) : null}
 
-          {szogActive && szogPolygon ? (
+          {szogActive ? (
             <svg
-              className="absolute inset-0 z-[2]"
+              className="pointer-events-none absolute left-0 top-0 z-[2] overflow-visible"
               width={size.width}
               height={size.height}
               aria-hidden
             >
-              <polygon
-                points={szogPolygon}
+              {/* Szabás nest — ugyanaz a koordináta, mint a clip (nem CSS outline) */}
+              <rect
+                x={0.5}
+                y={0.5}
+                width={Math.max(0, size.width - 1)}
+                height={Math.max(0, size.height - 1)}
                 fill="none"
-                stroke="#18181B"
-                strokeWidth={2}
+                stroke="#94a3b8"
+                strokeWidth={1}
+                strokeDasharray="4 3"
+                vectorEffect="non-scaling-stroke"
               />
+              {szogPolygon ? (
+                <polygon
+                  points={szogPolygon}
+                  fill="none"
+                  stroke="#18181B"
+                  strokeWidth={2}
+                  strokeLinejoin="miter"
+                  vectorEffect="non-scaling-stroke"
+                />
+              ) : null}
               {/* Élzárás a kész egyenes éleken */}
               {szogEdgeUi
                 .filter((seg) => seg.edged)
@@ -472,6 +503,47 @@ export function MaterialPreviewColumn({
             </svg>
           ) : null}
 
+          {/* Sarok választás — nagy hit target a preview sarkain (max 1) */}
+          {showSzogCornerHits
+            ? (
+                [
+                  ['TL', 0, 0],
+                  ['TR', size.width, 0],
+                  ['BL', 0, size.height],
+                  ['BR', size.width, size.height]
+                ] as const
+              ).map(([id, x, y]) => {
+                const on = activeSzogCorner === id
+                return (
+                  <button
+                    key={`hit-${id}`}
+                    type="button"
+                    aria-label={`${SZOG_CORNER_LABELS[id]} sarok`}
+                    aria-pressed={on}
+                    title={SZOG_CORNER_LABELS[id]}
+                    disabled={szogCornerSelectDisabled}
+                    onClick={() => onSelectSzogCorner?.(id)}
+                    className={cn(
+                      'absolute z-[6] size-9 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-sm transition-colors',
+                      on
+                        ? 'border-ink bg-ink text-white'
+                        : 'border-border bg-surface/95 text-ink hover:border-ink hover:bg-subtle'
+                    )}
+                    style={{ left: x, top: y }}
+                  >
+                    <span className="sr-only">{SZOG_CORNER_LABELS[id]}</span>
+                    <span
+                      className={cn(
+                        'mx-auto block size-2 rounded-full',
+                        on ? 'bg-white' : 'bg-ink'
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+                )
+              })
+            : null}
+
           {/* Ferde él címke (összevonva a régi átló-mm annotációval) */}
           {szogActive &&
             szogDiagonals.map((d) => (
@@ -507,7 +579,7 @@ export function MaterialPreviewColumn({
                       : { x: 22, y: 0 }
               return (
                 <span
-                  key={`lbl-${seg.side}`}
+                  key={`lbl-${seg.side}-${seg.a.x}-${seg.a.y}-${seg.b.x}-${seg.b.y}`}
                   className={cn(
                     'pointer-events-none absolute z-[5] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center text-[10px] font-semibold leading-tight',
                     !seg.edged && 'opacity-50'
@@ -640,20 +712,22 @@ export function MaterialPreviewColumn({
       </div>
 
       {szogvagas ? (
-        <div className="space-y-1 text-center" aria-live="polite">
-          <p className="text-hint text-ink-secondary">
-            {szogCutCount === 0
-              ? 'Szögvágás be — kész alak: trapéz vagy háromszög (szabás téglalap).'
-              : `${szogCutCount} élvágás · ${szogShapeLabelForCorners(szogCorners, grainMm as number, crossMm as number)}. Szabás: téglalap ${grainMm} × ${crossMm} mm.`}
-          </p>
-          {szogActive && finishedEdges.top != null ? (
+        <div className="text-center" aria-live="polite">
+          {szogCutCount === 0 ? (
+            <p className="text-hint text-ink-muted">Kattints egy sarokra.</p>
+          ) : szogActive && finishedEdges.top != null ? (
             <p className="text-[11px] tabular-nums text-ink-muted">
-              Kész: F {Math.round(finishedEdges.top)} · A{' '}
+              {szogShapeLabelForCorners(
+                szogCorners,
+                grainMm as number,
+                crossMm as number
+              )}{' '}
+              · F {Math.round(finishedEdges.top)} · A{' '}
               {Math.round(finishedEdges.bottom!)} · B{' '}
               {Math.round(finishedEdges.left!)} · J{' '}
               {Math.round(finishedEdges.right!)}
               {szogDiagonals.length > 0
-                ? ` · Ferde ${szogDiagonals.map((d) => d.lengthMm).join(', ')}`
+                ? ` · ferde ${szogDiagonals.map((d) => d.lengthMm).join(', ')}`
                 : ''}{' '}
               mm
             </p>

@@ -12,6 +12,11 @@ import {
   type OptiSheetMaterialOption
 } from '@/lib/opti/queries'
 import {
+  countSzogCuts,
+  inferLegacyShapeFromCorners,
+  resolveSzogCorners
+} from '@/lib/opti/szogvagas-preview'
+import {
   isOptiLockedByPortalSubmit,
   isPortalSubmittedQuote
 } from '@/lib/quotes/portal-opti-edit'
@@ -97,6 +102,7 @@ export async function getQuoteForOptiEdit(
         sort_index,
         duplungolas,
         szogvagas,
+        szogvagas_corners,
         szog_kind,
         szog_trap_short_mm,
         szog_trap_axis,
@@ -206,6 +212,7 @@ export async function getQuoteForOptiEdit(
       sort_index: number
       duplungolas?: boolean | null
       szogvagas?: boolean | null
+      szogvagas_corners?: unknown
       szog_kind?: string | null
       szog_trap_short_mm?: number | null
       szog_trap_axis?: string | null
@@ -262,17 +269,44 @@ export async function getQuoteForOptiEdit(
       row.szog_kind === 'triangle' || row.szog_kind === 'trapezoid'
         ? row.szog_kind
         : null
-    if (szog && !kind) {
+    const grainMm = Number(row.grain_mm)
+    const crossMm = Number(row.cross_mm)
+    const short =
+      szog && kind === 'trapezoid' && Number(row.szog_trap_short_mm) > 0
+        ? Math.round(Number(row.szog_trap_short_mm))
+        : null
+    const axis =
+      row.szog_trap_axis === 'cross' || row.szog_trap_axis === 'grain'
+        ? row.szog_trap_axis
+        : null
+    const szogCorners = szog
+      ? resolveSzogCorners({
+          grainMm,
+          crossMm,
+          corners: row.szogvagas_corners,
+          szogKind: kind,
+          szogTrapShortMm: short,
+          szogTrapAxis: axis
+        })
+      : []
+    if (szog && countSzogCuts(szogCorners) === 0) {
       warnings.push(
         `Panel ${sheetName}: szögvágás alak hiányzik — ellenőrizd mentés előtt.`
       )
     }
+    const inferred = szog
+      ? inferLegacyShapeFromCorners(szogCorners, grainMm, crossMm)
+      : {
+          szogKind: null,
+          szogTrapShortMm: null,
+          szogTrapAxis: null
+        }
 
     return createPanelDraft({
       sheetMaterialId: row.sheet_material_id,
       sheetMaterialName: sheetName,
-      grainMm: Number(row.grain_mm),
-      crossMm: Number(row.cross_mm),
+      grainMm,
+      crossMm,
       quantity: Number(row.quantity) || 1,
       marking: row.label ?? '',
       edgeAId: row.edge_a_id ?? '',
@@ -287,17 +321,10 @@ export async function getQuoteForOptiEdit(
       edgeFerdeLabel: edgeLabel(edgeFerde, edgeMaterials),
       duplungolas: Boolean(row.duplungolas),
       szogvagas: szog,
-      szogKind: kind ?? (szog ? 'trapezoid' : null),
-      szogTrapShortMm:
-        szog && kind !== 'triangle' && Number(row.szog_trap_short_mm) > 0
-          ? Math.round(Number(row.szog_trap_short_mm))
-          : null,
-      szogTrapAxis:
-        row.szog_trap_axis === 'cross' || row.szog_trap_axis === 'grain'
-          ? row.szog_trap_axis
-          : szog
-            ? 'grain'
-            : null,
+      szogCorners,
+      szogKind: inferred.szogKind ?? kind,
+      szogTrapShortMm: inferred.szogTrapShortMm ?? short,
+      szogTrapAxis: inferred.szogTrapAxis ?? axis,
       panthelyfurasQuantity: Number(row.panthelyfuras_quantity) || 0,
       panthelyfurasOldal: normalizePanthelyOldal(row.panthelyfuras_oldal)
     })

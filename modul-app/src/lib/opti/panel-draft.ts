@@ -1,6 +1,11 @@
 /** Opti panel — local draft (nincs DB mentés, amíg árajánlat nem készül). */
 
-import type { SzogShapeKind, SzogTrapAxis } from '@/lib/opti/szogvagas-preview'
+import {
+  normalizeSzogCorners,
+  type SzogCornerCut,
+  type SzogShapeKind,
+  type SzogTrapAxis
+} from '@/lib/opti/szogvagas-preview'
 
 export type OptiPanelDraft = {
   id: string
@@ -25,7 +30,12 @@ export type OptiPanelDraft = {
   duplungolas: boolean
   /** Szögvágás: megmunkálás flag. */
   szogvagas: boolean
-  /** Szög alak — session/UI (nincs DB oszlop). */
+  /**
+   * Szög saroklevágások (kész él → along*). Forrásigazság (session + DB
+   * `szogvagas_corners`).
+   */
+  szogCorners: SzogCornerCut[]
+  /** Legacy tükör: trapéz|háromszög — cornersből származtatható. */
   szogKind: SzogShapeKind | null
   szogTrapShortMm: number | null
   szogTrapAxis: SzogTrapAxis | null
@@ -166,6 +176,7 @@ export function createPanelDraft(input: {
   edgeFerdeLabel?: string
   duplungolas?: boolean
   szogvagas?: boolean
+  szogCorners?: SzogCornerCut[]
   szogKind?: SzogShapeKind | null
   szogTrapShortMm?: number | null
   szogTrapAxis?: SzogTrapAxis | null
@@ -181,6 +192,7 @@ export function createPanelDraft(input: {
         : 0
   const szog = Boolean(input.szogvagas)
   const ferdeId = szog ? input.edgeFerdeId || null : null
+  const corners = szog ? normalizeSzogCorners(input.szogCorners ?? []) : []
   const kind =
     szog && (input.szogKind === 'triangle' || input.szogKind === 'trapezoid')
       ? input.szogKind
@@ -214,9 +226,10 @@ export function createPanelDraft(input: {
     edgeFerdeLabel: ferdeId ? input.edgeFerdeLabel || '' : '',
     duplungolas: Boolean(input.duplungolas),
     szogvagas: szog,
+    szogCorners: corners,
     szogKind: kind,
     szogTrapShortMm: short,
-    szogTrapAxis: axis ?? (szog ? 'grain' : null),
+    szogTrapAxis: axis,
     panthelyfurasQuantity: panthelySafe,
     panthelyfurasOldal:
       panthelySafe > 0

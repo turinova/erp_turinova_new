@@ -5,6 +5,7 @@ import {
   type PanthelyOldal
 } from '@/lib/opti/panel-draft'
 import type { PricingMode } from '@/lib/opti/quote-calculations'
+import { normalizeSzogCorners } from '@/lib/opti/szogvagas-preview'
 import { listQuoteFees, type QuoteFeeRow } from '@/lib/quotes/fee-totals'
 import {
   listQuoteAccessories,
@@ -161,6 +162,11 @@ export type QuoteDetail = {
     edge_ferde_code: string | null
     duplungolas: boolean
     szogvagas: boolean
+    szogvagas_corners: Array<{
+      corner: 'TL' | 'TR' | 'BL' | 'BR'
+      alongGrainMm: number
+      alongCrossMm: number
+    }>
     szog_kind: 'trapezoid' | 'triangle' | null
     szog_trap_short_mm: number | null
     szog_trap_axis: 'grain' | 'cross' | null
@@ -576,6 +582,7 @@ export async function getQuoteDetail(
         sort_index,
         duplungolas,
         szogvagas,
+        szogvagas_corners,
         szog_kind,
         szog_trap_short_mm,
         szog_trap_axis,
@@ -699,6 +706,7 @@ export async function getQuoteDetail(
         sort_index,
         duplungolas,
         szogvagas,
+        szogvagas_corners,
         szog_kind,
         szog_trap_short_mm,
         szog_trap_axis,
@@ -988,6 +996,7 @@ export async function getQuoteDetail(
     sort_index: number
     duplungolas?: boolean | null
     szogvagas?: boolean | null
+    szogvagas_corners?: unknown
     szog_kind?: string | null
     szog_trap_short_mm?: number | null
     szog_trap_axis?: string | null
@@ -1027,6 +1036,7 @@ export async function getQuoteDetail(
         edge_ferde_code: edgeCode(p.edge_ferde),
         duplungolas: Boolean(p.duplungolas),
         szogvagas: Boolean(p.szogvagas),
+        szogvagas_corners: normalizeSzogCorners(p.szogvagas_corners),
         szog_kind:
           p.szog_kind === 'triangle' || p.szog_kind === 'trapezoid'
             ? p.szog_kind

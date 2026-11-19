@@ -3,6 +3,10 @@ import type {
   OptiEdgeMaterialOption,
   OptiSheetMaterialOption
 } from '@/lib/opti/queries'
+import {
+  cornersFromLegacyShapeFields,
+  normalizeSzogCorners
+} from '@/lib/opti/szogvagas-preview'
 
 export type OptiSessionMode = 'staff' | 'partner'
 
@@ -62,15 +66,11 @@ function isPanelShape(value: unknown): value is OptiPanelDraft {
   if (p.szogvagas == null) p.szogvagas = false
   if (p.edgeFerdeId == null) p.edgeFerdeId = null
   if (p.edgeFerdeLabel == null) p.edgeFerdeLabel = ''
-  if (p.szogKind == null) {
-    p.szogKind = p.szogvagas ? 'trapezoid' : null
-  } else if (p.szogKind !== 'trapezoid' && p.szogKind !== 'triangle') {
-    p.szogKind = p.szogvagas ? 'trapezoid' : null
+  if (p.szogKind != null && p.szogKind !== 'trapezoid' && p.szogKind !== 'triangle') {
+    p.szogKind = null
   }
-  if (p.szogTrapAxis == null) {
-    p.szogTrapAxis = p.szogvagas ? 'grain' : null
-  } else if (p.szogTrapAxis !== 'grain' && p.szogTrapAxis !== 'cross') {
-    p.szogTrapAxis = p.szogvagas ? 'grain' : null
+  if (p.szogTrapAxis != null && p.szogTrapAxis !== 'grain' && p.szogTrapAxis !== 'cross') {
+    p.szogTrapAxis = null
   }
   if (p.szogTrapShortMm == null) {
     p.szogTrapShortMm = null
@@ -79,10 +79,30 @@ function isPanelShape(value: unknown): value is OptiPanelDraft {
     p.szogTrapShortMm =
       Number.isFinite(short) && short > 0 ? Math.round(short) : null
   }
+  // Corners: új session mező; hiányzik → legacy trapéz/háromszög backfill
+  {
+    let corners = normalizeSzogCorners(p.szogCorners)
+    if (
+      p.szogvagas &&
+      corners.length === 0 &&
+      (p.szogKind === 'trapezoid' || p.szogKind === 'triangle')
+    ) {
+      corners = cornersFromLegacyShapeFields(
+        Number(p.grainMm),
+        Number(p.crossMm),
+        p.szogKind,
+        p.szogTrapShortMm as number | null,
+        p.szogTrapAxis as 'grain' | 'cross' | null
+      )
+    }
+    // v1: max 1 sarok
+    p.szogCorners = p.szogvagas ? corners.slice(0, 1) : []
+  }
   if (!p.szogvagas) {
     p.szogKind = null
     p.szogTrapShortMm = null
     p.szogTrapAxis = null
+    p.szogCorners = []
     p.edgeFerdeId = null
     p.edgeFerdeLabel = ''
   }

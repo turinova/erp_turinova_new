@@ -5,6 +5,11 @@ import type {
   QuoteResult
 } from '@/lib/opti/quote-calculations'
 import type { OptiSheetMaterialOption } from '@/lib/opti/queries'
+import {
+  inferLegacyShapeFromCorners,
+  szogCornersForPersist,
+  type SzogCornerCut
+} from '@/lib/opti/szogvagas-preview'
 
 export type QuotePanelInsert = {
   quote_id: string
@@ -21,6 +26,8 @@ export type QuotePanelInsert = {
   sort_index: number
   duplungolas: boolean
   szogvagas: boolean
+  /** Forrásigazság: [{corner, alongGrainMm, alongCrossMm}] */
+  szogvagas_corners: SzogCornerCut[]
   szog_kind: 'trapezoid' | 'triangle' | null
   szog_trap_short_mm: number | null
   szog_trap_axis: 'grain' | 'cross' | null
@@ -112,22 +119,18 @@ export function panelsToInserts(
   return panels.map((panel, index) => {
     const panthely = Number(panel.panthelyfurasQuantity) || 0
     const szog = Boolean(panel.szogvagas)
+    const corners = szogCornersForPersist(panel.szogCorners, szog)
+    const inferred = szog
+      ? inferLegacyShapeFromCorners(corners, panel.grainMm, panel.crossMm)
+      : {
+          szogKind: null,
+          szogTrapShortMm: null,
+          szogTrapAxis: null
+        }
+    // Ne force-trapezoid: általános sarok → kind null + corners
     const kind =
-      szog && (panel.szogKind === 'triangle' || panel.szogKind === 'trapezoid')
-        ? panel.szogKind
-        : szog
-          ? 'trapezoid'
-          : null
-    const axis =
-      szog && (panel.szogTrapAxis === 'grain' || panel.szogTrapAxis === 'cross')
-        ? panel.szogTrapAxis
-        : szog && kind === 'trapezoid'
-          ? 'grain'
-          : null
-    const shortRaw = Number(panel.szogTrapShortMm)
-    const short =
-      szog && kind === 'trapezoid' && Number.isFinite(shortRaw) && shortRaw > 0
-        ? Math.round(shortRaw)
+      inferred.szogKind === 'triangle' || inferred.szogKind === 'trapezoid'
+        ? inferred.szogKind
         : null
     return {
       quote_id: quoteId,
@@ -144,9 +147,13 @@ export function panelsToInserts(
       sort_index: index,
       duplungolas: Boolean(panel.duplungolas),
       szogvagas: szog,
+      szogvagas_corners: corners,
       szog_kind: kind,
-      szog_trap_short_mm: short,
-      szog_trap_axis: axis,
+      szog_trap_short_mm: kind === 'trapezoid' ? inferred.szogTrapShortMm : null,
+      szog_trap_axis:
+        kind === 'trapezoid' || kind === 'triangle'
+          ? inferred.szogTrapAxis
+          : null,
       panthelyfuras_quantity: panthely,
       panthelyfuras_oldal:
         panthely > 0 ? (panel.panthelyfurasOldal ?? 'hosszu') : null

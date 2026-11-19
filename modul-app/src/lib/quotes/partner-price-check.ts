@@ -26,6 +26,11 @@ export type PriceCheckPanel = {
   edge_ferde_id: string | null
   duplungolas: boolean
   szogvagas: boolean
+  szogvagas_corners?: Array<{
+    corner: 'TL' | 'TR' | 'BL' | 'BR'
+    alongGrainMm: number
+    alongCrossMm: number
+  }> | null
   szog_kind: 'trapezoid' | 'triangle' | null
   szog_trap_short_mm: number | null
   szog_trap_axis: 'grain' | 'cross' | null
@@ -226,6 +231,7 @@ export function checkPartnerQuotePrices(input: PriceCheckInput): PriceCheckResul
         szogvagas: p.szogvagas,
         grainMm: p.grain_mm,
         crossMm: p.cross_mm,
+        szogCorners: p.szogvagas_corners,
         szogKind: p.szog_kind,
         szogTrapShortMm: p.szog_trap_short_mm,
         szogTrapAxis: p.szog_trap_axis

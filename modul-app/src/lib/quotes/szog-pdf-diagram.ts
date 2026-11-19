@@ -3,11 +3,13 @@
  */
 
 import {
-  rebuildSzogCornersFromShape,
+  countSzogCuts,
+  resolveSzogCorners,
   szogDiagonalAnnotations,
   szogFinishedStraightEdgesMm,
   szogStraightEdgeSegments,
   szogvagasPolygonPoints,
+  type SzogCornerCut,
   type SzogShapeKind,
   type SzogStraightEdgeId,
   type SzogTrapAxis
@@ -20,9 +22,11 @@ export type SzogPdfDiagramInput = {
   crossMm: number
   /** Csak true esetén szálsáv + „Szál →” (anyag grain_direction). */
   showGrain?: boolean
-  szogKind: SzogShapeKind
-  szogTrapShortMm: number | null
-  szogTrapAxis: SzogTrapAxis | null
+  /** Forrásigazság — ha van, legacy kind csak fallback. */
+  szogCorners?: SzogCornerCut[] | null
+  szogKind?: SzogShapeKind | null
+  szogTrapShortMm?: number | null
+  szogTrapAxis?: SzogTrapAxis | null
   /** Emberi élzáró név (nem gépkód). */
   edgeALabel: string | null
   edgeBLabel: string | null
@@ -106,21 +110,15 @@ export function buildSzogPdfDiagramSvg(
   const c = input.crossMm
   if (g <= 0 || c <= 0) return ''
 
-  const axis = input.szogTrapAxis ?? 'grain'
-  const short =
-    input.szogKind === 'triangle'
-      ? 0
-      : Number(input.szogTrapShortMm) > 0
-        ? Number(input.szogTrapShortMm)
-        : Math.round(g * 0.7)
-
-  const corners = rebuildSzogCornersFromShape(
-    input.szogKind,
-    g,
-    c,
-    short,
-    axis
-  )
+  const corners = resolveSzogCorners({
+    grainMm: g,
+    crossMm: c,
+    corners: input.szogCorners,
+    szogKind: input.szogKind,
+    szogTrapShortMm: input.szogTrapShortMm,
+    szogTrapAxis: input.szogTrapAxis
+  })
+  if (countSzogCuts(corners) === 0) return ''
   const pts = szogvagasPolygonPoints(boxW, boxH, g, c, corners)
   const finished = szogFinishedStraightEdgesMm(g, c, corners)
   const straight = szogStraightEdgeSegments(boxW, boxH, g, c, corners)

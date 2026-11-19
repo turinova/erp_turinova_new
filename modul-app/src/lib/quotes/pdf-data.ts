@@ -4,6 +4,7 @@ import type { TenantCompanyRow } from '@/lib/company/queries'
 import { quoteNetFirstTotals } from '@/lib/invoicing/quote-invoice-lines'
 import { normalizePanthelyOldal } from '@/lib/opti/panel-draft'
 import { formatEdgeMaterialLabel } from '@/lib/opti/queries'
+import { normalizeSzogCorners } from '@/lib/opti/szogvagas-preview'
 import { listQuoteFees } from '@/lib/quotes/fee-totals'
 import { listQuoteAccessories } from '@/lib/quotes/accessory-totals'
 import type {
@@ -79,6 +80,7 @@ export async function getQuoteForPdf(
         sort_index,
         duplungolas,
         szogvagas,
+        szogvagas_corners,
         szog_kind,
         szog_trap_short_mm,
         szog_trap_axis,
@@ -221,6 +223,7 @@ export async function getQuoteForPdf(
     sort_index: number
     duplungolas?: boolean | null
     szogvagas?: boolean | null
+    szogvagas_corners?: unknown
     szog_kind?: string | null
     szog_trap_short_mm?: number | null
     szog_trap_axis?: string | null
@@ -265,6 +268,7 @@ export async function getQuoteForPdf(
         panthelyfuras_quantity: Number(p.panthelyfuras_quantity) || 0,
         panthelyfuras_oldal: normalizePanthelyOldal(p.panthelyfuras_oldal),
         szogvagas: Boolean(p.szogvagas),
+        szogvagas_corners: normalizeSzogCorners(p.szogvagas_corners),
         szog_kind:
           p.szog_kind === 'triangle' || p.szog_kind === 'trapezoid'
             ? p.szog_kind

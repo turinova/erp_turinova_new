@@ -150,59 +150,101 @@ export function rebuildSzogCornersFromShape(
 }
 
 /**
+ * Corners elsőbbség, legacy shape fallback.
+ * v1: max 1 sarok.
+ */
+export function resolveSzogCorners(input: {
+  grainMm: number
+  crossMm: number
+  corners?: unknown
+  szogKind?: SzogShapeKind | null
+  szogTrapShortMm?: number | null
+  szogTrapAxis?: SzogTrapAxis | null
+}): SzogCornerCut[] {
+  if (input.grainMm <= 0 || input.crossMm <= 0) return []
+  const fromJson = normalizeSzogCorners(input.corners).slice(0, 1)
+  if (countSzogCuts(fromJson) > 0) return fromJson
+  return cornersFromLegacyShapeFields(
+    input.grainMm,
+    input.crossMm,
+    input.szogKind,
+    input.szogTrapShortMm,
+    input.szogTrapAxis
+  ).slice(0, 1)
+}
+
+/** DB / snapshot JSON — max 1 aktív sarok. */
+export function szogCornersForPersist(
+  corners: unknown,
+  szogvagas: boolean
+): SzogCornerCut[] {
+  if (!szogvagas) return []
+  return normalizeSzogCorners(corners)
+    .filter((c) => c.alongGrainMm > 0 || c.alongCrossMm > 0)
+    .slice(0, 1)
+}
+
+/**
  * Ferde él kész hossza mm (quote).
- * Nincs szög / nincs vágás → 0.
+ * Nincs szög / nincs vágás → 0. Corners elsőbbség.
  */
 export function panelFerdeEdgeLengthMm(input: {
   szogvagas: boolean
   grainMm: number
   crossMm: number
+  szogCorners?: SzogCornerCut[] | null
   szogKind?: SzogShapeKind | null
   szogTrapShortMm?: number | null
   szogTrapAxis?: SzogTrapAxis | null
 }): number {
   if (!input.szogvagas || input.grainMm <= 0 || input.crossMm <= 0) return 0
-  const kind = input.szogKind ?? 'trapezoid'
-  const axis = input.szogTrapAxis ?? 'grain'
-  const full = szogTrapParallelFullMm(axis, input.grainMm, input.crossMm)
-  const shortRaw = Number(input.szogTrapShortMm)
-  const short =
-    kind === 'triangle'
-      ? 0
-      : Number.isFinite(shortRaw) && shortRaw > 0 && shortRaw < full
-        ? shortRaw
-        : defaultTrapezoidShortMm(full)
-  const corners = rebuildSzogCornersFromShape(
-    kind,
-    input.grainMm,
-    input.crossMm,
-    short,
-    axis
-  )
+  const corners = resolveSzogCorners({
+    grainMm: input.grainMm,
+    crossMm: input.crossMm,
+    corners: input.szogCorners,
+    szogKind: input.szogKind,
+    szogTrapShortMm: input.szogTrapShortMm,
+    szogTrapAxis: input.szogTrapAxis
+  })
   const mm = szogDiagonalFinishedMm(corners)
   return mm > 0.5 ? mm : 0
 }
 
-/** Szabásjegyzék / PDF Egyéb: asztalos-nyelvű alak összefoglaló. */
+/** Szabásjegyzék / PDF / tábla: rövid alak összefoglaló. */
 export function szogShapeSummaryLabel(input: {
   szogvagas: boolean
+  grainMm?: number | null
+  crossMm?: number | null
+  szogCorners?: SzogCornerCut[] | null
   szogKind?: SzogShapeKind | null
   szogTrapShortMm?: number | null
   szogTrapAxis?: SzogTrapAxis | null
 }): string | null {
   if (!input.szogvagas) return null
+  const g = Number(input.grainMm)
+  const c = Number(input.crossMm)
+  if (g > 0 && c > 0) {
+    const corners = resolveSzogCorners({
+      grainMm: g,
+      crossMm: c,
+      corners: input.szogCorners,
+      szogKind: input.szogKind,
+      szogTrapShortMm: input.szogTrapShortMm,
+      szogTrapAxis: input.szogTrapAxis
+    })
+    if (countSzogCuts(corners) > 0) {
+      const label = szogShapeLabelForCorners(corners, g, c)
+      return label.charAt(0).toUpperCase() + label.slice(1)
+    }
+  }
   const kind = input.szogKind
-  if (kind === 'triangle') return 'Háromszög (szögvágás)'
+  if (kind === 'triangle') return 'Átlós háromszög'
   if (kind === 'trapezoid') {
     const short = Number(input.szogTrapShortMm)
-    const axis =
-      input.szogTrapAxis === 'cross'
-        ? 'kereszt irányában'
-        : 'szál irányában'
     if (Number.isFinite(short) && short > 0) {
-      return `Trapéz: kész rövid él ${Math.round(short)} mm, ${axis}`
+      return `Trapéz (kész ${Math.round(short)} mm)`
     }
-    return `Trapéz, ${axis}`
+    return 'Trapéz'
   }
   return 'Szögvágás'
 }
@@ -313,17 +355,16 @@ export type SzogCornerAvailability = {
 }
 
 /**
- * Melyik sarok kapcsolható be (már aktív = mindig enabled, hogy ki lehessen kapcsolni).
+ * Melyik sarok kapcsolható be.
+ * v1: egyszerre max 1 sarok — aktív sarok kikapcsolható, többi disabled.
  */
 export function szogCornerAvailability(
   corners: SzogCornerCut[],
-  grainMm: number,
-  crossMm: number
+  _grainMm: number,
+  _crossMm: number
 ): Record<SzogCornerId, SzogCornerAvailability> {
   const by = new Map(corners.map((c) => [c.corner, c]))
-  const triangle = corners.find((c) =>
-    isSzogFullDiagonal(c, grainMm, crossMm)
-  )
+  const active = SZOG_CORNER_ORDER.filter((id) => by.has(id))
   const out = {} as Record<SzogCornerId, SzogCornerAvailability>
 
   for (const id of SZOG_CORNER_ORDER) {
@@ -331,53 +372,24 @@ export function szogCornerAvailability(
       out[id] = { enabled: true }
       continue
     }
-
-    if (triangle) {
+    if (active.length >= 1) {
+      const who = SZOG_CORNER_LABELS[active[0]!]
       out[id] = {
         enabled: false,
-        reason: `Átlós háromszög (${SZOG_CORNER_LABELS[triangle.corner]}) miatt más sarok nem adható.`
+        reason: `Csak egy sarok (most: ${who}). A rajzon kattints másikra a cseréhez.`
       }
       continue
     }
-
-    const maxG = szogMaxAlongMm(id, 'grain', corners, grainMm, crossMm)
-    const maxC = szogMaxAlongMm(id, 'cross', corners, grainMm, crossMm)
-
-    if (maxG < SZOG_MIN_CUT_MM && maxC < SZOG_MIN_CUT_MM) {
-      out[id] = {
-        enabled: false,
-        reason:
-          'A szomszédos vágások miatt mindkét élen elfogyott a hely.'
-      }
-      continue
-    }
-    if (maxG < SZOG_MIN_CUT_MM) {
-      const edge =
-        id === 'TL' || id === 'TR' ? 'felső' : 'alsó'
-      const who = SZOG_CORNER_LABELS[szogGrainNeighbor(id)]
-      out[id] = {
-        enabled: false,
-        reason: `A ${edge} él már foglalt (${who}) — nincs hely ehhez a sarokhoz.`
-      }
-      continue
-    }
-    if (maxC < SZOG_MIN_CUT_MM) {
-      const edge = id === 'TL' || id === 'BL' ? 'bal' : 'jobb'
-      const who = SZOG_CORNER_LABELS[szogCrossNeighbor(id)]
-      out[id] = {
-        enabled: false,
-        reason: `A ${edge} él már foglalt (${who}) — nincs hely ehhez a sarokhoz.`
-      }
-      continue
-    }
-
     out[id] = { enabled: true }
   }
 
   return out
 }
 
-/** Default saroklevágás, a szabad helyhez clampelve. */
+/**
+ * Default saroklevágás: mindkét élen ~30% levágás (= ~70% kész él).
+ * Így a preview azonnal „saroklevágás” kinézetű, nem trapéz-egyoldalas.
+ */
 export function defaultSzogCornerCut(
   corner: SzogCornerId,
   corners: SzogCornerCut[],
@@ -389,17 +401,126 @@ export function defaultSzogCornerCut(
   if (maxG < SZOG_MIN_CUT_MM || maxC < SZOG_MIN_CUT_MM) return null
   const wantG = Math.max(
     SZOG_MIN_CUT_MM,
-    Math.min(Math.round(grainMm * 0.1), maxG)
+    Math.min(Math.round(grainMm * 0.3), maxG)
   )
   const wantC = Math.max(
     SZOG_MIN_CUT_MM,
-    Math.min(Math.round(crossMm * 0.1), maxC)
+    Math.min(Math.round(crossMm * 0.3), maxC)
   )
   return {
     corner,
     alongGrainMm: wantG,
     alongCrossMm: wantC
   }
+}
+
+/** Session/JSON → corners (TL|TR|BL|BR + along*). */
+export function normalizeSzogCorners(raw: unknown): SzogCornerCut[] {
+  if (!Array.isArray(raw)) return []
+  const out: SzogCornerCut[] = []
+  const seen = new Set<SzogCornerId>()
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue
+    const r = row as Record<string, unknown>
+    const corner = r.corner
+    if (
+      corner !== 'TL' &&
+      corner !== 'TR' &&
+      corner !== 'BL' &&
+      corner !== 'BR'
+    ) {
+      continue
+    }
+    if (seen.has(corner)) continue
+    const alongGrainMm = Number(r.alongGrainMm)
+    const alongCrossMm = Number(r.alongCrossMm)
+    if (!Number.isFinite(alongGrainMm) || !Number.isFinite(alongCrossMm)) {
+      continue
+    }
+    seen.add(corner)
+    out.push({
+      corner,
+      alongGrainMm: Math.max(0, Math.round(alongGrainMm)),
+      alongCrossMm: Math.max(0, Math.round(alongCrossMm))
+    })
+  }
+  return out
+}
+
+/**
+ * Régi trapéz/háromszög mezőkből corners — session backfill UI-hoz.
+ */
+export function cornersFromLegacyShapeFields(
+  grainMm: number,
+  crossMm: number,
+  kind: SzogShapeKind | null | undefined,
+  trapShortMm: number | null | undefined,
+  trapAxis: SzogTrapAxis | null | undefined
+): SzogCornerCut[] {
+  if (grainMm <= 0 || crossMm <= 0) return []
+  if (kind === 'triangle') {
+    return cornersFromTriangle(grainMm, crossMm, 'grain')
+  }
+  if (kind === 'trapezoid') {
+    const axis = trapAxis === 'cross' ? 'cross' : 'grain'
+    const full = szogTrapParallelFullMm(axis, grainMm, crossMm)
+    const shortRaw = Number(trapShortMm)
+    const short =
+      Number.isFinite(shortRaw) && shortRaw > 0 && shortRaw < full
+        ? shortRaw
+        : defaultTrapezoidShortMm(full)
+    return cornersFromTrapezoid(
+      grainMm,
+      crossMm,
+      short,
+      axis,
+      axis === 'cross' ? 'top' : 'left'
+    )
+  }
+  return []
+}
+
+/** Quote/legacy mezők cornersből (migráció előtt is menthető). */
+export function inferLegacyShapeFromCorners(
+  corners: SzogCornerCut[],
+  grainMm: number,
+  crossMm: number
+): {
+  szogKind: SzogShapeKind | null
+  szogTrapShortMm: number | null
+  szogTrapAxis: SzogTrapAxis | null
+} {
+  if (grainMm <= 0 || crossMm <= 0 || countSzogCuts(corners) === 0) {
+    return { szogKind: null, szogTrapShortMm: null, szogTrapAxis: null }
+  }
+  const active = corners.filter((c) => c.alongGrainMm > 0 || c.alongCrossMm > 0)
+  if (active.length === 1 && isSzogFullDiagonal(active[0]!, grainMm, crossMm)) {
+    return {
+      szogKind: 'triangle',
+      szogTrapShortMm: null,
+      szogTrapAxis: 'grain'
+    }
+  }
+  // Egy sarok + egyik tengely full cut = klasszikus egyferdéjű trapéz
+  if (active.length === 1) {
+    const c = active[0]!
+    if (c.alongCrossMm >= crossMm && c.alongGrainMm > 0 && c.alongGrainMm < grainMm) {
+      return {
+        szogKind: 'trapezoid',
+        szogTrapShortMm: remainFromCut(grainMm, c.alongGrainMm),
+        szogTrapAxis: 'grain'
+      }
+    }
+    if (c.alongGrainMm >= grainMm && c.alongCrossMm > 0 && c.alongCrossMm < crossMm) {
+      return {
+        szogKind: 'trapezoid',
+        szogTrapShortMm: remainFromCut(crossMm, c.alongCrossMm),
+        szogTrapAxis: 'cross'
+      }
+    }
+  }
+  // Általános saroklevágás — kind null (corners a forrás)
+  return { szogKind: null, szogTrapShortMm: null, szogTrapAxis: null }
 }
 
 /** Melyik két él neve a sarknál (plain HU). */
@@ -443,11 +564,19 @@ export function szogShapeLabelForCorners(
   const active = corners.filter(
     (c) => c.alongGrainMm > 0 || c.alongCrossMm > 0
   )
+  if (active.length === 0) return 'téglalap'
   if (
     active.length === 1 &&
     isSzogFullDiagonal(active[0]!, grainMm, crossMm)
   ) {
-    return 'háromszög'
+    return 'átlós háromszög'
+  }
+  if (active.length === 1) {
+    const c = active[0]!
+    if (c.alongGrainMm >= grainMm || c.alongCrossMm >= crossMm) {
+      return 'trapéz (egy oldal végig)'
+    }
+    return `saroklevágás (${SZOG_CORNER_LABELS[c.corner]})`
   }
   return szogShapeLabel(active.length)
 }
@@ -468,19 +597,21 @@ export function validateSzogCorners(
   const errors: SzogCornerError[] = []
   if (grainMm <= 0 || crossMm <= 0) return errors
 
+  const active = corners.filter((c) => c.alongGrainMm > 0 || c.alongCrossMm > 0)
+  if (active.length > 1) {
+    errors.push({
+      corner: active[1]!.corner,
+      message: 'Csak egy sarok vágható — válassz másikat a rajzon.'
+    })
+  }
+
   const triangles = corners.filter((c) =>
     isSzogFullDiagonal(c, grainMm, crossMm)
   )
-  if (triangles.length > 0 && corners.length > 1) {
-    errors.push({
-      corner: triangles[0]!.corner,
-      message: 'Átlós háromszögnél csak egy sarok lehet (kész: 0 × 0 mm).'
-    })
-  }
   if (triangles.length > 1) {
     errors.push({
       corner: triangles[1]!.corner,
-      message: 'Egyszerre csak egy átlós háromszög adható meg.'
+      message: 'Csak egy átlós háromszög adható meg.'
     })
   }
 
@@ -488,7 +619,7 @@ export function validateSzogCorners(
     if (c.alongGrainMm < 0 || c.alongCrossMm < 0) {
       errors.push({
         corner: c.corner,
-        message: 'A kész él nem lehet hosszabb a teljes élnél.'
+        message: 'A megadott kész él nem lehet hosszabb a teljes élnél.'
       })
       continue
     }
@@ -496,7 +627,7 @@ export function validateSzogCorners(
       errors.push({
         corner: c.corner,
         message:
-          'Nincs vágás — mindkét kész él = teljes él. Csökkentsd legalább az egyiket.'
+          'Nincs vágás — mindkét él teljes. Csökkentsd legalább az egyik kész hosszt.'
       })
       continue
     }
@@ -514,7 +645,7 @@ export function validateSzogCorners(
         errors.push({
           corner: c.corner,
           message:
-            'Ha az egyik kész él 0 (élvégig), a másik legyen rövidebb a teljesnél.'
+            'Ha az egyik él 0 (élvégig), a másik legyen rövidebb a teljesnél.'
         })
       }
       continue
@@ -523,14 +654,14 @@ export function validateSzogCorners(
       errors.push({
         corner: c.corner,
         message:
-          'Mindkét kész él legyen rövidebb a teljesnél, vagy az egyik legyen 0 (élvégig).'
+          'Mindkét kész él legyen rövidebb, vagy az egyik legyen 0 (élvégig).'
       })
       continue
     }
     if (c.alongGrainMm > grainMm || c.alongCrossMm > crossMm) {
       errors.push({
         corner: c.corner,
-        message: 'A kész él nem lehet hosszabb a teljes élnél.'
+        message: 'A megadott kész él nem lehet hosszabb a teljes élnél.'
       })
     }
   }

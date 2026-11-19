@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { getCuttingFee } from '@/lib/cutting-fees/queries'
 import type { CuttingFeeInfo } from '@/lib/opti/quote-calculations'
+import { normalizeSzogCorners } from '@/lib/opti/szogvagas-preview'
 import {
   checkPartnerQuotePrices,
   type PriceCheckEdge,
@@ -38,7 +39,7 @@ export async function runPartnerQuotePriceCheck(
     supabase
       .from('quote_panels')
       .select(
-        'sheet_material_id, grain_mm, cross_mm, quantity, edge_a_id, edge_b_id, edge_c_id, edge_d_id, edge_ferde_id, duplungolas, szogvagas, szog_kind, szog_trap_short_mm, szog_trap_axis, panthelyfuras_quantity'
+        'sheet_material_id, grain_mm, cross_mm, quantity, edge_a_id, edge_b_id, edge_c_id, edge_d_id, edge_ferde_id, duplungolas, szogvagas, szogvagas_corners, szog_kind, szog_trap_short_mm, szog_trap_axis, panthelyfuras_quantity'
       )
       .eq('quote_id', quoteId),
     supabase
@@ -72,6 +73,7 @@ export async function runPartnerQuotePriceCheck(
     edge_ferde_id: (p.edge_ferde_id as string | null) ?? null,
     duplungolas: Boolean(p.duplungolas),
     szogvagas: Boolean(p.szogvagas),
+    szogvagas_corners: normalizeSzogCorners(p.szogvagas_corners),
     szog_kind:
       p.szog_kind === 'triangle' || p.szog_kind === 'trapezoid'
         ? p.szog_kind

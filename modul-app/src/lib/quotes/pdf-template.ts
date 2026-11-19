@@ -2,7 +2,11 @@
 // Ported 1:1 from main-app quotes PDF template.
 
 import { panthelyEdgeMm, panthelySideText } from '@/lib/opti/panel-draft'
-import { szogShapeSummaryLabel } from '@/lib/opti/szogvagas-preview'
+import {
+  countSzogCuts,
+  resolveSzogCorners,
+  szogShapeSummaryLabel
+} from '@/lib/opti/szogvagas-preview'
 import {
   buildSzogPdfDiagramSvg,
   buildSzogPdfEdgeGroups
@@ -94,6 +98,11 @@ export type QuotePdfPanel = {
   panthelyfuras_quantity: number
   panthelyfuras_oldal: 'hosszu' | 'rovid' | null
   szogvagas: boolean
+  szogvagas_corners: Array<{
+    corner: 'TL' | 'TR' | 'BL' | 'BR'
+    alongGrainMm: number
+    alongCrossMm: number
+  }>
   szog_kind: 'trapezoid' | 'triangle' | null
   szog_trap_short_mm: number | null
   szog_trap_axis: 'grain' | 'cross' | null
@@ -1066,6 +1075,9 @@ export default function generateQuotePdfHtml({
                 services.push(
                   szogShapeSummaryLabel({
                     szogvagas: panel.szogvagas,
+                    grainMm: panel.width_mm,
+                    crossMm: panel.height_mm,
+                    szogCorners: panel.szogvagas_corners,
                     szogKind: panel.szog_kind,
                     szogTrapShortMm: panel.szog_trap_short_mm,
                     szogTrapAxis: panel.szog_trap_axis
@@ -1128,15 +1140,27 @@ export default function generateQuotePdfHtml({
     </div>
     ` : ''}
     ${(() => {
-      const szogPanels = (quote.panels || []).filter(
-        (p) => p.szogvagas && (p.szog_kind === 'trapezoid' || p.szog_kind === 'triangle')
-      )
+      const szogPanels = (quote.panels || []).filter((p) => {
+        if (!p.szogvagas) return false
+        const corners = resolveSzogCorners({
+          grainMm: p.width_mm,
+          crossMm: p.height_mm,
+          corners: p.szogvagas_corners,
+          szogKind: p.szog_kind,
+          szogTrapShortMm: p.szog_trap_short_mm,
+          szogTrapAxis: p.szog_trap_axis
+        })
+        return countSzogCuts(corners) > 0
+      })
       if (szogPanels.length === 0) return ''
       const cards = szogPanels
         .map((panel) => {
           const shape =
             szogShapeSummaryLabel({
               szogvagas: true,
+              grainMm: panel.width_mm,
+              crossMm: panel.height_mm,
+              szogCorners: panel.szogvagas_corners,
               szogKind: panel.szog_kind,
               szogTrapShortMm: panel.szog_trap_short_mm,
               szogTrapAxis: panel.szog_trap_axis
@@ -1146,7 +1170,8 @@ export default function generateQuotePdfHtml({
             grainMm: panel.width_mm,
             crossMm: panel.height_mm,
             showGrain: panel.grain_direction,
-            szogKind: panel.szog_kind!,
+            szogCorners: panel.szogvagas_corners,
+            szogKind: panel.szog_kind,
             szogTrapShortMm: panel.szog_trap_short_mm,
             szogTrapAxis: panel.szog_trap_axis,
             edgeALabel: panel.edge_a_label,

@@ -12,6 +12,7 @@ import {
 } from '@/components/patterns/data-table'
 import { Button } from '@/components/ui/button'
 import { panthelyLabel, type OptiPanelDraft } from '@/lib/opti/panel-draft'
+import { szogShapeSummaryLabel } from '@/lib/opti/szogvagas-preview'
 import { cn } from '@/lib/utils'
 
 export function PanelsTable({
@@ -159,7 +160,15 @@ export function PanelsTable({
                               ) : null}
                               {panel.szogvagas ? (
                                 <span className="rounded border border-border bg-subtle px-1.5 py-0.5 text-hint text-ink">
-                                  Szög
+                                  {szogShapeSummaryLabel({
+                                    szogvagas: true,
+                                    grainMm: panel.grainMm,
+                                    crossMm: panel.crossMm,
+                                    szogCorners: panel.szogCorners,
+                                    szogKind: panel.szogKind,
+                                    szogTrapShortMm: panel.szogTrapShortMm,
+                                    szogTrapAxis: panel.szogTrapAxis
+                                  }) ?? 'Szög'}
                                 </span>
                               ) : null}
                               {panel.panthelyfurasQuantity > 0 ? (

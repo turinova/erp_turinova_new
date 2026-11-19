@@ -698,6 +698,11 @@ export type QuotePanel = {
   sort_index: number
   duplungolas: boolean
   szogvagas: boolean
+  szogvagas_corners: Array<{
+    corner: 'TL' | 'TR' | 'BL' | 'BR'
+    alongGrainMm: number
+    alongCrossMm: number
+  }>
   szog_kind: 'trapezoid' | 'triangle' | null
   szog_trap_short_mm: number | null
   szog_trap_axis: 'grain' | 'cross' | null
@@ -1502,6 +1507,11 @@ export type Database = {
           sort_index?: number
           duplungolas?: boolean
           szogvagas?: boolean
+          szogvagas_corners?: Array<{
+            corner: 'TL' | 'TR' | 'BL' | 'BR'
+            alongGrainMm: number
+            alongCrossMm: number
+          }>
           szog_kind?: 'trapezoid' | 'triangle' | null
           szog_trap_short_mm?: number | null
           szog_trap_axis?: 'grain' | 'cross' | null
