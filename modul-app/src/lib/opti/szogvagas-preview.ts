@@ -359,9 +359,7 @@ export type SzogCornerAvailability = {
  * v1: egyszerre max 1 sarok — aktív sarok kikapcsolható, többi disabled.
  */
 export function szogCornerAvailability(
-  corners: SzogCornerCut[],
-  _grainMm: number,
-  _crossMm: number
+  corners: SzogCornerCut[]
 ): Record<SzogCornerId, SzogCornerAvailability> {
   const by = new Map(corners.map((c) => [c.corner, c]))
   const active = SZOG_CORNER_ORDER.filter((id) => by.has(id))
