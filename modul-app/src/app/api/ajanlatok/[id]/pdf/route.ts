@@ -9,6 +9,7 @@ import {
   getQuoteForPdf,
   tenantCompanyToPdf
 } from '@/lib/quotes/pdf-data'
+import { buildQuotePdfFilename } from '@/lib/quotes/pdf-filename'
 import generateQuotePdfHtml from '@/lib/quotes/pdf-template'
 import { createClient } from '@/lib/supabase/server'
 
@@ -203,11 +204,20 @@ export async function GET(
         console.warn(`PDF size (${fileSizeMB.toFixed(2)}MB) exceeds 3MB limit`)
       }
 
+      const pdfFilename = buildQuotePdfFilename({
+        projectName: quoteData.project_name,
+        customerName:
+          quoteData.customer.billing_name || quoteData.customer.name,
+        quoteNumber: quoteData.quote_number,
+        orderNumber: quoteData.order_number,
+        createdAt: quoteData.created_at
+      })
+
       return new NextResponse(new Uint8Array(pdfBuffer), {
         status: 200,
         headers: {
           'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="Arajanlat-${quoteData.quote_number}.pdf"`,
+          'Content-Disposition': `inline; filename="${pdfFilename}"`,
           'Content-Length': String(pdfBuffer.length)
         }
       })

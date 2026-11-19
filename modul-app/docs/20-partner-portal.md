@@ -175,7 +175,7 @@ Local (staff host, pl. `localhost:3010`):
 3. Detail: fizetés badge partnernek; gyártás dátum; **gyártógép / vonalkód nem** partneren
 4. Label: Beküldve / Megrendelve / Gyártásban / Gyártás kész / Átadva / Törölve (`partner-status-labels.ts`)
 5. Tone: `ready` = success, `ordered` = info
-6. `quotes.project_name` — Opti + detail szerkesztés; **max 40** karakter; lista a szám alatt; PDF V1-ben nem
+6. `quotes.project_name` — Opti + detail szerkesztés; **max 40** karakter; lista a szám alatt; **PDF fejlécen** (ha meg van adva)
 7. Partner megrendelés detail: befizetés lista (összeg, dátum, mód) + fizetve/hátralék; belső comment rejtve
 8. Partner listák (`partner-quotes-list-client.tsx`):
    - **Beküldött rendeléseim:** KPI sáv (Elvihető · Gyártásban · Fizetendő hátralék · Idén beküldve; kattintható szűrők) + URL `status` chip (`open` default · `ready` · `in_production` · `due` · `closed` · `all`; keresésnél mindig `all`). Oszlopok: Rendelés · Állapot (badge + következő lépés mondat) · Fizetendő · Összeg · „Részletek”.
@@ -207,7 +207,6 @@ Local (staff host, pl. `localhost:3010`):
 - Dual-DB / legacy portal bridge
 - Kódimport `customer-portal`-ból
 - Partneren gyártógép / vonalkód megjelenítés
-- Projekt név a PDF-en (V1)
 - Partner befizetés rögzítés / belső payment comment
 - Auth ban partner disable-nél (csak app-szintű `status`)
 - Resend / saját mailer a reset/invite-hez (Supabase Auth email)

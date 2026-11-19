@@ -111,6 +111,9 @@ export type QuotePdfPanel = {
 export type QuotePdfInput = {
   id: string
   quote_number: string
+  /** Munkacím — fejléc hero, ha meg van adva (max 40). */
+  project_name?: string | null
+  order_number?: string | null
   barcode?: string | null
   customer: {
     name: string
@@ -293,6 +296,50 @@ export default function generateQuotePdfHtml({
   const barcodeValue = (quote.barcode || '').trim()
   const barcodeSafe = barcodeValue.replace(/[^\x20-\x7E]/g, '') || barcodeValue
   const barcodeSvgId = `barcode-${quote.id}`
+  const projectName = (quote.project_name || '').trim()
+  const projectHtml = projectName
+    ? `<p class="header-field"><span class="header-field-label">Projekt neve:</span> <span class="header-field-value">${escapeHtml(projectName)}</span></p>`
+    : ''
+  const identityInner = `
+              <div class="header-title-row">
+                <span class="header-doc-type">Ajánlat</span>
+                <span class="header-title-sep">·</span>
+                <span class="header-quote-no">${escapeHtml(quote.quote_number)}</span>
+              </div>
+              ${projectHtml}
+              <div class="header-dates">
+                <p class="header-date-line"><span class="header-field-label">Kelt:</span> <span class="header-date-value">${formatDatePdf(quote.created_at)}</span></p>
+                <p class="header-date-line"><span class="header-field-label">Érvényes:</span> <span class="header-date-value">${escapeHtml(expiryLabel)}</span></p>
+              </div>`
+  const brandHtml = tenantCompanyLogoBase64
+    ? `<div class="header-brand"><img src="data:image/png;base64,${tenantCompanyLogoBase64}" alt="Company Logo" class="header-logo" /></div>`
+    : `<div class="header-brand"></div>`
+  /** 1. oldal: brand + identity + scan. */
+  const headerPrimaryHtml = `
+        <div class="header">
+          <div class="header-row">
+            ${brandHtml}
+            <div class="header-identity">${identityInner}
+            </div>
+            ${
+              barcodeSafe
+                ? `<div class="header-scan">
+              <svg id="${barcodeSvgId}"></svg>
+              <div class="header-scan-text">${escapeHtml(barcodeValue)}</div>
+            </div>`
+                : ''
+            }
+          </div>
+        </div>`
+  /** 2–3. oldal: kompakt, barcode nélkül. */
+  const headerCompactHtml = `
+        <div class="header header-compact">
+          <div class="header-row">
+            ${brandHtml}
+            <div class="header-identity">${identityInner}
+            </div>
+          </div>
+        </div>`
 
   // Tételek + lábléc: DB snapshot Ft (egész). Egységár csak info (bruttó/qty).
   // Ne unit×qty újraszámolás — az ellentmondana az összesítőnek / Számlázznak.
@@ -570,70 +617,113 @@ export default function generateQuotePdfHtml({
         min-height: calc(100vh - 16mm);
       }
       .header {
-        margin-bottom: 1.5em;
-        padding-bottom: 1em;
-        border-bottom: 1px solid #000000;
+        margin-bottom: 1.25em;
+        padding-bottom: 0.85em;
+        border-bottom: 1px solid #e4e4e7;
       }
       .header-row {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
+        gap: 16px;
       }
-      .header-left {
-        flex-shrink: 0;
+      .header-brand {
+        flex: 0 0 auto;
+        max-width: 38%;
       }
       .header-logo {
-        max-height: 50px;
-        max-width: 220px;
+        max-height: 44px;
+        max-width: 200px;
         width: auto;
         height: auto;
+        display: block;
       }
-      .header-right {
-        text-align: right;
-        flex: 1;
+      .header-identity {
+        flex: 1 1 auto;
+        min-width: 0;
+        text-align: left;
+        padding-top: 1px;
       }
-      .header-barcode {
+      .header-title-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.35em;
+        margin: 0 0 0.4em;
+      }
+      .header-doc-type {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+      }
+      .header-title-sep {
+        font-size: 11px;
+        font-weight: 500;
+        color: #a1a1aa;
+      }
+      .header-quote-no {
+        font-size: 13px;
+        font-weight: 700;
+        color: #18181b;
+        letter-spacing: 0.01em;
+      }
+      .header-field {
+        font-size: 12.5px;
+        line-height: 1.4;
+        margin: 0 0 0.35em;
+        max-width: 26em;
+        word-break: break-word;
+      }
+      .header-field-label {
+        font-weight: 500;
+        color: #52525b;
+      }
+      .header-field-value {
+        font-weight: 700;
+        color: #18181b;
+      }
+      .header-dates {
+        margin: 0.15em 0 0;
+      }
+      .header-date-line {
+        font-size: 11.5px;
+        line-height: 1.45;
+        margin: 0 0 0.1em;
+      }
+      .header-date-value {
+        font-weight: 700;
+        color: #27272a;
+      }
+      .header-scan {
+        flex: 0 0 auto;
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        margin-left: 12px;
-        padding: 6px 8px;
-        border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        background: #fff;
+        justify-content: flex-start;
+        padding: 2px 0 0;
       }
-      .header-barcode-label {
-        font-size: 8px;
-        color: #757575;
-        margin-bottom: 2px;
-      }
-      .header-barcode svg {
-        max-width: 160px;
+      .header-scan svg {
+        max-width: 124px;
         height: auto;
       }
-      .header-barcode-text {
+      .header-scan-text {
         font-size: 9px;
-        font-family: monospace;
-        letter-spacing: 1px;
-        margin-top: 2px;
-        color: #212121;
+        font-family: ui-monospace, monospace;
+        letter-spacing: 0.04em;
+        margin-top: 3px;
+        color: #3f3f46;
       }
-      .title {
-        font-size: 16px;
-        font-weight: 700;
-        color: #212121;
-        margin-bottom: 0.25em;
+      .header.header-compact .header-logo {
+        max-height: 36px;
+        max-width: 160px;
       }
-      .quote-number {
+      .header.header-compact .header-field {
         font-size: 12px;
-        font-weight: 600;
-        color: #424242;
-        margin-bottom: 0.25em;
       }
-      .quote-date {
-        font-size: 10px;
-        color: #000000;
+      .header.header-compact .header-quote-no {
+        font-size: 12.5px;
       }
       .two-column {
         display: flex;
@@ -642,26 +732,40 @@ export default function generateQuotePdfHtml({
       }
       .column {
         flex: 1;
+        min-width: 0;
       }
       .column-title {
         font-size: 11px;
-        font-weight: 700;
-        color: #000000;
-        margin-bottom: 0.5em;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #71717a;
+        margin: 0 0 0.45em;
       }
       .column-content {
-        padding-left: 0.5em;
+        padding-left: 0;
       }
-      .column-item {
-        font-size: 10px;
-        margin-bottom: 0.25em;
+      .party-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: #18181b;
+        line-height: 1.3;
+        margin: 0 0 0.4em;
+        word-break: break-word;
       }
-      .column-item-bold {
+      .party-field {
+        font-size: 11.5px;
+        line-height: 1.45;
+        margin: 0 0 0.2em;
+        word-break: break-word;
+      }
+      .party-field-label {
         font-weight: 500;
-        color: #000000;
+        color: #52525b;
       }
-      .column-item-gray {
-        color: #000000;
+      .party-field-value {
+        font-weight: 700;
+        color: #27272a;
       }
       table {
         width: 100%;
@@ -909,56 +1013,56 @@ export default function generateQuotePdfHtml({
   </head>
   <body>
     <div class="content-wrapper">
-    <div class="header">
-      <div class="header-row">
-        <div class="header-left">
-          ${tenantCompanyLogoBase64 ? `<img src="data:image/png;base64,${tenantCompanyLogoBase64}" alt="Company Logo" class="header-logo" />` : ''}
-        </div>
-        <div class="header-right">
-          <div class="title">AJÁNLAT</div>
-          <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
-          <div class="quote-date">
-            <div>Kelt.: ${formatDatePdf(quote.created_at)}</div>
-            <div>Érvényesség: ${expiryLabel}</div>
-          </div>
-        </div>
-        ${barcodeSafe ? `
-        <div class="header-barcode">
-          <div class="header-barcode-label">Vonalkód</div>
-          <svg id="${barcodeSvgId}"></svg>
-          <div class="header-barcode-text">${escapeHtml(barcodeValue)}</div>
-        </div>
-        ` : ''}
-      </div>
-    </div>
+    ${headerPrimaryHtml}
 
+    ${(() => {
+      const issuerName = (tenantCompany.name || '').trim()
+      const issuerCityLine = [tenantCompany.postal_code || '', tenantCompany.city || '']
+        .filter(Boolean)
+        .join(' ')
+      const issuerAddress = [issuerCityLine, tenantCompany.address || '']
+        .filter(Boolean)
+        .join(', ')
+      const buyerName = (
+        quote.customer.billing_name ||
+        quote.customer.name ||
+        ''
+      ).trim()
+      const buyerAddress = [
+        quote.customer.billing_postal_code || '',
+        quote.customer.billing_city || '',
+        [quote.customer.billing_street || '', quote.customer.billing_house_number || '']
+          .filter(Boolean)
+          .join(' ')
+      ]
+        .filter(Boolean)
+        .join(', ')
+      const partyField = (label: string, value: string) =>
+        value
+          ? `<p class="party-field"><span class="party-field-label">${escapeHtml(label)}:</span> <span class="party-field-value">${escapeHtml(value)}</span></p>`
+          : ''
+      return `
     <div class="two-column">
       <div class="column">
-        <div class="column-title">Ajánlat adó:</div>
+        <div class="column-title">Ajánlat adó</div>
         <div class="column-content">
-          <div class="column-item column-item-bold">${escapeHtml(tenantCompany.name || '')}</div>
-          <div class="column-item column-item-gray">${escapeHtml([tenantCompany.postal_code || '', tenantCompany.city || ''].filter(Boolean).join(' '))}</div>
-          <div class="column-item column-item-gray">${escapeHtml(tenantCompany.address || '')}</div>
-          ${tenantCompany.tax_number ? `<div class="column-item column-item-gray">Adószám: ${escapeHtml(tenantCompany.tax_number)}</div>` : ''}
+          ${issuerName ? `<p class="party-name">${escapeHtml(issuerName)}</p>` : ''}
+          ${partyField('Cím', issuerAddress)}
+          ${partyField('Adószám', (tenantCompany.tax_number || '').trim())}
         </div>
       </div>
-
       <div class="column">
-        <div class="column-title">Vevő adatok</div>
+        <div class="column-title">Vevő</div>
         <div class="column-content">
-          <div class="column-item column-item-bold">${escapeHtml(quote.customer.billing_name || quote.customer.name || '')}</div>
-          <div class="column-item column-item-gray">${escapeHtml([
-            quote.customer.billing_postal_code || '',
-            quote.customer.billing_city || '',
-            quote.customer.billing_street || '',
-            quote.customer.billing_house_number || ''
-          ].filter(Boolean).join(' '))}</div>
-          ${quote.customer.email ? `<div class="column-item column-item-gray">E-mail: ${escapeHtml(quote.customer.email)}</div>` : ''}
-          ${quote.customer.mobile ? `<div class="column-item column-item-gray">Telefon: ${escapeHtml(quote.customer.mobile)}</div>` : ''}
-          ${quote.customer.billing_tax_number ? `<div class="column-item column-item-gray">Adószám: ${escapeHtml(quote.customer.billing_tax_number)}</div>` : ''}
+          ${buyerName ? `<p class="party-name">${escapeHtml(buyerName)}</p>` : ''}
+          ${partyField('Cím', buyerAddress)}
+          ${partyField('E-mail', (quote.customer.email || '').trim())}
+          ${partyField('Telefon', (quote.customer.mobile || '').trim())}
+          ${partyField('Adószám', (quote.customer.billing_tax_number || '').trim())}
         </div>
       </div>
-    </div>
+    </div>`
+    })()}
 
     <table>
       <thead>
@@ -1016,21 +1120,7 @@ export default function generateQuotePdfHtml({
     <!-- Second Page: Cutting List -->
     <div class="page-break">
       <div class="content-wrapper">
-        <div class="header">
-          <div class="header-row">
-            <div class="header-left">
-              ${tenantCompanyLogoBase64 ? `<img src="data:image/png;base64,${tenantCompanyLogoBase64}" alt="Company Logo" class="header-logo" />` : ''}
-            </div>
-            <div class="header-right">
-              <div class="title">AJÁNLAT</div>
-              <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
-              <div class="quote-date">
-                <div>Kelt.: ${formatDatePdf(quote.created_at)}</div>
-                <div>Érvényesség: ${expiryLabel}</div>
-              </div>
-            </div>
-          </div>
-        </div>
+        ${headerCompactHtml}
 
         <div class="cutting-list-title">Szabásjegyzék</div>
 
@@ -1221,17 +1311,7 @@ export default function generateQuotePdfHtml({
       return `
     <div class="page-break">
       <div class="content-wrapper">
-        <div class="header">
-          <div class="header-row">
-            <div class="header-left">
-              ${tenantCompanyLogoBase64 ? `<img src="data:image/png;base64,${tenantCompanyLogoBase64}" alt="Company Logo" class="header-logo" />` : ''}
-            </div>
-            <div class="header-right">
-              <div class="title">AJÁNLAT</div>
-              <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
-            </div>
-          </div>
-        </div>
+        ${headerCompactHtml}
         <div class="cutting-list-title">Szögvágott panelek</div>
         <div class="szog-visual-grid">${cards}</div>
         <div style="flex: 1;"></div>

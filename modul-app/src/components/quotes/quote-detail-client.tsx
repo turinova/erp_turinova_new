@@ -80,6 +80,7 @@ import { formatReadySmsInfoLine } from '@/lib/order-status/record-open'
 import { partnerAutoProformaCopy } from '@/lib/partner/auto-proforma-rules'
 import { panthelyLabel } from '@/lib/opti/panel-draft'
 import { szogShapeSummaryLabel } from '@/lib/opti/szogvagas-preview'
+import { buildQuotePdfFilename } from '@/lib/quotes/pdf-filename'
 import {
   formatQuotePrice
 } from '@/lib/opti/quote-calculations'
@@ -953,7 +954,18 @@ export function QuoteDetailClient({
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `Arajanlat-${quote.quote_number}.pdf`
+      const cd = response.headers.get('Content-Disposition')
+      const fromHeader = cd?.match(/filename="([^"]+)"/)?.[1]
+      link.download =
+        fromHeader ||
+        buildQuotePdfFilename({
+          projectName: quote.project_name,
+          customerName:
+            quote.customer.billing_name || quote.customer.name,
+          quoteNumber: quote.quote_number,
+          orderNumber: quote.order_number,
+          createdAt: quote.created_at
+        })
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -2551,7 +2563,8 @@ export function QuoteDetailClient({
             <DialogTitle>Projekt neve</DialogTitle>
             <DialogDescription>
               Opcionális megnevezés — pl. Konyha – Kovács. Max{' '}
-              {PROJECT_NAME_MAX_LENGTH} karakter; nem jelenik meg a PDF-en.
+              {PROJECT_NAME_MAX_LENGTH} karakter; megjelenik az ajánlat PDF
+              fejlécén.
             </DialogDescription>
           </DialogHeader>
           <Input

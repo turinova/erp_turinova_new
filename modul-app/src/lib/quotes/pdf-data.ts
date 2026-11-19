@@ -46,6 +46,8 @@ export async function getQuoteForPdf(
       `
       id,
       quote_number,
+      order_number,
+      project_name,
       barcode,
       comment,
       created_at,
@@ -435,9 +437,17 @@ export async function getQuoteForPdf(
     units: { shortform: a.unit_shortform || 'db' }
   }))
 
+  const projectName =
+    typeof data.project_name === 'string' ? data.project_name.trim() : ''
+
   return {
     id: data.id,
     quote_number: data.quote_number,
+    order_number:
+      typeof data.order_number === 'string' && data.order_number.trim()
+        ? data.order_number.trim()
+        : null,
+    project_name: projectName || null,
     barcode: data.barcode ?? null,
     customer: {
       name: customer.name,
