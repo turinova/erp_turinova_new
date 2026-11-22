@@ -12,6 +12,7 @@ import {
   buildSzogPdfEdgeGroups
 } from '@/lib/quotes/szog-pdf-diagram'
 import { formatQuoteFeeLabel } from '@/lib/quotes/fee-totals'
+import { staffLeftoverLabel } from '@/lib/kiosk/leftover'
 
 export type QuotePdfPricingLine = {
   id: string
@@ -22,6 +23,8 @@ export type QuotePdfPricingLine = {
   charged_sqm: number | null
   waste_multi: number
   boards_used: number
+  /** full_board | panel_area | mixed — maradék jelzéshez. */
+  pricing_method?: string | null
   material_net: number
   material_gross: number
   cutting_length_m: number
@@ -363,12 +366,21 @@ export default function generateQuotePdfHtml({
       totalArea > 0 ? Math.round((lineGross / totalArea) * 100) / 100 : 0
 
     const dimensions = `${pricing.board_length_mm}×${pricing.board_width_mm}×${pricing.thickness_mm} mm`
+    const leftoverNote = staffLeftoverLabel(
+      pricing.pricing_method ?? '',
+      boardsUsed
+    )
 
     return `
       <tr>
         <td>
           <div style="font-weight: 500;">${escapeHtml(materialName)}</div>
           <div style="font-size: 9px; color: #757575; margin-top: 0.25em;">${dimensions}</div>
+          ${
+            leftoverNote
+              ? `<div style="font-size: 9px; color: #166534; margin-top: 0.35em; font-weight: 500;">${escapeHtml(leftoverNote)}</div>`
+              : ''
+          }
         </td>
         <td>
           <span class="chip">${formatWasteMultiplier(wasteMulti)}</span>

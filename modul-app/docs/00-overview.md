@@ -40,6 +40,8 @@ Komplett SaaS struktúra (deploy, tenancy, platform gerinc, DR): **[17-saas-arch
 Supabase bekötés lépései: **[19-supabase-setup.md](19-supabase-setup.md)**.  
 Partner / online asztalos (add-on): **[20-partner-portal.md](20-partner-portal.md)**.  
 Partner bankkártya (Teya) + előleg/végszámla flow: **[57-partner-teya-card-payment.md](57-partner-teya-card-payment.md)**.  
+Vezetői iOS app (tenant riportok, Expo): **[58-ios-vezetoi-app.md](58-ios-vezetoi-app.md)** · kód mappa: `vezetoi-mobile/`.  
+Bolti lapszab kiosk (tenant self-order, UX mock): **[60-bolti-kiosk.md](60-bolti-kiosk.md)** · layout: **[61-bolti-kiosk-ux.md](61-bolti-kiosk-ux.md)**.  
 Teljesítmény / lightning-fast fenntartás: **[22-performance-playbook.md](22-performance-playbook.md)**.  
 Beszerzés (beszállító / rendelés / beérkezés): **[24-beszerzes-workflow.md](24-beszerzes-workflow.md)**.  
 Raktárak: **[25-warehouses.md](25-warehouses.md)**.  

@@ -14,6 +14,7 @@ type SearchParams = Promise<{
   q?: string
   page?: string
   archived?: string
+  forras?: string
 }>
 
 export default async function AjanlatokPage({
@@ -28,6 +29,7 @@ export default async function AjanlatokPage({
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
   const archivedOnly = params.archived === '1'
+  const kioskOnly = params.forras === 'kiosk'
 
   let loadError: string | null = null
   let rows: Awaited<ReturnType<typeof listQuotes>>['rows'] = []
@@ -44,7 +46,8 @@ export default async function AjanlatokPage({
           q: q || undefined,
           page,
           limit: 25,
-          archivedOnly
+          archivedOnly,
+          source: kioskOnly ? 'kiosk' : undefined
         })
         rows = result.rows
         total = result.total
@@ -96,6 +99,7 @@ export default async function AjanlatokPage({
         canWrite={canWrite}
         initialQ={q}
         archivedOnly={archivedOnly}
+        kioskOnly={kioskOnly}
       />
     </Suspense>
   )

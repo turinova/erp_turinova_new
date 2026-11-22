@@ -20,6 +20,8 @@
     "test:opening-hours": "npx --yes tsx --test src/lib/opening-hours.test.ts",
     "test:quote-payment-labels": "npx --yes tsx --test src/lib/quotes/payment-labels.test.ts",
     "test:invoice-net-first": "npx --yes tsx --test src/lib/invoicing/net-first-lines.test.ts",
+    "test:kiosk-customer-match": "npx --yes tsx --test src/lib/kiosk/customer-match-rules.test.ts",
+    "test:kiosk-leftover": "npx --yes tsx --test src/lib/kiosk/leftover.test.ts",
     "test:partner-price-check": "npx --yes tsx --test src/lib/quotes/partner-price-check.test.ts",
     "test:auto-proforma-rules": "npx --yes tsx --test src/lib/partner/auto-proforma-rules.test.ts",
     "test:payment-method-kinds": "npx --yes tsx --test src/lib/payment-methods/kinds.test.ts",

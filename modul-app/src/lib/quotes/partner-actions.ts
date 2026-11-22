@@ -24,17 +24,10 @@ import {
 } from '@/lib/partner/auto-proforma-rules'
 import { priceCheckMessage } from '@/lib/quotes/partner-price-check'
 import { runPartnerQuotePriceCheck } from '@/lib/quotes/partner-price-check-load'
-import { recalculateQuoteFeeTotals } from '@/lib/quotes/fee-totals'
 import { allocatePartnerQuoteNumber } from '@/lib/quotes/partner-quote-number'
+import { persistOptiQuoteChildren } from '@/lib/quotes/persist-opti-quote'
 import { normalizeProjectName } from '@/lib/quotes/project-name'
-import {
-  assertQuoteReady,
-  edgeLinesFromPricing,
-  materialLineFromPricing,
-  panelsToInserts,
-  quotePricingMode,
-  serviceLinesFromPricing
-} from '@/lib/quotes/snapshot'
+import { assertQuoteReady, quotePricingMode } from '@/lib/quotes/snapshot'
 import { resolvePaymentMethodKind } from '@/lib/payment-methods/kinds'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -240,59 +233,17 @@ export async function savePartnerOptiQuote(
     return { ok: false, message: 'Nem sikerült menteni az ajánlatot.' }
   }
 
-  const panelRows = panelsToInserts(quoteId, input.panels)
-  const { error: panelsError } = await supabase
-    .from('quote_panels')
-    .insert(panelRows)
-
-  if (panelsError) {
-    console.error('partner quote_panels', panelsError.message)
-    return { ok: false, message: 'Nem sikerült menteni a paneleket.' }
-  }
-
-  for (const material of input.quote.materials) {
-    const sheet = input.sheetMaterials.find((m) => m.id === material.material_id)
-    const line = materialLineFromPricing(quoteId, material, sheet)
-    const { data: lineRow, error: lineError } = await supabase
-      .from('quote_material_lines')
-      .insert(line)
-      .select('id')
-      .single()
-
-    if (lineError || !lineRow) {
-      console.error('partner quote_material_lines', lineError?.message)
-      return { ok: false, message: 'Nem sikerült menteni az árazást.' }
-    }
-
-    const edges = edgeLinesFromPricing(lineRow.id, material)
-    if (edges.length > 0) {
-      const { error: edgeError } = await supabase
-        .from('quote_edge_lines')
-        .insert(edges)
-      if (edgeError) {
-        console.error('partner quote_edge_lines', edgeError.message)
-        return { ok: false, message: 'Nem sikerült menteni az élzáró bontást.' }
-      }
-    }
-
-    const services = serviceLinesFromPricing(lineRow.id, material)
-    if (services.length > 0) {
-      const { error: serviceError } = await supabase
-        .from('quote_service_lines')
-        .insert(services)
-      if (serviceError) {
-        console.error('partner quote_service_lines', serviceError.message)
-        return {
-          ok: false,
-          message: 'Nem sikerült menteni a megmunkálás tételeket.'
-        }
-      }
-    }
-  }
-
-  const feeTotals = await recalculateQuoteFeeTotals(supabase, tenantId, quoteId)
-  if (!feeTotals.ok) {
-    return { ok: false, message: feeTotals.message }
+  const persisted = await persistOptiQuoteChildren({
+    supabase,
+    tenantId,
+    quoteId,
+    panels: input.panels,
+    quote: input.quote,
+    sheetMaterials: input.sheetMaterials,
+    logPrefix: 'partner'
+  })
+  if (!persisted.ok) {
+    return { ok: false, message: persisted.message }
   }
 
   revalidatePartnerPaths(

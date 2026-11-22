@@ -29,7 +29,7 @@ export type AppPageDef = {
  * Bump when új oldal kerül APP_PAGES-be (pl. migráció után).
  * Session snapshot mismatch → újratölt entitlements DB-ből.
  */
-export const PAGE_CATALOG_VERSION = 27
+export const PAGE_CATALOG_VERSION = 28
 
 /** Single source: oldaljog kulcsok = nav path-ek. */
 export const APP_PAGES: AppPageDef[] = [
@@ -222,6 +222,11 @@ export const APP_PAGES: AppPageDef[] = [
   {
     key: '/beallitasok/opti',
     label: 'Opti beállítások',
+    category: 'Beállítások'
+  },
+  {
+    key: '/beallitasok/kiosk',
+    label: 'Kiosk beállítások',
     category: 'Beállítások'
   },
   {

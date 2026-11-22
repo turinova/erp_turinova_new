@@ -17,6 +17,25 @@ import {
   parseAutoProformaStatus,
   type AutoProformaStatus
 } from '@/lib/partner/auto-proforma-rules'
+import type { KioskCustomerMatch } from '@/lib/kiosk/customer-match-rules'
+
+export type QuoteKioskInfo = {
+  submitted_at: string
+  guest_name: string | null
+  guest_phone: string | null
+  guest_email: string | null
+  consent_at: string | null
+  customer_match: KioskCustomerMatch | null
+}
+
+function parseKioskCustomerMatch(raw: unknown): KioskCustomerMatch | null {
+  return raw === 'phone' ||
+    raw === 'phone_multiple' ||
+    raw === 'created' ||
+    raw === 'created_renamed'
+    ? raw
+    : null
+}
 
 export type QuoteStatus =
   | 'draft'
@@ -64,6 +83,7 @@ export type QuoteListItem = {
   payment_status: PaymentStatus
   source: string
   portal_submitted_at: string | null
+  kiosk_submitted_at: string | null
   project_name: string | null
   total_gross: number
   currency: string
@@ -84,6 +104,8 @@ export type QuoteDetail = {
   payment_status: PaymentStatus
   source: string
   portal_submitted_at: string | null
+  /** Bolti kiosk leadás (source = kiosk); staff detail select. */
+  kiosk: QuoteKioskInfo | null
   preferred_payment_method_id: string | null
   preferred_payment_method_name: string | null
   preferred_payment_method_comment: string | null
@@ -234,6 +256,8 @@ export type QuoteListParams = {
    * true: csak archív.
    */
   archivedOnly?: boolean
+  /** Csak adott forrás (pl. kiosk inbox szűrő). */
+  source?: 'kiosk'
   page?: number
   limit?: number
 }
@@ -274,6 +298,7 @@ export async function listQuotes(
       payment_status,
       source,
       portal_submitted_at,
+      kiosk_submitted_at,
       project_name,
       total_gross,
       final_total_gross,
@@ -316,6 +341,10 @@ export async function listQuotes(
     query = query.eq('customer_id', params.customerId)
   }
 
+  if (params.source) {
+    query = query.eq('source', params.source)
+  }
+
   if (params.createdFrom) {
     query = query.gte('updated_at', params.createdFrom)
   }
@@ -334,19 +363,16 @@ export async function listQuotes(
           .select('id')
           .eq('tenant_id', params.tenantId)
           .is('deleted_at', null)
-          .ilike('name', `%${safe}%`)
+          .or(`name.ilike.%${safe}%,mobile.ilike.%${safe}%`)
           .limit(100)
 
         const customerIds = (customerMatches ?? []).map((c) => c.id)
-        if (customerIds.length > 0) {
-          query = query.or(
-            `quote_number.ilike.%${safe}%,order_number.ilike.%${safe}%,project_name.ilike.%${safe}%,customer_id.in.(${customerIds.join(',')})`
-          )
-        } else {
-          query = query.or(
-            `quote_number.ilike.%${safe}%,order_number.ilike.%${safe}%,project_name.ilike.%${safe}%`
-          )
-        }
+        const base = `quote_number.ilike.%${safe}%,order_number.ilike.%${safe}%,project_name.ilike.%${safe}%,kiosk_guest_name.ilike.%${safe}%,kiosk_guest_phone.ilike.%${safe}%`
+        query = query.or(
+          customerIds.length > 0
+            ? `${base},customer_id.in.(${customerIds.join(',')})`
+            : base
+        )
       }
     }
   }
@@ -379,6 +405,8 @@ export async function listQuotes(
       payment_status: (row.payment_status ?? 'not_paid') as PaymentStatus,
       source: row.source ?? 'opti',
       portal_submitted_at: row.portal_submitted_at ?? null,
+      kiosk_submitted_at:
+        (row.kiosk_submitted_at as string | null | undefined) ?? null,
       project_name: (row.project_name as string | null) ?? null,
       total_gross: Number(row.final_total_gross ?? row.total_gross),
       currency: row.currency,
@@ -669,6 +697,12 @@ export async function getQuoteDetail(
       archived_at,
       archived_by_label_snapshot,
       portal_submitted_at,
+      kiosk_submitted_at,
+      kiosk_guest_name,
+      kiosk_guest_phone,
+      kiosk_guest_email,
+      kiosk_consent_at,
+      kiosk_customer_match,
       preferred_payment_method_id,
       preferred_payment_method_name,
       preferred_payment_method_comment,
@@ -1152,6 +1186,17 @@ export async function getQuoteDetail(
     payment_status: (data.payment_status ?? 'not_paid') as PaymentStatus,
     source: data.source,
     portal_submitted_at: data.portal_submitted_at ?? null,
+    kiosk:
+      data.source === 'kiosk' && data.kiosk_submitted_at
+        ? {
+            submitted_at: data.kiosk_submitted_at as string,
+            guest_name: (data.kiosk_guest_name as string | null) ?? null,
+            guest_phone: (data.kiosk_guest_phone as string | null) ?? null,
+            guest_email: (data.kiosk_guest_email as string | null) ?? null,
+            consent_at: (data.kiosk_consent_at as string | null) ?? null,
+            customer_match: parseKioskCustomerMatch(data.kiosk_customer_match)
+          }
+        : null,
     preferred_payment_method_id:
       (data.preferred_payment_method_id as string | null) ?? null,
     preferred_payment_method_name:

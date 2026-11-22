@@ -19,5 +19,6 @@ export const LAPSZABASZAT_PAGE_KEYS = [
   '/torzsadatok/alapanyagok/elzarok',
   '/torzsadatok/rendszer/gyartogepek',
   '/torzsadatok/rendszer/berendezes',
-  '/beallitasok/opti'
+  '/beallitasok/opti',
+  '/beallitasok/kiosk'
 ] as const

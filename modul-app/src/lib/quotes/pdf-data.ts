@@ -114,6 +114,7 @@ export async function getQuoteForPdf(
         charged_sqm,
         waste_multi,
         boards_charged,
+        pricing_method,
         vat_rate,
         material_net,
         material_gross,
@@ -295,6 +296,7 @@ export async function getQuoteForPdf(
     charged_sqm: number
     waste_multi: number
     boards_charged: number
+    pricing_method: string | null
     vat_rate: number | string | null
     material_net: number
     material_gross: number
@@ -329,6 +331,7 @@ export async function getQuoteForPdf(
     charged_sqm: Number(line.charged_sqm) || 0,
     waste_multi: Number(line.waste_multi) || 1,
     boards_used: Number(line.boards_charged) || 0,
+    pricing_method: line.pricing_method ?? null,
     material_net: Number(line.material_net) || 0,
     material_gross: Number(line.material_gross) || 0,
     cutting_length_m: Number(line.cutting_length_m) || 0,

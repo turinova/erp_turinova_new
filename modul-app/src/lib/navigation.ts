@@ -31,6 +31,7 @@ import {
   ShoppingCart,
   SquareStack,
   Star,
+  TabletSmartphone,
   RectangleHorizontal,
   Package,
   PackageCheck,
@@ -601,6 +602,13 @@ const allNavSections: NavSection[] = [
               label: 'Opti beállítások',
               href: '/beallitasok/opti',
               icon: Settings2,
+              accent: 'slate'
+            },
+            {
+              type: 'link',
+              label: 'Kiosk beállítások',
+              href: '/beallitasok/kiosk',
+              icon: TabletSmartphone,
               accent: 'slate'
             },
             {

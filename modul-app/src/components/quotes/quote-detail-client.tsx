@@ -32,6 +32,7 @@ import { QuoteEditPaymentDialog } from '@/components/quotes/quote-edit-payment-d
 import { QuoteFeesBlock } from '@/components/quotes/quote-fees-block'
 import { QuoteAccessoriesBlock } from '@/components/quotes/quote-accessories-block'
 import { QuoteInvoiceIssueDialog } from '@/components/quotes/quote-invoice-issue-dialog'
+import { QuoteKioskInfoCard } from '@/components/quotes/quote-kiosk-info-card'
 import { QuotePaymentsSection } from '@/components/quotes/quote-payments-section'
 import { QuoteStatusStepper } from '@/components/quotes/quote-status-stepper'
 import { AutoProformaStatusItem } from '@/components/quotes/auto-proforma-status'
@@ -52,6 +53,7 @@ import {
   DueAmountCard as SharedDueAmountCard
 } from '@/components/patterns/due-amount'
 import { StatusBadge } from '@/components/patterns/status-badge'
+import { staffLeftoverLabel } from '@/lib/kiosk/leftover'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -1011,6 +1013,9 @@ export function QuoteDetailClient({
             quote.portal_submitted_at ? (
               <StatusBadge tone="warning">Online</StatusBadge>
             ) : null}
+            {!isPartner && quote.source === 'kiosk' ? (
+              <StatusBadge tone="info">Kiosk</StatusBadge>
+            ) : null}
           </div>
           {projectTitle ? (
             <p className="text-body text-ink">
@@ -1026,6 +1031,13 @@ export function QuoteDetailClient({
         </div>
         {!isPartner ? (
           <QuoteStatusStepper status={quote.status} />
+        ) : null}
+        {!isPartner && quote.kiosk ? (
+          <QuoteKioskInfoCard
+            kiosk={quote.kiosk}
+            customerId={quote.customer.id}
+            customerName={quote.customer.name}
+          />
         ) : null}
         {quote.archived_at ? (
           <div
@@ -1280,13 +1292,24 @@ export function QuoteDetailClient({
                         const chargedSqm = line.charged_sqm || 0
                         const wasteMulti = line.waste_multi || 1
                         const displaySqm = chargedSqm / wasteMulti
+                        const leftoverLabel = staffLeftoverLabel(
+                          line.pricing_method,
+                          boardsUsed
+                        )
                         // Forrásigazság: DB snapshot Ft — ne unit×qty újraszámolás
                         // (Számlázz / PDF / összesítő ugyanazt a sort követi).
 
                         return (
                           <DataTableRow key={line.id}>
                             <DataTableCell className="text-ink">
-                              {line.material_name}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span>{line.material_name}</span>
+                                {leftoverLabel ? (
+                                  <StatusBadge tone="success" variant="soft">
+                                    {leftoverLabel}
+                                  </StatusBadge>
+                                ) : null}
+                              </div>
                             </DataTableCell>
                             <DataTableCell className="text-center">
                               <span className="inline-flex rounded border border-border bg-surface px-1.5 py-0.5 text-hint font-medium tabular-nums text-ink">
@@ -2682,6 +2705,7 @@ export function QuoteDetailClient({
         totalGross={amountDue}
         currency={quote.currency}
         paymentMethods={paymentMethods}
+        defaultFullAmount={quote.source === 'kiosk'}
         onSuccess={() => router.refresh()}
       />
 

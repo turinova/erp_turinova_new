@@ -109,7 +109,12 @@ export function formatEdgeMaterialLabel(
 }
 
 /** Max szálirány = tábla hossz − bal/jobb szélezés. */
-export function maxGrainMm(material: OptiSheetMaterialOption): number {
+export function maxGrainMm(
+  material: Pick<
+    OptiSheetMaterialOption,
+    'length_mm' | 'trim_left_mm' | 'trim_right_mm'
+  >
+): number {
   return Math.max(
     0,
     material.length_mm - material.trim_left_mm - material.trim_right_mm
@@ -117,14 +122,24 @@ export function maxGrainMm(material: OptiSheetMaterialOption): number {
 }
 
 /** Max keresztirány = tábla szélesség − felső/alsó szélezés. */
-export function maxCrossMm(material: OptiSheetMaterialOption): number {
+export function maxCrossMm(
+  material: Pick<
+    OptiSheetMaterialOption,
+    'width_mm' | 'trim_top_mm' | 'trim_bottom_mm'
+  >
+): number {
   return Math.max(
     0,
     material.width_mm - material.trim_top_mm - material.trim_bottom_mm
   )
 }
 
-export function formatTrimLabel(material: OptiSheetMaterialOption): string {
+export function formatTrimLabel(
+  material: Pick<
+    OptiSheetMaterialOption,
+    'trim_top_mm' | 'trim_bottom_mm' | 'trim_left_mm' | 'trim_right_mm'
+  >
+): string {
   return `Szélezés: HF${material.trim_top_mm} RB${material.trim_bottom_mm} HA${material.trim_left_mm} RJ${material.trim_right_mm}mm`
 }
 

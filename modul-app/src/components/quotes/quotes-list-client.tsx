@@ -33,6 +33,7 @@ type QuotesListClientProps = {
   canWrite: boolean
   initialQ: string
   archivedOnly?: boolean
+  kioskOnly?: boolean
 }
 
 function formatUpdatedAt(iso: string) {
@@ -53,7 +54,8 @@ export function QuotesListClient({
   limit,
   canWrite,
   initialQ,
-  archivedOnly = false
+  archivedOnly = false,
+  kioskOnly = false
 }: QuotesListClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -135,24 +137,25 @@ export function QuotesListClient({
       />
 
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
+        <FilterChip
+          active={kioskOnly}
+          onClick={() =>
+            pushParams({ forras: kioskOnly ? null : 'kiosk', page: '1' })
+          }
+        >
+          Kiosk
+        </FilterChip>
+        <FilterChip
+          active={archivedOnly}
           onClick={() =>
             pushParams({
               archived: archivedOnly ? null : '1',
               page: '1'
             })
           }
-          className={cn(
-            'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
-            archivedOnly
-              ? 'border-ink bg-ink text-white'
-              : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
-          )}
-          aria-pressed={archivedOnly}
         >
           Archívum
-        </button>
+        </FilterChip>
       </div>
 
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -168,16 +171,20 @@ export function QuotesListClient({
             id="quote-search"
             value={qDraft}
             onChange={(e) => setQDraft(e.target.value)}
-            placeholder="Keresés szám, ügyfél vagy projekt…"
+            placeholder="Keresés szám, ügyfél, telefon vagy projekt…"
             className="pl-8"
           />
         </form>
       </div>
 
       {total === 0 && !emptySearch ? (
-        archivedOnly ? (
+        archivedOnly || kioskOnly ? (
           <p className="rounded-md border border-dashed border-border bg-subtle p-4 text-body text-ink-secondary">
-            Nincs archivált árajánlat.
+            {kioskOnly
+              ? archivedOnly
+                ? 'Nincs archivált kiosk árajánlat.'
+                : 'Nincs kioskról leadott árajánlat.'
+              : 'Nincs archivált árajánlat.'}
           </p>
         ) : (
           <EmptyQuotes onCreate={() => router.push('/opti')} />
@@ -227,6 +234,9 @@ export function QuotesListClient({
                         {row.source === 'portal' &&
                         row.portal_submitted_at ? (
                           <StatusBadge tone="warning">Online</StatusBadge>
+                        ) : null}
+                        {row.source === 'kiosk' ? (
+                          <StatusBadge tone="info">Kiosk</StatusBadge>
                         ) : null}
                         {row.archived_at ? (
                           <StatusBadge tone="neutral">Archív</StatusBadge>
@@ -360,6 +370,32 @@ export function QuotesListClient({
         onConfirm={handleArchive}
       />
     </div>
+  )
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-md border px-2.5 py-1 text-label font-semibold transition-colors',
+        active
+          ? 'border-ink bg-ink text-white'
+          : 'border-border bg-surface text-ink-secondary hover:bg-subtle hover:text-ink'
+      )}
+      aria-pressed={active}
+    >
+      {children}
+    </button>
   )
 }
 

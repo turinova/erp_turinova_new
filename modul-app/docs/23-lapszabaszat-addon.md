@@ -34,7 +34,8 @@ Sidebar **Lapszabászat** csoport: Árajánlatok, Megrendelések.
 Opti és Scanner top-level menüpontok maradnak (entitlement továbbra is a Lapszabászat add-onhoz kötött).
 
 **Workflow (státusz + detail CTA):** [37-lapszabaszat-quote-workflow.md](37-lapszabaszat-quote-workflow.md).  
-**Opti panel import (tervezet):** [47-opti-panel-import.md](47-opti-panel-import.md) — szöveg / Excel / kép, Korpus élkódolás, certainty-first előnézet.
+**Opti panel import (tervezet):** [47-opti-panel-import.md](47-opti-panel-import.md) — szöveg / Excel / kép, Korpus élkódolás, certainty-first előnézet.  
+**Bolti kiosk (UX mock → P1):** [60-bolti-kiosk.md](60-bolti-kiosk.md) · [61-bolti-kiosk-ux.md](61-bolti-kiosk-ux.md) — `/k/[slug]`, nem Opti UI.
 
 ### Opti billentyű (műhely)
 

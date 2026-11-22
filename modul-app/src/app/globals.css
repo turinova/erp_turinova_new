@@ -35,6 +35,16 @@ html.pda-route body {
   }
 }
 
+/* Kiosk: indeterminate progress bar (árszámítás) */
+@keyframes kiosk-progress {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
 /* Linkify marketing port — mesh gradient blob */
 .linkify-root .lf-gradient {
   background: conic-gradient(

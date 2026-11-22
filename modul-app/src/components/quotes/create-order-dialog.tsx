@@ -40,6 +40,8 @@ type CreateOrderDialogProps = {
   totalGross: number
   currency: string
   paymentMethods: PaymentMethodOption[]
+  /** Bolti (kiosk) vevő a pultnál fizet: alapból a teljes összeg. */
+  defaultFullAmount?: boolean
   onSuccess: () => void
 }
 
@@ -63,6 +65,7 @@ export function CreateOrderDialog({
   totalGross,
   currency,
   paymentMethods,
+  defaultFullAmount = false,
   onSuccess
 }: CreateOrderDialogProps) {
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -74,13 +77,18 @@ export function CreateOrderDialog({
 
   useEffect(() => {
     if (!open) return
-    setAmountRaw('')
+    const full = roundQuoteMoney(totalGross)
+    setAmountRaw(
+      defaultFullAmount && full > 0 ? formatPaymentAmountInput(full) : ''
+    )
     setPaymentMethodId(pickDefaultPaymentMethodId(paymentMethods))
     setComment('')
     setError(null)
     const id = window.setTimeout(() => cancelRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
-  }, [open, paymentMethods])
+    // totalGross: csak megnyitáskor töltjük elő
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, paymentMethods, defaultFullAmount])
 
   const amount = useMemo(() => parsePaymentAmount(amountRaw), [amountRaw])
   const preview = useMemo(() => {

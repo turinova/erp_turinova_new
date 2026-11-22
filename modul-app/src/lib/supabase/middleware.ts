@@ -122,7 +122,8 @@ function isPublicMarketingPath(pathname: string) {
     pathname === '/aszf' ||
     pathname === '/adatkezelesi-tajekoztato' ||
     pathname.startsWith('/r/') ||
-    pathname.startsWith('/g/')
+    pathname.startsWith('/g/') ||
+    pathname.startsWith('/k/')
   )
 }
 
@@ -293,6 +294,9 @@ async function handleSession(request: NextRequest) {
 
   const isPublicStorefrontApi = pathname.startsWith('/api/storefront/')
 
+  /** Bolti kiosk: device token / dev bypass a route-ban. */
+  const isPublicKioskApi = pathname.startsWith('/api/kiosk/')
+
   /** Vercel Cron: Bearer CRON_SECRET, a route ellenőrzi. */
   const isPublicCron = pathname.startsWith('/api/cron/')
 
@@ -322,6 +326,7 @@ async function handleSession(request: NextRequest) {
     isPublicFootcounterSync ||
     isPublicJelenletTerminalScan ||
     isPublicStorefrontApi ||
+    isPublicKioskApi ||
     isPublicCron
   ) {
     return supabaseResponse

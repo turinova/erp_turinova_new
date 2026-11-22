@@ -5,15 +5,8 @@ import { revalidatePath } from 'next/cache'
 import type { OptiPanelDraft } from '@/lib/opti/panel-draft'
 import type { QuoteResult } from '@/lib/opti/quote-calculations'
 import type { OptiSheetMaterialOption } from '@/lib/opti/queries'
-import {
-  assertQuoteReady,
-  edgeLinesFromPricing,
-  materialLineFromPricing,
-  panelsToInserts,
-  serviceLinesFromPricing,
-  quotePricingMode
-} from '@/lib/quotes/snapshot'
-import { recalculateQuoteFeeTotals } from '@/lib/quotes/fee-totals'
+import { assertQuoteReady, quotePricingMode } from '@/lib/quotes/snapshot'
+import { persistOptiQuoteChildren } from '@/lib/quotes/persist-opti-quote'
 import {
   PAYMENT_TOLERANCE_GROSS,
   quoteRemainingGross,
@@ -324,63 +317,16 @@ export async function saveOptiQuote(
     return { ok: false, message: 'Nem sikerült menteni az árajánlatot.' }
   }
 
-  const panelRows = panelsToInserts(quoteId, input.panels)
-  const { error: panelsError } = await ctx.supabase
-    .from('quote_panels')
-    .insert(panelRows)
-
-  if (panelsError) {
-    console.error('quote_panels', panelsError.message)
-    return { ok: false, message: 'Nem sikerült menteni a paneleket.' }
-  }
-
-  for (const material of input.quote.materials) {
-    const sheet = input.sheetMaterials.find((m) => m.id === material.material_id)
-    const line = materialLineFromPricing(quoteId, material, sheet)
-    const { data: lineRow, error: lineError } = await ctx.supabase
-      .from('quote_material_lines')
-      .insert(line)
-      .select('id')
-      .single()
-
-    if (lineError || !lineRow) {
-      console.error('quote_material_lines', lineError?.message)
-      return { ok: false, message: 'Nem sikerült menteni az árazást.' }
-    }
-
-    const edges = edgeLinesFromPricing(lineRow.id, material)
-    if (edges.length > 0) {
-      const { error: edgeError } = await ctx.supabase
-        .from('quote_edge_lines')
-        .insert(edges)
-      if (edgeError) {
-        console.error('quote_edge_lines', edgeError.message)
-        return { ok: false, message: 'Nem sikerült menteni az élzáró bontást.' }
-      }
-    }
-
-    const services = serviceLinesFromPricing(lineRow.id, material)
-    if (services.length > 0) {
-      const { error: serviceError } = await ctx.supabase
-        .from('quote_service_lines')
-        .insert(services)
-      if (serviceError) {
-        console.error('quote_service_lines', serviceError.message)
-        return {
-          ok: false,
-          message: 'Nem sikerült menteni a megmunkálás tételeket.'
-        }
-      }
-    }
-  }
-
-  const feeTotals = await recalculateQuoteFeeTotals(
-    ctx.supabase,
+  const persisted = await persistOptiQuoteChildren({
+    supabase: ctx.supabase,
     tenantId,
-    quoteId
-  )
-  if (!feeTotals.ok) {
-    return { ok: false, message: feeTotals.message }
+    quoteId,
+    panels: input.panels,
+    quote: input.quote,
+    sheetMaterials: input.sheetMaterials
+  })
+  if (!persisted.ok) {
+    return { ok: false, message: persisted.message }
   }
 
   revalidatePath(LIST_PATH)

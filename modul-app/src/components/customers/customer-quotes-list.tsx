@@ -446,7 +446,9 @@ export function CustomerQuotesList({
                   ? 'Partner'
                   : row.source === 'opti'
                     ? 'Opti'
-                    : row.source
+                    : row.source === 'kiosk'
+                      ? 'Kiosk'
+                      : row.source
               return (
                 <DataTableRow
                   key={row.id}

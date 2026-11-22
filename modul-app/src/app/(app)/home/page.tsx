@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { HomeChartsDashboard } from '@/components/home/home-charts-dashboard'
 import { HomeKpiStrip } from '@/components/home/home-kpi-strip'
 import { HomeNapiZarasCard } from '@/components/home/home-napi-zaras-card'
+import { KioskInboxCard } from '@/components/home/kiosk-inbox-card'
 import { PartnerPortalInboxCard } from '@/components/home/partner-portal-inbox-card'
 import { PageHeader } from '@/components/patterns/page-header'
 import { getSessionUser } from '@/lib/auth/session'
@@ -11,6 +12,10 @@ import { getFootcounterHomeSlim } from '@/lib/footcounter/queries'
 import type { FootcounterHomeSlim } from '@/lib/footcounter/types'
 import { getHomePageData } from '@/lib/home/chart-queries'
 import { getHomeKpiBundle, type HomeKpiBundle } from '@/lib/home/kpi-queries'
+import {
+  getHomeKioskInbox,
+  type HomeKioskInboxRow
+} from '@/lib/home/kiosk-inbox'
 import {
   getHomeNapiZarasSnapshot,
   type HomeNapiZarasSnapshot
@@ -43,6 +48,10 @@ export default async function HomePage() {
   let kpis: HomeKpiBundle | null = null
   let footcounter: FootcounterHomeSlim | null = null
   let partnerInbox: HomePartnerPortalInboxRow[] = []
+  let kioskInbox: { rows: HomeKioskInboxRow[]; total: number } = {
+    rows: [],
+    total: 0
+  }
   let napiZaras: HomeNapiZarasSnapshot | null = null
   let showLapszabaszatCharts = false
   let loadError: string | null = null
@@ -90,13 +99,16 @@ export default async function HomePage() {
           footcounter = await getFootcounterHomeSlim(supabase, user.tenantId)
         }
 
-        if (hasPartnerOrders) {
-          partnerInbox = await getHomePartnerPortalInbox(
-            supabase,
-            user.tenantId,
-            10
-          )
-        }
+        const [partnerRows, kioskRows] = await Promise.all([
+          hasPartnerOrders
+            ? getHomePartnerPortalInbox(supabase, user.tenantId, 10)
+            : Promise.resolve([] as HomePartnerPortalInboxRow[]),
+          hasLapszabaszat
+            ? getHomeKioskInbox(supabase, user.tenantId, 10)
+            : Promise.resolve(kioskInbox)
+        ])
+        partnerInbox = partnerRows
+        kioskInbox = kioskRows
       } catch (e) {
         loadError =
           e instanceof Error ? e.message : 'Nem sikerült betölteni az adatokat.'
@@ -128,6 +140,8 @@ export default async function HomePage() {
       {napiZaras ? <HomeNapiZarasCard data={napiZaras} /> : null}
 
       {kpis ? <HomeKpiStrip data={kpis} /> : null}
+
+      <KioskInboxCard rows={kioskInbox.rows} total={kioskInbox.total} />
 
       <PartnerPortalInboxCard rows={partnerInbox} />
 
