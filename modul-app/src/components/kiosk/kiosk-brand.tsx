@@ -23,14 +23,13 @@ export function TenantBrandMark({
     size === 'lg' ? 'max-w-[280px]' : size === 'sm' ? 'max-w-[140px]' : 'max-w-[180px]'
 
   if (logoUrl) {
+    // Külső Supabase URL: sima <img>, mert production next/image remotePatterns nélkül elhasal.
+    // eslint-disable-next-line @next/next/no-img-element
     return (
-      <Image
+      <img
         src={logoUrl}
         alt={name}
-        width={size === 'lg' ? 280 : size === 'sm' ? 140 : 180}
-        height={size === 'lg' ? 64 : size === 'sm' ? 32 : 40}
         className={cn(h, 'w-auto object-contain', maxW, className)}
-        priority={size === 'lg'}
       />
     )
   }

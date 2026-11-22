@@ -1126,14 +1126,6 @@ export function KioskWizardClient({
         </div>
       ) : null}
 
-      <p
-        className={cn(
-          'pointer-events-none fixed left-3 z-20 rounded-md border border-border bg-surface px-2 py-0.5 text-[10px] text-ink-muted',
-          bare ? 'bottom-3' : 'bottom-[92px] md:bottom-3'
-        )}
-      >
-        UX mock, nincs mentés
-      </p>
     </KioskShell>
   )
 }
