@@ -6,10 +6,12 @@ import {
   Check,
   CircleDot,
   Clock,
+  Copy,
   Layers,
   Minus,
   PackageCheck,
   Plus,
+  Replace,
   Search,
   Trash2,
   Triangle,
@@ -72,6 +74,10 @@ import {
   edgeSummaryLabel,
   sanitizeEdgeIdsForDuplung
 } from '@/lib/kiosk/mock-pricing'
+import {
+  applyRecolorCart,
+  type RecolorMode
+} from '@/lib/kiosk/recolor-cart'
 import {
   clampDimensionRaw,
   formatCrossMaxHint,
@@ -213,6 +219,29 @@ function parseMm(raw: string): number | null {
   return Math.round(n)
 }
 
+/** Enter = primary tovább (select/menü nyitva hagyva). */
+function useKioskEnterContinue(canContinue: boolean, onContinue: () => void) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (!t) return
+      if (t.closest('textarea')) return
+      if (t.closest('[role="listbox"]')) return
+      if (t.closest('[role="menu"]')) return
+      if (t.closest('[role="combobox"]')) return
+      if (t.getAttribute('role') === 'option') return
+      if (t.tagName === 'BUTTON') return
+      if (!canContinue) return
+      e.preventDefault()
+      onContinue()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [canContinue, onContinue])
+}
+
 export function KioskWizardClient({
   slug,
   bootstrap
@@ -244,7 +273,23 @@ export function KioskWizardClient({
   const [priceChange, setPriceChange] = useState<number | null>(null)
   const submittingRef = useRef(false)
   const submissionIdRef = useRef<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  /** Sor / szín-csoport / teljes kosár törlés megerősítés. */
+  const [deleteConfirm, setDeleteConfirm] = useState<
+    | { kind: 'line'; id: string }
+    | { kind: 'group'; sheetId: string }
+    | { kind: 'all' }
+    | null
+  >(null)
+  /** Anyag lépés: dekor csere vagy másolás. */
+  const [recolorPending, setRecolorPending] = useState<{
+    sourceSheetId: string
+    mode: RecolorMode
+    thicknessMm: number
+  } | null>(null)
+  const [recolorError, setRecolorError] = useState<{
+    title: string
+    detailErrors?: string[]
+  } | null>(null)
   const [priceStatus, setPriceStatus] = useState<PriceStatus>('none')
   const [pricedTotalGross, setPricedTotalGross] = useState<number | null>(null)
   const [pricedMaterials, setPricedMaterials] = useState<
@@ -290,7 +335,15 @@ export function KioskWizardClient({
   }
 
   const sheets = useMemo(() => {
-    const filtered = catalogSheets.filter((s) =>
+    let pool = catalogSheets
+    if (recolorPending) {
+      pool = pool.filter(
+        (s) =>
+          s.thicknessMm === recolorPending.thicknessMm &&
+          s.id !== recolorPending.sourceSheetId
+      )
+    }
+    const filtered = pool.filter((s) =>
       menuSearchMatch(
         `${s.name} ${s.manufacturerName} ${s.machineCode} ${s.thicknessMm}mm ${s.lengthMm} ${s.widthMm}`,
         materialQuery
@@ -300,10 +353,22 @@ export function KioskWizardClient({
       if (a.onStock !== b.onStock) return a.onStock ? -1 : 1
       return a.name.localeCompare(b.name, 'hu')
     })
-  }, [catalogSheets, materialQuery])
+  }, [catalogSheets, materialQuery, recolorPending])
 
-  /** Üres keresés: quote-gyakoriság (bootstrap), max 8. */
-  const featuredStock = bootstrap.featuredSheets
+  /** Üres keresés: quote-gyakoriság (bootstrap), max 8. Recolor: azonos vastagság. */
+  const featuredStock = useMemo(() => {
+    const base = bootstrap.featuredSheets
+    if (!recolorPending) return base
+    return base.filter(
+      (s) =>
+        s.thicknessMm === recolorPending.thicknessMm &&
+        s.id !== recolorPending.sourceSheetId
+    )
+  }, [bootstrap.featuredSheets, recolorPending])
+
+  const recolorSourceSheet = recolorPending
+    ? catalogSheets.find((s) => s.id === recolorPending.sourceSheetId)
+    : null
 
   const sizeValidation = useMemo(
     () =>
@@ -331,7 +396,9 @@ export function KioskWizardClient({
     setGuest(EMPTY_KIOSK_GUEST)
     setOrderNumber(null)
     setSubmitting(false)
-    setDeleteTarget(null)
+    setDeleteConfirm(null)
+    setRecolorPending(null)
+    setRecolorError(null)
     setMaterialQuery('')
     setPriceStatus('none')
     setPricedTotalGross(null)
@@ -340,6 +407,10 @@ export function KioskWizardClient({
   }
 
   function selectSheet(s: KioskSheet) {
+    if (recolorPending) {
+      finishRecolor(s)
+      return
+    }
     setDraft({
       ...EMPTY_DRAFT,
       sheetId: s.id,
@@ -358,6 +429,73 @@ export function KioskWizardClient({
       return
     }
     selectSheet(s)
+  }
+
+  function beginRecolor(sheetId: string, mode: RecolorMode) {
+    const s = catalogSheets.find((x) => x.id === sheetId)
+    if (!s) return
+    setRecolorPending({
+      sourceSheetId: sheetId,
+      mode,
+      thicknessMm: s.thicknessMm
+    })
+    setMaterialQuery('')
+    setStep('material')
+  }
+
+  function confirmDelete() {
+    if (!deleteConfirm) return
+    if (deleteConfirm.kind === 'line') {
+      setCart((c) => c.filter((l) => l.id !== deleteConfirm.id))
+    } else if (deleteConfirm.kind === 'group') {
+      setCart((c) => c.filter((l) => l.sheetId !== deleteConfirm.sheetId))
+    } else {
+      setCart([])
+    }
+    markPriceStale()
+    setDeleteConfirm(null)
+  }
+
+  function finishRecolor(target: KioskSheet) {
+    if (!recolorPending) return
+    const mode = recolorPending.mode
+    const result = applyRecolorCart({
+      cart,
+      sourceSheetId: recolorPending.sourceSheetId,
+      target,
+      mode,
+      maxRows,
+      allowedTypeIds
+    })
+    if (!result.ok) {
+      setRecolorError({
+        title: result.error,
+        detailErrors: result.detailErrors
+      })
+      return
+    }
+    setCart(result.cart)
+    markPriceStale()
+    setRecolorPending(null)
+    setMaterialQuery('')
+    setStep('cart')
+    toast.success(
+      mode === 'copy'
+        ? `Másolva: ${result.movedOrCopied} tétel → ${target.name}`
+        : `Dekor csere: ${result.movedOrCopied} tétel → ${target.name}`
+    )
+    if (result.edgesDropped) {
+      toast.message(
+        'Néhány élzárást nem tudtunk átvinni. Nézd át a kosárban az él oszlopot.'
+      )
+    }
+  }
+
+  function cancelRecolor() {
+    setRecolorPending(null)
+    setRecolorError(null)
+    setMaterialQuery('')
+    setStep('cart')
   }
 
   function goMachining() {
@@ -810,20 +948,20 @@ export function KioskWizardClient({
       case 'cart': {
         if (cart.length === 0) {
           return {
-            label: 'Árszámítás optimalizálással',
+            label: 'Ár kiszámítása',
             disabled: true,
             hint: 'A kosár üres.'
           }
         }
         if (priceStatus === 'loading' || pricePending) {
           return {
-            label: 'Árszámítás optimalizálással',
+            label: 'Ár kiszámítása',
             disabled: true
           }
         }
         if (priceStatus !== 'ok' || pricedTotalGross == null) {
           return {
-            label: 'Árszámítás optimalizálással',
+            label: 'Ár kiszámítása',
             disabled: false,
             hint:
               priceError ??
@@ -834,7 +972,7 @@ export function KioskWizardClient({
           }
         }
         return {
-          label: 'Tovább a rendeléshez →',
+          label: `Tovább · ${formatHuf(pricedTotalGross)} →`,
           disabled: false,
           onClick: () => setStep('details')
         }
@@ -842,7 +980,10 @@ export function KioskWizardClient({
       case 'details': {
         const v = validateKioskGuest(guest)
         return {
-          label: 'Leadom a pultnak',
+          label:
+            pricedTotalGross != null
+              ? `Leadom a pultnak · ${formatHuf(pricedTotalGross)}`
+              : 'Leadom a pultnak',
           disabled: !v.ok || submitting,
           hint: v.ok ? undefined : (v.missing ?? undefined),
           onClick: startSubmit
@@ -856,7 +997,11 @@ export function KioskWizardClient({
   function backForStep() {
     switch (step) {
       case 'material':
-        setStep('attract')
+        if (recolorPending) {
+          cancelRecolor()
+        } else {
+          setStep('attract')
+        }
         break
       case 'size':
         if (draft.editingLineId) {
@@ -942,10 +1087,28 @@ export function KioskWizardClient({
         <MaterialStep
           sheets={sheets}
           featuredStock={featuredStock}
-          totalCount={catalogSheets.length}
+          totalCount={
+            recolorPending
+              ? catalogSheets.filter(
+                  (s) =>
+                    s.thicknessMm === recolorPending.thicknessMm &&
+                    s.id !== recolorPending.sourceSheetId
+                ).length
+              : catalogSheets.length
+          }
           query={materialQuery}
           onQuery={setMaterialQuery}
           onSelect={selectSheet}
+          recolor={
+            recolorPending && recolorSourceSheet
+              ? {
+                  mode: recolorPending.mode,
+                  thicknessMm: recolorPending.thicknessMm,
+                  sourceName: recolorSourceSheet.name
+                }
+              : null
+          }
+          onCancelRecolor={recolorPending ? cancelRecolor : undefined}
         />
       ) : null}
 
@@ -959,6 +1122,8 @@ export function KioskWizardClient({
           maxGrainMm={maxGrainMm}
           maxCrossMm={maxCrossMm}
           maxQty={maxQty}
+          canContinue={!sizeHardBlock}
+          onContinue={goMachining}
           onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
           onChangeSheet={() => {
             setDraft(EMPTY_DRAFT)
@@ -974,6 +1139,8 @@ export function KioskWizardClient({
           crossMm={crossMm}
           quantity={draft.quantity}
           machining={draft.machining}
+          canContinue={isMachiningReady(draft.machining, grainMm, crossMm)}
+          onContinue={goEdge}
           onToggleDuplung={toggleDuplung}
           onTogglePanthely={togglePanthely}
           onPanthelyQty={setPanthelyQty}
@@ -991,6 +1158,11 @@ export function KioskWizardClient({
           crossMm={crossMm}
           draft={draft}
           edges={edgesForDuplung(Boolean(draft.machining?.duplungolas))}
+          canContinue={
+            !sizeHardBlock &&
+            isMachiningReady(draft.machining, grainMm, crossMm)
+          }
+          onContinue={addToCart}
           onSetSlot={setEdgeSlot}
         />
       ) : null}
@@ -1003,13 +1175,33 @@ export function KioskWizardClient({
           priceError={priceError}
           pricedMaterials={pricedMaterials}
           onEdit={editLine}
-          onAskDelete={setDeleteTarget}
+          onAskDeleteLine={(id) => setDeleteConfirm({ kind: 'line', id })}
+          onAskDeleteGroup={(sheetId) =>
+            setDeleteConfirm({ kind: 'group', sheetId })
+          }
+          onAskClearCart={() => setDeleteConfirm({ kind: 'all' })}
           onAddSame={addSameSheet}
+          onRecolorMove={(sheetId) => beginRecolor(sheetId, 'move')}
+          onRecolorCopy={(sheetId) => beginRecolor(sheetId, 'copy')}
           onAddMore={() => {
             setDraft(EMPTY_DRAFT)
             setStep('material')
           }}
           onRunPrice={runPrice}
+          canEnterPrimary={
+            !deleteConfirm &&
+            !recolorError &&
+            cart.length > 0 &&
+            priceStatus !== 'loading' &&
+            !pricePending
+          }
+          onEnterPrimary={() => {
+            if (priceStatus === 'ok' && pricedTotalGross != null) {
+              setStep('details')
+              return
+            }
+            runPrice()
+          }}
         />
       ) : null}
 
@@ -1093,11 +1285,15 @@ export function KioskWizardClient({
         </div>
       ) : null}
 
-      {deleteTarget ? (
+      {deleteConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-5 shadow-elev3">
             <p className="text-[18px] font-semibold text-ink">
-              Törlöd ezt a darabot?
+              {deleteConfirm.kind === 'line'
+                ? 'Törlöd ezt a darabot?'
+                : deleteConfirm.kind === 'group'
+                  ? 'Törlöd ezt a színt a kosárból?'
+                  : 'Kiüríted a teljes kosarat?'}
             </p>
             <div className="mt-5 flex gap-2">
               <Button
@@ -1105,7 +1301,7 @@ export function KioskWizardClient({
                 variant="secondary"
                 className="h-12 flex-1 text-[15px]"
                 autoFocus
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => setDeleteConfirm(null)}
               >
                 Mégse
               </Button>
@@ -1113,13 +1309,45 @@ export function KioskWizardClient({
                 type="button"
                 variant="danger"
                 className="h-12 flex-1 text-[15px]"
-                onClick={() => {
-                  setCart((c) => c.filter((l) => l.id !== deleteTarget))
-                  markPriceStale()
-                  setDeleteTarget(null)
-                }}
+                onClick={confirmDelete}
               >
                 Törlés
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {recolorError ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kiosk-recolor-error-title"
+            className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-elev3"
+          >
+            <p
+              id="kiosk-recolor-error-title"
+              className="text-[20px] font-semibold text-ink"
+            >
+              {recolorError.title}
+            </p>
+            {recolorError.detailErrors &&
+            recolorError.detailErrors.length > 0 ? (
+              <ul className="mt-3 list-disc space-y-1 pl-5 text-[15px] text-ink-secondary">
+                {recolorError.detailErrors.map((err) => (
+                  <li key={err}>{err}</li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="mt-6">
+              <Button
+                type="button"
+                className="h-12 w-full text-[15px]"
+                autoFocus
+                onClick={() => setRecolorError(null)}
+              >
+                Értem, másikat választok
               </Button>
             </div>
           </div>
@@ -1136,7 +1364,9 @@ function MaterialStep({
   totalCount,
   query,
   onQuery,
-  onSelect
+  onSelect,
+  recolor,
+  onCancelRecolor
 }: {
   sheets: KioskSheet[]
   featuredStock: KioskSheet[]
@@ -1144,22 +1374,60 @@ function MaterialStep({
   query: string
   onQuery: (q: string) => void
   onSelect: (s: KioskSheet) => void
+  recolor?: {
+    mode: RecolorMode
+    thicknessMm: number
+    sourceName: string
+  } | null
+  onCancelRecolor?: () => void
 }) {
   const hasQuery = query.trim().length > 0
-  const list = hasQuery ? sheets : featuredStock
+  /** Recolor: üres keresésnél az összes azonos vastagságú lap, ne csak a featured. */
+  const list = hasQuery ? sheets : recolor ? sheets : featuredStock
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-[28px] font-semibold text-ink md:text-[32px]">
-          Válaszd ki a lapot
+          {recolor
+            ? recolor.mode === 'copy'
+              ? 'Másolás — új dekor'
+              : 'Dekor csere'
+            : 'Válaszd ki a lapot'}
         </h1>
         <p className="text-[14px] text-ink-muted tabular-nums">
           {hasQuery
             ? `${sheets.length} találat`
-            : `${totalCount} lap a katalógusban`}
+            : recolor
+              ? `${totalCount} lap · ${recolor.thicknessMm} mm`
+              : `${totalCount} lap a katalógusban`}
         </p>
       </div>
+
+      {recolor ? (
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-ink/15 bg-subtle px-4 py-3">
+          <div className="min-w-0 space-y-1 text-[15px] text-ink">
+            <p className="font-semibold">
+              {recolor.mode === 'copy' ? 'Másolás' : 'Dekor csere'}:{' '}
+              {recolor.sourceName}
+            </p>
+            <p className="text-ink-secondary">
+              Csak {recolor.thicknessMm} mm vastag lapok. A méretek, él és
+              megmunkálás megmarad.
+            </p>
+          </div>
+          {onCancelRecolor ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-11 shrink-0 text-[14px]"
+              onClick={onCancelRecolor}
+            >
+              Mégse
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="sticky top-0 z-20 -mx-4 border-b border-border bg-surface px-4 py-3 shadow-sm md:-mx-6 md:px-6">
         <div className="relative">
@@ -1189,15 +1457,21 @@ function MaterialStep({
             </Button>
           ) : null}
         </div>
-        {!hasQuery ? (
+        {!hasQuery && !recolor ? (
           <p className="mt-2 text-[14px] text-ink-secondary">
             Írd be a dekór nevét vagy kódját, vagy válassz lent a népszerű
             lapok közül.
           </p>
         ) : null}
+        {!hasQuery && recolor ? (
+          <p className="mt-2 text-[14px] text-ink-secondary">
+            Kereshetsz névre vagy kódra, vagy válassz lent az azonos vastagságú
+            lapok közül.
+          </p>
+        ) : null}
       </div>
 
-      {!hasQuery ? (
+      {!hasQuery && !recolor ? (
         <div>
           <h2 className="text-[17px] font-semibold text-ink">
             Ezeket viszik a legtöbben
@@ -1206,6 +1480,13 @@ function MaterialStep({
             A „Rendelésre” lapot be kell szereznünk, ezért több idő, mire
             elkészül.
           </p>
+        </div>
+      ) : null}
+      {!hasQuery && recolor ? (
+        <div>
+          <h2 className="text-[17px] font-semibold text-ink">
+            Azonos vastagság ({recolor.thicknessMm} mm)
+          </h2>
         </div>
       ) : null}
 
@@ -1365,6 +1646,8 @@ function SizeStep({
   maxGrainMm,
   maxCrossMm,
   maxQty,
+  canContinue,
+  onContinue,
   onChange,
   onChangeSheet
 }: {
@@ -1376,14 +1659,26 @@ function SizeStep({
   maxGrainMm: number
   maxCrossMm: number
   maxQty: number
+  canContinue: boolean
+  onContinue: () => void
   onChange: (p: Partial<DraftPanel>) => void
   onChangeSheet: () => void
 }) {
   const grain = parseMm(draft.grainRaw)
   const cross = parseMm(draft.crossRaw)
   const [focusDim, setFocusDim] = useState<'grain' | 'cross' | null>(null)
+  const grainInputRef = useRef<HTMLInputElement>(null)
+  const crossInputRef = useRef<HTMLInputElement>(null)
   const grainHint = formatGrainMaxHint(sheet)
   const crossHint = formatCrossMaxHint(sheet)
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      grainInputRef.current?.focus()
+      grainInputRef.current?.select()
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [sheet.id, draft.editingLineId])
 
   const panelSize = useMemo(
     () => fitPanelSize(grain, cross, SIZE_STAGE_INNER_W, SIZE_STAGE_INNER_H),
@@ -1503,9 +1798,11 @@ function SizeStep({
             </span>
             <div className="relative">
               <Input
+                ref={grainInputRef}
                 inputMode="numeric"
                 value={draft.grainRaw}
                 placeholder="pl. 800"
+                enterKeyHint="next"
                 className={cn(
                   'h-14 pr-11 text-[22px] font-semibold tabular-nums',
                   focusDim === 'grain' && 'border-ink ring-2 ring-ink/20'
@@ -1517,6 +1814,12 @@ function SizeStep({
                     grainRaw: clampDimensionRaw(e.target.value, maxGrainMm)
                   })
                 }
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  crossInputRef.current?.focus()
+                  crossInputRef.current?.select()
+                }}
               />
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[15px] font-medium text-ink-muted">
                 mm
@@ -1535,9 +1838,11 @@ function SizeStep({
             </span>
             <div className="relative">
               <Input
+                ref={crossInputRef}
                 inputMode="numeric"
                 value={draft.crossRaw}
                 placeholder="pl. 400"
+                enterKeyHint="done"
                 className={cn(
                   'h-14 pr-11 text-[22px] font-semibold tabular-nums',
                   focusDim === 'cross' && 'border-ink ring-2 ring-ink/20'
@@ -1549,6 +1854,11 @@ function SizeStep({
                     crossRaw: clampDimensionRaw(e.target.value, maxCrossMm)
                   })
                 }
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  if (canContinue) onContinue()
+                }}
               />
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[15px] font-medium text-ink-muted">
                 mm
@@ -1646,6 +1956,8 @@ function MachiningStep({
   crossMm,
   quantity,
   machining,
+  canContinue,
+  onContinue,
   onToggleDuplung,
   onTogglePanthely,
   onPanthelyQty,
@@ -1659,6 +1971,8 @@ function MachiningStep({
   crossMm: number | null
   quantity: number
   machining: KioskMachining | null
+  canContinue: boolean
+  onContinue: () => void
   onToggleDuplung: () => void
   onTogglePanthely: () => void
   onPanthelyQty: (n: number) => void
@@ -1671,6 +1985,8 @@ function MachiningStep({
   const panthelyOn = Boolean(machining?.panthely)
   const szogOn = Boolean(machining?.szog)
   const canPreview = grainMm != null && crossMm != null && grainMm > 0 && crossMm > 0
+
+  useKioskEnterContinue(canContinue, onContinue)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 lg:gap-4">
@@ -1941,6 +2257,8 @@ function EdgeStep({
   crossMm,
   draft,
   edges,
+  canContinue,
+  onContinue,
   onSetSlot
 }: {
   sheet: KioskSheet
@@ -1948,6 +2266,8 @@ function EdgeStep({
   crossMm: number
   draft: DraftPanel
   edges: KioskEdge[]
+  canContinue: boolean
+  onContinue: () => void
   onSetSlot: (slot: EdgeSlot, edgeTypeId: string | null) => void
 }) {
   const duplung = Boolean(draft.machining?.duplungolas)
@@ -1958,6 +2278,8 @@ function EdgeStep({
   const rows = showFerde
     ? EDGE_SLOT_UI
     : EDGE_SLOT_UI.filter((e) => e.slot !== 'ferde')
+
+  useKioskEnterContinue(canContinue, onContinue)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -2071,10 +2393,16 @@ function CartStep({
   priceError,
   pricedMaterials,
   onEdit,
-  onAskDelete,
+  onAskDeleteLine,
+  onAskDeleteGroup,
+  onAskClearCart,
   onAddSame,
+  onRecolorMove,
+  onRecolorCopy,
   onAddMore,
-  onRunPrice
+  onRunPrice,
+  canEnterPrimary,
+  onEnterPrimary
 }: {
   cart: KioskCartLine[]
   sheets: KioskSheet[]
@@ -2082,11 +2410,18 @@ function CartStep({
   priceError: string | null
   pricedMaterials: KioskPriceMaterialExplain[] | null
   onEdit: (l: KioskCartLine) => void
-  onAskDelete: (id: string) => void
+  onAskDeleteLine: (id: string) => void
+  onAskDeleteGroup: (sheetId: string) => void
+  onAskClearCart: () => void
   onAddSame: (sheetId: string) => void
+  onRecolorMove: (sheetId: string) => void
+  onRecolorCopy: (sheetId: string) => void
   onAddMore: () => void
   onRunPrice: () => void
+  canEnterPrimary: boolean
+  onEnterPrimary: () => void
 }) {
+  useKioskEnterContinue(canEnterPrimary, onEnterPrimary)
   const [explainMaterialId, setExplainMaterialId] = useState<string | null>(
     null
   )
@@ -2190,13 +2525,13 @@ function CartStep({
                       priceStatus === 'none' ||
                       priceStatus === 'error' ? (
                       <p className="mt-0.5 text-[12px] text-ink-muted">
-                        Árszámítás után látszik az anyag ára
+                        Ár után látszik az anyag ára
                       </p>
                     ) : null}
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
                     {groupGross != null ? (
-                      <p className="text-[16px] font-semibold tabular-nums text-ink">
+                      <p className="rounded-md bg-success-soft px-2.5 py-1 text-[18px] font-semibold tabular-nums text-success-ink md:text-[20px]">
                         {formatHuf(groupGross)}
                       </p>
                     ) : null}
@@ -2207,6 +2542,33 @@ function CartStep({
                       onClick={() => onAddSame(group.sheetId)}
                     >
                       + Ugyanebből még
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-11 shrink-0 text-[14px]"
+                      onClick={() => onRecolorMove(group.sheetId)}
+                    >
+                      <Replace className="size-4" aria-hidden />
+                      Dekor csere
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-11 shrink-0 text-[14px]"
+                      onClick={() => onRecolorCopy(group.sheetId)}
+                    >
+                      <Copy className="size-4" aria-hidden />
+                      Másolás
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      className="h-11 shrink-0 gap-1.5 text-[14px]"
+                      onClick={() => onAskDeleteGroup(group.sheetId)}
+                    >
+                      <Trash2 className="size-4" aria-hidden />
+                      Szín törlése
                     </Button>
                   </div>
                 </div>
@@ -2227,13 +2589,22 @@ function CartStep({
                       {groupHasLabel ? (
                         <DataTableHeaderCell>Megnevezés</DataTableHeaderCell>
                       ) : null}
-                      <DataTableHeaderCell align="right">
+                      <DataTableHeaderCell
+                        align="right"
+                        className="min-w-[6.5rem] whitespace-nowrap"
+                      >
                         Szálirány
                       </DataTableHeaderCell>
-                      <DataTableHeaderCell align="right">
+                      <DataTableHeaderCell
+                        align="right"
+                        className="min-w-[6.5rem] whitespace-nowrap"
+                      >
                         Keresztirány
                       </DataTableHeaderCell>
-                      <DataTableHeaderCell align="right">
+                      <DataTableHeaderCell
+                        align="right"
+                        className="min-w-[3.5rem] whitespace-nowrap"
+                      >
                         Darab
                       </DataTableHeaderCell>
                       <DataTableHeaderCell>Megmunkálás</DataTableHeaderCell>
@@ -2274,21 +2645,21 @@ function CartStep({
                           ) : null}
                           <DataTableCell
                             align="right"
-                            className="text-[15px] tabular-nums"
+                            className="min-w-[6.5rem] whitespace-nowrap text-[15px] tabular-nums"
                           >
-                            {line.grainMm}{' '}
+                            {line.grainMm}&nbsp;
                             <span className="text-ink-muted">mm</span>
                           </DataTableCell>
                           <DataTableCell
                             align="right"
-                            className="text-[15px] tabular-nums"
+                            className="min-w-[6.5rem] whitespace-nowrap text-[15px] tabular-nums"
                           >
-                            {line.crossMm}{' '}
+                            {line.crossMm}&nbsp;
                             <span className="text-ink-muted">mm</span>
                           </DataTableCell>
                           <DataTableCell
                             align="right"
-                            className="text-[15px] tabular-nums"
+                            className="min-w-[3.5rem] whitespace-nowrap text-[15px] tabular-nums"
                           >
                             {line.quantity}
                           </DataTableCell>
@@ -2314,7 +2685,7 @@ function CartStep({
                                 {edgeChips.map((c) => (
                                   <span
                                     key={c.key}
-                                    className="inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded border border-border bg-white px-1.5 py-0.5 text-[12px] text-ink"
+                                    className="inline-flex max-w-[11rem] items-center gap-1 whitespace-nowrap rounded border border-border bg-white px-1.5 py-0.5 text-[12px] text-ink"
                                     title={`${c.badge} · ${c.name}`}
                                   >
                                     <span className="font-semibold text-ink">
@@ -2339,7 +2710,7 @@ function CartStep({
                               aria-label="Tétel törlése"
                               onClick={(e) => {
                                 e.stopPropagation()
-                                onAskDelete(line.id)
+                                onAskDeleteLine(line.id)
                               }}
                             >
                               <Trash2 className="size-4" aria-hidden />
@@ -2356,14 +2727,27 @@ function CartStep({
         </div>
       )}
 
-      <Button
-        type="button"
-        variant="secondary"
-        className="h-12 w-full text-[16px] sm:w-auto"
-        onClick={onAddMore}
-      >
-        + Másik anyag
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-12 text-[16px]"
+          onClick={onAddMore}
+        >
+          + Másik anyag
+        </Button>
+        {cart.length > 0 ? (
+          <Button
+            type="button"
+            variant="danger"
+            className="h-12 gap-1.5 text-[16px]"
+            onClick={onAskClearCart}
+          >
+            <Trash2 className="size-4" aria-hidden />
+            Kosár ürítése
+          </Button>
+        ) : null}
+      </div>
 
       {cart.length > 0 ? (
         <div className="flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3">

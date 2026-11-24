@@ -15,7 +15,7 @@ const MAX_SHEETS = 6
 const STEPS = [
   'Válaszd ki a lapot',
   'Add meg a méreteket milliméterben',
-  'Válaszd ki az élzárást (ha kell, fúrást is)',
+  'Válaszd ki az élzárást (ha kell, megmunkálást is)',
   'A pultnál átnézzük veled, és ott fizetsz'
 ]
 
@@ -41,8 +41,27 @@ export function KioskAttract({
   const [helpOpen, setHelpOpen] = useState(false)
 
   useEffect(() => {
-    startRef.current?.focus()
-  }, [])
+    if (helpOpen) return
+    const id = window.setTimeout(() => startRef.current?.focus(), 0)
+    return () => window.clearTimeout(id)
+  }, [helpOpen])
+
+  useEffect(() => {
+    if (helpOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement | null
+      if (!t) return
+      if (t.closest('[role="dialog"]')) return
+      if (t.closest('[data-kiosk-attract-sheet]')) return
+      if (t === startRef.current) return
+      e.preventDefault()
+      onStart()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [helpOpen, onStart])
 
   const sheets = [...featuredSheets]
     .sort((a, b) => Number(b.onStock) - Number(a.onStock))
@@ -63,13 +82,13 @@ export function KioskAttract({
         </Button>
       </header>
 
-      <main className="mx-auto flex w-full max-w-[1200px] flex-1 flex-col gap-8 px-6 py-8 md:px-10 lg:py-12">
+      <main className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-8 px-6 py-8 md:px-10 lg:py-12">
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-center lg:gap-12">
           <section>
             <h1 className="text-[38px] font-semibold leading-[1.1] tracking-tight text-ink md:text-[44px]">
               Bútorlap szabás méretre, élzárással
             </h1>
-            <p className="mt-4 max-w-xl text-[20px] leading-snug text-ink-secondary">
+            <p className="mt-4 max-w-2xl text-[20px] leading-snug text-ink-secondary">
               Állítsd össze a rendelésed itt. A pultnál mindent átnézünk veled,
               mielőtt elindítanánk a gyártást.
             </p>
@@ -86,6 +105,7 @@ export function KioskAttract({
             </Button>
             <p className="mt-3 text-[16px] text-ink-secondary">
               Pár perc, nem kell regisztrálni. Az árat a leadás előtt látod.
+              Enterrel is indíthatod.
             </p>
           </section>
 
@@ -142,6 +162,7 @@ export function KioskAttract({
                 <button
                   key={s.id}
                   type="button"
+                  data-kiosk-attract-sheet=""
                   className="group flex flex-col overflow-hidden rounded-xl border border-border bg-surface text-left shadow-elev1 transition-[border-color,box-shadow] hover:border-ink hover:shadow-elev2 focus-visible:border-ink focus-visible:shadow-elev2 focus-visible:outline-none"
                   onClick={() => onStartWithSheet(s)}
                 >
@@ -253,7 +274,7 @@ function AttractHelp({ onClose }: { onClose: () => void }) {
             <p className="font-semibold text-ink">Mit tudok itt rendelni?</p>
             <p>
               Bútorlapot a saját méretedre vágva, élzárással. Ha kell,
-              pánthely fúrással, duplungolással vagy sarokvágással is.
+              pánthellyel, duplungolással vagy sarokvágással is.
             </p>
           </li>
           <li>

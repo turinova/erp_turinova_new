@@ -16,7 +16,9 @@ import {
   isGuestPhoneValid,
   validateKioskGuest
 } from '@/lib/kiosk/guest'
+import { machiningSummaryChips } from '@/lib/kiosk/machining-copy'
 import { formatHuf } from '@/lib/kiosk/mock-data'
+import { edgeSummaryLabel } from '@/lib/kiosk/mock-pricing'
 import type {
   KioskBillingMode,
   KioskCartLine,
@@ -29,8 +31,9 @@ type SectionId = 'contact' | 'billing' | 'consent'
 
 const FIELD_SELECTOR = '[data-kiosk-field]'
 
+/** 24″ Adatok: sűrűbb mezők, hogy ne kelljen scroll. */
 const inputClass =
-  'h-14 rounded-lg px-4 text-[18px] focus-visible:border-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/15'
+  'h-12 rounded-lg px-3.5 text-[17px] focus-visible:border-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/15'
 
 const BILLING_OPTIONS: Array<{
   id: KioskBillingMode
@@ -45,7 +48,7 @@ const BILLING_OPTIONS: Array<{
   {
     id: 'here',
     title: 'Kérek számlát',
-    description: 'Név, cím és ha cég, adószám.'
+    description: 'Név, cím, adószám ha cég.'
   }
 ]
 
@@ -123,29 +126,30 @@ export function KioskDetailsStep({
       : null
 
   return (
-    <div className="mx-auto w-full max-w-6xl pb-4">
-      <header className="mb-6 space-y-1.5">
-        <p className="text-[15px] font-semibold text-ink-secondary">
-          Utolsó lépés
-        </p>
-        <h1 className="text-[30px] font-semibold leading-tight tracking-tight text-ink">
-          Add meg az adataidat
-        </h1>
-        <p className="text-[18px] leading-snug text-ink-secondary">
-          Itt a rendelést adod le. Fizetni a pultnál fogsz.
-        </p>
+    <div className="mx-auto flex w-full max-w-6xl flex-col">
+      <header className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+        <div className="min-w-0">
+          <h1 className="text-[24px] font-semibold leading-tight tracking-tight text-ink md:text-[26px]">
+            Add meg az adataidat
+          </h1>
+          <p className="mt-0.5 text-[15px] leading-snug text-ink-secondary">
+            Leadás itt · fizetés a pultnál.
+          </p>
+        </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <div className="space-y-4" onKeyDown={handleEnterNext}>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="space-y-2.5" onKeyDown={handleEnterNext}>
           <KioskSection
             index={1}
             title="Elérhetőség"
-            description="A pultnál a neved alapján találjuk meg a rendelésed."
+            description="A pult a neved alapján talál meg."
             state={sectionState('contact', validation.contactDone)}
+            compact
             onFocusWithin={() => enterSection('contact')}
+            onHeaderClick={() => enterSection('contact')}
           >
-            <div className="space-y-5">
+            <div className="space-y-3">
               <FormRow label="Neved" error={nameError}>
                 {(id, describedBy) => (
                   <Input
@@ -169,8 +173,8 @@ export function KioskDetailsStep({
               </FormRow>
 
               <FormRow
-                label="Telefonszám"
-                hint="Ide küldjük az SMS-t, ha elkészült a gyártás. Reklámot nem küldünk."
+                label="Telefon"
+                hint="SMS, ha kész a gyártás."
                 error={phoneError}
               >
                 {(id, describedBy) => (
@@ -214,13 +218,35 @@ export function KioskDetailsStep({
                     aria-describedby={describedBy}
                     className={cn(inputClass, emailError && 'border-danger')}
                     value={guest.email}
-                    onBlur={() => touch('email')}
+                    onBlur={() => {
+                      touch('email')
+                      if (
+                        isGuestNameValid(guest.name) &&
+                        isGuestPhoneValid(guest.phone) &&
+                        isGuestEmailValid(guest.email)
+                      ) {
+                        enterSection('billing')
+                      }
+                    }}
                     onChange={(e) =>
                       onChange({ ...guest, email: e.target.value })
                     }
                   />
                 )}
               </FormRow>
+
+              {validation.contactDone ? (
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-10 text-[14px] font-semibold"
+                    onClick={() => enterSection('billing')}
+                  >
+                    Tovább a számlához →
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </KioskSection>
 
@@ -229,18 +255,25 @@ export function KioskDetailsStep({
             title="Számla"
             description="Csak ha számlát kérsz."
             state={sectionState('billing', validation.billingDone)}
+            compact
+            bodyClassName={
+              billingMode === 'here'
+                ? 'max-h-[min(42vh,22rem)] overflow-y-auto'
+                : undefined
+            }
             onFocusWithin={() => enterSection('billing')}
+            onHeaderClick={() => enterSection('billing')}
           >
             <fieldset>
               <legend className="sr-only">Kérsz számlát?</legend>
-              <div className="space-y-2.5">
+              <div className="grid gap-2 sm:grid-cols-2">
                 {BILLING_OPTIONS.map((opt) => {
                   const checked = billingMode === opt.id
                   return (
                     <label
                       key={opt.id}
                       className={cn(
-                        'flex min-h-16 cursor-pointer items-center gap-4 rounded-lg border px-4 py-3 transition-colors',
+                        'flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors',
                         checked
                           ? 'border-ink bg-subtle'
                           : 'border-border hover:border-border-strong'
@@ -251,16 +284,16 @@ export function KioskDetailsStep({
                         name="kiosk-billing-mode"
                         value={opt.id}
                         checked={checked}
-                        className="size-6 shrink-0 accent-ink"
+                        className="size-5 shrink-0 accent-ink"
                         onChange={() =>
                           onChange({ ...guest, billingMode: opt.id })
                         }
                       />
                       <span className="min-w-0">
-                        <span className="block text-[17px] font-semibold text-ink">
+                        <span className="block text-[15px] font-semibold text-ink">
                           {opt.title}
                         </span>
-                        <span className="block text-[15px] text-ink-secondary">
+                        <span className="block text-[13px] text-ink-secondary">
                           {opt.description}
                         </span>
                       </span>
@@ -271,7 +304,7 @@ export function KioskDetailsStep({
             </fieldset>
 
             {billingMode === 'here' ? (
-              <div className="mt-5 space-y-5 border-t border-border pt-5">
+              <div className="mt-3 space-y-3 border-t border-border pt-3">
                 <FormRow label="Számlázási név">
                   {(id) => (
                     <Input
@@ -290,7 +323,7 @@ export function KioskDetailsStep({
                 <FormRow
                   label="Adószám"
                   optional
-                  hint="Csak ha cégre kéred."
+                  hint="Csak cégnél."
                 >
                   {(id, describedBy) => (
                     <Input
@@ -314,8 +347,8 @@ export function KioskDetailsStep({
                 </FormRow>
                 <FormRow label="Cím" error={billingError}>
                   {(id, describedBy) => (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-3">
+                    <div className="space-y-2.5">
+                      <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2.5">
                         <Input
                           id={id}
                           data-kiosk-field
@@ -351,7 +384,7 @@ export function KioskDetailsStep({
                           }
                         />
                       </div>
-                      <div className="grid grid-cols-[minmax(0,1fr)_7.5rem] gap-3">
+                      <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-2.5">
                         <Input
                           data-kiosk-field
                           name="kiosk-billing-street"
@@ -384,18 +417,32 @@ export function KioskDetailsStep({
                 </FormRow>
               </div>
             ) : null}
+
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-10 text-[14px] font-semibold"
+                disabled={!validation.billingDone}
+                onClick={() => enterSection('consent')}
+              >
+                Tovább az ellenőrzéshez →
+              </Button>
+            </div>
           </KioskSection>
 
           <KioskSection
             index={3}
             title="Ellenőrzés"
-            description="Leadás előtt nézd át még egyszer a rendelésed."
+            description="Leadás előtt egy pipa."
             state={sectionState('consent', validation.consentDone)}
+            compact
             onFocusWithin={() => enterSection('consent')}
+            onHeaderClick={() => enterSection('consent')}
           >
             <label
               className={cn(
-                'flex cursor-pointer items-start gap-4 rounded-lg border px-4 py-4 transition-colors',
+                'flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 transition-colors',
                 guest.consent
                   ? 'border-ink bg-subtle'
                   : 'border-border hover:border-border-strong'
@@ -404,40 +451,40 @@ export function KioskDetailsStep({
               <input
                 type="checkbox"
                 data-kiosk-field
-                className="mt-0.5 size-7 shrink-0 accent-ink"
+                className="mt-0.5 size-6 shrink-0 accent-ink"
                 checked={guest.consent}
                 onChange={(e) =>
                   onChange({ ...guest, consent: e.target.checked })
                 }
               />
               <span className="min-w-0">
-                <span className="block text-[17px] font-semibold text-ink">
+                <span className="block text-[16px] font-semibold text-ink">
                   Átnéztem a rendelésemet
                 </span>
-                <span className="mt-1 block text-[16px] leading-snug text-ink-secondary">
-                  A lapok, a méretek és az élzárás úgy szerepelnek, ahogy
-                  kérem. Ha mégis változtatnál, a pultnál még megteheted.
+                <span className="mt-0.5 block text-[14px] leading-snug text-ink-secondary">
+                  Lapok, méretek, élzárás stimmel. A pultnál még lehet
+                  módosítani.
                 </span>
               </span>
             </label>
           </KioskSection>
         </div>
 
-        <aside className="space-y-4 lg:sticky lg:top-4">
+        <aside className="space-y-2.5 lg:sticky lg:top-2">
           <OrderSummaryCard
             cart={cart}
             sheets={sheets}
             totalGross={totalGross}
             onEditCart={onEditCart}
           />
-          <div className="flex gap-3 rounded-xl border border-border bg-surface px-5 py-4">
+          <div className="flex gap-2.5 rounded-xl border border-border bg-surface px-3.5 py-3">
             <Info
-              className="mt-0.5 size-5 shrink-0 text-ink-secondary"
+              className="mt-0.5 size-4 shrink-0 text-ink-secondary"
               aria-hidden
             />
-            <p className="text-[15px] leading-snug text-ink-secondary">
+            <p className="text-[13px] leading-snug text-ink-secondary">
               <span className="font-semibold text-ink">Elakadtál?</span> Szólj
-              a pultnál. Segítünk befejezni.
+              a pultnál.
             </p>
           </div>
         </aside>
@@ -467,31 +514,31 @@ function FormRow({
     undefined
 
   return (
-    <div className="grid gap-x-5 gap-y-2 lg:grid-cols-[9.5rem_minmax(0,1fr)]">
+    <div className="grid gap-x-4 gap-y-1.5 lg:grid-cols-[7.5rem_minmax(0,1fr)]">
       <label
         htmlFor={id}
-        className="text-[17px] font-semibold leading-tight text-ink lg:pt-4"
+        className="text-[15px] font-semibold leading-tight text-ink lg:pt-3"
       >
         {label}
         {optional ? (
-          <span className="mt-0.5 block text-[14px] font-medium text-ink-secondary">
+          <span className="mt-0.5 block text-[12px] font-medium text-ink-secondary">
             nem kötelező
           </span>
         ) : null}
       </label>
-      <div className="min-w-0 space-y-2">
+      <div className="min-w-0 space-y-1.5">
         {children(id, describedBy)}
         {error ? (
           <p
             id={errorId}
-            className="flex items-start gap-2 text-[15px] font-medium text-danger-ink"
+            className="flex items-start gap-1.5 text-[13px] font-medium text-danger-ink"
             role="alert"
           >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             {error}
           </p>
         ) : hint ? (
-          <p id={hintId} className="text-[15px] text-ink-secondary">
+          <p id={hintId} className="text-[13px] text-ink-secondary">
             {hint}
           </p>
         ) : null}
@@ -515,66 +562,86 @@ function OrderSummaryCard({
     () =>
       cart.map((line) => {
         const sheet = sheets.find((s) => s.id === line.sheetId)
+        const edgeLabel = edgeSummaryLabel(line.edgeIds)
+        const chips: string[] = []
+        if (edgeLabel !== 'Nincs él') chips.push(edgeLabel)
+        chips.push(...machiningSummaryChips(line.machining))
         return {
           id: line.id,
           title: sheet
             ? `${sheet.name} · ${sheet.thicknessMm} mm`
             : 'Bútorlap',
           meta: [
-            line.label?.trim() || null,
             `${line.grainMm} × ${line.crossMm} mm`,
-            `${line.quantity} db`
+            `${line.quantity} db`,
+            line.label?.trim() || null
           ]
             .filter(Boolean)
-            .join(' · ')
+            .join(' · '),
+          chips
         }
       }),
     [cart, sheets]
   )
-  const visible = rows.slice(0, 4)
+  const visible = rows.slice(0, 3)
   const more = rows.length - visible.length
   const pieces = cart.reduce((sum, l) => sum + l.quantity, 0)
 
   return (
     <KioskSection
       title="Rendelésed"
-      description={`${cart.length} tétel · ${pieces} darab`}
+      description={`${cart.length} tétel · ${pieces} db`}
+      forceOpen
+      compact
       action={
         <Button
           type="button"
           variant="secondary"
-          className="h-11 px-4 text-[15px] font-semibold"
+          className="h-9 px-3 text-[13px] font-semibold"
           onClick={onEditCart}
         >
           Módosítás
         </Button>
       }
     >
-      <ul className="-mt-1 divide-y divide-border">
+      <ul className="-mt-0.5 divide-y divide-border">
         {visible.map((row) => (
-          <li key={row.id} className="py-3 first:pt-0">
-            <p className="text-[16px] font-semibold leading-snug text-ink">
+          <li key={row.id} className="py-2 first:pt-0">
+            <p className="truncate text-[14px] font-semibold leading-snug text-ink">
               {row.title}
             </p>
-            <p className="mt-0.5 text-[15px] tabular-nums text-ink-secondary">
+            <p className="mt-0.5 truncate text-[13px] tabular-nums text-ink-secondary">
               {row.meta}
             </p>
+            {row.chips.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {row.chips.map((chip) => (
+                  <span
+                    key={chip}
+                    className="inline-block max-w-full truncate rounded border border-border bg-white px-1.5 py-0.5 text-[11px] font-medium text-ink"
+                    title={chip}
+                  >
+                    {chip}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </li>
         ))}
         {more > 0 ? (
-          <li className="py-3 text-[15px] font-medium text-ink-secondary">
+          <li className="py-2 text-[13px] font-medium text-ink-secondary">
             + {more} további tétel
           </li>
         ) : null}
       </ul>
-      <div className="mt-2 border-t-2 border-ink pt-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[17px] font-semibold text-ink">Összesen</span>
-          <span className="text-[28px] font-semibold tabular-nums leading-none text-ink">
+      <div className="mt-1.5 border-t-2 border-ink pt-2.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-[14px] font-semibold text-ink">Összesen</span>
+          <span className="text-[22px] font-semibold tabular-nums leading-none text-success-ink">
             {totalGross > 0 ? formatHuf(totalGross) : 'nincs'}
           </span>
         </div>
-        <p className="mt-2 text-[15px] text-ink-secondary">Bruttó ár</p>
+        <p className="mt-1 text-[12px] text-ink-secondary">Bruttó</p>
       </div>
     </KioskSection>
   )

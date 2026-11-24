@@ -42,14 +42,7 @@ export function KioskSuccessStep({
   const steps = [
     {
       title: 'Menj a pulthoz',
-      body: name ? (
-        <>
-          Mondd a neved: <span className="font-semibold text-ink">{name}</span>.
-          Együtt átnézzük a rendelést.
-        </>
-      ) : (
-        'Mondd a neved. Együtt átnézzük a rendelést.'
-      )
+      body: 'Mondd a neved. Együtt átnézzük a rendelést.'
     },
     {
       title: 'Aláírás és fizetés',
@@ -70,11 +63,18 @@ export function KioskSuccessStep({
           <span className="flex size-16 items-center justify-center rounded-full bg-success text-white">
             <Check className="size-9" strokeWidth={3} aria-hidden />
           </span>
-          <h1 className="mt-5 text-[32px] font-semibold leading-tight text-ink">
-            {name ? `Köszönjük, ${name}!` : 'Köszönjük!'}
+          <h1 className="mt-5 text-[28px] font-semibold leading-tight text-ink md:text-[30px]">
+            Köszönjük!
           </h1>
-          <p className="mt-2 text-[18px] text-ink-secondary">
-            A rendelésed beérkezett a pultra.
+          {name ? (
+            <p className="mt-4 max-w-full truncate text-[40px] font-semibold leading-none tracking-tight text-ink md:text-[48px]">
+              {name}
+            </p>
+          ) : null}
+          <p className="mt-3 text-[18px] text-ink-secondary">
+            {name
+              ? 'Mondd ezt a nevet a pultnál. A rendelésed beérkezett.'
+              : 'A rendelésed beérkezett a pultra.'}
           </p>
           {hasLeftover ? (
             <p className="mt-4 flex items-start gap-2 rounded-lg border border-border bg-subtle px-3 py-2.5 text-left text-[15px] text-ink">

@@ -1,6 +1,6 @@
 # 60 — Bolti lapszab kiosk (tenant self-order)
 
-**Állapot:** 2026-11-20 — **staff Kiosk beállítások** + **P1b** tenant bootstrap / manuális **Árszámítás optimalizálással**; rendelés mentés még nincs.  
+**Állapot:** 2026-11-20 — **staff Kiosk beállítások** + **P1b** tenant bootstrap / manuális **Ár kiszámítása**; rendelés mentés még nincs.  
 **UX / layout:** [61-bolti-kiosk-ux.md](61-bolti-kiosk-ux.md) · Opti staff: `/opti` · Lapszab add-on: [23](23-lapszabaszat-addon.md) · Quote pipeline: [37](37-lapszabaszat-quote-workflow.md) · Google link: [55](55-google-cegprofil.md) · Certainty: [03](03-ux-certainty-first.md).
 
 ---
@@ -56,7 +56,7 @@
 1. Futtasd `supabase/migrations/20261020_kiosk_settings.sql`, majd `20261021_kiosk_quotes.sql` (SQL Editor).
 2. Staff: **Beállítások → Kiosk**: kapcsold be, mapeld az él típusokat, opcionálisan eszköz.
 3. Dev: `KIOSK_DEV_BYPASS=true` az `.env.local`-ban (vagy 0 eszköz = átmeneti bypass).
-4. Nyisd: `/k/<tenant-slug>`: anyag, kosár, **Árszámítás optimalizálással**, Adatok, **Leadom a pultnak**.
+4. Nyisd: `/k/<tenant-slug>`: anyag, kosár, **Ár kiszámítása**, Adatok, **Leadom a pultnak**.
 5. Staff: Kezdőlap „Kioskról érkezett” blokk, `/ajanlatok?forras=kiosk`, detailen kiosk kártya.
 6. Ugyanazzal a telefonszámmal még egy leadás → ugyanahhoz az ügyfélhez kerül (nem jön létre új).
 

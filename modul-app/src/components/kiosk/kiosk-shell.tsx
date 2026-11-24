@@ -3,9 +3,15 @@
 import {
   AlertTriangle,
   Check,
+  Drill,
+  Frame,
   HelpCircle,
+  Layers,
   Loader2,
+  type LucideIcon,
+  Ruler,
   ShoppingCart,
+  UserRound,
   X
 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -20,15 +26,18 @@ import { formatHuf } from '@/lib/kiosk/mock-data'
 import type { KioskStep } from '@/lib/kiosk/types'
 import { cn } from '@/lib/utils'
 
-const PROGRESS: Array<{ id: Exclude<KioskStep, 'attract' | 'success'>; label: string }> =
-  [
-    { id: 'material', label: 'Anyag' },
-    { id: 'size', label: 'Méret' },
-    { id: 'machining', label: 'Megmunkálás' },
-    { id: 'edge', label: 'Élzárás' },
-    { id: 'cart', label: 'Kosár' },
-    { id: 'details', label: 'Adatok' }
-  ]
+const PROGRESS: Array<{
+  id: Exclude<KioskStep, 'attract' | 'success'>
+  label: string
+  Icon: LucideIcon
+}> = [
+  { id: 'material', label: 'Anyag', Icon: Layers },
+  { id: 'size', label: 'Méret', Icon: Ruler },
+  { id: 'machining', label: 'Megmunkálás', Icon: Drill },
+  { id: 'edge', label: 'Élzárás', Icon: Frame },
+  { id: 'cart', label: 'Kosár', Icon: ShoppingCart },
+  { id: 'details', label: 'Adatok', Icon: UserRound }
+]
 
 const SAFETY_NET_COPY = 'Nem végleges. A pultnál még mindent átnézünk veled.'
 
@@ -105,10 +114,26 @@ export function KioskShell({
   const [helpOpen, setHelpOpen] = useState(false)
   const [idleWarn, setIdleWarn] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(15)
+  const [priceReveal, setPriceReveal] = useState(false)
+  const prevTotalRef = useRef<number | null>(null)
   const titleId = useId()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const warnRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    const prev = prevTotalRef.current
+    const next = totalGross
+    prevTotalRef.current = next
+    if (next == null || next < 0) {
+      setPriceReveal(false)
+      return
+    }
+    if (prev === next) return
+    setPriceReveal(true)
+    const id = window.setTimeout(() => setPriceReveal(false), 400)
+    return () => window.clearTimeout(id)
+  }, [totalGross])
 
   function clearIdleTimers() {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -190,6 +215,7 @@ export function KioskShell({
               const done = activeIdx > i
               const current = activeIdx === i
               const upcoming = !done && !current
+              const StepIcon = p.Icon
               return (
                 <div key={p.id} className="flex min-w-0 items-center gap-0.5 sm:gap-1">
                   {i > 0 ? (
@@ -204,7 +230,7 @@ export function KioskShell({
                   <div className="flex min-w-0 flex-col items-center gap-0.5">
                     <span
                       className={cn(
-                        'flex size-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold transition-colors',
+                        'flex size-8 shrink-0 items-center justify-center rounded-full transition-colors',
                         current && 'bg-ink text-white shadow-sm ring-2 ring-ink/15',
                         done &&
                           !current &&
@@ -213,11 +239,12 @@ export function KioskShell({
                           'border-2 border-border bg-surface text-ink-muted'
                       )}
                       aria-current={current ? 'step' : undefined}
+                      title={p.label}
                     >
                       {done ? (
                         <Check className="size-3.5 stroke-[2.5]" aria-hidden />
                       ) : (
-                        i + 1
+                        <StepIcon className="size-3.5" aria-hidden />
                       )}
                     </span>
                     <span
@@ -274,7 +301,7 @@ export function KioskShell({
         <main
           className={cn(
             'mx-auto flex w-full max-w-[1100px] flex-1 flex-col px-4 py-5 md:px-6',
-            showChrome && primaryLabel ? 'pb-28' : 'pb-6'
+            showChrome && primaryLabel ? 'pb-32' : 'pb-6'
           )}
           onPointerDown={bumpIdle}
         >
@@ -283,7 +310,7 @@ export function KioskShell({
       )}
 
       {showChrome && primaryLabel ? (
-        <footer className="fixed inset-x-0 bottom-0 z-30 flex h-[88px] items-center gap-3 border-t border-border bg-surface px-4 md:px-6">
+        <footer className="fixed inset-x-0 bottom-0 z-30 flex min-h-[96px] items-center gap-3 border-t border-border bg-surface px-4 py-3 md:px-6">
           <Button
             type="button"
             variant="secondary"
@@ -296,7 +323,7 @@ export function KioskShell({
           <div className="min-w-0 flex-1">
             {priceLoading ? (
               <div
-                className="mx-auto flex w-full max-w-[220px] flex-col items-center gap-2"
+                className="mx-auto flex w-full max-w-[240px] flex-col items-center gap-2"
                 role="status"
                 aria-live="polite"
                 aria-label="Árszámítás folyamatban"
@@ -306,7 +333,7 @@ export function KioskShell({
                     className="size-5 shrink-0 animate-spin text-ink"
                     aria-hidden
                   />
-                  <span className="text-[15px] font-semibold">
+                  <span className="text-[16px] font-semibold">
                     Optimalizálás
                   </span>
                 </div>
@@ -314,7 +341,8 @@ export function KioskShell({
                   <div className="h-full w-1/3 animate-[kiosk-progress_1.1s_ease-in-out_infinite] rounded-full bg-ink" />
                 </div>
               </div>
-            ) : primaryHint && primaryDisabled ? (
+            ) : primaryHint &&
+              (primaryDisabled || totalGross == null) ? (
               <div className="flex justify-center">
                 <p
                   className="inline-flex max-w-full items-center gap-2.5 rounded-lg border-2 border-warning bg-warning-soft px-4 py-2.5 text-[18px] font-semibold text-warning-ink md:text-[19px]"
@@ -326,14 +354,23 @@ export function KioskShell({
                 </p>
               </div>
             ) : totalGross != null && totalGross >= 0 ? (
-              <div className="text-center">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">
-                  Bruttó
+              <div
+                className={cn(
+                  'mx-auto w-fit max-w-full rounded-xl border-2 border-success bg-success-soft px-5 py-2.5 text-center shadow-sm',
+                  priceReveal &&
+                    'animate-[kiosk-price-reveal_0.35s_ease-out]'
+                )}
+                role="status"
+                aria-live="polite"
+                aria-label={`Végösszeg bruttó ${formatHuf(totalGross)}`}
+              >
+                <p className="whitespace-nowrap text-[13px] font-semibold text-success-ink/80">
+                  Végösszeg · bruttó
                 </p>
-                <p className="text-[26px] font-semibold tabular-nums leading-none text-ink md:text-[30px]">
+                <p className="whitespace-nowrap text-[34px] font-semibold tabular-nums leading-none tracking-tight text-success-ink md:text-[40px]">
                   {formatHuf(totalGross)}
                 </p>
-                <p className="mt-1 hidden text-[13px] text-ink-muted lg:block">
+                <p className="mt-1 hidden whitespace-nowrap text-[12px] text-success-ink/70 lg:block">
                   {SAFETY_NET_COPY}
                 </p>
               </div>
@@ -365,7 +402,7 @@ export function KioskShell({
                 primaryLoading ? 'Árszámítás folyamatban' : undefined
               }
               className={cn(
-                'h-14 min-w-[200px] px-8 text-[17px] font-semibold md:min-w-[280px]',
+                'h-14 min-w-[200px] px-6 text-[16px] font-semibold md:min-w-[260px] md:px-8 md:text-[17px]',
                 primaryLoading && 'min-w-[88px] px-5 [&_svg]:size-6'
               )}
             >
@@ -423,14 +460,14 @@ export function KioskShell({
                 <p className="font-semibold text-ink">Megmunkálás</p>
                 <p>
                   Duplung, pánthely és szögvágás. Többet is kérhetsz egy
-                  darabra. Ha nem kell semmi, lépj tovább.
+                  darabra. Ha nem kell semmi, nyomj Entert vagy Tovább.
                 </p>
               </li>
               <li>
                 <p className="font-semibold text-ink">Ár</p>
                 <p>
-                  A kosárban: „Árszámítás optimalizálással”. Az összeg az
-                  alsó sávban jelenik meg nagy számmal. Fizetés a pultnál.
+                  A kosárban: „Ár kiszámítása”. Az összeg az alsó sávban
+                  jelenik meg nagy számmal. Fizetés a pultnál.
                 </p>
               </li>
               <li>

@@ -26,7 +26,7 @@ export const SZOG_CORNER_UI: Array<{
 
 export const MACHINING_COPY = {
   h1: 'Kell még megmunkálás?',
-  sub: 'Ha nem kell semmi, lépj tovább.',
+  sub: 'Ha nem kell semmi, nyomj Entert vagy Tovább.',
   noneTitle: 'Nincs megmunkálás',
   noneHint: 'Csak méretre vágás',
   duplungTitle: 'Duplung',
