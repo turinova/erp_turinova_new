@@ -101,7 +101,7 @@ Kutatás: attract = cégtábla, „mi ez, mit kapok” ≤10 szóban, 1 dominán
 Csempe: kép, `Raktáron` / `Rendelésre` (neutral), **vastagság badge**, `L×W×T`, gyártó · Ft/m², halvány `machine_code`. Tap = Méret.
 
 ### 2 Méret (LTR split, 21″ / 24″ FHD, fix stage)
-**Bal:** **fix** preview stage (`h-[360px]`) — belső panel fit-contain (anyagkép). **Jobb:** Szálirány / Keresztirány / Db. Belépéskor **autofocus Szálirány**; Enter → Keresztirány; Enter (ha valid) → **Tovább** (Megmunkálás). Mezőhint: `Max: N mm (L − trim − trim)` — Opti parity (`lib/opti/queries` + `lib/kiosk/size-limits`). Gépelés > max → clamp. Soft &lt;150 mm (nem blokkol Entert). Footer primary: **Tovább →** (Megmunkálás). Üzenetek a formban (~18px).
+**Bal:** **fix** preview stage (`h-[360px]`) — belső panel fit-contain (anyagkép). Szálas lapnál: vonal overlay + danger-soft sáv (+ külső !): „Csak a vonalak mutatják a szálat. A kép iránya félrevezető lehet.” **Jobb:** Szálirány / Keresztirány / Db. Belépéskor **autofocus Szálirány**; Enter → Keresztirány; Enter (ha valid) → **Tovább** (Megmunkálás). Mezőhint: `Max: N mm` — Opti parity. Soft &lt;150 mm. Footer primary: **Tovább →**.
 
 ### 3 Megmunkálás (multi, Opti-align + preview)
 - LTR: **bal fix stage preview** (`KioskMachiningPreview`) · jobb toggle-ök.  

@@ -151,7 +151,7 @@ function GrainOverlay() {
           aria-hidden
         />
       ))}
-      <span className="pointer-events-none absolute bottom-2 left-1/2 z-[2] -translate-x-1/2 rounded bg-surface px-2 py-0.5 text-[12px] font-semibold tracking-wide text-ink shadow-sm">
+      <span className="pointer-events-none absolute bottom-2 left-1/2 z-[2] -translate-x-1/2 rounded-md bg-ink px-2.5 py-1 text-[12px] font-semibold tracking-wide text-white shadow-sm">
         Szál →
       </span>
     </>
@@ -1781,11 +1781,27 @@ function SizeStep({
             </div>
           </div>
 
-          <p className="mt-2 h-5 text-center text-[13px] text-ink-secondary">
-            {sheet.grainDirection
-              ? 'A vonalak a szálat mutatják (vízszintes).'
-              : 'Nincs szál. A két méret a két oldal.'}
-          </p>
+          {sheet.grainDirection ? (
+            <div
+              className="mt-2 flex items-center justify-center gap-2"
+              role="note"
+            >
+              <span
+                className="shrink-0 text-[28px] font-bold leading-none text-danger"
+                aria-hidden
+              >
+                !
+              </span>
+              <p className="whitespace-nowrap rounded-lg border border-danger/40 bg-danger-soft px-3 py-2.5 text-[15px] font-semibold leading-none text-danger-ink">
+                Csak a <span className="underline">vonalak</span> mutatják a
+                szálat. A kép iránya félrevezető lehet.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-center text-[13px] text-ink-secondary">
+              Nincs szál. A két méret a két oldal.
+            </p>
+          )}
         </div>
 
         {/* JOBB — top-aligned form */}
