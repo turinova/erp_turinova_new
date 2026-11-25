@@ -9,6 +9,7 @@ import {
 } from '@/lib/sms/templates'
 import {
   CSO_READY_TEMPLATE_KEY,
+  MANUAL_ORDER_READY_TEMPLATE_KEY,
   QUOTE_READY_TEMPLATE_KEY,
   REVIEW_THANKS_TEMPLATE_KEY
 } from '@/lib/sms/types'
@@ -87,6 +88,24 @@ export async function saveCsoReadySmsTemplate(
 
   if (!result.ok) return result
 
+  revalidatePath(SETTINGS_PATH)
+  return { ok: true }
+}
+
+export async function saveManualOrderReadySmsTemplate(
+  body: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  if (!ctx.user.allowedPages.includes('/kezi-rendelesek')) {
+    return { ok: false, message: 'Nincs jogosultság a kézi rendelés SMS sablonhoz.' }
+  }
+  const result = await upsertTenantSmsTemplate(ctx.supabase, {
+    tenantId: ctx.user.tenantId!,
+    templateKey: MANUAL_ORDER_READY_TEMPLATE_KEY,
+    body
+  })
+  if (!result.ok) return result
   revalidatePath(SETTINGS_PATH)
   return { ok: true }
 }

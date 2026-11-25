@@ -68,6 +68,7 @@ function headerFromParsed(data: SupplierFormValues) {
     bic: data.bic,
     account_holder: data.accountHolder,
     notes: data.notes,
+    color: data.color,
     email_po_intro_html: data.emailPoIntroHtml,
     status: data.status,
     default_currency: data.defaultCurrency,

@@ -61,6 +61,7 @@ export type SupplierDetail = {
   bic: string | null
   account_holder: string | null
   notes: string | null
+  color: string | null
   email_po_intro_html: string | null
   status: SupplierStatus
   default_currency: SupplierCurrency
@@ -190,10 +191,7 @@ export async function getSupplier(
   tenantId: string,
   id: string
 ): Promise<SupplierDetail | null> {
-  const { data, error } = await supabase
-    .from('suppliers')
-    .select(
-      `
+  const SELECT = `
       id,
       name,
       email,
@@ -206,6 +204,7 @@ export async function getSupplier(
       bic,
       account_holder,
       notes,
+      color,
       status,
       default_currency,
       default_tax_rate_id,
@@ -243,11 +242,19 @@ export async function getSupplier(
         deleted_at
       )
     `
-    )
-    .eq('tenant_id', tenantId)
-    .eq('id', id)
-    .is('deleted_at', null)
-    .maybeSingle()
+  const run = (cols: string) =>
+    supabase.from('suppliers').select(cols).eq('tenant_id', tenantId).eq('id', id).is('deleted_at', null).maybeSingle()
+  let res = await run(SELECT)
+  // `color` a 20261023 migrációval jön — előtte is töltsön be.
+  if (res.error?.message.includes('color')) res = await run(SELECT.replace(/\n\s*color,/, ''))
+  const { error } = res
+  const data = res.data as unknown as
+    | (Omit<SupplierDetail, 'addresses' | 'contacts' | 'order_channels'> & {
+        supplier_addresses: unknown[] | null
+        supplier_contacts: unknown[] | null
+        supplier_order_channels: unknown[] | null
+      })
+    | null
 
   if (error) {
     console.error('getSupplier', error.message)
@@ -293,6 +300,7 @@ export async function getSupplier(
     bic: data.bic,
     account_holder: data.account_holder,
     notes: data.notes,
+    color: (data.color as string | null) ?? null,
     email_po_intro_html: data.email_po_intro_html ?? null,
     status: data.status as SupplierStatus,
     default_currency: data.default_currency as SupplierCurrency,

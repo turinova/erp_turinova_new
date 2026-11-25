@@ -1,4 +1,4 @@
-export type OrderShareKind = 'cso' | 'quote'
+export type OrderShareKind = 'cso' | 'quote' | 'manual'
 
 export type OrderStatusTone = 'success' | 'warning' | 'neutral' | 'info'
 
@@ -7,6 +7,8 @@ export type OrderStatusLineItem = {
   name: string
   /** Pl. „8 db” vagy „8 db · élzárás”. */
   qtyLabel: string
+  /** Bolti cikkszám — a vevő ezzel tud hivatkozni / utánanézni. */
+  sku?: string | null
   /** Egységár bruttó (CSO kész tételeknél). */
   unitPriceGross: number | null
   /** Pl. db — egységár címkéhez. */
@@ -45,6 +47,22 @@ export type CustomerOrderStatusView = {
   waitingItems: OrderStatusLineItem[]
   steps: OrderStatusStep[]
   updatedAt: string | null
+  /** Már átvett tételek (részletekben átadott rendelésnél). */
+  handedItems?: OrderStatusLineItem[]
+  /** Most fizetendőből levont befizetés (előleg / korábbi befizetés). */
+  creditAppliedGross?: number | null
+  /** Előlegből a most átvehető után megmaradó rész. */
+  creditLeftGross?: number | null
+  /** A még úton lévő tételekért később fizetendő (becslés, előleg után). */
+  laterGross?: number | null
+  /** Van ár nélküli tétel → az összeget átvételkor közlik. */
+  priceUnknown?: boolean
+  /** „Most nyitva · 17:00-ig” — nyitvatartás nélkül null. */
+  openLabel?: string | null
+  /** „Ma: 8:00–17:00”. */
+  todayHours?: string | null
+  /** „december 9.” — eddig tartják a polcon. */
+  pickupUntil?: string | null
   /** Google értékelés kérése (docs/55) — null = nem jelenik meg. */
   review?: OrderStatusReview | null
 }

@@ -159,6 +159,34 @@ export async function updateTenantOpeningHours(input: {
   return { ok: true }
 }
 
+const PO_INTRO_MAX = 1000
+
+export async function updateTenantPoIntro(input: {
+  text: string
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const ctx = await requireWritableTenant()
+  if (!ctx.ok) return { ok: false, message: ctx.message }
+  const text = input.text.trim()
+  if (text.length > PO_INTRO_MAX) {
+    return { ok: false, message: `A rendelési bevezető legfeljebb ${PO_INTRO_MAX} karakter lehet.` }
+  }
+  const { error } = await ctx.supabase
+    .from('tenant_companies')
+    .update({ po_email_intro: text || null, updated_at: new Date().toISOString() })
+    .eq('tenant_id', ctx.user.tenantId!)
+  if (error) {
+    console.error('updateTenantPoIntro', error.message)
+    return {
+      ok: false,
+      message: error.message.includes('po_email_intro')
+        ? 'A rendelési bevezető mentéséhez futtasd a 20261024 migrációt.'
+        : 'Nem sikerült menteni a rendelési bevezetőt.'
+    }
+  }
+  revalidatePath(PAGE_PATH)
+  return { ok: true }
+}
+
 export type GoogleProfileActionResult =
   | { ok: true; code: string | null }
   | { ok: false; message: string; fieldError?: string }

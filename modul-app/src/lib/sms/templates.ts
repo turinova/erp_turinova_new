@@ -67,6 +67,7 @@ export type SmsLedgerInsert = {
   tenantId: string
   quoteId?: string | null
   customerSpecialOrderId?: string | null
+  manualOrderId?: string | null
   customerId?: string | null
   templateKey: SmsTemplateKey
   toE164?: string | null
@@ -87,6 +88,7 @@ export async function insertSmsSendEvent(
     tenant_id: row.tenantId,
     quote_id: row.quoteId ?? null,
     customer_special_order_id: row.customerSpecialOrderId ?? null,
+    ...(row.manualOrderId ? { manual_order_id: row.manualOrderId } : {}),
     customer_id: row.customerId ?? null,
     template_key: row.templateKey,
     to_e164: row.toE164 ?? null,

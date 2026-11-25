@@ -133,6 +133,7 @@ export default async function KeresoPage({
         initialKind={kind}
         allowedKinds={allowedKinds}
         showProcurementStock={showProcurementStock}
+        showManualOrders={Boolean(user?.allowedPages.includes('/kezi-rendelesek'))}
       />
     </Suspense>
   )

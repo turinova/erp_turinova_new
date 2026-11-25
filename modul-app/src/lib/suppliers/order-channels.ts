@@ -144,8 +144,7 @@ export function buildMailtoHref(input: {
   subject: string
   body: string
 }): string {
-  const params = new URLSearchParams()
-  params.set('subject', input.subject)
-  params.set('body', input.body)
-  return `mailto:${input.to.trim()}?${params.toString()}`
+  // encodeURIComponent: a levelezők a `+`-t nem mindig fordítják szóközre (URLSearchParams azt adna).
+  const enc = (v: string) => encodeURIComponent(v.replace(/\r?\n/g, '\r\n'))
+  return `mailto:${input.to.trim()}?subject=${enc(input.subject)}&body=${enc(input.body)}`
 }

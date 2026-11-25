@@ -9,9 +9,12 @@ import { MenuSelect, type MenuSelectOption } from '@/components/ui/menu-select'
 import { formatMoneyFt } from '@/lib/sales/parse'
 import { cn } from '@/lib/utils'
 
-/** Egy rács minden tételnek: Termék | Menny.+egys. | Bruttó/egys. | Beszállító | Összeg | Törlés */
+/**
+ * Egy rács minden tételnek: Termék | Menny.+egys. | Bruttó/egys. | Beszállító | Összeg | Törlés
+ * Container query: a szülő listának `[container-type:inline-size]` kell, különben mindig a tördelt (kártya) nézet él.
+ */
 export const CSO_LINE_GRID =
-  'lg:grid lg:grid-cols-[minmax(14rem,1fr)_7.5rem_8rem_12rem_7rem_2rem] lg:items-start lg:gap-x-3'
+  '[@container(min-width:51rem)]:grid [@container(min-width:51rem)]:grid-cols-[minmax(12rem,1fr)_7.5rem_8rem_minmax(9rem,11rem)_7rem_2rem] [@container(min-width:51rem)]:items-start [@container(min-width:51rem)]:gap-x-3'
 
 const QTY_MAX = 9999
 
@@ -91,6 +94,9 @@ type EditorRowProps = {
   onRemove: () => void
   /** Enter az utolsó mezőn → új szabad tétel. */
   onEnterNext?: () => void
+  /** Szabad tételnél is kötelező beszállító (kézi rendelés). */
+  requireSupplier?: boolean
+  supplierError?: string
 }
 
 export function CsoLineEditorRow({
@@ -104,13 +110,16 @@ export function CsoLineEditorRow({
   autoFocusName,
   onChange,
   onRemove,
-  onEnterNext
+  onEnterNext,
+  requireSupplier = false,
+  supplierError
 }: EditorRowProps) {
   const n = index + 1
   const isCatalog = Boolean(line.accessoryId)
   const hasName = line.name.trim().length > 0
   const missingPrice = (isCatalog || hasName) && !csoHasPrice(line.unitPriceGross)
-  const missingSupplier = isCatalog && !line.supplierId
+  const missingSupplier =
+    (requireSupplier ? isCatalog || hasName : isCatalog) && !line.supplierId
   const hasGap = missingPrice || missingSupplier
   const total = csoLineGross(line.unitPriceGross, line.qty)
 
@@ -144,7 +153,7 @@ export function CsoLineEditorRow({
       ) : null}
 
       {/* Termék */}
-      <div className="order-1 min-w-0 basis-[calc(100%-2.5rem)] lg:order-none lg:basis-auto">
+      <div className="order-1 min-w-0 basis-[calc(100%-2.5rem)] [@container(min-width:51rem)]:order-none [@container(min-width:51rem)]:basis-auto">
         {isCatalog ? (
           <div className="pt-1">
             <p className="whitespace-normal break-words text-[14px] font-semibold leading-snug text-ink">
@@ -208,7 +217,7 @@ export function CsoLineEditorRow({
       </div>
 
       {/* Mennyiség + egység */}
-      <div className="order-3 lg:order-none">
+      <div className="order-3 [@container(min-width:51rem)]:order-none">
         <QtyUnitField
           ref={qtyRef}
           line={line}
@@ -222,7 +231,7 @@ export function CsoLineEditorRow({
       </div>
 
       {/* Bruttó / egység */}
-      <div className="order-4 w-[8rem] lg:order-none lg:w-auto">
+      <div className="order-4 w-[8rem] [@container(min-width:51rem)]:order-none [@container(min-width:51rem)]:w-auto">
         <PriceInput
           ref={priceRef}
           line={line}
@@ -235,14 +244,14 @@ export function CsoLineEditorRow({
       </div>
 
       {/* Beszállító */}
-      <div className="order-6 w-full min-w-0 lg:order-none lg:w-auto">
+      <div className="order-6 w-full min-w-0 [@container(min-width:51rem)]:order-none [@container(min-width:51rem)]:w-auto">
         <MenuSelect
           id={`cso-supplier-${line.key}`}
           value={line.supplierId ?? ''}
           onChange={(v) => onChange({ supplierId: v || null })}
           allowEmpty
           emptyLabel="Nincs beszállító"
-          placeholder={isCatalog ? 'Válassz…' : '—'}
+          placeholder={isCatalog || requireSupplier ? 'Válassz…' : '—'}
           searchable={supplierSearchable}
           options={supplierOptions}
           disabled={!canWrite}
@@ -251,15 +260,18 @@ export function CsoLineEditorRow({
             missingSupplier && 'border-warning text-warning-ink'
           )}
         />
+        {supplierError ? (
+          <p className="mt-0.5 text-body text-danger-ink">{supplierError}</p>
+        ) : null}
       </div>
 
       {/* Összeg */}
-      <div className="order-5 ml-auto pt-1.5 text-right lg:order-none lg:ml-0">
+      <div className="order-5 ml-auto pt-1.5 text-right [@container(min-width:51rem)]:order-none [@container(min-width:51rem)]:ml-0">
         <LineTotal missingPrice={missingPrice} total={total} />
       </div>
 
       {/* Törlés */}
-      <div className="order-2 flex justify-end lg:order-none">
+      <div className="order-2 flex justify-end [@container(min-width:51rem)]:order-none">
         {canWrite ? (
           <Button
             type="button"

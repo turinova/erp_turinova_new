@@ -62,6 +62,16 @@ export const APP_PAGES: AppPageDef[] = [
     label: 'Ügyfélrendelések',
     category: 'Ügyfél'
   },
+  {
+    key: '/kezi-rendelesek',
+    label: 'Kézi rendelések',
+    category: 'Ügyfél'
+  },
+  {
+    key: '/kezi-varolista',
+    label: 'Kézi várólista',
+    category: 'Ügyfél'
+  },
   { key: '/ertekesitesek', label: 'Értékesítések', category: 'Értékesítés' },
   {
     key: '/ertekesitesek/muszakok',
@@ -305,6 +315,8 @@ export const PAGE_ACCESS_TEMPLATES: Record<
       '/ugyfelek',
       '/kiemelt-partnerek',
       '/ugyfelrendelesek',
+      '/kezi-rendelesek',
+      '/kezi-varolista',
       '/ertekesitesek',
       '/pos',
       '/pos/beallitasok',

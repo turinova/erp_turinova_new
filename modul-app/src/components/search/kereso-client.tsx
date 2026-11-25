@@ -18,6 +18,7 @@ import {
   DataTableHeaderCell,
   DataTableRow
 } from '@/components/patterns/data-table'
+import { ManualOrderSearchHits } from '@/components/manual-orders/manual-order-search-hits'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { StatusBadge } from '@/components/patterns/status-badge'
 import {
@@ -57,6 +58,8 @@ type KeresoClientProps = {
   description?: string
   /** Beszerzés addon: termék sorokon ledger készlet a Beszerzés oszlopban. */
   showProcurementStock?: boolean
+  /** Kézi rendelések modul: vevő találatok + átadás a lista felett. */
+  showManualOrders?: boolean
 }
 
 const DEFAULT_SHEET_DETAIL = '/torzsadatok/alapanyagok/tablas-anyagok'
@@ -132,7 +135,8 @@ export function KeresoClient({
   linearDetailBase = DEFAULT_LINEAR_DETAIL,
   accessoryDetailBase = DEFAULT_ACCESSORY_DETAIL,
   description,
-  showProcurementStock: showProcurementStockProp = false
+  showProcurementStock: showProcurementStockProp = false,
+  showManualOrders = false
 }: KeresoClientProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -420,6 +424,8 @@ export function KeresoClient({
           })}
         </div>
       ) : null}
+
+      {showManualOrders ? <ManualOrderSearchHits q={activeQ} /> : null}
 
       {error ? (
         <p

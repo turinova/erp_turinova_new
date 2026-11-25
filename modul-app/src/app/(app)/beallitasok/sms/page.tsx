@@ -6,13 +6,15 @@ import {
   type SmsReviewState
 } from '@/components/sms/sms-settings-form'
 import { getSessionUser } from '@/lib/auth/session'
-import { getTenantCompany, getTenantGoogleProfile } from '@/lib/company/queries'
+import { getTenantCompany, getTenantGoogleProfile, getTenantOpeningHours } from '@/lib/company/queries'
+import { budapestNow, DAY_KEYS, openStatus, rangesText, type OpeningHours } from '@/lib/opening-hours'
 import { getTenantReviewSettings } from '@/lib/reviews/settings'
 import type { OrderStatusPreviewCompany } from '@/lib/order-status/sample'
 import { tenantHasQuoteReadySms } from '@/lib/sms/entitlement'
 import { getTenantSmsTemplate } from '@/lib/sms/templates'
 import {
   CSO_READY_TEMPLATE_KEY,
+  MANUAL_ORDER_READY_TEMPLATE_KEY,
   QUOTE_READY_TEMPLATE_KEY,
   REVIEW_THANKS_TEMPLATE_KEY,
   defaultSmsBody
@@ -23,6 +25,13 @@ export const metadata: Metadata = {
   title: 'SMS sablonok'
 }
 
+/** Az előnézet a bolt valódi nyitvatartását mutassa (élesben is ez jelenik meg). */
+function previewOpening(hours: OpeningHours | null): { openLabel: string | null; todayHours: string | null } {
+  if (!hours || DAY_KEYS.every((d) => hours[d].length === 0)) return { openLabel: null, todayHours: null }
+  const now = new Date()
+  return { openLabel: openStatus(hours, now).label, todayHours: `Ma: ${rangesText(hours[budapestNow(now).day])}` }
+}
+
 export default async function SmsSettingsPage() {
   const user = await getSessionUser()
   const canWrite = Boolean(user?.role && user.role !== 'viewer')
@@ -31,6 +40,8 @@ export default async function SmsSettingsPage() {
   let missingAccess = false
   let showQuote = false
   let showCso = false
+  const showManual = Boolean(user?.allowedPages?.includes('/kezi-rendelesek'))
+  let manualBody = defaultSmsBody(MANUAL_ORDER_READY_TEMPLATE_KEY)
   let quoteBody = defaultSmsBody(QUOTE_READY_TEMPLATE_KEY)
   let csoBody = defaultSmsBody(CSO_READY_TEMPLATE_KEY)
   let reviewThanksBody = defaultSmsBody(REVIEW_THANKS_TEMPLATE_KEY)
@@ -42,7 +53,7 @@ export default async function SmsSettingsPage() {
     if (!supabase) {
       loadError = 'Az adatbázis kapcsolat nem elérhető.'
     } else {
-      const [hasQuote, csoEnt, companyRow] = await Promise.all([
+      const [hasQuote, csoEnt, companyRow, opening] = await Promise.all([
         tenantHasQuoteReadySms(supabase, user.tenantId),
         supabase
           .from('tenant_entitlements')
@@ -50,7 +61,8 @@ export default async function SmsSettingsPage() {
           .eq('tenant_id', user.tenantId)
           .eq('feature_key', 'customer_special_orders')
           .maybeSingle(),
-        getTenantCompany(supabase, user.tenantId).catch(() => null)
+        getTenantCompany(supabase, user.tenantId).catch(() => null),
+        getTenantOpeningHours(supabase, user.tenantId).catch(() => null)
       ])
       const hasCso = Boolean(csoEnt.data)
       showQuote = hasQuote
@@ -68,11 +80,12 @@ export default async function SmsSettingsPage() {
             companyRow.address
           ]
             .filter((p) => p && String(p).trim())
-            .join(', ')
+            .join(', '),
+          ...previewOpening(opening?.hours ?? null)
         }
       }
 
-      if (!showQuote && !showCso) {
+      if (!showQuote && !showCso && !showManual) {
         missingAccess = true
       } else {
         try {
@@ -102,14 +115,18 @@ export default async function SmsSettingsPage() {
           loads.push(
             getTenantSmsTemplate(supabase, user.tenantId, REVIEW_THANKS_TEMPLATE_KEY)
           )
-          const [[q, c, r], reviewSettings, google] = await Promise.all([
+          const [[q, c, r], m, reviewSettings, google] = await Promise.all([
             Promise.all(loads),
+            showManual
+              ? getTenantSmsTemplate(supabase, user.tenantId, MANUAL_ORDER_READY_TEMPLATE_KEY)
+              : Promise.resolve(manualBody),
             getTenantReviewSettings(supabase, user.tenantId),
             getTenantGoogleProfile(supabase, user.tenantId)
           ])
           quoteBody = q
           csoBody = c
           reviewThanksBody = r
+          manualBody = m
           review = {
             statusPageEnabled: reviewSettings.settings.statusPageEnabled,
             thankSmsEnabled: reviewSettings.settings.thankSmsEnabled,
@@ -170,6 +187,8 @@ export default async function SmsSettingsPage() {
       review={review}
       showQuote={showQuote}
       showCso={showCso}
+      manualBody={manualBody}
+      showManual={showManual}
       canWrite={canWrite}
       company={company}
     />

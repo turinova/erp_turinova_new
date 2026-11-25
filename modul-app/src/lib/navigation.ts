@@ -17,6 +17,8 @@ import {
   ImageIcon,
   Layers,
   LayoutGrid,
+  ListChecks,
+  NotebookPen,
   CalendarDays,
   CalendarRange,
   MessageSquare,
@@ -166,6 +168,20 @@ const allNavSections: NavSection[] = [
           label: 'Ügyfélrendelések',
           href: '/ugyfelrendelesek',
           icon: ClipboardList,
+          accent: 'slate'
+        },
+      {
+          type: 'link',
+          label: 'Kézi rendelések',
+          href: '/kezi-rendelesek',
+          icon: NotebookPen,
+          accent: 'slate'
+        },
+      {
+          type: 'link',
+          label: 'Kézi várólista',
+          href: '/kezi-varolista',
+          icon: ListChecks,
           accent: 'slate'
         }
     ]
@@ -680,6 +696,8 @@ function topLevelAccent(node: NavNode): NavAccent {
     case '/ugyfelek':
     case '/kiemelt-partnerek':
     case '/ugyfelrendelesek':
+    case '/kezi-rendelesek':
+    case '/kezi-varolista':
       return 'blue'
     case '/belepok':
       return 'rose'

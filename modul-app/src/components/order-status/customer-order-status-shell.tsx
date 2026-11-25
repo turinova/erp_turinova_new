@@ -30,10 +30,13 @@ export function CustomerOrderStatusShell({
   const isPreview = variant === 'preview'
   const isDone = view.statusTone === 'neutral'
   const showReady = view.readyItems.length > 0
-  const showWaiting = view.waitingItems.length > 0 && view.kind === 'cso'
+  const hasItemPrices = view.kind !== 'quote'
+  const showWaiting = view.waitingItems.length > 0 && hasItemPrices
+  const handed = view.handedItems ?? []
   const due = view.dueNowGross
-  const showPay = !isDone && due != null && due > 0
-  const showPaid = !isDone && due === 0
+  const showPay = !isDone && ((due != null && due > 0) || Boolean(view.priceUnknown))
+  const showPaid = !isDone && due === 0 && !view.priceUnknown
+  const steps = isDone ? [] : view.steps
   const showPickup = !isDone || Boolean(phoneHref || mapsHref)
   const reviewOnTop = Boolean(view.review && isDone)
   /** Átadva + értékelés: egy sötét gomb legyen az oldalon (az értékelésé). */
@@ -79,6 +82,8 @@ export function CustomerOrderStatusShell({
           }
         />
 
+        {steps.length > 0 ? <StepBar steps={steps} /> : null}
+
         {/* Átadva: értékelés-kérés kiemelve, közvetlenül az állapot alatt */}
         {reviewOnTop ? (
           <OrderStatusReviewCard review={view.review!} disabled={isPreview} />
@@ -87,10 +92,10 @@ export function CustomerOrderStatusShell({
         {/* 2. Mi készült el? */}
         {showReady && !isDone ? (
           <ItemBlock
-            title={view.kind === 'cso' ? 'Átvehető most' : 'Mi készült el'}
+            title={hasItemPrices ? 'Átvehető most' : 'Mi készült el'}
             items={view.readyItems}
             summaryLine={view.summaryLine}
-            showPrices={view.kind === 'cso'}
+            showPrices={hasItemPrices}
           />
         ) : null}
 
@@ -103,28 +108,73 @@ export function CustomerOrderStatusShell({
         ) : null}
 
         {/* 3. Mennyit fizetek? */}
-        {showPay ? (
+        {showPay || showPaid ? (
           <section className="rounded-lg border border-border bg-surface px-4 py-4">
             <p className="text-hint font-medium text-ink-muted">
               Most fizetendő
             </p>
-            <p className="mt-1 text-[28px] font-semibold tabular-nums tracking-tight text-ink">
-              {formatStatusFt(due!)}
-            </p>
-            {view.dueHint ? (
+            {view.priceUnknown ? (
+              <p className="mt-1 text-body font-medium text-ink">
+                Az összeget átvételkor közöljük.
+              </p>
+            ) : (
+              <p className="mt-1 text-[28px] font-semibold tabular-nums tracking-tight text-ink">
+                {formatStatusFt(due ?? 0)}
+              </p>
+            )}
+            <MoneyRows view={view} />
+            {view.dueHint && !view.creditAppliedGross ? (
               <p className="mt-1 text-hint text-ink-secondary">{view.dueHint}</p>
             ) : null}
           </section>
         ) : null}
 
-        {showPaid ? (
-          <p className="text-body text-ink-secondary">Kifizetve.</p>
+        {handed.length > 0 && !isDone ? (
+          <details className="rounded-lg border border-border bg-surface px-4 py-3">
+            <summary className="cursor-pointer text-body font-medium text-ink">
+              Már átvetted ({handed.length})
+            </summary>
+            <ul className="mt-1.5 divide-y divide-border">
+              {handed.map((item) => (
+                <li key={item.id} className="py-2">
+                  <p className="text-body text-ink-secondary break-words">{item.name}</p>
+                  <p className="text-hint text-ink-muted">
+                    {item.qtyLabel}
+                    {item.sku ? ` · Cikkszám: ${item.sku}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </details>
         ) : null}
 
         {/* 4. Hol? */}
         {showPickup ? (
           <section className="rounded-lg border border-border bg-surface px-4 py-4">
             <h2 className="text-label font-semibold text-ink">Átvétel</h2>
+            {!isDone && (view.openLabel || view.pickupUntil) ? (
+              <div className="mt-2 space-y-0.5">
+                {view.openLabel ? (
+                  <p className="text-body font-medium text-ink">
+                    {view.openLabel}
+                    {view.todayHours ? (
+                      <span className="font-normal text-ink-secondary"> · {view.todayHours}</span>
+                    ) : null}
+                  </p>
+                ) : null}
+                {view.pickupUntil && showReady ? (
+                  <p className="text-body text-ink-secondary">
+                    {view.pickupUntil}-ig tartjuk félre neked.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {showReady && !isDone ? (
+              <p className="mt-1 text-body text-ink-secondary">
+                Elég bemondani a rendelésszámot:{' '}
+                <span className="font-medium tabular-nums text-ink">{view.orderNumber}</span>
+              </p>
+            ) : null}
             {address ? (
               <p className="mt-2 text-body leading-relaxed text-ink-secondary">
                 {address}
@@ -198,6 +248,58 @@ export function CustomerOrderStatusShell({
         ) : null}
       </div>
     </div>
+  )
+}
+
+function MoneyRows({ view }: { view: CustomerOrderStatusView }) {
+  const rows: { label: string; value: string }[] = []
+  if (view.creditAppliedGross) {
+    rows.push({ label: 'Befizetésedből levonva', value: `−${formatStatusFt(view.creditAppliedGross)}` })
+  }
+  if (view.creditLeftGross) {
+    rows.push({ label: 'Befizetésedből még megmarad', value: formatStatusFt(view.creditLeftGross) })
+  }
+  if (view.laterGross) {
+    rows.push({ label: 'Később, a többi tételért', value: `kb. ${formatStatusFt(view.laterGross)}` })
+  }
+  if (rows.length === 0) return null
+  return (
+    <dl className="mt-2 space-y-1 border-t border-border pt-2">
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-baseline justify-between gap-3 text-body">
+          <dt className="text-ink-secondary">{r.label}</dt>
+          <dd className="shrink-0 tabular-nums text-ink">{r.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function StepBar({ steps }: { steps: CustomerOrderStatusView['steps'] }) {
+  return (
+    <ol className="flex items-start gap-1 px-1" aria-label="Rendelés lépései">
+      {steps.map((st, i) => (
+        <li key={st.key} className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
+          <div className="flex w-full items-center">
+            <span className={cn('h-0.5 flex-1', i === 0 ? 'bg-transparent' : st.done || st.current ? 'bg-ink' : 'bg-border')} />
+            <span
+              className={cn(
+                'flex size-5 shrink-0 items-center justify-center rounded-full border text-[11px]',
+                st.done ? 'border-ink bg-ink text-white' : st.current ? 'border-ink bg-surface text-ink' : 'border-border bg-surface text-ink-muted'
+              )}
+              aria-hidden
+            >
+              {st.done ? <Check className="size-3" strokeWidth={3} /> : i + 1}
+            </span>
+            <span className={cn('h-0.5 flex-1', i === steps.length - 1 ? 'bg-transparent' : steps[i + 1]?.done ? 'bg-ink' : 'bg-border')} />
+          </div>
+          <span className={cn('text-hint leading-tight', st.current ? 'font-medium text-ink' : st.done ? 'text-ink-secondary' : 'text-ink-muted')}>
+            {st.label}
+            {st.current ? <span className="sr-only"> (most itt tart)</span> : null}
+          </span>
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -361,7 +463,15 @@ function ItemBlock({
               >
                 {item.name}
               </p>
-              <p className="text-hint text-ink-muted">{item.qtyLabel}</p>
+              <p className="text-hint text-ink-muted">
+                {item.qtyLabel}
+                {item.sku ? (
+                  <>
+                    {' · '}
+                    <span className="tabular-nums">Cikkszám: {item.sku}</span>
+                  </>
+                ) : null}
+              </p>
               {showPrices && item.unitPriceGross != null ? (
                 <p className="text-hint text-ink-muted">
                   {formatStatusFt(item.unitPriceGross)} /{' '}

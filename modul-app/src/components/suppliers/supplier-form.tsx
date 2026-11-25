@@ -35,6 +35,7 @@ import {
   ORDER_CHANNEL_TYPE_LABEL,
   type OrderChannelType
 } from '@/lib/suppliers/order-channels'
+import { SUPPLIER_COLOR_KEYS, SUPPLIER_COLORS, supplierColor } from '@/lib/suppliers/color'
 import type { SupplierDetail } from '@/lib/suppliers/queries'
 import type { TaxRateListItem } from '@/lib/tax-rates/queries'
 
@@ -60,6 +61,7 @@ function detailToForm(initial?: SupplierDetail | null): SupplierFormInput {
       bic: '',
       accountHolder: '',
       notes: '',
+      color: '',
       status: 'active',
       defaultCurrency: 'HUF',
       defaultTaxRateId: '',
@@ -84,6 +86,7 @@ function detailToForm(initial?: SupplierDetail | null): SupplierFormInput {
     bic: initial.bic ?? '',
     accountHolder: initial.account_holder ?? '',
     notes: initial.notes ?? '',
+    color: initial.color ?? '',
     status: initial.status,
     defaultCurrency: initial.default_currency,
     defaultTaxRateId: initial.default_tax_rate_id ?? '',
@@ -1057,6 +1060,46 @@ export function SupplierForm({
               </Button>
             </div>
           ) : null}
+        </FormSection>
+
+        <FormSection title="Jelölőszín" columns={4}>
+          <div className="col-span-full space-y-1.5">
+            <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Jelölőszín">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={form.color === ''}
+                disabled={!canWrite}
+                onClick={() => patch({ color: '' })}
+                className={`h-8 rounded-md border px-2.5 text-body ${form.color === '' ? 'border-ink bg-subtle text-ink' : 'border-border text-ink-secondary hover:bg-subtle'}`}
+              >
+                Automatikus
+                {initial?.id ? (
+                  <span
+                    className="ml-1.5 inline-block size-2.5 rounded-full align-middle"
+                    style={{ background: supplierColor(initial.id)?.dot }}
+                    aria-hidden
+                  />
+                ) : null}
+              </button>
+              {SUPPLIER_COLOR_KEYS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={form.color === k}
+                  aria-label={SUPPLIER_COLORS[k].label}
+                  title={SUPPLIER_COLORS[k].label}
+                  disabled={!canWrite}
+                  onClick={() => patch({ color: k })}
+                  className={`flex size-8 items-center justify-center rounded-md border ${form.color === k ? 'border-ink ring-1 ring-ink' : 'border-border hover:bg-subtle'}`}
+                >
+                  <span className="size-3.5 rounded-full" style={{ background: SUPPLIER_COLORS[k].dot }} aria-hidden />
+                </button>
+              ))}
+            </div>
+            <p className="text-hint text-ink-secondary">A kézi várólistán és a tételsorokon ezzel a színnel jelöljük a beszállítót.</p>
+          </div>
         </FormSection>
 
         <FormSection title="Megjegyzés" columns={4}>

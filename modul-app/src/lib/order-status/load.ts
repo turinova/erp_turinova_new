@@ -10,6 +10,8 @@ import type {
   OrderShareKind,
   OrderStatusLineItem
 } from '@/lib/order-status/types'
+import { buildManualOrderView } from '@/lib/order-status/manual-view'
+import { DAY_KEYS, normalizeOpeningHours, openStatus, rangesText, budapestNow } from '@/lib/opening-hours'
 import { quoteRemainingGross } from '@/lib/quotes/payment-labels'
 import { loadStatusReview } from '@/lib/reviews/status-review'
 
@@ -29,6 +31,11 @@ function qtyLabel(qty: number, unit: string): string {
   const q = Number.isFinite(qty) ? qty : 0
   const u = (unit || 'db').trim() || 'db'
   return `${q} ${u}`
+}
+
+function accessorySku(raw: unknown): string | null {
+  const a = (Array.isArray(raw) ? raw[0] : raw) as { sku?: string | null } | null | undefined
+  return a?.sku?.trim() || null
 }
 
 function panelHasEdging(row: Record<string, unknown>): boolean {
@@ -83,7 +90,8 @@ async function loadCsoView(
       `
       id, order_number, customer_id, customer_name, deposit_amount, status, updated_at,
       customer_special_order_items (
-        id, name, qty, unit_shortform, unit_price_gross, status, deleted_at, sort_order
+        id, name, qty, unit_shortform, unit_price_gross, status, deleted_at, sort_order,
+        accessories ( sku )
       )
     `
     )
@@ -127,6 +135,7 @@ async function loadCsoView(
       id: String(i.id),
       name: String(i.name ?? 'Tétel'),
       qtyLabel: qtyLabel(qty, unitShort),
+      sku: accessorySku(i.accessories),
       unitPriceGross: withPrice && unit != null ? unit : null,
       unitShort: withPrice ? unitShort : null,
       amountGross: amount
@@ -147,10 +156,11 @@ async function loadCsoView(
   const readyGross = readyRaw.reduce((s, i) => s + lineAmount(i), 0)
   const deposit =
     data.deposit_amount != null ? Number(data.deposit_amount) : null
-  const dueNow =
-    readyItems.length > 0
-      ? Math.max(0, readyGross - (deposit && deposit > 0 ? deposit : 0))
-      : null
+  const credit = deposit && deposit > 0 ? deposit : 0
+  const dueNow = readyItems.length > 0 ? Math.max(0, readyGross - credit) : null
+  const creditLeft = readyItems.length > 0 ? Math.max(0, credit - readyGross) : 0
+  const waitingGross = waitingRaw.reduce((s, i) => s + lineAmount(i), 0)
+  const waitingPriced = waitingRaw.every((i) => i.unit_price_gross != null)
 
   let statusLabel = 'Feldolgozás alatt'
   let statusTone: CustomerOrderStatusView['statusTone'] = 'info'
@@ -195,9 +205,87 @@ async function loadCsoView(
     readyItems,
     waitingItems,
     steps: [],
+    updatedAt: (data.updated_at as string | null) ?? null,
+    creditAppliedGross: readyItems.length > 0 && credit > 0 ? Math.min(credit, readyGross) : null,
+    creditLeftGross: creditLeft > 0 && !allDone ? creditLeft : null,
+    laterGross:
+      waitingRaw.length > 0 && waitingPriced && waitingGross - creditLeft > 0 ? waitingGross - creditLeft : null
+  }
+  return { view, customerId: (data.customer_id as string | null) ?? null }
+}
+
+async function loadManualView(
+  admin: NonNullable<ReturnType<typeof createServiceClient>>,
+  tenantId: string,
+  orderId: string
+): Promise<LoadedView | null> {
+  const { data, error } = await admin
+    .from('manual_orders')
+    .select(
+      `id, order_number, customer_id, customer_name, updated_at,
+      manual_order_items ( id, name, sku, qty, unit_shortform, unit_price_gross, status, arrived_at, deleted_at, sort_order, created_at )`
+    )
+    .eq('tenant_id', tenantId)
+    .eq('id', orderId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (error || !data) {
+    if (error) console.error('loadManualView', error.message)
+    return null
+  }
+  const { data: deps } = await admin
+    .from('manual_order_deposits')
+    .select('amount, voided_at')
+    .eq('tenant_id', tenantId)
+    .eq('order_id', orderId)
+
+  const items = ((data.manual_order_items ?? []) as Array<Record<string, unknown>>)
+    .filter((i) => !i.deleted_at)
+    .sort(
+      (a, b) =>
+        Number(a.sort_order) - Number(b.sort_order) || String(a.created_at).localeCompare(String(b.created_at))
+    )
+    .map((i) => ({
+      id: String(i.id),
+      name: String(i.name ?? 'Tétel'),
+      sku: (i.sku as string | null) ?? null,
+      qty: Number(i.qty) || 0,
+      unitShortform: String(i.unit_shortform ?? 'db').trim() || 'db',
+      unitPriceGross: i.unit_price_gross != null ? Number(i.unit_price_gross) : null,
+      status: String(i.status),
+      arrivedAt: (i.arrived_at as string | null) ?? null
+    }))
+  const core = buildManualOrderView(
+    items,
+    (deps ?? []).map((d) => ({ amount: Number(d.amount) || 0, voided: Boolean(d.voided_at) }))
+  )
+  const company = await loadCompany(admin, tenantId)
+  const view: CustomerOrderStatusView = {
+    ...core,
+    orderNumber: String(data.order_number ?? '—'),
+    customerFirstName: firstNameFromFull(data.customer_name as string),
+    company,
     updatedAt: (data.updated_at as string | null) ?? null
   }
   return { view, customerId: (data.customer_id as string | null) ?? null }
+}
+
+/** Nyitvatartás külön select-tel, hogy migráció nélkül se törjön. */
+async function loadOpening(
+  admin: NonNullable<ReturnType<typeof createServiceClient>>,
+  tenantId: string
+): Promise<{ openLabel: string | null; todayHours: string | null }> {
+  const { data, error } = await admin
+    .from('tenant_companies')
+    .select('opening_hours')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) return { openLabel: null, todayHours: null }
+  const hours = normalizeOpeningHours(data?.opening_hours ?? null)
+  if (!hours || DAY_KEYS.every((d) => hours[d].length === 0)) return { openLabel: null, todayHours: null }
+  const now = new Date()
+  const { day } = budapestNow(now)
+  return { openLabel: openStatus(hours, now).label, todayHours: `Ma: ${rangesText(hours[day])}` }
 }
 
 /**
@@ -403,13 +491,17 @@ async function loadByToken(
     return null
   }
 
-  const { data: link, error } = await admin
+  const LINK_BASE = 'id, tenant_id, kind, customer_special_order_id, quote_id, expires_at, revoked_at'
+  let res = await admin
     .from('order_share_links')
-    .select(
-      'id, tenant_id, kind, customer_special_order_id, quote_id, expires_at, revoked_at'
-    )
+    .select(`${LINK_BASE}, manual_order_id`)
     .eq('token', clean)
     .maybeSingle()
+  // Migráció előtt nincs manual_order_id oszlop — a régi linkek ettől még működjenek.
+  if (res.error?.message.includes('manual_order_id')) {
+    res = (await admin.from('order_share_links').select(LINK_BASE).eq('token', clean).maybeSingle()) as typeof res
+  }
+  const { data: link, error } = res
 
   if (error) {
     console.error('order_share_links', error.message)
@@ -424,14 +516,30 @@ async function loadByToken(
   const orderId =
     kind === 'cso'
       ? (link.customer_special_order_id as string | null)
-      : (link.quote_id as string | null)
+      : kind === 'manual'
+        ? (link.manual_order_id as string | null)
+        : (link.quote_id as string | null)
   if (!orderId) return null
 
-  const loaded =
+  const [loaded, opening] = await Promise.all([
     kind === 'cso'
-      ? await loadCsoView(admin, tenantId, orderId)
-      : await loadQuoteView(admin, tenantId, orderId)
+      ? loadCsoView(admin, tenantId, orderId)
+      : kind === 'manual'
+        ? loadManualView(admin, tenantId, orderId)
+        : loadQuoteView(admin, tenantId, orderId),
+    loadOpening(admin, tenantId)
+  ])
   if (!loaded) return null
+
+  // Amíg a rendelés nincs lezárva, a megnyitás frissen tartja a linket (lassú beszállító).
+  const expiresMs = new Date(link.expires_at as string).getTime()
+  if (loaded.view.statusTone !== 'neutral' && expiresMs - Date.now() < LINK_REFRESH_BEFORE_MS) {
+    void admin
+      .from('order_share_links')
+      .update({ expires_at: new Date(Date.now() + LINK_TTL_MS).toISOString() })
+      .eq('id', link.id as string)
+      .then(({ error: e }) => e && console.error('order_share_links extend', e.message))
+  }
 
   const review = await loadStatusReview(admin, {
     tenantId,
@@ -442,5 +550,32 @@ async function loadByToken(
     customerId: loaded.customerId,
     tone: loaded.view.statusTone
   })
-  return { ...loaded.view, review }
+  return { ...loaded.view, ...opening, review }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const LINK_TTL_MS = 30 * DAY_MS
+const LINK_REFRESH_BEFORE_MS = 7 * DAY_MS
+
+export type InvalidOrderLink = {
+  reason: 'expired' | 'closed'
+  company: CustomerOrderStatusView['company']
+}
+
+/** Ismert, de lejárt / visszavont token → a bolt elérhetősége a hibaoldalon. */
+export async function loadInvalidOrderLink(token: string): Promise<InvalidOrderLink | null> {
+  const clean = token.trim()
+  if (!clean || clean.length > 64) return null
+  const admin = createServiceClient()
+  if (!admin) return null
+  const { data: link } = await admin
+    .from('order_share_links')
+    .select('tenant_id, revoked_at')
+    .eq('token', clean)
+    .maybeSingle()
+  if (!link) return null
+  return {
+    reason: link.revoked_at ? 'closed' : 'expired',
+    company: await loadCompany(admin, link.tenant_id as string)
+  }
 }

@@ -7,6 +7,7 @@ import {
   HU_PHONE_EXAMPLE,
   HU_PHONE_COMPLETE_RE
 } from '@/lib/customers/parse'
+import { isSupplierColorKey } from '@/lib/suppliers/color'
 import {
   emptyOrderChannelInput,
   supplierOrderChannelSchema,
@@ -158,6 +159,11 @@ export const supplierFormSchema = z
       ),
     accountHolder: z.string().trim().max(160).transform(emptyToNull),
     notes: z.string().trim().max(2000).transform(emptyToNull),
+    color: z
+      .string()
+      .trim()
+      .transform(emptyToNull)
+      .refine((v) => v === null || isSupplierColorKey(v), 'Érvénytelen szín.'),
     status: z.enum(SUPPLIER_STATUSES),
     defaultCurrency: z.enum(SUPPLIER_CURRENCIES),
     defaultTaxRateId: z
@@ -239,6 +245,7 @@ export type SupplierFormInput = {
   bic: string
   accountHolder: string
   notes: string
+  color: string
   status: SupplierStatus
   defaultCurrency: SupplierCurrency
   defaultTaxRateId: string

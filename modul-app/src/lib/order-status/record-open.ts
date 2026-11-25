@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 import { isLinkPreviewAgent } from '@/lib/company/google-profile'
+import type { OrderShareKind } from '@/lib/order-status/types'
 import { createServiceClient } from '@/lib/supabase/service'
 
 /** Prefetch / bot / üres UA → ne számítson megnyitásnak. */
@@ -42,8 +43,9 @@ export async function recordOrderShareOpenByToken(
     if (new Date(link.expires_at as string).getTime() < Date.now()) return
 
     const smsSent = await orderHasReadySmsSent(admin, {
+      linkId: link.id as string,
       tenantId: link.tenant_id as string,
-      kind: link.kind as 'quote' | 'cso',
+      kind: link.kind as OrderShareKind,
       quoteId: (link.quote_id as string | null) ?? null,
       csoId: (link.customer_special_order_id as string | null) ?? null
     })
@@ -71,12 +73,28 @@ export async function recordOrderShareOpenByToken(
 async function orderHasReadySmsSent(
   admin: SupabaseClient,
   input: {
+    linkId: string
     tenantId: string
-    kind: 'quote' | 'cso'
+    kind: OrderShareKind
     quoteId: string | null
     csoId: string | null
   }
 ): Promise<boolean> {
+  if (input.kind === 'manual') {
+    const { data: link } = await admin
+      .from('order_share_links')
+      .select('manual_order_id')
+      .eq('id', input.linkId)
+      .maybeSingle()
+    if (!link?.manual_order_id) return false
+    const { data } = await admin
+      .from('manual_orders')
+      .select('sms_sent_at')
+      .eq('id', link.manual_order_id as string)
+      .eq('tenant_id', input.tenantId)
+      .maybeSingle()
+    return Boolean(data?.sms_sent_at)
+  }
   if (input.kind === 'quote' && input.quoteId) {
     const { data } = await admin
       .from('quotes')

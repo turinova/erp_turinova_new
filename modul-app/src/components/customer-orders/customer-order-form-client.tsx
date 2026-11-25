@@ -500,7 +500,7 @@ export function CustomerOrderFormClient({
             </div>
           ) : null}
 
-          <div className="overflow-visible rounded-md border border-border bg-surface">
+          <div className="overflow-visible rounded-md border border-border bg-surface [container-type:inline-size]">
             {lines.length === 0 ? (
               <div className="flex items-center gap-3 px-4 py-6 text-body text-ink-secondary">
                 <PackageSearch

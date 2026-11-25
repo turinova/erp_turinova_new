@@ -11,10 +11,11 @@ import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-head
 import { Button } from '@/components/ui/button'
 import {
   saveCsoReadySmsTemplate,
+  saveManualOrderReadySmsTemplate,
   saveQuoteReadySmsTemplate,
   saveReviewThanksSmsTemplate
 } from '@/lib/sms/actions'
-import { sampleOrderStatusView } from '@/lib/order-status/sample'
+import { PREVIEW_STAGE_OPTIONS, sampleOrderStatusView } from '@/lib/order-status/sample'
 import type {
   OrderStatusPreviewCompany,
   OrderStatusPreviewStage
@@ -35,6 +36,8 @@ type Props = {
   reviewThanksBody: string
   showQuote: boolean
   showCso: boolean
+  manualBody?: string
+  showManual?: boolean
   canWrite: boolean
   company?: OrderStatusPreviewCompany | null
   review?: SmsReviewState | null
@@ -103,19 +106,22 @@ export function SmsSettingsForm({
   reviewThanksBody: initialReviewThanks,
   showQuote,
   showCso,
+  manualBody: initialManual = '',
+  showManual = false,
   canWrite,
   company = null,
   review = null
 }: Props) {
   const [quoteBody, setQuoteBody] = useState(initialQuote)
   const [csoBody, setCsoBody] = useState(initialCso)
+  const [manualBody, setManualBody] = useState(initialManual)
   const [reviewThanksBody, setReviewThanksBody] = useState(initialReviewThanks)
   const [pending, startTransition] = useTransition()
   const [previewKind, setPreviewKind] = useState<OrderShareKind>(() =>
-    showCso ? 'cso' : 'quote'
+    showCso ? 'cso' : showManual ? 'manual' : 'quote'
   )
 
-  const [previewStage, setPreviewStage] = useState<OrderStatusPreviewStage>('ready')
+  const [previewStage, setPreviewStage] = useState<OrderStatusPreviewStage>('partial')
   const reviewEnabled = Boolean(review?.statusPageEnabled && review.hasLink)
   const statusPreviewView = useMemo(
     () =>
@@ -150,6 +156,18 @@ export function SmsSettingsForm({
     })
   }
 
+  function handleSaveManual() {
+    if (!canWrite) return
+    startTransition(async () => {
+      const result = await saveManualOrderReadySmsTemplate(manualBody)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      toast.success('Kézi rendelés SMS sablon mentve.')
+    })
+  }
+
   function handleSaveReviewThanks() {
     if (!canWrite) return
     startTransition(async () => {
@@ -162,7 +180,11 @@ export function SmsSettingsForm({
     })
   }
 
-  const showPreviewToggle = showQuote && showCso
+  const previewKinds = [
+    ...(showCso ? [{ value: 'cso' as const, label: 'Ügyfélrendelés' }] : []),
+    ...(showManual ? [{ value: 'manual' as const, label: 'Kézi' }] : []),
+    ...(showQuote ? [{ value: 'quote' as const, label: 'Lapszab' }] : [])
+  ]
 
   return (
     <div className="pb-14">
@@ -271,6 +293,54 @@ export function SmsSettingsForm({
             </FormSection>
           ) : null}
 
+          {showManual ? (
+            <FormSection
+              title="Kézi rendelés — megjött"
+              description="Placeholderek: {customer_name}, {order_number}, {company_name}, {status_text}, {status_url}, {ready_count}, {total_count}, {waiting_count}, {arrived_count}. A {status_text} kész mondat: „minden termek atveheto” vagy „1 termek atveheto, 1 meg uton”. A már átadott termékek nem számítanak bele."
+              columns={1}
+            >
+              <FormField label="Sablon szöveg" htmlFor="sms-manual-body" required>
+                <textarea
+                  id="sms-manual-body"
+                  value={manualBody}
+                  disabled={!canWrite || pending}
+                  onChange={(e) => setManualBody(e.target.value)}
+                  rows={4}
+                  maxLength={600}
+                  className="w-full rounded-md border border-border bg-surface px-2.5 py-2 text-body text-ink outline-none focus:border-ink"
+                />
+              </FormField>
+
+              {!manualBody.includes('{status_url}') ? (
+                <p className="rounded-md border border-warning/30 bg-warning-soft px-2.5 py-1.5 text-hint text-warning-ink">
+                  A sablonban nincs {'{status_url}'} — a vevő nem kapja meg a státuszoldal linkjét.
+                </p>
+              ) : null}
+              <TemplatePreview
+                body={manualBody}
+                sample={{
+                  customer_name: 'Kiss Janos',
+                  order_number: 'KR-2026-001',
+                  company_name: company?.name || 'Pelda Kft',
+                  status_text: '1 termek atveheto, 1 meg uton',
+                  ready_count: '1',
+                  total_count: '2',
+                  waiting_count: '1',
+                  arrived_count: '1',
+                  status_url: 'https://app.example/r/abc123'
+                }}
+              />
+
+              {canWrite ? (
+                <div className="flex justify-end">
+                  <Button type="button" variant="primary" loading={pending} onClick={handleSaveManual}>
+                    Kézi rendelés sablon mentése
+                  </Button>
+                </div>
+              ) : null}
+            </FormSection>
+          ) : null}
+
           <FormSection
             id="review-thanks"
             title="Köszönő SMS (Google értékelés)"
@@ -336,33 +406,13 @@ export function SmsSettingsForm({
             <p className="text-body font-medium text-ink">
               Státuszoldal előnézet
             </p>
-            {showPreviewToggle ? (
-              <div className="flex rounded-md border border-border p-0.5">
-                <button
-                  type="button"
-                  className={cn(
-                    'rounded px-2 py-1 text-hint',
-                    previewKind === 'cso'
-                      ? 'bg-ink text-white'
-                      : 'text-ink-secondary hover:bg-subtle'
-                  )}
-                  onClick={() => setPreviewKind('cso')}
-                >
-                  Ügyfélrendelés
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    'rounded px-2 py-1 text-hint',
-                    previewKind === 'quote'
-                      ? 'bg-ink text-white'
-                      : 'text-ink-secondary hover:bg-subtle'
-                  )}
-                  onClick={() => setPreviewKind('quote')}
-                >
-                  Lapszab
-                </button>
-              </div>
+            {previewKinds.length > 1 ? (
+              <Segmented
+                label="Rendelés fajtája"
+                value={previewKind}
+                onChange={setPreviewKind}
+                options={previewKinds}
+              />
             ) : null}
           </div>
           <div className="flex items-center justify-between gap-2">
@@ -375,10 +425,7 @@ export function SmsSettingsForm({
               label="Rendelés állapota"
               value={previewStage}
               onChange={setPreviewStage}
-              options={[
-                { value: 'ready', label: 'Átvehető' },
-                { value: 'done', label: 'Átadva' }
-              ]}
+              options={PREVIEW_STAGE_OPTIONS}
             />
           </div>
           <OrderStatusPreview view={statusPreviewView} />

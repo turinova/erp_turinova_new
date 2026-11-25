@@ -73,6 +73,25 @@ export type TenantOpeningHours = {
   available: boolean
 }
 
+export type TenantPoIntro = { text: string; available: boolean }
+
+/** Alap rendelési e-mail bevezető (kézi rendelés); migráció előtt available=false. */
+export async function getTenantPoIntro(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<TenantPoIntro> {
+  const { data, error } = await supabase
+    .from('tenant_companies')
+    .select('po_email_intro')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error) {
+    if (error.code !== '42703') console.error('getTenantPoIntro', error.message)
+    return { text: '', available: false }
+  }
+  return { text: (data?.po_email_intro as string | null) ?? '', available: true }
+}
+
 /** Külön select, hogy migráció előtt se törjön a cégadatok betöltése. */
 export async function getTenantOpeningHours(
   supabase: SupabaseClient,
