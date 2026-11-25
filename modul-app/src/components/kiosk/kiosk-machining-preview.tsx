@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import {
   panthelyEdgeIsHorizontal,
@@ -63,6 +63,12 @@ function rectEdgeLine(
 
 const STAGE_INNER_W = 360
 const STAGE_INNER_H = 280
+/** Kitöltő mód (Műhelyasztal): 24″ FHD jobb oszlop. */
+const STAGE_FILL_MAX_W = 1100
+const STAGE_FILL_MAX_H = 660
+/** Hely a panel körül az oldalsó (22px) élhossz-címkéknek — ne lógjon ki a rajz oszlopából. */
+const STAGE_FILL_PAD_X = 360
+const STAGE_FILL_PAD_Y = 160
 
 const CORNER_HITS: Array<{
   id: SzogCornerId
@@ -126,6 +132,11 @@ type KioskMachiningPreviewProps = {
   caption?: string | null
   /** Él lépés: kisebb stage (kompakt tábla mellett) */
   compact?: boolean
+  /**
+   * Műhelyasztal: a rendelkezésre álló helyet tölti ki (ResizeObserver).
+   * Nagyobb feliratok / sarokgombok / pánthely-pontok.
+   */
+  fillStage?: boolean
 }
 
 export function KioskMachiningPreview({
@@ -139,15 +150,76 @@ export function KioskMachiningPreview({
   onSelectSzogCorner,
   edgeIds,
   caption,
-  compact = false
+  compact = false,
+  fillStage = false
 }: KioskMachiningPreviewProps) {
   const fill = panelFillStyle(imageUrl, swatch)
-  const maxW = compact ? 300 : STAGE_INNER_W
-  const maxH = compact ? 220 : STAGE_INNER_H
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [stageBox, setStageBox] = useState({
+    width: STAGE_INNER_W,
+    height: STAGE_INNER_H
+  })
+
+  useEffect(() => {
+    if (!fillStage) return
+    const el = stageRef.current
+    if (!el) return
+    function measure() {
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const width = Math.round(
+        Math.max(280, Math.min(STAGE_FILL_MAX_W, r.width - STAGE_FILL_PAD_X))
+      )
+      const height = Math.round(
+        Math.max(200, Math.min(STAGE_FILL_MAX_H, r.height - STAGE_FILL_PAD_Y))
+      )
+      setStageBox((prev) =>
+        prev.width === width && prev.height === height
+          ? prev
+          : { width, height }
+      )
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [fillStage])
+
+  const maxW = fillStage
+    ? stageBox.width
+    : compact
+      ? 300
+      : STAGE_INNER_W
+  const maxH = fillStage
+    ? stageBox.height
+    : compact
+      ? 220
+      : STAGE_INNER_H
   const size = useMemo(
     () => fitPanelSize(grainMm, crossMm, maxW, maxH),
     [grainMm, crossMm, maxW, maxH]
   )
+  const ui = fillStage
+    ? {
+        hinge: 'size-6',
+        corner: 'size-16 text-[24px]',
+        center: 'px-5 py-2.5 text-[40px]',
+        badge: 'px-3 py-1.5 text-[22px]',
+        edgeBadge: 'px-3 py-1.5 text-[22px]',
+        caption: 'text-[20px]',
+        strokePlain: 3.5,
+        strokeBanded: 10
+      }
+    : {
+        hinge: 'size-3.5',
+        corner: 'size-11 text-[15px]',
+        center: 'px-2.5 py-1 text-[14px]',
+        badge: 'px-2 py-1 text-[12px]',
+        edgeBadge: 'px-1.5 py-0.5 text-[12px]',
+        caption: 'text-[14px]',
+        strokePlain: EDGE_STROKE_PLAIN,
+        strokeBanded: EDGE_STROKE_BANDED
+      }
 
   const panthely = machining?.panthely ?? null
   const szog = machining?.szog ?? null
@@ -241,11 +313,23 @@ export function KioskMachiningPreview({
   }
 
   return (
-    <div className="flex flex-col rounded-2xl border-2 border-ink/20 bg-surface p-3 md:p-4">
+    <div
+      className={cn(
+        'flex flex-col',
+        fillStage
+          ? 'min-h-0 flex-1'
+          : 'rounded-2xl border-2 border-ink/20 bg-surface p-3 md:p-4'
+      )}
+    >
       <div
+        ref={stageRef}
         className={cn(
           'flex items-center justify-center overflow-visible rounded-xl bg-subtle',
-          compact ? 'h-[280px] px-5 py-6' : 'h-[380px] px-8 py-10'
+          fillStage
+            ? 'min-h-0 flex-1 px-10 py-8'
+            : compact
+              ? 'h-[280px] px-5 py-6'
+              : 'h-[380px] px-8 py-10'
         )}
       >
         <div
@@ -362,7 +446,7 @@ export function KioskMachiningPreview({
                     y2={seg.b.y}
                     stroke={meta?.color ?? EDGE_COLOR_PLAIN}
                     strokeWidth={
-                      meta ? EDGE_STROKE_BANDED : EDGE_STROKE_PLAIN
+                      meta ? ui.strokeBanded : ui.strokePlain
                     }
                     strokeLinecap="butt"
                     vectorEffect="non-scaling-stroke"
@@ -380,7 +464,7 @@ export function KioskMachiningPreview({
                     y2={d.b.y}
                     stroke={meta?.color ?? EDGE_COLOR_PLAIN}
                     strokeWidth={
-                      meta ? EDGE_STROKE_BANDED : EDGE_STROKE_PLAIN
+                      meta ? ui.strokeBanded : ui.strokePlain
                     }
                     strokeLinecap="butt"
                     vectorEffect="non-scaling-stroke"
@@ -407,7 +491,7 @@ export function KioskMachiningPreview({
                     {...line}
                     stroke={meta?.color ?? EDGE_COLOR_PLAIN}
                     strokeWidth={
-                      meta ? EDGE_STROKE_BANDED : EDGE_STROKE_PLAIN
+                      meta ? ui.strokeBanded : ui.strokePlain
                     }
                     strokeLinecap="square"
                     vectorEffect="non-scaling-stroke"
@@ -452,7 +536,8 @@ export function KioskMachiningPreview({
                     key={`badge-${slot}`}
                     title={`${label}: ${lenMm} mm`}
                     className={cn(
-                      'pointer-events-none absolute z-[6] flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[12px] font-bold tabular-nums shadow-sm',
+                      'pointer-events-none absolute z-[6] flex items-center gap-1 whitespace-nowrap rounded-md font-bold tabular-nums shadow-sm',
+                      ui.edgeBadge,
                       banded
                         ? 'bg-ink text-white'
                         : 'border border-border bg-white/95 text-ink'
@@ -487,7 +572,8 @@ export function KioskMachiningPreview({
                         : undefined
                     }
                     className={cn(
-                      'pointer-events-none absolute z-[5] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[12px] font-semibold tabular-nums shadow-sm',
+                      'pointer-events-none absolute z-[5] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md font-semibold tabular-nums shadow-sm',
+                      ui.edgeBadge,
                       showEdgeBands && banded
                         ? 'bg-ink text-white'
                         : 'bg-white/95 text-ink'
@@ -524,7 +610,8 @@ export function KioskMachiningPreview({
                         : undefined
                     }
                     className={cn(
-                      'pointer-events-none absolute z-[5] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[12px] font-semibold tabular-nums shadow-sm',
+                      'pointer-events-none absolute z-[5] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md font-semibold tabular-nums shadow-sm',
+                      ui.edgeBadge,
                       showEdgeBands && banded
                         ? 'bg-ink text-white'
                         : showEdgeBands
@@ -546,7 +633,26 @@ export function KioskMachiningPreview({
             : null}
 
           {!szogActive ? (
-            <span className="pointer-events-none absolute left-1/2 top-1/2 z-[3] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white/95 px-2.5 py-1 text-[14px] font-semibold tabular-nums text-ink shadow-sm">
+            <span
+              className={cn(
+                'pointer-events-none absolute left-1/2 top-1/2 z-[3] -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-lg bg-white/95 font-semibold tabular-nums text-ink shadow-sm',
+                ui.center
+              )}
+              style={
+                fillStage
+                  ? {
+                      fontSize: Math.max(
+                        22,
+                        Math.min(
+                          40,
+                          (size.width - 48) /
+                            (`${grainMm} × ${crossMm} mm`.length * 0.62)
+                        )
+                      )
+                    }
+                  : undefined
+              }
+            >
               {grainMm} × {crossMm} mm
             </span>
           ) : null}
@@ -554,14 +660,22 @@ export function KioskMachiningPreview({
           {hingeDots.map((dot, i) => (
             <span
               key={i}
-              className="pointer-events-none absolute z-[4] size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-ink bg-surface shadow-sm"
+              className={cn(
+                'pointer-events-none absolute z-[4] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-ink bg-surface shadow-sm',
+                ui.hinge
+              )}
               style={{ left: dot.left, top: dot.top }}
               aria-hidden
             />
           ))}
 
           {duplungolas ? (
-            <span className="pointer-events-none absolute left-2 top-2 z-[5] rounded-md bg-ink px-2 py-1 text-[12px] font-semibold text-white">
+            <span
+              className={cn(
+                'pointer-events-none absolute left-2 top-2 z-[5] rounded-md bg-ink font-semibold text-white',
+                ui.badge
+              )}
+            >
               {MACHINING_COPY.previewDuplungBadge(quantity)}
             </span>
           ) : null}
@@ -577,7 +691,8 @@ export function KioskMachiningPreview({
                     aria-pressed={active}
                     onClick={() => onSelectSzogCorner(h.id)}
                     className={cn(
-                      'absolute z-[6] flex size-11 items-center justify-center rounded-full border-2 text-[15px] font-bold transition',
+                      'absolute z-[6] flex items-center justify-center rounded-full border-2 font-bold transition',
+                      ui.corner,
                       h.className,
                       active
                         ? 'border-ink bg-ink text-white ring-2 ring-ink/30'
@@ -592,13 +707,23 @@ export function KioskMachiningPreview({
         </div>
       </div>
 
-      <div className="mt-2 space-y-1 text-center" aria-live="polite">
+      <div
+        className={cn('space-y-1 text-center', fillStage ? 'mt-3' : 'mt-2')}
+        aria-live="polite"
+      >
         {caption != null ? (
           caption ? (
-            <p className="text-[14px] font-medium text-ink-secondary">{caption}</p>
+            <p className={cn('font-medium text-ink-secondary', ui.caption)}>
+              {caption}
+            </p>
           ) : null
         ) : szogActive && finished ? (
-          <p className="text-[14px] font-medium tabular-nums text-ink-secondary">
+          <p
+            className={cn(
+              'font-medium tabular-nums text-ink-secondary',
+              ui.caption
+            )}
+          >
             {finishedEdgesCaption({
               top: finished.top,
               bottom: finished.bottom,
@@ -608,7 +733,7 @@ export function KioskMachiningPreview({
             })}
           </p>
         ) : duplungolas && !panthely ? (
-          <p className="text-[14px] font-medium text-ink-secondary">
+          <p className={cn('font-medium text-ink-secondary', ui.caption)}>
             {MACHINING_COPY.previewDuplungCaption}
           </p>
         ) : null}

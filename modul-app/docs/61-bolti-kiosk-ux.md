@@ -44,11 +44,14 @@ Progress label: **Anyag · Méret · Megmunkálás · Él · Kosár · Adatok** 
 | Háttér | `#FAFAFA` |
 | Top chrome | 72px |
 | Bottom chrome | ~96px (ár kártyával) |
-| Body | 18–20px |
-| Cím | 28–32px / 600 |
-| CTA magasság | 56–64px |
+| Body | **≥18px** (50+ / 24″) |
+| Cím H1 | **36–40px** / 600 |
+| Rajz felirat | **≥20px** (Szálirány, élhossz) |
+| Rajz méretérték | **36–40px** |
+| CTA / mező | **56–64px** |
 | Touch min | 48px (él-sáv 56px) |
 | 1 primary / képernyő | kötelező |
+| Info szín | `ink-secondary`, nem muted |
 
 **Tilos:** staff 32px default gomb, 13.5px body, hover-only, glow/gradiens, emoji ikon, több primary.
 
@@ -95,36 +98,36 @@ Kutatás: attract = cégtábla, „mi ez, mit kapok” ≤10 szóban, 1 dominán
 - Lábléc: „Különleges kérésed van? Kérdezd a pultot.” + Powered by Turinova.
 - Tilos: egész képernyős gomb, dísz gradiens, nem kattintható pill chip, logó külön magas sávban (üres hely). Kód: `components/kiosk/attract/kiosk-attract.tsx`.
 
-### 1 Anyag
-**Kereső = hős** (sticky, nincs autofocus). Üres query: **Gyakori** max 8 — `quote_panels` használat (90 nap, `ordered_at`, Σ quantity), **metszet** a kiosk `catalog_mode` / kedvencek listával; ha nincs elég quote → raktári + név fallback. Nem 100 csempe. Gépelésre találati grid + highlight.  
-Csempe: kép, `Raktáron` / `Rendelésre` (neutral), **vastagság badge**, `L×W×T`, gyártó · Ft/m², halvány `machine_code`. Tap = Méret.
+### 1 Anyag — „Katalógusfal” (teljes szélesség, 24″ FHD)
+Ugyanaz a logika, mint az Attract Bemutatóterem: **bal = döntés eszközei, jobb = termék**. `KioskShell wide` — nincs `max-w-[1100px]`.
 
-### 2 Méret (LTR split, 21″ / 24″ FHD, fix stage)
-**Bal:** **fix** preview stage (`h-[360px]`) — belső panel fit-contain (anyagkép). Szálas lapnál: vonal overlay + danger-soft sáv (+ külső !): „Csak a vonalak mutatják a szálat. A kép iránya félrevezető lehet.” **Jobb:** Szálirány / Keresztirány / Db. Belépéskor **autofocus Szálirány**; Enter → Keresztirány; Enter (ha valid) → **Tovább** (Megmunkálás). Mezőhint: `Max: N mm` — Opti parity. Soft &lt;150 mm. Footer primary: **Tovább →**.
+- **Bal (400 px, fehér `bg-surface`, nem görgetődik el a ráccsal):** H1 **Válaszd ki a lapot** (36px) · kereső 64px · **Vastagság** chip-ek (Mind + max 8 gyakori/featured vastagság, preferált: 18/16/12/10/8/3) · **Csak raktáron** · súgó („Rendelésre” magyarázat, Kérdezd a pultot). Dekor csere / másolás: doboz a kereső felett; vastagság chip-ek elrejtve.
+- **Jobb (`bg-app`):** fejléc + **5 oszlopos** rács (xl). Üres query: **kiemeltek elöl** (`quote_panels` 90 nap, max 8), **utána a teljes katalógus többi lapja**. Vastagság/raktár szűrő ugyanezen a listán. Gépelésre találati grid + highlight. Üres szűrés → „Szűrők törlése”.
+- Csempe: nagyobb kép, `Raktáron` / `Rendelésre`, vastagság badge, név 17px, `L×W×T` · gyártó · Ft/m², `machine_code`. Tap = Méret.
+- Footer: csak **← Vissza** (nincs primary — a lap kiválasztása a CTA).
 
-### 3 Megmunkálás (multi, Opti-align + preview)
-- LTR: **bal fix stage preview** (`KioskMachiningPreview`) · jobb toggle-ök.  
-- Preview Opti helperökkel: pánthely pontok (`panthelyPositionsMm`), szög clip/poligon (`szogvagasPolygonPoints`), sarok tap (1–4).  
-- **Default = nincs megmunkálás** — nincs külön „nélkül” gomb; primary mindig aktív, ha nincs félkész pánthely/szög. Duplung/Pánthely/Szög **több egyszerre**, opcionális. Progressive param a jobbon.  
-- Sub copy: „Ha nem kell semmi, nyomj Entert vagy Tovább.” · **Enter** = primary (**Élzárás megadása →**); select/menü nyitva hagyva.  
-- Copy glossary: `lib/kiosk/machining-copy.ts` — **csak szál / kereszt / ferde**; tilos fent/lent/felső/alsó. Szög: sarok **csak a rajzon** (1–4 tap), formban nincs sarokgomb — csak marad mm. Kosár-összegző: `Duplung, Pánthely 3 hosszú, Szögvágás` (nincs Sarok N, nincs duplikált címkesor a form alján).  
-- Duplung ON → db ×2 + magyarázat („2 lap összeragasztva”). Primary: **Élzárás megadása →**.
+### 2 Méret — „Műhelyasztal” (teljes szélesség, 24″ FHD)
+Ugyanaz a minta, mint az Anyag Katalógusfal: **bal = mezők (fehér, 460 px), jobb = nagy rajz**. `KioskShell wide`.
 
-### 4 Él (kompakt tábla + A/B badge + collapsed summary)
-- Glossary: `lib/kiosk/edge-slots.ts` — **Szál A/B**, **Kereszt A/B**, **Ferde** (badge A/B/F).  
-- LTR: compact preview (kontúr stroke színes/vastag) + **A/B/F badge** az éleken · tábla: badge + label | `select`.  
-- Summary összevont: `Körbe: ABS 1…` / `ABS 1 (3 él), Élfólia… (Szál B)` — nincs él×teljes név lista.  
-- Típus-szín: 0.4 kék · ABS1 zöld · ABS2 narancs · 42/1 lila · 42/2 piros.  
-- **Enter** = primary (**Kosárba →**); combobox/listbox Enterje nem lopódik el.  
-- Footer: outline **Él nélkül a kosárba** · primary **Kosárba →**.
+- **Bal:** lapkártya · H1 **40px** · **Szálirány** / **Keresztirány** mező 72px, 32px szám · Darab · Megnevezés · hibák 18px.
+- **Jobb:** `ResizeObserver` max 1200×720. Dim címke **20px**, érték **40px** (top 100 / oldal 200). Panel közép **40px**. „Szál →” **18px**. Soft &lt;150 mm. Enter → tovább.
 
-### 5 Kosár (Opti-szerű anyag-csoportolt tábla)
-- Group: `sheetId` — header swatch + név + vastagság + `N panel · M db` + **anyag összesen Ft** + **Hogyan jött ki…** + **+ Ugyanebből még** + **Dekor csere** + **Másolás** + **Szín törlése**.  
-- **Dekor csere** / **Másolás:** külön gombok, nincs módválasztó modal → egyből Anyag (azonos vastagság). Csere = áthelyezés; Másolás = új csoport. Méret/él/megmunkálás megmarad; max ellenőrzés; él sanitize; ár `stale`. Logika: `lib/kiosk/recolor-cart.ts`.  
-- Tábla oszlopok: Szálirány · Keresztirány · Darab · Megmunkálás · **Élzárás** · sor törlés. Méretcellák `nowrap`. Sor tap = szerkesztés.  
-- Globális: **+ Másik anyag** · **Kosár ürítése** (megerősítés). Meta: `panel · db · anyag`.  
-- Footer primary: **Ár kiszámítása** → siker után **Tovább · {Ft} →** (összeg a gombon is). Loading: Optimalizálás / Számítás.  
-- Ár megjelenés: alsó sáv **success-soft kártya** + `success-ink` ~40px Ft + rövid reveal animáció; stale/hiba → warning sáv. Anyagcsoport Ft ugyanez a soft badge.
+### 3 Megmunkálás — „Műhelyasztal” (teljes szélesség)
+- **Bal:** H1 40px · 3 sor (20px cím, Be/Ki). Inline opciók.
+- **Jobb:** `fillStage` — sarok **64px / 24px**, élhossz badge **22px**, közép méret **40px**, caption **20px**.
+- **Enter** = **Élzárás megadása →**.
+
+### 4 Él — „Műhelyasztal” (teljes szélesség)
+- **Bal:** H1 40px · él-lista (A/B/F badge **20px / 40px** kör + 56px `MenuSelect`).
+- **Jobb:** ugyanaz a `fillStage` — 22px élhossz badge, 40px közép. Caption = summary.
+- Footer: **Él nélkül a kosárba** · **Kosárba →**.
+
+### 5 Kosár — „Átnézés” (teljes szélesség, 3 oszlop)
+- **Bal (400 px, fehér):** H1 40px · meta · **ár állapot** · **+ Másik anyag** · **Mikor lesz kész?** · alul **Kosár ürítése**.  
+- **Közép (lista):** anyag-csoportolt kártyák. Header: swatch + név (2 sor) + **anyag Ft 28px** · **Hogyan jött ki…** + **+ Ugyanebből még** / **Dekor csere** / **Másolás** / **Szín törlése**.  
+- Sor: `CartPanelThumb` 80×64 (szálvonal **csak** `grainDirection` lapon) · 20px méret · 16px chipek · **Módosítás**. Kijelölés **csak kattintásra** / billentyűzettel; hover = finom keret. Kijelölt: fehér + 6px fekete bal sáv + fekete keret + „Rajzon” címke. Csoport fejléc fehér, kártya `shadow-sm`. Dupla katt = szerkesztés.  
+- **Jobb (preview):** kijelölt sor nagy `KioskMachiningPreview` `fillStage` (él + megmunkálás).  
+- **Dekor csere** / **Másolás:** `lib/kiosk/recolor-cart.ts`. Footer: **Ár kiszámítása** → **Tovább · {Ft} →**.
 
 ### Árazás (manuális, Opti-parity)
 - Nincs élő auto-price / draft nesting.  
@@ -133,20 +136,12 @@ Csempe: kép, `Raktáron` / `Rendelésre` (neutral), **vastagság badge**, `L×W
 - Nincs külön „Végösszeg” kártya / **nincs soronkénti Ft** (zavaró arányos allokáció). Ár = anyag fejléc.  
 - **Hogyan jött ki ez az ár?** — anyag-csoport header → széles dialog (Opti/Square-szerű szekciótáblák). Oszlopok: **Tétel · Menny. · Egységár · Összeg**. Szekciók: Lap / Élzárás / Vágás / Megmunkálás + **Összesen (bruttó)**. Lap 2 eset: teljes tábla (kihasználtság) | m² × hulladékszorzó. Forrás: Opti `MaterialPricing` → `materials[]`.
 
-### 6 Adatok — asztali PC, egér + billentyűzet · **24″ FHD no-scroll** (tipikus út)
-Kutatás: Square Kiosk (név/telefon prompt), GRUBBRR, Baymard, Stripe, időskori SOK-tanulmány (sorpánik, zsúfoltság → félrenyomás), Reddit (kicsi szürke szöveg, szétszórt gombok, nincs segítség).
-
-- **Egy oldal**, Square „grouped section” + **accordion**: egyszerre csak az **aktív** szekció body nyitva (`todo`/`done` = csak fejléc, kattintható). `forceOpen` az összegzőn.
-- Kompakt: H1 ~24–26px, input `h-12`, szekció `compact`, rövid copy — cél: nincs oldal-scroll „nincs számla” úton.
-- Számlamezők nyitva: **belső** scroll a 2. szekció body-n (`max-h`), nem az egész oldal.
-- Fejléc: **Add meg az adataidat** · „Leadás itt · fizetés a pultnál.”
-- **1 Elérhetőség:** Név · **Telefon** · E-mail opcionális → „Tovább a számlához”.
-- **2 Számla** (2 radio egymás mellett): Nem kell · Kérek számlát (mezők) → „Tovább az ellenőrzéshez”.
-- **3 Ellenőrzés:** rövid pipa-copy.
-- Jobb: kompakt **Rendelésed** (max 3 tétel + „további”); tétel alatt opcionális chip-sáv: él összefoglaló (`edgeSummaryLabel`, ha nem „Nincs él”) + megmunkálás chipek; üres = nincs 3. sor. + „Elakadtál?”.
+### 6 Adatok — „Leadás” (teljes szélesség) · asztali PC, egér + billentyűzet
+- **Bal (720 px, fehér):** H1 40px · 3 accordion. Címke a mező felett **18px**. Input **`h-16` / 22px**. Enter = következő mező.
+- **1 Elérhetőség** · **2 Számla** (nagy radio) · **3 Ellenőrzés**.
+- **Jobb (bg-app, teljes szélesség):** **Rendelésed** nyugta — anyagkártyák **2 oszlopban**, swatch + `CartPanelThumb` + 17px meta. **Összesen 48px** Ft · **Kosár módosítása** h-14. „Elakadtál?”.
 - Footer CTA **Leadom a pultnak · {Ft}**; tiltva → konkrét hiány.
-- **Közös gép:** `autoComplete="off"`; idle reset; Adatokon idle warn ≥120 mp.
-- Kód: `components/kiosk/details/*`, validáció `lib/kiosk/guest.ts`.
+- **Közös gép:** `autoComplete="off"`; idle ≥120 mp. Kód: `details/*`, `cart/cart-panel-thumb.tsx`, `lib/kiosk/guest.ts`.
 
 ### 7 Kész (peak-end)
 „**Köszönjük!**” + **nagy név** (hero) + „Mondd ezt a nevet a pultnál” + következő lépések (pult / fizetés / SMS). Nincs „írd fel”. Auto-újraindítás 30 mp.

@@ -75,6 +75,8 @@ type KioskShellProps = {
   children: React.ReactNode
   /** Hide chrome (attract / success). */
   bare?: boolean
+  /** Teljes szélesség (pl. Anyag katalógusfal) — nincs max-w-[1100px]. */
+  wide?: boolean
   onIdleReset: () => void
   idleWarnSec?: number
   idleResetSec?: number
@@ -100,6 +102,7 @@ export function KioskShell({
   onSecondaryAction,
   children,
   bare,
+  wide = false,
   onIdleReset,
   idleWarnSec = 75,
   idleResetSec = 90
@@ -196,7 +199,12 @@ export function KioskShell({
   const showChrome = !bare
 
   return (
-    <div className="relative flex min-h-[100dvh] flex-col bg-app text-ink">
+    <div
+      className={cn(
+        'relative flex flex-col bg-app text-ink',
+        bare ? 'min-h-[100dvh]' : 'h-[100dvh] overflow-hidden'
+      )}
+    >
       {showChrome ? (
         <header className="flex h-[72px] shrink-0 items-center gap-3 border-b border-border bg-surface px-4 md:px-6">
           <div className="min-w-0 shrink-0">
@@ -230,7 +238,7 @@ export function KioskShell({
                   <div className="flex min-w-0 flex-col items-center gap-0.5">
                     <span
                       className={cn(
-                        'flex size-8 shrink-0 items-center justify-center rounded-full transition-colors',
+                        'flex size-10 shrink-0 items-center justify-center rounded-full transition-colors',
                         current && 'bg-ink text-white shadow-sm ring-2 ring-ink/15',
                         done &&
                           !current &&
@@ -242,17 +250,17 @@ export function KioskShell({
                       title={p.label}
                     >
                       {done ? (
-                        <Check className="size-3.5 stroke-[2.5]" aria-hidden />
+                        <Check className="size-4 stroke-[2.5]" aria-hidden />
                       ) : (
-                        <StepIcon className="size-3.5" aria-hidden />
+                        <StepIcon className="size-4" aria-hidden />
                       )}
                     </span>
                     <span
                       className={cn(
-                        'hidden max-w-[4.5rem] truncate text-center text-[11px] leading-tight sm:block md:max-w-none md:text-[12px]',
+                        'hidden max-w-[5.5rem] truncate text-center text-[14px] leading-tight sm:block md:max-w-none md:text-[16px]',
                         current && 'font-semibold text-ink',
                         done && !current && 'font-medium text-success-ink',
-                        upcoming && 'text-ink-muted'
+                        upcoming && 'text-ink-secondary'
                       )}
                     >
                       {p.label}
@@ -277,7 +285,7 @@ export function KioskShell({
             >
               <ShoppingCart className="size-6" aria-hidden />
               {cartPanelCount > 0 ? (
-                <span className="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-ink px-1 text-[11px] font-semibold tabular-nums text-white">
+                <span className="absolute right-1 top-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-ink px-1 text-[13px] font-semibold tabular-nums text-white">
                   {cartPanelCount > 99 ? '99+' : cartPanelCount}
                 </span>
               ) : null}
@@ -300,8 +308,11 @@ export function KioskShell({
       ) : (
         <main
           className={cn(
-            'mx-auto flex w-full max-w-[1100px] flex-1 flex-col px-4 py-5 md:px-6',
-            showChrome && primaryLabel ? 'pb-32' : 'pb-6'
+            'flex w-full flex-1 flex-col',
+            wide
+              ? 'min-h-0 px-0 py-0'
+              : 'mx-auto max-w-[1100px] px-4 py-5 md:px-6',
+            showChrome && (primaryLabel || onBack) ? 'pb-28' : 'pb-6'
           )}
           onPointerDown={bumpIdle}
         >
@@ -309,7 +320,7 @@ export function KioskShell({
         </main>
       )}
 
-      {showChrome && primaryLabel ? (
+      {showChrome && (primaryLabel || onBack) ? (
         <footer className="fixed inset-x-0 bottom-0 z-30 flex min-h-[96px] items-center gap-3 border-t border-border bg-surface px-4 py-3 md:px-6">
           <Button
             type="button"
@@ -320,99 +331,105 @@ export function KioskShell({
           >
             ← Vissza
           </Button>
-          <div className="min-w-0 flex-1">
-            {priceLoading ? (
-              <div
-                className="mx-auto flex w-full max-w-[240px] flex-col items-center gap-2"
-                role="status"
-                aria-live="polite"
-                aria-label="Árszámítás folyamatban"
-              >
-                <div className="flex items-center gap-2 text-ink">
-                  <Loader2
-                    className="size-5 shrink-0 animate-spin text-ink"
-                    aria-hidden
-                  />
-                  <span className="text-[16px] font-semibold">
-                    Optimalizálás
-                  </span>
-                </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-subtle">
-                  <div className="h-full w-1/3 animate-[kiosk-progress_1.1s_ease-in-out_infinite] rounded-full bg-ink" />
-                </div>
-              </div>
-            ) : primaryHint &&
-              (primaryDisabled || totalGross == null) ? (
-              <div className="flex justify-center">
-                <p
-                  className="inline-flex max-w-full items-center gap-2.5 rounded-lg border-2 border-warning bg-warning-soft px-4 py-2.5 text-[18px] font-semibold text-warning-ink md:text-[19px]"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <AlertTriangle className="size-6 shrink-0" aria-hidden />
-                  <span className="truncate">{primaryHint}</span>
-                </p>
-              </div>
-            ) : totalGross != null && totalGross >= 0 ? (
-              <div
-                className={cn(
-                  'mx-auto w-fit max-w-full rounded-xl border-2 border-success bg-success-soft px-5 py-2.5 text-center shadow-sm',
-                  priceReveal &&
-                    'animate-[kiosk-price-reveal_0.35s_ease-out]'
+          {primaryLabel ? (
+            <>
+              <div className="min-w-0 flex-1">
+                {priceLoading ? (
+                  <div
+                    className="mx-auto flex w-full max-w-[240px] flex-col items-center gap-2"
+                    role="status"
+                    aria-live="polite"
+                    aria-label="Árszámítás folyamatban"
+                  >
+                    <div className="flex items-center gap-2 text-ink">
+                      <Loader2
+                        className="size-5 shrink-0 animate-spin text-ink"
+                        aria-hidden
+                      />
+                      <span className="text-[16px] font-semibold">
+                        Optimalizálás
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-subtle">
+                      <div className="h-full w-1/3 animate-[kiosk-progress_1.1s_ease-in-out_infinite] rounded-full bg-ink" />
+                    </div>
+                  </div>
+                ) : primaryHint &&
+                  (primaryDisabled || totalGross == null) ? (
+                  <div className="flex justify-center">
+                    <p
+                      className="inline-flex max-w-full items-center gap-2.5 rounded-lg border-2 border-warning bg-warning-soft px-4 py-2.5 text-[18px] font-semibold text-warning-ink md:text-[19px]"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <AlertTriangle className="size-6 shrink-0" aria-hidden />
+                      <span className="truncate">{primaryHint}</span>
+                    </p>
+                  </div>
+                ) : totalGross != null && totalGross >= 0 ? (
+                  <div
+                    className={cn(
+                      'mx-auto w-fit max-w-full rounded-xl border-2 border-success bg-success-soft px-5 py-2.5 text-center shadow-sm',
+                      priceReveal &&
+                        'animate-[kiosk-price-reveal_0.35s_ease-out]'
+                    )}
+                    role="status"
+                    aria-live="polite"
+                    aria-label={`Végösszeg bruttó ${formatHuf(totalGross)}`}
+                  >
+                    <p className="whitespace-nowrap text-[16px] font-semibold text-success-ink">
+                      Végösszeg · bruttó
+                    </p>
+                    <p className="whitespace-nowrap text-[36px] font-semibold tabular-nums leading-none tracking-tight text-success-ink md:text-[40px]">
+                      {formatHuf(totalGross)}
+                    </p>
+                    <p className="mt-1.5 hidden whitespace-nowrap text-[15px] text-success-ink/85 lg:block">
+                      {SAFETY_NET_COPY}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-center text-[16px] text-ink-secondary">
+                    {SAFETY_NET_COPY}
+                  </p>
                 )}
-                role="status"
-                aria-live="polite"
-                aria-label={`Végösszeg bruttó ${formatHuf(totalGross)}`}
-              >
-                <p className="whitespace-nowrap text-[13px] font-semibold text-success-ink/80">
-                  Végösszeg · bruttó
-                </p>
-                <p className="whitespace-nowrap text-[34px] font-semibold tabular-nums leading-none tracking-tight text-success-ink md:text-[40px]">
-                  {formatHuf(totalGross)}
-                </p>
-                <p className="mt-1 hidden whitespace-nowrap text-[12px] text-success-ink/70 lg:block">
-                  {SAFETY_NET_COPY}
-                </p>
               </div>
-            ) : (
-              <p className="text-center text-[15px] text-ink-muted">
-                {SAFETY_NET_COPY}
-              </p>
-            )}
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
-            {secondaryActionLabel && onSecondaryAction ? (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={secondaryActionDisabled}
-                onClick={onSecondaryAction}
-                className="h-14 border-2 border-ink/35 bg-transparent px-5 text-[16px] font-semibold hover:bg-subtle"
-              >
-                {secondaryActionLabel}
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="primary"
-              disabled={primaryDisabled || primaryLoading}
-              loading={primaryLoading}
-              onClick={onPrimary}
-              aria-label={
-                primaryLoading ? 'Árszámítás folyamatban' : undefined
-              }
-              className={cn(
-                'h-14 min-w-[200px] px-6 text-[16px] font-semibold md:min-w-[260px] md:px-8 md:text-[17px]',
-                primaryLoading && 'min-w-[88px] px-5 [&_svg]:size-6'
-              )}
-            >
-              {primaryLoading ? (
-                <span className="sr-only">Árszámítás…</span>
-              ) : (
-                primaryLabel
-              )}
-            </Button>
-          </div>
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+                {secondaryActionLabel && onSecondaryAction ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={secondaryActionDisabled}
+                    onClick={onSecondaryAction}
+                    className="h-14 border-2 border-ink/35 bg-transparent px-5 text-[16px] font-semibold hover:bg-subtle"
+                  >
+                    {secondaryActionLabel}
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={primaryDisabled || primaryLoading}
+                  loading={primaryLoading}
+                  onClick={onPrimary}
+                  aria-label={
+                    primaryLoading ? 'Árszámítás folyamatban' : undefined
+                  }
+                  className={cn(
+                    'h-14 min-w-[200px] px-6 text-[16px] font-semibold md:min-w-[260px] md:px-8 md:text-[17px]',
+                    primaryLoading && 'min-w-[88px] px-5 [&_svg]:size-6'
+                  )}
+                >
+                  {primaryLoading ? (
+                    <span className="sr-only">Árszámítás…</span>
+                  ) : (
+                    primaryLabel
+                  )}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="min-w-0 flex-1" aria-hidden />
+          )}
         </footer>
       ) : null}
 

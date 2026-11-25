@@ -1,15 +1,18 @@
 'use client'
 
 import {
+  AlertTriangle,
   ArrowLeftRight,
   ArrowUpDown,
   Check,
   CircleDot,
   Clock,
   Copy,
+  Eye,
   Layers,
   Minus,
   PackageCheck,
+  Pencil,
   Plus,
   Replace,
   Search,
@@ -27,20 +30,13 @@ import {
 } from 'react'
 import { toast } from 'sonner'
 
+import { CartPanelThumb } from '@/components/kiosk/cart/cart-panel-thumb'
 import { KioskMachiningPreview } from '@/components/kiosk/kiosk-machining-preview'
 import { KioskPriceExplainSheet } from '@/components/kiosk/kiosk-price-explain-sheet'
 import { KioskAttract } from '@/components/kiosk/attract/kiosk-attract'
 import { KioskShell } from '@/components/kiosk/kiosk-shell'
 import { KioskDetailsStep } from '@/components/kiosk/details/kiosk-details-step'
 import { KioskSuccessStep } from '@/components/kiosk/details/kiosk-success-step'
-import {
-  DataTable,
-  DataTableBody,
-  DataTableCell,
-  DataTableHead,
-  DataTableHeaderCell,
-  DataTableRow
-} from '@/components/patterns/data-table'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect, menuSearchMatch } from '@/components/ui/menu-select'
@@ -151,7 +147,7 @@ function GrainOverlay() {
           aria-hidden
         />
       ))}
-      <span className="pointer-events-none absolute bottom-2 left-1/2 z-[2] -translate-x-1/2 rounded-md bg-ink px-2.5 py-1 text-[12px] font-semibold tracking-wide text-white shadow-sm">
+      <span className="pointer-events-none absolute bottom-3 left-1/2 z-[2] -translate-x-1/2 rounded-lg bg-ink px-3.5 py-1.5 text-[18px] font-semibold tracking-wide text-white shadow-sm">
         Szál →
       </span>
     </>
@@ -176,9 +172,73 @@ function fitPanelSize(
   return { width: height * aspect, height }
 }
 
-/** 21″ kiosk: fix preview stage belseje (px). */
+/** Méret rajz: kezdő (mérés előtti) és max panel-keret (px); 24″ FHD-n a jobb oldalt tölti ki. */
 const SIZE_STAGE_INNER_W = 420
 const SIZE_STAGE_INNER_H = 300
+const SIZE_STAGE_MAX_W = 1200
+const SIZE_STAGE_MAX_H = 720
+/** Méretvonalak helye a panel felett / mellett — 24″, 50+ olvasható. */
+const SIZE_DIM_TOP_H = 100
+const SIZE_DIM_SIDE_W = 200
+
+function SizeDimLine({
+  orientation,
+  caption,
+  value,
+  active
+}: {
+  orientation: 'horizontal' | 'vertical'
+  caption: string
+  value: number | null
+  active: boolean
+}) {
+  const tone = active ? 'bg-ink' : 'bg-ink/35'
+  const label = (
+    <span
+      className={cn(
+        'inline-flex flex-col rounded-lg px-3 py-1.5 leading-tight transition-colors',
+        orientation === 'vertical' ? 'items-end text-right' : 'items-center',
+        active ? 'bg-ink text-white' : 'text-ink'
+      )}
+    >
+      <span
+        className={cn(
+          'text-[20px] font-semibold',
+          active ? 'text-white/90' : 'text-ink-secondary'
+        )}
+      >
+        {caption}
+      </span>
+      <span className="whitespace-nowrap text-[40px] font-semibold tabular-nums leading-none">
+        {value != null ? `${value} mm` : '- mm'}
+      </span>
+    </span>
+  )
+
+  if (orientation === 'horizontal') {
+    return (
+      <div className="flex flex-col justify-end gap-1.5 pb-2" aria-hidden>
+        <div className="flex justify-center">{label}</div>
+        <div className="relative h-3">
+          <span className={cn('absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2', tone)} />
+          <span className={cn('absolute left-0 top-0 h-3 w-0.5', tone)} />
+          <span className={cn('absolute right-0 top-0 h-3 w-0.5', tone)} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-2 pr-2" aria-hidden>
+      {label}
+      <div className="relative h-full w-3 shrink-0">
+        <span className={cn('absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2', tone)} />
+        <span className={cn('absolute left-0 top-0 h-0.5 w-3', tone)} />
+        <span className={cn('absolute bottom-0 left-0 h-0.5 w-3', tone)} />
+      </div>
+    </div>
+  )
+}
 
 /** Panel / thumb kitöltés: anyagkép, ha nincs → swatch. */
 function sheetFillStyle(
@@ -1040,6 +1100,14 @@ export function KioskWizardClient({
       priceLoading={priceStatus === 'loading' || pricePending}
       cartPanelCount={cart.length}
       bare={bare}
+      wide={
+        step === 'material' ||
+        step === 'size' ||
+        step === 'machining' ||
+        step === 'edge' ||
+        step === 'cart' ||
+        step === 'details'
+      }
       onIdleReset={resetAll}
       idleWarnSec={bootstrap.settings.idleWarnSec}
       idleResetSec={bootstrap.settings.idleResetSec}
@@ -1382,74 +1450,152 @@ function MaterialStep({
   onCancelRecolor?: () => void
 }) {
   const hasQuery = query.trim().length > 0
-  /** Recolor: üres keresésnél az összes azonos vastagságú lap, ne csak a featured. */
-  const list = hasQuery ? sheets : recolor ? sheets : featuredStock
+  const [thicknessMm, setThicknessMm] = useState<number | null>(null)
+  const [stockOnly, setStockOnly] = useState(false)
+
+  useEffect(() => {
+    setThicknessMm(null)
+    setStockOnly(false)
+  }, [recolor?.mode, recolor?.thicknessMm, recolor?.sourceName])
+
+  /** Gyakori + featured vastagságok (max 8) — a teljes lista kioskban zsúfolt. */
+  const thicknessOptions = useMemo(() => {
+    const counts = new Map<number, number>()
+    for (const s of sheets) {
+      counts.set(s.thicknessMm, (counts.get(s.thicknessMm) ?? 0) + 1)
+    }
+    const preferred = [18, 16, 12, 10, 8, 3]
+    const fromFeatured = featuredStock.map((s) => s.thicknessMm)
+    const ranked = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || b[0] - a[0])
+      .map(([mm]) => mm)
+    const picked: number[] = []
+    for (const mm of [...preferred, ...fromFeatured, ...ranked]) {
+      if (!counts.has(mm) || picked.includes(mm)) continue
+      picked.push(mm)
+      if (picked.length >= 8) break
+    }
+    return picked.sort((a, b) => b - a)
+  }, [sheets, featuredStock])
+
+  const filtersActive = thicknessMm != null || stockOnly
+  /**
+   * Üres keresés: kiemeltek elöl, utána a katalógus többi lapja.
+   * Keresés / recolor / szűrő: a teljes (már szűrt) sheets lista.
+   */
+  const base = useMemo(() => {
+    if (hasQuery || recolor) return sheets
+    const featuredIds = new Set(featuredStock.map((s) => s.id))
+    const rest = sheets.filter((s) => !featuredIds.has(s.id))
+    return [...featuredStock, ...rest]
+  }, [hasQuery, recolor, sheets, featuredStock])
+
+  const list = useMemo(
+    () =>
+      base.filter((s) => {
+        if (thicknessMm != null && s.thicknessMm !== thicknessMm) return false
+        if (stockOnly && !s.onStock) return false
+        return true
+      }),
+    [base, thicknessMm, stockOnly]
+  )
+
+  function clearFilters() {
+    setThicknessMm(null)
+    setStockOnly(false)
+    onQuery('')
+  }
+
+  const title = recolor
+    ? recolor.mode === 'copy'
+      ? 'Másolás — új dekor'
+      : 'Dekor csere'
+    : 'Válaszd ki a lapot'
+
+  const gridTitle = hasQuery
+    ? 'Keresési találatok'
+    : recolor
+      ? `Azonos vastagság (${recolor.thicknessMm} mm)`
+      : filtersActive
+        ? 'Szűrt lapok'
+        : 'Összes lap'
+
+  const gridSubtitle = hasQuery
+    ? 'Koppints egy lapra a folytatáshoz.'
+    : recolor
+      ? 'Koppints egy lapra a folytatáshoz.'
+      : filtersActive
+        ? 'Koppints egy lapra a folytatáshoz.'
+        : 'Elöl a legnépszerűbbek, utána a teljes katalógus.'
+
+  const countLabel = hasQuery
+    ? `${list.length} találat`
+    : recolor
+      ? `${list.length} / ${totalCount} lap · ${recolor.thicknessMm} mm`
+      : `${list.length} lap`
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <h1 className="text-[28px] font-semibold text-ink md:text-[32px]">
-          {recolor
-            ? recolor.mode === 'copy'
-              ? 'Másolás — új dekor'
-              : 'Dekor csere'
-            : 'Válaszd ki a lapot'}
-        </h1>
-        <p className="text-[14px] text-ink-muted tabular-nums">
-          {hasQuery
-            ? `${sheets.length} találat`
-            : recolor
-              ? `${totalCount} lap · ${recolor.thicknessMm} mm`
-              : `${totalCount} lap a katalógusban`}
-        </p>
-      </div>
-
-      {recolor ? (
-        <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-ink/15 bg-subtle px-4 py-3">
-          <div className="min-w-0 space-y-1 text-[15px] text-ink">
-            <p className="font-semibold">
-              {recolor.mode === 'copy' ? 'Másolás' : 'Dekor csere'}:{' '}
-              {recolor.sourceName}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <aside className="flex w-full shrink-0 flex-col gap-6 overflow-y-auto border-b border-border bg-surface px-6 py-6 md:px-8 lg:h-full lg:w-[400px] lg:border-b-0 lg:border-r lg:px-8 lg:py-8">
+        <div>
+          <h1 className="text-[32px] font-semibold leading-tight tracking-tight text-ink lg:text-[36px]">
+            {title}
+          </h1>
+          {!recolor ? (
+            <p className="mt-2 text-[16px] text-ink-secondary">
+              Írd be a dekór nevét vagy kódját, vagy válassz jobbra. Elöl a
+              népszerűek, utána az összes lap.
             </p>
-            <p className="text-ink-secondary">
-              Csak {recolor.thicknessMm} mm vastag lapok. A méretek, él és
-              megmunkálás megmarad.
-            </p>
-          </div>
-          {onCancelRecolor ? (
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-11 shrink-0 text-[14px]"
-              onClick={onCancelRecolor}
-            >
-              Mégse
-            </Button>
           ) : null}
         </div>
-      ) : null}
 
-      <div className="sticky top-0 z-20 -mx-4 border-b border-border bg-surface px-4 py-3 shadow-sm md:-mx-6 md:px-6">
+        {recolor ? (
+          <div className="rounded-xl border border-ink/15 bg-subtle px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1 text-[15px] text-ink">
+                <p className="font-semibold">
+                  {recolor.mode === 'copy' ? 'Másolás' : 'Dekor csere'}:{' '}
+                  {recolor.sourceName}
+                </p>
+                <p className="text-ink-secondary">
+                  Csak {recolor.thicknessMm} mm vastag lapok. A méretek, él és
+                  megmunkálás megmarad.
+                </p>
+              </div>
+              {onCancelRecolor ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-11 shrink-0 text-[14px]"
+                  onClick={onCancelRecolor}
+                >
+                  Mégse
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <div className="relative">
           <Search
-            className="pointer-events-none absolute left-3.5 top-1/2 size-5 -translate-y-1/2 text-ink-muted"
+            className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-ink-muted"
             aria-hidden
           />
           <Input
             value={query}
             onChange={(e) => onQuery(e.target.value)}
-            placeholder="Mit keresel? pl. tölgy, Egger, H1145"
+            placeholder="pl. tölgy, Egger, H1145"
             autoComplete="off"
             autoFocus
             enterKeyHint="search"
-            className="h-14 border-border bg-surface pl-11 pr-12 text-[17px] shadow-sm"
+            className="h-16 border-border bg-app pl-12 pr-12 text-[18px] shadow-sm"
             aria-label="Lap keresése"
           />
           {hasQuery ? (
             <Button
               type="button"
               variant="ghost"
-              className="absolute right-1.5 top-1/2 size-11 -translate-y-1/2 p-0"
+              className="absolute right-1.5 top-1/2 size-12 -translate-y-1/2 p-0"
               aria-label="Keresés törlése"
               onClick={() => onQuery('')}
             >
@@ -1457,87 +1603,162 @@ function MaterialStep({
             </Button>
           ) : null}
         </div>
-        {!hasQuery && !recolor ? (
-          <p className="mt-2 text-[14px] text-ink-secondary">
-            Írd be a dekór nevét vagy kódját, vagy válassz lent a népszerű
-            lapok közül.
-          </p>
-        ) : null}
-        {!hasQuery && recolor ? (
-          <p className="mt-2 text-[14px] text-ink-secondary">
-            Kereshetsz névre vagy kódra, vagy válassz lent az azonos vastagságú
-            lapok közül.
-          </p>
-        ) : null}
-      </div>
 
-      {!hasQuery && !recolor ? (
-        <div>
-          <h2 className="text-[17px] font-semibold text-ink">
-            Ezeket viszik a legtöbben
-          </h2>
-          <p className="text-[13px] text-ink-muted">
-            A „Rendelésre” lapot be kell szereznünk, ezért több idő, mire
-            elkészül.
+        {!recolor && thicknessOptions.length > 1 ? (
+          <div>
+            <p className="mb-2.5 text-[14px] font-semibold text-ink">
+              Vastagság
+            </p>
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label="Vastagság szűrő"
+            >
+              <FilterChip
+                active={thicknessMm == null}
+                onClick={() => setThicknessMm(null)}
+              >
+                Mind
+              </FilterChip>
+              {thicknessOptions.map((mm) => (
+                <FilterChip
+                  key={mm}
+                  active={thicknessMm === mm}
+                  onClick={() =>
+                    setThicknessMm((prev) => (prev === mm ? null : mm))
+                  }
+                >
+                  {mm} mm
+                </FilterChip>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-app px-4 py-3.5 text-[16px] font-medium text-ink">
+          <input
+            type="checkbox"
+            checked={stockOnly}
+            onChange={(e) => setStockOnly(e.target.checked)}
+            className="size-5 rounded border-border accent-ink"
+          />
+          Csak raktáron
+        </label>
+
+        <div className="mt-auto space-y-3 border-t border-border pt-5 text-[15px] leading-snug text-ink-secondary">
+          <p>
+            <span className="font-semibold text-ink">Rendelésre</span> = be kell
+            szereznünk, ezért több idő, mire elkészül.
+          </p>
+          <p>
+            Nem találod?{' '}
+            <span className="font-semibold text-ink">Kérdezd a pultot.</span>
           </p>
         </div>
-      ) : null}
-      {!hasQuery && recolor ? (
-        <div>
-          <h2 className="text-[17px] font-semibold text-ink">
-            Azonos vastagság ({recolor.thicknessMm} mm)
-          </h2>
-        </div>
-      ) : null}
+      </aside>
 
-      {hasQuery && sheets.length === 0 ? (
-        <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
-          <p className="text-[16px] text-ink">
-            Nincs ilyen dekór. Próbáld a kódot, vagy kérdezd a pultot.
-          </p>
-          {featuredStock.length > 0 ? (
-            <>
-              <p className="text-[14px] text-ink-secondary">
-                Vagy ezek közül:
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto bg-app px-5 py-5 md:px-8 lg:h-full lg:py-7">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-[22px] font-semibold text-ink">{gridTitle}</h2>
+            {hasQuery && sheets.length === 0 ? null : (
+              <p className="mt-0.5 text-[15px] text-ink-secondary">
+                {gridSubtitle}
               </p>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                {featuredStock.slice(0, 4).map((s) => (
-                  <SheetTile
-                    key={s.id}
-                    sheet={s}
-                    query=""
-                    onSelect={onSelect}
-                  />
-                ))}
-              </div>
-            </>
-          ) : null}
-          <Button
-            type="button"
-            variant="secondary"
-            className="h-11 text-[15px]"
-            onClick={() => onQuery('')}
-          >
-            Keresés törlése
-          </Button>
+            )}
+          </div>
+          <p className="text-[15px] tabular-nums text-ink-muted">{countLabel}</p>
         </div>
-      ) : list.length === 0 ? (
-        <p className="rounded-xl border border-warning/30 bg-warning-soft p-4 text-[16px] text-warning-ink">
-          Most nincs választható lap. Gyere a pulthoz.
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-          {list.map((s) => (
-            <SheetTile
-              key={s.id}
-              sheet={s}
-              query={hasQuery ? query : ''}
-              onSelect={onSelect}
-            />
-          ))}
-        </div>
-      )}
+
+        {hasQuery && sheets.length === 0 ? (
+          <div className="space-y-4 rounded-xl border border-border bg-surface p-5">
+            <p className="text-[17px] text-ink">
+              Nincs ilyen dekór. Próbáld a kódot, vagy kérdezd a pultot.
+            </p>
+            {featuredStock.length > 0 ? (
+              <>
+                <p className="text-[15px] text-ink-secondary">
+                  Vagy ezek közül:
+                </p>
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+                  {featuredStock.slice(0, 4).map((s) => (
+                    <SheetTile
+                      key={s.id}
+                      sheet={s}
+                      query=""
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-12 text-[15px]"
+              onClick={() => onQuery('')}
+            >
+              Keresés törlése
+            </Button>
+          </div>
+        ) : list.length === 0 ? (
+          <div className="space-y-4 rounded-xl border border-warning/30 bg-warning-soft p-5">
+            <p className="text-[17px] text-warning-ink">
+              {filtersActive
+                ? 'Nincs ilyen lap a szűrőkkel. Próbáld a szűrők törlését.'
+                : 'Most nincs választható lap. Gyere a pulthoz.'}
+            </p>
+            {filtersActive ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-12 text-[15px]"
+                onClick={clearFilters}
+              >
+                Szűrők törlése
+              </Button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {list.map((s) => (
+              <SheetTile
+                key={s.id}
+                sheet={s}
+                query={hasQuery ? query : ''}
+                onSelect={onSelect}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
+  )
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'h-11 rounded-lg border px-3.5 text-[15px] font-semibold tabular-nums transition',
+        active
+          ? 'border-ink bg-ink text-white'
+          : 'border-border bg-app text-ink hover:border-ink/40'
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -1554,9 +1775,9 @@ function SheetTile({
     <button
       type="button"
       onClick={() => onSelect(s)}
-      className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface text-left shadow-sm transition active:scale-[0.98] hover:border-ink/30"
+      className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface text-left shadow-elev1 transition-[border-color,box-shadow] hover:border-ink hover:shadow-elev2 focus-visible:border-ink focus-visible:shadow-elev2 focus-visible:outline-none active:scale-[0.99]"
     >
-      <div className="relative aspect-[4/3] w-full">
+      <div className="relative aspect-[4/3] w-full border-b border-border">
         <div
           className="absolute inset-0"
           style={
@@ -1579,27 +1800,27 @@ function SheetTile({
           </StatusBadge>
         </div>
         <div className="absolute bottom-2 right-2">
-          <span className="rounded-md border border-border bg-white px-2 py-1 text-[13px] font-semibold tabular-nums text-ink shadow-sm">
+          <span className="rounded-md border border-border bg-white px-2 py-1 text-[14px] font-semibold tabular-nums text-ink shadow-sm">
             {s.thicknessMm} mm
           </span>
         </div>
       </div>
-      <div className="space-y-1 p-3">
-        <p className="text-[16px] font-semibold leading-snug text-ink">
+      <div className="flex flex-1 flex-col gap-0.5 px-3.5 py-3">
+        <p className="line-clamp-2 text-[17px] font-semibold leading-snug text-ink">
           {highlightMatch(s.name, query)}
         </p>
-        <p className="text-[13px] font-medium tabular-nums text-ink">
+        <p className="text-[15px] font-medium tabular-nums text-ink">
           {formatSheetDims(s)}
         </p>
-        <p className="truncate text-[13px] text-ink-secondary">
+        <p className="truncate text-[15px] text-ink-secondary">
           {highlightMatch(s.manufacturerName, query)}
-          <span className="text-ink-muted">, </span>
+          <span className="text-ink-muted"> · </span>
           <span className="tabular-nums">
             {formatHuf(s.pricePerSqmGross)}/m²
           </span>
         </p>
         {s.machineCode ? (
-          <p className="truncate font-mono text-[12px] text-ink-muted">
+          <p className="truncate font-mono text-[13px] text-ink-muted">
             {highlightMatch(s.machineCode, query)}
           </p>
         ) : null}
@@ -1680,288 +1901,320 @@ function SizeStep({
     return () => window.clearTimeout(id)
   }, [sheet.id, draft.editingLineId])
 
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [stageBox, setStageBox] = useState({
+    width: SIZE_STAGE_INNER_W,
+    height: SIZE_STAGE_INNER_H
+  })
+
+  useEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+    function measure() {
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const width = Math.round(
+        Math.max(240, Math.min(SIZE_STAGE_MAX_W, r.width - SIZE_DIM_SIDE_W - 24))
+      )
+      const height = Math.round(
+        Math.max(180, Math.min(SIZE_STAGE_MAX_H, r.height - SIZE_DIM_TOP_H - 24))
+      )
+      setStageBox((prev) =>
+        prev.width === width && prev.height === height
+          ? prev
+          : { width, height }
+      )
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
   const panelSize = useMemo(
-    () => fitPanelSize(grain, cross, SIZE_STAGE_INNER_W, SIZE_STAGE_INNER_H),
-    [grain, cross]
+    () => fitPanelSize(grain, cross, stageBox.width, stageBox.height),
+    [grain, cross, stageBox]
   )
+  const sizeLabel = grain && cross ? `${grain} × ${cross} mm` : '- × - mm'
+  const labelInside = panelSize.width >= 220 && panelSize.height >= 72
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 lg:gap-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="shrink-0 text-[24px] font-semibold text-ink md:text-[28px]">
-          Mekkora legyen a lap?
-        </h1>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-1.5">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-border bg-surface px-6 py-6 md:px-8 lg:h-full lg:w-[460px] lg:border-b-0 lg:border-r lg:py-7">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-app p-3">
           <span
-            className="size-9 shrink-0 rounded-md border border-border"
+            className="size-14 shrink-0 rounded-lg border border-border"
             style={sheetFillStyle(sheet)}
             aria-hidden
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-medium text-ink">
-              {sheet.name}, {sheet.thicknessMm} mm
+            <p className="truncate text-[16px] font-semibold text-ink">
+              {sheet.name}
             </p>
-            <p className="truncate text-[12px] tabular-nums text-ink-secondary">
+            <p className="truncate text-[14px] tabular-nums text-ink-secondary">
               {formatSheetDims(sheet)}
             </p>
+            <div className="mt-1">
+              <StatusBadge
+                tone={sheet.onStock ? 'success' : 'neutral'}
+                variant={sheet.onStock ? 'soft' : 'outline'}
+              >
+                {sheet.onStock ? 'Raktáron' : 'Rendelésre'}
+              </StatusBadge>
+            </div>
           </div>
-          <StatusBadge
-            tone={sheet.onStock ? 'success' : 'neutral'}
-            variant={sheet.onStock ? 'soft' : 'outline'}
-          >
-            {sheet.onStock ? 'Raktáron' : 'Rendelésre'}
-          </StatusBadge>
           <Button
             type="button"
             variant="secondary"
-            className="h-10 text-[14px]"
+            className="h-11 shrink-0 px-4 text-[15px]"
             onClick={onChangeSheet}
           >
             Csere
           </Button>
         </div>
-      </div>
 
-      <p
-        className="rounded-xl border border-border bg-subtle px-4 py-2.5 text-[15px] leading-snug text-ink"
-        role="note"
-      >
-        {FINISHED_SIZE_COPY.sizeStep}
-      </p>
-
-      {/* Bal preview · Jobb adatok — LTR, items-start, 21″ */}
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1.1fr_1fr] lg:items-start lg:gap-6">
-        {/* BAL — FIX stage, belső panel skálázódik */}
-        <div className="rounded-2xl border-2 border-ink/20 bg-surface p-3 md:p-4">
-          <div
-            className={cn(
-              'mb-2 flex h-9 items-center justify-center gap-2 rounded-lg px-2 text-[14px] font-semibold tabular-nums transition',
-              focusDim === 'grain' ? 'bg-ink text-white' : 'bg-subtle text-ink'
-            )}
+        <div>
+          <h1 className="text-[36px] font-semibold leading-tight tracking-tight text-ink lg:text-[40px]">
+            Mekkora legyen a lap?
+          </h1>
+          <p
+            className="mt-2 text-[16px] leading-snug text-ink-secondary"
+            role="note"
           >
-            <ArrowLeftRight className="size-4 shrink-0 opacity-80" aria-hidden />
-            Szálirány{' '}
-            <span>{grain != null ? `${grain} mm` : '- mm'}</span>
-          </div>
-
-          <div className="flex gap-2">
-            <div
-              className={cn(
-                'flex h-[360px] w-12 shrink-0 flex-col items-center justify-center gap-1 rounded-lg text-center text-[12px] font-semibold leading-tight transition',
-                focusDim === 'cross' ? 'bg-ink text-white' : 'bg-subtle text-ink'
-              )}
-            >
-              <ArrowUpDown className="size-3.5 opacity-80" aria-hidden />
-              <span className="[writing-mode:vertical-rl] rotate-180">
-                Kereszt
-              </span>
-              <span className="tabular-nums text-[11px]">
-                {cross != null ? cross : '-'}
-              </span>
-            </div>
-
-            {/* Fix stage — soha nem változik a mérete */}
-            <div className="flex h-[360px] min-w-0 flex-1 items-center justify-center rounded-xl bg-subtle">
-              <div
-                className={cn(
-                  'relative flex items-center justify-center overflow-hidden border-[3px] transition',
-                  focusDim ? 'border-ink' : 'border-ink/50'
-                )}
-                style={{
-                  width: panelSize.width,
-                  height: panelSize.height,
-                  ...sheetFillStyle(sheet)
-                }}
-              >
-                {sheet.grainDirection ? <GrainOverlay /> : null}
-                <span className="relative z-[3] rounded-md bg-white px-2.5 py-1 text-[15px] font-semibold tabular-nums text-ink shadow-sm">
-                  {grain && cross ? `${grain} × ${cross} mm` : '- × - mm'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {sheet.grainDirection ? (
-            <div
-              className="mt-2 flex items-center justify-center gap-2"
-              role="note"
-            >
-              <span
-                className="shrink-0 text-[28px] font-bold leading-none text-danger"
-                aria-hidden
-              >
-                !
-              </span>
-              <p className="whitespace-nowrap rounded-lg border border-danger/40 bg-danger-soft px-3 py-2.5 text-[15px] font-semibold leading-none text-danger-ink">
-                Csak a <span className="underline">vonalak</span> mutatják a
-                szálat. A kép iránya félrevezető lehet.
-              </p>
-            </div>
-          ) : (
-            <p className="mt-2 text-center text-[13px] text-ink-secondary">
-              Nincs szál. A két méret a két oldal.
-            </p>
-          )}
+            {FINISHED_SIZE_COPY.sizeStep}
+          </p>
         </div>
 
-        {/* JOBB — top-aligned form */}
-        <div className="flex flex-col justify-start gap-3 pt-0">
-          <label className="block">
-            <span className="mb-1 flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-              <ArrowLeftRight className="size-3.5" aria-hidden />
-              Szálirány
-              <span className="font-normal text-ink-muted">(szál mentén)</span>
-            </span>
-            <div className="relative">
-              <Input
-                ref={grainInputRef}
-                inputMode="numeric"
-                value={draft.grainRaw}
-                placeholder="pl. 800"
-                enterKeyHint="next"
-                className={cn(
-                  'h-14 pr-11 text-[22px] font-semibold tabular-nums',
-                  focusDim === 'grain' && 'border-ink ring-2 ring-ink/20'
-                )}
-                onFocus={() => setFocusDim('grain')}
-                onBlur={() => setFocusDim((d) => (d === 'grain' ? null : d))}
-                onChange={(e) =>
-                  onChange({
-                    grainRaw: clampDimensionRaw(e.target.value, maxGrainMm)
-                  })
-                }
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return
-                  e.preventDefault()
-                  crossInputRef.current?.focus()
-                  crossInputRef.current?.select()
-                }}
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[15px] font-medium text-ink-muted">
-                mm
-              </span>
-            </div>
-            <p className="mt-1 text-[13px] tabular-nums text-ink-muted">
-              {grainHint}
-            </p>
-          </label>
-
-          <label className="block">
-            <span className="mb-1 flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-              <ArrowUpDown className="size-3.5" aria-hidden />
-              Keresztirány
-              <span className="font-normal text-ink-muted">(merőlegesen)</span>
-            </span>
-            <div className="relative">
-              <Input
-                ref={crossInputRef}
-                inputMode="numeric"
-                value={draft.crossRaw}
-                placeholder="pl. 400"
-                enterKeyHint="done"
-                className={cn(
-                  'h-14 pr-11 text-[22px] font-semibold tabular-nums',
-                  focusDim === 'cross' && 'border-ink ring-2 ring-ink/20'
-                )}
-                onFocus={() => setFocusDim('cross')}
-                onBlur={() => setFocusDim((d) => (d === 'cross' ? null : d))}
-                onChange={(e) =>
-                  onChange({
-                    crossRaw: clampDimensionRaw(e.target.value, maxCrossMm)
-                  })
-                }
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return
-                  e.preventDefault()
-                  if (canContinue) onContinue()
-                }}
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[15px] font-medium text-ink-muted">
-                mm
-              </span>
-            </div>
-            <p className="mt-1 text-[13px] tabular-nums text-ink-muted">
-              {crossHint}
-            </p>
-          </label>
-
-          <div className="flex items-center gap-3">
-            <span className="text-[14px] font-medium text-ink-secondary">Db</span>
-            <Button
-              type="button"
-              variant="secondary"
-              className="size-11 p-0"
-              aria-label="Kevesebb"
-              onClick={() =>
-                onChange({ quantity: Math.max(1, draft.quantity - 1) })
-              }
-            >
-              <Minus className="size-4" />
-            </Button>
-            <span className="min-w-[2rem] text-center text-[20px] font-semibold tabular-nums">
-              {draft.quantity}
-            </span>
-            <Button
-              type="button"
-              variant="secondary"
-              className="size-11 p-0"
-              aria-label="Több"
-              onClick={() =>
+        <label className="block">
+          <span className="mb-1.5 flex items-center gap-1.5 text-[18px] font-semibold text-ink">
+            <ArrowLeftRight className="size-4" aria-hidden />
+            Szálirány
+            <span className="font-normal text-ink-secondary">(szál mentén)</span>
+          </span>
+          <div className="relative">
+            <Input
+              ref={grainInputRef}
+              inputMode="numeric"
+              value={draft.grainRaw}
+              placeholder="pl. 800"
+              enterKeyHint="next"
+              className={cn(
+                'h-[72px] pr-14 text-[32px] font-semibold tabular-nums',
+                focusDim === 'grain' && 'border-ink ring-2 ring-ink/20'
+              )}
+              onFocus={() => setFocusDim('grain')}
+              onBlur={() => setFocusDim((d) => (d === 'grain' ? null : d))}
+              onChange={(e) =>
                 onChange({
-                  quantity: Math.min(maxQty, draft.quantity + 1)
+                  grainRaw: clampDimensionRaw(e.target.value, maxGrainMm)
                 })
               }
-            >
-              <Plus className="size-4" />
-            </Button>
-          </div>
-
-          <label className="block">
-            <span className="mb-1 flex items-center gap-1.5 text-[15px] font-semibold text-ink">
-              Megnevezés
-              <span className="font-normal text-ink-muted">(nem kötelező)</span>
-            </span>
-            <Input
-              value={draft.label}
-              maxLength={KIOSK_LABEL_MAX}
-              autoComplete="off"
-              className="h-12 text-[17px]"
-              onChange={(e) => onChange({ label: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return
+                e.preventDefault()
+                crossInputRef.current?.focus()
+                crossInputRef.current?.select()
+              }}
             />
-            <p className="mt-1 text-[13px] text-ink-muted">
-              Például: Konyha ajtó. Így a kosárban és a pultnál is könnyen
-              felismered.
-            </p>
-          </label>
+            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] font-medium text-ink-muted">
+              mm
+            </span>
+          </div>
+          <p className="mt-1.5 text-[15px] tabular-nums text-ink-muted">
+            {grainHint}
+          </p>
+        </label>
 
-          {/* Üzenetek a mezőknél — nagy tipó, távolról olvasható; NEM a footerben */}
-          {needsBothDims && hardErrors.length === 0 ? (
-            <p
-              className="rounded-xl border-2 border-ink/25 bg-subtle px-4 py-3 text-[18px] font-semibold leading-snug text-ink"
-              role="status"
-            >
-              Írd be mindkét méretet milliméterben (mm).
-            </p>
-          ) : null}
-          {hardErrors.map((e) => (
-            <p
-              key={e}
-              className="rounded-xl border-2 border-danger/50 bg-danger-soft px-4 py-3 text-[18px] font-semibold leading-snug text-danger-ink"
-              role="alert"
-            >
-              {e}
-            </p>
-          ))}
-          {softWarn ? (
-            <p
-              className="rounded-xl border-2 border-warning/50 bg-warning-soft px-4 py-3 text-[18px] font-semibold leading-snug text-warning-ink"
-              role="status"
-            >
-              {softWarn}
-            </p>
-          ) : null}
+        <label className="block">
+          <span className="mb-1.5 flex items-center gap-1.5 text-[18px] font-semibold text-ink">
+            <ArrowUpDown className="size-4" aria-hidden />
+            Keresztirány
+            <span className="font-normal text-ink-secondary">(merőlegesen)</span>
+          </span>
+          <div className="relative">
+            <Input
+              ref={crossInputRef}
+              inputMode="numeric"
+              value={draft.crossRaw}
+              placeholder="pl. 400"
+              enterKeyHint="done"
+              className={cn(
+                'h-[72px] pr-14 text-[32px] font-semibold tabular-nums',
+                focusDim === 'cross' && 'border-ink ring-2 ring-ink/20'
+              )}
+              onFocus={() => setFocusDim('cross')}
+              onBlur={() => setFocusDim((d) => (d === 'cross' ? null : d))}
+              onChange={(e) =>
+                onChange({
+                  crossRaw: clampDimensionRaw(e.target.value, maxCrossMm)
+                })
+              }
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return
+                e.preventDefault()
+                if (canContinue) onContinue()
+              }}
+            />
+            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] font-medium text-ink-muted">
+              mm
+            </span>
+          </div>
+          <p className="mt-1.5 text-[15px] tabular-nums text-ink-muted">
+            {crossHint}
+          </p>
+        </label>
+
+        <div className="flex items-center gap-4">
+          <span className="text-[18px] font-semibold text-ink">Darab</span>
+          <Button
+            type="button"
+            variant="secondary"
+            className="size-14 p-0"
+            aria-label="Kevesebb"
+            onClick={() =>
+              onChange({ quantity: Math.max(1, draft.quantity - 1) })
+            }
+          >
+            <Minus className="size-5" />
+          </Button>
+          <span className="min-w-[3rem] text-center text-[28px] font-semibold tabular-nums text-ink">
+            {draft.quantity}
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            className="size-14 p-0"
+            aria-label="Több"
+            onClick={() =>
+              onChange({
+                quantity: Math.min(maxQty, draft.quantity + 1)
+              })
+            }
+          >
+            <Plus className="size-5" />
+          </Button>
         </div>
-      </div>
+
+        <label className="block">
+          <span className="mb-1.5 flex items-center gap-1.5 text-[18px] font-semibold text-ink">
+            Megnevezés
+            <span className="font-normal text-ink-secondary">(nem kötelező)</span>
+          </span>
+          <Input
+            value={draft.label}
+            maxLength={KIOSK_LABEL_MAX}
+            autoComplete="off"
+            className="h-14 text-[18px]"
+            onChange={(e) => onChange({ label: e.target.value })}
+          />
+          <p className="mt-1.5 text-[16px] text-ink-secondary">
+            Például: Konyha ajtó. Így a kosárban és a pultnál is könnyen
+            felismered.
+          </p>
+        </label>
+
+        {/* Üzenetek a mezőknél — nagy tipó, távolról olvasható; NEM a footerben */}
+        {needsBothDims && hardErrors.length === 0 ? (
+          <p
+            className="rounded-xl border-2 border-ink/25 bg-subtle px-4 py-3 text-[18px] font-semibold leading-snug text-ink"
+            role="status"
+          >
+            Írd be mindkét méretet milliméterben (mm).
+          </p>
+        ) : null}
+        {hardErrors.map((e) => (
+          <p
+            key={e}
+            className="rounded-xl border-2 border-danger/50 bg-danger-soft px-4 py-3 text-[18px] font-semibold leading-snug text-danger-ink"
+            role="alert"
+          >
+            {e}
+          </p>
+        ))}
+        {softWarn ? (
+          <p
+            className="rounded-xl border-2 border-warning/50 bg-warning-soft px-4 py-3 text-[18px] font-semibold leading-snug text-warning-ink"
+            role="status"
+          >
+            {softWarn}
+          </p>
+        ) : null}
+      </aside>
+
+      <section className="flex min-h-[420px] min-w-0 flex-1 flex-col gap-4 bg-app px-6 py-6 md:px-10 lg:h-full lg:py-8">
+        <div
+          ref={stageRef}
+          className="flex min-h-0 flex-1 items-center justify-center"
+        >
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: `${SIZE_DIM_SIDE_W}px ${panelSize.width}px`,
+              gridTemplateRows: `${SIZE_DIM_TOP_H}px ${panelSize.height}px`
+            }}
+          >
+            <div aria-hidden />
+            <SizeDimLine
+              orientation="horizontal"
+              caption="Szálirány"
+              value={grain}
+              active={focusDim === 'grain'}
+            />
+            <SizeDimLine
+              orientation="vertical"
+              caption="Kereszt"
+              value={cross}
+              active={focusDim === 'cross'}
+            />
+            <div
+              className={cn(
+                'relative flex items-center justify-center overflow-hidden border-[3px] shadow-elev2 transition-[width,height,border-color] duration-200',
+                focusDim ? 'border-ink' : 'border-ink/60'
+              )}
+              style={{
+                width: panelSize.width,
+                height: panelSize.height,
+                ...sheetFillStyle(sheet)
+              }}
+            >
+              {sheet.grainDirection ? <GrainOverlay /> : null}
+              {labelInside ? (
+                <span className="relative z-[3] rounded-lg bg-white px-5 py-2.5 text-[40px] font-semibold tabular-nums text-ink shadow-sm">
+                  {sizeLabel}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {!labelInside ? (
+          <p className="text-center text-[40px] font-semibold tabular-nums text-ink">
+            {sizeLabel}
+          </p>
+        ) : null}
+
+        {sheet.grainDirection ? (
+          <div
+            className="flex items-center justify-center gap-2"
+            role="note"
+          >
+            <span
+              className="shrink-0 text-[28px] font-bold leading-none text-danger"
+              aria-hidden
+            >
+              !
+            </span>
+            <p className="rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-[18px] font-semibold leading-snug text-danger-ink">
+              Csak a <span className="underline">vonalak</span> mutatják a
+              szálat. A kép iránya félrevezető lehet.
+            </p>
+          </div>
+        ) : (
+          <p className="text-center text-[18px] text-ink-secondary">
+            Nincs szál. A két méret a két oldal.
+          </p>
+        )}
+      </section>
     </div>
   )
 }
@@ -2000,40 +2253,186 @@ function MachiningStep({
   const duplungOn = Boolean(machining?.duplungolas)
   const panthelyOn = Boolean(machining?.panthely)
   const szogOn = Boolean(machining?.szog)
-  const canPreview = grainMm != null && crossMm != null && grainMm > 0 && crossMm > 0
+  const canPreview =
+    grainMm != null && crossMm != null && grainMm > 0 && crossMm > 0
 
   useKioskEnterContinue(canContinue, onContinue)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 lg:gap-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="min-w-0">
-          <h1 className="text-[24px] font-semibold text-ink md:text-[28px]">
-            {MACHINING_COPY.h1}
-          </h1>
-          <p className="text-[15px] text-ink-secondary">{MACHINING_COPY.sub}</p>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-2.5 py-1.5">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-border bg-surface px-6 py-6 md:px-8 lg:h-full lg:w-[460px] lg:border-b-0 lg:border-r lg:py-7">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-app p-3">
           <span
-            className="size-9 shrink-0 rounded-md border border-border"
+            className="size-14 shrink-0 rounded-lg border border-border"
             style={sheetFillStyle(sheet)}
             aria-hidden
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-medium text-ink">
-              {sheet.name}, {sheet.thicknessMm} mm
+            <p className="truncate text-[16px] font-semibold text-ink">
+              {sheet.name}
             </p>
-            <p className="truncate text-[12px] tabular-nums text-ink-secondary">
+            <p className="truncate text-[14px] tabular-nums text-ink-secondary">
               {canPreview
-                ? `${grainMm} × ${crossMm} mm, ${quantity} db`
+                ? `${grainMm} × ${crossMm} mm · ${quantity} db`
                 : '- × - mm'}
             </p>
           </div>
         </div>
-      </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1.1fr_1fr] lg:items-start lg:gap-6">
-        {/* BAL — Opti-szerű preview */}
+        <div>
+          <h1 className="text-[36px] font-semibold leading-tight tracking-tight text-ink lg:text-[40px]">
+            {MACHINING_COPY.h1}
+          </h1>
+          <p className="mt-2 text-[16px] text-ink-secondary">
+            {MACHINING_COPY.sub}
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <MachiningToggleRow
+            title={MACHINING_COPY.duplungTitle}
+            hint={MACHINING_COPY.duplungHint}
+            Icon={Layers}
+            active={duplungOn}
+            onClick={onToggleDuplung}
+          >
+            {duplungOn ? (
+              <p
+                className="rounded-xl border border-ink/15 bg-subtle px-3.5 py-3 text-[16px] font-semibold text-ink"
+                role="status"
+              >
+                {duplungStatusLabel(quantity)}
+              </p>
+            ) : null}
+          </MachiningToggleRow>
+
+          <MachiningToggleRow
+            title={MACHINING_COPY.panthelyTitle}
+            hint={MACHINING_COPY.panthelyHint}
+            Icon={CircleDot}
+            active={panthelyOn}
+            onClick={onTogglePanthely}
+          >
+            {panthelyOn && machining?.panthely ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="mb-2 text-[15px] font-semibold text-ink">
+                    {MACHINING_COPY.panthelyQty}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {PANTHELY_QTY_CHIPS.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => onPanthelyQty(n)}
+                        className={cn(
+                          'flex size-14 items-center justify-center rounded-xl border-2 text-[20px] font-semibold tabular-nums transition',
+                          machining.panthely!.quantity === n
+                            ? 'border-ink bg-ink text-white'
+                            : 'border-border bg-app text-ink'
+                        )}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-2 text-[15px] font-semibold text-ink">
+                    {MACHINING_COPY.panthelySide}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        {
+                          id: 'hosszu' as const,
+                          label: MACHINING_COPY.panthelyLong
+                        },
+                        {
+                          id: 'rovid' as const,
+                          label: MACHINING_COPY.panthelyShort
+                        }
+                      ] as const
+                    ).map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => onPanthelyOldal(o.id)}
+                        className={cn(
+                          'h-14 rounded-xl border-2 px-5 text-[16px] font-semibold transition',
+                          machining.panthely!.oldal === o.id
+                            ? 'border-ink bg-ink text-white'
+                            : 'border-border bg-app text-ink'
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </MachiningToggleRow>
+
+          <MachiningToggleRow
+            title={MACHINING_COPY.szogTitle}
+            hint={MACHINING_COPY.szogHint}
+            Icon={Triangle}
+            active={szogOn}
+            onClick={onToggleSzog}
+          >
+            {szogOn && machining?.szog && canPreview && grainMm && crossMm ? (
+              <div className="space-y-4">
+                <p className="text-[15px] text-ink-secondary">
+                  {MACHINING_COPY.szogIntro}
+                </p>
+                <div className="grid gap-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[15px] font-semibold text-ink">
+                      {MACHINING_COPY.remainGrain}
+                    </span>
+                    <Input
+                      inputMode="numeric"
+                      value={String(
+                        remainFromCut(grainMm, machining.szog.alongGrainMm)
+                      )}
+                      className="h-16 text-[24px] font-semibold tabular-nums"
+                      onChange={(e) => {
+                        const n = Number(e.target.value.replace(/\D/g, ''))
+                        if (!Number.isFinite(n)) return
+                        onSzogAlong({
+                          alongGrainMm: cutFromRemain(grainMm, n)
+                        })
+                      }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-[15px] font-semibold text-ink">
+                      {MACHINING_COPY.remainCross}
+                    </span>
+                    <Input
+                      inputMode="numeric"
+                      value={String(
+                        remainFromCut(crossMm, machining.szog.alongCrossMm)
+                      )}
+                      className="h-16 text-[24px] font-semibold tabular-nums"
+                      onChange={(e) => {
+                        const n = Number(e.target.value.replace(/\D/g, ''))
+                        if (!Number.isFinite(n)) return
+                        onSzogAlong({
+                          alongCrossMm: cutFromRemain(crossMm, n)
+                        })
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : null}
+          </MachiningToggleRow>
+        </div>
+      </aside>
+
+      <section className="flex min-h-[360px] min-w-0 flex-1 flex-col bg-app px-6 py-6 md:px-10 lg:h-full lg:py-8">
         {canPreview ? (
           <KioskMachiningPreview
             grainMm={grainMm}
@@ -2044,226 +2443,82 @@ function MachiningStep({
             quantity={quantity}
             machining={machining}
             onSelectSzogCorner={szogOn ? onSzogCorner : undefined}
+            fillStage
           />
         ) : (
-          <div className="flex h-[360px] items-center justify-center rounded-2xl border-2 border-dashed border-border bg-subtle text-[16px] text-ink-muted">
+          <div className="flex min-h-0 flex-1 items-center justify-center rounded-2xl border-2 border-dashed border-border bg-subtle text-[20px] text-ink-muted">
             Előbb add meg a méretet
           </div>
         )}
-
-        {/* JOBB — választók; default = nincs megmunkálás, tovább aktív */}
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-3 gap-2">
-            <MachiningToggleTile
-              title={MACHINING_COPY.duplungTitle}
-              hint={MACHINING_COPY.duplungHint}
-              Icon={Layers}
-              active={duplungOn}
-              onClick={onToggleDuplung}
-              compact
-            />
-            <MachiningToggleTile
-              title={MACHINING_COPY.panthelyTitle}
-              hint={MACHINING_COPY.panthelyHint}
-              Icon={CircleDot}
-              active={panthelyOn}
-              onClick={onTogglePanthely}
-              compact
-            />
-            <MachiningToggleTile
-              title={MACHINING_COPY.szogTitle}
-              hint={MACHINING_COPY.szogHint}
-              Icon={Triangle}
-              active={szogOn}
-              onClick={onToggleSzog}
-              compact
-            />
-          </div>
-
-          {duplungOn ? (
-            <p
-              className="rounded-xl border-2 border-ink/20 bg-subtle px-3 py-2.5 text-[16px] font-semibold text-ink"
-              role="status"
-            >
-              {duplungStatusLabel(quantity)}
-            </p>
-          ) : null}
-
-          {panthelyOn && machining?.panthely ? (
-            <div className="space-y-3 rounded-2xl border-2 border-ink/20 bg-surface p-3.5">
-              <p className="text-[17px] font-semibold text-ink">
-                {MACHINING_COPY.panthelyTitle}
-              </p>
-              <div>
-                <p className="mb-1.5 text-[14px] font-medium text-ink-secondary">
-                  {MACHINING_COPY.panthelyQty}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {PANTHELY_QTY_CHIPS.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => onPanthelyQty(n)}
-                      className={cn(
-                        'flex size-12 items-center justify-center rounded-xl border-2 text-[18px] font-semibold tabular-nums transition',
-                        machining.panthely!.quantity === n
-                          ? 'border-ink bg-ink text-white'
-                          : 'border-border bg-subtle text-ink'
-                      )}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-1.5 text-[14px] font-medium text-ink-secondary">
-                  {MACHINING_COPY.panthelySide}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    [
-                      {
-                        id: 'hosszu' as const,
-                        label: MACHINING_COPY.panthelyLong
-                      },
-                      {
-                        id: 'rovid' as const,
-                        label: MACHINING_COPY.panthelyShort
-                      }
-                    ] as const
-                  ).map((o) => (
-                    <button
-                      key={o.id}
-                      type="button"
-                      onClick={() => onPanthelyOldal(o.id)}
-                      className={cn(
-                        'h-12 rounded-xl border-2 px-4 text-[15px] font-semibold transition',
-                        machining.panthely!.oldal === o.id
-                          ? 'border-ink bg-ink text-white'
-                          : 'border-border bg-subtle text-ink'
-                      )}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {szogOn && machining?.szog && canPreview && grainMm && crossMm ? (
-            <div className="space-y-3 rounded-2xl border-2 border-ink/20 bg-surface p-3.5">
-              <div>
-                <p className="text-[17px] font-semibold text-ink">
-                  {MACHINING_COPY.szogTitle}
-                </p>
-                <p className="mt-0.5 text-[14px] text-ink-secondary">
-                  {MACHINING_COPY.szogIntro}
-                </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-[14px] font-semibold text-ink">
-                    {MACHINING_COPY.remainGrain}
-                  </span>
-                  <Input
-                    inputMode="numeric"
-                    value={String(
-                      remainFromCut(grainMm, machining.szog.alongGrainMm)
-                    )}
-                    className="h-12 text-[18px] font-semibold tabular-nums"
-                    onChange={(e) => {
-                      const n = Number(e.target.value.replace(/\D/g, ''))
-                      if (!Number.isFinite(n)) return
-                      onSzogAlong({
-                        alongGrainMm: cutFromRemain(grainMm, n)
-                      })
-                    }}
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-[14px] font-semibold text-ink">
-                    {MACHINING_COPY.remainCross}
-                  </span>
-                  <Input
-                    inputMode="numeric"
-                    value={String(
-                      remainFromCut(crossMm, machining.szog.alongCrossMm)
-                    )}
-                    className="h-12 text-[18px] font-semibold tabular-nums"
-                    onChange={(e) => {
-                      const n = Number(e.target.value.replace(/\D/g, ''))
-                      if (!Number.isFinite(n)) return
-                      onSzogAlong({
-                        alongCrossMm: cutFromRemain(crossMm, n)
-                      })
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-          ) : null}
-
-        </div>
-      </div>
+      </section>
     </div>
   )
 }
 
-function MachiningToggleTile({
+function MachiningToggleRow({
   title,
   hint,
   Icon,
   active,
   onClick,
-  compact
+  children
 }: {
   title: string
   hint: string
   Icon: typeof Layers
   active: boolean
   onClick: () => void
-  compact?: boolean
+  children?: React.ReactNode
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
+    <div
       className={cn(
-        'flex flex-col items-start gap-1.5 rounded-2xl border-2 text-left transition',
-        compact ? 'min-h-[96px] p-3' : 'min-h-[120px] p-4 gap-2',
-        active
-          ? 'border-ink bg-subtle ring-2 ring-ink'
-          : 'border-border bg-surface hover:border-ink/35'
+        'overflow-hidden rounded-2xl border-2 transition',
+        active ? 'border-ink bg-subtle' : 'border-border bg-app'
       )}
     >
-      <span
-        className={cn(
-          'flex items-center justify-center rounded-xl',
-          compact ? 'size-10' : 'size-12',
-          active ? 'bg-ink text-white' : 'bg-subtle text-ink'
-        )}
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left"
       >
-        <Icon className={compact ? 'size-5' : 'size-6'} aria-hidden />
-      </span>
-      <span
-        className={cn(
-          'font-semibold text-ink',
-          compact ? 'text-[15px]' : 'text-[18px]'
-        )}
-      >
-        {title}
-      </span>
-      <span className="text-[13px] text-ink-secondary">{hint}</span>
-      {active ? (
-        <span className="mt-auto inline-flex items-center gap-1 text-[12px] font-semibold text-ink">
-          <Check className="size-3.5" aria-hidden />
-          Be
+        <span
+          className={cn(
+            'flex size-12 shrink-0 items-center justify-center rounded-xl',
+            active ? 'bg-ink text-white' : 'bg-subtle text-ink'
+          )}
+        >
+          <Icon className="size-6" aria-hidden />
         </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[20px] font-semibold text-ink">
+            {title}
+          </span>
+          <span className="block text-[16px] text-ink-secondary">{hint}</span>
+        </span>
+        <span
+          className={cn(
+            'inline-flex h-10 min-w-16 shrink-0 items-center justify-center rounded-lg text-[16px] font-semibold',
+            active
+              ? 'bg-ink text-white'
+              : 'border border-border bg-surface text-ink-secondary'
+          )}
+        >
+          {active ? (
+            <span className="inline-flex items-center gap-1">
+              <Check className="size-3.5" aria-hidden />
+              Be
+            </span>
+          ) : (
+            'Ki'
+          )}
+        </span>
+      </button>
+      {active && children ? (
+        <div className="border-t border-ink/10 px-4 py-4">{children}</div>
       ) : null}
-    </button>
+    </div>
   )
 }
 
@@ -2298,56 +2553,45 @@ function EdgeStep({
   useKioskEnterContinue(canContinue, onContinue)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <div className="min-w-0">
-          <h1 className="text-[22px] font-semibold text-ink md:text-[26px]">
-            Hol legyen élzáró?
-          </h1>
-          <p className="text-[14px] text-ink-secondary">{EDGE_COPY.stepSub}</p>
-        </div>
-        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border bg-surface px-2 py-1">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-border bg-surface px-6 py-6 md:px-8 lg:h-full lg:w-[460px] lg:border-b-0 lg:border-r lg:py-7">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-app p-3">
           <span
-            className="size-8 shrink-0 rounded-md border border-border"
+            className="size-14 shrink-0 rounded-lg border border-border"
             style={sheetFillStyle(sheet)}
             aria-hidden
           />
-          <p className="min-w-0 truncate text-[14px] font-medium text-ink">
-            {sheet.name}, {sheet.thicknessMm} mm · {grainMm}×{crossMm}
-            {duplung ? ' · duplung' : ''}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[16px] font-semibold text-ink">
+              {sheet.name}
+            </p>
+            <p className="truncate text-[14px] tabular-nums text-ink-secondary">
+              {grainMm} × {crossMm} mm · {draft.quantity} db
+              {duplung ? ' · duplung' : ''}
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <h1 className="text-[36px] font-semibold leading-tight tracking-tight text-ink lg:text-[40px]">
+            Hol legyen élzáró?
+          </h1>
+          <p className="mt-2 text-[16px] text-ink-secondary">
+            {EDGE_COPY.stepSub}
           </p>
         </div>
-      </div>
 
-      <p className="flex items-center gap-2.5 rounded-xl border-2 border-ink/15 bg-surface px-4 py-2.5 text-[16px] text-ink">
-        <Layers className="size-5 shrink-0 text-ink-muted" aria-hidden />
-        <span>
-          <span className="font-semibold">Nézd meg az élzáró mintákat</span>{' '}
-          a kiosk mellett. Ott megfoghatod és összevetheted a lappal.
-        </span>
-      </p>
+        <p className="flex items-start gap-2.5 rounded-xl border border-ink/15 bg-app px-4 py-3 text-[16px] leading-snug text-ink">
+          <Layers className="mt-0.5 size-5 shrink-0 text-ink-secondary" aria-hidden />
+          <span>
+            <span className="font-semibold">Nézd meg az élzáró mintákat</span>{' '}
+            a kiosk mellett. Ott megfoghatod és összevetheted a lappal.
+          </span>
+        </p>
 
-      <div className="grid min-h-0 flex-1 items-start gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-5">
-        <KioskMachiningPreview
-          grainMm={grainMm}
-          crossMm={crossMm}
-          swatch={sheet.swatch}
-          imageUrl={sheet.imageUrl}
-          grainDirection={sheet.grainDirection}
-          quantity={draft.quantity}
-          machining={draft.machining}
-          edgeIds={draft.edgeIds}
-          compact
-          caption={summary === 'Nincs él' ? '' : summary}
-        />
-
-        <div className="overflow-hidden rounded-xl border-2 border-border bg-surface">
-          <div className="grid grid-cols-[8.5rem_1fr] border-b border-border bg-subtle px-3 py-2 text-[12px] font-semibold uppercase tracking-wide text-ink-muted">
-            <span>Él</span>
-            <span>Típus</span>
-          </div>
+        <div className="overflow-hidden rounded-2xl border-2 border-border">
           {types.length === 0 ? (
-            <p className="px-3 py-4 text-[14px] text-ink-muted">
+            <p className="px-4 py-4 text-[15px] text-ink-muted">
               Nincs hozzárendelt élzáró típus. Él nélkül is mehetsz tovább, vagy
               kérj segítséget a pultnál.
             </p>
@@ -2359,23 +2603,23 @@ function EdgeStep({
               <div
                 key={slot}
                 className={cn(
-                  'grid grid-cols-[8.5rem_1fr] items-center gap-2 px-3 py-2',
+                  'space-y-2 px-4 py-3.5',
                   i < rows.length - 1 && 'border-b border-border'
                 )}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <span
                     className={cn(
-                      'flex size-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold',
+                      'flex size-10 shrink-0 items-center justify-center rounded-md text-[20px] font-bold',
                       selected
                         ? 'bg-ink text-white'
-                        : 'border border-border bg-subtle text-ink-muted'
+                        : 'border border-border bg-app text-ink-secondary'
                     )}
                     aria-hidden
                   >
                     {badge}
                   </span>
-                  <span className="text-[15px] font-semibold text-ink">
+                  <span className="text-[18px] font-semibold text-ink">
                     {label}
                   </span>
                 </div>
@@ -2385,7 +2629,7 @@ function EdgeStep({
                   emptyLabel="Nincs"
                   placeholder="Válassz típust"
                   className="min-w-0"
-                  triggerClassName="h-12 border-2 text-[14px] font-medium"
+                  triggerClassName="h-14 border-2 text-[17px] font-medium"
                   disabled={types.length === 0}
                   options={types.map((t) => ({
                     value: t.typeId,
@@ -2397,7 +2641,22 @@ function EdgeStep({
             )
           })}
         </div>
-      </div>
+      </aside>
+
+      <section className="flex min-h-[360px] min-w-0 flex-1 flex-col bg-app px-6 py-6 md:px-10 lg:h-full lg:py-8">
+        <KioskMachiningPreview
+          grainMm={grainMm}
+          crossMm={crossMm}
+          swatch={sheet.swatch}
+          imageUrl={sheet.imageUrl}
+          grainDirection={sheet.grainDirection}
+          quantity={draft.quantity}
+          machining={draft.machining}
+          edgeIds={draft.edgeIds}
+          fillStage
+          caption={summary === 'Nincs él' ? '' : summary}
+        />
+      </section>
     </div>
   )
 }
@@ -2441,6 +2700,19 @@ function CartStep({
   const [explainMaterialId, setExplainMaterialId] = useState<string | null>(
     null
   )
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(
+    cart[0]?.id ?? null
+  )
+
+  useEffect(() => {
+    if (cart.length === 0) {
+      setSelectedLineId(null)
+      return
+    }
+    if (!selectedLineId || !cart.some((l) => l.id === selectedLineId)) {
+      setSelectedLineId(cart[0]?.id ?? null)
+    }
+  }, [cart, selectedLineId])
 
   const groups = useMemo(() => {
     const map = new Map<
@@ -2473,330 +2745,371 @@ function CartStep({
     ? sheets.find((x) => x.id === explainMaterialId)
     : undefined
   const canExplain = priceStatus === 'ok' && Boolean(pricedMaterials?.length)
+  const selectedLine =
+    cart.find((l) => l.id === selectedLineId) ?? cart[0] ?? null
+  const selectedSheet = selectedLine
+    ? sheets.find((s) => s.id === selectedLine.sheetId)
+    : undefined
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="text-[28px] font-semibold text-ink md:text-[32px]">
-          Nézd át a rendelésed
-        </h1>
-        {cart.length > 0 ? (
-          <p className="text-[15px] tabular-nums text-ink-secondary">
-            {cart.length} panel · {totalPieces} db · {groups.length} anyag
-          </p>
-        ) : null}
-      </div>
-
-      {cart.length === 0 ? (
-        <p className="rounded-xl border border-border bg-surface p-4 text-[16px] text-ink-secondary">
-          A kosár üres. Válassz lapot.
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {groups.map((group) => {
-            const s = group.sheet
-            const groupPieces = group.rows.reduce((n, r) => n + r.quantity, 0)
-            const matExplain = pricedMaterials?.find(
-              (m) => m.materialId === group.sheetId
-            )
-            const groupGross =
-              priceStatus === 'ok' && matExplain
-                ? matExplain.totalGross
-                : null
-            const hasExplainForGroup = canExplain && Boolean(matExplain)
-            const groupHasLabel = group.rows.some((r) => r.label?.trim())
-            return (
-              <div
-                key={group.sheetId}
-                className="overflow-hidden rounded-xl border border-border bg-surface"
-              >
-                <div className="flex flex-wrap items-center gap-3 border-b border-border border-l-[3px] border-l-primary bg-subtle px-3 py-2.5">
-                  <span
-                    className="size-10 shrink-0 rounded-md border border-border"
-                    style={
-                      s
-                        ? sheetFillStyle(s)
-                        : { background: 'var(--color-subtle)' }
-                    }
-                    aria-hidden
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[16px] font-semibold text-ink">
-                      {s?.name ?? 'Lap'}
-                      {s ? `, ${s.thicknessMm} mm` : ''}
-                    </p>
-                    <p className="text-[13px] tabular-nums text-ink-secondary">
-                      {group.rows.length} panel · {groupPieces} db
-                    </p>
-                    {hasExplainForGroup ? (
-                      <button
-                        type="button"
-                        className="mt-0.5 text-left text-[13px] font-medium text-ink underline-offset-2 hover:underline"
-                        aria-label={`Hogyan jött ki az ár: ${s?.name ?? 'lap'}`}
-                        onClick={() => setExplainMaterialId(group.sheetId)}
-                      >
-                        Hogyan jött ki ez az ár?
-                      </button>
-                    ) : priceStatus === 'stale' ||
-                      priceStatus === 'none' ||
-                      priceStatus === 'error' ? (
-                      <p className="mt-0.5 text-[12px] text-ink-muted">
-                        Ár után látszik az anyag ára
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    {groupGross != null ? (
-                      <p className="rounded-md bg-success-soft px-2.5 py-1 text-[18px] font-semibold tabular-nums text-success-ink md:text-[20px]">
-                        {formatHuf(groupGross)}
-                      </p>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="h-11 shrink-0 text-[14px]"
-                      onClick={() => onAddSame(group.sheetId)}
-                    >
-                      + Ugyanebből még
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="h-11 shrink-0 text-[14px]"
-                      onClick={() => onRecolorMove(group.sheetId)}
-                    >
-                      <Replace className="size-4" aria-hidden />
-                      Dekor csere
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="h-11 shrink-0 text-[14px]"
-                      onClick={() => onRecolorCopy(group.sheetId)}
-                    >
-                      <Copy className="size-4" aria-hidden />
-                      Másolás
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      className="h-11 shrink-0 gap-1.5 text-[14px]"
-                      onClick={() => onAskDeleteGroup(group.sheetId)}
-                    >
-                      <Trash2 className="size-4" aria-hidden />
-                      Szín törlése
-                    </Button>
-                  </div>
-                </div>
-
-                {priceStatus === 'ok' && matExplain && matExplain.fullBoardCount > 0 ? (
-                  <p className="flex items-start gap-2 border-b border-border px-3 py-2 text-[14px] text-ink">
-                    <PackageCheck
-                      className="mt-0.5 size-4 shrink-0 text-success-ink"
-                      aria-hidden
-                    />
-                    {LEFTOVER_COPY.cart}
-                  </p>
-                ) : null}
-
-                <DataTable className="rounded-none border-0">
-                  <DataTableHead>
-                    <DataTableRow>
-                      {groupHasLabel ? (
-                        <DataTableHeaderCell>Megnevezés</DataTableHeaderCell>
-                      ) : null}
-                      <DataTableHeaderCell
-                        align="right"
-                        className="min-w-[6.5rem] whitespace-nowrap"
-                      >
-                        Szálirány
-                      </DataTableHeaderCell>
-                      <DataTableHeaderCell
-                        align="right"
-                        className="min-w-[6.5rem] whitespace-nowrap"
-                      >
-                        Keresztirány
-                      </DataTableHeaderCell>
-                      <DataTableHeaderCell
-                        align="right"
-                        className="min-w-[3.5rem] whitespace-nowrap"
-                      >
-                        Darab
-                      </DataTableHeaderCell>
-                      <DataTableHeaderCell>Megmunkálás</DataTableHeaderCell>
-                      <DataTableHeaderCell>Élzárás</DataTableHeaderCell>
-                      <DataTableHeaderCell className="w-[1%] whitespace-nowrap text-right">
-                        <span className="sr-only">Törlés</span>
-                      </DataTableHeaderCell>
-                    </DataTableRow>
-                  </DataTableHead>
-                  <DataTableBody>
-                    {group.rows.map((line) => {
-                      const chips = machiningSummaryChips(line.machining)
-                      const edgeChips = edgeCartChips(line.edgeIds)
-                      return (
-                        <DataTableRow
-                          key={line.id}
-                          role="button"
-                          tabIndex={0}
-                          className="cursor-pointer transition-colors hover:bg-subtle"
-                          onClick={() => onEdit(line)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault()
-                              onEdit(line)
-                            }
-                          }}
-                        >
-                          {groupHasLabel ? (
-                            <DataTableCell className="max-w-[12rem] truncate text-[15px] font-medium">
-                              {line.label?.trim() ? (
-                                line.label
-                              ) : (
-                                <span className="font-normal text-ink-muted">
-                                  Nincs
-                                </span>
-                              )}
-                            </DataTableCell>
-                          ) : null}
-                          <DataTableCell
-                            align="right"
-                            className="min-w-[6.5rem] whitespace-nowrap text-[15px] tabular-nums"
-                          >
-                            {line.grainMm}&nbsp;
-                            <span className="text-ink-muted">mm</span>
-                          </DataTableCell>
-                          <DataTableCell
-                            align="right"
-                            className="min-w-[6.5rem] whitespace-nowrap text-[15px] tabular-nums"
-                          >
-                            {line.crossMm}&nbsp;
-                            <span className="text-ink-muted">mm</span>
-                          </DataTableCell>
-                          <DataTableCell
-                            align="right"
-                            className="min-w-[3.5rem] whitespace-nowrap text-[15px] tabular-nums"
-                          >
-                            {line.quantity}
-                          </DataTableCell>
-                          <DataTableCell className="max-w-[12rem]">
-                            {chips.length > 0 ? (
-                              <span className="flex flex-wrap gap-1">
-                                {chips.map((label) => (
-                                  <span
-                                    key={label}
-                                    className="whitespace-nowrap rounded bg-ink px-1.5 py-0.5 text-[12px] font-medium text-white"
-                                  >
-                                    {label}
-                                  </span>
-                                ))}
-                              </span>
-                            ) : (
-                              <span className="text-ink-muted">Nincs</span>
-                            )}
-                          </DataTableCell>
-                          <DataTableCell className="min-w-[10rem]">
-                            {edgeChips.length > 0 ? (
-                              <span className="flex flex-wrap gap-1">
-                                {edgeChips.map((c) => (
-                                  <span
-                                    key={c.key}
-                                    className="inline-flex max-w-[11rem] items-center gap-1 whitespace-nowrap rounded border border-border bg-white px-1.5 py-0.5 text-[12px] text-ink"
-                                    title={`${c.badge} · ${c.name}`}
-                                  >
-                                    <span className="font-semibold text-ink">
-                                      {c.badge}
-                                    </span>
-                                    <span className="truncate text-ink-secondary">
-                                      {c.name}
-                                    </span>
-                                  </span>
-                                ))}
-                              </span>
-                            ) : (
-                              <span className="text-ink-muted">Él nélkül</span>
-                            )}
-                          </DataTableCell>
-                          <DataTableCell className="text-right">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="size-10 p-0 text-danger-ink hover:text-danger-ink"
-                              aria-label="Tétel törlése"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onAskDeleteLine(line.id)
-                              }}
-                            >
-                              <Trash2 className="size-4" aria-hidden />
-                            </Button>
-                          </DataTableCell>
-                        </DataTableRow>
-                      )
-                    })}
-                  </DataTableBody>
-                </DataTable>
-              </div>
-            )
-          })}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+      <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-border bg-surface px-5 py-6 md:px-6 lg:h-full lg:w-[400px] lg:border-b-0 lg:border-r lg:py-7">
+        <div className="space-y-1">
+          <h1 className="text-[36px] font-semibold leading-tight tracking-tight text-ink lg:text-[40px]">
+            Nézd át a rendelésed
+          </h1>
+          {cart.length > 0 ? (
+            <p className="text-[18px] tabular-nums text-ink-secondary">
+              {cart.length} panel · {totalPieces} db · {groups.length} anyag
+            </p>
+          ) : (
+            <p className="text-[18px] text-ink-secondary">A kosár üres.</p>
+          )}
         </div>
-      )}
 
-      <div className="flex flex-wrap gap-2">
+        {cart.length > 0 ? (
+          <CartPriceStatusCard
+            priceStatus={priceStatus}
+            priceError={priceError}
+            onRunPrice={onRunPrice}
+          />
+        ) : null}
+
         <Button
           type="button"
           variant="secondary"
-          className="h-12 text-[16px]"
+          className="h-14 w-full justify-start text-[18px] font-semibold"
           onClick={onAddMore}
         >
           + Másik anyag
         </Button>
+
         {cart.length > 0 ? (
-          <Button
-            type="button"
-            variant="danger"
-            className="h-12 gap-1.5 text-[16px]"
-            onClick={onAskClearCart}
-          >
-            <Trash2 className="size-4" aria-hidden />
-            Kosár ürítése
-          </Button>
+          <div className="flex items-start gap-3 rounded-xl border border-border bg-app px-4 py-3.5">
+            <Clock
+              className="mt-0.5 size-5 shrink-0 text-ink-secondary"
+              aria-hidden
+            />
+            <div className="space-y-1 text-[16px] leading-snug text-ink-secondary">
+              <p className="font-semibold text-ink">Mikor lesz kész?</p>
+              {hasOrderSheet ? (
+                <p>
+                  Rendelésre lapot is választottál. Ezt be kell szereznünk,
+                  ezért több idő, mire elkészül. A pultnál megmondjuk, mikorra
+                  várható.
+                </p>
+              ) : (
+                <p>A pultnál megmondjuk, mikorra várható.</p>
+              )}
+              <p>Ha elkészült, SMS-ben szólunk.</p>
+            </div>
+          </div>
         ) : null}
-      </div>
+
+        <div className="mt-auto pt-2">
+          {cart.length > 0 ? (
+            <Button
+              type="button"
+              variant="danger"
+              className="h-12 w-full gap-1.5 text-[16px]"
+              onClick={onAskClearCart}
+            >
+              <Trash2 className="size-4" aria-hidden />
+              Kosár ürítése
+            </Button>
+          ) : null}
+        </div>
+      </aside>
+
+      <section className="flex min-h-0 min-w-0 flex-[1.15] flex-col overflow-y-auto bg-app px-5 py-6 lg:h-full lg:border-r lg:border-border lg:px-6 lg:py-7">
+        {cart.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center">
+            <p className="text-[20px] font-semibold text-ink">A kosár üres</p>
+            <p className="mt-1 max-w-sm text-[16px] text-ink-secondary">
+              Válassz lapot a bal oldali „+ Másik anyag” gombbal.
+            </p>
+          </div>
+        ) : (
+          <div className="flex w-full flex-col gap-6">
+            {groups.map((group) => {
+              const s = group.sheet
+              const groupPieces = group.rows.reduce(
+                (n, r) => n + r.quantity,
+                0
+              )
+              const matExplain = pricedMaterials?.find(
+                (m) => m.materialId === group.sheetId
+              )
+              const groupGross =
+                priceStatus === 'ok' && matExplain
+                  ? matExplain.totalGross
+                  : null
+              const hasExplainForGroup = canExplain && Boolean(matExplain)
+              const fill = s
+                ? sheetFillStyle(s)
+                : { background: 'var(--color-subtle)' }
+
+              return (
+                <div
+                  key={group.sheetId}
+                  className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
+                >
+                  <div className="space-y-3 border-b-2 border-border border-l-[3px] border-l-primary bg-surface px-4 py-3.5">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span
+                        className="size-12 shrink-0 rounded-lg border border-border"
+                        style={fill}
+                        aria-hidden
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 text-[20px] font-semibold leading-snug text-ink">
+                          {s?.name ?? 'Lap'}
+                          {s ? `, ${s.thicknessMm} mm` : ''}
+                        </p>
+                        <p className="text-[16px] tabular-nums text-ink-secondary">
+                          {group.rows.length} panel · {groupPieces} db
+                        </p>
+                      </div>
+                      {groupGross != null ? (
+                        <p className="rounded-md bg-success-soft px-3 py-1.5 text-[28px] font-semibold tabular-nums text-success-ink">
+                          {formatHuf(groupGross)}
+                        </p>
+                      ) : (
+                        <p className="text-[16px] text-ink-secondary">
+                          Ár után látszik
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {hasExplainForGroup ? (
+                        <button
+                          type="button"
+                          className="mr-auto text-left text-[16px] font-medium text-ink underline-offset-2 hover:underline"
+                          aria-label={`Hogyan jött ki az ár: ${s?.name ?? 'lap'}`}
+                          onClick={() => setExplainMaterialId(group.sheetId)}
+                        >
+                          Hogyan jött ki ez az ár?
+                        </button>
+                      ) : (
+                        <span className="mr-auto" />
+                      )}
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-11 shrink-0 text-[15px]"
+                        onClick={() => onAddSame(group.sheetId)}
+                      >
+                        + Ugyanebből még
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-11 shrink-0 text-[15px]"
+                        onClick={() => onRecolorMove(group.sheetId)}
+                      >
+                        <Replace className="size-4" aria-hidden />
+                        Dekor csere
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-11 shrink-0 text-[15px]"
+                        onClick={() => onRecolorCopy(group.sheetId)}
+                      >
+                        <Copy className="size-4" aria-hidden />
+                        Másolás
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        className="h-11 shrink-0 gap-1.5 text-[15px]"
+                        onClick={() => onAskDeleteGroup(group.sheetId)}
+                      >
+                        <Trash2 className="size-4" aria-hidden />
+                        Szín törlése
+                      </Button>
+                    </div>
+                  </div>
+
+                  {priceStatus === 'ok' &&
+                  matExplain &&
+                  matExplain.fullBoardCount > 0 ? (
+                    <p className="flex items-start gap-2 border-b border-border px-4 py-2.5 text-[16px] text-ink">
+                      <PackageCheck
+                        className="mt-0.5 size-5 shrink-0 text-success-ink"
+                        aria-hidden
+                      />
+                      {LEFTOVER_COPY.cart}
+                    </p>
+                  ) : null}
+
+                  <ul className="space-y-2 p-3">
+                    {group.rows.map((line) => {
+                      const chips = machiningSummaryChips(line.machining)
+                      const edgeChips = edgeCartChips(line.edgeIds)
+                      const label = line.label?.trim()
+                      const selected = selectedLine?.id === line.id
+                      return (
+                        <li key={line.id}>
+                          <div
+                            className={cn(
+                              'flex items-center gap-3 rounded-lg border-2 bg-surface py-3.5 pl-3 pr-3 transition-colors',
+                              selected
+                                ? 'border-ink border-l-[6px]'
+                                : 'border-transparent hover:border-border-strong'
+                            )}
+                          >
+                            <button
+                              type="button"
+                              aria-pressed={selected}
+                              className="flex min-w-0 flex-1 items-center gap-4 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/30"
+                              onClick={() => setSelectedLineId(line.id)}
+                              onDoubleClick={() => onEdit(line)}
+                            >
+                              <CartPanelThumb
+                                grainMm={line.grainMm}
+                                crossMm={line.crossMm}
+                                machining={line.machining}
+                                fillStyle={fill}
+                                grainDirection={Boolean(s?.grainDirection)}
+                              />
+                              <div className="min-w-0 flex-1 space-y-1.5">
+                                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                                  {label ? (
+                                    <p className="line-clamp-2 text-[20px] font-semibold text-ink">
+                                      {label}
+                                    </p>
+                                  ) : null}
+                                  <p className="text-[20px] font-semibold tabular-nums text-ink">
+                                    {line.grainMm} × {line.crossMm}
+                                    <span className="ml-1 text-[16px] font-normal text-ink-secondary">
+                                      mm
+                                    </span>
+                                  </p>
+                                  <p className="text-[18px] tabular-nums text-ink-secondary">
+                                    {line.quantity} db
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {chips.length > 0 ? (
+                                    chips.map((chip) => (
+                                      <span
+                                        key={chip}
+                                        className="whitespace-nowrap rounded bg-ink px-2 py-0.5 text-[16px] font-medium text-white"
+                                      >
+                                        {chip}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-[16px] text-ink-secondary">
+                                      Nincs megmunkálás
+                                    </span>
+                                  )}
+                                  {edgeChips.length > 0 ? (
+                                    edgeChips.map((c) => (
+                                      <span
+                                        key={c.key}
+                                        className="inline-flex max-w-[14rem] items-center gap-1 whitespace-nowrap rounded border border-border bg-white px-2 py-0.5 text-[16px] text-ink"
+                                        title={`${c.badge} · ${c.name}`}
+                                      >
+                                        <span className="font-semibold">
+                                          {c.badge}
+                                        </span>
+                                        <span className="truncate text-ink-secondary">
+                                          {c.name}
+                                        </span>
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-[16px] text-ink-secondary">
+                                      Él nélkül
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {selected ? (
+                                <span className="inline-flex items-center gap-1.5 rounded-md bg-ink px-2.5 py-1.5 text-[15px] font-semibold text-white">
+                                  <Eye className="size-4" aria-hidden />
+                                  Rajzon
+                                </span>
+                              ) : null}
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="h-12 gap-1.5 text-[16px]"
+                                onClick={() => onEdit(line)}
+                              >
+                                <Pencil className="size-4" aria-hidden />
+                                Módosítás
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                className="size-12 p-0 text-danger-ink hover:text-danger-ink"
+                                aria-label="Tétel törlése"
+                                onClick={() => onAskDeleteLine(line.id)}
+                              >
+                                <Trash2 className="size-5" aria-hidden />
+                              </Button>
+                            </div>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
 
       {cart.length > 0 ? (
-        <div className="flex items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3">
-          <Clock className="mt-0.5 size-5 shrink-0 text-ink-muted" aria-hidden />
-          <div className="space-y-1 text-[15px] text-ink-secondary">
-            <p className="font-semibold text-ink">Mikor lesz kész?</p>
-            {hasOrderSheet ? (
-              <p>
-                Rendelésre lapot is választottál. Ezt be kell szereznünk, ezért
-                több idő, mire elkészül. A pultnál megmondjuk, mikorra várható.
-              </p>
-            ) : (
-              <p>A pultnál megmondjuk, mikorra várható.</p>
-            )}
-            <p>Ha elkészült, SMS-ben szólunk.</p>
-          </div>
-        </div>
-      ) : null}
-
-      {priceError ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-danger-soft bg-danger-soft/40 px-3 py-2.5">
-          <p className="min-w-0 flex-1 text-[14px] text-danger-ink">
-            {priceError}
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            className="h-9 text-[13px]"
-            onClick={onRunPrice}
-          >
-            Újra
-          </Button>
-        </div>
+        <section className="flex min-h-[320px] min-w-0 flex-1 flex-col bg-app px-5 py-6 lg:h-full lg:px-6 lg:py-7">
+          {selectedLine && selectedSheet ? (
+            <>
+              <div className="mb-3 space-y-0.5">
+                <p className="inline-flex items-center gap-1.5 text-[16px] font-semibold text-ink-secondary">
+                  <Eye className="size-4" aria-hidden />
+                  A kijelölt sor rajza
+                </p>
+                <p className="line-clamp-2 text-[20px] font-semibold text-ink">
+                  {selectedSheet.name}, {selectedSheet.thicknessMm} mm
+                </p>
+                <p className="text-[18px] tabular-nums text-ink-secondary">
+                  {selectedLine.label?.trim()
+                    ? `${selectedLine.label.trim()} · `
+                    : ''}
+                  {selectedLine.grainMm} × {selectedLine.crossMm} mm ·{' '}
+                  {selectedLine.quantity} db
+                </p>
+              </div>
+              <KioskMachiningPreview
+                grainMm={selectedLine.grainMm}
+                crossMm={selectedLine.crossMm}
+                swatch={selectedSheet.swatch}
+                imageUrl={selectedSheet.imageUrl}
+                grainDirection={selectedSheet.grainDirection}
+                quantity={selectedLine.quantity}
+                machining={selectedLine.machining}
+                edgeIds={selectedLine.edgeIds}
+                fillStage
+                caption={
+                  edgeSummaryLabel(selectedLine.edgeIds) === 'Nincs él'
+                    ? ''
+                    : edgeSummaryLabel(selectedLine.edgeIds)
+                }
+              />
+            </>
+          ) : (
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-border bg-surface px-6 text-center text-[18px] text-ink-secondary">
+              Válassz egy sort a listából.
+            </div>
+          )}
+        </section>
       ) : null}
 
       <KioskPriceExplainSheet
@@ -2807,6 +3120,98 @@ function CartStep({
         material={explainMaterial}
         thicknessMm={explainSheet?.thicknessMm}
       />
+    </div>
+  )
+}
+
+function CartPriceStatusCard({
+  priceStatus,
+  priceError,
+  onRunPrice
+}: {
+  priceStatus: PriceStatus
+  priceError: string | null
+  onRunPrice: () => void
+}) {
+  if (priceStatus === 'ok') {
+    return (
+      <div className="flex items-start gap-3 rounded-xl border border-success-soft bg-success-soft/50 px-4 py-3.5">
+        <Check
+          className="mt-0.5 size-5 shrink-0 text-success-ink"
+          aria-hidden
+        />
+        <div className="min-w-0">
+          <p className="text-[16px] font-semibold text-success-ink">
+            Ár kiszámolva
+          </p>
+          <p className="mt-0.5 text-[16px] text-ink-secondary">
+            A végösszeg a láblécben látszik.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (priceStatus === 'loading') {
+    return (
+      <div className="rounded-xl border border-border bg-app px-4 py-3.5">
+        <p className="text-[16px] font-semibold text-ink">Ár számolása…</p>
+        <p className="mt-0.5 text-[16px] text-ink-secondary">
+          Egy pillanat, amíg az optimalizálás lefut.
+        </p>
+      </div>
+    )
+  }
+
+  if (priceStatus === 'error') {
+    return (
+      <div className="flex flex-wrap items-start gap-3 rounded-xl border border-danger-soft bg-danger-soft/40 px-4 py-3.5">
+        <AlertTriangle
+          className="mt-0.5 size-5 shrink-0 text-danger-ink"
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1 space-y-2">
+          <p className="text-[15px] font-medium text-danger-ink">
+            {priceError ?? 'Nem sikerült az árat kiszámolni.'}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-10 text-[14px]"
+            onClick={onRunPrice}
+          >
+            Újra
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (priceStatus === 'stale') {
+    return (
+      <div className="flex items-start gap-3 rounded-xl border border-warning-soft bg-warning-soft/40 px-4 py-3.5">
+        <AlertTriangle
+          className="mt-0.5 size-5 shrink-0 text-warning-ink"
+          aria-hidden
+        />
+        <div className="min-w-0">
+          <p className="text-[16px] font-semibold text-ink">
+            A kosár változott
+          </p>
+          <p className="mt-0.5 text-[16px] text-ink-secondary">
+            Számold újra az árat a lábléc gombjával.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-app px-4 py-3.5">
+      <p className="text-[16px] font-semibold text-ink">Még nincs ár</p>
+      <p className="mt-0.5 text-[16px] text-ink-secondary">
+        Nyomd az „Ár kiszámítása” gombot a láblécben.
+      </p>
     </div>
   )
 }
