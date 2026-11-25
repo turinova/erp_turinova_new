@@ -202,7 +202,8 @@ export function KioskShell({
     <div
       className={cn(
         'relative flex flex-col bg-app text-ink',
-        bare ? 'min-h-[100dvh]' : 'h-[100dvh] overflow-hidden'
+        // Attract + Kész: teljes viewport, görgetés nélkül (24″ FHD).
+        'h-[100dvh] overflow-hidden'
       )}
     >
       {showChrome ? (

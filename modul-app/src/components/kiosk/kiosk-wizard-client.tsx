@@ -1938,30 +1938,30 @@ function SizeStep({
   const sizeLabel = grain && cross ? `${grain} × ${cross} mm` : '- × - mm'
   const labelInside = panelSize.width >= 220 && panelSize.height >= 72
 
+  const hasFormMessage =
+    (needsBothDims && hardErrors.length === 0) ||
+    hardErrors.length > 0 ||
+    Boolean(softWarn)
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-      <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-border bg-surface px-6 py-6 md:px-8 lg:h-full lg:w-[460px] lg:border-b-0 lg:border-r lg:py-7">
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-app p-3">
+      {/* 1920×1080: bal mezők görgetés nélkül (~560 px). Hibák a jobb rajz fölé. */}
+      <aside className="flex w-full shrink-0 flex-col gap-4 overflow-y-auto border-b border-border bg-surface px-5 py-5 md:px-6 lg:h-full lg:w-[640px] lg:border-b-0 lg:border-r lg:py-6">
+        <div className="flex h-16 items-center gap-3 rounded-xl border border-border bg-app px-3">
           <span
-            className="size-14 shrink-0 rounded-lg border border-border"
+            className="size-11 shrink-0 rounded-md border border-border"
             style={sheetFillStyle(sheet)}
             aria-hidden
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[16px] font-semibold text-ink">
+            <p className="truncate text-[16px] font-semibold leading-tight text-ink">
               {sheet.name}
             </p>
             <p className="truncate text-[14px] tabular-nums text-ink-secondary">
               {formatSheetDims(sheet)}
+              <span className="mx-1.5 text-ink-muted">·</span>
+              {sheet.onStock ? 'Raktáron' : 'Rendelésre'}
             </p>
-            <div className="mt-1">
-              <StatusBadge
-                tone={sheet.onStock ? 'success' : 'neutral'}
-                variant={sheet.onStock ? 'soft' : 'outline'}
-              >
-                {sheet.onStock ? 'Raktáron' : 'Rendelésre'}
-              </StatusBadge>
-            </div>
           </div>
           <Button
             type="button"
@@ -1974,174 +1974,181 @@ function SizeStep({
         </div>
 
         <div>
-          <h1 className="text-[36px] font-semibold leading-tight tracking-tight text-ink lg:text-[40px]">
+          <h1 className="text-[32px] font-semibold leading-tight tracking-tight text-ink lg:text-[36px]">
             Mekkora legyen a lap?
           </h1>
           <p
-            className="mt-2 text-[16px] leading-snug text-ink-secondary"
+            className="mt-1 text-[16px] leading-snug text-ink-secondary"
             role="note"
           >
             {FINISHED_SIZE_COPY.sizeStep}
           </p>
         </div>
 
-        <label className="block">
-          <span className="mb-1.5 flex items-center gap-1.5 text-[18px] font-semibold text-ink">
-            <ArrowLeftRight className="size-4" aria-hidden />
-            Szálirány
-            <span className="font-normal text-ink-secondary">(szál mentén)</span>
-          </span>
-          <div className="relative">
-            <Input
-              ref={grainInputRef}
-              inputMode="numeric"
-              value={draft.grainRaw}
-              placeholder="pl. 800"
-              enterKeyHint="next"
-              className={cn(
-                'h-[72px] pr-14 text-[32px] font-semibold tabular-nums',
-                focusDim === 'grain' && 'border-ink ring-2 ring-ink/20'
-              )}
-              onFocus={() => setFocusDim('grain')}
-              onBlur={() => setFocusDim((d) => (d === 'grain' ? null : d))}
-              onChange={(e) =>
-                onChange({
-                  grainRaw: clampDimensionRaw(e.target.value, maxGrainMm)
-                })
-              }
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                crossInputRef.current?.focus()
-                crossInputRef.current?.select()
-              }}
-            />
-            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] font-medium text-ink-muted">
-              mm
+        <div className="grid grid-cols-2 gap-4">
+          <label className="block min-w-0">
+            <span className="mb-1.5 flex items-center gap-1.5 text-[17px] font-semibold text-ink">
+              <ArrowLeftRight className="size-4 shrink-0" aria-hidden />
+              Szálirány
             </span>
-          </div>
-          <p className="mt-1.5 text-[15px] tabular-nums text-ink-muted">
-            {grainHint}
-          </p>
-        </label>
+            <div className="relative">
+              <Input
+                ref={grainInputRef}
+                inputMode="numeric"
+                value={draft.grainRaw}
+                placeholder="pl. 800"
+                enterKeyHint="next"
+                className={cn(
+                  'h-[72px] pr-14 text-[32px] font-semibold tabular-nums',
+                  focusDim === 'grain' && 'border-ink ring-2 ring-ink/20'
+                )}
+                onFocus={() => setFocusDim('grain')}
+                onBlur={() => setFocusDim((d) => (d === 'grain' ? null : d))}
+                onChange={(e) =>
+                  onChange({
+                    grainRaw: clampDimensionRaw(e.target.value, maxGrainMm)
+                  })
+                }
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  crossInputRef.current?.focus()
+                  crossInputRef.current?.select()
+                }}
+              />
+              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] font-medium text-ink-muted">
+                mm
+              </span>
+            </div>
+            <p className="mt-1 text-[14px] tabular-nums text-ink-muted">
+              {grainHint}
+            </p>
+          </label>
 
-        <label className="block">
-          <span className="mb-1.5 flex items-center gap-1.5 text-[18px] font-semibold text-ink">
-            <ArrowUpDown className="size-4" aria-hidden />
-            Keresztirány
-            <span className="font-normal text-ink-secondary">(merőlegesen)</span>
-          </span>
-          <div className="relative">
-            <Input
-              ref={crossInputRef}
-              inputMode="numeric"
-              value={draft.crossRaw}
-              placeholder="pl. 400"
-              enterKeyHint="done"
-              className={cn(
-                'h-[72px] pr-14 text-[32px] font-semibold tabular-nums',
-                focusDim === 'cross' && 'border-ink ring-2 ring-ink/20'
-              )}
-              onFocus={() => setFocusDim('cross')}
-              onBlur={() => setFocusDim((d) => (d === 'cross' ? null : d))}
-              onChange={(e) =>
-                onChange({
-                  crossRaw: clampDimensionRaw(e.target.value, maxCrossMm)
-                })
-              }
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return
-                e.preventDefault()
-                if (canContinue) onContinue()
-              }}
-            />
-            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] font-medium text-ink-muted">
-              mm
+          <label className="block min-w-0">
+            <span className="mb-1.5 flex items-center gap-1.5 text-[17px] font-semibold text-ink">
+              <ArrowUpDown className="size-4 shrink-0" aria-hidden />
+              Keresztirány
             </span>
-          </div>
-          <p className="mt-1.5 text-[15px] tabular-nums text-ink-muted">
-            {crossHint}
-          </p>
-        </label>
-
-        <div className="flex items-center gap-4">
-          <span className="text-[18px] font-semibold text-ink">Darab</span>
-          <Button
-            type="button"
-            variant="secondary"
-            className="size-14 p-0"
-            aria-label="Kevesebb"
-            onClick={() =>
-              onChange({ quantity: Math.max(1, draft.quantity - 1) })
-            }
-          >
-            <Minus className="size-5" />
-          </Button>
-          <span className="min-w-[3rem] text-center text-[28px] font-semibold tabular-nums text-ink">
-            {draft.quantity}
-          </span>
-          <Button
-            type="button"
-            variant="secondary"
-            className="size-14 p-0"
-            aria-label="Több"
-            onClick={() =>
-              onChange({
-                quantity: Math.min(maxQty, draft.quantity + 1)
-              })
-            }
-          >
-            <Plus className="size-5" />
-          </Button>
+            <div className="relative">
+              <Input
+                ref={crossInputRef}
+                inputMode="numeric"
+                value={draft.crossRaw}
+                placeholder="pl. 400"
+                enterKeyHint="done"
+                className={cn(
+                  'h-[72px] pr-14 text-[32px] font-semibold tabular-nums',
+                  focusDim === 'cross' && 'border-ink ring-2 ring-ink/20'
+                )}
+                onFocus={() => setFocusDim('cross')}
+                onBlur={() => setFocusDim((d) => (d === 'cross' ? null : d))}
+                onChange={(e) =>
+                  onChange({
+                    crossRaw: clampDimensionRaw(e.target.value, maxCrossMm)
+                  })
+                }
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  e.preventDefault()
+                  if (canContinue) onContinue()
+                }}
+              />
+              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[18px] font-medium text-ink-muted">
+                mm
+              </span>
+            </div>
+            <p className="mt-1 text-[14px] tabular-nums text-ink-muted">
+              {crossHint}
+            </p>
+          </label>
         </div>
 
-        <label className="block">
-          <span className="mb-1.5 flex items-center gap-1.5 text-[18px] font-semibold text-ink">
-            Megnevezés
-            <span className="font-normal text-ink-secondary">(nem kötelező)</span>
-          </span>
-          <Input
-            value={draft.label}
-            maxLength={KIOSK_LABEL_MAX}
-            autoComplete="off"
-            className="h-14 text-[18px]"
-            onChange={(e) => onChange({ label: e.target.value })}
-          />
-          <p className="mt-1.5 text-[16px] text-ink-secondary">
-            Például: Konyha ajtó. Így a kosárban és a pultnál is könnyen
-            felismered.
-          </p>
-        </label>
+        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-end gap-4">
+          <div>
+            <span className="mb-1.5 block text-[17px] font-semibold text-ink">
+              Darab
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                className="size-14 p-0"
+                aria-label="Kevesebb"
+                onClick={() =>
+                  onChange({ quantity: Math.max(1, draft.quantity - 1) })
+                }
+              >
+                <Minus className="size-5" />
+              </Button>
+              <span className="min-w-[2.5rem] text-center text-[28px] font-semibold tabular-nums text-ink">
+                {draft.quantity}
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                className="size-14 p-0"
+                aria-label="Több"
+                onClick={() =>
+                  onChange({
+                    quantity: Math.min(maxQty, draft.quantity + 1)
+                  })
+                }
+              >
+                <Plus className="size-5" />
+              </Button>
+            </div>
+          </div>
 
-        {/* Üzenetek a mezőknél — nagy tipó, távolról olvasható; NEM a footerben */}
-        {needsBothDims && hardErrors.length === 0 ? (
-          <p
-            className="rounded-xl border-2 border-ink/25 bg-subtle px-4 py-3 text-[18px] font-semibold leading-snug text-ink"
-            role="status"
-          >
-            Írd be mindkét méretet milliméterben (mm).
-          </p>
-        ) : null}
-        {hardErrors.map((e) => (
-          <p
-            key={e}
-            className="rounded-xl border-2 border-danger/50 bg-danger-soft px-4 py-3 text-[18px] font-semibold leading-snug text-danger-ink"
-            role="alert"
-          >
-            {e}
-          </p>
-        ))}
-        {softWarn ? (
-          <p
-            className="rounded-xl border-2 border-warning/50 bg-warning-soft px-4 py-3 text-[18px] font-semibold leading-snug text-warning-ink"
-            role="status"
-          >
-            {softWarn}
-          </p>
-        ) : null}
+          <label className="block min-w-0">
+            <span className="mb-1.5 flex items-center gap-1.5 text-[17px] font-semibold text-ink">
+              Megnevezés
+              <span className="truncate font-normal text-ink-secondary">
+                (nem kötelező, pl. Konyha ajtó)
+              </span>
+            </span>
+            <Input
+              value={draft.label}
+              maxLength={KIOSK_LABEL_MAX}
+              autoComplete="off"
+              className="h-14 text-[18px]"
+              onChange={(e) => onChange({ label: e.target.value })}
+            />
+          </label>
+        </div>
       </aside>
 
-      <section className="flex min-h-[420px] min-w-0 flex-1 flex-col gap-4 bg-app px-6 py-6 md:px-10 lg:h-full lg:py-8">
+      <section className="flex min-h-[420px] min-w-0 flex-1 flex-col gap-3 bg-app px-6 py-5 md:px-10 lg:h-full lg:py-6">
+        {hasFormMessage ? (
+          <div className="shrink-0 space-y-2">
+            {needsBothDims && hardErrors.length === 0 ? (
+              <p
+                className="rounded-xl border-2 border-ink/25 bg-subtle px-4 py-3 text-[20px] font-semibold leading-snug text-ink"
+                role="status"
+              >
+                Írd be mindkét méretet milliméterben (mm).
+              </p>
+            ) : null}
+            {hardErrors.map((e) => (
+              <p
+                key={e}
+                className="rounded-xl border-2 border-danger/50 bg-danger-soft px-4 py-3 text-[20px] font-semibold leading-snug text-danger-ink"
+                role="alert"
+              >
+                {e}
+              </p>
+            ))}
+            {softWarn ? (
+              <p
+                className="rounded-xl border-2 border-warning/50 bg-warning-soft px-4 py-3 text-[20px] font-semibold leading-snug text-warning-ink"
+                role="status"
+              >
+                {softWarn}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <div
           ref={stageRef}
           className="flex min-h-0 flex-1 items-center justify-center"
@@ -2188,14 +2195,14 @@ function SizeStep({
         </div>
 
         {!labelInside ? (
-          <p className="text-center text-[40px] font-semibold tabular-nums text-ink">
+          <p className="shrink-0 text-center text-[40px] font-semibold tabular-nums text-ink">
             {sizeLabel}
           </p>
         ) : null}
 
         {sheet.grainDirection ? (
           <div
-            className="flex items-center justify-center gap-2"
+            className="flex shrink-0 items-center justify-center gap-2"
             role="note"
           >
             <span
@@ -2204,13 +2211,13 @@ function SizeStep({
             >
               !
             </span>
-            <p className="rounded-lg border border-danger/40 bg-danger-soft px-4 py-3 text-[18px] font-semibold leading-snug text-danger-ink">
+            <p className="rounded-lg border border-danger/40 bg-danger-soft px-4 py-2.5 text-[17px] font-semibold leading-snug text-danger-ink">
               Csak a <span className="underline">vonalak</span> mutatják a
               szálat. A kép iránya félrevezető lehet.
             </p>
           </div>
         ) : (
-          <p className="text-center text-[18px] text-ink-secondary">
+          <p className="shrink-0 text-center text-[17px] text-ink-secondary">
             Nincs szál. A két méret a két oldal.
           </p>
         )}
@@ -2554,15 +2561,16 @@ function EdgeStep({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
-      <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto border-b border-border bg-surface px-6 py-6 md:px-8 lg:h-full lg:w-[460px] lg:border-b-0 lg:border-r lg:py-7">
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-app p-3">
+      {/* 1920×1080: egy él = egy sor (~72 px), görgetés nélkül. */}
+      <aside className="flex w-full shrink-0 flex-col gap-4 overflow-y-auto border-b border-border bg-surface px-5 py-5 md:px-6 lg:h-full lg:w-[560px] lg:border-b-0 lg:border-r lg:py-6">
+        <div className="flex h-16 items-center gap-3 rounded-xl border border-border bg-app px-3">
           <span
-            className="size-14 shrink-0 rounded-lg border border-border"
+            className="size-11 shrink-0 rounded-md border border-border"
             style={sheetFillStyle(sheet)}
             aria-hidden
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[16px] font-semibold text-ink">
+            <p className="truncate text-[16px] font-semibold leading-tight text-ink">
               {sheet.name}
             </p>
             <p className="truncate text-[14px] tabular-nums text-ink-secondary">
@@ -2573,19 +2581,17 @@ function EdgeStep({
         </div>
 
         <div>
-          <h1 className="text-[36px] font-semibold leading-tight tracking-tight text-ink lg:text-[40px]">
+          <h1 className="text-[32px] font-semibold leading-tight tracking-tight text-ink lg:text-[36px]">
             Hol legyen élzáró?
           </h1>
-          <p className="mt-2 text-[16px] text-ink-secondary">
-            {EDGE_COPY.stepSub}
-          </p>
+          <p className="mt-1 text-[16px] text-ink-secondary">{EDGE_COPY.stepSub}</p>
         </div>
 
-        <p className="flex items-start gap-2.5 rounded-xl border border-ink/15 bg-app px-4 py-3 text-[16px] leading-snug text-ink">
-          <Layers className="mt-0.5 size-5 shrink-0 text-ink-secondary" aria-hidden />
+        <p className="flex items-center gap-2 rounded-lg border border-ink/15 bg-app px-3 py-2 text-[15px] leading-snug text-ink">
+          <Layers className="size-4 shrink-0 text-ink-secondary" aria-hidden />
           <span>
-            <span className="font-semibold">Nézd meg az élzáró mintákat</span>{' '}
-            a kiosk mellett. Ott megfoghatod és összevetheted a lappal.
+            <span className="font-semibold">Élzáró minták</span> a kiosk
+            mellett — fogd meg és vesd össze a lappal.
           </span>
         </p>
 
@@ -2603,33 +2609,31 @@ function EdgeStep({
               <div
                 key={slot}
                 className={cn(
-                  'space-y-2 px-4 py-3.5',
+                  'flex items-center gap-3 px-3 py-2.5',
                   i < rows.length - 1 && 'border-b border-border'
                 )}
               >
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={cn(
-                      'flex size-10 shrink-0 items-center justify-center rounded-md text-[20px] font-bold',
-                      selected
-                        ? 'bg-ink text-white'
-                        : 'border border-border bg-app text-ink-secondary'
-                    )}
-                    aria-hidden
-                  >
-                    {badge}
-                  </span>
-                  <span className="text-[18px] font-semibold text-ink">
-                    {label}
-                  </span>
-                </div>
+                <span
+                  className={cn(
+                    'flex size-10 shrink-0 items-center justify-center rounded-md text-[20px] font-bold',
+                    selected
+                      ? 'bg-ink text-white'
+                      : 'border border-border bg-app text-ink-secondary'
+                  )}
+                  aria-hidden
+                >
+                  {badge}
+                </span>
+                <span className="w-[7.5rem] shrink-0 text-[17px] font-semibold text-ink">
+                  {label}
+                </span>
                 <MenuSelect
                   value={value}
                   allowEmpty
                   emptyLabel="Nincs"
                   placeholder="Válassz típust"
-                  className="min-w-0"
-                  triggerClassName="h-14 border-2 text-[17px] font-medium"
+                  className="min-w-0 flex-1"
+                  triggerClassName="h-14 border-2 text-[16px] font-medium"
                   disabled={types.length === 0}
                   options={types.map((t) => ({
                     value: t.typeId,
@@ -2643,7 +2647,7 @@ function EdgeStep({
         </div>
       </aside>
 
-      <section className="flex min-h-[360px] min-w-0 flex-1 flex-col bg-app px-6 py-6 md:px-10 lg:h-full lg:py-8">
+      <section className="flex min-h-[360px] min-w-0 flex-1 flex-col bg-app px-6 py-5 md:px-10 lg:h-full lg:py-6">
         <KioskMachiningPreview
           grainMm={grainMm}
           crossMm={crossMm}

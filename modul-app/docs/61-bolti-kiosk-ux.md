@@ -55,6 +55,8 @@ Progress label: **Anyag · Méret · Megmunkálás · Él · Kosár · Adatok** 
 
 **Tilos:** staff 32px default gomb, 13.5px body, hover-only, glow/gradiens, emoji ikon, több primary.
 
+**24″ FHD görgetés:** Attract, Méret, Él, Kész **görgetés nélkül** férjen el (≈910 px stage a wizard chrome alatt; Kész = teljes 1080 bare). Overflow csak tartalék.
+
 ---
 
 ## 4. Brand hierarchia
@@ -64,7 +66,7 @@ Progress label: **Anyag · Méret · Megmunkálás · Él · Kosár · Adatok** 
 | Attract | **Bemutatóterem**: `TenantHeroLogo` a bal fehér oszlop tetején, optikai méretezés (fallback: cégnév 64px) | Footer „Powered by” |
 | Wizard topbar | `sm` logo, 44px magas, max 200px | — |
 | Help sheet | — | Footer compact |
-| Kész | Közepes logo | Footer |
+| Kész | `lg` logo, bal oszlop | Alsó sáv compact |
 
 Tenant mindig nagyobb / feljebb, mint Turinova. Flat Midday charcoal CTA — nincs glow.
 
@@ -106,20 +108,20 @@ Ugyanaz a logika, mint az Attract Bemutatóterem: **bal = döntés eszközei, jo
 - Csempe: nagyobb kép, `Raktáron` / `Rendelésre`, vastagság badge, név 17px, `L×W×T` · gyártó · Ft/m², `machine_code`. Tap = Méret.
 - Footer: csak **← Vissza** (nincs primary — a lap kiválasztása a CTA).
 
-### 2 Méret — „Műhelyasztal” (teljes szélesség, 24″ FHD)
-Ugyanaz a minta, mint az Anyag Katalógusfal: **bal = mezők (fehér, 460 px), jobb = nagy rajz**. `KioskShell wide`.
+### 2 Méret — „Műhelyasztal” (teljes szélesség, 24″ FHD, **görgetés nélkül**)
+Ugyanaz a minta: **bal = mezők (fehér, 640 px), jobb = nagy rajz**. `KioskShell wide`. Hasznos magasság ≈ 910 px (1080 − 72 top − 96 footer).
 
-- **Bal:** lapkártya · H1 **40px** · **Szálirány** / **Keresztirány** mező 72px, 32px szám · Darab · Megnevezés · hibák 18px.
-- **Jobb:** `ResizeObserver` max 1200×720. Dim címke **20px**, érték **40px** (top 100 / oldal 200). Panel közép **40px**. „Szál →” **18px**. Soft &lt;150 mm. Enter → tovább.
+- **Bal (~560 px magas):** egysoros lapkártya (64 px) · H1 **36px** · **Szálirány + Keresztirány egymás mellett** (72px mező, 32px szám) · **Darab + Megnevezés egy sorban**.
+- **Jobb:** hibák / soft warn **a rajz fölött** 20px · `ResizeObserver` max 1200×720. Dim címke **20px**, érték **40px**. Panel közép **40px**. Soft &lt;150 mm. Enter → tovább.
 
 ### 3 Megmunkálás — „Műhelyasztal” (teljes szélesség)
 - **Bal:** H1 40px · 3 sor (20px cím, Be/Ki). Inline opciók.
 - **Jobb:** `fillStage` — sarok **64px / 24px**, élhossz badge **22px**, közép méret **40px**, caption **20px**.
 - **Enter** = **Élzárás megadása →**.
 
-### 4 Él — „Műhelyasztal” (teljes szélesség)
-- **Bal:** H1 40px · él-lista (A/B/F badge **20px / 40px** kör + 56px `MenuSelect`).
-- **Jobb:** ugyanaz a `fillStage` — 22px élhossz badge, 40px közép. Caption = summary.
+### 4 Él — „Műhelyasztal” (teljes szélesség, **görgetés nélkül**)
+- **Bal (560 px):** egysoros lapkártya · H1 **36px** · kompakt mintasáv · **egy él = egy sor** (badge 40px + név + `MenuSelect` h-14). 4–5 él is belefér.
+- **Jobb:** `fillStage` — 22px élhossz badge, 40px közép. Caption = summary.
 - Footer: **Él nélkül a kosárba** · **Kosárba →**.
 
 ### 5 Kosár — „Átnézés” (teljes szélesség, 3 oszlop)
@@ -143,8 +145,12 @@ Ugyanaz a minta, mint az Anyag Katalógusfal: **bal = mezők (fehér, 460 px), j
 - Footer CTA **Leadom a pultnak · {Ft}**; tiltva → konkrét hiány.
 - **Közös gép:** `autoComplete="off"`; idle ≥120 mp. Kód: `details/*`, `cart/cart-panel-thumb.tsx`, `lib/kiosk/guest.ts`.
 
-### 7 Kész (peak-end)
-„**Köszönjük!**” + **nagy név** (hero) + „Mondd ezt a nevet a pultnál” + következő lépések (pult / fizetés / SMS). Nincs „írd fel”. Auto-újraindítás 30 mp.
+### 7 Kész (peak-end, teljes szélesség, **görgetés nélkül**)
+Két oszlop (bare shell, nincs wizard footer):
+
+- **Bal (fehér ~48%):** tenant logo `lg` · zöld pipa **96px** · „Köszönjük!” **48px** · **név 80px** (ezt mondja a pultnál) · instrukció **22px** · leftover 18px.
+- **Jobb (`bg-app`):** „Mi a következő lépés?” **28px** · 3 kártya (sorszám **56px**, cím **24px**, szöveg **20px**).
+- **Alsó sáv:** primary **Új rendelés indítása** h-16 / 22px · visszaszámláló 18px + progress bar · Turinova. Auto-reset 30 mp. Nincs „írd fel”.
 
 ---
 
