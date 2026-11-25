@@ -1,6 +1,7 @@
 # 58 — Vezetői iOS app (SaaS tenant riportok)
 
-**Állapot:** 2026-11-18 — **5 tab IA:** Ma · Jelenlét · Belépők · Figyelem · Több (Gyártás a Több alatt).  
+**Állapot:** 2026-11-24 — **⏸ SZÜNETELTETVE.** 4 tab: Kezdőlap · Jelenlét · Belépők · Több (rejtett: Lapszabászat, Gyártás). Hol tartunk, zárolt döntések, adatforrások, újraindítás, nyitott teendők, App Store lépések: **[`vezetoi-mobile/README.md` → Szüneteltetve](../../vezetoi-mobile/README.md)**. UX állapotnapló: [59](59-ios-vezetoi-ux.md).  
+2026-11-18 — **5 tab IA:** Ma · Jelenlét · Belépők · Figyelem · Több (Gyártás a Több alatt).  
 **Persona:** ügyvezető / tulajdonos / irodavezető — **5 mp glance**, Ft / pénzhatás első.  
 **Kapcsolat:** UX/wireframe **[59](59-ios-vezetoi-ux.md)** · home KPI [35](35-home-kpis.md) · tenancy [10](10-permissions-and-tenancy.md) · SaaS [17](17-saas-architecture.md) · eszközök [14](14-responsive-and-devices.md) · PDA (későbbi hullám) [45](45-pda-pos-addon.md).
 
@@ -46,10 +47,10 @@
 | Auth | Staff Supabase auth + membership | Nincs külön „mobil user” tábla |
 | Biometria | `expo-local-authentication` (opcionális unlock) | Session refresh továbbra is Supabase |
 | Data | Lean query / RPC — mint home KPI | Nincs `select('*')`; limitált listák |
-| UI | Saját `src/ui` + gifted-charts, Midday tokenek | PanelUI Expo Go-n NO-GO (worklets); később dev client |
+| UI | **PanelUI** (`panelui-native`) + Uniwind, `src/ui` adapterekkel; gifted-charts; Midday light tokenek (`src/global.css`) | Csak development clienten (Expo Go-n worklets crash) |
 | Chart | `react-native-gifted-charts` + SVG | Glance spark; Victory Native csak EAS után |
 | Ikon | `lucide-react-native` | Web Lucide párhuzam |
-| Build | **EAS Build / Submit** (iOS első) | Xcode a gépen **nem** kell; lokális `expo run:ios` SSD miatt szünetel |
+| Build | **EAS Build / Submit** (iOS első) | Xcode a gépen **nem** kell; lokális `expo run:ios` SSD miatt szünetel; monorepo: **`.easignore`** a git rooton (csak `vezetoi-mobile/`) |
 | OTA | EAS Update (JS) | Natív modul változás → új store build |
 
 **Tudatos nem:** Flutter, Capacitor mint végleges product, külön Swift app, UI-share Next.js komponensekkel.
@@ -110,7 +111,7 @@ Empty state: plain language + „Nyisd meg a webes Optinovát” CTA.
 | **1a** | Expo skeleton, login, partner tiltás, tenant választó | Expo Go: staff belépés + cégnév (kész) |
 | **1b** | Tab IA + Ma hero KPI + Figyelem + Gyártás + Több ([59](59-ios-vezetoi-ux.md)) | Kód kész — Expo Go smoke: számok ≈ `/home`; lapszab OFF → nincs Gyártás tab |
 | **1c** | **EAS** project + `eas.json` + iOS **development client** (felhőbuild, Xcode nélkül) | Saját ikon a telefonon; `npm run start:dev`; PanelUI csak ezután. Repo: `vezetoi-mobile/` · Expo: `@turinova/vezetoi-mobile` |
-| **2** | Spark polish, méter elmaradás; opcionális PanelUI a dev clienten | |
+| **2** | PanelUI bevezetés: Kezdőlap hero = **Mai forgalom Ft** (eladás + lapszabászat), max 2 kártya + „Továbbiak” lista, skeleton, kijelentkezés megerősítés ([59](59-ios-vezetoi-ux.md)) | Kód kész (2026-11-24); méter elmaradás később |
 | **3** | Biometria unlock, empty/error, ikon | Belső TestFlight (`preview` / `production`) |
 | **4** | EAS production / App Store (ha döntés) | Review checklist |
 | **5+** | Android smoke; push inbox; PDA hullám külön doc | — |

@@ -4,13 +4,15 @@ import { ArrowRight, Check, HelpCircle, X } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
 import {
-  TenantBrandMark,
+  TenantHeroLogo,
   TurinovaPowered
 } from '@/components/kiosk/kiosk-brand'
 import { Button } from '@/components/ui/button'
 import type { KioskSheetCard } from '@/lib/kiosk/bootstrap-types'
+import { cn } from '@/lib/utils'
 
-const MAX_SHEETS = 6
+/** Ennél kevesebb kiemelt lapnál a jobb oldal az „Így működik” lépéseket mutatja. */
+const MIN_SHEETS = 4
 
 const STEPS = [
   'Válaszd ki a lapot',
@@ -19,9 +21,11 @@ const STEPS = [
   'A pultnál átnézzük veled, és ott fizetsz'
 ]
 
-const NEEDS = [
-  'A méretek milliméterben',
-  'A telefonszámod, hogy SMS-ben szólhassunk, ha kész'
+const STEPS_SHORT = [
+  'Válaszd ki a lapot',
+  'Add meg a méreteket',
+  'Kérj élzárást',
+  'Fizess a pultnál'
 ]
 
 export function KioskAttract({
@@ -63,32 +67,25 @@ export function KioskAttract({
     return () => window.removeEventListener('keydown', onKey)
   }, [helpOpen, onStart])
 
-  const sheets = [...featuredSheets]
-    .sort((a, b) => Number(b.onStock) - Number(a.onStock))
-    .slice(0, MAX_SHEETS)
+  const sorted = [...featuredSheets].sort(
+    (a, b) => Number(b.onStock) - Number(a.onStock)
+  )
+  const sheets = sorted.slice(0, sorted.length >= 6 ? 6 : 4)
+  const showSheets = sorted.length >= MIN_SHEETS
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-app">
-      <header className="flex h-[72px] shrink-0 items-center justify-between border-b border-border bg-surface px-6 md:px-10">
-        <TenantBrandMark name={tenantLabel} logoUrl={tenantLogoUrl} size="sm" />
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-12 gap-2 px-4 text-[16px] font-semibold"
-          onClick={() => setHelpOpen(true)}
-        >
-          <HelpCircle className="size-5" aria-hidden />
-          Segítség
-        </Button>
-      </header>
+      <div className="grid flex-1 lg:grid-cols-[minmax(0,52fr)_minmax(0,48fr)]">
+        <section className="flex flex-col justify-center border-b border-border bg-surface px-8 py-12 md:px-14 lg:border-b-0 lg:border-r lg:px-20 lg:py-14 xl:px-24">
+          <div className="w-full max-w-[720px]">
+            <TenantHeroLogo name={tenantLabel} logoUrl={tenantLogoUrl} />
 
-      <main className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-8 px-6 py-8 md:px-10 lg:py-12">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] lg:items-center lg:gap-12">
-          <section>
-            <h1 className="text-[38px] font-semibold leading-[1.1] tracking-tight text-ink md:text-[44px]">
+            <div className="mt-12 h-1 w-14 rounded-full bg-ink" aria-hidden />
+
+            <h1 className="mt-10 text-[44px] font-semibold leading-[1.05] tracking-tight text-ink lg:text-[56px]">
               Bútorlap szabás méretre, élzárással
             </h1>
-            <p className="mt-4 max-w-2xl text-[20px] leading-snug text-ink-secondary">
+            <p className="mt-5 max-w-[580px] text-[20px] leading-snug text-ink-secondary lg:text-[22px]">
               Állítsd össze a rendelésed itt. A pultnál mindent átnézünk veled,
               mielőtt elindítanánk a gyártást.
             </p>
@@ -97,109 +94,97 @@ export function KioskAttract({
               ref={startRef}
               type="button"
               variant="primary"
-              className="mt-8 h-16 min-w-[300px] gap-3 px-8 text-[22px] font-semibold shadow-elev1 focus-visible:ring-4 focus-visible:ring-border-strong"
+              className="mt-10 h-[72px] min-w-[340px] gap-3 px-9 text-[24px] font-semibold shadow-elev1 focus-visible:ring-4 focus-visible:ring-border-strong"
               onClick={onStart}
             >
               Rendelés indítása
-              <ArrowRight className="size-6" aria-hidden />
+              <ArrowRight className="size-7" aria-hidden />
             </Button>
             <p className="mt-3 text-[16px] text-ink-secondary">
               Pár perc, nem kell regisztrálni. Az árat a leadás előtt látod.
-              Enterrel is indíthatod.
             </p>
-          </section>
 
-          <section className="space-y-6 rounded-xl border border-border bg-surface px-6 py-5">
-            <InfoBlock title="Így működik">
-              <ol className="space-y-3">
+            {showSheets ? (
+              <>
+                <ol className="mt-12 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-8 xl:grid-cols-4">
+                  {STEPS_SHORT.map((text, i) => (
+                    <li key={text} className="flex items-center gap-3">
+                      <StepNumber n={i + 1} />
+                      <span className="text-[17px] leading-snug text-ink">
+                        {text}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                <NeedsLine className="mt-5" />
+              </>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="flex min-h-0 flex-col px-8 py-10 md:px-12 lg:py-12 xl:px-14">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            {showSheets ? (
+              <div>
+                <h2
+                  id="attract-sheets-title"
+                  className="text-[24px] font-semibold text-ink"
+                >
+                  Népszerű lapok
+                </h2>
+                <p className="mt-1 text-[17px] text-ink-secondary">
+                  Koppints egy lapra, és azzal kezdjük.
+                </p>
+              </div>
+            ) : (
+              <h2 className="text-[24px] font-semibold text-ink">
+                Így működik
+              </h2>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-12 shrink-0 gap-2 px-4 text-[16px] font-semibold"
+              onClick={() => setHelpOpen(true)}
+            >
+              <HelpCircle className="size-5" aria-hidden />
+              Segítség
+            </Button>
+          </div>
+
+          {showSheets ? (
+            <div
+              role="group"
+              aria-labelledby="attract-sheets-title"
+              className="grid flex-1 grid-cols-2 gap-4 lg:min-h-0 lg:auto-rows-fr"
+            >
+              {sheets.map((s) => (
+                <SheetTile
+                  key={s.id}
+                  sheet={s}
+                  onPick={() => onStartWithSheet(s)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col justify-center rounded-xl border border-border bg-surface px-8 py-8">
+              <ol className="space-y-6">
                 {STEPS.map((text, i) => (
-                  <li key={text} className="flex items-start gap-3.5">
-                    <span
-                      className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-subtle text-[15px] font-semibold tabular-nums text-ink"
-                      aria-hidden
-                    >
-                      {i + 1}
-                    </span>
-                    <span className="pt-0.5 text-[18px] leading-snug text-ink">
+                  <li key={text} className="flex items-start gap-4">
+                    <StepNumber n={i + 1} large />
+                    <span className="pt-1 text-[22px] leading-snug text-ink">
                       {text}
                     </span>
                   </li>
                 ))}
               </ol>
-            </InfoBlock>
-
-            <InfoBlock title="Ezekre lesz szükséged">
-              <ul className="space-y-2.5">
-                {NEEDS.map((text) => (
-                  <li key={text} className="flex items-center gap-3">
-                    <Check
-                      className="size-5 shrink-0 stroke-[3] text-success-ink"
-                      aria-hidden
-                    />
-                    <span className="text-[18px] text-ink">{text}</span>
-                  </li>
-                ))}
-              </ul>
-            </InfoBlock>
-          </section>
-        </div>
-
-        {sheets.length > 0 ? (
-          <section aria-labelledby="attract-sheets-title">
-            <div className="mb-3">
-              <h2
-                id="attract-sheets-title"
-                className="text-[20px] font-semibold text-ink"
-              >
-                Népszerű lapok
-              </h2>
-              <p className="text-[16px] text-ink-secondary">
-                Kattints egy lapra, és azzal kezdjük.
-              </p>
+              <NeedsLine className="mt-8 border-t border-border pt-6" />
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-              {sheets.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  data-kiosk-attract-sheet=""
-                  className="group flex flex-col overflow-hidden rounded-xl border border-border bg-surface text-left shadow-elev1 transition-[border-color,box-shadow] hover:border-ink hover:shadow-elev2 focus-visible:border-ink focus-visible:shadow-elev2 focus-visible:outline-none"
-                  onClick={() => onStartWithSheet(s)}
-                >
-                  <div
-                    className="aspect-[4/3] w-full border-b border-border"
-                    style={
-                      s.imageUrl
-                        ? {
-                            backgroundImage: `url(${s.imageUrl})`,
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center'
-                          }
-                        : { background: s.swatch }
-                    }
-                    aria-hidden
-                  />
-                  <div className="flex flex-1 flex-col gap-0.5 px-3 py-2.5">
-                    <p className="line-clamp-2 text-[16px] font-semibold leading-snug text-ink">
-                      {s.name}
-                    </p>
-                    <p className="text-[15px] tabular-nums text-ink-secondary">
-                      {s.thicknessMm} mm
-                      {s.onStock ? ', raktáron' : ', rendelésre'}
-                    </p>
-                    <p className="mt-auto flex items-center gap-1.5 pt-1.5 text-[15px] font-semibold text-ink-muted transition-colors group-hover:text-ink group-focus-visible:text-ink">
-                      Ezzel kezdem
-                      <ArrowRight className="size-4" aria-hidden />
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-      </main>
+          )}
+        </section>
+      </div>
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface px-6 py-4 md:px-10">
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface px-8 py-4 md:px-14 lg:px-20 xl:px-24">
         <p className="text-[16px] text-ink">
           <span className="font-semibold">Különleges kérésed van?</span>{' '}
           <span className="text-ink-secondary">Kérdezd a pultot.</span>
@@ -219,18 +204,84 @@ export function KioskAttract({
   )
 }
 
-function InfoBlock({
-  title,
-  children
+function SheetTile({
+  sheet: s,
+  onPick
 }: {
-  title: string
-  children: React.ReactNode
+  sheet: KioskSheetCard
+  onPick: () => void
 }) {
   return (
-    <div>
-      <h2 className="mb-3 text-[18px] font-semibold text-ink">{title}</h2>
-      {children}
-    </div>
+    <button
+      type="button"
+      data-kiosk-attract-sheet=""
+      className="group flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-surface text-left shadow-elev1 transition-[border-color,box-shadow] hover:border-ink hover:shadow-elev2 focus-visible:border-ink focus-visible:shadow-elev2 focus-visible:outline-none"
+      onClick={onPick}
+    >
+      <div
+        className="aspect-[4/3] w-full border-b border-border lg:aspect-auto lg:min-h-[96px] lg:flex-1"
+        style={
+          s.imageUrl
+            ? {
+                backgroundImage: `url(${s.imageUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+              }
+            : { background: s.swatch }
+        }
+        aria-hidden
+      />
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-[18px] font-semibold leading-snug text-ink">
+            {s.name}
+          </p>
+          <p className="text-[15px] tabular-nums text-ink-secondary">
+            {s.thicknessMm} mm
+            {s.onStock ? ', raktáron' : ', rendelésre'}
+          </p>
+        </div>
+        <span className="flex shrink-0 items-center gap-1.5 text-[15px] font-semibold text-ink-muted transition-colors group-hover:text-ink group-focus-visible:text-ink">
+          Ezzel kezdem
+          <ArrowRight className="size-4" aria-hidden />
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function StepNumber({ n, large }: { n: number; large?: boolean }) {
+  return (
+    <span
+      className={
+        large
+          ? 'flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-subtle text-[18px] font-semibold tabular-nums text-ink'
+          : 'flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-subtle text-[15px] font-semibold tabular-nums text-ink'
+      }
+      aria-hidden
+    >
+      {n}
+    </span>
+  )
+}
+
+function NeedsLine({ className }: { className?: string }) {
+  return (
+    <p
+      className={cn(
+        'flex items-start gap-2.5 text-[16px] text-ink-secondary',
+        className
+      )}
+    >
+      <Check
+        className="mt-0.5 size-5 shrink-0 stroke-[3] text-success-ink"
+        aria-hidden
+      />
+      <span>
+        <span className="font-semibold text-ink">Kell hozzá:</span> a méretek
+        milliméterben és a telefonszámod (SMS-ben szólunk, ha kész).
+      </span>
+    </p>
   )
 }
 

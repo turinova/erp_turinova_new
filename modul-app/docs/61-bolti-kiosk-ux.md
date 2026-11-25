@@ -58,8 +58,8 @@ Progress label: **Anyag · Méret · Megmunkálás · Él · Kosár · Adatok** 
 
 | Hely | Tenant | Turinova |
 |---|---|---|
-| Attract | **Nagy logo** (vagy cégnév fallback) | Footer „Powered by” |
-| Wizard topbar | Kis logo | — |
+| Attract | **Bemutatóterem**: `TenantHeroLogo` a bal fehér oszlop tetején, optikai méretezés (fallback: cégnév 64px) | Footer „Powered by” |
+| Wizard topbar | `sm` logo, 44px magas, max 200px | — |
 | Help sheet | — | Footer compact |
 | Kész | Közepes logo | Footer |
 
@@ -88,13 +88,12 @@ BOTTOM ~96: [← Vissza]  [ Végösszeg kártya: success-soft + nagy Ft ]  [ PRI
 ### 0 Attract (asztali PC, fekvő · 24″ FHD)
 Kutatás: attract = cégtábla, „mi ez, mit kapok” ≤10 szóban, 1 domináns gomb; „Touch to start” önmagában rossz; valódi termék, nem díszkép (Square le is vette a marketing hátteret); termék-rövidítés a nyitóról.
 
-- Layout: `max-w-[1440px]` (ne 1200 — kevesebb felesleges wrap széles monitoron).
-- Topbar: tenant logo + **Segítség** (saját súgó: mit rendelhetek, mi van ha elrontom, mikor fizetek).
-- Bal: nagy logo · H1 **Bútorlap szabás méretre, élzárással** · supporting `max-w-2xl` · primary **Rendelés indítása** (64px, autofocus, Enter).
-- Jobb: fehér kártyák **Így működik** + **Ezekre lesz szükséged**.
-- Alul: **Népszerű lapok** (featured, max 6) → Méret.
+- Layout „Bemutatóterem”: nincs felső sáv; két teljes magasságú oszlop a teljes szélességen (52/48), alatta lábléc. 1920×1080-on görgetés nélkül kifér.
+- **Bal (tiszta fehér `bg-surface`, cég + teendő):** tenant logo → rövid fekete vonal → H1 **Bútorlap szabás méretre, élzárással** (56px) · supporting · primary **Rendelés indítása** (72px, autofocus, Enter) · vízszintes 4 lépés · „Kell hozzá:” sor. Fehér, mert a cégek logója jellemzően fekete felirat (és sok fehér hátterű JPG) — sötét felületre tilos tenni, invertálni sem szabad.
+- **Logó optikai méretezés** (`heroLogoBox` a `kiosk-brand.tsx`-ben): azonos látszó terület (~90 000 px²), max 680×200 px. Pl. 8:1 felirat → 680×85, 4,4:1 → 630×143, 1:1 jel → 200×200. Logó feltöltés: min. 1000px széles, átlátszó PNG/SVG, üres szél nélkül.
+- **Jobb (`bg-app`, termék):** **Népszerű lapok** — 4 vagy 6 nagy csempe 2 oszlopban, a lap képe kitölti a magasságot → Méret. **Segítség** gomb a jobb felső sarokban. Ha 4-nél kevesebb kiemelt lap van: helyette nagy „Így működik” kártya (és a bal oldali lépéssor elmarad).
 - Lábléc: „Különleges kérésed van? Kérdezd a pultot.” + Powered by Turinova.
-- Tilos: egész képernyős gomb, dísz gradiens, nem kattintható pill chip. Kód: `components/kiosk/attract/kiosk-attract.tsx`.
+- Tilos: egész képernyős gomb, dísz gradiens, nem kattintható pill chip, logó külön magas sávban (üres hely). Kód: `components/kiosk/attract/kiosk-attract.tsx`.
 
 ### 1 Anyag
 **Kereső = hős** (sticky, nincs autofocus). Üres query: **Gyakori** max 8 — `quote_panels` használat (90 nap, `ordered_at`, Σ quantity), **metszet** a kiosk `catalog_mode` / kedvencek listával; ha nincs elég quote → raktári + név fallback. Nem 100 csempe. Gépelésre találati grid + highlight.  

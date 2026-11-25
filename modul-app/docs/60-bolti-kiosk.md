@@ -1,7 +1,7 @@
 # 60 — Bolti lapszab kiosk (tenant self-order)
 
 **Állapot:** 2026-11-20 — **staff Kiosk beállítások** + **P1b** tenant bootstrap / manuális **Ár kiszámítása**; rendelés mentés még nincs.  
-**UX / layout:** [61-bolti-kiosk-ux.md](61-bolti-kiosk-ux.md) · Opti staff: `/opti` · Lapszab add-on: [23](23-lapszabaszat-addon.md) · Quote pipeline: [37](37-lapszabaszat-quote-workflow.md) · Google link: [55](55-google-cegprofil.md) · Certainty: [03](03-ux-certainty-first.md).
+**UX / layout:** [61-bolti-kiosk-ux.md](61-bolti-kiosk-ux.md) · **Pi telepítés:** [63-bolti-kiosk-raspberry-pi.md](63-bolti-kiosk-raspberry-pi.md) · Opti staff: `/opti` · Lapszab add-on: [23](23-lapszabaszat-addon.md) · Quote pipeline: [37](37-lapszabaszat-quote-workflow.md) · Google link: [55](55-google-cegprofil.md) · Certainty: [03](03-ux-certainty-first.md).
 
 ---
 

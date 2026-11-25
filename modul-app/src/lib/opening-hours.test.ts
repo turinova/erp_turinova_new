@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import {
+  displayShouldBeOn,
   draftToOpeningHours,
   groupWeek,
   normalizeOpeningHours,
@@ -87,6 +88,27 @@ describe('openStatus', () => {
     })!
     const s = openStatus(lunch, at('2026-11-05T12:30:00+01:00'))
     assert.equal(s.label, 'Zárva · ma 13:00-kor nyit')
+  })
+})
+
+describe('displayShouldBeOn (±5 perc)', () => {
+  it('nyitás előtt 5 perccel be', () => {
+    assert.equal(displayShouldBeOn(hours, at('2026-11-05T06:55:00+01:00'), 5), true)
+  })
+  it('nyitás előtt 6 perccel még ki', () => {
+    assert.equal(displayShouldBeOn(hours, at('2026-11-05T06:54:00+01:00'), 5), false)
+  })
+  it('nyitvatartás alatt be', () => {
+    assert.equal(displayShouldBeOn(hours, at('2026-11-05T10:00:00+01:00'), 5), true)
+  })
+  it('zárás után 5 perccel még be', () => {
+    assert.equal(displayShouldBeOn(hours, at('2026-11-05T16:04:00+01:00'), 5), true)
+  })
+  it('zárás után 6 perccel ki', () => {
+    assert.equal(displayShouldBeOn(hours, at('2026-11-05T16:06:00+01:00'), 5), false)
+  })
+  it('vasárnap zárva → ki', () => {
+    assert.equal(displayShouldBeOn(hours, at('2026-11-08T10:00:00+01:00'), 5), false)
   })
 })
 

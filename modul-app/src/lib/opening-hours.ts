@@ -106,6 +106,42 @@ export type OpenStatus = {
   today: DayKey
 }
 
+/**
+ * Bolti kiosk monitor: legyen-e bekapcsolva.
+ * Nyitás előtt `padMinutes`, zárás után `padMinutes` (alap 5).
+ * Éjfél átlépést kezeli (pl. zárás 23:58 + 5 perc).
+ */
+export function displayShouldBeOn(
+  hours: OpeningHours,
+  now: Date,
+  padMinutes = 5
+): boolean {
+  const pad = Math.max(0, Math.round(padMinutes))
+  const { day, minutes } = budapestNow(now)
+  const dayIdx = DAY_KEYS.indexOf(day)
+
+  for (const r of hours[day]) {
+    const from = toMinutes(r.from) - pad
+    const to = toMinutes(r.to) + pad
+    if (minutes >= from && minutes < to) return true
+  }
+
+  // Tegnapi zárás + pad átnyúlik mára (éjfél után).
+  const prev = DAY_KEYS[(dayIdx + 6) % 7]!
+  for (const r of hours[prev]) {
+    const to = toMinutes(r.to) + pad
+    if (to > 24 * 60 && minutes < to - 24 * 60) return true
+  }
+
+  // Mai nyitás − pad átnyúlik tegnapról (hajnali nyitás).
+  for (const r of hours[day]) {
+    const from = toMinutes(r.from) - pad
+    if (from < 0 && minutes >= 24 * 60 + from) return true
+  }
+
+  return false
+}
+
 export function openStatus(hours: OpeningHours, now: Date): OpenStatus {
   const { day, minutes } = budapestNow(now)
   const todayRanges = hours[day]
