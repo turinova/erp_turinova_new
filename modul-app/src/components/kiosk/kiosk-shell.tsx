@@ -313,7 +313,12 @@ export function KioskShell({
             wide
               ? 'min-h-0 px-0 py-0'
               : 'mx-auto max-w-[1100px] px-4 py-5 md:px-6',
-            showChrome && (primaryLabel || onBack) ? 'pb-28' : 'pb-6'
+            // Bare (Attract/Kész): nincs chrome footer → nincs alsó padding.
+            showChrome && (primaryLabel || onBack)
+              ? 'pb-28'
+              : showChrome
+                ? 'pb-6'
+                : 'pb-0'
           )}
           onPointerDown={bumpIdle}
         >

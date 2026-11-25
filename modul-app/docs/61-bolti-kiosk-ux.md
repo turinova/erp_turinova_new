@@ -66,7 +66,7 @@ Progress label: **Anyag · Méret · Megmunkálás · Él · Kosár · Adatok** 
 | Attract | **Bemutatóterem**: `TenantHeroLogo` a bal fehér oszlop tetején, optikai méretezés (fallback: cégnév 64px) | Footer „Powered by” |
 | Wizard topbar | `sm` logo, 44px magas, max 200px | — |
 | Help sheet | — | Footer compact |
-| Kész | `lg` logo, bal oszlop | Alsó sáv compact |
+| Kész | `TenantHeroLogo` (Attract-méret), bal wide | Footer bal: compact |
 
 Tenant mindig nagyobb / feljebb, mint Turinova. Flat Midday charcoal CTA — nincs glow.
 
@@ -145,12 +145,12 @@ Ugyanaz a minta: **bal = mezők (fehér, 640 px), jobb = nagy rajz**. `KioskShel
 - Footer CTA **Leadom a pultnak · {Ft}**; tiltva → konkrét hiány.
 - **Közös gép:** `autoComplete="off"`; idle ≥120 mp. Kód: `details/*`, `cart/cart-panel-thumb.tsx`, `lib/kiosk/guest.ts`.
 
-### 7 Kész (peak-end, teljes szélesség, **görgetés nélkül**)
-Két oszlop (bare shell, nincs wizard footer):
+### 7 Kész (peak-end, **teljes szélesség** mint a többi wide lépés, **görgetés nélkül**)
+`KioskShell wide` + bare (nincs progress chrome). **Tilos** `max-w-[1100px]` — 1920-on edge-to-edge.
 
-- **Bal (fehér ~48%):** tenant logo `lg` · zöld pipa **96px** · „Köszönjük!” **48px** · **név 80px** (ezt mondja a pultnál) · instrukció **22px** · leftover 18px.
-- **Jobb (`bg-app`):** „Mi a következő lépés?” **28px** · 3 kártya (sorszám **56px**, cím **24px**, szöveg **20px**).
-- **Alsó sáv:** primary **Új rendelés indítása** h-16 / 22px · visszaszámláló 18px + progress bar · Turinova. Auto-reset 30 mp. Nincs „írd fel”.
+- **Bal (fehér ~46%):** `TenantHeroLogo` (Attract-méret, max ~680×200) · zöld pipa **112px** · „Köszönjük!” **56px** · **név clamp 52–96px** (ezt mondja a pultnál) · instrukció **26px** · leftover 20px.
+- **Jobb (`bg-app`):** „Mi a következő lépés?” **36px** · 3 kártya max ~900px (sorszám **72px**, cím **30px**, szöveg **22px**).
+- **Alsó sáv (~96px, mint wizard footer):** bal Turinova · közép visszaszámláló 20px + 8px progress · jobb primary **Új rendelés indítása** h-16 / 22px. Auto-reset 30 mp. Nincs „írd fel”.
 
 ---
 

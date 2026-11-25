@@ -1106,7 +1106,8 @@ export function KioskWizardClient({
         step === 'machining' ||
         step === 'edge' ||
         step === 'cart' ||
-        step === 'details'
+        step === 'details' ||
+        step === 'success'
       }
       onIdleReset={resetAll}
       idleWarnSec={bootstrap.settings.idleWarnSec}
