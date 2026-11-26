@@ -16,6 +16,7 @@ import {
   ArrowDown,
   ArrowUp,
   CalendarDays,
+  Crosshair,
   Radio,
   Search,
   Sun,
@@ -27,14 +28,12 @@ import {
   KeyRound,
   Maximize2,
   Minimize2,
-  PencilLine,
-  Users
+  PencilLine
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { JelenletTodayPanel } from '@/components/jelenlet/jelenlet-today-panel'
 import { FormField } from '@/components/patterns/form-field'
-import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -44,6 +43,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { MenuSelect } from '@/components/ui/menu-select'
 import { saveAttendanceDayAction } from '@/lib/jelenlet/actions'
 import { groupEmployeesByType } from '@/lib/jelenlet/employee-type-groups'
 import {
@@ -184,6 +184,28 @@ const MONTH_NAMES = [
 
 /** Fix nap-oszlop — idő + rövid státuszszöveg. */
 type CellSize = 'sm' | 'md' | 'lg'
+
+const HOVER_TIP_DELAY_MS = 600
+
+/** Sor + oszlop halvány kiemelése a kurzor alatt, JS újrarenderelés nélkül (:has). */
+function gridHighlightCss(columns: number): string {
+  const tint = 'box-shadow: inset 0 0 0 999px rgb(0 0 0 / 0.045);'
+  const cols = Array.from({ length: columns }, (_, i) => [
+    `.jl-grid:has(td[data-col="${i}"]:hover) td[data-col="${i}"] > button`,
+    `.jl-grid:has(td[data-col="${i}"]:hover) th[data-col="${i}"]`
+  ]).flat()
+  return `.jl-grid tr:hover > td[data-col] > button, ${cols.join(', ')} { ${tint} }
+.jl-grid td[data-col] > button:hover { box-shadow: inset 0 0 0 2px var(--color-ink, #18181b); }`
+}
+
+function deviationShortLine(dev: ShiftDeviation): string {
+  const parts: string[] = []
+  if (dev.lateMin) parts.push(`késés ${dev.lateMin} p`)
+  if (dev.earlyLeaveMin) parts.push(`korábban ment ${dev.earlyLeaveMin} p`)
+  if (dev.earlyArriveMin) parts.push(`korábban jött ${dev.earlyArriveMin} p`)
+  if (dev.stayLateMin) parts.push(`tovább maradt ${dev.stayLateMin} p`)
+  return parts.join(' · ')
+}
 
 const TOTAL_COL_PX: Record<CellSize, number> = { sm: 64, md: 76, lg: 92 }
 
@@ -706,6 +728,12 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
   const [departure, setDeparture] = useState(DEFAULT_DEPARTURE)
   const [note, setNote] = useState('')
   const [hoverTip, setHoverTip] = useState<HoverTipState | null>(null)
+  const tipShowTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tipHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (tipShowTimer.current) clearTimeout(tipShowTimer.current)
+    if (tipHideTimer.current) clearTimeout(tipHideTimer.current)
+  }, [])
   const [view, setView] = useState<MainView>(today ? 'today' : 'calendar')
   const [focusMode, setFocusMode] = useState(false)
   const [cellSize, setCellSize] = useState<CellSize>('md')
@@ -889,19 +917,40 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
     DEFAULT_DEPARTURE
   )
 
+  function clearTipTimers() {
+    if (tipShowTimer.current) clearTimeout(tipShowTimer.current)
+    if (tipHideTimer.current) clearTimeout(tipHideTimer.current)
+    tipShowTimer.current = null
+    tipHideTimer.current = null
+  }
+
+  /** Egér: csak megállás után jelenik meg; ha már látszik, a szomszéd cellán azonnal vált. */
   function showHoverTip(
     e: React.MouseEvent<HTMLElement> | React.FocusEvent<HTMLElement>,
-    lines: string[]
+    lines: string[] | null,
+    immediate = false
   ) {
+    clearTipTimers()
+    if (!lines?.length) {
+      setHoverTip(null)
+      return
+    }
     const rect = e.currentTarget.getBoundingClientRect()
-    setHoverTip({
-      x: rect.left + rect.width / 2,
-      y: rect.top,
-      lines
-    })
+    const next = { x: rect.left + rect.width / 2, y: rect.top, lines }
+    if (immediate || hoverTip) {
+      setHoverTip(next)
+      return
+    }
+    tipShowTimer.current = setTimeout(() => setHoverTip(next), HOVER_TIP_DELAY_MS)
   }
 
   function hideHoverTip() {
+    clearTipTimers()
+    tipHideTimer.current = setTimeout(() => setHoverTip(null), 120)
+  }
+
+  function hideHoverTipNow() {
+    clearTipTimers()
     setHoverTip(null)
   }
 
@@ -974,10 +1023,6 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
     })
   }
 
-  const todayAwayTitle = glance.todayAway
-    .map((a) => `${a.name} (${a.label})`)
-    .join(', ')
-  const todayAwayNames = glance.todayAway.map((a) => a.name).join(', ')
   const monthTitle = `${data.year}. ${MONTH_NAMES[data.month - 1]}`
 
   return (
@@ -989,229 +1034,173 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
           : 'h-[calc(100dvh-6.5rem)]'
       )}
     >
-      {!focusMode ? (
-        <PageHeader
-          title="Jelenlét"
-          className="mb-0 sm:items-center"
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              {canWrite && glance.todoCount > 0 ? (
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setView('todos')
-                    openFirstTodo()
-                  }}
-                >
-                  Pótold ({glance.todoCount})
-                </Button>
-              ) : null}
-              {data.employees.length > 0 ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={enterFocusMode}
-                >
-                  <Maximize2 className="size-3.5" aria-hidden />
-                  Teljes naptár
-                </Button>
-              ) : null}
-              <Link
-                href="/dolgozok"
-                className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-ink-secondary hover:bg-subtle hover:text-ink"
-              >
-                <Users className="size-3.5" aria-hidden />
-                Dolgozók
-              </Link>
-              <Link
-                href="/jelenlet/naptar"
-                className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-ink-secondary hover:bg-subtle hover:text-ink"
-              >
-                Munkarend
-              </Link>
-            </div>
-          }
-        />
-      ) : (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">
-          <p className="text-[14px] font-semibold text-ink">Jelenlét — teljes nézet</p>
-          <span className="text-[12px] text-ink-muted">Esc = kilépés</span>
-          <Button
-            type="button"
-            variant="secondary"
-            className="ml-auto"
-            onClick={exitFocusMode}
-          >
-            <Minimize2 className="size-3.5" aria-hidden />
-            Kilépés a teljes nézetből
-          </Button>
-        </div>
-      )}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 print:hidden">
+        <h1 className="text-[16px] font-semibold text-ink">
+          Jelenlét{focusMode ? <span className="ml-1.5 text-[12px] font-normal text-ink-muted">teljes nézet · Esc</span> : null}
+        </h1>
 
-      {data.employees.length > 0 ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 print:hidden">
+        {!focusMode && data.employees.length > 0 ? (
           <div
-            className="flex items-center gap-0.5"
-            role="group"
-            aria-label="Hónap váltása"
+            role="tablist"
+            aria-label="Nézet"
+            className="inline-flex gap-0.5 rounded-md border border-border bg-subtle p-0.5"
           >
+            {today ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'today'}
+                onClick={() => setView('today')}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
+                  view === 'today'
+                    ? 'bg-ink text-white'
+                    : 'text-ink-secondary hover:bg-surface hover:text-ink'
+                )}
+              >
+                <Sun className="size-3.5" aria-hidden />
+                Ma
+              </button>
+            ) : null}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'calendar'}
+              onClick={() => setView('calendar')}
+              className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
+                  view === 'calendar'
+                    ? 'bg-ink text-white'
+                    : 'text-ink-secondary hover:bg-surface hover:text-ink'
+                )}
+            >
+              <CalendarDays className="size-3.5" aria-hidden />
+              Naptár
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'todos'}
+              onClick={() => setView('todos')}
+              className={cn(
+                  'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
+                  view === 'todos'
+                    ? 'bg-ink text-white'
+                    : 'text-ink-secondary hover:bg-surface hover:text-ink'
+                )}
+            >
+              <ClipboardList className="size-3.5" aria-hidden />
+              Teendők
+              {glance.todoCount > 0 ? (
+                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[11px] font-semibold tabular-nums text-white">
+                  {glance.todoCount}
+                </span>
+              ) : null}
+            </button>
+          </div>
+        ) : null}
+
+        {data.employees.length > 0 ? (
+          <div className="flex items-center gap-0.5" role="group" aria-label="Hónap váltása">
             <Button
               type="button"
-              variant="secondary"
+              variant="ghost"
               size="sm"
               onClick={() => shiftMonth(-1)}
               aria-label="Előző hónap"
             >
               <ChevronLeft className="size-3.5" />
             </Button>
-            <span className="min-w-[9.5rem] px-1 text-center text-[14px] font-semibold tabular-nums text-ink">
+            <span className="min-w-[8.5rem] px-1 text-center text-[14px] font-semibold tabular-nums text-ink">
               {monthTitle}
             </span>
             <Button
               type="button"
-              variant="secondary"
+              variant="ghost"
               size="sm"
               onClick={() => shiftMonth(1)}
               aria-label="Következő hónap"
             >
               <ChevronRight className="size-3.5" />
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="ml-1"
-              onClick={() => {
-                if (!viewingCurrentMonth) {
-                  goToMonth(nowYm.year, nowYm.month)
-                } else if (view === 'calendar' || focusMode) {
-                  scrollToToday()
-                } else {
-                  setView('calendar')
-                }
-              }}
-            >
-              Ma
-            </Button>
-          </div>
-
-          {!focusMode ? (
-            <>
-              <div
-                role="tablist"
-                aria-label="Nézet"
-                className="inline-flex gap-0.5 rounded-md border border-border bg-subtle p-0.5"
+            {!viewingCurrentMonth ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="ml-1"
+                onClick={() => goToMonth(nowYm.year, nowYm.month)}
               >
-                {today ? (
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={view === 'today'}
-                    onClick={() => setView('today')}
-                    className={cn(
-                      'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
-                      view === 'today'
-                        ? 'bg-ink text-white'
-                        : 'text-ink-secondary hover:bg-surface hover:text-ink'
-                    )}
-                  >
-                    <Sun className="size-3.5" aria-hidden />
-                    Ma
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={view === 'calendar'}
-                  onClick={() => setView('calendar')}
-                  className={cn(
-                    'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
-                    view === 'calendar'
-                      ? 'bg-ink text-white'
-                      : 'text-ink-secondary hover:bg-surface hover:text-ink'
-                  )}
-                >
-                  <CalendarDays className="size-3.5" aria-hidden />
-                  Naptár
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={view === 'todos'}
-                  onClick={() => setView('todos')}
-                  className={cn(
-                    'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
-                    view === 'todos'
-                      ? 'bg-ink text-white'
-                      : 'text-ink-secondary hover:bg-surface hover:text-ink'
-                  )}
-                >
-                  <ClipboardList className="size-3.5" aria-hidden />
-                  Teendők
-                  {glance.todoCount > 0 ? (
-                    <span className="tabular-nums opacity-90">
-                      ({glance.todoCount})
-                    </span>
-                  ) : null}
-                </button>
-              </div>
+                Aktuális hónap
+              </Button>
+            ) : view === 'calendar' || focusMode ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Ugrás a mai napra"
+                title="Ugrás a mai napra"
+                onClick={() => scrollToToday()}
+              >
+                <Crosshair className="size-3.5" aria-hidden />
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
-              {viewingCurrentMonth && glance.todayAway.length > 0 ? (
-                <span
-                  className="min-w-0 max-w-[16rem] truncate text-[12px] text-ink-secondary"
-                  title={todayAwayTitle}
+        <div className="ml-auto flex items-center gap-2">
+          {today ? <TerminalBadge terminals={today.terminals} /> : null}
+          {data.employees.length > 0 && (view !== 'todos' || focusMode) ? (
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
+                aria-hidden
+              />
+              <Input
+                type="search"
+                aria-label="Dolgozó keresése"
+                placeholder="Dolgozó keresése"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-7 w-44 pl-7 text-[13px]"
+              />
+            </div>
+          ) : null}
+          {data.employees.length > 0 && (view === 'calendar' || focusMode) ? (
+            <>
+              <MenuSelect
+                value={cellSize}
+                options={(Object.keys(CELL_SIZES) as CellSize[]).map((k) => ({
+                  value: k,
+                  label: `${CELL_SIZES[k].label} betű`
+                }))}
+                allowEmpty={false}
+                onChange={(v) => {
+                  if (v === 'sm' || v === 'md' || v === 'lg') changeCellSize(v)
+                }}
+                className="h-7 w-[7.5rem] text-[13px]"
+              />
+              {focusMode ? (
+                <Button type="button" variant="secondary" size="sm" onClick={exitFocusMode}>
+                  <Minimize2 className="size-3.5" aria-hidden />
+                  Kilépés
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Teljes nézet"
+                  title="Teljes nézet"
+                  onClick={enterFocusMode}
                 >
-                  Ma távol:{' '}
-                  <span className="font-medium text-ink">{todayAwayNames}</span>
-                </span>
-              ) : null}
+                  <Maximize2 className="size-3.5" aria-hidden />
+                </Button>
+              )}
             </>
           ) : null}
-
-          <div className="ml-auto flex items-center gap-2">
-            {today ? <TerminalBadge terminals={today.terminals} /> : null}
-            {view === 'calendar' || focusMode ? (
-              <div
-                role="radiogroup"
-                aria-label="Cellaméret"
-                className="inline-flex h-7 items-center rounded-md border border-border bg-surface p-0.5"
-              >
-                {(Object.keys(CELL_SIZES) as CellSize[]).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    role="radio"
-                    aria-checked={cellSize === k}
-                    onClick={() => changeCellSize(k)}
-                    className={cn(
-                      'h-6 rounded px-2 text-[12px] font-medium',
-                      cellSize === k ? 'bg-subtle text-ink' : 'text-ink-secondary hover:text-ink'
-                    )}
-                  >
-                    {CELL_SIZES[k].label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {view !== 'todos' || focusMode ? (
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
-                  aria-hidden
-                />
-                <Input
-                  type="search"
-                  aria-label="Dolgozó keresése"
-                  placeholder="Dolgozó keresése"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-7 w-44 pl-7 text-[13px]"
-                />
-              </div>
-            ) : null}
-          </div>
         </div>
-      ) : null}
+      </div>
 
       {data.employees.length === 0 ? (
         <div className="rounded-md border border-dashed border-border bg-subtle p-6">
@@ -1255,6 +1244,17 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
               </Button>
             </div>
           ) : (
+            <>
+            {canWrite ? (
+              <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+                <p className="text-[13px] text-ink-secondary">
+                  {glance.todoCount} nap vár pótlásra
+                </p>
+                <Button type="button" size="sm" onClick={openFirstTodo}>
+                  Következő pótlása
+                </Button>
+              </div>
+            ) : null}
             <ul className="divide-y divide-border">
               {glance.todos.map((todo) => (
                 <li key={`${todo.employeeId}|${todo.ymd}`}>
@@ -1294,14 +1294,17 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
                 </li>
               ))}
             </ul>
+            </>
           )}
         </div>
       ) : (
         <div
           ref={scrollRef}
+          onScroll={hoverTip ? hideHoverTipNow : undefined}
           className="min-h-0 flex-1 overflow-auto rounded-md border border-border bg-surface print:max-h-none print:overflow-visible print:border-0"
         >
-          <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
+          <style>{gridHighlightCss(data.dates.length)}</style>
+          <table className="jl-grid w-max min-w-full border-separate border-spacing-0 text-xs">
             <thead>
               <tr>
                 <th
@@ -1312,7 +1315,7 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
                 >
                   Dolgozó
                 </th>
-                {data.dates.map((ymd) => {
+                {data.dates.map((ymd, colIdx) => {
                   const day = Number(ymd.slice(8, 10))
                   const dow = dowOf(ymd)
                   const isToday = ymd === glance.today
@@ -1326,6 +1329,7 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
                   return (
                     <th
                       key={ymd}
+                      data-col={colIdx}
                       data-weekend={
                         dow === 0 ? 'sun' : dow === 6 ? 'sat' : undefined
                       }
@@ -1479,7 +1483,7 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
                             )}
                           </div>
                         </td>
-                        {data.dates.map((ymd) => {
+                        {data.dates.map((ymd, colIdx) => {
                           const cell = data.cells[`${emp.id}|${ymd}`]
                           const isToday = ymd === glance.today
                           const dow = dowOf(ymd)
@@ -1532,6 +1536,17 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
                                 )
                               : [])
                           ]
+                          const who = `${emp.name} · ${formatYmdHu(ymd)}`
+                          const shortTip: string[] | null =
+                            deviation && deviation.kind !== 'ok'
+                              ? [who, deviationShortLine(deviation)]
+                              : cell?.kind === 'incomplete'
+                                ? [who, cell.arrival ? 'Hiányzik a távozás' : 'Hiányzik az érkezés']
+                                : emptyWork
+                                  ? [who, 'Hiányzó nap — nincs rögzítve']
+                                  : cell?.kind === 'rest'
+                                    ? [who, cell.calendarName ?? 'Ünnep / pihenőnap']
+                                    : null
                           const statusFill =
                             cell?.kind === 'vacation' ||
                             cell?.kind === 'sick' ||
@@ -1542,6 +1557,7 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
                           return (
                             <td
                               key={ymd}
+                      data-col={colIdx}
                               data-weekend={
                                 dow === 0
                                   ? 'sun'
@@ -1571,14 +1587,12 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
                                 type="button"
                                 disabled={!canWrite || cell?.kind === 'rest'}
                                 aria-label={tipLines.join('. ')}
-                                onMouseEnter={(e) =>
-                                  showHoverTip(e, tipLines)
-                                }
+                                onMouseEnter={(e) => showHoverTip(e, shortTip)}
                                 onMouseLeave={hideHoverTip}
-                                onFocus={(e) => showHoverTip(e, tipLines)}
-                                onBlur={hideHoverTip}
+                                onFocus={(e) => showHoverTip(e, shortTip, true)}
+                                onBlur={hideHoverTipNow}
                                 onClick={() => {
-                                  hideHoverTip()
+                                  hideHoverTipNow()
                                   openCell(emp.id, ymd)
                                 }}
                                 className={cn(
@@ -1626,12 +1640,23 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
                                 style={totalStyle(k)}
                                 tabIndex={t ? 0 : undefined}
                                 aria-label={t ? tip.join('. ') : undefined}
-                                onMouseEnter={t ? (e) => showHoverTip(e, tip) : undefined}
-                                onMouseLeave={t ? hideHoverTip : undefined}
-                                onFocus={t ? (e) => showHoverTip(e, tip) : undefined}
-                                onBlur={t ? hideHoverTip : undefined}
+                                role={t ? 'button' : undefined}
+                                onClick={t ? (e) => showHoverTip(e, tip, true) : undefined}
+                                onKeyDown={
+                                  t
+                                    ? (e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault()
+                                          showHoverTip(e as unknown as React.FocusEvent<HTMLElement>, tip, true)
+                                        }
+                                      }
+                                    : undefined
+                                }
+                                onMouseLeave={t ? hideHoverTipNow : undefined}
+                                onBlur={t ? hideHoverTipNow : undefined}
                                 className={cn(
                                   'sticky z-10 border-b border-border px-2 py-0 text-right tabular-nums text-ink',
+                                  t && 'cursor-pointer',
                                   k === 'normal'
                                     ? 'border-l shadow-[-2px_0_0_0_var(--border)]'
                                     : 'border-l border-l-border/60',
@@ -1696,6 +1721,7 @@ export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: P
           <LegendSwatch className={DEVIATION_CLASS.long} label="Több a műszaknál">
             <ArrowUp className="size-3" aria-hidden />
           </LegendSwatch>
+          <span className="text-[12px] text-ink-secondary">Számítás: kattints az összesítőre</span>
           <LegendSwatch
             className="border border-dashed border-warning/50 bg-warning-soft/50 text-warning-ink"
             label="Pótolni"
