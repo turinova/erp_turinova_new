@@ -42,11 +42,13 @@ function LapszabaszatGlance({ k }: { k: HomeLapszabaszatKpis }) {
         <h2 className="text-body font-semibold text-ink">Lapszabászat</h2>
         {k.lateCount > 0 ? (
           <Link
-            href="/megrendelesek?status=in_production"
+            href="/megrendelesek?focus=late"
+            title="Megrendelve / gyártásban, a gyártási nap az előző munkanapnál régebbi"
             className="ml-auto inline-flex items-center gap-1 rounded-md bg-warning-soft px-1.5 py-0.5 text-hint font-medium text-warning-ink no-underline hover:underline"
           >
             <AlertTriangle className="size-3" aria-hidden />
-            {k.lateCount} csúszásban →
+            {k.lateCount} csúszásban
+            {k.lateNotStarted > 0 ? ` (${k.lateNotStarted} még el sem indult)` : ''} →
           </Link>
         ) : null}
         <Link
@@ -66,13 +68,13 @@ function LapszabaszatGlance({ k }: { k: HomeLapszabaszatKpis }) {
             label="Ma felvett"
             value={`${formatMoneyFt(k.todayGross)} Ft`}
             href="/megrendelesek"
-            hint={k.todayCount === 0 ? 'Még nincs rendelés' : `${k.todayCount} rendelés`}
-            hint2={`múlt ${k.sameDayLastWeekLabel.toLowerCase()}.: ${k.sameDayLastWeekCount} rendelés`}
+            hint={`${k.todayCount} rendelés · múlt ${k.sameDayLastWeekLabel.toLowerCase()}.: ${k.sameDayLastWeekCount} rendelés`}
+            hint2="Oszlopok: rendelések száma, 7 nap"
             emphasize={k.todayCount > 0 ? 'success' : null}
             footer={
               <WeekBars
                 data={k.last7Days.map((d) => ({ label: d.label, count: d.count }))}
-                label={`Elmúlt 7 nap megrendelései: ${k.last7Days.map((d) => d.count).join(', ')}`}
+                label={`Elmúlt 7 nap rendeléseinek száma: ${k.last7Days.map((d) => d.count).join(', ')}`}
               />
             }
           />
@@ -94,8 +96,10 @@ function LapszabaszatGlance({ k }: { k: HomeLapszabaszatKpis }) {
           <MetricCell
             label="Ma kiadva"
             value={`${k.finishedToday} rendelés`}
-            href="/megrendelesek?status=finished"
-            hint={`${formatMoneyFt(k.collectedToday)} Ft beszedve`}
+            href="/megrendelesek?focus=finished_today"
+            hint={
+              k.finishedToday === 0 ? 'Még nincs kiadás' : `${formatMoneyFt(k.finishedTodayGross)} Ft értékben`
+            }
             hint2={k.finishedTypical > 0 ? `ilyenkor átl.: ${k.finishedTypicalByNow} rendelés` : undefined}
             emphasize={
               k.finishedTypicalByNow > 0 && k.finishedToday >= k.finishedTypicalByNow
@@ -107,7 +111,7 @@ function LapszabaszatGlance({ k }: { k: HomeLapszabaszatKpis }) {
           <MetricCell
             label="Nem fizetett"
             value={`${formatMoneyFt(k.openDue)} Ft`}
-            href="/megrendelesek?status=finished"
+            href="/megrendelesek?focus=unpaid"
             hint={
               k.openOrderCount === 0 ? 'Nincs tartozás' : `${k.openOrderCount} átadott rendelés`
             }
@@ -118,9 +122,11 @@ function LapszabaszatGlance({ k }: { k: HomeLapszabaszatKpis }) {
           />
         </div>
         <p className="truncate border-t border-border px-3 py-1.5 text-hint tabular-nums text-ink-secondary">
+          <span className="font-medium text-ink">Ma befizetve összesen: {formatMoneyFt(k.collectedToday)} Ft</span>
+          {' · '}
           {k.monthLabel} eddig: {compactFt(k.monthGross)} ({k.monthCount} rendelés)
           {monthPct != null
-            ? ` · ${monthPct >= 0 ? '+' : '−'}${Math.abs(monthPct)}% az előző hónaphoz`
+            ? ` · ${monthPct >= 0 ? '+' : '−'}${Math.abs(monthPct)}% ${k.priorMonthRangeLabel ? `${k.priorMonthRangeLabel}-hoz képest` : 'az előző hónaphoz'}`
             : ''}
         </p>
       </div>

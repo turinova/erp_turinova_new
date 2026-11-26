@@ -15,6 +15,7 @@ import {
   timeToMinutes
 } from '@/lib/jelenlet/hours'
 import type { AbsenceType } from '@/lib/jelenlet/types'
+import { lateCutoffYmd } from '@/lib/orders/late-cutoff'
 
 export type SalesDayPoint = {
   ymd: string
@@ -84,14 +85,20 @@ export type HomeLapszabaszatKpis = {
   ready: { total: number; fresh: number; mid: number; old: number; noSms: number }
   /** Ma átadott (finished_at). */
   finishedToday: number
+  /** Ma átadott rendelések végösszege (final_total_gross). */
+  finishedTodayGross: number
   /** Előző 4 hét azonos napjainak átadási átlaga. */
   finishedTypical: number
   /** Ugyanez, de csak a mostani napszakig (Budapest óra:perc). */
   finishedTypicalByNow: number
-  /** Ma rögzített befizetések (quote_payments.payment_date). */
+  /** Ma rögzített összes befizetés (quote_payments.payment_date) — előleg is, nem csak kiadás. */
   collectedToday: number
-  /** Gyártási nap > 1 munkanapja elmúlt, még nincs kész. */
+  /** Gyártási nap az előző munkanap előtt (munkanaptárral), még nincs kész — `lib/orders/late-cutoff`. */
   lateCount: number
+  /** Ebből még „Megrendelve” (gyártás el sem indult). */
+  lateNotStarted: number
+  /** Havi összevetés pontos tartománya, pl. „okt. 1–26.”. */
+  priorMonthRangeLabel: string
 }
 
 function emptyLapszabaszatKpis(today: string): HomeLapszabaszatKpis {
@@ -114,10 +121,13 @@ function emptyLapszabaszatKpis(today: string): HomeLapszabaszatKpis {
     oldestUnpaidDays: null,
     ready: { total: 0, fresh: 0, mid: 0, old: 0, noSms: 0 },
     finishedToday: 0,
+    finishedTodayGross: 0,
     finishedTypical: 0,
     finishedTypicalByNow: 0,
     collectedToday: 0,
-    lateCount: 0
+    lateCount: 0,
+    lateNotStarted: 0,
+    priorMonthRangeLabel: ''
   }
 }
 
@@ -199,26 +209,24 @@ function daysBetweenYmd(fromYmd: string, toYmd: string): number {
   return Math.max(0, Math.round((b - a) / 86_400_000))
 }
 
-function previousWorkdayYmd(ymd: string): string {
-  let d = addDaysYmd(ymd, -1)
-  for (;;) {
-    const dow = new Date(`${d}T12:00:00Z`).getUTCDay()
-    if (dow !== 0 && dow !== 6) return d
-    d = addDaysYmd(d, -1)
-  }
-}
-
 async function getHomeLapszabaszatFlow(
   supabase: SupabaseClient,
   tenantId: string,
   today: string
 ): Promise<Pick<
   HomeLapszabaszatKpis,
-  'ready' | 'finishedToday' | 'finishedTypical' | 'finishedTypicalByNow' | 'collectedToday' | 'lateCount'
+  | 'ready'
+  | 'finishedToday'
+  | 'finishedTodayGross'
+  | 'finishedTypical'
+  | 'finishedTypicalByNow'
+  | 'collectedToday'
+  | 'lateCount'
+  | 'lateNotStarted'
 >> {
   const todayRange = budapestDayRangeIso(today)
   const { startIso: fourWeeksStart } = budapestDayRangeIso(addDaysYmd(today, -28))
-  const lateBefore = previousWorkdayYmd(today)
+  const lateBefore = await lateCutoffYmd(supabase, tenantId, today)
 
   const [readyRes, finishedRes, paidRes, lateRes] = await Promise.all([
     supabase
@@ -230,7 +238,7 @@ async function getHomeLapszabaszatFlow(
       .eq('status', 'ready'),
     supabase
       .from('quotes')
-      .select('finished_at')
+      .select('finished_at, final_total_gross')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .eq('status', 'finished')
@@ -245,12 +253,14 @@ async function getHomeLapszabaszatFlow(
       .lt('payment_date', todayRange.endIso),
     supabase
       .from('quotes')
-      .select('id', { count: 'exact', head: true })
+      .select('status')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
       .is('archived_at', null)
+      .not('order_number', 'is', null)
       .in('status', ['ordered', 'in_production'])
       .lt('production_date', lateBefore)
+      .limit(1000)
   ])
 
   for (const [name, r] of [['ready', readyRes], ['finished', finishedRes], ['paid', paidRes], ['late', lateRes]] as const) {
@@ -270,14 +280,17 @@ async function getHomeLapszabaszatFlow(
   const sameWeekdays = new Set([7, 14, 21, 28].map((n) => addDaysYmd(today, -n)))
   const nowMin = budapestNowMinutes()
   let finishedToday = 0
+  let finishedTodayGross = 0
   let typicalSum = 0
   let typicalByNowSum = 0
   for (const r of finishedRes.data ?? []) {
     if (!r.finished_at) continue
     const iso = r.finished_at as string
     const ymd = toBudapestYmdFromIso(iso)
-    if (ymd === today) finishedToday += 1
-    else if (sameWeekdays.has(ymd)) {
+    if (ymd === today) {
+      finishedToday += 1
+      finishedTodayGross += Number(r.final_total_gross) || 0
+    } else if (sameWeekdays.has(ymd)) {
       typicalSum += 1
       if (budapestMinutesOfIso(iso) <= nowMin) typicalByNowSum += 1
     }
@@ -286,12 +299,14 @@ async function getHomeLapszabaszatFlow(
   return {
     ready,
     finishedToday,
+    finishedTodayGross: Math.round(finishedTodayGross),
     finishedTypical: Math.round(typicalSum / 4),
     finishedTypicalByNow: Math.round(typicalByNowSum / 4),
     collectedToday: Math.round(
       (paidRes.data ?? []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
     ),
-    lateCount: lateRes.count ?? 0
+    lateCount: (lateRes.data ?? []).length,
+    lateNotStarted: (lateRes.data ?? []).filter((r) => r.status === 'ordered').length
   }
 }
 
@@ -351,6 +366,14 @@ function priorMonthRangeYmd(todayYmd: string): {
   return { start: dates[0]!, end: dates[endIdx]! }
 }
 
+const shortMonthFmt = new Intl.DateTimeFormat('hu-HU', { month: 'short', timeZone: 'UTC' })
+
+/** „okt. 1–26.” — a havi % pontos összevetési tartománya. */
+function priorMonthRangeLabel(prior: { start: string; end: string }): string {
+  const month = shortMonthFmt.format(new Date(`${prior.start}T12:00:00Z`))
+  return `${month} 1–${Number(prior.end.slice(8, 10))}.`
+}
+
 type SaleAggRow = {
   id: string
   total_gross: number | string
@@ -395,7 +418,6 @@ export async function getHomeSalesKpis(
         .select('id, total_gross, status, fulfilled_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .is('archived_at', null)
         .neq('status', 'cancelled')
         .gte('fulfilled_at', rangeStart)
         .lt('fulfilled_at', rangeEnd),
@@ -404,7 +426,6 @@ export async function getHomeSalesKpis(
         .select('id, total_gross, status, fulfilled_at, created_at')
         .eq('tenant_id', tenantId)
         .is('deleted_at', null)
-        .is('archived_at', null)
         .in('status', ['fulfilled', 'partially_returned', 'returned'])
         .is('fulfilled_at', null)
         .gte('created_at', rangeStart)
@@ -732,7 +753,6 @@ export async function getHomeLapszabaszatKpis(
       .select('final_total_gross, total_gross, ordered_at')
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
-      .is('archived_at', null)
       .not('order_number', 'is', null)
       .neq('status', 'cancelled')
       .gte('ordered_at', rangeStart)
@@ -788,6 +808,7 @@ export async function getHomeLapszabaszatKpis(
     monthGross: monthAgg.gross,
     monthCount: monthAgg.count,
     priorMonthGross: priorAgg.gross,
+    priorMonthRangeLabel: priorMonthRangeLabel(prior),
     monthLabel: MONTH_NAMES_HU[month - 1] ?? '',
     sameDayLastWeekCount: byDay.get(addDaysYmd(today, -7))?.count ?? 0,
     sameDayLastWeekLabel: dayLabel(addDaysYmd(today, -7)).split(' ')[0] ?? '',

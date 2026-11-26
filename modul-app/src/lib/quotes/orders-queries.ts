@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   BACKLOG_MAX_AGE_DAYS,
   addDaysYmd,
+  budapestDayRangeIso,
   budapestTodayYmd,
   budapestYesterdayYmd
 } from '@/lib/home/date'
@@ -67,9 +68,18 @@ export type ListOrdersParams = {
   todayOnly?: boolean
   /** false (default): aktív lista; true: csak archív. */
   archivedOnly?: boolean
+  /**
+   * Kezdőlap KPI fókusz — a csempe számával egyező lista. Felülírja a status / date szűrőt.
+   * late: ordered|in_production, production_date < lateCutoff (lib/orders/late-cutoff).
+   */
+  focus?: OrderListFocus
+  lateCutoff?: string
   page?: number
   limit?: number
 }
+
+export const ORDER_LIST_FOCUS = ['late', 'finished_today', 'unpaid'] as const
+export type OrderListFocus = (typeof ORDER_LIST_FOCUS)[number]
 
 const SHOP_FLOOR_STATUSES: QuoteStatus[] = ['ordered', 'in_production']
 
@@ -146,6 +156,7 @@ type OrdersListQuery = {
   not: (column: string, operator: string, value: unknown) => OrdersListQuery
   in: (column: string, values: readonly string[]) => OrdersListQuery
   lte: (column: string, value: string) => OrdersListQuery
+  lt: (column: string, value: string) => OrdersListQuery
   gte: (column: string, value: string) => OrdersListQuery
   or: (filters: string) => OrdersListQuery
   order: (
@@ -183,11 +194,22 @@ export async function listOrders(
 
   if (params.archivedOnly) {
     query = query.not('archived_at', 'is', null)
-  } else {
+  } else if (params.focus !== 'finished_today') {
+    // A „Ma kiadva” KPI az aznap archivált átadást is számolja.
     query = query.is('archived_at', null)
   }
 
-  if (params.overdueOnly) {
+  if (params.focus === 'late') {
+    query = query
+      .in('status', SHOP_FLOOR_STATUSES)
+      .not('production_date', 'is', null)
+      .lt('production_date', params.lateCutoff ?? budapestYesterdayYmd())
+  } else if (params.focus === 'finished_today') {
+    const { startIso, endIso } = budapestDayRangeIso(budapestTodayYmd())
+    query = query.eq('status', 'finished').gte('finished_at', startIso).lt('finished_at', endIso)
+  } else if (params.focus === 'unpaid') {
+    query = query.eq('status', 'finished').in('payment_status', ['not_paid', 'partial'])
+  } else if (params.overdueOnly) {
     const yesterday = budapestYesterdayYmd()
     const windowStart = addDaysYmd(budapestTodayYmd(), -BACKLOG_MAX_AGE_DAYS)
     query = query
@@ -267,6 +289,7 @@ export async function listOrders(
   }
 
   const shopFloorSort =
+    params.focus === 'late' ||
     params.overdueOnly ||
     params.unscheduledOnly ||
     params.todayOnly ||

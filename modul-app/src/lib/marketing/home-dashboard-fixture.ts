@@ -111,10 +111,13 @@ export const HOME_DASHBOARD_FIXTURE = {
       oldestUnpaidDays: 9,
       ready: { total: 12, fresh: 7, mid: 3, old: 2, noSms: 1 },
       finishedToday: 6,
+      finishedTodayGross: 742_000,
       finishedTypical: 8,
       finishedTypicalByNow: 3,
       collectedToday: 1_120_000,
-      lateCount: 0
+      lateCount: 0,
+      lateNotStarted: 0,
+      priorMonthRangeLabel: 'okt. 1–26.'
     }
   } satisfies HomeKpiBundle,
 

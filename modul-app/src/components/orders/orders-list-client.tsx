@@ -36,6 +36,7 @@ import {
   quoteRemainingGross
 } from '@/lib/quotes/payment-labels'
 import type {
+  OrderListFocus,
   OrderListItem,
   OrderListStatusFilter
 } from '@/lib/quotes/orders-queries'
@@ -65,9 +66,22 @@ type OrdersListClientProps = {
   initialUnscheduledOnly: boolean
   initialTodayOnly: boolean
   initialArchivedOnly: boolean
+  initialFocus: OrderListFocus | null
   machines: ProductionMachineOption[]
   paymentMethods: PaymentMethodOption[]
   schedulerKpis: SchedulerKpis | null
+}
+
+const FOCUS_LABEL: Record<OrderListFocus, string> = {
+  late: 'Csúszásban',
+  finished_today: 'Ma kiadva',
+  unpaid: 'Nem fizetett (kiadva)'
+}
+
+const FOCUS_HINT: Record<OrderListFocus, string> = {
+  late: 'Megrendelve / gyártásban, a gyártási nap az előző munkanapnál régebbi',
+  finished_today: 'Ma átadott rendelések (archiváltak is)',
+  unpaid: 'Átadva, de nincs vagy csak részben van kifizetve'
 }
 
 const STATUS_CHIPS: Array<{
@@ -272,6 +286,7 @@ export function OrdersListClient({
   initialUnscheduledOnly,
   initialTodayOnly,
   initialArchivedOnly,
+  initialFocus,
   machines,
   paymentMethods,
   schedulerKpis
@@ -283,6 +298,7 @@ export function OrdersListClient({
   /** Vegyes listán soft státusz a O-szám alatt — külön oszlop nincs. */
   const showStatusHint =
     initialStatus === 'all' ||
+    Boolean(initialFocus) ||
     initialArchivedOnly ||
     initialOverdueOnly ||
     initialUnscheduledOnly ||
@@ -313,6 +329,12 @@ export function OrdersListClient({
 
   function pushParams(patch: Record<string, string | null>) {
     const next = new URLSearchParams(searchParams.toString())
+    if (
+      !('focus' in patch) &&
+      ['status', 'today', 'overdue', 'unscheduled', 'archived', 'date'].some((k) => k in patch)
+    ) {
+      next.delete('focus')
+    }
     for (const [key, value] of Object.entries(patch)) {
       if (value === null || value === '') next.delete(key)
       else next.set(key, value)
@@ -378,9 +400,11 @@ export function OrdersListClient({
         initialUnscheduledOnly ||
         initialTodayOnly ||
         initialArchivedOnly ||
+        Boolean(initialFocus) ||
         initialStatus !== 'ordered'),
     [
       total,
+      initialFocus,
       initialQ,
       initialMachineId,
       initialProductionDate,
@@ -412,6 +436,7 @@ export function OrdersListClient({
       <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Státusz szűrő">
         {STATUS_CHIPS.map((chip) => {
           const active =
+            !initialFocus &&
             !initialArchivedOnly &&
             !initialOverdueOnly &&
             !initialUnscheduledOnly &&
@@ -532,6 +557,26 @@ export function OrdersListClient({
           Archívum
         </button>
       </div>
+
+      {initialFocus ? (
+        <div
+          className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-subtle px-3 py-2 text-body"
+          role="status"
+        >
+          <span className="text-ink-secondary">Kezdőlapi szűrő:</span>
+          <span className="font-semibold text-ink">{FOCUS_LABEL[initialFocus]}</span>
+          <span className="text-hint text-ink-muted">{FOCUS_HINT[initialFocus]}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            onClick={() => pushParams({ focus: null, page: '1' })}
+          >
+            Szűrő törlése
+          </Button>
+        </div>
+      ) : null}
 
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-end">
         <form

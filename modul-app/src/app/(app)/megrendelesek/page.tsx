@@ -6,8 +6,12 @@ import { OrdersListClient } from '@/components/orders/orders-list-client'
 import { getSessionUser } from '@/lib/auth/session'
 import { listActivePaymentMethods } from '@/lib/payment-methods/queries'
 import { getSchedulerKpis } from '@/lib/orders/scheduler-kpi-queries'
+import { budapestTodayYmd } from '@/lib/home/date'
+import { lateCutoffYmd } from '@/lib/orders/late-cutoff'
 import {
   listOrders,
+  ORDER_LIST_FOCUS,
+  type OrderListFocus,
   type OrderListStatusFilter
 } from '@/lib/quotes/orders-queries'
 import { listActiveProductionMachines } from '@/lib/production-machines/queries'
@@ -31,6 +35,8 @@ type SearchParams = Promise<{
   unscheduled?: string
   /** ordered|in_production, production_date = ma (BP). */
   today?: string
+  /** Kezdőlap KPI fókusz: late | finished_today | unpaid. */
+  focus?: string
 }>
 
 const STATUS_VALUES: OrderListStatusFilter[] = [
@@ -72,21 +78,26 @@ async function OrdersListLoader({
 
   const q = params.q?.trim() ?? ''
   const page = Math.max(1, Number(params.page) || 1)
+  const focus: OrderListFocus | null =
+    !params.archived && (ORDER_LIST_FOCUS as readonly string[]).includes(params.focus ?? '')
+      ? (params.focus as OrderListFocus)
+      : null
   const archivedOnly = params.archived === '1'
-  const overdueOnly = params.overdue === '1' && !archivedOnly
+  const overdueOnly = params.overdue === '1' && !archivedOnly && !focus
   const unscheduledOnly =
-    params.unscheduled === '1' && !archivedOnly && !overdueOnly
+    params.unscheduled === '1' && !archivedOnly && !overdueOnly && !focus
   const todayOnly =
     params.today === '1' &&
+    !focus &&
     !archivedOnly &&
     !overdueOnly &&
     !unscheduledOnly
   /** Kereséskor minden státusz (lemondott is) — ne essen el a találat. */
   const status: OrderListStatusFilter =
-    q || archivedOnly ? 'all' : parseStatus(params.status)
+    q || archivedOnly || focus ? 'all' : parseStatus(params.status)
   const machineId = params.machine?.trim() ?? ''
   const productionDate =
-    overdueOnly || unscheduledOnly || todayOnly
+    focus || overdueOnly || unscheduledOnly || todayOnly
       ? ''
       : (params.date?.trim() ?? '')
 
@@ -103,6 +114,8 @@ async function OrdersListLoader({
     const supabase = await createClient()
     if (supabase) {
       try {
+        const lateCutoff =
+          focus === 'late' ? await lateCutoffYmd(supabase, user.tenantId, budapestTodayYmd()) : undefined
         const [ordersResult, machineRows, methodRows, smsAddon, kpis] =
           await Promise.all([
             listOrders(supabase, {
@@ -115,6 +128,8 @@ async function OrdersListLoader({
               unscheduledOnly,
               todayOnly,
               archivedOnly,
+              focus: focus ?? undefined,
+              lateCutoff,
               page,
               limit: 25
             }),
@@ -187,6 +202,7 @@ async function OrdersListLoader({
       initialUnscheduledOnly={unscheduledOnly}
       initialTodayOnly={todayOnly}
       initialArchivedOnly={archivedOnly}
+      initialFocus={focus}
       machines={machines}
       paymentMethods={paymentMethods}
       schedulerKpis={schedulerKpis}
