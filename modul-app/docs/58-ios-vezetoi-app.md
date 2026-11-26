@@ -1,6 +1,7 @@
 # 58 — Vezetői iOS app (SaaS tenant riportok)
 
-**Állapot:** 2026-11-24 — **⏸ SZÜNETELTETVE.** 4 tab: Kezdőlap · Jelenlét · Belépők · Több (rejtett: Lapszabászat, Gyártás). Hol tartunk, zárolt döntések, adatforrások, újraindítás, nyitott teendők, App Store lépések: **[`vezetoi-mobile/README.md` → Szüneteltetve](../../vezetoi-mobile/README.md)**. UX állapotnapló: [59](59-ios-vezetoi-ux.md).  
+**Állapot:** 2026-11-26 — **Riport-app átépítés.** 4 tab: Kezdőlap (Stack: Rendelt · Ajánlatok · Szabás · Elmaradás részletező) · Jelenlét · Belépők · Több. Ma / Hét / Hónap időszakváltó, összevetéssel. Az üzleti számok a **modul-app mobil API-ból** (`/api/m/v1/*`) jönnek, ugyanazzal a definícióval, mint a webes kezdőlap ([35](35-home-kpis.md)). Gyártás + régi Lapszabászat képernyő törölve. Részletek, újraindítás, tesztelés: **[`vezetoi-mobile/README.md`](../../vezetoi-mobile/README.md)**. UX állapotnapló: [59](59-ios-vezetoi-ux.md).  
+2026-11-24 — ⏸ szüneteltetve (4 tab, rejtett Lapszabászat + Gyártás).  
 2026-11-18 — **5 tab IA:** Ma · Jelenlét · Belépők · Figyelem · Több (Gyártás a Több alatt).  
 **Persona:** ügyvezető / tulajdonos / irodavezető — **5 mp glance**, Ft / pénzhatás első.  
 **Kapcsolat:** UX/wireframe **[59](59-ios-vezetoi-ux.md)** · home KPI [35](35-home-kpis.md) · tenancy [10](10-permissions-and-tenancy.md) · SaaS [17](17-saas-architecture.md) · eszközök [14](14-responsive-and-devices.md) · PDA (későbbi hullám) [45](45-pda-pos-addon.md).
@@ -47,8 +48,8 @@
 | Auth | Staff Supabase auth + membership | Nincs külön „mobil user” tábla |
 | Biometria | `expo-local-authentication` (opcionális unlock) | Session refresh továbbra is Supabase |
 | Data | Lean query / RPC — mint home KPI | Nincs `select('*')`; limitált listák |
-| UI | **PanelUI** (`panelui-native`) + Uniwind, `src/ui` adapterekkel; gifted-charts; Midday light tokenek (`src/global.css`) | Csak development clienten (Expo Go-n worklets crash) |
-| Chart | `react-native-gifted-charts` + SVG | Glance spark; Victory Native csak EAS után |
+| UI | **PanelUI** (`panelui-native`) + Uniwind, `src/ui` adapterekkel; Midday light tokenek (`src/global.css`) | Csak development clienten (Expo Go-n worklets crash) |
+| Chart | PanelUI `LineChart` / `BarChart` (SVG + Reanimated) | Csak részletezőn; a Kezdőlapon nincs grafikon |
 | Ikon | `lucide-react-native` | Web Lucide párhuzam |
 | Build | **EAS Build / Submit** (iOS első) | Xcode a gépen **nem** kell; lokális `expo run:ios` SSD miatt szünetel; monorepo: **`.easignore`** a git rooton (csak `vezetoi-mobile/`) |
 | OTA | EAS Update (JS) | Natív modul változás → új store build |
@@ -78,14 +79,16 @@ Certainty-first: **egy fókusz / tab**; nagy tabular Ft; szín csak kivételre (
 
 | Tab / screen | Tartalom | Web forrásigazság |
 |---|---|---|
-| **Ma** | Hero mai forgalom + MTD + kintlévő + belépő chart | `getHomeKpiBundle` / footcounter slim |
-| **Jelenlét** | Placeholder → bent/kint glance | `/jelenlet` |
-| **Belépők** | Hero belépő + Ma\|Hét\|Hó chart | `footcounter_*` RPC |
-| **Figyelem** | Partner inbox + AR + silent | home inbox + kintlévő + kiemelt |
-| **Több** | Tenant, Gyártás (lapszab), web, kijelentkezés | — |
-| **Gyártás** | Nem tab — Több → elmaradás screen | backlog ([35](35-home-kpis.md)) |
+| **Kezdőlap** | Cégnév ▾ + frissítés ideje · Ma\|Hét\|Hónap · Rendelt hero (Ft + delta + összevetés) · Ajánlatok + Belépők csempe · **Most:** Szabás ma, Elmaradás, Bent most | `/api/m/v1/kezdolap` → `lib/mobile/pulse.ts` (KPI-definíciók: [35](35-home-kpis.md)) |
+| ↳ Rendelt | Ma: óránként halmozott vonal vs szokásos; Hét/Hónap: napi oszlop vs előző · saját/portál · top 5 anyag | `/api/m/v1/rendelt` |
+| ↳ Ajánlatok | Összes, saját/partner, napi halmozott oszlop, top 5 partner | `/api/m/v1/ajanlatok` |
+| ↳ Szabás | Mai %, gépenként, következő 5 munkanap | `/api/m/v1/szabas` (`getSchedulerKpis`) |
+| ↳ Elmaradás | Darab, méter, el sem indult, 10 legrégebbi → „Összes megnyitása a weben” | `/api/m/v1/elmaradas` → web `/megrendelesek?focus=late` |
+| **Jelenlét** | Hét, bent / elment / távol, csoportos lista | közvetlen Supabase (`hr_*`) |
+| **Belépők** | Eszközállapot, Ma / 7 nap / Hónap | `footcounter_*` RPC |
+| **Több** | Cégváltás, kijelentkezés | — |
 
-**Deep link:** pl. elmaradás → `{staffOrigin}/megrendelesek?overdue=1`; partner sor → ajánlat detail URL.
+**Nem cél (döntés 2026-11-26):** teendők / Figyelem blokk, polc, kiadás, befizetés, kintlévőség (a lapszab POS folyamat nincs használatban).
 
 Empty state: plain language + „Nyisd meg a webes Optinovát” CTA.
 
@@ -96,9 +99,9 @@ Empty state: plain language + „Nyisd meg a webes Optinovát” CTA.
 | Elv | Részlet |
 |---|---|
 | Újrahasználat | Preferáld a meglévő lean query / RPC mintákat (`src/lib/home/*`, `kiemelt-partnerek/queries`) — **ne** másold a Next server actionokat vakon |
-| Mobil API | Ha kell: dedikált lean Route Handler-ek vagy shared package típusok; mindig tenant-scoped |
+| Mobil API | **Kész:** `modul-app/src/app/api/m/v1/*` — `Authorization: Bearer <Supabase access token>`, `?tenant=<uuid>&period=ma\|het\|honap`; a route a user tokenjével (RLS) fut, ellenőrzi az aktív tagságot és a modult (`lib/mobile/auth.ts`). Middleware-ben nyilvános útvonal, az auth a route-ban van. `Cache-Control: no-store` |
 | Lista limit | Default **25** (vagy kisebb glance: 5–10) |
-| Frissítés | Pull-to-refresh; opcionális silent interval csak a Ma tabon |
+| Frissítés | Pull-to-refresh; AsyncStorage cache azonnal, aztán friss adat; előtérbe jövéskor (>1 perc) és fókuszban 5 percenként; hibánál borostyán „a HH:MM-es adatot látod” sáv |
 | Formátum | Ft / dátum: [13](13-numbers-units-formats.md) (Budapest nap) |
 
 ---

@@ -27,7 +27,7 @@ export default function SignInScreen() {
   const passwordRef = useRef<{ focus: () => void } | null>(null)
 
   if (session && current) {
-    return <Redirect href="/(app)" />
+    return <Redirect href="/" />
   }
 
   const canSubmit =
@@ -69,7 +69,7 @@ export default function SignInScreen() {
               resizeMode="contain"
               accessibilityLabel="Turinova"
             />
-            <Text style={styles.product}>Optinova · Vezető</Text>
+            <Text style={styles.product}>Turinova · Admin</Text>
           </View>
 
           {!configured ? (

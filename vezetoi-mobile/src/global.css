@@ -1,0 +1,80 @@
+@import 'tailwindcss';
+@import 'uniwind';
+@import 'panelui-native/theme.css';
+
+@source '../node_modules/panelui-native/src';
+
+/*
+ * Midday light (modul-app 18 / 59) — csak a light témát hangoljuk; dark mode v1-ben nincs.
+ * A PanelUI tokenek témánként futásidőben cserélődnek, ezért @variant light blokkban kell felülírni.
+ */
+@layer theme {
+  :root {
+    @variant light {
+      --color-background: #fafafa;
+      --color-foreground: #18181b;
+
+      --color-card: #ffffff;
+      --color-card-foreground: #18181b;
+      --color-popover: #ffffff;
+      --color-popover-foreground: #18181b;
+      --color-overlay: #ffffff;
+      --color-overlay-foreground: #18181b;
+
+      --color-primary: #18181b;
+      --color-primary-foreground: #ffffff;
+
+      --color-secondary: #f4f4f5;
+      --color-secondary-foreground: #18181b;
+      --color-muted: #f4f4f5;
+      --color-muted-foreground: #71717a;
+      --color-accent: #f4f4f5;
+      --color-accent-foreground: #18181b;
+
+      --color-destructive: #dc2626;
+      --color-destructive-foreground: #b91c1c;
+      --color-destructive-solid-foreground: #ffffff;
+      --color-success: #15803d;
+      --color-success-foreground: #15803d;
+      --color-success-solid-foreground: #ffffff;
+      --color-warning: #b45309;
+      --color-warning-foreground: #b45309;
+      --color-warning-solid-foreground: #ffffff;
+      --color-info: #18181b;
+      --color-info-foreground: #18181b;
+      --color-info-solid-foreground: #ffffff;
+
+      --color-border: #e4e4e7;
+      --color-input: #e4e4e7;
+      --color-ring: #a1a1aa;
+
+      --color-surface: #fafafa;
+      --color-surface-secondary: #f4f4f5;
+      --color-surface-tertiary: #e4e4e7;
+      --color-skeleton: rgba(24, 24, 27, 0.07);
+
+      --color-success-soft: #f0fdf4;
+      --color-success-subtle: #f0fdf4;
+      --color-warning-soft: #fffbeb;
+      --color-warning-subtle: #fffbeb;
+      --color-destructive-soft: #fef2f2;
+      --color-destructive-subtle: #fef2f2;
+      --color-info-soft: #f4f4f5;
+      --color-info-subtle: #f4f4f5;
+
+      --color-chart-1: #18181b;
+      --color-chart-2: #a1a1aa;
+      --color-chart-3: #15803d;
+      --color-chart-4: #b45309;
+      --color-chart-5: #52525b;
+
+      --radius-xs: 4px;
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 10px;
+      --radius-xl: 12px;
+      --radius-2xl: 12px;
+      --radius-3xl: 16px;
+    }
+  }
+}

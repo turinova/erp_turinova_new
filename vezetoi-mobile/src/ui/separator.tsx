@@ -1,15 +1,12 @@
 import { StyleSheet, View } from 'react-native'
 
-import { colors } from '@/theme'
+import { cn } from './cn'
 
-export function Separator() {
-  return <View style={styles.line} />
+export function Separator({ inset = false }: { inset?: boolean }) {
+  return (
+    <View
+      className={cn('bg-border', inset && 'ml-4')}
+      style={{ height: StyleSheet.hairlineWidth }}
+    />
+  )
 }
-
-const styles = StyleSheet.create({
-  line: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    width: '100%'
-  }
-})

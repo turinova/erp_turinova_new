@@ -300,6 +300,9 @@ async function handleSession(request: NextRequest) {
   /** Vercel Cron: Bearer CRON_SECRET, a route ellenőrzi. */
   const isPublicCron = pathname.startsWith('/api/cron/')
 
+  /** Vezetői mobil app: Supabase access token Bearer-ben, a route ellenőrzi (lib/mobile/auth). */
+  const isPublicMobileApi = pathname.startsWith('/api/m/')
+
   const isPublicAuth =
     (surface !== 'platform' && isPublicMarketingPath(pathname)) ||
     ((surface === 'staff' || surface === 'platform') &&
@@ -327,7 +330,8 @@ async function handleSession(request: NextRequest) {
     isPublicJelenletTerminalScan ||
     isPublicStorefrontApi ||
     isPublicKioskApi ||
-    isPublicCron
+    isPublicCron ||
+    isPublicMobileApi
   ) {
     return supabaseResponse
   }

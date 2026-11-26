@@ -19,7 +19,23 @@ export const colors = {
   onPrimary: '#FFFFFF',
   tabInactive: '#A1A1AA',
   chartBar: '#18181B',
-  chartBarMuted: '#D4D4D8'
+  chartBarMuted: '#D4D4D8',
+  /** Lapszabászat domain szín (web Opti csempe) — chartokon mindig ez = „ma / most”. */
+  lapszab: '#2563EB',
+  lapszabSoft: '#BFDBFE',
+  /** Összehasonlító sor (tegnap / előző időszak) — mindig halvány szürke. */
+  chartCompare: '#A1A1AA',
+  /** Partnerportálról érkezett megrendelés (web Ajánlatok csempe). */
+  portal: '#7C3AED',
+  /** Belépők domain szín (web nav teal). */
+  belepok: '#0D9488',
+  belepokSoft: '#99F6E4',
+  /** Jelenlét státuszok — mindig felirattal együtt. */
+  presenceIn: '#16A34A',
+  presenceLeft: '#71717A',
+  presenceVacation: '#0EA5E9',
+  presenceSick: '#A855F7',
+  presenceNone: '#D4D4D8'
 } as const
 
 export const space = {

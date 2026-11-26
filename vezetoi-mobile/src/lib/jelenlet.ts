@@ -5,20 +5,38 @@ import { addDaysYmd, budapestTodayYmd } from '@/lib/date'
 /** Max nap vissza a steppelben (BP nap). */
 export const JELENLET_MAX_PAST_DAYS = 90
 
-export type JelenletRowKind = 'times' | 'vacation' | 'sick' | 'none'
+/**
+ * bent = érkezett, ma még nem ment el · elment = érkezés + távozás ·
+ * nyitott = múltbeli nap, távozás nincs rögzítve · nincs = dolgozna, de nincs jelölés ·
+ * szabadnap = vasárnap / nem szombatos / munkaszüneti nap.
+ */
+export type JelenletRowKind =
+  | 'bent'
+  | 'elment'
+  | 'nyitott'
+  | 'szabadsag'
+  | 'beteg'
+  | 'nincs'
+  | 'szabadnap'
 
 export type JelenletDayRow = {
   id: string
   name: string
+  initials: string
+  typeLabel: string | null
   kind: JelenletRowKind
   arrival: string | null
   departure: string | null
+  /** Bent töltött perc (ebéd nélkül); bent esetén mostanáig. */
+  workedMinutes: number | null
 }
 
 export type JelenletHolidayBanner = {
   title: string
   name: string | null
 }
+
+export type JelenletCounts = Record<JelenletRowKind, number>
 
 export type JelenletDayModel = {
   ymd: string
@@ -27,13 +45,18 @@ export type JelenletDayModel = {
   canGoNext: boolean
   canGoPrev: boolean
   holiday: JelenletHolidayBanner | null
-  bentCount: number
-  vacationCount: number
-  sickCount: number
-  summaryLine: string | null
+  counts: JelenletCounts
+  /** Akik ezen a napon dolgoznának (szabadnaposok nélkül). */
+  workingCount: number
+  /** Megjelentek: bent + elment + nyitott. */
+  presentCount: number
+  /** 100-as lekérdezési plafon elérve. */
+  truncated: boolean
   rows: JelenletDayRow[]
   loadError: string | null
 }
+
+export const EMPLOYEE_LIMIT = 100
 
 const WEEKDAY_HU = [
   'Vasárnap',
@@ -146,22 +169,90 @@ function holidayBanner(
   return null
 }
 
-function sortRank(kind: JelenletRowKind, hasArrival: boolean): number {
-  if (kind === 'times' && hasArrival) return 0
-  if (kind === 'vacation' || kind === 'sick') return 1
-  return 2
+const SORT_RANK: Record<JelenletRowKind, number> = {
+  bent: 0,
+  elment: 1,
+  nyitott: 2,
+  szabadsag: 3,
+  beteg: 4,
+  nincs: 5,
+  szabadnap: 6
 }
 
-function buildSummary(input: {
-  bentCount: number
-  vacationCount: number
-  sickCount: number
-}): string | null {
-  const parts: string[] = []
-  if (input.bentCount > 0) parts.push(`${input.bentCount} bent`)
-  if (input.vacationCount > 0) parts.push(`${input.vacationCount} szabadság`)
-  if (input.sickCount > 0) parts.push(`${input.sickCount} beteg`)
-  return parts.length > 0 ? parts.join(' · ') : null
+export function emptyJelenletCounts(): JelenletCounts {
+  return {
+    bent: 0,
+    elment: 0,
+    nyitott: 0,
+    szabadsag: 0,
+    beteg: 0,
+    nincs: 0,
+    szabadnap: 0
+  }
+}
+
+function initialsOf(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  const first = parts[0][0] ?? ''
+  const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? '') : ''
+  return (first + last).toUpperCase()
+}
+
+function toMinutes(hhmm: string | null): number | null {
+  if (!hhmm) return null
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+function budapestNowHhmm(): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Budapest',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).format(new Date())
+}
+
+function workedMinutes(
+  arrival: string | null,
+  departure: string | null,
+  lunchStart: string | null,
+  lunchEnd: string | null
+): number | null {
+  const a = toMinutes(arrival)
+  const d = toMinutes(departure)
+  if (a == null || d == null || d <= a) return null
+  let total = d - a
+  const ls = toMinutes(lunchStart)
+  const le = toMinutes(lunchEnd)
+  if (ls != null && le != null && le > ls) total -= le - ls
+  return Math.max(0, total)
+}
+
+/** „8 óra 28 perc” / „45 perc” */
+export function formatWorked(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m} perc`
+  if (m === 0) return `${h} óra`
+  return `${h} óra ${m} perc`
+}
+
+function isRestDay(
+  ymd: string,
+  dayType: string | null | undefined,
+  worksOnSaturday: boolean
+): boolean {
+  if (dayType === 'national' || dayType === 'company' || dayType === 'relocated_rest') {
+    return true
+  }
+  if (dayType === 'relocated_work') return false
+  const { y, m, d } = parseYmdParts(ymd)
+  const wd = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay()
+  if (wd === 0) return true
+  if (wd === 6) return !worksOnSaturday
+  return false
 }
 
 export async function getJelenletDay(
@@ -171,46 +262,46 @@ export async function getJelenletDay(
 ): Promise<JelenletDayModel> {
   const today = budapestTodayYmd()
   const earliest = addDaysYmd(today, -JELENLET_MAX_PAST_DAYS)
-  const clamped =
-    ymd > today ? today : ymd < earliest ? earliest : ymd
+  const clamped = ymd > today ? today : ymd < earliest ? earliest : ymd
+  const isToday = clamped === today
 
-  const base: Omit<JelenletDayModel, 'rows' | 'loadError' | 'holiday' | 'summaryLine' | 'bentCount' | 'vacationCount' | 'sickCount'> & {
-    bentCount: number
-    vacationCount: number
-    sickCount: number
-    holiday: JelenletHolidayBanner | null
-    summaryLine: string | null
-  } = {
+  const base = {
     ymd: clamped,
     label: jelenletDayLabel(clamped, today),
-    isToday: clamped === today,
+    isToday,
     canGoNext: clamped < today,
     canGoPrev: clamped > earliest,
-    bentCount: 0,
-    vacationCount: 0,
-    sickCount: 0,
     holiday: null,
-    summaryLine: null
+    counts: emptyJelenletCounts(),
+    workingCount: 0,
+    presentCount: 0,
+    truncated: false
   }
 
   const [
     { data: employees, error: empErr },
+    { data: types },
     { data: attendance, error: attErr },
     { data: absences, error: absErr },
     { data: calRows, error: calErr }
   ] = await Promise.all([
     supabase
       .from('hr_employees')
-      .select('id, name')
+      .select('id, name, employee_type_id, works_on_saturday')
       .eq('tenant_id', tenantId)
       .eq('active', true)
       .is('deleted_at', null)
       .is('archived_at', null)
       .order('name', { ascending: true })
-      .limit(100),
+      .limit(EMPLOYEE_LIMIT),
+    supabase
+      .from('hr_employee_types')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null),
     supabase
       .from('hr_attendance_days')
-      .select('employee_id, arrival_time, departure_time')
+      .select('employee_id, arrival_time, departure_time, lunch_start, lunch_end')
       .eq('tenant_id', tenantId)
       .eq('work_date', clamped),
     supabase
@@ -235,21 +326,28 @@ export async function getJelenletDay(
       absErr?.message ||
       calErr?.message ||
       'Nem sikerült betölteni a jelenlétet.'
-    return {
-      ...base,
-      rows: [],
-      loadError: msg
-    }
+    return { ...base, rows: [], loadError: msg }
   }
+
+  const typeName = new Map(
+    (types ?? []).map((t) => [t.id as string, String(t.name ?? '').trim()])
+  )
 
   const attByEmp = new Map<
     string,
-    { arrival: string | null; departure: string | null }
+    {
+      arrival: string | null
+      departure: string | null
+      lunchStart: string | null
+      lunchEnd: string | null
+    }
   >()
   for (const row of attendance ?? []) {
     attByEmp.set(row.employee_id as string, {
       arrival: normalizeTime(row.arrival_time as string | null),
-      departure: normalizeTime(row.departure_time as string | null)
+      departure: normalizeTime(row.departure_time as string | null),
+      lunchStart: normalizeTime(row.lunch_start as string | null),
+      lunchEnd: normalizeTime(row.lunch_end as string | null)
     })
   }
 
@@ -264,76 +362,91 @@ export async function getJelenletDay(
     if (t === 'sick' || !prev) absByEmp.set(eid, t)
   }
 
-  const holiday = holidayBanner(
-    calRows?.day_type as string | null | undefined,
-    calRows?.name as string | null | undefined
-  )
-
-  let bentCount = 0
-  let vacationCount = 0
-  let sickCount = 0
+  const dayType = calRows?.day_type as string | null | undefined
+  const holiday = holidayBanner(dayType, calRows?.name as string | null | undefined)
+  const nowHhmm = isToday ? budapestNowHhmm() : null
+  const counts = emptyJelenletCounts()
 
   const rows: JelenletDayRow[] = (employees ?? []).map((emp) => {
     const id = emp.id as string
-    const name = String(emp.name ?? '').trim() || '—'
+    const name = String(emp.name ?? '').trim() || 'Névtelen'
+    const typeLabel = typeName.get(emp.employee_type_id as string) || null
+    const baseRow = {
+      id,
+      name,
+      initials: initialsOf(name),
+      typeLabel,
+      arrival: null,
+      departure: null,
+      workedMinutes: null
+    }
+
     const abs = absByEmp.get(id)
-    if (abs === 'vacation') {
-      vacationCount += 1
-      return {
-        id,
-        name,
-        kind: 'vacation' as const,
-        arrival: null,
-        departure: null
-      }
-    }
-    if (abs === 'sick') {
-      sickCount += 1
-      return {
-        id,
-        name,
-        kind: 'sick' as const,
-        arrival: null,
-        departure: null
-      }
-    }
     const att = attByEmp.get(id)
     const arrival = att?.arrival ?? null
     const departure = att?.departure ?? null
-    if (arrival || departure) {
-      if (arrival && !departure) bentCount += 1
-      return {
-        id,
-        name,
-        kind: 'times' as const,
-        arrival,
-        departure
-      }
-    }
-    return {
-      id,
-      name,
-      kind: 'none' as const,
-      arrival: null,
-      departure: null
-    }
+
+    let kind: JelenletRowKind
+    let worked: number | null = null
+    if (abs === 'vacation') kind = 'szabadsag'
+    else if (abs === 'sick') kind = 'beteg'
+    else if (arrival && departure) {
+      kind = 'elment'
+      worked = workedMinutes(arrival, departure, att?.lunchStart ?? null, att?.lunchEnd ?? null)
+    } else if (arrival) {
+      kind = isToday ? 'bent' : 'nyitott'
+      if (isToday && nowHhmm) worked = workedMinutes(arrival, nowHhmm, null, null)
+    } else if (isRestDay(clamped, dayType, Boolean(emp.works_on_saturday))) {
+      kind = 'szabadnap'
+    } else kind = 'nincs'
+
+    counts[kind] += 1
+    if (kind === 'szabadsag' || kind === 'beteg') return { ...baseRow, kind }
+    return { ...baseRow, kind, arrival, departure, workedMinutes: worked }
   })
 
   rows.sort((a, b) => {
-    const ra = sortRank(a.kind, Boolean(a.arrival))
-    const rb = sortRank(b.kind, Boolean(b.arrival))
-    if (ra !== rb) return ra - rb
+    const r = SORT_RANK[a.kind] - SORT_RANK[b.kind]
+    if (r !== 0) return r
     return a.name.localeCompare(b.name, 'hu')
   })
 
   return {
     ...base,
     holiday,
-    bentCount,
-    vacationCount,
-    sickCount,
-    summaryLine: buildSummary({ bentCount, vacationCount, sickCount }),
+    counts,
+    workingCount: rows.length - counts.szabadnap,
+    presentCount: counts.bent + counts.elment + counts.nyitott,
+    truncated: rows.length >= EMPLOYEE_LIMIT,
     rows,
     loadError: null
   }
+}
+
+/** Hétsávhoz: napónként hányan jelentek meg (érkezés rögzítve). */
+export async function getJelenletPresentByDay(
+  supabase: SupabaseClient,
+  tenantId: string,
+  fromYmd: string,
+  toYmd: string
+): Promise<Map<string, number>> {
+  const { data, error } = await supabase
+    .from('hr_attendance_days')
+    .select('work_date')
+    .eq('tenant_id', tenantId)
+    .gte('work_date', fromYmd)
+    .lte('work_date', toYmd)
+    .not('arrival_time', 'is', null)
+    .limit(1000)
+
+  const map = new Map<string, number>()
+  if (error) {
+    console.error('getJelenletPresentByDay', error.message)
+    return map
+  }
+  for (const r of data ?? []) {
+    const key = String(r.work_date)
+    map.set(key, (map.get(key) ?? 0) + 1)
+  }
+  return map
 }

@@ -349,7 +349,7 @@ function budapestNowMinutes(): number {
   return h * 60 + min
 }
 
-function priorMonthRangeYmd(todayYmd: string): {
+export function priorMonthRangeYmd(todayYmd: string): {
   start: string
   end: string
 } {
@@ -369,7 +369,7 @@ function priorMonthRangeYmd(todayYmd: string): {
 const shortMonthFmt = new Intl.DateTimeFormat('hu-HU', { month: 'short', timeZone: 'UTC' })
 
 /** „okt. 1–26.” — a havi % pontos összevetési tartománya. */
-function priorMonthRangeLabel(prior: { start: string; end: string }): string {
+export function priorMonthRangeLabel(prior: { start: string; end: string }): string {
   const month = shortMonthFmt.format(new Date(`${prior.start}T12:00:00Z`))
   return `${month} 1–${Number(prior.end.slice(8, 10))}.`
 }

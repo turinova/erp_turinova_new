@@ -1,6 +1,7 @@
 # 59 — Vezetői iOS: UX, layout, wireframe
 
-**Állapot:** 2026-11-24 (6) — **Kezdőlap „csendes rács”:** 3 csoport szürke címmel (Lapszabászat · Ajánlatok ma · Bolt), csak 4 betűméret (40 hero / 28 csempe / 15 csoportcím / 13 felirat), fekete szám + szürke felirat + szürke ikon; szín csak állapot (zöld ✓ / borostyán ⚠ szöveggel), nincs színes kártyaháttér; csempék fix 128px, 2/sor; térköz 12 csoporton belül, 24 csoportok közt. Ajánlatok: két egyforma csempe (Mi készítettük · Partnertől: db + Ft).  
+**Állapot:** 2026-11-26 — **Riport app, nem teendőlista.** Kezdőlap: fejléc = cégnév ▾ (váltó, ha több cég) + frissítés ideje (15 percnél régebbi → borostyán); **Ma \| Hét \| Hónap** (megmarad, a részletezők öröklik). Rendelt hero: Ft + `▲ 18% · +158 000 Ft` + „a szokásos csütörtökhöz képest” + „10 rendelés · szokásos: 8”. Csempék: Ajánlatok (db + „N partnertől”, nincs delta) · Belépők (fő + delta). **Most** csoport: Szabás ma (% + sáv + „410 / 500 m”) · Elmaradás (N rendelés, „N el sem indult”, méter) · „Bent most 5 / 6” sor → Jelenlét. Összevetés: Ma = előző 4 azonos hétnap átlaga ugyanaddig az óráig (a hétfői „tegnap ilyenkor” hiba megszűnt) · Hét = múlt hét ugyanaddig · Hónap = előző hónap 1–N. ±2% alatt szürke „≈ ugyanannyi”; nincs bázis → „Nincs összevetési adat”. Minden csempe kattintható → natív Stack részletező (visszahúzás): Rendelt (vonal/oszlop + saját/portál + top anyag) · Ajánlatok · Szabás (gépenként + 5 munkanap) · Elmaradás (10 legrégebbi + egy gomb: „Összes megnyitása a weben”). Mindegyik alján „Mit számolunk ide?”. Kezdőlapon nincs grafikon. Kikerült: Gyártás képernyő, régi Lapszabászat 7/30 nap, gifted-charts, Figyelem/teendők.  
+2026-11-24 (6) — **Kezdőlap „csendes rács”:** 3 csoport szürke címmel (Lapszabászat · Ajánlatok ma · Bolt), csak 4 betűméret (40 hero / 28 csempe / 15 csoportcím / 13 felirat), fekete szám + szürke felirat + szürke ikon; szín csak állapot (zöld ✓ / borostyán ⚠ szöveggel), nincs színes kártyaháttér; csempék fix 128px, 2/sor; térköz 12 csoporton belül, 24 csoportok közt. Ajánlatok: két egyforma csempe (Mi készítettük · Partnertől: db + Ft).  
 2026-11-24 (5) — **Kezdőlap újratervezve:** fejléc (cím, dátum, cég) nélkül; csak a lényeg, blokkonként domain színű ikon + felirat: Lapszabászat ma rendeltek (Ft, vs tegnap ilyenkor, db) · Szabás ma (Meter + ítélet + m) · Elmaradás **méterben** + késő rendelések száma · Ajánlatok ma (saját vs partner/portál: db + Ft, arány sáv) · Belépők ma · Bent ma. Kikerült: óránkénti görbe, 7 napos diagram, Google.  
 2026-11-24 (4) — **Belépők újratervezve:** fejléc nélkül; eszközállapot mindig látszik („● Élő · N perce frissült”, kiesésnél borostyán kártya); Ma \| 7 nap \| Hónap. Ma: „Ma bejött X fő” + ítélet az azonos hétnap átlagához „ilyenkor” (±10%), Bent most ≈ (be − ki), csúcsóra, óránkénti PanelUI BarChart (aktuális óra kiemelve). 7 nap: összeg vs előző 7 nap, napnevek, legforgalmasabb nap. Hónap: léptető, vs előző hónap, napi oszlopok, „Melyik napon jönnek a legtöbben?” hétnap-profil. Nincs heatmap / időjárás / szezon. Türkiz domain szín (`#0D9488`); gifted-charts kikerült.  
 2026-11-24 (3) — **Jelenlét újratervezve:** PanelUI `WeekStrip` hétsáv (napi „N fő”), nagy szám (gyűrű nélkül) + bontás + egy mondat; csoportos lista (Bent most · Már elment · Távol · Nincs jelölés · Szabadnapos) avatarral, típussal, ledolgozott idővel. Késést **nem** jelzünk (döntés). Szabadnap = vasárnap, nem szombatos dolgozó szombaton, munkaszüneti nap (`hr_work_calendar`).  
@@ -53,19 +54,20 @@
 ```
 Belépés
    ↓
-[Ma]  [Jelenlét]  [Belépők]  [Figyelem]  [Több]
-                                      ↑ Gyártás → Több lista
+[Kezdőlap]  [Jelenlét]  [Belépők]  [Több]
+   └─ Stack: Rendelt · Ajánlatok · Szabás · Elmaradás
 ```
 
 | Tab | Job (egy mondat) | Primary tartalom |
 |---|---|---|
-| **Ma** | „Mennyi jött be ma / hónapban?” | Hero mai forgalom + MTD + belépő glance |
-| **Jelenlét** | „Ki van bent?” | Placeholder → később jelenlét glance |
-| **Belépők** | „Hányan jöttek be?” | Hero szám + Ma\|Hét\|Hó segmented + full-width bar |
-| **Figyelem** | „Mi vár döntésre / pénzre / hangra?” | Partner inbox + AR + silent |
-| **Több** | Cég / kijárat / ritkább | Tenant, **Gyártás** (lapszab), web, kijelentkezés |
+| **Kezdőlap** | „Hogy áll a cég ma / a héten / a hónapban?” | Rendelt hero + Ajánlatok + Belépők; Most: Szabás, Elmaradás, Bent most |
+| **Jelenlét** | „Ki van bent?” | Hét + csoportos lista |
+| **Belépők** | „Hányan jöttek be?” | Eszközállapot + Ma \| 7 nap \| Hónap |
+| **Több** | Cég / kijárat | Cégváltás, kijelentkezés |
 
-**Miért 5 tab?** Apple HIG + Material + Android native max. Gyártás nem 6. tab — Square More mintára a Több alatt.
+> 2026-11-26: a korábbi 5 tabos terv (Figyelem tab, Gyártás a Több alatt) elvetve — az ügyvezető riportot akar, nem teendőlistát.
+
+**Miért 4 tab?** A Kezdőlap mélysége Stackben van (visszahúzás), nem külön tabokon.
 
 ---
 

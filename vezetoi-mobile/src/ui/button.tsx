@@ -1,13 +1,6 @@
 import type { ReactNode } from 'react'
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  type ViewStyle
-} from 'react-native'
-
-import { colors, radius, space } from '@/theme'
+import type { ViewStyle } from 'react-native'
+import { Button as PanelButton } from 'panelui-native/components/button'
 
 type Variant = 'default' | 'secondary' | 'destructive' | 'ghost'
 
@@ -20,6 +13,18 @@ type Props = {
   style?: ViewStyle
 }
 
+/** Destruktív = soft piros (nem tömör) — Midday: a piros a jelentés, nem a felület. */
+const VARIANT = {
+  default: { variant: 'primary', className: undefined, labelClassName: undefined },
+  secondary: { variant: 'outline', className: undefined, labelClassName: undefined },
+  destructive: {
+    variant: 'outline',
+    className: 'border-destructive/25 bg-destructive-soft',
+    labelClassName: 'text-destructive-foreground font-semibold'
+  },
+  ghost: { variant: 'ghost', className: undefined, labelClassName: undefined }
+} as const
+
 export function Button({
   children,
   onPress,
@@ -28,60 +33,20 @@ export function Button({
   variant = 'default',
   style
 }: Props) {
-  const isDisabled = disabled || loading
+  const v = VARIANT[variant]
   return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={isDisabled}
+    <PanelButton
+      variant={v.variant}
+      size="md"
+      fullWidth
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.base,
-        variantStyles[variant],
-        isDisabled && styles.disabled,
-        pressed && !isDisabled && styles.pressed,
-        style
-      ]}
+      disabled={disabled}
+      loading={loading}
+      className={v.className}
+      labelClassName={v.labelClassName ?? 'font-semibold'}
+      style={style}
     >
-      {loading ? (
-        <ActivityIndicator
-          color={variant === 'default' ? colors.onPrimary : colors.ink}
-        />
-      ) : typeof children === 'string' ? (
-        <Text style={[styles.label, labelStyles[variant]]}>{children}</Text>
-      ) : (
-        children
-      )}
-    </Pressable>
+      {children}
+    </PanelButton>
   )
 }
-
-const styles = StyleSheet.create({
-  base: {
-    height: 44,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space[4]
-  },
-  label: { fontSize: 15, fontWeight: '600' },
-  pressed: { opacity: 0.9 },
-  disabled: { opacity: 0.5 }
-})
-
-const variantStyles = StyleSheet.create({
-  default: { backgroundColor: colors.primary },
-  secondary: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  destructive: { backgroundColor: colors.dangerSoft },
-  ghost: { backgroundColor: 'transparent' }
-})
-
-const labelStyles = StyleSheet.create({
-  default: { color: colors.onPrimary },
-  secondary: { color: colors.ink },
-  destructive: { color: colors.danger },
-  ghost: { color: colors.ink }
-})

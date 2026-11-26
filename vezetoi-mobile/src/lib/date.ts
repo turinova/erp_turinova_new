@@ -58,6 +58,58 @@ export function budapestYearMonth(): { year: number; month: number } {
   return { year, month }
 }
 
+/** 0–23, Budapest idő szerint. */
+export function budapestHourFromIso(iso: string): number {
+  const h = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Budapest',
+    hour: '2-digit',
+    hourCycle: 'h23'
+  }).format(new Date(iso))
+  return Number(h) % 24
+}
+
+export function budapestNowHour(): number {
+  return budapestHourFromIso(new Date().toISOString())
+}
+
+const WEEKDAY_SHORT_HU = ['V', 'H', 'K', 'Sze', 'Cs', 'P', 'Szo'] as const
+const WEEKDAY_LONG_HU = [
+  'vasárnap',
+  'hétfő',
+  'kedd',
+  'szerda',
+  'csütörtök',
+  'péntek',
+  'szombat'
+] as const
+
+function weekdayIndex(ymd: string): number {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay()
+}
+
+export function weekdayShortHu(ymd: string): string {
+  return WEEKDAY_SHORT_HU[weekdayIndex(ymd)]
+}
+
+export function weekdayLongHu(ymd: string): string {
+  return WEEKDAY_LONG_HU[weekdayIndex(ymd)]
+}
+
+/** „11.24.” */
+export function shortDateHu(ymd: string): string {
+  const [, m, d] = ymd.split('-')
+  return `${m}.${d}.`
+}
+
+/** „Kedd, november 24.” */
+export function todayLabelHu(): string {
+  const ymd = budapestTodayYmd()
+  const [, m, d] = ymd.split('-').map(Number)
+  const wd = weekdayLongHu(ymd)
+  return `${wd.charAt(0).toUpperCase()}${wd.slice(1)}, ${MONTH_NAMES_HU[m - 1].toLowerCase()} ${d}.`
+}
+
 export const MONTH_NAMES_HU = [
   'Január',
   'Február',

@@ -1,33 +1,51 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  ActivityIndicator,
-  LayoutChangeEvent,
-  Pressable,
-  StyleSheet,
-  Text,
-  View
-} from 'react-native'
+import { useCallback, useEffect, useState } from 'react'
+import { Pressable, Text, View } from 'react-native'
 import { ChevronLeft, ChevronRight } from 'lucide-react-native'
-import { BarChart } from 'react-native-gifted-charts'
 
+import { CountBarsCard } from '@/components/count-bars-card'
+import { DeviceStatus } from '@/components/device-status'
+import { StatCard } from '@/components/stat-card'
 import { useAuth } from '@/features/auth/auth-context'
 import { useFlags } from '@/features/tenant/flags-context'
 import {
   belepokShiftMonth,
-  getBelepokPage,
-  type BelepokPageModel,
-  type BelepokPeriod
+  getBelepokMonth,
+  getBelepokToday,
+  getBelepokWeek,
+  type BelepokMonth,
+  type BelepokPeriod,
+  type BelepokToday,
+  type BelepokWeek
 } from '@/lib/belepok'
 import { budapestYearMonth } from '@/lib/date'
 import { supabase } from '@/lib/supabase'
-import { colors, space, type } from '@/theme'
-import { Card, HeroMetric, Screen, SegmentedControl } from '@/ui'
+import { colors } from '@/theme'
+import { Card, HeroMetric, Screen, SegmentedControl, Skeleton } from '@/ui'
 
 const PERIODS: { id: BelepokPeriod; label: string }[] = [
   { id: 'today', label: 'Ma' },
-  { id: 'week', label: 'Hét' },
-  { id: 'month', label: 'Hó' }
+  { id: 'week', label: '7 nap' },
+  { id: 'month', label: 'Hónap' }
 ]
+
+const fmt = (n: number) => new Intl.NumberFormat('hu-HU').format(n)
+
+function compareLine(
+  current: number,
+  prev: number,
+  against: string
+): { text: string; tone: 'muted' | 'success' | 'warning' } {
+  if (prev <= 0) {
+    return current > 0
+      ? { text: `${against.charAt(0).toUpperCase()}${against.slice(1)} nem volt mért belépő.`, tone: 'muted' }
+      : { text: `Nincs mért belépő, ${against} sem volt.`, tone: 'muted' }
+  }
+  const pct = Math.round(((current - prev) / prev) * 100)
+  if (pct === 0) return { text: `Ugyanannyi, mint ${against} (${fmt(prev)} fő)`, tone: 'muted' }
+  return pct > 0
+    ? { text: `▲ ${pct}%-kal több, mint ${against} (${fmt(prev)} fő)`, tone: 'success' }
+    : { text: `▼ ${Math.abs(pct)}%-kal kevesebb, mint ${against} (${fmt(prev)} fő)`, tone: 'warning' }
+}
 
 export default function BelepokTab() {
   const { current } = useAuth()
@@ -37,47 +55,26 @@ export default function BelepokTab() {
   const [period, setPeriod] = useState<BelepokPeriod>('today')
   const [year, setYear] = useState(now.year)
   const [month, setMonth] = useState(now.month)
-  const [model, setModel] = useState<BelepokPageModel | null>(null)
+  const [today, setToday] = useState<BelepokToday | null>(null)
+  const [week, setWeek] = useState<BelepokWeek | null>(null)
+  const [monthData, setMonthData] = useState<BelepokMonth | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [chartWidth, setChartWidth] = useState(0)
+  const [error, setError] = useState(false)
 
   const load = useCallback(async () => {
     if (!current || !flags.footcounter) {
-      setModel(null)
       setLoading(false)
       setRefreshing(false)
       return
     }
+    setError(false)
     try {
-      const next = await getBelepokPage(
-        supabase,
-        current.tenantId,
-        period,
-        year,
-        month
-      )
-      setModel(next)
-    } catch (e) {
-      setModel({
-        period,
-        liveStatus: 'none',
-        heroValue: 0,
-        heroSuffix: 'belépő',
-        heroHint: '',
-        detailLine: null,
-        bars: [],
-        emptyMessage: null,
-        year,
-        month,
-        monthLabel: '',
-        canGoNextMonth: false,
-        canGoPrevMonth: false,
-        loadError:
-          e instanceof Error
-            ? e.message
-            : 'Nem sikerült betölteni a Belépők adatokat.'
-      })
+      if (period === 'today') setToday(await getBelepokToday(supabase, current.tenantId))
+      else if (period === 'week') setWeek(await getBelepokWeek(supabase, current.tenantId))
+      else setMonthData(await getBelepokMonth(supabase, current.tenantId, year, month))
+    } catch {
+      setError(true)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -89,27 +86,14 @@ export default function BelepokTab() {
     void load()
   }, [load])
 
-  const chartData = useMemo(() => {
-    if (!model) return []
-    return model.bars.map((b) => ({
-      value: b.value,
-      label: b.label,
-      frontColor: b.highlight ? colors.chartBar : colors.chartBarMuted,
-      labelTextStyle: {
-        color: colors.inkMuted,
-        fontSize: 10
-      }
-    }))
-  }, [model])
-
   if (!current) return null
 
   if (!flags.footcounter) {
     return (
       <Screen>
         <Card>
-          <Text style={styles.emptyTitle}>Nincs belépőszámláló</Text>
-          <Text style={styles.emptyBody}>
+          <Text className="text-[15px] font-semibold text-foreground">Nincs belépőszámláló</Text>
+          <Text className="text-[13px] leading-[18px] text-muted-foreground">
             Ehhez a céghez nincs bekapcsolva. Kérj jogosultságot a Turinova
             adminisztrátortól.
           </Text>
@@ -118,16 +102,8 @@ export default function BelepokTab() {
     )
   }
 
-  const n = Math.max(model?.bars.length ?? 1, 1)
-  const barWidth =
-    chartWidth > 0
-      ? Math.max(
-          period === 'month' ? 4 : 10,
-          Math.floor((chartWidth - 16) / (n * (period === 'month' ? 1.15 : 1.4)))
-        )
-      : 10
-  const maxValue =
-    Math.max(...(model?.bars.map((b) => b.value) ?? [0]), 1) * 1.15
+  const device =
+    period === 'today' ? today?.device : period === 'week' ? week?.device : monthData?.device
 
   return (
     <Screen
@@ -136,193 +112,282 @@ export default function BelepokTab() {
         setRefreshing(true)
         void load()
       }}
-      contentStyle={styles.screenPad}
     >
-      <View style={styles.padH}>
-        <SegmentedControl
-          options={PERIODS}
-          value={period}
-          onChange={(id) => {
-            setPeriod(id)
-            if (id !== 'month') {
-              const cur = budapestYearMonth()
-              setYear(cur.year)
-              setMonth(cur.month)
-            }
+      {device ? <DeviceStatus device={device} /> : <View className="h-4" />}
+
+      <SegmentedControl options={PERIODS} value={period} onChange={setPeriod} />
+
+      {period === 'month' ? (
+        <MonthStepper
+          label={monthData?.monthLabel ?? `${year}.`}
+          canPrev={monthData?.canGoPrevMonth ?? false}
+          canNext={monthData?.canGoNextMonth ?? false}
+          onShift={(d) => {
+            const next = belepokShiftMonth(year, month, d)
+            setYear(next.year)
+            setMonth(next.month)
           }}
         />
-
-        {period === 'month' && model ? (
-          <View style={styles.monthNav}>
-            <Pressable
-              disabled={!model.canGoPrevMonth}
-              onPress={() => {
-                const next = belepokShiftMonth(year, month, -1)
-                setYear(next.year)
-                setMonth(next.month)
-              }}
-              style={[
-                styles.monthHit,
-                !model.canGoPrevMonth && styles.monthHitDisabled
-              ]}
-              hitSlop={10}
-            >
-              <ChevronLeft size={20} color={colors.ink} />
-            </Pressable>
-            <Text style={styles.monthLabel}>{model.monthLabel}</Text>
-            <Pressable
-              disabled={!model.canGoNextMonth}
-              onPress={() => {
-                const next = belepokShiftMonth(year, month, 1)
-                setYear(next.year)
-                setMonth(next.month)
-              }}
-              style={[
-                styles.monthHit,
-                !model.canGoNextMonth && styles.monthHitDisabled
-              ]}
-              hitSlop={10}
-            >
-              <ChevronRight size={20} color={colors.ink} />
-            </Pressable>
-          </View>
-        ) : null}
-      </View>
-
-      {loading && !model ? (
-        <ActivityIndicator style={{ marginTop: 48 }} color={colors.ink} />
       ) : null}
 
-      {model?.loadError ? (
-        <Text style={[styles.error, styles.padH]}>{model.loadError}</Text>
+      {loading ? <BelepokSkeleton /> : null}
+
+      {!loading && error ? (
+        <Card tone="danger">
+          <Text className="text-[14px] font-semibold text-destructive-foreground">
+            Nem sikerült betölteni a belépőket.
+          </Text>
+          <Text className="text-[13px] text-muted-foreground">
+            Nézd meg a hálózatot, és húzd le a frissítéshez.
+          </Text>
+        </Card>
       ) : null}
 
-      {model && !model.loadError ? (
-        <>
-          <View style={styles.padH}>
-            <HeroMetric
-              value={model.heroValue.toLocaleString('hu-HU')}
-              unit={model.heroSuffix}
-              hint={model.heroHint || null}
-            />
-          </View>
-
-          <View style={styles.chartBlock}>
-            <View
-              style={styles.chartWrap}
-              onLayout={(e: LayoutChangeEvent) =>
-                setChartWidth(e.nativeEvent.layout.width)
-              }
-            >
-              {model.emptyMessage ? (
-                <Text style={styles.emptyChart}>{model.emptyMessage}</Text>
-              ) : chartWidth > 0 ? (
-                <BarChart
-                  data={chartData}
-                  width={chartWidth}
-                  height={168}
-                  barWidth={barWidth}
-                  spacing={Math.max(
-                    period === 'month' ? 2 : 4,
-                    Math.floor(barWidth * (period === 'month' ? 0.12 : 0.32))
-                  )}
-                  initialSpacing={6}
-                  endSpacing={6}
-                  hideRules
-                  hideYAxisText
-                  yAxisThickness={0}
-                  xAxisThickness={0}
-                  disableScroll
-                  isAnimated
-                  animationDuration={320}
-                  noOfSections={3}
-                  maxValue={maxValue}
-                />
-              ) : (
-                <View style={{ height: 168 }} />
-              )}
-            </View>
-
-            {model.detailLine && !model.emptyMessage ? (
-              <Text style={styles.detail}>{model.detailLine}</Text>
-            ) : null}
-
-            {model.liveStatus === 'live' ? (
-              <Text style={styles.liveNote}>Eszköz élő</Text>
-            ) : null}
-          </View>
-        </>
+      {!loading && !error && period === 'today' && today ? <TodayView data={today} /> : null}
+      {!loading && !error && period === 'week' && week ? <WeekView data={week} /> : null}
+      {!loading && !error && period === 'month' && monthData ? (
+        <MonthView data={monthData} />
       ) : null}
     </Screen>
   )
 }
 
-const styles = StyleSheet.create({
-  screenPad: {
-    paddingHorizontal: 0,
-    gap: space[4]
-  },
-  padH: {
-    paddingHorizontal: space[4],
-    gap: space[3]
-  },
-  monthNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  monthHit: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  monthHitDisabled: {
-    opacity: 0.3
-  },
-  monthLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.ink
-  },
-  chartBlock: {
-    gap: space[2]
-  },
-  chartWrap: {
-    paddingHorizontal: space[2],
-    minHeight: 168
-  },
-  emptyChart: {
-    ...type.body,
-    color: colors.inkSecondary,
-    textAlign: 'center',
-    paddingVertical: space[8],
-    paddingHorizontal: space[4]
-  },
-  detail: {
-    paddingHorizontal: space[4],
-    fontSize: 13,
-    color: colors.inkSecondary,
-    textAlign: 'center'
-  },
-  liveNote: {
-    paddingHorizontal: space[4],
-    fontSize: 11,
-    color: colors.inkMuted,
-    textAlign: 'center'
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.ink
-  },
-  emptyBody: {
-    marginTop: space[2],
-    ...type.bodySm,
-    color: colors.inkSecondary
-  },
-  error: {
-    ...type.bodySm,
-    color: colors.danger
+function TodayView({ data }: { data: BelepokToday }) {
+  if (data.closed) {
+    return (
+      <Card>
+        <Text className="text-[15px] font-semibold text-foreground">Ma zárva</Text>
+        <Text className="text-[13px] text-muted-foreground">
+          A nyitvatartás szerint ma nincs nyitva a bolt.
+        </Text>
+      </Card>
+    )
   }
-})
+
+  return (
+    <>
+      <View className="px-1">
+        <HeroMetric
+          align="left"
+          label="Ma bejött"
+          value={`${fmt(data.todayIn)} fő`}
+          delta={data.mood}
+          hint={data.mood ? null : data.typicalLine}
+        />
+      </View>
+
+      <View className="flex-row gap-3">
+        <StatCard
+          label="Bent most"
+          value={`≈ ${fmt(data.insideNow)} fő`}
+          hint="becslés: belépők − kilépők"
+        />
+        <StatCard
+          label="Csúcsóra"
+          value={data.peakHour != null ? `${data.peakHour}–${data.peakHour + 1} óra` : 'Még nincs'}
+          hint={data.peakHour != null ? `${fmt(data.peakCount)} fő jött be` : null}
+        />
+      </View>
+
+      {data.todayIn > 0 ? (
+        <CountBarsCard
+          title="Óráról órára"
+          unit="belépő"
+          color={colors.belepok}
+          softColor={colors.belepokSoft}
+          bars={data.hours.map((h) => ({
+            x: String(h.hour),
+            title: `${h.hour}:00–${h.hour + 1}:00`,
+            value: h.value,
+            highlight: h.isNow
+          }))}
+          ticks={5}
+        >
+          <Text className="text-[12px] leading-[17px] text-muted-foreground">
+            Az erős oszlop a mostani óra. Nyitvatartás: {data.openLabel} óra. Tartsd rajta
+            az ujjad a pontos számért.
+          </Text>
+        </CountBarsCard>
+      ) : (
+        <Card>
+          <Text className="text-[14px] text-muted-foreground">Ma még senki nem jött be.</Text>
+        </Card>
+      )}
+    </>
+  )
+}
+
+function WeekView({ data }: { data: BelepokWeek }) {
+  return (
+    <>
+      <View className="px-1">
+        <HeroMetric
+          align="left"
+          label="Az utolsó 7 napban bejött"
+          value={`${fmt(data.total)} fő`}
+          delta={compareLine(data.total, data.prevTotal, 'az előző 7 napban')}
+          hint={data.avgOpenDay > 0 ? `Átlagosan ${fmt(data.avgOpenDay)} fő egy nyitvatartási napon.` : null}
+        />
+      </View>
+
+      <CountBarsCard
+        title="Napról napra"
+        unit="belépő"
+        color={colors.belepok}
+        softColor={colors.belepokSoft}
+        bars={data.days.map((d) => ({
+          x: d.label,
+          title: d.title,
+          value: d.value,
+          highlight: d.highlight
+        }))}
+      >
+        {data.best ? (
+          <Text className="text-[13px] text-foreground">
+            Legforgalmasabb nap: {data.best.title.split(', ').pop()},{' '}
+            <Text className="font-semibold">{fmt(data.best.value)} fő</Text>
+          </Text>
+        ) : (
+          <Text className="text-[13px] text-muted-foreground">Az elmúlt 7 napban senki.</Text>
+        )}
+        <Text className="text-[12px] text-muted-foreground">Az erős oszlop a mai nap.</Text>
+      </CountBarsCard>
+    </>
+  )
+}
+
+function MonthView({ data }: { data: BelepokMonth }) {
+  const ranked = data.weekdays.filter((w) => w.samples > 0)
+  const top = ranked.length ? ranked.reduce((a, b) => (b.avg > a.avg ? b : a)) : null
+  const low = ranked.length ? ranked.reduce((a, b) => (b.avg < a.avg ? b : a)) : null
+  const isCurrent = !data.canGoNextMonth
+
+  return (
+    <>
+      <View className="px-1">
+        <HeroMetric
+          align="left"
+          label={isCurrent ? 'Ebben a hónapban eddig bejött' : 'Ebben a hónapban bejött'}
+          value={`${fmt(data.total)} fő`}
+          delta={compareLine(
+            data.total,
+            data.prevTotal,
+            isCurrent ? 'a teljes előző hónapban' : 'az előző hónapban'
+          )}
+          hint={
+            data.openDays > 0
+              ? `${data.openDays} nyitvatartási nap · átlagosan ${fmt(data.avgOpenDay)} fő naponta`
+              : null
+          }
+        />
+      </View>
+
+      {data.total > 0 ? (
+        <CountBarsCard
+          title="Napról napra"
+          unit="belépő"
+          color={colors.belepok}
+          softColor={colors.belepokSoft}
+          bars={data.days.map((d) => ({
+            x: d.label,
+            title: d.title,
+            value: d.value,
+            highlight: d.highlight
+          }))}
+          ticks={5}
+        >
+          {data.best ? (
+            <Text className="text-[13px] text-foreground">
+              Legjobb nap: {data.best.title},{' '}
+              <Text className="font-semibold">{fmt(data.best.value)} fő</Text>
+            </Text>
+          ) : null}
+          {data.peakHour != null ? (
+            <Text className="text-[12px] text-muted-foreground">
+              A hónap legforgalmasabb órája: {data.peakHour}–{data.peakHour + 1} óra.
+            </Text>
+          ) : null}
+        </CountBarsCard>
+      ) : (
+        <Card>
+          <Text className="text-[14px] text-muted-foreground">Ebben a hónapban senki.</Text>
+        </Card>
+      )}
+
+      {top && low && ranked.length > 1 ? (
+        <CountBarsCard
+          title="Melyik napon jönnek a legtöbben?"
+          unit="fő átlagosan"
+          color={colors.belepok}
+          softColor={colors.belepokSoft}
+          orientation="horizontal"
+          bars={data.weekdays.map((w) => ({
+            x: w.label,
+            title: `${w.name.charAt(0).toUpperCase()}${w.name.slice(1)} (átlag)`,
+            value: w.avg,
+            highlight: w.weekday === top.weekday
+          }))}
+        >
+          <Text className="text-[13px] leading-[18px] text-foreground">
+            <Text className="font-semibold">{top.name.charAt(0).toUpperCase() + top.name.slice(1)}</Text>{' '}
+            jön a legtöbb ember (átlag {fmt(top.avg)} fő), {low.name} a legkevesebb (
+            {fmt(low.avg)} fő).
+          </Text>
+        </CountBarsCard>
+      ) : null}
+    </>
+  )
+}
+
+function MonthStepper({
+  label,
+  canPrev,
+  canNext,
+  onShift
+}: {
+  label: string
+  canPrev: boolean
+  canNext: boolean
+  onShift: (d: -1 | 1) => void
+}) {
+  return (
+    <View className="flex-row items-center justify-between">
+      <Pressable
+        disabled={!canPrev}
+        onPress={() => onShift(-1)}
+        className="h-9 w-9 items-center justify-center"
+        style={{ opacity: canPrev ? 1 : 0.3 }}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Előző hónap"
+      >
+        <ChevronLeft size={20} color={colors.ink} />
+      </Pressable>
+      <Text className="text-[15px] font-semibold text-foreground">{label}</Text>
+      <Pressable
+        disabled={!canNext}
+        onPress={() => onShift(1)}
+        className="h-9 w-9 items-center justify-center"
+        style={{ opacity: canNext ? 1 : 0.3 }}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Következő hónap"
+      >
+        <ChevronRight size={20} color={colors.ink} />
+      </Pressable>
+    </View>
+  )
+}
+
+function BelepokSkeleton() {
+  return (
+    <View className="gap-3">
+      <View className="gap-2 px-1">
+        <Skeleton className="h-4 w-28" label="Belépők betöltése" />
+        <Skeleton className="h-11 w-40" />
+        <Skeleton className="h-4 w-64" />
+      </View>
+      <Skeleton className="h-48 w-full rounded-xl" />
+    </View>
+  )
+}

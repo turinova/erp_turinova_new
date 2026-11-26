@@ -151,7 +151,7 @@ function UnlockOverlay({
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={styles.product}>Optinova · Vezető</Text>
+          <Text style={styles.product}>Turinova · Admin</Text>
           <Text style={styles.title}>Oldd fel</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Button loading={busy} onPress={() => void unlock()} style={styles.btn}>

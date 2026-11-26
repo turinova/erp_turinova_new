@@ -1,175 +1,145 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
+import { Avatar } from 'panelui-native/components/avatar'
 
-import type { JelenletDayRow } from '@/lib/jelenlet'
-import { colors, radius, space } from '@/theme'
-import { Separator } from '@/ui'
+import {
+  formatWorked,
+  type JelenletDayRow,
+  type JelenletRowKind
+} from '@/lib/jelenlet'
+import { colors } from '@/theme'
+import { Card, ListRow, ListSection, type StatusTone } from '@/ui'
 
 type Props = {
   rows: JelenletDayRow[]
-  emptyMessage?: string | null
+  isToday: boolean
 }
 
-const TIME_COL_W = 64
+type Group = {
+  key: string
+  title: string
+  kinds: JelenletRowKind[]
+}
 
-/** Oszlopos jelenlétlista — idő tabular + kiemelt; PanelUI később cserélhető. */
-export function JelenletList({ rows, emptyMessage }: Props) {
+const DOT: Record<JelenletRowKind, string> = {
+  bent: colors.presenceIn,
+  elment: colors.presenceLeft,
+  nyitott: colors.presenceLeft,
+  szabadsag: colors.presenceVacation,
+  beteg: colors.presenceSick,
+  nincs: colors.presenceNone,
+  szabadnap: colors.presenceNone
+}
+
+function groupsFor(isToday: boolean): Group[] {
+  return [
+    ...(isToday
+      ? [
+          { key: 'bent', title: 'Bent most', kinds: ['bent'] as JelenletRowKind[] },
+          { key: 'elment', title: 'Már elment', kinds: ['elment'] as JelenletRowKind[] }
+        ]
+      : [
+          {
+            key: 'dolgozott',
+            title: 'Dolgozott',
+            kinds: ['elment', 'nyitott'] as JelenletRowKind[]
+          }
+        ]),
+    { key: 'tavol', title: 'Távol', kinds: ['szabadsag', 'beteg'] },
+    { key: 'nincs', title: 'Nincs jelölés', kinds: ['nincs'] },
+    { key: 'szabadnap', title: 'Szabadnapos', kinds: ['szabadnap'] }
+  ]
+}
+
+function rowValue(row: JelenletDayRow): { value: string; tone: StatusTone } {
+  switch (row.kind) {
+    case 'bent':
+      return { value: `${row.arrival} óta`, tone: 'success' }
+    case 'elment':
+      return { value: `${row.arrival} – ${row.departure}`, tone: 'default' }
+    case 'nyitott':
+      return { value: `${row.arrival} –`, tone: 'default' }
+    case 'szabadsag':
+      return { value: 'Szabadság', tone: 'muted' }
+    case 'beteg':
+      return { value: 'Beteg', tone: 'muted' }
+    case 'szabadnap':
+      return { value: 'Nem dolgozik', tone: 'muted' }
+    default:
+      return { value: 'Nincs adat', tone: 'muted' }
+  }
+}
+
+function rowMeta(row: JelenletDayRow): string | null {
+  const parts: string[] = []
+  if (row.typeLabel) parts.push(row.typeLabel)
+  if (row.kind === 'bent' && row.workedMinutes != null) {
+    parts.push(`${formatWorked(row.workedMinutes)} bent`)
+  } else if (row.kind === 'elment' && row.workedMinutes != null) {
+    parts.push(formatWorked(row.workedMinutes))
+  } else if (row.kind === 'nyitott') {
+    parts.push('távozás nincs rögzítve')
+  }
+  return parts.length ? parts.join(' · ') : null
+}
+
+function PersonAvatar({ row }: { row: JelenletDayRow }) {
+  const dim = row.kind === 'szabadnap' || row.kind === 'nincs'
+  return (
+    <View style={{ opacity: dim ? 0.55 : 1 }}>
+      <Avatar size="sm" fallback={row.initials} />
+      <View
+        style={{
+          position: 'absolute',
+          right: -1,
+          bottom: -1,
+          width: 11,
+          height: 11,
+          borderRadius: 6,
+          borderWidth: 2,
+          borderColor: colors.surface,
+          backgroundColor: DOT[row.kind]
+        }}
+      />
+    </View>
+  )
+}
+
+/** Csoportos jelenlétlista: Bent most · Már elment · Távol · Nincs jelölés · Szabadnapos. */
+export function JelenletList({ rows, isToday }: Props) {
   if (rows.length === 0) {
     return (
-      <View style={styles.emptyBox}>
-        <Text style={styles.emptyTitle}>Nincs aktív dolgozó</Text>
-        <Text style={styles.emptyBody}>
-          {emptyMessage ??
-            'Ehhez a céghez még nincs felvett aktív dolgozó a Jelenlét modulban.'}
+      <Card>
+        <Text className="text-[15px] font-semibold text-foreground">Nincs aktív dolgozó</Text>
+        <Text className="text-[13px] leading-[18px] text-muted-foreground">
+          Ehhez a céghez még nincs felvett aktív dolgozó a Jelenlét modulban.
         </Text>
-      </View>
+      </Card>
     )
   }
 
   return (
-    <View style={styles.list}>
-      <View style={[styles.row, styles.headerRow]}>
-        <Text style={[styles.name, styles.headerText]} numberOfLines={1}>
-          Név
-        </Text>
-        <Text style={[styles.timeCol, styles.headerText]}>Érk.</Text>
-        <Text style={[styles.timeCol, styles.headerText]}>Táv.</Text>
-      </View>
-      <Separator />
-      {rows.map((row, i) => (
-        <View key={row.id}>
-          <JelenletTableRow row={row} />
-          {i < rows.length - 1 ? <Separator /> : null}
-        </View>
-      ))}
+    <View className="gap-5">
+      {groupsFor(isToday).map((g) => {
+        const items = rows.filter((r) => g.kinds.includes(r.kind))
+        if (items.length === 0) return null
+        return (
+          <ListSection key={g.key} title={`${g.title} · ${items.length}`}>
+            {items.map((row) => {
+              const v = rowValue(row)
+              return (
+                <ListRow
+                  key={row.id}
+                  leading={<PersonAvatar row={row} />}
+                  title={row.name}
+                  meta={rowMeta(row)}
+                  value={v.value}
+                  valueTone={v.tone}
+                />
+              )
+            })}
+          </ListSection>
+        )
+      })}
     </View>
   )
 }
-
-function JelenletTableRow({ row }: { row: JelenletDayRow }) {
-  if (row.kind === 'vacation' || row.kind === 'sick') {
-    const label = row.kind === 'vacation' ? 'Szabadság' : 'Betegszabadság'
-    return (
-      <View style={styles.row}>
-        <Text style={styles.name} numberOfLines={1}>
-          {row.name}
-        </Text>
-        <Text
-          style={[
-            styles.statusCol,
-            row.kind === 'sick' && styles.statusSick
-          ]}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-      </View>
-    )
-  }
-
-  return (
-    <View style={styles.row}>
-      <Text style={styles.name} numberOfLines={1}>
-        {row.name}
-      </Text>
-      <Text
-        style={[
-          styles.timeCol,
-          styles.timeValue,
-          !row.arrival && styles.timeEmpty
-        ]}
-      >
-        {row.arrival ?? '—'}
-      </Text>
-      <Text
-        style={[
-          styles.timeCol,
-          styles.timeValue,
-          !row.departure && styles.timeEmpty
-        ]}
-      >
-        {row.departure ?? '—'}
-      </Text>
-    </View>
-  )
-}
-
-const styles = StyleSheet.create({
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    overflow: 'hidden'
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: space[3],
-    paddingVertical: space[3],
-    gap: space[2],
-    minHeight: 48
-  },
-  headerRow: {
-    paddingVertical: space[2],
-    backgroundColor: colors.subtle,
-    minHeight: 36
-  },
-  headerText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.inkMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4
-  },
-  name: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '500',
-    color: colors.ink,
-    paddingRight: space[1]
-  },
-  timeCol: {
-    width: TIME_COL_W,
-    textAlign: 'right',
-    fontVariant: ['tabular-nums']
-  },
-  timeValue: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colors.ink,
-    letterSpacing: -0.3
-  },
-  timeEmpty: {
-    fontWeight: '500',
-    color: colors.inkMuted,
-    fontSize: 16
-  },
-  statusCol: {
-    width: TIME_COL_W * 2 + space[2],
-    textAlign: 'right',
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.inkSecondary
-  },
-  statusSick: {
-    color: colors.warning
-  },
-  emptyBox: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: space[4],
-    gap: space[2]
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.ink
-  },
-  emptyBody: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.inkSecondary
-  }
-})

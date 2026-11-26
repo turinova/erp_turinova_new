@@ -1,78 +1,68 @@
-import { StyleSheet, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
+import Animated, { FadeInDown } from 'react-native-reanimated'
 
-import { colors, space, type } from '@/theme'
+import { cn } from './cn'
+import { StatusText, type StatusTone } from './status-text'
 
 type Props = {
   value: string
+  label?: string
   unit?: string
   hint?: string | null
+  delta?: { text: string; tone: StatusTone } | null
   align?: 'left' | 'center'
 }
 
-/** Keret nélküli hero szám — Square / Jobs: a szám a fókusz. */
+/** Keret nélküli hero szám — Jobs: a képernyő egyetlen kérdésére a válasz. */
 export function HeroMetric({
   value,
+  label,
   unit,
   hint,
+  delta,
   align = 'center'
 }: Props) {
+  const center = align === 'center'
   return (
-    <View style={[styles.wrap, align === 'left' && styles.left]}>
-      <Text style={[styles.value, align === 'left' && styles.valueLeft]}>
+    <Animated.View
+      entering={FadeInDown.duration(280)}
+      className={cn('gap-1 py-1', center ? 'items-center' : 'items-start')}
+    >
+      {label ? (
+        <Text className="text-[13px] font-medium text-muted-foreground">{label}</Text>
+      ) : null}
+      <Text
+        className="font-bold text-foreground"
+        style={{
+          fontSize: 40,
+          lineHeight: 46,
+          letterSpacing: -1,
+          fontVariant: ['tabular-nums']
+        }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
+      >
         {value}
       </Text>
       {unit ? (
-        <Text style={[styles.unit, align === 'left' && styles.unitLeft]}>
-          {unit}
-        </Text>
+        <Text className="text-[14px] font-medium text-muted-foreground">{unit}</Text>
       ) : null}
-      {hint ? (
-        <Text style={[styles.hint, align === 'left' && styles.hintLeft]}>
-          {hint}
-        </Text>
+      {delta || hint ? (
+        <View className={cn('mt-1 gap-0.5', center ? 'items-center' : 'items-start')}>
+          {delta ? <StatusText tone={delta.tone}>{delta.text}</StatusText> : null}
+          {hint ? (
+            <Text
+              className={cn(
+                'text-[13px] leading-[18px] text-muted-foreground',
+                center && 'text-center'
+              )}
+            >
+              {hint}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
-    </View>
+    </Animated.View>
   )
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    alignItems: 'center',
-    paddingVertical: space[2]
-  },
-  left: {
-    alignItems: 'flex-start'
-  },
-  value: {
-    fontSize: 44,
-    fontWeight: '700',
-    letterSpacing: -0.8,
-    color: colors.ink,
-    fontVariant: ['tabular-nums'],
-    lineHeight: 48
-  },
-  valueLeft: {
-    fontSize: 40,
-    lineHeight: 44
-  },
-  unit: {
-    marginTop: 2,
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.inkMuted
-  },
-  unitLeft: {
-    ...type.bodySm,
-    color: colors.inkMuted
-  },
-  hint: {
-    marginTop: space[2],
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.inkSecondary,
-    textAlign: 'center'
-  },
-  hintLeft: {
-    textAlign: 'left'
-  }
-})

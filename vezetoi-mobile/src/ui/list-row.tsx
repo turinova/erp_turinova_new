@@ -1,70 +1,87 @@
 import { ChevronRight } from 'lucide-react-native'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import type { ReactNode } from 'react'
+import { Pressable, Text, View } from 'react-native'
 
-import { colors, space } from '@/theme'
+import { colors } from '@/theme'
 
-import { Separator } from './separator'
+import { cn } from './cn'
+import type { StatusTone } from './status-text'
 
 type Props = {
+  /** Bal oldali elem, pl. avatar. */
+  leading?: ReactNode
   title: string
-  meta?: string
+  meta?: string | null
+  /** Jobb oldali tabular érték (Notion / iOS beállítás sor). */
+  value?: string | null
+  valueTone?: StatusTone
   warning?: boolean
+  destructive?: boolean
   onPress?: () => void
-  showSeparator?: boolean
+}
+
+const VALUE_TONE: Record<StatusTone, string> = {
+  default: 'text-foreground',
+  muted: 'text-muted-foreground',
+  success: 'text-success-foreground',
+  warning: 'text-warning-foreground',
+  danger: 'text-destructive-foreground'
 }
 
 export function ListRow({
+  leading,
   title,
   meta,
+  value,
+  valueTone = 'default',
   warning,
-  onPress,
-  showSeparator
+  destructive,
+  onPress
 }: Props) {
   return (
-    <>
-      <Pressable
-        onPress={onPress}
-        disabled={!onPress}
-        style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
-      >
-        <View style={styles.textCol}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      className="min-h-12 flex-row items-center gap-3 bg-card px-4 py-3"
+      style={({ pressed }) => (pressed ? { opacity: 0.6 } : undefined)}
+    >
+      {leading}
+      <View className="min-w-0 flex-1 gap-0.5">
+        <Text
+          className={cn(
+            'text-[15px] font-medium',
+            destructive ? 'text-destructive-foreground' : 'text-foreground'
+          )}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+        {meta ? (
+          <Text
+            className={cn(
+              'text-[13px]',
+              warning ? 'font-semibold text-warning-foreground' : 'text-muted-foreground'
+            )}
+            style={{ fontVariant: ['tabular-nums'] }}
+            numberOfLines={2}
+          >
+            {meta}
           </Text>
-          {meta ? (
-            <Text style={[styles.meta, warning && styles.metaWarn]}>
-              {meta}
-            </Text>
-          ) : null}
-        </View>
-        {onPress ? (
-          <ChevronRight size={18} color={colors.inkMuted} strokeWidth={2} />
         ) : null}
-      </Pressable>
-      {showSeparator ? <Separator /> : null}
-    </>
+      </View>
+      {value ? (
+        <Text
+          className={cn('text-[15px] font-semibold', VALUE_TONE[valueTone])}
+          style={{ fontVariant: ['tabular-nums'] }}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+      ) : null}
+      {onPress && !destructive ? (
+        <ChevronRight size={16} color={colors.tabInactive} strokeWidth={2.25} />
+      ) : null}
+    </Pressable>
   )
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: space[3],
-    paddingVertical: space[3],
-    gap: space[2],
-    backgroundColor: colors.surface
-  },
-  textCol: { flex: 1, gap: 2 },
-  title: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.ink
-  },
-  meta: {
-    fontSize: 12,
-    color: colors.inkSecondary,
-    fontVariant: ['tabular-nums']
-  },
-  metaWarn: { color: colors.warning, fontWeight: '600' }
-})

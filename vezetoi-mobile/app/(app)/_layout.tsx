@@ -29,7 +29,7 @@ export default function AppLayout() {
         tabBarActiveTintColor: colors.ink,
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarLabelStyle: {
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: '600'
         },
         tabBarItemStyle: {
@@ -38,7 +38,7 @@ export default function AppLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="(kezdolap)"
         options={{
           title: 'Kezdőlap',
           tabBarIcon: ({ color, size, focused }) => (
@@ -87,13 +87,6 @@ export default function AppLayout() {
               strokeWidth={focused ? 2.25 : 2}
             />
           )
-        }}
-      />
-      {/* Gyártás: nem tab — Több listából nyílik */}
-      <Tabs.Screen
-        name="gyartas"
-        options={{
-          href: null
         }}
       />
     </Tabs>

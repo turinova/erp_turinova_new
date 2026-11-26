@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native'
+import { Pressable, View, type ViewStyle } from 'react-native'
 
-import { colors, radius, space } from '@/theme'
+import { cn } from './cn'
 
 type Props = {
   children: ReactNode
@@ -9,24 +9,33 @@ type Props = {
   onPress?: () => void
   tone?: 'default' | 'warning' | 'danger'
   padded?: boolean
+  className?: string
 }
 
+const TONE = {
+  default: 'border-border bg-card',
+  warning: 'border-warning/25 bg-warning-soft',
+  danger: 'border-destructive/25 bg-destructive-soft'
+} as const
+
+/** Hairline keret, nincs árnyék — Midday flat felület. */
 export function Card({
   children,
   style,
   onPress,
   tone = 'default',
-  padded = true
+  padded = true,
+  className
 }: Props) {
   const body = (
     <View
-      style={[
-        styles.card,
-        padded && styles.padded,
-        tone === 'warning' && styles.warning,
-        tone === 'danger' && styles.danger,
-        style
-      ]}
+      className={cn(
+        'overflow-hidden rounded-xl border',
+        TONE[tone],
+        padded && 'gap-1 p-4',
+        className
+      )}
+      style={style}
     >
       {children}
     </View>
@@ -36,31 +45,10 @@ export function Card({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => pressed && { opacity: 0.92 }}
+      accessibilityRole="button"
+      style={({ pressed }) => (pressed ? { opacity: 0.85 } : undefined)}
     >
       {body}
     </Pressable>
   )
 }
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    overflow: 'hidden'
-  },
-  padded: {
-    padding: space[4],
-    gap: space[1]
-  },
-  warning: {
-    borderColor: '#FDE68A',
-    backgroundColor: colors.warningSoft
-  },
-  danger: {
-    borderColor: '#FECACA',
-    backgroundColor: colors.dangerSoft
-  }
-})

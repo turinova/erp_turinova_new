@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Optinova Vezető",
+    "name": "Turinova Admin",
     "slug": "vezetoi-mobile",
     "owner": "turinova",
     "version": "1.0.0",
@@ -10,16 +10,17 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "hu.optinova.vezetoi",
       "appleTeamId": "CV2CJMLP6K",
       "infoPlist": {
+        "CFBundleDisplayName": "Turinova Admin",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#18181B",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -42,7 +43,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "Az Optinova Vezető Face ID-val oldja fel a munkamenetet."
+          "faceIDPermission": "A Turinova Admin Face ID-val oldja fel a munkamenetet."
         }
       ],
       "@react-native-community/datetimepicker"

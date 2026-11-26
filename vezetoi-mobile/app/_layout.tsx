@@ -1,9 +1,14 @@
+import '../src/global.css'
+
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
+import { PanelUIProvider } from 'panelui-native/provider'
 import { ActivityIndicator, View } from 'react-native'
+import { Uniwind } from 'uniwind'
 
 import { AuthProvider, useAuth } from '@/features/auth/auth-context'
 import { BiometricLockProvider } from '@/features/auth/biometric-lock'
+import { PeriodProvider } from '@/features/period/period-context'
 import { FlagsProvider } from '@/features/tenant/flags-context'
 import { colors } from '@/theme'
 
@@ -41,14 +46,20 @@ function RootNavigator() {
   )
 }
 
+Uniwind.setTheme('light')
+
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <FlagsProvider>
-        <BiometricLockProvider>
-          <RootNavigator />
-        </BiometricLockProvider>
-      </FlagsProvider>
-    </AuthProvider>
+    <PanelUIProvider>
+      <AuthProvider>
+        <FlagsProvider>
+          <PeriodProvider>
+            <BiometricLockProvider>
+              <RootNavigator />
+            </BiometricLockProvider>
+          </PeriodProvider>
+        </FlagsProvider>
+      </AuthProvider>
+    </PanelUIProvider>
   )
 }

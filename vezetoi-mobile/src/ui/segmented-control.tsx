@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import * as Haptics from 'expo-haptics'
+import { Pressable, Text, View } from 'react-native'
 
-import { colors, radius } from '@/theme'
+import { cn } from './cn'
 
 export type SegmentOption<T extends string> = {
   id: T
@@ -13,25 +14,51 @@ type Props<T extends string> = {
   onChange: (id: T) => void
 }
 
-/** iOS-szerű period switcher — Square / Shopify analytics mintára. */
+/** iOS-szerű szegmentált választó: halk sáv, fehér aktív szelet — nem fekete blokk. */
 export function SegmentedControl<T extends string>({
   options,
   value,
   onChange
 }: Props<T>) {
   return (
-    <View style={styles.track} accessibilityRole="tablist">
+    <View
+      className="flex-row gap-0.5 rounded-lg bg-secondary p-0.5"
+      accessibilityRole="tablist"
+    >
       {options.map((opt) => {
         const active = opt.id === value
         return (
           <Pressable
             key={opt.id}
-            onPress={() => onChange(opt.id)}
-            style={[styles.seg, active && styles.segActive]}
+            onPress={() => {
+              if (active) return
+              void Haptics.selectionAsync()
+              onChange(opt.id)
+            }}
+            className={cn(
+              'h-8 flex-1 items-center justify-center rounded-md',
+              active && 'bg-card'
+            )}
+            style={
+              active
+                ? {
+                    shadowColor: '#18181B',
+                    shadowOpacity: 0.08,
+                    shadowRadius: 2,
+                    shadowOffset: { width: 0, height: 1 },
+                    elevation: 1
+                  }
+                : undefined
+            }
             accessibilityRole="tab"
             accessibilityState={{ selected: active }}
           >
-            <Text style={[styles.label, active && styles.labelActive]}>
+            <Text
+              className={cn(
+                'text-[13px] font-semibold',
+                active ? 'text-foreground' : 'text-muted-foreground'
+              )}
+            >
               {opt.label}
             </Text>
           </Pressable>
@@ -40,31 +67,3 @@ export function SegmentedControl<T extends string>({
     </View>
   )
 }
-
-const styles = StyleSheet.create({
-  track: {
-    flexDirection: 'row',
-    backgroundColor: colors.border,
-    borderRadius: radius.md,
-    padding: 2,
-    gap: 2
-  },
-  seg: {
-    flex: 1,
-    height: 32,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  segActive: {
-    backgroundColor: colors.ink
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.inkSecondary
-  },
-  labelActive: {
-    color: colors.onPrimary
-  }
-})
