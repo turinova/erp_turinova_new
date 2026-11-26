@@ -2,8 +2,15 @@ import type { Metadata } from 'next'
 
 import { JelenletCalendarClient } from '@/components/jelenlet/jelenlet-calendar-client'
 import { getSessionUser } from '@/lib/auth/session'
-import { budapestYearMonth } from '@/lib/jelenlet/hours'
+import { budapestTodayYmd, budapestYearMonth } from '@/lib/jelenlet/hours'
 import { getCalendarMonth } from '@/lib/jelenlet/queries'
+import {
+  DEFAULT_ATTENDANCE_GRACE_MINUTES,
+  getAttendanceGraceMinutes,
+  listSheetEmployees
+} from '@/lib/jelenlet/sheet-data'
+import type { SheetEmployee } from '@/lib/jelenlet/sheet-engine'
+import { getJelenletToday, type JelenletTodayData } from '@/lib/jelenlet/today-queries'
 import { createClient } from '@/lib/supabase/server'
 
 export const metadata: Metadata = { title: 'Jelenlét' }
@@ -33,16 +40,31 @@ export default async function JelenletPage({
 
   let loadError: string | null = null
   let data: Awaited<ReturnType<typeof getCalendarMonth>> | null = null
+  let today: JelenletTodayData | null = null
+  let totalsRules: { graceMinutes: number; employees: Record<string, SheetEmployee> } = {
+    graceMinutes: DEFAULT_ATTENDANCE_GRACE_MINUTES,
+    employees: {}
+  }
+  const isCurrentMonth = year === now.year && month === now.month
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
     if (supabase) {
       try {
-        data = await getCalendarMonth(supabase, {
-          tenantId: user.tenantId,
-          year,
-          month
-        })
+        const [month_, today_, grace, policies] = await Promise.all([
+          getCalendarMonth(supabase, { tenantId: user.tenantId, year, month }),
+          isCurrentMonth
+            ? getJelenletToday(supabase, {
+                tenantId: user.tenantId,
+                workDate: budapestTodayYmd()
+              }).catch(() => null)
+            : Promise.resolve(null),
+          getAttendanceGraceMinutes(supabase, user.tenantId),
+          listSheetEmployees(supabase, user.tenantId).catch(() => ({}))
+        ])
+        data = month_
+        today = today_
+        totalsRules = { graceMinutes: grace, employees: policies }
       } catch (err) {
         loadError =
           err instanceof Error
@@ -71,5 +93,5 @@ export default async function JelenletPage({
     )
   }
 
-  return <JelenletCalendarClient data={data} canWrite={canWrite} />
+  return <JelenletCalendarClient data={data} canWrite={canWrite} today={today} totalsRules={totalsRules} />
 }

@@ -62,6 +62,43 @@ function mapSheetEmployee(row: Record<string, unknown>): SheetEmployee {
   }
 }
 
+export const DEFAULT_ATTENDANCE_GRACE_MINUTES = 10
+
+/** Cégszintű türelmi idő (hr_attendance_settings); migráció előtt / sor nélkül 10 perc. */
+export async function getAttendanceGraceMinutes(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('hr_attendance_settings')
+    .select('grace_minutes')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error || !data) return DEFAULT_ATTENDANCE_GRACE_MINUTES
+  return num((data as { grace_minutes: unknown }).grace_minutes, DEFAULT_ATTENDANCE_GRACE_MINUTES)
+}
+
+/** Aktív dolgozók műszak + túlóra szabályai (naptár összesítőhöz). */
+export async function listSheetEmployees(
+  supabase: SupabaseClient,
+  tenantId: string
+): Promise<Record<string, SheetEmployee>> {
+  const { data, error } = await supabase
+    .from('hr_employees')
+    .select(EMPLOYEE_SELECT)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .is('archived_at', null)
+    .limit(500)
+  if (error) throw new Error(error.message)
+  const out: Record<string, SheetEmployee> = {}
+  for (const row of data ?? []) {
+    const emp = mapSheetEmployee(row as Record<string, unknown>)
+    out[emp.id] = emp
+  }
+  return out
+}
+
 export type SheetEmployeeResult = {
   employee: SheetEmployee
   result: SheetResult

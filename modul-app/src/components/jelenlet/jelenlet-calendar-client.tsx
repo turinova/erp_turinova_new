@@ -4,14 +4,21 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type ReactNode
 } from 'react'
 import {
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
+  Radio,
+  Search,
+  Sun,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -25,6 +32,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { JelenletTodayPanel } from '@/components/jelenlet/jelenlet-today-panel'
 import { FormField } from '@/components/patterns/form-field'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
 import { Button } from '@/components/ui/button'
@@ -49,12 +57,114 @@ import type {
   CalendarCell,
   CalendarMonthData
 } from '@/lib/jelenlet/queries'
+import {
+  classifyShiftDeviation,
+  computeDaySplit,
+  type ShiftDeviation
+} from '@/lib/jelenlet/day-split'
+import type { SheetEmployee } from '@/lib/jelenlet/sheet-engine'
+import type { JelenletTodayData, TerminalStatus } from '@/lib/jelenlet/today-queries'
 import { ABSENCE_TYPE_LABEL } from '@/lib/jelenlet/types'
 import { cn } from '@/lib/utils'
+
+const NO_OVERTIME: SheetEmployee['overtime'] = {
+  enabled: false,
+  graceMinutes: 0,
+  roundingMinutes: 15,
+  roundingMode: 'floor',
+  dailyCapMinutes: 0
+}
+const NO_EARLY_OVERTIME: SheetEmployee['earlyOvertime'] = {
+  ...NO_OVERTIME,
+  triggerTime: null,
+  payUntilTime: null,
+  maxMinutes: 0
+}
 
 type Props = {
   data: CalendarMonthData
   canWrite: boolean
+  /** Csak az aktuális hónapnál — mai scanek + terminál státusz. */
+  today?: JelenletTodayData | null
+  /** Cégszintű türelmi idő + dolgozónkénti túlóra szabályok az összesítőhöz. */
+  totalsRules: { graceMinutes: number; employees: Record<string, SheetEmployee> }
+}
+
+type MonthTotal = {
+  normal: number
+  overtime: number
+  weekendDays: number
+  weekendMinutes: number
+  days: number
+}
+
+const TOTAL_KEYS = ['normal', 'overtime', 'weekend'] as const
+type TotalKey = (typeof TOTAL_KEYS)[number]
+
+const TOTAL_HEAD: Record<TotalKey, string> = {
+  normal: 'Rendes ó',
+  overtime: 'Túlóra ó',
+  weekend: 'Hétvége'
+}
+
+function hoursDecimal(mins: number): string {
+  return (mins / 60).toLocaleString('hu-HU', { maximumFractionDigits: 2 })
+}
+
+function hoursExact(mins: number): string {
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m ? `${h} ó ${m} p` : `${h} ó`
+}
+
+function totalTipLines(name: string, t: MonthTotal, graceMinutes: number): string[] {
+  return [
+    name,
+    `Rendes: ${hoursDecimal(t.normal)} ó (${hoursExact(t.normal)}) · ${t.days} hétköznap`,
+    `Túlóra: ${hoursDecimal(t.overtime)} ó — 8 óra feletti műszakon belüli idő + bekapcsolt műszakon kívüli túlóra`,
+    `Hétvége: ${t.weekendDays} nap · ${hoursDecimal(t.weekendMinutes)} ó (külön fizetendő)`,
+    `Csak a műszakon belüli idő számít, ±${graceMinutes} perc türelmi idővel`
+  ]
+}
+
+function formatContact(iso: string | null): string {
+  if (!iso) return 'még nem jelentkezett'
+  return new Intl.DateTimeFormat('hu-HU', {
+    timeZone: 'Europe/Budapest',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(iso))
+}
+
+function TerminalBadge({ terminals }: { terminals: TerminalStatus[] }) {
+  if (terminals.length === 0) return null
+  const allOnline = terminals.every((t) => t.online)
+  const pending = terminals.reduce((s, t) => s + (t.pendingCount ?? 0), 0)
+  const title = terminals
+    .map(
+      (t) =>
+        `${t.name}: ${t.online ? 'online' : 'offline'} · utolsó kapcsolat ${formatContact(t.lastContactAt)}${t.appVersion ? ` · v${t.appVersion}` : ''}${t.pendingCount ? ` · ${t.pendingCount} várakozó` : ''}`
+    )
+    .join('\n')
+  return (
+    <span
+      className={cn(
+        'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[12px] font-medium',
+        allOnline ? 'border-success/30 bg-success-soft text-success-ink' : 'border-danger/30 bg-danger-soft text-danger-ink'
+      )}
+      title={title}
+    >
+      <Radio className="size-3.5" aria-hidden />
+      {terminals.length === 1 ? 'Terminál' : `${terminals.length} terminál`}{' '}
+      {allOnline ? 'online' : 'offline'}
+      {!allOnline ? (
+        <span className="font-normal">· {formatContact(terminals.find((t) => !t.online)?.lastContactAt ?? null)}</span>
+      ) : null}
+      {pending > 0 ? <span className="font-normal">· {pending} várakozó</span> : null}
+    </span>
+  )
 }
 
 const MONTH_NAMES = [
@@ -73,16 +183,25 @@ const MONTH_NAMES = [
 ]
 
 /** Fix nap-oszlop — idő + rövid státuszszöveg. */
-const DAY_COL = 'w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem]'
+type CellSize = 'sm' | 'md' | 'lg'
+
+const TOTAL_COL_PX: Record<CellSize, number> = { sm: 64, md: 76, lg: 92 }
+
+const CELL_SIZES: Record<CellSize, { label: string; col: string; row: string; text: string; icon: string }> = {
+  sm: { label: 'Kicsi', col: 'w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem]', row: 'h-11', text: 'text-[12px]', icon: 'size-3' },
+  md: { label: 'Normál', col: 'w-[5.25rem] min-w-[5.25rem] max-w-[5.25rem]', row: 'h-12', text: 'text-[14px]', icon: 'size-3.5' },
+  lg: { label: 'Nagy', col: 'w-[6.5rem] min-w-[6.5rem] max-w-[6.5rem]', row: 'h-14', text: 'text-[16px]', icon: 'size-4' }
+}
+
+const CELL_SIZE_KEY = 'jelenlet.cellSize'
 const NAME_COL = 'w-44 min-w-44 max-w-44'
 /** Compact default — 13″ laptopon több sor fér. */
-const ROW_H = 'h-10'
 
 const DEFAULT_ARRIVAL = '08:00'
 const DEFAULT_DEPARTURE = '16:00'
 
 type DayMode = 'work' | 'vacation' | 'sick' | 'clear'
-type MainView = 'calendar' | 'todos'
+type MainView = 'today' | 'calendar' | 'todos'
 
 type HoverTipState = {
   x: number
@@ -202,25 +321,27 @@ function cellTimeContent(cell: CalendarCell | undefined): ReactNode | null {
   if (!cell) return null
   if (cell.kind === 'complete' && cell.arrival && cell.departure) {
     return (
-      <>
-        <TimePart time={cell.arrival} source={cell.arrivalSource} />–
+      <span className="flex flex-col items-center leading-[1.15]">
+        <TimePart time={cell.arrival} source={cell.arrivalSource} />
         <TimePart time={cell.departure} source={cell.departureSource} />
-      </>
+      </span>
     )
   }
   if (cell.kind === 'incomplete') {
     if (cell.arrival) {
       return (
-        <>
-          <TimePart time={cell.arrival} source={cell.arrivalSource} /> · ?
-        </>
+        <span className="flex flex-col items-center leading-[1.15]">
+          <TimePart time={cell.arrival} source={cell.arrivalSource} />
+          <span>?</span>
+        </span>
       )
     }
     if (cell.departure) {
       return (
-        <>
-          ? · <TimePart time={cell.departure} source={cell.departureSource} />
-        </>
+        <span className="flex flex-col items-center leading-[1.15]">
+          <span>?</span>
+          <TimePart time={cell.departure} source={cell.departureSource} />
+        </span>
       )
     }
   }
@@ -378,7 +499,7 @@ function cellDisplay(cell: CalendarCell | undefined): {
             ? `${cell.arrival.slice(0, 5)}–${cell.departure.slice(0, 5)}`
             : 'Kész',
         className:
-          'bg-success-soft text-success-ink hover:bg-success-soft/80 text-[11px] font-semibold leading-tight'
+          'bg-success-soft text-ink hover:bg-success-soft/80 font-semibold'
       }
     case 'incomplete':
       return {
@@ -388,25 +509,25 @@ function cellDisplay(cell: CalendarCell | undefined): {
             ? `? · ${cell.departure.slice(0, 5)}`
             : 'Hiányos',
         className:
-          'bg-warning-soft text-warning-ink ring-1 ring-inset ring-warning/45 text-[11px] font-semibold'
+          'bg-warning-soft text-ink ring-1 ring-inset ring-warning/45 font-semibold'
       }
     case 'vacation':
       return {
         text: 'Szab.',
         className:
-          'bg-success text-white text-[12px] font-semibold hover:bg-success/90'
+          'bg-success text-white font-semibold hover:bg-success/90'
       }
     case 'sick':
       return {
         text: 'Beteg',
         className:
-          'bg-danger text-white text-[12px] font-semibold hover:bg-danger/90'
+          'bg-danger text-white font-semibold hover:bg-danger/90'
       }
     case 'other_absence':
       return {
         text: 'Táv.',
         className:
-          'bg-info-soft text-info-ink text-[12px] font-semibold hover:bg-info-soft/80'
+          'bg-info-soft text-ink font-semibold hover:bg-info-soft/80'
       }
     case 'rest':
       return {
@@ -504,6 +625,48 @@ function computeGlance(data: CalendarMonthData) {
   }
 }
 
+const DEVIATION_CLASS: Record<Exclude<ShiftDeviation['kind'], 'ok'>, string> = {
+  short: 'bg-danger-soft text-ink border-l-[3px] border-l-danger',
+  long: 'bg-info-soft text-ink border-l-[3px] border-l-info',
+  mixed: ''
+}
+
+function deviationClass(dev: ShiftDeviation): string {
+  if (dev.kind === 'ok') return ''
+  if (dev.kind === 'mixed') return dev.netMin < 0 ? DEVIATION_CLASS.short : DEVIATION_CLASS.long
+  return DEVIATION_CLASS[dev.kind]
+}
+
+function deviationLines(
+  dev: ShiftDeviation,
+  shiftStart: string | null,
+  shiftEnd: string | null,
+  overtimeEnabled: boolean
+): string[] {
+  if (dev.kind === 'ok') return []
+  const lines = [`Műszak: ${shiftStart?.slice(0, 5)}–${shiftEnd?.slice(0, 5)}`]
+  if (dev.lateMin) lines.push(`Késés: ${dev.lateMin} perc`)
+  if (dev.earlyLeaveMin) lines.push(`Korábban ment: ${dev.earlyLeaveMin} perc`)
+  if (dev.earlyArriveMin) lines.push(`Korábban jött: ${dev.earlyArriveMin} perc`)
+  if (dev.stayLateMin) lines.push(`Tovább maradt: ${dev.stayLateMin} perc`)
+  if ((dev.earlyArriveMin || dev.stayLateMin) && !overtimeEnabled) {
+    lines.push('A műszakon kívüli idő nem számít túlórának')
+  }
+  return lines
+}
+
+function DeviationIcons({ dev, iconClass }: { dev: ShiftDeviation; iconClass: string }) {
+  const down = dev.lateMin + dev.earlyLeaveMin > 0
+  const up = dev.earlyArriveMin + dev.stayLateMin > 0
+  if (!down && !up) return null
+  return (
+    <span className="pointer-events-none flex shrink-0 flex-col" aria-hidden>
+      {down ? <ArrowDown className={cn(iconClass, 'text-danger')} strokeWidth={2.75} /> : null}
+      {up ? <ArrowUp className={cn(iconClass, 'text-info')} strokeWidth={2.75} /> : null}
+    </span>
+  )
+}
+
 function LegendSwatch({
   className,
   label,
@@ -532,7 +695,7 @@ function LegendSwatch({
   )
 }
 
-export function JelenletCalendarClient({ data, canWrite }: Props) {
+export function JelenletCalendarClient({ data, canWrite, today, totalsRules }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
@@ -543,14 +706,108 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
   const [departure, setDeparture] = useState(DEFAULT_DEPARTURE)
   const [note, setNote] = useState('')
   const [hoverTip, setHoverTip] = useState<HoverTipState | null>(null)
-  const [view, setView] = useState<MainView>('calendar')
+  const [view, setView] = useState<MainView>(today ? 'today' : 'calendar')
   const [focusMode, setFocusMode] = useState(false)
+  const [cellSize, setCellSize] = useState<CellSize>('md')
+  useEffect(() => {
+    const saved = window.localStorage.getItem(CELL_SIZE_KEY)
+    if (saved === 'sm' || saved === 'md' || saved === 'lg') setCellSize(saved)
+  }, [])
+  const changeCellSize = (next: CellSize) => {
+    setCellSize(next)
+    window.localStorage.setItem(CELL_SIZE_KEY, next)
+  }
+  const size = CELL_SIZES[cellSize]
+  const DAY_COL = size.col
+  const totalPx = TOTAL_COL_PX[cellSize]
+  const totalPxRef = useRef(totalPx)
+  totalPxRef.current = totalPx
+  const totalStyle = (k: TotalKey) => ({
+    width: totalPx,
+    minWidth: totalPx,
+    maxWidth: totalPx,
+    right: totalPx * (TOTAL_KEYS.length - 1 - TOTAL_KEYS.indexOf(k))
+  })
+  const totalMainText = { sm: 'text-[14px]', md: 'text-[16px]', lg: 'text-[18px]' }[cellSize]
+  const totalSubText = { sm: 'text-[12px]', md: 'text-[13px]', lg: 'text-[14px]' }[cellSize]
+  const ROW_H = size.row
+  const [search, setSearch] = useState('')
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const glance = useMemo(() => computeGlance(data), [data])
-  const employeeGroups = useMemo(
-    () => groupEmployeesByType(data.employees),
-    [data.employees]
+  const employeeGroups = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const emps = q
+      ? data.employees.filter((e) => e.name.toLowerCase().includes(q))
+      : data.employees
+    return groupEmployeesByType(emps)
+  }, [data.employees, search])
+
+  const monthTotals = useMemo(() => {
+    const out: Record<
+      string,
+      { normal: number; overtime: number; weekendDays: number; weekendMinutes: number; days: number }
+    > = {}
+    for (const emp of data.employees) {
+      const t = { normal: 0, overtime: 0, weekendDays: 0, weekendMinutes: 0, days: 0 }
+      const policy = totalsRules.employees[emp.id] ?? {
+        shiftStart: emp.shiftStart,
+        shiftEnd: emp.shiftEnd,
+        overtime: NO_OVERTIME,
+        earlyOvertime: NO_EARLY_OVERTIME
+      }
+      for (const ymd of data.dates) {
+        const cell = data.cells[`${emp.id}|${ymd}`]
+        if (cell?.kind !== 'complete') continue
+        const dow = dowOf(ymd)
+        const split = computeDaySplit({
+          arrival: cell.arrival,
+          departure: cell.departure,
+          lunchStart: cell.lunchStart ?? emp.lunchStart,
+          lunchEnd: cell.lunchEnd ?? emp.lunchEnd,
+          weekend: (dow === 0 || dow === 6) && !cell.calendarName,
+          graceMinutes: totalsRules.graceMinutes,
+          employee: policy
+        })
+        t.normal += split.normal
+        t.overtime += split.overtime
+        if (split.weekend > 0) {
+          t.weekendDays += 1
+          t.weekendMinutes += split.weekend
+        } else if (split.normal > 0) {
+          t.days += 1
+        }
+      }
+      out[emp.id] = t
+    }
+    return out
+  }, [data, totalsRules])
+
+  const isExpectedToday = useCallback(
+    (employeeId: string) => {
+      const emp = data.employees.find((e) => e.id === employeeId)
+      return isExpectedWorkDay(
+        glance.today,
+        emp?.worksOnSaturday ?? false,
+        data.cells[`${employeeId}|${glance.today}`],
+        { onlyPast: false, todayYmd: glance.today }
+      )
+    },
+    [data, glance.today]
   )
+
+  const scrollToToday = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const box = scrollRef.current
+    const th = box?.querySelector<HTMLElement>('th[data-today="true"]')
+    if (!box || !th) return
+    // A ragadós név-oszlop mögé ne csússzon; a mai nap után ~2 nap látsszon.
+    const target = th.offsetLeft - box.clientWidth + th.offsetWidth * 3 + totalPxRef.current * 3
+    box.scrollTo({ left: Math.max(0, target), behavior })
+  }, [])
+
+  useEffect(() => {
+    if (view === 'calendar') scrollToToday('auto')
+  }, [view, focusMode, scrollToToday])
 
   useEffect(() => {
     if (!focusMode) return
@@ -824,8 +1081,15 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
               variant="secondary"
               size="sm"
               className="ml-1"
-              disabled={viewingCurrentMonth}
-              onClick={() => goToMonth(nowYm.year, nowYm.month)}
+              onClick={() => {
+                if (!viewingCurrentMonth) {
+                  goToMonth(nowYm.year, nowYm.month)
+                } else if (view === 'calendar' || focusMode) {
+                  scrollToToday()
+                } else {
+                  setView('calendar')
+                }
+              }}
             >
               Ma
             </Button>
@@ -838,6 +1102,23 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                 aria-label="Nézet"
                 className="inline-flex gap-0.5 rounded-md border border-border bg-subtle p-0.5"
               >
+                {today ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={view === 'today'}
+                    onClick={() => setView('today')}
+                    className={cn(
+                      'inline-flex h-7 items-center gap-1 rounded-[5px] px-2.5 text-[13px] font-medium transition-colors',
+                      view === 'today'
+                        ? 'bg-ink text-white'
+                        : 'text-ink-secondary hover:bg-surface hover:text-ink'
+                    )}
+                  >
+                    <Sun className="size-3.5" aria-hidden />
+                    Ma
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   role="tab"
@@ -886,6 +1167,49 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
               ) : null}
             </>
           ) : null}
+
+          <div className="ml-auto flex items-center gap-2">
+            {today ? <TerminalBadge terminals={today.terminals} /> : null}
+            {view === 'calendar' || focusMode ? (
+              <div
+                role="radiogroup"
+                aria-label="Cellaméret"
+                className="inline-flex h-7 items-center rounded-md border border-border bg-surface p-0.5"
+              >
+                {(Object.keys(CELL_SIZES) as CellSize[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    role="radio"
+                    aria-checked={cellSize === k}
+                    onClick={() => changeCellSize(k)}
+                    className={cn(
+                      'h-6 rounded px-2 text-[12px] font-medium',
+                      cellSize === k ? 'bg-subtle text-ink' : 'text-ink-secondary hover:text-ink'
+                    )}
+                  >
+                    {CELL_SIZES[k].label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {view !== 'todos' || focusMode ? (
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
+                  aria-hidden
+                />
+                <Input
+                  type="search"
+                  aria-label="Dolgozó keresése"
+                  placeholder="Dolgozó keresése"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-7 w-44 pl-7 text-[13px]"
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -904,6 +1228,16 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
             </Link>
           ) : null}
         </div>
+      ) : view === 'today' && today && !focusMode ? (
+        <JelenletTodayPanel
+          data={data}
+          today={glance.today}
+          events={today.events}
+          isExpected={isExpectedToday}
+          search={search}
+          canWrite={canWrite}
+          onEdit={(eid) => openCell(eid, glance.today)}
+        />
       ) : view === 'todos' ? (
         <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border bg-surface print:border-0">
           {glance.todoCount === 0 ? (
@@ -963,7 +1297,10 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
           )}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border bg-surface print:max-h-none print:overflow-visible print:border-0">
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 overflow-auto rounded-md border border-border bg-surface print:max-h-none print:overflow-visible print:border-0"
+        >
           <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
             <thead>
               <tr>
@@ -1036,6 +1373,19 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                     </th>
                   )
                 })}
+                {TOTAL_KEYS.map((k) => (
+                  <th
+                    key={k}
+                    style={totalStyle(k)}
+                    className={cn(
+                      'sticky top-0 z-30 border-b border-border bg-subtle px-2 py-1.5 text-right text-[12px] font-semibold text-ink',
+                      k === 'normal' ? 'border-l shadow-[-2px_0_0_0_var(--border)]' : 'border-l border-l-border/60'
+                    )}
+                  >
+                    {TOTAL_HEAD[k]}
+                    <span className="block text-[11px] font-normal text-ink-muted">hónap</span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -1060,6 +1410,34 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                       className="border-b border-border bg-subtle p-0"
                       aria-hidden
                     />
+                    {(() => {
+                      const sum = group.employees.reduce(
+                        (acc, e) => {
+                          const t = monthTotals[e.id]
+                          if (t) {
+                            acc.normal += t.normal
+                            acc.overtime += t.overtime
+                            acc.weekend += t.weekendDays
+                          }
+                          return acc
+                        },
+                        { normal: 0, overtime: 0, weekend: 0 }
+                      )
+                      return TOTAL_KEYS.map((k) => (
+                        <td
+                          key={k}
+                          style={totalStyle(k)}
+                          className={cn(
+                            'sticky z-[11] border-b border-border bg-subtle px-2 py-1 text-right text-[12px] font-semibold tabular-nums text-ink-secondary',
+                            k === 'normal' ? 'border-l shadow-[-2px_0_0_0_var(--border)]' : 'border-l border-l-border/60'
+                          )}
+                        >
+                          {k === 'weekend'
+                            ? sum.weekend ? `${sum.weekend} nap` : '–'
+                            : sum[k] ? hoursDecimal(sum[k]) : '–'}
+                        </td>
+                      ))
+                    })()}
                   </tr>
                   {group.employees.map((emp) => {
                     const att = glance.rowAttention[emp.id]
@@ -1120,14 +1498,40 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                             isPast &&
                             scheduleExpected &&
                             (!cell || cell.kind === 'empty')
-                          const tipLines = cellHoverLines(
-                            emp.name,
-                            ymd,
-                            cell,
-                            scheduleExpected,
-                            canWrite,
-                            isPast
-                          )
+                          const policy = totalsRules.employees[emp.id]
+                          const shiftStart = policy?.shiftStart ?? emp.shiftStart
+                          const shiftEnd = policy?.shiftEnd ?? emp.shiftEnd
+                          const deviation =
+                            cell?.kind === 'complete' &&
+                            dow !== 0 &&
+                            dow !== 6 &&
+                            !cell.calendarName
+                              ? classifyShiftDeviation({
+                                  arrival: cell.arrival,
+                                  departure: cell.departure,
+                                  shiftStart,
+                                  shiftEnd,
+                                  graceMinutes: totalsRules.graceMinutes
+                                })
+                              : null
+                          const tipLines = [
+                            ...cellHoverLines(
+                              emp.name,
+                              ymd,
+                              cell,
+                              scheduleExpected,
+                              canWrite,
+                              isPast
+                            ),
+                            ...(deviation
+                              ? deviationLines(
+                                  deviation,
+                                  shiftStart,
+                                  shiftEnd,
+                                  Boolean(policy?.overtime.enabled || policy?.earlyOvertime.enabled)
+                                )
+                              : [])
+                          ]
                           const statusFill =
                             cell?.kind === 'vacation' ||
                             cell?.kind === 'sick' ||
@@ -1178,9 +1582,11 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                                   openCell(emp.id, ymd)
                                 }}
                                 className={cn(
-                                  'relative flex w-full items-center justify-center px-0.5 tabular-nums',
+                                  'relative flex w-full items-center justify-center gap-0.5 px-0.5 tabular-nums',
                                   ROW_H,
                                   disp.className,
+                                  size.text,
+                                  deviation && deviationClass(deviation),
                                   emptyWork &&
                                     !disp.text &&
                                     'bg-warning-soft/50 ring-1 ring-inset ring-dashed ring-warning/50',
@@ -1189,6 +1595,7 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                                     'cursor-pointer'
                                 )}
                               >
+                                {deviation ? <DeviationIcons dev={deviation} iconClass={size.icon} /> : null}
                                 {emptyWork && !disp.text ? (
                                   <span className="text-[12px] font-semibold text-warning-ink">
                                     —
@@ -1206,6 +1613,59 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
                             </td>
                           )
                         })}
+                        {(() => {
+                          const t = monthTotals[emp.id]
+                          const tip = t ? totalTipLines(emp.name, t, totalsRules.graceMinutes) : []
+                          return TOTAL_KEYS.map((k) => {
+                            const active =
+                              t &&
+                              (k === 'normal' ? t.normal > 0 : k === 'overtime' ? t.overtime > 0 : t.weekendDays > 0)
+                            return (
+                              <td
+                                key={k}
+                                style={totalStyle(k)}
+                                tabIndex={t ? 0 : undefined}
+                                aria-label={t ? tip.join('. ') : undefined}
+                                onMouseEnter={t ? (e) => showHoverTip(e, tip) : undefined}
+                                onMouseLeave={t ? hideHoverTip : undefined}
+                                onFocus={t ? (e) => showHoverTip(e, tip) : undefined}
+                                onBlur={t ? hideHoverTip : undefined}
+                                className={cn(
+                                  'sticky z-10 border-b border-border px-2 py-0 text-right tabular-nums text-ink',
+                                  k === 'normal'
+                                    ? 'border-l shadow-[-2px_0_0_0_var(--border)]'
+                                    : 'border-l border-l-border/60',
+                                  active && k === 'overtime'
+                                    ? 'bg-warning-soft'
+                                    : active && k === 'weekend'
+                                      ? 'bg-info-soft'
+                                      : 'bg-surface group-hover:bg-subtle'
+                                )}
+                              >
+                                {!t ? null : !active ? (
+                                  <span className={cn(totalMainText, 'text-ink-muted')}>–</span>
+                                ) : (
+                                  <span className="flex flex-col items-end leading-tight">
+                                    <span className={cn(totalMainText, 'font-semibold')}>
+                                      {k === 'normal'
+                                        ? hoursDecimal(t.normal)
+                                        : k === 'overtime'
+                                          ? hoursDecimal(t.overtime)
+                                          : `${t.weekendDays} nap`}
+                                    </span>
+                                    {k === 'normal' ? (
+                                      <span className={cn(totalSubText, 'text-ink-secondary')}>{t.days} nap</span>
+                                    ) : k === 'weekend' ? (
+                                      <span className={cn(totalSubText, 'text-ink-secondary')}>
+                                        {hoursDecimal(t.weekendMinutes)} ó
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                )}
+                              </td>
+                            )
+                          })
+                        })()}
                       </tr>
                     )
                   })}
@@ -1229,6 +1689,12 @@ export function JelenletCalendarClient({ data, canWrite }: Props) {
             label="Hiányos"
           >
             ?
+          </LegendSwatch>
+          <LegendSwatch className={DEVIATION_CLASS.short} label="Kevesebb a műszaknál">
+            <ArrowDown className="size-3" aria-hidden />
+          </LegendSwatch>
+          <LegendSwatch className={DEVIATION_CLASS.long} label="Több a műszaknál">
+            <ArrowUp className="size-3" aria-hidden />
           </LegendSwatch>
           <LegendSwatch
             className="border border-dashed border-warning/50 bg-warning-soft/50 text-warning-ink"

@@ -613,7 +613,7 @@ export async function getCalendarMonth(
         lunchStart: dayAtt.lunchStart,
         lunchEnd: dayAtt.lunchEnd,
         paidMinutes: paid,
-        calendarName: null,
+        calendarName: calDay?.type === 'relocated_work' ? calDay.name || 'Áthelyezett munkanap' : null,
         source: dayAtt.source,
         manuallyEdited: dayAtt.manuallyEdited,
         arrivalSource: dayAtt.arrival ? dayAtt.arrivalSource : null,
