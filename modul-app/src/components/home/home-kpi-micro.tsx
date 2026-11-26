@@ -245,3 +245,117 @@ export function CapacityRing({
     </div>
   )
 }
+
+/** 7 napos mini oszlopsor napbetűkkel; a mai (utolsó) kiemelve. */
+export function WeekBars({
+  data,
+  label
+}: {
+  data: { label: string; count: number }[]
+  label: string
+}) {
+  const max = Math.max(1, ...data.map((d) => d.count))
+  return (
+    <div role="img" aria-label={label}>
+      <div className="flex h-6 items-end gap-1">
+        {data.map((d, i) => {
+          const isToday = i === data.length - 1
+          if (isToday && d.count === 0) {
+            return (
+              <div
+                key={d.label}
+                className="h-full flex-1 rounded-sm border border-dashed border-border-strong"
+              />
+            )
+          }
+          return (
+            <div
+              key={d.label}
+              title={`${d.label}: ${d.count}`}
+              className={cn('flex-1 rounded-sm', isToday ? 'bg-ink' : 'bg-border-strong')}
+              style={{ height: `${Math.max(8, (d.count / max) * 100)}%` }}
+            />
+          )
+        })}
+      </div>
+      <div className="mt-0.5 flex gap-1 text-[10px] leading-none text-ink-muted" aria-hidden>
+        {data.map((d, i) => (
+          <span key={d.label} className="flex-1 text-center">
+            {i === data.length - 1 ? 'ma' : d.label.split(' ')[0]}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Átvételre várók kor szerint: 0–2 / 3–6 / 7+ nap, jelmagyarázattal. */
+export function AgingBar({
+  fresh,
+  mid,
+  old
+}: {
+  fresh: number
+  mid: number
+  old: number
+}) {
+  const total = fresh + mid + old
+  return (
+    <div role="img" aria-label={`0–2 napja: ${fresh}, 3–6 napja: ${mid}, 7+ napja: ${old}`}>
+      <div className="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full bg-subtle">
+        {total > 0 ? (
+          <>
+            {fresh > 0 ? <div className="h-full bg-ink" style={{ flexGrow: fresh }} /> : null}
+            {mid > 0 ? <div className="h-full bg-ink-muted" style={{ flexGrow: mid }} /> : null}
+            {old > 0 ? <div className="h-full bg-warning" style={{ flexGrow: old }} /> : null}
+          </>
+        ) : null}
+      </div>
+      <p className="mt-1 flex gap-2 text-[10px] leading-none tabular-nums text-ink-muted" aria-hidden>
+        <span className="inline-flex items-center gap-1">
+          <span className="size-1.5 rounded-full bg-ink" />0–2 n: {fresh}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="size-1.5 rounded-full bg-ink-muted" />3–6 n: {mid}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="size-1.5 rounded-full bg-warning" />7+ n: {old}
+        </span>
+      </p>
+    </div>
+  )
+}
+
+/** Mai érték vs szokásos jelölő, jelmagyarázattal. */
+export function BulletBar({ value, typical }: { value: number; typical: number }) {
+  const scale = Math.max(1, value, typical) * 1.15
+  return (
+    <div role="img" aria-label={`Ma ${value}, ilyenkor átlagosan ${typical}`}>
+      <div className="relative h-1.5 w-full rounded-full bg-subtle">
+        <div
+          className={cn(
+            'h-full rounded-full',
+            typical > 0 && value >= typical ? 'bg-success' : 'bg-ink'
+          )}
+          style={{ width: `${(value / scale) * 100}%` }}
+        />
+        {typical > 0 ? (
+          <div
+            className="absolute -top-1 h-3.5 w-0.5 rounded-full bg-ink-secondary"
+            style={{ left: `${(typical / scale) * 100}%` }}
+          />
+        ) : null}
+      </div>
+      <p className="mt-1 flex gap-2 text-[10px] leading-none text-ink-muted" aria-hidden>
+        <span className="inline-flex items-center gap-1">
+          <span className="h-1.5 w-2.5 rounded-full bg-ink" />ma
+        </span>
+        {typical > 0 ? (
+          <span className="inline-flex items-center gap-1">
+            <span className="h-2.5 w-0.5 rounded-full bg-ink-secondary" />ilyenkor átlag
+          </span>
+        ) : null}
+      </p>
+    </div>
+  )
+}

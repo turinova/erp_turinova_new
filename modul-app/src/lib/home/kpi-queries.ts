@@ -63,11 +63,35 @@ export type HomeLapszabaszatKpis = {
   todayGross: number
   todayCount: number
   last7Days: SalesDayPoint[]
-  /** Megrendelés kintlévő: not_paid/partial remaining (quote_payments). */
+  /** Hónap elejétől máig megrendelt (Budapest, ordered_at). */
+  monthGross: number
+  monthCount: number
+  /** Előző hónap ugyanarra a napra (1…D). */
+  priorMonthGross: number
+  monthLabel: string
+  /** Múlt hét azonos napján felvett megrendelések száma. */
+  sameDayLastWeekCount: number
+  /** Pl. „Cs” — a múlt heti összevetés felirata. */
+  sameDayLastWeekLabel: string
+  /** Átadva (finished), de nem / részben fizetve — hiányzó összeg. */
   openDue: number
-  /** Nyitott megrendelések bruttó (ring nevező). */
+  /** Átadva, nem fizetve — bruttó összesen. */
   openOrderGross: number
   openOrderCount: number
+  /** Legrégebbi átadott, nem fizetett rendelés kora napban (null ha nincs). */
+  oldestUnpaidDays: number | null
+  /** status = ready, várakozási kor szerint. */
+  ready: { total: number; fresh: number; mid: number; old: number; noSms: number }
+  /** Ma átadott (finished_at). */
+  finishedToday: number
+  /** Előző 4 hét azonos napjainak átadási átlaga. */
+  finishedTypical: number
+  /** Ugyanez, de csak a mostani napszakig (Budapest óra:perc). */
+  finishedTypicalByNow: number
+  /** Ma rögzített befizetések (quote_payments.payment_date). */
+  collectedToday: number
+  /** Gyártási nap > 1 munkanapja elmúlt, még nincs kész. */
+  lateCount: number
 }
 
 function emptyLapszabaszatKpis(today: string): HomeLapszabaszatKpis {
@@ -78,16 +102,26 @@ function emptyLapszabaszatKpis(today: string): HomeLapszabaszatKpis {
       const ymd = addDaysYmd(today, -6 + i)
       return { ymd, label: dayLabel(ymd), gross: 0, count: 0 }
     }),
+    monthGross: 0,
+    monthCount: 0,
+    priorMonthGross: 0,
+    monthLabel: MONTH_NAMES_HU[budapestYearMonth().month - 1] ?? '',
+    sameDayLastWeekCount: 0,
+    sameDayLastWeekLabel: '',
     openDue: 0,
     openOrderGross: 0,
-    openOrderCount: 0
+    openOrderCount: 0,
+    oldestUnpaidDays: null,
+    ready: { total: 0, fresh: 0, mid: 0, old: 0, noSms: 0 },
+    finishedToday: 0,
+    finishedTypical: 0,
+    finishedTypicalByNow: 0,
+    collectedToday: 0,
+    lateCount: 0
   }
 }
 
-/**
- * Lapszabászat kintlévő — csak megrendelés (van order_number), nem draft/cancelled/archív.
- * Mirrors getCustomerQuotesSummary, tenant-szinten.
- */
+/** Átadva (finished), de nem / részben fizetve — a valódi behajtandó. */
 async function getHomeLapszabaszatOpenDue(
   supabase: SupabaseClient,
   tenantId: string
@@ -95,33 +129,32 @@ async function getHomeLapszabaszatOpenDue(
   openDue: number
   openOrderGross: number
   openOrderCount: number
+  oldestUnpaidDays: number | null
 }> {
+  const empty = { openDue: 0, openOrderGross: 0, openOrderCount: 0, oldestUnpaidDays: null }
   const { data: quotes, error } = await supabase
     .from('quotes')
-    .select('id, final_total_gross, total_gross, payment_status')
+    .select('id, final_total_gross, total_gross, finished_at')
     .eq('tenant_id', tenantId)
     .is('deleted_at', null)
     .is('archived_at', null)
     .not('order_number', 'is', null)
-    .neq('status', 'cancelled')
-    .neq('status', 'draft')
+    .eq('status', 'finished')
     .in('payment_status', ['not_paid', 'partial'])
-    .or('source.neq.portal,portal_submitted_at.not.is.null')
 
   if (error) {
     console.error('getHomeLapszabaszatOpenDue', error.message)
-    return { openDue: 0, openOrderGross: 0, openOrderCount: 0 }
+    return empty
   }
 
   const rows = (quotes ?? []) as {
     id: string
     final_total_gross: number | null
     total_gross: number | null
+    finished_at: string | null
   }[]
 
-  if (rows.length === 0) {
-    return { openDue: 0, openOrderGross: 0, openOrderCount: 0 }
-  }
+  if (rows.length === 0) return empty
 
   const paidByQuote = new Map<string, number>()
   const { data: payments, error: payErr } = await supabase
@@ -144,7 +177,9 @@ async function getHomeLapszabaszatOpenDue(
 
   let openDue = 0
   let openOrderGross = 0
+  let oldest: string | null = null
   for (const r of rows) {
+    if (r.finished_at && (!oldest || r.finished_at < oldest)) oldest = r.finished_at
     const gross = Math.round(Number(r.final_total_gross ?? r.total_gross) || 0)
     openOrderGross += gross
     openDue += Math.max(0, gross - (paidByQuote.get(r.id) ?? 0))
@@ -153,7 +188,110 @@ async function getHomeLapszabaszatOpenDue(
   return {
     openDue: Math.round(openDue),
     openOrderGross: Math.round(openOrderGross),
-    openOrderCount: rows.length
+    openOrderCount: rows.length,
+    oldestUnpaidDays: oldest ? daysBetweenYmd(toBudapestYmdFromIso(oldest), budapestTodayYmd()) : null
+  }
+}
+
+function daysBetweenYmd(fromYmd: string, toYmd: string): number {
+  const a = Date.parse(`${fromYmd}T12:00:00Z`)
+  const b = Date.parse(`${toYmd}T12:00:00Z`)
+  return Math.max(0, Math.round((b - a) / 86_400_000))
+}
+
+function previousWorkdayYmd(ymd: string): string {
+  let d = addDaysYmd(ymd, -1)
+  for (;;) {
+    const dow = new Date(`${d}T12:00:00Z`).getUTCDay()
+    if (dow !== 0 && dow !== 6) return d
+    d = addDaysYmd(d, -1)
+  }
+}
+
+async function getHomeLapszabaszatFlow(
+  supabase: SupabaseClient,
+  tenantId: string,
+  today: string
+): Promise<Pick<
+  HomeLapszabaszatKpis,
+  'ready' | 'finishedToday' | 'finishedTypical' | 'finishedTypicalByNow' | 'collectedToday' | 'lateCount'
+>> {
+  const todayRange = budapestDayRangeIso(today)
+  const { startIso: fourWeeksStart } = budapestDayRangeIso(addDaysYmd(today, -28))
+  const lateBefore = previousWorkdayYmd(today)
+
+  const [readyRes, finishedRes, paidRes, lateRes] = await Promise.all([
+    supabase
+      .from('quotes')
+      .select('ready_at, ready_notification_sent_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .is('archived_at', null)
+      .eq('status', 'ready'),
+    supabase
+      .from('quotes')
+      .select('finished_at')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .eq('status', 'finished')
+      .gte('finished_at', fourWeeksStart)
+      .lt('finished_at', todayRange.endIso),
+    supabase
+      .from('quote_payments')
+      .select('amount')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .gte('payment_date', todayRange.startIso)
+      .lt('payment_date', todayRange.endIso),
+    supabase
+      .from('quotes')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .is('archived_at', null)
+      .in('status', ['ordered', 'in_production'])
+      .lt('production_date', lateBefore)
+  ])
+
+  for (const [name, r] of [['ready', readyRes], ['finished', finishedRes], ['paid', paidRes], ['late', lateRes]] as const) {
+    if (r.error) console.error(`getHomeLapszabaszatFlow ${name}`, r.error.message)
+  }
+
+  const ready = { total: 0, fresh: 0, mid: 0, old: 0, noSms: 0 }
+  for (const r of readyRes.data ?? []) {
+    ready.total += 1
+    if (!r.ready_notification_sent_at) ready.noSms += 1
+    const age = r.ready_at ? daysBetweenYmd(toBudapestYmdFromIso(r.ready_at as string), today) : 0
+    if (age >= 7) ready.old += 1
+    else if (age >= 3) ready.mid += 1
+    else ready.fresh += 1
+  }
+
+  const sameWeekdays = new Set([7, 14, 21, 28].map((n) => addDaysYmd(today, -n)))
+  const nowMin = budapestNowMinutes()
+  let finishedToday = 0
+  let typicalSum = 0
+  let typicalByNowSum = 0
+  for (const r of finishedRes.data ?? []) {
+    if (!r.finished_at) continue
+    const iso = r.finished_at as string
+    const ymd = toBudapestYmdFromIso(iso)
+    if (ymd === today) finishedToday += 1
+    else if (sameWeekdays.has(ymd)) {
+      typicalSum += 1
+      if (budapestMinutesOfIso(iso) <= nowMin) typicalByNowSum += 1
+    }
+  }
+
+  return {
+    ready,
+    finishedToday,
+    finishedTypical: Math.round(typicalSum / 4),
+    finishedTypicalByNow: Math.round(typicalByNowSum / 4),
+    collectedToday: Math.round(
+      (paidRes.data ?? []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+    ),
+    lateCount: lateRes.count ?? 0
   }
 }
 
@@ -170,6 +308,18 @@ function dayLabel(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number)
   const dow = new Date(Date.UTC(y, m - 1, d, 12)).getUTCDay()
   return `${WEEKDAY_SHORT[dow]} ${String(d).padStart(2, '0')}`
+}
+
+function budapestMinutesOfIso(iso: string): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Budapest',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(new Date(iso))
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 0)
+  const min = Number(parts.find((p) => p.type === 'minute')?.value ?? 0)
+  return h * 60 + min
 }
 
 function budapestNowMinutes(): number {
@@ -569,10 +719,14 @@ export async function getHomeLapszabaszatKpis(
 ): Promise<HomeLapszabaszatKpis> {
   const today = budapestTodayYmd()
   const start7 = addDaysYmd(today, -6)
-  const { startIso: rangeStart } = budapestDayRangeIso(start7)
+  const { year, month } = budapestYearMonth()
+  const monthStart = daysInMonth(year, month)[0]!
+  const prior = priorMonthRangeYmd(today)
+  const rangeStartYmd = [start7, monthStart, prior.start].sort()[0]!
+  const { startIso: rangeStart } = budapestDayRangeIso(rangeStartYmd)
   const { endIso: rangeEnd } = budapestDayRangeIso(today)
 
-  const [intakeRes, open] = await Promise.all([
+  const [intakeRes, open, flow] = await Promise.all([
     supabase
       .from('quotes')
       .select('final_total_gross, total_gross, ordered_at')
@@ -583,14 +737,15 @@ export async function getHomeLapszabaszatKpis(
       .neq('status', 'cancelled')
       .gte('ordered_at', rangeStart)
       .lt('ordered_at', rangeEnd),
-    getHomeLapszabaszatOpenDue(supabase, tenantId)
+    getHomeLapszabaszatOpenDue(supabase, tenantId),
+    getHomeLapszabaszatFlow(supabase, tenantId, today)
   ])
 
   const { data, error } = intakeRes
 
   if (error) {
     console.error('getHomeLapszabaszatKpis', error.message)
-    return { ...emptyLapszabaszatKpis(today), ...open }
+    return { ...emptyLapszabaszatKpis(today), ...open, ...flow }
   }
 
   const byDay = new Map<string, { gross: number; count: number }>()
@@ -602,8 +757,11 @@ export async function getHomeLapszabaszatKpis(
     const iso = row.ordered_at as string | null
     if (!iso) continue
     const ymd = toBudapestYmdFromIso(iso)
-    const bucket = byDay.get(ymd)
-    if (!bucket) continue
+    let bucket = byDay.get(ymd)
+    if (!bucket) {
+      bucket = { gross: 0, count: 0 }
+      byDay.set(ymd, bucket)
+    }
     bucket.gross += Number(row.final_total_gross ?? row.total_gross) || 0
     bucket.count += 1
   }
@@ -621,11 +779,20 @@ export async function getHomeLapszabaszatKpis(
   }
 
   const todayPoint = byDay.get(today) ?? { gross: 0, count: 0 }
+  const monthAgg = sumGrossInRange(byDay, monthStart, today)
+  const priorAgg = sumGrossInRange(byDay, prior.start, prior.end)
   return {
     todayGross: todayPoint.gross,
     todayCount: todayPoint.count,
     last7Days,
-    ...open
+    monthGross: monthAgg.gross,
+    monthCount: monthAgg.count,
+    priorMonthGross: priorAgg.gross,
+    monthLabel: MONTH_NAMES_HU[month - 1] ?? '',
+    sameDayLastWeekCount: byDay.get(addDaysYmd(today, -7))?.count ?? 0,
+    sameDayLastWeekLabel: dayLabel(addDaysYmd(today, -7)).split(' ')[0] ?? '',
+    ...open,
+    ...flow
   }
 }
 

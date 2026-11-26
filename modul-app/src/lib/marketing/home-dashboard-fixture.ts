@@ -99,9 +99,22 @@ export const HOME_DASHBOARD_FIXTURE = {
       todayGross: 1_842_000,
       todayCount: 7,
       last7Days: LAPSZAB_7,
+      monthGross: 28_400_000,
+      monthCount: 112,
+      priorMonthGross: 25_900_000,
+      monthLabel: 'November',
       openDue: 680_000,
       openOrderGross: 1_150_000,
-      openOrderCount: 4
+      openOrderCount: 4,
+      sameDayLastWeekCount: 5,
+      sameDayLastWeekLabel: 'Cs',
+      oldestUnpaidDays: 9,
+      ready: { total: 12, fresh: 7, mid: 3, old: 2, noSms: 1 },
+      finishedToday: 6,
+      finishedTypical: 8,
+      finishedTypicalByNow: 3,
+      collectedToday: 1_120_000,
+      lateCount: 0
     }
   } satisfies HomeKpiBundle,
 

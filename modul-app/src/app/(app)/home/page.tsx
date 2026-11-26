@@ -2,10 +2,9 @@ import type { Metadata } from 'next'
 
 import { HomeChartsDashboard } from '@/components/home/home-charts-dashboard'
 import { HomeKpiStrip } from '@/components/home/home-kpi-strip'
-import { HomeNapiZarasCard } from '@/components/home/home-napi-zaras-card'
 import { KioskInboxCard } from '@/components/home/kiosk-inbox-card'
 import { PartnerPortalInboxCard } from '@/components/home/partner-portal-inbox-card'
-import { PageHeader } from '@/components/patterns/page-header'
+import { HOME_QUICK_LINKS, HomeQuickLinks } from '@/components/home/home-quick-links'
 import { getSessionUser } from '@/lib/auth/session'
 import { tenantHasFootcounter } from '@/lib/footcounter/entitlement'
 import { getFootcounterHomeSlim } from '@/lib/footcounter/queries'
@@ -17,17 +16,12 @@ import {
   type HomeKioskInboxRow
 } from '@/lib/home/kiosk-inbox'
 import {
-  getHomeNapiZarasSnapshot,
-  type HomeNapiZarasSnapshot
-} from '@/lib/home/napi-zaras-snapshot'
-import {
   getHomePartnerPortalInbox,
   tenantHasPartnerOrders,
   type HomePartnerPortalInboxRow
 } from '@/lib/home/partner-portal-inbox'
 import { tenantHasJelenlet } from '@/lib/jelenlet/entitlement'
 import { tenantHasLapszabaszat } from '@/lib/lapszabaszat/entitlement'
-import { findNavLinkByPath } from '@/lib/navigation'
 import { pathIsAllowed } from '@/lib/permissions/pages'
 import { createClient } from '@/lib/supabase/server'
 
@@ -37,12 +31,6 @@ export const metadata: Metadata = {
 
 export default async function HomePage() {
   const user = await getSessionUser()
-  const nav = findNavLinkByPath('/home')
-
-  const dateLabel = new Intl.DateTimeFormat('hu-HU', {
-    timeZone: 'Europe/Budapest',
-    dateStyle: 'full'
-  }).format(new Date())
 
   let data: Awaited<ReturnType<typeof getHomePageData>> | null = null
   let kpis: HomeKpiBundle | null = null
@@ -52,13 +40,9 @@ export default async function HomePage() {
     rows: [],
     total: 0
   }
-  let napiZaras: HomeNapiZarasSnapshot | null = null
   let showLapszabaszatCharts = false
+  let hasLapszab = false
   let loadError: string | null = null
-
-  const canSeeNapiZaras = Boolean(
-    user && pathIsAllowed('/ertekesitesek/napi-egyeztetes', user.allowedPages)
-  )
 
   if (user?.tenantId && !user.isDevSession) {
     const supabase = await createClient()
@@ -72,6 +56,7 @@ export default async function HomePage() {
             tenantHasPartnerOrders(supabase, user.tenantId)
           ])
         showLapszabaszatCharts = hasLapszabaszat
+        hasLapszab = hasLapszabaszat
 
         kpis = await getHomeKpiBundle(supabase, user.tenantId, {
           includeJelenlet: hasJelenlet,
@@ -82,17 +67,6 @@ export default async function HomePage() {
           data = await getHomePageData(supabase, user.tenantId, 0)
         } catch (chartErr) {
           console.error('home charts', chartErr)
-        }
-
-        if (canSeeNapiZaras) {
-          try {
-            napiZaras = await getHomeNapiZarasSnapshot(
-              supabase,
-              user.tenantId
-            )
-          } catch (zarasErr) {
-            console.error('home napi zaras', zarasErr)
-          }
         }
 
         if (hasFootcounter) {
@@ -118,11 +92,13 @@ export default async function HomePage() {
 
   return (
     <div>
-      <PageHeader
-        title="Kezdőlap"
-        icon={nav?.icon}
-        accent={nav?.accent}
-        description={`${user?.companyName ?? 'Cég'} · ${dateLabel}`}
+      <h1 className="sr-only">Kezdőlap</h1>
+      <HomeQuickLinks
+        links={HOME_QUICK_LINKS.filter(
+          (l) =>
+            Boolean(user && pathIsAllowed(l.navPath, user.allowedPages)) &&
+            (l.navPath !== '/opti' || hasLapszab || Boolean(user?.isDevSession))
+        )}
       />
 
       {user?.isDevSession ? (
@@ -136,8 +112,6 @@ export default async function HomePage() {
           {loadError}
         </p>
       ) : null}
-
-      {napiZaras ? <HomeNapiZarasCard data={napiZaras} /> : null}
 
       {kpis ? <HomeKpiStrip data={kpis} /> : null}
 

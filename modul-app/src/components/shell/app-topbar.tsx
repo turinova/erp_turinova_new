@@ -8,6 +8,7 @@ import type { SessionUser } from '@/lib/auth/session'
 import { getPlatformPublicOrigin } from '@/lib/auth/surface'
 import { Button } from '@/components/ui/button'
 import { MobileNavMenuButton } from '@/components/shell/app-sidebar'
+import { TopbarDate } from '@/components/shell/topbar-date'
 
 type AppTopbarProps = {
   user: SessionUser
@@ -56,6 +57,8 @@ export function AppTopbar({ user, onOpenMobileNav }: AppTopbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
+        <TopbarDate />
+        <span className="h-5 w-px bg-border" aria-hidden />
         {showPlatform ? (
           <Link
             href={platformHref}
