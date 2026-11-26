@@ -128,11 +128,11 @@ function isLocked(source: string | null | undefined): boolean {
  */
 export function computeDayFromEvents(existing: ExistingDay, events: DayEvent[]): ComputedDay {
   const all = [...events]
-  // Esemény nélkül írt terminál idők (régi /scan út) alapként maradnak.
+  // Korábbi terminál idők (régi /scan út, esemény nélkül) mindig jelöltek maradnak.
   for (const [field, type] of [['arrival', 'arrival'], ['departure', 'departure']] as const) {
     const hm = normalizeTime(existing?.[`${field}_time`])
     const src = existing?.[`${field}_source`]
-    if (hm && (src === 'rfid' || src === 'pin') && !events.some(e => e.scan_type === type)) {
+    if (hm && (src === 'rfid' || src === 'pin')) {
       all.push({ scan_type: type, scan_source: src, hm })
     }
   }
@@ -200,11 +200,27 @@ export function buildTerminalLogs(
   for (const d of days) {
     const a = normalizeTime(d.arrival_time)
     const dep = normalizeTime(d.departure_time)
-    if (a && isLocked(d.arrival_source)) {
-      rows.push({ employee_id: d.employee_id, scan_time: `${workDate}T${a}:00`, scan_type: 'arrival', manually_edited: true })
-    }
-    if (dep && isLocked(d.departure_source)) {
-      rows.push({ employee_id: d.employee_id, scan_time: `${workDate}T${dep}:00`, scan_type: 'departure', manually_edited: true })
+    for (const [hm, type, src] of [
+      [a, 'arrival', d.arrival_source],
+      [dep, 'departure', d.departure_source]
+    ] as const) {
+      if (!hm) continue
+      if (isLocked(src)) {
+        rows.push({ employee_id: d.employee_id, scan_time: `${workDate}T${hm}:00`, scan_type: type, manually_edited: true })
+        continue
+      }
+      // Esemény nélküli terminál idő (régi /scan út) — a Pi-nek látnia kell a következő típushoz.
+      const covered = events.some(
+        e => e.employee_id === d.employee_id && e.scan_type === type && e.scan_time_hms.slice(0, 5) === hm
+      )
+      if (!covered && (src === 'rfid' || src === 'pin')) {
+        rows.push({
+          employee_id: d.employee_id,
+          scan_time: `${workDate}T${hm}:00`,
+          scan_type: src === 'pin' ? `${type}_pin` : type,
+          manually_edited: false
+        })
+      }
     }
   }
   return rows.sort((x, y) => x.scan_time.localeCompare(y.scan_time))

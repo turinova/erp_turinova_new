@@ -99,3 +99,27 @@ test('buildTerminalLogs: kézi mezők manually_edited sorként', () => {
     { employee_id: 'e2', scan_time: '2026-11-09T16:00:00', scan_type: 'departure', manually_edited: true }
   ])
 })
+
+test('computeDay: régi /scan érkezés + új érkezés esemény → a korábbi nyer', () => {
+  const day = computeDayFromEvents(
+    { arrival_time: '06:55:00', departure_time: null, arrival_source: 'rfid', departure_source: null },
+    [{ scan_type: 'arrival', scan_source: 'rfid', hm: '13:43' }]
+  )
+  assert.equal(day.arrival_time, '06:55')
+  assert.equal(day.departure_time, null)
+})
+
+test('buildTerminalLogs: esemény nélküli terminál idő látszik a Pi-nek, duplikáció nélkül', () => {
+  const rows = buildTerminalLogs(
+    '2026-11-26',
+    [{ employee_id: 'e1', scan_time_hms: '07:01:30', scan_type: 'arrival', scan_source: 'rfid' }],
+    [
+      { employee_id: 'e1', arrival_time: '07:01:00', departure_time: null, arrival_source: 'rfid', departure_source: null },
+      { employee_id: 'e2', arrival_time: '06:55:00', departure_time: null, arrival_source: 'pin', departure_source: null }
+    ]
+  )
+  assert.deepEqual(rows, [
+    { employee_id: 'e2', scan_time: '2026-11-26T06:55:00', scan_type: 'arrival_pin', manually_edited: false },
+    { employee_id: 'e1', scan_time: '2026-11-26T07:01:30', scan_type: 'arrival', manually_edited: false }
+  ])
+})
