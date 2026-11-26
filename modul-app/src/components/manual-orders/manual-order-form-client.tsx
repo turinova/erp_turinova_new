@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { ChevronDown, ChevronRight, PackageSearch, Plus, Search } from 'lucide-react'
+import { ChevronDown, ChevronRight, ListChecks, PackageSearch, Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { CustomerMenuSelect } from '@/components/customers/customer-menu-select'
@@ -17,7 +17,8 @@ import {
 import { FormActionBar } from '@/components/patterns/form-action-bar'
 import { FormField } from '@/components/patterns/form-field'
 import { PhoneInput } from '@/components/patterns/phone-input'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -257,14 +258,23 @@ export function ManualOrderFormClient({ customers, suppliers, units, canWrite }:
 
   return (
     <div className="space-y-3">
-      <div className="space-y-1">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="space-y-1">
+          <Link
+            href="/kezi-rendelesek"
+            className="inline-block text-body text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+          >
+            ← Kézi rendelések
+          </Link>
+          <h1 className="text-h1 font-semibold text-ink">Új kézi rendelés</h1>
+        </div>
         <Link
-          href="/kezi-rendelesek"
-          className="inline-block text-body text-ink-secondary underline-offset-2 hover:text-ink hover:underline"
+          href="/kezi-varolista"
+          className={cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'no-underline')}
         >
-          ← Kézi rendelések
+          <ListChecks className="size-3.5" aria-hidden />
+          Várólista
         </Link>
-        <h1 className="text-h1 font-semibold text-ink">Új kézi rendelés</h1>
       </div>
 
       {!canWrite ? (
