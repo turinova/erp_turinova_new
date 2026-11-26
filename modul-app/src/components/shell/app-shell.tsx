@@ -8,14 +8,16 @@ import { AppTopbar } from '@/components/shell/app-topbar'
 import { ImpersonationBanner } from '@/components/shell/impersonation-banner'
 import { useSidebarCollapsed } from '@/components/shell/use-sidebar-collapsed'
 import type { SessionUser } from '@/lib/auth/session'
+import type { TopbarGoogleRating } from '@/lib/reviews/google-rating'
 import { cn } from '@/lib/utils'
 
 type AppShellProps = {
   user: SessionUser
+  googleRating?: TopbarGoogleRating | null
   children: React.ReactNode
 }
 
-export function AppShell({ user, children }: AppShellProps) {
+export function AppShell({ user, googleRating = null, children }: AppShellProps) {
   const pathname = usePathname()
   const { collapsed, setCollapsed } = useSidebarCollapsed()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
@@ -57,6 +59,7 @@ export function AppShell({ user, children }: AppShellProps) {
         ) : null}
         <AppTopbar
           user={user}
+          googleRating={googleRating}
           onOpenMobileNav={() => setMobileNavOpen(true)}
         />
         <main

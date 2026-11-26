@@ -16,16 +16,17 @@ import { REVIEW_THANKS_TEMPLATE_KEY } from '@/lib/sms/types'
 
 const BATCH = 50
 
-type QueueRow = {
+export type QueueRow = {
   id: string
   tenant_id: string
   customer_id: string
   quote_id: string | null
   customer_special_order_id: string | null
   handed_over_at: string
+  send_after: string
 }
 
-type TenantContext = {
+export type TenantContext = {
   settings: ReviewSettings
   hasSms: boolean
   reviewUrl: string | null
@@ -41,7 +42,7 @@ export type ReviewQueueRunResult = {
   deferred: boolean
 }
 
-async function loadTenantContext(admin: SupabaseClient, tenantId: string): Promise<TenantContext> {
+export async function loadTenantContext(admin: SupabaseClient, tenantId: string): Promise<TenantContext> {
   const [{ settings }, hasSms, companyRes, template] = await Promise.all([
     getTenantReviewSettings(admin, tenantId),
     tenantHasAnySms(admin, tenantId),
@@ -76,6 +77,107 @@ async function finish(
     .eq('id', rowId)
 }
 
+export type ReviewRowOutcome = 'sent' | 'skipped' | 'failed'
+
+/** Egy már lefoglalt sor feldolgozása (cron és „Most küldés” közös útja). */
+export async function processOneReviewRow(
+  admin: SupabaseClient,
+  row: QueueRow,
+  ctx: TenantContext,
+  now: Date,
+  createdBy: string | null = null
+): Promise<{ outcome: ReviewRowOutcome; reason: string | null }> {
+  const [{ data: customer }, { data: lastClick }] = await Promise.all([
+    admin
+      .from('customers')
+      .select('id, name, mobile, review_sms_consent, last_review_request_at, deleted_at')
+      .eq('id', row.customer_id)
+      .eq('tenant_id', row.tenant_id)
+      .maybeSingle(),
+    admin
+      .from('google_review_link_clicks')
+      .select('clicked_at')
+      .eq('tenant_id', row.tenant_id)
+      .eq('customer_id', row.customer_id)
+      .order('clicked_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+  ])
+
+  const toE164 = normalizeE164(customer?.mobile ?? null)
+  const verdict = evaluateThankSms({
+    settingsEnabled: ctx.settings.thankSmsEnabled,
+    hasReviewUrl: Boolean(ctx.reviewUrl && ctx.shortUrl),
+    hasSmsAddon: ctx.hasSms,
+    customerExists: Boolean(customer && !customer.deleted_at),
+    consent: Boolean(customer?.review_sms_consent),
+    phoneOk: Boolean(toE164),
+    lastRequestAt: customer?.last_review_request_at ?? null,
+    lastClickAt: lastClick?.clicked_at ?? null,
+    frequencyDays: ctx.settings.frequencyDays,
+    // Halasztott sornál az elévülés a küldési időtől számít, nem az átadástól.
+    handedOverAt: row.send_after > row.handed_over_at ? row.send_after : row.handed_over_at,
+    now
+  })
+
+  const ledgerBase = {
+    tenantId: row.tenant_id,
+    quoteId: row.quote_id,
+    customerSpecialOrderId: row.customer_special_order_id,
+    customerId: customer?.id ?? null,
+    templateKey: REVIEW_THANKS_TEMPLATE_KEY,
+    toE164,
+    createdBy
+  }
+
+  if (!verdict.ok) {
+    await finish(admin, row.id, 'skipped', verdict.reason)
+    if (verdict.reason !== 'disabled') {
+      await insertSmsSendEvent(admin, {
+        ...ledgerBase,
+        status: 'skipped',
+        skipReason: verdict.reason satisfies ThankSmsSkipReason
+      })
+    }
+    return { outcome: 'skipped', reason: verdict.reason }
+  }
+
+  const body = renderSmsTemplate(ctx.template, {
+    customer_name: customer?.name ?? '',
+    company_name: ctx.companyName,
+    review_url: ctx.shortUrl!
+  })
+
+  const sent = await sendPlatformSms({ toE164: toE164!, body })
+  if (!sent.ok) {
+    const err = sent.error.slice(0, 200)
+    await finish(admin, row.id, 'failed', err)
+    await insertSmsSendEvent(admin, {
+      ...ledgerBase,
+      bodyLength: sent.bodyLength,
+      segments: sent.segments,
+      status: 'failed',
+      errorCode: err
+    })
+    return { outcome: 'failed', reason: err }
+  }
+
+  await finish(admin, row.id, 'sent', null)
+  await admin
+    .from('customers')
+    .update({ last_review_request_at: now.toISOString() })
+    .eq('id', row.customer_id)
+    .eq('tenant_id', row.tenant_id)
+  await insertSmsSendEvent(admin, {
+    ...ledgerBase,
+    bodyLength: sent.bodyLength,
+    segments: sent.segments || smsSegments(body),
+    providerSid: sent.sid,
+    status: 'sent'
+  })
+  return { outcome: 'sent', reason: null }
+}
+
 /** Esedékes köszönő SMS-ek kiküldése (cron, service role). */
 export async function processReviewThankSmsQueue(
   admin: SupabaseClient,
@@ -86,7 +188,7 @@ export async function processReviewThankSmsQueue(
 
   const { data, error } = await admin
     .from('review_request_queue')
-    .select('id, tenant_id, customer_id, quote_id, customer_special_order_id, handed_over_at')
+    .select('id, tenant_id, customer_id, quote_id, customer_special_order_id, handed_over_at, send_after')
     .eq('status', 'pending')
     .is('processed_at', null)
     .lte('send_after', now.toISOString())
@@ -106,6 +208,7 @@ export async function processReviewThankSmsQueue(
       .from('review_request_queue')
       .update({ processed_at: now.toISOString() })
       .eq('id', row.id)
+      .eq('status', 'pending')
       .is('processed_at', null)
       .select('id')
     if (!claimed?.length) continue
@@ -116,94 +219,8 @@ export async function processReviewThankSmsQueue(
       tenants.set(row.tenant_id, ctx)
     }
 
-    const [{ data: customer }, { data: lastClick }] = await Promise.all([
-      admin
-        .from('customers')
-        .select('id, name, mobile, review_sms_consent, last_review_request_at, deleted_at')
-        .eq('id', row.customer_id)
-        .eq('tenant_id', row.tenant_id)
-        .maybeSingle(),
-      admin
-        .from('google_review_link_clicks')
-        .select('clicked_at')
-        .eq('tenant_id', row.tenant_id)
-        .eq('customer_id', row.customer_id)
-        .order('clicked_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-    ])
-
-    const toE164 = normalizeE164(customer?.mobile ?? null)
-    const verdict = evaluateThankSms({
-      settingsEnabled: ctx.settings.thankSmsEnabled,
-      hasReviewUrl: Boolean(ctx.reviewUrl && ctx.shortUrl),
-      hasSmsAddon: ctx.hasSms,
-      customerExists: Boolean(customer && !customer.deleted_at),
-      consent: Boolean(customer?.review_sms_consent),
-      phoneOk: Boolean(toE164),
-      lastRequestAt: customer?.last_review_request_at ?? null,
-      lastClickAt: lastClick?.clicked_at ?? null,
-      frequencyDays: ctx.settings.frequencyDays,
-      handedOverAt: row.handed_over_at,
-      now
-    })
-
-    const ledgerBase = {
-      tenantId: row.tenant_id,
-      quoteId: row.quote_id,
-      customerSpecialOrderId: row.customer_special_order_id,
-      customerId: customer?.id ?? null,
-      templateKey: REVIEW_THANKS_TEMPLATE_KEY,
-      toE164
-    }
-
-    if (!verdict.ok) {
-      await finish(admin, row.id, 'skipped', verdict.reason)
-      if (verdict.reason !== 'disabled') {
-        await insertSmsSendEvent(admin, {
-          ...ledgerBase,
-          status: 'skipped',
-          skipReason: verdict.reason satisfies ThankSmsSkipReason
-        })
-      }
-      result.skipped += 1
-      continue
-    }
-
-    const body = renderSmsTemplate(ctx.template, {
-      customer_name: customer?.name ?? '',
-      company_name: ctx.companyName,
-      review_url: ctx.shortUrl!
-    })
-
-    const sent = await sendPlatformSms({ toE164: toE164!, body })
-    if (!sent.ok) {
-      await finish(admin, row.id, 'failed', sent.error.slice(0, 200))
-      await insertSmsSendEvent(admin, {
-        ...ledgerBase,
-        bodyLength: sent.bodyLength,
-        segments: sent.segments,
-        status: 'failed',
-        errorCode: sent.error.slice(0, 200)
-      })
-      result.failed += 1
-      continue
-    }
-
-    await finish(admin, row.id, 'sent', null)
-    await admin
-      .from('customers')
-      .update({ last_review_request_at: now.toISOString() })
-      .eq('id', row.customer_id)
-      .eq('tenant_id', row.tenant_id)
-    await insertSmsSendEvent(admin, {
-      ...ledgerBase,
-      bodyLength: sent.bodyLength,
-      segments: sent.segments || smsSegments(body),
-      providerSid: sent.sid,
-      status: 'sent'
-    })
-    result.sent += 1
+    const { outcome } = await processOneReviewRow(admin, row, ctx, now)
+    result[outcome] += 1
   }
 
   return result

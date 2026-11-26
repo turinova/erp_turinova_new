@@ -6,10 +6,8 @@ import {
   getOrCreateTenantCompany,
   getTenantGoogleProfile,
   getTenantOpeningHours,
-  getTenantPoIntro,
   type TenantGoogleProfile,
-  type TenantOpeningHours,
-  type TenantPoIntro
+  type TenantOpeningHours
 } from '@/lib/company/queries'
 import { appOrigin } from '@/lib/order-status/format'
 import { createClient } from '@/lib/supabase/server'
@@ -30,8 +28,6 @@ export default async function CompanySettingsPage() {
     note: null,
     available: false
   }
-  let poIntro: TenantPoIntro = { text: '', available: false }
-  const showPoIntro = Boolean(user?.allowedPages?.includes('/kezi-rendelesek'))
   let googleProfile: TenantGoogleProfile = {
     reviewUrl: null,
     placeId: null,
@@ -51,10 +47,9 @@ export default async function CompanySettingsPage() {
           { createIfMissing: canWrite }
         )
         if (company) {
-          ;[openingHours, googleProfile, poIntro] = await Promise.all([
+          ;[openingHours, googleProfile] = await Promise.all([
             getTenantOpeningHours(supabase, user.tenantId),
-            getTenantGoogleProfile(supabase, user.tenantId),
-            showPoIntro ? getTenantPoIntro(supabase, user.tenantId) : Promise.resolve(poIntro)
+            getTenantGoogleProfile(supabase, user.tenantId)
           ])
         } else {
           loadError =
@@ -104,7 +99,6 @@ export default async function CompanySettingsPage() {
       canWrite={canWrite}
       openingHours={openingHours}
       googleProfile={googleProfile}
-      poIntro={showPoIntro ? poIntro : null}
       shortLinkOrigin={appOrigin()}
     />
   )

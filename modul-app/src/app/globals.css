@@ -57,6 +57,22 @@ html.pda-route body {
   }
 }
 
+/* Topbar Google-csillagok: egyszeri felcsillanás új értékelésnél */
+@keyframes gr-pop {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  35% {
+    transform: scale(1.18);
+    filter: brightness(1.25);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
 /* Linkify marketing port — mesh gradient blob */
 .linkify-root .lf-gradient {
   background: conic-gradient(

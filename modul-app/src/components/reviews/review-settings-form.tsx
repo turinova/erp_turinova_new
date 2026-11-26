@@ -1,23 +1,14 @@
 'use client'
 
-import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  Handshake,
-  Lock,
-  MessageSquare,
-  Printer,
-  Smartphone
-} from 'lucide-react'
+import { ArrowRight, Lock } from 'lucide-react'
 import Link from 'next/link'
-import { useState, useTransition } from 'react'
+import { useState, useTransition, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
 import { FormField } from '@/components/patterns/form-field'
 import { FormSection } from '@/components/patterns/form-section'
 import { PageHeaderWithNav as PageHeader } from '@/components/patterns/page-header-with-nav'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MenuSelect } from '@/components/ui/menu-select'
 import { Switch } from '@/components/ui/switch'
@@ -46,6 +37,8 @@ type Props = {
   hasSms: boolean
   hasPartnerPortal: boolean
   partnerStats: PartnerReviewStats
+  /** Link sáv + fülek a fejléc alatt. */
+  chrome?: ReactNode
 }
 
 const nf = new Intl.NumberFormat('hu-HU')
@@ -62,15 +55,19 @@ function SettingsLink({ href, children }: { href: string; children: React.ReactN
   )
 }
 
-function StatTile({ label, value, icon: Icon }: { label: string; value: number; icon: typeof Printer }) {
+function ChannelStatus({ on, opens }: { on: boolean; opens: number }) {
   return (
-    <div className="rounded-md border border-border px-3 py-2.5">
-      <p className="flex items-center gap-1.5 text-hint text-ink-secondary">
-        <Icon className="size-3.5" aria-hidden />
-        {label}
-      </p>
-      <p className="mt-0.5 text-[20px] font-semibold tabular-nums text-ink">{nf.format(value)}</p>
-    </div>
+    <span className="flex shrink-0 items-center gap-2 text-hint">
+      <span className="tabular-nums text-ink-secondary">{nf.format(opens)} megnyitás / 30 nap</span>
+      <span
+        className={cn(
+          'rounded px-1.5 py-0.5 font-medium',
+          on ? 'bg-success-soft text-success-ink' : 'bg-subtle text-ink-secondary'
+        )}
+      >
+        {on ? 'Be' : 'Ki'}
+      </span>
+    </span>
   )
 }
 
@@ -83,7 +80,8 @@ export function ReviewSettingsForm({
   thankSms,
   hasSms,
   hasPartnerPortal,
-  partnerStats
+  partnerStats,
+  chrome
 }: Props) {
   const [settings, setSettings] = useState<ReviewSettings>(initial)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -110,13 +108,6 @@ export function ReviewSettingsForm({
     })
   }
 
-  const activeCount = [
-    settings.statusPageEnabled,
-    settings.handoverQrEnabled,
-    settings.thankSmsEnabled && hasSms,
-    settings.partnerPortalEnabled && hasPartnerPortal && partnerStats.available
-  ].filter(Boolean).length
-
   return (
     <div className="space-y-4">
       <PageHeader
@@ -131,6 +122,8 @@ export function ReviewSettingsForm({
         }
       />
 
+      {chrome}
+
       {!available ? (
         <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-body text-warning-ink">
           A beállításokhoz futtasd a{' '}
@@ -143,53 +136,12 @@ export function ReviewSettingsForm({
         </p>
       ) : null}
 
-      <FormSection title="Értékelő link" columns={1}>
-        {hasLink ? (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="flex min-w-0 items-center gap-1.5 text-body text-ink">
-              <CheckCircle2 className="size-4 shrink-0 text-success-ink" aria-hidden />
-              <span className="truncate">
-                Beállítva · <span className="font-mono text-ink-secondary">{google.shortUrl}</span>
-              </span>
-            </p>
-            <SettingsLink href="/beallitasok/cegadatok">Módosítás a Cégadatokban</SettingsLink>
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning-soft px-3 py-2.5">
-            <p className="flex items-start gap-1.5 text-body text-warning-ink">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-              {google.available
-                ? 'Előbb add meg a Google értékelő linket, addig egyik csatorna sem működik.'
-                : 'Futtasd a 20261003 migrációt, majd add meg az értékelő linket a Cégadatokban.'}
-            </p>
-            <Link
-              href="/beallitasok/cegadatok"
-              className={buttonVariants({ variant: 'secondary', size: 'sm' })}
-            >
-              Értékelő link megadása
-            </Link>
-          </div>
-        )}
-      </FormSection>
-
+      <div className="grid gap-4 lg:grid-cols-2">
       <FormSection
-        title="Megnyitások az utolsó 30 napban"
-        description={`${activeCount} csatorna bekapcsolva. A link-előnézetek (Messenger, Viber stb.) nem számítanak.`}
-        columns={4}
-      >
-        <StatTile label="Státusz oldal" value={clicks.status} icon={Smartphone} />
-        <StatTile label="QR-kód" value={clicks.qr} icon={Printer} />
-        <StatTile label="Köszönő SMS" value={clicks.sms} icon={MessageSquare} />
-        {hasPartnerPortal ? (
-          <StatTile label="Partnerportál" value={clicks.partner} icon={Handshake} />
-        ) : null}
-        <StatTile label="Egyéb" value={clicks.other} icon={ArrowRight} />
-      </FormSection>
-
-      <FormSection
-        title="1. Vevői státusz oldal"
+        title="Vevői státusz oldal"
         description="Az SMS-ben kapott linkről nyíló oldal. Ingyenes, hozzájárulás nem kell hozzá."
         columns={1}
+        headerAside={<ChannelStatus on={hasLink && settings.statusPageEnabled} opens={clicks.status} />}
       >
         <Switch
           id="rv-status"
@@ -203,9 +155,10 @@ export function ReviewSettingsForm({
       </FormSection>
 
       <FormSection
-        title="2. QR-kód az átvételi blokkon"
+        title="QR-kód az átvételi blokkon"
         description="A vevői példány aljára kerül. Átadáskor, a pultnál a legjobb pillanat. Ha mellé szóban is kéred, még jobb."
         columns={1}
+        headerAside={<ChannelStatus on={hasLink && settings.handoverQrEnabled} opens={clicks.qr} />}
       >
         <Switch
           id="rv-qr"
@@ -235,9 +188,12 @@ export function ReviewSettingsForm({
       </FormSection>
 
       <FormSection
-        title="3. Köszönő SMS átadás után"
+        title="Köszönő SMS átadás után"
         description="Ez hozza a legtöbb értékelést, de SMS-díjjal jár. Csak hozzájáruló vevőknek megy."
         columns={1}
+        headerAside={
+          <ChannelStatus on={hasLink && hasSms && settings.thankSmsEnabled} opens={clicks.sms} />
+        }
       >
         {!hasSms ? (
           <p className="flex items-center gap-1.5 rounded-md border border-border bg-subtle px-3 py-2 text-body text-ink-secondary">
@@ -301,8 +257,10 @@ export function ReviewSettingsForm({
                 <p className="text-hint text-ink-secondary">
                   Elküldve az utolsó 30 napban:{' '}
                   <span className="tabular-nums text-ink">{nf.format(thankSms.sent30d)} SMS</span>
-                  {' · '}Ütemezve:{' '}
-                  <span className="tabular-nums text-ink">{nf.format(thankSms.pending)}</span>
+                  {' · '}
+                  <Link href="?tab=utemezett" className="text-ink hover:underline">
+                    Ütemezve: <span className="tabular-nums">{nf.format(thankSms.pending)}</span>
+                  </Link>
                 </p>
                 <p className="text-hint text-ink-secondary">
                   Az értékelés-kérés reklám jellegű megkeresésnek minősülhet, ezért csak kifejezett
@@ -317,9 +275,15 @@ export function ReviewSettingsForm({
 
       {hasPartnerPortal ? (
         <FormSection
-          title="4. Partnerportál"
+          title="Partnerportál"
           description="A partnereid kezdőlapján, ha az elmúlt 30 napban átvettek tőled rendelést. Ingyenes, hozzájárulás nem kell hozzá."
           columns={1}
+          headerAside={
+            <ChannelStatus
+              on={hasLink && partnerStats.available && settings.partnerPortalEnabled}
+              opens={clicks.partner}
+            />
+          }
         >
           {!partnerStats.available ? (
             <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-body text-warning-ink">
@@ -348,6 +312,7 @@ export function ReviewSettingsForm({
           ) : null}
         </FormSection>
       ) : null}
+      </div>
 
       <FormSection
         title="Gyakoriság"

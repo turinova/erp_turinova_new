@@ -15,7 +15,6 @@ import { GoogleProfileField } from '@/components/company/google-profile-field'
 import {
   updateTenantGoogleProfile,
   updateTenantOpeningHours,
-  updateTenantPoIntro,
   upsertTenantCompany
 } from '@/lib/company/actions'
 import { parseGoogleReviewInput } from '@/lib/company/google-profile'
@@ -27,8 +26,7 @@ import {
 import type {
   TenantCompanyRow,
   TenantGoogleProfile,
-  TenantOpeningHours,
-  TenantPoIntro
+  TenantOpeningHours
 } from '@/lib/company/queries'
 import { HU_PHONE_EXAMPLE } from '@/lib/customers/parse'
 import {
@@ -45,7 +43,6 @@ type CompanySettingsFormProps = {
   googleProfile: TenantGoogleProfile
   shortLinkOrigin: string
   /** null: nincs Kézi rendelések modul → a szekció nem látszik. */
-  poIntro?: TenantPoIntro | null
 }
 
 export function CompanySettingsForm({
@@ -54,10 +51,8 @@ export function CompanySettingsForm({
   canWrite,
   openingHours,
   googleProfile,
-  shortLinkOrigin,
-  poIntro = null
+  shortLinkOrigin
 }: CompanySettingsFormProps) {
-  const [poIntroText, setPoIntroText] = useState(poIntro?.text ?? '')
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState(initial.name)
   const [email, setEmail] = useState(initial.email ?? '')
@@ -127,14 +122,6 @@ export function CompanySettingsForm({
         if (!hoursResult.ok) {
           if (hoursResult.dayErrors) setHoursErrors(hoursResult.dayErrors)
           toast.error(hoursResult.message)
-          return
-        }
-      }
-
-      if (poIntro?.available) {
-        const introResult = await updateTenantPoIntro({ text: poIntroText })
-        if (!introResult.ok) {
-          toast.error(introResult.message)
           return
         }
       }
@@ -319,34 +306,6 @@ export function CompanySettingsForm({
           </p>
         )}
       </FormSection>
-
-      {poIntro ? (
-        <FormSection
-          title="Rendelési e-mail bevezető"
-          description="A Kézi rendelések „Rendelési szöveg” levelének eleje, ha a beszállítónál nincs saját sablon. Üresen a beépített szöveg megy."
-          columns={1}
-        >
-          {poIntro.available ? (
-            <FormField label="Bevezető szöveg" htmlFor="company-po-intro" optionalLabel>
-              <textarea
-                id="company-po-intro"
-                value={poIntroText}
-                disabled={!canWrite || pending}
-                onChange={(e) => setPoIntroText(e.target.value)}
-                rows={4}
-                maxLength={1000}
-                placeholder={'Tisztelt Partnerünk!\n\nA következő termékeket szeretnénk megrendelni:'}
-                className="w-full rounded-md border border-border bg-surface px-2.5 py-2 text-body text-ink outline-none focus:border-ink"
-              />
-            </FormField>
-          ) : (
-            <p className="text-body text-ink-secondary">
-              A bevezetőhöz futtasd a <code className="text-hint">20261024_manual_orders_handover_pay.sql</code>{' '}
-              migrációt.
-            </p>
-          )}
-        </FormSection>
-      ) : null}
 
       <FormSection
         title="Google cégprofil"

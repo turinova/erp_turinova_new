@@ -9,6 +9,8 @@ import {
   staffLoginPath
 } from '@/lib/auth/surface'
 import { pathIsAllowed } from '@/lib/permissions/pages'
+import { getTopbarGoogleRating } from '@/lib/reviews/google-rating'
+import { createClient } from '@/lib/supabase/server'
 
 export default async function AppLayout({
   children
@@ -35,5 +37,15 @@ export default async function AppLayout({
     redirect('/nincs-hozzaferes')
   }
 
-  return <AppShell user={user}>{children}</AppShell>
+  const supabase = user.tenantId ? await createClient() : null
+  const googleRating =
+    supabase && user.tenantId
+      ? await getTopbarGoogleRating(supabase, user.tenantId).catch(() => null)
+      : null
+
+  return (
+    <AppShell user={user} googleRating={googleRating}>
+      {children}
+    </AppShell>
+  )
 }

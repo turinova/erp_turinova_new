@@ -6,12 +6,16 @@ import Link from 'next/link'
 import { logoutAction } from '@/lib/auth/actions'
 import type { SessionUser } from '@/lib/auth/session'
 import { getPlatformPublicOrigin } from '@/lib/auth/surface'
+import { pathIsAllowed } from '@/lib/permissions/pages'
 import { Button } from '@/components/ui/button'
 import { MobileNavMenuButton } from '@/components/shell/app-sidebar'
 import { TopbarDate } from '@/components/shell/topbar-date'
+import { TopbarGoogleRating } from '@/components/shell/topbar-google-rating'
+import type { TopbarGoogleRating as TopbarGoogleRatingData } from '@/lib/reviews/google-rating'
 
 type AppTopbarProps = {
   user: SessionUser
+  googleRating?: TopbarGoogleRatingData | null
   onOpenMobileNav?: () => void
 }
 
@@ -28,7 +32,7 @@ function initialsFromLabel(label: string) {
   return local.slice(0, 2).toUpperCase()
 }
 
-export function AppTopbar({ user, onOpenMobileNav }: AppTopbarProps) {
+export function AppTopbar({ user, googleRating = null, onOpenMobileNav }: AppTopbarProps) {
   const showPlatform = user.isPlatformAdmin || user.isDevSession
   const platformOrigin = getPlatformPublicOrigin()
   const platformHref = platformOrigin ? `${platformOrigin}/` : '/platform'
@@ -57,6 +61,16 @@ export function AppTopbar({ user, onOpenMobileNav }: AppTopbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
+        {googleRating && user.tenantId ? (
+          <>
+            <TopbarGoogleRating
+              data={googleRating}
+              tenantId={user.tenantId}
+              canManage={pathIsAllowed('/beallitasok/google-ertekelesek', user.allowedPages)}
+            />
+            <span className="h-5 w-px bg-border" aria-hidden />
+          </>
+        ) : null}
         <TopbarDate />
         <span className="h-5 w-px bg-border" aria-hidden />
         {showPlatform ? (

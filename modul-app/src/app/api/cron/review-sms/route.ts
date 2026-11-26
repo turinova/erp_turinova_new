@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
+import { refreshGoogleRatings } from '@/lib/reviews/google-rating'
 import { processReviewThankSmsQueue } from '@/lib/reviews/process-queue'
 import { createServiceClient } from '@/lib/supabase/service'
 
@@ -15,6 +16,9 @@ export async function GET(request: NextRequest) {
   const admin = createServiceClient()
   if (!admin) return NextResponse.json({ error: 'no db' }, { status: 503 })
 
-  const result = await processReviewThankSmsQueue(admin)
-  return NextResponse.json(result)
+  const [result, rating] = await Promise.all([
+    processReviewThankSmsQueue(admin),
+    refreshGoogleRatings(admin)
+  ])
+  return NextResponse.json({ ...result, ratingsRefreshed: rating.refreshed })
 }

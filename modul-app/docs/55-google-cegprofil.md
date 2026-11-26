@@ -92,6 +92,24 @@ Egyszerre egy kérés: ha a kártya esedékes, az NPS a következő belépésre 
 
 **Adat** (`20261007_partner_review_prompts.sql`): `partner_review_prompts` (partner + bolt kulcs: `clicked_at`, `self_reported_at`, `dismissed_at`, `dismiss_count`); RLS: a partner a saját sorát írja, a bolt tagjai olvashatják (hub: „Partnerek, akik jelezték, hogy írtak”). A bolt beállítását a partner kezdőlap service role-lal olvassa. Migráció nélkül nincs kártya, a kezdőlap változatlan.
 
+## Hub fülek, sorkezelés, csillagátlag (3. fázis)
+
+`/beallitasok/google-ertekelesek?tab=…` — szerveroldali fülek (`attekintes` alap, `csatornak`, `utemezett`, `naplo`). A Mentés csak a Csatornák fülön látszik. Minden fül felett: link sor + Google csillagátlag.
+
+- **Áttekintés:** 30 napos tölcsér (átadott lapszabászat → köszönő SMS elküldve → link megnyitva → új Google-értékelés), megnyitás csatornánként, teendők (mai ütemezett SMS, hozzájárulás nélküli új vevők, kikapcsolt QR).
+- **Ütemezett SMS:** `pending` sorok, 25/oldal. Sorakciók: **Elhalasztás** (+7/14/30 nap, max 3×, opcionális „Panasz rendezés alatt” jegyzet), **Küldés most** (ugyanaz az ellenőrzés, mint a cron — `processOneReviewRow`; csak 9–19), **Törlés** kötelező okkal.
+- **Napló:** elküldve / kihagyva / törölve / sikertelen + ok + „Megnyitotta” (kattintás az átadás óta), szűrő státuszra és 7/30/90 napra.
+
+**Törlési okok:** vevő kérte (a `review_sms_consent` is kikapcsol), hibás szám, nem ő vitte el, duplikált/teszt, egyéb. **Nincs „rossz vélemény” ok** — elégedetlen vevőnél a halasztás a helyes út (review gating tilos).
+
+Halasztott sornál a 3 napos elévülés a `send_after`-től számít, nem az átadástól.
+
+**Csillagátlag:** Places API (New) Place Details (`rating`, `userRatingCount`), a review-sms cron tenantonként 3 óránként frissíti, csak 7–19 óra között (Budapest), `GOOGLE_PLACES_API_KEY` nélkül kimarad. Place ID kell (writereview link vagy nyers `ChIJ…` a Cégadatokban). A kulcs szerveroldali: csak API-korlátozás (Places API), referrer-korlátozás nem lehet rajta.
+
+**Navbar jelvény:** `TopbarGoogleRating` (`components/shell/topbar-google-rating.tsx`) — öt sárga csillag + átlag + „N értékelés · Google” (forrásjelölés kötelező), mindenkinek látszik, adat nélkül rejtve. „+N új” címke: a szám a böngészőben tárolt utolsó látott értékhez képest (localStorage, tenantonként), kattintásra nullázódik; csökkenésnél csendben új alap. Új értékelésnél egyszeri felcsillanás (`gr-pop`, `motion-safe`) és napi max. egy toast. Popover: 30 napos változás, napi értékelésszám-grafikon a snapshotokból, Google-link, adminnak Beállítások link. Romló átlag nem kap piros jelzést.
+
+**Adat:** `20261026_review_queue_manage.sql` (`cancelled` státusz, `cancel_reason`, `cancel_note`, `cancelled_*`, `postponed_count`, update RLS), `20261027_google_rating.sql` (`tenant_companies.google_rating*`, `google_rating_snapshots`). Migráció nélkül a lista működik, a halasztás/törlés tiltva és figyelmeztet.
+
 ## Következő fázisok
 
 - **B — Places API kereső:** cégnév alapján profil választás, Place ID automatikusan (Text Search IDs-only ingyenes; név/cím Pro SKU). Csak Place ID tárolható tartósan.
