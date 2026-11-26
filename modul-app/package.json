@@ -17,6 +17,7 @@
     "test:opti-panel-image": "npx --yes tsx --test src/lib/opti/parse-panel-image.test.ts",
     "test:opti-panel-draft": "npx --yes tsx --test src/lib/opti/panel-draft.test.ts",
     "test:jelenlet-sheet": "npx --yes tsx --test src/lib/jelenlet/sheet-engine.test.ts",
+    "test:nevnapok": "npx --yes tsx --test src/lib/calendar/nevnapok.test.ts",
     "test:opening-hours": "npx --yes tsx --test src/lib/opening-hours.test.ts",
     "test:quote-payment-labels": "npx --yes tsx --test src/lib/quotes/payment-labels.test.ts",
     "test:invoice-net-first": "npx --yes tsx --test src/lib/invoicing/net-first-lines.test.ts",

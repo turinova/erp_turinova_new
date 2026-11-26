@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 
+import { getNevnap } from '@/lib/calendar/nevnapok'
+
 const TZ = 'Europe/Budapest'
 const weekdayFmt = new Intl.DateTimeFormat('hu-HU', { timeZone: TZ, weekday: 'long' })
 const dateFmt = new Intl.DateTimeFormat('hu-HU', { timeZone: TZ, month: 'long', day: 'numeric' })
@@ -35,10 +37,20 @@ export function TopbarDate() {
   }, [now])
 
   const { weekday, date } = parts(now)
+  const nevnap = getNevnap(now).slice(0, 2).join(', ')
   return (
     <p className="flex items-baseline gap-1.5 whitespace-nowrap" suppressHydrationWarning>
       <span className="text-[15px] font-semibold text-ink">{weekday}</span>
       <span className="hidden text-[12.5px] text-ink-secondary sm:inline">{date}</span>
+      {nevnap ? (
+        <span
+          className="hidden text-[12.5px] text-ink-secondary md:inline"
+          aria-label={`Névnap: ${nevnap}`}
+          title={`Névnap: ${nevnap}`}
+        >
+          · {nevnap}
+        </span>
+      ) : null}
     </p>
   )
 }
