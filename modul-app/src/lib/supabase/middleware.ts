@@ -290,7 +290,7 @@ async function handleSession(request: NextRequest) {
 
   /** Pi → jelenlét terminál: Bearer / x-jelenlet-secret. */
   const isPublicJelenletTerminalScan =
-    pathname === '/api/jelenlet/terminal/scan'
+    pathname.startsWith('/api/jelenlet/terminal/')
 
   const isPublicStorefrontApi = pathname.startsWith('/api/storefront/')
 

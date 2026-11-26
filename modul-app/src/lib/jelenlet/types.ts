@@ -63,6 +63,9 @@ export type JelenletDeviceRow = {
   slug: string
   name: string
   last_seen_at: string | null
+  last_heartbeat_at: string | null
+  app_version: string | null
+  pending_count: number | null
   has_token: boolean
   created_at: string
   updated_at: string

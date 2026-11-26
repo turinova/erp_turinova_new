@@ -253,6 +253,11 @@ function DeviceRow({
               ? new Date(device.last_seen_at).toLocaleString('hu-HU')
               : '—'}
           </p>
+          <p className="text-[12px] text-ink-muted">
+            <HeartbeatStatus at={device.last_heartbeat_at} />
+            {device.app_version ? ` · v${device.app_version}` : ''}
+            {device.pending_count ? ` · ${device.pending_count} feltöltetlen` : ''}
+          </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <Button
@@ -292,5 +297,19 @@ function DeviceRow({
         </Button>
       </div>
     </li>
+  )
+}
+
+const HEARTBEAT_STALE_MS = 3 * 60 * 1000
+
+function HeartbeatStatus({ at }: { at: string | null }) {
+  if (!at) return <>Heartbeat: még nem jelentkezett</>
+  const online = Date.now() - new Date(at).getTime() < HEARTBEAT_STALE_MS
+  return (
+    <>
+      <span className={online ? 'text-success' : 'text-danger'}>{online ? 'Online' : 'Offline'}</span>
+      {' · utolsó jel: '}
+      {new Date(at).toLocaleString('hu-HU')}
+    </>
   )
 }

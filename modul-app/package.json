@@ -17,6 +17,8 @@
     "test:opti-panel-image": "npx --yes tsx --test src/lib/opti/parse-panel-image.test.ts",
     "test:opti-panel-draft": "npx --yes tsx --test src/lib/opti/panel-draft.test.ts",
     "test:jelenlet-sheet": "npx --yes tsx --test src/lib/jelenlet/sheet-engine.test.ts",
+    "build:jelenlet-pi-agent": "node scripts/build-jelenlet-pi-agent.mjs",
+    "test:jelenlet-terminal": "npx --yes tsx --test src/lib/jelenlet/terminal-v2.test.ts",
     "test:nevnapok": "npx --yes tsx --test src/lib/calendar/nevnapok.test.ts",
     "test:opening-hours": "npx --yes tsx --test src/lib/opening-hours.test.ts",
     "test:quote-payment-labels": "npx --yes tsx --test src/lib/quotes/payment-labels.test.ts",

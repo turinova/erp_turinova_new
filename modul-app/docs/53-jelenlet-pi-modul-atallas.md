@@ -1,6 +1,8 @@
 # 53 — Jelenlét: Raspberry Pi átállítása a modul-appra
 
-**Státusz:** terv — még nincs implementálva  
+**Státusz:** 1. fázis kész (2026-11-26) — migráció `20261028_jelenlet_terminal_events.sql`, végpontok `employees` / `today` / `logs` / `heartbeat`, platform heartbeat kijelzés, tesztek (`npm run test:jelenlet-terminal`). 2. fázis kész: Pi kliens (`raspberry-pi-attendance/backend/modul_api.py`, Supabase-kompatibilis shim) + anchor-patcher + önálló telepítő (`modul-v2/install.sh`: backup, pending-ellenőrzés, smoke teszt, `.env` csere, 60 s watchdog, auto-rollback). A telepítőt `npm run build:jelenlet-pi-agent` ágyazza be (`src/lib/jelenlet/pi-agent-script.generated.ts`), kiszolgálás: `GET /api/jelenlet/terminal/agent` (eszköztoken). Visszaállítás a Pi-n: `sudo bash /home/hiros/attendance-backup-*/rollback-v2.sh`.  
+**Eltérés a tervtől:** nyers esemény napló (`hr_attendance_events`, idempotens `client_event_id`), a napi sor = első érkezés + utolsó távozás; kézi / import mező nem íródik felül; távollétes napon is rögzít. `POST logs`: 4xx végleges, 5xx újrapróbálandó; scan idő ablak: max 10 perc jövő, 45 nap múlt.  
+
 **Cél:** a main-app megszűnik; a Pi terminál **ugyanúgy működik, mint ma**, csak a modul-appba ír, és a készülék egy **tenanthoz** van kötve.  
 Kapcsolódó: [34-jelenlet-addon.md](34-jelenlet-addon.md), [jelenlet-pi.md](jelenlet-pi.md), [56-jelenlet-esp32-kr602m.md](56-jelenlet-esp32-kr602m.md) (jövőbeli hardver), `docs/raspberry-pi-attendance.md` (main-app), `raspberry-pi-attendance/`
 
