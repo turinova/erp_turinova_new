@@ -89,7 +89,7 @@ Telefonon a saját **Optinova Vezető** dev client ikon (az új név az első ú
    npx eas-cli submit -p ios --latest     # ascAppId utána mehet az eas.json submit.production-be
    ```
 4. Adatlap: 6,9" képernyőképek (1320×2868), leírás, kulcsszavak, Support URL, **Privacy Policy URL**, kategória Business, korhatár, App Privacy (e-mail, nincs tracking). Export compliance már beállítva (`ITSAppUsesNonExemptEncryption: false`).
-5. Review: **demó tenant + demó fiók** adatokkal; review note (EN): belső vezetői app Turinova ERP ügyfeleknek, nincs regisztráció.
+5. Review: **demó tenant + demó fiók** — lépésről lépésre: [`docs/app-store-review-demo.md`](docs/app-store-review-demo.md) (SQL: `docs/app-store-review-demo-seed.sql`). Review note (EN): B2B, nincs publikus regisztráció, unlisted szándék.
 
 ---
 
