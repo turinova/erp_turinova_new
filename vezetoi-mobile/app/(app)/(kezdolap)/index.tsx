@@ -11,6 +11,7 @@ import {
 } from 'lucide-react-native'
 import { Alert, Pressable, Text, View } from 'react-native'
 
+import { FlagsPending } from '@/components/flags-pending'
 import {
   DeltaFooter,
   FooterText,
@@ -53,7 +54,7 @@ const COMPARE_COUNT_WORD: Record<Period, string> = {
 
 export default function KezdolapScreen() {
   const { current } = useAuth()
-  const { flags } = useFlags()
+  const { flags, ready: flagsReady } = useFlags()
   const { period, setPeriod } = usePeriod()
   const router = useRouter()
   const tenantId = current?.tenantId ?? null
@@ -69,6 +70,7 @@ export default function KezdolapScreen() {
   )
 
   if (!current) return null
+  if (!flagsReady) return <FlagsPending />
 
   const lap = pulse.data?.lapszabaszat ?? null
   const refreshing = pulse.refreshing || belepok.refreshing || bent.refreshing

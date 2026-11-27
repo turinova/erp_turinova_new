@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase'
 
 /** Staff webes host — a mobil API és a „Megnyitás a weben” linkek innen mennek. */
-export const WEB_ORIGIN = (process.env.EXPO_PUBLIC_API_URL ?? 'https://app.optinova.hu').replace(/\/$/, '')
+export const WEB_ORIGIN = (process.env.EXPO_PUBLIC_API_URL || 'https://app.optinova.hu').replace(/\/$/, '')
 
 const TIMEOUT_MS = 15_000
 
@@ -41,9 +41,9 @@ export async function apiGet<T>(path: string, params: Record<string, string>): P
     if (!token) throw new ApiError(401, 'Lejárt a munkamenet.')
     res = await call(path, query, token)
   }
-  if (!res.ok) throw new ApiError(res.status, `API ${path}: ${res.status} (${WEB_ORIGIN})`)
-  if (!(res.headers.get('content-type') ?? '').includes('application/json')) {
-    throw new ApiError(res.status, `API ${path}: nem JSON válasz — rossz EXPO_PUBLIC_API_URL? (${WEB_ORIGIN})`)
+  if (!res.ok || !(res.headers.get('content-type') ?? '').includes('application/json')) {
+    console.warn(`[api] ${path}: ${res.status} (${WEB_ORIGIN})`)
+    throw new ApiError(res.status, 'A szerver most nem érhető el. Próbáld újra később.')
   }
   return (await res.json()) as T
 }

@@ -37,11 +37,12 @@ export async function isPartnerOnlyUser(
   supabase: SupabaseClient,
   userId: string
 ): Promise<boolean> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('partner_profiles')
     .select('user_id')
     .eq('user_id', userId)
     .maybeSingle()
+  if (error) throw new Error(`isPartnerOnlyUser: ${error.message}`)
   return Boolean(data)
 }
 
@@ -58,10 +59,7 @@ export async function listActiveMemberships(
     .eq('status', 'active')
     .order('created_at', { ascending: true })
 
-  if (error) {
-    console.error('listActiveMemberships', error.message)
-    return []
-  }
+  if (error) throw new Error(`listActiveMemberships: ${error.message}`)
 
   const rows = (data ?? []) as unknown as Array<{
     id: string

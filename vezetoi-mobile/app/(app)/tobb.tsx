@@ -1,10 +1,17 @@
+import Constants from 'expo-constants'
 import * as Haptics from 'expo-haptics'
 import { useCallback, useState } from 'react'
+import { Linking } from 'react-native'
 
 import { useAuth } from '@/features/auth/auth-context'
 import { useFlags } from '@/features/tenant/flags-context'
+import { WEB_ORIGIN } from '@/lib/api'
 import { TENANT_ROLE_LABELS } from '@/lib/memberships'
 import { ConfirmDialog, ListRow, ListSection, Screen } from '@/ui'
+
+const SUPPORT_EMAIL = 'info@turinova.hu'
+const PRIVACY_URL = `${WEB_ORIGIN}/adatkezelesi-tajekoztato`
+const APP_VERSION = Constants.expoConfig?.version ?? ''
 
 export default function TobbScreen() {
   const { user, current, memberships, selectTenant, signOut, refreshMemberships } =
@@ -13,6 +20,7 @@ export default function TobbScreen() {
   const [refreshing, setRefreshing] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -66,6 +74,28 @@ export default function TobbScreen() {
           })}
         </ListSection>
 
+        <ListSection
+          title="Információ"
+          footer={`Turinova Admin ${APP_VERSION}`}
+        >
+          <ListRow
+            key="adatvedelem"
+            title="Adatkezelési tájékoztató"
+            onPress={() => void Linking.openURL(PRIVACY_URL)}
+          />
+          <ListRow
+            key="tamogatas"
+            title="Támogatás"
+            meta={SUPPORT_EMAIL}
+            onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+          />
+          <ListRow
+            key="fiok-torles"
+            title="Fiók törlésének kérése"
+            onPress={() => setDeleteOpen(true)}
+          />
+        </ListSection>
+
         <ListSection>
           <ListRow
             key="kijelentkezes"
@@ -75,6 +105,22 @@ export default function TobbScreen() {
           />
         </ListSection>
       </Screen>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Fiók törlésének kérése"
+        description="A fiókodat a céged adminisztrátora hozta létre. A törlési kérést emailben küldöd el, és 30 napon belül töröljük a fiókot és a hozzá tartozó személyes adatokat."
+        confirmLabel="Email írása"
+        onConfirm={() => {
+          setDeleteOpen(false)
+          const subject = encodeURIComponent('Fiók törlése — Turinova Admin')
+          const body = encodeURIComponent(
+            `Kérem a fiókom törlését.\n\nEmail: ${user?.email ?? ''}\nCég: ${current.tenantName}`
+          )
+          void Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`)
+        }}
+      />
 
       <ConfirmDialog
         open={confirmOpen}

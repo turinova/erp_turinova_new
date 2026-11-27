@@ -6,7 +6,7 @@ import DateTimePicker, {
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native'
 import { WeekStrip } from 'panelui-native/components/week-strip'
 
-import { addDaysYmd, budapestTodayYmd } from '@/lib/date'
+import { addDaysYmd } from '@/lib/date'
 import {
   jelenletClampYmd,
   jelenletRangeBounds,
@@ -47,17 +47,18 @@ function weekLabel(monday: string): string {
 
 type Props = {
   ymd: string
+  /** Mai nap (BP) — a hívó frissíti éjfélkor. */
+  today: string
   /** YMD → hány ember jelent meg aznap (érkezés rögzítve). */
   presentByDay: Map<string, number>
   onSelectYmd: (ymd: string) => void
 }
 
 /** Hét fejléc (‹ hét › + naptár) és a hét napjai csempeként, alattuk a megjelentek száma. */
-export function JelenletWeekNav({ ymd, presentByDay, onSelectYmd }: Props) {
+export function JelenletWeekNav({ ymd, today, presentByDay, onSelectYmd }: Props) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(() => ymdToLocalDate(ymd))
-  const today = budapestTodayYmd()
-  const { earliest, latest } = useMemo(() => jelenletRangeBounds(), [])
+  const { earliest, latest } = useMemo(() => jelenletRangeBounds(today), [today])
 
   const monday = mondayOf(ymd)
   const canPrevWeek = addDaysYmd(monday, -1) >= earliest

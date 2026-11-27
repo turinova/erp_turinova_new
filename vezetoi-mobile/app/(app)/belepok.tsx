@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react-native'
 
 import { CountBarsCard } from '@/components/count-bars-card'
 import { DeviceStatus } from '@/components/device-status'
+import { FlagsPending } from '@/components/flags-pending'
 import { StatCard } from '@/components/stat-card'
 import { useAuth } from '@/features/auth/auth-context'
 import { useFlags } from '@/features/tenant/flags-context'
@@ -19,6 +20,7 @@ import {
 } from '@/lib/belepok'
 import { budapestYearMonth } from '@/lib/date'
 import { supabase } from '@/lib/supabase'
+import { useBudapestToday } from '@/lib/use-budapest-today'
 import { colors } from '@/theme'
 import { Card, HeroMetric, Screen, SegmentedControl, Skeleton } from '@/ui'
 
@@ -49,12 +51,21 @@ function compareLine(
 
 export default function BelepokTab() {
   const { current } = useAuth()
-  const { flags } = useFlags()
-  const now = budapestYearMonth()
+  const { flags, ready: flagsReady } = useFlags()
+  const [initial] = useState(budapestYearMonth)
 
   const [period, setPeriod] = useState<BelepokPeriod>('today')
-  const [year, setYear] = useState(now.year)
-  const [month, setMonth] = useState(now.month)
+  const [year, setYear] = useState(initial.year)
+  const [month, setMonth] = useState(initial.month)
+  const todayYmd = useBudapestToday((next, prev) => {
+    const [py, pm] = prev.split('-').map(Number)
+    const [ny, nm] = next.split('-').map(Number)
+    if (py === ny && pm === nm) return
+    if (year === py && month === pm) {
+      setYear(ny)
+      setMonth(nm)
+    }
+  })
   const [today, setToday] = useState<BelepokToday | null>(null)
   const [week, setWeek] = useState<BelepokWeek | null>(null)
   const [monthData, setMonthData] = useState<BelepokMonth | null>(null)
@@ -79,7 +90,8 @@ export default function BelepokTab() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [current, flags.footcounter, period, year, month])
+    // todayYmd: éjfél után a „Ma” / „7 nap” nézet újratölt.
+  }, [current, flags.footcounter, period, year, month, todayYmd])
 
   useEffect(() => {
     setLoading(true)
@@ -87,6 +99,7 @@ export default function BelepokTab() {
   }, [load])
 
   if (!current) return null
+  if (!flagsReady) return <FlagsPending />
 
   if (!flags.footcounter) {
     return (

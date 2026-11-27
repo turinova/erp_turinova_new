@@ -75,8 +75,8 @@ export default function SignInScreen() {
           {!configured ? (
             <Card tone="danger" style={styles.banner}>
               <Text style={styles.bannerText}>
-                Hiányzik a .env.local (EXPO_PUBLIC_SUPABASE_URL /
-                EXPO_PUBLIC_SUPABASE_ANON_KEY). Másold a modul-app kulcsait.
+                A belépés most nem érhető el. Frissítsd az appot, vagy írj
+                nekünk: info@turinova.hu
               </Text>
             </Card>
           ) : null}

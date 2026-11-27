@@ -26,15 +26,7 @@ export async function loadTenantFlags(
       '/jelenlet'
     ])
 
-  if (error) {
-    console.error('loadTenantFlags', error.message)
-    return {
-      lapszabaszat: false,
-      partnerOrders: false,
-      jelenlet: false,
-      footcounter: false
-    }
-  }
+  if (error) throw new Error(`loadTenantFlags: ${error.message}`)
 
   const keys = new Set((data ?? []).map((r) => r.feature_key as string))
   return {

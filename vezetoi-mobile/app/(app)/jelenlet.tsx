@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Text, View } from 'react-native'
 
+import { FlagsPending } from '@/components/flags-pending'
 import { JelenletHolidayBannerView } from '@/components/jelenlet-holiday-banner'
 import { JelenletList } from '@/components/jelenlet-list'
 import { JelenletSummaryCard } from '@/components/jelenlet-summary-card'
@@ -13,16 +14,21 @@ import {
   emptyJelenletCounts,
   getJelenletDay,
   getJelenletPresentByDay,
+  JELENLET_MAX_PAST_DAYS,
   jelenletDayLabel,
   type JelenletDayModel
 } from '@/lib/jelenlet'
 import { supabase } from '@/lib/supabase'
+import { useBudapestToday } from '@/lib/use-budapest-today'
 import { Card, Screen, Skeleton } from '@/ui'
 
 export default function JelenletTab() {
   const { current } = useAuth()
-  const { flags } = useFlags()
+  const { flags, ready: flagsReady } = useFlags()
   const [ymd, setYmd] = useState(budapestTodayYmd)
+  const today = useBudapestToday((next, prev) => {
+    setYmd((cur) => (cur === prev ? next : cur))
+  })
   const [model, setModel] = useState<JelenletDayModel | null>(null)
   const [presentByDay, setPresentByDay] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
@@ -49,7 +55,6 @@ export default function JelenletTab() {
       setRefreshing(false)
       return
     }
-    const today = budapestTodayYmd()
     try {
       const next = await getJelenletDay(supabase, current.tenantId, ymd)
       setModel(next)
@@ -60,7 +65,7 @@ export default function JelenletTab() {
         label: jelenletDayLabel(ymd, today),
         isToday: ymd === today,
         canGoNext: ymd < today,
-        canGoPrev: true,
+        canGoPrev: ymd > addDaysYmd(today, -JELENLET_MAX_PAST_DAYS),
         holiday: null,
         counts: emptyJelenletCounts(),
         workingCount: 0,
@@ -74,7 +79,7 @@ export default function JelenletTab() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [current, flags.jelenlet, ymd])
+  }, [current, flags.jelenlet, ymd, today])
 
   useEffect(() => {
     setLoading(true)
@@ -86,6 +91,7 @@ export default function JelenletTab() {
   }, [loadWeek])
 
   if (!current) return null
+  if (!flagsReady) return <FlagsPending />
 
   if (!flags.jelenlet) {
     return (
@@ -103,7 +109,7 @@ export default function JelenletTab() {
     )
   }
 
-  const dayTitle = model?.label ?? jelenletDayLabel(ymd, budapestTodayYmd())
+  const dayTitle = jelenletDayLabel(ymd, today)
 
   return (
     <Screen
@@ -114,7 +120,12 @@ export default function JelenletTab() {
         void loadWeek()
       }}
     >
-      <JelenletWeekNav ymd={ymd} presentByDay={presentByDay} onSelectYmd={setYmd} />
+      <JelenletWeekNav
+        ymd={ymd}
+        today={today}
+        presentByDay={presentByDay}
+        onSelectYmd={setYmd}
+      />
 
       <Text className="px-1 text-[20px] font-bold text-foreground" style={{ letterSpacing: -0.4 }}>
         {dayTitle}

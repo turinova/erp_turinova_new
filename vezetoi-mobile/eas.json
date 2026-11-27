@@ -16,6 +16,9 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app.optinova.hu"
+      },
       "ios": {
         "simulator": false
       },
@@ -24,7 +27,10 @@
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app.optinova.hu"
+      }
     }
   },
   "submit": {

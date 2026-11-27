@@ -36,11 +36,39 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null)
 
-async function loadGate(user: User): Promise<{
+const MEMBERSHIPS_CACHE_KEY = 'vezetoi.memberships.'
+
+type Gate = {
   memberships: TenantMembership[]
   current: TenantMembership | null
   gateError: string | null
-}> {
+}
+
+const OFFLINE_GATE_ERROR = 'Nincs kapcsolat a szerverrel. Nézd meg a hálózatot, és próbáld újra.'
+
+/** Hálózati hibánál nem léptet ki: az utolsó ismert tagságokkal megy tovább. */
+async function loadGate(user: User): Promise<Gate> {
+  try {
+    const gate = await loadGateOnline(user)
+    if (gate.memberships.length > 0) {
+      await AsyncStorage.setItem(MEMBERSHIPS_CACHE_KEY + user.id, JSON.stringify(gate.memberships))
+    } else {
+      await AsyncStorage.removeItem(MEMBERSHIPS_CACHE_KEY + user.id)
+    }
+    return gate
+  } catch (e) {
+    console.warn('[auth] loadGate', e instanceof Error ? e.message : e)
+    const raw = await AsyncStorage.getItem(MEMBERSHIPS_CACHE_KEY + user.id)
+    const cached = raw ? (JSON.parse(raw) as TenantMembership[]) : []
+    if (cached.length === 0) {
+      return { memberships: [], current: null, gateError: OFFLINE_GATE_ERROR }
+    }
+    const preferred = await AsyncStorage.getItem(PREFERRED_TENANT_KEY)
+    return { memberships: cached, current: pickMembership(cached, preferred), gateError: null }
+  }
+}
+
+async function loadGateOnline(user: User): Promise<Gate> {
   if (await isPartnerOnlyUser(supabase, user.id)) {
     await supabase.auth.signOut()
     return {
@@ -104,11 +132,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (mounted) setLoading(false)
     })()
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      void (async () => {
-        await applySession(next)
-        setLoading(false)
-      })()
+    // Supabase-hívás a callbacken belül holtpontot okozhat → következő tickre halasztva.
+    const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+      if (event === 'INITIAL_SESSION') return
+      if (event === 'TOKEN_REFRESHED') {
+        setSession(next)
+        return
+      }
+      setTimeout(() => {
+        void (async () => {
+          await applySession(next)
+          if (mounted) setLoading(false)
+        })()
+      }, 0)
     })
 
     return () => {
@@ -120,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     setGateError(null)
     if (!isSupabaseConfigured) {
-      return 'Hiányzik a Supabase beállítás (.env.local).'
+      return 'A belépés most nem érhető el. Frissítsd az appot.'
     }
     const trimmed = email.trim().toLowerCase()
     if (!trimmed || !password) {
@@ -138,9 +174,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (msg.includes('email not confirmed')) {
         return 'Az email még nincs megerősítve.'
       }
-      return error?.message
-        ? `Belépés sikertelen: ${error.message}`
-        : 'Hibás email vagy jelszó.'
+      if (error?.message) console.warn('[auth] signIn', error.message)
+      if (msg.includes('fetch') || msg.includes('network')) {
+        return 'Nincs kapcsolat a szerverrel. Nézd meg a hálózatot.'
+      }
+      return 'A belépés nem sikerült. Próbáld újra.'
     }
 
     const gate = await loadGate(data.session.user)
