@@ -38,7 +38,13 @@ export function buildProductJsonLd(input: {
   image?: string
   sku?: string
   inStock?: boolean
+  /** Bruttó Ft egész táblára/szálra; ha nincs, az Offer ár nélkül megy. */
+  priceGross?: number | null
 }) {
+  const price =
+    typeof input.priceGross === "number" && input.priceGross > 0
+      ? String(Math.round(input.priceGross))
+      : undefined
   return {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -54,9 +60,10 @@ export function buildProductJsonLd(input: {
       "@type": "Offer",
       url: input.url,
       priceCurrency: "HUF",
+      ...(price ? { price } : {}),
       availability: input.inStock
         ? "https://schema.org/InStock"
-        : "https://schema.org/PreOrder",
+        : "https://schema.org/BackOrder",
       seller: { "@id": LOCAL_BUSINESS_ID },
     },
   }

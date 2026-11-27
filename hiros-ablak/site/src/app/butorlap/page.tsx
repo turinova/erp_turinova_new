@@ -1,17 +1,21 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { CardPrice } from "@/components/catalog/CardPrice"
 import Image from "next/image"
+import {
+  stockClass,
+  stockLabel,
+} from "@/lib/catalog-price"
 import { COMPANY } from "@/lib/company"
-import { LINKS } from "@/lib/links"
-import { getSupabaseServerClient } from "@/lib/supabase"
 import { parseButorlapQuery } from "@/lib/butorlap-search"
-import { SortSelect } from "./_components/SortSelect"
 import { pageMetadata } from "@/lib/seo"
+import { getSupabaseServerClient } from "@/lib/supabase"
+import { SortSelect } from "./_components/SortSelect"
 
 export const metadata: Metadata = pageMetadata({
   title: "Bútorlap katalógus Kecskeméten",
   description:
-    "Bútorlap katalógus Kecskeméten: Egger, Kronospan, Kaindl és további márkák. Raktáron vagy beszerezhető tételek, szűrés vastagság, márka és készlet szerint. Méretre vágás és élzárás kérésre.",
+    "Bútorlap katalógus Kecskeméten: Egger, Kronospan, Kaindl és további márkák. Raktáron vagy rendelésre, átlátható bruttó táblaárral. Szűrés vastagság, márka és készlet szerint. Méretre vágás és élzárás kérésre.",
   canonical: "/butorlap",
   ogImage: "/img/egger_edc2020_heroshot.webp",
 })
@@ -29,6 +33,7 @@ type Row = {
   on_stock: boolean
   image_url: string | null
   updated_at: string
+  price_gross: number | null
 }
 
 type SP = Record<string, string | string[] | undefined>
@@ -40,26 +45,11 @@ function toArray(param: string | string[] | undefined): string[] {
   return Array.isArray(param) ? param : [param]
 }
 
-function stockLabel(onStock: boolean) {
-  return onStock ? "Raktáron" : "Beszerezhető"
-}
-
-function stockClass(onStock: boolean) {
-  return onStock
-    ? "border-emerald-200 bg-emerald-50/95 text-emerald-900"
-    : "border-sky-200 bg-sky-50/95 text-sky-900"
-}
-
 function thicknessChipClass(t: number) {
   // 18 mm = de-facto standard => neutral chip; non-standard thickness uses brand tint.
   return t === 18
     ? "border-black/10 bg-white/95 text-black/85"
     : "border-[var(--color-brand)]/25 bg-[color-mix(in_srgb,var(--color-brand)_8%,white)] text-[var(--color-brand)]"
-}
-
-function buildRegisterUrl(nextPath: string) {
-  const next = encodeURIComponent(nextPath)
-  return `${LINKS.register}?next=${next}`
 }
 
 function buildDetailHref(r: Row) {
@@ -174,7 +164,12 @@ export default async function ButorlapListingPage({
   const [filterOptions, mainResult] = await Promise.all([
     fetchFilterOptions(supabase),
     (async () => {
-      let query = supabase.from("public_butorlap").select("*", { count: "exact" })
+      let query = supabase
+        .from("public_butorlap")
+        .select(
+          "id,slug,name,brand_name,group_name,length_mm,width_mm,thickness_mm,grain_direction,on_stock,image_url,updated_at,price_gross",
+          { count: "exact" },
+        )
       if (stock === "in") query = query.eq("on_stock", true)
       if (stock === "orderable") query = query.eq("on_stock", false)
       if (brands.length) query = query.in("brand_name", brands)
@@ -281,12 +276,9 @@ export default async function ButorlapListingPage({
                 >
                   Hogyan dolgozunk?
                 </Link>
-                <a
-                  href={buildRegisterUrl("/butorlap")}
-                  className="text-sm text-white/75 underline underline-offset-4 hover:text-white"
-                >
-                  Regisztráljon — az árak 1 perc alatt megjelennek
-                </a>
+                <p className="text-sm text-white/75">
+                  Raktárról vagy rendelésre · bruttó táblaár a kártyákon
+                </p>
               </div>
             </div>
           </div>
@@ -336,7 +328,7 @@ export default async function ButorlapListingPage({
                   Raktáron
                 </Link>
                 <Link href={urlWithStock(sp, "orderable")} className={[pillBase, stock === "orderable" ? pillOn : pillOff].join(" ")}>
-                  Beszerezhető
+                  Rendelésre
                 </Link>
               </div>
 
@@ -465,7 +457,7 @@ export default async function ButorlapListingPage({
               )}
               {stock !== "all" && (
                 <Link href={urlWithStock(sp, "all")} className={chipClass}>
-                  {stock === "in" ? "Raktáron" : "Beszerezhető"} <span aria-hidden className="text-black/45">×</span>
+                  {stock === "in" ? "Raktáron" : "Rendelésre"} <span aria-hidden className="text-black/45">×</span>
                 </Link>
               )}
               {thickness.map((t) => (
@@ -500,7 +492,7 @@ export default async function ButorlapListingPage({
             <span className="font-semibold text-black/85">{page}</span> / {totalPages}
           </div>
           <div className="text-black/55">
-            A „Beszerezhető” jelzésű tételeket Önnek beszerezzük.
+            A „Rendelésre” jelzésű tételeket Önnek beszerezzük.
           </div>
         </div>
 
@@ -567,17 +559,7 @@ export default async function ButorlapListingPage({
                       <div className="mt-1 text-sm text-black/60">
                         {[r.brand_name, r.group_name].filter(Boolean).join(" • ")}
                       </div>
-                      <div className="mt-auto flex items-center justify-between pt-3">
-                        <span className="text-sm text-black/75">
-                          {r.length_mm} × {r.width_mm} mm
-                        </span>
-                        <span
-                          aria-hidden
-                          className="text-xl leading-none text-black/30 transition-all group-hover:translate-x-0.5 group-hover:text-[var(--color-brand)]"
-                        >
-                          ›
-                        </span>
-                      </div>
+                      <CardPrice priceGross={r.price_gross} kind="sheet" lengthMm={r.length_mm} widthMm={r.width_mm} onStock={r.on_stock} />
                     </div>
                   </Link>
                 )
@@ -651,7 +633,7 @@ export default async function ButorlapListingPage({
               <p className="mt-2 text-sm text-black/70">
                 A <span className="font-semibold">„Raktáron”</span> jelölésű
                 most átvehető. A{" "}
-                <span className="font-semibold">„Beszerezhető”</span> tételeket
+                <span className="font-semibold">„Rendelésre”</span> tételeket
                 beszerezzük, az időpontot előre egyeztetjük.
               </p>
             </li>
@@ -672,7 +654,7 @@ export default async function ButorlapListingPage({
           <h2 className="text-2xl font-semibold tracking-tight">Gyakori kérdések</h2>
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <div className="rounded-xl border border-black/10 bg-white p-5">
-              <div className="font-semibold">Mit jelent a „Beszerezhető”?</div>
+              <div className="font-semibold">Mit jelent a „Rendelésre”?</div>
               <p className="mt-2 text-sm text-black/70">
                 Most nincs raktáron, de beszerezzük. A beszerzési időt
                 márkától függően a megrendeléskor egyeztetjük.

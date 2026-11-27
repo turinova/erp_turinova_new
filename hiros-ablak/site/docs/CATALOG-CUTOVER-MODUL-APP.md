@@ -1,7 +1,8 @@
 # Bútorlap + munkalap átállás → modul-app tenant
 
 Cél: a `www.hirosablak.hu/butorlap` és `/munkalap` a modul-app DB Hírös
-tenantjából (`hiros-ablak-kft` / `45dd7c02-…`) olvasson. Ár továbbra sincs a weblapon.
+tenantjából (`hiros-ablak-kft` / `45dd7c02-…`) olvasson. Bruttó egész-tábla /
+egész-szál ár a `price_gross` oszlopban (`20261032_public_catalog_prices.sql`).
 
 Te futtatod a SQL-eket manuálisan. A kód (migráció fájlok, weblap env minta,
 modul-app űrlap mezők) már a repóban van.
@@ -45,10 +46,23 @@ Deploy preview, ellenőrizd:
 - `/butorlap` lista + kép
 - egy ismert slug PDP (pl. régi URL)
 - `/munkalap` + típus chip (Munkalap / Asztallap / Hátfal)
-- Network: a view válaszában **nincs** `price` / `price_net`
 - sitemap: indexable sorok
 
 Lokálisan: `hiros-ablak/site/.env.local` ugyanerre a URL/key-re.
+
+## Lépés 3b — Publikus bruttó ár (view)
+
+Fájl: `modul-app/supabase/migrations/20261032_public_catalog_prices.sql`
+
+`price_gross` = bruttó egész tábla (bútorlap) / egész szál (munkalap), ugyanaz a képlet, mint az OpenAI feed.
+
+```sql
+select count(*) filter (where price_gross is not null) as with_price,
+       count(*) filter (where price_gross is null) as no_price
+from public.public_butorlap;
+```
+
+Készlet a weblapon: **Raktáron** / **Rendelésre**.
 
 ## Lépés 4 — Production env csere
 
@@ -68,4 +82,5 @@ Táblás / szálas anyag szerkesztőn:
 
 ## OpenAI feed
 
-Külön fázis — csak miután a weblap már a modul-app tenantot szolgálja.
+A feed és a weblap ugyanazt a bruttó árat használja. Feed: modul-app
+`/api/feeds/openai/{token}/feed.jsonl.gz`.

@@ -1,21 +1,34 @@
 import Image from "next/image"
 import Link from "next/link"
+import { CardPrice } from "@/components/catalog/CardPrice"
 import { notFound, redirect } from "next/navigation"
+import { MobilePriceCta } from "@/components/catalog/MobilePriceCta"
+import { CuttingUpsellCard, ProductPriceBlock } from "@/components/catalog/ProductPriceBlock"
+import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
+import {
+  displayPriceGross,
+  formatHuf,
+  stockClass,
+  stockLabel,
+  stockSubLabel,
+} from "@/lib/catalog-price"
 import {
   COMPANY,
   formatPhoneDisplay,
   googleMapsDirectionsUrl,
 } from "@/lib/company"
 import { LINKS } from "@/lib/links"
-import { getSupabaseServerClient } from "@/lib/supabase"
-import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
 import {
   absoluteUrl,
   buildBreadcrumbJsonLd,
   buildProductJsonLd,
 } from "@/lib/seo"
+import { getSupabaseServerClient } from "@/lib/supabase"
 
 export const revalidate = 3600 // 1 hour
+
+const MUNKALAP_COLS =
+  "id,slug,name,brand_name,length_mm,width_mm,thickness_mm,image_url,indexable_on_site,on_stock,type_name,price_gross,updated_at"
 
 type Row = {
   id: string
@@ -30,26 +43,7 @@ type Row = {
   updated_at: string
   indexable_on_site: boolean
   type_name?: string | null
-}
-
-function stockLabel(onStock: boolean) {
-  return onStock ? "Raktáron" : "Beszerezhető"
-}
-
-function stockSubLabel(onStock: boolean) {
-  return onStock ? "Most átvehető" : "Beszerezzük Önnek"
-}
-
-function stockClass(onStock: boolean) {
-  return onStock
-    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-    : "border-sky-200 bg-sky-50 text-sky-900"
-}
-
-function reassuranceCardClass(onStock: boolean) {
-  return onStock
-    ? "border-emerald-100 bg-emerald-50/40"
-    : "border-sky-100 bg-sky-50/40"
+  price_gross: number | null
 }
 
 function thicknessChipClass(t: number) {
@@ -102,30 +96,12 @@ export async function generateMetadata({
   const supabase = getSupabaseServerClient()
   const isIdFallback = slug.startsWith("id-")
   const id = isIdFallback ? slug.slice(3) : null
-  let lookup = supabase
-    .from("public_munkalap")
-    .select(
-      "id,slug,name,brand_name,length_mm,width_mm,thickness_mm,image_url,indexable_on_site,on_stock,type_name",
-    )
-    .limit(1)
+  let lookup = supabase.from("public_munkalap").select(MUNKALAP_COLS).limit(1)
   lookup = id ? lookup.eq("id", id) : lookup.eq("slug", slug)
   const { data } = await lookup.maybeSingle()
   if (!data) return { title: "Munkalap" }
 
-  const r = data as Pick<
-    Row,
-    | "id"
-    | "slug"
-    | "name"
-    | "brand_name"
-    | "length_mm"
-    | "width_mm"
-    | "thickness_mm"
-    | "image_url"
-    | "indexable_on_site"
-    | "on_stock"
-    | "type_name"
-  >
+  const r = data as Row
 
   const dims = `${r.length_mm}×${r.width_mm}×${r.thickness_mm}`
   const canonicalPath = `/munkalap/${r.slug ?? slug}`
@@ -138,8 +114,10 @@ export async function generateMetadata({
   const product = productNoun(r.type_name)
   const titleStr = `${r.name} ${product} (${dims} mm)`
   const brand = r.brand_name ? ` ${r.brand_name}.` : ""
-  const longDesc = `${r.name} ${product}, ${dims} mm.${brand} Átvétel ${COMPANY.address.city}en. Az árakat és a részletes készletet a regisztráció után láthatja.`
-  const shortDesc = `${r.name} ${product}, ${dims} mm.${brand} Átvétel ${COMPANY.address.city}en.`
+  const price = displayPriceGross(r.price_gross)
+  const priceBit = price != null ? ` Bruttó ár egész szálra: ${formatHuf(price)}.` : ""
+  const longDesc = `${r.name} ${product}, ${dims} mm.${brand}${priceBit} Átvétel ${COMPANY.address.city}en.`
+  const shortDesc = longDesc
 
   return {
     title: titleStr,
@@ -210,7 +188,7 @@ export default async function MunkalapDetailPage({
   const isIdFallback = slug.startsWith("id-")
   const id = isIdFallback ? slug.slice(3) : null
 
-  let lookup = supabase.from("public_munkalap").select("*").limit(1)
+  let lookup = supabase.from("public_munkalap").select(MUNKALAP_COLS).limit(1)
   lookup = id ? lookup.eq("id", id) : lookup.eq("slug", slug)
 
   const { data, error } = await lookup.maybeSingle()
@@ -258,10 +236,10 @@ export default async function MunkalapDetailPage({
       },
       {
         "@type": "Question",
-        name: "Hol látom az árat és a pontos készletet?",
+        name: "Mennyibe kerül?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Az árakat és a részletes készletet a regisztráció után láthatja, és onnantól online rendelhet is.",
+          text: "Az ár a terméklapon látható, bruttó, egész szálra. Méretre vágás és élzárás külön. Raktáron lévő tételeket azonnal átveheti; ami nincs raktáron, azt rendelésre beszerezzük.",
         },
       },
       {
@@ -278,7 +256,7 @@ export default async function MunkalapDetailPage({
   const relatedQuery = (() => {
     let q = supabase
       .from("public_munkalap")
-      .select("*")
+      .select(MUNKALAP_COLS)
       .eq("indexable_on_site", true)
       .limit(8)
     if (r.brand_name) q = q.eq("brand_name", r.brand_name)
@@ -290,10 +268,6 @@ export default async function MunkalapDetailPage({
 
   const { data: relatedData } = await relatedQuery
   const related = ((relatedData as Row[]) || []).filter(Boolean)
-
-  const stockMessage = r.on_stock
-    ? `Raktáron: most átvehető a ${COMPANY.address.city.toLowerCase()}i áruházunkban.`
-    : "Beszerezhető: most nincs raktáron, de Önnek beszerezzük. A beszerzési idő márkától és szállítótól függ, a pontos időt megrendeléskor egyeztetjük."
 
   const breadcrumbJsonLd = buildBreadcrumbJsonLd([
     { name: "Kezdőlap", path: "/" },
@@ -309,6 +283,7 @@ export default async function MunkalapDetailPage({
     image: r.image_url ?? undefined,
     sku: r.slug ?? slug,
     inStock: Boolean(r.on_stock),
+    priceGross: r.price_gross,
   })
 
   return (
@@ -398,6 +373,15 @@ export default async function MunkalapDetailPage({
                 <OpeningHoursPill />
               </div>
 
+              <ProductPriceBlock
+                priceGross={r.price_gross}
+                kind="linear"
+                lengthMm={r.length_mm}
+                onStock={r.on_stock}
+                city={COMPANY.address.city}
+                className="mt-6"
+              />
+
               <div className="mt-5 grid gap-2 rounded-2xl border border-black/10 bg-stone-50/60 p-4">
                 {r.brand_name && (
                   <div className="flex items-baseline justify-between gap-4">
@@ -411,10 +395,8 @@ export default async function MunkalapDetailPage({
                   </div>
                 )}
                 <div className="flex items-baseline justify-between gap-4">
-                  <div className="text-sm font-semibold text-black/70">Méret</div>
-                  <div className="font-mono text-sm font-semibold text-black/85">
-                    {r.length_mm} × {r.width_mm} mm
-                  </div>
+                  <div className="text-sm font-semibold text-black/70">Szélesség</div>
+                  <div className="font-mono text-sm font-semibold text-black/85">{r.width_mm} mm</div>
                 </div>
                 <div className="flex items-baseline justify-between gap-4">
                   <div className="text-sm font-semibold text-black/70">Vastagság</div>
@@ -448,28 +430,8 @@ export default async function MunkalapDetailPage({
                   </div>
                 </div>
 
-                <div>
-                  <a
-                    className="inline-flex w-full items-center justify-center rounded-full border border-[var(--color-brand)]/25 bg-[color-mix(in_srgb,var(--color-brand)_8%,white)] px-6 py-3 text-base font-semibold text-[var(--color-brand)] hover:bg-[color-mix(in_srgb,var(--color-brand)_12%,white)]"
-                    href={buildRegisterUrl(canonical)}
-                  >
-                    Árak és online rendelés a regisztráció után →
-                  </a>
-                  <ul className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-black/65">
-                    <li className="inline-flex items-center gap-1">
-                      <span aria-hidden className="text-emerald-600">✓</span> Ingyenes regisztráció
-                    </li>
-                    <li className="inline-flex items-center gap-1">
-                      <span aria-hidden className="text-emerald-600">✓</span> Azonnali árak
-                    </li>
-                    <li className="inline-flex items-center gap-1">
-                      <span aria-hidden className="text-emerald-600">✓</span> Online rendelés
-                    </li>
-                  </ul>
-                </div>
-
                 <div className="text-center text-sm text-black/70">
-                  Vagy hívjon minket:{" "}
+                  Telefon:{" "}
                   <a
                     className="font-semibold text-[var(--color-brand)] underline underline-offset-4 hover:brightness-90"
                     href={phoneTel}
@@ -478,30 +440,17 @@ export default async function MunkalapDetailPage({
                   </a>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-1 text-sm">
-                  <Link
-                    className="font-semibold underline underline-offset-4 hover:text-[var(--color-brand)]"
-                    href="/szolgaltatasok/lapszabaszat-es-elzaras"
+                <div className="text-center text-sm">
+                  <a
+                    className="text-black/60 underline underline-offset-4 hover:text-[var(--color-brand)]"
+                    href={buildRegisterUrl(canonical)}
                   >
-                    Tudjon meg többet a lapszabászatról és élzárásról →
-                  </Link>
-                  <Link
-                    className="font-semibold underline underline-offset-4 hover:text-[var(--color-brand)]"
-                    href="/kapcsolat"
-                  >
-                    Van kérdése? Írjon nekünk →
-                  </Link>
+                    Online rendelés regisztráció után →
+                  </a>
                 </div>
               </div>
 
-              <div
-                className={[
-                  "mt-5 rounded-2xl border p-4 text-sm text-black/75",
-                  reassuranceCardClass(r.on_stock),
-                ].join(" ")}
-              >
-                {stockMessage}
-              </div>
+              <CuttingUpsellCard kind="linear" />
 
               <p className="mt-5 text-base text-black/75">{definition}</p>
 
@@ -598,9 +547,7 @@ export default async function MunkalapDetailPage({
                       {x.name}
                     </div>
                     <div className="mt-1 text-xs text-black/60">{x.brand_name || ""}</div>
-                    <div className="mt-2 text-xs text-black/70">
-                      {x.length_mm} × {x.width_mm} mm
-                    </div>
+                    <CardPrice priceGross={x.price_gross} kind="linear" lengthMm={x.length_mm} onStock={x.on_stock} compact />
                   </div>
                 </Link>
               ))}
@@ -632,17 +579,11 @@ export default async function MunkalapDetailPage({
               </p>
             </div>
             <div className="rounded-xl border border-black/10 bg-white p-5">
-              <div className="font-semibold">Hol látom az árat és a pontos készletet?</div>
+              <div className="font-semibold">Mennyibe kerül?</div>
               <p className="mt-2 text-sm text-black/70">
-                Az árakat és a részletes készletet a regisztráció után láthatja,
-                és onnantól online rendelhet is.
+                Az ár a terméklapon látható, bruttó, egész szálra. Méretre vágás
+                és élzárás külön. Ami nincs raktáron, azt rendelésre beszerezzük.
               </p>
-              <a
-                className="mt-3 inline-block text-sm font-semibold underline underline-offset-4 text-[var(--color-brand)] hover:brightness-90"
-                href={buildRegisterUrl(canonical)}
-              >
-                Regisztrálok →
-              </a>
             </div>
             <div className="rounded-xl border border-black/10 bg-white p-5">
               <div className="font-semibold">Hol vehetem át?</div>
@@ -663,24 +604,7 @@ export default async function MunkalapDetailPage({
           </div>
         </section>
 
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-white/95 p-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur md:hidden">
-          <div className="mx-auto flex max-w-6xl gap-2 px-1">
-            <a
-              className="inline-flex flex-[3] items-center justify-center rounded-full bg-[var(--color-brand)] px-4 py-3 text-sm font-semibold text-[var(--color-brand-contrast)]"
-              href={directionsUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Útvonal →
-            </a>
-            <a
-              className="inline-flex flex-[2] items-center justify-center rounded-full border border-[var(--color-brand)]/25 bg-[color-mix(in_srgb,var(--color-brand)_8%,white)] px-4 py-3 text-sm font-semibold text-[var(--color-brand)]"
-              href={buildRegisterUrl(canonical)}
-            >
-              Árak / regisztráció
-            </a>
-          </div>
-        </div>
+        <MobilePriceCta priceGross={r.price_gross} kind="linear" directionsUrl={directionsUrl} />
       </div>
     </div>
   )

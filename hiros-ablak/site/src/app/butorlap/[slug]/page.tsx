@@ -1,21 +1,34 @@
 import Image from "next/image"
 import Link from "next/link"
+import { CardPrice } from "@/components/catalog/CardPrice"
 import { notFound, redirect } from "next/navigation"
+import { MobilePriceCta } from "@/components/catalog/MobilePriceCta"
+import { CuttingUpsellCard, ProductPriceBlock } from "@/components/catalog/ProductPriceBlock"
+import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
+import {
+  formatHuf,
+  displayPriceGross,
+  stockClass,
+  stockLabel,
+  stockSubLabel,
+} from "@/lib/catalog-price"
 import {
   COMPANY,
   formatPhoneDisplay,
   googleMapsDirectionsUrl,
 } from "@/lib/company"
 import { LINKS } from "@/lib/links"
-import { getSupabaseServerClient } from "@/lib/supabase"
-import { OpeningHoursPill } from "@/components/site/OpeningHoursPill"
 import {
   absoluteUrl,
   buildBreadcrumbJsonLd,
   buildProductJsonLd,
 } from "@/lib/seo"
+import { getSupabaseServerClient } from "@/lib/supabase"
 
 export const revalidate = 3600 // 1 hour
+
+const BUTORLAP_COLS =
+  "id,slug,name,brand_name,group_name,length_mm,width_mm,thickness_mm,grain_direction,image_url,indexable_on_site,on_stock,price_gross,updated_at"
 
 type Row = {
   id: string
@@ -31,26 +44,7 @@ type Row = {
   image_url: string | null
   updated_at: string
   indexable_on_site: boolean
-}
-
-function stockLabel(onStock: boolean) {
-  return onStock ? "Raktáron" : "Beszerezhető"
-}
-
-function stockSubLabel(onStock: boolean) {
-  return onStock ? "Most átvehető" : "Beszerezzük Önnek"
-}
-
-function stockClass(onStock: boolean) {
-  return onStock
-    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-    : "border-sky-200 bg-sky-50 text-sky-900"
-}
-
-function reassuranceCardClass(onStock: boolean) {
-  return onStock
-    ? "border-emerald-100 bg-emerald-50/40"
-    : "border-sky-100 bg-sky-50/40"
+  price_gross: number | null
 }
 
 function thicknessChipClass(t: number) {
@@ -83,32 +77,14 @@ export async function generateMetadata({
   const supabase = getSupabaseServerClient()
   const isIdFallback = slug.startsWith("id-")
   const id = isIdFallback ? slug.slice(3) : null
-  let lookup = supabase
-    .from("public_butorlap")
-    .select(
-      "id,slug,name,brand_name,group_name,length_mm,width_mm,thickness_mm,image_url,indexable_on_site,on_stock",
-    )
-    .limit(1)
+  let lookup = supabase.from("public_butorlap").select(BUTORLAP_COLS).limit(1)
   lookup = id ? lookup.eq("id", id) : lookup.eq("slug", slug)
   const { data } = await lookup.maybeSingle()
   if (!data) {
     return { title: "Bútorlap" }
   }
 
-  const r = data as Pick<
-    Row,
-    | "id"
-    | "slug"
-    | "name"
-    | "brand_name"
-    | "group_name"
-    | "length_mm"
-    | "width_mm"
-    | "thickness_mm"
-    | "image_url"
-    | "indexable_on_site"
-    | "on_stock"
-  >
+  const r = data as Row
   const dims = `${r.length_mm}×${r.width_mm}×${r.thickness_mm}`
   const subtitle = [r.brand_name, r.group_name].filter(Boolean).join(" • ")
   const canonicalPath = `/butorlap/${r.slug ?? slug}`
@@ -117,10 +93,12 @@ export async function generateMetadata({
     ? { index: true, follow: true }
     : { index: false, follow: true }
   const ogImage = r.image_url || `${COMPANY.website}/img/hiros_logo.png`
+  const price = displayPriceGross(r.price_gross)
 
   const titleStr = `${r.name} bútorlap (${dims} mm)`
-  const longDesc = `${r.name} bútorlap, ${dims} mm.${subtitle ? ` ${subtitle}.` : ""} Átvétel ${COMPANY.address.city}en. Az árakat és a részletes készletet a regisztráció után láthatja.`
-  const shortDesc = `${r.name} bútorlap, ${dims} mm.${subtitle ? ` ${subtitle}.` : ""} Átvétel ${COMPANY.address.city}en.`
+  const priceBit = price != null ? ` Bruttó ár egész táblára: ${formatHuf(price)}.` : ""
+  const longDesc = `${r.name} bútorlap, ${dims} mm.${subtitle ? ` ${subtitle}.` : ""}${priceBit} Átvétel ${COMPANY.address.city}en.`
+  const shortDesc = longDesc
 
   return {
     title: titleStr,
@@ -192,7 +170,7 @@ export default async function ButorlapDetailPage({
   const isIdFallback = slug.startsWith("id-")
   const id = isIdFallback ? slug.slice(3) : null
 
-  let lookup = supabase.from("public_butorlap").select("*").limit(1)
+  let lookup = supabase.from("public_butorlap").select(BUTORLAP_COLS).limit(1)
   lookup = id ? lookup.eq("id", id) : lookup.eq("slug", slug)
 
   const { data, error } = await lookup.maybeSingle()
@@ -241,10 +219,10 @@ export default async function ButorlapDetailPage({
       },
       {
         "@type": "Question",
-        name: "Hol látom az árat és a pontos készletet?",
+        name: "Mennyibe kerül?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Az árakat és a részletes készletet a regisztráció után láthatja, és onnantól online rendelhet is.",
+          text: "Az ár a terméklapon látható, bruttó, egész táblára. Méretre vágás és élzárás külön. Raktáron lévő tételeket azonnal átveheti; ami nincs raktáron, azt rendelésre beszerezzük.",
         },
       },
       {
@@ -259,7 +237,7 @@ export default async function ButorlapDetailPage({
   }
 
   const relatedQuery = (() => {
-    let q = supabase.from("public_butorlap").select("*").limit(8)
+    let q = supabase.from("public_butorlap").select(BUTORLAP_COLS).limit(8)
     q = q.eq("indexable_on_site", true)
     if (r.brand_name) q = q.eq("brand_name", r.brand_name)
     else if (r.group_name) q = q.eq("group_name", r.group_name)
@@ -271,10 +249,6 @@ export default async function ButorlapDetailPage({
 
   const { data: relatedData } = await relatedQuery
   const related = ((relatedData as Row[]) || []).filter(Boolean)
-
-  const stockMessage = r.on_stock
-    ? `Raktáron: most átvehető a ${COMPANY.address.city.toLowerCase()}i áruházunkban.`
-    : "Beszerezhető: most nincs raktáron, de Önnek beszerezzük. A beszerzési idő márkától és szállítótól függ, a pontos időt megrendeléskor egyeztetjük."
 
   const breadcrumbJsonLd = buildBreadcrumbJsonLd([
     { name: "Kezdőlap", path: "/" },
@@ -290,6 +264,7 @@ export default async function ButorlapDetailPage({
     image: r.image_url ?? undefined,
     sku: r.slug ?? slug,
     inStock: Boolean(r.on_stock),
+    priceGross: r.price_gross,
   })
 
   return (
@@ -377,6 +352,16 @@ export default async function ButorlapDetailPage({
                 <OpeningHoursPill />
               </div>
 
+              <ProductPriceBlock
+                priceGross={r.price_gross}
+                kind="sheet"
+                lengthMm={r.length_mm}
+                widthMm={r.width_mm}
+                onStock={r.on_stock}
+                city={COMPANY.address.city}
+                className="mt-6"
+              />
+
               {/* Decision facts panel */}
               <div className="mt-5 grid gap-2 rounded-2xl border border-black/10 bg-stone-50/60 p-4">
                 {r.brand_name && (
@@ -390,12 +375,6 @@ export default async function ButorlapDetailPage({
                     </Link>
                   </div>
                 )}
-                <div className="flex items-baseline justify-between gap-4">
-                  <div className="text-sm font-semibold text-black/70">Méret</div>
-                  <div className="font-mono text-sm font-semibold text-black/85">
-                    {r.length_mm} × {r.width_mm} mm
-                  </div>
-                </div>
                 <div className="flex items-baseline justify-between gap-4">
                   <div className="text-sm font-semibold text-black/70">Vastagság</div>
                   <div className="font-mono text-sm font-semibold text-black/85">
@@ -422,9 +401,8 @@ export default async function ButorlapDetailPage({
                 </div>
               )}
 
-              {/* CTA STACK (Tier 1: copy, hierarchy, phone CTA) */}
+              {/* CTA: egy primary — átvétel / útvonal */}
               <div className="mt-7 grid gap-3">
-                {/* Primary: directions */}
                 <div>
                   <a
                     className="inline-flex w-full items-center justify-center rounded-full bg-[var(--color-brand)] px-6 py-3.5 text-base font-semibold text-[var(--color-brand-contrast)] hover:brightness-95"
@@ -439,30 +417,8 @@ export default async function ButorlapDetailPage({
                   </div>
                 </div>
 
-                {/* Secondary: register, brand-tinted */}
-                <div>
-                  <a
-                    className="inline-flex w-full items-center justify-center rounded-full border border-[var(--color-brand)]/25 bg-[color-mix(in_srgb,var(--color-brand)_8%,white)] px-6 py-3 text-base font-semibold text-[var(--color-brand)] hover:bg-[color-mix(in_srgb,var(--color-brand)_12%,white)]"
-                    href={buildRegisterUrl(canonical)}
-                  >
-                    Árak és online rendelés a regisztráció után →
-                  </a>
-                  <ul className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-black/65">
-                    <li className="inline-flex items-center gap-1">
-                      <span aria-hidden className="text-emerald-600">✓</span> Ingyenes regisztráció
-                    </li>
-                    <li className="inline-flex items-center gap-1">
-                      <span aria-hidden className="text-emerald-600">✓</span> Azonnali árak
-                    </li>
-                    <li className="inline-flex items-center gap-1">
-                      <span aria-hidden className="text-emerald-600">✓</span> Online rendelés
-                    </li>
-                  </ul>
-                </div>
-
-                {/* Tertiary: phone */}
                 <div className="text-center text-sm text-black/70">
-                  Vagy hívjon minket:{" "}
+                  Telefon:{" "}
                   <a
                     className="font-semibold text-[var(--color-brand)] underline underline-offset-4 hover:brightness-90"
                     href={phoneTel}
@@ -471,26 +427,17 @@ export default async function ButorlapDetailPage({
                   </a>
                 </div>
 
-                {/* Quaternary: text links */}
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-1 text-sm">
-                  <Link className="font-semibold underline underline-offset-4 hover:text-[var(--color-brand)]" href="/szolgaltatasok/lapszabaszat-es-elzaras">
-                    Tudjon meg többet a lapszabászatról és élzárásról →
-                  </Link>
-                  <Link className="font-semibold underline underline-offset-4 hover:text-[var(--color-brand)]" href="/kapcsolat">
-                    Van kérdése? Írjon nekünk →
-                  </Link>
+                <div className="text-center text-sm">
+                  <a
+                    className="text-black/60 underline underline-offset-4 hover:text-[var(--color-brand)]"
+                    href={buildRegisterUrl(canonical)}
+                  >
+                    Online rendelés regisztráció után →
+                  </a>
                 </div>
               </div>
 
-              {/* Reassurance card with mood color */}
-              <div
-                className={[
-                  "mt-5 rounded-2xl border p-4 text-sm text-black/75",
-                  reassuranceCardClass(r.on_stock),
-                ].join(" ")}
-              >
-                {stockMessage}
-              </div>
+              <CuttingUpsellCard kind="sheet" />
 
               {/* Definition (moved below CTAs) */}
               <p className="mt-5 text-base text-black/75">{definition}</p>
@@ -600,9 +547,7 @@ export default async function ButorlapDetailPage({
                     <div className="mt-1 text-xs text-black/60">
                       {[x.brand_name, x.group_name].filter(Boolean).join(" • ")}
                     </div>
-                    <div className="mt-2 text-xs text-black/70">
-                      {x.length_mm} × {x.width_mm} mm
-                    </div>
+                    <CardPrice priceGross={x.price_gross} kind="sheet" lengthMm={x.length_mm} widthMm={x.width_mm} onStock={x.on_stock} compact />
                   </div>
                 </Link>
               ))}
@@ -635,17 +580,11 @@ export default async function ButorlapDetailPage({
               </p>
             </div>
             <div className="rounded-xl border border-black/10 bg-white p-5">
-              <div className="font-semibold">Hol látom az árat és a pontos készletet?</div>
+              <div className="font-semibold">Mennyibe kerül?</div>
               <p className="mt-2 text-sm text-black/70">
-                Az árakat és a részletes készletet a regisztráció után láthatja,
-                és onnantól online rendelhet is.
+                Az ár a terméklapon látható, bruttó, egész táblára. Méretre vágás
+                és élzárás külön. Ami nincs raktáron, azt rendelésre beszerezzük.
               </p>
-              <a
-                className="mt-3 inline-block text-sm font-semibold underline underline-offset-4 text-[var(--color-brand)] hover:brightness-90"
-                href={buildRegisterUrl(canonical)}
-              >
-                Regisztrálok →
-              </a>
             </div>
             <div className="rounded-xl border border-black/10 bg-white p-5">
               <div className="font-semibold">Hol vehetem át?</div>
@@ -666,25 +605,7 @@ export default async function ButorlapDetailPage({
           </div>
         </section>
 
-        {/* Mobile sticky bar: copy parity with desktop CTAs + elevation */}
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-white/95 p-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] backdrop-blur md:hidden">
-          <div className="mx-auto flex max-w-6xl gap-2 px-1">
-            <a
-              className="inline-flex flex-[3] items-center justify-center rounded-full bg-[var(--color-brand)] px-4 py-3 text-sm font-semibold text-[var(--color-brand-contrast)]"
-              href={directionsUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Útvonal →
-            </a>
-            <a
-              className="inline-flex flex-[2] items-center justify-center rounded-full border border-[var(--color-brand)]/25 bg-[color-mix(in_srgb,var(--color-brand)_8%,white)] px-4 py-3 text-sm font-semibold text-[var(--color-brand)]"
-              href={buildRegisterUrl(canonical)}
-            >
-              Árak / regisztráció
-            </a>
-          </div>
-        </div>
+        <MobilePriceCta priceGross={r.price_gross} kind="sheet" directionsUrl={directionsUrl} />
       </div>
     </div>
   )

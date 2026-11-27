@@ -61,7 +61,7 @@ export type FeedItem = {
   seller_name: string
   seller_url?: string
   image_url: string
-  availability: 'in_stock' | 'out_of_stock'
+  availability: 'in_stock' | 'backorder'
   price: string
   condition: 'new'
   product_category: string
@@ -198,7 +198,7 @@ export function buildItem(row: FeedSourceRow, cfg: FeedConfig, groupSize: number
     brand: row.brand?.trim() ?? '',
     seller_name: cfg.sellerName,
     image_url: row.imageUrl ?? '',
-    availability: row.onStock ? 'in_stock' : 'out_of_stock',
+    availability: row.onStock ? 'in_stock' : 'backorder',
     price: `${grossPrice(row)} ${cfg.currency}`,
     condition: 'new',
     product_category: isSheet
