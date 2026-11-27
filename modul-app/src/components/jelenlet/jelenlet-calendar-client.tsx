@@ -142,6 +142,11 @@ function TerminalBadge({ terminals }: { terminals: TerminalStatus[] }) {
   if (terminals.length === 0) return null
   const allOnline = terminals.every((t) => t.online)
   const pending = terminals.reduce((s, t) => s + (t.pendingCount ?? 0), 0)
+  const tone = !allOnline
+    ? 'border-danger/30 bg-danger-soft text-danger-ink'
+    : pending > 0
+      ? 'border-warning/30 bg-warning-soft text-warning-ink'
+      : 'border-success/30 bg-success-soft text-success-ink'
   const title = terminals
     .map(
       (t) =>
@@ -150,10 +155,7 @@ function TerminalBadge({ terminals }: { terminals: TerminalStatus[] }) {
     .join('\n')
   return (
     <span
-      className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[12px] font-medium',
-        allOnline ? 'border-success/30 bg-success-soft text-success-ink' : 'border-danger/30 bg-danger-soft text-danger-ink'
-      )}
+      className={cn('inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[12px] font-medium', tone)}
       title={title}
     >
       <Radio className="size-3.5" aria-hidden />
@@ -162,7 +164,7 @@ function TerminalBadge({ terminals }: { terminals: TerminalStatus[] }) {
       {!allOnline ? (
         <span className="font-normal">· {formatContact(terminals.find((t) => !t.online)?.lastContactAt ?? null)}</span>
       ) : null}
-      {pending > 0 ? <span className="font-normal">· {pending} várakozó</span> : null}
+      {pending > 0 ? <span className="font-normal">· {pending} scan feltöltésre vár</span> : null}
     </span>
   )
 }
