@@ -79,7 +79,9 @@ export default async function FeedsPage({ searchParams }: { searchParams: Search
     lastItemCount: null
   }
 
-  const feedUrl = settings?.token ? `${appOrigin()}/api/feeds/openai/${settings.token}/feed.jsonl` : null
+  const feedUrl = settings?.token
+    ? `${appOrigin()}/api/feeds/openai/${settings.token}/feed.jsonl.gz`
+    : null
 
   let preview: React.ReactNode = null
   if (available) {

@@ -79,13 +79,15 @@ export function OpenAiFeedPreview({
     })
   }
 
-  function downloadSample() {
+  async function downloadSample() {
     const items = rows.flatMap((r) => (r.item ? [r.item] : []))
-    const blob = new Blob([items.map((i) => JSON.stringify(i)).join('\n') + '\n'], { type: 'application/x-ndjson' })
-    const url = URL.createObjectURL(blob)
+    const jsonl = items.map((i) => JSON.stringify(i)).join('\n') + '\n'
+    const stream = new Blob([jsonl]).stream().pipeThrough(new CompressionStream('gzip'))
+    const gz = await new Response(stream).blob()
+    const url = URL.createObjectURL(gz)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'openai-feed-minta.jsonl'
+    a.download = 'openai-feed-minta.jsonl.gz'
     a.click()
     URL.revokeObjectURL(url)
   }

@@ -1,5 +1,5 @@
 -- ChatGPT (OpenAI Commerce) termékfeed: bútorlap + munkalap
--- Route: /beallitasok/feedek · Feed: /api/feeds/openai/{token}/feed.jsonl
+-- Route: /beallitasok/feedek · Feed: /api/feeds/openai/{token}/feed.jsonl.gz
 -- Előfeltétel: 20261030_public_catalog_views.sql (slug, indexable_on_site)
 
 create table if not exists public.product_feeds (
