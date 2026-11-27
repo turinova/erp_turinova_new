@@ -29,6 +29,7 @@
     "test:auto-proforma-rules": "npx --yes tsx --test src/lib/partner/auto-proforma-rules.test.ts",
     "test:payment-method-kinds": "npx --yes tsx --test src/lib/payment-methods/kinds.test.ts",
     "test:simplesms-phone": "npx --yes tsx --test src/lib/sms/simplesms-phone.test.ts",
+    "test:openai-feed": "npx --yes tsx --test src/lib/feeds/openai/build.test.ts",
     "clean": "rm -rf .next var",
     "speed-test": "node --env-file=.env.local scripts/speed-test.mjs",
     "speed-test:pos-barcode": "node --env-file=.env.local scripts/speed-test-pos-barcode.mjs",

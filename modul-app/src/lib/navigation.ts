@@ -32,6 +32,7 @@ import {
   Settings2,
   ShoppingCart,
   SquareStack,
+  Rss,
   Star,
   TabletSmartphone,
   RectangleHorizontal,
@@ -653,6 +654,13 @@ const allNavSections: NavSection[] = [
               label: 'Google értékelések',
               href: '/beallitasok/google-ertekelesek',
               icon: Star,
+              accent: 'slate'
+            },
+            {
+              type: 'link',
+              label: 'Termékfeedek',
+              href: '/beallitasok/feedek',
+              icon: Rss,
               accent: 'slate'
             },
             {

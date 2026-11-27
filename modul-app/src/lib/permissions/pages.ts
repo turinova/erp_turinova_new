@@ -263,6 +263,11 @@ export const APP_PAGES: AppPageDef[] = [
     key: '/beallitasok/google-ertekelesek',
     label: 'Google értékelések',
     category: 'Beállítások'
+  },
+  {
+    key: '/beallitasok/feedek',
+    label: 'Termékfeedek',
+    category: 'Beállítások'
   }
 ]
 // Append-only: bitset catalog order — új kulcs mindig a lista végére.

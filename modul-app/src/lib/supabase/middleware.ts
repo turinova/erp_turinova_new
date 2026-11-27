@@ -303,6 +303,9 @@ async function handleSession(request: NextRequest) {
   /** Vezetői mobil app: Supabase access token Bearer-ben, a route ellenőrzi (lib/mobile/auth). */
   const isPublicMobileApi = pathname.startsWith('/api/m/')
 
+  /** Termékfeed (ChatGPT): titkos token az URL-ben, a route ellenőrzi. */
+  const isPublicFeed = pathname.startsWith('/api/feeds/')
+
   const isPublicAuth =
     (surface !== 'platform' && isPublicMarketingPath(pathname)) ||
     ((surface === 'staff' || surface === 'platform') &&
@@ -331,7 +334,8 @@ async function handleSession(request: NextRequest) {
     isPublicStorefrontApi ||
     isPublicKioskApi ||
     isPublicCron ||
-    isPublicMobileApi
+    isPublicMobileApi ||
+    isPublicFeed
   ) {
     return supabaseResponse
   }
