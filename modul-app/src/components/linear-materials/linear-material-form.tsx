@@ -101,6 +101,10 @@ export function LinearMaterialForm({
   )
   const [onStock, setOnStock] = useState(initial?.on_stock ?? true)
   const [active, setActive] = useState(initial?.active ?? true)
+  const [slug, setSlug] = useState(initial?.slug ?? '')
+  const [indexableOnSite, setIndexableOnSite] = useState(
+    initial?.indexable_on_site ?? false
+  )
   const [imageUrl, setImageUrl] = useState<string | null>(
     initial?.image_url ?? null
   )
@@ -161,7 +165,9 @@ export function LinearMaterialForm({
         imageUrl,
         priceNet,
         purchasePriceNet: purchaseParsed.purchasePriceNet,
-        marginFactor: purchaseParsed.marginFactor
+        marginFactor: purchaseParsed.marginFactor,
+        slug,
+        indexableOnSite
       }
 
       const result =
@@ -362,6 +368,41 @@ export function LinearMaterialForm({
                   description="Jelzi, hogy van belőle készleten."
                 />
               </div>
+
+              <FormField
+                label="Weblap slug"
+                htmlFor="linear-slug"
+                optionalLabel
+                hint="hirosablak.hu/munkalap/… — üresen hagyva nem kerül a katalógusba."
+                error={fieldErrors.slug}
+              >
+                <Input
+                  id="linear-slug"
+                  value={slug}
+                  disabled={!canWrite}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder="pl. egger-h3303-st10-600-38"
+                  className="font-mono text-[13px]"
+                />
+                {slug.trim() ? (
+                  <a
+                    href={`https://www.hirosablak.hu/munkalap/${encodeURIComponent(slug.trim())}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-[12px] text-ink-secondary underline-offset-2 hover:underline"
+                  >
+                    Előnézet a weblapon
+                  </a>
+                ) : null}
+              </FormField>
+              <Switch
+                id="linear-indexable"
+                checked={indexableOnSite}
+                disabled={!canWrite || !slug.trim()}
+                onCheckedChange={setIndexableOnSite}
+                label="Indexelhető a weblapon"
+                description="Sitemap + keresők. Csak slug megadása után."
+              />
             </div>
 
             <FormField

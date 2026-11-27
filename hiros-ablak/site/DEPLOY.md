@@ -42,12 +42,23 @@ Contact, asztalos partner and szállítóláda quote forms POST to `/api/forms` 
 - Default share image (Open Graph / WhatsApp): `public/og/og-default.png` (1200×630)
 - After domain go-live, re-scrape in [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/)
 
-## Supabase
+## Supabase (modul-app = katalógus forrás)
 
-Run once on the production database (if not already):
+A weblap a **modul-app** Supabase projektet olvassa (`bcfsplmetuziczzxgsix`),
+a Hírös tenant `sheet_materials` / `linear_materials` tábláiból a
+`public_butorlap` / `public_munkalap` view-kon keresztül (ár nélkül).
 
-- `docs/supabase-public-butorlap.sql`
-- `docs/supabase-public-munkalap.sql`
+Futtasd a **modul-app** SQL editorban, ebben a sorrendben:
+
+1. `modul-app/supabase/migrations/20261030_public_catalog_views.sql`
+2. `modul-app/supabase/migrations/20261030b_public_catalog_slug_import.sql`
+
+Részletes cutover: `docs/CATALOG-CUTOVER-MODUL-APP.md`
+
+Vercel env (Production + Preview):
+
+- `NEXT_PUBLIC_SUPABASE_URL` = modul-app URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` = modul-app anon key
 
 ## Domain (Rackhost)
 

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 
+import { slugOrNull } from '@/lib/catalog/public-slug'
 import {
   linearMaterialFormSchema,
   parseDecimalInput,
@@ -52,6 +53,8 @@ export type LinearFormInput = {
   priceNet: number
   purchasePriceNet: number | null
   marginFactor: number | null
+  slug: string
+  indexableOnSite: boolean
 }
 
 function parseFormInput(input: LinearFormInput) {
@@ -69,7 +72,9 @@ function parseFormInput(input: LinearFormInput) {
     imageUrl: imageRaw === '' ? null : imageRaw,
     priceNet: input.priceNet,
     purchasePriceNet: input.purchasePriceNet,
-    marginFactor: input.marginFactor
+    marginFactor: input.marginFactor,
+    slug: slugOrNull(input.slug) ?? '',
+    indexableOnSite: Boolean(input.indexableOnSite)
   })
 }
 
@@ -100,7 +105,9 @@ function rowFromParsed(data: LinearMaterialFormValues) {
     image_url: data.imageUrl,
     price_net: data.priceNet,
     purchase_price_net: data.purchasePriceNet,
-    margin_factor: data.marginFactor
+    margin_factor: data.marginFactor,
+    slug: data.slug,
+    indexable_on_site: data.indexableOnSite
   }
 }
 

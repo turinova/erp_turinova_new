@@ -80,7 +80,16 @@ export const linearMaterialFormSchema = z.object({
     .number({ invalid_type_error: 'Érvényes árrés szorzót adj meg.' })
     .gt(0, 'A szorzó legyen nagyobb mint 0.')
     .max(100, 'A szorzó legfeljebb 100.')
-    .nullable()
+    .nullable(),
+  slug: z
+    .string()
+    .trim()
+    .max(80, 'A slug legfeljebb 80 karakter.')
+    .transform((v) => (v === '' ? null : v))
+    .refine((v) => v === null || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v), {
+      message: 'Csak kisbetű, szám és kötőjel.'
+    }),
+  indexableOnSite: z.boolean()
 })
 
 export type LinearMaterialFormValues = z.infer<typeof linearMaterialFormSchema>

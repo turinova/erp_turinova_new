@@ -111,6 +111,10 @@ export function SheetMaterialForm({
   )
   const [onStock, setOnStock] = useState(initial?.on_stock ?? true)
   const [active, setActive] = useState(initial?.active ?? true)
+  const [slug, setSlug] = useState(initial?.slug ?? '')
+  const [indexableOnSite, setIndexableOnSite] = useState(
+    initial?.indexable_on_site ?? false
+  )
   const [imageUrl, setImageUrl] = useState<string | null>(
     initial?.image_url ?? null
   )
@@ -249,7 +253,9 @@ export function SheetMaterialForm({
         priceNet,
         purchasePriceNet: purchaseParsed.purchasePriceNet,
         marginFactor: purchaseParsed.marginFactor,
-        machineCode
+        machineCode,
+        slug,
+        indexableOnSite
       }
 
       const result =
@@ -462,6 +468,43 @@ export function SheetMaterialForm({
                     description="Jelzi, hogy van belőle készleten (még nincs készletmozgás)."
                   />
                 </div>
+              </div>
+
+              <FormField
+                label="Weblap slug"
+                htmlFor="sheet-slug"
+                optionalLabel
+                hint="hirosablak.hu/butorlap/… — üresen hagyva nem kerül a katalógusba."
+                error={fieldErrors.slug}
+              >
+                <Input
+                  id="sheet-slug"
+                  value={slug}
+                  disabled={!canWrite}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder="pl. egger-u763-st9-18"
+                  className="font-mono text-[13px]"
+                />
+                {slug.trim() ? (
+                  <a
+                    href={`https://www.hirosablak.hu/butorlap/${encodeURIComponent(slug.trim())}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-[12px] text-ink-secondary underline-offset-2 hover:underline"
+                  >
+                    Előnézet a weblapon
+                  </a>
+                ) : null}
+              </FormField>
+              <div className="rounded-md border border-border bg-app p-2.5">
+                <Switch
+                  id="sheet-indexable"
+                  checked={indexableOnSite}
+                  disabled={!canWrite || !slug.trim()}
+                  onCheckedChange={setIndexableOnSite}
+                  label="Indexelhető a weblapon"
+                  description="Sitemap + keresők. Csak slug megadása után."
+                />
               </div>
             </div>
 

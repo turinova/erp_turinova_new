@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 
+import { slugOrNull } from '@/lib/catalog/public-slug'
 import {
   parseDecimalInput,
   parseIntegerInput,
@@ -67,6 +68,8 @@ export type SheetFormInput = {
   purchasePriceNet: number | null
   marginFactor: number | null
   machineCode: string
+  slug: string
+  indexableOnSite: boolean
 }
 
 function parseFormInput(input: SheetFormInput) {
@@ -97,7 +100,9 @@ function parseFormInput(input: SheetFormInput) {
     priceNet: input.priceNet,
     purchasePriceNet: input.purchasePriceNet,
     marginFactor: input.marginFactor,
-    machineCode: input.machineCode
+    machineCode: input.machineCode,
+    slug: slugOrNull(input.slug) ?? '',
+    indexableOnSite: Boolean(input.indexableOnSite)
   })
 }
 
@@ -138,7 +143,9 @@ function rowFromParsed(data: SheetMaterialFormValues) {
     price_net: data.priceNet,
     purchase_price_net: data.purchasePriceNet,
     margin_factor: data.marginFactor,
-    machine_code: data.machineCode
+    machine_code: data.machineCode,
+    slug: data.slug,
+    indexable_on_site: data.indexableOnSite
   }
 }
 

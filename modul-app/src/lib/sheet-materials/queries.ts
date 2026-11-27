@@ -43,6 +43,8 @@ export type SheetMaterialDetail = {
   purchase_price_net: number | null
   margin_factor: number | null
   machine_code: string
+  slug: string | null
+  indexable_on_site: boolean
   created_at: string
   updated_at: string
 }
@@ -207,6 +209,8 @@ export async function getSheetMaterial(
       purchase_price_net,
       margin_factor,
       machine_code,
+      slug,
+      indexable_on_site,
       created_at,
       updated_at
     `
@@ -240,7 +244,9 @@ export async function getSheetMaterial(
     kerf_mm: Number(data.kerf_mm),
     waste_multi: Number(data.waste_multi),
     usage_limit: Number(data.usage_limit),
-    image_url: data.image_url ?? null
+    image_url: data.image_url ?? null,
+    slug: (data.slug as string | null) ?? null,
+    indexable_on_site: Boolean(data.indexable_on_site)
   }
 }
 

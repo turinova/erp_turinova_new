@@ -39,6 +39,8 @@ export type LinearMaterialDetail = {
   purchase_price_net: number | null
   margin_factor: number | null
   stock_unit: 'db' | 'fm'
+  slug: string | null
+  indexable_on_site: boolean
   created_at: string
   updated_at: string
 }
@@ -196,6 +198,8 @@ export async function getLinearMaterial(
       purchase_price_net,
       margin_factor,
       stock_unit,
+      slug,
+      indexable_on_site,
       created_at,
       updated_at
     `
@@ -219,6 +223,8 @@ export async function getLinearMaterial(
     width_mm: Number(data.width_mm),
     thickness_mm: Number(data.thickness_mm),
     price_net: Number(data.price_net),
+    slug: (data.slug as string | null) ?? null,
+    indexable_on_site: Boolean(data.indexable_on_site),
     purchase_price_net:
       data.purchase_price_net == null ? null : Number(data.purchase_price_net),
     margin_factor:

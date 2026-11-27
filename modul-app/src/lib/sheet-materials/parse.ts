@@ -189,7 +189,16 @@ export const sheetMaterialFormSchema = z.object({
     .string()
     .trim()
     .min(1, 'A gépkód megadása kötelező.')
-    .max(80, 'A gépkód legfeljebb 80 karakter.')
+    .max(80, 'A gépkód legfeljebb 80 karakter.'),
+  slug: z
+    .string()
+    .trim()
+    .max(80, 'A slug legfeljebb 80 karakter.')
+    .transform((v) => (v === '' ? null : v))
+    .refine((v) => v === null || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v), {
+      message: 'Csak kisbetű, szám és kötőjel.'
+    }),
+  indexableOnSite: z.boolean()
 })
 
 export type SheetMaterialFormValues = z.infer<typeof sheetMaterialFormSchema>
